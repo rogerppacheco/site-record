@@ -9,24 +9,23 @@ load_dotenv(os.path.join(BASE_DIR, '.env'))
 
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-fallback-key-for-development')
 
-# --- CORREÇÃO 1: DEBUG E ALLOWED_HOSTS PARA PRODUÇÃO ---
 DEBUG = os.getenv('DEBUG', '0') == '1'
 
 ALLOWED_HOSTS = [
-    'controle-presenca-448646307036.herokuapp.com', # Nome completo do app Heroku
+    'controle-presenca-448646307036.herokuapp.com',
     'recordpap.com.br',
     'www.recordpap.com.br',
     '127.0.0.1',
 ]
 
+# --- CORREÇÃO APLICADA AQUI ---
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
-    'django.contrib.staticfiles', # Deve vir antes do whitenoise
-    'whitenoise.runserver_nostatic', # Adicionado para servir arquivos estáticos
+    # A linha 'whitenoise.runserver_nostatic' foi removida.
     'django.contrib.staticfiles',
     'usuarios',
     'rest_framework',
@@ -40,7 +39,6 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    # --- CORREÇÃO 2: MIDDLEWARE DO WHITENOISE PARA ARQUIVOS ESTÁTICOS ---
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
@@ -71,9 +69,6 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'gestao_equipes.wsgi.application'
 
-# --- CORREÇÃO 3: CONFIGURAÇÃO DO BANCO DE DADOS PARA PRODUÇÃO ---
-# Esta lógica usa a variável de ambiente JAWSDB_URL do Heroku.
-# Se não a encontrar, ele volta a usar o seu banco de dados SQLite local.
 if 'JAWSDB_URL' in os.environ:
     DATABASES = {
         'default': dj_database_url.config(env='JAWSDB_URL', conn_max_age=600)
@@ -99,15 +94,11 @@ TIME_ZONE = 'America/Sao_Paulo'
 USE_I18N = True
 USE_TZ = True
 
-# --- CONFIGURAÇÃO DE ARQUIVOS ESTÁTICOS (Mantida e com adição) ---
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [
     os.path.join(BASE_DIR, 'frontend', 'public'),
 ]
-
-# Onde o Heroku irá coletar todos os arquivos estáticos
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-# Otimização para servir arquivos estáticos de forma eficiente
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
@@ -122,7 +113,6 @@ REST_FRAMEWORK = {
     )
 }
 
-# Atualize esta lista conforme necessário para seu frontend em produção
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:8000",
     "http://127.0.0.1:8000",
