@@ -2,13 +2,24 @@
 from pathlib import Path
 import os
 from dotenv import load_dotenv
+import dj_database_url  # <-- Adicionado para ler a URL do banco de dados
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(os.path.join(BASE_DIR, '.env'))
 
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-fallback-key-for-development')
-DEBUG = True
-ALLOWED_HOSTS = []
+
+# --- CORREÇÃO 1: DEBUG E ALLOWED_HOSTS PARA PRODUÇÃO ---
+# Em produção, o Heroku definirá a variável DEBUG como '0' ou não a definirá.
+DEBUG = os.getenv('DEBUG', '0') == '1'
+
+# Adicione seus domínios de produção aqui
+ALLOWED_HOSTS = [
+    'controle-presenca.herokuapp.com', 
+    'recordpap.com.br',
+    'www.recordpap.com.br',
+    '127.0.0.1', # Para desenvolvimento local
+]
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -16,8 +27,9 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
+    'whitenoise.runserver_nostatic', # Adicionado para servir arquivos estáticos
     'django.contrib.staticfiles',
-    'usuarios', # Simplificado para funcionar melhor
+    'usuarios',
     'rest_framework',
     'rest_framework_simplejwt',
     'corsheaders',
@@ -29,6 +41,8 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    # --- CORREÇÃO 2: MIDDLEWARE DO WHITENOISE PARA ARQUIVOS ESTÁTICOS ---
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -58,12 +72,21 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'gestao_equipes.wsgi.application'
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+# --- CORREÇÃO 3: CONFIGURAÇÃO DO BANCO DE DADOS PARA PRODUÇÃO ---
+# Esta lógica tentará usar o banco de dados do Heroku (MySQL). 
+# Se não encontrar, usará o seu SQLite local.
+if 'JAWSDB_URL' in os.environ:
+    DATABASES = {
+        'default': dj_database_url.config(conn_max_age=600)
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
+
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',},
@@ -77,10 +100,16 @@ TIME_ZONE = 'America/Sao_Paulo'
 USE_I18N = True
 USE_TZ = True
 
+# --- CORREÇÃO 4: CONFIGURAÇÃO DE ARQUIVOS ESTÁTICOS PARA PRODUÇÃO ---
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [
     os.path.join(BASE_DIR, 'frontend', 'public'),
 ]
+# Onde o Heroku irá coletar todos os arquivos estáticos
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+# Otimização para servir arquivos estáticos de forma eficiente
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -94,12 +123,13 @@ REST_FRAMEWORK = {
     )
 }
 
+# Atualize esta lista conforme necessário para seu frontend em produção
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:8000",
     "http://127.0.0.1:8000",
-    "http://127.0.0.1:5500",
+    "https://recordpap.com.br",
+    "https://www.recordpap.com.br",
 ]
 
-# --- CORREÇÃO FINAL AQUI ---
 AUTH_USER_MODEL = 'usuarios.Usuario'
 LOGIN_URL = '/'
