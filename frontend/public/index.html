@@ -363,28 +363,47 @@
     </footer>
 
     <script>
-        // CORREÇÃO: Aponta para a API do Django
-        const apiUrl = 'http://127.0.0.1:8000/api';
+    // --- LÓGICA CORRIGIDA E MELHORADA ---
+    // Detecta se o site está rodando localmente ou em produção e define a URL da API correta.
+    const isLocal = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
+    const apiUrl = isLocal 
+        ? 'http://127.0.0.1:8000/api' 
+        : 'https://controle-presenca-448646307036.herokuapp.com/api';
 
-        function jwt_decode(token) {
-            try {
-                return JSON.parse(atob(token.split('.')[1]));
-            } catch (e) {
-                return null;
-            }
+    function jwt_decode(token) {
+        try {
+            return JSON.parse(atob(token.split('.')[1]));
+        } catch (e) {
+            return null;
+        }
+    }
+
+    // A função de login foi movida para dentro do 'DOMContentLoaded' para garantir que o formulário exista.
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        const token = localStorage.getItem('accessToken');
+        const areaInternaBtn = document.getElementById('areaInternaButton');
+        
+        if (token) {
+            areaInternaBtn.href = '/area-interna/';
+        } else {
+            areaInternaBtn.href = '#'; // Garante que não redirecione se não estiver logado
         }
 
-        async function login() {
-            const username = document.getElementById('username').value.trim();
-            const password = document.getElementById('password').value;
+        const modal = document.getElementById('loginModal');
+        const loginForm = document.getElementById('loginForm');
+        const closeBtn = document.querySelector('.modal .close');
 
+        // Função de login agora está aqui dentro
+        async function handleLogin(username, password) {
             if (!username || !password) {
-                return alert('Por favor, preencha o usuário e a senha.');
+                alert('Por favor, preencha o usuário e a senha.');
+                return;
             }
 
             try {
-                // CORREÇÃO: Aponta para a rota de token
-                const response = await fetch(`${apiUrl}/token/`, {
+                // Usa a rota de compatibilidade que criamos
+                const response = await fetch(`${apiUrl}/auth/login`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ username: username, password: password })
@@ -393,7 +412,7 @@
                 const data = await response.json();
 
                 if (!response.ok) {
-                    throw new Error(data.detail || 'Não foi possível fazer login.');
+                    throw new Error(data.detail || 'Não foi possível fazer login. Verifique suas credenciais.');
                 }
 
                 localStorage.setItem('accessToken', data.access);
@@ -403,59 +422,48 @@
                 if (decodedToken && decodedToken.perfil) {
                     localStorage.setItem('userProfile', decodedToken.perfil);
                 } else {
-                    // Se o perfil for nulo (como no superuser), guardamos um valor padrão
                     localStorage.setItem('userProfile', 'Admin'); 
                 }
                 
-                document.getElementById('loginModal').style.display = 'none';
-                // CORREÇÃO: Redireciona para a rota do Django
+                modal.style.display = 'none';
                 window.location.href = '/area-interna/';
 
             } catch (error) {
+                // O erro "Failed to fetch" geralmente acontece quando a API está fora do ar ou há um erro de CORS.
+                // O erro "Unexpected token '<'" acontece quando a API retorna um erro HTML em vez de JSON.
                 alert(`Erro de login: ${error.message}`);
             }
         }
 
-        document.addEventListener('DOMContentLoaded', function() {
-            const token = localStorage.getItem('accessToken');
-            const areaInternaBtn = document.getElementById('areaInternaButton');
-            
-            // Se já existe um token, o botão "Área Interna" leva direto para a página
-            if (token) {
-                areaInternaBtn.href = '/area-interna/';
+        function showLoginModal(event) {
+            if (areaInternaBtn.href.includes('/area-interna/')) {
+                window.location.href = '/area-interna/';
+                return;
             }
+            if (event) event.preventDefault();
+            modal.style.display = 'flex';
+        }
 
-            const modal = document.getElementById('loginModal');
-            const loginForm = document.getElementById('loginForm');
-            const closeBtn = document.querySelector('.modal .close');
-
-            function showLoginModal(event) {
-                // Se já tem link, deixa o link funcionar
-                if (areaInternaBtn.href.includes('/area-interna/')) return;
-                
-                if (event) event.preventDefault();
-                modal.style.display = 'flex';
-            }
-
-            function hideLoginModal() {
-                modal.style.display = 'none';
-            }
-            
-            function handleLoginSubmit(event) {
-                event.preventDefault();
-                login();
-            }
-
-            areaInternaBtn.addEventListener('click', showLoginModal);
-            loginForm.addEventListener('submit', handleLoginSubmit);
-            closeBtn.addEventListener('click', hideLoginModal);
-
-            window.addEventListener('click', function(event) {
-                if (event.target == modal) {
-                    hideLoginModal();
-                }
-            });
+        function hideLoginModal() {
+            modal.style.display = 'none';
+        }
+        
+        // --- LÓGICA DE SUBMISSÃO DO FORMULÁRIO CORRIGIDA ---
+        loginForm.addEventListener('submit', function(event) {
+            event.preventDefault();
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            handleLogin(username, password);
         });
-    </script>
+        
+        areaInternaBtn.addEventListener('click', showLoginModal);
+        closeBtn.addEventListener('click', hideLoginModal);
+        window.addEventListener('click', function(event) {
+            if (event.target == modal) {
+                hideLoginModal();
+            }
+        });
+    });
+</script>
 </body>
 </html>
