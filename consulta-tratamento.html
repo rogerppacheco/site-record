@@ -1,0 +1,498 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consulta Tratamento - Record PAP</title>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+        body {
+            background-color: #e5e5e5;
+            line-height: 1.6;
+        }
+        header {
+            background-color: #fff;
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+        .header-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .logo {
+            max-width: 150px;
+            height: auto;
+            cursor: pointer;
+        }
+        nav ul {
+            list-style: none;
+            display: flex;
+            gap: 1.5rem;
+            align-items: center;
+        }
+        nav ul li a {
+            text-decoration: none;
+            color: #1a1a1a;
+            font-weight: 500;
+            font-size: 1rem;
+        }
+        nav ul li a:hover {
+            color: #b3b3b3;
+        }
+        .area-interna-button {
+            background-color: #1a1a1a;
+            color: #fff;
+            padding: 0.5rem 1rem;
+            border: 1px solid #fff;
+            border-radius: 0.25rem;
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .area-interna-button:hover {
+            background-color: #333;
+        }
+        .whatsapp-chat a {
+            display: inline-flex;
+            align-items: center;
+            text-decoration: none;
+            color: #1a1a1a;
+            font-size: 1rem;
+        }
+        .whatsapp-chat a:hover {
+            color: #b3b3b3;
+        }
+        .whatsapp-chat img {
+            width: 20px;
+            height: 20px;
+            margin-right: 0.25rem;
+        }
+        .consulta-section {
+            padding: 3rem 1rem;
+            background-color: #fff;
+            text-align: center;
+        }
+        .consulta-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .consulta-container h1 {
+            font-size: 2rem;
+            color: #1a1a1a;
+            margin-bottom: 1rem;
+        }
+        .input-group {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 1rem;
+            margin: 1rem 0;
+        }
+        input#id {
+            padding: 0.75rem;
+            width: 100%;
+            max-width: 250px;
+            border: 1px solid #ccc;
+            border-radius: 0.25rem;
+            font-size: 1rem;
+            pointer-events: auto;
+            background-color: #fff;
+        }
+        button {
+            background-color: #1a1a1a;
+            color: #fff;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 0.25rem;
+            cursor: pointer;
+            font-size: 1rem;
+            pointer-events: auto;
+            opacity: 1;
+            transition: opacity 0.3s;
+        }
+        button.enabled {
+            pointer-events: auto;
+            opacity: 1;
+        }
+        button:hover.enabled {
+            background-color: #333;
+        }
+        button.consulting {
+            background-color: #666;
+            cursor: not-allowed;
+        }
+        button.consulting:hover {
+            background-color: #666;
+        }
+        .table-wrapper {
+            display: block;
+            overflow-x: auto;
+            margin-top: 1rem;
+            width: 100%;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            font-size: 0.9rem;
+            table-layout: auto;
+        }
+        th, td {
+            border: 1px solid #ccc;
+            padding: 0.5rem;
+            text-align: left;
+            white-space: normal;
+            word-wrap: break-word;
+        }
+        th {
+            background-color: #f2f2f2;
+            color: #1a1a1a;
+        }
+        tr.aberta {
+            background-color: #fff3cd !important;
+        }
+        tr.fechada {
+            background-color: #d4edda !important;
+        }
+        #resultado {
+            text-align: center;
+            margin-top: 1rem;
+            font-size: 1rem;
+        }
+        .error {
+            color: #666;
+            font-size: 0.9rem;
+            text-align: center;
+            margin-top: 0.5rem;
+        }
+        .notice {
+            color: #666;
+            font-size: 0.9rem;
+            margin-top: 1rem;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        footer {
+            background-color: #1a1a1a;
+            color: #fff;
+            padding: 2rem 1rem;
+            text-align: center;
+            margin-top: 2rem;
+        }
+        footer p {
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+        }
+        footer a {
+            color: #b3b3b3;
+            text-decoration: none;
+        }
+        footer a:hover {
+            color: #fff;
+        }
+        @media (max-width: 768px) {
+            .header-container {
+                flex-direction: column;
+                gap: 1rem;
+            }
+            nav ul {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+            .consulta-container h1 {
+                font-size: 1.5rem;
+            }
+        }
+        @media (max-width: 480px) {
+            .logo {
+                max-width: 120px;
+            }
+            .input-group {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+            input#id {
+                max-width: 200px;
+            }
+            button {
+                padding: 0.6rem 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-container">
+            <img src="logo.png" alt="Record PAP Logo" class="logo" onclick="window.location.href='index.html'">
+            <nav>
+                <ul>
+                    <li><a href="index.html">Início</a></li>
+                    <li><a href="index.html#planos">Planos</a></li>
+                    <li><a href="index.html#depoimentos">Depoimentos</a></li>
+                    <li><a href="index.html#contato">Contato</a></li>
+                    <li><a href="area-interna.html" class="area-interna-button">Área Interna</a></li>
+                    <li class="whatsapp-chat">
+                        <a href="https://wa.me/31994588810" target="_blank">
+                            <img src="https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg" alt="WhatsApp">
+                            Chat
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <section class="consulta-section">
+        <div class="consulta-container">
+            <h1>Consulta Tratamento</h1>
+            <div class="input-group">
+                <input type="text" id="id" placeholder="Digite o CPF ou CNPJ" onkeypress="if(event.key === 'Enter') consultarTratamento()">
+                <button id="consultButton" onclick="consultarTratamento()">Consultar</button>
+            </div>
+            <p class="notice">A funcionalidade de consulta pode requerer login, dependendo das configurações da Área Interna.</p>
+            <div id="resultado"></div>
+        </div>
+    </section>
+
+    <footer id="contato">
+        <p>Record PAP - Internet Fibra Ótica</p>
+        <p>Contato: (31) 99458-8810 | E-mail: <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="1d7e7273697c69725d6f787e726f796d7c6d337e7270337f6f">[email&#160;protected]</a></p>
+        <p><a href="politica-de-privacidade.html">Política de Privacidade</a> | <a href="#">Termos de Uso</a></p>
+    </footer>
+
+    <script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex));
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+    </script>
+    <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script>
+    <script>
+        window.onload = function() {
+            const loginObrigatorio = localStorage.getItem('loginRequired') !== 'false';
+            const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+            if (loginObrigatorio && !isAuthenticated) {
+                window.location.href = 'index.html?login=true';
+                return;
+            }
+            const idInput = document.getElementById('id');
+            const consultButton = document.getElementById('consultButton');
+            idInput.disabled = false;
+            idInput.style.pointerEvents = 'auto';
+            idInput.style.backgroundColor = '#fff';
+            consultButton.disabled = false;
+            consultButton.classList.add('enabled');
+            idInput.focus();
+        };
+
+        function validateCPFOrCNPJ(value) {
+            const cleanValue = value.replace(/\D/g, '');
+            return (cleanValue.length === 11 || cleanValue.length === 14) && /^\d+$/.test(cleanValue);
+        }
+
+        function formatDateTime(dateTimeStr) {
+            if (!dateTimeStr || typeof dateTimeStr !== 'string') {
+                console.log('Data inválida (vazia ou não é string):', dateTimeStr);
+                return '';
+            }
+            console.log('Valor bruto da data:', dateTimeStr);
+            let date;
+            date = new Date(dateTimeStr);
+            if (!isNaN(date.getTime())) {
+                const day = String(date.getDate()).padStart(2, '0');
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const year = date.getFullYear();
+                const hours = String(date.getHours()).padStart(2, '0');
+                const minutes = String(date.getMinutes()).padStart(2, '0');
+                const seconds = String(date.getSeconds()).padStart(2, '0');
+                return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+            }
+            const brFormat = dateTimeStr.match(/^(\d{2})\/(\d{2})\/(\d{4})(\s+(\d{2}):(\d{2}):(\d{2}))?$/);
+            if (brFormat) {
+                const day = brFormat[1];
+                const month = brFormat[2];
+                const year = brFormat[3];
+                const hours = brFormat[5] || '00';
+                const minutes = brFormat[6] || '00';
+                const seconds = brFormat[7] || '00';
+                date = new Date(`${year}-${month}-${day}T${hours}:${minutes}:${seconds}`);
+                if (!isNaN(date.getTime())) {
+                    return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+                }
+            }
+            const isoFormat = dateTimeStr.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})$/);
+            if (isoFormat) {
+                const year = isoFormat[1];
+                const month = isoFormat[2];
+                const day = isoFormat[3];
+                const hours = isoFormat[4];
+                const minutes = isoFormat[5];
+                const seconds = isoFormat[6];
+                date = new Date(`${year}-${month}-${day}T${hours}:${minutes}:${seconds}`);
+                if (!isNaN(date.getTime())) {
+                    return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+                }
+            }
+            console.log('Não foi possível parsear a data:', dateTimeStr);
+            return dateTimeStr.toUpperCase();
+        }
+
+        async function consultarTratamento() {
+            const loginObrigatorio = localStorage.getItem('loginRequired') !== 'false';
+            const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+            if (loginObrigatorio && !isAuthenticated) {
+                window.location.href = 'index.html?login=true';
+                return;
+            }
+            const idInput = document.getElementById('id');
+            const consultButton = document.getElementById('consultButton');
+            const resultadoDiv = document.getElementById('resultado');
+            const value = idInput.value.trim();
+            const cleanValue = value.replace(/\D/g, '');
+
+            if (!validateCPFOrCNPJ(value)) {
+                resultadoDiv.innerHTML = '<p class="error">Por favor, insira um CPF (11 dígitos) ou CNPJ (14 dígitos) válido.</p>';
+                return;
+            }
+
+            consultButton.textContent = 'Consultando';
+            consultButton.classList.remove('enabled');
+            consultButton.classList.add('consulting');
+            consultButton.disabled = true;
+
+            try {
+                const response = await axios.post('https://consulta-cpf-app-05f9918ecfa1.herokuapp.com/consultar-tratamento', { id: cleanValue });
+                const data = response.data;
+                if (data && Array.isArray(data) && data.length > 0) {
+                    let tableRows = '';
+                    data.forEach(item => {
+                        let rowClass = '';
+                        const statusFinal = (item['STATUS FINAL'] || '').toString().toUpperCase().trim();
+                        if (statusFinal === 'ABERTA') {
+                            rowClass = 'aberta';
+                        } else if (statusFinal === 'FECHADA') {
+                            rowClass = 'fechada';
+                        }
+                        tableRows += `
+                            <tr class="${rowClass}">
+                                <td>${(item.ID || '').toString().toUpperCase()}</td>
+                                <td>${(item['NOME DO CLIENTE:'] || '').toString().toUpperCase()}</td>
+                                <td>${formatDateTime(item['Hora da conclusão'])}</td>
+                                <td>${(item.BO_TRATAMENTO || '').toString().toUpperCase()}</td>
+                                <td>${(item['AUDITORIA/INPUT'] || '').toString().toUpperCase()}</td>
+                                <td>${(item['STATUS BR_PRONTO'] || '').toString().toUpperCase()}</td>
+                                <td>${(item['STATUS FINAL'] || '').toString().toUpperCase()}</td>
+                            </tr>
+                        `;
+                    });
+                    resultadoDiv.innerHTML = `
+                        <div class="table-wrapper">
+                            <table>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>NOME DO CLIENTE:</th>
+                                    <th>DATA/HORA VENDA</th>
+                                    <th>BO_TRATAMENTO</th>
+                                    <th>AUDITORIA/INPUT</th>
+                                    <th>STATUS BR_PRONTO</th>
+                                    <th>STATUS FINAL</th>
+                                </tr>
+                                ${tableRows}
+                            </table>
+                        </div>
+                    `;
+                    idInput.value = '';
+                } else {
+                    resultadoDiv.innerHTML = 'NENHUM RESULTADO ENCONTRADO PARA O CPF OU CNPJ INFORMADO.';
+                }
+            } catch (error) {
+                resultadoDiv.innerHTML = 'ERRO AO CONSULTAR. TENTE NOVAMENTE OU ENTRE EM CONTATO PELO WHATSAPP (31) 99458-8810.';
+                console.error('Erro:', error);
+            } finally {
+                consultButton.textContent = 'Consultar';
+                consultButton.classList.remove('consulting');
+                consultButton.classList.add('enabled');
+                consultButton.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
