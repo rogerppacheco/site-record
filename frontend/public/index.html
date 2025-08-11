@@ -449,6 +449,7 @@ async function handleLogin(username, password) {
             modal.style.display = 'none';
         }
         // --- LÓGICA DE SUBMISSÃO DO FORMULÁRIO CORRIGIDA ---
+        
         loginForm.addEventListener('submit', function(event) {
             event.preventDefault();
             const username = document.getElementById('username').value.trim();
