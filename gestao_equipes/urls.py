@@ -12,8 +12,13 @@ urlpatterns = [
     path('api/', include('presenca.urls')),
     path('api/', include('usuarios.urls')),
     path('api/relatorios/', include('relatorios.urls')),
-    path('api/crm-cadastros/', include('crm_app.urls')), # <-- NOME CORRIGIDO
+    path('api/crm-cadastros/', include('crm_app.urls')),
 
+    # --- CORREÇÃO ADICIONADA AQUI ---
+    # Rota antiga (do Node.js) agora aponta para a nova view de login do Django
+    path('api/auth/login', MyTokenObtainPairView.as_view(), name='token_obtain_pair_legacy'),
+    
+    # Rotas padrão do JWT
     path('api/token/', MyTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 ]
