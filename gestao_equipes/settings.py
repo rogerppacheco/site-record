@@ -2,7 +2,7 @@
 from pathlib import Path
 import os
 from dotenv import load_dotenv
-import dj_database_url  # <-- Adicionado para ler a URL do banco de dados
+import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(os.path.join(BASE_DIR, '.env'))
@@ -10,15 +10,13 @@ load_dotenv(os.path.join(BASE_DIR, '.env'))
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-fallback-key-for-development')
 
 # --- CORREÇÃO 1: DEBUG E ALLOWED_HOSTS PARA PRODUÇÃO ---
-# Em produção, o Heroku definirá a variável DEBUG como '0' ou não a definirá.
 DEBUG = os.getenv('DEBUG', '0') == '1'
 
-# Adicione seus domínios de produção aqui
 ALLOWED_HOSTS = [
-    'controle-presenca.herokuapp.com', 
+    'controle-presenca-448646307036.herokuapp.com', # Nome completo do app Heroku
     'recordpap.com.br',
     'www.recordpap.com.br',
-    '127.0.0.1', # Para desenvolvimento local
+    '127.0.0.1',
 ]
 
 INSTALLED_APPS = [
@@ -73,11 +71,11 @@ TEMPLATES = [
 WSGI_APPLICATION = 'gestao_equipes.wsgi.application'
 
 # --- CORREÇÃO 3: CONFIGURAÇÃO DO BANCO DE DADOS PARA PRODUÇÃO ---
-# Esta lógica tentará usar o banco de dados do Heroku (MySQL). 
-# Se não encontrar, usará o seu SQLite local.
+# Esta lógica usa a variável de ambiente JAWSDB_URL do Heroku.
+# Se não a encontrar, ele volta a usar o seu banco de dados SQLite local.
 if 'JAWSDB_URL' in os.environ:
     DATABASES = {
-        'default': dj_database_url.config(conn_max_age=600)
+        'default': dj_database_url.config(env='JAWSDB_URL', conn_max_age=600)
     }
 else:
     DATABASES = {
@@ -100,7 +98,7 @@ TIME_ZONE = 'America/Sao_Paulo'
 USE_I18N = True
 USE_TZ = True
 
-# --- CORREÇÃO 4: CONFIGURAÇÃO DE ARQUIVOS ESTÁTICOS PARA PRODUÇÃO ---
+# --- CONFIGURAÇÃO DE ARQUIVOS ESTÁTICOS (Mantida e com adição) ---
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [
     os.path.join(BASE_DIR, 'frontend', 'public'),
