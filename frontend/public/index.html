@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Record PAP - Internet Fibra Ótica</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+        body {
+            background-color: #e5e5e5;
+        }
+        header {
+            background-color: #fff;
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+        .header-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .logo {
+            max-width: 150px;
+            height: auto;
+            cursor: pointer;
+            border: 0;
+            vertical-align: middle;
+        }
+        nav ul {
+            list-style: none;
+            display: flex;
+            gap: 1.5rem;
+            align-items: center;
+        }
+        nav ul li a {
+            text-decoration: none;
+            color: #1a1a1a;
+            font-weight: 500;
+            font-size: 1rem;
+        }
+        nav ul li a:hover {
+            color: #b3b3b3;
+        }
+        .area-interna-button {
+            background-color: #1a1a1a;
+            color: #fff;
+            padding: 0.5rem 1rem;
+            border: 1px solid transparent;
+            border-radius: 0.25rem;
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 600;
+            display: inline-block;
+            cursor: pointer;
+            font-family: Arial, sans-serif;
+        }
+        .area-interna-button:hover {
+            background-color: #333;
+        }
+        .whatsapp-chat {
+            margin-left: 1rem;
+        }
+        .whatsapp-chat a {
+            display: inline-flex;
+            align-items: center;
+            text-decoration: none;
+            color: #1a1a1a;
+            font-size: 1rem;
+        }
+        .whatsapp-chat a:hover {
+            color: #b3b3b3;
+        }
+        .whatsapp-chat img {
+            width: 20px;
+            height: 20px;
+            margin-right: 0.25rem;
+        }
+        .hero-section {
+            background-color: #1a1a1a;
+            height: 500px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #fff;
+            text-align: center;
+            position: relative;
+        }
+        .hero-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.2);
+        }
+        .hero-content {
+            position: relative;
+            z-index: 1;
+        }
+        .hero-content h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+        .hero-content p {
+            font-size: 1.2rem;
+            margin-bottom: 2rem;
+        }
+        .hero-content a {
+            background-color: #1a1a1a;
+            color: #fff;
+            padding: 0.75rem 1.5rem;
+            text-decoration: none;
+            border-radius: 0.25rem;
+            font-weight: 600;
+        }
+        .hero-content a:hover {
+            background-color: #333;
+        }
+        .planos-section {
+            padding: 3rem 1rem;
+            background-color: #fff;
+            text-align: center;
+        }
+        .planos-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .planos-container h2 {
+            font-size: 2rem;
+            color: #1a1a1a;
+            margin-bottom: 2rem;
+        }
+        .planos-grid {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            flex-wrap: wrap;
+        }
+        .plano {
+            background-color: #f9f9f9;
+            padding: 2rem;
+            border-radius: 0.5rem;
+            width: 300px;
+            text-align: center;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+        .plano h3 {
+            font-size: 1.5rem;
+            color: #1a1a1a;
+            margin-bottom: 1rem;
+        }
+        .plano p {
+            font-size: 1rem;
+            color: #666;
+            margin-bottom: 1rem;
+        }
+        .plano a {
+            background-color: #1a1a1a;
+            color: #fff;
+            padding: 0.75rem 1.5rem;
+            text-decoration: none;
+            border-radius: 0.25rem;
+            font-weight: 600;
+            display: inline-block;
+        }
+        .plano a:hover {
+            background-color: #333;
+        }
+        .depoimentos-section {
+            padding: 3rem 1rem;
+            background-color: #e5e5e5;
+            text-align: center;
+        }
+        .depoimentos-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .depoimentos-container h2 {
+            font-size: 2rem;
+            color: #1a1a1a;
+            margin-bottom: 2rem;
+        }
+        .depoimentos-grid {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            flex-wrap: wrap;
+        }
+        .depoimento {
+            background-color: #fff;
+            padding: 2rem;
+            border-radius: 0.5rem;
+            width: 300px;
+            text-align: center;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+        .depoimento p {
+            font-size: 1rem;
+            color: #666;
+            margin-bottom: 1rem;
+        }
+        .depoimento h4 {
+            font-size: 1.1rem;
+            color: #1a1a1a;
+            font-weight: 600;
+        }
+        footer {
+            background-color: #1a1a1a;
+            color: #fff;
+            padding: 2rem 1rem;
+            text-align: center;
+        }
+        footer p {
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+        }
+        footer a {
+            color: #b3b3b3;
+            text-decoration: none;
+        }
+        footer a:hover {
+            color: #fff;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background-color: #fff;
+            padding: 2rem;
+            border-radius: 0.25rem;
+            width: 300px;
+            text-align: center;
+            position: relative;
+        }
+        .modal-content h2 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        .modal-content input {
+            width: 100%;
+            padding: 0.5rem;
+            margin: 0.5rem 0;
+            border: 1px solid #ccc;
+            border-radius: 0.25rem;
+            font-size: 1rem;
+        }
+        .modal-content button {
+            background-color: #1a1a1a;
+            color: #fff;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 0.25rem;
+            cursor: pointer;
+            font-size: 1rem;
+            width: 100%;
+        }
+        .modal-content button:hover {
+            background-color: #333;
+        }
+        .close {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover,
+        .close:focus {
+            color: black;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-container">
+            <a href="/">
+                <img src="/static/logo.png" alt="Record PAP Logo" class="logo">
+            </a>
+            <nav>
+                <ul>
+                    <li><a href="#inicio">Início</a></li>
+                    <li><a href="#planos">Planos</a></li>
+                    <li><a href="#depoimentos">Depoimentos</a></li>
+                    <li><a href="#contato">Contato</a></li>
+                    <li><a href="#" id="areaInternaButton" class="area-interna-button">Área Interna</a></li>
+                    <li class="whatsapp-chat">
+                        <a href="https://wa.me/31994588810" target="_blank">
+                            <img src="https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg" alt="WhatsApp">
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <div id="loginModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Login</h2>
+            <form id="loginForm">
+                <input type="text" id="username" placeholder="Usuário" required>
+                <input type="password" id="password" placeholder="Senha" required>
+                <button type="submit">Entrar</button>
+            </form>
+        </div>
+    </div>
+
+    <section id="inicio" class="hero-section">
+        <div class="hero-content">
+            <h1>Internet Fibra Ótica de Alta Velocidade</h1>
+            <p>Conecte-se com a melhor internet da região!</p>
+            <a href="#planos">Conheça Nossos Planos</a>
+        </div>
+    </section>
+
+    <section id="planos" class="planos-section">
+        <div class="planos-container">
+            <h2>Nossos Planos</h2>
+            <div class="planos-grid">
+                <div class="plano"><h3>500 Mbps</h3><p>Perfeito para múltiplos dispositivos e jogos online.</p><a href="https://wa.me/31994588810?text=Quero%20o%20plano%20de%20500%20Mbps" target="_blank">Contratar</a></div>
+                <div class="plano"><h3>700 Mbps</h3><p>Ótimo para famílias grandes e uso profissional.</p><a href="https://wa.me/31994588810?text=Quero%20o%20plano%20de%20700%20Mbps" target="_blank">Contratar</a></div>
+                <div class="plano"><h3>1 Gbps</h3><p>Máxima velocidade para demandas extremas e futuro-proof.</p><a href="https://wa.me/31994588810?text=Quero%20o%20plano%20de%201%20Gbps" target="_blank">Contratar</a></div>
+            </div>
+        </div>
+    </section>
+    <section id="depoimentos" class="depoimentos-section">
+        <div class="depoimentos-container">
+            <h2>Depoimentos</h2>
+            <div class="depoimentos-grid">
+                <div class="depoimento"><p>"A melhor internet que já tive! Rápida e estável."</p><h4>João Silva</h4></div>
+                <div class="depoimento"><p>"Atendimento excelente e instalação rápida."</p><h4>Maria Oliveira</h4></div>
+                <div class="depoimento"><p>"Recomendo para quem precisa de internet confiável."</p><h4>Carlos Souza</h4></div>
+            </div>
+        </div>
+    </section>
+    <footer id="contato">
+        <p>Record PAP - Internet Fibra Ótica</p>
+        <p>Contato: (31) 99458-8810 | E-mail: contato@recordpap.com.br</p>
+        <p><a href="#">Política de Privacidade</a> | <a href="#">Termos de Uso</a></p>
+    </footer>
+
+    <script>
+        // CORREÇÃO: Aponta para a API do Django
+        const apiUrl = 'http://127.0.0.1:8000/api';
+
+        function jwt_decode(token) {
+            try {
+                return JSON.parse(atob(token.split('.')[1]));
+            } catch (e) {
+                return null;
+            }
+        }
+
+        async function login() {
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+
+            if (!username || !password) {
+                return alert('Por favor, preencha o usuário e a senha.');
+            }
+
+            try {
+                // CORREÇÃO: Aponta para a rota de token
+                const response = await fetch(`${apiUrl}/token/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: username, password: password })
+                });
+                
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.detail || 'Não foi possível fazer login.');
+                }
+
+                localStorage.setItem('accessToken', data.access);
+                localStorage.setItem('refreshToken', data.refresh);
+
+                const decodedToken = jwt_decode(data.access);
+                if (decodedToken && decodedToken.perfil) {
+                    localStorage.setItem('userProfile', decodedToken.perfil);
+                } else {
+                    // Se o perfil for nulo (como no superuser), guardamos um valor padrão
+                    localStorage.setItem('userProfile', 'Admin'); 
+                }
+                
+                document.getElementById('loginModal').style.display = 'none';
+                // CORREÇÃO: Redireciona para a rota do Django
+                window.location.href = '/area-interna/';
+
+            } catch (error) {
+                alert(`Erro de login: ${error.message}`);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const token = localStorage.getItem('accessToken');
+            const areaInternaBtn = document.getElementById('areaInternaButton');
+            
+            // Se já existe um token, o botão "Área Interna" leva direto para a página
+            if (token) {
+                areaInternaBtn.href = '/area-interna/';
+            }
+
+            const modal = document.getElementById('loginModal');
+            const loginForm = document.getElementById('loginForm');
+            const closeBtn = document.querySelector('.modal .close');
+
+            function showLoginModal(event) {
+                // Se já tem link, deixa o link funcionar
+                if (areaInternaBtn.href.includes('/area-interna/')) return;
+                
+                if (event) event.preventDefault();
+                modal.style.display = 'flex';
+            }
+
+            function hideLoginModal() {
+                modal.style.display = 'none';
+            }
+            
+            function handleLoginSubmit(event) {
+                event.preventDefault();
+                login();
+            }
+
+            areaInternaBtn.addEventListener('click', showLoginModal);
+            loginForm.addEventListener('submit', handleLoginSubmit);
+            closeBtn.addEventListener('click', hideLoginModal);
+
+            window.addEventListener('click', function(event) {
+                if (event.target == modal) {
+                    hideLoginModal();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
