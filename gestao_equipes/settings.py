@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
+    'django.contrib.staticfiles', # Deve vir antes do whitenoise
     'whitenoise.runserver_nostatic', # Adicionado para servir arquivos estáticos
     'django.contrib.staticfiles',
     'usuarios',
@@ -103,11 +104,11 @@ STATIC_URL = '/static/'
 STATICFILES_DIRS = [
     os.path.join(BASE_DIR, 'frontend', 'public'),
 ]
+
 # Onde o Heroku irá coletar todos os arquivos estáticos
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 # Otimização para servir arquivos estáticos de forma eficiente
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
-
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
