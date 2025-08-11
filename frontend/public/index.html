@@ -395,45 +395,46 @@
         const closeBtn = document.querySelector('.modal .close');
 
         // Função de login agora está aqui dentro
-        async function handleLogin(username, password) {
-            if (!username || !password) {
-                alert('Por favor, preencha o usuário e a senha.');
-                return;
-            }
+// SUBSTITUA A SUA FUNÇÃO handleLogin POR ESTA VERSÃO CORRIGIDA
 
-            try {
-                // Usa a rota de compatibilidade que criamos
-                const response = await fetch(`${apiUrl}/auth/login`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: username, password: password })
-                });
-                
-                const data = await response.json();
+async function handleLogin(username, password) {
+    if (!username || !password) {
+        alert('Por favor, preencha o usuário e a senha.');
+        return;
+    }
 
-                if (!response.ok) {
-                    throw new Error(data.detail || 'Não foi possível fazer login. Verifique suas credenciais.');
-                }
+    try {
+        const response = await fetch(`${apiUrl}/api/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            // --- CORREÇÃO PRINCIPAL AQUI ---
+            // Garantindo que os nomes dos campos enviados sejam 'username' e 'password'
+            body: JSON.stringify({ username: username, password: password })
+        });
+        
+        const data = await response.json();
 
-                localStorage.setItem('accessToken', data.access);
-                localStorage.setItem('refreshToken', data.refresh);
-
-                const decodedToken = jwt_decode(data.access);
-                if (decodedToken && decodedToken.perfil) {
-                    localStorage.setItem('userProfile', decodedToken.perfil);
-                } else {
-                    localStorage.setItem('userProfile', 'Admin'); 
-                }
-                
-                modal.style.display = 'none';
-                window.location.href = '/area-interna/';
-
-            } catch (error) {
-                // O erro "Failed to fetch" geralmente acontece quando a API está fora do ar ou há um erro de CORS.
-                // O erro "Unexpected token '<'" acontece quando a API retorna um erro HTML em vez de JSON.
-                alert(`Erro de login: ${error.message}`);
-            }
+        if (!response.ok) {
+            throw new Error(data.detail || 'Não foi possível fazer login. Verifique suas credenciais.');
         }
+
+        localStorage.setItem('accessToken', data.access);
+        localStorage.setItem('refreshToken', data.refresh);
+
+        const decodedToken = jwt_decode(data.access);
+        if (decodedToken && decodedToken.perfil) {
+            localStorage.setItem('userProfile', decodedToken.perfil);
+        } else {
+            localStorage.setItem('userProfile', 'Admin'); 
+        }
+        
+        document.getElementById('loginModal').style.display = 'none';
+        window.location.href = '/area-interna/';
+
+    } catch (error) {
+        alert(`Erro de login: ${error.message}`);
+    }
+}
 
         function showLoginModal(event) {
             if (areaInternaBtn.href.includes('/area-interna/')) {
