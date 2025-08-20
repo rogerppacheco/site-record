@@ -24,26 +24,26 @@
 
     <main class="main-content">
         <div class="container">
-    <h1>Lançamento de Presença</h1>
+            <h1>Lançamento de Presença</h1>
 
-    <div style="margin: 1rem 0; display: flex; justify-content: center; align-items: center; gap: 10px;">
-        <input type="date" id="data-pesquisa" style="padding: 0.5rem; border-radius: 4px; border: 1px solid #ccc;">
-        <button id="btn-pesquisar" style="padding: 0.5rem 1rem; border-radius: 4px; border: none; background-color: #007bff; color: white; cursor: pointer;">Pesquisar</button>
-    </div>
+            <div style="margin: 1rem 0; display: flex; justify-content: center; align-items: center; gap: 10px;">
+                <input type="date" id="data-pesquisa" style="padding: 0.5rem; border-radius: 4px; border: 1px solid #ccc;">
+                <button id="btn-pesquisar" style="padding: 0.5rem 1rem; border-radius: 4px; border: none; background-color: #007bff; color: white; cursor: pointer;">Pesquisar</button>
+            </div>
 
-    <div id="tab-container" style="border-bottom: 1px solid #ccc; margin-bottom: 1.5rem; display: none;">
-        <button class="tab-button active" onclick="switchTab('minha-equipe', this)">Minha Equipe</button>
-        <button class="tab-button" onclick="switchTab('todos-usuarios', this)">Todos os Usuários</button>
-    </div>
-    <style>
-        .tab-button { padding: 0.75rem 1.5rem; border: none; background-color: transparent; cursor: pointer; font-size: 1.1rem; border-bottom: 3px solid transparent; margin-bottom: -1px; }
-        .tab-button.active { border-bottom-color: #007bff; font-weight: bold; }
-    </style>
-    <p id="data-hoje"></p>
-    <div id="lista-vendedores">
-        <p>Carregando equipe...</p>
-    </div>
-</div>
+            <div id="tab-container" style="border-bottom: 1px solid #ccc; margin-bottom: 1.5rem; display: none;">
+                <button class="tab-button active" onclick="switchTab('minha-equipe', this)">Minha Equipe</button>
+                <button class="tab-button" onclick="switchTab('todos-usuarios', this)">Todos os Usuários</button>
+            </div>
+            <style>
+                .tab-button { padding: 0.75rem 1.5rem; border: none; background-color: transparent; cursor: pointer; font-size: 1.1rem; border-bottom: 3px solid transparent; margin-bottom: -1px; }
+                .tab-button.active { border-bottom-color: #007bff; font-weight: bold; }
+            </style>
+            <p id="data-hoje"></p>
+            <div id="lista-vendedores">
+                <p>Carregando equipe...</p>
+            </div>
+        </div>
     </main>
     
     <div id="modal-motivo" class="modal-overlay">
@@ -71,7 +71,13 @@
     </footer>
 
 <script>
-    const apiUrl = 'http://127.0.0.1:8000/api';
+    // --- CORREÇÃO APLICADA AQUI ---
+    const isLocal = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
+    const apiUrl = isLocal 
+        ? 'http://127.0.0.1:8000' 
+        : 'https://controle-presenca-448646307036.herokuapp.com';
+    // --- FIM DA CORREÇÃO ---
+
     const token = localStorage.getItem('accessToken');
     
     function jwt_decode(token) {
@@ -86,26 +92,22 @@
     const userProfile = decodedToken ? (decodedToken.perfil || 'Admin') : null;
     
     let motivosDisponiveis = [];
-    // --- NOVA VARIÁVEL: Guarda a aba ativa ---
     let activeTab = 'minha-equipe';
 
-    // --- NOVA FUNÇÃO: Para trocar de aba ---
     function switchTab(tabName, element) {
         activeTab = tabName;
-        // Atualiza o estilo visual dos botões
         document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
         element.classList.add('active');
-        // Recarrega os dados para a nova aba
         carregarDadosIniciais();
     }
 
     async function apiFetch(endpoint, options = {}) {
-        // ... (esta função continua a mesma)
         const headers = { 'Content-Type': 'application/json', ...options.headers };
         if (token) {
             headers['Authorization'] = `Bearer ${token}`;
         }
-        const response = await fetch(`${apiUrl}${endpoint}`, { ...options, headers });
+        // --- CORREÇÃO AQUI para construir a URL completa corretamente ---
+        const response = await fetch(`${apiUrl}/api${endpoint}`, { ...options, headers });
         if (response.status === 401) {
             alert('Sua sessão expirou. Por favor, faça login novamente.');
             logout();
@@ -128,7 +130,6 @@
     }
     
     function logout() {
-        // ... (esta função continua a mesma)
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
         localStorage.removeItem('userProfile');
@@ -151,7 +152,6 @@
         const listaDiv = document.getElementById('lista-vendedores');
         listaDiv.innerHTML = '<p>Carregando dados...</p>';
 
-        // --- ALTERAÇÃO: Define qual endpoint de equipe usar baseado na aba ativa ---
         const equipeEndpoint = (userProfile === 'Diretoria' || userProfile === 'Admin') && activeTab === 'todos-usuarios' 
             ? '/todos-usuarios/' 
             : '/minha-equipe/';
@@ -159,7 +159,7 @@
         try {
             const [motivos, equipe, presencasDoDia] = await Promise.all([
                 apiFetch('/motivos/'),
-                apiFetch(equipeEndpoint), // <-- Usa o endpoint dinâmico
+                apiFetch(equipeEndpoint),
                 apiFetch(`/presencas/?data=${dataSelecionada}`)
             ]);
             
@@ -168,11 +168,10 @@
 
         } catch (error) {
             console.error('Erro ao carregar dados:', error);
-            listaDiv.innerHTML = `<p style="color: red;">${error.message}</p>`;
+            listaDiv.innerHTML = `<p style="color: red;">Failed to fetch. Verifique a conexão e os logs do servidor.</p>`;
         }
     }
 
-    // A função renderizarEquipe e as outras (ativarModoEdicao, salvarStatus, etc.) continuam exatamente as mesmas
     function renderizarEquipe(equipe, presencasDoDia) {
         const listaDiv = document.getElementById('lista-vendedores');
         listaDiv.innerHTML = '';
@@ -274,7 +273,6 @@
             return;
         }
 
-        // --- ALTERAÇÃO: Mostra as abas se for Diretoria ---
         if (userProfile === 'Diretoria' || userProfile === 'Admin') {
             document.getElementById('tab-container').style.display = 'block';
         }
