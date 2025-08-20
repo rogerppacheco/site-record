@@ -25,8 +25,8 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
-    # A linha 'whitenoise.runserver_nostatic' foi removida.
     'django.contrib.staticfiles',
+    'whitenoise.runserver_nostatic',
     'usuarios',
     'rest_framework',
     'rest_framework_simplejwt',
