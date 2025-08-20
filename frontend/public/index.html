@@ -1,3 +1,4 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -297,7 +298,7 @@
     <header>
         <div class="header-container">
             <a href="/">
-                <img src="/static/logo.png" alt="Record PAP Logo" class="logo">
+                <img src= "{% static 'logo.png' %}" alt="Record PAP Logo" class="logo">
             </a>
             <nav>
                 <ul>

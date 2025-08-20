@@ -446,48 +446,51 @@
 </footer>
 
 <script>
-    const apiUrl = 'http://127.0.0.1:8000/api';
-const token = localStorage.getItem('accessToken'); // Usa o novo nome do token
-const userProfile = localStorage.getItem('userProfile');
+    // --- CORREÇÃO APLICADA AQUI ---
+    const isLocal = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
+    const apiUrl = isLocal 
+        ? 'http://127.0.0.1:8000' 
+        : 'https://controle-presenca-448646307036.herokuapp.com';
+    // --- FIM DA CORREÇÃO ---
 
-// Função universal para fazer requisições à API com o token
-async function apiFetch(endpoint, options = {}) {
-    const headers = {
-        'Content-Type': 'application/json',
-        ...options.headers,
-    };
-    if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-    }
+    const token = localStorage.getItem('accessToken');
+    const userProfile = localStorage.getItem('userProfile');
 
-    const response = await fetch(`${apiUrl}${endpoint}`, { ...options, headers });
+    async function apiFetch(endpoint, options = {}) {
+        const headers = {
+            'Content-Type': 'application/json',
+            ...options.headers,
+        };
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+        
+        // --- CORREÇÃO AQUI para construir a URL completa corretamente ---
+        const response = await fetch(`${apiUrl}/api${endpoint}`, { ...options, headers });
 
-    if (response.status === 401) {
-        alert('Sua sessão expirou ou o token é inválido. Por favor, faça login novamente.');
-        logout();
-        throw new Error('Não autorizado');
+        if (response.status === 401) {
+            alert('Sua sessão expirou ou o token é inválido. Por favor, faça login novamente.');
+            logout();
+            throw new Error('Não autorizado');
+        }
+        if (!response.ok) {
+            const errorData = await response.json();
+            const errorMessage = errorData.detail || JSON.stringify(errorData).replace(/["{}[\]]/g, ' ');
+            throw new Error(errorMessage);
+        }
+        if (response.status === 204) {
+            return null;
+        }
+        return response.json();
     }
-    if (!response.ok) {
-        const errorData = await response.json();
-        // Tenta extrair a mensagem de erro da forma mais detalhada possível
-        const errorMessage = errorData.detail || JSON.stringify(errorData).replace(/["{}[\]]/g, ' ');
-        throw new Error(errorMessage);
-    }
-    if (response.status === 204) { // Para requisições DELETE que não retornam corpo
-        return null;
-    }
-    return response.json();
-}
 
     if (!token) {
          alert('Acesso negado. Faça o login para continuar.');
          window.location.href = '/';
-         
     }
-    if (userProfile !== 'Diretoria' && userProfile !== 'Admin') { // Aceita Admin para o superuser
+    if (userProfile !== 'Diretoria' && userProfile !== 'Admin') {
         alert('Acesso negado. Você não tem permissão para ver esta página.');
         window.location.href = '/area-interna/';
-        
     }
 
     // --- LÓGICA GERAL DA PÁGINA ---
@@ -540,25 +543,23 @@ async function apiFetch(endpoint, options = {}) {
     }
 
     async function carregarUsuarios(status = 'ativos') {
-    try {
-        const usuarios = await apiFetch(`/usuarios/?is_active=${status === 'ativos'}`);
-        userListBody.innerHTML = ''; 
-        if (status === 'ativos') {
-            userListHeader.innerHTML = '<th>Nome</th><th>E-mail</th><th>Perfil</th><th>Líder Imediato</th><th>Ações</th>';
-            usuarios.forEach(user => {
-                // --- CORREÇÃO ABAIXO ---
-                // Trocamos 'user.supervisor' por 'user.supervisor_nome' para exibir o nome.
-                const supervisorDisplay = user.supervisor_nome || 'N/A';
-                userListBody.innerHTML += `<tr><td>${user.nome_completo}</td><td>${user.email}</td><td>${user.perfil}</td><td>${supervisorDisplay}</td><td class="actions-cell"><button class="btn-edit" title="Editar" onclick='iniciarEdicao(${JSON.stringify(user)})'>Editar</button><button class="btn-delete" title="Inativar" onclick="inativarUsuario(${user.id})">Inativar</button></td></tr>`;
-            });
-        } else { 
-            userListHeader.innerHTML = '<th>Nome</th><th>E-mail</th><th>Perfil</th><th>Ações</th>';
-            usuarios.forEach(user => {
-                userListBody.innerHTML += `<tr><td>${user.nome_completo}</td><td>${user.email}</td><td>${user.perfil}</td><td class="actions-cell"><button class="btn-reactivate" title="Reativar" onclick="reativarUsuario(${user.id})">Reativar</button></td></tr>`;
-            });
-        }
-    } catch (error) { console.error("Erro ao carregar usuários:", error); }
-}
+        try {
+            const usuarios = await apiFetch(`/usuarios/?is_active=${status === 'ativos'}`);
+            userListBody.innerHTML = ''; 
+            if (status === 'ativos') {
+                userListHeader.innerHTML = '<th>Nome</th><th>E-mail</th><th>Perfil</th><th>Líder Imediato</th><th>Ações</th>';
+                usuarios.forEach(user => {
+                    const supervisorDisplay = user.supervisor_nome || 'N/A';
+                    userListBody.innerHTML += `<tr><td>${user.nome_completo}</td><td>${user.email}</td><td>${user.perfil}</td><td>${supervisorDisplay}</td><td class="actions-cell"><button class="btn-edit" title="Editar" onclick='iniciarEdicao(${JSON.stringify(user)})'>Editar</button><button class="btn-delete" title="Inativar" onclick="inativarUsuario(${user.id})">Inativar</button></td></tr>`;
+                });
+            } else { 
+                userListHeader.innerHTML = '<th>Nome</th><th>E-mail</th><th>Perfil</th><th>Ações</th>';
+                usuarios.forEach(user => {
+                    userListBody.innerHTML += `<tr><td>${user.nome_completo}</td><td>${user.email}</td><td>${user.perfil}</td><td class="actions-cell"><button class="btn-reactivate" title="Reativar" onclick="reativarUsuario(${user.id})">Reativar</button></td></tr>`;
+                });
+            }
+        } catch (error) { console.error("Erro ao carregar usuários:", error); }
+    }
 
     async function carregarDadosParaFormulario() {
         selectPerfil.innerHTML = '';
@@ -580,9 +581,9 @@ async function apiFetch(endpoint, options = {}) {
         document.getElementById('nome_completo').value = user.nome_completo;
         document.getElementById('cpf').value = user.cpf;
         document.getElementById('email').value = user.email;
-        document.getElementById('username').value = user.username; // Popula o novo campo username
+        document.getElementById('username').value = user.username;
         selectPerfil.value = user.perfil_id;
-        selectSupervisor.value = user.supervisor_id || '';
+        selectSupervisor.value = user.supervisor || ''; // Corrigido para usar 'supervisor'
         document.getElementById('valor_almoco').value = user.valor_almoco;
         document.getElementById('valor_passagem').value = user.valor_passagem;
         document.getElementById('chave_pix').value = user.chave_pix || '';
@@ -608,17 +609,17 @@ async function apiFetch(endpoint, options = {}) {
         const method = isEditing ? 'PUT' : 'POST';
         const nomeCompleto = document.getElementById('nome_completo').value.trim();
         const nomeParts = nomeCompleto.split(' ');
-        const firstName = nomeParts.shift();      // A primeira palavra é o nome
-        const lastName = nomeParts.join(' ');     // O resto é o sobrenome
+        const firstName = nomeParts.shift();
+        const lastName = nomeParts.join(' ');
         
         const body = {
             first_name: firstName,
             last_name: lastName,
             cpf: document.getElementById('cpf').value,
-            email: document.getElementById('email').value, // Mantém o email
+            email: document.getElementById('email').value,
             perfil_id: selectPerfil.value,
-            username: document.getElementById('username').value, // Usa o novo campo username
-            supervisor: selectSupervisor.value || null, // Alterado para enviar null se vazio
+            username: document.getElementById('username').value,
+            supervisor: selectSupervisor.value || null,
             valor_almoco: document.getElementById('valor_almoco').value,
             valor_passagem: document.getElementById('valor_passagem').value,
             chave_pix: document.getElementById('chave_pix').value,
@@ -634,11 +635,11 @@ async function apiFetch(endpoint, options = {}) {
         const senha = document.getElementById('senha').value;
         if (isEditing) {
             if (senha && senha.trim() !== '') {
-                body.password = senha; // Alterado para 'password'
+                body.password = senha;
             }
         } else {
-            body.senha = senha;
-            if (!body.senha) { return alert('A senha é obrigatória para novos usuários.'); }
+            body.password = senha; // Corrigido de 'senha' para 'password'
+            if (!body.password) { return alert('A senha é obrigatória para novos usuários.'); }
         }
         try {
             const result = await apiFetch(url, {
@@ -979,17 +980,14 @@ async function apiFetch(endpoint, options = {}) {
         const checkboxes = permissoesContainer.querySelectorAll('input[type="checkbox"]');
         const permissoesParaEnviar = [];
 
-        // Estrutura para facilitar a busca e atualização das permissões
         const permissoesMap = {};
 
         checkboxes.forEach(cb => {
             const recurso = cb.dataset.recurso;
             const acao = cb.dataset.acao;
 
-            // Encontra ou cria o objeto de permissão para o recurso
             if (!permissoesMap[recurso]) {
                 permissoesMap[recurso] = {
-                    // Use 'perfil_id' em vez de 'perfil' para enviar o ID do perfil
                     perfil_id: perfilIdAtual,
                     recurso: recurso,
                     pode_ver: false,
@@ -1000,12 +998,10 @@ async function apiFetch(endpoint, options = {}) {
                 permissoesParaEnviar.push(permissoesMap[recurso]);
             }
 
-            // Define o estado do checkbox na permissão
             permissoesMap[recurso][acao] = cb.checked;
         });
 
         try {
-            // Confirme que estamos enviando a lista de objetos com perfil_id
             console.log("Dados de permissões enviados:", permissoesParaEnviar);
 
             await apiFetch(`/perfis/${perfilIdAtual}/permissoes/`, {
@@ -1436,20 +1432,17 @@ async function apiFetch(endpoint, options = {}) {
         try {
             const [planos, consultores] = await Promise.all([
                 apiFetch('/crm-cadastros/planos/'),
-                apiFetch('/usuarios/?is_active=true') // Requisição para obter usuários ativos
+                apiFetch('/usuarios/?is_active=true')
             ]);
 
-            // ADICIONE ESTA LINHA PARA DEBUG
             console.log("Dados de consultores recebidos:", consultores);
 
             regraPlanoSelect.innerHTML = '<option value="">Selecione...</option>';
             planos.forEach(plano => regraPlanoSelect.add(new Option(plano.nome, plano.id)));
 
             regraConsultorSelect.innerHTML = '<option value="">Selecione...</option>';
-            // Verifique se 'consultores' é um array e se contém os dados esperados
             if (Array.isArray(consultores)) {
                 consultores.forEach(user => {
-                    // Certifique-se de que user.id e user.nome_completo existem
                     if (user.id && user.nome_completo) {
                          regraConsultorSelect.add(new Option(user.nome_completo, user.id));
                     } else {
@@ -1472,7 +1465,7 @@ async function apiFetch(endpoint, options = {}) {
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('userProfile');
-    window.location.href = '/'; // Redireciona para a página inicial
+    window.location.href = '/';
 }
 
     // --- INICIALIZAÇÃO DA PÁGINA ---
