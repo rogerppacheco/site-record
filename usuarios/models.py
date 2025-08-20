@@ -5,6 +5,9 @@ from django.contrib.auth.models import AbstractUser
 class Perfil(models.Model):
     nome = models.CharField(max_length=100, unique=True)
 
+    class Meta:
+        db_table = 'perfis'  # <--- CORREÇÃO AQUI
+
     def __str__(self):
         return self.nome
 
@@ -29,6 +32,9 @@ class Usuario(AbstractUser):
     desconto_instalacao_antecipada = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     adiantamento_cnpj = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     desconto_inss_fixo = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+
+    class Meta(AbstractUser.Meta):
+        db_table = 'usuarios'  # <--- CORREÇÃO AQUI
 
     def __str__(self):
         return self.username
