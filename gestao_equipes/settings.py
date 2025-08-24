@@ -3,6 +3,7 @@ import os
 from dotenv import load_dotenv
 import dj_database_url
 
+# Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(os.path.join(BASE_DIR, '.env'))
 
@@ -10,9 +11,8 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-fallback-key-for-developme
 
 DEBUG = os.getenv('DEBUG', '0') == '1'
 
-# CORREÇÃO APLICADA AQUI: Lê a string da variável de ambiente e a converte em uma lista
+# Lê a string da variável de ambiente e a converte em uma lista
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '127.0.0.1').split(',')
-
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -76,12 +76,11 @@ else:
         }
     }
 
-
 AUTH_PASSWORD_VALIDATORS = [
-    {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',},
-    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',},
-    {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',},
-    {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',},
+    { 'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator', },
+    { 'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator', },
+    { 'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator', },
+    { 'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator', },
 ]
 
 LANGUAGE_CODE = 'pt-br'
@@ -108,11 +107,13 @@ REST_FRAMEWORK = {
     )
 }
 
+# AQUI ESTÁ A CORREÇÃO PARA O ERRO DE CORS
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:8000",
     "http://127.0.0.1:8000",
     "https://recordpap.com.br",
     "https://www.recordpap.com.br",
+    "https://record-pap-app-80fd14bb6cb5.herokuapp.com",
 ]
 
 AUTH_USER_MODEL = 'usuarios.Usuario'
