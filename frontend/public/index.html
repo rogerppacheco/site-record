@@ -364,7 +364,7 @@
     </footer>
 
 <script>
-    // --- CORREÇÃO: A URL base agora não inclui /api ---
+    // --- CORREÇÃO APLICADA AQUI ---
     const isLocal = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
     const apiUrl = isLocal 
         ? 'http://127.0.0.1:8000' 
@@ -391,6 +391,21 @@
         const modal = document.getElementById('loginModal');
         const loginForm = document.getElementById('loginForm');
         const closeBtn = document.querySelector('.modal .close');
+        
+        // CORREÇÃO: Função showLoginModal movida para cima para ser acessada corretamente
+        function showLoginModal(event) {
+            if (areaInternaBtn.href.includes('/area-interna/')) {
+                window.location.href = '/area-interna/';
+                return;
+            }
+            if (event) event.preventDefault();
+            modal.style.display = 'flex';
+        }
+
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('next') === '/area-interna/') {
+            showLoginModal();
+        }
 
         async function handleLogin(username, password) {
             if (!username || !password) {
@@ -399,19 +414,21 @@
             }
 
             try {
-                // A chamada fetch agora constrói a URL completa corretamente
+                // CORREÇÃO: A URL é construída usando a variável apiUrl
                 const response = await fetch(`${apiUrl}/api/auth/login`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ username: username, password: password })
                 });
                 
-                const data = await response.json();
-
                 if (!response.ok) {
-                    throw new Error(data.detail || 'Não foi possível fazer login. Verifique suas credenciais.');
+                    const data = await response.json().catch(() => null);
+                    throw new Error(data?.detail || `Erro ${response.status}: Não foi possível fazer login.`);
                 }
 
+                const data = await response.json();
+
+                // CORREÇÃO: Salvar os tokens antes de redirecionar
                 localStorage.setItem('accessToken', data.access);
                 localStorage.setItem('refreshToken', data.refresh);
 
@@ -429,19 +446,6 @@
                 alert(`Erro de login: ${error.message}`);
             }
         }
-
-        function showLoginModal(event) {
-            if (areaInternaBtn.href.includes('/area-interna/')) {
-                window.location.href = '/area-interna/';
-                return;
-            }
-            if (event) event.preventDefault();
-            modal.style.display = 'flex';
-        }
-
-        function hideLoginModal() {
-            modal.style.display = 'none';
-        }
         
         loginForm.addEventListener('submit', function(event) {
             event.preventDefault();
@@ -451,10 +455,10 @@
         });
         
         areaInternaBtn.addEventListener('click', showLoginModal);
-        closeBtn.addEventListener('click', hideLoginModal);
+        closeBtn.addEventListener('click', () => { modal.style.display = 'none'; });
         window.addEventListener('click', function(event) {
             if (event.target == modal) {
-                hideLoginModal();
+                modal.style.display = 'none';
             }
         });
     });
