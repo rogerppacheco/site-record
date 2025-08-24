@@ -1,7 +1,7 @@
 # relatorios/views.py
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
+from rest_framework import status, permissions
 from django.db import connection
 from datetime import datetime
 
@@ -52,6 +52,9 @@ def validar_datas(request):
 
 # --- VIEW PARA O RELATÓRIO DE PREVISÃO ---
 class RelatorioPrevisaoView(APIView):
+    # Garante que a view só será acessível para usuários autenticados
+    permission_classes = [permissions.IsAuthenticated]
+
     def get(self, request, *args, **kwargs):
         data_inicio, data_fim, error_response = validar_datas(request)
         if error_response:
@@ -91,6 +94,9 @@ class RelatorioPrevisaoView(APIView):
 
 # --- VIEW PARA O RELATÓRIO DE DESCONTOS ---
 class RelatorioDescontosView(APIView):
+    # Garante que a view só será acessível para usuários autenticados
+    permission_classes = [permissions.IsAuthenticated]
+
     def get(self, request, *args, **kwargs):
         data_inicio, data_fim, error_response = validar_datas(request)
         if error_response:
@@ -132,6 +138,9 @@ class RelatorioDescontosView(APIView):
 
 # --- VIEW PARA O RELATÓRIO FINAL (COM LÓGICA CORRIGIDA) ---
 class RelatorioFinalView(APIView):
+    # Garante que a view só será acessível para usuários autenticados
+    permission_classes = [permissions.IsAuthenticated]
+
     def get(self, request, *args, **kwargs):
         data_inicio, data_fim, error_response = validar_datas(request)
         if error_response:
@@ -146,12 +155,12 @@ class RelatorioFinalView(APIView):
                 u.valor_almoco,
                 u.valor_passagem,
                 (SELECT COUNT(*)
-                 FROM presenca_presenca pp
-                 JOIN presenca_motivoausencia ma ON pp.motivo_id = ma.id
-                 WHERE pp.colaborador_id = u.id
-                   AND pp.status = 0
-                   AND ma.gera_desconto = 1
-                   AND pp.data BETWEEN %s AND %s
+                  FROM presenca_presenca pp
+                  JOIN presenca_motivoausencia ma ON pp.motivo_id = ma.id
+                  WHERE pp.colaborador_id = u.id
+                    AND pp.status = 0
+                    AND ma.gera_desconto = 1
+                    AND pp.data BETWEEN %s AND %s
                 ) as dias_falta_com_desconto
             FROM usuarios_usuario u
             WHERE u.is_active = 1
@@ -171,14 +180,9 @@ class RelatorioFinalView(APIView):
             dias_trabalhados = dias_uteis - dias_falta_com_desconto
             auxilio_diario = valor_almoco + valor_passagem
             
-            # --- CORREÇÃO DA LÓGICA APLICADA AQUI ---
-            # 1. "A Receber" agora é o valor bruto total baseado nos dias úteis do período.
+            # --- Lógica do relatório corrigida ---
             total_a_receber_bruto = dias_uteis * auxilio_diario
-            
-            # 2. "A Descontar" é o valor total das faltas.
             total_a_descontar = dias_falta_com_desconto * auxilio_diario
-            
-            # 3. "Valor Final" é o bruto menos os descontos.
             valor_final_liquido = total_a_receber_bruto - total_a_descontar
 
             dados_relatorio.append({
