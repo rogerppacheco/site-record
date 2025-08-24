@@ -1,4 +1,3 @@
-# gestao_equipes/settings.py
 from pathlib import Path
 import os
 from dotenv import load_dotenv
@@ -11,14 +10,10 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-fallback-key-for-developme
 
 DEBUG = os.getenv('DEBUG', '0') == '1'
 
-ALLOWED_HOSTS = [
-    'controle-presenca-448646307036.herokuapp.com',
-    'recordpap.com.br',
-    'www.recordpap.com.br',
-    '127.0.0.1',
-]
+# CORREÇÃO APLICADA AQUI: Lê a string da variável de ambiente e a converte em uma lista
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '127.0.0.1').split(',')
 
-# --- CORREÇÃO APLICADA AQUI ---
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
