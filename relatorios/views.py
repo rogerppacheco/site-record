@@ -8,16 +8,24 @@ from datetime import datetime
 
 def get_dias_uteis_no_periodo(data_inicio, data_fim):
     """
-    Função auxiliar para calcular dias úteis, compatível com PostgreSQL e SQLite.
-    A sintaxe SQL é compatível com ambos os backends.
+    Função auxiliar para calcular dias úteis, compatível com MySQL.
     """
     query = """
-        SELECT COUNT(*) FROM generate_series(%s::date, %s::date, '1 day'::interval) AS d
-        WHERE EXTRACT(ISODOW FROM d) IN (1, 2, 3, 4, 5)
-        AND d NOT IN (SELECT data FROM presenca_dianaoutil)
+        WITH RECURSIVE DateRange(data) AS (
+          SELECT %s AS data
+          UNION ALL
+          SELECT DATE_ADD(data, INTERVAL 1 DAY)
+          FROM DateRange
+          WHERE data < %s
+        )
+        SELECT COUNT(*)
+        FROM DateRange
+        WHERE
+          DAYOFWEEK(data) NOT IN (1, 7) AND
+          data NOT IN (SELECT data FROM presenca_dianaoutil)
     """
     with connection.cursor() as cursor:
-        cursor.execute(query, [data_inicio, data_fim])
+        cursor.execute(query, [data_inicio.isoformat(), data_fim.isoformat()])
         result = cursor.fetchone()
     return result[0] if result else 0
 
@@ -57,7 +65,7 @@ class RelatorioPrevisaoView(APIView):
 
             query = """
                 SELECT
-                    u.first_name || ' ' || u.last_name as nome_completo,
+                    CONCAT(u.first_name, ' ', u.last_name) as nome_completo,
                     u.valor_almoco,
                     u.valor_passagem
                 FROM usuarios_usuario u
@@ -86,10 +94,8 @@ class RelatorioPrevisaoView(APIView):
             })
 
         except OperationalError as e:
-            # Captura erros de banco de dados
             return Response({"msg": f"Erro no banco de dados: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
-            # Captura outros erros
             return Response({"msg": f"Ocorreu um erro: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # --- VIEW PARA O RELATÓRIO DE DESCONTOS ---
@@ -104,7 +110,7 @@ class RelatorioDescontosView(APIView):
         try:
             query = """
                 SELECT
-                    u.first_name || ' ' || u.last_name as nome_completo,
+                    CONCAT(u.first_name, ' ', u.last_name) as nome_completo,
                     pp.data,
                     ma.motivo,
                     (u.valor_almoco + u.valor_passagem) as valor_desconto
@@ -155,7 +161,7 @@ class RelatorioFinalView(APIView):
             query = """
                 SELECT
                     u.id,
-                    u.first_name || ' ' || u.last_name as nome_completo,
+                    CONCAT(u.first_name, ' ', u.last_name) as nome_completo,
                     u.valor_almoco,
                     u.valor_passagem,
                     (SELECT COUNT(*)
