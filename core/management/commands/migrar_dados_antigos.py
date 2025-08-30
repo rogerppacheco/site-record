@@ -4,6 +4,7 @@ import traceback
 from datetime import datetime
 from django.core.management.base import BaseCommand
 from django.db import transaction, IntegrityError
+from django.db.models import Q
 from django.utils import timezone
 import mysql.connector
 
@@ -96,14 +97,26 @@ class Command(BaseCommand):
                 usuarios_antigos = cursor.fetchall()
 
                 for usuario_antigo in usuarios_antigos:
-                    username = self._gerar_username_unico(usuario_antigo.get('email'))
-                    if not username:
+                    email_antigo = usuario_antigo.get('email')
+                    cpf_antigo = usuario_antigo.get('cpf')
+                    username = self._gerar_username_unico(email_antigo)
+                    
+                    if not email_antigo:
                         self.stdout.write(self.style.WARNING(f"  AVISO: Usuário com ID antigo {usuario_antigo['id']} não tem e-mail. A ser ignorado."))
                         continue
+
+                    # --- LÓGICA ANTI-DUPLICAÇÃO MELHORADA ---
+                    condicoes = Q(username=username) | Q(email=email_antigo)
+                    if cpf_antigo:
+                        condicoes |= Q(cpf=cpf_antigo)
                     
-                    if Usuario.objects.filter(username=username).exists() or Usuario.objects.filter(email=usuario_antigo['email']).exists():
-                        self.stdout.write(f"  Usuário '{username}' ({usuario_antigo['email']}) já existe. A ser ignorado.")
+                    usuario_existente = Usuario.objects.filter(condicoes).first()
+                    if usuario_existente:
+                        self.stdout.write(self.style.WARNING(f"  AVISO: Usuário '{username}' (e-mail ou CPF) já existe. A ser ignorado."))
+                        # Mesmo que o usuário já exista, precisamos de mapear o seu ID para as presenças
+                        id_map['usuarios'][usuario_antigo['id']] = usuario_existente.id
                         continue
+                    # --- FIM DA LÓGICA ANTI-DUPLICAÇÃO ---
 
                     data_joined = usuario_antigo.get('data_admissao') or timezone.now()
                     nome_completo = usuario_antigo.get('nome_completo', '').strip()
@@ -115,7 +128,7 @@ class Command(BaseCommand):
 
                     novo_usuario = Usuario.objects.create(
                         username=username,
-                        email=usuario_antigo.get('email'),
+                        email=email_antigo,
                         first_name=first_name,
                         last_name=last_name,
                         is_staff=False,
@@ -123,7 +136,7 @@ class Command(BaseCommand):
                         is_superuser=False,
                         date_joined=data_joined,
                         perfil_id=novo_perfil_id,
-                        cpf=usuario_antigo.get('cpf')
+                        cpf=cpf_antigo
                     )
                     novo_usuario.set_unusable_password()
                     novo_usuario.save()
@@ -176,9 +189,6 @@ class Command(BaseCommand):
                         continue
 
                     try:
-                        # --- AJUSTE FINAL ---
-                        # Removidos os campos 'presente' e 'justificativa_anexo' para
-                        # corresponder ao modelo Presenca atual.
                         Presenca.objects.create(
                             data=presenca_antiga['data'],
                             observacao=presenca_antiga.get('observacao', ''),
