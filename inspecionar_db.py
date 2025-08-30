@@ -1,31 +1,46 @@
 import mysql.connector
 from getpass import getpass
+import os
+from urllib.parse import urlparse
 
 def inspecionar_banco():
     """
     Este script se conecta a um banco de dados MySQL para listar todas as tabelas
-    e suas chaves estrangeiras. É útil para mapear a estrutura de um banco de dados
-    existente para uma migração de dados.
+    e suas chaves estrangeiras. Ele detecta automaticamente as credenciais do Heroku
+    se a variável de ambiente JAWSDB_URL estiver disponível.
     """
-    try:
-        # --- Coleta Segura das Credenciais ---
-        # Usamos input e getpass para evitar deixar as credenciais no código.
-        host = input("Host do Banco de Dados: ")
-        database = input("Nome do Banco de Dados (Database): ")
-        user = input("Usuário: ")
-        password = getpass("Senha: ")
-        port = input("Porta (padrão 3306): ") or '3306'
+    db_config = {}
+    
+    # --- Detecção Automática de Credenciais do Heroku ---
+    db_url = os.getenv('JAWSDB_URL')
+    
+    if db_url:
+        print("Credenciais do Heroku (JAWSDB_URL) detectadas. Conectando automaticamente...")
+        parsed_url = urlparse(db_url)
+        db_config = {
+            'host': parsed_url.hostname,
+            'database': parsed_url.path.lstrip('/'),
+            'user': parsed_url.username,
+            'password': parsed_url.password,
+            'port': parsed_url.port or '3306'
+        }
+    else:
+        # --- Coleta Manual Segura das Credenciais (Fallback) ---
+        print("Variável de ambiente JAWSDB_URL não encontrada.")
+        print("Por favor, insira as credenciais manualmente.")
+        db_config = {
+            'host': input("Host do Banco de Dados: "),
+            'database': input("Nome do Banco de Dados (Database): "),
+            'user': input("Usuário: "),
+            'password': getpass("Senha: "),
+            'port': input("Porta (padrão 3306): ") or '3306'
+        }
 
-        print("\nConectando ao banco de dados...")
+    try:
+        print(f"\nConectando ao host '{db_config['host']}'...")
         
         # --- Conexão ---
-        conn = mysql.connector.connect(
-            host=host,
-            database=database,
-            user=user,
-            password=password,
-            port=port
-        )
+        conn = mysql.connector.connect(**db_config)
         cursor = conn.cursor()
         print("Conexão bem-sucedida!")
 
@@ -50,7 +65,7 @@ def inspecionar_banco():
                 kcu.referenced_table_schema = %s
                 AND kcu.referenced_table_name IS NOT NULL;
         """
-        cursor.execute(query_fks, (database,))
+        cursor.execute(query_fks, (db_config['database'],))
         
         relacionamentos = cursor.fetchall()
         if not relacionamentos:
@@ -62,7 +77,7 @@ def inspecionar_banco():
 
     except mysql.connector.Error as err:
         print(f"\nErro de banco de dados: {err}")
-        print("Verifique se as credenciais estão corretas e se o seu IP tem permissão para acessar o banco.")
+        print("Verifique se as credenciais estão corretas e se a aplicação tem permissão para acessar o banco.")
     
     finally:
         # --- Fechar Conexão ---
