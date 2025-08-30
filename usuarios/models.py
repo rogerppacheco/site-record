@@ -1,11 +1,15 @@
-# usuarios/models.py
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 
 class Perfil(models.Model):
     nome = models.CharField(max_length=100, unique=True)
+    # Campo mantido da versão anterior para garantir a compatibilidade com a migração
+    descricao = models.TextField(blank=True, null=True)
 
-    # A linha 'db_table' foi removida daqui
+    class Meta:
+        # O nome da tabela padrão do Django (usuarios_perfil) já corresponde ao desejado,
+        # então a linha 'db_table' não é necessária.
+        pass
 
     def __str__(self):
         return self.nome
@@ -18,13 +22,13 @@ class Usuario(AbstractUser):
     perfil = models.ForeignKey(Perfil, on_delete=models.SET_NULL, null=True, blank=True, related_name='usuarios')
     supervisor = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='liderados')
     
-    # Campos financeiros
+    # --- NOVOS CAMPOS FINANCEIROS (DA SUA VERSÃO) ---
     valor_almoco = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     valor_passagem = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     chave_pix = models.CharField(max_length=255, blank=True, null=True)
     nome_da_conta = models.CharField(max_length=255, blank=True, null=True)
 
-    # Campos de comissionamento
+    # --- NOVOS CAMPOS DE COMISSIONAMENTO (DA SUA VERSÃO) ---
     meta_comissao = models.IntegerField(default=0)
     desconto_boleto = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     desconto_inclusao_viabilidade = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
@@ -33,7 +37,7 @@ class Usuario(AbstractUser):
     desconto_inss_fixo = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
 
     class Meta(AbstractUser.Meta):
-        # A linha 'db_table' foi removida daqui
+        # O nome da tabela padrão do Django (usuarios_usuario) já corresponde ao desejado.
         pass
 
     def __str__(self):
