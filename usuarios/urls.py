@@ -20,7 +20,7 @@ urlpatterns = [
 
     # Rotas para perfis
     path('perfis/', PerfilListCreateView.as_view(), name='perfil-list-create'),
-    path('perfis/<int:pk>/', PerfilRetrieveUpdateDestroyView.as_view(), name='perfil-detail'),
+    path('perfis/<int:id>/', PerfilRetrieveUpdateDestroyView.as_view(), name='perfil-detail'),
     path('perfis/<int:pk>/permissoes/', PerfilPermissoesView.as_view(), name='perfil-permissoes'),
     
     # Rota para supervisores
