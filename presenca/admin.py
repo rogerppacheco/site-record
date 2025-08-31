@@ -1,11 +1,16 @@
-# presenca/admin.py
-
 from django.contrib import admin
 from .models import Presenca, MotivoAusencia, DiaNaoUtil
 
 @admin.register(MotivoAusencia)
 class MotivoAusenciaAdmin(admin.ModelAdmin):
+    """
+    Classe de Admin para o modelo MotivoAusencia.
+    - list_display: Mostra 'motivo' e 'gera_desconto' na listagem.
+    - fields: Permite editar 'motivo' e 'gera_desconto' no formulário.
+    - search_fields: Adiciona busca pelo campo 'motivo'.
+    """
     list_display = ('motivo', 'gera_desconto')
+    fields = ('motivo', 'gera_desconto') # Linha adicionada para a melhoria
     search_fields = ('motivo',)
 
 @admin.register(DiaNaoUtil)
@@ -16,18 +21,11 @@ class DiaNaoUtilAdmin(admin.ModelAdmin):
 
 @admin.register(Presenca)
 class PresencaAdmin(admin.ModelAdmin):
-    # CORREÇÃO: Usando os nomes de campo corretos do modelo 'Presenca'
-    # 'usuario' foi renomeado para 'colaborador'
-    # 'presente' foi renomeado para 'status'
-    # 'motivo_ausencia' foi renomeado para 'motivo'
     list_display = ('colaborador', 'data', 'status', 'motivo', 'lancado_por')
-    list_filter = ('data', 'status', 'colaborador__username') # Filtra pelo username dentro do campo 'colaborador'
+    list_filter = ('data', 'status', 'colaborador__username')
     search_fields = ('colaborador__username', 'data', 'observacao')
-    
-    # CORREÇÃO: O campo no modelo é 'colaborador', não 'usuario'
     autocomplete_fields = ['colaborador', 'motivo', 'lancado_por'] 
 
-    # Define a ordem dos campos no formulário de edição
     fieldsets = (
         (None, {
             'fields': ('colaborador', 'data', 'status')
