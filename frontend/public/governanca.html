@@ -545,17 +545,19 @@
             const usuarios = await apiFetch(`/usuarios/?is_active=${status === 'ativos'}`);
             userListBody.innerHTML = ''; 
             if (status === 'ativos') {
-                userListHeader.innerHTML = '<th>Nome</th><th>E-mail</th><th>Perfil</th><th>Líder Imediato</th><th>Ações</th>';
-                usuarios.forEach(user => {
-                    const supervisorDisplay = user.supervisor_nome || 'N/A';
-                    userListBody.innerHTML += `<tr><td>${user.nome_completo}</td><td>${user.email}</td><td>${user.perfil}</td><td>${supervisorDisplay}</td><td class="actions-cell"><button class="btn-edit" title="Editar" onclick='iniciarEdicao(${JSON.stringify(user)})'>Editar</button><button class="btn-delete" title="Inativar" onclick="inativarUsuario(${user.id})">Inativar</button></td></tr>`;
-                });
-            } else { 
-                userListHeader.innerHTML = '<th>Nome</th><th>E-mail</th><th>Perfil</th><th>Ações</th>';
-                usuarios.forEach(user => {
-                    userListBody.innerHTML += `<tr><td>${user.nome_completo}</td><td>${user.email}</td><td>${user.perfil}</td><td class="actions-cell"><button class="btn-reactivate" title="Reativar" onclick="reativarUsuario(${user.id})">Reativar</button></td></tr>`;
-                });
-            }
+    userListHeader.innerHTML = '<th>Nome</th><th>E-mail</th><th>Perfil</th><th>Líder Imediato</th><th>Ações</th>';
+    usuarios.forEach(user => {
+        const supervisorDisplay = user.supervisor_nome || 'N/A';
+        // --- CORREÇÃO APLICADA AQUI ---
+        userListBody.innerHTML += `<tr><td>${user.nome_completo}</td><td>${user.email}</td><td>${user.perfil_nome}</td><td>${supervisorDisplay}</td><td class="actions-cell"><button class="btn-edit" title="Editar" onclick='iniciarEdicao(${JSON.stringify(user)})'>Editar</button><button class="btn-delete" title="Inativar" onclick="inativarUsuario(${user.id})">Inativar</button></td></tr>`;
+    });
+} else {  
+    userListHeader.innerHTML = '<th>Nome</th><th>E-mail</th><th>Perfil</th><th>Ações</th>';
+    usuarios.forEach(user => {
+        // --- CORREÇÃO APLICADA AQUI TAMBÉM ---
+        userListBody.innerHTML += `<tr><td>${user.nome_completo}</td><td>${user.email}</td><td>${user.perfil_nome}</td><td class="actions-cell"><button class="btn-reactivate" title="Reativar" onclick="reativarUsuario(${user.id})">Reativar</button></td></tr>`;
+    });
+}
         } catch (error) { console.error("Erro ao carregar usuários:", error); }
     }
 
@@ -577,11 +579,16 @@
         formTitle.textContent = 'Editando Usuário';
         userIdInput.value = user.id;
         document.getElementById('nome_completo').value = user.nome_completo;
-        document.getElementById('cpf').value = user.cpf;
+        document.getElementById('cpf').value = user.cpf || ''; // Adicionado || '' para evitar 'null'
         document.getElementById('email').value = user.email;
         document.getElementById('username').value = user.username;
-        selectPerfil.value = user.perfil_id;
-        selectSupervisor.value = user.supervisor || ''; // Corrigido para usar 'supervisor'
+        
+        // --- CORREÇÃO PRINCIPAL AQUI ---
+        // Com o serializer ajustado, a API agora envia 'perfil' e 'supervisor' como os IDs.
+        selectPerfil.value = user.perfil; 
+        selectSupervisor.value = user.supervisor || ''; // O || '' garante que, se não houver supervisor, a opção "Nenhum" seja selecionada.
+        
+        // --- O resto da sua função continua igual ---
         document.getElementById('valor_almoco').value = user.valor_almoco;
         document.getElementById('valor_passagem').value = user.valor_passagem;
         document.getElementById('chave_pix').value = user.chave_pix || '';
@@ -615,7 +622,7 @@
             last_name: lastName,
             cpf: document.getElementById('cpf').value,
             email: document.getElementById('email').value,
-            perfil_id: selectPerfil.value,
+            perfil: selectPerfil.value, // Alterado de 'perfil_id' para 'perfil'
             username: document.getElementById('username').value,
             supervisor: selectSupervisor.value || null,
             valor_almoco: document.getElementById('valor_almoco').value,
@@ -680,24 +687,36 @@
 
     // --- LÓGICA DE GESTÃO DE PERFIS ---
     const listaPerfisUl = document.getElementById('lista-perfis');
+    const modalPerfil = document.getElementById('modal-perfil');
+    const modalPerfilTitulo = document.getElementById('modal-perfil-titulo');
+    const formPerfil = document.getElementById('form-perfil');
+    const perfilIdInput = document.getElementById('perfil-id-input');
+    const perfilNomeInput = document.getElementById('perfil-nome-input');
+    const perfilDescricaoInput = document.getElementById('perfil-descricao-input');
+    // Substitua a função carregarPerfis inteira por esta:
     async function carregarPerfis() {
-        try {
-            const perfis = await apiFetch('/perfis/');
-            listaPerfisUl.innerHTML = '';
-            perfis.forEach(perfil => {
-                const li = document.createElement('li');
-                li.innerHTML = `
+    try {
+        const perfis = await apiFetch('/perfis/');
+        listaPerfisUl.innerHTML = '';
+        perfis.forEach(perfil => {
+            const li = document.createElement('li');
+            const descricao = perfil.descricao ? `<small style="color: #666;">${perfil.descricao}</small>` : '<small style="color: #999;">Sem descrição</small>';
+            li.innerHTML = `
+                <div>
                     <span>${perfil.nome}</span>
-                    <div class="generic-list-actions">
-                        <button class="btn" style="background-color: #17a2b8;" onclick="abrirModalPermissoes(${perfil.id}, '${perfil.nome}')">Permissões</button>
-                        <button class="btn-edit" onclick="editarPerfil(${perfil.id}, '${perfil.nome}')">Editar</button>
-                        <button class="btn-delete" onclick="excluirPerfil(${perfil.id})">Excluir</button>
-                    </div>
-                `;
-                listaPerfisUl.appendChild(li);
-            });
-        } catch (error) { console.error('Erro ao carregar perfis:', error); }
-    }
+                    <br>
+                    ${descricao}
+                </div>
+                <div class="generic-list-actions">
+                    <button class="btn" style="background-color: #17a2b8;" onclick="abrirModalPermissoes(${perfil.id}, '${perfil.nome}')">Permissões</button>
+                    <button class="btn-edit" onclick='editarPerfil(${JSON.stringify(perfil)})'>Editar</button>
+                    <button class="btn-delete" onclick="excluirPerfil(${perfil.id})">Excluir</button>
+                </div>
+            `;
+            listaPerfisUl.appendChild(li);
+        });
+    } catch (error) { console.error('Erro ao carregar perfis:', error); }
+}
 
     document.getElementById('btn-salvar-perfil').addEventListener('click', async () => {
         const nome = document.getElementById('novo-perfil-nome').value.trim();

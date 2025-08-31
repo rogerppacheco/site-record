@@ -368,7 +368,7 @@
     const isLocal = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
     const apiUrl = isLocal 
         ? 'http://127.0.0.1:8000' 
-        : 'https://record-pap-app-80fd14bb6cb5.herokuapp.com'; // CORREÇÃO AQUI
+        : 'https://controle-presenca-448646307036.herokuapp.com';
 
     function jwt_decode(token) {
         try {
@@ -392,6 +392,7 @@
         const loginForm = document.getElementById('loginForm');
         const closeBtn = document.querySelector('.modal .close');
         
+        // CORREÇÃO: Função showLoginModal movida para cima para ser acessada corretamente
         function showLoginModal(event) {
             if (areaInternaBtn.href.includes('/area-interna/')) {
                 window.location.href = '/area-interna/';
@@ -413,6 +414,7 @@
             }
 
             try {
+                // CORREÇÃO: A URL é construída usando a variável apiUrl
                 const response = await fetch(`${apiUrl}/api/auth/login`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -426,6 +428,7 @@
 
                 const data = await response.json();
 
+                // CORREÇÃO: Salvar os tokens antes de redirecionar
                 localStorage.setItem('accessToken', data.access);
                 localStorage.setItem('refreshToken', data.refresh);
 
