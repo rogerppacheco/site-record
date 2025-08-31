@@ -42,7 +42,7 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'corsheaders.middleware.CorsMiddleware', # Garanta que este middleware venha antes do CommonMiddleware
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -114,7 +114,7 @@ REST_FRAMEWORK = {
 }
 
 # =======================================================================
-# INÍCIO DA CORREÇÃO: Configurações de CORS e CSRF para Produção
+# INÍCIO DA CORREÇÃO FINAL: Configurações de CORS e CSRF
 # =======================================================================
 
 CORS_ALLOWED_ORIGINS = [
@@ -125,6 +125,10 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:8000",
 ]
 
+# --- ADICIONE ESTA LINHA ---
+# Permite que cookies e outros cabeçalhos de autenticação sejam enviados
+CORS_ALLOW_CREDENTIALS = True
+
 CSRF_TRUSTED_ORIGINS = [
     'https://record-pap-app-80fd14bb6cb5.herokuapp.com',
     "https://recordpap.com.br",
@@ -133,8 +137,6 @@ CSRF_TRUSTED_ORIGINS = [
     'http://localhost:8000',
 ]
 
-# Configurações de Cookie para produção (HTTPS)
-# Garante que os cookies de sessão e CSRF funcionem corretamente em diferentes domínios.
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 SESSION_COOKIE_SAMESITE = 'None'
