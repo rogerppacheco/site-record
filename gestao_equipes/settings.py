@@ -16,6 +16,8 @@ ALLOWED_HOSTS = [
     'recordpap.com.br',
     'www.recordpap.com.br',
     '127.0.0.1',
+    'record-pap-app-80fd14bb6cb5.herokuapp.com', 
+    '.herokuapp.com'
 ]
 
 # --- CORREÇÃO APLICADA AQUI ---
@@ -118,6 +120,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:8000",
     "https://recordpap.com.br",
     "https://www.recordpap.com.br",
+    "record-pap-app-80fd14bb6cb5.herokuapp.com",
 ]
 
 AUTH_USER_MODEL = 'usuarios.Usuario'
