@@ -16,11 +16,10 @@ ALLOWED_HOSTS = [
     'recordpap.com.br',
     'www.recordpap.com.br',
     '127.0.0.1',
-    'record-pap-app-80fd14bb6cb5.herokuapp.com', 
+    'record-pap-app-80fd14bb6cb5.herokuapp.com',
     '.herokuapp.com'
 ]
 
-# --- CORREÇÃO APLICADA AQUI ---
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -43,7 +42,7 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
+    'corsheaders.middleware.CorsMiddleware', # Garanta que este middleware venha antes do CommonMiddleware
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -83,7 +82,6 @@ else:
         }
     }
 
-
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',},
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',},
@@ -115,13 +113,36 @@ REST_FRAMEWORK = {
     )
 }
 
+# =======================================================================
+# INÍCIO DA CORREÇÃO: Configurações de CORS e CSRF para Produção
+# =======================================================================
+
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
+    "https://record-pap-app-80fd14bb6cb5.herokuapp.com",
     "https://recordpap.com.br",
     "https://www.recordpap.com.br",
-    "record-pap-app-80fd14bb6cb5.herokuapp.com",
+    "http://127.0.0.1:8000",
+    "http://localhost:8000",
 ]
+
+CSRF_TRUSTED_ORIGINS = [
+    'https://record-pap-app-80fd14bb6cb5.herokuapp.com',
+    "https://recordpap.com.br",
+    "https://www.recordpap.com.br",
+    'http://127.0.0.1:8000',
+    'http://localhost:8000',
+]
+
+# Configurações de Cookie para produção (HTTPS)
+# Garante que os cookies de sessão e CSRF funcionem corretamente em diferentes domínios.
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SAMESITE = 'None'
+CSRF_COOKIE_SAMESITE = 'None'
+
+# =======================================================================
+# FIM DA CORREÇÃO
+# =======================================================================
 
 AUTH_USER_MODEL = 'usuarios.Usuario'
 LOGIN_URL = '/'
