@@ -367,8 +367,8 @@
     // --- CORREÇÃO APLICADA AQUI ---
     const isLocal = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
     const apiUrl = isLocal 
-        ? 'http://127.0.0.1:8000' 
-        : 'https://controle-presenca-448646307036.herokuapp.com';
+    ? 'http://127.0.0.1:8000' : ''; // Em produção, a URL base é vazia
+
 
     function jwt_decode(token) {
         try {
