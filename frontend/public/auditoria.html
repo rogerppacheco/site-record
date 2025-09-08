@@ -1,0 +1,480 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auditoria de Vendas</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <style>
+        .status-select { min-width: 180px; }
+        .main-header { background-color: #fff; padding: 1rem 2rem; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); position: sticky; top: 0; z-index: 1020; }
+        .header-container { max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; }
+        .logo { max-height: 40px; }
+        .main-nav ul { list-style: none; display: flex; gap: 1.5rem; align-items: center; margin-bottom: 0; }
+        .main-nav a { text-decoration: none; color: #1a1a1a; font-weight: 500; }
+        .main-nav a:hover { color: #888; }
+        .submenu-nav.bg-dark .nav-link { color: rgba(255, 255, 255, 0.75); }
+        .submenu-nav.bg-dark .nav-link:hover { color: #fff; }
+        .submenu-nav.bg-dark .nav-link.active { color: #fff; font-weight: bold; }
+        .venda-details { font-size: 0.8rem; color: #6c757d; }
+        #detalhes-venda-body h6 { margin-top: 1rem; color: #0d6efd; }
+        #aprovacao-mensagem { white-space: pre-wrap; font-family: monospace; font-size: 0.9rem; }
+    </style>
+</head>
+<body>
+    <header class="main-header">
+        <div class="header-container">
+            <a href="/">
+                <img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo">
+            </a>
+            <nav class="main-nav">
+                <ul>
+                    <li><a href="/area-interna/">Área Interna</a></li>
+                    <li><span class="navbar-text me-3" id="welcome-user"></span></li>
+                    <li><button class="btn btn-danger btn-sm" id="logoutButton">Sair</button></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <nav class="navbar navbar-expand-lg submenu-nav navbar-dark bg-dark">
+        <div class="container-fluid" style="max-width: 1200px;">
+            <div class="collapse navbar-collapse">
+                <ul class="navbar-nav">
+                    <li class="nav-item"><a class="nav-link" href="/presenca/">Controle de Presença</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/crm-vendas/">Cadastrar Venda</a></li>
+                    <li class="nav-item"><a class="nav-link active" aria-current="page" href="/auditoria/">Esteira (Auditoria)</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/governanca/">Governança</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/salvar-osab/">Salvar OSAB</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container mt-5">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <h4 class="mb-0">Esteira de Vendas - Auditoria</h4>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Cliente / Detalhes</th>
+                                <th>Vendedor</th>
+                                <th>Plano</th>
+                                <th>Status Tratamento</th>
+                                <th>Status Esteira</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabela-auditoria"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal de Agendamento -->
+    <div class="modal fade" id="modal-agendamento" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Confirmar Agendamento</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="form-agendamento">
+                        <input type="hidden" id="agendamento-venda-id">
+                        <input type="hidden" id="agendamento-status-id">
+                        <div class="mb-3">
+                            <label for="ordem_servico" class="form-label">Ordem de Serviço (O.S) *</label>
+                            <input type="text" class="form-control" id="ordem_servico" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="data_agendamento" class="form-label">Data de Agendamento *</label>
+                            <input type="date" class="form-control" id="data_agendamento" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="periodo_agendamento" class="form-label">Período *</label>
+                            <select class="form-select" id="periodo_agendamento" required>
+                                <option value="" selected disabled>Selecione...</option>
+                                <option value="MANHA">Manhã</option>
+                                <option value="TARDE">Tarde</option>
+                            </select>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" form="form-agendamento">Salvar Agendamento</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Detalhes Venda -->
+    <div class="modal fade" id="modal-detalhes-venda" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Detalhes da Venda #<span id="detalhes-venda-id"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="detalhes-venda-body">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal de Mensagem de Aprovação -->
+    <div class="modal fade" id="modal-aprovacao" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Mensagem de Aprovação</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>A mensagem abaixo está pronta para ser copiada.</p>
+                    <textarea id="aprovacao-mensagem" class="form-control" rows="15" readonly></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                    <button type="button" class="btn btn-primary" onclick="copiarMensagem()">
+                        <i class="bi bi-clipboard-check"></i> Copiar Mensagem
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{% static 'js/auth.js' %}"></script>
+
+    <script>
+        verificarAutenticacao();
+
+        let listaStatusTratamento = [];
+        let listaStatusEsteira = [];
+        let agendamentoModal;
+        let detalhesModal;
+        let aprovacaoModal;
+
+        function jwt_decode(token) { try { return JSON.parse(atob(token.split('.')[1])); } catch (e) { return null; } }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            agendamentoModal = new bootstrap.Modal(document.getElementById('modal-agendamento'));
+            detalhesModal = new bootstrap.Modal(document.getElementById('modal-detalhes-venda'));
+            aprovacaoModal = new bootstrap.Modal(document.getElementById('modal-aprovacao'));
+            
+            const token = localStorage.getItem('accessToken');
+            const decodedToken = jwt_decode(token);
+            const userProfile = decodedToken ? decodedToken.perfil : null;
+            const perfisPermitidos = ['Admin', 'BackOffice', 'Supervisor', 'Gerente', 'Diretoria'];
+
+            if (!userProfile || !perfisPermitidos.includes(userProfile)) {
+                alert('Você não tem permissão para acessar esta página.');
+                window.location.href = '/area-interna/';
+                return;
+            }
+
+            if (decodedToken && decodedToken.username) { document.getElementById('welcome-user').textContent = `Bem-vindo, ${decodedToken.username}!`; }
+
+            document.getElementById('logoutButton').addEventListener('click', logout);
+            document.getElementById('form-agendamento').addEventListener('submit', salvarAgendamento);
+            
+            document.getElementById('modal-agendamento').addEventListener('hidden.bs.modal', function () {
+                carregarVendasAuditoria();
+            });
+
+
+            await carregarListasDeStatus();
+            carregarVendasAuditoria();
+        });
+
+        async function carregarListasDeStatus() {
+            try {
+                const responseTratamento = await apiClient.get('/api/crm/status/?tipo=Tratamento');
+                listaStatusTratamento = responseTratamento.data;
+
+                const responseEsteira = await apiClient.get('/api/crm/status/?tipo=Esteira');
+                listaStatusEsteira = responseEsteira.data;
+            } catch (error) {
+                console.error("Erro fatal ao carregar listas de status:", error);
+                alert("Não foi possível carregar as opções de status. A página não pode funcionar.");
+            }
+        }
+
+        async function carregarVendasAuditoria() {
+            const tbody = document.getElementById('tabela-auditoria');
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center">Carregando...</td></tr>';
+            try {
+                const response = await apiClient.get('/api/crm/vendas/');
+                const vendas = response.data;
+
+                tbody.innerHTML = '';
+                if (vendas.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center">Nenhuma venda para auditar.</td></tr>';
+                    return;
+                }
+                vendas.forEach(venda => {
+                    const tr = document.createElement('tr');
+                    tr.id = `venda-${venda.id}`;
+                    
+                    const statusTratamentoAtual = venda.status_tratamento ? venda.status_tratamento.id : '';
+                    const statusEsteiraAtual = venda.status_esteira ? venda.status_esteira.id : '';
+                    const isTratamentoCadastrada = venda.status_tratamento ? venda.status_tratamento.nome.toLowerCase() === 'cadastrada' : false;
+                    const esteiraDisabled = !isTratamentoCadastrada ? 'disabled' : '';
+
+                    const selectTratamento = `<select id="tratamento-select-${venda.id}" class="form-select form-select-sm status-select" onchange="atualizarStatus(event, ${venda.id}, this.value, 'tratamento')">
+                        <option value="">Selecione...</option>
+                        ${listaStatusTratamento.map(s => `<option value="${s.id}" ${statusTratamentoAtual === s.id ? 'selected' : ''}>${s.nome}</option>`).join('')}
+                    </select>`;
+                    
+                    const selectEsteira = `<select id="esteira-select-${venda.id}" class="form-select form-select-sm status-select" onchange="atualizarStatus(event, ${venda.id}, this.value, 'esteira')" ${esteiraDisabled}>
+                        <option value="">Selecione...</option>
+                        ${listaStatusEsteira.map(s => `<option value="${s.id}" ${statusEsteiraAtual === s.id ? 'selected' : ''}>${s.nome}</option>`).join('')}
+                    </select>`;
+                    
+                    let detalhesAgendamento = '';
+                    if (venda.data_agendamento) {
+                        const dataFormatada = new Date(venda.data_agendamento + 'T03:00:00Z').toLocaleDateString('pt-BR');
+                        detalhesAgendamento = `<br><span class="venda-details">OS: ${venda.ordem_servico || 'N/A'} | Agendado: ${dataFormatada} (${venda.periodo_agendamento || ''})</span>`;
+                    }
+
+                    tr.innerHTML = `
+                        <td>${venda.id}</td>
+                        <td>${venda.cliente.nome_razao_social} ${detalhesAgendamento}</td>
+                        <td>${venda.vendedor_nome}</td>
+                        <td>${venda.plano ? venda.plano.nome : 'N/A'}</td>
+                        <td>${selectTratamento}</td>
+                        <td>${selectEsteira}</td>
+                        <td>
+                            <div class="btn-group" role="group">
+                                <button class="btn btn-sm btn-outline-success" onclick="gerarAprovacao(${venda.id})" title="Gerar Mensagem de Aprovação"><i class="bi bi-whatsapp"></i></button>
+                                <button class="btn btn-sm btn-outline-info" onclick="detalhesVenda(${venda.id})" title="Ver Detalhes"><i class="bi bi-search"></i></button>
+                                <button class="btn btn-sm btn-outline-warning" onclick="editarVenda(${venda.id})" title="Editar Venda"><i class="bi bi-pencil-square"></i></button>
+                                <button class="btn btn-sm btn-outline-danger" onclick="excluirVenda(${venda.id})" title="Excluir Venda"><i class="bi bi-trash"></i></button>
+                            </div>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (error) {
+                console.error('Erro ao carregar vendas para auditoria:', error);
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger">Falha ao carregar vendas.</td></tr>';
+            }
+        }
+
+        async function atualizarStatus(event, vendaId, novoStatusId, tipoStatus) {
+            if (!novoStatusId) return;
+
+            if (tipoStatus === 'esteira') {
+                const statusEsteiraObj = listaStatusEsteira.find(s => s.id == novoStatusId);
+                if (statusEsteiraObj && statusEsteiraObj.nome.toLowerCase() === 'agendado') {
+                    document.getElementById('agendamento-venda-id').value = vendaId;
+                    document.getElementById('agendamento-status-id').value = novoStatusId;
+                    agendamentoModal.show();
+                    return;
+                }
+            }
+            
+            const body = {};
+            if (tipoStatus === 'tratamento') body.status_tratamento = parseInt(novoStatusId);
+            if (tipoStatus === 'esteira') body.status_esteira = parseInt(novoStatusId);
+
+            try {
+                await apiClient.patch(`/api/crm/vendas/${vendaId}/`, body);
+                
+                const tr = document.getElementById(`venda-${vendaId}`);
+                tr.style.transition = 'background-color 0.5s';
+                tr.style.backgroundColor = '#d4edda';
+                setTimeout(() => { tr.style.backgroundColor = ''; carregarVendasAuditoria(); }, 1500);
+
+            } catch (error) {
+                console.error(`Erro ao atualizar venda ${vendaId}:`, error);
+                alert('Falha ao atualizar o status da venda.');
+                carregarVendasAuditoria();
+            }
+        }
+
+        async function salvarAgendamento(event) {
+            event.preventDefault();
+            const osInput = document.getElementById('ordem_servico');
+            const ordemServico = osInput.value.trim();
+            const vendaId = document.getElementById('agendamento-venda-id').value;
+
+            if (!ordemServico) {
+                alert('Por favor, preencha o campo Ordem de Serviço.');
+                return;
+            }
+
+            try {
+                const response = await apiClient.get(`/api/crm/vendas/?ordem_servico=${ordemServico}`);
+                const conflictingSale = response.data.find(venda => venda.id != vendaId);
+
+                if (conflictingSale) {
+                    alert(`A Ordem de Serviço "${ordemServico}" já está sendo utilizada na venda #${conflictingSale.id}.`);
+                    return;
+                }
+            } catch (error) {
+                console.error('Erro ao verificar a Ordem de Serviço:', error);
+                alert('Ocorreu um erro ao verificar a Ordem de Serviço. Por favor, tente novamente.');
+                return;
+            }
+
+            const statusId = document.getElementById('agendamento-status-id').value;
+            const body = {
+                status_esteira: parseInt(statusId),
+                ordem_servico: ordemServico,
+                data_agendamento: document.getElementById('data_agendamento').value,
+                periodo_agendamento: document.getElementById('periodo_agendamento').value,
+            };
+
+            try {
+                await apiClient.patch(`/api/crm/vendas/${vendaId}/`, body);
+                agendamentoModal.hide();
+                document.getElementById('form-agendamento').reset();
+                carregarVendasAuditoria(); 
+
+            } catch (error) {
+                console.error(`Erro ao salvar agendamento para venda ${vendaId}:`, error);
+                alert('Falha ao salvar agendamento.');
+            }
+        }
+
+        // --- Funções de Ação ---
+
+        async function gerarAprovacao(vendaId) {
+            try {
+                const response = await apiClient.get(`/api/crm/vendas/${vendaId}/`);
+                const venda = response.data;
+
+                // 1. Regra do Vendedor (primeiro nome)
+                const primeiroNomeVendedor = venda.vendedor_nome ? venda.vendedor_nome.split(' ')[0] : 'Não informado';
+
+                // 2. Regra do DACC
+                let daccTexto = 'NÃO / Não informado';
+                if (venda.forma_pagamento) {
+                    if (venda.forma_pagamento.nome.toLowerCase() === 'débito em conta') {
+                        daccTexto = 'SIM';
+                    } else {
+                        daccTexto = `NÃO / ${venda.forma_pagamento.nome}`;
+                    }
+                }
+
+                // 3. Regra do Agendamento
+                let agendamentoTexto = '';
+                if (venda.data_agendamento && venda.periodo_agendamento) {
+                    const data = new Date(venda.data_agendamento + 'T03:00:00Z').toLocaleDateString('pt-BR');
+                    let periodo = '';
+                    if (venda.periodo_agendamento.toUpperCase() === 'MANHA') {
+                        periodo = 'entre 08:00 às 12:00';
+                    } else if (venda.periodo_agendamento.toUpperCase() === 'TARDE') {
+                        periodo = 'entre 13:00 às 18:00';
+                    }
+                    agendamentoTexto = `*AGENDAMENTO:* Agendamento confirmado para o dia ${data} ${periodo}`;
+                }
+
+                // 4. Montagem da Mensagem Final
+                const mensagem = `*APROVADO!*✅✅
+*PLANO ADQUIRIDO:* ${venda.plano ? venda.plano.nome.toUpperCase() : 'NÃO INFORMADO'}
+*NOME DO CLIENTE:* ${venda.cliente.nome_razao_social.toUpperCase()}
+*CPF/CNPJ:* ${venda.cliente.cpf_cnpj}
+*OS:* ${venda.ordem_servico || 'NÃO INFORMADA'}
+*DACC:* ${daccTexto.toUpperCase()}
+${agendamentoTexto ? `${agendamentoTexto}\n` : ''}*VENDEDOR:* ${primeiroNomeVendedor.toUpperCase()}
+⚠FATURA, SEGUNDA VIA OU DÚVIDAS
+https://www.niointernet.com.br/
+WhatsApp: 31985186530
+Para que sua instalação seja concluída favor salvar esse CTO no seu telefone, Técnico Oi 21 2533-9053 para receber informações da Visita.`;
+
+                document.getElementById('aprovacao-mensagem').value = mensagem;
+                aprovacaoModal.show();
+
+            } catch (error) {
+                console.error(`Erro ao gerar mensagem de aprovação para venda ${vendaId}:`, error);
+                alert('Não foi possível carregar os dados para gerar a mensagem.');
+            }
+        }
+
+        function copiarMensagem() {
+            const mensagemTextarea = document.getElementById('aprovacao-mensagem');
+            mensagemTextarea.select();
+            document.execCommand('copy');
+            
+            const originalButton = document.querySelector('#modal-aprovacao .btn-primary');
+            const originalButtonHTML = originalButton.innerHTML;
+            originalButton.innerHTML = '<i class="bi bi-check-lg"></i> Copiado!';
+            originalButton.disabled = true;
+
+            setTimeout(() => {
+                originalButton.innerHTML = originalButtonHTML;
+                originalButton.disabled = false;
+            }, 2000);
+        }
+
+        async function detalhesVenda(vendaId) {
+            try {
+                const response = await apiClient.get(`/api/crm/vendas/${vendaId}/`);
+                const venda = response.data;
+                document.getElementById('detalhes-venda-id').textContent = venda.id;
+                const detalhesBody = document.getElementById('detalhes-venda-body');
+                const dataCriacao = new Date(venda.data_criacao).toLocaleString('pt-BR');
+                const dataAgendamento = venda.data_agendamento ? new Date(venda.data_agendamento + 'T03:00:00Z').toLocaleDateString('pt-BR') : 'Não agendado';
+                const planoNome = venda.plano ? venda.plano.nome : 'Não informado';
+                const formaPagamentoNome = venda.forma_pagamento ? venda.forma_pagamento.nome : 'Não informado';
+                const statusTratamentoNome = venda.status_tratamento ? venda.status_tratamento.nome : 'Não definido';
+                const statusEsteiraNome = venda.status_esteira ? venda.status_esteira.nome : 'Não definido';
+
+                detalhesBody.innerHTML = `
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Dados do Cliente</h6>
+                            <p><strong>Nome:</strong> ${venda.cliente.nome_razao_social}<br><strong>CPF/CNPJ:</strong> ${venda.cliente.cpf_cnpj}<br><strong>Email:</strong> ${venda.cliente.email || 'Não informado'}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Dados da Venda</h6>
+                            <p><strong>Vendedor:</strong> ${venda.vendedor_nome}<br><strong>Plano:</strong> ${planoNome}<br><strong>Forma de Pagamento:</strong> ${formaPagamentoNome}<br><strong>Data da Venda:</strong> ${dataCriacao}</p>
+                        </div>
+                    </div><hr>
+                    <div class="row">
+                        <div class="col-md-6">
+                             <h6>Status</h6>
+                            <p><strong>Tratamento:</strong> ${statusTratamentoNome}<br><strong>Esteira:</strong> ${statusEsteiraNome}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Agendamento</h6>
+                            <p><strong>Ordem de Serviço:</strong> ${venda.ordem_servico || 'Não informada'}<br><strong>Data:</strong> ${dataAgendamento}<br><strong>Período:</strong> ${venda.periodo_agendamento || 'Não informado'}</p>
+                        </div>
+                    </div><hr>
+                    <h6>Endereço de Instalação</h6>
+                     <p>${venda.logradouro || 'Logradouro não informado'}, ${venda.numero_residencia || 'S/N'}<br>${venda.complemento ? `Complemento: ${venda.complemento}<br>` : ''}Bairro: ${venda.bairro || 'Não informado'}<br>Cidade: ${venda.cidade || 'Não informada'} - ${venda.estado || 'UF'}<br>CEP: ${venda.cep || 'Não informado'}</p>`;
+                detalhesModal.show();
+            } catch (error) {
+                console.error(`Erro ao buscar detalhes da venda ${vendaId}:`, error);
+                alert('Não foi possível carregar os detalhes da venda.');
+            }
+        }
+
+        function editarVenda(vendaId) {
+            alert(`Funcionalidade "Editar Venda ${vendaId}" a ser implementada.`);
+        }
+
+        function excluirVenda(vendaId) {
+             if (confirm(`Tem certeza que deseja excluir a venda #${vendaId}?`)) {
+                alert(`Funcionalidade "Excluir Venda ${vendaId}" a ser implementada.`);
+            }
+        }
+    </script>
+</body>
+</html>

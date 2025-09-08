@@ -1,0 +1,124 @@
+/* ==========================================================================
+   Estilos Gerais do Corpo e Contêiner Principal
+   ========================================================================== */
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #eef1f4;
+    color: #333;
+    margin: 0;
+    padding: 20px;
+}
+
+h2 {
+    color: #0056b3;
+    border-bottom: 2px solid #0056b3;
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+}
+
+/* ==========================================================================
+   Estilos para os Contêineres de Formulário
+   ========================================================================== */
+
+.form-container {
+    display: flex;
+    flex-wrap: wrap; /* Permite que os campos quebrem para a próxima linha em telas menores */
+    gap: 25px;       /* Espaçamento entre os campos do formulário */
+    background-color: #ffffff;
+    padding: 25px;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+}
+
+/* ==========================================================================
+   Estilos para Grupos de Formulário (Label + Input)
+   ========================================================================== */
+
+.form-group {
+    display: flex;
+    flex-direction: column; /* Alinha o label acima do input */
+    flex: 1 1 300px;        /* Controla o crescimento, encolhimento e tamanho base dos campos */
+    min-width: 250px;       /* Garante uma largura mínima para os campos */
+}
+
+.form-group label {
+    margin-bottom: 8px;
+    font-weight: 600; /* Um pouco mais forte que 'bold' */
+    color: #555;
+    font-size: 14px;
+}
+
+.form-group input[type="text"],
+.form-group input[type="number"],
+.form-group input[type="email"],
+.form-group input[type="password"],
+.form-group input[type="date"],
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-sizing: border-box; /* Garante que padding não afete a largura total */
+    transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    border-color: #0056b3;
+    box-shadow: 0 0 5px rgba(0, 86, 179, 0.25);
+    outline: none;
+}
+
+.form-group textarea {
+    resize: vertical; /* Permite que o usuário redimensione a altura do textarea */
+    min-height: 80px;
+}
+
+
+/* ==========================================================================
+   Estilos para Botões e Ações do Formulário
+   ========================================================================== */
+
+.form-actions {
+    width: 100%;
+    display: flex;
+    justify-content: flex-end; /* Alinha os botões à direita */
+    gap: 15px;
+    margin-top: 15px;
+}
+
+.form-actions button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 5px;
+    font-size: 16px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background-color 0.3s, transform 0.2s;
+}
+
+.form-actions button:hover {
+    transform: translateY(-2px);
+}
+
+.btn-primary {
+    background-color: #007bff;
+    color: white;
+}
+
+.btn-primary:hover {
+    background-color: #0056b3;
+}
+
+.btn-secondary {
+    background-color: #6c757d;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background-color: #5a6268;
+}

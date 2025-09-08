@@ -119,10 +119,10 @@ class Command(BaseCommand):
                     perfil_id_antigo = usuario_antigo.get('perfil_id')
                     novo_perfil_id = id_map['perfis'].get(perfil_id_antigo)
 
-                    novo_usuario = Usuario.objects.create_user(
+                    # CORREÇÃO: Cria o usuário e define a senha separadamente para garantir o hash correto.
+                    novo_usuario = Usuario.objects.create(
                         username=username,
                         email=usuario_antigo.get('email'),
-                        password=usuario_antigo.get('password'), # A senha já deve estar hashed
                         first_name=usuario_antigo.get('first_name', ''),
                         last_name=usuario_antigo.get('last_name', ''),
                         is_staff=usuario_antigo.get('is_staff', False),
@@ -132,6 +132,11 @@ class Command(BaseCommand):
                         perfil_id=novo_perfil_id,
                         cpf=usuario_antigo.get('cpf')
                     )
+                    novo_usuario.set_password('suasenhatemporaria123') # Define uma senha temporária
+                    novo_usuario.save()
+                    
+                    self.stdout.write(f"  Usuário '{username}' criado com senha temporária. Por favor, instrua-o a redefini-la.")
+
                     id_map['usuarios'][usuario_antigo['id']] = novo_usuario.id
                 
                 self.stdout.write(f"{len(usuarios_antigos)} usuários processados.")
@@ -175,4 +180,3 @@ class Command(BaseCommand):
                 cursor.close()
                 conn.close()
                 self.stdout.write("Conexão com o banco antigo fechada.")
-

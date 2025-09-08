@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Record PAP - Internet Fibra Ótica</title>
     <style>
+        /* Seus estilos permanecem os mesmos */
         * {
             margin: 0;
             padding: 0;
@@ -292,6 +293,16 @@
             color: black;
             text-decoration: none;
         }
+        /* Estilo para a mensagem de erro */
+        #error-message {
+            color: #dc3545;
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            padding: 0.75rem 1.25rem;
+            margin-top: 1rem;
+            border-radius: 0.25rem;
+            display: none; /* Inicia oculto */
+        }
     </style>
 </head>
 <body>
@@ -318,16 +329,17 @@
     </header>
 
     <div id="loginModal" class="modal">
-    <div class="modal-content">
-        <span class="close">&times;</span>
-        <h2>Login</h2>
-        <form id="loginForm">
-            <input type="text" id="username" name="username" placeholder="Usuário" required>
-            <input type="password" id="password" name="password" placeholder="Senha" required>
-            <button type="submit">Entrar</button>
-        </form>
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Login</h2>
+            <form id="loginForm">
+                <input type="text" id="username" name="username" placeholder="Usuário" required>
+                <input type="password" id="password" name="password" placeholder="Senha" required>
+                <button type="submit">Entrar</button>
+            </form>
+            <div id="error-message"></div>
+        </div>
     </div>
-</div>
 
     <section id="inicio" class="hero-section">
         <div class="hero-content">
@@ -363,37 +375,25 @@
         <p><a href="#">Política de Privacidade</a> | <a href="#">Termos de Uso</a></p>
     </footer>
 
-<script>
-    // --- CORREÇÃO APLICADA AQUI ---
-    const isLocal = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
-    const apiUrl = isLocal 
-    ? 'http://127.0.0.1:8000' : ''; // Em produção, a URL base é vazia
 
-
-    function jwt_decode(token) {
-        try {
-            return JSON.parse(atob(token.split('.')[1]));
-        } catch (e) {
-            return null;
-        }
-    }
-    
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="{% static 'js/auth.js' %}"></script>
+    <script>
     document.addEventListener('DOMContentLoaded', function() {
-        const token = localStorage.getItem('accessToken');
         const areaInternaBtn = document.getElementById('areaInternaButton');
-        
-        if (token) {
+        const modal = document.getElementById('loginModal');
+        const loginForm = document.getElementById('loginForm');
+        const closeBtn = document.querySelector('.modal .close');
+
+        // Verifica se já existe um token para decidir o link do botão "Área Interna"
+        if (localStorage.getItem('accessToken')) {
             areaInternaBtn.href = '/area-interna/';
         } else {
             areaInternaBtn.href = '#';
         }
 
-        const modal = document.getElementById('loginModal');
-        const loginForm = document.getElementById('loginForm');
-        const closeBtn = document.querySelector('.modal .close');
-        
-        // CORREÇÃO: Função showLoginModal movida para cima para ser acessada corretamente
         function showLoginModal(event) {
+            // Se o usuário já está logado, vai direto para a área interna
             if (areaInternaBtn.href.includes('/area-interna/')) {
                 window.location.href = '/area-interna/';
                 return;
@@ -402,58 +402,27 @@
             modal.style.display = 'flex';
         }
 
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get('next') === '/area-interna/') {
-            showLoginModal();
-        }
-
-        async function handleLogin(username, password) {
-            if (!username || !password) {
-                alert('Por favor, preencha o usuário e a senha.');
-                return;
-            }
-
-            try {
-                // CORREÇÃO: A URL é construída usando a variável apiUrl
-                const response = await fetch(`${apiUrl}/api/auth/login`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: username, password: password })
-                });
-                
-                if (!response.ok) {
-                    const data = await response.json().catch(() => null);
-                    throw new Error(data?.detail || `Erro ${response.status}: Não foi possível fazer login.`);
-                }
-
-                const data = await response.json();
-
-                // CORREÇÃO: Salvar os tokens antes de redirecionar
-                localStorage.setItem('accessToken', data.access);
-                localStorage.setItem('refreshToken', data.refresh);
-
-                const decodedToken = jwt_decode(data.access);
-                if (decodedToken && decodedToken.perfil) {
-                    localStorage.setItem('userProfile', decodedToken.perfil);
-                } else {
-                    localStorage.setItem('userProfile', 'Admin'); 
-                }
-                
-                modal.style.display = 'none';
-                window.location.href = '/area-interna/';
-
-            } catch (error) {
-                alert(`Erro de login: ${error.message}`);
-            }
-        }
-        
-        loginForm.addEventListener('submit', function(event) {
+        // PASSO 2: Atualizar a Página de Login (index.html)
+        loginForm.addEventListener('submit', async function(event) {
             event.preventDefault();
-            const username = document.getElementById('username').value.trim();
+
+            const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
-            handleLogin(username, password);
+            const errorMessageDiv = document.getElementById('error-message');
+
+            // Usa a nova função de login do auth.js
+            const sucesso = await login(username, password);
+
+            if (sucesso) {
+                // Se o login for bem-sucedido, redireciona para a área interna
+                window.location.href = '/area-interna/';
+            } else {
+                // Se falhar, exibe uma mensagem de erro
+                errorMessageDiv.textContent = 'Usuário ou senha inválidos.';
+                errorMessageDiv.style.display = 'block';
+            }
         });
-        
+
         areaInternaBtn.addEventListener('click', showLoginModal);
         closeBtn.addEventListener('click', () => { modal.style.display = 'none'; });
         window.addEventListener('click', function(event) {

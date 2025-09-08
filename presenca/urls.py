@@ -1,22 +1,28 @@
 # presenca/urls.py
-from django.urls import path
+
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
 from .views import (
-    MotivoAusenciaListCreate, 
-    PresencaListCreate, 
+    PresencaViewSet, 
+    MotivoViewSet, 
+    DiaNaoUtilViewSet,
     MinhaEquipeListView,
-    TodosUsuariosListView, # <-- 1. IMPORTE A NOVA VIEW
-    DiaNaoUtilListCreate,
-    DiaNaoUtilDestroy,
-    PresencaRetrieveUpdateDestroyView # <-- Importe a nova view
+    TodosUsuariosListView
 )
 
+# O DefaultRouter do Django REST Framework cria as rotas da API automaticamente
+# para os ViewSets. Ele vai gerar as URLs para listagem, detalhe, criação, etc.
+router = DefaultRouter()
+router.register(r'presencas', PresencaViewSet, basename='presenca')
+router.register(r'motivos', MotivoViewSet, basename='motivo')
+router.register(r'dias-nao-uteis', DiaNaoUtilViewSet, basename='dianaoutil')
+
+# As urlpatterns da aplicação 'presenca'
 urlpatterns = [
-    path('motivos/', MotivoAusenciaListCreate.as_view(), name='motivo-list-create'),
-    path('presencas/', PresencaListCreate.as_view(), name='presenca-list-create'),
-    # --- ADICIONE A NOVA ROTA PARA EDIÇÃO/DELEÇÃO ---
-    path('presencas/<int:pk>/', PresencaRetrieveUpdateDestroyView.as_view(), name='presenca-detail'),
+    # Inclui todas as rotas geradas pelo router (ex: /motivos/, /presencas/, etc.)
+    path('', include(router.urls)),
+    
+    # Rotas adicionais que não são baseadas em ViewSets
     path('minha-equipe/', MinhaEquipeListView.as_view(), name='minha-equipe'),
     path('todos-usuarios/', TodosUsuariosListView.as_view(), name='todos-usuarios'),
-    path('dias-nao-uteis/', DiaNaoUtilListCreate.as_view(), name='dias-nao-uteis-list-create'),
-    path('dias-nao-uteis/<int:pk>/', DiaNaoUtilDestroy.as_view(), name='dias-nao-uteis-destroy'),
 ]

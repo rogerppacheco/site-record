@@ -1,104 +1,121 @@
-# usuarios/views.py
-from rest_framework import generics, status
-from rest_framework.views import APIView
+# site-record/usuarios/views.py
+
+from django.contrib.auth import get_user_model
+from django.shortcuts import get_object_or_404
+from rest_framework import viewsets, status, views
+from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.views import TokenObtainPairView
-from .models import Usuario, Perfil, PermissaoPerfil # CORREÇÃO: Importa 'Usuario'
+
+# --- Importações dos seus módulos ---
+from .models import Perfil, PermissaoPerfil
 from .serializers import (
+    CustomTokenObtainPairSerializer,
     UsuarioSerializer,
     PerfilSerializer,
-    PermissaoPerfilSerializer,
-    MyTokenObtainPairSerializer
+    PermissaoPerfilSerializer
 )
-import logging
+from .permissions import CheckAPIPermission
 
-logger = logging.getLogger(__name__)
 
-class MyTokenObtainPairView(TokenObtainPairView):
-    serializer_class = MyTokenObtainPairSerializer
+# View para fornecer a lista de recursos disponíveis para permissão
+class RecursosListView(views.APIView):
+    permission_classes = [IsAuthenticated]
 
-class UserListCreateView(generics.ListCreateAPIView):
-    queryset = Usuario.objects.all() # CORREÇÃO: Usa 'Usuario'
+    def get(self, request, *args, **kwargs):
+        recursos = [
+            'clientes', 'dias_nao_uteis', 'formas_pagamento',
+            'motivos_pendencia', 'operadoras', 'osab', 'planos', 'presenca',
+            'regras_comissao', 'status_crm', 'usuarios', 'vendas',
+        ]
+        return Response(sorted(recursos))
+
+
+# View customizada para o login
+class LoginView(TokenObtainPairView):
+    serializer_class = CustomTokenObtainPairSerializer
+
+
+# ViewSet para o modelo de Usuário (com permissão dinâmica)
+class UsuarioViewSet(viewsets.ModelViewSet):
     serializer_class = UsuarioSerializer
+    permission_classes = [CheckAPIPermission]
+    resource_name = 'usuarios'
 
     def get_queryset(self):
-        queryset = super().get_queryset()
-        is_active = self.request.query_params.get('is_active')
-        if is_active is not None:
-            is_active_bool = is_active.lower() in ['true', '1']
-            queryset = queryset.filter(is_active=is_active_bool)
+        User = get_user_model()
+        queryset = User.objects.all().order_by('first_name')
+        is_active_param = self.request.query_params.get('is_active', None)
+        if is_active_param is not None:
+            is_active = is_active_param.lower() == 'true'
+            queryset = queryset.filter(is_active=is_active)
         return queryset
 
-class UserRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Usuario.objects.all() # CORREÇÃO: Usa 'Usuario'
-    serializer_class = UsuarioSerializer
+    @action(detail=True, methods=['put'], url_path='desativar')
+    def desativar(self, request, pk=None):
+        usuario = self.get_object()
+        usuario.is_active = False
+        usuario.save()
+        return Response({'status': 'usuário desativado'}, status=status.HTTP_200_OK)
 
-    def perform_destroy(self, instance):
-        instance.is_active = False
-        instance.save()
+    @action(detail=True, methods=['put'], url_path='reativar')
+    def reativar(self, request, pk=None):
+        usuario = self.get_object()
+        usuario.is_active = True
+        usuario.save()
+        return Response({'status': 'usuário reativado'}, status=status.HTTP_200_OK)
 
-# CÓDIGO NOVO E CORRIGIDO
-class UserReativarView(APIView):
-    def put(self, request, pk, format=None):  # <-- ALTERAÇÃO AQUI
-        try:
-            user = Usuario.objects.get(id=pk) # <-- E AQUI
-        except Usuario.DoesNotExist:
-            return Response({"error": "Usuário não encontrado."}, status=status.HTTP_404_NOT_FOUND)
 
-        user.is_active = True
-        user.save()
-        serializer = UsuarioSerializer(user)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-class SupervisoresListView(generics.ListAPIView):
-    serializer_class = UsuarioSerializer
-
-    def get_queryset(self):
-        return Usuario.objects.filter( # CORREÇÃO: Usa 'Usuario'
-            perfil__nome__in=['Diretoria', 'Gerente', 'Supervisor'],
-            is_active=True
-        )
-
-class PerfilListCreateView(generics.ListCreateAPIView):
-    queryset = Perfil.objects.all()
+# ViewSet para o modelo de Perfil
+class PerfilViewSet(viewsets.ModelViewSet):
+    queryset = Perfil.objects.all().order_by('nome')
     serializer_class = PerfilSerializer
+    permission_classes = [IsAuthenticated]
 
-class PerfilRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Perfil.objects.all()
-    serializer_class = PerfilSerializer
-    lookup_field = 'id'
+    # =========================================================================
+    # SUBSTITUA TODA A FUNÇÃO ABAIXO PELA VERSÃO CORRIGIDA
+    # =========================================================================
+    @action(detail=True, methods=['get', 'put'], url_path='permissoes')
+    def gerenciar_permissoes(self, request, pk=None):
+        perfil = self.get_object()
 
-class PerfilPermissoesView(APIView):
-    def get(self, request, pk, format=None):
-        permissoes = PermissaoPerfil.objects.filter(perfil_id=pk)
-        serializer = PermissaoPerfilSerializer(permissoes, many=True)
-        return Response(serializer.data)
+        if request.method == 'GET':
+            # Busca todas as permissões salvas para o perfil
+            permissoes = PermissaoPerfil.objects.filter(perfil=perfil)
+            # Retorna a lista de nomes de permissão (ex: ['can_view_clientes', 'can_add_vendas'])
+            # que é o formato que o frontend espera.
+            nomes_codificados = list(permissoes.values_list('recurso', flat=True))
+            return Response(nomes_codificados)
 
-    def put(self, request, pk, format=None):
-        try:
-            perfil = Perfil.objects.get(pk=pk)
-        except Perfil.DoesNotExist:
-            return Response({"error": "Perfil não encontrado."}, status=status.HTTP_404_NOT_FOUND)
+        if request.method == 'PUT':
+            # 1. Apaga todas as permissões antigas para começar do zero
+            PermissaoPerfil.objects.filter(perfil=perfil).delete()
 
-        PermissaoPerfil.objects.filter(perfil=perfil).delete()
-        permissoes_data = request.data
-        
-        if not isinstance(permissoes_data, list):
-             return Response({"error": "O corpo da requisição deve ser uma lista de permissões."}, status=status.HTTP_400_BAD_REQUEST)
+            # 2. Processa os novos dados enviados pela tabela do frontend
+            # Espera um formato como: {"permissoes": [{"recurso": "clientes", "acao": "view", "ativo": true}, ...]}
+            permissoes_data = request.data.get('permissoes', [])
+            
+            permissoes_para_criar = []
 
-        permissoes_criadas = []
-        for item_data in permissoes_data:
-            permissoes_criadas.append(
-                PermissaoPerfil(
-                    perfil=perfil,
-                    recurso=item_data.get('recurso'),
-                    pode_ver=item_data.get('pode_ver', False),
-                    pode_criar=item_data.get('pode_criar', False),
-                    pode_editar=item_data.get('pode_editar', False),
-                    pode_excluir=item_data.get('pode_excluir', False)
-                )
-            )
-        
-        PermissaoPerfil.objects.bulk_create(permissoes_criadas)
-        serializer = PermissaoPerfilSerializer(permissoes_criadas, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+            for p_data in permissoes_data:
+                # Apenas cria a permissão se a checkbox estiver marcada ("ativo": true)
+                if p_data.get('ativo'):
+                    recurso = p_data.get('recurso')
+                    acao = p_data.get('acao')
+                    
+                    if recurso and acao:
+                        # Monta o nome completo da permissão (codename), ex: "can_view_clientes"
+                        codename = f"can_{acao}_{recurso}"
+                        
+                        # Adiciona a nova permissão a uma lista para ser salva no banco de dados
+                        permissoes_para_criar.append(
+                            PermissaoPerfil(perfil=perfil, recurso=codename)
+                        )
+
+            # 3. Salva todas as novas permissões no banco de dados de uma só vez (mais eficiente)
+            if permissoes_para_criar:
+                PermissaoPerfil.objects.bulk_create(permissoes_para_criar)
+
+            # Retorna um status de sucesso
+            return Response({'status': 'Permissões atualizadas com sucesso'}, status=status.HTTP_201_CREATED)

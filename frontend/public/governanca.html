@@ -1,3 +1,4 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -6,12 +7,41 @@
     <title>Governança - Record PAP</title>
     <style>
         .form-group textarea {
-    padding: 0.75rem;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    font-size: 1rem;
-    font-family: Arial, sans-serif;
-}
+            padding: 0.75rem;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 1rem;
+            font-family: Arial, sans-serif;
+        }
+        .modal-overlay {
+            display: none; /* Inicia oculto */
+            position: fixed; /* Fica por cima de todo o conteúdo */
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.6); /* Fundo semi-transparente */
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background-color: #fff;
+            margin: 10% auto;
+            padding: 2rem;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 600px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+        .modal-actions {
+            margin-top: 1.5rem;
+            text-align: right;
+            display: flex;
+            gap: 1rem;
+            justify-content: flex-end;
+        }
         body { font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; }
         header { background-color: #fff; padding: 1rem 2rem; box-shadow: 0 2px 5px rgba(0,0,0,0.2); position: sticky; top: 0; z-index: 1000; }
         .header-container { max-width: 95%; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; }
@@ -84,15 +114,15 @@
 <body>
 
     <header>
-    <div class="header-container">
-        <img src="/static/logo.png" alt="Record PAP Logo" class="logo" onclick="window.location.href='/'">
-        <nav>
-            <ul>
-                <li><a href="/area-interna/">Área Interna</a></li>
-                <li><button onclick="logout()" class="action-button logout-button">Sair</button></li>
-            </ul>
-        </nav>
-    </div>
+        <div class="header-container">
+            <img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo" onclick="window.location.href='/'">
+            <nav>
+                <ul>
+                    <li><a href="/area-interna/">Área Interna</a></li>
+                    <li><button onclick="logout()" class="action-button logout-button">Sair</button></li>
+                </ul>
+            </nav>
+        </div>
     </header>
 
 <div class="main-container">
@@ -102,7 +132,7 @@
             <li onclick="mostrarSecao('usuarios', this)">Gestão de Usuários</li>
             <li onclick="mostrarSecao('perfis', this)">Gestão de Perfis</li>
             <li onclick="mostrarSecao('comissionamento', this)">Gestão de Comissionamento</li>
-            <li onclick="mostrarSecao('cadastros_gerais', this)">Cadastros Gerais</li> 
+            <li onclick="mostrarSecao('cadastros_gerais', this)">Cadastros Gerais</li>
             <li onclick="mostrarSecao('motivos', this)">Gestão de Motivos</li>
             <li onclick="mostrarSecao('feriados', this)">Gestão de Feriados</li>
             <li onclick="mostrarSecao('relatorios', this)">Relatórios</li>
@@ -128,7 +158,7 @@
                         <div class="form-group"><label for="valor_passagem">Auxílio Passagem (diário)</label><input type="number" id="valor_passagem" step="0.01" placeholder="Ex: 9.60"></div>
                         <div class="form-group"><label for="chave_pix">Chave PIX</label><input type="text" id="chave_pix" placeholder="Chave PIX do usuário"></div>
                         <div class="form-group"><label for="nome_da_conta">Nome da Conta (PIX)</label><input type="text" id="nome_da_conta" placeholder="Nome do titular da conta PIX"></div>
-                        
+
                         <div class="form-group"><label for="meta_comissao">Meta de Comissão (Vendas/Mês)</label><input type="number" id="meta_comissao" placeholder="Ex: 20"></div>
                         <div class="form-group"><label for="desconto_boleto">Desconto por Boleto (R$)</label><input type="number" id="desconto_boleto" step="0.01" placeholder="Ex: 5.00"></div>
                         <div class="form-group"><label for="desconto_inclusao_viabilidade">Desconto Inclusão Viab. (R$)</label><input type="number" id="desconto_inclusao_viabilidade" step="0.01"></div>
@@ -249,7 +279,7 @@
                 </table>
             </div>
         </section>
-        
+
         <section id="cadastros_gerais-section" class="content-section">
             <h2>Cadastros Gerais do CRM</h2>
             <nav class="tab-nav">
@@ -259,7 +289,7 @@
                 <button onclick="openTab(event, 'status')">Status</button>
                 <button onclick="openTab(event, 'pendencias')">Motivos de Pendência</button>
             </nav>
-        
+
             <div id="operadoras" class="tab-content active">
                 <h2>Gestão de Operadoras</h2>
                 <div class="form-container">
@@ -303,7 +333,7 @@
                     </table>
                 </div>
             </div>
-        
+
             <div id="planos" class="tab-content">
                 <h2>Gestão de Planos</h2>
                 <div class="form-container">
@@ -364,21 +394,21 @@
                     <button id="btn-salvar-forma-pagamento" class="btn">Adicionar Forma de Pagamento</button>
                 </div>
             </div>
-            
+
             <div id="status" class="tab-content">
                 <h2>Gestão de Status do CRM</h2>
                 <div class="form-container">
-                     <form id="form-status">
-                        <input type="hidden" id="status_id">
-                        <div class="form-grid">
-                            <div class="form-group"><label for="status_nome">Nome do Status</label><input type="text" id="status_nome" required></div>
-                            <div class="form-group"><label for="status_tipo">Tipo de Status</label><select id="status_tipo" required><option value="Tratamento">Tratamento</option><option value="Esteira">Esteira</option><option value="Comissionamento">Comissionamento</option></select></div>
-                            <div class="form-group" id="status_estado_group"><label for="status_estado">Estado</label><input type="text" id="status_estado" placeholder="Ex: Na fila de tratamento"></div>
-                            <div class="form-group"><label for="status_cor">Cor</label><input type="color" id="status_cor" value="#FFFFFF" style="width: 100%; height: 45px;"></div>
-                        </div>
-                        <button type="submit" class="btn">Salvar Status</button>
-                        <button type="button" class="btn btn-cancel" onclick="resetFormStatus()">Cancelar</button>
-                    </form>
+                       <form id="form-status">
+                            <input type="hidden" id="status_id">
+                            <div class="form-grid">
+                                <div class="form-group"><label for="status_nome">Nome do Status</label><input type="text" id="status_nome" required></div>
+                                <div class="form-group"><label for="status_tipo">Tipo de Status</label><select id="status_tipo" required><option value="Tratamento">Tratamento</option><option value="Esteira">Esteira</option><option value="Comissionamento">Comissionamento</option></select></div>
+                                <div class="form-group" id="status_estado_group"><label for="status_estado">Estado</label><input type="text" id="status_estado" placeholder="Ex: Na fila de tratamento"></div>
+                                <div class="form-group"><label for="status_cor">Cor</label><input type="color" id="status_cor" value="#FFFFFF" style="width: 100%; height: 45px;"></div>
+                            </div>
+                            <button type="submit" class="btn">Salvar Status</button>
+                            <button type="button" class="btn btn-cancel" onclick="resetFormStatus()">Cancelar</button>
+                        </form>
                 </div>
                 <h3>Status Cadastrados</h3>
                 <table>
@@ -390,15 +420,15 @@
             <div id="pendencias" class="tab-content">
                 <h2>Gestão de Motivos de Pendência</h2>
                  <div class="form-container">
-                     <form id="form-pendencia">
-                        <input type="hidden" id="pendencia_id">
-                        <div class="form-grid">
-                            <div class="form-group"><label for="pendencia_nome">Nome da Pendência</label><input type="text" id="pendencia_nome" required></div>
-                            <div class="form-group"><label for="pendencia_tipo">Tipo de Pendência</label><input type="text" id="pendencia_tipo" placeholder="Ex: Documentação, Financeiro" required></div>
-                        </div>
-                        <button type="submit" class="btn">Salvar Motivo</button>
-                        <button type="button" class="btn btn-cancel" onclick="resetFormPendencia()">Cancelar</button>
-                    </form>
+                       <form id="form-pendencia">
+                            <input type="hidden" id="pendencia_id">
+                            <div class="form-grid">
+                                <div class="form-group"><label for="pendencia_nome">Nome da Pendência</label><input type="text" id="pendencia_nome" required></div>
+                                <div class="form-group"><label for="pendencia_tipo">Tipo de Pendência</label><input type="text" id="pendencia_tipo" placeholder="Ex: Documentação, Financeiro" required></div>
+                            </div>
+                            <button type="submit" class="btn">Salvar Motivo</button>
+                            <button type="button" class="btn btn-cancel" onclick="resetFormPendencia()">Cancelar</button>
+                        </form>
                 </div>
                 <h3>Motivos Cadastrados</h3>
                 <table>
@@ -420,7 +450,31 @@
                 <button id="btn-salvar-motivo" class="btn">Adicionar Motivo</button>
             </div>
         </section>
-        
+        <div id="modal-edicao-motivo" class="modal-overlay" style="display: none;">
+    <div class="modal-content">
+        <h3>Editar Motivo de Ausência</h3>
+        <form id="form-edicao-motivo">
+            <input type="hidden" id="motivo-id-input">
+
+            <div class="form-group">
+                <label for="motivo-nome-input">Nome do Motivo</label>
+                <input type="text" id="motivo-nome-input" required>
+            </div>
+            <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="motivo-desconto-input" style="width: auto;">
+                    Gera Desconto
+                </label>
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" class="btn btn-cancel" onclick="fecharModalEdicaoMotivo()">Cancelar</button>
+                <button type="submit" class="btn">Salvar Alterações</button>
+            </div>
+        </form>
+    </div>
+</div>
+
         <section id="feriados-section" class="content-section">
             <h2>Gestão de Feriados e Dias Não Úteis</h2>
             <div class="form-inline">
@@ -433,7 +487,7 @@
                 <tbody id="lista-feriados"></tbody>
             </table>
         </section>
-        
+
         <section id="relatorios-section" class="content-section">
             <h2>Relatórios Financeiros</h2>
             <div class="form-grid">
@@ -475,13 +529,11 @@
     <p><a href="politica-de-privacidade.html">Política de Privacidade</a> | <a href="#">Termos de Uso</a></p>
 </footer>
 
+<script src="{% static 'js/auth.js' %}"></script>
 <script>
-    // --- CORREÇÃO APLICADA AQUI ---
-    const isLocal = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
     const apiUrl = '';
-    // --- FIM DA CORREÇÃO ---
 
-    const token = localStorage.getItem('accessToken');
+    // Utiliza o token do localStorage, que será gerenciado pelo auth.js e pela apiFetch.
     const userProfile = localStorage.getItem('userProfile');
 
     async function apiFetch(endpoint, options = {}) {
@@ -489,12 +541,29 @@
             'Content-Type': 'application/json',
             ...options.headers,
         };
+        
+        // Pega o token mais recente do localStorage antes de cada chamada.
+        const token = localStorage.getItem('accessToken');
         if (token) {
             headers['Authorization'] = `Bearer ${token}`;
         }
-        
-        // --- CORREÇÃO AQUI para construir a URL completa corretamente ---
+
         const response = await fetch(`${apiUrl}/api${endpoint}`, { ...options, headers });
+
+        let responseData = {};
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.indexOf("application/json") !== -1) {
+             try {
+                responseData = await response.clone().json(); 
+             } catch (e) {
+                console.error("Não foi possível parsear o corpo da resposta como JSON.", e);
+             }
+        }
+
+        if (responseData && responseData.token) {
+            localStorage.setItem('accessToken', responseData.token);
+            console.log('Token de acesso atualizado a partir do corpo da resposta!');
+        }
 
         if (response.status === 401) {
             alert('Sua sessão expirou ou o token é inválido. Por favor, faça login novamente.');
@@ -502,23 +571,24 @@
             throw new Error('Não autorizado');
         }
         if (!response.ok) {
-            const errorData = await response.json();
+            const errorData = responseData || await response.text();
             const errorMessage = errorData.detail || JSON.stringify(errorData).replace(/["{}[\]]/g, ' ');
             throw new Error(errorMessage);
         }
         if (response.status === 204) {
             return null;
         }
-        return response.json();
+        
+        return responseData;
     }
 
-    if (!token) {
+    if (!localStorage.getItem('accessToken')) {
          alert('Acesso negado. Faça o login para continuar.');
          window.location.href = '/';
     }
     if (userProfile !== 'Diretoria' && userProfile !== 'Admin') {
-        alert('Acesso negado. Você não tem permissão para ver esta página.');
-        window.location.href = '/area-interna/';
+         alert('Acesso negado. Você não tem permissão para ver esta página.');
+         window.location.href = '/area-interna/';
     }
 
     // --- LÓGICA GERAL DA PÁGINA ---
@@ -530,7 +600,7 @@
             menuItem.classList.add('active');
         }
     }
-    
+
     function openTab(evt, tabName) {
         const parentSection = evt.currentTarget.closest('.content-section');
         parentSection.querySelectorAll('.tab-content').forEach(tabcontent => {
@@ -573,21 +643,19 @@
     async function carregarUsuarios(status = 'ativos') {
         try {
             const usuarios = await apiFetch(`/usuarios/?is_active=${status === 'ativos'}`);
-            userListBody.innerHTML = ''; 
+            userListBody.innerHTML = '';
             if (status === 'ativos') {
-    userListHeader.innerHTML = '<th>Nome</th><th>E-mail</th><th>Perfil</th><th>Líder Imediato</th><th>Ações</th>';
-    usuarios.forEach(user => {
-        const supervisorDisplay = user.supervisor_nome || 'N/A';
-        // --- CORREÇÃO APLICADA AQUI ---
-        userListBody.innerHTML += `<tr><td>${user.nome_completo}</td><td>${user.email}</td><td>${user.perfil_nome}</td><td>${supervisorDisplay}</td><td class="actions-cell"><button class="btn-edit" title="Editar" onclick='iniciarEdicao(${JSON.stringify(user)})'>Editar</button><button class="btn-delete" title="Inativar" onclick="inativarUsuario(${user.id})">Inativar</button></td></tr>`;
-    });
-} else {  
-    userListHeader.innerHTML = '<th>Nome</th><th>E-mail</th><th>Perfil</th><th>Ações</th>';
-    usuarios.forEach(user => {
-        // --- CORREÇÃO APLICADA AQUI TAMBÉM ---
-        userListBody.innerHTML += `<tr><td>${user.nome_completo}</td><td>${user.email}</td><td>${user.perfil_nome}</td><td class="actions-cell"><button class="btn-reactivate" title="Reativar" onclick="reativarUsuario(${user.id})">Reativar</button></td></tr>`;
-    });
-}
+                userListHeader.innerHTML = '<th>Nome</th><th>E-mail</th><th>Perfil</th><th>Líder Imediato</th><th>Ações</th>';
+                usuarios.forEach(user => {
+                    const supervisorDisplay = user.supervisor_nome || 'N/A';
+                    userListBody.innerHTML += `<tr><td>${user.nome_completo}</td><td>${user.email}</td><td>${user.perfil_nome}</td><td>${supervisorDisplay}</td><td class="actions-cell"><button class="btn-edit" title="Editar" onclick='iniciarEdicao(${JSON.stringify(user)})'>Editar</button><button class="btn-delete" title="Inativar" onclick="inativarUsuario(${user.id})">Inativar</button></td></tr>`;
+                });
+            } else {
+                userListHeader.innerHTML = '<th>Nome</th><th>E-mail</th><th>Perfil</th><th>Ações</th>';
+                usuarios.forEach(user => {
+                    userListBody.innerHTML += `<tr><td>${user.nome_completo}</td><td>${user.email}</td><td>${user.perfil_nome}</td><td class="actions-cell"><button class="btn-reactivate" title="Reativar" onclick="reativarUsuario(${user.id})">Reativar</button></td></tr>`;
+                });
+            }
         } catch (error) { console.error("Erro ao carregar usuários:", error); }
     }
 
@@ -598,10 +666,12 @@
             const perfis = await apiFetch('/perfis/');
             perfis.forEach(perfil => selectPerfil.add(new Option(perfil.nome, perfil.id)));
         } catch (error) { console.error('Erro ao carregar perfis no form:', error); }
+        /*
         try {
-            const supervisores = await apiFetch('/supervisores/');
+            const supervisores = await apiFetch('/presenca/supervisores/');
             supervisores.forEach(sup => selectSupervisor.add(new Option(sup.nome_completo, sup.id)));
         } catch (error) { console.error('Erro ao carregar supervisores:', error); }
+        */
     }
 
     function iniciarEdicao(user) {
@@ -609,21 +679,18 @@
         formTitle.textContent = 'Editando Usuário';
         userIdInput.value = user.id;
         document.getElementById('nome_completo').value = user.nome_completo;
-        document.getElementById('cpf').value = user.cpf || ''; // Adicionado || '' para evitar 'null'
+        document.getElementById('cpf').value = user.cpf || '';
         document.getElementById('email').value = user.email;
         document.getElementById('username').value = user.username;
-        
-        // --- CORREÇÃO PRINCIPAL AQUI ---
-        // Com o serializer ajustado, a API agora envia 'perfil' e 'supervisor' como os IDs.
-        selectPerfil.value = user.perfil; 
-        selectSupervisor.value = user.supervisor || ''; // O || '' garante que, se não houver supervisor, a opção "Nenhum" seja selecionada.
-        
-        // --- O resto da sua função continua igual ---
+
+        selectPerfil.value = user.perfil;
+        selectSupervisor.value = user.supervisor || '';
+
         document.getElementById('valor_almoco').value = user.valor_almoco;
         document.getElementById('valor_passagem').value = user.valor_passagem;
         document.getElementById('chave_pix').value = user.chave_pix || '';
         document.getElementById('nome_da_conta').value = user.nome_da_conta || '';
-        
+
         document.getElementById('meta_comissao').value = user.meta_comissao;
         document.getElementById('desconto_boleto').value = user.desconto_boleto;
         document.getElementById('desconto_inclusao_viabilidade').value = user.desconto_inclusao_viabilidade;
@@ -635,7 +702,7 @@
         document.getElementById('senha').required = false;
         window.scrollTo(0, 0);
     }
-    
+
     userForm.addEventListener('submit', async function(e) {
         e.preventDefault();
         const id = userIdInput.value;
@@ -646,13 +713,13 @@
         const nomeParts = nomeCompleto.split(' ');
         const firstName = nomeParts.shift();
         const lastName = nomeParts.join(' ');
-        
+
         const body = {
             first_name: firstName,
             last_name: lastName,
             cpf: document.getElementById('cpf').value,
             email: document.getElementById('email').value,
-            perfil: selectPerfil.value, // Alterado de 'perfil_id' para 'perfil'
+            perfil: selectPerfil.value,
             username: document.getElementById('username').value,
             supervisor: selectSupervisor.value || null,
             valor_almoco: document.getElementById('valor_almoco').value,
@@ -673,7 +740,7 @@
                 body.password = senha;
             }
         } else {
-            body.password = senha; // Corrigido de 'senha' para 'password'
+            body.password = senha;
             if (!body.password) { return alert('A senha é obrigatória para novos usuários.'); }
         }
         try {
@@ -685,7 +752,7 @@
             resetForm();
             mostrarListaUsuarios('ativos', document.querySelector('#usuarios-section .tab-nav button.active'));
             carregarDadosParaFormulario();
-        } catch (error) { 
+        } catch (error) {
             console.error('Detalhes do erro ao salvar usuário:', error);
             alert(`Erro: ${error.message}`);
         }
@@ -697,7 +764,7 @@
             await apiFetch(`/usuarios/${id}/`, { method: 'DELETE' });
             alert('Usuário inativado com sucesso.');
             mostrarListaUsuarios('ativos', document.querySelector('#usuarios-section .tab-nav button.active'));
-        } catch(error) { 
+        } catch(error) {
             console.error('Detalhes do erro ao inativar usuário:', error);
             alert(`Erro: ${error.message}`);
         }
@@ -709,7 +776,7 @@
             await apiFetch(`/usuarios/${id}/reativar/`, { method: 'PUT' });
             alert('Usuário reativado com sucesso.');
             carregarUsuarios('inativos');
-        } catch(error) { 
+        } catch(error) {
             console.error('Detalhes do erro ao reativar usuário:', error);
             alert(`Erro: ${error.message}`);
         }
@@ -723,15 +790,15 @@
     const perfilIdInput = document.getElementById('perfil-id-input');
     const perfilNomeInput = document.getElementById('perfil-nome-input');
     const perfilDescricaoInput = document.getElementById('perfil-descricao-input');
-    // Substitua a função carregarPerfis inteira por esta:
+
     async function carregarPerfis() {
-    try {
-        const perfis = await apiFetch('/perfis/');
-        listaPerfisUl.innerHTML = '';
-        perfis.forEach(perfil => {
-            const li = document.createElement('li');
-            const descricao = perfil.descricao ? `<small style="color: #666;">${perfil.descricao}</small>` : '<small style="color: #999;">Sem descrição</small>';
-            li.innerHTML = `
+        try {
+            const perfis = await apiFetch('/perfis/');
+            listaPerfisUl.innerHTML = '';
+            perfis.forEach(perfil => {
+                const li = document.createElement('li');
+                const descricao = perfil.descricao ? `<small style="color: #666;">${perfil.descricao}</small>` : '<small style="color: #999;">Sem descrição</small>';
+                li.innerHTML = `
                 <div>
                     <span>${perfil.nome}</span>
                     <br>
@@ -743,10 +810,10 @@
                     <button class="btn-delete" onclick="excluirPerfil(${perfil.id})">Excluir</button>
                 </div>
             `;
-            listaPerfisUl.appendChild(li);
-        });
-    } catch (error) { console.error('Erro ao carregar perfis:', error); }
-}
+                listaPerfisUl.appendChild(li);
+            });
+        } catch (error) { console.error('Erro ao carregar perfis:', error); }
+    }
 
     document.getElementById('btn-salvar-perfil').addEventListener('click', async () => {
         const nome = document.getElementById('novo-perfil-nome').value.trim();
@@ -756,21 +823,18 @@
             document.getElementById('novo-perfil-nome').value = '';
             await carregarPerfis();
             await carregarDadosParaFormulario();
-        } catch (error) { 
+        } catch (error) {
             console.error('Detalhes do erro ao salvar perfil:', error);
             alert(`Erro: ${error.message}`);
         }
     });
 
     function editarPerfil(perfil) {
-    // Preenche os campos do modal com os dados do perfil selecionado
-    document.getElementById('perfil-id-input').value = perfil.id;
-    document.getElementById('perfil-nome-input').value = perfil.nome;
-    document.getElementById('perfil-descricao-input').value = perfil.descricao || ''; // Usa '' se a descrição for nula
-
-    // Exibe o modal
-    document.getElementById('modal-edicao-perfil').style.display = 'flex';
-}
+        document.getElementById('perfil-id-input').value = perfil.id;
+        document.getElementById('perfil-nome-input').value = perfil.nome;
+        document.getElementById('perfil-descricao-input').value = perfil.descricao || '';
+        document.getElementById('modal-edicao-perfil').style.display = 'flex';
+    }
 
     async function excluirPerfil(id) {
         if (!confirm('Tem certeza que deseja excluir este perfil? Esta ação não pode ser desfeita.')) return;
@@ -778,26 +842,61 @@
             await apiFetch(`/perfis/${id}/`, { method: 'DELETE' });
             await carregarPerfis();
             await carregarDadosParaFormulario();
-        } catch (error) { 
+        } catch (error) {
             console.error('Detalhes do erro ao excluir perfil:', error);
             alert(`Erro: ${error.message}`);
         }
     }
 
+    function fecharModalEdicao() {
+        document.getElementById('modal-edicao-perfil').style.display = 'none';
+    }
+
+    document.getElementById('form-edicao-perfil').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const id = document.getElementById('perfil-id-input').value;
+        const nome = document.getElementById('perfil-nome-input').value.trim();
+        const descricao = document.getElementById('perfil-descricao-input').value.trim();
+
+        if (!nome) {
+            alert('O nome do perfil é obrigatório.');
+            return;
+        }
+
+        try {
+            await apiFetch(`/perfis/${id}/`, {
+                method: 'PUT',
+                body: JSON.stringify({
+                    nome: nome,
+                    descricao: descricao
+                })
+            });
+            alert('Perfil atualizado com sucesso!');
+            fecharModalEdicao();
+            await carregarPerfis();
+            await carregarDadosParaFormulario();
+        } catch (error) {
+            console.error('Erro ao salvar edição do perfil:', error);
+            alert(`Erro: ${error.message}`);
+        }
+    });
+
     // --- LÓGICA DE GESTÃO DE MOTIVOS DE AUSÊNCIA ---
     const listaMotivosUl = document.getElementById('lista-motivos');
+
     async function carregarMotivos() {
         try {
-            const motivos = await apiFetch('/motivos/');
+            const motivos = await apiFetch('/presenca/motivos/');
             listaMotivosUl.innerHTML = '';
             motivos.forEach(motivo => {
                 const statusDesconto = motivo.gera_desconto ? '<span style="color:red;">(Gera Desconto)</span>' : '<span style="color:green;">(Não Gera Desconto)</span>';
                 const li = document.createElement('li');
                 li.innerHTML = `<span>${motivo.motivo} ${statusDesconto}</span>
-                    <div class="generic-list-actions">
-                        <button class="btn-edit" onclick="editarMotivo(${motivo.id}, '${motivo.motivo}')">Editar</button>
-                        <button class="btn-delete" onclick="excluirMotivo(${motivo.id})">Excluir</button>
-                    </div>`;
+                        <div class="generic-list-actions">
+                            <button class="btn-edit" onclick='editarMotivo(${JSON.stringify(motivo)})'>Editar</button>
+                            <button class="btn-delete" onclick="excluirMotivo(${motivo.id})">Excluir</button>
+                        </div>`;
                 listaMotivosUl.appendChild(li);
             });
         } catch (error) { console.error('Erro ao carregar motivos:', error); }
@@ -808,51 +907,42 @@
         const gera_desconto = document.getElementById('novo-motivo-desconto').checked;
         if (!motivo) return alert('Por favor, digite um nome para o motivo.');
         try {
-            await apiFetch('/motivos/', {
+            await apiFetch('/presenca/motivos/', {
                 method: 'POST',
                 body: JSON.stringify({ motivo, gera_desconto })
             });
             document.getElementById('novo-motivo-nome').value = '';
             document.getElementById('novo-motivo-desconto').checked = true;
             carregarMotivos();
-        } catch (error) { 
+        } catch (error) {
             console.error('Detalhes do erro ao salvar motivo:', error);
             alert(`Erro: ${error.message}`);
         }
     });
 
-    async function editarMotivo(id, nomeAtual) {
-        const novoNome = prompt('Digite o novo nome para o motivo:', nomeAtual);
-        if (!novoNome || novoNome.trim() === '') return;
-        const gera_desconto = confirm('Este motivo deve gerar desconto no pagamento? \n\nClique em "OK" para SIM, ou "Cancelar" para NÃO.');
-        try {
-            await apiFetch(`/motivos/${id}/`, {
-                method: 'PUT',
-                body: JSON.stringify({ motivo: novoNome.trim(), gera_desconto })
-            });
-            carregarMotivos();
-        } catch (error) { 
-            console.error('Detalhes do erro ao editar motivo:', error);
-            alert(`Erro: ${error.message}`);
-        }
+    async function editarMotivo(motivo) {
+        document.getElementById('motivo-id-input').value = motivo.id;
+        document.getElementById('motivo-nome-input').value = motivo.motivo;
+        document.getElementById('motivo-desconto-input').checked = motivo.gera_desconto;
+        document.getElementById('modal-edicao-motivo').style.display = 'flex';
     }
 
     async function excluirMotivo(id) {
         if (!confirm('Tem certeza que deseja excluir este motivo?')) return;
         try {
-            await apiFetch(`/motivos/${id}/`, { method: 'DELETE' });
+            await apiFetch(`/presenca/motivos/${id}/`, { method: 'DELETE' });
             carregarMotivos();
-        } catch (error) { 
+        } catch (error) {
             console.error('Detalhes do erro ao excluir motivo:', error);
             alert(`Erro: ${error.message}`);
         }
     }
-    
+
     // --- LÓGICA DE GESTÃO DE FERIADOS ---
     const listaFeriadosTbody = document.getElementById('lista-feriados');
     async function carregarFeriados() {
         try {
-            const feriados = await apiFetch('/dias-nao-uteis/');
+            const feriados = await apiFetch('/presenca/dias-nao-uteis/');
             listaFeriadosTbody.innerHTML = '';
             feriados.forEach(feriado => {
                 const dataFormatada = new Date(feriado.data).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
@@ -867,14 +957,14 @@
         const descricao = document.getElementById('novo-feriado-descricao').value.trim();
         if (!data || !descricao) return alert('A data e a descrição são obrigatórias.');
         try {
-            await apiFetch('/dias-nao-uteis/', {
+            await apiFetch('/presenca/dias-nao-uteis/', {
                 method: 'POST',
                 body: JSON.stringify({ data, descricao })
             });
             document.getElementById('novo-feriado-data').value = '';
             document.getElementById('novo-feriado-descricao').value = '';
             carregarFeriados();
-        } catch (error) { 
+        } catch (error) {
             console.error('Detalhes do erro ao salvar feriado:', error);
             alert(`Erro: ${error.message}`);
         }
@@ -883,14 +973,14 @@
     async function excluirFeriado(id) {
         if (!confirm('Tem certeza que deseja excluir este dia?')) return;
         try {
-            await apiFetch(`/dias-nao-uteis/${id}/`, { method: 'DELETE' });
+            await apiFetch(`/presenca/dias-nao-uteis/${id}/`, { method: 'DELETE' });
             carregarFeriados();
-        } catch (error) { 
+        } catch (error) {
             console.error('Detalhes do erro ao excluir feriado:', error);
             alert(`Erro: ${error.message}`);
         }
     }
-    
+
     // --- LÓGICA DE RELATÓRIOS ---
     async function gerarRelatorio(tipo) {
         const dataInicio = document.getElementById('data-inicio-relatorio').value;
@@ -899,7 +989,7 @@
 
         const container = document.getElementById('resultado-relatorio');
         container.innerHTML = '<p>Gerando relatório, aguarde...</p>';
-        
+
         let url = '';
         switch (tipo) {
             case 'previsao':
@@ -969,100 +1059,83 @@
     const btnSalvarPermissoes = document.getElementById('btn-salvar-permissoes');
     let perfilIdAtual = null;
 
-    const recursosDisponiveis = [
-        'operadoras', 'planos', 'formas_pagamento', 
-        'status_tratamento', 'status_esteira', 'status_comissionamento'
-    ];
+async function abrirModalPermissoes(perfilId, perfilNome) {
+    perfilIdAtual = perfilId;
+    modalPermissoesTitulo.textContent = `Permissões do Perfil: ${perfilNome}`;
+    permissoesContainer.innerHTML = '<p>Carregando recursos e permissões...</p>';
+    modalPermissoes.style.display = 'block';
 
-    async function abrirModalPermissoes(perfilId, perfilNome) {
-        perfilIdAtual = perfilId;
-        modalPermissoesTitulo.textContent = `Permissões do Perfil: ${perfilNome}`;
+    try {
+        const recursosDisponiveis = await apiFetch('/recursos/');
+        // A API agora retorna uma lista simples de strings, ex: ["can_view_clientes", "can_add_vendas"]
+        const permissoesSalvas = await apiFetch(`/perfis/${perfilId}/permissoes/`);
+        
+        // ✅ CORREÇÃO: Transforma a lista de strings em um Set para busca rápida. Não precisa mais do .map()
+        const permissoesAtivas = new Set(permissoesSalvas);
 
-        try {
-            const permissoesSalvas = await apiFetch(`/perfis/${perfilId}/permissoes/`);
+        let tabelaHtml = `
+            <table style="width:100%" id="permissoes-table">
+                <thead>
+                    <tr>
+                        <th>Recurso</th>
+                        <th>Visualizar</th>
+                        <th>Adicionar</th>
+                        <th>Modificar</th>
+                        <th>Excluir</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
 
-            const permissoesMap = permissoesSalvas.reduce((acc, p) => {
-                acc[p.recurso] = p;
-                return acc;
-            }, {});
+        recursosDisponiveis.forEach(recurso => {
+            tabelaHtml += `<tr><td>${recurso.replace(/_/g, ' ')}</td>`;
+            
+            ['view', 'add', 'change', 'delete'].forEach(acao => {
+                const codenameCompleto = `can_${acao}_${recurso}`;
+                const isChecked = permissoesAtivas.has(codenameCompleto);
+                tabelaHtml += `<td><input type="checkbox" data-recurso="${recurso}" data-acao="${acao}" ${isChecked ? 'checked' : ''}></td>`;
+            });
 
-            permissoesContainer.innerHTML = `
-                <table style="width:100%">
-                    <thead>
-                        <tr>
-                            <th>Recurso</th>
-                            <th>Ver</th>
-                            <th>Criar</th>
-                            <th>Editar</th>
-                            <th>Excluir</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${recursosDisponiveis.map(recurso => {
-                            const p = permissoesMap[recurso] || {};
-                            return `
-                            <tr>
-                                <td>${recurso.replace(/_/g, ' ')}</td>
-                                <td><input type="checkbox" data-recurso="${recurso}" data-acao="pode_ver" ${p.pode_ver ? 'checked' : ''}></td>
-                                <td><input type="checkbox" data-recurso="${recurso}" data-acao="pode_criar" ${p.pode_criar ? 'checked' : ''}></td>
-                                <td><input type="checkbox" data-recurso="${recurso}" data-acao="pode_editar" ${p.pode_editar ? 'checked' : ''}></td>
-                                <td><input type="checkbox" data-recurso="${recurso}" data-acao="pode_excluir" ${p.pode_excluir ? 'checked' : ''}></td>
-                            </tr>
-                        `}).join('')}
-                    </tbody>
-                </table>
-            `;
+            tabelaHtml += `</tr>`;
+        });
 
-            modalPermissoes.style.display = 'block';
-        } catch (error) {
-            console.error("Erro ao buscar permissões:", error);
-            alert("Não foi possível carregar as permissões.");
-        }
+        tabelaHtml += `</tbody></table>`;
+        permissoesContainer.innerHTML = tabelaHtml;
+
+    } catch (error) {
+        console.error("Erro ao carregar ou processar permissões:", error);
+        permissoesContainer.innerHTML = `<p style="color:red;">Ocorreu um erro ao processar as permissões. Verifique o console para mais detalhes.</p>`;
     }
+}
 
     btnSalvarPermissoes.addEventListener('click', async () => {
-        const checkboxes = permissoesContainer.querySelectorAll('input[type="checkbox"]');
-        const permissoesParaEnviar = [];
+        if (!perfilIdAtual) return;
 
-        const permissoesMap = {};
+        const checkboxes = permissoesContainer.querySelectorAll('input[type="checkbox"]');
+        const permissoesPayload = [];
 
         checkboxes.forEach(cb => {
-            const recurso = cb.dataset.recurso;
-            const acao = cb.dataset.acao;
-
-            if (!permissoesMap[recurso]) {
-                permissoesMap[recurso] = {
-                    perfil_id: perfilIdAtual,
-                    recurso: recurso,
-                    pode_ver: false,
-                    pode_criar: false,
-                    pode_editar: false,
-                    pode_excluir: false
-                };
-                permissoesParaEnviar.push(permissoesMap[recurso]);
-            }
-
-            permissoesMap[recurso][acao] = cb.checked;
+            permissoesPayload.push({
+                recurso: cb.dataset.recurso,
+                acao: cb.dataset.acao,
+                ativo: cb.checked
+            });
         });
 
         try {
-            console.log("Dados de permissões enviados:", permissoesParaEnviar);
-
             await apiFetch(`/perfis/${perfilIdAtual}/permissoes/`, {
                 method: 'PUT',
-                body: JSON.stringify(permissoesParaEnviar)
+                body: JSON.stringify({ permissoes: permissoesPayload })
             });
             alert('Permissões salvas com sucesso!');
             modalPermissoes.style.display = 'none';
         } catch (error) {
             console.error("Erro ao salvar permissões:", error);
-            alert(`Erro: ${error.message}`);
+            alert(`Erro ao salvar: ${error.message}`);
         }
     });
 
-
     // --- LÓGICA PARA CADASTROS GERAIS (CRM) ---
-    
     // ** LÓGICA DE GESTÃO DE OPERADORAS **
     const formOperadora = document.getElementById('form-operadora');
     const listaOperadoras = document.getElementById('lista-operadoras');
@@ -1073,8 +1146,7 @@
 
     async function carregarOperadoras() {
         try {
-            const operadoras = await apiFetch('/crm-cadastros/operadoras/');
-            
+            const operadoras = await apiFetch('/crm/operadoras/');
             listaOperadoras.innerHTML = '';
             operadoras.forEach(op => {
                 const tr = document.createElement('tr');
@@ -1104,7 +1176,7 @@
     formOperadora.addEventListener('submit', async (e) => {
         e.preventDefault();
         const id = operadoraIdInput.value;
-        const url = id ? `/crm-cadastros/operadoras/${id}/` : '/crm-cadastros/operadoras/';
+        const url = id ? `/crm/operadoras/${id}/` : '/crm/operadoras/';
         const method = id ? 'PUT' : 'POST';
 
         const body = JSON.stringify({
@@ -1135,7 +1207,7 @@
     async function deletarOperadora(id) {
         if (!confirm('Tem certeza que deseja excluir esta operadora?')) return;
         try {
-            await apiFetch(`/crm-cadastros/operadoras/${id}/`, { method: 'DELETE' });
+            await apiFetch(`/crm/operadoras/${id}/`, { method: 'DELETE' });
             alert('Operadora excluída com sucesso!');
             carregarOperadoras();
         } catch (error) {
@@ -1157,8 +1229,8 @@
     async function carregarPlanos() {
         try {
             const [planos, operadoras] = await Promise.all([
-                apiFetch('/crm-cadastros/planos/'),
-                apiFetch('/crm-cadastros/operadoras/')
+                apiFetch('/crm/planos/'),
+                apiFetch('/crm/operadoras/')
             ]);
 
             listaPlanos.innerHTML = '';
@@ -1194,7 +1266,7 @@
     formPlano.addEventListener('submit', async (e) => {
         e.preventDefault();
         const id = planoIdInput.value;
-        const url = id ? `/crm-cadastros/planos/${id}/` : '/crm-cadastros/planos/';
+        const url = id ? `/crm/planos/${id}/` : '/crm/planos/';
         const method = id ? 'PUT' : 'POST';
 
         const body = JSON.stringify({
@@ -1231,7 +1303,7 @@
     async function deletarPlano(id) {
         if (!confirm('Tem certeza que deseja excluir este plano?')) return;
         try {
-            await apiFetch(`/crm-cadastros/planos/${id}/`, { method: 'DELETE' });
+            await apiFetch(`/crm/planos/${id}/`, { method: 'DELETE' });
             alert('Plano excluído com sucesso!');
             carregarPlanos();
         } catch (error) {
@@ -1239,12 +1311,12 @@
             alert(`Erro: ${error.message}`);
         }
     }
-    
+
     // --- LÓGICA DE GESTÃO DE FORMAS DE PAGAMENTO ---
     const listaFormasPagamentoUl = document.getElementById('lista-formas-pagamento');
     async function carregarFormasPagamento() {
         try {
-            const formas = await apiFetch('/crm-cadastros/formas-pagamento/');
+            const formas = await apiFetch('/crm/formas-pagamento/');
             listaFormasPagamentoUl.innerHTML = '';
             formas.forEach(forma => {
                 const li = document.createElement('li');
@@ -1262,13 +1334,13 @@
         const nome = document.getElementById('nova-forma-pagamento-nome').value.trim();
         if (!nome) return alert('Por favor, digite um nome.');
         try {
-            await apiFetch('/crm-cadastros/formas-pagamento/', {
+            await apiFetch('/crm/formas-pagamento/', {
                 method: 'POST',
                 body: JSON.stringify({ nome: nome, status: true })
             });
             document.getElementById('nova-forma-pagamento-nome').value = '';
             carregarFormasPagamento();
-        } catch (error) { 
+        } catch (error) {
             alert(`Erro: ${error.message}`);
         }
     });
@@ -1276,12 +1348,12 @@
         const novoNome = prompt('Digite o novo nome:', nomeAtual);
         if (novoNome && novoNome.trim() !== '') {
             try {
-                await apiFetch(`/crm-cadastros/formas-pagamento/${id}/`, {
+                await apiFetch(`/crm/formas-pagamento/${id}/`, {
                     method: 'PUT',
                     body: JSON.stringify({ nome: novoNome.trim(), status: true })
                 });
                 carregarFormasPagamento();
-            } catch (error) { 
+            } catch (error) {
                 alert(`Erro: ${error.message}`);
             }
         }
@@ -1289,9 +1361,9 @@
     async function excluirFormaPagamento(id) {
         if (!confirm('Tem certeza que deseja excluir?')) return;
         try {
-            await apiFetch(`/crm-cadastros/formas-pagamento/${id}/`, { method: 'DELETE' });
+            await apiFetch(`/crm/formas-pagamento/${id}/`, { method: 'DELETE' });
             carregarFormasPagamento();
-        } catch (error) { 
+        } catch (error) {
             alert(`Erro: ${error.message}`);
         }
     }
@@ -1322,7 +1394,7 @@
 
     async function carregarStatus() {
         try {
-            const statusList = await apiFetch('/crm-cadastros/status/');
+            const statusList = await apiFetch('/crm/status/');
             listaStatusBody.innerHTML = '';
             statusList.forEach(s => {
                 const tr = document.createElement('tr');
@@ -1346,7 +1418,7 @@
     formStatus.addEventListener('submit', async (e) => {
         e.preventDefault();
         const id = statusIdInput.value;
-        const url = id ? `/crm-cadastros/status/${id}/` : '/crm-cadastros/status/';
+        const url = id ? `/crm/status/${id}/` : '/crm/status/';
         const method = id ? 'PUT' : 'POST';
 
         const body = {
@@ -1382,7 +1454,7 @@
     async function excluirStatus(id) {
         if (!confirm('Tem certeza que deseja excluir este status?')) return;
         try {
-            await apiFetch(`/crm-cadastros/status/${id}/`, { method: 'DELETE' });
+            await apiFetch(`/crm/status/${id}/`, { method: 'DELETE' });
             alert('Status excluído com sucesso!');
             carregarStatus();
         } catch (error) {
@@ -1401,10 +1473,10 @@
         formPendencia.reset();
         pendenciaIdInput.value = '';
     }
-    
+
     async function carregarMotivosPendencia() {
         try {
-            const pendencias = await apiFetch('/crm-cadastros/motivos-pendencia/');
+            const pendencias = await apiFetch('/crm/motivos-pendencia/');
             listaPendenciasBody.innerHTML = '';
             pendencias.forEach(p => {
                 const tr = document.createElement('tr');
@@ -1426,7 +1498,7 @@
     formPendencia.addEventListener('submit', async (e) => {
         e.preventDefault();
         const id = pendenciaIdInput.value;
-        const url = id ? `/crm-cadastros/motivos-pendencia/${id}/` : '/crm-cadastros/motivos-pendencia/';
+        const url = id ? `/crm/motivos-pendencia/${id}/` : '/crm/motivos-pendencia/';
         const method = id ? 'PUT' : 'POST';
 
         const body = {
@@ -1457,25 +1529,25 @@
     async function excluirMotivoPendencia(id) {
         if (!confirm('Tem certeza que deseja excluir este motivo?')) return;
         try {
-            await apiFetch(`/crm-cadastros/motivos-pendencia/${id}/`, { method: 'DELETE' });
+            await apiFetch(`/crm/motivos-pendencia/${id}/`, { method: 'DELETE' });
             alert('Motivo de pendência excluído com sucesso!');
             carregarMotivosPendencia();
         } catch (error) {
             alert(`Erro: ${error.message}`);
         }
     }
-    
+
     // --- LÓGICA DE GESTÃO DE COMISSIONAMENTO ---
     const formRegraComissao = document.getElementById('form-regra-comissao');
     const regraComissaoIdInput = document.getElementById('regra_comissao_id');
     const regraConsultorSelect = document.getElementById('regra_consultor_id');
     const regraPlanoSelect = document.getElementById('regra_plano_id');
     const listaRegrasComissaoBody = document.getElementById('lista-regras-comissao');
-    
+
     async function carregarDadosParaRegrasComissao() {
         try {
             const [planos, consultores] = await Promise.all([
-                apiFetch('/crm-cadastros/planos/'),
+                apiFetch('/crm/planos/'),
                 apiFetch('/usuarios/?is_active=true')
             ]);
 
@@ -1485,32 +1557,108 @@
             planos.forEach(plano => regraPlanoSelect.add(new Option(plano.nome, plano.id)));
 
             regraConsultorSelect.innerHTML = '<option value="">Selecione...</option>';
+
             if (Array.isArray(consultores)) {
                 consultores.forEach(user => {
-                    if (user.id && user.nome_completo) {
-                         regraConsultorSelect.add(new Option(user.nome_completo, user.id));
-                    } else {
-                         console.warn("Item de consultor inválido:", user);
+                    if (user && user.id && user.nome_completo) {
+                        regraConsultorSelect.add(new Option(user.nome_completo, user.id));
                     }
                 });
-            } else {
-                 console.error("Resposta de consultores não é um array:", consultores);
             }
-
-
         } catch (error) {
             console.error('Erro ao carregar dados para as regras de comissão:', error);
         }
     }
 
+    function resetFormRegraComissao() {
+        formRegraComissao.reset();
+        regraComissaoIdInput.value = '';
+    }
+
+    async function carregarRegrasComissao() {
+        try {
+            const regras = await apiFetch('/crm/regras-comissao/');
+            listaRegrasComissaoBody.innerHTML = '';
+            regras.forEach(regra => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${regra.consultor_nome}</td>
+                    <td>${regra.plano_nome}</td>
+                    <td>${regra.tipo_venda}</td>
+                    <td>${regra.tipo_cliente}</td>
+                    <td>R$ ${regra.valor_base}</td>
+                    <td>R$ ${regra.valor_acelerado}</td>
+                    <td class="actions-cell">
+                        <button class="btn-edit" onclick='editarRegraComissao(${JSON.stringify(regra)})'>Editar</button>
+                        <button class="btn-delete" onclick="excluirRegraComissao(${regra.id})">Excluir</button>
+                    </td>
+                `;
+                listaRegrasComissaoBody.appendChild(tr);
+            });
+        } catch (error) {
+            console.error('Erro ao carregar regras de comissão:', error);
+        }
+    }
+
+    function editarRegraComissao(regra) {
+        regraComissaoIdInput.value = regra.id;
+        document.getElementById('regra_consultor_id').value = regra.consultor;
+        document.getElementById('regra_plano_id').value = regra.plano;
+        document.getElementById('regra_tipo_venda').value = regra.tipo_venda;
+        document.getElementById('regra_tipo_cliente').value = regra.tipo_cliente;
+        document.getElementById('regra_valor_base').value = regra.valor_base;
+        document.getElementById('regra_valor_acelerado').value = regra.valor_acelerado;
+        window.scrollTo(0, 0);
+    }
+
+    async function excluirRegraComissao(id) {
+        if (!confirm('Tem certeza que deseja excluir esta regra de comissão?')) return;
+        try {
+            await apiFetch(`/crm/regras-comissao/${id}/`, { method: 'DELETE' });
+            alert('Regra excluída com sucesso!');
+            await carregarRegrasComissao();
+        } catch (error) {
+            alert(`Erro ao excluir regra: ${error.message}`);
+        }
+    }
+
+    formRegraComissao.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const id = regraComissaoIdInput.value;
+        const url = id ? `/crm/regras-comissao/${id}/` : '/crm/regras-comissao/';
+        const method = id ? 'PUT' : 'POST';
+
+        const body = {
+            consultor: document.getElementById('regra_consultor_id').value,
+            plano: document.getElementById('regra_plano_id').value,
+            tipo_venda: document.getElementById('regra_tipo_venda').value,
+            tipo_cliente: document.getElementById('regra_tipo_cliente').value,
+            valor_base: document.getElementById('regra_valor_base').value,
+            valor_acelerado: document.getElementById('regra_valor_acelerado').value,
+        };
+
+        try {
+            await apiFetch(url, {
+                method: method,
+                body: JSON.stringify(body)
+            });
+            alert(`Regra de comissão ${id ? 'atualizada' : 'salva'} com sucesso!`);
+            resetFormRegraComissao();
+            await carregarRegrasComissao();
+        } catch (error) {
+            console.error("Erro ao salvar regra de comissão:", error);
+            alert(`Erro: ${error.message}`);
+        }
+    });
 
     // --- FUNÇÃO DE LOGOUT ---
     function logout() {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('userProfile');
-    window.location.href = '/';
-}
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
+        localStorage.removeItem('userProfile');
+        window.location.href = '/';
+    }
 
     // --- INICIALIZAÇÃO DA PÁGINA ---
     document.addEventListener('DOMContentLoaded', () => {
@@ -1524,50 +1672,42 @@
         carregarStatus();
         carregarMotivosPendencia();
         carregarDadosParaRegrasComissao();
-        
+        carregarRegrasComissao();
+
         document.querySelector('.nav-menu li').click();
     });
 
-    // =======================================================================
-// INÍCIO DA CORREÇÃO 2.2: Novas funções para o Modal
-// =======================================================================
-
-function fecharModalEdicao() {
-    document.getElementById('modal-edicao-perfil').style.display = 'none';
-}
-
-// Adiciona o 'listener' para o envio do formulário de edição
-document.getElementById('form-edicao-perfil').addEventListener('submit', async (e) => {
-    e.preventDefault(); // Impede o recarregamento da página
-
-    const id = document.getElementById('perfil-id-input').value;
-    const nome = document.getElementById('perfil-nome-input').value.trim();
-    const descricao = document.getElementById('perfil-descricao-input').value.trim();
-
-    if (!nome) {
-        alert('O nome do perfil é obrigatório.');
-        return;
+    function fecharModalEdicaoMotivo() {
+        document.getElementById('modal-edicao-motivo').style.display = 'none';
     }
 
-    try {
-        await apiFetch(`/perfis/${id}/`, {
-            method: 'PUT',
-            body: JSON.stringify({
-                nome: nome,
-                descricao: descricao // Enviando a descrição para a API
-            })
-        });
-        fecharModalEdicao(); // Fecha o modal
-        await carregarPerfis(); // Recarrega a lista de perfis
-        await carregarDadosParaFormulario(); // Atualiza os selects em outros formulários, se necessário
-    } catch (error) {
-        console.error('Erro ao salvar edição do perfil:', error);
-        alert(`Erro: ${error.message}`);
-    }
-});
-// =======================================================================
-// FIM DA CORREÇÃO 2.2
-// =======================================================================
+    document.getElementById('form-edicao-motivo').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const id = document.getElementById('motivo-id-input').value;
+        const motivo = document.getElementById('motivo-nome-input').value.trim();
+        const gera_desconto = document.getElementById('motivo-desconto-input').checked;
+
+        if (!motivo) {
+            alert('O nome do motivo é obrigatório.');
+            return;
+        }
+
+        try {
+            await apiFetch(`/presenca/motivos/${id}/`, {
+                method: 'PUT',
+                body: JSON.stringify({
+                    motivo: motivo,
+                    gera_desconto: gera_desconto
+                })
+            });
+            fecharModalEdicaoMotivo();
+            await carregarMotivos();
+        } catch (error) {
+            console.error('Erro ao salvar edição do motivo:', error);
+            alert(`Erro: ${error.message}`);
+        }
+    });
 
 </script>
 
