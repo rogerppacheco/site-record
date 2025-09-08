@@ -1,4 +1,3 @@
-# core/views.py
 from django.views.generic import TemplateView
 
 # View para a página inicial (pública)
@@ -29,3 +28,21 @@ class ConsultaCpfView(TemplateView):
 # View para a página de consulta de tratamento (pública)
 class ConsultaTratamentoView(TemplateView):
     template_name = 'consulta-tratamento.html'
+
+# =======================================================================
+# NOVA VIEW PARA A TELA DE AUDITORIA
+# =======================================================================
+class AuditoriaView(TemplateView):
+    """
+    View para a nova página de Auditoria e Acompanhamento de Vendas.
+    """
+    template_name = 'auditoria.html'
+
+# =======================================================================
+# NOVA VIEW PARA A TELA DE UPLOAD OSAB (CORREÇÃO)
+# =======================================================================
+class SalvarOsabView(TemplateView):
+    """
+    View para a nova página de Upload da base OSAB.
+    """
+    template_name = 'salvar_osab.html'

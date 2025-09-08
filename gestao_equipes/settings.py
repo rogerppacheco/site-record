@@ -1,8 +1,8 @@
-# gestao_equipes/settings.py
 from pathlib import Path
 import os
 from dotenv import load_dotenv
 import dj_database_url
+from datetime import timedelta  # Importe o timedelta
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(os.path.join(BASE_DIR, '.env'))
@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     'core',
     'presenca',
     'relatorios',
+    'osab',
     'crm_app',
 ]
 
@@ -94,12 +95,22 @@ TIME_ZONE = 'America/Sao_Paulo'
 USE_I18N = True
 USE_TZ = True
 
+# --- CORREÇÃO APLICADA AQUI ---
+# Define a URL para acessar os arquivos estáticos no navegador.
 STATIC_URL = '/static/'
+
+# Informa ao Django para procurar arquivos estáticos em ambas as pastas.
 STATICFILES_DIRS = [
+    os.path.join(BASE_DIR, 'static'),
     os.path.join(BASE_DIR, 'frontend', 'public'),
 ]
+
+# Define onde o comando `collectstatic` irá copiar todos os arquivos para produção.
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
+# Otimiza a entrega de arquivos estáticos em produção com o WhiteNoise.
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -114,8 +125,32 @@ REST_FRAMEWORK = {
 }
 
 # =======================================================================
-# INÍCIO DA CORREÇÃO FINAL: Configurações de CORS e CSRF
+# INÍCIO DA CONFIGURAÇÃO DE SESSÃO E TOKENS
 # =======================================================================
+
+SIMPLE_JWT = {
+    # Define a vida útil do token. A sessão expirará após 5 minutos de INATIVIDADE.
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=5),
+
+    # Define o tempo máximo que um token pode ser atualizado. Após 1 dia, o usuário
+    # precisará fazer login novamente com usuário e senha.
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+
+    # Configurações para o token deslizante
+    'SLIDING_TOKEN_LIFETIME': timedelta(minutes=5),
+    'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(days=1),
+
+    # Demais configurações (mantidas do original se houver)
+    'ROTATE_REFRESH_TOKENS': False,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'ALGORITHM': 'HS256',
+    'SIGNING_KEY': SECRET_KEY,
+    'AUTH_HEADER_TYPES': ('Bearer',),
+    'USER_ID_FIELD': 'id',
+    'USER_ID_CLAIM': 'user_id',
+    'TOKEN_TYPE_CLAIM': 'token_type',
+    'JTI_CLAIM': 'jti',
+}
 
 CORS_ALLOWED_ORIGINS = [
     "https://record-pap-app-80fd14bb6cb5.herokuapp.com",
@@ -125,8 +160,6 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:8000",
 ]
 
-# --- ADICIONE ESTA LINHA ---
-# Permite que cookies e outros cabeçalhos de autenticação sejam enviados
 CORS_ALLOW_CREDENTIALS = True
 
 CSRF_TRUSTED_ORIGINS = [
@@ -137,13 +170,15 @@ CSRF_TRUSTED_ORIGINS = [
     'http://localhost:8000',
 ]
 
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
-SESSION_COOKIE_SAMESITE = 'None'
-CSRF_COOKIE_SAMESITE = 'None'
+# Configurações de Cookie para produção (HTTPS)
+# Em desenvolvimento, você pode precisar comentar estas linhas se não usar HTTPS
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_SAMESITE = 'Lax' # 'None' requer Secure=True
+CSRF_COOKIE_SAMESITE = 'Lax'    # 'None' requer Secure=True
 
 # =======================================================================
-# FIM DA CORREÇÃO
+# FIM DA CONFIGURAÇÃO
 # =======================================================================
 
 AUTH_USER_MODEL = 'usuarios.Usuario'

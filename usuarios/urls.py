@@ -1,28 +1,27 @@
-# usuarios/urls.py
+# site-record/usuarios/urls.py
 
-from django.urls import path
-# A correção está na lista de importação abaixo:
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
 from .views import (
-    UserListCreateView,
-    UserRetrieveUpdateDestroyView,
-    PerfilListCreateView, # <<< NOME CORRIGIDO AQUI
-    PerfilRetrieveUpdateDestroyView,
-    SupervisoresListView,
-    PerfilPermissoesView,
-    UserReativarView  # <-- ESSA VIEW PRECISA SER IMPORTADA AQUI
+    UsuarioViewSet,
+    PerfilViewSet,
+    RecursosListView 
 )
 
-urlpatterns = [
-    # Rotas para usuários
-    path('usuarios/', UserListCreateView.as_view(), name='user-list-create'),
-    path('usuarios/<int:pk>/', UserRetrieveUpdateDestroyView.as_view(), name='user-detail'),
-    path('usuarios/<int:pk>/reativar/', UserReativarView.as_view(), name='user-reactivate'),
+# O router é a forma padrão de registrar ViewSets.
+# Ele cria automaticamente as URLs para:
+# - /usuarios/ (listar e criar)
+# - /usuarios/{id}/ (detalhe, atualizar, deletar)
+# - e as ações customizadas como 'reativar'.
+router = DefaultRouter()
+router.register(r'usuarios', UsuarioViewSet, basename='usuario')
+router.register(r'perfis', PerfilViewSet, basename='perfil')
 
-    # Rotas para perfis
-    path('perfis/', PerfilListCreateView.as_view(), name='perfil-list-create'),
-    path('perfis/<int:id>/', PerfilRetrieveUpdateDestroyView.as_view(), name='perfil-detail'),
-    path('perfis/<int:pk>/permissoes/', PerfilPermissoesView.as_view(), name='perfil-permissoes'),
+# Aqui definimos as URLs finais da nossa aplicação.
+urlpatterns = [
+    # Inclui todas as URLs geradas pelo router.
+    path('', include(router.urls)),
     
-    # Rota para supervisores
-    path('supervisores/', SupervisoresListView.as_view(), name='supervisores-list'),
+    # Adiciona a nossa nova URL para a lista de recursos de permissão.
+    path('recursos/', RecursosListView.as_view(), name='lista-recursos'),
 ]

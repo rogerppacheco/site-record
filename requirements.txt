@@ -104,3 +104,5 @@ whitenoise==6.9.0
 wikipedia==1.4.0
 wsproto==1.2.0
 xlsxwriter==3.2.5
+pandas
+pyxlsb

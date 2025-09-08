@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Área Interna - Record PAP</title>
     <style>
+        /* Seus estilos permanecem os mesmos */
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: Arial, sans-serif; } body { background-color: #e5e5e5; line-height: 1.6; } header { background-color: #fff; padding: 1rem 2rem; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2); position: sticky; top: 0; z-index: 1000; } .header-container { max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; } .logo { max-width: 150px; height: auto; cursor: pointer; } nav ul { list-style: none; display: flex; gap: 1.5rem; align-items: center; } nav ul li a { text-decoration: none; color: #1a1a1a; font-weight: 500; font-size: 1rem; } nav ul li a:hover { color: #b3b3b3; } .action-button { background-color: #1a1a1a; color: #fff; padding: 0.75rem 1.5rem; border: none; border-radius: 0.25rem; cursor: pointer; font-size: 1rem; text-decoration: none; display: inline-block; } .action-button:hover { background-color: #333; } .logout-button { background-color: #dc3545; } .logout-button:hover { background-color: #c82333; } .whatsapp-chat { margin-left: 1rem; } .whatsapp-chat a { display: inline-flex; align-items: center; text-decoration: none; color: #1a1a1a; font-size: 1rem; } .whatsapp-chat a:hover { color: #b3b3b3; } .whatsapp-chat img { width: 20px; height: 20px; margin-right: 0.25rem; } .area-interna-section { padding: 3rem 1rem; background-color: #fff; text-align: center; min-height: 60vh; } .area-interna-container { max-width: 1200px; margin: 0 auto; } .area-interna-container h1 { font-size: 2rem; color: #1a1a1a; margin-bottom: 2rem; } .button-group { display: flex; justify-content: center; align-items: center; gap: 1rem; margin: 1rem 0; flex-wrap: wrap; } footer { background-color: #1a1a1a; color: #fff; padding: 2rem 1rem; text-align: center; margin-top: 2rem; } footer p { font-size: 0.9rem; margin-bottom: 0.5rem; } footer a { color: #b3b3b3; text-decoration: none; } footer a:hover { color: #fff; } @media (max-width: 768px) { .header-container, .button-group { flex-direction: column; gap: 1rem; } nav ul { flex-direction: column; gap: 0.5rem; text-align: center; } .area-interna-container h1 { font-size: 1.5rem; } } @media (max-width: 480px) { .logo { max-width: 120px; } }
     </style>
 </head>
@@ -23,7 +24,7 @@
                             Chat
                         </a>
                     </li>
-                    <li><button onclick="logout()" class="action-button logout-button">Sair</button></li>
+                    <li><button id="logoutButton" class="action-button logout-button">Sair</button></li>
                 </ul>
             </nav>
         </div>
@@ -43,7 +44,15 @@
         <p><a href="#">Política de Privacidade</a> | <a href="#">Termos de Uso</a></p>
     </footer>
 
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="{% static 'js/auth.js' %}"></script>
+
 <script>
+    // PASSO 3: Proteger a página
+    // 1. Verifica se o usuário está logado. Se não estiver, será redirecionado.
+    verificarAutenticacao();
+
+    // Função para decodificar o token (pode ser movida para auth.js se preferir)
     function jwt_decode(token) {
         try {
             return JSON.parse(atob(token.split('.')[1]));
@@ -52,67 +61,50 @@
         }
     }
 
-    function logout() {
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('refreshToken');
-        localStorage.removeItem('userProfile');
-        window.location.href = '/';
-    }
-
     document.addEventListener('DOMContentLoaded', function() {
         const token = localStorage.getItem('accessToken');
-        
-        if (!token) {
-            console.error("Token ausente no LocalStorage. Redirecionando para login.");
-            window.location.href = '/';
-            return;
-        }
-
         const decodedToken = jwt_decode(token);
         const userProfile = decodedToken ? decodedToken.perfil : null;
 
         if (!userProfile) {
-            console.error(`Perfil inválido ou nulo no token: '${userProfile}'. Redirecionando para login.`);
             alert('Sessão inválida ou perfil não encontrado. Faça login novamente.');
-            logout();
+            logout(); // Função de auth.js
             return;
         }
-        
-        // Salva o perfil no localStorage para uso em outras páginas
-        localStorage.setItem('userProfile', userProfile);
 
+        // Lógica de exibição de botões baseada no perfil do usuário
         const permissoes = {
             'Admin': [
                 { texto: 'Controle de Presença', href: '/presenca/' },
                 { texto: 'Governança', href: '/governanca/' },
-                { texto: 'Esteira de Vendas', href: '/crm-vendas/' }
+                { texto: 'Esteira de Vendas', href: '/auditoria/' }
             ],
             'Vendedor': [
                 { texto: 'Esteira de Vendas', href: '/crm-vendas/' }
             ],
             'Supervisor': [
                 { texto: 'Controle de Presença', href: '/presenca/' },
-                { texto: 'Esteira de Vendas', href: '/crm-vendas/' }
+                { texto: 'Esteira de Vendas', href: '/auditoria/' }
             ],
             'Gerente': [
                 { texto: 'Controle de Presença', href: '/presenca/' },
-                { texto: 'Esteira de Vendas', href: '/crm-vendas/' }
+                { texto: 'Esteira de Vendas', href: '/auditoria/' }
             ],
             'BackOffice': [
                 { texto: 'Controle de Presença', href: '/presenca/' },
-                { texto: 'Esteira de Vendas', href: '/crm-vendas/' }
+                { texto: 'Esteira de Vendas', href: '/auditoria/' }
             ],
             'Diretoria': [
                 { texto: 'Controle de Presença', href: '/presenca/' },
                 { texto: 'Governança', href: '/governanca/' },
-                { texto: 'Esteira de Vendas', href: '/crm-vendas/' }
+                { texto: 'Esteira de Vendas', href: '/auditoria/' }
             ]
         };
 
         const containerBotoes = document.getElementById('botoes-area-interna');
-        containerBotoes.innerHTML = ''; 
+        containerBotoes.innerHTML = '';
 
-        const botoesPermitidos = permissoes[userProfile] || []; 
+        const botoesPermitidos = permissoes[userProfile] || [];
 
         if (botoesPermitidos.length > 0) {
             botoesPermitidos.forEach(botaoInfo => {
@@ -125,6 +117,12 @@
         } else {
             containerBotoes.innerHTML = '<p>Você não tem permissões de acesso definidas.</p>';
         }
+
+        // 3. Adicionar um botão de Logout
+        document.getElementById('logoutButton').addEventListener('click', () => {
+            // A função logout() já está definida em auth.js e cuida de tudo.
+            logout();
+        });
     });
 </script>
 </body>

@@ -1,3 +1,4 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -12,7 +13,7 @@
 
     <header>
         <div class="header-container">
-            <img src="/static/logo.png" alt="Record PAP Logo" class="logo" onclick="window.location.href='/'">
+            <img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo" onclick="window.location.href='/'">
             <nav>
                 <ul>
                     <li><a href="/area-interna/">Área Interna</a></li>
@@ -45,7 +46,7 @@
     </div>
 </div>
     </main>
-    
+
     <div id="modal-motivo" class="modal-overlay">
         <div class="modal-content">
             <h3 id="modal-title">Motivo da Ausência</h3>
@@ -70,12 +71,13 @@
         <p><a href="#">Política de Privacidade</a> | <a href="#">Termos de Uso</a></p>
     </footer>
 
+<script src="{% static 'js/auth.js' %}"></script>
 <script>
     // --- CORREÇÃO APLICADA AQUI ---
     const apiUrl = ''; // URLs relativas funcionarão tanto localmente quanto em produção
-    
+
     const token = localStorage.getItem('accessToken');
-    
+
     function jwt_decode(token) {
         try {
             return JSON.parse(atob(token.split('.')[1]));
@@ -86,7 +88,7 @@
 
     const decodedToken = jwt_decode(token);
     const userProfile = decodedToken ? (decodedToken.perfil || 'Admin') : null;
-    
+
     let motivosDisponiveis = [];
     let activeTab = 'minha-equipe';
 
@@ -99,11 +101,21 @@
 
     async function apiFetch(endpoint, options = {}) {
         const headers = { 'Content-Type': 'application/json', ...options.headers };
+        const token = localStorage.getItem('accessToken'); // Pega o token mais recente
         if (token) {
             headers['Authorization'] = `Bearer ${token}`;
         }
-        
+
         const response = await fetch(`${apiUrl}/api${endpoint}`, { ...options, headers });
+        
+        // --- LÓGICA DE ATUALIZAÇÃO DO TOKEN ---
+        const novoToken = response.headers.get('X-Access-Token'); // Supondo que o backend envie o novo token neste cabeçalho
+        if (novoToken) {
+            localStorage.setItem('accessToken', novoToken);
+            console.log('Novo token de acesso foi atualizado!');
+        }
+        // --- FIM DA LÓGICA ---
+
         if (response.status === 401) {
             alert('Sua sessão expirou. Por favor, faça login novamente.');
             logout();
@@ -114,8 +126,6 @@
             let errorMessage = "Ocorreu um erro.";
             if (errorData.detail) {
                 errorMessage = errorData.detail;
-            } else if (errorData.non_field_errors) {
-                errorMessage = errorData.non_field_errors[0];
             } else {
                  errorMessage = JSON.stringify(errorData).replace(/["{}[\]]/g, ' ');
             }
@@ -124,7 +134,7 @@
         if (response.status === 204) return null;
         return response.json();
     }
-    
+
     function logout() {
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
@@ -148,17 +158,17 @@
         const listaDiv = document.getElementById('lista-vendedores');
         listaDiv.innerHTML = '<p>Carregando dados...</p>';
 
-        const equipeEndpoint = (userProfile === 'Diretoria' || userProfile === 'Admin') && activeTab === 'todos-usuarios' 
-            ? '/todos-usuarios/' 
-            : '/minha-equipe/';
+        const equipeEndpoint = (userProfile === 'Diretoria' || userProfile === 'Admin') && activeTab === 'todos-usuarios'
+            ? '/presenca/todos-usuarios/'
+            : '/presenca/minha-equipe/';
 
         try {
             const [motivos, equipe, presencasDoDia] = await Promise.all([
-                apiFetch('/motivos/'),
+                apiFetch('/presenca/motivos/'),
                 apiFetch(equipeEndpoint),
-                apiFetch(`/presencas/?data=${dataSelecionada}`)
+                apiFetch(`/presenca/presencas/?data=${dataSelecionada}`)
             ]);
-            
+
             motivosDisponiveis = motivos;
             renderizarEquipe(equipe, presencasDoDia);
 
@@ -212,18 +222,18 @@
         vendedorDiv.classList.remove('presente', 'ausente');
         vendedorDiv.innerHTML = `<div class="info-vendedor"><h3>${nomeCompleto}</h3></div><div class="botoes"><button class="btn-presente" onclick="salvarStatus(${vendedorId}, '${nomeCompleto}', true)">Presente</button><button class="btn-ausente" onclick="abrirModalAusencia(${vendedorId}, '${nomeCompleto}')">Ausente</button></div>`;
     }
-    
+
     async function salvarStatus(vendedorId, nomeVendedor, presente, detalhesAusencia = {}) {
         const data = document.getElementById('data-pesquisa').value;
         const card = document.getElementById(`vendedor-${vendedorId}`);
         const presenceId = card.dataset.presenceId;
         const isUpdating = !!presenceId;
         const method = isUpdating ? 'PUT' : 'POST';
-        const endpoint = isUpdating ? `/presencas/${presenceId}/` : '/presencas/';
+        const endpoint = isUpdating ? `/presenca/presencas/${presenceId}/`: '/presencas/';
         const body = {
             colaborador: vendedorId,
             data: data,
-            status: presente, 
+            status: presente,
             motivo: presente === false ? detalhesAusencia.motivoId : null,
             observacao: presente === false ? (detalhesAusencia.observacao || "") : ""
         };
@@ -279,10 +289,10 @@
         const mes = String(hoje.getMonth() + 1).padStart(2, '0');
         const ano = hoje.getFullYear();
         dataInput.value = `${ano}-${mes}-${dia}`;
-        
+
         const btnPesquisar = document.getElementById('btn-pesquisar');
         btnPesquisar.addEventListener('click', carregarDadosIniciais);
-        
+
         carregarDadosIniciais();
     });
 </script>
