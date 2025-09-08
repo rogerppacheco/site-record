@@ -38,7 +38,7 @@ class PlanoListCreateView(generics.ListCreateAPIView):
     queryset = Plano.objects.filter(ativo=True)
     serializer_class = PlanoSerializer
     # CORREÇÃO: Alterado para permitir que qualquer usuário autenticado acesse.
-    permission_classes = [permissions.IsAuthenticated] 
+    permission_classes = [permissions.IsAuthenticated]
     # resource_name = 'planos' # Removido pois era usado pela permissão customizada
 
 class PlanoDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -64,19 +64,31 @@ class FormaPagamentoDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAuthenticated]
     # resource_name = 'formas_pagamento' # Removido
 
-# --- VIEWS DE STATUS E MOTIVOS (VIEWS NÃO MODIFICADAS) ---
+# --- VIEWS DE STATUS E MOTIVOS (VIEWS MODIFICADAS) ---
 
 class StatusCRMListCreateView(generics.ListCreateAPIView):
     serializer_class = StatusCRMSerializer
-    permission_classes = [CheckAPIPermission]
+    # CORREÇÃO: Permissão agora é verificada dentro do get_queryset.
+    permission_classes = [permissions.IsAuthenticated]
     resource_name = 'status_crm'
 
     def get_queryset(self):
-        queryset = StatusCRM.objects.all()
-        tipo = self.request.query_params.get('tipo', None)
-        if tipo:
-            queryset = queryset.filter(tipo__iexact=tipo)
-        return queryset.order_by('nome')
+        user = self.request.user
+
+        # CORREÇÃO: O perfil de BackOffice (ou outro perfil de gestão) pode ver tudo.
+        perfil_nome = user.perfil.nome if hasattr(user, 'perfil') and user.perfil else None
+        if user.is_superuser or perfil_nome in ['Diretoria', 'BackOffice']:
+            queryset = StatusCRM.objects.all()
+            tipo = self.request.query_params.get('tipo', None)
+            if tipo:
+                queryset = queryset.filter(tipo__iexact=tipo)
+            return queryset.order_by('nome')
+
+        # Se não for um perfil de gestão, retorna uma queryset vazia para evitar vazamento de dados.
+        # Caso o usuário tenha permissão para acessar mas não seja de gestão, ele não verá nada.
+        # Isso pode ser ajustado para retornar apenas os status de suas próprias vendas, por exemplo.
+        return StatusCRM.objects.none()
+
 
 class StatusCRMDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = StatusCRM.objects.all()
