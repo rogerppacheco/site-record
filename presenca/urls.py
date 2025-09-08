@@ -3,8 +3,8 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
-    PresencaViewSet, 
-    MotivoViewSet, 
+    PresencaViewSet,
+    MotivoViewSet,
     DiaNaoUtilViewSet,
     MinhaEquipeListView,
     TodosUsuariosListView
@@ -21,7 +21,7 @@ router.register(r'dias-nao-uteis', DiaNaoUtilViewSet, basename='dianaoutil')
 urlpatterns = [
     # Inclui todas as rotas geradas pelo router (ex: /motivos/, /presencas/, etc.)
     path('', include(router.urls)),
-    
+
     # Rotas adicionais que não são baseadas em ViewSets
     path('minha-equipe/', MinhaEquipeListView.as_view(), name='minha-equipe'),
     path('todos-usuarios/', TodosUsuariosListView.as_view(), name='todos-usuarios'),
