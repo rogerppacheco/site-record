@@ -7,6 +7,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.views import TokenObtainPairView
+from collections import defaultdict
 
 # --- Importações dos seus módulos ---
 from .models import Perfil, PermissaoPerfil
@@ -81,41 +82,51 @@ class PerfilViewSet(viewsets.ModelViewSet):
         perfil = self.get_object()
 
         if request.method == 'GET':
-            # Busca todas as permissões salvas para o perfil
             permissoes = PermissaoPerfil.objects.filter(perfil=perfil)
-            # Retorna a lista de nomes de permissão (ex: ['can_view_clientes', 'can_add_vendas'])
-            # que é o formato que o frontend espera.
-            nomes_codificados = list(permissoes.values_list('recurso', flat=True))
-            return Response(nomes_codificados)
+            
+            # Monta uma lista de codenames que o frontend espera, ex: "can_view_presenca"
+            codenames_ativos = []
+            for p in permissoes:
+                if p.pode_ver: codenames_ativos.append(f"can_view_{p.recurso}")
+                if p.pode_criar: codenames_ativos.append(f"can_add_{p.recurso}")
+                if p.pode_editar: codenames_ativos.append(f"can_change_{p.recurso}")
+                if p.pode_excluir: codenames_ativos.append(f"can_delete_{p.recurso}")
+            
+            return Response(codenames_ativos)
 
         if request.method == 'PUT':
-            # 1. Apaga todas as permissões antigas para começar do zero
-            PermissaoPerfil.objects.filter(perfil=perfil).delete()
-
-            # 2. Processa os novos dados enviados pela tabela do frontend
-            # Espera um formato como: {"permissoes": [{"recurso": "clientes", "acao": "view", "ativo": true}, ...]}
             permissoes_data = request.data.get('permissoes', [])
             
-            permissoes_para_criar = []
-
+            # Agrupa as permissões por recurso para facilitar o processamento
+            permissoes_agrupadas = defaultdict(dict)
             for p_data in permissoes_data:
-                # Apenas cria a permissão se a checkbox estiver marcada ("ativo": true)
-                if p_data.get('ativo'):
-                    recurso = p_data.get('recurso')
-                    acao = p_data.get('acao')
+                recurso = p_data.get('recurso')
+                acao = p_data.get('acao') # 'view', 'add', 'change', 'delete'
+                ativo = p_data.get('ativo', False)
+                
+                if recurso and acao:
+                    # Mapeia a ação do frontend para o campo do modelo
+                    campo_modelo = {
+                        'view': 'pode_ver',
+                        'add': 'pode_criar',
+                        'change': 'pode_editar',
+                        'delete': 'pode_excluir'
+                    }.get(acao)
                     
-                    if recurso and acao:
-                        # Monta o nome completo da permissão (codename), ex: "can_view_clientes"
-                        codename = f"can_{acao}_{recurso}"
-                        
-                        # Adiciona a nova permissão a uma lista para ser salva no banco de dados
-                        permissoes_para_criar.append(
-                            PermissaoPerfil(perfil=perfil, recurso=codename)
-                        )
+                    if campo_modelo:
+                        permissoes_agrupadas[recurso][campo_modelo] = ativo
 
-            # 3. Salva todas as novas permissões no banco de dados de uma só vez (mais eficiente)
+            # Apaga as permissões antigas para começar do zero
+            PermissaoPerfil.objects.filter(perfil=perfil).delete()
+
+            # Cria as novas permissões
+            permissoes_para_criar = []
+            for recurso, campos in permissoes_agrupadas.items():
+                permissoes_para_criar.append(
+                    PermissaoPerfil(perfil=perfil, recurso=recurso, **campos)
+                )
+
             if permissoes_para_criar:
                 PermissaoPerfil.objects.bulk_create(permissoes_para_criar)
 
-            # Retorna um status de sucesso
-            return Response({'status': 'Permissões atualizadas com sucesso'}, status=status.HTTP_201_CREATED)
+            return Response({'status': 'Permissões atualizadas com sucesso'}, status=status.HTTP_200_OK)

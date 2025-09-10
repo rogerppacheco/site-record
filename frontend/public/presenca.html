@@ -27,7 +27,7 @@
         <div class="container">
     <h1>Lançamento de Presença</h1>
 
-    <div style="margin: 1rem 0; display: flex; justify-content: center; align-items: center; gap: 10px;">
+    <div id="date-search-container" style="margin: 1rem 0; display: none; justify-content: center; align-items: center; gap: 10px;">
         <input type="date" id="data-pesquisa" style="padding: 0.5rem; border-radius: 4px; border: 1px solid #ccc;">
         <button id="btn-pesquisar" style="padding: 0.5rem 1rem; border-radius: 4px; border: none; background-color: #007bff; color: white; cursor: pointer;">Pesquisar</button>
     </div>
@@ -73,8 +73,7 @@
 
 <script src="{% static 'js/auth.js' %}"></script>
 <script>
-    // --- CORREÇÃO APLICADA AQUI ---
-    const apiUrl = ''; // URLs relativas funcionarão tanto localmente quanto em produção
+    const apiUrl = '';
 
     const token = localStorage.getItem('accessToken');
 
@@ -88,6 +87,7 @@
 
     const decodedToken = jwt_decode(token);
     const userProfile = decodedToken ? (decodedToken.perfil || 'Admin') : null;
+    const isSuperuser = decodedToken ? decodedToken.is_superuser : false; // Captura se é superusuário
 
     let motivosDisponiveis = [];
     let activeTab = 'minha-equipe';
@@ -101,20 +101,18 @@
 
     async function apiFetch(endpoint, options = {}) {
         const headers = { 'Content-Type': 'application/json', ...options.headers };
-        const token = localStorage.getItem('accessToken'); // Pega o token mais recente
+        const token = localStorage.getItem('accessToken'); 
         if (token) {
             headers['Authorization'] = `Bearer ${token}`;
         }
 
         const response = await fetch(`${apiUrl}/api${endpoint}`, { ...options, headers });
         
-        // --- LÓGICA DE ATUALIZAÇÃO DO TOKEN ---
-        const novoToken = response.headers.get('X-Access-Token'); // Supondo que o backend envie o novo token neste cabeçalho
+        const novoToken = response.headers.get('X-Access-Token'); 
         if (novoToken) {
             localStorage.setItem('accessToken', novoToken);
             console.log('Novo token de acesso foi atualizado!');
         }
-        // --- FIM DA LÓGICA ---
 
         if (response.status === 401) {
             alert('Sua sessão expirou. Por favor, faça login novamente.');
@@ -158,7 +156,7 @@
         const listaDiv = document.getElementById('lista-vendedores');
         listaDiv.innerHTML = '<p>Carregando dados...</p>';
 
-        const equipeEndpoint = (userProfile === 'Diretoria' || userProfile === 'Admin') && activeTab === 'todos-usuarios'
+        const equipeEndpoint = (userProfile === 'Diretoria' || userProfile === 'Admin' || isSuperuser) && activeTab === 'todos-usuarios'
             ? '/presenca/todos-usuarios/'
             : '/presenca/minha-equipe/';
 
@@ -202,13 +200,31 @@
             if (registro) {
                 const statusText = registro.status ? 'Presente' : 'Ausente';
                 const motivoText = !registro.status && registro.motivo_nome ? `(${registro.motivo_nome})` : '';
+                
+                const dataLancamento = new Date(registro.criado_em).toLocaleString('pt-BR');
                 const lancadoPor = registro.lancado_por_nome || 'Sistema';
+
+                let editadoPorInfo = '';
+                if (registro.editado_por_nome) {
+                    const dataEdicao = new Date(registro.editado_em).toLocaleString('pt-BR');
+                    editadoPorInfo = `<p class="status-info"><strong>Editado por:</strong> ${registro.editado_por_nome} em ${dataEdicao}</p>`;
+                }
+
                 vendedorDiv.classList.add(registro.status ? 'presente' : 'ausente');
                 let editButton = '';
-                if (userProfile === 'Diretoria' || userProfile === 'Admin') {
+                if (userProfile === 'Diretoria' || userProfile === 'Admin' || isSuperuser) {
                     editButton = `<button class="edit-button" style="background-color: #ffc107;" onclick="ativarModoEdicao(${vendedor.id}, '${nomeCompleto}')">Editar</button>`;
                 }
-                conteudoInterno = `<div class="info-vendedor"><h3>${nomeCompleto}</h3><p class="status-info"><strong>Status:</strong> ${statusText} ${motivoText}</p><p class="status-info"><strong>Lançado por:</strong> ${lancadoPor}</p></div><div class="botoes">${editButton}</div>`;
+                
+                conteudoInterno = `
+                    <div class="info-vendedor">
+                        <h3>${nomeCompleto}</h3>
+                        <p class="status-info"><strong>Status:</strong> ${statusText} ${motivoText}</p>
+                        <p class="status-info"><strong>Lançado por:</strong> ${lancadoPor} em ${dataLancamento}</p>
+                        ${editadoPorInfo}
+                    </div>
+                    <div class="botoes">${editButton}</div>`;
+
             } else {
                 conteudoInterno = `<div class="info-vendedor"><h3>${nomeCompleto}</h3></div><div class="botoes"><button class="btn-presente" onclick="salvarStatus(${vendedor.id}, '${nomeCompleto}', true)">Presente</button><button class="btn-ausente" onclick="abrirModalAusencia(${vendedor.id}, '${nomeCompleto}')">Ausente</button></div>`;
             }
@@ -229,7 +245,7 @@
         const presenceId = card.dataset.presenceId;
         const isUpdating = !!presenceId;
         const method = isUpdating ? 'PUT' : 'POST';
-        const endpoint = isUpdating ? `/presenca/presencas/${presenceId}/`: '/presencas/';
+        const endpoint = isUpdating ? `/presenca/presencas/${presenceId}/`: '/presenca/presencas/';
         const body = {
             colaborador: vendedorId,
             data: data,
@@ -279,7 +295,10 @@
             return;
         }
 
-        if (userProfile === 'Diretoria' || userProfile === 'Admin') {
+        // --- CORREÇÃO 2: Lógica para mostrar/esconder o campo de data ---
+        const dateSearchContainer = document.getElementById('date-search-container');
+        if (userProfile === 'Diretoria' || userProfile === 'Admin' || isSuperuser) {
+            dateSearchContainer.style.display = 'flex'; // Mostra para Diretoria/Admin
             document.getElementById('tab-container').style.display = 'block';
         }
 

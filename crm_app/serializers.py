@@ -1,16 +1,18 @@
 from rest_framework import serializers
 from .models import (
-    Operadora, 
-    Plano, 
-    FormaPagamento, 
-    StatusCRM, 
-    MotivoPendencia, 
+    Operadora,
+    Plano,
+    FormaPagamento,
+    StatusCRM,
+    MotivoPendencia,
     RegraComissao,
     Cliente,
-    Venda
+    Venda,
+    ImportacaoOsab,
+    ImportacaoChurn,
+    CicloPagamento  # Importa o novo modelo
 )
-# O nome do seu serializer de usuário é 'UsuarioSerializer', o que está correto.
-from usuarios.serializers import UsuarioSerializer 
+from usuarios.serializers import UsuarioSerializer
 
 class OperadoraSerializer(serializers.ModelSerializer):
     class Meta:
@@ -53,32 +55,22 @@ class ClienteSerializer(serializers.ModelSerializer):
         model = Cliente
         fields = ['id', 'cpf_cnpj', 'nome_razao_social', 'email', 'vendas_count']
 
-
-# --- VendaSerializer COM A LÓGICA CORRETA RESTAURADA ---
 class VendaSerializer(serializers.ModelSerializer):
-    # Serializadores aninhados para fornecer objetos completos
     cliente = ClienteSerializer(read_only=True)
     plano = PlanoSerializer(read_only=True)
     forma_pagamento = FormaPagamentoSerializer(read_only=True)
     status_tratamento = StatusCRMSerializer(read_only=True)
     status_esteira = StatusCRMSerializer(read_only=True)
-    
-    # --- CORREÇÃO PRINCIPAL ---
-    # Substituímos o 'vendedor_nome' pelo serializer aninhado 'vendedor'.
-    # Isso envia o objeto completo do usuário (com id, username, etc.),
-    # que é o que o frontend espera para acessar 'venda.vendedor.username'.
+    status_comissionamento = StatusCRMSerializer(read_only=True)
     vendedor = UsuarioSerializer(read_only=True)
-    
-    # Mantido o SerializerMethodField para o status_final
     status_final = serializers.SerializerMethodField()
 
     class Meta:
         model = Venda
-        # A lista de campos foi corrigida para usar 'vendedor' (que agora é um objeto)
-        # e remover o 'vendedor_nome' que era redundante.
         fields = [
             'id', 'vendedor', 'cliente', 'plano', 'forma_pagamento',
-            'status_tratamento', 'status_esteira', 'status_final', 'data_criacao', 
+            'status_tratamento', 'status_esteira', 'status_comissionamento',
+            'status_final', 'data_criacao', 
             'forma_entrada', 'cpf_representante_legal', 'telefone1', 'telefone2', 
             'cep', 'logradouro', 'numero_residencia', 'complemento', 'bairro', 
             'cidade', 'estado', 'data_pedido', 'ordem_servico', 'data_agendamento',
@@ -86,15 +78,14 @@ class VendaSerializer(serializers.ModelSerializer):
         ]
     
     def get_status_final(self, obj):
+        if obj.status_comissionamento:
+            return obj.status_comissionamento.nome
         if obj.status_esteira:
             return obj.status_esteira.nome
         if obj.status_tratamento:
             return obj.status_tratamento.nome
         return "N/A"
-# --- FIM DA CORREÇÃO ---
 
-
-# --- Serializers de Criação e Atualização (mantidos como estavam) ---
 class VendaCreateSerializer(serializers.ModelSerializer):
     plano_id = serializers.IntegerField(write_only=True)
     forma_pagamento_id = serializers.IntegerField(write_only=True)
@@ -120,12 +111,6 @@ class VendaCreateSerializer(serializers.ModelSerializer):
             if isinstance(value, str) and key != 'cliente_email':
                 data[key] = value.upper()
         return data
-        
-    def create(self, validated_data):
-        validated_data['plano_id'] = validated_data.pop('plano_id')
-        validated_data['forma_pagamento_id'] = validated_data.pop('forma_pagamento_id')
-        return super().create(validated_data)
-
 
 class VendaUpdateSerializer(serializers.ModelSerializer):
     class Meta:
@@ -133,6 +118,7 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
         fields = [
             'status_tratamento', 
             'status_esteira',
+            'status_comissionamento',
             'ordem_servico',
             'data_agendamento',
             'periodo_agendamento',
@@ -141,8 +127,27 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             'status_tratamento': {'required': False},
             'status_esteira': {'required': False},
+            'status_comissionamento': {'required': False},
             'ordem_servico': {'required': False},
             'data_agendamento': {'required': False},
             'periodo_agendamento': {'required': False},
             'data_pedido': {'read_only': True}
         }
+        
+class ImportacaoOsabSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ImportacaoOsab
+        fields = '__all__'
+        
+class ImportacaoChurnSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ImportacaoChurn
+        fields = '__all__'
+
+# =======================================================================================
+# NOVO SERIALIZER PARA O CICLO DE PAGAMENTO
+# =======================================================================================
+class CicloPagamentoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CicloPagamento
+        fields = '__all__'

@@ -26,7 +26,7 @@ class PermissaoPerfilSerializer(serializers.ModelSerializer):
         model = PermissaoPerfil
         # 1. Adicionamos 'perfil' à lista de campos.
         fields = ['id', 'perfil', 'recurso', 'pode_ver', 'pode_criar', 'pode_editar', 'pode_excluir']
-        
+
         # 2. Marcamos 'perfil' como "apenas para escrita".
         # Isso significa que ele será usado para salvar, mas não será exibido
         # na resposta da API, mantendo-a limpa.
@@ -43,7 +43,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
     perfil_nome = serializers.CharField(source='perfil.nome', read_only=True)
     supervisor_nome = serializers.CharField(source='supervisor.get_full_name', read_only=True, default=None)
     nome_completo = serializers.CharField(source='get_full_name', read_only=True)
-    
+
     password = serializers.CharField(write_only=True, required=False)
 
     class Meta:
@@ -79,22 +79,22 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def get_token(cls, user):
         token = super().get_token(user)
         token['username'] = user.username
-        
+
         if hasattr(user, 'perfil') and user.perfil is not None:
             token['perfil'] = user.perfil.nome
         else:
             token['perfil'] = None
-            
+
         return token
 
     def validate(self, attrs):
         data = super().validate(attrs)
-        
+
         if not self.user.is_active:
             raise serializers.ValidationError("Este usuário está inativo e não pode fazer login.")
-        
+
         data['token'] = data.pop('access')
-        
+
         user_profile = None
         if hasattr(self.user, 'perfil') and self.user.perfil is not None:
             user_profile = self.user.perfil.nome
@@ -104,5 +104,5 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             'username': self.user.username,
             'perfil': user_profile
         }
-        
+
         return data

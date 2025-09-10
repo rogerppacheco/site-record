@@ -8,20 +8,21 @@ from datetime import datetime
 
 def get_dias_uteis_no_periodo(data_inicio, data_fim):
     """
-    Função auxiliar para calcular dias úteis, compatível com MySQL.
+    Função auxiliar para calcular dias úteis, compatível com SQLite.
     """
+    # --- CORREÇÃO APLICADA AQUI: Sintaxe SQL alterada para SQLite ---
     query = """
         WITH RECURSIVE DateRange(data) AS (
           SELECT %s AS data
           UNION ALL
-          SELECT DATE_ADD(data, INTERVAL 1 DAY)
+          SELECT date(data, '+1 day')
           FROM DateRange
           WHERE data < %s
         )
         SELECT COUNT(*)
         FROM DateRange
         WHERE
-          DAYOFWEEK(data) NOT IN (1, 7) AND
+          strftime('%%w', data) NOT IN ('0', '6') AND -- 0 é Domingo, 6 é Sábado no SQLite
           data NOT IN (SELECT data FROM presenca_dianaoutil)
     """
     with connection.cursor() as cursor:
@@ -63,13 +64,14 @@ class RelatorioPrevisaoView(APIView):
         try:
             dias_uteis = get_dias_uteis_no_periodo(data_inicio, data_fim)
 
+            # --- CORREÇÃO APLICADA AQUI: Sintaxe SQL alterada para SQLite ---
             query = """
                 SELECT
-                    CONCAT(u.first_name, ' ', u.last_name) as nome_completo,
+                    u.first_name || ' ' || u.last_name as nome_completo, -- CONCAT trocado por ||
                     u.valor_almoco,
                     u.valor_passagem
                 FROM usuarios_usuario u
-                WHERE u.is_active = true
+                WHERE u.is_active = 1 -- 'true' trocado por 1
             """
             with connection.cursor() as cursor:
                 cursor.execute(query)
@@ -108,9 +110,10 @@ class RelatorioDescontosView(APIView):
             return error_response
         
         try:
+            # --- CORREÇÃO APLICADA AQUI: Sintaxe SQL alterada para SQLite ---
             query = """
                 SELECT
-                    CONCAT(u.first_name, ' ', u.last_name) as nome_completo,
+                    u.first_name || ' ' || u.last_name as nome_completo, -- CONCAT trocado por ||
                     pp.data,
                     ma.motivo,
                     (u.valor_almoco + u.valor_passagem) as valor_desconto
@@ -118,7 +121,7 @@ class RelatorioDescontosView(APIView):
                 JOIN usuarios_usuario u ON pp.colaborador_id = u.id
                 LEFT JOIN presenca_motivoausencia ma ON pp.motivo_id = ma.id
                 WHERE pp.status = 0
-                  AND ma.gera_desconto = true
+                  AND ma.gera_desconto = 1 -- 'true' trocado por 1
                   AND pp.data BETWEEN %s AND %s
                 ORDER BY u.first_name, pp.data
             """
@@ -158,22 +161,23 @@ class RelatorioFinalView(APIView):
         try:
             dias_uteis = get_dias_uteis_no_periodo(data_inicio, data_fim)
 
+            # --- CORREÇÃO APLICADA AQUI: Sintaxe SQL alterada para SQLite ---
             query = """
                 SELECT
                     u.id,
-                    CONCAT(u.first_name, ' ', u.last_name) as nome_completo,
+                    u.first_name || ' ' || u.last_name as nome_completo, -- CONCAT trocado por ||
                     u.valor_almoco,
                     u.valor_passagem,
                     (SELECT COUNT(*)
-                      FROM presenca_presenca pp
-                      JOIN presenca_motivoausencia ma ON pp.motivo_id = ma.id
-                      WHERE pp.colaborador_id = u.id
-                        AND pp.status = 0
-                        AND ma.gera_desconto = true
-                        AND pp.data BETWEEN %s AND %s
+                       FROM presenca_presenca pp
+                       JOIN presenca_motivoausencia ma ON pp.motivo_id = ma.id
+                       WHERE pp.colaborador_id = u.id
+                         AND pp.status = 0
+                         AND ma.gera_desconto = 1 -- 'true' trocado por 1
+                         AND pp.data BETWEEN %s AND %s
                     ) as dias_falta_com_desconto
                 FROM usuarios_usuario u
-                WHERE u.is_active = true
+                WHERE u.is_active = 1 -- 'true' trocado por 1
             """
             with connection.cursor() as cursor:
                 cursor.execute(query, [data_inicio, data_fim])

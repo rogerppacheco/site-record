@@ -121,6 +121,15 @@ class Venda(models.Model):
         limit_choices_to={'tipo': 'Esteira'}
     )
     
+    status_comissionamento = models.ForeignKey(
+        StatusCRM,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='vendas_comissionamento',
+        limit_choices_to={'tipo': 'Comissionamento'}
+    )
+    
     data_criacao = models.DateTimeField(auto_now_add=True)
     
     forma_entrada = models.CharField(max_length=10, choices=[('APP', 'APP'), ('SEM_APP', 'SEM_APP')], default='APP')
@@ -135,7 +144,6 @@ class Venda(models.Model):
     cidade = models.CharField(max_length=100, blank=True, null=True)
     estado = models.CharField(max_length=2, blank=True, null=True)
 
-    # --- NOVOS CAMPOS ADICIONADOS ---
     ordem_servico = models.CharField(max_length=50, null=True, blank=True, verbose_name="Ordem de Serviço (O.S)")
     data_pedido = models.DateTimeField(null=True, blank=True, verbose_name="Data do Pedido")
     data_agendamento = models.DateField(null=True, blank=True, verbose_name="Data de Agendamento")
@@ -153,3 +161,137 @@ class Venda(models.Model):
         db_table = 'crm_venda'
         verbose_name = "Venda"
         verbose_name_plural = "Vendas"
+
+class ImportacaoOsab(models.Model):
+    produto = models.CharField(max_length=255, null=True, blank=True)
+    filial = models.CharField(max_length=255, null=True, blank=True)
+    uf = models.CharField(max_length=2, null=True, blank=True)
+    dt_ref = models.DateField(null=True, blank=True)
+    documento = models.CharField(max_length=255, null=True, blank=True)
+    segmento = models.CharField(max_length=255, null=True, blank=True)
+    localidade = models.CharField(max_length=255, null=True, blank=True)
+    estacao = models.CharField(max_length=255, null=True, blank=True)
+    id_bundle = models.CharField(max_length=255, null=True, blank=True)
+    telefone = models.CharField(max_length=255, null=True, blank=True)
+    cliente = models.CharField(max_length=255, null=True, blank=True)
+    velocidade = models.CharField(max_length=255, null=True, blank=True)
+    matricula_vendedor = models.CharField(max_length=50, null=True, blank=True, verbose_name="Matrícula do Vendedor")
+    classe_produto = models.CharField(max_length=255, null=True, blank=True)
+    nome_canal = models.CharField(max_length=255, null=True, blank=True)
+    pdv_sap = models.CharField(max_length=255, null=True, blank=True)
+    descricao = models.CharField(max_length=255, null=True, blank=True)
+    data_abertura = models.DateField(null=True, blank=True)
+    data_fechamento = models.DateField(null=True, blank=True)
+    situacao = models.CharField(max_length=255, null=True, blank=True)
+    cluster = models.CharField(max_length=255, null=True, blank=True)
+    safra = models.CharField(max_length=255, null=True, blank=True)
+    data_agendamento = models.DateField(null=True, blank=True)
+    dacc_sol = models.CharField(max_length=255, null=True, blank=True)
+    dacc_efe = models.CharField(max_length=255, null=True, blank=True)
+    dia_vencimento = models.CharField(max_length=255, null=True, blank=True)
+    duplicidade_vl_vl_mesmo_endereco_cpf_diferente = models.CharField(max_length=255, null=True, blank=True)
+    duplicidade_vl_vl_mesmo_endereco_cpf_igual = models.CharField(max_length=255, null=True, blank=True)
+    duplicidade_vl_planta_mesmo_endereco_cpf_igual = models.CharField(max_length=255, null=True, blank=True)
+    duplicidade_vl_planta_mesmo_endereco_cpf_diferente = models.CharField(max_length=255, null=True, blank=True)
+    contato1 = models.CharField(max_length=255, null=True, blank=True)
+    contato2 = models.CharField(max_length=255, null=True, blank=True)
+    contato3 = models.CharField(max_length=255, null=True, blank=True)
+    flg_mig_cobre_fixo = models.CharField(max_length=255, null=True, blank=True)
+    flg_mig_cobre_velox = models.CharField(max_length=255, null=True, blank=True)
+    flg_mig_tv = models.CharField(max_length=255, null=True, blank=True)
+    desc_pendencia = models.CharField(max_length=255, null=True, blank=True)
+    tipo_pendencia = models.CharField(max_length=255, null=True, blank=True)
+    cod_pendencia = models.CharField(max_length=255, null=True, blank=True)
+    oferta = models.CharField(max_length=255, null=True, blank=True)
+    comunidade = models.CharField(max_length=255, null=True, blank=True)
+    gv = models.CharField(max_length=255, null=True, blank=True)
+    gc = models.CharField(max_length=255, null=True, blank=True)
+    sap_principal_fim = models.CharField(max_length=255, null=True, blank=True)
+    gestao = models.CharField(max_length=255, null=True, blank=True)
+    st_regional = models.CharField(max_length=255, null=True, blank=True)
+    meio_pagamento = models.CharField(max_length=255, null=True, blank=True)
+    flag_vll = models.CharField(max_length=255, null=True, blank=True)
+    status_checkout = models.CharField(max_length=255, null=True, blank=True)
+    numero_ba = models.CharField(max_length=255, null=True, blank=True, unique=True)
+    venda_no_app = models.CharField(max_length=255, null=True, blank=True)
+
+    def __str__(self):
+        return f"Importação OSAB - BA {self.numero_ba}"
+    class Meta:
+        db_table = 'crm_importacao_osab'
+        verbose_name = "Importação OSAB"
+        verbose_name_plural = "Importações OSAB"
+
+class ImportacaoChurn(models.Model):
+    uf = models.CharField(max_length=2, null=True, blank=True)
+    produto = models.CharField(max_length=255, null=True, blank=True)
+    matricula_vendedor = models.CharField(max_length=50, null=True, blank=True, verbose_name="Matrícula do Vendedor")
+    gv = models.CharField(max_length=255, null=True, blank=True)
+    sap_principal_fim = models.CharField(max_length=255, null=True, blank=True)
+    gestao = models.CharField(max_length=255, null=True, blank=True)
+    st_regional = models.CharField(max_length=255, null=True, blank=True)
+    gc = models.CharField(max_length=255, null=True, blank=True)
+    numero_pedido = models.CharField(max_length=50, null=True, blank=True, unique=True, verbose_name="Número do Pedido")
+    dt_gross = models.DateField(null=True, blank=True, verbose_name="Data Gross")
+    anomes_gross = models.CharField(max_length=6, null=True, blank=True, verbose_name="Ano/Mês Gross")
+    dt_retirada = models.DateField(null=True, blank=True, verbose_name="Data Retirada")
+    anomes_retirada = models.CharField(max_length=6, null=True, blank=True, verbose_name="Ano/Mês Retirada")
+    grupo_unidade = models.CharField(max_length=255, null=True, blank=True)
+    codigo_sap = models.CharField(max_length=50, null=True, blank=True)
+    municipio = models.CharField(max_length=255, null=True, blank=True)
+    tipo_retirada = models.CharField(max_length=255, null=True, blank=True)
+    motivo_retirada = models.CharField(max_length=255, null=True, blank=True)
+    submotivo_retirada = models.CharField(max_length=255, null=True, blank=True)
+    classificacao = models.CharField(max_length=255, null=True, blank=True)
+    desc_apelido = models.CharField(max_length=255, null=True, blank=True)
+
+    def __str__(self):
+        return f"Importação Churn - Pedido {self.numero_pedido}"
+    class Meta:
+        db_table = 'crm_importacao_churn'
+        verbose_name = "Importação Churn"
+        verbose_name_plural = "Importações Churn"
+
+# =======================================================================================
+# NOVO MODELO PARA IMPORTAÇÃO DO CICLO DE PAGAMENTO
+# =======================================================================================
+class CicloPagamento(models.Model):
+    ano = models.IntegerField(null=True, blank=True)
+    mes = models.CharField(max_length=20, null=True, blank=True)
+    quinzena = models.CharField(max_length=10, null=True, blank=True)
+    ciclo = models.CharField(max_length=50, null=True, blank=True)
+    ciclo_complementar = models.CharField(max_length=50, null=True, blank=True)
+    evento = models.CharField(max_length=100, null=True, blank=True)
+    sub_evento = models.CharField(max_length=100, null=True, blank=True)
+    canal_detalhado = models.CharField(max_length=100, null=True, blank=True)
+    canal_agrupado = models.CharField(max_length=100, null=True, blank=True)
+    sub_canal = models.CharField(max_length=50, null=True, blank=True)
+    cod_sap = models.CharField(max_length=50, null=True, blank=True)
+    cod_sap_agr = models.CharField(max_length=50, null=True, blank=True)
+    parceiro_agr = models.CharField(max_length=255, null=True, blank=True)
+    uf_parceiro_agr = models.CharField(max_length=2, null=True, blank=True)
+    familia = models.CharField(max_length=100, null=True, blank=True)
+    produto = models.CharField(max_length=100, null=True, blank=True)
+    oferta = models.CharField(max_length=255, null=True, blank=True)
+    plano_detalhado = models.CharField(max_length=255, null=True, blank=True)
+    celula = models.CharField(max_length=100, null=True, blank=True)
+    metodo_pagamento = models.CharField(max_length=50, null=True, blank=True)
+    contrato = models.CharField(max_length=50, unique=True, primary_key=True)
+    num_os_pedido_siebel = models.CharField(max_length=50, null=True, blank=True)
+    id_bundle = models.CharField(max_length=50, null=True, blank=True)
+    data_atv = models.DateField(null=True, blank=True)
+    data_retirada = models.DateField(null=True, blank=True)
+    qtd = models.IntegerField(null=True, blank=True)
+    comissao_bruta = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    fator = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    iq = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    valor_comissao_final = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    data_importacao = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'crm_ciclo_pagamento'
+        verbose_name = "Ciclo de Pagamento"
+        verbose_name_plural = "Ciclos de Pagamento"
+
+    def __str__(self):
+        return f"{self.contrato} - {self.ciclo}"

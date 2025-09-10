@@ -2,7 +2,7 @@ from pathlib import Path
 import os
 from dotenv import load_dotenv
 import dj_database_url
-from datetime import timedelta  # Importe o timedelta
+from datetime import timedelta
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(os.path.join(BASE_DIR, '.env'))
@@ -31,6 +31,7 @@ INSTALLED_APPS = [
     'usuarios',
     'rest_framework',
     'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist', # Adicionado para a rotação de tokens
     'corsheaders',
     'core',
     'presenca',
@@ -95,22 +96,13 @@ TIME_ZONE = 'America/Sao_Paulo'
 USE_I18N = True
 USE_TZ = True
 
-# --- CORREÇÃO APLICADA AQUI ---
-# Define a URL para acessar os arquivos estáticos no navegador.
 STATIC_URL = '/static/'
-
-# Informa ao Django para procurar arquivos estáticos em ambas as pastas.
 STATICFILES_DIRS = [
     os.path.join(BASE_DIR, 'static'),
     os.path.join(BASE_DIR, 'frontend', 'public'),
 ]
-
-# Define onde o comando `collectstatic` irá copiar todos os arquivos para produção.
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-
-# Otimiza a entrega de arquivos estáticos em produção com o WhiteNoise.
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
-
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -125,24 +117,31 @@ REST_FRAMEWORK = {
 }
 
 # =======================================================================
-# INÍCIO DA CONFIGURAÇÃO DE SESSÃO E TOKENS
+# INÍCIO DA CONFIGURAÇÃO DE SESSÃO E TOKENS (COM MELHORIAS)
 # =======================================================================
 
 SIMPLE_JWT = {
-    # Define a vida útil do token. A sessão expirará após 5 minutos de INATIVIDADE.
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=5),
+    # 1. Aumentamos o tempo do token de acesso para 30 minutos.
+    #    Isso reduz a frequência com que o token precisa ser renovado.
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),
 
-    # Define o tempo máximo que um token pode ser atualizado. Após 1 dia, o usuário
-    # precisará fazer login novamente com usuário e senha.
+    # 2. Mantemos o tempo do refresh token. Se o usuário ficar inativo por mais
+    #    de 1 dia, ele precisará fazer login novamente.
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
 
-    # Configurações para o token deslizante
-    'SLIDING_TOKEN_LIFETIME': timedelta(minutes=5),
-    'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(days=1),
+    # 3. Habilitamos a rotação de refresh tokens.
+    #    A cada renovação, um novo refresh token é gerado, e o antigo é invalidado.
+    #    Isso impede que um token roubado seja reutilizado.
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True, # Invalida o token antigo
 
-    # Demais configurações (mantidas do original se houver)
-    'ROTATE_REFRESH_TOKENS': False,
-    'BLACKLIST_AFTER_ROTATION': True,
+    # --- MUDANÇA PARA SESSÃO DESLIZANTE (Sliding Token) ---
+    #    Esta configuração faz com que um novo token de acesso seja gerado a cada
+    #    requisição, resetando o tempo de expiração.
+    'SLIDING_TOKEN_LIFETIME': timedelta(minutes=30), # Tempo de vida inicial
+    'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(days=1), # Tempo máximo para renovar
+
+    # Demais configurações
     'ALGORITHM': 'HS256',
     'SIGNING_KEY': SECRET_KEY,
     'AUTH_HEADER_TYPES': ('Bearer',),
@@ -152,6 +151,7 @@ SIMPLE_JWT = {
     'JTI_CLAIM': 'jti',
 }
 
+# ... (resto do arquivo sem alterações)
 CORS_ALLOWED_ORIGINS = [
     "https://record-pap-app-80fd14bb6cb5.herokuapp.com",
     "https://recordpap.com.br",
@@ -170,16 +170,10 @@ CSRF_TRUSTED_ORIGINS = [
     'http://localhost:8000',
 ]
 
-# Configurações de Cookie para produção (HTTPS)
-# Em desenvolvimento, você pode precisar comentar estas linhas se não usar HTTPS
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
-SESSION_COOKIE_SAMESITE = 'Lax' # 'None' requer Secure=True
-CSRF_COOKIE_SAMESITE = 'Lax'    # 'None' requer Secure=True
-
-# =======================================================================
-# FIM DA CONFIGURAÇÃO
-# =======================================================================
+SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SAMESITE = 'Lax'
 
 AUTH_USER_MODEL = 'usuarios.Usuario'
 LOGIN_URL = '/'

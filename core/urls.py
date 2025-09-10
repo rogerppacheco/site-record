@@ -1,3 +1,5 @@
+# site-record/core/urls.py
+
 from django.urls import path
 from .views import (
     IndexView, 
@@ -8,7 +10,8 @@ from .views import (
     ConsultaCpfView, 
     ConsultaTratamentoView, 
     AuditoriaView,
-    SalvarOsabView  # Importe a nova View
+    SalvarOsabView,
+    SalvarChurnView  # 1. Importe a nova View
 )
 
 urlpatterns = [
@@ -20,7 +23,8 @@ urlpatterns = [
     path('consulta-cpf/', ConsultaCpfView.as_view(), name='consulta-cpf'),
     path('consulta-tratamento/', ConsultaTratamentoView.as_view(), name='consulta-tratamento'),
     path('auditoria/', AuditoriaView.as_view(), name='auditoria'),
-    
-    # Adicione esta nova linha para a página de upload
     path('salvar-osab/', SalvarOsabView.as_view(), name='salvar-osab'),
+
+    # 2. Adicione esta nova linha para a página de salvar churn
+    path('salvar-churn/', SalvarChurnView.as_view(), name='salvar-churn'),
 ]
