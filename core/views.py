@@ -1,3 +1,5 @@
+# site-record/core/views.py
+
 from django.views.generic import TemplateView
 
 # View para a página inicial (pública)
@@ -46,3 +48,12 @@ class SalvarOsabView(TemplateView):
     View para a nova página de Upload da base OSAB.
     """
     template_name = 'salvar_osab.html'
+
+# =======================================================================
+# NOVA VIEW PARA A TELA DE SALVAR CHURN (ADIÇÃO)
+# =======================================================================
+class SalvarChurnView(TemplateView):
+    """
+    View para a página de importação de churn.
+    """
+    template_name = 'salvar_churn.html'

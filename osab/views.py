@@ -1,115 +1,103 @@
 # osab/views.py
 
+import pandas as pd
+import numpy as np
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.parsers import MultiPartParser, FormParser
-import pandas as pd
-import numpy as np
 
-# --- 1. Importe a nova classe de permissão ---
 from usuarios.permissions import CheckAPIPermission
-
 from .models import Osab
-from crm_app.models import Venda, StatusCRM
-
 
 class UploadOsabView(APIView):
-    # --- 2. Aplique a permissão dinâmica e defina o nome do recurso ---
     permission_classes = [CheckAPIPermission]
-    resource_name = 'osab' # O nome para cadastrar na tela de Governança
-
+    resource_name = 'osab'
     parser_classes = (MultiPartParser, FormParser)
 
     def post(self, request, *args, **kwargs):
+        print("\n--- [LOG] INÍCIO DO PROCESSO DE UPLOAD OSAB ---")
         file_obj = request.FILES.get('file')
+        
         if not file_obj:
+            print("--- [ERRO] Nenhum arquivo foi enviado na requisição.")
             return Response({"error": "Nenhum arquivo enviado."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        print(f"--- [LOG] Arquivo recebido: {file_obj.name}")
 
         try:
-            # --- LEITURA E LIMPEZA DOS DADOS DA PLANILHA ---
-            df = pd.read_excel(file_obj, engine='pyxlsb')
+            # --- 1. LEITURA DO ARQUIVO ---
+            df = None
+            file_name = file_obj.name
+            
+            try:
+                print(f"--- [LOG] Tentando ler o arquivo '{file_name}'...")
+                if file_name.endswith('.xlsb'):
+                    df = pd.read_excel(file_obj, engine='pyxlsb')
+                elif file_name.endswith(('.xlsx', '.xls')):
+                    df = pd.read_excel(file_obj)
+                else:
+                    print(f"--- [ERRO] Formato de arquivo não suportado: {file_name}")
+                    return Response({"error": "Formato de arquivo não suportado. Use .xlsx, .xls ou .xlsb."}, status=status.HTTP_400_BAD_REQUEST)
+                
+                print("--- [LOG] Arquivo lido com sucesso para o DataFrame Pandas.")
+
+            except Exception as e:
+                # Este é o ponto onde o seu erro "valid workbook part" acontece.
+                print(f"\n--- [ERRO FATAL] Falha ao ler o arquivo Excel com Pandas ---")
+                print(f"--- [ERRO DETALHE] {e}\n")
+                return Response({
+                    "error": f"Erro ao ler o arquivo: {e}",
+                    "suggestion": "Este erro geralmente indica um arquivo corrompido ou uma incompatibilidade de versão da biblioteca (pandas, pyxlsb). Verifique se suas bibliotecas locais estão atualizadas (`pip install -r requirements.txt`)."
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # --- 2. LIMPEZA E PREPARAÇÃO DOS DADOS ---
+            print("--- [LOG] Normalizando nomes das colunas...")
             df.columns = [str(col).strip().upper() for col in df.columns]
+            print(f"--- [LOG] Colunas encontradas: {df.columns.tolist()}")
+
+            print("--- [LOG] Substituindo valores vazios (NaN e NaT para datas) por None...")
+            df = df.replace({pd.NaT: None, np.nan: None})
+            print("--- [LOG] Substituição concluída.")
+
+            # --- 3. PROCESSAMENTO E GRAVAÇÃO NO BANCO ---
+            osab_model_fields = [f.name for f in Osab._meta.get_fields()]
+            erros = []
+            registros_salvos = 0
+            total_linhas = len(df)
             
-            if 'DOCUMENTO' not in df.columns or 'SITUACAO' not in df.columns:
-                return Response({"error": "O arquivo precisa conter as colunas 'DOCUMENTO' e 'SITUACAO'."}, status=status.HTTP_400_BAD_REQUEST)
-
-            df = df.replace({np.nan: None})
-            
-            # --- PREPARAÇÃO DOS DADOS DO SISTEMA ---
-            STATUS_MAP = {
-                'CONCLUÍDO': 'INSTALADA',
-                'CANCELADO': 'CANCELADA',
-                'CANCELADO - SEM APROVISIONAMENTO': 'CANCELADA',
-                'PENDÊNCIA CLIENTE': 'PENDENCIADA',
-                'PENDÊNCIA TÉCNICA': 'PENDENCIADA',
-                'EM APROVISIONAMENTO': 'EM ANDAMENTO',
-                'AGUARDANDO PAGAMENTO': 'AGUARDANDO PAGAMENTO',
-                'REPROVADO ANALISE DE FRAUDE': 'REPROVADO CARTÃO DE CRÉDITO',
-                'DRAFT': 'DRAFT',
-                'DRAFT - PRAZO CC EXPIRADO': 'DRAFT',
-            }
-
-            status_esteira_objects = StatusCRM.objects.filter(tipo='Esteira')
-            status_esteira_map = {status.nome.upper(): status for status in status_esteira_objects}
-
-            vendas_com_os = Venda.objects.filter(ordem_servico__isnull=False).exclude(ordem_servico__exact='')
-            vendas_map = {venda.ordem_servico: venda for venda in vendas_com_os}
-
-            # --- PROCESSAMENTO E ATUALIZAÇÃO ---
-            report = {
-                "total_records": len(df),
-                "found_sales": 0,
-                "updated_sales": 0,
-                "already_correct": 0,
-                "unmapped_status": 0,
-                "not_found_docs": []
-            }
-            
-            vendas_para_atualizar = []
+            print(f"--- [LOG] Iniciando processamento de {total_linhas} linhas...")
 
             for index, row in df.iterrows():
-                documento = row.get('DOCUMENTO')
-                situacao_osab = row.get('SITUACAO')
-
-                if not documento:
+                if row.get('DOCUMENTO') is None or row.get('SITUACAO') is None:
+                    msg_erro = f"Linha {index + 2}: 'DOCUMENTO' e 'SITUACAO' são obrigatórios e não foram encontrados."
+                    print(f"--- [AVISO] {msg_erro}")
+                    erros.append(msg_erro)
                     continue
 
-                venda = vendas_map.get(str(documento))
+                osab_data = {}
+                for col_name in df.columns:
+                    field_name = col_name.lower()
+                    if field_name in osab_model_fields:
+                        osab_data[field_name] = row.get(col_name)
 
-                if not venda:
-                    report["not_found_docs"].append(str(documento))
-                    continue
-                
-                report["found_sales"] += 1
-                
-                if not situacao_osab:
-                    continue
+                try:
+                    Osab.objects.create(**osab_data)
+                    registros_salvos += 1
+                except Exception as e:
+                    msg_erro = f"Linha {index + 2}: Erro ao salvar no banco de dados: {e}"
+                    print(f"--- [ERRO DB] {msg_erro}")
+                    erros.append(msg_erro)
 
-                target_status_name = STATUS_MAP.get(str(situacao_osab).upper())
-
-                if not target_status_name:
-                    report["unmapped_status"] += 1
-                    continue
-
-                target_status_obj = status_esteira_map.get(target_status_name.upper())
-
-                if not target_status_obj:
-                    print(f"Alerta: O status '{target_status_name}' mapeado não foi encontrado no banco de dados.")
-                    report["unmapped_status"] += 1
-                    continue
-
-                if venda.status_esteira_id == target_status_obj.id:
-                    report["already_correct"] += 1
-                else:
-                    venda.status_esteira = target_status_obj
-                    vendas_para_atualizar.append(venda)
-                    report["updated_sales"] += 1
-
-            if vendas_para_atualizar:
-                Venda.objects.bulk_update(vendas_para_atualizar, ['status_esteira'])
-
-            return Response(report, status=status.HTTP_200_OK)
+            print("--- [LOG] FIM DO PROCESSAMENTO ---")
+            
+            return Response({
+                'message': 'Importação concluída.',
+                'total_records': total_linhas,
+                'saved_records': registros_salvos,
+                'errors': erros
+            }, status=status.HTTP_200_OK)
 
         except Exception as e:
-            return Response({"error": f"Ocorreu um erro inesperado: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            print(f"\n--- [ERRO INESPERADO] Um erro não tratado ocorreu: {e}\n")
+            return Response({"error": f"Ocorreu um erro inesperado no servidor: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

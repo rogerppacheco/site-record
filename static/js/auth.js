@@ -3,11 +3,46 @@
 // URL base da API. Uma string vazia funciona para a mesma origem.
 const API_URL = '';
 
-// --- INÍCIO DA MELHORIA ---
+// --- INÍCIO DA LÓGICA DE LOGOUT POR INATIVIDADE ---
+
+// Variável para armazenar nosso temporizador
+let inactivityTimer;
+
+// Função que será chamada quando o tempo de inatividade expirar
+function logoutOnInactivity() {
+    // Exibe uma mensagem amigável antes de deslogar
+    alert('Sua sessão expirou por inatividade. Por favor, faça o login novamente.');
+    // Chama a sua função de logout original, que já existe neste arquivo
+    logout();
+}
+
+// Função para reiniciar o temporizador de inatividade
+function resetInactivityTimer() {
+    // Limpa o temporizador anterior
+    clearTimeout(inactivityTimer);
+    // Define um novo temporizador. 15 minutos = 15 * 60 * 1000 milissegundos
+    inactivityTimer = setTimeout(logoutOnInactivity, 15 * 60 * 1000);
+}
+
+// Adiciona "escutadores" de eventos para detectar atividade do usuário
+// Qualquer um desses eventos reiniciará o temporizador.
+// Eles são adicionados ao 'document' para funcionar em toda a aplicação.
+document.addEventListener('load', resetInactivityTimer, true);
+document.addEventListener('mousemove', resetInactivityTimer, true);
+document.addEventListener('mousedown', resetInactivityTimer, true); // Captura cliques
+document.addEventListener('keypress', resetInactivityTimer, true); // Captura teclas pressionadas
+document.addEventListener('touchmove', resetInactivityTimer, true); // Para dispositivos móveis
+document.addEventListener('scroll', resetInactivityTimer, true); // Captura o scroll
+
+// --- FIM DA LÓGICA DE LOGOUT POR INATIVIDADE ---
+
+
+// --- SEU CÓDIGO ORIGINAL INTEGRADO ABAIXO ---
+
 // Adiciona o listener que espera a página carregar completamente antes de anexar o evento ao formulário.
 document.addEventListener('DOMContentLoaded', function() {
     // Esta parte do código só será executada se houver um formulário com id 'loginForm' na página.
-    const loginForm = document.getElementById('loginForm'); 
+    const loginForm = document.getElementById('loginForm');
     if (loginForm) {
         loginForm.addEventListener('submit', async function(e) {
             e.preventDefault();
@@ -18,7 +53,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
-// --- FIM DA MELHORIA ---
 
 
 /**
@@ -29,8 +63,13 @@ async function login(username, password) {
     try {
         const response = await fetch(`${API_URL}/api/auth/login/`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password }),
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                username,
+                password
+            }),
             credentials: 'include'
         });
 
@@ -59,7 +98,7 @@ async function login(username, password) {
             } else {
                 console.error("Token não contém informações de perfil.");
             }
-            
+
             // Redireciona para a área interna após o login
             window.location.href = '/area-interna/';
             return true;
@@ -121,44 +160,66 @@ const apiClient = {
         const token = localStorage.getItem('accessToken');
         const response = await fetch(`${API_URL}${url}`, {
             method: 'GET',
-            headers: { 'Authorization': `Bearer ${token}` },
+            headers: {
+                'Authorization': `Bearer ${token}`
+            },
             credentials: 'include'
         });
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        if (response.status === 204) return { data: null };
-        return { data: await response.json() };
+        if (response.status === 204) return {
+            data: null
+        };
+        return {
+            data: await response.json()
+        };
     },
     post: async function(url, data) {
         const token = localStorage.getItem('accessToken');
         const response = await fetch(`${API_URL}${url}`, {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
             body: JSON.stringify(data),
             credentials: 'include'
         });
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        if (response.status === 204) return { data: null };
-        return { data: await response.json() };
+        if (response.status === 204) return {
+            data: null
+        };
+        return {
+            data: await response.json()
+        };
     },
     patch: async function(url, data) {
         const token = localStorage.getItem('accessToken');
         const response = await fetch(`${API_URL}${url}`, {
             method: 'PATCH',
-            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
             body: JSON.stringify(data),
             credentials: 'include'
         });
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        if (response.status === 204) return { data: null };
-        return { data: await response.json() };
+        if (response.status === 204) return {
+            data: null
+        };
+        return {
+            data: await response.json()
+        };
     },
     // Novo método específico para upload de arquivos (multipart/form-data)
     postMultipart: async function(url, formData) {
         const token = localStorage.getItem('accessToken');
-        
+
         // Para uploads, NÃO definimos o 'Content-Type'.
         // O navegador fará isso automaticamente e adicionará o 'boundary' necessário.
-        const headers = { 'Authorization': `Bearer ${token}` };
+        const headers = {
+            'Authorization': `Bearer ${token}`
+        };
 
         const response = await fetch(`${API_URL}${url}`, {
             method: 'POST',
@@ -174,10 +235,14 @@ const apiClient = {
                 const errorData = await response.json();
                 errorDetails = errorData.error || JSON.stringify(errorData);
             } catch (e) {}
-             throw new Error(`HTTP error! status: ${response.status} - ${errorDetails}`);
+            throw new Error(`HTTP error! status: ${response.status} - ${errorDetails}`);
         }
 
-        if (response.status === 204) return { data: null };
-        return { data: await response.json() };
+        if (response.status === 204) return {
+            data: null
+        };
+        return {
+            data: await response.json()
+        };
     }
 };
