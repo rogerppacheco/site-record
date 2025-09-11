@@ -154,7 +154,11 @@ function jwt_decode(token) {
     }
 }
 
-// Cria uma instância do cliente de API para ser usada em outras partes da aplicação.
+/**
+ * Cliente de API com métodos para GET, POST e PATCH
+ *
+ * @type {{patch: (function(*, *): Promise<({data: null}|{data: *} | undefined))}}
+ */
 const apiClient = {
     get: async function(url) {
         const token = localStorage.getItem('accessToken');

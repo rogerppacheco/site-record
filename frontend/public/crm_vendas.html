@@ -102,7 +102,7 @@
                             <li><a class="dropdown-item" href="/salvar-osab/">Salvar OSAB</a></li>
                             <li><a class="dropdown-item" href="/salvar-churn/">Salvar Churn</a></li>
                             <li><a class="dropdown-item" href="/salvar-ciclo-pagamento/">Salvar Ciclo de Pagamento</a></li>
-                            </ul>
+                        </ul>
                     </li>
 
                     <li class="nav-item dropdown" id="nav-cadastros">
@@ -138,6 +138,7 @@
                                 <th class="coluna-vendedor" style="display: none;">Vendedor</th>
                                 <th>Status</th>
                                 <th>Data</th>
+                                <th>Ações</th>
                             </tr>
                         </thead>
                         <tbody id="tabela-vendas"></tbody>
@@ -146,7 +147,7 @@
             </div>
         </div>
     </main>
-
+    
     <div class="modal fade" id="novaVendaModal" tabindex="-1">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
@@ -260,7 +261,7 @@
             </div>
         </div>
     </div>
-
+    
     <div class="modal fade" id="avisoClienteExistenteModal" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
@@ -279,17 +280,89 @@
             </div>
         </div>
     </div>
+    
+    <div class="modal fade" id="modal-editar-venda" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Editar Venda #<span id="editar-venda-id"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="form-editar-venda">
+                        <input type="hidden" id="edit-venda-id-hidden">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>Dados da Venda</h6>
+                                <div class="mb-3">
+                                    <label for="edit-plano" class="form-label">Plano</label>
+                                    <select id="edit-plano" class="form-select"></select>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="edit-forma-pagamento" class="form-label">Forma de Pagamento</label>
+                                    <select id="edit-forma-pagamento" class="form-select"></select>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="edit-vendedor" class="form-label">Vendedor</label>
+                                    <select id="edit-vendedor" class="form-select"></select>
+                                </div>
+                                <h6>Status</h6>
+                                <div class="mb-3">
+                                    <label for="edit-status-tratamento" class="form-label">Status Tratamento</label>
+                                    <select id="edit-status-tratamento" class="form-select"></select>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="edit-status-esteira" class="form-label">Status Esteira</label>
+                                    <select id="edit-status-esteira" class="form-select"></select>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="edit-status-comissionamento" class="form-label">Status Comissionamento</label>
+                                    <select id="edit-status-comissionamento" class="form-select"></select>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Agendamento e OS</h6>
+                                <div class="mb-3">
+                                    <label for="edit-ordem-servico" class="form-label">Ordem de Serviço (O.S)</label>
+                                    <input type="text" class="form-control" id="edit-ordem-servico">
+                                </div>
+                                <div class="mb-3">
+                                    <label for="edit-data-pedido" class="form-label">Data do Pedido</label>
+                                    <input type="datetime-local" class="form-control" id="edit-data-pedido">
+                                </div>
+                                <div class="mb-3">
+                                    <label for="edit-data-agendamento" class="form-label">Data de Agendamento</label>
+                                    <input type="date" class="form-control" id="edit-data-agendamento">
+                                </div>
+                                <div class="mb-3">
+                                    <label for="edit-periodo-agendamento" class="form-label">Período</label>
+                                    <select class="form-select" id="edit-periodo-agendamento">
+                                        <option value="">Nenhum</option>
+                                        <option value="MANHA">Manhã</option>
+                                        <option value="TARDE">Tarde</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" onclick="salvarEdicaoVenda()">Salvar Alterações</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{% static 'js/auth.js' %}"></script>
     <script>
-        // --- INÍCIO DAS CORREÇÕES ---
         
         let listaPlanos = [];
         let listaFormasPagamento = [];
         const VALOR_DESCONTO = 10.00;
 
-        // Função auxiliar para decodificar o token JWT
         function jwt_decode(token) { 
             try { 
                 return JSON.parse(atob(token.split('.')[1])); 
@@ -298,9 +371,8 @@
             } 
         }
         
-        // Função principal que é executada quando a página carrega
         document.addEventListener('DOMContentLoaded', function() {
-            verificarAutenticacao(); // Função do auth.js
+            verificarAutenticacao();
             
             const token = localStorage.getItem('accessToken');
             if (!token) { 
@@ -308,12 +380,10 @@
                 return; 
             }
             
-            // PONTO CENTRAL DA CORREÇÃO: Decodifica o token e extrai o perfil
             const decodedToken = jwt_decode(token);
             const userProfile = decodedToken ? decodedToken.perfil : null;
             const isSuperuser = decodedToken ? decodedToken.is_superuser : false;
 
-            // Validação de acesso à página
             const perfisPermitidos = ['Admin', 'Vendedor', 'Supervisor', 'Gerente', 'BackOffice', 'Diretoria'];
             if (!userProfile || !perfisPermitidos.includes(userProfile)) {
                 alert('Você não tem permissão para acessar esta página.');
@@ -327,38 +397,40 @@
             
             document.getElementById('logoutButton').addEventListener('click', logout);
             
-            // CORREÇÃO: Passa o perfil e se é superuser para as funções que precisam deles
             aplicarRegrasDeVisualizacao(userProfile, isSuperuser);
-            carregarVendas(userProfile, isSuperuser);
-
-            // Funções que não dependem do perfil do usuário
+            carregarVendas();
             carregarPlanos();
             carregarFormasPagamento();
             setupFormularioInteligente();
         });
 
-        // CORREÇÃO: A função agora recebe 'userProfile' como parâmetro
-        async function carregarVendas(userProfile, isSuperuser) {
+        async function carregarVendas() {
             try {
-                // A chamada à API continua a mesma, o backend já trata a filtragem
                 const response = await apiClient.get('/api/crm/vendas/');
                 const vendas = response.data;
                 
                 const tabelaBody = document.getElementById('tabela-vendas');
                 tabelaBody.innerHTML = '';
                 
-                // CORREÇÃO: A variável agora vem do parâmetro da função
+                const token = localStorage.getItem('accessToken');
+                const decodedToken = jwt_decode(token);
+                const userProfile = decodedToken ? decodedToken.perfil : null;
+                const isSuperuser = decodedToken ? decodedToken.is_superuser : false;
+                
                 const mostrarColunaVendedor = ['Supervisor', 'BackOffice', 'Admin', 'Diretoria'].includes(userProfile) || isSuperuser;
-
+                
                 if (mostrarColunaVendedor) {
-                    document.querySelector('.coluna-vendedor').style.display = 'table-cell';
+                    document.querySelectorAll('.coluna-vendedor').forEach(el => el.style.display = 'table-cell');
                 }
 
                 if (!vendas || vendas.length === 0) {
-                    const colspan = mostrarColunaVendedor ? 6 : 5;
+                    const colspan = mostrarColunaVendedor ? 7 : 6;
                     tabelaBody.innerHTML = `<tr><td colspan="${colspan}" class="text-center">Nenhuma venda encontrada.</td></tr>`;
                 } else {
                     vendas.forEach(venda => {
+                        const tr = document.createElement('tr');
+                        tr.id = `venda-row-${venda.id}`; // CORREÇÃO PARA EXCLUSÃO FUNCIONAR
+                        
                         const dataFormatada = new Date(venda.data_criacao).toLocaleDateString('pt-BR');
                         const planoNome = venda.plano ? venda.plano.nome : 'Não informado';
                         
@@ -373,34 +445,34 @@
                             statusFinal = venda.status_tratamento.nome;
                         }
                         
-                        tabelaBody.innerHTML += `
-                            <tr>
-                                <td>${venda.id}</td>
-                                <td>${venda.cliente.nome_razao_social}</td>
-                                <td>${planoNome}</td>
-                                ${colunaVendedorHtml}
-                                <td><span class="badge bg-secondary">${statusFinal}</span></td>
-                                <td>${dataFormatada}</td>
-                            </tr>`;
+                        tr.innerHTML = `
+                            <td>${venda.id}</td>
+                            <td>${venda.cliente.nome_razao_social}</td>
+                            <td>${planoNome}</td>
+                            ${colunaVendedorHtml}
+                            <td><span class="badge bg-secondary">${statusFinal}</span></td>
+                            <td>${dataFormatada}</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-warning" onclick="editarVenda(${venda.id})" title="Editar Venda"><i class="bi bi-pencil-square"></i></button>
+                                <button class="btn btn-sm btn-outline-danger" onclick="excluirVenda(${venda.id})" title="Excluir Venda"><i class="bi bi-trash"></i></button>
+                            </td>
+                        `;
+                        tabelaBody.appendChild(tr);
                     });
                 }
             } catch (error) {
                 console.error('Falha ao carregar vendas:', error);
-                const colspan = document.querySelector('.coluna-vendedor').style.display === 'table-cell' ? 6 : 5;
+                const colspan = document.querySelector('.coluna-vendedor').style.display === 'table-cell' ? 7 : 6;
                 document.getElementById('tabela-vendas').innerHTML = `<tr><td colspan="${colspan}" class="text-center text-danger">Erro ao carregar vendas.</td></tr>`;
             }
         }
-
-        // CORREÇÃO: A lógica de visualização foi movida para sua própria função
+        
         function aplicarRegrasDeVisualizacao(userProfile, isSuperuser) {
             if (!userProfile) { return; }
 
             const navPresenca = document.getElementById('nav-presenca');
-            const navVendas = document.getElementById('nav-vendas');
             const navImportacoes = document.getElementById('nav-importacoes');
-            const navGovernanca = document.getElementById('nav-governanca');
             const navCadastros = document.getElementById('nav-cadastros');
-            
             const tituloVendas = document.getElementById('titulo-vendas');
             const btnNovaVenda = document.getElementById('btn-nova-venda');
 
@@ -422,8 +494,6 @@
                 if (tituloVendas) tituloVendas.textContent = 'Visão Geral de Vendas';
             }
         }
-
-        // --- DEMAIS FUNÇÕES (sem alterações significativas) ---
 
         async function carregarPlanos() {
             try {
@@ -617,6 +687,10 @@
 
         document.getElementById('form-nova-venda').addEventListener('submit', async function(e) {
             e.preventDefault();
+            
+            // ===================================
+            // CORREÇÃO APLICADA AQUI
+            // ===================================
             const vendaData = {
                 forma_entrada: document.getElementById('forma_entrada').value,
                 cliente_cpf_cnpj: document.getElementById('cliente_cpf_cnpj').value,
@@ -632,8 +706,8 @@
                 bairro: document.getElementById('bairro').value,
                 cidade: document.getElementById('cidade').value,
                 estado: document.getElementById('estado').value,
-                plano_id: parseInt(document.getElementById('plano').value),
-                forma_pagamento_id: parseInt(document.getElementById('forma-pagamento').value)
+                plano: parseInt(document.getElementById('plano').value), // MUDOU DE plano_id para plano
+                forma_pagamento: parseInt(document.getElementById('forma-pagamento').value) // MUDOU DE forma_pagamento_id para forma_pagamento
             };
 
             try {
@@ -642,17 +716,137 @@
                 const modalElement = document.getElementById('novaVendaModal');
                 const modalInstance = bootstrap.Modal.getInstance(modalElement);
                 if (modalInstance) { modalInstance.hide(); }
-                // Recarrega as vendas com o perfil correto após o cadastro
-                const token = localStorage.getItem('accessToken');
-                const decodedToken = jwt_decode(token);
-                const userProfile = decodedToken ? decodedToken.perfil : null;
-                const isSuperuser = decodedToken ? decodedToken.is_superuser : false;
-                carregarVendas(userProfile, isSuperuser);
+
+                carregarVendas();
             } catch (error) {
-                console.error('Erro ao criar venda:', error);
-                alert('Erro ao cadastrar venda. Verifique os dados e tente novamente.');
+                const errorDetail = error.response ? JSON.stringify(error.response.data) : 'Verifique os dados e tente novamente.';
+                console.error('Erro ao criar venda:', error.response);
+                alert(`Erro ao cadastrar venda. Detalhe: ${errorDetail}`);
             }
         });
+
+        // ===============================================================
+        // FUNÇÕES DE EDIÇÃO E EXCLUSÃO
+        // ===============================================================
+        
+        async function editarVenda(vendaId) {
+            const modalElement = document.getElementById('modal-editar-venda');
+            const modal = bootstrap.Modal.getInstance(modalElement) || new bootstrap.Modal(modalElement);
+            
+            document.getElementById('editar-venda-id').textContent = vendaId;
+            document.getElementById('edit-venda-id-hidden').value = vendaId;
+
+            try {
+                const [vendaRes, planosRes, formasPagamentoRes, statusTratamentoRes, statusEsteiraRes, statusComissaoRes, usuariosRes] = await Promise.all([
+                    apiClient.get(`/api/crm/vendas/${vendaId}/`),
+                    apiClient.get('/api/crm/planos/'),
+                    apiClient.get('/api/crm/formas-pagamento/'),
+                    apiClient.get('/api/crm/status/?tipo=Tratamento'),
+                    apiClient.get('/api/crm/status/?tipo=Esteira'),
+                    apiClient.get('/api/crm/status/?tipo=Comissionamento'),
+                    apiClient.get('/api/usuarios/')
+                ]);
+                const venda = vendaRes.data;
+
+                populateSelect('edit-plano', planosRes.data.map(p => ({ id: p.id, nome: p.nome })), venda.plano?.id);
+                populateSelect('edit-forma-pagamento', formasPagamentoRes.data.map(f => ({ id: f.id, nome: f.nome })), venda.forma_pagamento?.id);
+                populateSelect('edit-vendedor', usuariosRes.data.map(u => ({ id: u.id, nome: u.nome_completo })), venda.vendedor?.id);
+                populateSelect('edit-status-tratamento', statusTratamentoRes.data, venda.status_tratamento?.id, true);
+                populateSelect('edit-status-esteira', statusEsteiraRes.data, venda.status_esteira?.id, true);
+                populateSelect('edit-status-comissionamento', statusComissaoRes.data, venda.status_comissionamento?.id, true);
+
+                document.getElementById('edit-ordem-servico').value = venda.ordem_servico || '';
+                document.getElementById('edit-data-agendamento').value = venda.data_agendamento || '';
+                document.getElementById('edit-periodo-agendamento').value = venda.periodo_agendamento || '';
+                
+                if (venda.data_pedido) {
+                    const dataPedido = new Date(venda.data_pedido);
+                    dataPedido.setMinutes(dataPedido.getMinutes() - dataPedido.getTimezoneOffset());
+                    document.getElementById('edit-data-pedido').value = dataPedido.toISOString().slice(0, 16);
+                } else {
+                    document.getElementById('edit-data-pedido').value = '';
+                }
+
+                modal.show();
+
+            } catch (error) {
+                console.error(`Erro ao carregar dados para edição da venda ${vendaId}:`, error);
+                alert('Falha ao carregar os dados da venda para edição.');
+            }
+        }
+        
+        function populateSelect(selectId, options, selectedValue, includeEmpty = false) {
+            const select = document.getElementById(selectId);
+            select.innerHTML = '';
+            if (includeEmpty) {
+                select.innerHTML += '<option value="">Nenhum</option>';
+            }
+            options.forEach(option => {
+                const isSelected = option.id == selectedValue ? 'selected' : '';
+                select.innerHTML += `<option value="${option.id}" ${isSelected}>${option.nome || option.name}</option>`;
+            });
+        }
+        
+        async function salvarEdicaoVenda() {
+            const vendaId = document.getElementById('edit-venda-id-hidden').value;
+
+            const body = {
+                plano: document.getElementById('edit-plano').value,
+                forma_pagamento: document.getElementById('edit-forma-pagamento').value,
+                vendedor: document.getElementById('edit-vendedor').value,
+                status_tratamento: document.getElementById('edit-status-tratamento').value || null,
+                status_esteira: document.getElementById('edit-status-esteira').value || null,
+                status_comissionamento: document.getElementById('edit-status-comissionamento').value || null,
+                ordem_servico: document.getElementById('edit-ordem-servico').value,
+                data_pedido: document.getElementById('edit-data-pedido').value ? new Date(document.getElementById('edit-data-pedido').value).toISOString() : null,
+                data_agendamento: document.getElementById('edit-data-agendamento').value || null,
+                periodo_agendamento: document.getElementById('edit-periodo-agendamento').value || null,
+            };
+
+            try {
+                await apiClient.patch(`/api/crm/vendas/${vendaId}/`, body);
+                
+                const modalElement = document.getElementById('modal-editar-venda');
+                const modal = bootstrap.Modal.getInstance(modalElement);
+                modal.hide();
+
+                alert('Venda atualizada com sucesso!');
+                carregarVendas();
+
+            } catch (error) {
+                console.error(`Erro ao salvar a venda ${vendaId}:`, error.response.data);
+                const errorDetail = error.response ? JSON.stringify(error.response.data) : 'Erro desconhecido';
+                alert(`Falha ao salvar as alterações. Detalhe: ${errorDetail}`);
+            }
+        }
+
+        async function excluirVenda(vendaId) {
+            if (confirm(`Tem certeza que deseja excluir a venda #${vendaId}? Esta ação não pode ser desfeita.`)) {
+                try {
+                    const response = await fetch(`/api/crm/vendas/${vendaId}/`, {
+                        method: 'DELETE',
+                        headers: {
+                            'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+                            'Content-Type': 'application/json',
+                        }
+                    });
+
+                    if (response.status === 204) {
+                        alert('Venda excluída com sucesso!');
+                        document.getElementById(`venda-row-${vendaId}`).remove();
+                    } else if (response.status === 403) {
+                        const errorData = await response.json();
+                        alert(`Erro de permissão: Você não tem permissão para excluir esta venda. (Detalhe: ${errorData.detail || 'N/A'})`);
+                    } else {
+                        const errorData = await response.json();
+                        alert(`Erro ao excluir a venda. (Detalhe: ${errorData.detail || 'Tente novamente mais tarde.'})`);
+                    }
+                } catch (error) {
+                    console.error('Erro na requisição de exclusão:', error);
+                    alert('Ocorreu um erro de rede. Verifique sua conexão e tente novamente.');
+                }
+            }
+        }
     </script>
 </body>
 </html>

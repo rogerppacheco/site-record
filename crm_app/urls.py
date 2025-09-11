@@ -11,7 +11,9 @@ from .views import (
     RegraComissaoListCreateView, RegraComissaoDetailView,
     VendaViewSet, ClienteViewSet,
     ImportacaoOsabView, ImportacaoChurnView,
-    ImportacaoCicloPagamentoView  # Importa a nova view
+    ImportacaoCicloPagamentoView,
+    ImportacaoOsabDetailView,    # Importado a nova view para edição de OSAB
+    ImportacaoChurnDetailView,   # Importado a nova view para edição de Churn
 )
 
 router = DefaultRouter()
@@ -38,9 +40,9 @@ urlpatterns = [
     # Rotas de Importação
     path('importacao-osab/', ImportacaoOsabView.as_view(), name='importacao-osab'),
     path('importacao-churn/', ImportacaoChurnView.as_view(), name='importacao-churn'),
-    
-    # =======================================================================================
-    # NOVA ROTA PARA IMPORTAÇÃO DO CICLO DE PAGAMENTO
-    # =======================================================================================
     path('importacao-ciclo-pagamento/', ImportacaoCicloPagamentoView.as_view(), name='importacao-ciclo-pagamento'),
+
+    # Novas rotas para Edição (adicionei essas aqui)
+    path('importacao-osab/<int:pk>/', ImportacaoOsabDetailView.as_view(), name='importacao-osab-detail'),
+    path('importacao-churn/<int:pk>/', ImportacaoChurnDetailView.as_view(), name='importacao-churn-detail'),
 ]

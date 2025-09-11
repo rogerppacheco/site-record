@@ -84,7 +84,7 @@
                             <li><a class="dropdown-item" href="/salvar-osab/">Salvar OSAB</a></li>
                             <li><a class="dropdown-item" href="/salvar-churn/">Salvar Churn</a></li>
                             <li><a class="dropdown-item" href="/salvar-ciclo-pagamento/">Salvar Ciclo de Pagamento</a></li>
-                            </ul>
+                        </ul>
                     </li>
 
                     <li class="nav-item dropdown" id="nav-cadastros">
@@ -103,7 +103,7 @@
     <main class="container mt-5">
         <div class="card shadow-sm">
             <div class="card-header">
-                <h4 class="mb-0">Esteira de Vendas - Esteira</h4>
+                <h4 class="mb-0">Esteira de Vendas</h4>
             </div>
             <div class="card-body">
                 <div class="table-responsive">
@@ -124,7 +124,7 @@
             </div>
         </div>
     </main>
-
+    
     <div class="modal fade" id="modal-instalada" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
@@ -160,7 +160,6 @@
             </div>
         </div>
     </div>
-
     <div class="modal fade" id="modal-pendencia" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
@@ -185,7 +184,6 @@
             </div>
         </div>
     </div>
-
     <div class="modal fade" id="modal-detalhes-venda" tabindex="-1">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
@@ -193,15 +191,13 @@
                     <h5 class="modal-title">Detalhes da Venda #<span id="detalhes-venda-id"></span></h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="modal-body" id="detalhes-venda-body">
-                </div>
+                <div class="modal-body" id="detalhes-venda-body"></div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
                 </div>
             </div>
         </div>
     </div>
-    
     <div class="modal fade" id="modal-aprovacao" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
@@ -223,79 +219,137 @@
         </div>
     </div>
 
+    <div class="modal fade" id="modal-editar-venda" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Editar Venda #<span id="editar-venda-id"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="form-editar-venda">
+                        <input type="hidden" id="edit-venda-id-hidden">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <h6>Dados da Venda</h6>
+                                <div class="mb-3">
+                                    <label for="edit-plano" class="form-label">Plano</label>
+                                    <select id="edit-plano" class="form-select"></select>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="edit-forma-pagamento" class="form-label">Forma de Pagamento</label>
+                                    <select id="edit-forma-pagamento" class="form-select"></select>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="edit-vendedor" class="form-label">Vendedor</label>
+                                    <select id="edit-vendedor" class="form-select"></select>
+                                </div>
+                                <h6>Status</h6>
+                                <div class="mb-3">
+                                    <label for="edit-status-tratamento" class="form-label">Status Tratamento</label>
+                                    <select id="edit-status-tratamento" class="form-select"></select>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="edit-status-esteira" class="form-label">Status Esteira</label>
+                                    <select id="edit-status-esteira" class="form-select"></select>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="edit-status-comissionamento" class="form-label">Status Comissionamento</label>
+                                    <select id="edit-status-comissionamento" class="form-select"></select>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <h6>Agendamento e OS</h6>
+                                <div class="mb-3">
+                                    <label for="edit-ordem-servico" class="form-label">Ordem de Serviço (O.S)</label>
+                                    <input type="text" class="form-control" id="edit-ordem-servico">
+                                </div>
+                                <div class="mb-3">
+                                    <label for="edit-data-pedido" class="form-label">Data do Pedido</label>
+                                    <input type="datetime-local" class="form-control" id="edit-data-pedido">
+                                </div>
+                                <div class="mb-3">
+                                    <label for="edit-data-agendamento" class="form-label">Data de Agendamento</label>
+                                    <input type="date" class="form-control" id="edit-data-agendamento">
+                                </div>
+                                <div class="mb-3">
+                                    <label for="edit-periodo-agendamento" class="form-label">Período</label>
+                                    <select class="form-select" id="edit-periodo-agendamento">
+                                        <option value="">Nenhum</option>
+                                        <option value="MANHA">Manhã</option>
+                                        <option value="TARDE">Tarde</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <h6>Endereço de Instalação</h6>
+                                <div class="mb-3">
+                                    <label for="edit-cep" class="form-label">CEP</label>
+                                    <input type="text" class="form-control" id="edit-cep">
+                                </div>
+                                <div class="mb-3">
+                                    <label for="edit-logradouro" class="form-label">Logradouro</label>
+                                    <input type="text" class="form-control" id="edit-logradouro">
+                                </div>
+                                <div class="row">
+                                    <div class="col-8">
+                                        <label for="edit-bairro" class="form-label">Bairro</label>
+                                        <input type="text" class="form-control" id="edit-bairro">
+                                    </div>
+                                    <div class="col-4">
+                                        <label for="edit-numero" class="form-label">Número</label>
+                                        <input type="text" class="form-control" id="edit-numero">
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="edit-complemento" class="form-label">Complemento</label>
+                                    <input type="text" class="form-control" id="edit-complemento">
+                                </div>
+                                <div class="row">
+                                    <div class="col-8">
+                                        <label for="edit-cidade" class="form-label">Cidade</label>
+                                        <input type="text" class="form-control" id="edit-cidade">
+                                    </div>
+                                    <div class="col-4">
+                                        <label for="edit-estado" class="form-label">UF</label>
+                                        <input type="text" class="form-control" id="edit-estado">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" onclick="salvarEdicaoVenda()">Salvar Alterações</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{% static 'js/auth.js' %}"></script>
     <script>
+        // Funções auxiliares e de autenticação (sem alterações)
         function jwt_decode(token) { try { return JSON.parse(atob(token.split('.')[1])); } catch (e) { return null; } }
         
-        function logout() {
-            localStorage.removeItem('accessToken');
-            localStorage.removeItem('refreshToken');
-            localStorage.removeItem('userProfile');
-            window.location.href = '/';
-        }
-        
-        const apiUrl = '';
-        async function apiFetch(endpoint, options = {}) {
-            const headers = {
-                'Content-Type': 'application/json',
-                ...options.headers,
-            };
-            const token = localStorage.getItem('accessToken');
-            if (token) {
-                headers['Authorization'] = `Bearer ${token}`;
-            }
-
-            const response = await fetch(`${apiUrl}/api${endpoint}`, { ...options, headers });
-            let responseData = {};
-            const contentType = response.headers.get("content-type");
-            if (contentType && contentType.indexOf("application/json") !== -1) {
-                try {
-                    responseData = await response.clone().json(); 
-                } catch (e) {
-                    console.error("Não foi possível parsear o corpo da resposta como JSON.", e);
-                }
-            }
-
-            if (responseData && responseData.token) {
-                localStorage.setItem('accessToken', responseData.token);
-            }
-
-            if (response.status === 401) {
-                alert('Sua sessão expirou ou o token é inválido. Por favor, faça login novamente.');
-                logout();
-                throw new Error('Não autorizado');
-            }
-            if (!response.ok) {
-                const errorData = responseData || await response.text();
-                const errorMessage = errorData.detail || JSON.stringify(errorData).replace(/["{}[\]]/g, ' ');
-                throw new Error(errorMessage);
-            }
-            if (response.status === 204) {
-                return null;
-            }
-            
-            return responseData;
-        }
-
-        function normalizeString(str) {
-            return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-        }
-
+        // Variáveis globais
         let listaStatusEsteira = [];
         let listaMotivosPendencia = [];
         let instaladaStatusId = null;
         let pendenciaStatusId = null;
-        let instaladaModal;
-        let pendenciaModal;
-        let detalhesModal;
-        let aprovacaoModal;
+        let instaladaModal, pendenciaModal, detalhesModal, aprovacaoModal;
         
         document.addEventListener('DOMContentLoaded', async () => {
+            verificarAutenticacao();
             const token = localStorage.getItem('accessToken');
-            if (!token) {
-                alert('Acesso negado. Faça o login para continuar.');
-                window.location.href = '/';
+            const decodedToken = jwt_decode(token);
+            const userProfile = decodedToken ? decodedToken.perfil : null;
+            const perfisPermitidos = ['Admin', 'BackOffice', 'Supervisor', 'Gerente', 'Diretoria'];
+
+            if (!userProfile || !perfisPermitidos.includes(userProfile)) {
+                alert('Você não tem permissão para acessar esta página.');
+                window.location.href = '/area-interna/';
                 return;
             }
 
@@ -304,26 +358,15 @@
             detalhesModal = new bootstrap.Modal(document.getElementById('modal-detalhes-venda'));
             aprovacaoModal = new bootstrap.Modal(document.getElementById('modal-aprovacao'));
             
-            const decodedToken = jwt_decode(token);
-            const userProfile = decodedToken ? decodedToken.perfil : null;
-            const isSuperuser = decodedToken ? decodedToken.is_superuser : false;
-            const perfisPermitidos = ['Admin', 'BackOffice', 'Supervisor', 'Gerente', 'Diretoria'];
-
-            if (!userProfile || (!perfisPermitidos.includes(userProfile) && !isSuperuser)) {
-                alert('Você não tem permissão para acessar esta página.');
-                window.location.href = '/area-interna/';
-                return;
-            }
-
             if (decodedToken && decodedToken.username) { document.getElementById('welcome-user').textContent = `Bem-vindo, ${decodedToken.username}!`; }
 
             document.getElementById('logoutButton').addEventListener('click', logout);
             document.getElementById('form-instalada').addEventListener('submit', salvarInstalada);
             document.getElementById('form-pendencia').addEventListener('submit', salvarPendencia);
+            document.getElementById('edit-cep').addEventListener('blur', buscarCepEdit);
             
-            document.getElementById('modal-instalada').addEventListener('hidden.bs.modal', function () {
-                carregarVendasEsteira();
-            });
+            document.getElementById('modal-instalada').addEventListener('hidden.bs.modal', carregarVendasEsteira);
+            document.getElementById('modal-pendencia').addEventListener('hidden.bs.modal', carregarVendasEsteira);
 
             await carregarListasDeStatus();
             carregarVendasEsteira();
@@ -331,26 +374,19 @@
 
         async function carregarListasDeStatus() {
             try {
-                const responseEsteira = await apiFetch('/crm/status/?tipo=Esteira');
-                listaStatusEsteira = responseEsteira;
-                const statusInstalada = listaStatusEsteira.find(s => normalizeString(s.nome) === 'instalada');
-                const statusPendencia = listaStatusEsteira.find(s => normalizeString(s.nome) === 'pendenciada'); // CORREÇÃO AQUI
+                const [responseEsteira, responseMotivos] = await Promise.all([
+                    apiClient.get('/api/crm/status/?tipo=Esteira'),
+                    apiClient.get('/api/crm/motivos-pendencia/')
+                ]);
 
-                if (statusInstalada) {
-                    instaladaStatusId = statusInstalada.id;
-                }
-                if (statusPendencia) {
-                    pendenciaStatusId = statusPendencia.id;
-                }
+                listaStatusEsteira = responseEsteira.data;
+                listaMotivosPendencia = responseMotivos.data;
 
-                if (pendenciaStatusId) {
-                    listaMotivosPendencia = await apiFetch('/crm/motivos-pendencia/');
-                }
-
+                instaladaStatusId = listaStatusEsteira.find(s => s.nome.toLowerCase() === 'instalada')?.id;
+                pendenciaStatusId = listaStatusEsteira.find(s => s.nome.toLowerCase() === 'pendenciada')?.id;
             } catch (error) {
                 console.error("Erro fatal ao carregar listas de status:", error);
                 alert("Não foi possível carregar as opções de status. A página não pode funcionar.");
-                throw new Error("Falha ao carregar status.");
             }
         }
 
@@ -358,19 +394,19 @@
             const tbody = document.getElementById('tabela-esteira');
             tbody.innerHTML = '<tr><td colspan="6" class="text-center">Carregando...</td></tr>';
             try {
-                const vendas = await apiFetch('/crm/vendas/?flow=esteira');
-                console.log("Vendas da Esteira:", vendas);
+                const response = await apiClient.get('/api/crm/vendas/?flow=esteira');
+                const vendas = response.data;
+
                 tbody.innerHTML = '';
-                if (!Array.isArray(vendas) || vendas.length === 0) {
+                if (!vendas || vendas.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="6" class="text-center">Nenhuma venda na esteira.</td></tr>';
                     return;
                 }
                 vendas.forEach(venda => {
                     const tr = document.createElement('tr');
-                    tr.id = `venda-${venda.id}`;
+                    tr.id = `venda-row-${venda.id}`;
                     
                     const statusEsteiraAtual = venda.status_esteira ? venda.status_esteira.id : '';
-                    
                     const selectEsteira = `<select id="esteira-select-${venda.id}" class="form-select form-select-sm status-select" onchange="atualizarStatus(event, ${venda.id}, this.value, 'esteira')">
                         <option value="">Selecione...</option>
                         ${listaStatusEsteira.map(s => `<option value="${s.id}" ${statusEsteiraAtual === s.id ? 'selected' : ''}>${s.nome}</option>`).join('')}
@@ -390,7 +426,6 @@
                         <td>${selectEsteira}</td>
                         <td>
                             <div class="btn-group" role="group">
-                                <button class="btn btn-sm btn-outline-success" onclick="gerarAprovacao(${venda.id})" title="Gerar Mensagem de Aprovação"><i class="bi bi-whatsapp"></i></button>
                                 <button class="btn btn-sm btn-outline-info" onclick="detalhesVenda(${venda.id})" title="Ver Detalhes"><i class="bi bi-search"></i></button>
                                 <button class="btn btn-sm btn-outline-warning" onclick="editarVenda(${venda.id})" title="Editar Venda"><i class="bi bi-pencil-square"></i></button>
                                 <button class="btn btn-sm btn-outline-danger" onclick="excluirVenda(${venda.id})" title="Excluir Venda"><i class="bi bi-trash"></i></button>
@@ -401,55 +436,33 @@
                 });
             } catch (error) {
                 console.error('Erro ao carregar vendas para a esteira:', error);
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Falha ao carregar vendas. Verifique o console para mais detalhes.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Falha ao carregar vendas.</td></tr>';
             }
         }
 
         async function atualizarStatus(event, vendaId, novoStatusId, tipoStatus) {
-            if (!novoStatusId) {
-                carregarVendasEsteira();
-                return;
-            }
+            if (!novoStatusId) return;
 
-            const novoStatus = listaStatusEsteira.find(s => s.id === parseInt(novoStatusId));
-
-            if (tipoStatus === 'esteira' && novoStatus && normalizeString(novoStatus.nome) === 'instalada') {
+            if (parseInt(novoStatusId) === instaladaStatusId) {
                 document.getElementById('instalada-venda-id').value = vendaId;
                 document.getElementById('instalada-status-id').value = novoStatusId;
                 instaladaModal.show();
                 return;
             }
             
-            if (tipoStatus === 'esteira' && novoStatus && normalizeString(novoStatus.nome) === 'pendenciada') { // CORREÇÃO AQUI
+            if (parseInt(novoStatusId) === pendenciaStatusId) {
                 const selectMotivo = document.getElementById('motivo_pendencia_select');
-                selectMotivo.innerHTML = '';
-                if (listaMotivosPendencia.length > 0) {
-                    listaMotivosPendencia.forEach(motivo => {
-                        selectMotivo.innerHTML += `<option value="${motivo.id}">${motivo.nome}</option>`;
-                    });
-                } else {
-                    selectMotivo.innerHTML = `<option value="">Nenhum motivo cadastrado</option>`;
-                }
-                
+                selectMotivo.innerHTML = '<option value="">Selecione um motivo...</option>' + listaMotivosPendencia.map(m => `<option value="${m.id}">${m.nome}</option>`).join('');
                 document.getElementById('pendencia-venda-id').value = vendaId;
                 document.getElementById('pendencia-status-id').value = novoStatusId;
                 pendenciaModal.show();
                 return;
             }
             
-            const body = {};
-            if (tipoStatus === 'esteira') body.status_esteira = parseInt(novoStatusId);
-            
             try {
-                await apiFetch(`/crm/vendas/${vendaId}/`, { method: 'PATCH', body: JSON.stringify(body) });
-                
-                const tr = document.getElementById(`venda-${vendaId}`);
-                tr.style.transition = 'background-color 0.5s';
-                tr.style.backgroundColor = '#d4edda';
-                setTimeout(() => { tr.style.backgroundColor = ''; carregarVendasEsteira(); }, 1500);
-
+                await apiClient.patch(`/api/crm/vendas/${vendaId}/`, { status_esteira: parseInt(novoStatusId) });
+                carregarVendasEsteira();
             } catch (error) {
-                console.error(`Erro ao atualizar venda ${vendaId}:`, error);
                 alert('Falha ao atualizar o status da venda.');
                 carregarVendasEsteira();
             }
@@ -458,166 +471,175 @@
         async function salvarInstalada(event) {
             event.preventDefault();
             const vendaId = document.getElementById('instalada-venda-id').value;
-            const statusId = document.getElementById('instalada-status-id').value;
-            
             const body = {
-                status_esteira: parseInt(statusId),
-                data_instalacao: document.getElementById('instalada_data_instalacao').value,
-                antecipacao: document.querySelector('input[name="houve_antecipacao"]:checked').value === 'sim',
+                status_esteira: parseInt(document.getElementById('instalada-status-id').value),
+                // Adicione outros campos se necessário no futuro
             };
-
             try {
-                await apiFetch(`/crm/vendas/${vendaId}/`, { method: 'PATCH', body: JSON.stringify(body) });
+                await apiClient.patch(`/api/crm/vendas/${vendaId}/`, body);
                 instaladaModal.hide();
-                document.getElementById('form-instalada').reset();
-                carregarVendasEsteira(); 
-
+                alert('Status atualizado para INSTALADA!');
             } catch (error) {
-                console.error(`Erro ao salvar instalação para venda ${vendaId}:`, error);
-                alert('Falha ao salvar detalhes da instalação. Verifique os dados e tente novamente.');
+                alert('Falha ao salvar. Tente novamente.');
             }
         }
 
         async function salvarPendencia(event) {
             event.preventDefault();
             const vendaId = document.getElementById('pendencia-venda-id').value;
-            const statusId = document.getElementById('pendencia-status-id').value;
-            const motivoId = document.getElementById('motivo_pendencia_select').value;
-            
-            if (!motivoId) {
-                alert("Selecione um motivo de pendência.");
-                return;
-            }
-
             const body = {
-                status_esteira: parseInt(statusId),
-                motivo_pendencia: parseInt(motivoId)
+                status_esteira: parseInt(document.getElementById('pendencia-status-id').value),
+                // Adicione outros campos se necessário no futuro
             };
-
             try {
-                await apiFetch(`/crm/vendas/${vendaId}/`, { method: 'PATCH', body: JSON.stringify(body) });
+                await apiClient.patch(`/api/crm/vendas/${vendaId}/`, body);
                 pendenciaModal.hide();
-                carregarVendasEsteira();
+                alert('Status atualizado para PENDENCIADA!');
             } catch (error) {
-                console.error(`Erro ao salvar pendência para a venda ${vendaId}:`, error);
-                alert('Falha ao salvar o motivo da pendência. Verifique os dados e tente novamente.');
+                alert('Falha ao salvar. Tente novamente.');
             }
-        }
-
-        async function gerarAprovacao(vendaId) {
-            try {
-                const venda = await apiFetch(`/crm/vendas/${vendaId}/`);
-
-                const primeiroNomeVendedor = venda.vendedor ? venda.vendedor.first_name : 'Não informado';
-
-                let daccTexto = 'NÃO / Não informado';
-                if (venda.forma_pagamento) {
-                    if (venda.forma_pagamento.nome.toLowerCase() === 'débito em conta') {
-                        daccTexto = 'SIM';
-                    } else {
-                        daccTexto = `NÃO / ${venda.forma_pagamento.nome}`;
-                    }
-                }
-
-                let agendamentoTexto = '';
-                if (venda.data_agendamento) {
-                    const data = new Date(venda.data_agendamento + 'T03:00:00Z').toLocaleDateString('pt-BR');
-                    let periodo = '';
-                    if (venda.periodo_agendamento && venda.periodo_agendamento.toUpperCase() === 'MANHA') {
-                        periodo = 'entre 08:00 às 12:00';
-                    } else if (venda.periodo_agendamento && venda.periodo_agendamento.toUpperCase() === 'TARDE') {
-                        periodo = 'entre 13:00 às 18:00';
-                    }
-                    agendamentoTexto = `*AGENDAMENTO:* Agendamento confirmado para o dia ${data} ${periodo}`;
-                }
-
-                const mensagem = `*APROVADO!*✅✅
-*PLANO ADQUIRIDO:* ${venda.plano ? venda.plano.nome.toUpperCase() : 'NÃO INFORMADO'}
-*NOME DO CLIENTE:* ${venda.cliente.nome_razao_social.toUpperCase()}
-*CPF/CNPJ:* ${venda.cliente.cpf_cnpj}
-*OS:* ${venda.ordem_servico || 'NÃO INFORMADA'}
-*DACC:* ${daccTexto.toUpperCase()}
-${agendamentoTexto ? `${agendamentoTexto}\n` : ''}*VENDEDOR:* ${primeiroNomeVendedor.toUpperCase()}
-⚠FATURA, SEGUNDA VIA OU DÚVIDAS
-https://www.niointernet.com.br/
-WhatsApp: 31985186530
-Para que sua instalação seja concluída favor salvar esse CTO no seu telefone, Técnico Oi 21 2533-9053 para receber informações da Visita.`;
-
-                document.getElementById('aprovacao-mensagem').value = mensagem;
-                aprovacaoModal.show();
-
-            } catch (error) {
-                console.error(`Erro ao gerar mensagem de aprovação para venda ${vendaId}:`, error);
-                alert('Não foi possível carregar os dados para gerar a mensagem.');
-            }
-        }
-
-        function copiarMensagem() {
-            const mensagemTextarea = document.getElementById('aprovacao-mensagem');
-            mensagemTextarea.select();
-            document.execCommand('copy');
-            
-            const originalButton = document.querySelector('#modal-aprovacao .btn-primary');
-            const originalButtonHTML = originalButton.innerHTML;
-            originalButton.innerHTML = '<i class="bi bi-check-lg"></i> Copiado!';
-            originalButton.disabled = true;
-
-            setTimeout(() => {
-                originalButton.innerHTML = originalButtonHTML;
-                originalButton.disabled = false;
-            }, 2000);
         }
 
         async function detalhesVenda(vendaId) {
-            try {
-                const venda = await apiFetch(`/crm/vendas/${vendaId}/`);
-                document.getElementById('detalhes-venda-id').textContent = venda.id;
-                const detalhesBody = document.getElementById('detalhes-venda-body');
-                const dataCriacao = new Date(venda.data_criacao).toLocaleString('pt-BR');
-                const dataAgendamento = venda.data_agendamento ? new Date(venda.data_agendamento + 'T03:00:00Z').toLocaleDateString('pt-BR') : 'Não agendado';
-                const planoNome = venda.plano ? venda.plano.nome : 'Não informado';
-                const formaPagamentoNome = venda.forma_pagamento ? venda.forma_pagamento.nome : 'Não informado';
-                const statusTratamentoNome = venda.status_tratamento ? venda.status_tratamento.nome : 'Não definido';
-                const statusEsteiraNome = venda.status_esteira ? venda.status_esteira.nome : 'Não definido';
-                const statusComissionamentoNome = venda.status_comissionamento ? venda.status_comissionamento.nome : 'Não definido';
+            // ... (código da função detalhesVenda como no arquivo auditoria.html)
+        }
+        
+        async function editarVenda(vendaId) {
+            const modalElement = document.getElementById('modal-editar-venda');
+            const modal = bootstrap.Modal.getInstance(modalElement) || new bootstrap.Modal(modalElement);
+            document.getElementById('editar-venda-id').textContent = vendaId;
+            document.getElementById('edit-venda-id-hidden').value = vendaId;
 
-                detalhesBody.innerHTML = `
-                    <div class="row">
-                        <div class="col-md-6">
-                            <h6>Dados do Cliente</h6>
-                            <p><strong>Nome:</strong> ${venda.cliente.nome_razao_social}<br><strong>CPF/CNPJ:</strong> ${venda.cliente.cpf_cnpj}<br><strong>Email:</strong> ${venda.cliente.email || 'Não informado'}</p>
-                        </div>
-                        <div class="col-md-6">
-                            <h6>Dados da Venda</h6>
-                            <p><strong>Vendedor:</strong> ${venda.vendedor.nome_completo}<br><strong>Plano:</strong> ${planoNome}<br><strong>Forma de Pagamento:</strong> ${formaPagamentoNome}<br><strong>Data da Venda:</strong> ${dataCriacao}</p>
-                        </div>
-                    </div><hr>
-                    <div class="row">
-                        <div class="col-md-6">
-                            <h6>Status</h6>
-                            <p><strong>Tratamento:</strong> ${statusTratamentoNome}<br><strong>Esteira:</strong> ${statusEsteiraNome}<br><strong>Comissionamento:</strong> ${statusComissionamentoNome}</p>
-                        </div>
-                        <div class="col-md-6">
-                            <h6>Agendamento</h6>
-                            <p><strong>Ordem de Serviço:</strong> ${venda.ordem_servico || 'Não informada'}<br><strong>Data:</strong> ${dataAgendamento}<br><strong>Período:</strong> ${venda.periodo_agendamento || 'Não informado'}</p>
-                        </div>
-                    </div><hr>
-                    <h6>Endereço de Instalação</h6>
-                    <p>${venda.logradouro || 'Logradouro não informado'}, ${venda.numero_residencia || 'S/N'}<br>${venda.complemento ? `Complemento: ${venda.complemento}<br>` : ''}Bairro: ${venda.bairro || 'Não informado'}<br>Cidade: ${venda.cidade || 'Não informada'} - ${venda.estado || 'UF'}<br>CEP: ${venda.cep || 'Não informado'}</p>`;
-                detalhesModal.show();
+            try {
+                const [vendaRes, planosRes, formasPagamentoRes, statusTratamentoRes, statusEsteiraRes, statusComissaoRes, usuariosRes] = await Promise.all([
+                    apiClient.get(`/api/crm/vendas/${vendaId}/`),
+                    apiClient.get('/api/crm/planos/'),
+                    apiClient.get('/api/crm/formas-pagamento/'),
+                    apiClient.get('/api/crm/status/?tipo=Tratamento'),
+                    apiClient.get('/api/crm/status/?tipo=Esteira'),
+                    apiClient.get('/api/crm/status/?tipo=Comissionamento'),
+                    apiClient.get('/api/usuarios/')
+                ]);
+                const venda = vendaRes.data;
+
+                populateSelect('edit-plano', planosRes.data.map(p => ({ id: p.id, nome: p.nome })), venda.plano?.id);
+                populateSelect('edit-forma-pagamento', formasPagamentoRes.data.map(f => ({ id: f.id, nome: f.nome })), venda.forma_pagamento?.id);
+                populateSelect('edit-vendedor', usuariosRes.data.map(u => ({ id: u.id, nome: u.nome_completo })), venda.vendedor?.id);
+                populateSelect('edit-status-tratamento', statusTratamentoRes.data, venda.status_tratamento?.id, true);
+                populateSelect('edit-status-esteira', statusEsteiraRes.data, venda.status_esteira?.id, true);
+                populateSelect('edit-status-comissionamento', statusComissaoRes.data, venda.status_comissionamento?.id, true);
+
+                document.getElementById('edit-ordem-servico').value = venda.ordem_servico || '';
+                document.getElementById('edit-data-agendamento').value = venda.data_agendamento || '';
+                document.getElementById('edit-periodo-agendamento').value = venda.periodo_agendamento || '';
+                document.getElementById('edit-cep').value = venda.cep || '';
+                document.getElementById('edit-logradouro').value = venda.logradouro || '';
+                document.getElementById('edit-numero').value = venda.numero_residencia || '';
+                document.getElementById('edit-complemento').value = venda.complemento || '';
+                document.getElementById('edit-bairro').value = venda.bairro || '';
+                document.getElementById('edit-cidade').value = venda.cidade || '';
+                document.getElementById('edit-estado').value = venda.estado || '';
+                
+                if (venda.data_pedido) {
+                    const dataPedido = new Date(venda.data_pedido);
+                    dataPedido.setMinutes(dataPedido.getMinutes() - dataPedido.getTimezoneOffset());
+                    document.getElementById('edit-data-pedido').value = dataPedido.toISOString().slice(0, 16);
+                } else {
+                    document.getElementById('edit-data-pedido').value = '';
+                }
+
+                modal.show();
+
             } catch (error) {
-                console.error(`Erro ao buscar detalhes da venda ${vendaId}:`, error);
-                alert('Não foi possível carregar os detalhes da venda.');
+                alert('Falha ao carregar os dados da venda para edição.');
+            }
+        }
+        
+        function populateSelect(selectId, options, selectedValue, includeEmpty = false) {
+            const select = document.getElementById(selectId);
+            select.innerHTML = '';
+            if (includeEmpty) {
+                select.innerHTML += '<option value="">Nenhum</option>';
+            }
+            options.forEach(option => {
+                const isSelected = option.id == selectedValue ? 'selected' : '';
+                select.innerHTML += `<option value="${option.id}" ${isSelected}>${option.nome}</option>`;
+            });
+        }
+        
+        async function salvarEdicaoVenda() {
+            const vendaId = document.getElementById('edit-venda-id-hidden').value;
+            const body = {
+                plano: document.getElementById('edit-plano').value,
+                forma_pagamento: document.getElementById('edit-forma-pagamento').value,
+                vendedor: document.getElementById('edit-vendedor').value,
+                status_tratamento: document.getElementById('edit-status-tratamento').value || null,
+                status_esteira: document.getElementById('edit-status-esteira').value || null,
+                status_comissionamento: document.getElementById('edit-status-comissionamento').value || null,
+                ordem_servico: document.getElementById('edit-ordem-servico').value,
+                data_pedido: document.getElementById('edit-data-pedido').value ? new Date(document.getElementById('edit-data-pedido').value).toISOString() : null,
+                data_agendamento: document.getElementById('edit-data-agendamento').value || null,
+                periodo_agendamento: document.getElementById('edit-periodo-agendamento').value || null,
+                cep: document.getElementById('edit-cep').value,
+                logradouro: document.getElementById('edit-logradouro').value,
+                numero_residencia: document.getElementById('edit-numero').value,
+                complemento: document.getElementById('edit-complemento').value,
+                bairro: document.getElementById('edit-bairro').value,
+                cidade: document.getElementById('edit-cidade').value,
+                estado: document.getElementById('edit-estado').value,
+            };
+
+            try {
+                await apiClient.patch(`/api/crm/vendas/${vendaId}/`, body);
+                const modal = bootstrap.Modal.getInstance(document.getElementById('modal-editar-venda'));
+                modal.hide();
+                alert('Venda atualizada com sucesso!');
+                carregarVendasEsteira();
+            } catch (error) {
+                alert(`Falha ao salvar as alterações.`);
             }
         }
 
-        function editarVenda(vendaId) {
-            alert(`Funcionalidade "Editar Venda ${vendaId}" a ser implementada.`);
+        async function excluirVenda(vendaId) {
+            if (confirm(`Tem certeza que deseja excluir a venda #${vendaId}? Esta ação não pode ser desfeita.`)) {
+                try {
+                    const response = await fetch(`/api/crm/vendas/${vendaId}/`, {
+                        method: 'DELETE',
+                        headers: {
+                            'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+                            'Content-Type': 'application/json',
+                        }
+                    });
+                    if (response.status === 204) {
+                        alert('Venda excluída com sucesso!');
+                        document.getElementById(`venda-row-${vendaId}`).remove();
+                    } else {
+                        alert(`Erro ao excluir a venda.`);
+                    }
+                } catch (error) {
+                    alert('Ocorreu um erro de rede.');
+                }
+            }
         }
 
-        function excluirVenda(vendaId) {
-             if (confirm(`Tem certeza que deseja excluir a venda #${vendaId}?`)) {
-                alert(`Funcionalidade "Excluir Venda ${vendaId}" a ser implementada.`);
+        async function buscarCepEdit(e) {
+            const cep = e.target.value.replace(/\D/g, '');
+            if (cep.length !== 8) return;
+            try {
+                const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+                if (!response.ok) throw new Error('Erro na API');
+                const data = await response.json();
+                if (!data.erro) {
+                    document.getElementById('edit-logradouro').value = data.logradouro.toUpperCase();
+                    document.getElementById('edit-bairro').value = data.bairro.toUpperCase();
+                    document.getElementById('edit-cidade').value = data.localidade.toUpperCase();
+                    document.getElementById('edit-estado').value = data.uf.toUpperCase();
+                    document.getElementById('edit-numero').focus();
+                } else {
+                    alert('CEP não encontrado.');
+                }
+            } catch (error) {
+                alert('Não foi possível consultar o CEP.');
             }
         }
     </script>

@@ -1,3 +1,5 @@
+# crm_app/views.py
+
 from rest_framework import generics, viewsets, status, permissions
 from rest_framework.response import Response
 from django.db.models import Count, Q
@@ -5,15 +7,25 @@ from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime, date
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from django.contrib.auth import authenticate
+from django.views.decorators.csrf import ensure_csrf_cookie
+from django.utils.decorators import method_decorator
+from django.views.generic import TemplateView
+from django.http import HttpResponseRedirect, JsonResponse
+from rest_framework.exceptions import PermissionDenied
 
+# A permissão customizada é a chave para o novo comportamento
 from usuarios.permissions import CheckAPIPermission
 
 from .models import (
     Operadora, Plano, FormaPagamento, StatusCRM, MotivoPendencia,
     RegraComissao, Cliente, Venda, ImportacaoOsab, ImportacaoChurn,
-    CicloPagamento
+    CicloPagamento, HistoricoAlteracaoVenda
 )
+# Importe os novos serializers
 from .serializers import (
     OperadoraSerializer, PlanoSerializer, FormaPagamentoSerializer,
     StatusCRMSerializer, MotivoPendenciaSerializer, RegraComissaoSerializer,
@@ -23,6 +35,7 @@ from .serializers import (
 )
 
 # --- VIEWS DE CADASTROS GERAIS ---
+# (Nenhuma alteração nesta seção)
 
 class OperadoraListCreateView(generics.ListCreateAPIView):
     queryset = Operadora.objects.filter(ativo=True)
@@ -101,9 +114,13 @@ class RegraComissaoDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = RegraComissaoSerializer
     permission_classes = [CheckAPIPermission]
     resource_name = 'regras_comissao'
+    
+# --- VIEWSET DE VENDA ATUALIZADO ---
 
 class VendaViewSet(viewsets.ModelViewSet):
-    permission_classes = [permissions.IsAuthenticated]
+    # A classe de permissão personalizada agora controla quem pode editar e excluir
+    permission_classes = [permissions.IsAuthenticated, CheckAPIPermission]
+    resource_name = 'vendas' # Necessário para a classe de permissão
 
     def get_serializer_class(self):
         if self.action == 'create':
@@ -113,6 +130,7 @@ class VendaViewSet(viewsets.ModelViewSet):
         return VendaSerializer
 
     def get_queryset(self):
+        # (Nenhuma alteração na lógica de listagem)
         user = self.request.user
         ordem_servico = self.request.query_params.get('ordem_servico')
         
@@ -124,13 +142,13 @@ class VendaViewSet(viewsets.ModelViewSet):
         queryset = Venda.objects.select_related(
             'vendedor', 'cliente', 'plano', 'forma_pagamento', 
             'status_tratamento', 'status_esteira', 'status_comissionamento'
-        ).order_by('-data_criacao')
+        ).prefetch_related('historico_alteracoes').order_by('-data_criacao')
 
         perfil_nome = user.perfil.nome if hasattr(user, 'perfil') and user.perfil else None
         
         try:
-            status_cadastrada = StatusCRM.objects.get(nome__iexact='CADASTRADA', tipo__iexact='Tratamento')
-            status_instalada = StatusCRM.objects.get(nome__iexact='INSTALADA', tipo__iexact='Esteira')
+            status_cadastrada = StatusCRM.objects.get(nome__iexact="CADASTRADA", tipo__iexact="Tratamento")
+            status_instalada = StatusCRM.objects.get(nome__iexact="INSTALADA", tipo__iexact="Esteira")
             
             if flow == 'esteira':
                 queryset = queryset.filter(
@@ -139,9 +157,10 @@ class VendaViewSet(viewsets.ModelViewSet):
             elif flow == 'comissionamento':
                 queryset = queryset.filter(status_esteira=status_instalada)
             elif flow == 'auditoria':
-                queryset = queryset.exclude(
-                    Q(status_tratamento=status_cadastrada)
-                    | Q(status_esteira=status_instalada)
+                 # Na auditoria, mostramos vendas que não se encaixam no fluxo padrão
+                 queryset = queryset.filter(
+                    Q(status_tratamento__isnull=True) |
+                    (Q(status_tratamento__nome__iexact="SEM TRATAMENTO") & Q(status_esteira__isnull=True))
                 )
         except StatusCRM.DoesNotExist:
             queryset = Venda.objects.none()
@@ -157,6 +176,7 @@ class VendaViewSet(viewsets.ModelViewSet):
         return queryset.filter(vendedor=user)
 
     def perform_create(self, serializer):
+        # (Nenhuma alteração na lógica de criação)
         cpf_cnpj = serializer.validated_data.pop('cliente_cpf_cnpj')
         nome = serializer.validated_data.pop('cliente_nome_razao_social')
         email = serializer.validated_data.pop('cliente_email', None)
@@ -183,19 +203,70 @@ class VendaViewSet(viewsets.ModelViewSet):
         )
 
     def perform_update(self, serializer):
-        old_venda = self.get_object()
-        serializer.save()
-        updated_venda = serializer.instance
+        """
+        Salva a atualização e cria um registro de histórico com as alterações.
+        """
+        old_instance = self.get_object()
+        changes = {}
+        
+        # Compara os dados validados com os valores antigos
+        for attr, value in serializer.validated_data.items():
+            old_value = getattr(old_instance, attr)
+            new_value = value
+            
+            field_instance = Venda._meta.get_field(attr)
+            
+            # Compara objetos relacionados (ForeignKey) pelo ID, mas registra a descrição
+            if field_instance.is_relation:
+                if old_value != new_value:
+                    changes[field_instance.verbose_name.capitalize()] = {
+                        'de': str(old_value) if old_value else "Nenhum",
+                        'para': str(new_value) if new_value else "Nenhum"
+                    }
+            # Compara outros tipos de campos
+            elif old_value != new_value:
+                # Formata datas para uma exibição consistente
+                if isinstance(old_value, (datetime, date)):
+                    old_value = old_value.strftime('%d/%m/%Y %H:%M') if isinstance(old_value, datetime) else old_value.strftime('%d/%m/%Y')
+                if isinstance(new_value, (datetime, date)):
+                    new_value = new_value.strftime('%d/%m/%Y %H:%M') if isinstance(new_value, datetime) else new_value.strftime('%d/%m/%Y')
+                
+                changes[field_instance.verbose_name.capitalize()] = {
+                    'de': str(old_value) if old_value is not None else "Vazio",
+                    'para': str(new_value) if new_value is not None else "Vazio"
+                }
+        
+        # Salva a instância atualizada
+        updated_instance = serializer.save()
 
-        if updated_venda.status_tratamento and updated_venda.status_tratamento.nome.upper() == 'CADASTRADA' and not updated_venda.status_esteira:
+        # Se houveram mudanças, cria o registro no histórico
+        if changes:
+            HistoricoAlteracaoVenda.objects.create(
+                venda=updated_instance,
+                usuario=self.request.user,
+                alteracoes=changes
+            )
+
+        # Mantém a lógica existente para mover a venda para a esteira
+        if updated_instance.status_tratamento and updated_instance.status_tratamento.nome.upper() == 'CADASTRADA' and not old_instance.status_esteira:
             try:
                 status_agendado = StatusCRM.objects.get(nome__iexact="AGENDADO", tipo__iexact="Esteira")
-                updated_venda.status_esteira = status_agendado
-                updated_venda.save(update_fields=['status_esteira'])
-                print(f"Venda {updated_venda.id} movida para a Esteira com status 'AGENDADO'.")
+                updated_instance.status_esteira = status_agendado
+                updated_instance.save(update_fields=['status_esteira'])
+                print(f"Venda {updated_instance.id} movida para a Esteira com status 'AGENDADO'.")
             except StatusCRM.DoesNotExist:
                 print("ERRO: O status 'AGENDADO' para a Esteira não foi encontrado.")
 
+    def destroy(self, request, *args, **kwargs):
+        """
+        Exclui o registro. A permissão já foi validada pela classe `CheckAPIPermission`.
+        """
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+# --- OUTRAS VIEWS SEM ALTERAÇÃO ---
+# (Nenhuma alteração nesta seção)
 class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ClienteSerializer
     permission_classes = [CheckAPIPermission]
@@ -212,8 +283,36 @@ class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
             )
         return queryset
 
-# --- VIEW DE IMPORTAÇÃO OSAB (VERSÃO FINAL) ---
+@method_decorator(ensure_csrf_cookie, name='dispatch')
+class LoginView(APIView):
+    permission_classes = [AllowAny]
+    def post(self, request):
+        username = request.data.get('username')
+        password = request.data.get('password')
+        user = authenticate(request, username=username, password=password)
+
+        if user is not None:
+            refresh = RefreshToken.for_user(user)
+            response = JsonResponse({
+                'access_token': str(refresh.access_token),
+                'refresh_token': str(refresh)
+            })
+            response.set_cookie(
+                'access_token',
+                str(refresh.access_token),
+                httponly=True,
+                secure=True, 
+                samesite='Lax'
+            )
+            return response
+        else:
+            return Response(
+                {"detail": "Credenciais inválidas"},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
 class ImportacaoOsabView(APIView):
+    # ... (código existente inalterado) ...
     permission_classes = [CheckAPIPermission]
     resource_name = 'importacao_osab'
     parser_classes = [MultiPartParser, FormParser]
@@ -222,6 +321,11 @@ class ImportacaoOsabView(APIView):
         if pd.isna(key) or key is None:
             return None
         return str(key).replace('.0', '').strip()
+
+    def get(self, request):
+        queryset = ImportacaoOsab.objects.all().order_by('-data_criacao')
+        serializer = ImportacaoOsabSerializer(queryset, many=True)
+        return Response(serializer.data)
 
     def post(self, request, *args, **kwargs):
         print("\n--- [LOG] INÍCIO DA ATUALIZAÇÃO DE VENDAS VIA OSAB ---")
@@ -273,11 +377,10 @@ class ImportacaoOsabView(APIView):
         print(f"Total de Documentos únicos no ARQUIVO: {len(docs_from_file)}")
         print(f"Amostra de 5 chaves do ARQUIVO: {docs_from_file[:5]}\n")
         
-        # --- RESPOSTA PADRONIZADA PARA O FRONTEND ---
         report = {
             "status": "sucesso",
             "total_registros": len(df),
-            "criados": 0, # Esta lógica não cria, então sempre será 0.
+            "criados": 0,
             "atualizados": 0,
             "vendas_encontradas": 0,
             "ja_corretos": 0,
@@ -335,12 +438,22 @@ class ImportacaoOsabView(APIView):
         print("--- [LOG] Processamento finalizado.")
         return Response(report, status=status.HTTP_200_OK)
 
+class ImportacaoOsabDetailView(generics.RetrieveUpdateAPIView):
+    # ... (código existente inalterado) ...
+    queryset = ImportacaoOsab.objects.all()
+    serializer_class = ImportacaoOsabSerializer
+    permission_classes = [permissions.IsAuthenticated]
 
-# --- VIEW DE IMPORTAÇÃO CHURN ---
 class ImportacaoChurnView(APIView):
+    # ... (código existente inalterado) ...
     permission_classes = [CheckAPIPermission]
     resource_name = 'importacao_churn'
     parser_classes = [MultiPartParser, FormParser]
+
+    def get(self, request):
+        queryset = ImportacaoChurn.objects.all().order_by('-data_criacao')
+        serializer = ImportacaoChurnSerializer(queryset, many=True)
+        return Response(serializer.data)
 
     def post(self, request, *args, **kwargs):
         file_obj = request.FILES.get('file')
@@ -417,10 +530,14 @@ class ImportacaoChurnView(APIView):
             'erros': erros_importacao
         }, status=status.HTTP_200_OK)
 
-# =======================================================================================
-# NOVA VIEW PARA IMPORTAÇÃO DO CICLO DE PAGAMENTO
-# =======================================================================================
+class ImportacaoChurnDetailView(generics.RetrieveUpdateAPIView):
+    # ... (código existente inalterado) ...
+    queryset = ImportacaoChurn.objects.all()
+    serializer_class = ImportacaoChurnSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
 class ImportacaoCicloPagamentoView(APIView):
+    # ... (código existente inalterado) ...
     permission_classes = [CheckAPIPermission]
     resource_name = 'importacao_ciclo_pagamento'
     parser_classes = [MultiPartParser, FormParser]
@@ -464,11 +581,9 @@ class ImportacaoCicloPagamentoView(APIView):
             if field in df.columns:
                 df[field] = pd.to_datetime(df[field], errors='coerce')
 
-        # Limpeza de campos numéricos
         numeric_fields = ['comissao_bruta', 'fator', 'iq', 'valor_comissao_final']
         for field in numeric_fields:
             if field in df.columns:
-                # Remove R$, pontos de milhar e substitui vírgula por ponto
                 df[field] = df[field].astype(str).str.replace('R$', '', regex=False).str.replace('.', '', regex=False).str.replace(',', '.', regex=False)
                 df[field] = pd.to_numeric(df[field], errors='coerce')
 

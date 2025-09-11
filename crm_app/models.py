@@ -1,5 +1,8 @@
+# crm_app/models.py
+
 from django.db import models
 from usuarios.models import Usuario
+from django.conf import settings # Adicionado para referenciar o AUTH_USER_MODEL
 
 class Operadora(models.Model):
     nome = models.CharField(max_length=100, unique=True)
@@ -163,6 +166,7 @@ class Venda(models.Model):
         verbose_name_plural = "Vendas"
 
 class ImportacaoOsab(models.Model):
+    # ... (código existente inalterado) ...
     produto = models.CharField(max_length=255, null=True, blank=True)
     filial = models.CharField(max_length=255, null=True, blank=True)
     uf = models.CharField(max_length=2, null=True, blank=True)
@@ -223,6 +227,7 @@ class ImportacaoOsab(models.Model):
         verbose_name_plural = "Importações OSAB"
 
 class ImportacaoChurn(models.Model):
+    # ... (código existente inalterado) ...
     uf = models.CharField(max_length=2, null=True, blank=True)
     produto = models.CharField(max_length=255, null=True, blank=True)
     matricula_vendedor = models.CharField(max_length=50, null=True, blank=True, verbose_name="Matrícula do Vendedor")
@@ -252,10 +257,8 @@ class ImportacaoChurn(models.Model):
         verbose_name = "Importação Churn"
         verbose_name_plural = "Importações Churn"
 
-# =======================================================================================
-# NOVO MODELO PARA IMPORTAÇÃO DO CICLO DE PAGAMENTO
-# =======================================================================================
 class CicloPagamento(models.Model):
+    # ... (código existente inalterado) ...
     ano = models.IntegerField(null=True, blank=True)
     mes = models.CharField(max_length=20, null=True, blank=True)
     quinzena = models.CharField(max_length=10, null=True, blank=True)
@@ -295,3 +298,28 @@ class CicloPagamento(models.Model):
 
     def __str__(self):
         return f"{self.contrato} - {self.ciclo}"
+
+# =======================================================================================
+# NOVO MODELO PARA HISTÓRICO DE ALTERAÇÕES
+# =======================================================================================
+class HistoricoAlteracaoVenda(models.Model):
+    venda = models.ForeignKey(Venda, on_delete=models.CASCADE, related_name='historico_alteracoes')
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='alteracoes_vendas'
+    )
+    data_alteracao = models.DateTimeField(auto_now_add=True)
+    alteracoes = models.JSONField(default=dict)
+
+    class Meta:
+        db_table = 'crm_historico_alteracao_venda'
+        verbose_name = "Histórico de Alteração de Venda"
+        verbose_name_plural = "Históricos de Alteração de Venda"
+        ordering = ['-data_alteracao']
+
+    def __str__(self):
+        usuario_str = self.usuario.username if self.usuario else 'N/A'
+        return f"Alteração na Venda #{self.venda.id} por {usuario_str} em {self.data_alteracao.strftime('%d/%m/%Y %H:%M')}"
