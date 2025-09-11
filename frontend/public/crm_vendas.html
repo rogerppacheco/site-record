@@ -282,7 +282,7 @@
     </div>
     
     <div class="modal fade" id="modal-editar-venda" tabindex="-1">
-        <div class="modal-dialog modal-lg">
+        <div class="modal-dialog modal-xl">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">Editar Venda #<span id="editar-venda-id"></span></h5>
@@ -292,7 +292,7 @@
                     <form id="form-editar-venda">
                         <input type="hidden" id="edit-venda-id-hidden">
                         <div class="row">
-                            <div class="col-md-6">
+                            <div class="col-md-4">
                                 <h6>Dados da Venda</h6>
                                 <div class="mb-3">
                                     <label for="edit-plano" class="form-label">Plano</label>
@@ -320,7 +320,7 @@
                                     <select id="edit-status-comissionamento" class="form-select"></select>
                                 </div>
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-4">
                                 <h6>Agendamento e OS</h6>
                                 <div class="mb-3">
                                     <label for="edit-ordem-servico" class="form-label">Ordem de Serviço (O.S)</label>
@@ -341,6 +341,41 @@
                                         <option value="MANHA">Manhã</option>
                                         <option value="TARDE">Tarde</option>
                                     </select>
+                                </div>
+                            </div>
+                             <div class="col-md-4">
+                                <h6>Endereço de Instalação</h6>
+                                <div class="mb-3">
+                                    <label for="edit-cep" class="form-label">CEP</label>
+                                    <input type="text" class="form-control" id="edit-cep">
+                                </div>
+                                <div class="mb-3">
+                                    <label for="edit-logradouro" class="form-label">Logradouro</label>
+                                    <input type="text" class="form-control" id="edit-logradouro">
+                                </div>
+                                <div class="row">
+                                    <div class="col-8">
+                                        <label for="edit-bairro" class="form-label">Bairro</label>
+                                        <input type="text" class="form-control" id="edit-bairro">
+                                    </div>
+                                    <div class="col-4">
+                                        <label for="edit-numero" class="form-label">Número</label>
+                                        <input type="text" class="form-control" id="edit-numero">
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="edit-complemento" class="form-label">Complemento</label>
+                                    <input type="text" class="form-control" id="edit-complemento">
+                                </div>
+                                <div class="row">
+                                    <div class="col-8">
+                                        <label for="edit-cidade" class="form-label">Cidade</label>
+                                        <input type="text" class="form-control" id="edit-cidade">
+                                    </div>
+                                    <div class="col-4">
+                                        <label for="edit-estado" class="form-label">UF</label>
+                                        <input type="text" class="form-control" id="edit-estado">
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -396,6 +431,7 @@
             }
             
             document.getElementById('logoutButton').addEventListener('click', logout);
+            document.getElementById('edit-cep').addEventListener('blur', buscarCepEdit);
             
             aplicarRegrasDeVisualizacao(userProfile, isSuperuser);
             carregarVendas();
@@ -429,7 +465,7 @@
                 } else {
                     vendas.forEach(venda => {
                         const tr = document.createElement('tr');
-                        tr.id = `venda-row-${venda.id}`; // CORREÇÃO PARA EXCLUSÃO FUNCIONAR
+                        tr.id = `venda-row-${venda.id}`;
                         
                         const dataFormatada = new Date(venda.data_criacao).toLocaleDateString('pt-BR');
                         const planoNome = venda.plano ? venda.plano.nome : 'Não informado';
@@ -487,7 +523,7 @@
             } 
             else if (userProfile === 'BackOffice') {
                 if (tituloVendas) tituloVendas.textContent = 'Todas as Vendas';
-                if (btnNovaVenda) btnNovaVenda.style.display = 'none';
+                // A linha que escondia o botão foi REMOVIDA
                 if (navCadastros) navCadastros.style.display = 'none';
             }
             else if (['Admin', 'Diretoria'].includes(userProfile) || isSuperuser) {
@@ -675,10 +711,11 @@
                 if (!response.ok) return;
                 const data = await response.json();
                 if (!data.erro) {
-                    document.getElementById('logradouro').value = data.logradouro;
-                    document.getElementById('bairro').value = data.bairro;
-                    document.getElementById('cidade').value = data.localidade;
-                    document.getElementById('estado').value = data.uf;
+                    document.getElementById('logradouro').value = data.logradouro.toUpperCase();
+                    document.getElementById('bairro').value = data.bairro.toUpperCase();
+                    document.getElementById('cidade').value = data.localidade.toUpperCase();
+                    document.getElementById('estado').value = data.uf.toUpperCase();
+                    document.getElementById('numero').focus();
                 }
             } catch (error) {
                 console.error('Erro ao buscar CEP:', error);
@@ -688,9 +725,6 @@
         document.getElementById('form-nova-venda').addEventListener('submit', async function(e) {
             e.preventDefault();
             
-            // ===================================
-            // CORREÇÃO APLICADA AQUI
-            // ===================================
             const vendaData = {
                 forma_entrada: document.getElementById('forma_entrada').value,
                 cliente_cpf_cnpj: document.getElementById('cliente_cpf_cnpj').value,
@@ -706,8 +740,8 @@
                 bairro: document.getElementById('bairro').value,
                 cidade: document.getElementById('cidade').value,
                 estado: document.getElementById('estado').value,
-                plano: parseInt(document.getElementById('plano').value), // MUDOU DE plano_id para plano
-                forma_pagamento: parseInt(document.getElementById('forma-pagamento').value) // MUDOU DE forma_pagamento_id para forma_pagamento
+                plano: parseInt(document.getElementById('plano').value),
+                forma_pagamento: parseInt(document.getElementById('forma-pagamento').value)
             };
 
             try {
@@ -716,7 +750,6 @@
                 const modalElement = document.getElementById('novaVendaModal');
                 const modalInstance = bootstrap.Modal.getInstance(modalElement);
                 if (modalInstance) { modalInstance.hide(); }
-
                 carregarVendas();
             } catch (error) {
                 const errorDetail = error.response ? JSON.stringify(error.response.data) : 'Verifique os dados e tente novamente.';
@@ -724,10 +757,6 @@
                 alert(`Erro ao cadastrar venda. Detalhe: ${errorDetail}`);
             }
         });
-
-        // ===============================================================
-        // FUNÇÕES DE EDIÇÃO E EXCLUSÃO
-        // ===============================================================
         
         async function editarVenda(vendaId) {
             const modalElement = document.getElementById('modal-editar-venda');
