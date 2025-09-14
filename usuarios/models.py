@@ -15,6 +15,15 @@ class Perfil(models.Model):
         return self.nome
 
 class Usuario(AbstractUser):
+    # --- NOVOS CAMPOS ADICIONADOS ---
+    CANAL_CHOICES = [
+        ('PAP', 'PAP'),
+        ('TELAG', 'TELAG'),
+        ('TIPO', 'TIPO'), # Adicione outros canais se necessário
+    ]
+    canal = models.CharField(max_length=10, choices=CANAL_CHOICES, blank=True, null=True, default='PAP')
+    # --- FIM DOS NOVOS CAMPOS ---
+
     # Campos de identificação
     cpf = models.CharField(max_length=14, blank=True, null=True, unique=True)
     

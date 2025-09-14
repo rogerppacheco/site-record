@@ -7,24 +7,15 @@
     <title>Esteira de Vendas</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; }
-        .form-group textarea {
-            padding: 0.75rem;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            font-size: 1rem;
-            font-family: Arial, sans-serif;
-        }
         .status-select { min-width: 180px; }
         .main-header { background-color: #fff; padding: 1rem 2rem; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); position: sticky; top: 0; z-index: 1020; }
-        .header-container { max-width: 95%; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; }
+        .header-container { max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; }
         .logo { max-height: 40px; }
         .main-nav ul { list-style: none; display: flex; gap: 1.5rem; align-items: center; margin-bottom: 0; padding: 0; }
         .main-nav a { text-decoration: none; color: #1a1a1a; font-weight: 500; }
         .main-nav a:hover { color: #888; }
-        .action-button { background-color: #1a1a1a; color: #fff; padding: 0.5rem 1rem; border-radius: 0.25rem; text-decoration: none; font-size: 0.9rem; font-weight: 600; cursor: pointer; border: 1px solid transparent;}
-        .logout-button { background-color: #dc3545; }
         .submenu-nav.bg-dark .nav-link,
         .submenu-nav.bg-dark .dropdown-menu .dropdown-item {
             color: rgba(255, 255, 255, 0.75);
@@ -40,6 +31,30 @@
         .venda-details { font-size: 0.8rem; color: #6c757d; }
         #detalhes-venda-body h6 { margin-top: 1rem; color: #0d6efd; }
         #aprovacao-mensagem { white-space: pre-wrap; font-family: monospace; font-size: 0.9rem; }
+        .table > tbody > tr[style] {
+            color: #000 !important;
+        }
+        .table > tbody > tr[style] a,
+        .table > tbody > tr[style] .btn {
+            color: #000 !important;
+        }
+        .card-header-tabs {
+            margin-bottom: -0.8rem;
+        }
+        .nav-tabs .nav-link {
+            border-top-left-radius: .25rem;
+            border-top-right-radius: .25rem;
+            color: #495057;
+        }
+        .nav-tabs .nav-link.active {
+            color: #000;
+            background-color: #fff;
+            border-bottom-color: #fff;
+            font-weight: bold;
+        }
+        .refresh-icon {
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -102,8 +117,13 @@
 
     <main class="container mt-5">
         <div class="card shadow-sm">
-            <div class="card-header">
+            <div class="card-header d-flex justify-content-between align-items-center">
                 <h4 class="mb-0">Esteira de Vendas</h4>
+                <i class="bi bi-arrow-clockwise fs-4 refresh-icon" id="refresh-button" title="Atualizar dados"></i>
+            </div>
+             <div class="card-header">
+                <ul class="nav nav-tabs card-header-tabs" id="esteira-tabs">
+                </ul>
             </div>
             <div class="card-body">
                 <div class="table-responsive">
@@ -115,6 +135,7 @@
                                 <th>Vendedor</th>
                                 <th>Plano</th>
                                 <th>Status Esteira</th>
+                                <th>Alterado Por</th>
                                 <th>Ações</th>
                             </tr>
                         </thead>
@@ -160,6 +181,44 @@
             </div>
         </div>
     </div>
+
+    <div class="modal fade" id="modal-agendamento" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Agendar Venda</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="form-agendamento">
+                        <input type="hidden" id="agendamento-venda-id">
+                        <input type="hidden" id="agendamento-status-id">
+                        <div class="mb-3">
+                            <label for="agendamento_os" class="form-label">Ordem de Serviço (O.S) *</label>
+                            <input type="text" class="form-control" id="agendamento_os" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="agendamento_data" class="form-label">Data de Agendamento *</label>
+                            <input type="date" class="form-control" id="agendamento_data" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="agendamento_periodo" class="form-label">Período *</label>
+                            <select class="form-select" id="agendamento_periodo" required>
+                                <option value="" disabled selected>Selecione...</option>
+                                <option value="MANHA">Manhã</option>
+                                <option value="TARDE">Tarde</option>
+                            </select>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" form="form-agendamento">Salvar Agendamento</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade" id="modal-pendencia" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
@@ -184,6 +243,7 @@
             </div>
         </div>
     </div>
+
     <div class="modal fade" id="modal-detalhes-venda" tabindex="-1">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
@@ -194,26 +254,6 @@
                 <div class="modal-body" id="detalhes-venda-body"></div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="modal fade" id="modal-aprovacao" tabindex="-1">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Mensagem de Aprovação</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <p>A mensagem abaixo está pronta para ser copiada.</p>
-                    <textarea id="aprovacao-mensagem" class="form-control" rows="15" readonly></textarea>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
-                    <button type="button" class="btn btn-primary" onclick="copiarMensagem()">
-                        <i class="bi bi-clipboard-check"></i> Copiar Mensagem
-                    </button>
                 </div>
             </div>
         </div>
@@ -229,92 +269,52 @@
                 <div class="modal-body">
                     <form id="form-editar-venda">
                         <input type="hidden" id="edit-venda-id-hidden">
+                        <div class="row bg-light p-3 mb-4 rounded border">
+                            <div class="col-md-6">
+                                <label for="edit-cliente-nome" class="form-label fw-bold">Cliente</label>
+                                <input type="text" class="form-control" id="edit-cliente-nome">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">CPF/CNPJ</label>
+                                <p id="edit-cliente-cpf-cnpj" class="form-control-plaintext ps-2">Carregando...</p>
+                            </div>
+                        </div>
+
                         <div class="row">
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <h6>Dados da Venda</h6>
-                                <div class="mb-3">
-                                    <label for="edit-plano" class="form-label">Plano</label>
-                                    <select id="edit-plano" class="form-select"></select>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="edit-forma-pagamento" class="form-label">Forma de Pagamento</label>
-                                    <select id="edit-forma-pagamento" class="form-select"></select>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="edit-vendedor" class="form-label">Vendedor</label>
-                                    <select id="edit-vendedor" class="form-select"></select>
-                                </div>
+                                <div class="mb-3"><label for="edit-plano" class="form-label">Plano</label><select id="edit-plano" class="form-select"></select></div>
+                                <div class="mb-3"><label for="edit-forma-pagamento" class="form-label">Forma de Pagamento</label><select id="edit-forma-pagamento" class="form-select"></select></div>
+                                <div class="mb-3"><label for="edit-vendedor" class="form-label">Vendedor</label><select id="edit-vendedor" class="form-select"></select></div>
+                                <hr>
                                 <h6>Status</h6>
-                                <div class="mb-3">
-                                    <label for="edit-status-tratamento" class="form-label">Status Tratamento</label>
-                                    <select id="edit-status-tratamento" class="form-select"></select>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="edit-status-esteira" class="form-label">Status Esteira</label>
-                                    <select id="edit-status-esteira" class="form-select"></select>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="edit-status-comissionamento" class="form-label">Status Comissionamento</label>
-                                    <select id="edit-status-comissionamento" class="form-select"></select>
-                                </div>
+                                <div class="mb-3"><label for="edit-status-tratamento" class="form-label">Status Tratamento</label><select id="edit-status-tratamento" class="form-select"></select></div>
+                                <div class="mb-3"><label for="edit-status-esteira" class="form-label">Status Esteira</label><select id="edit-status-esteira" class="form-select"></select></div>
+                                <div class="mb-3"><label for="edit-status-comissionamento" class="form-label">Status Comissionamento</label><select id="edit-status-comissionamento" class="form-select"></select></div>
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
+                                <h6>Contato</h6>
+                                <div class="mb-3"><label for="edit-telefone1" class="form-label">Telefone 1</label><input type="tel" class="form-control" id="edit-telefone1"></div>
+                                <div class="mb-3"><label for="edit-telefone2" class="form-label">Telefone 2</label><input type="tel" class="form-control" id="edit-telefone2"></div>
+                                <hr>
                                 <h6>Agendamento e OS</h6>
-                                <div class="mb-3">
-                                    <label for="edit-ordem-servico" class="form-label">Ordem de Serviço (O.S)</label>
-                                    <input type="text" class="form-control" id="edit-ordem-servico">
-                                </div>
-                                <div class="mb-3">
-                                    <label for="edit-data-pedido" class="form-label">Data do Pedido</label>
-                                    <input type="datetime-local" class="form-control" id="edit-data-pedido">
-                                </div>
-                                <div class="mb-3">
-                                    <label for="edit-data-agendamento" class="form-label">Data de Agendamento</label>
-                                    <input type="date" class="form-control" id="edit-data-agendamento">
-                                </div>
-                                <div class="mb-3">
-                                    <label for="edit-periodo-agendamento" class="form-label">Período</label>
-                                    <select class="form-select" id="edit-periodo-agendamento">
-                                        <option value="">Nenhum</option>
-                                        <option value="MANHA">Manhã</option>
-                                        <option value="TARDE">Tarde</option>
-                                    </select>
-                                </div>
+                                <div class="mb-3"><label for="edit-ordem-servico" class="form-label">Ordem de Serviço (O.S)</label><input type="text" class="form-control" id="edit-ordem-servico"></div>
+                                <div class="mb-3"><label for="edit-data-pedido" class="form-label">Data do Pedido</label><input type="datetime-local" class="form-control" id="edit-data-pedido"></div>
+                                <div class="mb-3"><label for="edit-data-agendamento" class="form-label">Data de Agendamento</label><input type="date" class="form-control" id="edit-data-agendamento"></div>
+                                <div class="mb-3"><label for="edit-periodo-agendamento" class="form-label">Período</label><select class="form-select" id="edit-periodo-agendamento"><option value="">Nenhum</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select></div>
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <h6>Endereço de Instalação</h6>
-                                <div class="mb-3">
-                                    <label for="edit-cep" class="form-label">CEP</label>
-                                    <input type="text" class="form-control" id="edit-cep">
-                                </div>
-                                <div class="mb-3">
-                                    <label for="edit-logradouro" class="form-label">Logradouro</label>
-                                    <input type="text" class="form-control" id="edit-logradouro">
-                                </div>
-                                <div class="row">
-                                    <div class="col-8">
-                                        <label for="edit-bairro" class="form-label">Bairro</label>
-                                        <input type="text" class="form-control" id="edit-bairro">
-                                    </div>
-                                    <div class="col-4">
-                                        <label for="edit-numero" class="form-label">Número</label>
-                                        <input type="text" class="form-control" id="edit-numero">
-                                    </div>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="edit-complemento" class="form-label">Complemento</label>
-                                    <input type="text" class="form-control" id="edit-complemento">
-                                </div>
-                                <div class="row">
-                                    <div class="col-8">
-                                        <label for="edit-cidade" class="form-label">Cidade</label>
-                                        <input type="text" class="form-control" id="edit-cidade">
-                                    </div>
-                                    <div class="col-4">
-                                        <label for="edit-estado" class="form-label">UF</label>
-                                        <input type="text" class="form-control" id="edit-estado">
-                                    </div>
-                                </div>
+                                <div class="mb-3"><label for="edit-cep" class="form-label">CEP</label><input type="text" class="form-control" id="edit-cep"></div>
+                                <div class="mb-3"><label for="edit-logradouro" class="form-label">Logradouro</label><input type="text" class="form-control" id="edit-logradouro"></div>
+                                <div class="row mb-3"><div class="col-8"><label for="edit-bairro" class="form-label">Bairro</label><input type="text" class="form-control" id="edit-bairro"></div><div class="col-4"><label for="edit-numero" class="form-label">Número</label><input type="text" class="form-control" id="edit-numero"></div></div>
+                                <div class="mb-3"><label for="edit-complemento" class="form-label">Complemento</label><input type="text" class="form-control" id="edit-complemento"></div>
+                                <div class="row"><div class="col-8"><label for="edit-cidade" class="form-label">Cidade</label><input type="text" class="form-control" id="edit-cidade"></div><div class="col-4"><label for="edit-estado" class="form-label">UF</label><input type="text" class="form-control" id="edit-estado"></div></div>
+                            </div>
+                            <div class="col-md-3">
+                                <h6>Dados Complementares</h6>
+                                <div class="mb-3"><label for="edit-ponto-referencia" class="form-label">Ponto de Referência*</label><input type="text" class="form-control" id="edit-ponto-referencia" required></div>
+                                <div class="mb-3"><label for="edit-observacoes" class="form-label">Observações</label><textarea class="form-control" id="edit-observacoes" rows="8"></textarea></div>
                             </div>
                         </div>
                     </form>
@@ -330,15 +330,16 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{% static 'js/auth.js' %}"></script>
     <script>
-        // Funções auxiliares e de autenticação (sem alterações)
         function jwt_decode(token) { try { return JSON.parse(atob(token.split('.')[1])); } catch (e) { return null; } }
         
-        // Variáveis globais
         let listaStatusEsteira = [];
         let listaMotivosPendencia = [];
+        let todasAsVendasDaEsteira = [];
         let instaladaStatusId = null;
         let pendenciaStatusId = null;
-        let instaladaModal, pendenciaModal, detalhesModal, aprovacaoModal;
+        let agendadoStatusId = null;
+        let instaladaModal, pendenciaModal, detalhesModal, agendamentoModal;
+        let filtroAtivo = 'todas';
         
         document.addEventListener('DOMContentLoaded', async () => {
             verificarAutenticacao();
@@ -356,21 +357,31 @@
             instaladaModal = new bootstrap.Modal(document.getElementById('modal-instalada'));
             pendenciaModal = new bootstrap.Modal(document.getElementById('modal-pendencia'));
             detalhesModal = new bootstrap.Modal(document.getElementById('modal-detalhes-venda'));
-            aprovacaoModal = new bootstrap.Modal(document.getElementById('modal-aprovacao'));
+            agendamentoModal = new bootstrap.Modal(document.getElementById('modal-agendamento'));
             
             if (decodedToken && decodedToken.username) { document.getElementById('welcome-user').textContent = `Bem-vindo, ${decodedToken.username}!`; }
 
             document.getElementById('logoutButton').addEventListener('click', logout);
             document.getElementById('form-instalada').addEventListener('submit', salvarInstalada);
             document.getElementById('form-pendencia').addEventListener('submit', salvarPendencia);
+            document.getElementById('form-agendamento').addEventListener('submit', salvarAgendamento);
             document.getElementById('edit-cep').addEventListener('blur', buscarCepEdit);
+            document.getElementById('refresh-button').addEventListener('click', () => carregarDadosIniciais(true));
             
-            document.getElementById('modal-instalada').addEventListener('hidden.bs.modal', carregarVendasEsteira);
-            document.getElementById('modal-pendencia').addEventListener('hidden.bs.modal', carregarVendasEsteira);
+            document.getElementById('modal-instalada').addEventListener('hidden.bs.modal', () => carregarDadosIniciais(true));
+            document.getElementById('modal-pendencia').addEventListener('hidden.bs.modal', () => carregarDadosIniciais(true));
+            document.getElementById('modal-agendamento').addEventListener('hidden.bs.modal', () => carregarDadosIniciais(true));
+            document.getElementById('modal-editar-venda').addEventListener('hidden.bs.modal', () => carregarDadosIniciais(true));
 
-            await carregarListasDeStatus();
-            carregarVendasEsteira();
+            await carregarDadosIniciais();
         });
+
+        async function carregarDadosIniciais(forceRefresh = false) {
+            if (listaStatusEsteira.length === 0 || forceRefresh) {
+                await carregarListasDeStatus();
+            }
+            await carregarVendasParaAbas(forceRefresh);
+        }
 
         async function carregarListasDeStatus() {
             try {
@@ -384,135 +395,304 @@
 
                 instaladaStatusId = listaStatusEsteira.find(s => s.nome.toLowerCase() === 'instalada')?.id;
                 pendenciaStatusId = listaStatusEsteira.find(s => s.nome.toLowerCase() === 'pendenciada')?.id;
+                agendadoStatusId = listaStatusEsteira.find(s => s.nome.toLowerCase() === 'agendado')?.id;
             } catch (error) {
                 console.error("Erro fatal ao carregar listas de status:", error);
                 alert("Não foi possível carregar as opções de status. A página não pode funcionar.");
             }
         }
-
-        async function carregarVendasEsteira() {
+        
+        async function carregarVendasParaAbas(forceRefresh = false) {
             const tbody = document.getElementById('tabela-esteira');
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center">Carregando...</td></tr>';
+            if (forceRefresh || todasAsVendasDaEsteira.length === 0) {
+                 tbody.innerHTML = '<tr><td colspan="7" class="text-center">Carregando...</td></tr>';
+            }
+           
             try {
-                const response = await apiClient.get('/api/crm/vendas/?flow=esteira');
-                const vendas = response.data;
-
-                tbody.innerHTML = '';
-                if (!vendas || vendas.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="text-center">Nenhuma venda na esteira.</td></tr>';
-                    return;
+                if (forceRefresh || todasAsVendasDaEsteira.length === 0) {
+                    const response = await apiClient.get('/api/crm/vendas/?flow=esteira');
+                    todasAsVendasDaEsteira = response.data;
                 }
-                vendas.forEach(venda => {
-                    const tr = document.createElement('tr');
-                    tr.id = `venda-row-${venda.id}`;
-                    
-                    const statusEsteiraAtual = venda.status_esteira ? venda.status_esteira.id : '';
-                    const selectEsteira = `<select id="esteira-select-${venda.id}" class="form-select form-select-sm status-select" onchange="atualizarStatus(event, ${venda.id}, this.value, 'esteira')">
-                        <option value="">Selecione...</option>
-                        ${listaStatusEsteira.map(s => `<option value="${s.id}" ${statusEsteiraAtual === s.id ? 'selected' : ''}>${s.nome}</option>`).join('')}
-                    </select>`;
-                    
-                    let detalhesAgendamento = '';
-                    if (venda.data_agendamento) {
-                        const dataFormatada = new Date(venda.data_agendamento + 'T03:00:00Z').toLocaleDateString('pt-BR');
-                        detalhesAgendamento = `<br><span class="venda-details">OS: ${venda.ordem_servico || 'N/A'} | Agendado: ${dataFormatada} (${venda.periodo_agendamento || ''})</span>`;
-                    }
-
-                    tr.innerHTML = `
-                        <td>${venda.id}</td>
-                        <td>${venda.cliente.nome_razao_social} ${detalhesAgendamento}</td>
-                        <td>${venda.vendedor.username}</td>
-                        <td>${venda.plano ? venda.plano.nome : 'N/A'}</td>
-                        <td>${selectEsteira}</td>
-                        <td>
-                            <div class="btn-group" role="group">
-                                <button class="btn btn-sm btn-outline-info" onclick="detalhesVenda(${venda.id})" title="Ver Detalhes"><i class="bi bi-search"></i></button>
-                                <button class="btn btn-sm btn-outline-warning" onclick="editarVenda(${venda.id})" title="Editar Venda"><i class="bi bi-pencil-square"></i></button>
-                                <button class="btn btn-sm btn-outline-danger" onclick="excluirVenda(${venda.id})" title="Excluir Venda"><i class="bi bi-trash"></i></button>
-                            </div>
-                        </td>
-                    `;
-                    tbody.appendChild(tr);
-                });
+                renderizarAbas();
+                renderizarTabelaVendas(filtroAtivo);
             } catch (error) {
-                console.error('Erro ao carregar vendas para a esteira:', error);
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Falha ao carregar vendas.</td></tr>';
+                 console.error('Erro ao carregar vendas para a esteira:', error);
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger">Falha ao carregar vendas.</td></tr>';
             }
         }
+        
+        function renderizarAbas() {
+            const containerAbas = document.getElementById('esteira-tabs');
+            containerAbas.innerHTML = '';
 
-        async function atualizarStatus(event, vendaId, novoStatusId, tipoStatus) {
-            if (!novoStatusId) return;
+            const totalPendentes = todasAsVendasDaEsteira.filter(v => v.status_esteira && v.status_esteira.id === pendenciaStatusId).length;
+            const vendasAgendadas = todasAsVendasDaEsteira.filter(v => v.data_agendamento);
+            const vendasPorData = vendasAgendadas.reduce((acc, venda) => {
+                const data = venda.data_agendamento;
+                acc[data] = (acc[data] || 0) + 1;
+                return acc;
+            }, {});
+            const datasOrdenadas = Object.keys(vendasPorData).sort();
 
-            if (parseInt(novoStatusId) === instaladaStatusId) {
-                document.getElementById('instalada-venda-id').value = vendaId;
-                document.getElementById('instalada-status-id').value = novoStatusId;
-                instaladaModal.show();
+            let abasHTML = `
+                <li class="nav-item">
+                    <a class="nav-link ${filtroAtivo === 'todas' ? 'active' : ''}" href="#" data-filtro="todas">
+                        Todas <span class="badge bg-secondary">${todasAsVendasDaEsteira.length}</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link ${filtroAtivo === 'pendenciadas' ? 'active' : ''}" href="#" data-filtro="pendenciadas">
+                        Pendenciadas <span class="badge bg-danger">${totalPendentes}</span>
+                    </a>
+                </li>
+            `;
+
+            datasOrdenadas.forEach(data => {
+                const dateObj = new Date(data + 'T03:00:00Z');
+                const dia = String(dateObj.getDate()).padStart(2, '0');
+                const mes = String(dateObj.getMonth() + 1).padStart(2, '0');
+                const dataFormatada = `${dia}/${mes}`;
+
+                abasHTML += `
+                    <li class="nav-item">
+                        <a class="nav-link ${filtroAtivo === data ? 'active' : ''}" href="#" data-filtro="${data}">
+                            ${dataFormatada} <span class="badge bg-info text-dark">${vendasPorData[data]}</span>
+                        </a>
+                    </li>
+                `;
+            });
+            containerAbas.innerHTML = abasHTML;
+
+            document.querySelectorAll('#esteira-tabs .nav-link').forEach(aba => {
+                aba.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    filtroAtivo = e.target.closest('a').getAttribute('data-filtro');
+                    carregarDadosIniciais(true); 
+                });
+            });
+        }
+        
+        function renderizarTabelaVendas(filtro) {
+            const tbody = document.getElementById('tabela-esteira');
+            tbody.innerHTML = '';
+            
+            let vendasParaRenderizar = [];
+            
+            if(filtro === 'todas') {
+                vendasParaRenderizar = todasAsVendasDaEsteira;
+            } else if (filtro === 'pendenciadas') {
+                vendasParaRenderizar = todasAsVendasDaEsteira.filter(v => v.status_esteira && v.status_esteira.id === pendenciaStatusId);
+            } else {
+                vendasParaRenderizar = todasAsVendasDaEsteira.filter(v => v.data_agendamento === filtro);
+            }
+
+            if (vendasParaRenderizar.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center">Nenhum registro encontrado para este filtro.</td></tr>';
                 return;
             }
-            
-            if (parseInt(novoStatusId) === pendenciaStatusId) {
+
+            vendasParaRenderizar.forEach(venda => {
+                const tr = document.createElement('tr');
+                tr.id = `venda-row-${venda.id}`;
+                
+                if (venda.status_esteira && venda.status_esteira.cor && venda.status_esteira.cor !== '#FFFFFF') {
+                    tr.setAttribute('style', `background-color: ${venda.status_esteira.cor} !important`);
+                }
+                
+                const statusEsteiraAtual = venda.status_esteira ? venda.status_esteira.id : '';
+                
+                const selectEsteira = `<select id="esteira-select-${venda.id}" class="form-select form-select-sm status-select">
+                    <option value="">Selecione...</option>
+                    ${listaStatusEsteira.map(s => `<option value="${s.id}" ${statusEsteiraAtual === s.id ? 'selected' : ''}>${s.nome}</option>`).join('')}
+                </select>`;
+                
+                let detalhesAgendamento = '';
+                if (venda.data_agendamento) {
+                    const dataFormatada = new Date(venda.data_agendamento + 'T03:00:00Z').toLocaleDateString('pt-BR');
+                    detalhesAgendamento = `<br><span class="venda-details">OS: ${venda.ordem_servico || 'N/A'} | Agendado: ${dataFormatada} (${venda.periodo_agendamento || ''})</span>`;
+                }
+
+                tr.innerHTML = `
+                    <td>${venda.id}</td>
+                    <td>${venda.cliente.nome_razao_social} ${detalhesAgendamento}</td>
+                    <td>${venda.vendedor.username}</td>
+                    <td>${venda.plano ? venda.plano.nome : 'N/A'}</td>
+                    <td>${selectEsteira}</td>
+                    <td>${venda.alterado_por || 'N/A'}</td>
+                    <td>
+                        <div class="btn-group" role="group">
+                            <button class="btn btn-sm btn-outline-info" onclick="detalhesVenda(${venda.id})" title="Ver Detalhes"><i class="bi bi-search"></i></button>
+                            <button class="btn btn-sm btn-outline-warning" onclick="editarVenda(${venda.id})" title="Editar Venda"><i class="bi bi-pencil-square"></i></button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="excluirVenda(${venda.id})" title="Excluir Venda"><i class="bi bi-trash"></i></button>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+
+                const selectElement = document.getElementById(`esteira-select-${venda.id}`);
+                if (selectElement) {
+                    selectElement.addEventListener('change', (event) => {
+                        const novoStatusId = event.target.value;
+                        atualizarStatus(event, venda.id, novoStatusId);
+                    });
+                }
+            });
+        }
+
+        async function atualizarStatus(event, vendaId, novoStatusId) {
+            if (!novoStatusId) return;
+            const novoStatusIdInt = parseInt(novoStatusId);
+
+            if (novoStatusIdInt === instaladaStatusId) {
+                document.getElementById('instalada-venda-id').value = vendaId;
+                document.getElementById('instalada-status-id').value = novoStatusIdInt;
+                instaladaModal.show();
+            } else if (novoStatusIdInt === pendenciaStatusId) {
                 const selectMotivo = document.getElementById('motivo_pendencia_select');
                 selectMotivo.innerHTML = '<option value="">Selecione um motivo...</option>' + listaMotivosPendencia.map(m => `<option value="${m.id}">${m.nome}</option>`).join('');
                 document.getElementById('pendencia-venda-id').value = vendaId;
-                document.getElementById('pendencia-status-id').value = novoStatusId;
+                document.getElementById('pendencia-status-id').value = novoStatusIdInt;
                 pendenciaModal.show();
-                return;
+            } else if (novoStatusIdInt === agendadoStatusId) {
+                document.getElementById('agendamento-venda-id').value = vendaId;
+                document.getElementById('agendamento-status-id').value = novoStatusIdInt;
+                document.getElementById('form-agendamento').reset();
+                agendamentoModal.show();
+            } else {
+                try {
+                    await apiClient.patch(`/api/crm/vendas/${vendaId}/`, { status_esteira: novoStatusIdInt });
+                    await carregarDadosIniciais(true);
+                } catch (error) {
+                    const errorMsg = error.response?.data?.detail || 'Falha ao atualizar o status da venda.';
+                    alert(errorMsg);
+                    await carregarDadosIniciais(true);
+                }
             }
-            
+        }
+        
+        async function salvarAgendamento(event) {
+            event.preventDefault();
+            const vendaId = document.getElementById('agendamento-venda-id').value;
+            const body = {
+                status_esteira: parseInt(document.getElementById('agendamento-status-id').value),
+                ordem_servico: document.getElementById('agendamento_os').value,
+                data_agendamento: document.getElementById('agendamento_data').value,
+                periodo_agendamento: document.getElementById('agendamento_periodo').value,
+            };
             try {
-                await apiClient.patch(`/api/crm/vendas/${vendaId}/`, { status_esteira: parseInt(novoStatusId) });
-                carregarVendasEsteira();
+                await apiClient.patch(`/api/crm/vendas/${vendaId}/`, body);
+                agendamentoModal.hide();
+                alert('Venda agendada com sucesso!');
             } catch (error) {
-                alert('Falha ao atualizar o status da venda.');
-                carregarVendasEsteira();
+                const errorMsg = error.response?.data?.detail || 'Falha ao salvar. Tente novamente.';
+                alert(errorMsg);
             }
         }
 
         async function salvarInstalada(event) {
             event.preventDefault();
             const vendaId = document.getElementById('instalada-venda-id').value;
+            const dataInstalacao = document.getElementById('instalada_data_instalacao').value;
+            const antecipou = document.querySelector('input[name="houve_antecipacao"]:checked').value === 'sim';
+
+            if (!dataInstalacao) {
+                alert('A data de instalação é obrigatória.');
+                return;
+            }
+
             const body = {
                 status_esteira: parseInt(document.getElementById('instalada-status-id').value),
-                // Adicione outros campos se necessário no futuro
+                data_instalacao: dataInstalacao,
+                antecipou_instalacao: antecipou
             };
             try {
                 await apiClient.patch(`/api/crm/vendas/${vendaId}/`, body);
                 instaladaModal.hide();
-                alert('Status atualizado para INSTALADA!');
+                alert('Status atualizado para INSTALADA! A venda foi movida para o Comissionamento.');
             } catch (error) {
-                alert('Falha ao salvar. Tente novamente.');
+                const errorMsg = error.response?.data?.detail || 'Falha ao salvar. Tente novamente.';
+                alert(errorMsg);
             }
         }
 
         async function salvarPendencia(event) {
             event.preventDefault();
             const vendaId = document.getElementById('pendencia-venda-id').value;
+            const motivoId = document.getElementById('motivo_pendencia_select').value;
+            
+            if(!motivoId) {
+                alert('É obrigatório selecionar um motivo para a pendência.');
+                return;
+            }
+
             const body = {
                 status_esteira: parseInt(document.getElementById('pendencia-status-id').value),
-                // Adicione outros campos se necessário no futuro
+                motivo_pendencia: parseInt(motivoId)
             };
             try {
                 await apiClient.patch(`/api/crm/vendas/${vendaId}/`, body);
                 pendenciaModal.hide();
                 alert('Status atualizado para PENDENCIADA!');
             } catch (error) {
-                alert('Falha ao salvar. Tente novamente.');
+                const errorMsg = error.response?.data?.detail || 'Falha ao salvar. Tente novamente.';
+                alert(errorMsg);
             }
         }
 
         async function detalhesVenda(vendaId) {
-            // ... (código da função detalhesVenda como no arquivo auditoria.html)
+             try {
+                const response = await apiClient.get(`/api/crm/vendas/${vendaId}/`);
+                const venda = response.data;
+                document.getElementById('detalhes-venda-id').textContent = venda.id;
+                const detalhesBody = document.getElementById('detalhes-venda-body');
+                const dataCriacao = new Date(venda.data_criacao).toLocaleString('pt-BR');
+                const dataAgendamento = venda.data_agendamento ? new Date(venda.data_agendamento + 'T03:00:00Z').toLocaleDateString('pt-BR') : 'Não agendado';
+                const planoNome = venda.plano ? venda.plano.nome : 'Não informado';
+                const formaPagamentoNome = venda.forma_pagamento ? venda.forma_pagamento.nome : 'Não informado';
+                const statusTratamentoNome = venda.status_tratamento ? venda.status_tratamento.nome : 'Não definido';
+                const statusEsteiraNome = venda.status_esteira ? venda.status_esteira.nome : 'Não definido';
+                const statusComissionamentoNome = venda.status_comissionamento ? venda.status_comissionamento.nome : 'Não definido';
+
+                detalhesBody.innerHTML = `
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Dados do Cliente</h6>
+                            <p><strong>Nome:</strong> ${venda.cliente.nome_razao_social}<br><strong>CPF/CNPJ:</strong> ${venda.cliente.cpf_cnpj}<br><strong>Email:</strong> ${venda.cliente.email || 'Não informado'}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Dados da Venda</h6>
+                            <p><strong>Vendedor:</strong> ${venda.vendedor.username}<br><strong>Plano:</strong> ${planoNome}<br><strong>Forma de Pagamento:</strong> ${formaPagamentoNome}<br><strong>Data da Venda:</strong> ${dataCriacao}</p>
+                        </div>
+                    </div><hr>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Status</h6>
+                            <p><strong>Tratamento:</strong> ${statusTratamentoNome}<br><strong>Esteira:</strong> ${statusEsteiraNome}<br><strong>Comissionamento:</strong> ${statusComissionamentoNome}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Agendamento</h6>
+                            <p><strong>Ordem de Serviço:</strong> ${venda.ordem_servico || 'Não informada'}<br><strong>Data:</strong> ${dataAgendamento}<br><strong>Período:</strong> ${venda.periodo_agendamento || 'Não informado'}</p>
+                        </div>
+                    </div><hr>
+                    <h6>Endereço de Instalação</h6>
+                       <p>${venda.logradouro || 'Logradouro não informado'}, ${venda.numero_residencia || 'S/N'}<br>${venda.complemento ? `Complemento: ${venda.complemento}<br>` : ''}Bairro: ${venda.bairro || 'Não informado'}<br>Cidade: ${venda.cidade || 'Não informada'} - ${venda.estado || 'UF'}<br>CEP: ${venda.cep || 'Não informado'}</p>`;
+                detalhesModal.show();
+            } catch (error) {
+                alert('Não foi possível carregar os detalhes da venda.');
+            }
         }
         
         async function editarVenda(vendaId) {
             const modalElement = document.getElementById('modal-editar-venda');
             const modal = bootstrap.Modal.getInstance(modalElement) || new bootstrap.Modal(modalElement);
+            document.getElementById('form-editar-venda').reset();
+            document.getElementById('edit-cliente-cpf-cnpj').textContent = 'Carregando...';
             document.getElementById('editar-venda-id').textContent = vendaId;
             document.getElementById('edit-venda-id-hidden').value = vendaId;
-
             try {
-                const [vendaRes, planosRes, formasPagamentoRes, statusTratamentoRes, statusEsteiraRes, statusComissaoRes, usuariosRes] = await Promise.all([
-                    apiClient.get(`/api/crm/vendas/${vendaId}/`),
+                const vendaRes = await apiClient.get(`/api/crm/vendas/${vendaId}/`);
+                const venda = vendaRes.data;
+                const [planosRes, formasPagamentoRes, statusTratamentoRes, statusEsteiraRes, statusComissaoRes, usuariosRes] = await Promise.all([
                     apiClient.get('/api/crm/planos/'),
                     apiClient.get('/api/crm/formas-pagamento/'),
                     apiClient.get('/api/crm/status/?tipo=Tratamento'),
@@ -520,15 +700,18 @@
                     apiClient.get('/api/crm/status/?tipo=Comissionamento'),
                     apiClient.get('/api/usuarios/')
                 ]);
-                const venda = vendaRes.data;
-
-                populateSelect('edit-plano', planosRes.data.map(p => ({ id: p.id, nome: p.nome })), venda.plano?.id);
-                populateSelect('edit-forma-pagamento', formasPagamentoRes.data.map(f => ({ id: f.id, nome: f.nome })), venda.forma_pagamento?.id);
-                populateSelect('edit-vendedor', usuariosRes.data.map(u => ({ id: u.id, nome: u.nome_completo })), venda.vendedor?.id);
-                populateSelect('edit-status-tratamento', statusTratamentoRes.data, venda.status_tratamento?.id, true);
-                populateSelect('edit-status-esteira', statusEsteiraRes.data, venda.status_esteira?.id, true);
-                populateSelect('edit-status-comissionamento', statusComissaoRes.data, venda.status_comissionamento?.id, true);
-
+                populateSelect('edit-plano', planosRes.data, venda.plano);
+                populateSelect('edit-forma-pagamento', formasPagamentoRes.data, venda.forma_pagamento);
+                populateSelect('edit-vendedor', usuariosRes.data.map(u => ({ id: u.id, nome: u.username })), venda.vendedor);
+                populateSelect('edit-status-tratamento', statusTratamentoRes.data, venda.status_tratamento, true);
+                populateSelect('edit-status-esteira', statusEsteiraRes.data, venda.status_esteira, true);
+                populateSelect('edit-status-comissionamento', statusComissaoRes.data, venda.status_comissionamento, true);
+                document.getElementById('edit-cliente-nome').value = venda.cliente_nome_razao_social || '';
+                document.getElementById('edit-cliente-cpf-cnpj').textContent = venda.cliente_cpf_cnpj || 'Não informado';
+                document.getElementById('edit-telefone1').value = venda.telefone1 || '';
+                document.getElementById('edit-telefone2').value = venda.telefone2 || '';
+                document.getElementById('edit-ponto-referencia').value = venda.ponto_referencia || '';
+                document.getElementById('edit-observacoes').value = venda.observacoes || '';
                 document.getElementById('edit-ordem-servico').value = venda.ordem_servico || '';
                 document.getElementById('edit-data-agendamento').value = venda.data_agendamento || '';
                 document.getElementById('edit-periodo-agendamento').value = venda.periodo_agendamento || '';
@@ -539,7 +722,6 @@
                 document.getElementById('edit-bairro').value = venda.bairro || '';
                 document.getElementById('edit-cidade').value = venda.cidade || '';
                 document.getElementById('edit-estado').value = venda.estado || '';
-                
                 if (venda.data_pedido) {
                     const dataPedido = new Date(venda.data_pedido);
                     dataPedido.setMinutes(dataPedido.getMinutes() - dataPedido.getTimezoneOffset());
@@ -547,11 +729,10 @@
                 } else {
                     document.getElementById('edit-data-pedido').value = '';
                 }
-
                 modal.show();
-
             } catch (error) {
-                alert('Falha ao carregar os dados da venda para edição.');
+                console.error(`Erro ao carregar dados para edição da venda ${vendaId}:`, error);
+                alert('Falha ao carregar os dados da venda para edição. Verifique o console para mais detalhes.');
             }
         }
         
@@ -563,16 +744,19 @@
             }
             options.forEach(option => {
                 const isSelected = option.id == selectedValue ? 'selected' : '';
-                select.innerHTML += `<option value="${option.id}" ${isSelected}>${option.nome}</option>`;
+                select.innerHTML += `<option value="${option.id}" ${isSelected}>${option.nome || option.username}</option>`;
             });
         }
         
-        async function salvarEdicaoVenda() {
+       async function salvarEdicaoVenda() {
             const vendaId = document.getElementById('edit-venda-id-hidden').value;
             const body = {
+                cliente_nome_razao_social: document.getElementById('edit-cliente-nome').value,
                 plano: document.getElementById('edit-plano').value,
                 forma_pagamento: document.getElementById('edit-forma-pagamento').value,
                 vendedor: document.getElementById('edit-vendedor').value,
+                telefone1: document.getElementById('edit-telefone1').value,
+                telefone2: document.getElementById('edit-telefone2').value,
                 status_tratamento: document.getElementById('edit-status-tratamento').value || null,
                 status_esteira: document.getElementById('edit-status-esteira').value || null,
                 status_comissionamento: document.getElementById('edit-status-comissionamento').value || null,
@@ -587,37 +771,35 @@
                 bairro: document.getElementById('edit-bairro').value,
                 cidade: document.getElementById('edit-cidade').value,
                 estado: document.getElementById('edit-estado').value,
+                ponto_referencia: document.getElementById('edit-ponto-referencia').value,
+                observacoes: document.getElementById('edit-observacoes').value,
             };
 
             try {
                 await apiClient.patch(`/api/crm/vendas/${vendaId}/`, body);
-                const modal = bootstrap.Modal.getInstance(document.getElementById('modal-editar-venda'));
-                modal.hide();
+                const modalElement = document.getElementById('modal-editar-venda');
+                const modal = bootstrap.Modal.getInstance(modalElement);
+                if (modal) {
+                    modal.hide();
+                }
                 alert('Venda atualizada com sucesso!');
-                carregarVendasEsteira();
+                carregarDadosIniciais(true);
             } catch (error) {
-                alert(`Falha ao salvar as alterações.`);
+                console.error(`Erro ao salvar a venda ${vendaId}:`, error.response?.data);
+                const errorDetail = error.response ? JSON.stringify(error.response.data) : 'Erro desconhecido';
+                alert(`Falha ao salvar as alterações. Detalhe: ${errorDetail}`);
             }
         }
 
         async function excluirVenda(vendaId) {
             if (confirm(`Tem certeza que deseja excluir a venda #${vendaId}? Esta ação não pode ser desfeita.`)) {
                 try {
-                    const response = await fetch(`/api/crm/vendas/${vendaId}/`, {
-                        method: 'DELETE',
-                        headers: {
-                            'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-                            'Content-Type': 'application/json',
-                        }
-                    });
-                    if (response.status === 204) {
-                        alert('Venda excluída com sucesso!');
-                        document.getElementById(`venda-row-${vendaId}`).remove();
-                    } else {
-                        alert(`Erro ao excluir a venda.`);
-                    }
+                    await apiClient.delete(`/api/crm/vendas/${vendaId}/`);
+                    alert('Venda excluída com sucesso!');
+                    carregarDadosIniciais(true);
                 } catch (error) {
-                    alert('Ocorreu um erro de rede.');
+                     const errorData = error.response?.data;
+                     alert(`Erro ao excluir a venda. (Detalhe: ${errorData?.detail || 'Tente novamente.'})`);
                 }
             }
         }

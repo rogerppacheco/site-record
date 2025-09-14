@@ -1,33 +1,48 @@
 # site-record/usuarios/admin.py
 
 from django.contrib import admin
-# A forma correta de importar o User, especialmente um customizado
-from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin
-from .models import Perfil, PermissaoPerfil
+from .models import Usuario, Perfil, PermissaoPerfil
 
-# Pega o modelo de usuário que está ativo no projeto
-User = get_user_model()
+class PermissaoPerfilInline(admin.TabularInline):
+    model = PermissaoPerfil
+    extra = 1
 
-# Usa o decorador @admin.register, que é mais limpo
-@admin.register(User)
+@admin.register(Perfil)
+class PerfilAdmin(admin.ModelAdmin):
+    list_display = ('nome',)
+    inlines = [PermissaoPerfilInline]
+
 class CustomUserAdmin(UserAdmin):
-    model = User
-    fieldsets = UserAdmin.fieldsets + (
-        (None, {'fields': ('perfil', 'supervisor')}),
+    fieldsets = (
+        (None, {'fields': ('username', 'password')}),
+        ('Informações Pessoais', {'fields': ('first_name', 'last_name', 'email', 'cpf')}),
+        ('Função e Estrutura', {'fields': ('perfil', 'supervisor', 'canal')}),
+        ('Financeiro', {'fields': (
+            'valor_almoco', 'valor_passagem', 'chave_pix', 'nome_da_conta'
+        )}),
+        ('Comissionamento', {'fields': (
+            'meta_comissao', 'desconto_boleto', 'desconto_inclusao_viabilidade',
+            'desconto_instalacao_antecipada', 'adiantamento_cnpj', 'desconto_inss_fixo'
+        )}),
+        ('Permissões', {
+            'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions'),
+        }),
+        ('Datas Importantes', {'fields': ('last_login', 'date_joined')}),
     )
+    
     add_fieldsets = UserAdmin.add_fieldsets + (
-        (None, {'fields': ('perfil', 'supervisor')}),
+        ('Informações Adicionais', {
+            'fields': ('perfil', 'supervisor', 'canal', 'cpf'),
+        }),
     )
-    list_display = ['username', 'email', 'first_name', 'last_name', 'is_staff', 'perfil']
-    list_filter = ['perfil', 'is_staff', 'is_superuser', 'groups']
 
-@admin.register(PermissaoPerfil)
-class PermissaoPerfilAdmin(admin.ModelAdmin):
-    list_display = ('perfil', 'recurso', 'pode_ver', 'pode_criar', 'pode_editar', 'pode_excluir')
-    list_filter = ('perfil', 'recurso')
-    search_fields = ('perfil__nome', 'recurso')
-    ordering = ('perfil__nome', 'recurso')
+    list_display = ('username', 'email', 'first_name', 'last_name', 'is_staff', 'perfil', 'canal')
+    list_filter = ('is_staff', 'is_superuser', 'is_active', 'groups', 'perfil', 'canal')
 
-# Registra o Perfil que não tem uma classe de admin customizada
-admin.site.register(Perfil)
+# ======================================================
+# --- CORREÇÃO APLICADA AQUI ---
+# A linha admin.site.unregister(Usuario) foi REMOVIDA.
+# Apenas registramos nosso admin customizado.
+# ======================================================
+admin.site.register(Usuario, CustomUserAdmin)

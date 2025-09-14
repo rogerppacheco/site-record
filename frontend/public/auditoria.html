@@ -7,6 +7,7 @@
     <title>Auditoria de Vendas</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     <style>
         .status-select { min-width: 180px; }
         .main-header { background-color: #fff; padding: 1rem 2rem; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); position: sticky; top: 0; z-index: 1020; }
@@ -16,28 +17,22 @@
         .main-nav a { text-decoration: none; color: #1a1a1a; font-weight: 500; }
         .main-nav a:hover { color: #888; }
         .submenu-nav.bg-dark .nav-link,
-        .submenu-nav.bg-dark .dropdown-menu .dropdown-item {
-            color: rgba(255, 255, 255, 0.75);
-        }
+        .submenu-nav.bg-dark .dropdown-menu .dropdown-item { color: rgba(255, 255, 255, 0.75); }
         .submenu-nav.bg-dark .nav-link:hover,
-        .submenu-nav.bg-dark .dropdown-menu .dropdown-item:hover {
-            color: #fff;
-        }
-        .submenu-nav.bg-dark .nav-link.active {
-            color: #fff;
-            font-weight: bold;
-        }
+        .submenu-nav.bg-dark .dropdown-menu .dropdown-item:hover { color: #fff; }
+        .submenu-nav.bg-dark .nav-link.active { color: #fff; font-weight: bold; }
         .venda-details { font-size: 0.8rem; color: #6c757d; }
         #detalhes-venda-body h6 { margin-top: 1rem; color: #0d6efd; }
         #aprovacao-mensagem { white-space: pre-wrap; font-family: monospace; font-size: 0.9rem; }
+        .table > tbody > tr[style] { color: #000 !important; }
+        .table > tbody > tr[style] a,
+        .table > tbody > tr[style] .btn { color: #000 !important; }
     </style>
 </head>
 <body>
     <header class="main-header">
         <div class="header-container">
-            <a href="/">
-                <img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo">
-            </a>
+            <a href="/"><img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo"></a>
             <nav class="main-nav">
                 <ul>
                     <li><a href="/area-interna/">Área Interna</a></li>
@@ -53,11 +48,8 @@
             <div class="collapse navbar-collapse">
                 <ul class="navbar-nav">
                     <li class="nav-item" id="nav-presenca"><a class="nav-link" href="/presenca/">Controle de Presença</a></li>
-                    
                     <li class="nav-item dropdown" id="nav-vendas">
-                        <a class="nav-link dropdown-toggle active" href="#" id="navbarVendas" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            Vendas
-                        </a>
+                        <a class="nav-link dropdown-toggle active" href="#" id="navbarVendas" role="button" data-bs-toggle="dropdown" aria-expanded="false">Vendas</a>
                         <ul class="dropdown-menu dropdown-menu-dark" aria-labelledby="navbarVendas">
                             <li><a class="dropdown-item" href="/crm-vendas/">Cadastrar Venda</a></li>
                             <li><a class="dropdown-item active" href="/auditoria/">Auditoria</a></li>
@@ -65,22 +57,16 @@
                             <li><a class="dropdown-item" href="/comissionamento/">Comissionamento</a></li>
                         </ul>
                     </li>
-
                     <li class="nav-item dropdown" id="nav-importacoes">
-                        <a class="nav-link dropdown-toggle" href="#" id="navbarImportacoes" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            Importações
-                        </a>
+                        <a class="nav-link dropdown-toggle" href="#" id="navbarImportacoes" role="button" data-bs-toggle="dropdown" aria-expanded="false">Importações</a>
                         <ul class="dropdown-menu dropdown-menu-dark" aria-labelledby="navbarImportacoes">
                             <li><a class="dropdown-item" href="/salvar-osab/">Salvar OSAB</a></li>
                             <li><a class="dropdown-item" href="/salvar-churn/">Salvar Churn</a></li>
                             <li><a class="dropdown-item" href="/salvar-ciclo-pagamento/">Salvar Ciclo de Pagamento</a></li>
                         </ul>
                     </li>
-
                     <li class="nav-item dropdown" id="nav-cadastros">
-                        <a class="nav-link dropdown-toggle" href="#" id="navbarCadastros" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            Cadastros
-                        </a>
+                        <a class="nav-link dropdown-toggle" href="#" id="navbarCadastros" role="button" data-bs-toggle="dropdown" aria-expanded="false">Cadastros</a>
                         <ul class="dropdown-menu dropdown-menu-dark" aria-labelledby="navbarCadastros">
                             <li><a class="dropdown-item" href="/governanca/">Governança</a></li>
                         </ul>
@@ -92,9 +78,7 @@
 
     <main class="container mt-5">
         <div class="card shadow-sm">
-            <div class="card-header">
-                <h4 class="mb-0">Esteira de Vendas - Auditoria</h4>
-            </div>
+            <div class="card-header"><h4 class="mb-0">Esteira de Vendas - Auditoria</h4></div>
             <div class="card-body">
                 <div class="table-responsive">
                     <table class="table table-hover align-middle">
@@ -105,6 +89,7 @@
                                 <th>Vendedor</th>
                                 <th>Plano</th>
                                 <th>Status Tratamento</th>
+                                <th>Alterado Por</th>
                                 <th>Ações</th>
                             </tr>
                         </thead>
@@ -118,36 +103,19 @@
     <div class="modal fade" id="modal-cadastrada" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Confirmar Agendamento</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
+                <div class="modal-header"><h5 class="modal-title">Confirmar Agendamento</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
                     <form id="form-cadastrada">
-                        <input type="hidden" id="cadastrada-venda-id">
-                        <input type="hidden" id="cadastrada-status-id">
-                        <div class="mb-3">
-                            <label for="cadastrada_ordem_servico" class="form-label">Ordem de Serviço (O.S) *</label>
-                            <input type="text" class="form-control" id="cadastrada_ordem_servico" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="cadastrada_data_agendamento" class="form-label">Data de Agendamento *</label>
-                            <input type="date" class="form-control" id="cadastrada_data_agendamento" required>
-                        </div>
+                        <input type="hidden" id="cadastrada-venda-id"><input type="hidden" id="cadastrada-status-id">
+                        <div class="mb-3"><label for="cadastrada_ordem_servico" class="form-label">Ordem de Serviço (O.S) *</label><input type="text" class="form-control" id="cadastrada_ordem_servico" required></div>
+                        <div class="mb-3"><label for="cadastrada_data_agendamento" class="form-label">Data de Agendamento *</label><input type="date" class="form-control" id="cadastrada_data_agendamento" required></div>
                         <div class="mb-3">
                             <label for="cadastrada_periodo_agendamento" class="form-label">Período *</label>
-                            <select class="form-select" id="cadastrada_periodo_agendamento" required>
-                                <option value="" selected disabled>Selecione...</option>
-                                <option value="MANHA">Manhã</option>
-                                <option value="TARDE">Tarde</option>
-                            </select>
+                            <select class="form-select" id="cadastrada_periodo_agendamento" required><option value="" selected disabled>Selecione...</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select>
                         </div>
                     </form>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" class="btn btn-primary" form="form-cadastrada">Salvar</button>
-                </div>
+                <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button type="submit" class="btn btn-primary" form="form-cadastrada">Salvar</button></div>
             </div>
         </div>
     </div>
@@ -155,15 +123,9 @@
     <div class="modal fade" id="modal-detalhes-venda" tabindex="-1">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Detalhes da Venda #<span id="detalhes-venda-id"></span></h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body" id="detalhes-venda-body">
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
-                </div>
+                <div class="modal-header"><h5 class="modal-title">Detalhes da Venda #<span id="detalhes-venda-id"></span></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body" id="detalhes-venda-body"></div>
+                <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button></div>
             </div>
         </div>
     </div>
@@ -171,119 +133,68 @@
     <div class="modal fade" id="modal-aprovacao" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Mensagem de Aprovação</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
+                <div class="modal-header"><h5 class="modal-title">Mensagem de Aprovação</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
                     <p>A mensagem abaixo está pronta para ser copiada.</p>
                     <textarea id="aprovacao-mensagem" class="form-control" rows="15" readonly></textarea>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
-                    <button type="button" class="btn btn-primary" onclick="copiarMensagem()">
-                        <i class="bi bi-clipboard-check"></i> Copiar Mensagem
-                    </button>
-                </div>
+                <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button><button type="button" class="btn btn-primary" onclick="copiarMensagem()"><i class="bi bi-clipboard-check"></i> Copiar Mensagem</button></div>
             </div>
         </div>
     </div>
 
     <div class="modal fade" id="modal-editar-venda" tabindex="-1">
-        <div class="modal-dialog modal-xl"> <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Editar Venda #<span id="editar-venda-id"></span></h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
+        <div class="modal-dialog modal-xl">
+             <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title">Editar Venda #<span id="editar-venda-id"></span></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
                     <form id="form-editar-venda">
                         <input type="hidden" id="edit-venda-id-hidden">
+                        <div class="row bg-light p-3 mb-4 rounded border">
+                            <div class="col-md-6">
+                                <label for="edit-cliente-nome" class="form-label fw-bold">Cliente</label>
+                                <input type="text" class="form-control" id="edit-cliente-nome">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">CPF/CNPJ</label>
+                                <p id="edit-cliente-cpf-cnpj" class="form-control-plaintext ps-2">Carregando...</p>
+                            </div>
+                        </div>
                         <div class="row">
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <h6>Dados da Venda</h6>
-                                <div class="mb-3">
-                                    <label for="edit-plano" class="form-label">Plano</label>
-                                    <select id="edit-plano" class="form-select"></select>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="edit-forma-pagamento" class="form-label">Forma de Pagamento</label>
-                                    <select id="edit-forma-pagamento" class="form-select"></select>
-                                </div>
-                                 <div class="mb-3">
-                                    <label for="edit-vendedor" class="form-label">Vendedor</label>
-                                    <select id="edit-vendedor" class="form-select"></select>
-                                </div>
+                                <div class="mb-3"><label for="edit-plano" class="form-label">Plano</label><select id="edit-plano" class="form-select"></select></div>
+                                <div class="mb-3"><label for="edit-forma-pagamento" class="form-label">Forma de Pagamento</label><select id="edit-forma-pagamento" class="form-select"></select></div>
+                                <div class="mb-3"><label for="edit-vendedor" class="form-label">Vendedor</label><select id="edit-vendedor" class="form-select"></select></div>
+                                <hr>
                                 <h6>Status</h6>
-                                <div class="mb-3">
-                                    <label for="edit-status-tratamento" class="form-label">Status Tratamento</label>
-                                    <select id="edit-status-tratamento" class="form-select"></select>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="edit-status-esteira" class="form-label">Status Esteira</label>
-                                    <select id="edit-status-esteira" class="form-select"></select>
-                                </div>
-                                 <div class="mb-3">
-                                    <label for="edit-status-comissionamento" class="form-label">Status Comissionamento</label>
-                                    <select id="edit-status-comissionamento" class="form-select"></select>
-                                </div>
+                                <div class="mb-3"><label for="edit-status-tratamento" class="form-label">Status Tratamento</label><select id="edit-status-tratamento" class="form-select"></select></div>
+                                <div class="mb-3"><label for="edit-status-esteira" class="form-label">Status Esteira</label><select id="edit-status-esteira" class="form-select"></select></div>
+                                <div class="mb-3"><label for="edit-status-comissionamento" class="form-label">Status Comissionamento</label><select id="edit-status-comissionamento" class="form-select"></select></div>
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
+                                <h6>Contato</h6>
+                                <div class="mb-3"><label for="edit-telefone1" class="form-label">Telefone 1</label><input type="tel" class="form-control" id="edit-telefone1"></div>
+                                <div class="mb-3"><label for="edit-telefone2" class="form-label">Telefone 2</label><input type="tel" class="form-control" id="edit-telefone2"></div>
+                                <hr>
                                 <h6>Agendamento e OS</h6>
-                                 <div class="mb-3">
-                                    <label for="edit-ordem-servico" class="form-label">Ordem de Serviço (O.S)</label>
-                                    <input type="text" class="form-control" id="edit-ordem-servico">
-                                </div>
-                                <div class="mb-3">
-                                    <label for="edit-data-pedido" class="form-label">Data do Pedido</label>
-                                    <input type="datetime-local" class="form-control" id="edit-data-pedido">
-                                </div>
-                                <div class="mb-3">
-                                    <label for="edit-data-agendamento" class="form-label">Data de Agendamento</label>
-                                    <input type="date" class="form-control" id="edit-data-agendamento">
-                                </div>
-                                <div class="mb-3">
-                                    <label for="edit-periodo-agendamento" class="form-label">Período</label>
-                                    <select class="form-select" id="edit-periodo-agendamento">
-                                        <option value="">Nenhum</option>
-                                        <option value="MANHA">Manhã</option>
-                                        <option value="TARDE">Tarde</option>
-                                    </select>
-                                </div>
+                                <div class="mb-3"><label for="edit-ordem-servico" class="form-label">Ordem de Serviço (O.S)</label><input type="text" class="form-control" id="edit-ordem-servico"></div>
+                                <div class="mb-3"><label for="edit-data-pedido" class="form-label">Data do Pedido</label><input type="datetime-local" class="form-control" id="edit-data-pedido"></div>
+                                <div class="mb-3"><label for="edit-data-agendamento" class="form-label">Data de Agendamento</label><input type="date" class="form-control" id="edit-data-agendamento"></div>
+                                <div class="mb-3"><label for="edit-periodo-agendamento" class="form-label">Período</label><select class="form-select" id="edit-periodo-agendamento"><option value="">Nenhum</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select></div>
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <h6>Endereço de Instalação</h6>
-                                <div class="mb-3">
-                                    <label for="edit-cep" class="form-label">CEP</label>
-                                    <input type="text" class="form-control" id="edit-cep">
-                                </div>
-                                <div class="mb-3">
-                                    <label for="edit-logradouro" class="form-label">Logradouro</label>
-                                    <input type="text" class="form-control" id="edit-logradouro">
-                                </div>
-                                <div class="row">
-                                    <div class="col-8">
-                                        <label for="edit-bairro" class="form-label">Bairro</label>
-                                        <input type="text" class="form-control" id="edit-bairro">
-                                    </div>
-                                    <div class="col-4">
-                                        <label for="edit-numero" class="form-label">Número</label>
-                                        <input type="text" class="form-control" id="edit-numero">
-                                    </div>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="edit-complemento" class="form-label">Complemento</label>
-                                    <input type="text" class="form-control" id="edit-complemento">
-                                </div>
-                                <div class="row">
-                                    <div class="col-8">
-                                        <label for="edit-cidade" class="form-label">Cidade</label>
-                                        <input type="text" class="form-control" id="edit-cidade">
-                                    </div>
-                                    <div class="col-4">
-                                        <label for="edit-estado" class="form-label">UF</label>
-                                        <input type="text" class="form-control" id="edit-estado">
-                                    </div>
-                                </div>
+                                <div class="mb-3"><label for="edit-cep" class="form-label">CEP</label><input type="text" class="form-control" id="edit-cep"></div>
+                                <div class="mb-3"><label for="edit-logradouro" class="form-label">Logradouro</label><input type="text" class="form-control" id="edit-logradouro"></div>
+                                <div class="row mb-3"><div class="col-8"><label for="edit-bairro" class="form-label">Bairro</label><input type="text" class="form-control" id="edit-bairro"></div><div class="col-4"><label for="edit-numero" class="form-label">Número</label><input type="text" class="form-control" id="edit-numero"></div></div>
+                                <div class="mb-3"><label for="edit-complemento" class="form-label">Complemento</label><input type="text" class="form-control" id="edit-complemento"></div>
+                                <div class="row"><div class="col-8"><label for="edit-cidade" class="form-label">Cidade</label><input type="text" class="form-control" id="edit-cidade"></div><div class="col-4"><label for="edit-estado" class="form-label">UF</label><input type="text" class="form-control" id="edit-estado"></div></div>
+                            </div>
+                            <div class="col-md-3">
+                                <h6>Dados Complementares</h6>
+                                <div class="mb-3"><label for="edit-ponto-referencia" class="form-label">Ponto de Referência*</label><input type="text" class="form-control" id="edit-ponto-referencia" required></div>
+                                <div class="mb-3"><label for="edit-observacoes" class="form-label">Observações</label><textarea class="form-control" id="edit-observacoes" rows="8"></textarea></div>
                             </div>
                         </div>
                     </form>
@@ -301,12 +212,10 @@
 
     <script>
         verificarAutenticacao();
-
+        let vendas = [];
         let listaStatusTratamento = [];
         let cadastradaStatusId = null;
-        let cadastradaModal;
-        let detalhesModal;
-        let aprovacaoModal;
+        let cadastradaModal, detalhesModal, aprovacaoModal, modalEditarVenda;
 
         function jwt_decode(token) { try { return JSON.parse(atob(token.split('.')[1])); } catch (e) { return null; } }
 
@@ -314,32 +223,22 @@
             cadastradaModal = new bootstrap.Modal(document.getElementById('modal-cadastrada'));
             detalhesModal = new bootstrap.Modal(document.getElementById('modal-detalhes-venda'));
             aprovacaoModal = new bootstrap.Modal(document.getElementById('modal-aprovacao'));
-            
+            modalEditarVenda = new bootstrap.Modal(document.getElementById('modal-editar-venda'));
             const token = localStorage.getItem('accessToken');
             const decodedToken = jwt_decode(token);
             const userProfile = decodedToken ? decodedToken.perfil : null;
             const perfisPermitidos = ['Admin', 'BackOffice', 'Supervisor', 'Gerente', 'Diretoria'];
-
             if (!userProfile || !perfisPermitidos.includes(userProfile)) {
                 alert('Você não tem permissão para acessar esta página.');
                 window.location.href = '/area-interna/';
                 return;
             }
-
             if (decodedToken && decodedToken.username) { document.getElementById('welcome-user').textContent = `Bem-vindo, ${decodedToken.username}!`; }
-
             document.getElementById('logoutButton').addEventListener('click', logout);
-            document.getElementById('form-cadastrada').addEventListener('submit', salvarCadastrada);
-            
-            document.getElementById('modal-cadastrada').addEventListener('hidden.bs.modal', function () {
-                carregarVendasAuditoria();
-            });
-
-            // Adiciona o listener do ViaCEP para o modal de edição
+            document.getElementById('form-cadastrada').addEventListener('submit', handleSalvarCadastrada);
             document.getElementById('edit-cep').addEventListener('blur', buscarCepEdit);
-
             await carregarListasDeStatus();
-            carregarVendasAuditoria();
+            await carregarVendas();
         });
 
         async function carregarListasDeStatus() {
@@ -347,110 +246,100 @@
                 const responseTratamento = await apiClient.get('/api/crm/status/?tipo=Tratamento');
                 listaStatusTratamento = responseTratamento.data;
                 const statusCadastrada = listaStatusTratamento.find(s => s.nome.toLowerCase() === 'cadastrada');
-                if (statusCadastrada) {
-                    cadastradaStatusId = statusCadastrada.id;
-                }
+                if (statusCadastrada) { cadastradaStatusId = statusCadastrada.id; }
             } catch (error) {
                 console.error("Erro fatal ao carregar listas de status:", error);
                 alert("Não foi possível carregar as opções de status. A página não pode funcionar.");
             }
         }
-
-        async function carregarVendasAuditoria() {
+        
+        async function carregarVendas() {
             const tbody = document.getElementById('tabela-auditoria');
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center">Carregando...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center">Carregando...</td></tr>';
             try {
                 const response = await apiClient.get('/api/crm/vendas/?flow=auditoria');
-                const vendas = response.data;
-
-                tbody.innerHTML = '';
-                if (vendas.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="text-center">Nenhuma venda para auditar.</td></tr>';
-                    return;
-                }
-                vendas.forEach(venda => {
-                    const tr = document.createElement('tr');
-                    tr.id = `venda-row-${venda.id}`;
-                    
-                    const statusTratamentoAtual = venda.status_tratamento ? venda.status_tratamento.id : '';
-
-                    const selectTratamento = `<select id="tratamento-select-${venda.id}" class="form-select form-select-sm status-select" onchange="atualizarStatus(event, ${venda.id}, this.value, 'tratamento')">
-                        <option value="">Selecione...</option>
-                        ${listaStatusTratamento.map(s => `<option value="${s.id}" ${statusTratamentoAtual === s.id ? 'selected' : ''}>${s.nome}</option>`).join('')}
-                    </select>`;
-                    
-                    let detalhesAgendamento = '';
-                    if (venda.data_agendamento) {
-                        const dataFormatada = new Date(venda.data_agendamento + 'T03:00:00Z').toLocaleDateString('pt-BR');
-                        detalhesAgendamento = `<br><span class="venda-details">OS: ${venda.ordem_servico || 'N/A'} | Agendado: ${dataFormatada} (${venda.periodo_agendamento || ''})</span>`;
-                    }
-
-                    tr.innerHTML = `
-                        <td>${venda.id}</td>
-                        <td>${venda.cliente.nome_razao_social} ${detalhesAgendamento}</td>
-                        <td>${venda.vendedor.username}</td>
-                        <td>${venda.plano ? venda.plano.nome : 'N/A'}</td>
-                        <td>${selectTratamento}</td>
-                        <td>
-                            <div class="btn-group" role="group">
-                                <button class="btn btn-sm btn-outline-success" onclick="gerarAprovacao(${venda.id})" title="Gerar Mensagem de Aprovação"><i class="bi bi-whatsapp"></i></button>
-                                <button class="btn btn-sm btn-outline-info" onclick="detalhesVenda(${venda.id})" title="Ver Detalhes"><i class="bi bi-search"></i></button>
-                                <button class="btn btn-sm btn-outline-warning" onclick="editarVenda(${venda.id})" title="Editar Venda"><i class="bi bi-pencil-square"></i></button>
-                                <button class="btn btn-sm btn-outline-danger" onclick="excluirVenda(${venda.id})" title="Excluir Venda"><i class="bi bi-trash"></i></button>
-                            </div>
-                        </td>
-                    `;
-                    tbody.appendChild(tr);
-                });
+                vendas = response.data;
+                renderizarTabela(vendas);
             } catch (error) {
                 console.error('Erro ao carregar vendas para auditoria:', error);
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Falha ao carregar vendas.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger">Falha ao carregar vendas.</td></tr>';
             }
         }
 
-        async function atualizarStatus(event, vendaId, novoStatusId, tipoStatus) {
-            if (!novoStatusId) return;
+        function renderizarTabela(vendasParaRenderizar) {
+            const tbody = document.getElementById('tabela-auditoria');
+            tbody.innerHTML = '';
+            if (vendasParaRenderizar.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center">Nenhuma venda para auditar.</td></tr>';
+                return;
+            }
+            vendasParaRenderizar.forEach(venda => {
+                const tr = document.createElement('tr');
+                tr.id = `venda-row-${venda.id}`;
+                if (venda.status_tratamento && venda.status_tratamento.cor && venda.status_tratamento.cor !== '#FFFFFF') {
+                    tr.setAttribute('style', `background-color: ${venda.status_tratamento.cor} !important`);
+                }
+                const statusTratamentoAtual = venda.status_tratamento ? venda.status_tratamento.id : '';
+                const selectTratamento = `<select id="tratamento-select-${venda.id}" class="form-select form-select-sm status-select" onchange="handleAtualizarStatus(event, ${venda.id}, this.value, 'tratamento')">
+                    <option value="">Selecione...</option>
+                    ${listaStatusTratamento.map(s => `<option value="${s.id}" ${statusTratamentoAtual === s.id ? 'selected' : ''}>${s.nome}</option>`).join('')}
+                </select>`;
+                let detalhesAgendamento = '';
+                if (venda.data_agendamento) {
+                    const dataFormatada = new Date(venda.data_agendamento + 'T03:00:00Z').toLocaleDateString('pt-BR');
+                    detalhesAgendamento = `<br><span class="venda-details">OS: ${venda.ordem_servico || 'N/A'} | Agendado: ${dataFormatada} (${venda.periodo_agendamento || ''})</span>`;
+                }
+                tr.innerHTML = `
+                    <td>${venda.id}</td>
+                    <td>${venda.cliente.nome_razao_social} ${detalhesAgendamento}</td>
+                    <td>${venda.vendedor.username}</td>
+                    <td>${venda.plano ? venda.plano.nome : 'N/A'}</td>
+                    <td>${selectTratamento}</td>
+                    <td>${venda.alterado_por || 'N/A'}</td>
+                    <td>
+                        <div class="btn-group" role="group">
+                            <button class="btn btn-sm btn-outline-success" onclick="gerarAprovacao(${venda.id})" title="Gerar Mensagem de Aprovação"><i class="bi bi-whatsapp"></i></button>
+                            <button class="btn btn-sm btn-outline-info" onclick="detalhesVenda(${venda.id})" title="Ver Detalhes"><i class="bi bi-search"></i></button>
+                            <button class="btn btn-sm btn-outline-warning" onclick="editarVenda(${venda.id})" title="Editar Venda"><i class="bi bi-pencil-square"></i></button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="excluirVenda(${venda.id})" title="Excluir Venda"><i class="bi bi-trash"></i></button>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
 
+        async function handleAtualizarStatus(event, vendaId, novoStatusId, tipoStatus) {
+            if (!novoStatusId) return;
             if (tipoStatus === 'tratamento' && parseInt(novoStatusId) === cadastradaStatusId) {
                 document.getElementById('cadastrada-venda-id').value = vendaId;
                 document.getElementById('cadastrada-status-id').value = novoStatusId;
                 cadastradaModal.show();
                 return;
             }
-            
-            const body = {};
-            if (tipoStatus === 'tratamento') body.status_tratamento = parseInt(novoStatusId);
-            
+            const body = { status_tratamento: parseInt(novoStatusId) };
             try {
                 await apiClient.patch(`/api/crm/vendas/${vendaId}/`, body);
-                
-                const tr = document.getElementById(`venda-row-${vendaId}`);
-                tr.style.transition = 'background-color 0.5s';
-                tr.style.backgroundColor = '#d4edda';
-                setTimeout(() => { tr.style.backgroundColor = ''; carregarVendasAuditoria(); }, 1500);
-
+                carregarVendas();
             } catch (error) {
                 console.error(`Erro ao atualizar venda ${vendaId}:`, error);
                 alert('Falha ao atualizar o status da venda.');
-                carregarVendasAuditoria();
+                carregarVendas();
             }
         }
 
-        async function salvarCadastrada(event) {
+        async function handleSalvarCadastrada(event) {
             event.preventDefault();
             const osInput = document.getElementById('cadastrada_ordem_servico');
             const ordemServico = osInput.value.trim();
             const vendaId = document.getElementById('cadastrada-venda-id').value;
-
             if (!ordemServico) {
                 alert('Por favor, preencha o campo Ordem de Serviço.');
                 return;
             }
-
             try {
                 const response = await apiClient.get(`/api/crm/vendas/?ordem_servico=${ordemServico}`);
                 const conflictingSale = response.data.find(venda => venda.id != vendaId);
-
                 if (conflictingSale) {
                     alert(`A Ordem de Serviço "${ordemServico}" já está sendo utilizada na venda #${conflictingSale.id}.`);
                     return;
@@ -460,7 +349,6 @@
                 alert('Ocorreu um erro ao verificar a Ordem de Serviço. Por favor, tente novamente.');
                 return;
             }
-
             const statusId = document.getElementById('cadastrada-status-id').value;
             const body = {
                 status_tratamento: parseInt(statusId),
@@ -468,138 +356,28 @@
                 data_agendamento: document.getElementById('cadastrada_data_agendamento').value,
                 periodo_agendamento: document.getElementById('cadastrada_periodo_agendamento').value,
             };
-
             try {
                 await apiClient.patch(`/api/crm/vendas/${vendaId}/`, body);
                 cadastradaModal.hide();
                 document.getElementById('form-cadastrada').reset();
-                carregarVendasAuditoria(); 
-
+                carregarVendas();
             } catch (error) {
                 console.error(`Erro ao salvar status para venda ${vendaId}:`, error);
                 alert('Falha ao salvar o status. Verifique os dados e tente novamente.');
             }
         }
-
-        async function gerarAprovacao(vendaId) {
-            try {
-                const response = await apiClient.get(`/api/crm/vendas/${vendaId}/`);
-                const venda = response.data;
-
-                const primeiroNomeVendedor = venda.vendedor ? venda.vendedor.first_name : 'Não informado';
-
-                let daccTexto = 'NÃO / Não informado';
-                if (venda.forma_pagamento) {
-                    if (venda.forma_pagamento.nome.toLowerCase() === 'débito em conta') {
-                        daccTexto = 'SIM';
-                    } else {
-                        daccTexto = `NÃO / ${venda.forma_pagamento.nome}`;
-                    }
-                }
-
-                let agendamentoTexto = '';
-                if (venda.data_agendamento) {
-                    const data = new Date(venda.data_agendamento + 'T03:00:00Z').toLocaleDateString('pt-BR');
-                    let periodo = '';
-                    if (venda.periodo_agendamento && venda.periodo_agendamento.toUpperCase() === 'MANHA') {
-                        periodo = 'entre 08:00 às 12:00';
-                    } else if (venda.periodo_agendamento && venda.periodo_agendamento.toUpperCase() === 'TARDE') {
-                        periodo = 'entre 13:00 às 18:00';
-                    }
-                    agendamentoTexto = `*AGENDAMENTO:* Agendamento confirmado para o dia ${data} ${periodo}`;
-                }
-
-                const mensagem = `*APROVADO!*✅✅
-*PLANO ADQUIRIDO:* ${venda.plano ? venda.plano.nome.toUpperCase() : 'NÃO INFORMADO'}
-*NOME DO CLIENTE:* ${venda.cliente.nome_razao_social.toUpperCase()}
-*CPF/CNPJ:* ${venda.cliente.cpf_cnpj}
-*OS:* ${venda.ordem_servico || 'NÃO INFORMADA'}
-*DACC:* ${daccTexto.toUpperCase()}
-${agendamentoTexto ? `${agendamentoTexto}\n` : ''}*VENDEDOR:* ${primeiroNomeVendedor.toUpperCase()}
-⚠FATURA, SEGUNDA VIA OU DÚVIDAS
-https://www.niointernet.com.br/
-WhatsApp: 31985186530
-Para que sua instalação seja concluída favor salvar esse CTO no seu telefone, Técnico Oi 21 2533-9053 para receber informações da Visita.`;
-
-                document.getElementById('aprovacao-mensagem').value = mensagem;
-                aprovacaoModal.show();
-
-            } catch (error) {
-                console.error(`Erro ao gerar mensagem de aprovação para venda ${vendaId}:`, error);
-                alert('Não foi possível carregar os dados para gerar a mensagem.');
-            }
-        }
-
-        function copiarMensagem() {
-            const mensagemTextarea = document.getElementById('aprovacao-mensagem');
-            mensagemTextarea.select();
-            document.execCommand('copy');
-            
-            const originalButton = document.querySelector('#modal-aprovacao .btn-primary');
-            const originalButtonHTML = originalButton.innerHTML;
-            originalButton.innerHTML = '<i class="bi bi-check-lg"></i> Copiado!';
-            originalButton.disabled = true;
-
-            setTimeout(() => {
-                originalButton.innerHTML = originalButtonHTML;
-                originalButton.disabled = false;
-            }, 2000);
-        }
-
-        async function detalhesVenda(vendaId) {
-            try {
-                const response = await apiClient.get(`/api/crm/vendas/${vendaId}/`);
-                const venda = response.data;
-                document.getElementById('detalhes-venda-id').textContent = venda.id;
-                const detalhesBody = document.getElementById('detalhes-venda-body');
-                const dataCriacao = new Date(venda.data_criacao).toLocaleString('pt-BR');
-                const dataAgendamento = venda.data_agendamento ? new Date(venda.data_agendamento + 'T03:00:00Z').toLocaleDateString('pt-BR') : 'Não agendado';
-                const planoNome = venda.plano ? venda.plano.nome : 'Não informado';
-                const formaPagamentoNome = venda.forma_pagamento ? venda.forma_pagamento.nome : 'Não informado';
-                const statusTratamentoNome = venda.status_tratamento ? venda.status_tratamento.nome : 'Não definido';
-                const statusEsteiraNome = venda.status_esteira ? venda.status_esteira.nome : 'Não definido';
-                const statusComissionamentoNome = venda.status_comissionamento ? venda.status_comissionamento.nome : 'Não definido';
-
-                detalhesBody.innerHTML = `
-                    <div class="row">
-                        <div class="col-md-6">
-                            <h6>Dados do Cliente</h6>
-                            <p><strong>Nome:</strong> ${venda.cliente.nome_razao_social}<br><strong>CPF/CNPJ:</strong> ${venda.cliente.cpf_cnpj}<br><strong>Email:</strong> ${venda.cliente.email || 'Não informado'}</p>
-                        </div>
-                        <div class="col-md-6">
-                            <h6>Dados da Venda</h6>
-                            <p><strong>Vendedor:</strong> ${venda.vendedor.nome_completo}<br><strong>Plano:</strong> ${planoNome}<br><strong>Forma de Pagamento:</strong> ${formaPagamentoNome}<br><strong>Data da Venda:</strong> ${dataCriacao}</p>
-                        </div>
-                    </div><hr>
-                    <div class="row">
-                        <div class="col-md-6">
-                            <h6>Status</h6>
-                            <p><strong>Tratamento:</strong> ${statusTratamentoNome}<br><strong>Esteira:</strong> ${statusEsteiraNome}<br><strong>Comissionamento:</strong> ${statusComissionamentoNome}</p>
-                        </div>
-                        <div class="col-md-6">
-                            <h6>Agendamento</h6>
-                            <p><strong>Ordem de Serviço:</strong> ${venda.ordem_servico || 'Não informada'}<br><strong>Data:</strong> ${dataAgendamento}<br><strong>Período:</strong> ${venda.periodo_agendamento || 'Não informado'}</p>
-                        </div>
-                    </div><hr>
-                    <h6>Endereço de Instalação</h6>
-                       <p>${venda.logradouro || 'Logradouro não informado'}, ${venda.numero_residencia || 'S/N'}<br>${venda.complemento ? `Complemento: ${venda.complemento}<br>` : ''}Bairro: ${venda.bairro || 'Não informado'}<br>Cidade: ${venda.cidade || 'Não informada'} - ${venda.estado || 'UF'}<br>CEP: ${venda.cep || 'Não informado'}</p>`;
-                detalhesModal.show();
-            } catch (error) {
-                console.error(`Erro ao buscar detalhes da venda ${vendaId}:`, error);
-                alert('Não foi possível carregar os detalhes da venda.');
-            }
-        }
-
+        
         async function editarVenda(vendaId) {
             const modalElement = document.getElementById('modal-editar-venda');
             const modal = bootstrap.Modal.getInstance(modalElement) || new bootstrap.Modal(modalElement);
-            
+            document.getElementById('form-editar-venda').reset();
+            document.getElementById('edit-cliente-cpf-cnpj').textContent = 'Carregando...';
             document.getElementById('editar-venda-id').textContent = vendaId;
             document.getElementById('edit-venda-id-hidden').value = vendaId;
-
             try {
-                const [vendaRes, planosRes, formasPagamentoRes, statusTratamentoRes, statusEsteiraRes, statusComissaoRes, usuariosRes] = await Promise.all([
-                    apiClient.get(`/api/crm/vendas/${vendaId}/`),
+                const vendaRes = await apiClient.get(`/api/crm/vendas/${vendaId}/`);
+                const venda = vendaRes.data;
+                const [planosRes, formasPagamentoRes, statusTratamentoRes, statusEsteiraRes, statusComissaoRes, usuariosRes] = await Promise.all([
                     apiClient.get('/api/crm/planos/'),
                     apiClient.get('/api/crm/formas-pagamento/'),
                     apiClient.get('/api/crm/status/?tipo=Tratamento'),
@@ -607,20 +385,22 @@ Para que sua instalação seja concluída favor salvar esse CTO no seu telefone,
                     apiClient.get('/api/crm/status/?tipo=Comissionamento'),
                     apiClient.get('/api/usuarios/')
                 ]);
-                const venda = vendaRes.data;
-
-                populateSelect('edit-plano', planosRes.data.map(p => ({ id: p.id, nome: p.nome })), venda.plano?.id);
-                populateSelect('edit-forma-pagamento', formasPagamentoRes.data.map(f => ({ id: f.id, nome: f.nome })), venda.forma_pagamento?.id);
-                populateSelect('edit-vendedor', usuariosRes.data.map(u => ({ id: u.id, nome: u.nome_completo })), venda.vendedor?.id);
-                populateSelect('edit-status-tratamento', statusTratamentoRes.data, venda.status_tratamento?.id, true);
-                populateSelect('edit-status-esteira', statusEsteiraRes.data, venda.status_esteira?.id, true);
-                populateSelect('edit-status-comissionamento', statusComissaoRes.data, venda.status_comissionamento?.id, true);
-
+                populateSelect('edit-plano', planosRes.data, venda.plano);
+                populateSelect('edit-forma-pagamento', formasPagamentoRes.data, venda.forma_pagamento);
+                populateSelect('edit-vendedor', usuariosRes.data.map(u => ({ id: u.id, nome: u.username })), venda.vendedor);
+                populateSelect('edit-status-tratamento', statusTratamentoRes.data, venda.status_tratamento, true);
+                populateSelect('edit-status-esteira', statusEsteiraRes.data, venda.status_esteira, true);
+                populateSelect('edit-status-comissionamento', statusComissaoRes.data, venda.status_comissionamento, true);
+                
+                document.getElementById('edit-cliente-nome').value = venda.cliente_nome_razao_social || '';
+                document.getElementById('edit-cliente-cpf-cnpj').textContent = venda.cliente_cpf_cnpj || 'Não informado';
+                document.getElementById('edit-telefone1').value = venda.telefone1 || '';
+                document.getElementById('edit-telefone2').value = venda.telefone2 || '';
+                document.getElementById('edit-ponto-referencia').value = venda.ponto_referencia || '';
+                document.getElementById('edit-observacoes').value = venda.observacoes || '';
                 document.getElementById('edit-ordem-servico').value = venda.ordem_servico || '';
                 document.getElementById('edit-data-agendamento').value = venda.data_agendamento || '';
                 document.getElementById('edit-periodo-agendamento').value = venda.periodo_agendamento || '';
-                
-                // Popula os campos de endereço
                 document.getElementById('edit-cep').value = venda.cep || '';
                 document.getElementById('edit-logradouro').value = venda.logradouro || '';
                 document.getElementById('edit-numero').value = venda.numero_residencia || '';
@@ -628,7 +408,6 @@ Para que sua instalação seja concluída favor salvar esse CTO no seu telefone,
                 document.getElementById('edit-bairro').value = venda.bairro || '';
                 document.getElementById('edit-cidade').value = venda.cidade || '';
                 document.getElementById('edit-estado').value = venda.estado || '';
-                
                 if (venda.data_pedido) {
                     const dataPedido = new Date(venda.data_pedido);
                     dataPedido.setMinutes(dataPedido.getMinutes() - dataPedido.getTimezoneOffset());
@@ -636,34 +415,32 @@ Para que sua instalação seja concluída favor salvar esse CTO no seu telefone,
                 } else {
                     document.getElementById('edit-data-pedido').value = '';
                 }
-
                 modal.show();
-
             } catch (error) {
                 console.error(`Erro ao carregar dados para edição da venda ${vendaId}:`, error);
                 alert('Falha ao carregar os dados da venda para edição.');
             }
         }
-        
+
         function populateSelect(selectId, options, selectedValue, includeEmpty = false) {
             const select = document.getElementById(selectId);
             select.innerHTML = '';
-            if (includeEmpty) {
-                select.innerHTML += '<option value="">Nenhum</option>';
-            }
+            if (includeEmpty) { select.innerHTML += '<option value="">Nenhum</option>'; }
             options.forEach(option => {
                 const isSelected = option.id == selectedValue ? 'selected' : '';
-                select.innerHTML += `<option value="${option.id}" ${isSelected}>${option.nome}</option>`;
+                select.innerHTML += `<option value="${option.id}" ${isSelected}>${option.nome || option.username}</option>`;
             });
         }
         
         async function salvarEdicaoVenda() {
             const vendaId = document.getElementById('edit-venda-id-hidden').value;
-
             const body = {
+                cliente_nome_razao_social: document.getElementById('edit-cliente-nome').value,
                 plano: document.getElementById('edit-plano').value,
                 forma_pagamento: document.getElementById('edit-forma-pagamento').value,
                 vendedor: document.getElementById('edit-vendedor').value,
+                telefone1: document.getElementById('edit-telefone1').value,
+                telefone2: document.getElementById('edit-telefone2').value,
                 status_tratamento: document.getElementById('edit-status-tratamento').value || null,
                 status_esteira: document.getElementById('edit-status-esteira').value || null,
                 status_comissionamento: document.getElementById('edit-status-comissionamento').value || null,
@@ -671,7 +448,6 @@ Para que sua instalação seja concluída favor salvar esse CTO no seu telefone,
                 data_pedido: document.getElementById('edit-data-pedido').value ? new Date(document.getElementById('edit-data-pedido').value).toISOString() : null,
                 data_agendamento: document.getElementById('edit-data-agendamento').value || null,
                 periodo_agendamento: document.getElementById('edit-periodo-agendamento').value || null,
-                // Adiciona os campos de endereço
                 cep: document.getElementById('edit-cep').value,
                 logradouro: document.getElementById('edit-logradouro').value,
                 numero_residencia: document.getElementById('edit-numero').value,
@@ -679,20 +455,16 @@ Para que sua instalação seja concluída favor salvar esse CTO no seu telefone,
                 bairro: document.getElementById('edit-bairro').value,
                 cidade: document.getElementById('edit-cidade').value,
                 estado: document.getElementById('edit-estado').value,
+                ponto_referencia: document.getElementById('edit-ponto-referencia').value,
+                observacoes: document.getElementById('edit-observacoes').value,
             };
-
             try {
                 await apiClient.patch(`/api/crm/vendas/${vendaId}/`, body);
-                
-                const modalElement = document.getElementById('modal-editar-venda');
-                const modal = bootstrap.Modal.getInstance(modalElement);
-                modal.hide();
-
+                modalEditarVenda.hide();
                 alert('Venda atualizada com sucesso!');
-                carregarVendasAuditoria();
-
+                carregarVendas();
             } catch (error) {
-                console.error(`Erro ao salvar a venda ${vendaId}:`, error.response.data);
+                console.error(`Erro ao salvar a venda ${vendaId}:`, error.response?.data);
                 const errorDetail = error.response ? JSON.stringify(error.response.data) : 'Erro desconhecido';
                 alert(`Falha ao salvar as alterações. Detalhe: ${errorDetail}`);
             }
@@ -701,32 +473,16 @@ Para que sua instalação seja concluída favor salvar esse CTO no seu telefone,
         async function excluirVenda(vendaId) {
             if (confirm(`Tem certeza que deseja excluir a venda #${vendaId}? Esta ação não pode ser desfeita.`)) {
                 try {
-                    const response = await fetch(`/api/crm/vendas/${vendaId}/`, {
-                        method: 'DELETE',
-                        headers: {
-                            'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-                            'Content-Type': 'application/json',
-                        }
-                    });
-
-                    if (response.status === 204) {
-                        alert('Venda excluída com sucesso!');
-                        document.getElementById(`venda-row-${vendaId}`).remove();
-                    } else if (response.status === 403) {
-                        const errorData = await response.json();
-                        alert(`Erro de permissão: ${errorData.detail || 'Você não pode excluir esta venda.'}`);
-                    } else {
-                        const errorData = await response.json();
-                        alert(`Erro ao excluir a venda. (Detalhe: ${errorData.detail || 'Tente novamente.'})`);
-                    }
+                    await apiClient.delete(`/api/crm/vendas/${vendaId}/`);
+                    alert('Venda excluída com sucesso!');
+                    carregarVendas();
                 } catch (error) {
-                    console.error('Erro na requisição de exclusão:', error);
-                    alert('Ocorreu um erro de rede. Verifique sua conexão.');
+                    const errorData = error.response?.data;
+                    alert(`Erro ao excluir a venda. (Detalhe: ${errorData?.detail || 'Tente novamente.'})`);
                 }
             }
         }
-        
-        // Função ViaCEP para o modal de edição
+
         async function buscarCepEdit(e) {
             const cep = e.target.value.replace(/\D/g, '');
             if (cep.length !== 8) return;
@@ -739,16 +495,74 @@ Para que sua instalação seja concluída favor salvar esse CTO no seu telefone,
                     document.getElementById('edit-bairro').value = data.bairro.toUpperCase();
                     document.getElementById('edit-cidade').value = data.localidade.toUpperCase();
                     document.getElementById('edit-estado').value = data.uf.toUpperCase();
-                    document.getElementById('edit-numero').focus(); // Foca no campo de número
-                } else {
-                    alert('CEP não encontrado.');
-                }
+                    document.getElementById('edit-numero').focus();
+                } else { alert('CEP não encontrado.'); }
             } catch (error) {
                 console.error('Erro ao buscar CEP:', error);
                 alert('Não foi possível consultar o CEP.');
             }
         }
 
+        async function gerarAprovacao(vendaId) {
+            try {
+                const venda = vendas.find(v => v.id === vendaId) || await apiClient.get(`/api/crm/vendas/${vendaId}/`).data;
+                const primeiroNomeVendedor = venda.vendedor ? venda.vendedor.first_name : 'Não informado';
+                let daccTexto = 'NÃO / Não informado';
+                if (venda.forma_pagamento) {
+                    if (venda.forma_pagamento.nome.toLowerCase() === 'débito em conta') {
+                        daccTexto = 'SIM';
+                    } else {
+                        daccTexto = `NÃO / ${venda.forma_pagamento.nome}`;
+                    }
+                }
+                let agendamentoTexto = '';
+                if (venda.data_agendamento) {
+                    const data = new Date(venda.data_agendamento + 'T03:00:00Z').toLocaleDateString('pt-BR');
+                    let periodo = '';
+                    if (venda.periodo_agendamento?.toUpperCase() === 'MANHA') {
+                        periodo = 'entre 08:00 às 12:00';
+                    } else if (venda.periodo_agendamento?.toUpperCase() === 'TARDE') {
+                        periodo = 'entre 13:00 às 18:00';
+                    }
+                    agendamentoTexto = `*AGENDAMENTO:* Agendamento confirmado para o dia ${data} ${periodo}`;
+                }
+                const mensagem = `*APROVADO!*✅✅\n*PLANO ADQUIRIDO:* ${venda.plano ? venda.plano.nome.toUpperCase() : 'NÃO INFORMADO'}\n*NOME DO CLIENTE:* ${venda.cliente.nome_razao_social.toUpperCase()}\n*CPF/CNPJ:* ${venda.cliente.cpf_cnpj}\n*OS:* ${venda.ordem_servico || 'NÃO INFORMADA'}\n*DACC:* ${daccTexto.toUpperCase()}\n${agendamentoTexto ? `${agendamentoTexto}\n` : ''}*VENDEDOR:* ${primeiroNomeVendedor.toUpperCase()}\n⚠FATURA, SEGUNDA VIA OU DÚVIDAS\nhttps://www.niointernet.com.br/\nWhatsApp: 31985186530\nPara que sua instalação seja concluída favor salvar esse CTO no seu telefone, Técnico Oi 21 2533-9053 para receber informações da Visita.`;
+                document.getElementById('aprovacao-mensagem').value = mensagem;
+                aprovacaoModal.show();
+            } catch (error) {
+                console.error(`Erro ao gerar mensagem de aprovação para venda ${vendaId}:`, error);
+                alert('Não foi possível carregar os dados para gerar a mensagem.');
+            }
+        }
+
+        function copiarMensagem() {
+            const mensagemTextarea = document.getElementById('aprovacao-mensagem');
+            mensagemTextarea.select();
+            document.execCommand('copy');
+            const originalButton = document.querySelector('#modal-aprovacao .btn-primary');
+            const originalButtonHTML = originalButton.innerHTML;
+            originalButton.innerHTML = '<i class="bi bi-check-lg"></i> Copiado!';
+            originalButton.disabled = true;
+            setTimeout(() => {
+                originalButton.innerHTML = originalButtonHTML;
+                originalButton.disabled = false;
+            }, 2000);
+        }
+
+        async function detalhesVenda(vendaId) {
+            try {
+                const venda = vendas.find(v => v.id === vendaId) || await apiClient.get(`/api/crm/vendas/${vendaId}/`).data;
+                document.getElementById('detalhes-venda-id').textContent = venda.id;
+                const detalhesBody = document.getElementById('detalhes-venda-body');
+                const dataCriacao = new Date(venda.data_criacao).toLocaleString('pt-BR');
+                const dataAgendamento = venda.data_agendamento ? new Date(venda.data_agendamento + 'T03:00:00Z').toLocaleDateString('pt-BR') : 'Não agendado';
+                detalhesBody.innerHTML = `<div class="row"><div class="col-md-6"><h6>Dados do Cliente</h6><p><strong>Nome:</strong> ${venda.cliente.nome_razao_social}<br><strong>CPF/CNPJ:</strong> ${venda.cliente.cpf_cnpj}<br><strong>Email:</strong> ${venda.cliente.email || 'Não informado'}</p></div><div class="col-md-6"><h6>Dados da Venda</h6><p><strong>Vendedor:</strong> ${venda.vendedor.nome_completo}<br><strong>Plano:</strong> ${venda.plano?.nome || 'N/A'}<br><strong>Pagamento:</strong> ${venda.forma_pagamento?.nome || 'N/A'}<br><strong>Data:</strong> ${dataCriacao}</p></div></div><hr><div class="row"><div class="col-md-6"><h6>Status</h6><p><strong>Tratamento:</strong> ${venda.status_tratamento?.nome || 'N/A'}<br><strong>Esteira:</strong> ${venda.status_esteira?.nome || 'N/A'}<br><strong>Comissão:</strong> ${venda.status_comissionamento?.nome || 'N/A'}</p></div><div class="col-md-6"><h6>Agendamento</h6><p><strong>OS:</strong> ${venda.ordem_servico || 'N/A'}<br><strong>Data:</strong> ${dataAgendamento}<br><strong>Período:</strong> ${venda.periodo_agendamento || 'N/A'}</p></div></div><hr><h6>Endereço</h6><p>${venda.logradouro || ''}, ${venda.numero_residencia || 'S/N'} - ${venda.bairro || ''}<br>${venda.cidade || ''} - ${venda.estado || ''}, CEP: ${venda.cep || ''}<br>${venda.complemento ? `Comp: ${venda.complemento}` : ''}</p>`;
+                detalhesModal.show();
+            } catch (error) {
+                console.error(`Erro ao buscar detalhes da venda ${vendaId}:`, error);
+                alert('Não foi possível carregar os detalhes da venda.');
+            }
+        }
     </script>
 </body>
 </html>

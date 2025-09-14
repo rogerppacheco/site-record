@@ -48,7 +48,7 @@ class FormaPagamento(models.Model):
 class StatusCRM(models.Model):
     nome = models.CharField(max_length=100)
     tipo = models.CharField(max_length=50, choices=[('Tratamento', 'Tratamento'), ('Esteira', 'Esteira'), ('Comissionamento', 'Comissionamento')])
-    estado = models.CharField(max_length=50, blank=True, null=True, help_text="Ex: Pendente, Em Andamento, Finalizado, Cancelado")
+    estado = models.CharField(max_length=50, blank=True, null=True, help_text="Ex: Aberto, Fechado")
     cor = models.CharField(max_length=7, default="#FFFFFF")
 
     def __str__(self):
@@ -73,7 +73,7 @@ class MotivoPendencia(models.Model):
 class RegraComissao(models.Model):
     TIPO_VENDA_CHOICES = [('PAP', 'PAP'), ('TELAG', 'TELAG')]
     TIPO_CLIENTE_CHOICES = [('CPF', 'CPF'), ('CNPJ', 'CNPJ')]
-    
+
     consultor = models.ForeignKey(Usuario, on_delete=models.CASCADE, related_name='regras_comissao')
     plano = models.ForeignKey(Plano, on_delete=models.CASCADE, related_name='regras_comissao')
     tipo_venda = models.CharField(max_length=5, choices=TIPO_VENDA_CHOICES)
@@ -106,7 +106,7 @@ class Venda(models.Model):
     cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name='vendas')
     plano = models.ForeignKey(Plano, on_delete=models.PROTECT)
     forma_pagamento = models.ForeignKey(FormaPagamento, on_delete=models.PROTECT)
-    
+
     status_tratamento = models.ForeignKey(
         StatusCRM,
         on_delete=models.SET_NULL,
@@ -123,7 +123,7 @@ class Venda(models.Model):
         related_name='vendas_esteira',
         limit_choices_to={'tipo': 'Esteira'}
     )
-    
+
     status_comissionamento = models.ForeignKey(
         StatusCRM,
         on_delete=models.SET_NULL,
@@ -132,9 +132,9 @@ class Venda(models.Model):
         related_name='vendas_comissionamento',
         limit_choices_to={'tipo': 'Comissionamento'}
     )
-    
+
     data_criacao = models.DateTimeField(auto_now_add=True)
-    
+
     forma_entrada = models.CharField(max_length=10, choices=[('APP', 'APP'), ('SEM_APP', 'SEM_APP')], default='APP')
     cpf_representante_legal = models.CharField(max_length=14, blank=True, null=True)
     telefone1 = models.CharField(max_length=20, blank=True, null=True)
@@ -147,16 +147,34 @@ class Venda(models.Model):
     cidade = models.CharField(max_length=100, blank=True, null=True)
     estado = models.CharField(max_length=2, blank=True, null=True)
 
+    ponto_referencia = models.CharField(max_length=255, blank=True, null=True, verbose_name="Ponto de Referência")
+    observacoes = models.TextField(blank=True, null=True, verbose_name="Observações")
+
+    # Campos da Esteira
     ordem_servico = models.CharField(max_length=50, null=True, blank=True, verbose_name="Ordem de Serviço (O.S)")
     data_pedido = models.DateTimeField(null=True, blank=True, verbose_name="Data do Pedido")
     data_agendamento = models.DateField(null=True, blank=True, verbose_name="Data de Agendamento")
     periodo_agendamento = models.CharField(
-        max_length=10, 
-        choices=[('MANHA', 'Manhã'), ('TARDE', 'Tarde')], 
-        null=True, 
-        blank=True, 
+        max_length=10,
+        choices=[('MANHA', 'Manhã'), ('TARDE', 'Tarde')],
+        null=True,
+        blank=True,
         verbose_name="Período"
     )
+    data_instalacao = models.DateField(null=True, blank=True, verbose_name="Data de Instalação")
+    antecipou_instalacao = models.BooleanField(default=False, verbose_name="Houve antecipação de instalação?")
+    motivo_pendencia = models.ForeignKey(
+        MotivoPendencia,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='vendas_pendentes',
+        verbose_name="Motivo da Pendência"
+    )
+
+    # Campos do Comissionamento
+    data_pagamento = models.DateField(null=True, blank=True, verbose_name="Data do Pagamento")
+    valor_pago = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name="Valor Pago")
 
     def __str__(self):
         return f"Venda #{self.id} - {self.cliente.nome_razao_social}"
@@ -164,9 +182,11 @@ class Venda(models.Model):
         db_table = 'crm_venda'
         verbose_name = "Venda"
         verbose_name_plural = "Vendas"
+        permissions = [
+            ("pode_reverter_status", "Pode reverter o status de uma venda para etapas anteriores"),
+        ]
 
 class ImportacaoOsab(models.Model):
-    # ... (código existente inalterado) ...
     produto = models.CharField(max_length=255, null=True, blank=True)
     filial = models.CharField(max_length=255, null=True, blank=True)
     uf = models.CharField(max_length=2, null=True, blank=True)
@@ -227,7 +247,6 @@ class ImportacaoOsab(models.Model):
         verbose_name_plural = "Importações OSAB"
 
 class ImportacaoChurn(models.Model):
-    # ... (código existente inalterado) ...
     uf = models.CharField(max_length=2, null=True, blank=True)
     produto = models.CharField(max_length=255, null=True, blank=True)
     matricula_vendedor = models.CharField(max_length=50, null=True, blank=True, verbose_name="Matrícula do Vendedor")
@@ -258,7 +277,6 @@ class ImportacaoChurn(models.Model):
         verbose_name_plural = "Importações Churn"
 
 class CicloPagamento(models.Model):
-    # ... (código existente inalterado) ...
     ano = models.IntegerField(null=True, blank=True)
     mes = models.CharField(max_length=20, null=True, blank=True)
     quinzena = models.CharField(max_length=10, null=True, blank=True)
@@ -299,9 +317,6 @@ class CicloPagamento(models.Model):
     def __str__(self):
         return f"{self.contrato} - {self.ciclo}"
 
-# =======================================================================================
-# NOVO MODELO PARA HISTÓRICO DE ALTERAÇÕES
-# =======================================================================================
 class HistoricoAlteracaoVenda(models.Model):
     venda = models.ForeignKey(Venda, on_delete=models.CASCADE, related_name='historico_alteracoes')
     usuario = models.ForeignKey(

@@ -54,7 +54,8 @@ class UsuarioSerializer(serializers.ModelSerializer):
             'valor_almoco', 'valor_passagem', 'chave_pix', 'nome_da_conta',
             'meta_comissao', 'desconto_boleto', 'desconto_inclusao_viabilidade',
             'desconto_instalacao_antecipada', 'adiantamento_cnpj', 'desconto_inss_fixo',
-            'is_active', 'is_staff'
+            'is_active', 'is_staff',
+            'canal' # <-- CAMPO ADICIONADO AQUI
         ]
 
     def create(self, validated_data):
