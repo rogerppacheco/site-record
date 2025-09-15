@@ -1,12 +1,28 @@
-# usuarios/serializers.py
-
 from rest_framework import serializers
 from .models import Usuario, Perfil, PermissaoPerfil
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from django.contrib.auth.models import Permission
 
 User = get_user_model()
 
+# --- ADICIONADO PARA CORRIGIR O ERRO DE IMPORTAÇÃO ---
+class PermissionSerializer(serializers.ModelSerializer):
+    """
+    Serializer para o modelo de Permissões do Django.
+    """
+    class Meta:
+        model = Permission
+        fields = ['id', 'name', 'codename']
+
+# --- ADICIONADO PARA GARANTIR COMPATIBILIDADE COM A VIEW ---
+class RecursoSerializer(serializers.Serializer):
+    """
+    Serializer simples para listar nomes de recursos.
+    """
+    recurso = serializers.CharField()
+    def to_representation(self, instance):
+        return instance
 
 class PerfilSerializer(serializers.ModelSerializer):
     """
@@ -16,25 +32,16 @@ class PerfilSerializer(serializers.ModelSerializer):
         model = Perfil
         fields = '__all__'
 
-
-# --- INÍCIO DA CORREÇÃO ---
 class PermissaoPerfilSerializer(serializers.ModelSerializer):
     """
     Serializer para o modelo PermissaoPerfil.
     """
     class Meta:
         model = PermissaoPerfil
-        # 1. Adicionamos 'perfil' à lista de campos.
         fields = ['id', 'perfil', 'recurso', 'pode_ver', 'pode_criar', 'pode_editar', 'pode_excluir']
-
-        # 2. Marcamos 'perfil' como "apenas para escrita".
-        # Isso significa que ele será usado para salvar, mas não será exibido
-        # na resposta da API, mantendo-a limpa.
         extra_kwargs = {
             'perfil': {'write_only': True}
         }
-# --- FIM DA CORREÇÃO ---
-
 
 class UsuarioSerializer(serializers.ModelSerializer):
     """
@@ -55,7 +62,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
             'meta_comissao', 'desconto_boleto', 'desconto_inclusao_viabilidade',
             'desconto_instalacao_antecipada', 'adiantamento_cnpj', 'desconto_inss_fixo',
             'is_active', 'is_staff',
-            'canal' # <-- CAMPO ADICIONADO AQUI
+            'canal'
         ]
 
     def create(self, validated_data):
@@ -73,6 +80,23 @@ class UsuarioSerializer(serializers.ModelSerializer):
             instance.set_password(password)
             instance.save()
         return instance
+
+# --- CÓDIGO DE CORREÇÃO ADICIONADO ABAIXO ---
+class UserProfileSerializer(serializers.ModelSerializer):
+    """
+    Serializer para o perfil do usuário.
+    """
+    perfil_nome = serializers.CharField(source='perfil.nome', read_only=True)
+    supervisor_nome = serializers.CharField(source='supervisor.get_full_name', read_only=True, default=None)
+    nome_completo = serializers.CharField(source='get_full_name', read_only=True)
+
+    class Meta:
+        model = Usuario
+        fields = [
+            'id', 'username', 'first_name', 'last_name', 'nome_completo', 'email', 'cpf',
+            'perfil', 'perfil_nome', 'supervisor', 'supervisor_nome',
+            'is_active', 'is_staff'
+        ]
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):

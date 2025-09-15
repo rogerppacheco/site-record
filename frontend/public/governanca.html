@@ -7,127 +7,24 @@
     <title>Governança - Record PAP</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}">
     <style>
-        .form-group textarea {
-            padding: 0.75rem;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            font-size: 1rem;
-            font-family: Arial, sans-serif;
-        }
-        .modal-overlay {
-            display: none; /* Inicia oculto */
-            position: fixed; /* Fica por cima de todo o conteúdo */
-            z-index: 2000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            overflow: auto;
-            background-color: rgba(0,0,0,0.6); /* Fundo semi-transparente */
-            justify-content: center;
-            align-items: center;
-        }
-        .modal-content {
-            background-color: #fff;
-            margin: 10% auto;
-            padding: 2rem;
-            border-radius: 8px;
-            width: 90%;
-            max-width: 600px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-        }
-        .modal-actions {
-            margin-top: 1.5rem;
-            text-align: right;
-            display: flex;
-            gap: 1rem;
-            justify-content: flex-end;
-        }
-        body { font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; }
-        header { background-color: #fff; padding: 1rem 2rem; box-shadow: 0 2px 5px rgba(0,0,0,0.2); position: sticky; top: 0; z-index: 1000; }
-        .header-container { max-width: 95%; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; }
-        .logo { max-width: 150px; height: auto; cursor: pointer; }
-        header nav ul { list-style: none; display: flex; gap: 1.5rem; align-items: center; margin:0; padding:0; }
-        header nav ul li a { text-decoration: none; color: #1a1a1a; font-weight: 500; }
-        .action-button { background-color: #1a1a1a; color: #fff; padding: 0.5rem 1rem; border-radius: 0.25rem; text-decoration: none; font-size: 0.9rem; font-weight: 600; cursor: pointer; border: 1px solid transparent;}
-        .logout-button { background-color: #dc3545; }
-        .main-container { display: flex; min-height: 100vh; }
-        .side-nav {
-            width: 250px;
-            background-color: #1a1a1a;
-            color: white;
-            padding: 1.5rem 0;
-            flex-shrink: 0;
-        }
-        .side-nav h1 {
-            text-align: center;
-            padding: 0 1rem 1.5rem 1rem;
-            font-size: 1.5rem;
-            border-bottom: 1px solid #444;
-            margin: 0;
-        }
-        .nav-menu { list-style: none; padding: 0; margin: 0; }
-        .nav-menu li { padding: 1rem 1.5rem; cursor: pointer; border-bottom: 1px solid #444; transition: background-color: 0.3s; }
-        .nav-menu li:hover, .nav-menu li.active { background-color: #007bff; }
-        .content-area { flex-grow: 1; padding: 2rem; }
+        /* Adicionado para garantir que as seções sejam controladas corretamente */
         .content-section {
             display: none;
-            background: #fff;
-            padding: 2rem;
-            border-radius: 8px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
         }
-        .content-section.active { display: block; }
-        h2, h3 { text-align: center; color: #333; margin-bottom: 2rem; }
-        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }
-        .form-container { margin-bottom: 2rem; }
-        .form-group { display: flex; flex-direction: column; margin-bottom: 1rem; }
-        .form-group label { margin-bottom: 0.5rem; font-weight: bold; }
-        .form-group input, .form-group select { padding: 0.75rem; border: 1px solid #ccc; border-radius: 4px; font-size: 1rem; }
-        input[type="color"] { padding: 0.25rem; height: 40px; }
-        .btn { display: inline-block; width: auto; padding: 0.75rem 1.5rem; border: none; background-color: #28a745; color: #fff; font-size: 1rem; border-radius: 4px; cursor: pointer; margin-top: 1rem; text-align: center;}
-        .btn:hover { background-color: #218838; }
-        .btn-cancel { background-color: #6c757d; }
-        table { width: 100%; border-collapse: collapse; margin-top: 2rem; }
-        th, td { border: 1px solid #ddd; padding: 0.75rem; text-align: left; vertical-align: middle;}
-        th { background-color: #f2f2f2; }
-        .actions-cell button { margin-right: 5px; padding: 0.5rem; border-radius: 4px; border: none; cursor: pointer;}
-        .btn-edit { background-color: #ffc107; }
-        .btn-delete { background-color: #dc3545; color: white; }
-        .btn-reactivate { background-color: #17a2b8; color: white; }
-        .tab-nav { border-bottom: 2px solid #ccc; margin-bottom: 1.5rem; display: flex; flex-wrap: wrap;}
-        .tab-nav button { padding: 0.75rem 1.5rem; border: none; background-color: transparent; cursor: pointer; font-size: 1.1rem; border-bottom: 3px solid transparent; margin-bottom: -2px; }
-        .tab-nav button.active { border-bottom-color: #007bff; font-weight: bold; }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
-        .generic-list { list-style: none; padding: 0; margin-bottom: 1.5rem;}
-        .generic-list li { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-bottom: 1px solid #ddd; }
-        .generic-list-actions button { margin-left: 0.5rem; padding: 0.3rem 0.6rem; }
-        .form-inline { display: flex; gap: 1rem; margin-top: 1rem; align-items: center; }
-        .form-inline input[type="text"], .form-inline input[type="date"] { flex-grow: 1; }
-        .form-inline label { display: flex; align-items: center; gap: 0.5rem; }
-        footer { background-color: #1a1a1a; color: #fff; padding: 2rem 1rem; text-align: center; }
-        footer p { font-size: 0.9rem; margin-bottom: 0.5rem; }
-        footer a { color: #b3b3b3; text-decoration: none; }
-        .color-box { display: inline-block; width: 20px; height: 20px; border: 1px solid #ccc; vertical-align: middle; margin-right: 10px; }
-        .submenu-nav.bg-dark .nav-link,
-        .submenu-nav.bg-dark .dropdown-menu .dropdown-item {
-            color: rgba(255, 255, 255, 0.75);
+        .content-section.active {
+            display: block;
         }
-        .submenu-nav.bg-dark .nav-link:hover,
-        .submenu-nav.bg-dark .dropdown-menu .dropdown-item:hover {
-            color: #fff;
-        }
-        .submenu-nav.bg-dark .nav-link.active {
-            color: #fff;
-            font-weight: bold;
+        /* Estilos para os ícones nos botões de ação para ficarem mais visíveis */
+        .btn .bi {
+            margin-right: 5px;
         }
     </style>
 </head>
 <body>
 
-    <header>
+    <header class="main-header">
         <div class="header-container">
             <img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo" onclick="window.location.href='/'">
             <nav class="main-nav">
@@ -166,7 +63,7 @@
                             <li><a class="dropdown-item" href="/salvar-osab/">Salvar OSAB</a></li>
                             <li><a class="dropdown-item" href="/salvar-churn/">Salvar Churn</a></li>
                             <li><a class="dropdown-item" href="/salvar-ciclo-pagamento/">Salvar Ciclo de Pagamento</a></li>
-                            </ul>
+                        </ul>
                     </li>
 
                     <li class="nav-item dropdown" id="nav-cadastros">
@@ -174,7 +71,13 @@
                             Cadastros
                         </a>
                         <ul class="dropdown-menu dropdown-menu-dark" aria-labelledby="navbarCadastros">
-                            <li><a class="dropdown-item active" href="/governanca/">Governança</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="mostrarSecao(event, 'usuarios', this)">Gestão de Usuários</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="mostrarSecao(event, 'perfis', this)">Gestão de Perfis</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="mostrarSecao(event, 'comissionamento', this)">Gestão de Comissionamento</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="mostrarSecao(event, 'cadastros_gerais', this)">Cadastros Gerais</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="mostrarSecao(event, 'motivos', this)">Gestão de Motivos</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="mostrarSecao(event, 'feriados', this)">Gestão de Feriados</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="mostrarSecao(event, 'relatorios', this)">Relatórios</a></li>
                         </ul>
                     </li>
                 </ul>
@@ -183,19 +86,6 @@
     </nav>
 
 <div class="main-container">
-    <nav class="side-nav">
-        <h1>Governança</h1>
-        <ul class="nav-menu">
-            <li onclick="mostrarSecao('usuarios', this)">Gestão de Usuários</li>
-            <li onclick="mostrarSecao('perfis', this)">Gestão de Perfis</li>
-            <li onclick="mostrarSecao('comissionamento', this)">Gestão de Comissionamento</li>
-            <li onclick="mostrarSecao('cadastros_gerais', this)">Cadastros Gerais</li>
-            <li onclick="mostrarSecao('motivos', this)">Gestão de Motivos</li>
-            <li onclick="mostrarSecao('feriados', this)">Gestão de Feriados</li>
-            <li onclick="mostrarSecao('relatorios', this)">Relatórios</li>
-        </ul>
-    </nav>
-
     <main class="content-area">
         <section id="usuarios-section" class="content-section">
             <h2>Gestão de Usuários</h2>
@@ -241,37 +131,81 @@
         </section>
 
         <section id="perfis-section" class="content-section">
-            <h2>Gestão de Perfis</h2>
-            <ul id="lista-perfis" class="generic-list"></ul>
-            <div class="form-inline">
-                <input type="text" id="novo-perfil-nome" placeholder="Nome do novo perfil" class="form-group input">
-                <button id="btn-salvar-perfil" class="btn">Adicionar Perfil</button>
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2>Gestão de Perfis</h2>
+                <button class="btn btn-primary" id="btn-adicionar-perfil">
+                    <i class="bi bi-plus-circle"></i> Adicionar Novo Perfil
+                </button>
+            </div>
+
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0">Perfis Cadastrados</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover align-middle">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Nome do Perfil</th>
+                                    <th>Descrição</th>
+                                    <th class="text-center" style="width: 320px;">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="perfis-tabela-corpo">
+                                </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </section>
-
-        <div id="modal-edicao-perfil" class="modal-overlay" style="display: none;">
-    <div class="modal-content">
-        <h3>Editar Perfil</h3>
-        <form id="form-edicao-perfil">
-            <input type="hidden" id="perfil-id-input">
-
-            <div class="form-group">
-                <label for="perfil-nome-input">Nome do Perfil</label>
-                <input type="text" id="perfil-nome-input" required>
+        <div class="modal fade" id="perfilModal" tabindex="-1" aria-labelledby="perfilModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="perfilModalLabel">Adicionar Perfil</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="perfilForm">
+                            <input type="hidden" id="modal_perfil_id">
+                            <div class="mb-3">
+                                <label for="modal_perfil_nome" class="form-label">Nome do Perfil</label>
+                                <input type="text" class="form-control" id="modal_perfil_nome" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="modal_perfil_descricao" class="form-label">Descrição</label>
+                                <textarea class="form-control" id="modal_perfil_descricao" rows="3"></textarea>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="button" class="btn btn-primary" id="btn-salvar-perfil-modal">Salvar</button>
+                    </div>
+                </div>
             </div>
-            <div class="form-group">
-                <label for="perfil-descricao-input">Descrição</label>
-                <textarea id="perfil-descricao-input" rows="4"></textarea>
-            </div>
+        </div>
 
-            <div class="modal-actions">
-                <button type="button" class="btn btn-cancel" onclick="fecharModalEdicao()">Cancelar</button>
-                <button type="submit" class="btn">Salvar Alterações</button>
+        <div class="modal fade" id="excluirPerfilModal" tabindex="-1" aria-labelledby="excluirPerfilModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="excluirPerfilModalLabel">Confirmar Exclusão</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p>Tem certeza que deseja excluir o perfil "<strong id="nome-perfil-excluir"></strong>"?</p>
+                        <p class="text-danger">Esta ação não pode ser desfeita.</p>
+                        <input type="hidden" id="id-perfil-excluir">
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="button" class="btn btn-danger" id="btn-confirmar-exclusao-perfil">Excluir</button>
+                    </div>
+                </div>
             </div>
-        </form>
-    </div>
-</div>
-
+        </div>
         <section id="comissionamento-section" class="content-section">
             <h2>Gestão de Comissionamento</h2>
             <nav class="tab-nav">
@@ -415,7 +349,7 @@
                                     <option value="">Selecione...</option>
                                 </select>
                             </div>
-                             <div class="form-group" style="grid-column: 1 / -1;">
+                                <div class="form-group" style="grid-column: 1 / -1;">
                                 <label for="plano_beneficios">Benefícios (opcional)</label>
                                 <input type="text" id="plano_beneficios">
                             </div>
@@ -455,17 +389,17 @@
             <div id="status" class="tab-content">
                 <h2>Gestão de Status do CRM</h2>
                 <div class="form-container">
-                            <form id="form-status">
-                                <input type="hidden" id="status_id">
-                                <div class="form-grid">
-                                    <div class="form-group"><label for="status_nome">Nome do Status</label><input type="text" id="status_nome" required></div>
-                                    <div class="form-group"><label for="status_tipo">Tipo de Status</label><select id="status_tipo" required><option value="Tratamento">Tratamento</option><option value="Esteira">Esteira</option><option value="Comissionamento">Comissionamento</option></select></div>
-                                    <div class="form-group" id="status_estado_group"><label for="status_estado">Estado</label><input type="text" id="status_estado" placeholder="Ex: Na fila de tratamento"></div>
-                                    <div class="form-group"><label for="status_cor">Cor</label><input type="color" id="status_cor" value="#FFFFFF" style="width: 100%; height: 45px;"></div>
-                                </div>
-                                <button type="submit" class="btn">Salvar Status</button>
-                                <button type="button" class="btn btn-cancel" onclick="resetFormStatus()">Cancelar</button>
-                            </form>
+                                <form id="form-status">
+                                    <input type="hidden" id="status_id">
+                                    <div class="form-grid">
+                                        <div class="form-group"><label for="status_nome">Nome do Status</label><input type="text" id="status_nome" required></div>
+                                        <div class="form-group"><label for="status_tipo">Tipo de Status</label><select id="status_tipo" required><option value="Tratamento">Tratamento</option><option value="Esteira">Esteira</option><option value="Comissionamento">Comissionamento</option></select></div>
+                                        <div class="form-group" id="status_estado_group"><label for="status_estado">Estado</label><input type="text" id="status_estado" placeholder="Ex: Na fila de tratamento"></div>
+                                        <div class="form-group"><label for="status_cor">Cor</label><input type="color" id="status_cor" value="#FFFFFF" style="width: 100%; height: 45px;"></div>
+                                    </div>
+                                    <button type="submit" class="btn">Salvar Status</button>
+                                    <button type="button" class="btn btn-cancel" onclick="resetFormStatus()">Cancelar</button>
+                                </form>
                 </div>
                 <h3>Status Cadastrados</h3>
                 <table>
@@ -476,16 +410,16 @@
 
             <div id="pendencias" class="tab-content">
                 <h2>Gestão de Motivos de Pendência</h2>
-                 <div class="form-container">
-                            <form id="form-pendencia">
-                                <input type="hidden" id="pendencia_id">
-                                <div class="form-grid">
-                                    <div class="form-group"><label for="pendencia_nome">Nome da Pendência</label><input type="text" id="pendencia_nome" required></div>
-                                    <div class="form-group"><label for="pendencia_tipo">Tipo de Pendência</label><input type="text" id="pendencia_tipo" placeholder="Ex: Documentação, Financeiro" required></div>
-                                </div>
-                                <button type="submit" class="btn">Salvar Motivo</button>
-                                <button type="button" class="btn btn-cancel" onclick="resetFormPendencia()">Cancelar</button>
-                            </form>
+                                <div class="form-container">
+                                        <form id="form-pendencia">
+                                            <input type="hidden" id="pendencia_id">
+                                            <div class="form-grid">
+                                                <div class="form-group"><label for="pendencia_nome">Nome da Pendência</label><input type="text" id="pendencia_nome" required></div>
+                                                <div class="form-group"><label for="pendencia_tipo">Tipo de Pendência</label><input type="text" id="pendencia_tipo" placeholder="Ex: Documentação, Financeiro" required></div>
+                                            </div>
+                                            <button type="submit" class="btn">Salvar Motivo</button>
+                                            <button type="button" class="btn btn-cancel" onclick="resetFormPendencia()">Cancelar</button>
+                                        </form>
                 </div>
                 <h3>Motivos Cadastrados</h3>
                 <table>
@@ -548,10 +482,10 @@
         <section id="relatorios-section" class="content-section">
             <h2>Relatórios Financeiros</h2>
             <div class="form-grid">
-                 <div class="form-group">
-                    <label for="data-inicio-relatorio">Data Inicial:</label>
-                    <input type="date" id="data-inicio-relatorio">
-                </div>
+                    <div class="form-group">
+                        <label for="data-inicio-relatorio">Data Inicial:</label>
+                        <input type="date" id="data-inicio-relatorio">
+                    </div>
                 <div class="form-group">
                     <label for="data-fim-relatorio">Data Final:</label>
                     <input type="date" id="data-fim-relatorio">
@@ -589,1191 +523,1216 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="{% static 'js/auth.js' %}"></script>
 <script>
-    const apiUrl = '';
 
-    async function apiFetch(endpoint, options = {}) {
-        const headers = {
-            'Content-Type': 'application/json',
-            ...options.headers,
-        };
-        
-        const token = localStorage.getItem('accessToken');
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
+const apiUrl = '';
 
-        const response = await fetch(`${apiUrl}/api${endpoint}`, { ...options, headers });
-
-        let responseData = {};
-        const contentType = response.headers.get("content-type");
-        if (contentType && contentType.indexOf("application/json") !== -1) {
-             try {
-                 responseData = await response.clone().json(); 
-             } catch (e) {
-                 console.error("Não foi possível parsear o corpo da resposta como JSON.", e);
-             }
-        }
-
-        if (responseData && responseData.token) {
-            localStorage.setItem('accessToken', responseData.token);
-            console.log('Token de acesso atualizado a partir do corpo da resposta!');
-        }
-
-        if (response.status === 401) {
-            alert('Sua sessão expirou ou o token é inválido. Por favor, faça login novamente.');
-            logout();
-            throw new Error('Não autorizado');
-        }
-        if (!response.ok) {
-            const errorData = responseData || await response.text();
-            const errorMessage = errorData.detail || JSON.stringify(errorData).replace(/["{}[\]]/g, ' ');
-            throw new Error(errorMessage);
-        }
-        if (response.status === 204) {
-            return null;
-        }
-        
-        return responseData;
-    }
-
-    if (!localStorage.getItem('accessToken')) {
-         alert('Acesso negado. Faça o login para continuar.');
-         window.location.href = '/';
-    }
+async function apiFetch(endpoint, options = {}) {
+    const headers = {
+        'Content-Type': 'application/json',
+        ...options.headers,
+    };
+    
     const token = localStorage.getItem('accessToken');
-    const decodedToken = jwt_decode(token);
-    const userProfile = decodedToken ? decodedToken.perfil : null;
-    const isSuperuser = decodedToken ? decodedToken.is_superuser : false;
-
-    if (!userProfile || !['Diretoria', 'Admin'].includes(userProfile) && !isSuperuser) {
-         alert('Acesso negado. Você não tem permissão para ver esta página.');
-         window.location.href = '/area-interna/';
+    if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
     }
 
-    // --- LÓGICA GERAL DA PÁGINA ---
-    function mostrarSecao(idSecao, menuItem) {
-        document.querySelectorAll('.content-section').forEach(section => section.classList.remove('active'));
-        document.getElementById(`${idSecao}-section`).classList.add('active');
-        if (menuItem) {
-            document.querySelectorAll('.nav-menu li').forEach(li => li.classList.remove('active'));
-            menuItem.classList.add('active');
-        }
-    }
+    const response = await fetch(`${apiUrl}/api${endpoint}`, { ...options, headers });
 
-    function openTab(evt, tabName) {
-        const parentSection = evt.currentTarget.closest('.content-section');
-        parentSection.querySelectorAll('.tab-content').forEach(tabcontent => {
-            tabcontent.style.display = "none";
-        });
-        parentSection.querySelectorAll('.tab-nav button').forEach(tablink => {
-            tablink.classList.remove("active");
-        });
-        document.getElementById(tabName).style.display = "block";
-        evt.currentTarget.classList.add("active");
-    }
-
-    // --- LÓGICA DE GESTÃO DE USUÁRIOS ---
-    const userForm = document.getElementById('user-form');
-    const formTitle = document.getElementById('form-title');
-    const userIdInput = document.getElementById('user_id');
-    const userListBody = document.getElementById('user-list-body');
-    const userListHeader = document.getElementById('user-list-header');
-    const listaStatusTitulo = document.getElementById('lista-status-titulo');
-    const selectPerfil = document.getElementById('perfil_id');
-    const selectSupervisor = document.getElementById('supervisor_id');
-
-    function resetForm() {
-        userForm.reset();
-        userIdInput.value = '';
-        formTitle.textContent = 'Cadastrar Novo Usuário';
-        document.getElementById('senha').placeholder = 'Senha Provisória';
-        document.getElementById('senha').required = true;
-    }
-
-    function mostrarListaUsuarios(status, tabElement) {
-        if (tabElement) {
-            document.querySelectorAll('#usuarios-section .tab-nav button').forEach(btn => btn.classList.remove('active'));
-            tabElement.classList.add('active');
-        }
-        listaStatusTitulo.textContent = status === 'ativos' ? 'Ativos' : 'Inativos';
-        carregarUsuarios(status);
-    }
-
-    async function carregarUsuarios(status = 'ativos') {
-        try {
-            const usuarios = await apiFetch(`/usuarios/?is_active=${status === 'ativos'}`);
-            userListBody.innerHTML = '';
-            if (status === 'ativos') {
-                userListHeader.innerHTML = '<th>Nome</th><th>E-mail</th><th>Perfil</th><th>Líder Imediato</th><th>Ações</th>';
-                usuarios.forEach(user => {
-                    const supervisorDisplay = user.supervisor_nome || 'N/A';
-                    userListBody.innerHTML += `<tr><td>${user.nome_completo}</td><td>${user.email}</td><td>${user.perfil_nome}</td><td>${supervisorDisplay}</td><td class="actions-cell"><button class="btn-edit" title="Editar" onclick='iniciarEdicao(${JSON.stringify(user)})'>Editar</button><button class="btn-delete" title="Inativar" onclick="inativarUsuario(${user.id})">Inativar</button></td></tr>`;
-                });
-            } else {
-                userListHeader.innerHTML = '<th>Nome</th><th>E-mail</th><th>Perfil</th><th>Ações</th>';
-                usuarios.forEach(user => {
-                    userListBody.innerHTML += `<tr><td>${user.nome_completo}</td><td>${user.email}</td><td>${user.perfil_nome}</td><td class="actions-cell"><button class="btn-reactivate" title="Reativar" onclick="reativarUsuario(${user.id})">Reativar</button></td></tr>`;
-                });
+    let responseData = {};
+    const contentType = response.headers.get("content-type");
+    if (contentType && contentType.indexOf("application/json") !== -1) {
+            try {
+                responseData = await response.clone().json(); 
+            } catch (e) {
+                console.error("Não foi possível parsear o corpo da resposta como JSON.", e);
             }
-        } catch (error) { console.error("Erro ao carregar usuários:", error); }
     }
 
-    // --- CORREÇÃO APLICADA AQUI ---
-    async function carregarDadosParaFormulario() {
-        selectPerfil.innerHTML = '';
-        selectSupervisor.innerHTML = '<option value="">Nenhum</option>';
-        try {
-            // Usamos Promise.all para buscar perfis e usuários ao mesmo tempo
-            const [perfis, usuarios] = await Promise.all([
-                apiFetch('/perfis/'),
-                apiFetch('/usuarios/?is_active=true')
-            ]);
-            
-            perfis.forEach(perfil => selectPerfil.add(new Option(perfil.nome, perfil.id)));
-            
-            // Populamos a lista de supervisores com os usuários ativos
-            usuarios.forEach(usuario => {
-                selectSupervisor.add(new Option(usuario.nome_completo, usuario.id));
-            });
-
-        } catch (error) { 
-            console.error('Erro ao carregar dados para o formulário:', error); 
-        }
+    if (responseData && responseData.token) {
+        localStorage.setItem('accessToken', responseData.token);
+        console.log('Token de acesso atualizado a partir do corpo da resposta!');
     }
 
-    function iniciarEdicao(user) {
-        resetForm();
-        formTitle.textContent = 'Editando Usuário';
-        userIdInput.value = user.id;
-        document.getElementById('nome_completo').value = user.nome_completo;
-        document.getElementById('cpf').value = user.cpf || '';
-        document.getElementById('email').value = user.email;
-        document.getElementById('username').value = user.username;
-
-        selectPerfil.value = user.perfil;
-        selectSupervisor.value = user.supervisor || '';
-
-        document.getElementById('valor_almoco').value = user.valor_almoco;
-        document.getElementById('valor_passagem').value = user.valor_passagem;
-        document.getElementById('chave_pix').value = user.chave_pix || '';
-        document.getElementById('nome_da_conta').value = user.nome_da_conta || '';
-
-        document.getElementById('meta_comissao').value = user.meta_comissao;
-        document.getElementById('desconto_boleto').value = user.desconto_boleto;
-        document.getElementById('desconto_inclusao_viabilidade').value = user.desconto_inclusao_viabilidade;
-        document.getElementById('desconto_instalacao_antecipada').value = user.desconto_instalacao_antecipada;
-        document.getElementById('adiantamento_cnpj').value = user.adiantamento_cnpj;
-        document.getElementById('desconto_inss_fixo').value = user.desconto_inss_fixo;
-
-        document.getElementById('senha').placeholder = 'Deixe em branco para não alterar';
-        document.getElementById('senha').required = false;
-        window.scrollTo(0, 0);
+    if (response.status === 401) {
+        alert('Sua sessão expirou ou o token é inválido. Por favor, faça login novamente.');
+        logout();
+        throw new Error('Não autorizado');
     }
+    if (!response.ok) {
+        const errorData = responseData || await response.text();
+        const errorMessage = errorData.detail || JSON.stringify(errorData).replace(/["{}[\]]/g, ' ');
+        throw new Error(errorMessage);
+    }
+    if (response.status === 204) {
+        return null;
+    }
+    
+    return responseData;
+}
 
-    userForm.addEventListener('submit', async function(e) {
-        e.preventDefault();
-        const id = userIdInput.value;
-        const isEditing = !!id;
-        const url = isEditing ? `/usuarios/${id}/` : '/usuarios/';
-        const method = isEditing ? 'PUT' : 'POST';
-        const nomeCompleto = document.getElementById('nome_completo').value.trim();
-        const nomeParts = nomeCompleto.split(' ');
-        const firstName = nomeParts.shift();
-        const lastName = nomeParts.join(' ');
+if (!localStorage.getItem('accessToken')) {
+        alert('Acesso negado. Faça o login para continuar.');
+        window.location.href = '/';
+}
+const token = localStorage.getItem('accessToken');
+const decodedToken = jwt_decode(token);
+const userProfile = decodedToken ? decodedToken.perfil : null;
+const isSuperuser = decodedToken ? decodedToken.is_superuser : false;
 
-        const body = {
-            first_name: firstName,
-            last_name: lastName,
-            cpf: document.getElementById('cpf').value,
-            email: document.getElementById('email').value,
-            perfil: selectPerfil.value,
-            username: document.getElementById('username').value,
-            supervisor: selectSupervisor.value || null,
-            valor_almoco: document.getElementById('valor_almoco').value,
-            valor_passagem: document.getElementById('valor_passagem').value,
-            chave_pix: document.getElementById('chave_pix').value,
-            nome_da_conta: document.getElementById('nome_da_conta').value,
-            meta_comissao: document.getElementById('meta_comissao').value,
-            desconto_boleto: document.getElementById('desconto_boleto').value,
-            desconto_inclusao_viabilidade: document.getElementById('desconto_inclusao_viabilidade').value,
-            desconto_instalacao_antecipada: document.getElementById('desconto_instalacao_antecipada').value,
-            adiantamento_cnpj: document.getElementById('adiantamento_cnpj').value,
-            desconto_inss_fixo: document.getElementById('desconto_inss_fixo').value
-        };
+if (!userProfile || !['Diretoria', 'Admin'].includes(userProfile) && !isSuperuser) {
+        alert('Acesso negado. Você não tem permissão para ver esta página.');
+        window.location.href = '/area-interna/';
+}
 
-        const senha = document.getElementById('senha').value;
-        if (isEditing) {
-            if (senha && senha.trim() !== '') {
-                body.password = senha;
-            }
-        } else {
-            body.password = senha;
-            if (!body.password) { return alert('A senha é obrigatória para novos usuários.'); }
-        }
-        try {
-            const result = await apiFetch(url, {
-                method: method,
-                body: JSON.stringify(body)
-            });
-            alert(`Usuário ${isEditing ? 'atualizado' : 'cadastrado'} com sucesso!`);
-            resetForm();
-            mostrarListaUsuarios('ativos', document.querySelector('#usuarios-section .tab-nav button.active'));
-            carregarDadosParaFormulario();
-        } catch (error) {
-            console.error('Detalhes do erro ao salvar usuário:', error);
-            alert(`Erro: ${error.message}`);
-        }
+// --- LÓGICA GERAL DA PÁGINA ---
+
+function mostrarSecao(event, idSecao, menuItem) {
+    if (event) {
+        event.stopPropagation();
+    }
+    document.querySelectorAll('.content-section').forEach(section => {
+        section.classList.remove('active');
     });
-
-    async function inativarUsuario(id) {
-        if (!confirm('Tem certeza que deseja INATIVAR este usuário?')) return;
-        try {
-            await apiFetch(`/usuarios/${id}/`, { method: 'DELETE' });
-            alert('Usuário inativado com sucesso.');
-            mostrarListaUsuarios('ativos', document.querySelector('#usuarios-section .tab-nav button.active'));
-        } catch(error) {
-            console.error('Detalhes do erro ao inativar usuário:', error);
-            alert(`Erro: ${error.message}`);
-        }
+    
+    const secaoAlvo = document.getElementById(`${idSecao}-section`);
+    if (secaoAlvo) {
+        secaoAlvo.classList.add('active');
     }
-
-    async function reativarUsuario(id) {
-        if (!confirm('Tem certeza que deseja REATIVAR este usuário?')) return;
-        try {
-            await apiFetch(`/usuarios/${id}/reativar/`, { method: 'PUT' });
-            alert('Usuário reativado com sucesso.');
-            carregarUsuarios('inativos');
-        } catch(error) {
-            console.error('Detalhes do erro ao reativar usuário:', error);
-            alert(`Erro: ${error.message}`);
-        }
-    }
-
-    // --- LÓGICA DE GESTÃO DE PERFIS ---
-    const listaPerfisUl = document.getElementById('lista-perfis');
-    const modalPerfil = document.getElementById('modal-perfil');
-    const modalPerfilTitulo = document.getElementById('modal-perfil-titulo');
-    const formPerfil = document.getElementById('form-perfil');
-    const perfilIdInput = document.getElementById('perfil-id-input');
-    const perfilNomeInput = document.getElementById('perfil-nome-input');
-    const perfilDescricaoInput = document.getElementById('perfil-descricao-input');
-
-    async function carregarPerfis() {
-        try {
-            const perfis = await apiFetch('/perfis/');
-            listaPerfisUl.innerHTML = '';
-            perfis.forEach(perfil => {
-                const li = document.createElement('li');
-                const descricao = perfil.descricao ? `<small style="color: #666;">${perfil.descricao}</small>` : '<small style="color: #999;">Sem descrição</small>';
-                li.innerHTML = `
-                <div>
-                    <span>${perfil.nome}</span>
-                    <br>
-                    ${descricao}
-                </div>
-                <div class="generic-list-actions">
-                    <button class="btn" style="background-color: #17a2b8;" onclick="abrirModalPermissoes(${perfil.id}, '${perfil.nome}')">Permissões</button>
-                    <button class="btn-edit" onclick='editarPerfil(${JSON.stringify(perfil)})'>Editar</button>
-                    <button class="btn-delete" onclick="excluirPerfil(${perfil.id})">Excluir</button>
-                </div>
-            `;
-                listaPerfisUl.appendChild(li);
-            });
-        } catch (error) { console.error('Erro ao carregar perfis:', error); }
-    }
-
-    document.getElementById('btn-salvar-perfil').addEventListener('click', async () => {
-        const nome = document.getElementById('novo-perfil-nome').value.trim();
-        if (!nome) return alert('Por favor, digite um nome para o perfil.');
-        try {
-            await apiFetch('/perfis/', { method: 'POST', body: JSON.stringify({ nome }) });
-            document.getElementById('novo-perfil-nome').value = '';
-            await carregarPerfis();
-            await carregarDadosParaFormulario();
-        } catch (error) {
-            console.error('Detalhes do erro ao salvar perfil:', error);
-            alert(`Erro: ${error.message}`);
-        }
+    document.querySelectorAll('#nav-cadastros .dropdown-item').forEach(item => {
+        item.classList.remove('active');
     });
-
-    function editarPerfil(perfil) {
-        document.getElementById('perfil-id-input').value = perfil.id;
-        document.getElementById('perfil-nome-input').value = perfil.nome;
-        document.getElementById('perfil-descricao-input').value = perfil.descricao || '';
-        document.getElementById('modal-edicao-perfil').style.display = 'flex';
-    }
-
-    async function excluirPerfil(id) {
-        if (!confirm('Tem certeza que deseja excluir este perfil? Esta ação não pode ser desfeita.')) return;
-        try {
-            await apiFetch(`/perfis/${id}/`, { method: 'DELETE' });
-            await carregarPerfis();
-            await carregarDadosParaFormulario();
-        } catch (error) {
-            console.error('Detalhes do erro ao excluir perfil:', error);
-            alert(`Erro: ${error.message}`);
-        }
-    }
-
-    function fecharModalEdicao() {
-        document.getElementById('modal-edicao-perfil').style.display = 'none';
-    }
-
-    document.getElementById('form-edicao-perfil').addEventListener('submit', async (e) => {
-        e.preventDefault();
-
-        const id = document.getElementById('perfil-id-input').value;
-        const nome = document.getElementById('perfil-nome-input').value.trim();
-        const descricao = document.getElementById('perfil-descricao-input').value.trim();
-
-        if (!nome) {
-            alert('O nome do perfil é obrigatório.');
-            return;
-        }
-
-        try {
-            await apiFetch(`/perfis/${id}/`, {
-                method: 'PUT',
-                body: JSON.stringify({
-                    nome: nome,
-                    descricao: descricao
-                })
-            });
-            alert('Perfil atualizado com sucesso!');
-            fecharModalEdicao();
-            await carregarPerfis();
-            await carregarDadosParaFormulario();
-        } catch (error) {
-            console.error('Erro ao salvar edição do perfil:', error);
-            alert(`Erro: ${error.message}`);
-        }
-    });
-
-    // --- LÓGICA DE GESTÃO DE MOTIVOS DE AUSÊNCIA ---
-    const listaMotivosUl = document.getElementById('lista-motivos');
-
-    async function carregarMotivos() {
-        try {
-            const motivos = await apiFetch('/presenca/motivos/');
-            listaMotivosUl.innerHTML = '';
-            motivos.forEach(motivo => {
-                const statusDesconto = motivo.gera_desconto ? '<span style="color:red;">(Gera Desconto)</span>' : '<span style="color:green;">(Não Gera Desconto)</span>';
-                const li = document.createElement('li');
-                li.innerHTML = `<span>${motivo.motivo} ${statusDesconto}</span>
-                                <div class="generic-list-actions">
-                                    <button class="btn-edit" onclick='editarMotivo(${JSON.stringify(motivo)})'>Editar</button>
-                                    <button class="btn-delete" onclick="excluirMotivo(${motivo.id})">Excluir</button>
-                                </div>`;
-                listaMotivosUl.appendChild(li);
-            });
-        } catch (error) { console.error('Erro ao carregar motivos:', error); }
-    }
-
-    document.getElementById('btn-salvar-motivo').addEventListener('click', async () => {
-        const motivo = document.getElementById('novo-motivo-nome').value.trim();
-        const gera_desconto = document.getElementById('novo-motivo-desconto').checked;
-        if (!motivo) return alert('Por favor, digite um nome para o motivo.');
-        try {
-            await apiFetch('/presenca/motivos/', {
-                method: 'POST',
-                body: JSON.stringify({ motivo, gera_desconto })
-            });
-            document.getElementById('novo-motivo-nome').value = '';
-            document.getElementById('novo-motivo-desconto').checked = true;
-            carregarMotivos();
-        } catch (error) {
-            console.error('Detalhes do erro ao salvar motivo:', error);
-            alert(`Erro: ${error.message}`);
-        }
-    });
-
-    async function editarMotivo(motivo) {
-        document.getElementById('motivo-id-input').value = motivo.id;
-        document.getElementById('motivo-nome-input').value = motivo.motivo;
-        document.getElementById('motivo-desconto-input').checked = motivo.gera_desconto;
-        document.getElementById('modal-edicao-motivo').style.display = 'flex';
-    }
-
-    async function excluirMotivo(id) {
-        if (!confirm('Tem certeza que deseja excluir este motivo?')) return;
-        try {
-            await apiFetch(`/presenca/motivos/${id}/`, { method: 'DELETE' });
-            carregarMotivos();
-        } catch (error) {
-            console.error('Detalhes do erro ao excluir motivo:', error);
-            alert(`Erro: ${error.message}`);
-        }
-    }
-
-    // --- LÓGICA DE GESTÃO DE FERIADOS ---
-    const listaFeriadosTbody = document.getElementById('lista-feriados');
-    async function carregarFeriados() {
-        try {
-            const feriados = await apiFetch('/presenca/dias-nao-uteis/');
-            listaFeriadosTbody.innerHTML = '';
-            feriados.forEach(feriado => {
-                const dataFormatada = new Date(feriado.data).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
-                const row = `<tr><td>${dataFormatada}</td><td>${feriado.descricao}</td><td><button class="btn-delete" onclick="excluirFeriado(${feriado.id})">Excluir</button></td></tr>`;
-                listaFeriadosTbody.innerHTML += row;
-            });
-        } catch (error) { console.error('Erro ao carregar feriados:', error); }
-    }
-
-    document.getElementById('btn-salvar-feriado').addEventListener('click', async () => {
-        const data = document.getElementById('novo-feriado-data').value;
-        const descricao = document.getElementById('novo-feriado-descricao').value.trim();
-        if (!data || !descricao) return alert('A data e a descrição são obrigatórias.');
-        try {
-            await apiFetch('/presenca/dias-nao-uteis/', {
-                method: 'POST',
-                body: JSON.stringify({ data, descricao })
-            });
-            document.getElementById('novo-feriado-data').value = '';
-            document.getElementById('novo-feriado-descricao').value = '';
-            carregarFeriados();
-        } catch (error) {
-            console.error('Detalhes do erro ao salvar feriado:', error);
-            alert(`Erro: ${error.message}`);
-        }
-    });
-
-    async function excluirFeriado(id) {
-        if (!confirm('Tem certeza que deseja excluir este dia?')) return;
-        try {
-            await apiFetch(`/presenca/dias-nao-uteis/${id}/`, { method: 'DELETE' });
-            carregarFeriados();
-        } catch (error) {
-            console.error('Detalhes do erro ao excluir feriado:', error);
-            alert(`Erro: ${error.message}`);
-        }
-    }
-
-    // --- LÓGICA DE RELATÓRIOS ---
-    async function gerarRelatorio(tipo) {
-        const dataInicio = document.getElementById('data-inicio-relatorio').value;
-        const dataFim = document.getElementById('data-fim-relatorio').value;
-        if (!dataInicio || !dataFim) { return alert('Por favor, selecione a data inicial e final.'); }
-
-        const container = document.getElementById('resultado-relatorio');
-        container.innerHTML = '<p>Gerando relatório, aguarde...</p>';
-
-        let url = '';
-        switch (tipo) {
-            case 'previsao':
-                url = `/relatorios/previsao?dataInicio=${dataInicio}&dataFim=${dataFim}`;
-                break;
-            case 'descontos':
-                url = `/relatorios/descontos?dataInicio=${dataInicio}&dataFim=${dataFim}`;
-                break;
-            case 'final':
-                url = `/relatorios/semanal?dataInicio=${dataInicio}&dataFim=${dataFim}`;
-                break;
-            default:
-                container.innerHTML = '<p style="color:red;">Tipo de relatório inválido.</p>';
-                return;
-        }
-
-        try {
-            const relatorio = await apiFetch(url);
-            renderizarTabelaRelatorio(tipo, relatorio);
-        }
-        catch(error) {
-            container.innerHTML = `<p style="color:red;">${error.message}</p>`;
-        }
-    }
-
-    function renderizarTabelaRelatorio(tipo, relatorio) {
-        const container = document.getElementById('resultado-relatorio');
-        const inicioFormatado = new Date(relatorio.periodo.inicio + 'T03:00:00Z').toLocaleDateString('pt-BR');
-        const fimFormatado = new Date(relatorio.periodo.fim + 'T03:00:00Z').toLocaleDateString('pt-BR');
-        const periodoFormatado = `<h3>Relatório do Período de ${inicioFormatado} a ${fimFormatado}</h3>`;
-        let html = '';
-
-        if (!relatorio.dados || relatorio.dados.length === 0) {
-            container.innerHTML = `${periodoFormatado}<p style="text-align:center;">Nenhum dado encontrado para este período.</p>`;
-            return;
-        }
-
-        switch (tipo) {
-            case 'previsao':
-                html = `${periodoFormatado}<h4>Dias úteis no período: ${relatorio.periodo.dias_uteis}</h4><table><thead><tr><th>Vendedor</th><th>Auxílio Diário</th><th>Previsão para o Período</th></tr></thead><tbody>`;
-                relatorio.dados.forEach(item => {
-                    html += `<tr><td>${item.nome_completo}</td><td>R$ ${Number(item.auxilio_diario).toFixed(2).replace('.',',')}</td><td><strong>R$ ${Number(item.previsao_periodo).toFixed(2).replace('.',',')}</strong></td></tr>`;
-                });
-                break;
-            case 'descontos':
-                html = `${periodoFormatado}<table><thead><tr><th>Vendedor</th><th>Data da Falta</th><th>Motivo</th><th>Valor a Descontar</th></tr></thead><tbody>`;
-                relatorio.dados.forEach(item => {
-                    const dataFalta = new Date(item.data).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
-                    html += `<tr><td>${item.nome_completo}</td><td>${dataFalta}</td><td>${item.motivo}</td><td style="color:red;">R$ ${Number(item.valor_desconto).toFixed(2).replace('.',',')}</td></tr>`;
-                });
-                break;
-            case 'final':
-                html = `${periodoFormatado}<table><thead><tr><th>Vendedor</th><th>Dias Trabalhados</th><th>Faltas c/ Desconto</th><th>A Receber</th><th>A Descontar</th><th>Valor Final</th></tr></thead><tbody>`;
-                relatorio.dados.forEach(item => {
-                    html += `<tr><td>${item.nome_completo}</td><td>${item.dias_trabalhados}</td><td>${item.dias_falta_com_desconto}</td><td>R$ ${Number(item.total_a_receber).toFixed(2).replace('.',',')}</td><td style="color:red;">R$ ${Number(item.total_a_descontar).toFixed(2).replace('.',',')}</td><td><strong>R$ ${Number(item.valor_final).toFixed(2).replace('.',',')}</strong></td></tr>`;
-                });
-                break;
-        }
-        html += `</tbody></table>`;
-        container.innerHTML = html;
-    }
-
-    // --- LÓGICA DE PERMISSÕES ---
-    const modalPermissoes = document.getElementById('modal-permissoes');
-    const permissoesContainer = document.getElementById('permissoes-container');
-    const modalPermissoesTitulo = document.getElementById('modal-permissoes-titulo');
-    const btnSalvarPermissoes = document.getElementById('btn-salvar-permissoes');
-    let perfilIdAtual = null;
-
-async function abrirModalPermissoes(perfilId, perfilNome) {
-    perfilIdAtual = perfilId;
-    modalPermissoesTitulo.textContent = `Permissões do Perfil: ${perfilNome}`;
-    permissoesContainer.innerHTML = '<p>Carregando recursos e permissões...</p>';
-    modalPermissoes.style.display = 'block';
-
-    try {
-        const recursosDisponiveis = await apiFetch('/recursos/');
-        const permissoesSalvas = await apiFetch(`/perfis/${perfilId}/permissoes/`);
-        
-        const permissoesAtivas = new Set(permissoesSalvas);
-
-        let tabelaHtml = `
-            <table style="width:100%" id="permissoes-table">
-                <thead>
-                    <tr>
-                        <th>Recurso</th>
-                        <th>Visualizar</th>
-                        <th>Adicionar</th>
-                        <th>Modificar</th>
-                        <th>Excluir</th>
-                    </tr>
-                </thead>
-                <tbody>
-        `;
-
-        recursosDisponiveis.forEach(recurso => {
-            tabelaHtml += `<tr><td>${recurso.replace(/_/g, ' ')}</td>`;
-            
-            ['view', 'add', 'change', 'delete'].forEach(acao => {
-                const codenameCompleto = `can_${acao}_${recurso}`;
-                const isChecked = permissoesAtivas.has(codenameCompleto);
-                tabelaHtml += `<td><input type="checkbox" data-recurso="${recurso}" data-acao="${acao}" ${isChecked ? 'checked' : ''}></td>`;
-            });
-
-            tabelaHtml += `</tr>`;
-        });
-
-        tabelaHtml += `</tbody></table>`;
-        permissoesContainer.innerHTML = tabelaHtml;
-
-    } catch (error) {
-        console.error("Erro ao carregar ou processar permissões:", error);
-        permissoesContainer.innerHTML = `<p style="color:red;">Ocorreu um erro ao processar as permissões. Verifique o console para mais detalhes.</p>`;
+    if (menuItem) {
+        menuItem.classList.add('active');
     }
 }
 
-    btnSalvarPermissoes.addEventListener('click', async () => {
-        if (!perfilIdAtual) return;
 
-        const checkboxes = permissoesContainer.querySelectorAll('input[type="checkbox"]');
-        const permissoesPayload = [];
-
-        checkboxes.forEach(cb => {
-            permissoesPayload.push({
-                recurso: cb.dataset.recurso,
-                acao: cb.dataset.acao,
-                ativo: cb.checked
-            });
-        });
-
-        try {
-            await apiFetch(`/perfis/${perfilIdAtual}/permissoes/`, {
-                method: 'PUT',
-                body: JSON.stringify({ permissoes: permissoesPayload })
-            });
-            alert('Permissões salvas com sucesso!');
-            modalPermissoes.style.display = 'none';
-        } catch (error) {
-            console.error("Erro ao salvar permissões:", error);
-            alert(`Erro ao salvar: ${error.message}`);
-        }
+function openTab(evt, tabName) {
+    const parentSection = evt.currentTarget.closest('.content-section');
+    parentSection.querySelectorAll('.tab-content').forEach(tabcontent => {
+        tabcontent.style.display = "none";
     });
-
-    // --- LÓGICA PARA CADASTROS GERAIS (CRM) ---
-    // ** LÓGICA DE GESTÃO DE OPERADORAS **
-    const formOperadora = document.getElementById('form-operadora');
-    const listaOperadoras = document.getElementById('lista-operadoras');
-    const operadoraIdInput = document.getElementById('operadora_id');
-    const operadoraNomeInput = document.getElementById('operadora_nome');
-    const operadoraCnpjInput = document.getElementById('operadora_cnpj');
-    const operadoraStatusSelect = document.getElementById('operadora_status');
-
-    async function carregarOperadoras() {
-        try {
-            const operadoras = await apiFetch('/crm/operadoras/');
-            listaOperadoras.innerHTML = '';
-            operadoras.forEach(op => {
-                const tr = document.createElement('tr');
-                const statusTexto = op.status ? 'Ativo' : 'Inativo';
-                const statusCor = op.status ? 'green' : 'red';
-                tr.innerHTML = `
-                    <td>${op.nome}</td>
-                    <td>${op.cnpj || 'N/A'}</td>
-                    <td style="color: ${statusCor};">${statusTexto}</td>
-                    <td class="actions-cell">
-                        <button class="btn-edit" onclick='editarOperadora(${JSON.stringify(op)})'>Editar</button>
-                        <button class="btn-delete" onclick="deletarOperadora(${op.id})">Excluir</button>
-                    </td>
-                `;
-                listaOperadoras.appendChild(tr);
-            });
-        } catch (error) {
-            console.error('Erro ao carregar operadoras:', error);
-        }
-    }
-
-    function resetFormOperadora() {
-        formOperadora.reset();
-        operadoraIdInput.value = '';
-    }
-
-    formOperadora.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const id = operadoraIdInput.value;
-        const url = id ? `/crm/operadoras/${id}/` : '/crm/operadoras/';
-        const method = id ? 'PUT' : 'POST';
-
-        const body = JSON.stringify({
-            nome: operadoraNomeInput.value,
-            cnpj: operadoraCnpjInput.value,
-            status: operadoraStatusSelect.value === '1'
-        });
-
-        try {
-            await apiFetch(url, { method, body });
-            alert(`Operadora ${id ? 'atualizada' : 'criada'} com sucesso!`);
-            resetFormOperadora();
-            carregarOperadoras();
-        } catch (error) {
-            console.error('Detalhes do erro:', error);
-            alert(`Erro: ${error.message}`);
-        }
+    parentSection.querySelectorAll('.tab-nav button').forEach(tablink => {
+        tablink.classList.remove("active");
     });
+    document.getElementById(tabName).style.display = "block";
+    evt.currentTarget.classList.add("active");
+}
 
-    function editarOperadora(operadora) {
-        operadoraIdInput.value = operadora.id;
-        operadoraNomeInput.value = operadora.nome;
-        operadoraCnpjInput.value = operadora.cnpj;
-        operadoraStatusSelect.value = operadora.status ? '1' : '0';
-        window.scrollTo(0, 0);
+// --- LÓGICA DE GESTÃO DE USUÁRIOS (INTACTA) ---
+const userForm = document.getElementById('user-form');
+const formTitle = document.getElementById('form-title');
+const userIdInput = document.getElementById('user_id');
+const userListBody = document.getElementById('user-list-body');
+const userListHeader = document.getElementById('user-list-header');
+const listaStatusTitulo = document.getElementById('lista-status-titulo');
+const selectPerfil = document.getElementById('perfil_id');
+const selectSupervisor = document.getElementById('supervisor_id');
+
+function resetForm() {
+    userForm.reset();
+    userIdInput.value = '';
+    formTitle.textContent = 'Cadastrar Novo Usuário';
+    document.getElementById('senha').placeholder = 'Senha Provisória';
+    document.getElementById('senha').required = true;
+}
+
+function mostrarListaUsuarios(status, tabElement) {
+    if (tabElement) {
+        document.querySelectorAll('#usuarios-section .tab-nav button').forEach(btn => btn.classList.remove('active'));
+        tabElement.classList.add('active');
     }
+    listaStatusTitulo.textContent = status === 'ativos' ? 'Ativos' : 'Inativos';
+    carregarUsuarios(status);
+}
 
-    async function deletarOperadora(id) {
-        if (!confirm('Tem certeza que deseja excluir esta operadora?')) return;
-        try {
-            await apiFetch(`/crm/operadoras/${id}/`, { method: 'DELETE' });
-            alert('Operadora excluída com sucesso!');
-            carregarOperadoras();
-        } catch (error) {
-            console.error('Detalhes do erro ao deletar:', error);
-            alert(`Erro: ${error.message}`);
-        }
-    }
-
-    // ** LÓGICA DE GESTÃO DE PLANOS **
-    const formPlano = document.getElementById('form-plano');
-    const listaPlanos = document.getElementById('lista-planos');
-    const planoIdInput = document.getElementById('plano_id');
-    const planoNomeInput = document.getElementById('plano_nome');
-    const planoValorInput = document.getElementById('plano_valor');
-    const planoComissaoInput = document.getElementById('plano_comissao');
-    const planoOperadoraSelect = document.getElementById('plano_operadora_id');
-    const planoBeneficiosInput = document.getElementById('plano_beneficios');
-
-    async function carregarPlanos() {
-        try {
-            const [planos, operadoras] = await Promise.all([
-                apiFetch('/crm/planos/'),
-                apiFetch('/crm/operadoras/')
-            ]);
-
-            listaPlanos.innerHTML = '';
-            planos.forEach(plano => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>${plano.nome}</td>
-                    <td>${plano.operadora_nome}</td>
-                    <td>R$ ${Number(plano.valor).toFixed(2)}</td>
-                    <td>R$ ${Number(plano.comissao_base).toFixed(2)}</td>
-                    <td class="actions-cell">
-                        <button class="btn-edit" onclick='editarPlano(${JSON.stringify(plano)})'>Editar</button>
-                        <button class="btn-delete" onclick="deletarPlano(${plano.id})">Excluir</button>
-                    </td>
-                `;
-                listaPlanos.appendChild(tr);
+async function carregarUsuarios(status = 'ativos') {
+    try {
+        const usuarios = await apiFetch(`/usuarios/?is_active=${status === 'ativos'}`);
+        userListBody.innerHTML = '';
+        if (status === 'ativos') {
+            userListHeader.innerHTML = '<th>Nome</th><th>E-mail</th><th>Perfil</th><th>Líder Imediato</th><th>Ações</th>';
+            usuarios.forEach(user => {
+                const supervisorDisplay = user.supervisor_nome || 'N/A';
+                userListBody.innerHTML += `<tr><td>${user.nome_completo}</td><td>${user.email}</td><td>${user.perfil_nome}</td><td>${supervisorDisplay}</td><td class="actions-cell"><button class="btn-edit" title="Editar" onclick='iniciarEdicao(${JSON.stringify(user)})'>Editar</button><button class="btn-delete" title="Inativar" onclick="inativarUsuario(${user.id})">Inativar</button></td></tr>`;
             });
-
-            planoOperadoraSelect.innerHTML = '<option value="">Selecione...</option>';
-            operadoras.forEach(op => {
-                planoOperadoraSelect.add(new Option(op.nome, op.id));
-            });
-        } catch (error) {
-            console.error('Erro ao carregar planos:', error);
-        }
-    }
-
-    function resetFormPlano() {
-        formPlano.reset();
-        planoIdInput.value = '';
-    }
-
-    formPlano.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const id = planoIdInput.value;
-        const url = id ? `/crm/planos/${id}/` : '/crm/planos/';
-        const method = id ? 'PUT' : 'POST';
-
-        const body = JSON.stringify({
-            nome: planoNomeInput.value,
-            valor: parseFloat(planoValorInput.value),
-            comissao_base: parseFloat(planoComissaoInput.value) || 0,
-            operadora: planoOperadoraSelect.value,
-            beneficios: planoBeneficiosInput.value,
-            status: true
-        });
-
-        try {
-            await apiFetch(url, { method, body });
-            alert(`Plano ${id ? 'atualizado' : 'criado'} com sucesso!`);
-            resetFormPlano();
-            carregarPlanos();
-        } catch (error) {
-            console.error('Detalhes do erro ao salvar plano:', error);
-            alert(`Erro: ${error.message}`);
-        }
-    });
-
-    function editarPlano(plano) {
-        planoIdInput.value = plano.id;
-        planoNomeInput.value = plano.nome;
-        planoValorInput.value = plano.valor;
-        planoComissaoInput.value = plano.comissao_base;
-        planoOperadoraSelect.value = plano.operadora;
-        planoBeneficiosInput.value = plano.beneficios || '';
-        document.querySelector('button[onclick*="planos"]').click();
-        window.scrollTo(0, 0);
-    }
-
-    async function deletarPlano(id) {
-        if (!confirm('Tem certeza que deseja excluir este plano?')) return;
-        try {
-            await apiFetch(`/crm/planos/${id}/`, { method: 'DELETE' });
-            alert('Plano excluído com sucesso!');
-            carregarPlanos();
-        } catch (error) {
-            console.error('Detalhes do erro ao deletar plano:', error);
-            alert(`Erro: ${error.message}`);
-        }
-    }
-
-    // --- LÓGICA DE GESTÃO DE FORMAS DE PAGAMENTO ---
-    const listaFormasPagamentoUl = document.getElementById('lista-formas-pagamento');
-    async function carregarFormasPagamento() {
-        try {
-            const formas = await apiFetch('/crm/formas-pagamento/');
-            listaFormasPagamentoUl.innerHTML = '';
-            formas.forEach(forma => {
-                const li = document.createElement('li');
-                li.innerHTML = `
-                    <span>${forma.nome}</span>
-                    <div class="generic-list-actions">
-                        <button class="btn-edit" onclick="editarFormaPagamento(${forma.id}, '${forma.nome.replace(/'/g, "\\'")}')">Editar</button>
-                        <button class="btn-delete" onclick="excluirFormaPagamento(${forma.id})">Excluir</button>
-                    </div>`;
-                listaFormasPagamentoUl.appendChild(li);
-            });
-        } catch (error) { console.error('Erro ao carregar formas de pagamento:', error); }
-    }
-    document.getElementById('btn-salvar-forma-pagamento').addEventListener('click', async () => {
-        const nome = document.getElementById('nova-forma-pagamento-nome').value.trim();
-        if (!nome) return alert('Por favor, digite um nome.');
-        try {
-            await apiFetch('/crm/formas-pagamento/', {
-                method: 'POST',
-                body: JSON.stringify({ nome: nome, status: true })
-            });
-            document.getElementById('nova-forma-pagamento-nome').value = '';
-            carregarFormasPagamento();
-        } catch (error) {
-            alert(`Erro: ${error.message}`);
-        }
-    });
-    async function editarFormaPagamento(id, nomeAtual) {
-        const novoNome = prompt('Digite o novo nome:', nomeAtual);
-        if (novoNome && novoNome.trim() !== '') {
-            try {
-                await apiFetch(`/crm/formas-pagamento/${id}/`, {
-                    method: 'PUT',
-                    body: JSON.stringify({ nome: novoNome.trim(), status: true })
-                });
-                carregarFormasPagamento();
-            } catch (error) {
-                alert(`Erro: ${error.message}`);
-            }
-        }
-    }
-    async function excluirFormaPagamento(id) {
-        if (!confirm('Tem certeza que deseja excluir?')) return;
-        try {
-            await apiFetch(`/crm/formas-pagamento/${id}/`, { method: 'DELETE' });
-            carregarFormasPagamento();
-        } catch (error) {
-            alert(`Erro: ${error.message}`);
-        }
-    }
-
-    // --- LÓGICA DE GESTÃO DE STATUS CRM ---
-    const formStatus = document.getElementById('form-status');
-    const listaStatusBody = document.getElementById('lista-status');
-    const statusIdInput = document.getElementById('status_id');
-    const statusNomeInput = document.getElementById('status_nome');
-    const statusTipoSelect = document.getElementById('status_tipo');
-    const statusEstadoInput = document.getElementById('status_estado');
-    const statusCorInput = document.getElementById('status_cor');
-    const statusEstadoGroup = document.getElementById('status_estado_group');
-
-    statusTipoSelect.addEventListener('change', () => {
-        if (statusTipoSelect.value === 'Comissionamento') {
-            statusEstadoGroup.style.display = 'none';
         } else {
-            statusEstadoGroup.style.display = 'block';
+            userListHeader.innerHTML = '<th>Nome</th><th>E-mail</th><th>Perfil</th><th>Ações</th>';
+            usuarios.forEach(user => {
+                userListBody.innerHTML += `<tr><td>${user.nome_completo}</td><td>${user.email}</td><td>${user.perfil_nome}</td><td class="actions-cell"><button class="btn-reactivate" title="Reativar" onclick="reativarUsuario(${user.id})">Reativar</button></td></tr>`;
+            });
         }
+    } catch (error) { console.error("Erro ao carregar usuários:", error); }
+}
+
+async function carregarDadosParaFormulario() {
+    selectPerfil.innerHTML = '';
+    selectSupervisor.innerHTML = '<option value="">Nenhum</option>';
+    try {
+        const [perfis, usuarios] = await Promise.all([
+            apiFetch('/perfis/'),
+            apiFetch('/usuarios/?is_active=true')
+        ]);
+        
+        perfis.forEach(perfil => selectPerfil.add(new Option(perfil.nome, perfil.id)));
+        
+        usuarios.forEach(usuario => {
+            selectSupervisor.add(new Option(usuario.nome_completo, usuario.id));
+        });
+
+    } catch (error) { 
+        console.error('Erro ao carregar dados para o formulário:', error); 
+    }
+}
+
+function iniciarEdicao(user) {
+    resetForm();
+    formTitle.textContent = 'Editando Usuário';
+    userIdInput.value = user.id;
+    document.getElementById('nome_completo').value = user.nome_completo;
+    document.getElementById('cpf').value = user.cpf || '';
+    document.getElementById('email').value = user.email;
+    document.getElementById('username').value = user.username;
+
+    selectPerfil.value = user.perfil;
+    selectSupervisor.value = user.supervisor || '';
+
+    document.getElementById('valor_almoco').value = user.valor_almoco;
+    document.getElementById('valor_passagem').value = user.valor_passagem;
+    document.getElementById('chave_pix').value = user.chave_pix || '';
+    document.getElementById('nome_da_conta').value = user.nome_da_conta || '';
+
+    document.getElementById('meta_comissao').value = user.meta_comissao;
+    document.getElementById('desconto_boleto').value = user.desconto_boleto;
+    document.getElementById('desconto_inclusao_viabilidade').value = user.desconto_inclusao_viabilidade;
+    document.getElementById('desconto_instalacao_antecipada').value = user.desconto_instalacao_antecipada;
+    document.getElementById('adiantamento_cnpj').value = user.adiantamento_cnpj;
+    document.getElementById('desconto_inss_fixo').value = user.desconto_inss_fixo;
+
+    document.getElementById('senha').placeholder = 'Deixe em branco para não alterar';
+    document.getElementById('senha').required = false;
+    window.scrollTo(0, 0);
+}
+
+userForm.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const id = userIdInput.value;
+    const isEditing = !!id;
+    const url = isEditing ? `/usuarios/${id}/` : '/usuarios/';
+    const method = isEditing ? 'PUT' : 'POST';
+    const nomeCompleto = document.getElementById('nome_completo').value.trim();
+    const nomeParts = nomeCompleto.split(' ');
+    const firstName = nomeParts.shift();
+    const lastName = nomeParts.join(' ');
+
+    const body = {
+        first_name: firstName,
+        last_name: lastName,
+        cpf: document.getElementById('cpf').value,
+        email: document.getElementById('email').value,
+        perfil: selectPerfil.value,
+        username: document.getElementById('username').value,
+        supervisor: selectSupervisor.value || null,
+        valor_almoco: document.getElementById('valor_almoco').value,
+        valor_passagem: document.getElementById('valor_passagem').value,
+        chave_pix: document.getElementById('chave_pix').value,
+        nome_da_conta: document.getElementById('nome_da_conta').value,
+        meta_comissao: document.getElementById('meta_comissao').value,
+        desconto_boleto: document.getElementById('desconto_boleto').value,
+        desconto_inclusao_viabilidade: document.getElementById('desconto_inclusao_viabilidade').value,
+        desconto_instalacao_antecipada: document.getElementById('desconto_instalacao_antecipada').value,
+        adiantamento_cnpj: document.getElementById('adiantamento_cnpj').value,
+        desconto_inss_fixo: document.getElementById('desconto_inss_fixo').value
+    };
+
+    const senha = document.getElementById('senha').value;
+    if (isEditing) {
+        if (senha && senha.trim() !== '') {
+            body.password = senha;
+        }
+    } else {
+        body.password = senha;
+        if (!body.password) { return alert('A senha é obrigatória para novos usuários.'); }
+    }
+    try {
+        const result = await apiFetch(url, {
+            method: method,
+            body: JSON.stringify(body)
+        });
+        alert(`Usuário ${isEditing ? 'atualizado' : 'cadastrado'} com sucesso!`);
+        resetForm();
+        mostrarListaUsuarios('ativos', document.querySelector('#usuarios-section .tab-nav button.active'));
+        carregarDadosParaFormulario();
+    } catch (error) {
+        console.error('Detalhes do erro ao salvar usuário:', error);
+        alert(`Erro: ${error.message}`);
+    }
+});
+
+async function inativarUsuario(id) {
+    if (!confirm('Tem certeza que deseja INATIVAR este usuário?')) return;
+    try {
+        await apiFetch(`/usuarios/${id}/`, { method: 'DELETE' });
+        alert('Usuário inativado com sucesso.');
+        mostrarListaUsuarios('ativos', document.querySelector('#usuarios-section .tab-nav button.active'));
+    } catch(error) {
+        console.error('Detalhes do erro ao inativar usuário:', error);
+        alert(`Erro: ${error.message}`);
+    }
+}
+
+async function reativarUsuario(id) {
+    if (!confirm('Tem certeza que deseja REATIVAR este usuário?')) return;
+    try {
+        await apiFetch(`/usuarios/${id}/reativar/`, { method: 'PUT' });
+        alert('Usuário reativado com sucesso.');
+        carregarUsuarios('inativos');
+    } catch(error) {
+        console.error('Detalhes do erro ao reativar usuário:', error);
+        alert(`Erro: ${error.message}`);
+    }
+}
+
+
+// --- LÓGICA DE GESTÃO DE PERFIS (CORRIGIDA E MELHORADA) ---
+const perfisTabelaCorpo = document.getElementById('perfis-tabela-corpo');
+const perfilModalEl = document.getElementById('perfilModal');
+const perfilModal = new bootstrap.Modal(perfilModalEl);
+const excluirPerfilModalEl = document.getElementById('excluirPerfilModal');
+const excluirPerfilModal = new bootstrap.Modal(excluirPerfilModalEl);
+
+async function carregarPerfis() {
+    try {
+        const perfis = await apiFetch('/perfis/');
+        perfisTabelaCorpo.innerHTML = '';
+        perfis.forEach(perfil => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${perfil.nome}</td>
+                <td>${perfil.descricao || '<em class="text-muted">Sem descrição</em>'}</td>
+                <td class="text-center">
+                    <div class="btn-group" role="group">
+                        <button class="btn btn-info btn-sm btn-permissoes" data-id="${perfil.id}" data-nome="${perfil.nome}" title="Gerenciar Permissões">
+                            <i class="bi bi-shield-lock"></i> Permissões
+                        </button>
+                        <button class="btn btn-warning btn-sm btn-editar-perfil" data-id="${perfil.id}" data-nome="${perfil.nome}" data-descricao="${perfil.descricao || ''}" title="Editar Perfil">
+                            <i class="bi bi-pencil-square"></i> Editar
+                        </button>
+                        <button class="btn btn-danger btn-sm btn-excluir-perfil" data-id="${perfil.id}" data-nome="${perfil.nome}" title="Excluir Perfil">
+                            <i class="bi bi-trash"></i> Excluir
+                        </button>
+                    </div>
+                </td>
+            `;
+            perfisTabelaCorpo.appendChild(tr);
+        });
+    } catch (error) {
+        console.error('Erro ao carregar perfis:', error);
+        perfisTabelaCorpo.innerHTML = '<tr><td colspan="3" class="text-center text-danger">Falha ao carregar perfis.</td></tr>';
+    }
+}
+
+// Abrir modal para adicionar novo perfil
+document.getElementById('btn-adicionar-perfil').addEventListener('click', () => {
+    document.getElementById('perfilForm').reset();
+    document.getElementById('modal_perfil_id').value = '';
+    document.getElementById('perfilModalLabel').textContent = 'Adicionar Novo Perfil';
+    perfilModal.show();
+});
+
+// Delegação de evento para os botões na tabela de perfis
+perfisTabelaCorpo.addEventListener('click', (event) => {
+    const target = event.target.closest('button');
+    if (!target) return;
+
+    const id = target.dataset.id;
+    const nome = target.dataset.nome;
+
+    if (target.classList.contains('btn-editar-perfil')) {
+        const descricao = target.dataset.descricao;
+        document.getElementById('perfilForm').reset();
+        document.getElementById('modal_perfil_id').value = id;
+        document.getElementById('modal_perfil_nome').value = nome;
+        document.getElementById('modal_perfil_descricao').value = descricao;
+        document.getElementById('perfilModalLabel').textContent = 'Editar Perfil';
+        perfilModal.show();
+    } else if (target.classList.contains('btn-excluir-perfil')) {
+        document.getElementById('id-perfil-excluir').value = id;
+        document.getElementById('nome-perfil-excluir').textContent = nome;
+        excluirPerfilModal.show();
+    } else if (target.classList.contains('btn-permissoes')) {
+        abrirModalPermissoes(id, nome);
+    }
+});
+
+// Salvar (criar ou editar) um perfil
+document.getElementById('btn-salvar-perfil-modal').addEventListener('click', async () => {
+    const id = document.getElementById('modal_perfil_id').value;
+    const nome = document.getElementById('modal_perfil_nome').value.trim();
+    const descricao = document.getElementById('modal_perfil_descricao').value.trim();
+
+    if (!nome) {
+        alert('O nome do perfil é obrigatório.');
+        return;
+    }
+
+    const url = id ? `/perfis/${id}/` : '/perfis/';
+    const method = id ? 'PUT' : 'POST';
+    const body = JSON.stringify({ nome, descricao });
+
+    try {
+        await apiFetch(url, { method, body });
+        alert(`Perfil ${id ? 'atualizado' : 'criado'} com sucesso!`);
+        perfilModal.hide();
+        await carregarPerfis();
+        await carregarDadosParaFormulario(); // Atualiza a lista de perfis no form de usuários
+    } catch (error) {
+        console.error('Erro ao salvar perfil:', error);
+        alert(`Erro: ${error.message}`);
+    }
+});
+
+// Confirmar exclusão do perfil
+document.getElementById('btn-confirmar-exclusao-perfil').addEventListener('click', async () => {
+    const id = document.getElementById('id-perfil-excluir').value;
+    if (!id) return;
+    
+    try {
+        await apiFetch(`/perfis/${id}/`, { method: 'DELETE' });
+        alert('Perfil excluído com sucesso!');
+        excluirPerfilModal.hide();
+        await carregarPerfis();
+        await carregarDadosParaFormulario(); // Atualiza a lista de perfis no form de usuários
+    } catch (error) {
+        console.error('Erro ao excluir perfil:', error);
+        alert(`Erro: ${error.message}`);
+    }
+});
+
+
+// --- LÓGICA DE GESTÃO DE MOTIVOS DE AUSÊNCIA (INTACTA) ---
+const listaMotivosUl = document.getElementById('lista-motivos');
+
+async function carregarMotivos() {
+    try {
+        const motivos = await apiFetch('/presenca/motivos/');
+        listaMotivosUl.innerHTML = '';
+        motivos.forEach(motivo => {
+            const statusDesconto = motivo.gera_desconto ? '<span style="color:red;">(Gera Desconto)</span>' : '<span style="color:green;">(Não Gera Desconto)</span>';
+            const li = document.createElement('li');
+            li.innerHTML = `<span>${motivo.motivo} ${statusDesconto}</span>
+                                        <div class="generic-list-actions">
+                                            <button class="btn-edit" onclick='editarMotivo(${JSON.stringify(motivo)})'>Editar</button>
+                                            <button class="btn-delete" onclick="excluirMotivo(${motivo.id})">Excluir</button>
+                                        </div>`;
+            listaMotivosUl.appendChild(li);
+        });
+    } catch (error) { console.error('Erro ao carregar motivos:', error); }
+}
+
+document.getElementById('btn-salvar-motivo').addEventListener('click', async () => {
+    const motivo = document.getElementById('novo-motivo-nome').value.trim();
+    const gera_desconto = document.getElementById('novo-motivo-desconto').checked;
+    if (!motivo) return alert('Por favor, digite um nome para o motivo.');
+    try {
+        await apiFetch('/presenca/motivos/', {
+            method: 'POST',
+            body: JSON.stringify({ motivo, gera_desconto })
+        });
+        document.getElementById('novo-motivo-nome').value = '';
+        document.getElementById('novo-motivo-desconto').checked = true;
+        carregarMotivos();
+    } catch (error) {
+        console.error('Detalhes do erro ao salvar motivo:', error);
+        alert(`Erro: ${error.message}`);
+    }
+});
+
+async function editarMotivo(motivo) {
+    document.getElementById('motivo-id-input').value = motivo.id;
+    document.getElementById('motivo-nome-input').value = motivo.motivo;
+    document.getElementById('motivo-desconto-input').checked = motivo.gera_desconto;
+    document.getElementById('modal-edicao-motivo').style.display = 'flex';
+}
+
+async function excluirMotivo(id) {
+    if (!confirm('Tem certeza que deseja excluir este motivo?')) return;
+    try {
+        await apiFetch(`/presenca/motivos/${id}/`, { method: 'DELETE' });
+        carregarMotivos();
+    } catch (error) {
+        console.error('Detalhes do erro ao excluir motivo:', error);
+        alert(`Erro: ${error.message}`);
+    }
+}
+
+// --- LÓGICA DE GESTÃO DE FERIADOS (INTACTA) ---
+const listaFeriadosTbody = document.getElementById('lista-feriados');
+async function carregarFeriados() {
+    try {
+        const feriados = await apiFetch('/presenca/dias-nao-uteis/');
+        listaFeriadosTbody.innerHTML = '';
+        feriados.forEach(feriado => {
+            const dataFormatada = new Date(feriado.data).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+            const row = `<tr><td>${dataFormatada}</td><td>${feriado.descricao}</td><td><button class="btn-delete" onclick="excluirFeriado(${feriado.id})">Excluir</button></td></tr>`;
+            listaFeriadosTbody.innerHTML += row;
+        });
+    } catch (error) { console.error('Erro ao carregar feriados:', error); }
+}
+
+document.getElementById('btn-salvar-feriado').addEventListener('click', async () => {
+    const data = document.getElementById('novo-feriado-data').value;
+    const descricao = document.getElementById('novo-feriado-descricao').value.trim();
+    if (!data || !descricao) return alert('A data e a descrição são obrigatórias.');
+    try {
+        await apiFetch('/presenca/dias-nao-uteis/', {
+            method: 'POST',
+            body: JSON.stringify({ data, descricao })
+        });
+        document.getElementById('novo-feriado-data').value = '';
+        document.getElementById('novo-feriado-descricao').value = '';
+        carregarFeriados();
+    } catch (error) {
+        console.error('Detalhes do erro ao salvar feriado:', error);
+        alert(`Erro: ${error.message}`);
+    }
+});
+
+async function excluirFeriado(id) {
+    if (!confirm('Tem certeza que deseja excluir este dia?')) return;
+    try {
+        await apiFetch(`/presenca/dias-nao-uteis/${id}/`, { method: 'DELETE' });
+        carregarFeriados();
+    } catch (error) {
+        console.error('Detalhes do erro ao excluir feriado:', error);
+        alert(`Erro: ${error.message}`);
+    }
+}
+
+// --- LÓGICA DE RELATÓRIOS (INTACTA) ---
+async function gerarRelatorio(tipo) {
+    const dataInicio = document.getElementById('data-inicio-relatorio').value;
+    const dataFim = document.getElementById('data-fim-relatorio').value;
+    if (!dataInicio || !dataFim) { return alert('Por favor, selecione a data inicial e final.'); }
+
+    const container = document.getElementById('resultado-relatorio');
+    container.innerHTML = '<p>Gerando relatório, aguarde...</p>';
+
+    let url = '';
+    switch (tipo) {
+        case 'previsao':
+            url = `/relatorios/previsao?dataInicio=${dataInicio}&dataFim=${dataFim}`;
+            break;
+        case 'descontos':
+            url = `/relatorios/descontos?dataInicio=${dataInicio}&dataFim=${dataFim}`;
+            break;
+        case 'final':
+            url = `/relatorios/semanal?dataInicio=${dataInicio}&dataFim=${dataFim}`;
+            break;
+        default:
+            container.innerHTML = '<p style="color:red;">Tipo de relatório inválido.</p>';
+            return;
+    }
+
+    try {
+        const relatorio = await apiFetch(url);
+        renderizarTabelaRelatorio(tipo, relatorio);
+    }
+    catch(error) {
+        container.innerHTML = `<p style="color:red;">${error.message}</p>`;
+    }
+}
+
+function renderizarTabelaRelatorio(tipo, relatorio) {
+    const container = document.getElementById('resultado-relatorio');
+    const inicioFormatado = new Date(relatorio.periodo.inicio + 'T03:00:00Z').toLocaleDateString('pt-BR');
+    const fimFormatado = new Date(relatorio.periodo.fim + 'T03:00:00Z').toLocaleDateString('pt-BR');
+    const periodoFormatado = `<h3>Relatório do Período de ${inicioFormatado} a ${fimFormatado}</h3>`;
+    let html = '';
+
+    if (!relatorio.dados || relatorio.dados.length === 0) {
+        container.innerHTML = `${periodoFormatado}<p style="text-align:center;">Nenhum dado encontrado para este período.</p>`;
+        return;
+    }
+
+    switch (tipo) {
+        case 'previsao':
+            html = `${periodoFormatado}<h4>Dias úteis no período: ${relatorio.periodo.dias_uteis}</h4><table><thead><tr><th>Vendedor</th><th>Auxílio Diário</th><th>Previsão para o Período</th></tr></thead><tbody>`;
+            relatorio.dados.forEach(item => {
+                html += `<tr><td>${item.nome_completo}</td><td>R$ ${Number(item.auxilio_diario).toFixed(2).replace('.',',')}</td><td><strong>R$ ${Number(item.previsao_periodo).toFixed(2).replace('.',',')}</strong></td></tr>`;
+            });
+            break;
+        case 'descontos':
+            html = `${periodoFormatado}<table><thead><tr><th>Vendedor</th><th>Data da Falta</th><th>Motivo</th><th>Valor a Descontar</th></tr></thead><tbody>`;
+            relatorio.dados.forEach(item => {
+                const dataFalta = new Date(item.data).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+                html += `<tr><td>${item.nome_completo}</td><td>${dataFalta}</td><td>${item.motivo}</td><td style="color:red;">R$ ${Number(item.valor_desconto).toFixed(2).replace('.',',')}</td></tr>`;
+            });
+            break;
+        case 'final':
+            html = `${periodoFormatado}<table><thead><tr><th>Vendedor</th><th>Dias Trabalhados</th><th>Faltas c/ Desconto</th><th>A Receber</th><th>A Descontar</th><th>Valor Final</th></tr></thead><tbody>`;
+            relatorio.dados.forEach(item => {
+                html += `<tr><td>${item.nome_completo}</td><td>${item.dias_trabalhados}</td><td>${item.dias_falta_com_desconto}</td><td>R$ ${Number(item.total_a_receber).toFixed(2).replace('.',',')}</td><td style="color:red;">R$ ${Number(item.total_a_descontar).toFixed(2).replace('.',',')}</td><td><strong>R$ ${Number(item.valor_final).toFixed(2).replace('.',',')}</strong></td></tr>`;
+            });
+            break;
+    }
+    html += `</tbody></table>`;
+    container.innerHTML = html;
+}
+
+// --- LÓGICA DE PERMISSÕES (INTACTA) ---
+const modalPermissoes = document.getElementById('modal-permissoes');
+const permissoesContainer = document.getElementById('permissoes-container');
+const modalPermissoesTitulo = document.getElementById('modal-permissoes-titulo');
+const btnSalvarPermissoes = document.getElementById('btn-salvar-permissoes');
+let perfilIdAtual = null;
+
+async function abrirModalPermissoes(perfilId, perfilNome) {
+perfilIdAtual = perfilId;
+modalPermissoesTitulo.textContent = `Permissões do Perfil: ${perfilNome}`;
+permissoesContainer.innerHTML = '<p>Carregando recursos e permissões...</p>';
+modalPermissoes.style.display = 'block';
+
+try {
+    const recursosDisponiveis = await apiFetch('/recursos/');
+    const permissoesSalvas = await apiFetch(`/perfis/${perfilId}/permissoes/`);
+    
+    const permissoesAtivas = new Set(permissoesSalvas);
+
+    let tabelaHtml = `
+                <table style="width:100%" id="permissoes-table">
+                    <thead>
+                        <tr>
+                            <th>Recurso</th>
+                            <th>Visualizar</th>
+                            <th>Adicionar</th>
+                            <th>Modificar</th>
+                            <th>Excluir</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+    `;
+
+    recursosDisponiveis.forEach(recurso => {
+        tabelaHtml += `<tr><td>${recurso.replace(/_/g, ' ')}</td>`;
+        
+        ['view', 'add', 'change', 'delete'].forEach(acao => {
+            const codenameCompleto = `can_${acao}_${recurso}`;
+            const isChecked = permissoesAtivas.has(codenameCompleto);
+            tabelaHtml += `<td><input type="checkbox" data-recurso="${recurso}" data-acao="${acao}" ${isChecked ? 'checked' : ''}></td>`;
+        });
+
+        tabelaHtml += `</tr>`;
     });
 
-    function resetFormStatus() {
-        formStatus.reset();
-        statusIdInput.value = '';
+    tabelaHtml += `</tbody></table>`;
+    permissoesContainer.innerHTML = tabelaHtml;
+
+} catch (error) {
+    console.error("Erro ao carregar ou processar permissões:", error);
+    permissoesContainer.innerHTML = `<p style="color:red;">Ocorreu um erro ao processar as permissões. Verifique o console para mais detalhes.</p>`;
+}
+}
+
+btnSalvarPermissoes.addEventListener('click', async () => {
+    if (!perfilIdAtual) return;
+
+    const checkboxes = permissoesContainer.querySelectorAll('input[type="checkbox"]');
+    const permissoesPayload = [];
+
+    checkboxes.forEach(cb => {
+        permissoesPayload.push({
+            recurso: cb.dataset.recurso,
+            acao: cb.dataset.acao,
+            ativo: cb.checked
+        });
+    });
+
+    try {
+        await apiFetch(`/perfis/${perfilIdAtual}/permissoes/`, {
+            method: 'PUT',
+            body: JSON.stringify({ permissoes: permissoesPayload })
+        });
+        alert('Permissões salvas com sucesso!');
+        modalPermissoes.style.display = 'none';
+    } catch (error) {
+        console.error("Erro ao salvar permissões:", error);
+        alert(`Erro ao salvar: ${error.message}`);
+    }
+});
+
+// --- LÓGICA PARA CADASTROS GERAIS (CRM) (INTACTA) ---
+const formOperadora = document.getElementById('form-operadora');
+const listaOperadoras = document.getElementById('lista-operadoras');
+const operadoraIdInput = document.getElementById('operadora_id');
+const operadoraNomeInput = document.getElementById('operadora_nome');
+const operadoraCnpjInput = document.getElementById('operadora_cnpj');
+const operadoraStatusSelect = document.getElementById('operadora_status');
+
+async function carregarOperadoras() {
+    try {
+        const operadoras = await apiFetch('/crm/operadoras/');
+        listaOperadoras.innerHTML = '';
+        operadoras.forEach(op => {
+            const tr = document.createElement('tr');
+            const statusTexto = op.status ? 'Ativo' : 'Inativo';
+            const statusCor = op.status ? 'green' : 'red';
+            tr.innerHTML = `
+                <td>${op.nome}</td>
+                <td>${op.cnpj || 'N/A'}</td>
+                <td style="color: ${statusCor};">${statusTexto}</td>
+                <td class="actions-cell">
+                    <button class="btn-edit" onclick='editarOperadora(${JSON.stringify(op)})'>Editar</button>
+                    <button class="btn-delete" onclick="deletarOperadora(${op.id})">Excluir</button>
+                </td>
+            `;
+            listaOperadoras.appendChild(tr);
+        });
+    } catch (error) {
+        console.error('Erro ao carregar operadoras:', error);
+    }
+}
+
+function resetFormOperadora() {
+    formOperadora.reset();
+    operadoraIdInput.value = '';
+}
+
+formOperadora.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = operadoraIdInput.value;
+    const url = id ? `/crm/operadoras/${id}/` : '/crm/operadoras/';
+    const method = id ? 'PUT' : 'POST';
+
+    const body = JSON.stringify({
+        nome: operadoraNomeInput.value,
+        cnpj: operadoraCnpjInput.value,
+        status: operadoraStatusSelect.value === '1'
+    });
+
+    try {
+        await apiFetch(url, { method, body });
+        alert(`Operadora ${id ? 'atualizada' : 'criada'} com sucesso!`);
+        resetFormOperadora();
+        carregarOperadoras();
+    } catch (error) {
+        console.error('Detalhes do erro:', error);
+        alert(`Erro: ${error.message}`);
+    }
+});
+
+function editarOperadora(operadora) {
+    operadoraIdInput.value = operadora.id;
+    operadoraNomeInput.value = operadora.nome;
+    operadoraCnpjInput.value = operadora.cnpj;
+    operadoraStatusSelect.value = operadora.status ? '1' : '0';
+    window.scrollTo(0, 0);
+}
+
+async function deletarOperadora(id) {
+    if (!confirm('Tem certeza que deseja excluir esta operadora?')) return;
+    try {
+        await apiFetch(`/crm/operadoras/${id}/`, { method: 'DELETE' });
+        alert('Operadora excluída com sucesso!');
+        carregarOperadoras();
+    } catch (error) {
+        console.error('Detalhes do erro ao deletar:', error);
+        alert(`Erro: ${error.message}`);
+    }
+}
+
+const formPlano = document.getElementById('form-plano');
+const listaPlanos = document.getElementById('lista-planos');
+const planoIdInput = document.getElementById('plano_id');
+const planoNomeInput = document.getElementById('plano_nome');
+const planoValorInput = document.getElementById('plano_valor');
+const planoComissaoInput = document.getElementById('plano_comissao');
+const planoOperadoraSelect = document.getElementById('plano_operadora_id');
+const planoBeneficiosInput = document.getElementById('plano_beneficios');
+
+async function carregarPlanos() {
+    try {
+        const [planos, operadoras] = await Promise.all([
+            apiFetch('/crm/planos/'),
+            apiFetch('/crm/operadoras/')
+        ]);
+
+        listaPlanos.innerHTML = '';
+        planos.forEach(plano => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${plano.nome}</td>
+                <td>${plano.operadora_nome}</td>
+                <td>R$ ${Number(plano.valor).toFixed(2)}</td>
+                <td>R$ ${Number(plano.comissao_base).toFixed(2)}</td>
+                <td class="actions-cell">
+                    <button class="btn-edit" onclick='editarPlano(${JSON.stringify(plano)})'>Editar</button>
+                    <button class="btn-delete" onclick="deletarPlano(${plano.id})">Excluir</button>
+                </td>
+            `;
+            listaPlanos.appendChild(tr);
+        });
+
+        planoOperadoraSelect.innerHTML = '<option value="">Selecione...</option>';
+        operadoras.forEach(op => {
+            planoOperadoraSelect.add(new Option(op.nome, op.id));
+        });
+    } catch (error) {
+        console.error('Erro ao carregar planos:', error);
+    }
+}
+
+function resetFormPlano() {
+    formPlano.reset();
+    planoIdInput.value = '';
+}
+
+formPlano.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = planoIdInput.value;
+    const url = id ? `/crm/planos/${id}/` : '/crm/planos/';
+    const method = id ? 'PUT' : 'POST';
+
+    const body = JSON.stringify({
+        nome: planoNomeInput.value,
+        valor: parseFloat(planoValorInput.value),
+        comissao_base: parseFloat(planoComissaoInput.value) || 0,
+        operadora: planoOperadoraSelect.value,
+        beneficios: planoBeneficiosInput.value,
+        status: true
+    });
+
+    try {
+        await apiFetch(url, { method, body });
+        alert(`Plano ${id ? 'atualizado' : 'criado'} com sucesso!`);
+        resetFormPlano();
+        carregarPlanos();
+    } catch (error) {
+        console.error('Detalhes do erro ao salvar plano:', error);
+        alert(`Erro: ${error.message}`);
+    }
+});
+
+function editarPlano(plano) {
+    planoIdInput.value = plano.id;
+    planoNomeInput.value = plano.nome;
+    planoValorInput.value = plano.valor;
+    planoComissaoInput.value = plano.comissao_base;
+    planoOperadoraSelect.value = plano.operadora;
+    planoBeneficiosInput.value = plano.beneficios || '';
+    document.querySelector('button[onclick*="planos"]').click();
+    window.scrollTo(0, 0);
+}
+
+async function deletarPlano(id) {
+    if (!confirm('Tem certeza que deseja excluir este plano?')) return;
+    try {
+        await apiFetch(`/crm/planos/${id}/`, { method: 'DELETE' });
+        alert('Plano excluído com sucesso!');
+        carregarPlanos();
+    } catch (error) {
+        console.error('Detalhes do erro ao deletar plano:', error);
+        alert(`Erro: ${error.message}`);
+    }
+}
+
+const listaFormasPagamentoUl = document.getElementById('lista-formas-pagamento');
+async function carregarFormasPagamento() {
+    try {
+        const formas = await apiFetch('/crm/formas-pagamento/');
+        listaFormasPagamentoUl.innerHTML = '';
+        formas.forEach(forma => {
+            const li = document.createElement('li');
+            li.innerHTML = `
+                <span>${forma.nome}</span>
+                <div class="generic-list-actions">
+                    <button class="btn-edit" onclick="editarFormaPagamento(${forma.id}, '${forma.nome.replace(/'/g, "\\'")}')">Editar</button>
+                    <button class="btn-delete" onclick="excluirFormaPagamento(${forma.id})">Excluir</button>
+                </div>`;
+            listaFormasPagamentoUl.appendChild(li);
+        });
+    } catch (error) { console.error('Erro ao carregar formas de pagamento:', error); }
+}
+document.getElementById('btn-salvar-forma-pagamento').addEventListener('click', async () => {
+    const nome = document.getElementById('nova-forma-pagamento-nome').value.trim();
+    if (!nome) return alert('Por favor, digite um nome.');
+    try {
+        await apiFetch('/crm/formas-pagamento/', {
+            method: 'POST',
+            body: JSON.stringify({ nome: nome, status: true })
+        });
+        document.getElementById('nova-forma-pagamento-nome').value = '';
+        carregarFormasPagamento();
+    } catch (error) {
+        alert(`Erro: ${error.message}`);
+    }
+});
+async function editarFormaPagamento(id, nomeAtual) {
+    const novoNome = prompt('Digite o novo nome:', nomeAtual);
+    if (novoNome && novoNome.trim() !== '') {
+        try {
+            await apiFetch(`/crm/formas-pagamento/${id}/`, {
+                method: 'PUT',
+                body: JSON.stringify({ nome: novoNome.trim(), status: true })
+            });
+            carregarFormasPagamento();
+        } catch (error) {
+            alert(`Erro: ${error.message}`);
+        }
+    }
+}
+async function excluirFormaPagamento(id) {
+    if (!confirm('Tem certeza que deseja excluir?')) return;
+    try {
+        await apiFetch(`/crm/formas-pagamento/${id}/`, { method: 'DELETE' });
+        carregarFormasPagamento();
+    } catch (error) {
+        alert(`Erro: ${error.message}`);
+    }
+}
+
+const formStatus = document.getElementById('form-status');
+const listaStatusBody = document.getElementById('lista-status');
+const statusIdInput = document.getElementById('status_id');
+const statusNomeInput = document.getElementById('status_nome');
+const statusTipoSelect = document.getElementById('status_tipo');
+const statusEstadoInput = document.getElementById('status_estado');
+const statusCorInput = document.getElementById('status_cor');
+const statusEstadoGroup = document.getElementById('status_estado_group');
+
+statusTipoSelect.addEventListener('change', () => {
+    if (statusTipoSelect.value === 'Comissionamento') {
+        statusEstadoGroup.style.display = 'none';
+    } else {
         statusEstadoGroup.style.display = 'block';
     }
+});
 
-    async function carregarStatus() {
-        try {
-            const statusList = await apiFetch('/crm/status/');
-            listaStatusBody.innerHTML = '';
-            statusList.forEach(s => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td><span class="color-box" style="background-color: ${s.cor};"></span> ${s.nome}</td>
-                    <td>${s.tipo}</td>
-                    <td>${s.estado || 'N/A'}</td>
-                    <td>${s.cor}</td>
-                    <td class="actions-cell">
-                        <button class="btn-edit" onclick='editarStatus(${JSON.stringify(s)})'>Editar</button>
-                        <button class="btn-delete" onclick="excluirStatus(${s.id})">Excluir</button>
-                    </td>
-                `;
-                listaStatusBody.appendChild(tr);
-            });
-        } catch (error) {
-            console.error('Erro ao carregar status:', error);
-        }
+function resetFormStatus() {
+    formStatus.reset();
+    statusIdInput.value = '';
+    statusEstadoGroup.style.display = 'block';
+}
+
+async function carregarStatus() {
+    try {
+        const statusList = await apiFetch('/crm/status/');
+        listaStatusBody.innerHTML = '';
+        statusList.forEach(s => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><span class="color-box" style="background-color: ${s.cor};"></span> ${s.nome}</td>
+                <td>${s.tipo}</td>
+                <td>${s.estado || 'N/A'}</td>
+                <td>${s.cor}</td>
+                <td class="actions-cell">
+                    <button class="btn-edit" onclick='editarStatus(${JSON.stringify(s)})'>Editar</button>
+                    <button class="btn-delete" onclick="excluirStatus(${s.id})">Excluir</button>
+                </td>
+            `;
+            listaStatusBody.appendChild(tr);
+        });
+    } catch (error) {
+        console.error('Erro ao carregar status:', error);
     }
+}
 
-    formStatus.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const id = statusIdInput.value;
-        const url = id ? `/crm/status/${id}/` : '/crm/status/';
-        const method = id ? 'PUT' : 'POST';
+formStatus.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = statusIdInput.value;
+    const url = id ? `/crm/status/${id}/` : '/crm/status/';
+    const method = id ? 'PUT' : 'POST';
 
-        const body = {
-            nome: statusNomeInput.value,
-            tipo: statusTipoSelect.value,
-            estado: statusTipoSelect.value === 'Comissionamento' ? null : statusEstadoInput.value,
-            cor: statusCorInput.value
-        };
+    const body = {
+        nome: statusNomeInput.value,
+        tipo: statusTipoSelect.value,
+        estado: statusTipoSelect.value === 'Comissionamento' ? null : statusEstadoInput.value,
+        cor: statusCorInput.value
+    };
 
-        try {
-            await apiFetch(url, {
-                method,
-                body: JSON.stringify(body)
-            });
-            alert(`Status ${id ? 'atualizado' : 'criado'} com sucesso!`);
-            resetFormStatus();
-            carregarStatus();
-        } catch (error) {
-            alert(`Erro: ${error.message}`);
-        }
-    });
-
-    function editarStatus(status) {
-        statusIdInput.value = status.id;
-        statusNomeInput.value = status.nome;
-        statusTipoSelect.value = status.tipo;
-        statusEstadoInput.value = status.estado || '';
-        statusCorInput.value = status.cor;
-        statusTipoSelect.dispatchEvent(new Event('change'));
-        window.scrollTo(0, 0);
-    }
-
-    async function excluirStatus(id) {
-        if (!confirm('Tem certeza que deseja excluir este status?')) return;
-        try {
-            await apiFetch(`/crm/status/${id}/`, { method: 'DELETE' });
-            alert('Status excluído com sucesso!');
-            carregarStatus();
-        } catch (error) {
-            alert(`Erro: ${error.message}`);
-        }
-    }
-
-    // --- LÓGICA DE GESTÃO DE MOTIVOS DE PENDÊNCIA ---
-    const formPendencia = document.getElementById('form-pendencia');
-    const listaPendenciasBody = document.getElementById('lista-pendencias');
-    const pendenciaIdInput = document.getElementById('pendencia_id');
-    const pendenciaNomeInput = document.getElementById('pendencia_nome');
-    const pendenciaTipoInput = document.getElementById('pendencia_tipo');
-
-    function resetFormPendencia() {
-        formPendencia.reset();
-        pendenciaIdInput.value = '';
-    }
-
-    async function carregarMotivosPendencia() {
-        try {
-            const pendencias = await apiFetch('/crm/motivos-pendencia/');
-            listaPendenciasBody.innerHTML = '';
-            pendencias.forEach(p => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>${p.nome}</td>
-                    <td>${p.tipo_pendencia}</td>
-                    <td class="actions-cell">
-                        <button class="btn-edit" onclick='editarMotivoPendencia(${JSON.stringify(p)})'>Editar</button>
-                        <button class="btn-delete" onclick="excluirMotivoPendencia(${p.id})">Excluir</button>
-                    </td>
-                `;
-                listaPendenciasBody.appendChild(tr);
-            });
-        } catch (error) {
-            console.error('Erro ao carregar motivos de pendência:', error);
-        }
-    }
-
-    formPendencia.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const id = pendenciaIdInput.value;
-        const url = id ? `/crm/motivos-pendencia/${id}/` : '/crm/motivos-pendencia/';
-        const method = id ? 'PUT' : 'POST';
-
-        const body = {
-            nome: pendenciaNomeInput.value,
-            tipo_pendencia: pendenciaTipoInput.value
-        };
-
-        try {
-            await apiFetch(url, {
-                method,
-                body: JSON.stringify(body)
-            });
-            alert(`Motivo de pendência ${id ? 'atualizado' : 'criado'} com sucesso!`);
-            resetFormPendencia();
-            carregarMotivosPendencia();
-        } catch (error) {
-            alert(`Erro: ${error.message}`);
-        }
-    });
-
-    function editarMotivoPendencia(pendencia) {
-        pendenciaIdInput.value = pendencia.id;
-        pendenciaNomeInput.value = pendencia.nome;
-        pendenciaTipoInput.value = pendencia.tipo_pendencia;
-        window.scrollTo(0, 0);
-    }
-
-    async function excluirMotivoPendencia(id) {
-        if (!confirm('Tem certeza que deseja excluir este motivo?')) return;
-        try {
-            await apiFetch(`/crm/motivos-pendencia/${id}/`, { method: 'DELETE' });
-            alert('Motivo de pendência excluído com sucesso!');
-            carregarMotivosPendencia();
-        } catch (error) {
-            alert(`Erro: ${error.message}`);
-        }
-    }
-
-    // --- LÓGICA DE GESTÃO DE COMISSIONAMENTO ---
-    const formRegraComissao = document.getElementById('form-regra-comissao');
-    const regraComissaoIdInput = document.getElementById('regra_comissao_id');
-    const regraConsultorSelect = document.getElementById('regra_consultor_id');
-    const regraPlanoSelect = document.getElementById('regra_plano_id');
-    const listaRegrasComissaoBody = document.getElementById('lista-regras-comissao');
-
-    async function carregarDadosParaRegrasComissao() {
-        try {
-            const [planos, consultores] = await Promise.all([
-                apiFetch('/crm/planos/'),
-                apiFetch('/usuarios/?is_active=true')
-            ]);
-
-            console.log("Dados de consultores recebidos:", consultores);
-
-            regraPlanoSelect.innerHTML = '<option value="">Selecione...</option>';
-            planos.forEach(plano => regraPlanoSelect.add(new Option(plano.nome, plano.id)));
-
-            regraConsultorSelect.innerHTML = '<option value="">Selecione...</option>';
-
-            if (Array.isArray(consultores)) {
-                consultores.forEach(user => {
-                    if (user && user.id && user.nome_completo) {
-                        regraConsultorSelect.add(new Option(user.nome_completo, user.id));
-                    }
-                });
-            }
-        } catch (error) {
-            console.error('Erro ao carregar dados para as regras de comissão:', error);
-        }
-    }
-
-    function resetFormRegraComissao() {
-        formRegraComissao.reset();
-        regraComissaoIdInput.value = '';
-    }
-
-    async function carregarRegrasComissao() {
-        try {
-            const regras = await apiFetch('/crm/regras-comissao/');
-            listaRegrasComissaoBody.innerHTML = '';
-            regras.forEach(regra => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>${regra.consultor_nome}</td>
-                    <td>${regra.plano_nome}</td>
-                    <td>${regra.tipo_venda}</td>
-                    <td>${regra.tipo_cliente}</td>
-                    <td>R$ ${regra.valor_base}</td>
-                    <td>R$ ${regra.valor_acelerado}</td>
-                    <td class="actions-cell">
-                        <button class="btn-edit" onclick='editarRegraComissao(${JSON.stringify(regra)})'>Editar</button>
-                        <button class="btn-delete" onclick="excluirRegraComissao(${regra.id})">Excluir</button>
-                    </td>
-                `;
-                listaRegrasComissaoBody.appendChild(tr);
-            });
-        } catch (error) {
-            console.error('Erro ao carregar regras de comissão:', error);
-        }
-    }
-
-    function editarRegraComissao(regra) {
-        regraComissaoIdInput.value = regra.id;
-        document.getElementById('regra_consultor_id').value = regra.consultor;
-        document.getElementById('regra_plano_id').value = regra.plano;
-        document.getElementById('regra_tipo_venda').value = regra.tipo_venda;
-        document.getElementById('regra_tipo_cliente').value = regra.tipo_cliente;
-        document.getElementById('regra_valor_base').value = regra.valor_base;
-        document.getElementById('regra_valor_acelerado').value = regra.valor_acelerado;
-        window.scrollTo(0, 0);
-    }
-
-    async function excluirRegraComissao(id) {
-        if (!confirm('Tem certeza que deseja excluir esta regra de comissão?')) return;
-        try {
-            await apiFetch(`/crm/regras-comissao/${id}/`, { method: 'DELETE' });
-            alert('Regra excluída com sucesso!');
-            await carregarRegrasComissao();
-        } catch (error) {
-            alert(`Erro ao excluir regra: ${error.message}`);
-        }
-    }
-
-    formRegraComissao.addEventListener('submit', async (e) => {
-        e.preventDefault();
-
-        const id = regraComissaoIdInput.value;
-        const url = id ? `/crm/regras-comissao/${id}/` : '/crm/regras-comissao/';
-        const method = id ? 'PUT' : 'POST';
-
-        const body = {
-            consultor: document.getElementById('regra_consultor_id').value,
-            plano: document.getElementById('regra_plano_id').value,
-            tipo_venda: document.getElementById('regra_tipo_venda').value,
-            tipo_cliente: document.getElementById('regra_tipo_cliente').value,
-            valor_base: document.getElementById('regra_valor_base').value,
-            valor_acelerado: document.getElementById('regra_valor_acelerado').value,
-        };
-
-        try {
-            await apiFetch(url, {
-                method: method,
-                body: JSON.stringify(body)
-            });
-            alert(`Regra de comissão ${id ? 'atualizada' : 'salva'} com sucesso!`);
-            resetFormRegraComissao();
-            await carregarRegrasComissao();
-        } catch (error) {
-            console.error("Erro ao salvar regra de comissão:", error);
-            alert(`Erro: ${error.message}`);
-        }
-    });
-
-    // --- FUNÇÃO DE LOGOUT ---
-    function logout() {
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('refreshToken');
-        localStorage.removeItem('userProfile');
-        window.location.href = '/';
-    }
-
-    // --- INICIALIZAÇÃO DA PÁGINA ---
-    document.addEventListener('DOMContentLoaded', () => {
-        carregarDadosParaFormulario();
-        carregarPerfis();
-        carregarMotivos();
-        carregarFeriados();
-        carregarOperadoras();
-        carregarPlanos();
-        carregarFormasPagamento();
+    try {
+        await apiFetch(url, {
+            method,
+            body: JSON.stringify(body)
+        });
+        alert(`Status ${id ? 'atualizado' : 'criado'} com sucesso!`);
+        resetFormStatus();
         carregarStatus();
-        carregarMotivosPendencia();
-        carregarDadosParaRegrasComissao();
-        carregarRegrasComissao();
-        
-        document.querySelector('.nav-menu li').click();
-    });
+    } catch (error) {
+        alert(`Erro: ${error.message}`);
+    }
+});
 
-    function fecharModalEdicaoMotivo() {
-        document.getElementById('modal-edicao-motivo').style.display = 'none';
+function editarStatus(status) {
+    statusIdInput.value = status.id;
+    statusNomeInput.value = status.nome;
+    statusTipoSelect.value = status.tipo;
+    statusEstadoInput.value = status.estado || '';
+    statusCorInput.value = status.cor;
+    statusTipoSelect.dispatchEvent(new Event('change'));
+    window.scrollTo(0, 0);
+}
+
+async function excluirStatus(id) {
+    if (!confirm('Tem certeza que deseja excluir este status?')) return;
+    try {
+        await apiFetch(`/crm/status/${id}/`, { method: 'DELETE' });
+        alert('Status excluído com sucesso!');
+        carregarStatus();
+    } catch (error) {
+        alert(`Erro: ${error.message}`);
+    }
+}
+
+const formPendencia = document.getElementById('form-pendencia');
+const listaPendenciasBody = document.getElementById('lista-pendencias');
+const pendenciaIdInput = document.getElementById('pendencia_id');
+const pendenciaNomeInput = document.getElementById('pendencia_nome');
+const pendenciaTipoInput = document.getElementById('pendencia_tipo');
+
+function resetFormPendencia() {
+    formPendencia.reset();
+    pendenciaIdInput.value = '';
+}
+
+async function carregarMotivosPendencia() {
+    try {
+        const pendencias = await apiFetch('/crm/motivos-pendencia/');
+        listaPendenciasBody.innerHTML = '';
+        pendencias.forEach(p => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${p.nome}</td>
+                <td>${p.tipo_pendencia}</td>
+                <td class="actions-cell">
+                    <button class="btn-edit" onclick='editarMotivoPendencia(${JSON.stringify(p)})'>Editar</button>
+                    <button class="btn-delete" onclick="excluirMotivoPendencia(${p.id})">Excluir</button>
+                </td>
+            `;
+            listaPendenciasBody.appendChild(tr);
+        });
+    } catch (error) {
+        console.error('Erro ao carregar motivos de pendência:', error);
+    }
+}
+
+formPendencia.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = pendenciaIdInput.value;
+    const url = id ? `/crm/motivos-pendencia/${id}/` : '/crm/motivos-pendencia/';
+    const method = id ? 'PUT' : 'POST';
+
+    const body = {
+        nome: pendenciaNomeInput.value,
+        tipo_pendencia: pendenciaTipoInput.value
+    };
+
+    try {
+        await apiFetch(url, {
+            method,
+            body: JSON.stringify(body)
+        });
+        alert(`Motivo de pendência ${id ? 'atualizado' : 'criado'} com sucesso!`);
+        resetFormPendencia();
+        carregarMotivosPendencia();
+    } catch (error) {
+        alert(`Erro: ${error.message}`);
+    }
+});
+
+function editarMotivoPendencia(pendencia) {
+    pendenciaIdInput.value = pendencia.id;
+    pendenciaNomeInput.value = pendencia.nome;
+    pendenciaTipoInput.value = pendencia.tipo_pendencia;
+    window.scrollTo(0, 0);
+}
+
+async function excluirMotivoPendencia(id) {
+    if (!confirm('Tem certeza que deseja excluir este motivo?')) return;
+    try {
+        await apiFetch(`/crm/motivos-pendencia/${id}/`, { method: 'DELETE' });
+        alert('Motivo de pendência excluído com sucesso!');
+        carregarMotivosPendencia();
+    } catch (error) {
+        alert(`Erro: ${error.message}`);
+    }
+}
+
+const formRegraComissao = document.getElementById('form-regra-comissao');
+const regraComissaoIdInput = document.getElementById('regra_comissao_id');
+const regraConsultorSelect = document.getElementById('regra_consultor_id');
+const regraPlanoSelect = document.getElementById('regra_plano_id');
+const listaRegrasComissaoBody = document.getElementById('lista-regras-comissao');
+
+async function carregarDadosParaRegrasComissao() {
+    try {
+        const [planos, consultores] = await Promise.all([
+            apiFetch('/crm/planos/'),
+            apiFetch('/usuarios/?is_active=true')
+        ]);
+
+        console.log("Dados de consultores recebidos:", consultores);
+
+        regraPlanoSelect.innerHTML = '<option value="">Selecione...</option>';
+        planos.forEach(plano => regraPlanoSelect.add(new Option(plano.nome, plano.id)));
+
+        regraConsultorSelect.innerHTML = '<option value="">Selecione...</option>';
+
+        if (Array.isArray(consultores)) {
+            consultores.forEach(user => {
+                if (user && user.id && user.nome_completo) {
+                    regraConsultorSelect.add(new Option(user.nome_completo, user.id));
+                }
+            });
+        }
+    } catch (error) {
+        console.error('Erro ao carregar dados para as regras de comissão:', error);
+    }
+}
+
+function resetFormRegraComissao() {
+    formRegraComissao.reset();
+    regraComissaoIdInput.value = '';
+}
+
+async function carregarRegrasComissao() {
+    try {
+        const regras = await apiFetch('/crm/regras-comissao/');
+        listaRegrasComissaoBody.innerHTML = '';
+        regras.forEach(regra => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${regra.consultor_nome}</td>
+                <td>${regra.plano_nome}</td>
+                <td>${regra.tipo_venda}</td>
+                <td>${regra.tipo_cliente}</td>
+                <td>R$ ${regra.valor_base}</td>
+                <td>R$ ${regra.valor_acelerado}</td>
+                <td class="actions-cell">
+                    <button class="btn-edit" onclick='editarRegraComissao(${JSON.stringify(regra)})'>Editar</button>
+                    <button class="btn-delete" onclick="excluirRegraComissao(${regra.id})">Excluir</button>
+                </td>
+            `;
+            listaRegrasComissaoBody.appendChild(tr);
+        });
+    } catch (error) {
+        console.error('Erro ao carregar regras de comissão:', error);
+    }
+}
+
+function editarRegraComissao(regra) {
+    regraComissaoIdInput.value = regra.id;
+    document.getElementById('regra_consultor_id').value = regra.consultor;
+    document.getElementById('regra_plano_id').value = regra.plano;
+    document.getElementById('regra_tipo_venda').value = regra.tipo_venda;
+    document.getElementById('regra_tipo_cliente').value = regra.tipo_cliente;
+    document.getElementById('regra_valor_base').value = regra.valor_base;
+    document.getElementById('regra_valor_acelerado').value = regra.valor_acelerado;
+    window.scrollTo(0, 0);
+}
+
+async function excluirRegraComissao(id) {
+    if (!confirm('Tem certeza que deseja excluir esta regra de comissão?')) return;
+    try {
+        await apiFetch(`/crm/regras-comissao/${id}/`, { method: 'DELETE' });
+        alert('Regra excluída com sucesso!');
+        await carregarRegrasComissao();
+    } catch (error) {
+        alert(`Erro ao excluir regra: ${error.message}`);
+    }
+}
+
+formRegraComissao.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const id = regraComissaoIdInput.value;
+    const url = id ? `/crm/regras-comissao/${id}/` : '/crm/regras-comissao/';
+    const method = id ? 'PUT' : 'POST';
+
+    const body = {
+        consultor: document.getElementById('regra_consultor_id').value,
+        plano: document.getElementById('regra_plano_id').value,
+        tipo_venda: document.getElementById('regra_tipo_venda').value,
+        tipo_cliente: document.getElementById('regra_tipo_cliente').value,
+        valor_base: document.getElementById('regra_valor_base').value,
+        valor_acelerado: document.getElementById('regra_valor_acelerado').value,
+    };
+
+    try {
+        await apiFetch(url, {
+            method: method,
+            body: JSON.stringify(body)
+        });
+        alert(`Regra de comissão ${id ? 'atualizada' : 'salva'} com sucesso!`);
+        resetFormRegraComissao();
+        await carregarRegrasComissao();
+    } catch (error) {
+        console.error("Erro ao salvar regra de comissão:", error);
+        alert(`Erro: ${error.message}`);
+    }
+});
+
+// --- FUNÇÃO DE LOGOUT ---
+function logout() {
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('userProfile');
+    window.location.href = '/';
+}
+
+// --- INICIALIZAÇÃO DA PÁGINA ---
+document.addEventListener('DOMContentLoaded', () => {
+    carregarDadosParaFormulario();
+    carregarPerfis();
+    carregarMotivos();
+    carregarFeriados();
+    carregarOperadoras();
+    carregarPlanos();
+    carregarFormasPagamento();
+    carregarStatus();
+    carregarMotivosPendencia();
+    carregarDadosParaRegrasComissao();
+    carregarRegrasComissao();
+    
+    // Mostra a primeira seção por padrão (Gestão de Usuários) e ativa o link correspondente
+    const primeiroLink = document.querySelector('#nav-cadastros .dropdown-item');
+    if (primeiroLink) {
+        mostrarSecao(null, 'usuarios', primeiroLink);
+    }
+});
+
+function fecharModalEdicaoMotivo() {
+    document.getElementById('modal-edicao-motivo').style.display = 'none';
+}
+
+document.getElementById('form-edicao-motivo').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const id = document.getElementById('motivo-id-input').value;
+    const motivo = document.getElementById('motivo-nome-input').value.trim();
+    const gera_desconto = document.getElementById('motivo-desconto-input').checked;
+
+    if (!motivo) {
+        alert('O nome do motivo é obrigatório.');
+        return;
     }
 
-    document.getElementById('form-edicao-motivo').addEventListener('submit', async (e) => {
-        e.preventDefault();
-
-        const id = document.getElementById('motivo-id-input').value;
-        const motivo = document.getElementById('motivo-nome-input').value.trim();
-        const gera_desconto = document.getElementById('motivo-desconto-input').checked;
-
-        if (!motivo) {
-            alert('O nome do motivo é obrigatório.');
-            return;
-        }
-
-        try {
-            await apiFetch(`/presenca/motivos/${id}/`, {
-                method: 'PUT',
-                body: JSON.stringify({
-                    motivo: motivo,
-                    gera_desconto: gera_desconto
-                })
-            });
-            fecharModalEdicaoMotivo();
-            await carregarMotivos();
-        } catch (error) {
-            console.error('Erro ao salvar edição do motivo:', error);
-            alert(`Erro: ${error.message}`);
-        }
-    });
-
+    try {
+        await apiFetch(`/presenca/motivos/${id}/`, {
+            method: 'PUT',
+            body: JSON.stringify({
+                motivo: motivo,
+                gera_desconto: gera_desconto
+            })
+        });
+        fecharModalEdicaoMotivo();
+        await carregarMotivos();
+    } catch (error) {
+        console.error('Erro ao salvar edição do motivo:', error);
+        alert(`Erro: ${error.message}`);
+    }
+});
 </script>
 
 </body>

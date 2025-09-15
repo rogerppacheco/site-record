@@ -1,8 +1,6 @@
-# crm_app/models.py
-
 from django.db import models
 from usuarios.models import Usuario
-from django.conf import settings # Adicionado para referenciar o AUTH_USER_MODEL
+from django.conf import settings
 
 class Operadora(models.Model):
     nome = models.CharField(max_length=100, unique=True)
@@ -102,7 +100,12 @@ class Cliente(models.Model):
         verbose_name_plural = "Clientes"
 
 class Venda(models.Model):
-    vendedor = models.ForeignKey(Usuario, on_delete=models.PROTECT, related_name='vendas')
+    vendedor = models.ForeignKey(
+        Usuario, 
+        on_delete=models.SET_NULL, # CORREÇÃO APLICADA AQUI
+        null=True,                # Adicionado para permitir nulos
+        related_name='vendas'
+    )
     cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name='vendas')
     plano = models.ForeignKey(Plano, on_delete=models.PROTECT)
     forma_pagamento = models.ForeignKey(FormaPagamento, on_delete=models.PROTECT)

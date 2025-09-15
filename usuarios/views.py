@@ -1,132 +1,160 @@
-# site-record/usuarios/views.py
-
-from django.contrib.auth import get_user_model
-from django.shortcuts import get_object_or_404
-from rest_framework import viewsets, status, views
-from rest_framework.decorators import action
+from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import action
+from django.contrib.auth.models import ContentType
+from django.db import transaction  # Importado para garantir a integridade dos dados
 from rest_framework_simplejwt.views import TokenObtainPairView
-from collections import defaultdict
-
-# --- Importações dos seus módulos ---
-from .models import Perfil, PermissaoPerfil
+from .models import Usuario, Perfil, PermissaoPerfil  # Adicionado PermissaoPerfil
 from .serializers import (
-    CustomTokenObtainPairSerializer,
     UsuarioSerializer,
     PerfilSerializer,
-    PermissaoPerfilSerializer
+    # PermissionSerializer não é mais necessário aqui diretamente, mas pode ser usado pelo serializer
+    UserProfileSerializer,
+    RecursoSerializer,
+    CustomTokenObtainPairSerializer
 )
-from .permissions import CheckAPIPermission
 
-
-# View para fornecer a lista de recursos disponíveis para permissão
-class RecursosListView(views.APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request, *args, **kwargs):
-        recursos = [
-            'clientes', 'dias_nao_uteis', 'formas_pagamento',
-            'motivos_pendencia', 'operadoras', 'osab', 'planos', 'presenca',
-            'regras_comissao', 'status_crm', 'usuarios', 'vendas',
-        ]
-        return Response(sorted(recursos))
-
-
-# View customizada para o login
 class LoginView(TokenObtainPairView):
+    """
+    View para o login de usuários.
+    """
     serializer_class = CustomTokenObtainPairSerializer
 
-
-# ViewSet para o modelo de Usuário (com permissão dinâmica)
 class UsuarioViewSet(viewsets.ModelViewSet):
+    queryset = Usuario.objects.all().order_by('first_name', 'last_name')
     serializer_class = UsuarioSerializer
-    permission_classes = [CheckAPIPermission]
-    resource_name = 'usuarios'
+    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        User = get_user_model()
-        queryset = User.objects.all().order_by('first_name')
-        is_active_param = self.request.query_params.get('is_active', None)
-        if is_active_param is not None:
-            is_active = is_active_param.lower() == 'true'
-            queryset = queryset.filter(is_active=is_active)
-        return queryset
+        """
+        Filtra os usuários com base no parâmetro 'is_active'.
+        """
+        queryset = Usuario.objects.select_related('perfil', 'supervisor').all()
+        is_active = self.request.query_params.get('is_active')
+        if is_active is not None:
+            queryset = queryset.filter(is_active=(is_active.lower() == 'true'))
+        return queryset.order_by('first_name', 'last_name')
 
-    @action(detail=True, methods=['put'], url_path='desativar')
-    def desativar(self, request, pk=None):
-        usuario = self.get_object()
-        usuario.is_active = False
-        usuario.save()
-        return Response({'status': 'usuário desativado'}, status=status.HTTP_200_OK)
+    def destroy(self, request, *args, **kwargs):
+        """
+        Sobrescreve o método destroy para inativar o usuário em vez de deletar.
+        """
+        instance = self.get_object()
+        try:
+            instance.is_active = False
+            instance.save()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            return Response(
+                {"detail": f"Ocorreu um erro ao inativar o usuário: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
     @action(detail=True, methods=['put'], url_path='reativar')
     def reativar(self, request, pk=None):
+        """
+        Ação para reativar um usuário inativo.
+        """
         usuario = self.get_object()
         usuario.is_active = True
         usuario.save()
-        return Response({'status': 'usuário reativado'}, status=status.HTTP_200_OK)
+        serializer = self.get_serializer(usuario)
+        return Response(serializer.data)
 
-
-# ViewSet para o modelo de Perfil
 class PerfilViewSet(viewsets.ModelViewSet):
     queryset = Perfil.objects.all().order_by('nome')
     serializer_class = PerfilSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
 
-    # =========================================================================
-    # SUBSTITUA TODA A FUNÇÃO ABAIXO PELA VERSÃO CORRIGIDA
-    # =========================================================================
     @action(detail=True, methods=['get', 'put'], url_path='permissoes')
-    def gerenciar_permissoes(self, request, pk=None):
+    def permissoes(self, request, pk=None):
         perfil = self.get_object()
 
         if request.method == 'GET':
-            permissoes = PermissaoPerfil.objects.filter(perfil=perfil)
-            
-            # Monta uma lista de codenames que o frontend espera, ex: "can_view_presenca"
-            codenames_ativos = []
-            for p in permissoes:
-                if p.pode_ver: codenames_ativos.append(f"can_view_{p.recurso}")
-                if p.pode_criar: codenames_ativos.append(f"can_add_{p.recurso}")
-                if p.pode_editar: codenames_ativos.append(f"can_change_{p.recurso}")
-                if p.pode_excluir: codenames_ativos.append(f"can_delete_{p.recurso}")
-            
-            return Response(codenames_ativos)
+            # CORREÇÃO: Lê as permissões do seu modelo PermissaoPerfil
+            # e constrói a lista de "codenames" que o frontend espera.
+            permissions = perfil.permissoes.all()
+            codenames = []
+            for p in permissions:
+                if p.pode_ver:
+                    codenames.append(f"can_view_{p.recurso}")
+                if p.pode_criar:
+                    codenames.append(f"can_add_{p.recurso}")
+                if p.pode_editar:
+                    codenames.append(f"can_change_{p.recurso}") # Django usa 'change' para 'editar'
+                if p.pode_excluir:
+                    codenames.append(f"can_delete_{p.recurso}")
+            return Response(codenames)
 
-        if request.method == 'PUT':
+        elif request.method == 'PUT':
+            # CORREÇÃO: Atualiza ou cria as permissões no seu modelo PermissaoPerfil.
             permissoes_data = request.data.get('permissoes', [])
             
-            # Agrupa as permissões por recurso para facilitar o processamento
-            permissoes_agrupadas = defaultdict(dict)
+            # Agrupa as ações por recurso para eficiência
+            recursos_para_atualizar = {}
             for p_data in permissoes_data:
                 recurso = p_data.get('recurso')
-                acao = p_data.get('acao') # 'view', 'add', 'change', 'delete'
-                ativo = p_data.get('ativo', False)
+                acao = p_data.get('acao')
+                ativo = p_data.get('ativo')
+                if recurso not in recursos_para_atualizar:
+                    recursos_para_atualizar[recurso] = {
+                        'pode_ver': False,
+                        'pode_criar': False,
+                        'pode_editar': False,
+                        'pode_excluir': False
+                    }
                 
-                if recurso and acao:
-                    # Mapeia a ação do frontend para o campo do modelo
-                    campo_modelo = {
-                        'view': 'pode_ver',
-                        'add': 'pode_criar',
-                        'change': 'pode_editar',
-                        'delete': 'pode_excluir'
-                    }.get(acao)
+                if acao == 'view':
+                    recursos_para_atualizar[recurso]['pode_ver'] = ativo
+                elif acao == 'add':
+                    recursos_para_atualizar[recurso]['pode_criar'] = ativo
+                elif acao == 'change':
+                    recursos_para_atualizar[recurso]['pode_editar'] = ativo
+                elif acao == 'delete':
+                    recursos_para_atualizar[recurso]['pode_excluir'] = ativo
+
+            try:
+                with transaction.atomic():
+                    # Deleta as permissões existentes para este perfil para depois recriá-las
+                    perfil.permissoes.all().delete()
                     
-                    if campo_modelo:
-                        permissoes_agrupadas[recurso][campo_modelo] = ativo
+                    # Cria as novas permissões com base no que foi enviado
+                    for recurso, permissoes in recursos_para_atualizar.items():
+                        # Só cria a linha no banco se pelo menos uma permissão estiver ativa
+                        if any(permissoes.values()):
+                            PermissaoPerfil.objects.create(
+                                perfil=perfil,
+                                recurso=recurso,
+                                **permissoes
+                            )
+            except Exception as e:
+                 return Response(
+                     {"detail": f"Ocorreu um erro ao salvar as permissões: {str(e)}"},
+                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                 )
 
-            # Apaga as permissões antigas para começar do zero
-            PermissaoPerfil.objects.filter(perfil=perfil).delete()
+            return Response({'status': 'permissões atualizadas'}, status=status.HTTP_200_OK)
 
-            # Cria as novas permissões
-            permissoes_para_criar = []
-            for recurso, campos in permissoes_agrupadas.items():
-                permissoes_para_criar.append(
-                    PermissaoPerfil(perfil=perfil, recurso=recurso, **campos)
-                )
+class UserProfileView(viewsets.ViewSet):
+    permission_classes = [permissions.IsAuthenticated]
 
-            if permissoes_para_criar:
-                PermissaoPerfil.objects.bulk_create(permissoes_para_criar)
+    def list(self, request):
+        serializer = UserProfileSerializer(request.user)
+        return Response(serializer.data)
 
-            return Response({'status': 'Permissões atualizadas com sucesso'}, status=status.HTTP_200_OK)
+class RecursoViewSet(viewsets.ViewSet):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def list(self, request):
+        app_models = {
+            'crm_app': ['venda', 'cliente', 'plano', 'operadora'],
+            'presenca': ['presenca'],
+            'usuarios': ['usuario', 'perfil']
+        }
+
+        recursos_formatados = []
+        for app, models in app_models.items():
+            for model in models:
+                recursos_formatados.append(f"{app}_{model}")
+
+        return Response(recursos_formatados)
