@@ -90,6 +90,12 @@ a:hover { color: var(--cor-destaque-hover); }
 .menu-toggle:hover { transform: scale(1.1); }
 .menu-toggle .bar { height: 3px; width: 25px; background-color: var(--cor-texto-cabecalho); margin: 4px 0; transition: 0.4s ease; }
 
+/* Animação do ícone do menu para "X" quando aberto */
+.menu-toggle.open .bar:nth-child(1) { transform: rotate(-45deg) translate(-5px, 6px); }
+.menu-toggle.open .bar:nth-child(2) { opacity: 0; }
+.menu-toggle.open .bar:nth-child(3) { transform: rotate(45deg) translate(-5px, -6px); }
+
+
 /* --- Estrutura Principal das Páginas Internas --- */
 .main-content {
     width: 100%;
@@ -173,7 +179,6 @@ a:hover { color: var(--cor-destaque-hover); }
 
 /* --- Modal Genérico e de Motivos --- */
 .modal-overlay {
-    /* Styles for the modal background */
     display: none;
     position: fixed;
     top: 0;
@@ -231,7 +236,7 @@ table {
     border-collapse: collapse;
     background-color: var(--cor-fundo-primaria);
     color: var(--cor-texto-primaria);
-    min-width: 600px; /* Garante que a tabela tenha um mínimo de largura para rolagem */
+    min-width: 600px;
 }
 thead th {
     background-color: var(--cor-fundo-secundaria);
@@ -269,21 +274,40 @@ footer a:hover { text-decoration: underline; }
     /* Menu Mobile */
     .main-header { padding: 1rem; }
     .header-container { flex-wrap: wrap; }
-    .main-nav { order: 1; flex-basis: 100%; }
-    .main-nav ul {
-        display: none; flex-direction: column; width: 100%; position: relative;
-        top: 0; left: 0; background-color: var(--cor-fundo-cabecalho);
-        box-shadow: 0 4px 6px var(--cor-sombra-clara);
-        padding: 0.5rem 0; border-top: 1px solid #eee;
+    
+    .main-nav { 
+        order: 1; /* Garante que a navegação venha depois do logo/botão */
+        flex-basis: 100%; 
     }
-    .main-nav ul.active { display: flex; }
+    
+    .main-nav ul {
+        display: none; /* Escondido por padrão */
+        flex-direction: column;
+        width: 100%;
+        position: absolute; /* CORREÇÃO: Para sobrepor o conteúdo */
+        top: 70px; /* CORREÇÃO: Altura do header para não sobrepor */
+        left: 0;
+        background-color: var(--cor-fundo-cabecalho);
+        box-shadow: 0 4px 6px var(--cor-sombra-clara);
+        padding: 0.5rem 0;
+        border-top: 1px solid #eee;
+    }
+    .main-nav ul.active { display: flex; } /* Mostra o menu quando ativo */
+    
     .main-nav li { width: 100%; text-align: center; }
+    
     .main-nav a, .main-nav .nav-button {
-        display: block; padding: 1rem; border-bottom: 1px solid #f0f0f0;
+        display: block; 
+        padding: 1rem; 
+        border-bottom: 1px solid #f0f0f0;
     }
     .main-nav li:last-child a, .main-nav li:last-child .nav-button { border-bottom: none; }
-    .main-nav a:hover, .main-nav .nav-button:hover { border-bottom-color: transparent; background-color: #f8f9fa; }
-    .menu-toggle { display: flex; }
+    .main-nav a:hover, .main-nav .nav-button:hover { 
+        border-bottom-color: transparent; 
+        background-color: #f8f9fa; 
+    }
+    
+    .menu-toggle { display: flex; } /* Mostra o botão do menu */
 }
 
 @media (max-width: 768px) {
@@ -438,7 +462,7 @@ footer a:hover { text-decoration: underline; }
 }
 .action-button:hover {
     background-color: var(--cor-destaque-hover);
-    color: var(--cor-fundo-clara); /* Garante que o texto fique branco no hover */
+    color: var(--cor-fundo-clara);
     transform: translateY(-2px);
 }
 
@@ -555,7 +579,6 @@ footer a:hover { text-decoration: underline; }
     transition: all 0.2s ease-in-out;
     margin-right: 0.5rem;
     text-align: center;
-    /* Adicionada cor de fundo padrão para garantir visibilidade */
     background-color: var(--cor-destaque);
     color: white;
 }

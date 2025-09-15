@@ -1,74 +1,61 @@
-// ui.js - Lógica de Interação da Interface (Menu e Modais)
+// ui.js - Lógica de Interação da Interface (Modais)
 
 document.addEventListener('DOMContentLoaded', function() {
-    // --- Lógica para o Menu Mobile (Refatorada) ---
-    const menuToggle = document.getElementById('menu-toggle');
-    const mainMenu = document.getElementById('main-menu');
-
-    if (menuToggle && mainMenu) {
-        menuToggle.addEventListener('click', function() {
-            mainMenu.classList.toggle('active');
-        });
-    }
-
     // --- Lógica para o Modal de Login ---
     const areaInternaBtn = document.getElementById('areaInternaButton');
     const loginModalOverlay = document.getElementById('loginModalOverlay');
     const cancelarLoginBtn = document.getElementById('cancelarLogin');
-    const loginForm = document.getElementById('loginForm');
-    const errorMessageDiv = document.getElementById('error-message');
+    const errorMessageDiv = document.getElementById('error-message'); // A mensagem de erro será controlada por auth.js
+
+    // Se os elementos essenciais do modal não estiverem na página, interrompe a execução.
+    if (!areaInternaBtn || !loginModalOverlay || !cancelarLoginBtn) {
+        return;
+    }
 
     // Função para mostrar o modal
     function showModal() {
-        loginModalOverlay.style.display = 'flex'; // Torna o modal visível imediatamente
-        // Adiciona a classe 'active' após um pequeno atraso para que a transição CSS ocorra
-        setTimeout(() => loginModalOverlay.classList.add('active'), 10);
-        errorMessageDiv.style.display = 'none'; // Esconde mensagem de erro anterior
+        loginModalOverlay.style.display = 'flex'; // Torna o modal visível
+        // Adiciona a classe 'active' após um instante para a transição de opacidade funcionar
+        setTimeout(() => {
+            loginModalOverlay.classList.add('active');
+        }, 10);
+        // Garante que a mensagem de erro de uma tentativa anterior seja limpa ao abrir o modal
+        if(errorMessageDiv) {
+            errorMessageDiv.style.display = 'none';
+        }
     }
 
     // Função para fechar o modal
     function closeModal() {
         loginModalOverlay.classList.remove('active');
-        // Esconde o modal completamente após a transição
-        setTimeout(() => loginModalOverlay.style.display = 'none', 300);
+        // Espera a transição de opacidade terminar (300ms) antes de esconder o modal
+        setTimeout(() => {
+            loginModalOverlay.style.display = 'none';
+        }, 300);
     }
 
     // Eventos para abrir e fechar o modal
     areaInternaBtn.addEventListener('click', function(e) {
+        e.preventDefault(); // Impede a navegação padrão do link '#'
+
         // Verifica se já está logado, se sim, redireciona
         if (localStorage.getItem('accessToken')) {
             window.location.href = '/area-interna/';
         } else {
-            // Se não estiver logado, abre o modal
-            e.preventDefault();
+            // Se não estiver logado, abre o modal de login
             showModal();
         }
     });
 
     cancelarLoginBtn.addEventListener('click', closeModal);
 
-    // Fecha o modal ao clicar fora dele
+    // Fecha o modal ao clicar fora da área de conteúdo (no overlay)
     loginModalOverlay.addEventListener('click', function(e) {
         if (e.target === loginModalOverlay) {
             closeModal();
         }
     });
 
-    // Submissão do formulário de login (agora usando a função 'login' de auth.js)
-    loginForm.addEventListener('submit', async function(e) {
-        e.preventDefault();
-        const username = document.getElementById('username').value;
-        const password = document.getElementById('password').value;
-
-        // Chama a função de login que está no auth.js
-        const sucesso = await login(username, password);
-
-        if (sucesso) {
-            // A própria função login já redireciona se tiver sucesso
-        } else {
-            // Exibe mensagem de erro
-            errorMessageDiv.textContent = 'Usuário ou senha inválidos.';
-            errorMessageDiv.style.display = 'block';
-        }
-    });
+    // A lógica de submissão do formulário foi REMOVIDA daqui.
+    // Ela agora é de responsabilidade exclusiva do arquivo `auth.js` para evitar conflitos.
 });
