@@ -8,21 +8,21 @@ from datetime import datetime
 
 def get_dias_uteis_no_periodo(data_inicio, data_fim):
     """
-    Função auxiliar para calcular dias úteis, compatível com SQLite.
+    Função auxiliar para calcular dias úteis, agora compatível com MySQL.
     """
-    # --- CORREÇÃO APLICADA AQUI: Sintaxe SQL alterada para SQLite ---
+    # --- CORREÇÃO APLICADA: Sintaxe SQL alterada para MySQL ---
     query = """
         WITH RECURSIVE DateRange(data) AS (
           SELECT %s AS data
           UNION ALL
-          SELECT date(data, '+1 day')
+          SELECT DATE_ADD(data, INTERVAL 1 DAY)
           FROM DateRange
           WHERE data < %s
         )
         SELECT COUNT(*)
         FROM DateRange
         WHERE
-          strftime('%%w', data) NOT IN ('0', '6') AND -- 0 é Domingo, 6 é Sábado no SQLite
+          DAYOFWEEK(data) NOT IN (1, 7) AND -- 1 é Domingo, 7 é Sábado no MySQL
           data NOT IN (SELECT data FROM presenca_dianaoutil)
     """
     with connection.cursor() as cursor:
@@ -64,14 +64,14 @@ class RelatorioPrevisaoView(APIView):
         try:
             dias_uteis = get_dias_uteis_no_periodo(data_inicio, data_fim)
 
-            # --- CORREÇÃO APLICADA AQUI: Sintaxe SQL alterada para SQLite ---
+            # --- CORREÇÃO APLICADA: Sintaxe SQL alterada para MySQL ---
             query = """
                 SELECT
-                    u.first_name || ' ' || u.last_name as nome_completo, -- CONCAT trocado por ||
+                    CONCAT(u.first_name, ' ', u.last_name) as nome_completo, -- || trocado por CONCAT
                     u.valor_almoco,
                     u.valor_passagem
                 FROM usuarios_usuario u
-                WHERE u.is_active = 1 -- 'true' trocado por 1
+                WHERE u.is_active = true -- 1 trocado por true
             """
             with connection.cursor() as cursor:
                 cursor.execute(query)
@@ -110,10 +110,10 @@ class RelatorioDescontosView(APIView):
             return error_response
         
         try:
-            # --- CORREÇÃO APLICADA AQUI: Sintaxe SQL alterada para SQLite ---
+            # --- CORREÇÃO APLICADA: Sintaxe SQL alterada para MySQL ---
             query = """
                 SELECT
-                    u.first_name || ' ' || u.last_name as nome_completo, -- CONCAT trocado por ||
+                    CONCAT(u.first_name, ' ', u.last_name) as nome_completo, -- || trocado por CONCAT
                     pp.data,
                     ma.motivo,
                     (u.valor_almoco + u.valor_passagem) as valor_desconto
@@ -121,7 +121,7 @@ class RelatorioDescontosView(APIView):
                 JOIN usuarios_usuario u ON pp.colaborador_id = u.id
                 LEFT JOIN presenca_motivoausencia ma ON pp.motivo_id = ma.id
                 WHERE pp.status = 0
-                  AND ma.gera_desconto = 1 -- 'true' trocado por 1
+                  AND ma.gera_desconto = true -- 1 trocado por true
                   AND pp.data BETWEEN %s AND %s
                 ORDER BY u.first_name, pp.data
             """
@@ -161,23 +161,23 @@ class RelatorioFinalView(APIView):
         try:
             dias_uteis = get_dias_uteis_no_periodo(data_inicio, data_fim)
 
-            # --- CORREÇÃO APLICADA AQUI: Sintaxe SQL alterada para SQLite ---
+            # --- CORREÇÃO APLICADA: Sintaxe SQL alterada para MySQL ---
             query = """
                 SELECT
                     u.id,
-                    u.first_name || ' ' || u.last_name as nome_completo, -- CONCAT trocado por ||
+                    CONCAT(u.first_name, ' ', u.last_name) as nome_completo, -- || trocado por CONCAT
                     u.valor_almoco,
                     u.valor_passagem,
                     (SELECT COUNT(*)
-                       FROM presenca_presenca pp
-                       JOIN presenca_motivoausencia ma ON pp.motivo_id = ma.id
-                       WHERE pp.colaborador_id = u.id
-                         AND pp.status = 0
-                         AND ma.gera_desconto = 1 -- 'true' trocado por 1
-                         AND pp.data BETWEEN %s AND %s
+                        FROM presenca_presenca pp
+                        JOIN presenca_motivoausencia ma ON pp.motivo_id = ma.id
+                        WHERE pp.colaborador_id = u.id
+                          AND pp.status = 0
+                          AND ma.gera_desconto = true -- 1 trocado por true
+                          AND pp.data BETWEEN %s AND %s
                     ) as dias_falta_com_desconto
                 FROM usuarios_usuario u
-                WHERE u.is_active = 1 -- 'true' trocado por 1
+                WHERE u.is_active = true -- 1 trocado por true
             """
             with connection.cursor() as cursor:
                 cursor.execute(query, [data_inicio, data_fim])
@@ -214,6 +214,6 @@ class RelatorioFinalView(APIView):
             })
         
         except OperationalError as e:
-            return Response({"msg": f"Erro no banco de dados: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"msg": f"Ocorreu um erro no banco de dados: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             return Response({"msg": f"Ocorreu um erro: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
