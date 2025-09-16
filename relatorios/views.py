@@ -2,33 +2,38 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, permissions
-from django.db import connection, transaction
+from django.db import connection
 from django.db.utils import OperationalError
-from datetime import datetime
+from datetime import datetime, timedelta
+from django.http import HttpResponse
+import pandas as pd
+from io import BytesIO
+import logging
+
+# Configuração do logger para depuração
+logger = logging.getLogger(__name__)
 
 def get_dias_uteis_no_periodo(data_inicio, data_fim):
     """
-    Função auxiliar para calcular dias úteis, agora compatível com MySQL.
+    Função auxiliar para calcular dias úteis usando Python para maior compatibilidade.
     """
-    # --- CORREÇÃO APLICADA: Sintaxe SQL alterada para MySQL ---
-    query = """
-        WITH RECURSIVE DateRange(data) AS (
-          SELECT %s AS data
-          UNION ALL
-          SELECT DATE_ADD(data, INTERVAL 1 DAY)
-          FROM DateRange
-          WHERE data < %s
-        )
-        SELECT COUNT(*)
-        FROM DateRange
-        WHERE
-          DAYOFWEEK(data) NOT IN (1, 7) AND -- 1 é Domingo, 7 é Sábado no MySQL
-          data NOT IN (SELECT data FROM presenca_dianaoutil)
-    """
+    # Busca os feriados no banco de dados de uma só vez
     with connection.cursor() as cursor:
-        cursor.execute(query, [data_inicio.isoformat(), data_fim.isoformat()])
-        result = cursor.fetchone()
-    return result[0] if result else 0
+        cursor.execute(
+            "SELECT data FROM presenca_dianaoutil WHERE data BETWEEN %s AND %s",
+            [data_inicio, data_fim]
+        )
+        feriados = {row[0] for row in cursor.fetchall()}
+
+    dias_uteis = 0
+    current_date = data_inicio
+    while current_date <= data_fim:
+        # weekday() em Python: Segunda-feira é 0 e Domingo é 6
+        if current_date.weekday() < 5:  # Dias de 0 a 4 são dias de semana
+            if current_date not in feriados:
+                dias_uteis += 1
+        current_date += timedelta(days=1)
+    return dias_uteis
 
 def validar_datas(request):
     """
@@ -52,7 +57,6 @@ def validar_datas(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-# --- VIEW PARA O RELATÓRIO DE PREVISÃO ---
 class RelatorioPrevisaoView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -64,14 +68,13 @@ class RelatorioPrevisaoView(APIView):
         try:
             dias_uteis = get_dias_uteis_no_periodo(data_inicio, data_fim)
 
-            # --- CORREÇÃO APLICADA: Sintaxe SQL alterada para MySQL ---
             query = """
                 SELECT
-                    CONCAT(u.first_name, ' ', u.last_name) as nome_completo, -- || trocado por CONCAT
+                    CONCAT(u.first_name, ' ', u.last_name) as nome_completo,
                     u.valor_almoco,
                     u.valor_passagem
                 FROM usuarios_usuario u
-                WHERE u.is_active = true -- 1 trocado por true
+                WHERE u.is_active = true
             """
             with connection.cursor() as cursor:
                 cursor.execute(query)
@@ -95,12 +98,10 @@ class RelatorioPrevisaoView(APIView):
                 "dados": dados_relatorio
             })
 
-        except OperationalError as e:
-            return Response({"msg": f"Erro no banco de dados: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
+            logger.exception("Erro ao gerar relatório de previsão")
             return Response({"msg": f"Ocorreu um erro: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-# --- VIEW PARA O RELATÓRIO DE DESCONTOS ---
 class RelatorioDescontosView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -110,10 +111,9 @@ class RelatorioDescontosView(APIView):
             return error_response
         
         try:
-            # --- CORREÇÃO APLICADA: Sintaxe SQL alterada para MySQL ---
             query = """
                 SELECT
-                    CONCAT(u.first_name, ' ', u.last_name) as nome_completo, -- || trocado por CONCAT
+                    CONCAT(u.first_name, ' ', u.last_name) as nome_completo,
                     pp.data,
                     ma.motivo,
                     (u.valor_almoco + u.valor_passagem) as valor_desconto
@@ -121,8 +121,8 @@ class RelatorioDescontosView(APIView):
                 JOIN usuarios_usuario u ON pp.colaborador_id = u.id
                 LEFT JOIN presenca_motivoausencia ma ON pp.motivo_id = ma.id
                 WHERE pp.status = 0
-                  AND ma.gera_desconto = true -- 1 trocado por true
-                  AND pp.data BETWEEN %s AND %s
+                    AND ma.gera_desconto = true
+                    AND pp.data BETWEEN %s AND %s
                 ORDER BY u.first_name, pp.data
             """
             with connection.cursor() as cursor:
@@ -144,12 +144,10 @@ class RelatorioDescontosView(APIView):
                 "dados": dados_relatorio
             })
         
-        except OperationalError as e:
-            return Response({"msg": f"Erro no banco de dados: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
+            logger.exception("Erro ao gerar relatório de descontos")
             return Response({"msg": f"Ocorreu um erro: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-# --- VIEW PARA O RELATÓRIO FINAL ---
 class RelatorioFinalView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -161,36 +159,33 @@ class RelatorioFinalView(APIView):
         try:
             dias_uteis = get_dias_uteis_no_periodo(data_inicio, data_fim)
 
-            # --- CORREÇÃO APLICADA: Sintaxe SQL alterada para MySQL ---
-            query = """
-                SELECT
-                    u.id,
-                    CONCAT(u.first_name, ' ', u.last_name) as nome_completo, -- || trocado por CONCAT
-                    u.valor_almoco,
-                    u.valor_passagem,
-                    (SELECT COUNT(*)
-                        FROM presenca_presenca pp
-                        JOIN presenca_motivoausencia ma ON pp.motivo_id = ma.id
-                        WHERE pp.colaborador_id = u.id
-                          AND pp.status = 0
-                          AND ma.gera_desconto = true -- 1 trocado por true
-                          AND pp.data BETWEEN %s AND %s
-                    ) as dias_falta_com_desconto
-                FROM usuarios_usuario u
-                WHERE u.is_active = true -- 1 trocado por true
-            """
+            # Otimização: Buscar usuários e faltas em consultas separadas
             with connection.cursor() as cursor:
-                cursor.execute(query, [data_inicio, data_fim])
-                usuarios = cursor.fetchall()
+                cursor.execute("""
+                    SELECT id, CONCAT(first_name, ' ', last_name), valor_almoco, valor_passagem
+                    FROM usuarios_usuario WHERE is_active = true
+                """)
+                usuarios_list = cursor.fetchall()
+
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT colaborador_id, COUNT(*)
+                    FROM presenca_presenca pp
+                    JOIN presenca_motivoausencia ma ON pp.motivo_id = ma.id
+                    WHERE pp.status = 0
+                      AND ma.gera_desconto = true
+                      AND pp.data BETWEEN %s AND %s
+                    GROUP BY colaborador_id
+                """, [data_inicio, data_fim])
+                faltas = dict(cursor.fetchall())
 
             dados_relatorio = []
-            for user in usuarios:
-                user_id, nome_completo, valor_almoco, valor_passagem, dias_falta_com_desconto = user
+            for user_id, nome_completo, valor_almoco, valor_passagem in usuarios_list:
+                dias_falta_com_desconto = faltas.get(user_id, 0)
                 
                 valor_almoco = valor_almoco or 0
                 valor_passagem = valor_passagem or 0
-                dias_falta_com_desconto = dias_falta_com_desconto or 0
-
+                
                 dias_trabalhados = dias_uteis - dias_falta_com_desconto
                 auxilio_diario = valor_almoco + valor_passagem
                 
@@ -213,7 +208,48 @@ class RelatorioFinalView(APIView):
                 "dados": dados_relatorio
             })
         
-        except OperationalError as e:
-            return Response({"msg": f"Ocorreu um erro no banco de dados: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
+            logger.exception("Erro ao gerar relatório final")
             return Response({"msg": f"Ocorreu um erro: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class ExportarRelatorioFinalView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        dados_relatorio = request.data.get('dados')
+        periodo = request.data.get('periodo')
+
+        if not dados_relatorio:
+            return Response({"msg": "Nenhum dado fornecido para exportação."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            df = pd.DataFrame(dados_relatorio)
+            
+            df.rename(columns={
+                'nome_completo': 'Colaborador',
+                'dias_uteis_periodo': 'Dias Úteis no Período',
+                'dias_trabalhados': 'Dias Trabalhados',
+                'dias_falta_com_desconto': 'Faltas com Desconto',
+                'total_a_receber': 'Total a Receber (R$)',
+                'total_a_descontar': 'Total a Descontar (R$)',
+                'valor_final': 'Valor Final (R$)'
+            }, inplace=True)
+
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                df.to_excel(writer, index=False, sheet_name='Relatorio Final')
+            
+            output.seek(0)
+
+            filename = f"Relatorio_Final_{periodo.get('inicio', '')}_a_{periodo.get('fim', '')}.xlsx"
+            response = HttpResponse(
+                output,
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+
+            return response
+
+        except Exception as e:
+            logger.exception("Erro ao gerar arquivo Excel")
+            return Response({"msg": f"Ocorreu um erro ao gerar o arquivo Excel: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

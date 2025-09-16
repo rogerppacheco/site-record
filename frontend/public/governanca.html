@@ -12,7 +12,6 @@
         .content-section { display: none; }
         .content-section.active { display: block; }
         .btn .bi { margin-right: 5px; }
-        /* A classe .form-grid foi removida em favor do grid do Bootstrap */
     </style>
 </head>
 <body data-bs-theme="dark">
@@ -465,6 +464,7 @@
         </div>
     </div>
 </div>
+
 <div class="modal fade" id="excluirPerfilModal" tabindex="-1" aria-labelledby="excluirPerfilModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -484,6 +484,7 @@
         </div>
     </div>
 </div>
+
 <div class="modal fade" id="modal-edicao-motivo" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -511,6 +512,7 @@
         </div>
     </div>
 </div>
+
 <div class="modal fade" id="modal-permissoes" tabindex="-1">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
@@ -536,6 +538,7 @@
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
 <script src="{% static 'js/auth.js' %}"></script>
 <script>
 
@@ -640,7 +643,7 @@ function openTab(evt, tabName) {
     evt.currentTarget.classList.add("active");
 }
 
-// --- LÓGICA DE GESTÃO DE USUÁRIOS (INTACTA) ---
+// --- LÓGICA DE GESTÃO DE USUÁRIOS ---
 const userForm = document.getElementById('user-form');
 const formTitle = document.getElementById('form-title');
 const userIdInput = document.getElementById('user_id');
@@ -941,10 +944,10 @@ async function carregarMotivos() {
             const li = document.createElement('li');
             li.className = 'list-group-item d-flex justify-content-between align-items-center';
             li.innerHTML = `<span>${motivo.motivo} ${statusDesconto}</span>
-                            <div class="generic-list-actions">
-                                <button class="btn btn-warning btn-sm" onclick='editarMotivo(${JSON.stringify(motivo)})'><i class="bi bi-pencil"></i></button>
-                                <button class="btn btn-danger btn-sm" onclick="excluirMotivo(${motivo.id})"><i class="bi bi-trash"></i></button>
-                            </div>`;
+                                <div class="generic-list-actions">
+                                    <button class="btn btn-warning btn-sm" onclick='editarMotivo(${JSON.stringify(motivo)})'><i class="bi bi-pencil"></i></button>
+                                    <button class="btn btn-danger btn-sm" onclick="excluirMotivo(${motivo.id})"><i class="bi bi-trash"></i></button>
+                                </div>`;
             listaMotivosUl.appendChild(li);
         });
     } catch (error) { console.error('Erro ao carregar motivos:', error); }
@@ -1050,7 +1053,7 @@ async function excluirFeriado(id) {
     }
 }
 
-// --- LÓGICA DE RELATÓRIOS ---
+// --- LÓGICA DE RELATÓRIOS (COM EXPORTAÇÃO) ---
 async function gerarRelatorio(tipo) {
     const dataInicio = document.getElementById('data-inicio-relatorio').value;
     const dataFim = document.getElementById('data-fim-relatorio').value;
@@ -1086,7 +1089,9 @@ function renderizarTabelaRelatorio(tipo, relatorio) {
         return;
     }
 
-    html += '<div class="table-responsive"><table class="table table-bordered table-sm">';
+    html += `<button id="btn-exportar-csv" class="btn btn-secondary mt-2 mb-3"><i class="bi bi-file-earmark-spreadsheet"></i> Exportar para CSV</button>`;
+    html += '<div class="table-responsive"><table id="tabela-relatorio-dados" class="table table-bordered table-sm">';
+    
     switch (tipo) {
         case 'previsao':
             html += `<thead class="table-light"><tr><th>Vendedor</th><th>Auxílio Diário</th><th>Previsão para o Período</th></tr></thead><tbody>`;
@@ -1110,7 +1115,44 @@ function renderizarTabelaRelatorio(tipo, relatorio) {
     }
     html += `</tbody></table></div>`;
     container.innerHTML = html;
+
+    document.getElementById('btn-exportar-csv').addEventListener('click', () => {
+        exportarTabelaParaCSV('tabela-relatorio-dados', `relatorio_${tipo}_${relatorio.periodo.inicio}_a_${relatorio.periodo.fim}.csv`);
+    });
 }
+
+function exportarTabelaParaCSV(idTabela, nomeArquivo) {
+    const tabela = document.getElementById(idTabela);
+    if (!tabela) {
+        console.error('Tabela não encontrada para exportação!');
+        return;
+    }
+    let csv = [];
+    const headers = [];
+    tabela.querySelectorAll('thead th').forEach(header => {
+        headers.push(`"${header.innerText.replace(/"/g, '""')}"`);
+    });
+    csv.push(headers.join(','));
+
+    tabela.querySelectorAll('tbody tr').forEach(row => {
+        const linha = [];
+        row.querySelectorAll('td').forEach(cell => {
+            let cellText = cell.innerText.replace(/\s+/g, ' ').trim();
+            cellText = cellText.replace(/"/g, '""');
+            linha.push(`"${cellText}"`);
+        });
+        csv.push(linha.join(','));
+    });
+
+    const csvFile = new Blob(["\uFEFF" + csv.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const linkDownload = document.createElement('a');
+    linkDownload.href = window.URL.createObjectURL(csvFile);
+    linkDownload.download = nomeArquivo;
+    document.body.appendChild(linkDownload);
+    linkDownload.click();
+    document.body.removeChild(linkDownload);
+}
+
 
 // --- LÓGICA DE PERMISSÕES ---
 const modalPermissoesEl = document.getElementById('modal-permissoes');
@@ -1123,7 +1165,7 @@ let perfilIdAtual = null;
 async function abrirModalPermissoes(perfilId, perfilNome) {
     perfilIdAtual = perfilId;
     modalPermissoesTitulo.textContent = `Permissões do Perfil: ${perfilNome}`;
-    permissoesContainer.innerHTML = '<div class="spinner-border" role="status"><span class="visually-hidden">Carregando...</span></div>';
+    permissoesContainer.innerHTML = '<div class="d-flex justify-content-center"><div class="spinner-border" role="status"><span class="visually-hidden">Carregando...</span></div></div>';
     modalPermissoes.show();
 
     try {
@@ -1132,16 +1174,16 @@ async function abrirModalPermissoes(perfilId, perfilNome) {
         const permissoesAtivas = new Set(permissoesSalvas);
 
         let tabelaHtml = `<table class="table table-bordered table-sm" id="permissoes-table">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Recurso</th>
-                                    <th class="text-center">Visualizar</th>
-                                    <th class="text-center">Adicionar</th>
-                                    <th class="text-center">Modificar</th>
-                                    <th class="text-center">Excluir</th>
-                                </tr>
-                            </thead>
-                            <tbody>`;
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Recurso</th>
+                                        <th class="text-center">Visualizar</th>
+                                        <th class="text-center">Adicionar</th>
+                                        <th class="text-center">Modificar</th>
+                                        <th class="text-center">Excluir</th>
+                                    </tr>
+                                </thead>
+                                <tbody>`;
         recursosDisponiveis.forEach(recurso => {
             tabelaHtml += `<tr><td>${recurso.replace(/_/g, ' ')}</td>`;
             ['view', 'add', 'change', 'delete'].forEach(acao => {
@@ -1342,10 +1384,10 @@ async function carregarFormasPagamento() {
             const li = document.createElement('li');
             li.className = 'list-group-item d-flex justify-content-between align-items-center';
             li.innerHTML = `<span>${forma.nome}</span>
-                            <div class="generic-list-actions">
-                                <button class="btn btn-warning btn-sm" onclick="editarFormaPagamento(${forma.id}, '${forma.nome.replace(/'/g, "\\'")}')"><i class="bi bi-pencil"></i></button>
-                                <button class="btn btn-danger btn-sm" onclick="excluirFormaPagamento(${forma.id})"><i class="bi bi-trash"></i></button>
-                            </div>`;
+                                <div class="generic-list-actions">
+                                    <button class="btn btn-warning btn-sm" onclick="editarFormaPagamento(${forma.id}, '${forma.nome.replace(/'/g, "\\'")}')"><i class="bi bi-pencil"></i></button>
+                                    <button class="btn btn-danger btn-sm" onclick="excluirFormaPagamento(${forma.id})"><i class="bi bi-trash"></i></button>
+                                </div>`;
             listaFormasPagamentoUl.appendChild(li);
         });
     } catch (error) { console.error('Erro ao carregar formas de pagamento:', error); }
