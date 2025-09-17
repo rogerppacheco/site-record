@@ -1,6 +1,10 @@
 # crm_app/views.py
 
-from django.db.models import Count, Q, Case, When
+# NOVAS IMPORTAÇÕES ADICIONADAS NO TOPO DO ARQUIVO
+import logging
+# --------------------------------------------------
+
+from django.db.models import Count, Q
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from rest_framework import generics, viewsets, status, permissions
@@ -9,16 +13,14 @@ from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 import pandas as pd
 import numpy as np
-from datetime import datetime, date, timedelta
+from datetime import datetime, timedelta
 from django.utils.timezone import now
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from django.contrib.auth import authenticate
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.utils.decorators import method_decorator
-from django.views.generic import TemplateView
-from django.http import HttpResponseRedirect, JsonResponse
-from rest_framework.exceptions import PermissionDenied
+from django.http import JsonResponse
 from collections import defaultdict
 from operator import itemgetter
 
@@ -38,6 +40,9 @@ from .serializers import (
     CicloPagamentoSerializer,
     VendaDetailSerializer
 )
+
+# NOVO LOGGER ADICIONADO AQUI
+logger = logging.getLogger(__name__)
 
 class OperadoraListCreateView(generics.ListCreateAPIView):
     queryset = Operadora.objects.filter(ativo=True)
@@ -119,7 +124,9 @@ class RegraComissaoDetailView(generics.RetrieveUpdateDestroyAPIView):
 class VendaViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated, CheckAPIPermission]
     resource_name = 'vendas'
-    queryset = Venda.objects.all().order_by('-data_criacao')
+    
+    # <<< ALTERAÇÃO 1: QUERYSET PRINCIPAL AGORA FILTRA APENAS VENDAS ATIVAS >>>
+    queryset = Venda.objects.filter(ativo=True).order_by('-data_criacao')
 
     def get_serializer_context(self):
         context = super(VendaViewSet, self).get_serializer_context()
@@ -136,7 +143,8 @@ class VendaViewSet(viewsets.ModelViewSet):
         return VendaSerializer
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        # Utiliza o queryset da classe que já está filtrado por 'ativo=True'
+        queryset = self.queryset
         user = self.request.user
         perfil_nome = user.perfil.nome if hasattr(user, 'perfil') and user.perfil else None
 
@@ -223,10 +231,35 @@ class VendaViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         serializer.save(request=self.request)
 
+    # <<< ALTERAÇÃO 2: MÉTODO DESTROY AGORA FAZ A EXCLUSÃO LÓGICA (SOFT DELETE) >>>
     def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()
-        self.perform_destroy(instance)
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        try:
+            instance = self.get_object()
+            
+            # Marca a venda como inativa em vez de apagar do banco de dados
+            instance.ativo = False
+            instance.save()
+
+            # Cria um registro no histórico para auditar quem excluiu a venda
+            HistoricoAlteracaoVenda.objects.create(
+                venda=instance,
+                usuario=request.user,
+                alteracoes={
+                    "acao": "exclusao_logica",
+                    "detalhe": f"Venda marcada como inativa por {request.user.username}."
+                }
+            )
+            
+            # Retorna uma resposta de sucesso
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        except Exception as e:
+            # Captura qualquer erro inesperado e o registra
+            logger.error(f"Erro inesperado ao realizar soft delete da venda {kwargs.get('pk')}: {e}", exc_info=True)
+            return Response(
+                {"detail": f"Ocorreu um erro inesperado ao tentar excluir a venda: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 class VendasStatusCountView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -247,19 +280,20 @@ class VendasStatusCountView(APIView):
             return (order_priority.get(nome, 99), -item['count'])
 
         sorted_counts = sorted(filtered_counts, key=sort_key)
-
         resultado_final = {item['status_esteira__nome']: item['count'] for item in sorted_counts}
-
         return Response(resultado_final)
 
 
 class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
+    # <<< ALTERAÇÃO 3: FILTRA CLIENTES APENAS DE VENDAS ATIVAS >>>
+    queryset = Cliente.objects.filter(vendas__ativo=True).distinct()
     serializer_class = ClienteSerializer
     permission_classes = [CheckAPIPermission]
     resource_name = 'clientes'
 
     def get_queryset(self):
-        queryset = Cliente.objects.all().annotate(vendas_count=Count('vendas'))
+        # Garante que a contagem de vendas também considere apenas as ativas
+        queryset = super().get_queryset().annotate(vendas_count=Count('vendas', filter=Q(vendas__ativo=True)))
         search_query = self.request.query_params.get('search', None)
         if search_query:
             queryset = queryset.filter(
@@ -321,46 +355,60 @@ class ImportacaoOsabView(APIView):
                 return Response({'error': 'Formato de arquivo inválido.'}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             return Response({'error': f'Erro ao ler o arquivo: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+        
         df.columns = [str(col).strip().upper() for col in df.columns]
         if 'DOCUMENTO' not in df.columns or 'SITUACAO' not in df.columns:
             return Response({"error": "O arquivo precisa conter as colunas 'DOCUMENTO' e 'SITUACAO'."}, status=status.HTTP_400_BAD_REQUEST)
+        
         df = df.replace({np.nan: None, pd.NaT: None})
         STATUS_MAP = {
             'CONCLUÍDO': 'INSTALADA', 'CANCELADO': 'CANCELADA', 'CANCELADO - SEM APROVISIONAMENTO': 'CANCELADA', 'PENDÊNCIA CLIENTE': 'PENDENCIADA', 'PENDÊNCIA TÉCNICA': 'PENDENCIADA', 'EM APROVISIONAMENTO': 'EM ANDAMENTO', 'AGUARDANDO PAGAMENTO': 'AGUARDANDO PAGAMENTO', 'REPROVADO ANALISE DE FRAUDE': 'REPROVADO CARTÃO DE CRÉDITO', 'DRAFT': 'DRAFT', 'DRAFT - PRAZO CC EXPIRADO': 'DRAFT',
         }
         status_esteira_objects = StatusCRM.objects.filter(tipo='Esteira')
         status_esteira_map = {status.nome.upper(): status for status in status_esteira_objects}
-        vendas_com_os = Venda.objects.filter(ordem_servico__isnull=False).exclude(ordem_servico__exact='')
+        
+        # Filtra apenas vendas ativas
+        vendas_com_os = Venda.objects.filter(ativo=True, ordem_servico__isnull=False).exclude(ordem_servico__exact='')
         vendas_map = {self._clean_key(v.ordem_servico): v for v in vendas_com_os}
+        
         report = {"status": "sucesso", "total_registros": len(df), "criados": 0, "atualizados": 0, "vendas_encontradas": 0, "ja_corretos": 0, "status_nao_mapeado": 0, "erros": []}
         vendas_para_atualizar = []
+        
         for index, row in df.iterrows():
-            documento_bruto, documento_limpo, situacao_osab = row.get('DOCUMENTO'), self._clean_key(row.get('DOCUMENTO')), row.get('SITUACAO')
+            documento_limpo = self._clean_key(row.get('DOCUMENTO'))
+            situacao_osab = row.get('SITUACAO')
             if not documento_limpo: continue
+
             venda = vendas_map.get(documento_limpo)
             if not venda:
-                report["erros"].append(f"Linha {index + 2}: Documento {documento_limpo} não encontrado no sistema.")
+                report["erros"].append(f"Linha {index + 2}: Documento {documento_limpo} não encontrado no sistema (ou a venda está inativa).")
                 continue
+            
             report["vendas_encontradas"] += 1
             if not situacao_osab: continue
+            
             target_status_name = STATUS_MAP.get(str(situacao_osab).upper())
             if not target_status_name:
                 report["status_nao_mapeado"] += 1
                 report["erros"].append(f"Linha {index + 2}: Status '{situacao_osab}' do doc {documento_limpo} não mapeado.")
                 continue
+
             target_status_obj = status_esteira_map.get(target_status_name.upper())
             if not target_status_obj:
                 report["status_nao_mapeado"] += 1
                 report["erros"].append(f"Linha {index + 2}: Status mapeado '{target_status_name}' do doc {documento_limpo} não existe no DB.")
                 continue
+
             if venda.status_esteira and venda.status_esteira.id == target_status_obj.id:
                 report["ja_corretos"] += 1
             else:
                 venda.status_esteira = target_status_obj
                 vendas_para_atualizar.append(venda)
+        
         if vendas_para_atualizar:
             report["atualizados"] = len(vendas_para_atualizar)
             Venda.objects.bulk_update(vendas_para_atualizar, ['status_esteira'])
+        
         return Response(report, status=status.HTTP_200_OK)
 
 class ImportacaoOsabDetailView(generics.RetrieveUpdateAPIView):
@@ -487,7 +535,9 @@ class PerformanceVendasView(APIView):
         start_of_week = hoje - timedelta(days=hoje.weekday())
         start_of_month = hoje.replace(day=1)
         
+        # Filtra apenas vendas ativas
         base_filters = (
+            Q(ativo=True) &
             Q(status_tratamento__isnull=False) & 
             (Q(status_esteira__isnull=True) | ~Q(status_esteira__nome__iexact='CANCELADA'))
         )
@@ -530,7 +580,6 @@ class PerformanceVendasView(APIView):
         for user in users_to_process:
             supervisor_id = user.supervisor.id if user.supervisor else 'none'
             if supervisor_id != 'none' and user.supervisor:
-                 # --- MUDANÇA #1 AQUI ---
                  teams[supervisor_id]['supervisor_name'] = user.supervisor.username
 
             v_data = vendas_por_vendedor.get(user.id, {})
@@ -546,7 +595,6 @@ class PerformanceVendasView(APIView):
             aproveitamento_str = f"{(instalados_mes / total_mes * 100):.1f}%" if total_mes > 0 else "0.0%"
 
             teams[supervisor_id]['members'].append({
-                # --- MUDANÇA #2 AQUI ---
                 'name': user.username,
                 'daily': v_data.get('total_dia', 0),
                 'weekly_breakdown': {

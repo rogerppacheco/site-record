@@ -1305,18 +1305,21 @@
             }
         }
 
-        async function excluirVenda(vendaId) {
-            if (confirm(`Tem certeza que deseja excluir a venda #${vendaId}? Esta ação não pode ser desfeita.`)) {
-                try {
-                    await apiClient.delete(`/api/crm/vendas/${vendaId}/`);
-                    alert('Venda excluída com sucesso!');
-                    atualizarTudoVisaoGeral();
-                } catch (error) {
-                    const errorData = error.response?.data;
-                    alert(`Erro ao excluir a venda. (Detalhe: ${errorData?.detail || 'Tente novamente.'})`);
-                }
-            }
+        // Em crm_vendas.html, substitua a função excluirVenda por esta:
+async function excluirVenda(vendaId) {
+    if (confirm(`Tem certeza que deseja excluir a venda #${vendaId}? Esta ação não pode ser desfeita.`)) {
+        try {
+            await apiClient.delete(`/api/crm/vendas/${vendaId}/`);
+            alert('Venda excluída com sucesso!');
+            atualizarTudoVisaoGeral(); // Recarrega os dados da tabela
+        } catch (error) {
+            console.error("Falha detalhada ao excluir venda:", error); // Linha importante para diagnóstico
+            const detail = error?.response?.data?.detail;
+            const message = detail || 'Não foi possível conectar ao servidor. Tente novamente.';
+            alert(`Erro ao excluir a venda. (Detalhe: ${message})`);
         }
+    }
+}
 
         async function buscarCepEdit(e) {
             const cep = e.target.value.replace(/\D/g, '');

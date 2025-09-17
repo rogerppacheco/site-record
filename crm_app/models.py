@@ -1,3 +1,5 @@
+# site-record/crm_app/models.py
+
 from django.db import models
 from usuarios.models import Usuario
 from django.conf import settings
@@ -100,10 +102,13 @@ class Cliente(models.Model):
         verbose_name_plural = "Clientes"
 
 class Venda(models.Model):
+    # <<< NOVO CAMPO ADICIONADO AQUI >>>
+    ativo = models.BooleanField(default=True, verbose_name="Venda Ativa")
+    
     vendedor = models.ForeignKey(
-        Usuario, 
-        on_delete=models.SET_NULL, # CORREÇÃO APLICADA AQUI
-        null=True,                # Adicionado para permitir nulos
+        Usuario,
+        on_delete=models.SET_NULL,
+        null=True,
         related_name='vendas'
     )
     cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name='vendas')
@@ -126,7 +131,6 @@ class Venda(models.Model):
         related_name='vendas_esteira',
         limit_choices_to={'tipo': 'Esteira'}
     )
-
     status_comissionamento = models.ForeignKey(
         StatusCRM,
         on_delete=models.SET_NULL,
@@ -137,7 +141,6 @@ class Venda(models.Model):
     )
 
     data_criacao = models.DateTimeField(auto_now_add=True)
-
     forma_entrada = models.CharField(max_length=10, choices=[('APP', 'APP'), ('SEM_APP', 'SEM_APP')], default='APP')
     cpf_representante_legal = models.CharField(max_length=14, blank=True, null=True)
     telefone1 = models.CharField(max_length=20, blank=True, null=True)
@@ -149,7 +152,6 @@ class Venda(models.Model):
     bairro = models.CharField(max_length=100, blank=True, null=True)
     cidade = models.CharField(max_length=100, blank=True, null=True)
     estado = models.CharField(max_length=2, blank=True, null=True)
-
     ponto_referencia = models.CharField(max_length=255, blank=True, null=True, verbose_name="Ponto de Referência")
     observacoes = models.TextField(blank=True, null=True, verbose_name="Observações")
 
@@ -321,7 +323,9 @@ class CicloPagamento(models.Model):
         return f"{self.contrato} - {self.ciclo}"
 
 class HistoricoAlteracaoVenda(models.Model):
-    venda = models.ForeignKey(Venda, on_delete=models.CASCADE, related_name='historico_alteracoes')
+    # <<< ALTERAÇÃO APLICADA AQUI para preservar o histórico >>>
+    venda = models.ForeignKey(Venda, on_delete=models.SET_NULL, null=True, related_name='historico_alteracoes')
+    
     usuario = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -330,7 +334,9 @@ class HistoricoAlteracaoVenda(models.Model):
         related_name='alteracoes_vendas'
     )
     data_alteracao = models.DateTimeField(auto_now_add=True)
-    alteracoes = models.JSONField(default=dict)
+    
+    # <<< Help text adicionado para clareza >>>
+    alteracoes = models.JSONField(default=dict, help_text="Registra alterações ou a exclusão da venda")
 
     class Meta:
         db_table = 'crm_historico_alteracao_venda'
