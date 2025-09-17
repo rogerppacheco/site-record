@@ -25,8 +25,6 @@ function resetInactivityTimer() {
 }
 
 // Adiciona "escutadores" de eventos para detectar atividade do usuário
-// Qualquer um desses eventos reiniciará o temporizador.
-// Eles são adicionados ao 'document' para funcionar em toda a aplicação.
 document.addEventListener('load', resetInactivityTimer, true);
 document.addEventListener('mousemove', resetInactivityTimer, true);
 document.addEventListener('mousedown', resetInactivityTimer, true); // Captura cliques
@@ -39,16 +37,13 @@ document.addEventListener('scroll', resetInactivityTimer, true); // Captura o sc
 
 // --- SEU CÓDIGO ORIGINAL INTEGRADO ABAIXO ---
 
-// Adiciona o listener que espera a página carregar completamente antes de anexar o evento ao formulário.
 document.addEventListener('DOMContentLoaded', function() {
-    // Esta parte do código só será executada se houver um formulário com id 'loginForm' na página.
     const loginForm = document.getElementById('loginForm');
     if (loginForm) {
         loginForm.addEventListener('submit', async function(e) {
             e.preventDefault();
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
-            // Chama a sua função de login original
             await login(username, password);
         });
     }
@@ -76,7 +71,6 @@ async function login(username, password) {
         if (!response.ok) {
             const errorData = await response.json();
             console.error("Detalhes do erro do servidor:", errorData);
-            // Melhoria: Exibe um alerta mais claro para o usuário
             alert('Falha na autenticação: ' + (errorData.detail || 'Usuário ou senha inválidos.'));
             throw new Error('Falha na autenticação');
         }
@@ -84,7 +78,6 @@ async function login(username, password) {
         const data = await response.json();
         console.log("Dados recebidos (customizado):", data);
 
-        // Voltando a usar "data.token"
         if (data.token) {
             localStorage.setItem('accessToken', data.token);
             console.log("Token de acesso customizado armazenado com sucesso.");
@@ -99,7 +92,6 @@ async function login(username, password) {
                 console.error("Token não contém informações de perfil.");
             }
 
-            // Redireciona para a área interna após o login
             window.location.href = '/area-interna/';
             return true;
 
@@ -154,28 +146,21 @@ function jwt_decode(token) {
     }
 }
 
-/**
- * Cliente de API com métodos para GET, POST e PATCH
- *
- * @type {{patch: (function(*, *): Promise<({data: null}|{data: *} | undefined))}}
- */
+
 const apiClient = {
     get: async function(url) {
         const token = localStorage.getItem('accessToken');
         const response = await fetch(`${API_URL}${url}`, {
             method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            },
+            headers: { 'Authorization': `Bearer ${token}` },
             credentials: 'include'
         });
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        if (response.status === 204) return {
-            data: null
-        };
-        return {
-            data: await response.json()
-        };
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+        }
+        if (response.status === 204) return { data: null };
+        return { data: await response.json() };
     },
     post: async function(url, data) {
         const token = localStorage.getItem('accessToken');
@@ -188,13 +173,12 @@ const apiClient = {
             body: JSON.stringify(data),
             credentials: 'include'
         });
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        if (response.status === 204) return {
-            data: null
-        };
-        return {
-            data: await response.json()
-        };
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+        }
+        if (response.status === 204) return { data: null };
+        return { data: await response.json() };
     },
     patch: async function(url, data) {
         const token = localStorage.getItem('accessToken');
@@ -207,33 +191,46 @@ const apiClient = {
             body: JSON.stringify(data),
             credentials: 'include'
         });
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        if (response.status === 204) return {
-            data: null
-        };
-        return {
-            data: await response.json()
-        };
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+        }
+        if (response.status === 204) return { data: null };
+        return { data: await response.json() };
     },
-    // Novo método específico para upload de arquivos (multipart/form-data)
+    
+    // --- INÍCIO DA CORREÇÃO: ADICIONANDO O MÉTODO DELETE ---
+    delete: async function(url) {
+        const token = localStorage.getItem('accessToken');
+        const response = await fetch(`${API_URL}${url}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            },
+            credentials: 'include'
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            // Lança o erro com a mensagem de "detail" vinda do backend
+            throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+        }
+        // DELETE bem-sucedido não retorna conteúdo.
+        return { data: null }; 
+    },
+    // --- FIM DA CORREÇÃO ---
+
     postMultipart: async function(url, formData) {
         const token = localStorage.getItem('accessToken');
-
-        // Para uploads, NÃO definimos o 'Content-Type'.
-        // O navegador fará isso automaticamente e adicionará o 'boundary' necessário.
-        const headers = {
-            'Authorization': `Bearer ${token}`
-        };
+        const headers = { 'Authorization': `Bearer ${token}` };
 
         const response = await fetch(`${API_URL}${url}`, {
             method: 'POST',
             headers: headers,
-            body: formData, // O corpo é o objeto FormData diretamente
+            body: formData,
             credentials: 'include'
         });
 
         if (!response.ok) {
-            // Tenta ler o erro como JSON, se falhar, usa o status text
             let errorDetails = response.statusText;
             try {
                 const errorData = await response.json();
@@ -242,11 +239,7 @@ const apiClient = {
             throw new Error(`HTTP error! status: ${response.status} - ${errorDetails}`);
         }
 
-        if (response.status === 204) return {
-            data: null
-        };
-        return {
-            data: await response.json()
-        };
+        if (response.status === 204) return { data: null };
+        return { data: await response.json() };
     }
 };
