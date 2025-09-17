@@ -162,9 +162,12 @@
             const listaDiv = document.getElementById('lista-vendedores');
             listaDiv.innerHTML = '<p>Carregando dados...</p>';
 
+            // --- INÍCIO DA ALTERAÇÃO ---
+            // Adicionamos o parâmetro '&participa_controle_presenca=true' para filtrar os usuários
             const equipeEndpoint = (userProfile === 'Diretoria' || userProfile === 'Admin' || isSuperuser) && activeTab === 'todos-usuarios'
-                ? '/presenca/todos-usuarios/'
-                : '/presenca/minha-equipe/';
+                ? '/presenca/todos-usuarios/?participa_controle_presenca=true'
+                : '/presenca/minha-equipe/?participa_controle_presenca=true';
+            // --- FIM DA ALTERAÇÃO ---
 
             try {
                 const [motivos, equipe, presencasDoDia] = await Promise.all([

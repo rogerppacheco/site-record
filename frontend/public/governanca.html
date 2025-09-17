@@ -105,7 +105,16 @@
                             <div class="col-md-6 mb-3"><label for="desconto_instalacao_antecipada" class="form-label">Desconto Inst. Antecipada (R$)</label><input type="number" class="form-control" id="desconto_instalacao_antecipada" step="0.01"></div>
                             <div class="col-md-6 mb-3"><label for="adiantamento_cnpj" class="form-label">Adiantamento por Venda CNPJ (R$)</label><input type="number" class="form-control" id="adiantamento_cnpj" step="0.01"></div>
                             <div class="col-md-6 mb-3"><label for="desconto_inss_fixo" class="form-label">Desconto Fixo INSS (R$)</label><input type="number" class="form-control" id="desconto_inss_fixo" step="0.01"></div>
-                        </div>
+                            
+                            <div class="col-12 mt-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="participa_controle_presenca">
+                                    <label class="form-check-label" for="participa_controle_presenca">
+                                        Participa do Controle de Presença
+                                    </label>
+                                </div>
+                            </div>
+                            </div>
                         <button type="submit" class="btn btn-primary mt-3"><i class="bi bi-save"></i> Salvar</button>
                         <button type="button" class="btn btn-outline-light mt-3" onclick="resetForm()">Cancelar</button>
                     </form>
@@ -713,25 +722,28 @@ function iniciarEdicao(user) {
     resetForm();
     formTitle.textContent = 'Editando Usuário';
     userIdInput.value = user.id;
+    // ... (preenchimento de todos os outros campos do formulário)
     document.getElementById('nome_completo').value = user.nome_completo;
     document.getElementById('cpf').value = user.cpf || '';
     document.getElementById('email').value = user.email;
     document.getElementById('username').value = user.username;
-
     selectPerfil.value = user.perfil;
     selectSupervisor.value = user.supervisor || '';
-
     document.getElementById('valor_almoco').value = user.valor_almoco;
     document.getElementById('valor_passagem').value = user.valor_passagem;
     document.getElementById('chave_pix').value = user.chave_pix || '';
     document.getElementById('nome_da_conta').value = user.nome_da_conta || '';
-
     document.getElementById('meta_comissao').value = user.meta_comissao;
     document.getElementById('desconto_boleto').value = user.desconto_boleto;
     document.getElementById('desconto_inclusao_viabilidade').value = user.desconto_inclusao_viabilidade;
     document.getElementById('desconto_instalacao_antecipada').value = user.desconto_instalacao_antecipada;
     document.getElementById('adiantamento_cnpj').value = user.adiantamento_cnpj;
     document.getElementById('desconto_inss_fixo').value = user.desconto_inss_fixo;
+    document.getElementById('participa_controle_presenca').checked = user.participa_controle_presenca;
+
+    // --- LINHA ADICIONADA PARA PREENCHER O CHECKBOX ---
+    document.getElementById('participa_controle_presenca').checked = user.participa_controle_presenca;
+    // --- FIM DA ADIÇÃO ---
 
     document.getElementById('senha').placeholder = 'Deixe em branco para não alterar';
     document.getElementById('senha').required = false;
@@ -741,9 +753,11 @@ function iniciarEdicao(user) {
 userForm.addEventListener('submit', async function(e) {
     e.preventDefault();
     const id = userIdInput.value;
-    const isEditing = !!id;
+    const isEditing = !!id; // Verifica se é uma edição
     const url = isEditing ? `/usuarios/${id}/` : '/usuarios/';
     const method = isEditing ? 'PUT' : 'POST';
+
+    // ... (lógica para pegar nome, sobrenome, etc.)
     const nomeCompleto = document.getElementById('nome_completo').value.trim();
     const nomeParts = nomeCompleto.split(' ');
     const firstName = nomeParts.shift();
@@ -766,7 +780,9 @@ userForm.addEventListener('submit', async function(e) {
         desconto_inclusao_viabilidade: document.getElementById('desconto_inclusao_viabilidade').value,
         desconto_instalacao_antecipada: document.getElementById('desconto_instalacao_antecipada').value,
         adiantamento_cnpj: document.getElementById('adiantamento_cnpj').value,
-        desconto_inss_fixo: document.getElementById('desconto_inss_fixo').value
+        desconto_inss_fixo: document.getElementById('desconto_inss_fixo').value,
+        // --- LINHA ADICIONADA PARA ENVIAR O VALOR DO CHECKBOX ---
+        participa_controle_presenca: document.getElementById('participa_controle_presenca').checked
     };
 
     const senha = document.getElementById('senha').value;

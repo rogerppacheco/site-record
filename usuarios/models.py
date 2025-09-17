@@ -1,3 +1,5 @@
+# usuarios/models.py
+
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 
@@ -44,6 +46,14 @@ class Usuario(AbstractUser):
     desconto_instalacao_antecipada = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     adiantamento_cnpj = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     desconto_inss_fixo = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+
+    # --- CAMPO ADICIONADO PARA O CONTROLE DE PRESENÇA ---
+    participa_controle_presenca = models.BooleanField(
+        default=True,
+        verbose_name="Participa do Controle de Presença?",
+        help_text="Marque se este usuário deve aparecer na tela de controle de presença."
+    )
+    # --- FIM DA ADIÇÃO ---
 
     class Meta(AbstractUser.Meta):
         # O nome da tabela padrão do Django (usuarios_usuario) já corresponde ao desejado.

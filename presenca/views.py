@@ -49,7 +49,6 @@ class PresencaViewSet(viewsets.ModelViewSet):
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
-    # --- CORREÇÃO APLICADA AQUI ---
     def update(self, request, *args, **kwargs):
         """
         Lida com a ATUALIZAÇÃO de um registro de presença existente.
@@ -79,5 +78,8 @@ class MinhaEquipeListView(generics.ListAPIView):
 
 
 class TodosUsuariosListView(generics.ListAPIView):
-    queryset = Usuario.objects.filter(is_active=True).order_by('first_name')
+    # --- CORREÇÃO APLICADA AQUI ---
+    # Agora, a lista de usuários para o controle de presença irá retornar
+    # apenas os usuários ativos E que participam do controle de presença.
+    queryset = Usuario.objects.filter(is_active=True, participa_controle_presenca=True).order_by('first_name')
     serializer_class = UsuarioSerializer

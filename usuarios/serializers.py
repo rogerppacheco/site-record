@@ -1,3 +1,5 @@
+# usuarios/serializers.py
+
 from rest_framework import serializers
 from .models import Usuario, Perfil, PermissaoPerfil
 from django.contrib.auth import get_user_model
@@ -62,7 +64,8 @@ class UsuarioSerializer(serializers.ModelSerializer):
             'meta_comissao', 'desconto_boleto', 'desconto_inclusao_viabilidade',
             'desconto_instalacao_antecipada', 'adiantamento_cnpj', 'desconto_inss_fixo',
             'is_active', 'is_staff',
-            'canal'
+            'canal',
+            'participa_controle_presenca'  # --- CAMPO ADICIONADO AQUI ---
         ]
 
     def create(self, validated_data):
