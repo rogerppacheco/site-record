@@ -1,44 +1,28 @@
 // Em static/js/auth.js
 
-// URL base da API. Uma string vazia funciona para a mesma origem.
 const API_URL = '';
 
-// --- INÍCIO DA LÓGICA DE LOGOUT POR INATIVIDADE ---
+// --- LÓGICA DE LOGOUT POR INATIVIDADE ---
+let inactivityTimer;
 
-let inactivityTimer; // Variável para armazenar o temporizador
-
-/**
- * Função chamada quando o tempo de inatividade expira.
- */
 function logoutOnInactivity() {
-    // Exibe uma mensagem amigável antes de deslogar
     alert('Sua sessão expirou por inatividade. Por favor, faça o login novamente.');
-    // Chama a função de logout para limpar a sessão
     logout();
 }
 
-/**
- * Reinicia o temporizador de inatividade.
- */
 function resetInactivityTimer() {
-    // Limpa o temporizador anterior para evitar múltiplos timeouts
     clearTimeout(inactivityTimer);
-    // Define um novo temporizador de 15 minutos (15 * 60 * 1000 milissegundos)
     inactivityTimer = setTimeout(logoutOnInactivity, 15 * 60 * 1000);
 }
 
-// Adiciona "escutadores" de eventos para detectar atividade do usuário em toda a aplicação.
 document.addEventListener('load', resetInactivityTimer, true);
 document.addEventListener('mousemove', resetInactivityTimer, true);
-document.addEventListener('mousedown', resetInactivityTimer, true); // Captura cliques
-document.addEventListener('keypress', resetInactivityTimer, true); // Captura teclas pressionadas
-document.addEventListener('touchmove', resetInactivityTimer, true); // Para dispositivos móveis
-document.addEventListener('scroll', resetInactivityTimer, true); // Captura o scroll
+document.addEventListener('mousedown', resetInactivityTimer, true);
+document.addEventListener('keypress', resetInactivityTimer, true);
+document.addEventListener('touchmove', resetInactivityTimer, true);
+document.addEventListener('scroll', resetInactivityTimer, true);
 
-// --- FIM DA LÓGICA DE LOGOUT POR INATIVIDADE ---
-
-
-// --- LÓGICA DE LOGIN E AUTENTICAÇÃO ---
+// --- LÓGICA DE LOGIN E AUTENTICAÇÃO (CORRIGIDA) ---
 
 document.addEventListener('DOMContentLoaded', function() {
     const loginForm = document.getElementById('loginForm');
@@ -52,13 +36,19 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
+/**
+ * Função para realizar o login do usuário. (CORRIGIDA)
+ */
 async function login(username, password) {
+    console.log("Iniciando requisição de login...");
     try {
         const response = await fetch(`${API_URL}/api/auth/login/`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password }),
-            credentials: 'include'
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken') // Boa prática adicionar CSRF
+            },
+            body: JSON.stringify({ username, password })
         });
 
         if (!response.ok) {
@@ -68,16 +58,28 @@ async function login(username, password) {
         }
 
         const data = await response.json();
-        // Corrigido para usar o padrão SimpleJWT (access e refresh)
+        console.log("Dados recebidos do login:", data);
+
+        // <<< CORREÇÃO PRINCIPAL APLICADA AQUI >>>
+        // A API retorna 'access_token', não 'token'.
         if (data.access_token && data.refresh_token) {
             localStorage.setItem('accessToken', data.access_token);
             localStorage.setItem('refreshToken', data.refresh_token);
+            console.log("Tokens armazenados com sucesso.");
+
+            const decodedToken = jwt_decode(data.access_token);
+            if (decodedToken && decodedToken.perfil) {
+                localStorage.setItem('userProfile', decodedToken.perfil);
+            }
+
             window.location.href = '/area-interna/';
             return true;
         } else {
+            console.error("Resposta de sucesso, mas os tokens esperados ('access_token', 'refresh_token') não foram encontrados.");
             alert('Ocorreu um erro inesperado durante o login. Tente novamente.');
             return false;
         }
+
     } catch (error) {
         console.error('Erro geral durante o login:', error);
         return false;
@@ -86,13 +88,14 @@ async function login(username, password) {
 
 function logout() {
     localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken'); // Limpa também o refresh token
+    localStorage.removeItem('refreshToken');
     localStorage.removeItem('userProfile');
     window.location.href = '/';
 }
 
 function verificarAutenticacao() {
     const token = localStorage.getItem('accessToken');
+    // Não redireciona se já estiver na página de login
     if (!token && window.location.pathname !== '/') {
         alert('Você precisa estar logado para acessar esta página.');
         window.location.href = '/';
@@ -113,6 +116,20 @@ function jwt_decode(token) {
     }
 }
 
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
 
 /**
  * Cliente de API para realizar requisições autenticadas.
@@ -120,25 +137,18 @@ function jwt_decode(token) {
 const apiClient = {
     _handleResponse: async function(response) {
         if (!response.ok) {
-            // Tenta extrair uma mensagem de erro específica do corpo da resposta
             let errorDetail = `HTTP error! status: ${response.status}`;
             try {
                 const errorData = await response.json();
                 errorDetail = errorData.detail || JSON.stringify(errorData);
             } catch (e) {
-                // Se o corpo não for JSON, usa o texto do status
                 errorDetail = response.statusText;
             }
-            // Cria um objeto de erro que pode ser capturado pelo bloco catch
             const error = new Error(errorDetail);
-            error.response = response; // Anexa a resposta completa ao erro
+            error.response = response;
             throw error;
         }
-        // Se a resposta for 204 No Content, retorna um objeto com data nula
-        if (response.status === 204) {
-            return { data: null };
-        }
-        // Se for sucesso, retorna o JSON
+        if (response.status === 204) return { data: null };
         return { data: await response.json() };
     },
 
@@ -146,8 +156,7 @@ const apiClient = {
         const token = localStorage.getItem('accessToken');
         const response = await fetch(`${API_URL}${url}`, {
             method: 'GET',
-            headers: { 'Authorization': `Bearer ${token}` },
-            credentials: 'include'
+            headers: { 'Authorization': `Bearer ${token}` }
         });
         return this._handleResponse(response);
     },
@@ -158,10 +167,10 @@ const apiClient = {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
             },
-            body: JSON.stringify(data),
-            credentials: 'include'
+            body: JSON.stringify(data)
         });
         return this._handleResponse(response);
     },
@@ -172,23 +181,22 @@ const apiClient = {
             method: 'PATCH',
             headers: {
                 'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
             },
-            body: JSON.stringify(data),
-            credentials: 'include'
+            body: JSON.stringify(data)
         });
         return this._handleResponse(response);
     },
 
-    // <<< FUNÇÃO DELETE ADICIONADA AQUI >>>
     delete: async function(url) {
         const token = localStorage.getItem('accessToken');
         const response = await fetch(`${API_URL}${url}`, {
             method: 'DELETE',
             headers: {
-                'Authorization': `Bearer ${token}`
-            },
-            credentials: 'include'
+                'Authorization': `Bearer ${token}`,
+                'X-CSRFToken': getCookie('csrftoken')
+            }
         });
         return this._handleResponse(response);
     },
@@ -197,9 +205,11 @@ const apiClient = {
         const token = localStorage.getItem('accessToken');
         const response = await fetch(`${API_URL}${url}`, {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` },
-            body: formData,
-            credentials: 'include'
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: formData
         });
         return this._handleResponse(response);
     }
