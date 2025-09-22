@@ -7,37 +7,8 @@
     <title>Comissionamento de Vendas</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}">
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-    <style>
-        .status-select { min-width: 180px; }
-        .main-header { background-color: #fff; padding: 1rem 2rem; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); position: sticky; top: 0; z-index: 1020; }
-        .header-container { max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; }
-        .logo { max-height: 40px; }
-        .main-nav ul { list-style: none; display: flex; gap: 1.5rem; align-items: center; margin-bottom: 0; }
-        .main-nav a { text-decoration: none; color: #1a1a1a; font-weight: 500; }
-        .main-nav a:hover { color: #888; }
-        .submenu-nav.bg-dark .nav-link,
-        .submenu-nav.bg-dark .dropdown-menu .dropdown-item {
-            color: rgba(255, 255, 255, 0.75);
-        }
-        .submenu-nav.bg-dark .nav-link:hover,
-        .submenu-nav.bg-dark .dropdown-menu .dropdown-item:hover {
-            color: #fff;
-        }
-        .submenu-nav.bg-dark .nav-link.active {
-            color: #fff;
-            font-weight: bold;
-        }
-        .venda-details { font-size: 0.8rem; color: #6c757d; }
-        #detalhes-venda-body h6 { margin-top: 1rem; color: #0d6efd; }
-        .table > tbody > tr[style] {
-            color: #000 !important;
-        }
-        .table > tbody > tr[style] a,
-        .table > tbody > tr[style] .btn {
-            color: #000 !important;
-        }
-    </style>
 </head>
 <body>
     <header class="main-header">
@@ -45,11 +16,18 @@
             <a href="/">
                 <img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo">
             </a>
-            <nav class="main-nav">
+
+            <button class="menu-toggle" id="menu-toggle" aria-label="Abrir menu">
+                <div class="bar"></div>
+                <div class="bar"></div>
+                <div class="bar"></div>
+            </button>
+            
+            <nav class="main-nav" id="main-nav">
                 <ul>
                     <li><a href="/area-interna/">Área Interna</a></li>
                     <li><span class="navbar-text me-3" id="welcome-user"></span></li>
-                    <li><button class="btn btn-danger btn-sm" id="logoutButton">Sair</button></li>
+                    <li><button class="btn btn-danger btn-sm logout-button" id="logoutButton">Sair</button></li>
                 </ul>
             </nav>
         </div>
@@ -60,11 +38,8 @@
             <div class="collapse navbar-collapse">
                 <ul class="navbar-nav">
                     <li class="nav-item" id="nav-presenca"><a class="nav-link" href="/presenca/">Controle de Presença</a></li>
-                    
                     <li class="nav-item dropdown" id="nav-vendas">
-                        <a class="nav-link dropdown-toggle active" href="#" id="navbarVendas" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            Vendas
-                        </a>
+                        <a class="nav-link dropdown-toggle active" href="#" id="navbarVendas" role="button" data-bs-toggle="dropdown" aria-expanded="false">Vendas</a>
                         <ul class="dropdown-menu dropdown-menu-dark" aria-labelledby="navbarVendas">
                             <li><a class="dropdown-item" href="/crm-vendas/">Cadastrar Venda</a></li>
                             <li><a class="dropdown-item" href="/auditoria/">Auditoria</a></li>
@@ -72,22 +47,16 @@
                             <li><a class="dropdown-item active" href="/comissionamento/">Comissionamento</a></li>
                         </ul>
                     </li>
-
                     <li class="nav-item dropdown" id="nav-importacoes">
-                        <a class="nav-link dropdown-toggle" href="#" id="navbarImportacoes" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            Importações
-                        </a>
+                        <a class="nav-link dropdown-toggle" href="#" id="navbarImportacoes" role="button" data-bs-toggle="dropdown" aria-expanded="false">Importações</a>
                         <ul class="dropdown-menu dropdown-menu-dark" aria-labelledby="navbarImportacoes">
                             <li><a class="dropdown-item" href="/salvar-osab/">Salvar OSAB</a></li>
                             <li><a class="dropdown-item" href="/salvar-churn/">Salvar Churn</a></li>
                             <li><a class="dropdown-item" href="/salvar-ciclo-pagamento/">Salvar Ciclo de Pagamento</a></li>
                         </ul>
                     </li>
-
                     <li class="nav-item dropdown" id="nav-cadastros">
-                        <a class="nav-link dropdown-toggle" href="#" id="navbarCadastros" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            Cadastros
-                        </a>
+                        <a class="nav-link dropdown-toggle" href="#" id="navbarCadastros" role="button" data-bs-toggle="dropdown" aria-expanded="false">Cadastros</a>
                         <ul class="dropdown-menu dropdown-menu-dark" aria-labelledby="navbarCadastros">
                             <li><a class="dropdown-item" href="/governanca/">Governança</a></li>
                         </ul>
@@ -97,33 +66,30 @@
         </div>
     </nav>
 
-    <main class="container mt-5">
-        <div class="card shadow-sm">
-            <div class="card-header">
-                <h4 class="mb-0">Esteira de Vendas - Comissionamento</h4>
-            </div>
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-hover align-middle">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Cliente / Detalhes</th>
-                                <th>Vendedor</th>
-                                <th>Plano</th>
-                                <th>Status Esteira</th>
-                                <th>Status Comissionamento</th>
-                                <th>Alterado Por</th>
-                                <th>Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tabela-comissionamento"></tbody>
-                    </table>
-                </div>
+    <main>
+        <div class="main-content">
+            <h1 class="mb-4">Esteira de Vendas - Comissionamento</h1>
+            <div class="table-container">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Cliente / Detalhes</th>
+                            <th>Vendedor</th>
+                            <th>Plano</th>
+                            <th>Status Esteira</th>
+                            <th>Status Comissionamento</th>
+                            <th>Alterado Por</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabela-comissionamento"></tbody>
+                </table>
             </div>
         </div>
     </main>
-    <div class="modal fade" id="modal-pago" tabindex="-1">
+
+    <div class="modal fade" id="modal-pago" tabindex="-1" data-bs-theme="dark">
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
@@ -134,11 +100,11 @@
                     <form id="form-pago">
                         <input type="hidden" id="pago-venda-id">
                         <input type="hidden" id="pago-status-id">
-                        <div class="mb-3">
+                        <div class="mb-3 form-group">
                             <label for="data_pagamento" class="form-label">Data do Pagamento *</label>
                             <input type="date" class="form-control" id="data_pagamento" required>
                         </div>
-                        <div class="mb-3">
+                        <div class="mb-3 form-group">
                             <label for="valor_pago" class="form-label">Valor Pago *</label>
                             <input type="number" step="0.01" class="form-control" id="valor_pago" required>
                         </div>
@@ -151,7 +117,8 @@
             </div>
         </div>
     </div>
-    <div class="modal fade" id="modal-detalhes-venda" tabindex="-1">
+    
+    <div class="modal fade" id="modal-detalhes-venda" tabindex="-1" data-bs-theme="dark">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
@@ -167,7 +134,7 @@
         </div>
     </div>
     
-    <div class="modal fade" id="modal-editar-venda" tabindex="-1">
+    <div class="modal fade" id="modal-editar-venda" tabindex="-1" data-bs-theme="dark">
         <div class="modal-dialog modal-xl">
             <div class="modal-content">
                 <div class="modal-header">
@@ -176,8 +143,8 @@
                 </div>
                 <div class="modal-body">
                     <form id="form-editar-venda">
-                        <input type="hidden" id="edit-venda-id-hidden">
-                        <div class="row bg-light p-3 mb-4 rounded border">
+                         <input type="hidden" id="edit-venda-id-hidden">
+                        <div class="row bg-light p-3 mb-4 rounded border text-dark">
                             <div class="col-md-6">
                                 <label for="edit-cliente-nome" class="form-label fw-bold">Cliente</label>
                                 <input type="text" class="form-control" id="edit-cliente-nome">
@@ -187,9 +154,8 @@
                                 <p id="edit-cliente-cpf-cnpj" class="form-control-plaintext ps-2">Carregando...</p>
                             </div>
                         </div>
-
                         <div class="row">
-                            <div class="col-md-3">
+                            <div class="col-12 col-md-6 col-lg-3 mb-4">
                                 <h6>Dados da Venda</h6>
                                 <div class="mb-3"><label for="edit-plano" class="form-label">Plano</label><select id="edit-plano" class="form-select"></select></div>
                                 <div class="mb-3"><label for="edit-forma-pagamento" class="form-label">Forma de Pagamento</label><select id="edit-forma-pagamento" class="form-select"></select></div>
@@ -200,18 +166,18 @@
                                 <div class="mb-3"><label for="edit-status-esteira" class="form-label">Status Esteira</label><select id="edit-status-esteira" class="form-select"></select></div>
                                 <div class="mb-3"><label for="edit-status-comissionamento" class="form-label">Status Comissionamento</label><select id="edit-status-comissionamento" class="form-select"></select></div>
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-12 col-md-6 col-lg-3 mb-4">
                                 <h6>Contato</h6>
                                 <div class="mb-3"><label for="edit-telefone1" class="form-label">Telefone 1</label><input type="tel" class="form-control" id="edit-telefone1"></div>
                                 <div class="mb-3"><label for="edit-telefone2" class="form-label">Telefone 2</label><input type="tel" class="form-control" id="edit-telefone2"></div>
                                 <hr>
                                 <h6>Agendamento e OS</h6>
                                 <div class="mb-3"><label for="edit-ordem-servico" class="form-label">Ordem de Serviço (O.S)</label><input type="text" class="form-control" id="edit-ordem-servico"></div>
-                                <div class="mb-3"><label for="edit-data-pedido" class="form-label">Data do Pedido</label><input type="datetime-local" class="form-control" id="edit-data-pedido"></div>
+                                <div class="mb-3"><label for="edit-data-pedido" class="form-label">Data do Pedido</label><input type="date" class="form-control" id="edit-data-pedido"></div>
                                 <div class="mb-3"><label for="edit-data-agendamento" class="form-label">Data de Agendamento</label><input type="date" class="form-control" id="edit-data-agendamento"></div>
                                 <div class="mb-3"><label for="edit-periodo-agendamento" class="form-label">Período</label><select class="form-select" id="edit-periodo-agendamento"><option value="">Nenhum</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select></div>
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-12 col-md-6 col-lg-3 mb-4">
                                 <h6>Endereço de Instalação</h6>
                                 <div class="mb-3"><label for="edit-cep" class="form-label">CEP</label><input type="text" class="form-control" id="edit-cep"></div>
                                 <div class="mb-3"><label for="edit-logradouro" class="form-label">Logradouro</label><input type="text" class="form-control" id="edit-logradouro"></div>
@@ -219,7 +185,7 @@
                                 <div class="mb-3"><label for="edit-complemento" class="form-label">Complemento</label><input type="text" class="form-control" id="edit-complemento"></div>
                                 <div class="row"><div class="col-8"><label for="edit-cidade" class="form-label">Cidade</label><input type="text" class="form-control" id="edit-cidade"></div><div class="col-4"><label for="edit-estado" class="form-label">UF</label><input type="text" class="form-control" id="edit-estado"></div></div>
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-12 col-md-6 col-lg-3 mb-4">
                                 <h6>Dados Complementares</h6>
                                 <div class="mb-3"><label for="edit-ponto-referencia" class="form-label">Ponto de Referência*</label><input type="text" class="form-control" id="edit-ponto-referencia" required></div>
                                 <div class="mb-3"><label for="edit-observacoes" class="form-label">Observações</label><textarea class="form-control" id="edit-observacoes" rows="8"></textarea></div>
@@ -243,7 +209,7 @@
         verificarAutenticacao();
 
         let listaStatusComissionamento = [];
-        let detalhesModal, pagoModal;
+        let detalhesModal, pagoModal, modalEditarVenda;
         let pagoStatusId = null;
 
         function jwt_decode(token) { try { return JSON.parse(atob(token.split('.')[1])); } catch (e) { return null; } }
@@ -251,6 +217,7 @@
         document.addEventListener('DOMContentLoaded', async () => {
             detalhesModal = new bootstrap.Modal(document.getElementById('modal-detalhes-venda'));
             pagoModal = new bootstrap.Modal(document.getElementById('modal-pago'));
+            modalEditarVenda = new bootstrap.Modal(document.getElementById('modal-editar-venda'));
             
             const token = localStorage.getItem('accessToken');
             const decodedToken = jwt_decode(token);
@@ -311,7 +278,7 @@
                     const statusEsteiraNome = venda.status_esteira ? venda.status_esteira.nome : 'N/A';
                     const statusComissionamentoAtual = venda.status_comissionamento ? venda.status_comissionamento.id : '';
 
-                    const selectComissionamento = `<select id="comissionamento-select-${venda.id}" class="form-select form-select-sm status-select" onchange="atualizarStatus(event, ${venda.id}, this.value, 'comissionamento')">
+                    const selectComissionamento = `<select id="comissionamento-select-${venda.id}" class="form-select form-select-sm" onchange="atualizarStatus(event, ${venda.id}, this.value, 'comissionamento')">
                         <option value="">Selecione...</option>
                         ${listaStatusComissionamento.map(s => `<option value="${s.id}" ${statusComissionamentoAtual === s.id ? 'selected' : ''}>${s.nome}</option>`).join('')}
                     </select>`;
@@ -332,9 +299,9 @@
                         <td>${venda.alterado_por || 'N/A'}</td>
                         <td>
                             <div class="btn-group" role="group">
-                                <button class="btn btn-sm btn-outline-info" onclick="detalhesVenda(${venda.id})" title="Ver Detalhes"><i class="bi bi-search"></i></button>
-                                <button class="btn btn-sm btn-outline-warning" onclick="editarVenda(${venda.id})" title="Editar Venda"><i class="bi bi-pencil-square"></i></button>
-                                <button class="btn btn-sm btn-outline-danger" onclick="excluirVenda(${venda.id})" title="Excluir Venda"><i class="bi bi-trash"></i></button>
+                                <button class="btn btn-sm btn-primary" onclick="detalhesVenda(${venda.id})" title="Ver Detalhes"><i class="bi bi-search"></i></button>
+                                <button class="btn btn-sm btn-edit" onclick="editarVenda(${venda.id})" title="Editar Venda"><i class="bi bi-pencil-square"></i></button>
+                                <button class="btn btn-sm btn-delete" onclick="excluirVenda(${venda.id})" title="Excluir Venda"><i class="bi bi-trash"></i></button>
                             </div>
                         </td>
                     `;
@@ -431,8 +398,6 @@
         }
 
         async function editarVenda(vendaId) {
-            const modalElement = document.getElementById('modal-editar-venda');
-            const modal = bootstrap.Modal.getInstance(modalElement) || new bootstrap.Modal(modalElement);
             document.getElementById('form-editar-venda').reset();
             document.getElementById('edit-cliente-cpf-cnpj').textContent = 'Carregando...';
             document.getElementById('editar-venda-id').textContent = vendaId;
@@ -472,12 +437,11 @@
                 document.getElementById('edit-estado').value = venda.estado || '';
                 if (venda.data_pedido) {
                     const dataPedido = new Date(venda.data_pedido);
-                    dataPedido.setMinutes(dataPedido.getMinutes() - dataPedido.getTimezoneOffset());
-                    document.getElementById('edit-data-pedido').value = dataPedido.toISOString().slice(0, 16);
+                    document.getElementById('edit-data-pedido').value = dataPedido.toISOString().slice(0, 10);
                 } else {
                     document.getElementById('edit-data-pedido').value = '';
                 }
-                modal.show();
+                modalEditarVenda.show();
             } catch (error) {
                 console.error(`Erro ao carregar dados para edição da venda ${vendaId}:`, error);
                 alert('Falha ao carregar os dados da venda para edição. Verifique o console para mais detalhes.');
@@ -498,6 +462,7 @@
         
        async function salvarEdicaoVenda() {
             const vendaId = document.getElementById('edit-venda-id-hidden').value;
+            const dataPedidoValue = document.getElementById('edit-data-pedido').value;
             const body = {
                 cliente_nome_razao_social: document.getElementById('edit-cliente-nome').value,
                 plano: document.getElementById('edit-plano').value,
@@ -509,7 +474,7 @@
                 status_esteira: document.getElementById('edit-status-esteira').value || null,
                 status_comissionamento: document.getElementById('edit-status-comissionamento').value || null,
                 ordem_servico: document.getElementById('edit-ordem-servico').value,
-                data_pedido: document.getElementById('edit-data-pedido').value ? new Date(document.getElementById('edit-data-pedido').value).toISOString() : null,
+                data_pedido: dataPedidoValue ? new Date(dataPedidoValue + 'T00:00:00').toISOString() : null,
                 data_agendamento: document.getElementById('edit-data-agendamento').value || null,
                 periodo_agendamento: document.getElementById('edit-periodo-agendamento').value || null,
                 cep: document.getElementById('edit-cep').value,
@@ -525,11 +490,7 @@
 
             try {
                 await apiClient.patch(`/api/crm/vendas/${vendaId}/`, body);
-                const modalElement = document.getElementById('modal-editar-venda');
-                const modal = bootstrap.Modal.getInstance(modalElement);
-                if (modal) {
-                    modal.hide();
-                }
+                modalEditarVenda.hide();
                 alert('Venda atualizada com sucesso!');
                 carregarVendasComissionamento();
 
@@ -540,21 +501,20 @@
             }
         }
 
-        // Em comissionamento.html, substitua a função excluirVenda por esta:
-async function excluirVenda(vendaId) {
-    if (confirm(`Tem certeza que deseja excluir a venda #${vendaId}? Esta ação não pode ser desfeita.`)) {
-        try {
-            await apiClient.delete(`/api/crm/vendas/${vendaId}/`);
-            alert('Venda excluída com sucesso!');
-            carregarVendasComissionamento(); // Recarrega os dados da tabela
-        } catch (error) {
-            console.error("Falha detalhada ao excluir venda:", error); // Linha importante para diagnóstico
-            const detail = error?.response?.data?.detail;
-            const message = detail || 'Não foi possível conectar ao servidor. Tente novamente.';
-            alert(`Erro ao excluir a venda. (Detalhe: ${message})`);
+        async function excluirVenda(vendaId) {
+            if (confirm(`Tem certeza que deseja excluir a venda #${vendaId}? Esta ação não pode ser desfeita.`)) {
+                try {
+                    await apiClient.delete(`/api/crm/vendas/${vendaId}/`);
+                    alert('Venda excluída com sucesso!');
+                    carregarVendasComissionamento(); // Recarrega os dados da tabela
+                } catch (error) {
+                    console.error("Falha detalhada ao excluir venda:", error); // Linha importante para diagnóstico
+                    const detail = error?.response?.data?.detail;
+                    const message = detail || 'Não foi possível conectar ao servidor. Tente novamente.';
+                    alert(`Erro ao excluir a venda. (Detalhe: ${message})`);
+                }
+            }
         }
-    }
-}
 
         async function buscarCepEdit(e) {
             const cep = e.target.value.replace(/\D/g, '');

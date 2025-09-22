@@ -7,37 +7,25 @@
     <title>Auditoria de Vendas</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}">
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-    <style>
-        .status-select { min-width: 180px; }
-        .main-header { background-color: #fff; padding: 1rem 2rem; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); position: sticky; top: 0; z-index: 1020; }
-        .header-container { max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; }
-        .logo { max-height: 40px; }
-        .main-nav ul { list-style: none; display: flex; gap: 1.5rem; align-items: center; margin-bottom: 0; }
-        .main-nav a { text-decoration: none; color: #1a1a1a; font-weight: 500; }
-        .main-nav a:hover { color: #888; }
-        .submenu-nav.bg-dark .nav-link,
-        .submenu-nav.bg-dark .dropdown-menu .dropdown-item { color: rgba(255, 255, 255, 0.75); }
-        .submenu-nav.bg-dark .nav-link:hover,
-        .submenu-nav.bg-dark .dropdown-menu .dropdown-item:hover { color: #fff; }
-        .submenu-nav.bg-dark .nav-link.active { color: #fff; font-weight: bold; }
-        .venda-details { font-size: 0.8rem; color: #6c757d; }
-        #detalhes-venda-body h6 { margin-top: 1rem; color: #0d6efd; }
-        #aprovacao-mensagem { white-space: pre-wrap; font-family: monospace; font-size: 0.9rem; }
-        .table > tbody > tr[style] { color: #000 !important; }
-        .table > tbody > tr[style] a,
-        .table > tbody > tr[style] .btn { color: #000 !important; }
-    </style>
 </head>
 <body>
     <header class="main-header">
         <div class="header-container">
             <a href="/"><img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo"></a>
-            <nav class="main-nav">
+            
+            <button class="menu-toggle" id="menu-toggle" aria-label="Abrir menu">
+                <div class="bar"></div>
+                <div class="bar"></div>
+                <div class="bar"></div>
+            </button>
+
+            <nav class="main-nav" id="main-nav">
                 <ul>
                     <li><a href="/area-interna/">Área Interna</a></li>
                     <li><span class="navbar-text me-3" id="welcome-user"></span></li>
-                    <li><button class="btn btn-danger btn-sm" id="logoutButton">Sair</button></li>
+                    <li><button class="btn btn-danger btn-sm logout-button" id="logoutButton">Sair</button></li>
                 </ul>
             </nav>
         </div>
@@ -76,40 +64,38 @@
         </div>
     </nav>
 
-    <main class="container mt-5">
-        <div class="card shadow-sm">
-            <div class="card-header"><h4 class="mb-0">Esteira de Vendas - Auditoria</h4></div>
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-hover align-middle">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Cliente / Detalhes</th>
-                                <th>Vendedor</th>
-                                <th>Plano</th>
-                                <th>Status Tratamento</th>
-                                <th>Alterado Por</th>
-                                <th>Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tabela-auditoria"></tbody>
-                    </table>
-                </div>
+    <main>
+        <div class="main-content">
+            <h1 class="mb-4">Esteira de Vendas - Auditoria</h1>
+            <div class="table-container">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Cliente / Detalhes</th>
+                            <th>Vendedor</th>
+                            <th>Plano</th>
+                            <th>Status Tratamento</th>
+                            <th>Alterado Por</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabela-auditoria"></tbody>
+                </table>
             </div>
         </div>
     </main>
     
-    <div class="modal fade" id="modal-cadastrada" tabindex="-1">
+    <div class="modal fade" id="modal-cadastrada" tabindex="-1" data-bs-theme="dark">
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header"><h5 class="modal-title">Confirmar Agendamento</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
                     <form id="form-cadastrada">
                         <input type="hidden" id="cadastrada-venda-id"><input type="hidden" id="cadastrada-status-id">
-                        <div class="mb-3"><label for="cadastrada_ordem_servico" class="form-label">Ordem de Serviço (O.S) *</label><input type="text" class="form-control" id="cadastrada_ordem_servico" required></div>
-                        <div class="mb-3"><label for="cadastrada_data_agendamento" class="form-label">Data de Agendamento *</label><input type="date" class="form-control" id="cadastrada_data_agendamento" required></div>
-                        <div class="mb-3">
+                        <div class="mb-3 form-group"><label for="cadastrada_ordem_servico" class="form-label">Ordem de Serviço (O.S) *</label><input type="text" class="form-control" id="cadastrada_ordem_servico" required></div>
+                        <div class="mb-3 form-group"><label for="cadastrada_data_agendamento" class="form-label">Data de Agendamento *</label><input type="date" class="form-control" id="cadastrada_data_agendamento" required></div>
+                        <div class="mb-3 form-group">
                             <label for="cadastrada_periodo_agendamento" class="form-label">Período *</label>
                             <select class="form-select" id="cadastrada_periodo_agendamento" required><option value="" selected disabled>Selecione...</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select>
                         </div>
@@ -120,7 +106,7 @@
         </div>
     </div>
 
-    <div class="modal fade" id="modal-detalhes-venda" tabindex="-1">
+    <div class="modal fade" id="modal-detalhes-venda" tabindex="-1" data-bs-theme="dark">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header"><h5 class="modal-title">Detalhes da Venda #<span id="detalhes-venda-id"></span></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
@@ -130,7 +116,7 @@
         </div>
     </div>
     
-    <div class="modal fade" id="modal-aprovacao" tabindex="-1">
+    <div class="modal fade" id="modal-aprovacao" tabindex="-1" data-bs-theme="dark">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header"><h5 class="modal-title">Mensagem de Aprovação</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
@@ -143,14 +129,14 @@
         </div>
     </div>
 
-    <div class="modal fade" id="modal-editar-venda" tabindex="-1">
+    <div class="modal fade" id="modal-editar-venda" tabindex="-1" data-bs-theme="dark">
         <div class="modal-dialog modal-xl">
              <div class="modal-content">
                 <div class="modal-header"><h5 class="modal-title">Editar Venda #<span id="editar-venda-id"></span></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
                     <form id="form-editar-venda">
                         <input type="hidden" id="edit-venda-id-hidden">
-                        <div class="row bg-light p-3 mb-4 rounded border">
+                        <div class="row bg-light p-3 mb-4 rounded border text-dark">
                             <div class="col-md-6">
                                 <label for="edit-cliente-nome" class="form-label fw-bold">Cliente</label>
                                 <input type="text" class="form-control" id="edit-cliente-nome">
@@ -160,8 +146,9 @@
                                 <p id="edit-cliente-cpf-cnpj" class="form-control-plaintext ps-2">Carregando...</p>
                             </div>
                         </div>
+                        
                         <div class="row">
-                            <div class="col-md-3">
+                            <div class="col-12 col-md-6 col-lg-3 mb-4">
                                 <h6>Dados da Venda</h6>
                                 <div class="mb-3"><label for="edit-plano" class="form-label">Plano</label><select id="edit-plano" class="form-select"></select></div>
                                 <div class="mb-3"><label for="edit-forma-pagamento" class="form-label">Forma de Pagamento</label><select id="edit-forma-pagamento" class="form-select"></select></div>
@@ -172,18 +159,18 @@
                                 <div class="mb-3"><label for="edit-status-esteira" class="form-label">Status Esteira</label><select id="edit-status-esteira" class="form-select"></select></div>
                                 <div class="mb-3"><label for="edit-status-comissionamento" class="form-label">Status Comissionamento</label><select id="edit-status-comissionamento" class="form-select"></select></div>
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-12 col-md-6 col-lg-3 mb-4">
                                 <h6>Contato</h6>
                                 <div class="mb-3"><label for="edit-telefone1" class="form-label">Telefone 1</label><input type="tel" class="form-control" id="edit-telefone1"></div>
                                 <div class="mb-3"><label for="edit-telefone2" class="form-label">Telefone 2</label><input type="tel" class="form-control" id="edit-telefone2"></div>
                                 <hr>
                                 <h6>Agendamento e OS</h6>
                                 <div class="mb-3"><label for="edit-ordem-servico" class="form-label">Ordem de Serviço (O.S)</label><input type="text" class="form-control" id="edit-ordem-servico"></div>
-                                <div class="mb-3"><label for="edit-data-pedido" class="form-label">Data do Pedido</label><input type="datetime-local" class="form-control" id="edit-data-pedido"></div>
+                                <div class="mb-3"><label for="edit-data-pedido" class="form-label">Data do Pedido</label><input type="date" class="form-control" id="edit-data-pedido"></div>
                                 <div class="mb-3"><label for="edit-data-agendamento" class="form-label">Data de Agendamento</label><input type="date" class="form-control" id="edit-data-agendamento"></div>
                                 <div class="mb-3"><label for="edit-periodo-agendamento" class="form-label">Período</label><select class="form-select" id="edit-periodo-agendamento"><option value="">Nenhum</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select></div>
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-12 col-md-6 col-lg-3 mb-4">
                                 <h6>Endereço de Instalação</h6>
                                 <div class="mb-3"><label for="edit-cep" class="form-label">CEP</label><input type="text" class="form-control" id="edit-cep"></div>
                                 <div class="mb-3"><label for="edit-logradouro" class="form-label">Logradouro</label><input type="text" class="form-control" id="edit-logradouro"></div>
@@ -191,7 +178,7 @@
                                 <div class="mb-3"><label for="edit-complemento" class="form-label">Complemento</label><input type="text" class="form-control" id="edit-complemento"></div>
                                 <div class="row"><div class="col-8"><label for="edit-cidade" class="form-label">Cidade</label><input type="text" class="form-control" id="edit-cidade"></div><div class="col-4"><label for="edit-estado" class="form-label">UF</label><input type="text" class="form-control" id="edit-estado"></div></div>
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-12 col-md-6 col-lg-3 mb-4">
                                 <h6>Dados Complementares</h6>
                                 <div class="mb-3"><label for="edit-ponto-referencia" class="form-label">Ponto de Referência*</label><input type="text" class="form-control" id="edit-ponto-referencia" required></div>
                                 <div class="mb-3"><label for="edit-observacoes" class="form-label">Observações</label><textarea class="form-control" id="edit-observacoes" rows="8"></textarea></div>
@@ -211,6 +198,7 @@
     <script src="{% static 'js/auth.js' %}"></script>
 
     <script>
+        // SEU JAVASCRIPT PERMANECE O MESMO
         verificarAutenticacao();
         let vendas = [];
         let listaStatusTratamento = [];
@@ -280,7 +268,7 @@
                     tr.setAttribute('style', `background-color: ${venda.status_tratamento.cor} !important`);
                 }
                 const statusTratamentoAtual = venda.status_tratamento ? venda.status_tratamento.id : '';
-                const selectTratamento = `<select id="tratamento-select-${venda.id}" class="form-select form-select-sm status-select" onchange="handleAtualizarStatus(event, ${venda.id}, this.value, 'tratamento')">
+                const selectTratamento = `<select id="tratamento-select-${venda.id}" class="form-select form-select-sm" onchange="handleAtualizarStatus(event, ${venda.id}, this.value, 'tratamento')">
                     <option value="">Selecione...</option>
                     ${listaStatusTratamento.map(s => `<option value="${s.id}" ${statusTratamentoAtual === s.id ? 'selected' : ''}>${s.nome}</option>`).join('')}
                 </select>`;
@@ -298,10 +286,10 @@
                     <td>${venda.alterado_por || 'N/A'}</td>
                     <td>
                         <div class="btn-group" role="group">
-                            <button class="btn btn-sm btn-outline-success" onclick="gerarAprovacao(${venda.id})" title="Gerar Mensagem de Aprovação"><i class="bi bi-whatsapp"></i></button>
-                            <button class="btn btn-sm btn-outline-info" onclick="detalhesVenda(${venda.id})" title="Ver Detalhes"><i class="bi bi-search"></i></button>
-                            <button class="btn btn-sm btn-outline-warning" onclick="editarVenda(${venda.id})" title="Editar Venda"><i class="bi bi-pencil-square"></i></button>
-                            <button class="btn btn-sm btn-outline-danger" onclick="excluirVenda(${venda.id})" title="Excluir Venda"><i class="bi bi-trash"></i></button>
+                            <button class="btn btn-sm btn-primary" onclick="gerarAprovacao(${venda.id})" title="Gerar Mensagem de Aprovação"><i class="bi bi-whatsapp"></i></button>
+                            <button class="btn btn-sm btn-primary" onclick="detalhesVenda(${venda.id})" title="Ver Detalhes"><i class="bi bi-search"></i></button>
+                            <button class="btn btn-sm btn-edit" onclick="editarVenda(${venda.id})" title="Editar Venda"><i class="bi bi-pencil-square"></i></button>
+                            <button class="btn btn-sm btn-delete" onclick="excluirVenda(${venda.id})" title="Excluir Venda"><i class="bi bi-trash"></i></button>
                         </div>
                     </td>
                 `;
@@ -410,8 +398,7 @@
                 document.getElementById('edit-estado').value = venda.estado || '';
                 if (venda.data_pedido) {
                     const dataPedido = new Date(venda.data_pedido);
-                    dataPedido.setMinutes(dataPedido.getMinutes() - dataPedido.getTimezoneOffset());
-                    document.getElementById('edit-data-pedido').value = dataPedido.toISOString().slice(0, 16);
+                    document.getElementById('edit-data-pedido').value = dataPedido.toISOString().slice(0, 10);
                 } else {
                     document.getElementById('edit-data-pedido').value = '';
                 }
@@ -434,6 +421,7 @@
         
         async function salvarEdicaoVenda() {
             const vendaId = document.getElementById('edit-venda-id-hidden').value;
+            const dataPedidoValue = document.getElementById('edit-data-pedido').value;
             const body = {
                 cliente_nome_razao_social: document.getElementById('edit-cliente-nome').value,
                 plano: document.getElementById('edit-plano').value,
@@ -445,7 +433,7 @@
                 status_esteira: document.getElementById('edit-status-esteira').value || null,
                 status_comissionamento: document.getElementById('edit-status-comissionamento').value || null,
                 ordem_servico: document.getElementById('edit-ordem-servico').value,
-                data_pedido: document.getElementById('edit-data-pedido').value ? new Date(document.getElementById('edit-data-pedido').value).toISOString() : null,
+                data_pedido: dataPedidoValue ? new Date(dataPedidoValue + 'T00:00:00').toISOString() : null,
                 data_agendamento: document.getElementById('edit-data-agendamento').value || null,
                 periodo_agendamento: document.getElementById('edit-periodo-agendamento').value || null,
                 cep: document.getElementById('edit-cep').value,
@@ -470,21 +458,20 @@
             }
         }
 
-        // Em auditoria.html, substitua a função excluirVenda por esta:
-async function excluirVenda(vendaId) {
-    if (confirm(`Tem certeza que deseja excluir a venda #${vendaId}? Esta ação não pode ser desfeita.`)) {
-        try {
-            await apiClient.delete(`/api/crm/vendas/${vendaId}/`);
-            alert('Venda excluída com sucesso!');
-            carregarVendas(); // Recarrega os dados da tabela
-        } catch (error) {
-            console.error("Falha detalhada ao excluir venda:", error); // Linha importante para diagnóstico
-            const detail = error?.response?.data?.detail;
-            const message = detail || 'Não foi possível conectar ao servidor. Tente novamente.';
-            alert(`Erro ao excluir a venda. (Detalhe: ${message})`);
+        async function excluirVenda(vendaId) {
+            if (confirm(`Tem certeza que deseja excluir a venda #${vendaId}? Esta ação não pode ser desfeita.`)) {
+                try {
+                    await apiClient.delete(`/api/crm/vendas/${vendaId}/`);
+                    alert('Venda excluída com sucesso!');
+                    carregarVendas(); // Recarrega os dados da tabela
+                } catch (error) {
+                    console.error("Falha detalhada ao excluir venda:", error); // Linha importante para diagnóstico
+                    const detail = error?.response?.data?.detail;
+                    const message = detail || 'Não foi possível conectar ao servidor. Tente novamente.';
+                    alert(`Erro ao excluir a venda. (Detalhe: ${message})`);
+                }
+            }
         }
-    }
-}
 
         async function buscarCepEdit(e) {
             const cep = e.target.value.replace(/\D/g, '');
