@@ -1,4 +1,4 @@
-/* CSS Otimizado para site-record/static/css/custom_styles.css - Versão Final */
+/* CSS Otimizado para site-record/static/css/custom_styles.css - Versão com Menu Móvel Corrigido */
 
 /* --- Variáveis de Cores --- */
 :root {
@@ -94,20 +94,30 @@ a:hover { color: var(--cor-destaque-hover); }
 .main-nav .logout-button:hover { background-color: var(--cor-erro-hover); }
 
 .menu-toggle {
-    display: none; flex-direction: column; cursor: pointer; background: transparent;
-    border: none; padding: 0.5rem; transition: transform 0.4s ease;
+    display: none; /* Escondido por padrão em telas grandes */
+    flex-direction: column;
+    justify-content: space-around;
+    width: 30px;
+    height: 25px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    z-index: 10;
 }
-.menu-toggle:hover { transform: scale(1.1); }
 .menu-toggle .bar {
-    height: 3px; width: 25px;
-    background-color: var(--cor-texto-cabecalho); /* REVERTIDO para ícone escuro */
-    margin: 4px 0; transition: 0.4s ease;
+    height: 3px; width: 100%;
+    background-color: var(--cor-texto-cabecalho);
+    margin: 4px 0;
+    border-radius: 2px;
+    transition: all 0.3s ease-in-out;
 }
 
-/* Animação do ícone do menu para "X" quando aberto */
-.menu-toggle.open .bar:nth-child(1) { transform: rotate(-45deg) translate(-5px, 6px); }
-.menu-toggle.open .bar:nth-child(2) { opacity: 0; }
-.menu-toggle.open .bar:nth-child(3) { transform: rotate(45deg) translate(-5px, -6px); }
+/* Animação do ícone do menu para "X" quando aberto (classe .active) */
+.menu-toggle.active .bar:nth-child(1) { transform: rotate(45deg) translate(7px, 7px); }
+.menu-toggle.active .bar:nth-child(2) { opacity: 0; }
+.menu-toggle.active .bar:nth-child(3) { transform: rotate(-45deg) translate(7px, -7px); }
+
 
 /* --- Submenu Unificado --- */
 .submenu {
@@ -410,42 +420,62 @@ footer a:hover { text-decoration: underline; }
     .colaborador-item h3 { font-size: 1rem; }
 }
 
+/* ############# INÍCIO DAS CORREÇÕES PARA O MENU MÓVEL ############# */
 @media (max-width: 992px) {
     .main-header { padding: 1rem; }
     .header-container { flex-wrap: wrap; }
+    
+    /* 1. Mostra o botão do menu (hambúrguer) */
+    .menu-toggle { display: flex; }
 
+    /* 2. Esconde a navegação por padrão */
     .main-nav {
+        display: none;
         order: 1;
         flex-basis: 100%;
-        max-height: 0;
-        overflow: hidden;
-        transition: max-height 0.5s ease-out;
+        width: 100%;
     }
+    
+    /* 3. Mostra a navegação quando o botão é clicado (JS adiciona a classe .active) */
     .main-nav.active {
-        max-height: 500px;
+        display: block;
     }
+
+    /* 4. Estiliza a lista do menu para o formato de coluna */
     .main-nav ul {
         flex-direction: column;
+        align-items: flex-start;
         width: 100%;
         background-color: var(--cor-fundo-cabecalho);
         box-shadow: 0 4px 6px var(--cor-sombra-clara);
         padding: 0.5rem 0;
         border-top: 1px solid #eee;
+        margin-top: 1rem; /* Adiciona um espaço entre o logo/botão e o menu */
     }
 
-    .main-nav li { width: 100%; text-align: center; }
+    .main-nav li { width: 100%; text-align: left; }
 
+    /* 5. Estiliza os links do menu para ocuparem a largura total */
     .main-nav a, .main-nav .nav-button {
         display: block;
         padding: 1rem;
         border-bottom: 1px solid #f0f0f0;
+        border-left: 3px solid transparent;
+        transition: all 0.3s;
     }
+
     .main-nav li:last-child a, .main-nav li:last-child .nav-button { border-bottom: none; }
+    
     .main-nav a:hover, .main-nav .nav-button:hover {
-        border-bottom-color: transparent;
         background-color: #f8f9fa;
+        border-left-color: var(--cor-destaque);
+        border-bottom-color: #f0f0f0; /* Garante que a borda inferior não desapareça no hover */
     }
-    .menu-toggle { display: flex; }
+    
+    .main-nav a.active-link {
+        border-left-color: var(--cor-destaque);
+        border-bottom-color: #f0f0f0;
+    }
 
     .submenu-container {
         flex-direction: column;
@@ -453,6 +483,8 @@ footer a:hover { text-decoration: underline; }
         gap: 0.5rem;
     }
 }
+/* ############# FIM DAS CORREÇÕES PARA O MENU MÓVEL ############# */
+
 
 @media (max-width: 768px) {
     main { padding: 0 0.5rem; }
