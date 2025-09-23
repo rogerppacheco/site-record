@@ -108,7 +108,6 @@ a:hover { color: var(--cor-destaque-hover); }
 .menu-toggle .bar {
     height: 3px; width: 100%;
     background-color: var(--cor-texto-cabecalho);
-    margin: 4px 0;
     border-radius: 2px;
     transition: all 0.3s ease-in-out;
 }
@@ -430,19 +429,15 @@ footer a:hover { text-decoration: underline; }
 
     /* 2. Esconde a navegação por padrão */
     .main-nav {
-        display: none;
         order: 1;
         flex-basis: 100%;
         width: 100%;
+        margin-top: 1rem; /* Adiciona um espaço entre o logo/botão e o menu */
     }
     
-    /* 3. Mostra a navegação quando o botão é clicado (JS adiciona a classe .active) */
-    .main-nav.active {
-        display: block;
-    }
-
-    /* 4. Estiliza a lista do menu para o formato de coluna */
+    /* 3. Estiliza a lista do menu para começar escondida */
     .main-nav ul {
+        display: none; /* Começa escondido */
         flex-direction: column;
         align-items: flex-start;
         width: 100%;
@@ -450,7 +445,11 @@ footer a:hover { text-decoration: underline; }
         box-shadow: 0 4px 6px var(--cor-sombra-clara);
         padding: 0.5rem 0;
         border-top: 1px solid #eee;
-        margin-top: 1rem; /* Adiciona um espaço entre o logo/botão e o menu */
+    }
+
+    /* 4. Mostra a lista do menu quando ela tem a classe 'active' (adicionada via JS) */
+    .main-nav ul.active {
+        display: flex; /* Torna o menu visível */
     }
 
     .main-nav li { width: 100%; text-align: left; }
@@ -472,7 +471,8 @@ footer a:hover { text-decoration: underline; }
         border-bottom-color: #f0f0f0; /* Garante que a borda inferior não desapareça no hover */
     }
     
-    .main-nav a.active-link {
+    .main-nav a.active-link,
+    .main-nav a:hover {
         border-left-color: var(--cor-destaque);
         border-bottom-color: #f0f0f0;
     }
