@@ -816,10 +816,44 @@ footer a:hover { text-decoration: underline; }
     color: var(--cor-texto-claro);
 }
 
-/* ****** NOVA REGRA PARA CORRIGIR O MODAL ****** */
+/* ****** CORREÇÃO ADICIONADA ****** */
 /* Força o modal de edição a ser mais largo em telas de notebook e desktop */
 @media (min-width: 992px) {
     #modal-editar-venda .modal-xl {
         max-width: 90vw !important; /* Usa 90% da largura da tela e !important para garantir a sobreposição */
     }
+}
+/* === Ajustes Globais de Responsividade e UX Mobile (CRM Vendas) === */
+
+/* Imagens e mídias fluidas */
+img, video, iframe {
+    max-width: 100%;
+    height: auto;
+}
+
+/* Botões e links com área de toque mínima */
+button, .btn, .nav-link, .dropdown-item {
+    min-height: 44px;
+    padding: 0.75rem 1rem;
+}
+
+/* Melhor adaptação do header e navegação */
+@media (max-width: 992px) {
+    .header-container { flex-direction: column; text-align: center; }
+    .main-nav ul { flex-direction: column; gap: 0.5rem; }
+    #btn-nova-venda { width: 100%; }
+}
+
+/* Tablets */
+@media (max-width: 768px) {
+    .card-header > .d-flex { flex-direction: column; gap: 0.5rem; }
+    .status-counters { flex-direction: column; align-items: stretch; }
+    .table th, .table td { font-size: 0.9rem; }
+}
+
+/* Celulares pequenos */
+@media (max-width: 480px) {
+    .logo { max-height: 30px; }
+    .main-nav a { font-size: 0.9rem; }
+    .table th, .table td { font-size: 0.8rem; white-space: nowrap; }
 }

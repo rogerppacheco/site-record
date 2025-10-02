@@ -121,6 +121,42 @@
                 width: 100%;
             }
         }
+        .menu-toggle {
+            display: none; /* Oculto em telas maiores */
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            color: #1a1a1a;
+        }
+
+        @media (max-width: 992px) {
+            .main-nav ul {
+                display: none;
+                flex-direction: column;
+                position: absolute;
+                top: 70px;
+                right: 0;
+                background-color: #fff;
+                width: 100%;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            }
+            .main-nav ul.active {
+                display: flex;
+            }
+            .main-nav li {
+                width: 100%;
+                text-align: center;
+                border-top: 1px solid #eee;
+            }
+            .main-nav a {
+                padding: 1rem;
+                display: block;
+                width: 100%;
+            }
+            .menu-toggle {
+                display: block; /* Visível em telas menores */
+            }
+        }
     </style>
 </head>
 <body>
@@ -130,7 +166,10 @@
                 <img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo">
             </a>
             <nav class="main-nav">
-                <ul>
+                 <button class="menu-toggle" id="menu-toggle">
+                    <i class="bi bi-list"></i>
+                </button>
+                <ul id="main-menu">
                     <li><a href="/area-interna/">Área Interna</a></li>
                     <li><span class="navbar-text me-3" id="welcome-user"></span></li>
                     <li><button class="btn btn-danger btn-sm" id="logoutButton">Sair</button></li>
@@ -522,6 +561,14 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{% static 'js/auth.js' %}"></script>
     <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const menuToggle = document.getElementById('menu-toggle');
+            const mainMenu = document.getElementById('main-menu');
+
+            menuToggle.addEventListener('click', function() {
+                mainMenu.classList.toggle('active');
+            });
+        });
         let listaPlanos = [];
         let listaFormasPagamento = [];
         const VALOR_DESCONTO = 10.00;
