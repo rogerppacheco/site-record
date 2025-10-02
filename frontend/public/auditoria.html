@@ -7,34 +7,18 @@
     <title>Auditoria de Vendas</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}">
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-    <style>
-        .status-select { min-width: 180px; }
-        .main-header { background-color: #fff; padding: 1rem 2rem; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); position: sticky; top: 0; z-index: 1020; }
-        .header-container { max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; }
-        .logo { max-height: 40px; }
-        .main-nav ul { list-style: none; display: flex; gap: 1.5rem; align-items: center; margin-bottom: 0; }
-        .main-nav a { text-decoration: none; color: #1a1a1a; font-weight: 500; }
-        .main-nav a:hover { color: #888; }
-        .submenu-nav.bg-dark .nav-link,
-        .submenu-nav.bg-dark .dropdown-menu .dropdown-item { color: rgba(255, 255, 255, 0.75); }
-        .submenu-nav.bg-dark .nav-link:hover,
-        .submenu-nav.bg-dark .dropdown-menu .dropdown-item:hover { color: #fff; }
-        .submenu-nav.bg-dark .nav-link.active { color: #fff; font-weight: bold; }
-        .venda-details { font-size: 0.8rem; color: #6c757d; }
-        #detalhes-venda-body h6 { margin-top: 1rem; color: #0d6efd; }
-        #aprovacao-mensagem { white-space: pre-wrap; font-family: monospace; font-size: 0.9rem; }
-        .table > tbody > tr[style] { color: #000 !important; }
-        .table > tbody > tr[style] a,
-        .table > tbody > tr[style] .btn { color: #000 !important; }
-    </style>
 </head>
 <body>
     <header class="main-header">
         <div class="header-container">
             <a href="/"><img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo"></a>
             <nav class="main-nav">
-                <ul>
+                <button class="menu-toggle" id="menu-toggle">
+                    <i class="bi bi-list"></i>
+                </button>
+                <ul id="main-menu">
                     <li><a href="/area-interna/">Área Interna</a></li>
                     <li><span class="navbar-text me-3" id="welcome-user"></span></li>
                     <li><button class="btn btn-danger btn-sm" id="logoutButton">Sair</button></li>
@@ -45,7 +29,10 @@
 
     <nav class="navbar navbar-expand-lg submenu-nav navbar-dark bg-dark">
         <div class="container-fluid" style="max-width: 1200px;">
-            <div class="collapse navbar-collapse">
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#submenuNavbar" aria-controls="submenuNavbar" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="submenuNavbar">
                 <ul class="navbar-nav">
                     <li class="nav-item" id="nav-presenca"><a class="nav-link" href="/presenca/">Controle de Presença</a></li>
                     <li class="nav-item dropdown" id="nav-vendas">
@@ -209,7 +196,16 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{% static 'js/auth.js' %}"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const menuToggle = document.getElementById('menu-toggle');
+            const mainMenu = document.getElementById('main-menu');
 
+            menuToggle.addEventListener('click', function() {
+                mainMenu.classList.toggle('active');
+            });
+        });
+    </script>
     <script>
         verificarAutenticacao();
         let vendas = [];
@@ -470,21 +466,20 @@
             }
         }
 
-        // Em auditoria.html, substitua a função excluirVenda por esta:
-async function excluirVenda(vendaId) {
-    if (confirm(`Tem certeza que deseja excluir a venda #${vendaId}? Esta ação não pode ser desfeita.`)) {
-        try {
-            await apiClient.delete(`/api/crm/vendas/${vendaId}/`);
-            alert('Venda excluída com sucesso!');
-            carregarVendas(); // Recarrega os dados da tabela
-        } catch (error) {
-            console.error("Falha detalhada ao excluir venda:", error); // Linha importante para diagnóstico
-            const detail = error?.response?.data?.detail;
-            const message = detail || 'Não foi possível conectar ao servidor. Tente novamente.';
-            alert(`Erro ao excluir a venda. (Detalhe: ${message})`);
+        async function excluirVenda(vendaId) {
+            if (confirm(`Tem certeza que deseja excluir a venda #${vendaId}? Esta ação não pode ser desfeita.`)) {
+                try {
+                    await apiClient.delete(`/api/crm/vendas/${vendaId}/`);
+                    alert('Venda excluída com sucesso!');
+                    carregarVendas(); 
+                } catch (error) {
+                    console.error("Falha detalhada ao excluir venda:", error); 
+                    const detail = error?.response?.data?.detail;
+                    const message = detail || 'Não foi possível conectar ao servidor. Tente novamente.';
+                    alert(`Erro ao excluir a venda. (Detalhe: ${message})`);
+                }
+            }
         }
-    }
-}
 
         async function buscarCepEdit(e) {
             const cep = e.target.value.replace(/\D/g, '');
