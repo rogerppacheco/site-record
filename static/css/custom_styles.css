@@ -857,3 +857,113 @@ button, .btn, .nav-link, .dropdown-item {
     .main-nav a { font-size: 0.9rem; }
     .table th, .table td { font-size: 0.8rem; white-space: nowrap; }
 }
+/* --- CORREÇÃO DE RESPONSIVIDADE PARA PRESENÇA MOBILE --- */
+
+@media (max-width: 768px) {
+    /* Ajustes Gerais de Container */
+    .main-content {
+        padding: 1rem;
+        margin: 1rem 0.5rem;
+        width: auto; /* Garante que não ultrapasse a tela */
+    }
+
+    /* Cabeçalho da Página */
+    .content-header {
+        flex-direction: column;
+        gap: 1rem;
+        text-align: center;
+    }
+
+    /* INPUT DE DATA */
+    .date-search-container {
+        flex-direction: column;
+        width: 100%;
+    }
+    .date-search-container input[type="date"] {
+        width: 100%; /* Ocupa toda a largura no celular */
+        font-size: 1.1rem; /* Fonte maior para facilitar o toque */
+        padding: 10px;
+    }
+    .btn-pesquisar {
+        width: 100%;
+        margin-top: 10px;
+        padding: 12px;
+    }
+
+    /* ABAS (Tabs) */
+    .tab-container {
+        flex-direction: column; /* Abas uma embaixo da outra no mobile */
+        width: 100%;
+        gap: 5px;
+    }
+    .tab-button {
+        width: 100%;
+        text-align: center;
+        padding: 12px;
+        border-bottom: 1px solid #ddd;
+        background-color: #f9f9f9; /* Fundo leve para parecer botão */
+        color: #333; /* Garante contraste */
+    }
+    .tab-button.active {
+        background-color: #e9ecef;
+        border-bottom: 3px solid var(--cor-destaque);
+        font-weight: bold;
+    }
+
+    /* CARD DO COLABORADOR (Onde ocorre o erro visual) */
+    .colaborador-item {
+        flex-direction: column; /* Empilha: Nome em cima, Botões embaixo */
+        align-items: flex-start; /* Alinha texto à esquerda */
+        padding: 1.2rem;
+        gap: 1rem;
+        background-color: #fff; /* Fundo branco para destacar do fundo escuro */
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1); /* Sombra para dar profundidade */
+    }
+
+    .colaborador-info {
+        width: 100%;
+        margin-bottom: 0.5rem;
+        text-align: center; /* Centraliza o nome e status */
+    }
+    
+    .colaborador-info h3 {
+        font-size: 1.3rem;
+        margin-bottom: 0.5rem;
+        color: #222; /* Garante leitura no mobile */
+    }
+
+    /* Área dos Botões */
+    .colaborador-actions {
+        width: 100%;
+        margin-left: 0;
+        display: flex;
+        flex-direction: column; /* Botões um embaixo do outro para evitar clique errado */
+        gap: 10px;
+    }
+
+    .colaborador-actions .btn {
+        width: 100%;
+        padding: 12px; /* Área de toque maior */
+        font-size: 1.1rem;
+        display: block;
+    }
+    
+    /* Cores específicas para mobile para garantir contraste */
+    .btn-presente { background-color: #198754 !important; }
+    .btn-ausente { background-color: #dc3545 !important; }
+    
+    /* Ajuste do Modal */
+    .modal-content {
+        width: 95%;
+        padding: 1.5rem;
+        margin: auto;
+    }
+    .modal-actions {
+        flex-direction: column;
+        gap: 10px;
+    }
+    .modal-actions .btn {
+        width: 100%;
+        padding: 12px;
+    }
+}
