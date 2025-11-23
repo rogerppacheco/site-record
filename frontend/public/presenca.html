@@ -24,6 +24,7 @@
             height: 100%;
             display: flex;
             flex-direction: column;
+            overflow: hidden; /* Garante que os botões full-width não vazem */
         }
         .presence-card:hover {
             transform: translateY(-3px);
@@ -60,63 +61,45 @@
             color: #6c757d;
             background-color: #fdfdfd;
             border-top: 1px solid #f0f0f0;
-            margin-top: auto; /* Empurra para o final do card */
             padding: 10px 15px;
-            border-bottom-left-radius: 10px;
-            border-bottom-right-radius: 10px;
             line-height: 1.4;
         }
         .audit-line { margin-bottom: 3px; }
+        
+        /* --- ESTILO NOVO PARA AÇÃO PENDENTE (FULL WIDTH) --- */
+        .action-footer-pending {
+            margin-top: auto;
+            border-top: 1px solid #e9ecef;
+            display: flex;
+            width: 100%;
+        }
+        .action-footer-pending .btn {
+            border-radius: 0; 
+            padding: 12px 0; /* Aumenta a área de toque */
+            font-weight: bold;
+            font-size: 1rem;
+        }
 
         .nav-tabs .nav-link { color: #666; font-weight: 600; cursor: pointer; }
         .nav-tabs .nav-link.active { color: var(--cor-primaria); border-bottom: 3px solid var(--cor-primaria); }
 
+        /* --- MEDIA QUERIES PARA RESPONSIVIDADE E AJUSTE DE BORDA --- */
         @media (max-width: 576px) {
             .header-controls { flex-direction: column; align-items: stretch; gap: 10px; }
         }
         
-        /* Regras para dispositivos móveis e telas menores */
         @media (max-width: 768px) {
-            /* Torna os cards menores e mais condensados em dispositivos móveis */
-            .presence-card {
-                padding: 10px 10px 5px 10px !important; 
-                margin: 0 !important;
-                min-height: 120px; 
-            }
-
-            /* Ajusta o padding da área principal para evitar proximidade da borda */
             .area-interna-section .system-container {
                 padding-left: 10px;
                 padding-right: 10px;
             }
 
-            /* Reduz o tamanho dos botões de ação e centraliza */
-            .presence-card button.btn-sm {
-                padding: 0.2rem 0.5rem; /* Botões menores */
-                font-size: 0.8rem;
-                flex-grow: 1; 
-            }
-
-            /* Ajusta o container dos botões para serem menores */
-            .presence-card .d-flex.gap-2.mt-3.px-3.pb-3 {
-                padding-left: 0 !important;
-                padding-right: 0 !important;
-                padding-bottom: 5px !important;
-            }
-            .presence-card .d-flex.gap-2.mt-2.px-3.pb-2 {
-                padding-left: 0 !important;
-                padding-right: 0 !important;
-                padding-bottom: 5px !important;
-            }
-
-            /* Reduz o avatar */
             .avatar-circle {
                 width: 35px; 
                 height: 35px;
                 font-size: 0.9rem;
             }
             
-            /* Ajusta o título */
             .presence-card h6 {
                 font-size: 0.9rem !important;
             }
@@ -124,17 +107,9 @@
                 font-size: 0.75rem !important;
             }
 
-            /* Ajusta o container principal do cabeçalho */
-            .header-controls { 
-                gap: 5px !important; 
-                margin-bottom: 15px !important;
-                padding: 5px;
-            }
-            
-            /* Reduz o tamanho do input de data */
-            #container-filtro-data input.form-control {
-                font-size: 0.8rem;
-                padding: 0.2rem 0.5rem;
+            .action-footer-pending .btn {
+                padding: 10px 0;
+                font-size: 0.9rem;
             }
         }
     </style>
@@ -181,7 +156,7 @@
                 </li>
             </ul>
             
-            <div id="grid-colaboradores" class="row g-3">
+            <div id="grid-colaboradores" class="row g-3 justify-content-center">
                 <div class="col-12 text-center py-5">
                     <div class="spinner-border text-primary"></div>
                     <p class="mt-2 text-muted">Carregando equipe...</p>
@@ -236,6 +211,7 @@
         }
         
         // Endpoints (Usando apiClient do auth.js)
+        // Assumindo que apiClient está definido no auth.js e lida com tokens/base URL
         const API_MOTIVOS = '/api/presenca/motivos/';
         const API_REGISTROS = '/api/presenca/registros/';
 
@@ -282,6 +258,7 @@
 
         async function carregarMotivos() {
             try {
+                // O apiClient precisa ser definido ou importado (assumindo que está em auth.js)
                 const res = await apiClient.get('/api/presenca/motivos/');
                 motivosDisponiveis = res.data;
             } catch(e){}
@@ -297,6 +274,7 @@
                 : '/api/presenca/minha-equipe/?participa_controle_presenca=true';
 
             try {
+                // O apiClient precisa ser definido ou importado (assumindo que está em auth.js)
                 const [equipeRes, presencasRes] = await Promise.all([
                     apiClient.get(equipeEndpoint),
                     apiClient.get(`${API_REGISTROS}?data=${data}`)
@@ -352,7 +330,7 @@
                 const cardCol = document.createElement('div');
                 
                 // --- CORREÇÃO DO GRID ---
-                // Agora usa col-sm-6 (2 cards em tela pequena), col-lg-4 (3 cards), col-xl-3 (4 cards)
+                // col-sm-6 (2 cards em tela pequena), col-lg-4 (3 cards), col-xl-3 (4 cards)
                 cardCol.className = 'col-12 col-sm-6 col-lg-4 col-xl-3';
 
                 // Auditoria
@@ -377,18 +355,22 @@
                     }
                 }
 
-                // Botões
-                let buttonsHtml = '';
+                // --- Montagem do Card ---
+                let buttonsSection = '';
+                
                 if (!registro) {
-                    buttonsHtml = `
-                        <div class="d-flex gap-2 mt-3 px-3 pb-3">
-                            <button class="btn btn-sm btn-success flex-grow-1" onclick="salvarStatus(${p.id}, '${p.first_name}', true)">Presente</button>
-                            <button class="btn btn-sm btn-danger flex-grow-1" onclick="abrirModalAusencia(${p.id}, '${p.first_name}')">Ausência</button>
+                    // Status Pendente: Botões Full-Width no Footer (Visibilidade e Facilidade)
+                    buttonsSection = `
+                        <div class="action-footer-pending d-flex w-100">
+                            <button class="btn btn-success flex-grow-1" style="border-radius: 0 0 0 9px; border-right: 1px solid rgba(0,0,0,0.1);" onclick="salvarStatus(${p.id}, '${p.first_name}', true)">PRESENTE</button>
+                            <button class="btn btn-danger flex-grow-1" style="border-radius: 0 0 9px 0;" onclick="abrirModalAusencia(${p.id}, '${p.first_name}')">AUSÊNCIA</button>
                         </div>
                     `;
                 } else {
-                    buttonsHtml = `
-                        <div class="d-flex justify-content-end mt-2 px-3 pb-2">
+                    // Status Marcado: Audit info e botão Alterar pequeno
+                    buttonsSection = `
+                        ${auditHtml}
+                        <div class="d-flex justify-content-end px-3 pb-3 pt-2">
                             <button class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size: 0.8rem;" onclick="resetarCard(${p.id}, '${p.first_name}')">Alterar</button>
                         </div>
                     `;
@@ -404,12 +386,8 @@
                                     <small class="fw-bold ${statusColor}">${statusText}</small>
                                 </div>
                             </div>
-                            
-                            <div id="acoes-${p.id}">
-                                ${buttonsHtml}
-                            </div>
                         </div>
-                        ${auditHtml}
+                        ${buttonsSection}
                     </div>
                 `;
                 grid.appendChild(cardCol);
@@ -418,13 +396,9 @@
 
         // Habilita botões novamente para edição
         window.resetarCard = function(id, nome) {
-            const divAcoes = document.getElementById(`acoes-${id}`);
-            divAcoes.innerHTML = `
-                <div class="d-flex gap-2 mt-2 px-3 pb-3 border-top pt-3">
-                    <button class="btn btn-sm btn-success flex-grow-1" onclick="salvarStatus(${id}, '${nome}', true)">Presente</button>
-                    <button class="btn btn-sm btn-danger flex-grow-1" onclick="abrirModalAusencia(${id}, '${nome}')">Ausência</button>
-                </div>
-            `;
+            // Recarrega os dados iniciais para restaurar o card ao estado pendente/inicial
+            carregarDadosIniciais(); 
+            // O card re-renderizado estará no estado 'Pendente' e mostrará os botões PRESENTE/AUSÊNCIA full-width.
         }
 
         async function salvarStatus(vendedorId, nome, presente, detalhes = {}) {
