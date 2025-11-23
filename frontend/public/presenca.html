@@ -229,6 +229,10 @@
         const userRole = decoded.user_role || decoded.perfil || 'Vendedor';
         const isSuperuser = decoded.is_superuser || false;
 
+        // Lógica de Permissão para Visualizar Botões de Edição
+        // Apenas Diretoria, Admin e Superusuário podem alterar/excluir
+        const isGestorSupremo = isSuperuser || userRole === 'Diretoria' || userRole === 'Admin';
+
         if (userRole === 'Vendedor' && !isSuperuser) {
             alert('Acesso restrito a gestores.');
             window.location.href = '/area-interna/';
@@ -344,7 +348,7 @@
                 const iniciais = usernameDisplay.substring(0, 2);
                 const cardCol = document.createElement('div');
                 
-                // Grid denso (4 cards por linha em telas grandes)
+                // Grid denso
                 cardCol.className = 'col-12 col-sm-6 col-lg-3 col-xl-3';
 
                 // Conteúdo do Card
@@ -364,7 +368,7 @@
                 let footerContent = '';
 
                 if (!registro) {
-                    // PENDENTE: Botões Grandes
+                    // PENDENTE: Botões Grandes (Visíveis para quem pode marcar)
                     footerContent = `
                         <div class="action-footer-pending d-flex w-100">
                             <button class="btn btn-success flex-grow-1" style="border-right: 1px solid rgba(0,0,0,0.1);" onclick="salvarStatus(${p.id}, '${usernameDisplay}', true)">PRESENTE</button>
@@ -372,7 +376,7 @@
                         </div>
                     `;
                 } else {
-                    // JÁ MARCADO: Auditoria + Botões (Alterar | Excluir)
+                    // JÁ MARCADO: Auditoria
                     let auditHtml = '';
                     const opts = { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' };
                     
@@ -387,8 +391,11 @@
                         auditHtml += `<div class="audit-line text-primary">Editado: <strong>${userEdit}</strong> em ${dtEdit}</div>`;
                     }
                     
-                    footerContent = `
-                        <div class="audit-info" id="audit-${p.id}">${auditHtml}</div>
+                    footerContent = `<div class="audit-info" id="audit-${p.id}">${auditHtml}</div>`;
+
+                    // BOTÕES DE EDIÇÃO/EXCLUSÃO: Apenas para Gestores Supremos
+                    if (isGestorSupremo) {
+                        footerContent += `
                         <div class="action-footer-recorded d-flex w-100" id="footer-recorded-${p.id}">
                             <button class="btn btn-action-edit flex-grow-1" onclick="ativarModoEdicao(${p.id}, '${usernameDisplay}')">
                                 <i class="bi bi-pencil-square"></i> Alterar
@@ -397,7 +404,8 @@
                                 <i class="bi bi-trash"></i> Excluir
                             </button>
                         </div>
-                    `;
+                        `;
+                    }
                 }
 
                 cardCol.innerHTML = `
@@ -410,7 +418,7 @@
             });
         }
 
-        // --- MODO DE EDIÇÃO VISUAL (Para Alterar sem deletar) ---
+        // --- MODO DE EDIÇÃO VISUAL ---
         window.ativarModoEdicao = function(id, nome) {
             const cardEl = document.getElementById(`card-${id}`);
             
@@ -424,7 +432,7 @@
                 statusText.textContent = "Editando...";
                 statusText.className = "fw-bold text-warning";
             }
-            cardEl.style.borderLeftColor = "#ffc107"; // Amarelo
+            cardEl.style.borderLeftColor = "#ffc107"; 
 
             const buttonsHtml = `
                 <div class="action-footer-pending d-flex w-100 mt-auto">
@@ -436,7 +444,7 @@
             cardEl.insertAdjacentHTML('beforeend', buttonsHtml);
         }
 
-        // --- FUNÇÃO DE EXCLUSÃO DEFINITIVA ---
+        // --- EXCLUSÃO DEFINITIVA ---
         window.removerRegistro = async function(registroId) {
             if (!confirm('Tem certeza que deseja APAGAR este registro?')) return;
 
