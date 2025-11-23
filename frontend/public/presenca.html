@@ -14,6 +14,18 @@
     <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
 
     <style>
+        /* --- CORREÇÃO DE LAYOUT E CENTRALIZAÇÃO --- */
+        
+        /* Garante margem interna segura */
+        .system-container {
+            width: 100%;
+            padding-right: 20px;
+            padding-left: 20px;
+            margin-right: auto;
+            margin-left: auto;
+            max-width: 1400px;
+        }
+
         /* Layout de Cards */
         .presence-card {
             border: 1px solid #e9ecef;
@@ -31,19 +43,7 @@
             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         }
         
-        /* Barra de Status (Topo) */
-        .card-status-bar {
-            height: 6px;
-            width: 100%;
-            border-top-left-radius: 10px;
-            border-top-right-radius: 10px;
-        }
-        .status-pendente { background-color: #dee2e6; }
-        .status-presente { background-color: var(--cor-sucesso); }
-        .status-ausente { background-color: var(--cor-perigo); }
-        .status-justificado { background-color: var(--cor-aviso); }
-
-        /* Avatar */
+        /* Avatar Centralizado */
         .avatar-circle {
             width: 45px; height: 45px;
             background-color: #f8f9fa;
@@ -53,6 +53,7 @@
             font-weight: bold; font-size: 1.1rem;
             border: 1px solid #e9ecef;
             flex-shrink: 0;
+            text-transform: uppercase; /* Garante iniciais maiúsculas */
         }
         
         /* Auditoria */
@@ -61,12 +62,12 @@
             color: #6c757d;
             background-color: #fdfdfd;
             border-top: 1px solid #f0f0f0;
-            padding: 10px 15px;
+            padding: 8px 15px;
             line-height: 1.4;
         }
-        .audit-line { margin-bottom: 3px; }
+        .audit-line { margin-bottom: 2px; }
         
-        /* --- ESTILO NOVO PARA AÇÃO PENDENTE (FULL WIDTH) --- */
+        /* Botões Pendentes (Grandes e Visíveis) */
         .action-footer-pending {
             margin-top: auto;
             border-top: 1px solid #e9ecef;
@@ -75,67 +76,43 @@
         }
         .action-footer-pending .btn {
             border-radius: 0; 
-            padding: 12px 0; /* Aumenta a área de toque */
+            padding: 12px 0;
             font-weight: bold;
             font-size: 1rem;
         }
 
+        /* Botão Alterar */
+        .action-footer-recorded {
+            padding: 10px;
+            text-align: right;
+            background-color: #fff;
+        }
+        
         .nav-tabs .nav-link { color: #666; font-weight: 600; cursor: pointer; }
         .nav-tabs .nav-link.active { color: var(--cor-primaria); border-bottom: 3px solid var(--cor-primaria); }
 
-        /* ---------------------------------------------------- */
-        /* --- BREAKPOINTS DE DENSIDADE (SIMULA 90% ZOOM) --- */
-        /* ---------------------------------------------------- */
-        
-        /* Ajuste para Laptops (992px a 1400px) */
-        @media (min-width: 992px) and (max-width: 1400px) {
-            /* Diminui o padding interno do card para apertar o conteúdo */
-            .presence-card .p-3 {
-                padding: 10px 15px !important;
-            }
-            /* Diminui o avatar */
-            .avatar-circle {
-                width: 38px; height: 38px;
-                font-size: 0.9rem;
-            }
-            /* Diminui o tamanho do texto */
-            .presence-card h6 {
-                font-size: 0.95rem !important;
-            }
-            .presence-card small {
-                font-size: 0.7rem !important;
-            }
-            /* Diminui a área de toque dos botões */
-            .action-footer-pending .btn {
-                padding: 10px 0;
-                font-size: 0.9rem;
-            }
-        }
-
-
-        /* Ajuste para Mobile (max-width: 768px) */
+        /* --- RESPONSIVIDADE --- */
         @media (max-width: 768px) {
-            .area-interna-section .system-container {
-                padding-left: 10px;
-                padding-right: 10px;
-            }
-
-            .avatar-circle {
-                width: 35px; 
-                height: 35px;
-                font-size: 0.9rem;
+            .system-container {
+                padding-left: 15px !important; 
+                padding-right: 15px !important;
             }
             
-            .presence-card h6 {
-                font-size: 0.9rem !important;
-            }
-            .presence-card small {
-                font-size: 0.75rem !important;
+            .header-controls {
+                flex-direction: column;
+                align-items: center; /* Centraliza itens no mobile */
+                text-align: center;  /* Centraliza texto no mobile */
+                gap: 15px;
             }
 
+            /* Força alinhamento ao centro no mobile para o texto */
+            .header-controls div:first-child {
+                text-align: center;
+                width: 100%;
+            }
+            
             .action-footer-pending .btn {
-                padding: 10px 0;
-                font-size: 0.9rem;
+                padding: 15px 0; 
             }
         }
     </style>
@@ -156,7 +133,7 @@
     </header>
 
     <main class="area-interna-section">
-        <div class="system-container" style="max-width: 1400px;">
+        <div class="system-container">
             
             <div class="d-flex justify-content-between align-items-center mb-4 header-controls">
                 <div>
@@ -225,18 +202,15 @@
         const token = localStorage.getItem('accessToken');
         if(!token) window.location.href = '/';
 
-        // --- SEGURANÇA E PERFIL ---
         const decoded = jwt_decode(token);
         const userRole = decoded.user_role || decoded.perfil || 'Vendedor';
         const isSuperuser = decoded.is_superuser || false;
 
-        // Permissão: Bloqueia Vendedores
         if (userRole === 'Vendedor' && !isSuperuser) {
             alert('Acesso restrito a gestores.');
             window.location.href = '/area-interna/';
         }
         
-        // Endpoints (Usando apiClient do auth.js)
         const API_MOTIVOS = '/api/presenca/motivos/';
         const API_REGISTROS = '/api/presenca/registros/';
 
@@ -247,24 +221,18 @@
         document.addEventListener('DOMContentLoaded', () => {
             modalAusencia = new bootstrap.Modal(document.getElementById('modal-ausencia'));
 
-            // Configurar Data
             const hoje = new Date();
             const inputData = document.getElementById('data-presenca');
             inputData.valueAsDate = hoje;
 
-            // Regra de Visibilidade da Data
             const isDiretoriaOrAdmin = (userRole === 'Diretoria' || userRole === 'Admin' || isSuperuser || userRole === 'BackOffice');
 
             if (!isDiretoriaOrAdmin) {
-                // Supervisor: Esconde data e aba Todos
-                document.getElementById('container-filtro-data').classList.remove('d-flex');
                 document.getElementById('container-filtro-data').style.display = 'none';
                 document.getElementById('display-data-hoje').classList.remove('d-none');
                 document.getElementById('texto-data-fixa').textContent = hoje.toLocaleDateString('pt-BR');
-                
                 document.getElementById('tab-todos').style.display = 'none';
             } else {
-                // Diretoria: Define aba ativa como 'todos-usuarios'
                 activeTab = 'todos-usuarios';
                 document.querySelectorAll('.nav-link').forEach(b => b.classList.remove('active'));
                 document.querySelector('#tab-todos .nav-link').classList.add('active');
@@ -283,7 +251,6 @@
 
         async function carregarMotivos() {
             try {
-                // O apiClient precisa ser definido ou importado (assumindo que está em auth.js)
                 const res = await apiClient.get('/api/presenca/motivos/');
                 motivosDisponiveis = res.data;
             } catch(e){}
@@ -299,7 +266,6 @@
                 : '/api/presenca/minha-equipe/?participa_controle_presenca=true';
 
             try {
-                // O apiClient precisa ser definido ou importado (assumindo que está em auth.js)
                 const [equipeRes, presencasRes] = await Promise.all([
                     apiClient.get(equipeEndpoint),
                     apiClient.get(`${API_REGISTROS}?data=${data}`)
@@ -351,79 +317,98 @@
                     }
                 }
 
-                const iniciais = p.first_name ? (p.first_name[0] + (p.last_name ? p.last_name[0] : '')).toUpperCase() : '??';
+                // MUDANÇA AQUI: Iniciais e Nome agora usam p.username
+                const usernameDisplay = (p.username || '??').toUpperCase();
+                const iniciais = usernameDisplay.substring(0, 2);
                 const cardCol = document.createElement('div');
                 
-                // --- CORREÇÃO DO GRID (DENSIDADE) ---
-                // col-sm-6 (2 cards em tela pequena), col-lg-3 (4 cards em laptops)
-                cardCol.className = 'col-12 col-sm-6 col-md-4 col-lg-3 col-xl-3';
+                // Grid mais denso
+                cardCol.className = 'col-12 col-sm-6 col-lg-3 col-xl-3';
 
-                // Auditoria
-                let auditHtml = '';
-                if (registro) {
-                    const opts = { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' };
-                    
-                    let lines = [];
-                    if (registro.criado_em) {
-                        const dtCriado = new Date(registro.criado_em).toLocaleString('pt-BR', opts);
-                        const userCriado = (registro.lancado_por_nome || 'Sistema').toUpperCase();
-                        lines.push(`<div class="audit-line">Lançado por: <strong>${userCriado}</strong> em ${dtCriado}</div>`);
-                    }
-                    if (registro.editado_em && registro.editado_por_nome) {
-                        const dtEdit = new Date(registro.editado_em).toLocaleString('pt-BR', opts);
-                        const userEdit = registro.editado_por_nome.toUpperCase();
-                        lines.push(`<div class="audit-line">Editado por: <strong>${userEdit}</strong> em ${dtEdit}</div>`);
-                    }
-                    
-                    if (lines.length > 0) {
-                        auditHtml = `<div class="audit-info">${lines.join('')}</div>`;
-                    }
-                }
+                // Conteúdo do Card
+                let cardContent = `
+                    <div class="p-3 flex-grow-1">
+                        <div class="d-flex align-items-center gap-3 mb-2">
+                            <div class="avatar-circle flex-shrink-0">${iniciais}</div>
+                            <div class="overflow-hidden flex-grow-1">
+                                <h6 class="mb-0 text-truncate fw-bold text-dark" title="${usernameDisplay}">${usernameDisplay}</h6>
+                                <small class="fw-bold ${statusColor}" id="status-text-${p.id}">${statusText}</small>
+                            </div>
+                        </div>
+                    </div>
+                `;
 
-                // --- Montagem do Card ---
-                let buttonsSection = '';
-                
+                // Rodapé (Ações ou Auditoria)
+                let footerContent = '';
+
                 if (!registro) {
-                    // Status Pendente: Botões Full-Width no Footer (Visibilidade e Facilidade)
-                    buttonsSection = `
+                    // PENDENTE: Botões Grandes
+                    footerContent = `
                         <div class="action-footer-pending d-flex w-100">
-                            <button class="btn btn-success flex-grow-1" style="border-radius: 0 0 0 9px; border-right: 1px solid rgba(0,0,0,0.1);" onclick="salvarStatus(${p.id}, '${p.first_name}', true)">PRESENTE</button>
-                            <button class="btn btn-danger flex-grow-1" style="border-radius: 0 0 9px 0;" onclick="abrirModalAusencia(${p.id}, '${p.first_name}')">AUSÊNCIA</button>
+                            <button class="btn btn-success flex-grow-1" style="border-right: 1px solid rgba(0,0,0,0.1);" onclick="salvarStatus(${p.id}, '${usernameDisplay}', true)">PRESENTE</button>
+                            <button class="btn btn-danger flex-grow-1" onclick="abrirModalAusencia(${p.id}, '${usernameDisplay}')">AUSÊNCIA</button>
                         </div>
                     `;
                 } else {
-                    // Status Marcado: Audit info e botão Alterar pequeno
-                    buttonsSection = `
-                        ${auditHtml}
-                        <div class="d-flex justify-content-end px-3 pb-3 pt-2">
-                            <button class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size: 0.8rem;" onclick="resetarCard(${p.id}, '${p.first_name}')">Alterar</button>
+                    // JÁ MARCADO: Auditoria + Botão Alterar
+                    let auditHtml = '';
+                    const opts = { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' };
+                    
+                    if (registro.criado_em) {
+                        const dt = new Date(registro.criado_em).toLocaleString('pt-BR', opts);
+                        // MUDANÇA: O serializer agora manda o username em lancado_por_nome
+                        const user = (registro.lancado_por_nome || 'Sistema').toUpperCase();
+                        auditHtml += `<div class="audit-line">Lançado: <strong>${user}</strong> em ${dt}</div>`;
+                    }
+                    if (registro.editado_em && registro.editado_por_nome) {
+                        const dtEdit = new Date(registro.editado_em).toLocaleString('pt-BR', opts);
+                        // MUDANÇA: O serializer agora manda o username em editado_por_nome
+                        const userEdit = (registro.editado_por_nome || '').toUpperCase();
+                        auditHtml += `<div class="audit-line text-primary">Editado: <strong>${userEdit}</strong> em ${dtEdit}</div>`;
+                    }
+                    
+                    footerContent = `
+                        <div class="audit-info" id="audit-${p.id}">${auditHtml}</div>
+                        <div class="action-footer-recorded" id="footer-recorded-${p.id}">
+                            <button class="btn btn-sm btn-outline-secondary w-100" onclick="ativarModoEdicao(${p.id}, '${usernameDisplay}')">Alterar</button>
                         </div>
                     `;
                 }
 
                 cardCol.innerHTML = `
                     <div class="presence-card" id="card-${p.id}" style="border-left: 5px solid ${cardBorder};">
-                        <div class="p-3 flex-grow-1">
-                            <div class="d-flex align-items-center gap-3 mb-2">
-                                <div class="avatar-circle flex-shrink-0">${iniciais}</div>
-                                <div class="overflow-hidden flex-grow-1">
-                                    <h6 class="mb-0 text-truncate fw-bold text-dark" title="${p.nome_completo}">${p.nome_completo}</h6>
-                                    <small class="fw-bold ${statusColor}">${statusText}</small>
-                                </div>
-                            </div>
-                        </div>
-                        ${buttonsSection}
+                        ${cardContent}
+                        ${footerContent}
                     </div>
                 `;
                 grid.appendChild(cardCol);
             });
         }
 
-        // Habilita botões novamente para edição
-        window.resetarCard = function(id, nome) {
-            // Recarrega os dados iniciais para restaurar o card ao estado pendente/inicial
-            carregarDadosIniciais(); 
-            // O card re-renderizado estará no estado 'Pendente' e mostrará os botões PRESENTE/AUSÊNCIA full-width.
+        // --- MODO DE EDIÇÃO VISUAL (SEM DELETAR) ---
+        window.ativarModoEdicao = function(id, nome) {
+            const cardEl = document.getElementById(`card-${id}`);
+            
+            const auditDiv = document.getElementById(`audit-${id}`);
+            const recordedFooter = document.getElementById(`footer-recorded-${id}`);
+            if(auditDiv) auditDiv.style.display = 'none'; 
+            if(recordedFooter) recordedFooter.remove();
+
+            const statusText = document.getElementById(`status-text-${id}`);
+            if(statusText) {
+                statusText.textContent = "Editando...";
+                statusText.className = "fw-bold text-warning";
+            }
+            cardEl.style.borderLeftColor = "#ffc107"; 
+
+            const buttonsHtml = `
+                <div class="action-footer-pending d-flex w-100 mt-auto">
+                    <button class="btn btn-success flex-grow-1" style="border-right: 1px solid rgba(0,0,0,0.1);" onclick="salvarStatus(${id}, '${nome}', true)">PRESENTE</button>
+                    <button class="btn btn-danger flex-grow-1" onclick="abrirModalAusencia(${id}, '${nome}')">AUSÊNCIA</button>
+                </div>
+            `;
+            
+            cardEl.insertAdjacentHTML('beforeend', buttonsHtml);
         }
 
         async function salvarStatus(vendedorId, nome, presente, detalhes = {}) {
@@ -437,7 +422,6 @@
             };
 
             try {
-                // O apiClient precisa ser definido ou importado (assumindo que está em auth.js)
                 await apiClient.post(API_REGISTROS, body); 
                 carregarDadosIniciais(); 
             } catch (e) { alert('Erro ao salvar.'); console.error(e); }

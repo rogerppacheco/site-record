@@ -10,17 +10,22 @@ from .views import (
     TodosUsuariosListView
 )
 
+# O Router cria as URLs automaticamente para listagem e detalhes (ID)
 router = DefaultRouter()
-router.register(r'presencas', PresencaViewSet, basename='presenca')
+
+# --- CORREÇÃO CRUCIAL ---
+# Registramos 'registros' no router. Isso cria automaticamente:
+# - GET/POST em /api/presenca/registros/
+# - PUT/DELETE em /api/presenca/registros/<id>/ (Essa rota estava faltando!)
+router.register(r'registros', PresencaViewSet, basename='presenca')
+
 router.register(r'motivos', MotivoViewSet, basename='motivo')
 router.register(r'dias-nao-uteis', DiaNaoUtilViewSet, basename='dianaoutil')
 
 urlpatterns = [
     path('', include(router.urls)),
     
-    # ROTA ESSENCIAL PARA O FRONTEND:
-    path('registros/', PresencaViewSet.as_view({'get': 'list', 'post': 'create'}), name='presenca-registros'),
-    
+    # Rotas de listagem personalizadas (apenas leitura)
     path('minha-equipe/', MinhaEquipeListView.as_view(), name='minha-equipe'),
     path('todos-usuarios/', TodosUsuariosListView.as_view(), name='todos-usuarios'),
 ]
