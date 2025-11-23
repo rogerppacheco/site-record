@@ -8,7 +8,6 @@
     
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    
     <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=1.3">
     
     <style>
@@ -51,12 +50,20 @@
         .card-body { padding: 1.5rem; }
         .table-responsive { border-radius: 8px; }
         
-        /* Estilos para a Lista de Permissões */
+        /* Permissões */
         .perm-list { max-height: 300px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 6px; padding: 10px; background: #f8f9fa; }
         .perm-item { display: flex; align-items: center; padding: 6px 0; border-bottom: 1px solid #e9ecef; }
         .perm-item:last-child { border-bottom: none; }
         .perm-label { margin-left: 10px; font-size: 0.9rem; cursor: pointer; flex-grow: 1; user-select: none; }
         .badge-perm { font-weight: normal; font-size: 0.75rem; margin-right: 4px; margin-bottom: 4px; display: inline-block; }
+
+        /* Botões de Ação Pequenos */
+        .btn-xs {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+            line-height: 1.5;
+            border-radius: 0.2rem;
+        }
 
         @media (max-width: 992px) {
             .admin-sidebar { transform: translateX(-100%); transition: transform 0.3s; }
@@ -89,7 +96,6 @@
 
     <div class="admin-wrapper">
         <nav class="admin-sidebar">
-            
             <div class="nav-section-title">Administração</div>
             <a href="#" class="admin-nav-link active" onclick="mostrarSecao(event, 'usuarios', this)">
                 <i class="bi bi-people"></i> Gestão de Usuários
@@ -130,64 +136,46 @@
             <section id="usuarios-section" class="content-section active">
                 <div class="d-flex justify-content-between align-items-center mb-4">
                     <h3>Gestão de Usuários</h3>
+                    <button class="btn btn-confirmar" onclick="abrirModalUsuario()"><i class="bi bi-person-plus-fill"></i> Novo Usuário</button>
                 </div>
 
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="mb-0 text-primary" id="form-title"><i class="bi bi-person-plus-fill"></i> Cadastrar Novo Usuário</h5>
-                    </div>
-                    <div class="card-body">
-                        <form id="user-form">
-                            <input type="hidden" id="user_id">
-                            <div class="row g-3">
-                                <div class="col-md-6"><label class="form-label fw-bold">Nome Completo</label><input type="text" class="form-control" id="nome_completo" required></div>
-                                <div class="col-md-6"><label class="form-label fw-bold">CPF</label><input type="text" class="form-control" id="cpf"></div>
-                                <div class="col-md-6"><label class="form-label fw-bold">E-mail</label><input type="email" class="form-control" id="email" required></div>
-                                <div class="col-md-6"><label class="form-label fw-bold">Username</label><input type="text" class="form-control" id="username" required></div>
-                                <div class="col-md-6" id="senha-group"><label class="form-label fw-bold">Senha</label><input type="password" class="form-control" id="senha"></div>
-                                <div class="col-md-6"><label class="form-label fw-bold">Perfil</label><select class="form-select" id="perfil_id" required></select></div>
-                                <div class="col-md-6"><label class="form-label fw-bold">Líder Imediato</label><select class="form-select" id="supervisor_id"><option value="">Nenhum</option></select></div>
+                <div class="card mt-4">
+                    <div class="card-header bg-white py-3">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <h5 class="mb-0">Lista de Usuários <span id="lista-status-titulo" class="badge bg-success">Ativos</span></h5>
+                            
+                            <div class="d-flex gap-2">
+                                <input type="text" id="busca-usuario" class="form-control form-control-sm" placeholder="Pesquisar usuário..." style="width: 200px;">
                                 
-                                <div class="col-md-12"><hr class="my-2 text-muted"> <small class="text-muted text-uppercase fw-bold">Dados Financeiros</small></div>
-                                <div class="col-md-3"><label class="form-label small">Almoço (R$)</label><input type="number" class="form-control form-control-sm" id="valor_almoco" step="0.01" placeholder="Ex: 18.00"></div>
-                                <div class="col-md-3"><label class="form-label small">Passagem (R$)</label><input type="number" class="form-control form-control-sm" id="valor_passagem" step="0.01" placeholder="Ex: 9.60"></div>
-                                <div class="col-md-3"><label class="form-label small">Chave PIX</label><input type="text" class="form-control form-control-sm" id="chave_pix"></div>
-                                <div class="col-md-3"><label class="form-label small">Titular Conta</label><input type="text" class="form-control form-control-sm" id="nome_da_conta"></div>
-                                <div class="col-md-3"><label class="form-label small">Meta (Vendas)</label><input type="number" class="form-control form-control-sm" id="meta_comissao"></div>
-                                <div class="col-md-3"><label class="form-label small">Desc. Boleto</label><input type="number" class="form-control form-control-sm" id="desconto_boleto" step="0.01"></div>
-                                <div class="col-md-3"><label class="form-label small">Desc. Viabilidade</label><input type="number" class="form-control form-control-sm" id="desconto_inclusao_viabilidade" step="0.01"></div>
-                                <div class="col-md-3"><label class="form-label small">Desc. Antecipação</label><input type="number" class="form-control form-control-sm" id="desconto_instalacao_antecipada" step="0.01"></div>
-                                <div class="col-md-3"><label class="form-label small">Adiant. CNPJ</label><input type="number" class="form-control form-control-sm" id="adiantamento_cnpj" step="0.01"></div>
-                                <div class="col-md-3"><label class="form-label small">Desc. INSS Fixo</label><input type="number" class="form-control form-control-sm" id="desconto_inss_fixo" step="0.01"></div>
-                                
-                                <div class="col-12 mt-3">
-                                    <div class="form-check form-switch">
-                                        <input class="form-check-input" type="checkbox" id="participa_controle_presenca">
-                                        <label class="form-check-label fw-bold" for="participa_controle_presenca">Participa do Controle de Presença</label>
-                                    </div>
+                                <div class="btn-group">
+                                    <button onclick="mostrarListaUsuarios('ativos', this)" class="btn btn-sm btn-outline-primary active">Ativos</button>
+                                    <button onclick="mostrarListaUsuarios('inativos', this)" class="btn btn-sm btn-outline-secondary">Inativos</button>
                                 </div>
                             </div>
-                            <div class="mt-4 text-end">
-                                <button type="button" class="btn btn-cancelar me-2" onclick="resetForm()">Cancelar</button>
-                                <button type="submit" class="btn btn-confirmar px-4">Salvar Usuário</button>
+                        </div>
+                        
+                        <div id="acoes-massa" class="mt-3 p-2 bg-light rounded border d-none align-items-center justify-content-between">
+                            <span class="small fw-bold text-muted"><span id="count-selecionados">0</span> selecionados</span>
+                            <div class="d-flex gap-2">
+                                <select id="novo-perfil-massa" class="form-select form-select-sm" style="width: 200px;">
+                                    <option value="">Alterar Perfil para...</option>
+                                </select>
+                                <button onclick="aplicarMudancaPerfilEmMassa()" class="btn btn-sm btn-primary">Aplicar</button>
                             </div>
-                        </form>
-                    </div>
-                </div>
-                
-                <div class="card mt-4">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0">Lista de Usuários <span id="lista-status-titulo" class="badge bg-success">Ativos</span></h5>
-                        <div class="btn-group">
-                            <button onclick="mostrarListaUsuarios('ativos', this)" class="btn btn-sm btn-outline-primary active">Ativos</button>
-                            <button onclick="mostrarListaUsuarios('inativos', this)" class="btn btn-sm btn-outline-secondary">Inativos</button>
                         </div>
                     </div>
                     <div class="card-body p-0">
                         <div class="table-responsive">
-                            <table class="table table-hover align-middle mb-0">
+                            <table class="table table-hover align-middle mb-0" id="tabela-usuarios">
                                 <thead class="table-light">
-                                    <tr id="user-list-header"></tr>
+                                    <tr id="user-list-header">
+                                        <th style="width: 40px;"><input type="checkbox" id="check-all" onclick="toggleTodos(this)"></th>
+                                        <th>Nome</th>
+                                        <th>E-mail</th>
+                                        <th>Perfil</th>
+                                        <th>Líder</th>
+                                        <th class="text-end">Ações</th>
+                                    </tr>
                                 </thead>
                                 <tbody id="user-list-body"></tbody>
                             </table>
@@ -412,6 +400,75 @@
         </main>
     </div>
 
+    <div class="modal fade" id="userModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold" id="userModalTitle">Novo Usuário</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <ul class="nav nav-tabs nav-fill" id="userModalTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active fw-bold" id="dados-tab" data-bs-toggle="tab" data-bs-target="#dados-content" type="button" role="tab">
+                                <i class="bi bi-person-vcard"></i> Dados Pessoais
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link fw-bold" id="financeiro-tab" data-bs-toggle="tab" data-bs-target="#financeiro-content" type="button" role="tab">
+                                <i class="bi bi-cash-coin"></i> Financeiro
+                            </button>
+                        </li>
+                    </ul>
+                    
+                    <form id="user-form">
+                        <input type="hidden" id="user_id">
+                        <div class="tab-content p-4">
+                            <div class="tab-pane fade show active" id="dados-content" role="tabpanel">
+                                <div class="row g-3">
+                                    <div class="col-12"><label class="form-label fw-bold">Nome Completo</label><input type="text" class="form-control" id="nome_completo" required></div>
+                                    <div class="col-md-6"><label class="form-label fw-bold">CPF</label><input type="text" class="form-control" id="cpf"></div>
+                                    <div class="col-md-6"><label class="form-label fw-bold">E-mail</label><input type="email" class="form-control" id="email" required></div>
+                                    <div class="col-md-6"><label class="form-label fw-bold">Username (Login)</label><input type="text" class="form-control" id="username" required></div>
+                                    <div class="col-md-6"><label class="form-label fw-bold">Senha</label><input type="password" class="form-control" id="senha" placeholder="Deixe em branco para manter"></div>
+                                    <div class="col-md-6"><label class="form-label fw-bold">Perfil de Acesso</label><select class="form-select" id="perfil_id" required></select></div>
+                                    <div class="col-md-6"><label class="form-label fw-bold">Líder Imediato</label><select class="form-select" id="supervisor_id"><option value="">Nenhum</option></select></div>
+                                    <div class="col-12 mt-3 pt-3 border-top">
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="participa_controle_presenca">
+                                            <label class="form-check-label fw-bold" for="participa_controle_presenca">Participa do Controle de Presença?</label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="tab-pane fade" id="financeiro-content" role="tabpanel">
+                                <div class="row g-3">
+                                    <div class="col-md-6"><label class="form-label small fw-bold">Meta de Vendas</label><input type="number" class="form-control" id="meta_comissao"></div>
+                                    <div class="col-md-6"><label class="form-label small fw-bold">Chave PIX</label><input type="text" class="form-control" id="chave_pix"></div>
+                                    <div class="col-md-6"><label class="form-label small fw-bold">Titular da Conta</label><input type="text" class="form-control" id="nome_da_conta"></div>
+                                    <div class="col-md-3"><label class="form-label small">Almoço (R$)</label><input type="number" class="form-control" id="valor_almoco" step="0.01"></div>
+                                    <div class="col-md-3"><label class="form-label small">Passagem (R$)</label><input type="number" class="form-control" id="valor_passagem" step="0.01"></div>
+                                    
+                                    <div class="col-12"><hr class="text-muted"> <h6 class="text-secondary small text-uppercase fw-bold">Descontos Configurados</h6></div>
+                                    <div class="col-md-4"><label class="form-label small">Desc. Boleto</label><input type="number" class="form-control form-control-sm" id="desconto_boleto" step="0.01"></div>
+                                    <div class="col-md-4"><label class="form-label small">Desc. Viabilidade</label><input type="number" class="form-control form-control-sm" id="desconto_inclusao_viabilidade" step="0.01"></div>
+                                    <div class="col-md-4"><label class="form-label small">Desc. Antecipação</label><input type="number" class="form-control form-control-sm" id="desconto_instalacao_antecipada" step="0.01"></div>
+                                    <div class="col-md-6"><label class="form-label small">Adiantamento CNPJ</label><input type="number" class="form-control form-control-sm" id="adiantamento_cnpj" step="0.01"></div>
+                                    <div class="col-md-6"><label class="form-label small">Desc. INSS Fixo</label><input type="number" class="form-control form-control-sm" id="desconto_inss_fixo" step="0.01"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer bg-light">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                            <button type="submit" class="btn btn-primary px-4">Salvar Usuário</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade" id="perfilModal" tabindex="-1">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
@@ -458,7 +515,7 @@
             </div>
         </div>
     </div>
-
+    
     <div class="modal fade" id="modal-edicao-motivo" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
@@ -469,10 +526,6 @@
         </div>
     </div>
 
-    <footer>
-        <p>Record PAP - Sistema Interno</p>
-    </footer>
-
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
     <script src="{% static 'js/auth.js' %}?v=1.3"></script>
@@ -482,6 +535,7 @@
     <script>
     const apiUrl = '';
     
+    // Funções de UI (Abas e Seções)
     function openTab(evt, tabName) {
         evt.preventDefault();
         const parent = evt.currentTarget.closest('.card');
@@ -544,7 +598,6 @@
          if(wel) wel.textContent = `Olá, ${decodedToken.username}`; 
     }
 
-    // Validação de Acesso à Governança
     if (!userProfile || !['Diretoria', 'Admin'].includes(userProfile) && !isSuperuser) {
         alert('Acesso negado.'); window.location.href = '/area-interna/';
     }
@@ -554,46 +607,52 @@
     if(menuToggle && mainNav) menuToggle.addEventListener('click', () => mainNav.classList.toggle('active'));
 
     // ====================================================================
-    // 1. GESTÃO DE PERFIS (MODERNIZADA PARA GRUPOS)
+    // VARIÁVEIS GLOBAIS
     // ====================================================================
-    
-    // Variáveis Globais
-    const API_GRUPOS = '/grupos/';         // Rota da ViewSet de Grupos
-    const API_PERMISSOES = '/permissoes/'; // Rota da ViewSet de Permissões
+    const API_GRUPOS = '/grupos/';
+    const API_PERMISSOES = '/permissoes/';
+    let todosUsuariosCache = []; // Cache local para filtro rápido
     let todasPermissoes = [];
     const perfilModal = new bootstrap.Modal(document.getElementById('perfilModal'));
     const excluirPerfilModal = new bootstrap.Modal(document.getElementById('excluirPerfilModal'));
+    // NOVO MODAL DE USUÁRIO
+    const userModal = new bootstrap.Modal(document.getElementById('userModal'));
+    const userForm = document.getElementById('user-form');
 
-    // Carrega a lista de perfis (Grupos) na tabela
+    // ====================================================================
+    // GESTÃO DE PERFIS
+    // ====================================================================
     async function carregarPerfis() {
         const tbody = document.getElementById('perfis-tabela-corpo');
         tbody.innerHTML = '<tr><td colspan="3" class="text-center py-3">Carregando...</td></tr>';
-        
         try {
-            // Busca os Grupos da nova API
             const grupos = await apiFetch(API_GRUPOS);
             tbody.innerHTML = '';
             
+            const selectMassa = document.getElementById('novo-perfil-massa');
+            selectMassa.innerHTML = '<option value="">Alterar Perfil para...</option>';
+
             if(grupos.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">Nenhum perfil encontrado.</td></tr>';
                 return;
             }
 
             grupos.forEach(grupo => {
-                // Cria badges visuais para as permissões do grupo
                 const badges = grupo.permissions_details.map(p => 
                     `<span class="badge bg-info text-dark badge-perm">${formatarNomePermissao(p.name)}</span>`
                 ).join('');
+
+                selectMassa.add(new Option(grupo.name, grupo.id));
 
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td class="fw-bold text-primary">${grupo.name}</td>
                     <td>${badges || '<span class="text-muted small fst-italic">Sem permissões especiais</span>'}</td>
                     <td class="text-end">
-                        <button class="btn btn-sm btn-outline-primary me-1" onclick='editarPerfil(${JSON.stringify(grupo)})'>
-                            <i class="bi bi-pencil"></i> Editar
+                        <button class="btn btn-xs btn-outline-primary me-1" onclick='editarPerfil(${JSON.stringify(grupo)})' title="Editar">
+                            <i class="bi bi-pencil"></i>
                         </button>
-                        <button class="btn btn-sm btn-outline-danger" onclick="confirmarExclusaoPerfil(${grupo.id}, '${grupo.name}')">
+                        <button class="btn btn-xs btn-outline-danger" onclick="confirmarExclusaoPerfil(${grupo.id}, '${grupo.name}')" title="Excluir">
                             <i class="bi bi-trash"></i>
                         </button>
                     </td>
@@ -606,41 +665,33 @@
         }
     }
 
-    // Abre o modal de criação/edição
     async function abrirModalPerfil(grupo = null) {
         document.getElementById('modal-perfil-titulo').textContent = grupo ? 'Editar Perfil' : 'Novo Perfil';
         document.getElementById('modal_perfil_id').value = grupo ? grupo.id : '';
         document.getElementById('modal_perfil_nome').value = grupo ? grupo.name : '';
-        document.getElementById('filtro-permissoes').value = ''; // Reset filtro
-        
+        document.getElementById('filtro-permissoes').value = '';
         const container = document.getElementById('lista-permissoes');
         container.innerHTML = '<div class="text-center text-muted"><div class="spinner-border spinner-border-sm"></div> Carregando...</div>';
-        
         perfilModal.show();
 
-        // Carrega as permissões disponíveis se ainda não tiver carregado
         if (todasPermissoes.length === 0) {
             try {
                 const res = await apiFetch(API_PERMISSOES);
-                todasPermissoes = res; // A API retorna uma lista direta
+                todasPermissoes = res;
             } catch(e) {
                 container.innerHTML = '<div class="text-danger small">Erro ao carregar lista de permissões.</div>';
                 return;
             }
         }
-
-        // Renderiza os checkboxes
         renderizarListaPermissoes(grupo ? grupo.permissions : []);
     }
     
     function renderizarListaPermissoes(permsAtuais) {
         const container = document.getElementById('lista-permissoes');
         container.innerHTML = '';
-        
         todasPermissoes.forEach(p => {
             const isChecked = permsAtuais.includes(p.id) ? 'checked' : '';
             const nomeAmigavel = formatarNomePermissao(p.name);
-            
             container.innerHTML += `
                 <div class="perm-item form-check">
                     <input class="form-check-input" type="checkbox" value="${p.id}" id="perm-${p.id}" ${isChecked}>
@@ -652,54 +703,32 @@
         });
     }
 
-    // LÓGICA DE FILTRO (PESQUISA)
     document.getElementById('filtro-permissoes').addEventListener('input', function(e) {
         const termo = e.target.value.toLowerCase();
-        const items = document.querySelectorAll('.perm-item');
-        
-        items.forEach(item => {
-            const texto = item.innerText.toLowerCase();
-            if (texto.includes(termo)) {
-                item.style.display = 'flex';
-            } else {
-                item.style.display = 'none';
-            }
+        document.querySelectorAll('.perm-item').forEach(item => {
+            item.style.display = item.innerText.toLowerCase().includes(termo) ? 'flex' : 'none';
         });
     });
 
-    // Função auxiliar para abrir modal via botão
     window.editarPerfil = (grupo) => abrirModalPerfil(grupo);
     document.getElementById('btn-adicionar-perfil').onclick = () => abrirModalPerfil(null);
 
-    // Salva o Perfil (POST ou PATCH)
     async function salvarPerfil() {
         const id = document.getElementById('modal_perfil_id').value;
         const nome = document.getElementById('modal_perfil_nome').value;
-        
-        // Coleta IDs marcados
         const checkboxes = document.querySelectorAll('#lista-permissoes input:checked');
         const perms = Array.from(checkboxes).map(el => parseInt(el.value));
-
         if (!nome) { alert('O nome do perfil é obrigatório.'); return; }
-
         const payload = { name: nome, permissions: perms };
-
         try {
-            if (id) {
-                await apiFetch(`${API_GRUPOS}${id}/`, { method: 'PATCH', body: JSON.stringify(payload) });
-            } else {
-                await apiFetch(API_GRUPOS, { method: 'POST', body: JSON.stringify(payload) });
-            }
+            if (id) await apiFetch(`${API_GRUPOS}${id}/`, { method: 'PATCH', body: JSON.stringify(payload) });
+            else await apiFetch(API_GRUPOS, { method: 'POST', body: JSON.stringify(payload) });
             perfilModal.hide();
             carregarPerfis();
             alert('Perfil salvo com sucesso!');
-        } catch (e) {
-            alert('Erro ao salvar perfil. Verifique se o nome já existe.');
-            console.error(e);
-        }
+        } catch (e) { alert('Erro ao salvar perfil.'); console.error(e); }
     }
 
-    // Exclusão de Perfil
     window.confirmarExclusaoPerfil = (id, nome) => {
         document.getElementById('id-perfil-excluir').value = id;
         document.getElementById('nome-perfil-excluir').textContent = nome;
@@ -715,32 +744,15 @@
         } catch(e){ alert(e.message); }
     };
 
-    // Formata nomes técnicos (ex: "Can view venda" -> "Visualizar Venda")
     function formatarNomePermissao(nome) {
-        return nome.replace('Can view', 'Visualizar')
-                   .replace('Can add', 'Adicionar')
-                   .replace('Can change', 'Editar')
-                   .replace('Can delete', 'Excluir')
-                   .replace('Pode visualizar', 'Acesso a')
-                   .replace('venda', 'Venda')
-                   .replace('comissao', 'Comissão');
+        return nome.replace('Can view', 'Visualizar').replace('Can add', 'Adicionar').replace('Can change', 'Editar').replace('Can delete', 'Excluir').replace('Pode visualizar', 'Acesso a').replace('venda', 'Venda').replace('comissao', 'Comissão');
     }
 
 
     // ====================================================================
-    // 2. GESTÃO DE USUÁRIOS
+    // GESTÃO DE USUÁRIOS (COM FILTRO E AÇÃO EM MASSA)
     // ====================================================================
-    const userForm = document.getElementById('user-form');
-    const userIdInput = document.getElementById('user_id');
-    const userListBody = document.getElementById('user-list-body');
     
-    function resetForm() {
-        userForm.reset();
-        userIdInput.value = '';
-        document.getElementById('form-title').innerHTML = '<i class="bi bi-person-plus-fill"></i> Cadastrar Novo Usuário';
-        document.getElementById('senha').required = true;
-    }
-
     function mostrarListaUsuarios(status, btn) {
         document.getElementById('lista-status-titulo').textContent = status === 'ativos' ? 'Ativos' : 'Inativos';
         document.getElementById('lista-status-titulo').className = status === 'ativos' ? 'badge bg-success' : 'badge bg-secondary';
@@ -754,28 +766,137 @@
     async function carregarUsuarios(status = 'ativos') {
         try {
             const usuarios = await apiFetch(`/usuarios/?is_active=${status === 'ativos'}`);
-            userListBody.innerHTML = '';
-            const header = document.getElementById('user-list-header');
-            header.innerHTML = status === 'ativos' ? '<th>Nome</th><th>E-mail</th><th>Perfil</th><th>Líder</th><th class="text-end">Ações</th>' : '<th>Nome</th><th>E-mail</th><th>Perfil</th><th class="text-end">Ações</th>';
-            
-            usuarios.forEach(user => {
-                // Lógica para exibir o grupo moderno ou o perfil legado
-                let perfilDisplay = '<span class="badge bg-secondary">Sem Perfil</span>';
-                if (user.groups && user.groups.length > 0) {
-                    perfilDisplay = `<span class="badge bg-success">${user.groups[0].name}</span>`;
-                } else if (user.perfil_nome) {
-                    perfilDisplay = `<span class="badge bg-secondary">${user.perfil_nome} (Legado)</span>`;
-                }
-
-                const tr = document.createElement('tr');
-                const acoes = status === 'ativos' 
-                    ? `<button class="btn btn-warning btn-sm me-1" onclick='iniciarEdicao(${JSON.stringify(user)})'><i class="bi bi-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="inativarUsuario(${user.id})"><i class="bi bi-trash"></i></button>`
-                    : `<button class="btn btn-success btn-sm" onclick="reativarUsuario(${user.id})"><i class="bi bi-check-circle"></i></button>`;
-                
-                tr.innerHTML = `<td>${user.nome_completo}</td><td>${user.email}</td><td>${perfilDisplay}</td>${status === 'ativos' ? `<td>${user.supervisor_nome || '-'}</td>` : ''}<td class="text-end">${acoes}</td>`;
-                userListBody.appendChild(tr);
-            });
+            todosUsuariosCache = usuarios; // Guarda no cache para busca
+            renderizarTabelaUsuarios(usuarios, status);
         } catch (e) { console.error(e); }
+    }
+
+    function renderizarTabelaUsuarios(lista, status) {
+        const userListBody = document.getElementById('user-list-body');
+        userListBody.innerHTML = '';
+        
+        const isAtivos = status === 'ativos';
+        const headerRow = document.getElementById('user-list-header');
+        headerRow.innerHTML = isAtivos 
+            ? `<th style="width: 40px;"><input type="checkbox" id="check-all" onclick="toggleTodos(this)"></th><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Líder</th><th class="text-end">Ações</th>`
+            : `<th>Nome</th><th>E-mail</th><th>Perfil</th><th class="text-end">Ações</th>`;
+
+        if (lista.length === 0) {
+            userListBody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Nenhum usuário encontrado.</td></tr>';
+            return;
+        }
+        
+        lista.forEach(user => {
+            let perfilDisplay = '<span class="badge bg-secondary">Sem Perfil</span>';
+            if (user.groups && user.groups.length > 0) {
+                perfilDisplay = `<span class="badge bg-success">${user.groups[0].name}</span>`;
+            } else if (user.perfil_nome) {
+                perfilDisplay = `<span class="badge bg-warning text-dark" title="Atualize o cadastro para o novo sistema">${user.perfil_nome} (Legado)</span>`;
+            }
+
+            const tr = document.createElement('tr');
+            const checkHtml = isAtivos ? `<td><input type="checkbox" class="user-check" value="${user.id}" onclick="atualizarContador()"></td>` : '';
+            const liderHtml = isAtivos ? `<td>${user.supervisor_nome || '-'}</td>` : '';
+            const acoes = isAtivos 
+                ? `<button class="btn btn-xs btn-outline-warning me-1" onclick='abrirModalUsuario(${JSON.stringify(user)})' title="Editar"><i class="bi bi-pencil"></i></button><button class="btn btn-xs btn-outline-danger" onclick="inativarUsuario(${user.id})" title="Inativar"><i class="bi bi-trash"></i></button>`
+                : `<button class="btn btn-xs btn-outline-success" onclick="reativarUsuario(${user.id})" title="Reativar"><i class="bi bi-check-circle"></i></button>`;
+            
+            tr.innerHTML = `${checkHtml}<td>${user.nome_completo}</td><td>${user.email}</td><td>${perfilDisplay}</td>${liderHtml}<td class="text-end">${acoes}</td>`;
+            userListBody.appendChild(tr);
+        });
+        atualizarContador();
+    }
+
+    document.getElementById('busca-usuario').addEventListener('input', (e) => {
+        const termo = e.target.value.toLowerCase();
+        const filtrados = todosUsuariosCache.filter(u => 
+            u.nome_completo.toLowerCase().includes(termo) || 
+            u.email.toLowerCase().includes(termo) ||
+            u.username.toLowerCase().includes(termo)
+        );
+        const statusAtual = document.getElementById('lista-status-titulo').textContent === 'Ativos' ? 'ativos' : 'inativos';
+        renderizarTabelaUsuarios(filtrados, statusAtual);
+    });
+
+    window.toggleTodos = (source) => {
+        document.querySelectorAll('.user-check').forEach(c => c.checked = source.checked);
+        atualizarContador();
+    }
+
+    window.atualizarContador = () => {
+        const count = document.querySelectorAll('.user-check:checked').length;
+        document.getElementById('count-selecionados').textContent = count;
+        const barraAcoes = document.getElementById('acoes-massa');
+        if (count > 0) {
+            barraAcoes.classList.remove('d-none');
+            barraAcoes.classList.add('d-flex');
+        } else {
+            barraAcoes.classList.add('d-none');
+            barraAcoes.classList.remove('d-flex');
+        }
+    }
+
+    window.aplicarMudancaPerfilEmMassa = async () => {
+        const novoPerfilId = document.getElementById('novo-perfil-massa').value;
+        if (!novoPerfilId) return alert('Selecione um perfil para aplicar.');
+        
+        const checkboxes = document.querySelectorAll('.user-check:checked');
+        if (checkboxes.length === 0) return;
+
+        if (!confirm(`Deseja alterar o perfil de ${checkboxes.length} usuários para o selecionado?`)) return;
+
+        const ids = Array.from(checkboxes).map(c => c.value);
+        let sucessos = 0;
+
+        for (const userId of ids) {
+            try {
+                await apiFetch(`/usuarios/${userId}/`, { 
+                    method: 'PATCH', 
+                    body: JSON.stringify({ groups: [parseInt(novoPerfilId)] }) 
+                });
+                sucessos++;
+            } catch (e) { console.error(`Erro ao atualizar usuário ${userId}`, e); }
+        }
+
+        alert(`${sucessos} usuários atualizados com sucesso.`);
+        carregarUsuarios('ativos');
+        document.getElementById('check-all').checked = false;
+    }
+
+    // --- LOGICA DO MODAL DE USUÁRIO (NOVO) ---
+    async function abrirModalUsuario(user = null) {
+        // Reseta o formulário e abas
+        document.getElementById('user-form').reset();
+        const tab = new bootstrap.Tab(document.getElementById('dados-tab'));
+        tab.show(); 
+        
+        const userIdInput = document.getElementById('user_id');
+        userIdInput.value = user ? user.id : '';
+        
+        document.getElementById('userModalTitle').textContent = user ? 'Editar Usuário' : 'Novo Usuário';
+        document.getElementById('senha').required = !user; 
+
+        // Preenche dropdowns antes de setar valores
+        await carregarDadosParaFormulario();
+
+        if (user) {
+            ['nome_completo', 'cpf', 'email', 'username'].forEach(id => document.getElementById(id).value = user[id] || '');
+            
+            if (user.groups && user.groups.length > 0) {
+                document.getElementById('perfil_id').value = user.groups[0].id;
+            } else if (user.perfil) {
+                document.getElementById('perfil_id').value = user.perfil;
+            }
+
+            document.getElementById('supervisor_id').value = user.supervisor || '';
+            document.getElementById('participa_controle_presenca').checked = user.participa_controle_presenca;
+            
+            ['valor_almoco', 'valor_passagem', 'chave_pix', 'nome_da_conta', 'meta_comissao', 'desconto_boleto', 'desconto_inclusao_viabilidade', 'desconto_instalacao_antecipada', 'adiantamento_cnpj', 'desconto_inss_fixo'].forEach(id => {
+                document.getElementById(id).value = user[id] || '';
+            });
+        }
+
+        userModal.show();
     }
 
     async function carregarDadosParaFormulario() {
@@ -783,48 +904,15 @@
         const sSelect = document.getElementById('supervisor_id');
         pSelect.innerHTML = ''; sSelect.innerHTML = '<option value="">Nenhum</option>';
         try {
-            // Carrega os Grupos (Perfis Modernos) e a lista de usuários para líder
             const [grupos, usuarios] = await Promise.all([ apiFetch(API_GRUPOS), apiFetch('/usuarios/?is_active=true') ]);
-            
-            // Preenche o select de perfis com os grupos
             grupos.forEach(g => pSelect.add(new Option(g.name, g.id)));
-            
             usuarios.forEach(u => sSelect.add(new Option(u.nome_completo, u.id)));
         } catch (e) {}
     }
 
-    function iniciarEdicao(user) {
-        resetForm();
-        document.getElementById('form-title').textContent = 'Editando Usuário';
-        document.getElementById('user_id').value = user.id;
-        
-        // Preenche campos básicos
-        ['nome_completo', 'cpf', 'email', 'username'].forEach(id => {
-            document.getElementById(id).value = user[id] || '';
-        });
-        
-        // Seleciona o perfil (grupo) correto
-        if (user.groups && user.groups.length > 0) {
-            document.getElementById('perfil_id').value = user.groups[0].id;
-        } else if (user.perfil) {
-            // Fallback para ID legado se necessário, ou deixa em branco
-            document.getElementById('perfil_id').value = user.perfil;
-        }
-
-        document.getElementById('supervisor_id').value = user.supervisor || '';
-        document.getElementById('participa_controle_presenca').checked = user.participa_controle_presenca;
-        document.getElementById('senha').required = false;
-        
-        // Preenche financeiros
-        ['valor_almoco', 'valor_passagem', 'chave_pix', 'nome_da_conta', 'meta_comissao', 'desconto_boleto', 'desconto_inclusao_viabilidade', 'desconto_instalacao_antecipada', 'adiantamento_cnpj', 'desconto_inss_fixo'].forEach(id => {
-            document.getElementById(id).value = user[id] || '';
-        });
-
-        window.scrollTo(0, 0);
-    }
-
     userForm.addEventListener('submit', async function(e) {
         e.preventDefault();
+        const userIdInput = document.getElementById('user_id');
         const id = userIdInput.value;
         const isEditing = !!id;
         const url = isEditing ? `/usuarios/${id}/` : '/usuarios/';
@@ -834,16 +922,15 @@
         const nomeParts = nomeCompleto.split(' ');
         const firstName = nomeParts.shift();
         const lastName = nomeParts.join(' ');
+        const perfilSelecionado = document.getElementById('perfil_id').value;
 
         const body = {
             first_name: firstName, last_name: lastName,
             cpf: document.getElementById('cpf').value,
             email: document.getElementById('email').value,
-            // perfil: document.getElementById('perfil_id').value, // Campo legado
             username: document.getElementById('username').value,
             supervisor: document.getElementById('supervisor_id').value || null,
-            
-            // Campos financeiros...
+            groups: perfilSelecionado ? [parseInt(perfilSelecionado)] : [],
             valor_almoco: document.getElementById('valor_almoco').value,
             valor_passagem: document.getElementById('valor_passagem').value,
             chave_pix: document.getElementById('chave_pix').value,
@@ -859,151 +946,56 @@
 
         const senha = document.getElementById('senha').value;
         if (senha) body.password = senha;
-        else if (!isEditing) return alert('Senha obrigatória');
 
         try {
-            // 1. Salva o usuário
-            const res = await apiFetch(url, { method, body: JSON.stringify(body) });
-            const userId = res.id;
-
-            // 2. Associa o Grupo (Perfil) ao usuário (Isso pode exigir um endpoint extra ou ajuste no serializer)
-            // Como seu serializer atualiza 'perfil' (legado), vamos manter isso por enquanto
-            // Para atualizar grupos nativos, o ideal é enviar 'groups': [id] no body se o serializer suportar
-            // Se o serializer não suportar update direto de grupos, precisaria de uma chamada extra.
-            // *ASSUMINDO QUE O SERIALIZER TRATA 'perfil' COMO LEGADO E VAMOS MIGRAR AOS POUCOS*
-            
+            await apiFetch(url, { method, body: JSON.stringify(body) });
             alert('Salvo com sucesso!');
-            resetForm();
-            mostrarListaUsuarios('ativos', document.querySelector('#usuarios-section .btn-group .btn.active'));
+            userModal.hide();
+            mostrarListaUsuarios('ativos', null);
         } catch (e) { alert(`Erro: ${e.message}`); }
     });
 
     async function inativarUsuario(id) { if(confirm('Inativar?')) { await apiFetch(`/usuarios/${id}/`, { method: 'DELETE' }); mostrarListaUsuarios('ativos'); } }
     async function reativarUsuario(id) { if(confirm('Reativar?')) { await apiFetch(`/usuarios/${id}/reativar/`, { method: 'PUT' }); mostrarListaUsuarios('inativos'); } }
 
-
-    // ====================================================================
-    // 3. CADASTROS GERAIS E LEGADOS (MOTIVOS, FERIADOS, REGRAS)
-    // ====================================================================
-
-    // MOTIVOS
+    // --- CADASTROS GERAIS (Mantidos e Compactados) ---
     const listaMotivosUl = document.getElementById('lista-motivos');
     const motivoModal = new bootstrap.Modal(document.getElementById('modal-edicao-motivo'));
-
-    async function carregarMotivos() {
-        const m = await apiFetch('/presenca/motivos/');
-        listaMotivosUl.innerHTML = '';
-        m.forEach(x => listaMotivosUl.innerHTML += `<li class="list-group-item d-flex justify-content-between align-items-center"><span>${x.motivo} <span class="badge ${x.gera_desconto?'bg-danger':'bg-success'}">${x.gera_desconto?'Desconta':'Não Desconta'}</span></span><div><button class="btn btn-warning btn-sm me-1" onclick='editarMotivo(${JSON.stringify(x)})'><i class="bi bi-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="excluirMotivo(${x.id})"><i class="bi bi-trash"></i></button></div></li>`);
-    }
-    
-    document.getElementById('btn-salvar-motivo').onclick = async () => {
-        await apiFetch('/presenca/motivos/', { method: 'POST', body: JSON.stringify({ motivo: document.getElementById('novo-motivo-nome').value, gera_desconto: document.getElementById('novo-motivo-desconto').checked }) });
-        carregarMotivos(); document.getElementById('novo-motivo-nome').value = '';
-    };
-
-    window.editarMotivo = (m) => {
-        document.getElementById('motivo-id-input').value = m.id;
-        document.getElementById('motivo-nome-input').value = m.motivo;
-        document.getElementById('motivo-desconto-input').checked = m.gera_desconto;
-        motivoModal.show();
-    };
-    
-    document.getElementById('form-edicao-motivo').onsubmit = async (e) => {
-        e.preventDefault();
-        const id = document.getElementById('motivo-id-input').value;
-        await apiFetch(`/presenca/motivos/${id}/`, { method: 'PUT', body: JSON.stringify({ motivo: document.getElementById('motivo-nome-input').value, gera_desconto: document.getElementById('motivo-desconto-input').checked }) });
-        motivoModal.hide(); carregarMotivos();
-    };
-
+    async function carregarMotivos() { const m = await apiFetch('/presenca/motivos/'); listaMotivosUl.innerHTML = ''; m.forEach(x => listaMotivosUl.innerHTML += `<li class="list-group-item d-flex justify-content-between align-items-center"><span>${x.motivo} <span class="badge ${x.gera_desconto?'bg-danger':'bg-success'}">${x.gera_desconto?'Desconta':'Não Desconta'}</span></span><div><button class="btn btn-warning btn-sm me-1" onclick='editarMotivo(${JSON.stringify(x)})'><i class="bi bi-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="excluirMotivo(${x.id})"><i class="bi bi-trash"></i></button></div></li>`); }
+    document.getElementById('btn-salvar-motivo').onclick = async () => { await apiFetch('/presenca/motivos/', { method: 'POST', body: JSON.stringify({ motivo: document.getElementById('novo-motivo-nome').value, gera_desconto: document.getElementById('novo-motivo-desconto').checked }) }); carregarMotivos(); document.getElementById('novo-motivo-nome').value = ''; };
+    window.editarMotivo = (m) => { document.getElementById('motivo-id-input').value = m.id; document.getElementById('motivo-nome-input').value = m.motivo; document.getElementById('motivo-desconto-input').checked = m.gera_desconto; motivoModal.show(); };
+    document.getElementById('form-edicao-motivo').onsubmit = async (e) => { e.preventDefault(); const id = document.getElementById('motivo-id-input').value; await apiFetch(`/presenca/motivos/${id}/`, { method: 'PUT', body: JSON.stringify({ motivo: document.getElementById('motivo-nome-input').value, gera_desconto: document.getElementById('motivo-desconto-input').checked }) }); motivoModal.hide(); carregarMotivos(); };
     window.excluirMotivo = async(id) => { if(confirm('Excluir?')) { await apiFetch(`/presenca/motivos/${id}/`, {method:'DELETE'}); carregarMotivos(); } };
-
-    // FERIADOS
-    const listaFeriados = document.getElementById('lista-feriados');
-    async function carregarFeriados() {
-        const f = await apiFetch('/presenca/dias-nao-uteis/');
-        listaFeriados.innerHTML = '';
-        f.forEach(x => listaFeriados.innerHTML += `<tr><td>${new Date(x.data).toLocaleDateString('pt-BR',{timeZone:'UTC'})}</td><td>${x.descricao}</td><td><button class="btn btn-danger btn-sm" onclick="excluirFeriado(${x.id})"><i class="bi bi-trash"></i></button></td></tr>`);
-    }
-    document.getElementById('btn-salvar-feriado').onclick = async () => {
-        await apiFetch('/presenca/dias-nao-uteis/', { method: 'POST', body: JSON.stringify({ data: document.getElementById('novo-feriado-data').value, descricao: document.getElementById('novo-feriado-descricao').value }) });
-        carregarFeriados(); document.getElementById('novo-feriado-data').value = '';
-    };
+    const listaFeriados = document.getElementById('lista-feriados'); async function carregarFeriados() { const f = await apiFetch('/presenca/dias-nao-uteis/'); listaFeriados.innerHTML = ''; f.forEach(x => listaFeriados.innerHTML += `<tr><td>${new Date(x.data).toLocaleDateString('pt-BR',{timeZone:'UTC'})}</td><td>${x.descricao}</td><td><button class="btn btn-danger btn-sm" onclick="excluirFeriado(${x.id})"><i class="bi bi-trash"></i></button></td></tr>`); }
+    document.getElementById('btn-salvar-feriado').onclick = async () => { await apiFetch('/presenca/dias-nao-uteis/', { method: 'POST', body: JSON.stringify({ data: document.getElementById('novo-feriado-data').value, descricao: document.getElementById('novo-feriado-descricao').value }) }); carregarFeriados(); document.getElementById('novo-feriado-data').value = ''; };
     window.excluirFeriado = async(id) => { if(confirm('Excluir?')) { await apiFetch(`/presenca/dias-nao-uteis/${id}/`, {method:'DELETE'}); carregarFeriados(); } };
-
-    // RELATÓRIOS
-    window.gerarRelatorio = async (tipo) => {
-        const ini = document.getElementById('data-inicio-relatorio').value;
-        const fim = document.getElementById('data-fim-relatorio').value;
-        if(!ini || !fim) return alert('Selecione datas');
-        const div = document.getElementById('resultado-relatorio');
-        div.innerHTML = '<div class="spinner-border"></div>';
-        let url = typeMap = { 'previsao': 'previsao', 'descontos': 'descontos', 'final': 'semanal' }[tipo];
-        
-        try {
-            const res = await apiFetch(`/relatorios/${url}?dataInicio=${ini}&dataFim=${fim}`);
-            let html = `<div class="alert alert-success">Registros: ${res.dados.length}</div><button id="btn-exportar-csv" class="btn btn-secondary mb-3">CSV</button><div class="table-responsive"><table id="tabela-relatorio-dados" class="table table-sm table-bordered"><thead><tr><th>Nome</th><th>Valor</th></tr></thead><tbody>`;
-            res.dados.forEach(d => html += `<tr><td>${d.nome_completo}</td><td>${d.valor_final || d.previsao_periodo || d.valor_desconto}</td></tr>`);
-            html += `</tbody></table></div>`;
-            div.innerHTML = html;
-            document.getElementById('btn-exportar-csv').onclick = () => exportarTabelaParaCSV('tabela-relatorio-dados', `relatorio.csv`);
-        } catch(e) { div.innerHTML = `<div class="alert alert-danger">${e.message}</div>`; }
-    };
-
-    function exportarTabelaParaCSV(id, nome) {
-        const table = document.getElementById(id);
-        let csv = [];
-        for(let row of table.rows) {
-            let cols = [];
-            for(let cell of row.cells) cols.push(`"${cell.innerText}"`);
-            csv.push(cols.join(","));
-        }
-        const blob = new Blob([csv.join("\n")], { type: 'text/csv' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a'); a.href = url; a.download = nome; a.click();
-    }
-
-    // CRM CONFIGS
-    async function carregarOperadoras() { 
-        const l = document.getElementById('lista-operadoras'); l.innerHTML='';
-        const d = await apiFetch('/crm/operadoras/');
-        d.forEach(o => l.innerHTML += `<tr><td>${o.nome}</td><td>${o.cnpj||''}</td><td>${o.status?'Ativo':'Inativo'}</td><td><button class="btn btn-warning btn-sm" onclick='editarOperadora(${JSON.stringify(o)})'><i class="bi bi-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="deletarOperadora(${o.id})"><i class="bi bi-trash"></i></button></td></tr>`);
-    }
+    window.gerarRelatorio = async (tipo) => { const ini = document.getElementById('data-inicio-relatorio').value; const fim = document.getElementById('data-fim-relatorio').value; if(!ini || !fim) return alert('Selecione datas'); const div = document.getElementById('resultado-relatorio'); div.innerHTML = '<div class="spinner-border"></div>'; let url = { 'previsao': 'previsao', 'descontos': 'descontos', 'final': 'semanal' }[tipo]; try { const res = await apiFetch(`/relatorios/${url}?dataInicio=${ini}&dataFim=${fim}`); let html = `<div class="alert alert-success">Registros: ${res.dados.length}</div><button id="btn-exportar-csv" class="btn btn-secondary mb-3">CSV</button><div class="table-responsive"><table id="tabela-relatorio-dados" class="table table-sm table-bordered"><thead><tr><th>Nome</th><th>Valor</th></tr></thead><tbody>`; res.dados.forEach(d => html += `<tr><td>${d.nome_completo}</td><td>${d.valor_final || d.previsao_periodo || d.valor_desconto}</td></tr>`); html += `</tbody></table></div>`; div.innerHTML = html; document.getElementById('btn-exportar-csv').onclick = () => exportarTabelaParaCSV('tabela-relatorio-dados', `relatorio.csv`); } catch(e) { div.innerHTML = `<div class="alert alert-danger">${e.message}</div>`; } };
+    function exportarTabelaParaCSV(id, nome) { const table = document.getElementById(id); let csv = []; for(let row of table.rows) { let cols = []; for(let cell of row.cells) cols.push(`"${cell.innerText}"`); csv.push(cols.join(",")); } const blob = new Blob([csv.join("\n")], { type: 'text/csv' }); const url = window.URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = nome; a.click(); }
+    async function carregarOperadoras() { const l = document.getElementById('lista-operadoras'); l.innerHTML=''; (await apiFetch('/crm/operadoras/')).forEach(o => l.innerHTML += `<tr><td>${o.nome}</td><td>${o.cnpj||''}</td><td>${o.status?'Ativo':'Inativo'}</td><td><button class="btn btn-warning btn-sm" onclick='editarOperadora(${JSON.stringify(o)})'><i class="bi bi-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="deletarOperadora(${o.id})"><i class="bi bi-trash"></i></button></td></tr>`); }
     document.getElementById('form-operadora').onsubmit = async(e) => { e.preventDefault(); const id = document.getElementById('operadora_id').value; await apiFetch(id?`/crm/operadoras/${id}/`:'/crm/operadoras/', {method:id?'PUT':'POST', body:JSON.stringify({nome:document.getElementById('operadora_nome').value, cnpj:document.getElementById('operadora_cnpj').value, status: document.getElementById('operadora_status').value=='1'})}); document.getElementById('form-operadora').reset(); carregarOperadoras(); };
     window.editarOperadora = (o) => { document.getElementById('operadora_id').value=o.id; document.getElementById('operadora_nome').value=o.nome; document.getElementById('operadora_cnpj').value=o.cnpj; document.getElementById('operadora_status').value=o.status?'1':'0'; };
     window.deletarOperadora = async(id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/operadoras/${id}/`,{method:'DELETE'}); carregarOperadoras(); }};
-
-    async function carregarPlanos() { 
-        const l = document.getElementById('lista-planos'); l.innerHTML='';
-        const [plans, ops] = await Promise.all([apiFetch('/crm/planos/'), apiFetch('/crm/operadoras/')]);
-        const sel = document.getElementById('plano_operadora_id'); sel.innerHTML='<option value="">Selecione</option>';
-        ops.forEach(o => sel.add(new Option(o.nome, o.id)));
-        plans.forEach(p => l.innerHTML += `<tr><td>${p.nome}</td><td>${p.operadora_nome}</td><td>${p.valor}</td><td>${p.comissao_base}</td><td><button class="btn btn-warning btn-sm" onclick='editarPlano(${JSON.stringify(p)})'><i class="bi bi-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="deletarPlano(${p.id})"><i class="bi bi-trash"></i></button></td></tr>`);
-    }
+    async function carregarPlanos() { const l = document.getElementById('lista-planos'); l.innerHTML=''; const [plans, ops] = await Promise.all([apiFetch('/crm/planos/'), apiFetch('/crm/operadoras/')]); const sel = document.getElementById('plano_operadora_id'); sel.innerHTML='<option value="">Selecione</option>'; ops.forEach(o => sel.add(new Option(o.nome, o.id))); plans.forEach(p => l.innerHTML += `<tr><td>${p.nome}</td><td>${p.operadora_nome}</td><td>${p.valor}</td><td>${p.comissao_base}</td><td><button class="btn btn-warning btn-sm" onclick='editarPlano(${JSON.stringify(p)})'><i class="bi bi-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="deletarPlano(${p.id})"><i class="bi bi-trash"></i></button></td></tr>`); }
     document.getElementById('form-plano').onsubmit = async(e) => { e.preventDefault(); const id = document.getElementById('plano_id').value; await apiFetch(id?`/crm/planos/${id}/`:'/crm/planos/', {method:id?'PUT':'POST', body:JSON.stringify({nome:document.getElementById('plano_nome').value, valor: parseFloat(document.getElementById('plano_valor').value), comissao_base: parseFloat(document.getElementById('plano_comissao').value), operadora: document.getElementById('plano_operadora_id').value, beneficios: document.getElementById('plano_beneficios').value, status:true})}); document.getElementById('form-plano').reset(); carregarPlanos(); };
     window.editarPlano = (p) => { document.getElementById('plano_id').value=p.id; document.getElementById('plano_nome').value=p.nome; document.getElementById('plano_valor').value=p.valor; document.getElementById('plano_comissao').value=p.comissao_base; document.getElementById('plano_operadora_id').value=p.operadora; };
     window.deletarPlano = async(id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/planos/${id}/`,{method:'DELETE'}); carregarPlanos(); }};
-
     async function carregarFormasPagamento() { const l=document.getElementById('lista-formas-pagamento'); l.innerHTML=''; (await apiFetch('/crm/formas-pagamento/')).forEach(f=>l.innerHTML+=`<li class="list-group-item d-flex justify-content-between"><span>${f.nome}</span><div><button class="btn btn-sm btn-warning me-1" onclick="editarFP(${f.id}, '${f.nome}')"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-danger" onclick="delFP(${f.id})"><i class="bi bi-trash"></i></button></div></li>`); }
     document.getElementById('btn-salvar-forma-pagamento').onclick = async()=>{ await apiFetch('/crm/formas-pagamento/',{method:'POST', body:JSON.stringify({nome:document.getElementById('nova-forma-pagamento-nome').value, status:true})}); carregarFormasPagamento(); document.getElementById('nova-forma-pagamento-nome').value=''; };
     window.editarFP = async(id, old)=>{ const n=prompt('Nome:', old); if(n) { await apiFetch(`/crm/formas-pagamento/${id}/`,{method:'PUT', body:JSON.stringify({nome:n, status:true})}); carregarFormasPagamento(); }};
     window.delFP = async(id)=>{ if(confirm('Excluir?')) { await apiFetch(`/crm/formas-pagamento/${id}/`,{method:'DELETE'}); carregarFormasPagamento(); }};
-
     async function carregarStatus() { const l=document.getElementById('lista-status'); l.innerHTML=''; (await apiFetch('/crm/status/')).forEach(s=>l.innerHTML+=`<tr><td><span style="display:inline-block;width:10px;height:10px;background:${s.cor};border-radius:50%"></span> ${s.nome}</td><td>${s.tipo}</td><td>${s.estado||''}</td><td>${s.cor}</td><td><button class="btn btn-warning btn-sm" onclick='editStatus(${JSON.stringify(s)})'><i class="bi bi-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="delStatus(${s.id})"><i class="bi bi-trash"></i></button></td></tr>`); }
     document.getElementById('form-status').onsubmit = async(e)=>{ e.preventDefault(); const id=document.getElementById('status_id').value; const b={nome:document.getElementById('status_nome').value, tipo:document.getElementById('status_tipo').value, estado:document.getElementById('status_estado').value, cor:document.getElementById('status_cor').value}; await apiFetch(id?`/crm/status/${id}/`:'/crm/status/',{method:id?'PUT':'POST', body:JSON.stringify(b)}); document.getElementById('form-status').reset(); carregarStatus(); };
     window.editStatus=(s)=>{ document.getElementById('status_id').value=s.id; document.getElementById('status_nome').value=s.nome; document.getElementById('status_tipo').value=s.tipo; document.getElementById('status_estado').value=s.estado; document.getElementById('status_cor').value=s.cor; };
     window.delStatus=async(id)=>{ if(confirm('Excluir?')) { await apiFetch(`/crm/status/${id}/`,{method:'DELETE'}); carregarStatus(); }};
-
     async function carregarMotivosPendencia() { const l=document.getElementById('lista-pendencias'); l.innerHTML=''; (await apiFetch('/crm/motivos-pendencia/')).forEach(p=>l.innerHTML+=`<tr><td>${p.nome}</td><td>${p.tipo_pendencia}</td><td><button class="btn btn-warning btn-sm" onclick='editPend(${JSON.stringify(p)})'><i class="bi bi-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="delPend(${p.id})"><i class="bi bi-trash"></i></button></td></tr>`); }
     document.getElementById('form-pendencia').onsubmit = async(e)=>{ e.preventDefault(); const id=document.getElementById('pendencia_id').value; await apiFetch(id?`/crm/motivos-pendencia/${id}/`:'/crm/motivos-pendencia/',{method:id?'PUT':'POST', body:JSON.stringify({nome:document.getElementById('pendencia_nome').value, tipo_pendencia:document.getElementById('pendencia_tipo').value})}); document.getElementById('form-pendencia').reset(); carregarMotivosPendencia(); };
     window.editPend=(p)=>{ document.getElementById('pendencia_id').value=p.id; document.getElementById('pendencia_nome').value=p.nome; document.getElementById('pendencia_tipo').value=p.tipo_pendencia; };
     window.delPend=async(id)=>{ if(confirm('Excluir?')) { await apiFetch(`/crm/motivos-pendencia/${id}/`,{method:'DELETE'}); carregarMotivosPendencia(); }};
-
     async function carregarDadosParaRegrasComissao() { try { const [p, u] = await Promise.all([apiFetch('/crm/planos/'), apiFetch('/usuarios/?is_active=true')]); const sp=document.getElementById('regra_plano_id'); const sc=document.getElementById('regra_consultor_id'); sp.innerHTML=sc.innerHTML='<option value="">Selecione</option>'; p.forEach(x=>sp.add(new Option(x.nome, x.id))); u.forEach(x=>sc.add(new Option(x.nome_completo, x.id))); } catch(e){} }
     async function carregarRegrasComissao() { const l=document.getElementById('lista-regras-comissao'); l.innerHTML=''; (await apiFetch('/crm/regras-comissao/')).forEach(r=>l.innerHTML+=`<tr><td>${r.consultor_nome}</td><td>${r.plano_nome}</td><td>${r.tipo_venda}</td><td>${r.tipo_cliente}</td><td>${r.valor_base}</td><td>${r.valor_acelerado}</td><td><button class="btn btn-warning btn-sm" onclick='editRegra(${JSON.stringify(r)})'><i class="bi bi-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="delRegra(${r.id})"><i class="bi bi-trash"></i></button></td></tr>`); }
     document.getElementById('form-regra-comissao').onsubmit = async(e)=>{ e.preventDefault(); const id=document.getElementById('regra_comissao_id').value; const b={consultor:document.getElementById('regra_consultor_id').value, plano:document.getElementById('regra_plano_id').value, tipo_venda:document.getElementById('regra_tipo_venda').value, tipo_cliente:document.getElementById('regra_tipo_cliente').value, valor_base:document.getElementById('regra_valor_base').value, valor_acelerado:document.getElementById('regra_valor_acelerado').value}; await apiFetch(id?`/crm/regras-comissao/${id}/`:'/crm/regras-comissao/',{method:id?'PUT':'POST', body:JSON.stringify(b)}); document.getElementById('form-regra-comissao').reset(); carregarRegrasComissao(); };
     window.editRegra=(r)=>{ document.getElementById('regra_comissao_id').value=r.id; document.getElementById('regra_consultor_id').value=r.consultor; document.getElementById('regra_plano_id').value=r.plano; document.getElementById('regra_tipo_venda').value=r.tipo_venda; document.getElementById('regra_tipo_cliente').value=r.tipo_cliente; document.getElementById('regra_valor_base').value=r.valor_base; document.getElementById('regra_valor_acelerado').value=r.valor_acelerado; };
     window.delRegra=async(id)=>{ if(confirm('Excluir?')) { await apiFetch(`/crm/regras-comissao/${id}/`,{method:'DELETE'}); carregarRegrasComissao(); }};
-
     async function carregarCampanhas() { const l=document.getElementById('lista-campanhas'); l.innerHTML=''; try{ (await apiFetch('/crm/campanhas/')).forEach(c=>l.innerHTML+=`<tr><td>${c.nome}</td><td>${c.data_inicio} a ${c.data_fim}</td><td>${c.status?'Ativa':'Inativa'}</td><td><button class="btn btn-sm btn-danger" onclick="delCamp(${c.id})"><i class="bi bi-trash"></i></button></td></tr>`); }catch(e){} }
     document.getElementById('form-campanha').onsubmit=async(e)=>{ e.preventDefault(); await apiFetch('/crm/campanhas/',{method:'POST',body:JSON.stringify({nome:document.getElementById('campanha_nome').value, data_inicio:document.getElementById('campanha_data_inicio').value, data_fim:document.getElementById('campanha_data_fim').value, regras:document.getElementById('campanha_regras').value})}); carregarCampanhas(); document.getElementById('form-campanha').reset(); };
     window.delCamp=async(id)=>{ await apiFetch(`/crm/campanhas/${id}/`,{method:'DELETE'}); carregarCampanhas(); };
@@ -1012,6 +1004,10 @@
     document.addEventListener('DOMContentLoaded', () => {
         carregarDadosParaFormulario();
         carregarPerfis();
+        
+        // CHAMADA CORRIGIDA: Carrega a lista automaticamente
+        carregarUsuarios('ativos'); 
+
         carregarMotivos();
         carregarFeriados();
         carregarOperadoras();
