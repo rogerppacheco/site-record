@@ -24,7 +24,7 @@
             height: 100%;
             display: flex;
             flex-direction: column;
-            overflow: hidden; /* Garante que os botões full-width não vazem */
+            overflow: hidden; 
         }
         .presence-card:hover {
             transform: translateY(-3px);
@@ -83,11 +83,37 @@
         .nav-tabs .nav-link { color: #666; font-weight: 600; cursor: pointer; }
         .nav-tabs .nav-link.active { color: var(--cor-primaria); border-bottom: 3px solid var(--cor-primaria); }
 
-        /* --- MEDIA QUERIES PARA RESPONSIVIDADE E AJUSTE DE BORDA --- */
-        @media (max-width: 576px) {
-            .header-controls { flex-direction: column; align-items: stretch; gap: 10px; }
-        }
+        /* ---------------------------------------------------- */
+        /* --- BREAKPOINTS DE DENSIDADE (SIMULA 90% ZOOM) --- */
+        /* ---------------------------------------------------- */
         
+        /* Ajuste para Laptops (992px a 1400px) */
+        @media (min-width: 992px) and (max-width: 1400px) {
+            /* Diminui o padding interno do card para apertar o conteúdo */
+            .presence-card .p-3 {
+                padding: 10px 15px !important;
+            }
+            /* Diminui o avatar */
+            .avatar-circle {
+                width: 38px; height: 38px;
+                font-size: 0.9rem;
+            }
+            /* Diminui o tamanho do texto */
+            .presence-card h6 {
+                font-size: 0.95rem !important;
+            }
+            .presence-card small {
+                font-size: 0.7rem !important;
+            }
+            /* Diminui a área de toque dos botões */
+            .action-footer-pending .btn {
+                padding: 10px 0;
+                font-size: 0.9rem;
+            }
+        }
+
+
+        /* Ajuste para Mobile (max-width: 768px) */
         @media (max-width: 768px) {
             .area-interna-section .system-container {
                 padding-left: 10px;
@@ -211,7 +237,6 @@
         }
         
         // Endpoints (Usando apiClient do auth.js)
-        // Assumindo que apiClient está definido no auth.js e lida com tokens/base URL
         const API_MOTIVOS = '/api/presenca/motivos/';
         const API_REGISTROS = '/api/presenca/registros/';
 
@@ -330,7 +355,7 @@
                 const cardCol = document.createElement('div');
                 
                 // --- CORREÇÃO DO GRID (DENSIDADE) ---
-                // col-lg-3 (4 cards em laptops), col-xl-3 (4 cards em monitores grandes)
+                // col-sm-6 (2 cards em tela pequena), col-lg-3 (4 cards em laptops)
                 cardCol.className = 'col-12 col-sm-6 col-md-4 col-lg-3 col-xl-3';
 
                 // Auditoria
