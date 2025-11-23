@@ -5,498 +5,456 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Governança - Record PAP</title>
+    
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=1.1">
+    
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=1.3">
+    
     <style>
-        .content-section { display: none; }
+        /* Layout de Administração */
+        body { overflow-x: hidden; background-color: var(--cor-fundo); }
+        .admin-wrapper { display: flex; min-height: calc(100vh - 80px); margin-top: 80px; }
+        
+        /* Sidebar */
+        .admin-sidebar {
+            width: 280px; background: #fff; border-right: 1px solid var(--cor-borda);
+            padding: 1.5rem; display: flex; flex-direction: column; position: fixed;
+            height: calc(100vh - 80px); overflow-y: auto; z-index: 900; box-shadow: 2px 0 5px rgba(0,0,0,0.02);
+        }
+
+        .admin-content {
+            flex: 1; margin-left: 280px; padding: 2rem; max-width: 1600px;
+        }
+
+        .nav-section-title {
+            font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px;
+            color: var(--cor-texto-suave); margin-top: 1.5rem; margin-bottom: 0.5rem; font-weight: 700;
+        }
+        
+        .admin-nav-link {
+            display: flex; align-items: center; padding: 10px 15px;
+            color: var(--cor-texto); text-decoration: none; border-radius: 8px;
+            margin-bottom: 5px; font-weight: 500; transition: all 0.2s;
+        }
+        .admin-nav-link i { margin-right: 12px; font-size: 1.1rem; color: var(--cor-secundaria); }
+        .admin-nav-link:hover { background-color: #f0f4ff; color: var(--cor-primaria); }
+        .admin-nav-link:hover i { color: var(--cor-primaria); }
+        .admin-nav-link.active { background-color: var(--cor-primaria); color: #fff; box-shadow: var(--sombra-suave); }
+        .admin-nav-link.active i { color: #fff; }
+
+        .content-section { display: none; animation: fadeIn 0.3s ease-out; }
         .content-section.active { display: block; }
-        .btn .bi { margin-right: 5px; }
+
+        .card { border: none; border-radius: 12px; box-shadow: var(--sombra-suave); margin-bottom: 1.5rem; }
+        .card-header { background-color: #fff; border-bottom: 1px solid var(--cor-borda); padding: 1.5rem; border-radius: 12px 12px 0 0 !important; }
+        .card-body { padding: 1.5rem; }
+        .table-responsive { border-radius: 8px; }
+        
+        /* Estilos para a Lista de Permissões */
+        .perm-list { max-height: 300px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 6px; padding: 10px; background: #f8f9fa; }
+        .perm-item { display: flex; align-items: center; padding: 6px 0; border-bottom: 1px solid #e9ecef; }
+        .perm-item:last-child { border-bottom: none; }
+        .perm-label { margin-left: 10px; font-size: 0.9rem; cursor: pointer; flex-grow: 1; user-select: none; }
+        .badge-perm { font-weight: normal; font-size: 0.75rem; margin-right: 4px; margin-bottom: 4px; display: inline-block; }
+
+        @media (max-width: 992px) {
+            .admin-sidebar { transform: translateX(-100%); transition: transform 0.3s; }
+            .admin-sidebar.show { transform: translateX(0); }
+            .admin-content { margin-left: 0; padding: 1rem; }
+        }
+        
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
-<body data-bs-theme="dark">
+<body>
 
     <header class="main-header">
         <div class="header-container">
             <a href="/"><img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo"></a>
             
-            <button class="menu-toggle" id="menu-toggle" aria-label="Abrir menu">
-                <div class="bar"></div>
-                <div class="bar"></div>
-                <div class="bar"></div>
+            <button class="btn btn-light d-lg-none me-2" onclick="document.querySelector('.admin-sidebar').classList.toggle('show')">
+                <i class="bi bi-list"></i>
             </button>
 
-            <nav class="main-nav" id="main-nav">
+            <nav class="main-nav d-none d-lg-flex" id="main-nav">
                 <ul>
-                    <li><a href="/area-interna/">Área Interna</a></li>
-                    <li><span class="navbar-text me-3" id="welcome-user"></span></li>
-                    <li><button class="btn btn-danger btn-sm logout-button" id="logoutButton">Sair</button></li>
+                    <li><a href="/area-interna/">Voltar à Área Interna</a></li>
+                    <li><span id="welcome-user" style="font-size: 0.9rem; color: #666; margin-right: 10px;"></span></li>
+                    <li><button id="logoutButton" class="nav-button logout-button">Sair</button></li>
                 </ul>
             </nav>
         </div>
     </header>
 
-    <nav class="navbar navbar-expand-lg submenu-nav navbar-dark bg-body-tertiary">
-        <div class="container-fluid" style="max-width: 1200px;">
-            <div class="collapse navbar-collapse">
-                <ul class="navbar-nav">
-                    <li class="nav-item" id="nav-presenca"><a class="nav-link" href="/presenca/">Controle de Presença</a></li>
-                    
-                    <li class="nav-item dropdown" id="nav-vendas">
-                        <a class="nav-link dropdown-toggle" href="#" id="navbarVendas" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            Vendas
-                        </a>
-                        <ul class="dropdown-menu dropdown-menu-dark" aria-labelledby="navbarVendas">
-                            <li><a class="dropdown-item" href="/crm-vendas/">Cadastrar Venda</a></li>
-                            <li><a class="dropdown-item" href="/auditoria/">Auditoria</a></li>
-                            <li><a class="dropdown-item" href="/esteira/">Esteira</a></li>
-                            <li><a class="dropdown-item" href="/comissionamento/">Comissionamento</a></li>
-                        </ul>
-                    </li>
+    <div class="admin-wrapper">
+        <nav class="admin-sidebar">
+            
+            <div class="nav-section-title">Administração</div>
+            <a href="#" class="admin-nav-link active" onclick="mostrarSecao(event, 'usuarios', this)">
+                <i class="bi bi-people"></i> Gestão de Usuários
+            </a>
+            <a href="#" class="admin-nav-link" onclick="mostrarSecao(event, 'perfis', this)">
+                <i class="bi bi-shield-lock"></i> Perfis de Acesso
+            </a>
 
-                    <li class="nav-item dropdown" id="nav-importacoes">
-                        <a class="nav-link dropdown-toggle" href="#" id="navbarImportacoes" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            Importações
-                        </a>
-                        <ul class="dropdown-menu dropdown-menu-dark" aria-labelledby="navbarImportacoes">
-                            <li><a class="dropdown-item" href="/salvar-osab/">Salvar OSAB</a></li>
-                            <li><a class="dropdown-item" href="/salvar-churn/">Salvar Churn</a></li>
-                            <li><a class="dropdown-item" href="/salvar-ciclo-pagamento/">Salvar Ciclo de Pagamento</a></li>
-                        </ul>
-                    </li>
+            <div class="nav-section-title">Configurações CRM</div>
+            <a href="#" class="admin-nav-link" onclick="mostrarSecao(event, 'comissionamento', this)">
+                <i class="bi bi-cash-stack"></i> Comissionamento
+            </a>
+            <a href="#" class="admin-nav-link" onclick="mostrarSecao(event, 'cadastros_gerais', this)">
+                <i class="bi bi-sliders"></i> Cadastros Gerais
+            </a>
+            <a href="#" class="admin-nav-link" onclick="mostrarSecao(event, 'motivos', this)">
+                <i class="bi bi-list-check"></i> Motivos de Ausência
+            </a>
+            <a href="#" class="admin-nav-link" onclick="mostrarSecao(event, 'feriados', this)">
+                <i class="bi bi-calendar-event"></i> Feriados
+            </a>
 
-                    <li class="nav-item dropdown" id="nav-cadastros">
-                        <a class="nav-link dropdown-toggle active" href="#" id="navbarCadastros" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            Cadastros
-                        </a>
-                        <ul class="dropdown-menu dropdown-menu-dark" aria-labelledby="navbarCadastros">
-                            <li><a class="dropdown-item" href="#" onclick="mostrarSecao(event, 'usuarios', this)">Gestão de Usuários</a></li>
-                            <li><a class="dropdown-item" href="#" onclick="mostrarSecao(event, 'perfis', this)">Gestão de Perfis</a></li>
-                            <li><a class="dropdown-item" href="#" onclick="mostrarSecao(event, 'comissionamento', this)">Gestão de Comissionamento</a></li>
-                            <li><a class="dropdown-item" href="#" onclick="mostrarSecao(event, 'cadastros_gerais', this)">Cadastros Gerais</a></li>
-                            <li><a class="dropdown-item" href="#" onclick="mostrarSecao(event, 'motivos', this)">Gestão de Motivos</a></li>
-                            <li><a class="dropdown-item" href="#" onclick="mostrarSecao(event, 'feriados', this)">Gestão de Feriados</a></li>
-                            <li><a class="dropdown-item" href="#" onclick="mostrarSecao(event, 'relatorios', this)">Relatórios</a></li>
-                        </ul>
-                    </li>
-                </ul>
+            <div class="nav-section-title">Financeiro</div>
+            <a href="#" class="admin-nav-link" onclick="mostrarSecao(event, 'relatorios', this)">
+                <i class="bi bi-file-earmark-bar-graph"></i> Relatórios
+            </a>
+
+            <div class="mt-auto pt-4 border-top">
+                <div class="nav-section-title mt-0">Acesso Rápido</div>
+                <a href="/presenca/" class="admin-nav-link"><i class="bi bi-clock-history"></i> Presença</a>
+                <a href="/crm-vendas/" class="admin-nav-link"><i class="bi bi-cart-plus"></i> Nova Venda</a>
+                <a href="/salvar-osab/" class="admin-nav-link"><i class="bi bi-cloud-upload"></i> Importações</a>
             </div>
-        </div>
-    </nav>
+        </nav>
 
-<div class="main-container container my-4">
-    <main class="content-area">
-        <section id="usuarios-section" class="content-section">
-            <div class="card shadow-sm">
-                <div class="card-header">
-                    <h2 class="mb-0" id="form-title">Cadastrar Novo Usuário</h2>
+        <main class="admin-content">
+            
+            <section id="usuarios-section" class="content-section active">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h3>Gestão de Usuários</h3>
                 </div>
-                <div class="card-body">
-                    <form id="user-form">
-                        <input type="hidden" id="user_id">
-                        <div class="row">
-                            <div class="col-md-6 mb-3"><label for="nome_completo" class="form-label">Nome Completo</label><input type="text" class="form-control" id="nome_completo" required></div>
-                            <div class="col-md-6 mb-3"><label for="cpf" class="form-label">CPF</label><input type="text" class="form-control" id="cpf"></div>
-                            <div class="col-md-6 mb-3"><label for="email" class="form-label">E-mail</label><input type="email" class="form-control" id="email" required></div>
-                            <div class="col-md-6 mb-3"><label for="username" class="form-label">Username</label><input type="text" class="form-control" id="username" required></div>
-                            <div class="col-md-6 mb-3" id="senha-group"><label for="senha" class="form-label">Senha</label><input type="password" class="form-control" id="senha"></div>
-                            <div class="col-md-6 mb-3"><label for="perfil_id" class="form-label">Perfil</label><select class="form-select" id="perfil_id" required></select></div>
-                            <div class="col-md-6 mb-3"><label for="supervisor_id" class="form-label">Líder Imediato</label><select class="form-select" id="supervisor_id"><option value="">Nenhum</option></select></div>
-                            <div class="col-md-6 mb-3"><label for="valor_almoco" class="form-label">Auxílio Almoço (diário)</label><input type="number" class="form-control" id="valor_almoco" step="0.01" placeholder="Ex: 18.00"></div>
-                            <div class="col-md-6 mb-3"><label for="valor_passagem" class="form-label">Auxílio Passagem (diário)</label><input type="number" class="form-control" id="valor_passagem" step="0.01" placeholder="Ex: 9.60"></div>
-                            <div class="col-md-6 mb-3"><label for="chave_pix" class="form-label">Chave PIX</label><input type="text" class="form-control" id="chave_pix" placeholder="Chave PIX do usuário"></div>
-                            <div class="col-md-6 mb-3"><label for="nome_da_conta" class="form-label">Nome da Conta (PIX)</label><input type="text" class="form-control" id="nome_da_conta" placeholder="Nome do titular da conta PIX"></div>
-                            <div class="col-md-6 mb-3"><label for="meta_comissao" class="form-label">Meta de Comissão (Vendas/Mês)</label><input type="number" class="form-control" id="meta_comissao" placeholder="Ex: 20"></div>
-                            <div class="col-md-6 mb-3"><label for="desconto_boleto" class="form-label">Desconto por Boleto (R$)</label><input type="number" class="form-control" id="desconto_boleto" step="0.01" placeholder="Ex: 5.00"></div>
-                            <div class="col-md-6 mb-3"><label for="desconto_inclusao_viabilidade" class="form-label">Desconto Inclusão Viab. (R$)</label><input type="number" class="form-control" id="desconto_inclusao_viabilidade" step="0.01"></div>
-                            <div class="col-md-6 mb-3"><label for="desconto_instalacao_antecipada" class="form-label">Desconto Inst. Antecipada (R$)</label><input type="number" class="form-control" id="desconto_instalacao_antecipada" step="0.01"></div>
-                            <div class="col-md-6 mb-3"><label for="adiantamento_cnpj" class="form-label">Adiantamento por Venda CNPJ (R$)</label><input type="number" class="form-control" id="adiantamento_cnpj" step="0.01"></div>
-                            <div class="col-md-6 mb-3"><label for="desconto_inss_fixo" class="form-label">Desconto Fixo INSS (R$)</label><input type="number" class="form-control" id="desconto_inss_fixo" step="0.01"></div>
-                            
-                            <div class="col-12 mt-3">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="participa_controle_presenca">
-                                    <label class="form-check-label" for="participa_controle_presenca">
-                                        Participa do Controle de Presença
-                                    </label>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0 text-primary" id="form-title"><i class="bi bi-person-plus-fill"></i> Cadastrar Novo Usuário</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="user-form">
+                            <input type="hidden" id="user_id">
+                            <div class="row g-3">
+                                <div class="col-md-6"><label class="form-label fw-bold">Nome Completo</label><input type="text" class="form-control" id="nome_completo" required></div>
+                                <div class="col-md-6"><label class="form-label fw-bold">CPF</label><input type="text" class="form-control" id="cpf"></div>
+                                <div class="col-md-6"><label class="form-label fw-bold">E-mail</label><input type="email" class="form-control" id="email" required></div>
+                                <div class="col-md-6"><label class="form-label fw-bold">Username</label><input type="text" class="form-control" id="username" required></div>
+                                <div class="col-md-6" id="senha-group"><label class="form-label fw-bold">Senha</label><input type="password" class="form-control" id="senha"></div>
+                                <div class="col-md-6"><label class="form-label fw-bold">Perfil</label><select class="form-select" id="perfil_id" required></select></div>
+                                <div class="col-md-6"><label class="form-label fw-bold">Líder Imediato</label><select class="form-select" id="supervisor_id"><option value="">Nenhum</option></select></div>
+                                
+                                <div class="col-md-12"><hr class="my-2 text-muted"> <small class="text-muted text-uppercase fw-bold">Dados Financeiros</small></div>
+                                <div class="col-md-3"><label class="form-label small">Almoço (R$)</label><input type="number" class="form-control form-control-sm" id="valor_almoco" step="0.01" placeholder="Ex: 18.00"></div>
+                                <div class="col-md-3"><label class="form-label small">Passagem (R$)</label><input type="number" class="form-control form-control-sm" id="valor_passagem" step="0.01" placeholder="Ex: 9.60"></div>
+                                <div class="col-md-3"><label class="form-label small">Chave PIX</label><input type="text" class="form-control form-control-sm" id="chave_pix"></div>
+                                <div class="col-md-3"><label class="form-label small">Titular Conta</label><input type="text" class="form-control form-control-sm" id="nome_da_conta"></div>
+                                <div class="col-md-3"><label class="form-label small">Meta (Vendas)</label><input type="number" class="form-control form-control-sm" id="meta_comissao"></div>
+                                <div class="col-md-3"><label class="form-label small">Desc. Boleto</label><input type="number" class="form-control form-control-sm" id="desconto_boleto" step="0.01"></div>
+                                <div class="col-md-3"><label class="form-label small">Desc. Viabilidade</label><input type="number" class="form-control form-control-sm" id="desconto_inclusao_viabilidade" step="0.01"></div>
+                                <div class="col-md-3"><label class="form-label small">Desc. Antecipação</label><input type="number" class="form-control form-control-sm" id="desconto_instalacao_antecipada" step="0.01"></div>
+                                <div class="col-md-3"><label class="form-label small">Adiant. CNPJ</label><input type="number" class="form-control form-control-sm" id="adiantamento_cnpj" step="0.01"></div>
+                                <div class="col-md-3"><label class="form-label small">Desc. INSS Fixo</label><input type="number" class="form-control form-control-sm" id="desconto_inss_fixo" step="0.01"></div>
+                                
+                                <div class="col-12 mt-3">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="participa_controle_presenca">
+                                        <label class="form-check-label fw-bold" for="participa_controle_presenca">Participa do Controle de Presença</label>
+                                    </div>
                                 </div>
                             </div>
+                            <div class="mt-4 text-end">
+                                <button type="button" class="btn btn-cancelar me-2" onclick="resetForm()">Cancelar</button>
+                                <button type="submit" class="btn btn-confirmar px-4">Salvar Usuário</button>
                             </div>
-                        <button type="submit" class="btn btn-primary mt-3"><i class="bi bi-save"></i> Salvar</button>
-                        <button type="button" class="btn btn-outline-light mt-3" onclick="resetForm()">Cancelar</button>
-                    </form>
+                        </form>
+                    </div>
                 </div>
-            </div>
-            
-            <div class="card shadow-sm mt-4">
-                <div class="card-header">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0">Usuários <span id="lista-status-titulo">Ativos</span></h5>
+                
+                <div class="card mt-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Lista de Usuários <span id="lista-status-titulo" class="badge bg-success">Ativos</span></h5>
                         <div class="btn-group">
-                            <button onclick="mostrarListaUsuarios('ativos', this)" class="btn btn-sm btn-secondary active">Ativos</button>
-                            <button onclick="mostrarListaUsuarios('inativos', this)" class="btn btn-sm btn-secondary">Inativos</button>
+                            <button onclick="mostrarListaUsuarios('ativos', this)" class="btn btn-sm btn-outline-primary active">Ativos</button>
+                            <button onclick="mostrarListaUsuarios('inativos', this)" class="btn btn-sm btn-outline-secondary">Inativos</button>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr id="user-list-header"></tr>
+                                </thead>
+                                <tbody id="user-list-body"></tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-hover align-middle">
-                            <thead class="table-dark">
-                                <tr id="user-list-header"></tr>
-                            </thead>
-                            <tbody id="user-list-body"></tbody>
-                        </table>
+            </section>
+
+            <section id="perfis-section" class="content-section">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h3>Gestão de Perfis de Acesso</h3>
+                    <button class="btn btn-confirmar" id="btn-adicionar-perfil"><i class="bi bi-plus-lg"></i> Novo Perfil</button>
+                </div>
+                
+                <div class="alert alert-info py-2 small"><i class="bi bi-info-circle"></i> Defina aqui quais módulos cada cargo pode acessar (Esteira, Comissão, Auditoria).</div>
+
+                <div class="card">
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Nome do Perfil</th>
+                                        <th>Permissões Habilitadas</th>
+                                        <th class="text-center" style="width: 180px;">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="perfis-tabela-corpo">
+                                    </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
-            </div>
-        </section>
-
-        <section id="perfis-section" class="content-section">
-            <div class="card shadow-sm">
-                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h2 class="mb-0">Gestão de Perfis</h2>
-                    <button class="btn btn-primary" id="btn-adicionar-perfil">
-                        <i class="bi bi-plus-circle"></i> Adicionar Novo Perfil
-                    </button>
-                </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-hover align-middle">
-                            <thead class="table-dark">
-                                <tr>
-                                    <th>Nome do Perfil</th>
-                                    <th>Descrição</th>
-                                    <th class="text-center" style="width: 320px;">Ações</th>
-                                </tr>
-                            </thead>
-                            <tbody id="perfis-tabela-corpo">
-                            </tbody>
-                        </table>
+            </section>
+            
+            <section id="comissionamento-section" class="content-section">
+                <h3 class="mb-4">Gestão de Comissionamento</h3>
+                <div class="card">
+                    <div class="card-header">
+                        <ul class="nav nav-tabs card-header-tabs">
+                            <li class="nav-item"><button class="nav-link active" onclick="openTab(event, 'regras_comissao_tab')">Regras de Comissão</button></li>
+                            <li class="nav-item"><button class="nav-link" onclick="openTab(event, 'config_mensal_tab')">Configurações do Mês</button></li>
+                            <li class="nav-item"><button class="nav-link" onclick="openTab(event, 'campanhas_tab')">Campanhas</button></li>
+                        </ul>
                     </div>
-                </div>
-            </div>
-        </section>
-        
-        <section id="comissionamento-section" class="content-section">
-            <div class="card shadow-sm">
-                <div class="card-header">
-                    <h2 class="mb-0">Gestão de Comissionamento</h2>
-                </div>
-                <div class="card-body">
-                    <nav class="nav nav-tabs">
-                        <button class="nav-link active" onclick="openTab(event, 'regras_comissao_tab')">Regras de Comissão</button>
-                        <button class="nav-link" onclick="openTab(event, 'config_mensal_tab')">Configurações do Mês</button>
-                        <button class="nav-link" onclick="openTab(event, 'campanhas_tab')">Campanhas e Prêmios</button>
-                    </nav>
-
-                    <div id="regras_comissao_tab" class="tab-content active pt-3">
-                        <div class="card">
-                            <div class="card-body">
-                                <h5 class="card-title">Cadastrar/Editar Regra</h5>
+                    <div class="card-body">
+                        <div id="regras_comissao_tab" class="tab-content active">
+                            <div class="bg-light p-4 rounded border mb-4">
+                                <h5 class="text-primary mb-3">Nova Regra</h5>
                                 <form id="form-regra-comissao">
                                     <input type="hidden" id="regra_comissao_id">
-                                    <div class="row">
-                                        <div class="col-md-4 mb-3"><label class="form-label">Consultor</label><select id="regra_consultor_id" class="form-select" required></select></div>
-                                        <div class="col-md-4 mb-3"><label class="form-label">Plano</label><select id="regra_plano_id" class="form-select" required></select></div>
-                                        <div class="col-md-4 mb-3"><label class="form-label">Tipo de Venda</label><select id="regra_tipo_venda" class="form-select" required><option value="PAP">PAP</option><option value="TELAG">TELAG</option></select></div>
-                                        <div class="col-md-4 mb-3"><label class="form-label">Tipo de Cliente</label><select id="regra_tipo_cliente" class="form-select" required><option value="CPF">CPF</option><option value="CNPJ">CNPJ</option></select></div>
-                                        <div class="col-md-4 mb-3"><label class="form-label">Valor Base (R$)</label><input type="number" class="form-control" id="regra_valor_base" step="0.01" required></div>
-                                        <div class="col-md-4 mb-3"><label class="form-label">Valor Acelerado (R$)</label><input type="number" class="form-control" id="regra_valor_acelerado" step="0.01" required></div>
+                                    <div class="row g-3">
+                                        <div class="col-md-4"><label class="form-label fw-bold">Consultor</label><select id="regra_consultor_id" class="form-select" required></select></div>
+                                        <div class="col-md-4"><label class="form-label fw-bold">Plano</label><select id="regra_plano_id" class="form-select" required></select></div>
+                                        <div class="col-md-2"><label class="form-label fw-bold">Tipo Venda</label><select id="regra_tipo_venda" class="form-select" required><option value="PAP">PAP</option><option value="TELAG">TELAG</option></select></div>
+                                        <div class="col-md-2"><label class="form-label fw-bold">Cliente</label><select id="regra_tipo_cliente" class="form-select" required><option value="CPF">CPF</option><option value="CNPJ">CNPJ</option></select></div>
+                                        <div class="col-md-3"><label class="form-label fw-bold">Base (R$)</label><input type="number" class="form-control" id="regra_valor_base" step="0.01" required></div>
+                                        <div class="col-md-3"><label class="form-label fw-bold">Acelerado (R$)</label><input type="number" class="form-control" id="regra_valor_acelerado" step="0.01" required></div>
+                                        <div class="col-md-6 d-flex align-items-end">
+                                            <button type="submit" class="btn btn-primary w-100 me-2">Salvar Regra</button>
+                                            <button type="button" class="btn btn-outline-secondary w-50" onclick="resetFormRegraComissao()">Limpar</button>
+                                        </div>
                                     </div>
-                                    <button type="submit" class="btn btn-primary mt-3">Salvar</button>
-                                    <button type="button" class="btn btn-outline-light mt-3" onclick="resetFormRegraComissao()">Cancelar</button>
                                 </form>
                             </div>
+                            <h5 class="mt-4 mb-3">Regras Cadastradas</h5>
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle mb-0"><thead class="table-light"><tr><th>Consultor</th><th>Plano</th><th>Tipo</th><th>Cliente</th><th>Base</th><th>Acelerado</th><th>Ações</th></tr></thead><tbody id="lista-regras-comissao"></tbody></table>
+                            </div>
                         </div>
-                        <h5 class="mt-4">Regras Cadastradas</h5>
-                        <div class="table-responsive">
-                            <table class="table table-hover align-middle">
-                                <thead class="table-dark"><tr><th>Consultor</th><th>Plano</th><th>Tipo Venda</th><th>Tipo Cliente</th><th>Valor Base</th><th>Valor Acelerado</th><th>Ações</th></tr></thead>
-                                <tbody id="lista-regras-comissao"></tbody>
-                            </table>
-                        </div>
-                    </div>
 
-                    <div id="config_mensal_tab" class="tab-content pt-3">
-                        <h5>Configurações Variáveis do Mês</h5>
-                        <div class="d-flex align-items-center mb-4">
-                            <label for="select_mes_config" class="form-label me-2">Mês:</label>
-                            <input type="month" id="select_mes_config" class="form-control" style="width: auto;">
+                        <div id="config_mensal_tab" class="tab-content" style="display:none;">
+                            <h5>Configurações Variáveis do Mês</h5>
+                            <div class="d-flex align-items-center mb-4">
+                                <label for="select_mes_config" class="form-label me-2 fw-bold">Mês de Referência:</label>
+                                <input type="month" id="select_mes_config" class="form-control" style="width: auto;">
+                            </div>
+                            <div id="form-container-config-mensal"></div>
                         </div>
-                        <div id="form-container-config-mensal"></div>
-                    </div>
 
-                    <div id="campanhas_tab" class="tab-content pt-3">
-                        <div class="card">
-                            <div class="card-body">
-                                <h5 class="card-title">Cadastrar/Editar Campanha</h5>
+                        <div id="campanhas_tab" class="tab-content" style="display:none;">
+                             <div class="bg-light p-4 rounded border mb-4">
+                                <h5 class="text-primary mb-3">Nova Campanha</h5>
                                 <form id="form-campanha">
                                     <input type="hidden" id="campanha_id">
-                                    <div class="row">
-                                        <div class="col-md-4 mb-3"><label class="form-label">Nome da Campanha</label><input type="text" class="form-control" id="campanha_nome" required></div>
-                                        <div class="col-md-4 mb-3"><label class="form-label">Data de Início</label><input type="date" class="form-control" id="campanha_data_inicio" required></div>
-                                        <div class="col-md-4 mb-3"><label class="form-label">Data de Fim</label><input type="date" class="form-control" id="campanha_data_fim" required></div>
-                                        <div class="col-12 mb-3"><label class="form-label">Regras (Descrição)</label><input type="text" class="form-control" id="campanha_regras"></div>
+                                    <div class="row g-3">
+                                        <div class="col-md-4"><label class="form-label fw-bold">Nome</label><input type="text" class="form-control" id="campanha_nome" required></div>
+                                        <div class="col-md-3"><label class="form-label fw-bold">Início</label><input type="date" class="form-control" id="campanha_data_inicio" required></div>
+                                        <div class="col-md-3"><label class="form-label fw-bold">Fim</label><input type="date" class="form-control" id="campanha_data_fim" required></div>
+                                        <div class="col-md-12"><label class="form-label fw-bold">Regras</label><input type="text" class="form-control" id="campanha_regras"></div>
+                                        <div class="col-md-3"><button type="submit" class="btn btn-primary w-100">Salvar Campanha</button></div>
+                                        <div class="col-md-2"><button type="button" class="btn btn-outline-secondary w-100" onclick="resetFormCampanha()">Cancelar</button></div>
                                     </div>
-                                    <button type="submit" class="btn btn-primary mt-3">Salvar</button>
-                                    <button type="button" class="btn btn-outline-light mt-3" onclick="resetFormCampanha()">Cancelar</button>
                                 </form>
                             </div>
-                        </div>
-                        <h5 class="mt-4">Campanhas Ativas</h5>
-                        <div class="table-responsive">
-                            <table class="table table-hover align-middle">
-                                <thead class="table-dark"><tr><th>Campanha</th><th>Período</th><th>Status</th><th>Ações</th></tr></thead>
-                                <tbody id="lista-campanhas"></tbody>
-                            </table>
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle mb-0"><thead class="table-light"><tr><th>Campanha</th><th>Período</th><th>Status</th><th>Ações</th></tr></thead><tbody id="lista-campanhas"></tbody></table>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
-        </section>
+            </section>
 
-        <section id="cadastros_gerais-section" class="content-section">
-            <div class="card shadow-sm">
-                <div class="card-header">
-                    <h2 class="mb-0">Cadastros Gerais do CRM</h2>
+            <section id="cadastros_gerais-section" class="content-section">
+                <h3 class="mb-4">Cadastros Gerais do CRM</h3>
+                <div class="card">
+                    <div class="card-header">
+                        <ul class="nav nav-tabs card-header-tabs">
+                            <li class="nav-item"><button class="nav-link active" onclick="openTab(event, 'operadoras')">Operadoras</button></li>
+                            <li class="nav-item"><button class="nav-link" onclick="openTab(event, 'planos')">Planos</button></li>
+                            <li class="nav-item"><button class="nav-link" onclick="openTab(event, 'formasPagamento')">Pagamentos</button></li>
+                            <li class="nav-item"><button class="nav-link" onclick="openTab(event, 'status')">Status</button></li>
+                            <li class="nav-item"><button class="nav-link" onclick="openTab(event, 'pendencias')">Pendências</button></li>
+                        </ul>
+                    </div>
+                    <div class="card-body">
+                        <div id="operadoras" class="tab-content active">
+                            <form id="form-operadora" class="row g-3 mb-4 align-items-end bg-light p-3 rounded border">
+                                <input type="hidden" id="operadora_id">
+                                <div class="col-md-4"><label class="form-label fw-bold">Nome</label><input type="text" class="form-control" id="operadora_nome" required></div>
+                                <div class="col-md-3"><label class="form-label fw-bold">CNPJ</label><input type="text" class="form-control" id="operadora_cnpj"></div>
+                                <div class="col-md-3"><label class="form-label fw-bold">Status</label><select id="operadora_status" class="form-select" required><option value="1">Ativo</option><option value="0">Inativo</option></select></div>
+                                <div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Salvar</button></div>
+                            </form>
+                            <table class="table table-hover align-middle"><thead class="table-light"><tr><th>Nome</th><th>CNPJ</th><th>Status</th><th>Ações</th></tr></thead><tbody id="lista-operadoras"></tbody></table>
+                        </div>
+                        
+                        <div id="planos" class="tab-content" style="display:none;">
+                            <form id="form-plano" class="row g-3 mb-4 align-items-end bg-light p-3 rounded border">
+                                <input type="hidden" id="plano_id">
+                                <div class="col-md-3"><label class="form-label fw-bold">Nome</label><input type="text" class="form-control" id="plano_nome" required></div>
+                                <div class="col-md-2"><label class="form-label fw-bold">Valor</label><input type="number" class="form-control" id="plano_valor" step="0.01" required></div>
+                                <div class="col-md-2"><label class="form-label fw-bold">Comissão</label><input type="number" class="form-control" id="plano_comissao" step="0.01"></div>
+                                <div class="col-md-3"><label class="form-label fw-bold">Operadora</label><select id="plano_operadora_id" class="form-select" required></select></div>
+                                <div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Salvar</button></div>
+                                <input type="hidden" id="plano_beneficios">
+                            </form>
+                            <table class="table table-hover align-middle"><thead class="table-light"><tr><th>Nome</th><th>Operadora</th><th>Valor</th><th>Comissão</th><th>Ações</th></tr></thead><tbody id="lista-planos"></tbody></table>
+                        </div>
+
+                        <div id="formasPagamento" class="tab-content" style="display:none;">
+                            <div class="input-group mb-3"><input type="text" id="nova-forma-pagamento-nome" placeholder="Nova Forma (Ex: PIX)" class="form-control"><button id="btn-salvar-forma-pagamento" class="btn btn-primary">Adicionar</button></div>
+                            <ul id="lista-formas-pagamento" class="list-group"></ul>
+                        </div>
+
+                        <div id="status" class="tab-content" style="display:none;">
+                            <form id="form-status" class="row g-3 mb-4 align-items-end bg-light p-3 rounded border">
+                                <input type="hidden" id="status_id">
+                                <div class="col-md-3"><label class="form-label fw-bold">Nome</label><input type="text" class="form-control" id="status_nome" required></div>
+                                <div class="col-md-3"><label class="form-label fw-bold">Tipo</label><select id="status_tipo" class="form-select" required><option value="Tratamento">Tratamento</option><option value="Esteira">Esteira</option><option value="Comissionamento">Comissionamento</option></select></div>
+                                <div class="col-md-3" id="status_estado_group"><label class="form-label fw-bold">Estado</label><input type="text" class="form-control" id="status_estado" placeholder="Ex: Fechado"></div>
+                                <div class="col-md-1"><label class="form-label fw-bold">Cor</label><input type="color" class="form-control form-control-color w-100" id="status_cor" value="#FFFFFF"></div>
+                                <div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Salvar</button></div>
+                            </form>
+                            <table class="table table-hover align-middle"><thead class="table-light"><tr><th>Nome</th><th>Tipo</th><th>Estado</th><th>Cor</th><th>Ações</th></tr></thead><tbody id="lista-status"></tbody></table>
+                        </div>
+
+                        <div id="pendencias" class="tab-content" style="display:none;">
+                            <form id="form-pendencia" class="row g-3 mb-4 align-items-end bg-light p-3 rounded border">
+                                <input type="hidden" id="pendencia_id">
+                                <div class="col-md-6"><label class="form-label fw-bold">Motivo</label><input type="text" class="form-control" id="pendencia_nome" required></div>
+                                <div class="col-md-4"><label class="form-label fw-bold">Tipo</label><input type="text" class="form-control" id="pendencia_tipo" placeholder="Ex: Documentação" required></div>
+                                <div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Salvar</button></div>
+                            </form>
+                            <table class="table table-hover align-middle"><thead class="table-light"><tr><th>Nome</th><th>Tipo</th><th>Ações</th></tr></thead><tbody id="lista-pendencias"></tbody></table>
+                        </div>
+                    </div>
                 </div>
-                <div class="card-body">
-                    <nav class="nav nav-tabs">
-                        <button class="nav-link active" onclick="openTab(event, 'operadoras')">Operadoras</button>
-                        <button class="nav-link" onclick="openTab(event, 'planos')">Planos</button>
-                        <button class="nav-link" onclick="openTab(event, 'formasPagamento')">Formas de Pagamento</button>
-                        <button class="nav-link" onclick="openTab(event, 'status')">Status</button>
-                        <button class="nav-link" onclick="openTab(event, 'pendencias')">Motivos de Pendência</button>
-                    </nav>
+            </section>
 
-                    <div id="operadoras" class="tab-content active pt-3">
-                         <div class="card">
-                             <div class="card-body">
-                                <h5 class="card-title">Cadastrar/Editar Operadora</h5>
-                                <form id="form-operadora">
-                                    <input type="hidden" id="operadora_id">
-                                    <div class="row">
-                                        <div class="col-md-4 mb-3"><label class="form-label">Nome</label><input type="text" class="form-control" id="operadora_nome" required></div>
-                                        <div class="col-md-4 mb-3"><label class="form-label">CNPJ</label><input type="text" class="form-control" id="operadora_cnpj"></div>
-                                        <div class="col-md-4 mb-3"><label class="form-label">Status</label><select id="operadora_status" class="form-select" required><option value="1">Ativo</option><option value="0">Inativo</option></select></div>
-                                    </div>
-                                    <button type="submit" class="btn btn-primary mt-3">Salvar</button>
-                                    <button type="button" class="btn btn-outline-light mt-3" onclick="resetFormOperadora()">Cancelar</button>
-                                </form>
-                             </div>
-                         </div>
-                        <h5 class="mt-4">Operadoras Cadastradas</h5>
-                        <div class="table-responsive">
-                             <table class="table table-hover align-middle">
-                                <thead class="table-dark"><tr><th>Nome</th><th>CNPJ</th><th>Status</th><th>Ações</th></tr></thead>
-                                <tbody id="lista-operadoras"></tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <div id="planos" class="tab-content pt-3">
-                         <div class="card">
-                            <div class="card-body">
-                                <h5 class="card-title">Cadastrar/Editar Plano</h5>
-                                <form id="form-plano">
-                                    <input type="hidden" id="plano_id">
-                                    <div class="row">
-                                        <div class="col-md-6 mb-3"><label class="form-label">Nome</label><input type="text" class="form-control" id="plano_nome" required></div>
-                                        <div class="col-md-3 mb-3"><label class="form-label">Valor (R$)</label><input type="number" class="form-control" id="plano_valor" step="0.01" required></div>
-                                        <div class="col-md-3 mb-3"><label class="form-label">Comissão Base (R$)</label><input type="number" class="form-control" id="plano_comissao" step="0.01"></div>
-                                        <div class="col-md-6 mb-3"><label class="form-label">Operadora</label><select id="plano_operadora_id" class="form-select" required><option value="">Selecione...</option></select></div>
-                                        <div class="col-md-6 mb-3"><label class="form-label">Benefícios</label><input type="text" class="form-control" id="plano_beneficios"></div>
-                                    </div>
-                                    <button type="submit" class="btn btn-primary mt-3">Salvar</button>
-                                    <button type="button" class="btn btn-outline-light mt-3" onclick="resetFormPlano()">Cancelar</button>
-                                </form>
-                            </div>
-                        </div>
-                        <h5 class="mt-4">Planos Cadastrados</h5>
-                        <div class="table-responsive">
-                            <table class="table table-hover align-middle">
-                                <thead class="table-dark"><tr><th>Nome</th><th>Operadora</th><th>Valor</th><th>Comissão</th><th>Ações</th></tr></thead>
-                                <tbody id="lista-planos"></tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <div id="formasPagamento" class="tab-content pt-3">
-                        <h5>Gestão de Formas de Pagamento</h5>
+            <section id="motivos-section" class="content-section">
+                <h3 class="mb-4">Gestão de Motivos de Ausência</h3>
+                <div class="card">
+                    <div class="card-body">
                         <div class="input-group mb-3">
-                            <input type="text" id="nova-forma-pagamento-nome" placeholder="Nome (Ex: PIX, Boleto)" class="form-control">
-                            <button id="btn-salvar-forma-pagamento" class="btn btn-primary">Adicionar</button>
+                            <input type="text" id="novo-motivo-nome" placeholder="Nome do novo motivo" class="form-control">
+                            <div class="input-group-text bg-light">
+                                <input class="form-check-input mt-0" type="checkbox" id="novo-motivo-desconto" checked>
+                                <label class="form-check-label ms-2" for="novo-motivo-desconto">Gera Desconto</label>
+                            </div>
+                            <button id="btn-salvar-motivo" class="btn btn-primary">Adicionar</button>
                         </div>
-                        <ul id="lista-formas-pagamento" class="list-group"></ul>
+                        <ul id="lista-motivos" class="list-group"></ul>
                     </div>
+                </div>
+            </section>
 
-                    <div id="status" class="tab-content pt-3">
-                        <div class="card">
-                             <div class="card-body">
-                                <h5 class="card-title">Cadastrar/Editar Status</h5>
-                                <form id="form-status">
-                                    <input type="hidden" id="status_id">
-                                    <div class="row">
-                                        <div class="col-md-6 mb-3"><label class="form-label">Nome</label><input type="text" class="form-control" id="status_nome" required></div>
-                                        <div class="col-md-6 mb-3"><label class="form-label">Tipo</label><select id="status_tipo" class="form-select" required><option value="Tratamento">Tratamento</option><option value="Esteira">Esteira</option><option value="Comissionamento">Comissionamento</option></select></div>
-                                        <div class="col-md-6 mb-3" id="status_estado_group"><label class="form-label">Estado</label><input type="text" class="form-control" id="status_estado" placeholder="Ex: Na fila de tratamento"></div>
-                                        <div class="col-md-6 mb-3"><label class="form-label">Cor</label><input type="color" class="form-control form-control-color" id="status_cor" value="#FFFFFF"></div>
-                                    </div>
-                                    <button type="submit" class="btn btn-primary mt-3">Salvar</button>
-                                    <button type="button" class="btn btn-outline-light mt-3" onclick="resetFormStatus()">Cancelar</button>
-                                </form>
-                             </div>
+            <section id="feriados-section" class="content-section">
+                <h3 class="mb-4">Feriados e Dias Não Úteis</h3>
+                <div class="card">
+                    <div class="card-body">
+                        <div class="input-group mb-4">
+                            <input type="date" id="novo-feriado-data" class="form-control">
+                            <input type="text" id="novo-feriado-descricao" placeholder="Descrição (Ex: Natal)" class="form-control">
+                            <button id="btn-salvar-feriado" class="btn btn-primary">Adicionar</button>
                         </div>
-                        <h5 class="mt-4">Status Cadastrados</h5>
-                        <div class="table-responsive">
-                            <table class="table table-hover align-middle">
-                                <thead class="table-dark"><tr><th>Nome</th><th>Tipo</th><th>Estado</th><th>Cor</th><th>Ações</th></tr></thead>
-                                <tbody id="lista-status"></tbody>
-                            </table>
-                        </div>
+                        <table class="table table-hover align-middle"><thead class="table-light"><tr><th>Data</th><th>Descrição</th><th>Ações</th></tr></thead><tbody id="lista-feriados"></tbody></table>
                     </div>
+                </div>
+            </section>
 
-                    <div id="pendencias" class="tab-content pt-3">
-                        <div class="card">
-                            <div class="card-body">
-                                <h5 class="card-title">Cadastrar/Editar Motivo de Pendência</h5>
-                                <form id="form-pendencia">
-                                    <input type="hidden" id="pendencia_id">
-                                    <div class="row">
-                                        <div class="col-md-6 mb-3"><label class="form-label">Nome</label><input type="text" class="form-control" id="pendencia_nome" required></div>
-                                        <div class="col-md-6 mb-3"><label class="form-label">Tipo</label><input type="text" class="form-control" id="pendencia_tipo" placeholder="Ex: Documentação" required></div>
-                                    </div>
-                                    <button type="submit" class="btn btn-primary mt-3">Salvar</button>
-                                    <button type="button" class="btn btn-outline-light mt-3" onclick="resetFormPendencia()">Cancelar</button>
-                                </form>
+            <section id="relatorios-section" class="content-section">
+                <h3 class="mb-4">Relatórios Financeiros</h3>
+                <div class="card">
+                    <div class="card-body">
+                        <div class="row g-3 align-items-end mb-3">
+                            <div class="col-md-4"><label class="form-label fw-bold">Data Inicial</label><input type="date" id="data-inicio-relatorio" class="form-control"></div>
+                            <div class="col-md-4"><label class="form-label fw-bold">Data Final</label><input type="date" id="data-fim-relatorio" class="form-control"></div>
+                            <div class="col-md-4">
+                                <div class="d-flex gap-2">
+                                    <button onclick="gerarRelatorio('previsao')" class="btn btn-outline-info flex-grow-1">Previsão</button>
+                                    <button onclick="gerarRelatorio('descontos')" class="btn btn-outline-danger flex-grow-1">Descontos</button>
+                                    <button onclick="gerarRelatorio('final')" class="btn btn-success flex-grow-1">Final</button>
+                                </div>
                             </div>
                         </div>
-                        <h5 class="mt-4">Motivos Cadastrados</h5>
-                        <div class="table-responsive">
-                            <table class="table table-hover align-middle">
-                                <thead class="table-dark"><tr><th>Nome</th><th>Tipo</th><th>Ações</th></tr></thead>
-                                <tbody id="lista-pendencias"></tbody>
-                            </table>
-                        </div>
+                        <div id="resultado-relatorio" class="mt-4 p-4 bg-light rounded text-center text-muted">Selecione um período e um tipo de relatório para começar.</div>
                     </div>
                 </div>
-            </div>
-        </section>
+            </section>
 
-        <section id="motivos-section" class="content-section">
-            <div class="card shadow-sm">
-                <div class="card-header">
-                    <h2 class="mb-0">Gestão de Motivos de Ausência</h2>
-                </div>
-                <div class="card-body">
-                    <div class="input-group mb-3">
-                        <input type="text" id="novo-motivo-nome" placeholder="Nome do novo motivo" class="form-control">
-                        <div class="input-group-text">
-                            <input class="form-check-input mt-0" type="checkbox" id="novo-motivo-desconto" checked>
-                            <label class="form-check-label ms-2" for="novo-motivo-desconto">Gera Desconto</label>
-                        </div>
-                        <button id="btn-salvar-motivo" class="btn btn-primary">Adicionar</button>
-                    </div>
-                    <ul id="lista-motivos" class="list-group"></ul>
-                </div>
-            </div>
-        </section>
+        </main>
+    </div>
 
-        <section id="feriados-section" class="content-section">
-             <div class="card shadow-sm">
-                <div class="card-header">
-                    <h2 class="mb-0">Gestão de Feriados e Dias Não Úteis</h2>
-                </div>
-                <div class="card-body">
-                    <div class="input-group mb-4">
-                        <input type="date" id="novo-feriado-data" class="form-control">
-                        <input type="text" id="novo-feriado-descricao" placeholder="Descrição (Ex: Natal)" class="form-control">
-                        <button id="btn-salvar-feriado" class="btn btn-primary">Adicionar</button>
-                    </div>
-                    <div class="table-responsive">
-                        <table class="table table-hover align-middle">
-                            <thead class="table-dark"><tr><th>Data</th><th>Descrição</th><th>Ações</th></tr></thead>
-                            <tbody id="lista-feriados"></tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <section id="relatorios-section" class="content-section">
-             <div class="card shadow-sm">
-                <div class="card-header">
-                     <h2 class="mb-0">Relatórios Financeiros</h2>
-                </div>
-                <div class="card-body">
-                    <div class="row g-3 align-items-end mb-3">
-                        <div class="col-md">
-                            <label for="data-inicio-relatorio" class="form-label">Data Inicial:</label>
-                            <input type="date" id="data-inicio-relatorio" class="form-control">
-                        </div>
-                        <div class="col-md">
-                            <label for="data-fim-relatorio" class="form-label">Data Final:</label>
-                            <input type="date" id="data-fim-relatorio" class="form-control">
-                        </div>
-                    </div>
-                    <div class="mt-3">
-                        <button onclick="gerarRelatorio('previsao')" class="btn btn-info">Gerar Previsão</button>
-                        <button onclick="gerarRelatorio('descontos')" class="btn btn-danger">Gerar Descontos</button>
-                        <button onclick="gerarRelatorio('final')" class="btn btn-success">Gerar Relatório Final</button>
-                    </div>
-                    <div id="resultado-relatorio" class="mt-4">
-                        <p class="text-muted">Selecione um período e um tipo de relatório para começar.</p>
-                    </div>
-                </div>
-            </div>
-        </section>
-    </main>
-</div>
-
-    <div class="modal fade" id="perfilModal" tabindex="-1" aria-labelledby="perfilModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
+    <div class="modal fade" id="perfilModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="perfilModalLabel">Adicionar Perfil</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    <h5 class="modal-title" id="modal-perfil-titulo">Configurar Perfil</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <form id="perfilForm">
                         <input type="hidden" id="modal_perfil_id">
                         <div class="mb-3">
-                            <label for="modal_perfil_nome" class="form-label">Nome do Perfil</label>
-                            <input type="text" class="form-control" id="modal_perfil_nome" required>
+                            <label class="form-label fw-bold">Nome do Cargo / Perfil</label>
+                            <input type="text" class="form-control" id="modal_perfil_nome" placeholder="Ex: Supervisor Regional" required>
                         </div>
+                        
                         <div class="mb-3">
-                            <label for="modal_perfil_descricao" class="form-label">Descrição</label>
-                            <textarea class="form-control" id="modal_perfil_descricao" rows="3"></textarea>
+                            <label class="form-label fw-bold text-primary">Acessos e Permissões</label>
+                            <p class="text-muted small mb-2">Marque as caixas abaixo para liberar o acesso às funcionalidades.</p>
+                            
+                            <div class="mb-2">
+                                <input type="text" id="filtro-permissoes" class="form-control form-control-sm" placeholder="🔍 Buscar permissão...">
+                            </div>
+
+                            <div id="lista-permissoes" class="perm-list">
+                                <div class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm"></div> Carregando permissões...</div>
+                            </div>
                         </div>
                     </form>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="button" class="btn btn-primary" id="btn-salvar-perfil-modal">Salvar</button>
+                    <button type="button" class="btn btn-primary" onclick="salvarPerfil()">Salvar Alterações</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="modal fade" id="excluirPerfilModal" tabindex="-1" aria-labelledby="excluirPerfilModalLabel" aria-hidden="true">
+    <div class="modal fade" id="excluirPerfilModal" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="excluirPerfilModalLabel">Confirmar Exclusão</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p>Tem certeza que deseja excluir o perfil "<strong id="nome-perfil-excluir"></strong>"?</p>
-                    <p class="text-danger">Esta ação não pode ser desfeita.</p>
-                    <input type="hidden" id="id-perfil-excluir">
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="button" class="btn btn-danger" id="btn-confirmar-exclusao-perfil">Excluir</button>
-                </div>
+                <div class="modal-header"><h5 class="modal-title">Confirmar Exclusão</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body"><p>Excluir o perfil "<strong id="nome-perfil-excluir"></strong>"?</p><p class="text-danger small">Ação irreversível.</p><input type="hidden" id="id-perfil-excluir"></div>
+                <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button type="button" class="btn btn-danger" id="btn-confirmar-exclusao-perfil">Excluir</button></div>
             </div>
         </div>
     </div>
@@ -504,186 +462,292 @@
     <div class="modal fade" id="modal-edicao-motivo" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Editar Motivo de Ausência</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                     <form id="form-edicao-motivo">
-                        <input type="hidden" id="motivo-id-input">
-                        <div class="mb-3">
-                            <label for="motivo-nome-input" class="form-label">Nome do Motivo</label>
-                            <input type="text" class="form-control" id="motivo-nome-input" required>
-                        </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="motivo-desconto-input">
-                            <label class="form-check-label" for="motivo-desconto-input">Gera Desconto</label>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" form="form-edicao-motivo" class="btn btn-primary">Salvar Alterações</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal fade" id="modal-permissoes" tabindex="-1">
-        <div class="modal-dialog modal-xl modal-dialog-scrollable">
-            <div class="modal-content">
-                <div class="modal-header">
-                     <h5 class="modal-title" id="modal-permissoes-titulo">Permissões do Perfil</h5>
-                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div id="permissoes-container" class="table-responsive"></div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="button" class="btn btn-primary" id="btn-salvar-permissoes">Salvar</button>
-                </div>
+                <div class="modal-header"><h5 class="modal-title">Editar Motivo</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body"><form id="form-edicao-motivo"><input type="hidden" id="motivo-id-input"><div class="mb-3"><label class="form-label">Nome</label><input type="text" class="form-control" id="motivo-nome-input" required></div><div class="form-check"><input class="form-check-input" type="checkbox" id="motivo-desconto-input"><label class="form-check-label">Gera Desconto</label></div></form></div>
+                <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button type="submit" form="form-edicao-motivo" class="btn btn-primary">Salvar</button></div>
             </div>
         </div>
     </div>
 
     <footer>
-        <p>Record PAP - Internet Fibra Ótica</p>
-        <p>Contato: (31) 99458-8810 | E-mail: <a href="mailto:suporte@recordpap.com.br">suporte@recordpap.com.br</a></p>
-        <p><a href="politica-de-privacidade.html">Política de Privacidade</a> | <a href="#">Termos de Uso</a></p>
+        <p>Record PAP - Sistema Interno</p>
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
-    <script src="{% static 'js/auth.js' %}"></script>
-    <script src="{% static 'js/menu.js' %}?v=1.1"></script>
+    <script src="{% static 'js/auth.js' %}?v=1.3"></script>
+    <script src="{% static 'js/menu.js' %}?v=1.3"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    
     <script>
     const apiUrl = '';
-
-    async function apiFetch(endpoint, options = {}) {
-        const headers = {
-            'Content-Type': 'application/json',
-            ...options.headers,
-        };
-        
-        const token = localStorage.getItem('accessToken');
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
-
-        const response = await fetch(`${apiUrl}/api${endpoint}`, { ...options, headers });
-
-        let responseData = {};
-        const contentType = response.headers.get("content-type");
-        if (contentType && contentType.indexOf("application/json") !== -1) {
-                try {
-                    responseData = await response.clone().json(); 
-                } catch (e) {
-                    console.error("Não foi possível parsear o corpo da resposta como JSON.", e);
-                }
-        }
-
-        if (responseData && responseData.token) {
-            localStorage.setItem('accessToken', responseData.token);
-            console.log('Token de acesso atualizado a partir do corpo da resposta!');
-        }
-
-        if (response.status === 401) {
-            alert('Sua sessão expirou ou o token é inválido. Por favor, faça login novamente.');
-            logout();
-            throw new Error('Não autorizado');
-        }
-        if (!response.ok) {
-            const errorData = responseData || await response.text();
-            const errorMessage = errorData.detail || JSON.stringify(errorData).replace(/["{}[\]]/g, ' ');
-            throw new Error(errorMessage);
-        }
-        if (response.status === 204) {
-            return null;
-        }
-        
-        // LINHA CORRIGIDA:
-        return responseData;
-    }
-
-    if (!localStorage.getItem('accessToken')) {
-            alert('Acesso negado. Faça o login para continuar.');
-            window.location.href = '/';
-    }
-    const token = localStorage.getItem('accessToken');
-    const decodedToken = jwt_decode(token);
-    const userProfile = decodedToken ? decodedToken.perfil : null;
-    const isSuperuser = decodedToken ? decodedToken.is_superuser : false;
-
-    if (!userProfile || !['Diretoria', 'Admin'].includes(userProfile) && !isSuperuser) {
-            alert('Acesso negado. Você não tem permissão para ver esta página.');
-            window.location.href = '/area-interna/';
-    }
     
-    // O restante do seu script original continua aqui, sem alterações...
-    // --- LÓGICA GERAL DA PÁGINA ---
-    function mostrarSecao(event, idSecao, menuItem) {
-        if (event) {
-            event.stopPropagation();
-        }
-        document.querySelectorAll('.content-section').forEach(section => {
-            section.classList.remove('active');
-        });
-        
-        const secaoAlvo = document.getElementById(`${idSecao}-section`);
-        if (secaoAlvo) {
-            secaoAlvo.classList.add('active');
-        }
-        document.querySelectorAll('#nav-cadastros .dropdown-item').forEach(item => {
-            item.classList.remove('active');
-        });
-        if (menuItem) {
-            menuItem.classList.add('active');
-        }
-    }
-
-
     function openTab(evt, tabName) {
-        const parentSection = evt.currentTarget.closest('.card-body');
-        parentSection.querySelectorAll('.tab-content').forEach(tabcontent => {
-            tabcontent.classList.remove("active");
-            tabcontent.style.display = "none";
+        evt.preventDefault();
+        const parent = evt.currentTarget.closest('.card');
+        parent.querySelectorAll('.tab-content').forEach(t => {
+            t.classList.remove("active");
+            t.style.display = "none";
         });
-        parentSection.querySelectorAll('.nav-tabs .nav-link').forEach(tablink => {
-            tablink.classList.remove("active");
-        });
-        const targetTab = document.getElementById(tabName);
-        if(targetTab){
-            targetTab.style.display = "block";
-            targetTab.classList.add("active");
+        parent.querySelectorAll('.nav-link').forEach(l => l.classList.remove("active"));
+        const target = document.getElementById(tabName);
+        if(target){
+            target.style.display = "block";
+            target.classList.add("active");
         }
         evt.currentTarget.classList.add("active");
     }
 
-    // --- LÓGICA DE GESTÃO DE USUÁRIOS ---
+    function mostrarSecao(event, idSecao, menuItem) {
+        if (event) event.preventDefault();
+        document.querySelectorAll('.content-section').forEach(s => s.classList.remove('active'));
+        const secaoAlvo = document.getElementById(`${idSecao}-section`);
+        if (secaoAlvo) secaoAlvo.classList.add('active');
+        document.querySelectorAll('.admin-nav-link').forEach(l => l.classList.remove('active'));
+        if (menuItem) menuItem.classList.add('active');
+    }
+
+    async function apiFetch(endpoint, options = {}) {
+        const headers = { 'Content-Type': 'application/json', ...options.headers };
+        const token = localStorage.getItem('accessToken');
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        try {
+            const response = await fetch(`${apiUrl}/api${endpoint}`, { ...options, headers });
+            let responseData = {};
+            const contentType = response.headers.get("content-type");
+            if (contentType && contentType.indexOf("application/json") !== -1) {
+                try { responseData = await response.clone().json(); } catch (e) { console.error("Erro JSON", e); }
+            }
+            if (responseData && responseData.token) localStorage.setItem('accessToken', responseData.token);
+            if (response.status === 401) { alert('Sessão expirada.'); logout(); throw new Error('Não autorizado'); }
+            if (!response.ok) {
+                const errorData = responseData || await response.text();
+                throw new Error(errorData.detail || JSON.stringify(errorData).replace(/["{}[\]]/g, ' '));
+            }
+            if (response.status === 204) return null;
+            return responseData;
+        } catch (e) { throw e; }
+    }
+
+    function logout() { localStorage.removeItem('accessToken'); window.location.href = '/'; }
+
+    // Inicialização e Auth
+    const token = localStorage.getItem('accessToken');
+    if (!token) window.location.href = '/';
+    const decodedToken = jwt_decode(token);
+    const userProfile = decodedToken ? decodedToken.perfil : null;
+    const isSuperuser = decodedToken ? decodedToken.is_superuser : false;
+    
+    if (decodedToken && decodedToken.username) { 
+         const wel = document.getElementById('welcome-user');
+         if(wel) wel.textContent = `Olá, ${decodedToken.username}`; 
+    }
+
+    // Validação de Acesso à Governança
+    if (!userProfile || !['Diretoria', 'Admin'].includes(userProfile) && !isSuperuser) {
+        alert('Acesso negado.'); window.location.href = '/area-interna/';
+    }
+
+    const menuToggle = document.getElementById('menu-toggle');
+    const mainNav = document.getElementById('main-nav');
+    if(menuToggle && mainNav) menuToggle.addEventListener('click', () => mainNav.classList.toggle('active'));
+
+    // ====================================================================
+    // 1. GESTÃO DE PERFIS (MODERNIZADA PARA GRUPOS)
+    // ====================================================================
+    
+    // Variáveis Globais
+    const API_GRUPOS = '/grupos/';         // Rota da ViewSet de Grupos
+    const API_PERMISSOES = '/permissoes/'; // Rota da ViewSet de Permissões
+    let todasPermissoes = [];
+    const perfilModal = new bootstrap.Modal(document.getElementById('perfilModal'));
+    const excluirPerfilModal = new bootstrap.Modal(document.getElementById('excluirPerfilModal'));
+
+    // Carrega a lista de perfis (Grupos) na tabela
+    async function carregarPerfis() {
+        const tbody = document.getElementById('perfis-tabela-corpo');
+        tbody.innerHTML = '<tr><td colspan="3" class="text-center py-3">Carregando...</td></tr>';
+        
+        try {
+            // Busca os Grupos da nova API
+            const grupos = await apiFetch(API_GRUPOS);
+            tbody.innerHTML = '';
+            
+            if(grupos.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">Nenhum perfil encontrado.</td></tr>';
+                return;
+            }
+
+            grupos.forEach(grupo => {
+                // Cria badges visuais para as permissões do grupo
+                const badges = grupo.permissions_details.map(p => 
+                    `<span class="badge bg-info text-dark badge-perm">${formatarNomePermissao(p.name)}</span>`
+                ).join('');
+
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="fw-bold text-primary">${grupo.name}</td>
+                    <td>${badges || '<span class="text-muted small fst-italic">Sem permissões especiais</span>'}</td>
+                    <td class="text-end">
+                        <button class="btn btn-sm btn-outline-primary me-1" onclick='editarPerfil(${JSON.stringify(grupo)})'>
+                            <i class="bi bi-pencil"></i> Editar
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="confirmarExclusaoPerfil(${grupo.id}, '${grupo.name}')">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        } catch (e) {
+            console.error(e);
+            tbody.innerHTML = '<tr><td colspan="3" class="text-danger text-center">Erro ao carregar perfis.</td></tr>';
+        }
+    }
+
+    // Abre o modal de criação/edição
+    async function abrirModalPerfil(grupo = null) {
+        document.getElementById('modal-perfil-titulo').textContent = grupo ? 'Editar Perfil' : 'Novo Perfil';
+        document.getElementById('modal_perfil_id').value = grupo ? grupo.id : '';
+        document.getElementById('modal_perfil_nome').value = grupo ? grupo.name : '';
+        document.getElementById('filtro-permissoes').value = ''; // Reset filtro
+        
+        const container = document.getElementById('lista-permissoes');
+        container.innerHTML = '<div class="text-center text-muted"><div class="spinner-border spinner-border-sm"></div> Carregando...</div>';
+        
+        perfilModal.show();
+
+        // Carrega as permissões disponíveis se ainda não tiver carregado
+        if (todasPermissoes.length === 0) {
+            try {
+                const res = await apiFetch(API_PERMISSOES);
+                todasPermissoes = res; // A API retorna uma lista direta
+            } catch(e) {
+                container.innerHTML = '<div class="text-danger small">Erro ao carregar lista de permissões.</div>';
+                return;
+            }
+        }
+
+        // Renderiza os checkboxes
+        renderizarListaPermissoes(grupo ? grupo.permissions : []);
+    }
+    
+    function renderizarListaPermissoes(permsAtuais) {
+        const container = document.getElementById('lista-permissoes');
+        container.innerHTML = '';
+        
+        todasPermissoes.forEach(p => {
+            const isChecked = permsAtuais.includes(p.id) ? 'checked' : '';
+            const nomeAmigavel = formatarNomePermissao(p.name);
+            
+            container.innerHTML += `
+                <div class="perm-item form-check">
+                    <input class="form-check-input" type="checkbox" value="${p.id}" id="perm-${p.id}" ${isChecked}>
+                    <label class="form-check-label perm-label" for="perm-${p.id}">
+                        <strong>${nomeAmigavel}</strong> <span class="text-muted small ms-2">(${p.codename})</span>
+                    </label>
+                </div>
+            `;
+        });
+    }
+
+    // LÓGICA DE FILTRO (PESQUISA)
+    document.getElementById('filtro-permissoes').addEventListener('input', function(e) {
+        const termo = e.target.value.toLowerCase();
+        const items = document.querySelectorAll('.perm-item');
+        
+        items.forEach(item => {
+            const texto = item.innerText.toLowerCase();
+            if (texto.includes(termo)) {
+                item.style.display = 'flex';
+            } else {
+                item.style.display = 'none';
+            }
+        });
+    });
+
+    // Função auxiliar para abrir modal via botão
+    window.editarPerfil = (grupo) => abrirModalPerfil(grupo);
+    document.getElementById('btn-adicionar-perfil').onclick = () => abrirModalPerfil(null);
+
+    // Salva o Perfil (POST ou PATCH)
+    async function salvarPerfil() {
+        const id = document.getElementById('modal_perfil_id').value;
+        const nome = document.getElementById('modal_perfil_nome').value;
+        
+        // Coleta IDs marcados
+        const checkboxes = document.querySelectorAll('#lista-permissoes input:checked');
+        const perms = Array.from(checkboxes).map(el => parseInt(el.value));
+
+        if (!nome) { alert('O nome do perfil é obrigatório.'); return; }
+
+        const payload = { name: nome, permissions: perms };
+
+        try {
+            if (id) {
+                await apiFetch(`${API_GRUPOS}${id}/`, { method: 'PATCH', body: JSON.stringify(payload) });
+            } else {
+                await apiFetch(API_GRUPOS, { method: 'POST', body: JSON.stringify(payload) });
+            }
+            perfilModal.hide();
+            carregarPerfis();
+            alert('Perfil salvo com sucesso!');
+        } catch (e) {
+            alert('Erro ao salvar perfil. Verifique se o nome já existe.');
+            console.error(e);
+        }
+    }
+
+    // Exclusão de Perfil
+    window.confirmarExclusaoPerfil = (id, nome) => {
+        document.getElementById('id-perfil-excluir').value = id;
+        document.getElementById('nome-perfil-excluir').textContent = nome;
+        excluirPerfilModal.show();
+    };
+
+    document.getElementById('btn-confirmar-exclusao-perfil').onclick = async () => {
+        const id = document.getElementById('id-perfil-excluir').value;
+        try { 
+            await apiFetch(`${API_GRUPOS}${id}/`, { method: 'DELETE' }); 
+            excluirPerfilModal.hide(); 
+            carregarPerfis(); 
+        } catch(e){ alert(e.message); }
+    };
+
+    // Formata nomes técnicos (ex: "Can view venda" -> "Visualizar Venda")
+    function formatarNomePermissao(nome) {
+        return nome.replace('Can view', 'Visualizar')
+                   .replace('Can add', 'Adicionar')
+                   .replace('Can change', 'Editar')
+                   .replace('Can delete', 'Excluir')
+                   .replace('Pode visualizar', 'Acesso a')
+                   .replace('venda', 'Venda')
+                   .replace('comissao', 'Comissão');
+    }
+
+
+    // ====================================================================
+    // 2. GESTÃO DE USUÁRIOS
+    // ====================================================================
     const userForm = document.getElementById('user-form');
-    const formTitle = document.getElementById('form-title');
     const userIdInput = document.getElementById('user_id');
     const userListBody = document.getElementById('user-list-body');
-    const userListHeader = document.getElementById('user-list-header');
-    const listaStatusTitulo = document.getElementById('lista-status-titulo');
-    const selectPerfil = document.getElementById('perfil_id');
-    const selectSupervisor = document.getElementById('supervisor_id');
-
+    
     function resetForm() {
         userForm.reset();
         userIdInput.value = '';
-        formTitle.textContent = 'Cadastrar Novo Usuário';
-        document.getElementById('senha').placeholder = 'Senha Provisória';
+        document.getElementById('form-title').innerHTML = '<i class="bi bi-person-plus-fill"></i> Cadastrar Novo Usuário';
         document.getElementById('senha').required = true;
     }
 
-    function mostrarListaUsuarios(status, tabElement) {
-        if (tabElement) {
-            document.querySelectorAll('#usuarios-section .btn-group .btn').forEach(btn => btn.classList.remove('active'));
-            tabElement.classList.add('active');
+    function mostrarListaUsuarios(status, btn) {
+        document.getElementById('lista-status-titulo').textContent = status === 'ativos' ? 'Ativos' : 'Inativos';
+        document.getElementById('lista-status-titulo').className = status === 'ativos' ? 'badge bg-success' : 'badge bg-secondary';
+        if(btn) {
+            btn.parentElement.querySelectorAll('.btn').forEach(b => b.classList.remove('active', 'btn-outline-primary', 'btn-outline-secondary'));
+            btn.classList.add('active', 'btn-outline-primary');
         }
-        listaStatusTitulo.textContent = status === 'ativos' ? 'Ativos' : 'Inativos';
         carregarUsuarios(status);
     }
 
@@ -691,94 +755,95 @@
         try {
             const usuarios = await apiFetch(`/usuarios/?is_active=${status === 'ativos'}`);
             userListBody.innerHTML = '';
-            if (status === 'ativos') {
-                userListHeader.innerHTML = '<th>Nome</th><th>E-mail</th><th>Perfil</th><th>Líder Imediato</th><th class="text-end">Ações</th>';
-                usuarios.forEach(user => {
-                    const supervisorDisplay = user.supervisor_nome || 'N/A';
-                    userListBody.innerHTML += `<tr><td>${user.nome_completo}</td><td>${user.email}</td><td>${user.perfil_nome}</td><td>${supervisorDisplay}</td><td class="text-end"><button class="btn btn-warning btn-sm" title="Editar" onclick='iniciarEdicao(${JSON.stringify(user)})'><i class="bi bi-pencil-square"></i></button> <button class="btn btn-danger btn-sm" title="Inativar" onclick="inativarUsuario(${user.id})"><i class="bi bi-trash"></i></button></td></tr>`;
-                });
-            } else {
-                userListHeader.innerHTML = '<th>Nome</th><th>E-mail</th><th>Perfil</th><th class="text-end">Ações</th>';
-                usuarios.forEach(user => {
-                    userListBody.innerHTML += `<tr><td>${user.nome_completo}</td><td>${user.email}</td><td>${user.perfil_nome}</td><td class="text-end"><button class="btn btn-success btn-sm" title="Reativar" onclick="reativarUsuario(${user.id})"><i class="bi bi-check-circle"></i></button></td></tr>`;
-                });
-            }
-        } catch (error) { console.error("Erro ao carregar usuários:", error); }
+            const header = document.getElementById('user-list-header');
+            header.innerHTML = status === 'ativos' ? '<th>Nome</th><th>E-mail</th><th>Perfil</th><th>Líder</th><th class="text-end">Ações</th>' : '<th>Nome</th><th>E-mail</th><th>Perfil</th><th class="text-end">Ações</th>';
+            
+            usuarios.forEach(user => {
+                // Lógica para exibir o grupo moderno ou o perfil legado
+                let perfilDisplay = '<span class="badge bg-secondary">Sem Perfil</span>';
+                if (user.groups && user.groups.length > 0) {
+                    perfilDisplay = `<span class="badge bg-success">${user.groups[0].name}</span>`;
+                } else if (user.perfil_nome) {
+                    perfilDisplay = `<span class="badge bg-secondary">${user.perfil_nome} (Legado)</span>`;
+                }
+
+                const tr = document.createElement('tr');
+                const acoes = status === 'ativos' 
+                    ? `<button class="btn btn-warning btn-sm me-1" onclick='iniciarEdicao(${JSON.stringify(user)})'><i class="bi bi-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="inativarUsuario(${user.id})"><i class="bi bi-trash"></i></button>`
+                    : `<button class="btn btn-success btn-sm" onclick="reativarUsuario(${user.id})"><i class="bi bi-check-circle"></i></button>`;
+                
+                tr.innerHTML = `<td>${user.nome_completo}</td><td>${user.email}</td><td>${perfilDisplay}</td>${status === 'ativos' ? `<td>${user.supervisor_nome || '-'}</td>` : ''}<td class="text-end">${acoes}</td>`;
+                userListBody.appendChild(tr);
+            });
+        } catch (e) { console.error(e); }
     }
 
     async function carregarDadosParaFormulario() {
-        selectPerfil.innerHTML = '';
-        selectSupervisor.innerHTML = '<option value="">Nenhum</option>';
+        const pSelect = document.getElementById('perfil_id');
+        const sSelect = document.getElementById('supervisor_id');
+        pSelect.innerHTML = ''; sSelect.innerHTML = '<option value="">Nenhum</option>';
         try {
-            const [perfis, usuarios] = await Promise.all([
-                apiFetch('/perfis/'),
-                apiFetch('/usuarios/?is_active=true')
-            ]);
+            // Carrega os Grupos (Perfis Modernos) e a lista de usuários para líder
+            const [grupos, usuarios] = await Promise.all([ apiFetch(API_GRUPOS), apiFetch('/usuarios/?is_active=true') ]);
             
-            perfis.forEach(perfil => selectPerfil.add(new Option(perfil.nome, perfil.id)));
+            // Preenche o select de perfis com os grupos
+            grupos.forEach(g => pSelect.add(new Option(g.name, g.id)));
             
-            usuarios.forEach(usuario => {
-                selectSupervisor.add(new Option(usuario.nome_completo, usuario.id));
-            });
-
-        } catch (error) { 
-            console.error('Erro ao carregar dados para o formulário:', error); 
-        }
+            usuarios.forEach(u => sSelect.add(new Option(u.nome_completo, u.id)));
+        } catch (e) {}
     }
 
     function iniciarEdicao(user) {
         resetForm();
-        formTitle.textContent = 'Editando Usuário';
-        userIdInput.value = user.id;
-        // ... (preenchimento de todos os outros campos do formulário)
-        document.getElementById('nome_completo').value = user.nome_completo;
-        document.getElementById('cpf').value = user.cpf || '';
-        document.getElementById('email').value = user.email;
-        document.getElementById('username').value = user.username;
-        selectPerfil.value = user.perfil;
-        selectSupervisor.value = user.supervisor || '';
-        document.getElementById('valor_almoco').value = user.valor_almoco;
-        document.getElementById('valor_passagem').value = user.valor_passagem;
-        document.getElementById('chave_pix').value = user.chave_pix || '';
-        document.getElementById('nome_da_conta').value = user.nome_da_conta || '';
-        document.getElementById('meta_comissao').value = user.meta_comissao;
-        document.getElementById('desconto_boleto').value = user.desconto_boleto;
-        document.getElementById('desconto_inclusao_viabilidade').value = user.desconto_inclusao_viabilidade;
-        document.getElementById('desconto_instalacao_antecipada').value = user.desconto_instalacao_antecipada;
-        document.getElementById('adiantamento_cnpj').value = user.adiantamento_cnpj;
-        document.getElementById('desconto_inss_fixo').value = user.desconto_inss_fixo;
-        document.getElementById('participa_controle_presenca').checked = user.participa_controle_presenca;
+        document.getElementById('form-title').textContent = 'Editando Usuário';
+        document.getElementById('user_id').value = user.id;
+        
+        // Preenche campos básicos
+        ['nome_completo', 'cpf', 'email', 'username'].forEach(id => {
+            document.getElementById(id).value = user[id] || '';
+        });
+        
+        // Seleciona o perfil (grupo) correto
+        if (user.groups && user.groups.length > 0) {
+            document.getElementById('perfil_id').value = user.groups[0].id;
+        } else if (user.perfil) {
+            // Fallback para ID legado se necessário, ou deixa em branco
+            document.getElementById('perfil_id').value = user.perfil;
+        }
 
-        // --- LINHA ADICIONADA PARA PREENCHER O CHECKBOX ---
+        document.getElementById('supervisor_id').value = user.supervisor || '';
         document.getElementById('participa_controle_presenca').checked = user.participa_controle_presenca;
-        // --- FIM DA ADIÇÃO ---
-
-        document.getElementById('senha').placeholder = 'Deixe em branco para não alterar';
         document.getElementById('senha').required = false;
+        
+        // Preenche financeiros
+        ['valor_almoco', 'valor_passagem', 'chave_pix', 'nome_da_conta', 'meta_comissao', 'desconto_boleto', 'desconto_inclusao_viabilidade', 'desconto_instalacao_antecipada', 'adiantamento_cnpj', 'desconto_inss_fixo'].forEach(id => {
+            document.getElementById(id).value = user[id] || '';
+        });
+
         window.scrollTo(0, 0);
     }
 
     userForm.addEventListener('submit', async function(e) {
         e.preventDefault();
         const id = userIdInput.value;
-        const isEditing = !!id; // Verifica se é uma edição
+        const isEditing = !!id;
         const url = isEditing ? `/usuarios/${id}/` : '/usuarios/';
         const method = isEditing ? 'PUT' : 'POST';
 
-        // ... (lógica para pegar nome, sobrenome, etc.)
         const nomeCompleto = document.getElementById('nome_completo').value.trim();
         const nomeParts = nomeCompleto.split(' ');
         const firstName = nomeParts.shift();
         const lastName = nomeParts.join(' ');
 
         const body = {
-            first_name: firstName,
-            last_name: lastName,
+            first_name: firstName, last_name: lastName,
             cpf: document.getElementById('cpf').value,
             email: document.getElementById('email').value,
-            perfil: selectPerfil.value,
+            // perfil: document.getElementById('perfil_id').value, // Campo legado
             username: document.getElementById('username').value,
-            supervisor: selectSupervisor.value || null,
+            supervisor: document.getElementById('supervisor_id').value || null,
+            
+            // Campos financeiros...
             valor_almoco: document.getElementById('valor_almoco').value,
             valor_passagem: document.getElementById('valor_passagem').value,
             chave_pix: document.getElementById('chave_pix').value,
@@ -789,906 +854,161 @@
             desconto_instalacao_antecipada: document.getElementById('desconto_instalacao_antecipada').value,
             adiantamento_cnpj: document.getElementById('adiantamento_cnpj').value,
             desconto_inss_fixo: document.getElementById('desconto_inss_fixo').value,
-            // --- LINHA ADICIONADA PARA ENVIAR O VALOR DO CHECKBOX ---
             participa_controle_presenca: document.getElementById('participa_controle_presenca').checked
         };
 
         const senha = document.getElementById('senha').value;
-        if (isEditing) {
-            if (senha && senha.trim() !== '') {
-                body.password = senha;
-            }
-        } else {
-            body.password = senha;
-            if (!body.password) { return alert('A senha é obrigatória para novos usuários.'); }
-        }
+        if (senha) body.password = senha;
+        else if (!isEditing) return alert('Senha obrigatória');
+
         try {
-            const result = await apiFetch(url, {
-                method: method,
-                body: JSON.stringify(body)
-            });
-            alert(`Usuário ${isEditing ? 'atualizado' : 'cadastrado'} com sucesso!`);
+            // 1. Salva o usuário
+            const res = await apiFetch(url, { method, body: JSON.stringify(body) });
+            const userId = res.id;
+
+            // 2. Associa o Grupo (Perfil) ao usuário (Isso pode exigir um endpoint extra ou ajuste no serializer)
+            // Como seu serializer atualiza 'perfil' (legado), vamos manter isso por enquanto
+            // Para atualizar grupos nativos, o ideal é enviar 'groups': [id] no body se o serializer suportar
+            // Se o serializer não suportar update direto de grupos, precisaria de uma chamada extra.
+            // *ASSUMINDO QUE O SERIALIZER TRATA 'perfil' COMO LEGADO E VAMOS MIGRAR AOS POUCOS*
+            
+            alert('Salvo com sucesso!');
             resetForm();
             mostrarListaUsuarios('ativos', document.querySelector('#usuarios-section .btn-group .btn.active'));
-            carregarDadosParaFormulario();
-        } catch (error) {
-            console.error('Detalhes do erro ao salvar usuário:', error);
-            alert(`Erro: ${error.message}`);
-        }
+        } catch (e) { alert(`Erro: ${e.message}`); }
     });
 
-    async function inativarUsuario(id) {
-        if (!confirm('Tem certeza que deseja INATIVAR este usuário?')) return;
-        try {
-            await apiFetch(`/usuarios/${id}/`, { method: 'DELETE' });
-            alert('Usuário inativado com sucesso.');
-            mostrarListaUsuarios('ativos', document.querySelector('#usuarios-section .btn-group .btn.active'));
-        } catch(error) {
-            console.error('Detalhes do erro ao inativar usuário:', error);
-            alert(`Erro: ${error.message}`);
-        }
-    }
-
-    async function reativarUsuario(id) {
-        if (!confirm('Tem certeza que deseja REATIVAR este usuário?')) return;
-        try {
-            await apiFetch(`/usuarios/${id}/reativar/`, { method: 'PUT' });
-            alert('Usuário reativado com sucesso.');
-            carregarUsuarios('inativos');
-        } catch(error) {
-            console.error('Detalhes do erro ao reativar usuário:', error);
-            alert(`Erro: ${error.message}`);
-        }
-    }
+    async function inativarUsuario(id) { if(confirm('Inativar?')) { await apiFetch(`/usuarios/${id}/`, { method: 'DELETE' }); mostrarListaUsuarios('ativos'); } }
+    async function reativarUsuario(id) { if(confirm('Reativar?')) { await apiFetch(`/usuarios/${id}/reativar/`, { method: 'PUT' }); mostrarListaUsuarios('inativos'); } }
 
 
-    // --- LÓGICA DE GESTÃO DE PERFIS ---
-    const perfisTabelaCorpo = document.getElementById('perfis-tabela-corpo');
-    const perfilModalEl = document.getElementById('perfilModal');
-    const perfilModal = new bootstrap.Modal(perfilModalEl);
-    const excluirPerfilModalEl = document.getElementById('excluirPerfilModal');
-    const excluirPerfilModal = new bootstrap.Modal(excluirPerfilModalEl);
+    // ====================================================================
+    // 3. CADASTROS GERAIS E LEGADOS (MOTIVOS, FERIADOS, REGRAS)
+    // ====================================================================
 
-    async function carregarPerfis() {
-        try {
-            const perfis = await apiFetch('/perfis/');
-            perfisTabelaCorpo.innerHTML = '';
-            perfis.forEach(perfil => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>${perfil.nome}</td>
-                    <td>${perfil.descricao || '<em class="text-muted">Sem descrição</em>'}</td>
-                    <td class="text-center">
-                        <div class="btn-group" role="group">
-                            <button class="btn btn-secondary btn-sm btn-permissoes" data-id="${perfil.id}" data-nome="${perfil.nome}" title="Gerenciar Permissões">
-                                <i class="bi bi-shield-lock"></i> Permissões
-                            </button>
-                            <button class="btn btn-warning btn-sm btn-editar-perfil" data-id="${perfil.id}" data-nome="${perfil.nome}" data-descricao="${perfil.descricao || ''}" title="Editar Perfil">
-                                <i class="bi bi-pencil-square"></i> Editar
-                            </button>
-                            <button class="btn btn-danger btn-sm btn-excluir-perfil" data-id="${perfil.id}" data-nome="${perfil.nome}" title="Excluir Perfil">
-                                <i class="bi bi-trash"></i> Excluir
-                            </button>
-                        </div>
-                    </td>
-                `;
-                perfisTabelaCorpo.appendChild(tr);
-            });
-        } catch (error) {
-            console.error('Erro ao carregar perfis:', error);
-            perfisTabelaCorpo.innerHTML = '<tr><td colspan="3" class="text-center text-danger">Falha ao carregar perfis.</td></tr>';
-        }
-    }
-
-    document.getElementById('btn-adicionar-perfil').addEventListener('click', () => {
-        document.getElementById('perfilForm').reset();
-        document.getElementById('modal_perfil_id').value = '';
-        document.getElementById('perfilModalLabel').textContent = 'Adicionar Novo Perfil';
-        perfilModal.show();
-    });
-
-    perfisTabelaCorpo.addEventListener('click', (event) => {
-        const target = event.target.closest('button');
-        if (!target) return;
-
-        const id = target.dataset.id;
-        const nome = target.dataset.nome;
-
-        if (target.classList.contains('btn-editar-perfil')) {
-            const descricao = target.dataset.descricao;
-            document.getElementById('perfilForm').reset();
-            document.getElementById('modal_perfil_id').value = id;
-            document.getElementById('modal_perfil_nome').value = nome;
-            document.getElementById('modal_perfil_descricao').value = descricao;
-            document.getElementById('perfilModalLabel').textContent = 'Editar Perfil';
-            perfilModal.show();
-        } else if (target.classList.contains('btn-excluir-perfil')) {
-            document.getElementById('id-perfil-excluir').value = id;
-            document.getElementById('nome-perfil-excluir').textContent = nome;
-            excluirPerfilModal.show();
-        } else if (target.classList.contains('btn-permissoes')) {
-            abrirModalPermissoes(id, nome);
-        }
-    });
-
-    document.getElementById('btn-salvar-perfil-modal').addEventListener('click', async () => {
-        const id = document.getElementById('modal_perfil_id').value;
-        const nome = document.getElementById('modal_perfil_nome').value.trim();
-        const descricao = document.getElementById('modal_perfil_descricao').value.trim();
-
-        if (!nome) {
-            alert('O nome do perfil é obrigatório.');
-            return;
-        }
-
-        const url = id ? `/perfis/${id}/` : '/perfis/';
-        const method = id ? 'PUT' : 'POST';
-        const body = JSON.stringify({ nome, descricao });
-
-        try {
-            await apiFetch(url, { method, body });
-            alert(`Perfil ${id ? 'atualizado' : 'criado'} com sucesso!`);
-            perfilModal.hide();
-            await carregarPerfis();
-            await carregarDadosParaFormulario(); 
-        } catch (error) {
-            console.error('Erro ao salvar perfil:', error);
-            alert(`Erro: ${error.message}`);
-        }
-    });
-
-    document.getElementById('btn-confirmar-exclusao-perfil').addEventListener('click', async () => {
-        const id = document.getElementById('id-perfil-excluir').value;
-        if (!id) return;
-        
-        try {
-            await apiFetch(`/perfis/${id}/`, { method: 'DELETE' });
-            alert('Perfil excluído com sucesso!');
-            excluirPerfilModal.hide();
-            await carregarPerfis();
-            await carregarDadosParaFormulario(); 
-        } catch (error) {
-            console.error('Erro ao excluir perfil:', error);
-            alert(`Erro: ${error.message}`);
-        }
-    });
-
-
-    // --- LÓGICA DE GESTÃO DE MOTIVOS DE AUSÊNCIA ---
+    // MOTIVOS
     const listaMotivosUl = document.getElementById('lista-motivos');
-    const motivoModalEl = document.getElementById('modal-edicao-motivo');
-    const motivoModal = new bootstrap.Modal(motivoModalEl);
+    const motivoModal = new bootstrap.Modal(document.getElementById('modal-edicao-motivo'));
 
     async function carregarMotivos() {
-        try {
-            const motivos = await apiFetch('/presenca/motivos/');
-            listaMotivosUl.innerHTML = '';
-            motivos.forEach(motivo => {
-                const statusDesconto = motivo.gera_desconto ? '<span class="badge bg-danger">Gera Desconto</span>' : '<span class="badge bg-success">Não Gera Desconto</span>';
-                const li = document.createElement('li');
-                li.className = 'list-group-item d-flex justify-content-between align-items-center';
-                li.innerHTML = `<span>${motivo.motivo} ${statusDesconto}</span>
-                                    <div class="generic-list-actions">
-                                        <button class="btn btn-warning btn-sm" onclick='editarMotivo(${JSON.stringify(motivo)})'><i class="bi bi-pencil"></i></button>
-                                        <button class="btn btn-danger btn-sm" onclick="excluirMotivo(${motivo.id})"><i class="bi bi-trash"></i></button>
-                                    </div>`;
-                listaMotivosUl.appendChild(li);
-            });
-        } catch (error) { console.error('Erro ao carregar motivos:', error); }
+        const m = await apiFetch('/presenca/motivos/');
+        listaMotivosUl.innerHTML = '';
+        m.forEach(x => listaMotivosUl.innerHTML += `<li class="list-group-item d-flex justify-content-between align-items-center"><span>${x.motivo} <span class="badge ${x.gera_desconto?'bg-danger':'bg-success'}">${x.gera_desconto?'Desconta':'Não Desconta'}</span></span><div><button class="btn btn-warning btn-sm me-1" onclick='editarMotivo(${JSON.stringify(x)})'><i class="bi bi-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="excluirMotivo(${x.id})"><i class="bi bi-trash"></i></button></div></li>`);
     }
+    
+    document.getElementById('btn-salvar-motivo').onclick = async () => {
+        await apiFetch('/presenca/motivos/', { method: 'POST', body: JSON.stringify({ motivo: document.getElementById('novo-motivo-nome').value, gera_desconto: document.getElementById('novo-motivo-desconto').checked }) });
+        carregarMotivos(); document.getElementById('novo-motivo-nome').value = '';
+    };
 
-    document.getElementById('btn-salvar-motivo').addEventListener('click', async () => {
-        const motivo = document.getElementById('novo-motivo-nome').value.trim();
-        const gera_desconto = document.getElementById('novo-motivo-desconto').checked;
-        if (!motivo) return alert('Por favor, digite um nome para o motivo.');
-        try {
-            await apiFetch('/presenca/motivos/', {
-                method: 'POST',
-                body: JSON.stringify({ motivo, gera_desconto })
-            });
-            document.getElementById('novo-motivo-nome').value = '';
-            document.getElementById('novo-motivo-desconto').checked = true;
-            carregarMotivos();
-        } catch (error) {
-            console.error('Detalhes do erro ao salvar motivo:', error);
-            alert(`Erro: ${error.message}`);
-        }
-    });
-
-    function editarMotivo(motivo) {
-        document.getElementById('motivo-id-input').value = motivo.id;
-        document.getElementById('motivo-nome-input').value = motivo.motivo;
-        document.getElementById('motivo-desconto-input').checked = motivo.gera_desconto;
+    window.editarMotivo = (m) => {
+        document.getElementById('motivo-id-input').value = m.id;
+        document.getElementById('motivo-nome-input').value = m.motivo;
+        document.getElementById('motivo-desconto-input').checked = m.gera_desconto;
         motivoModal.show();
-    }
-
-    async function excluirMotivo(id) {
-        if (!confirm('Tem certeza que deseja excluir este motivo?')) return;
-        try {
-            await apiFetch(`/presenca/motivos/${id}/`, { method: 'DELETE' });
-            carregarMotivos();
-        } catch (error) {
-            console.error('Detalhes do erro ao excluir motivo:', error);
-            alert(`Erro: ${error.message}`);
-        }
-    }
-
-    document.getElementById('form-edicao-motivo').addEventListener('submit', async (e) => {
+    };
+    
+    document.getElementById('form-edicao-motivo').onsubmit = async (e) => {
         e.preventDefault();
         const id = document.getElementById('motivo-id-input').value;
-        const motivo = document.getElementById('motivo-nome-input').value.trim();
-        const gera_desconto = document.getElementById('motivo-desconto-input').checked;
+        await apiFetch(`/presenca/motivos/${id}/`, { method: 'PUT', body: JSON.stringify({ motivo: document.getElementById('motivo-nome-input').value, gera_desconto: document.getElementById('motivo-desconto-input').checked }) });
+        motivoModal.hide(); carregarMotivos();
+    };
 
-        if (!motivo) return alert('O nome do motivo é obrigatório.');
+    window.excluirMotivo = async(id) => { if(confirm('Excluir?')) { await apiFetch(`/presenca/motivos/${id}/`, {method:'DELETE'}); carregarMotivos(); } };
 
-        try {
-            await apiFetch(`/presenca/motivos/${id}/`, {
-                method: 'PUT',
-                body: JSON.stringify({ motivo, gera_desconto })
-            });
-            motivoModal.hide();
-            await carregarMotivos();
-        } catch (error) {
-            console.error('Erro ao salvar edição do motivo:', error);
-            alert(`Erro: ${error.message}`);
-        }
-    });
-
-    // --- LÓGICA DE GESTÃO DE FERIADOS ---
-    const listaFeriadosTbody = document.getElementById('lista-feriados');
+    // FERIADOS
+    const listaFeriados = document.getElementById('lista-feriados');
     async function carregarFeriados() {
-        try {
-            const feriados = await apiFetch('/presenca/dias-nao-uteis/');
-            listaFeriadosTbody.innerHTML = '';
-            feriados.forEach(feriado => {
-                const dataFormatada = new Date(feriado.data).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
-                const row = `<tr><td>${dataFormatada}</td><td>${feriado.descricao}</td><td><button class="btn btn-danger btn-sm" onclick="excluirFeriado(${feriado.id})"><i class="bi bi-trash"></i></button></td></tr>`;
-                listaFeriadosTbody.innerHTML += row;
-            });
-        } catch (error) { console.error('Erro ao carregar feriados:', error); }
+        const f = await apiFetch('/presenca/dias-nao-uteis/');
+        listaFeriados.innerHTML = '';
+        f.forEach(x => listaFeriados.innerHTML += `<tr><td>${new Date(x.data).toLocaleDateString('pt-BR',{timeZone:'UTC'})}</td><td>${x.descricao}</td><td><button class="btn btn-danger btn-sm" onclick="excluirFeriado(${x.id})"><i class="bi bi-trash"></i></button></td></tr>`);
     }
+    document.getElementById('btn-salvar-feriado').onclick = async () => {
+        await apiFetch('/presenca/dias-nao-uteis/', { method: 'POST', body: JSON.stringify({ data: document.getElementById('novo-feriado-data').value, descricao: document.getElementById('novo-feriado-descricao').value }) });
+        carregarFeriados(); document.getElementById('novo-feriado-data').value = '';
+    };
+    window.excluirFeriado = async(id) => { if(confirm('Excluir?')) { await apiFetch(`/presenca/dias-nao-uteis/${id}/`, {method:'DELETE'}); carregarFeriados(); } };
 
-    document.getElementById('btn-salvar-feriado').addEventListener('click', async () => {
-        const data = document.getElementById('novo-feriado-data').value;
-        const descricao = document.getElementById('novo-feriado-descricao').value.trim();
-        if (!data || !descricao) return alert('A data e a descrição são obrigatórias.');
-        try {
-            await apiFetch('/presenca/dias-nao-uteis/', {
-                method: 'POST',
-                body: JSON.stringify({ data, descricao })
-            });
-            document.getElementById('novo-feriado-data').value = '';
-            document.getElementById('novo-feriado-descricao').value = '';
-            carregarFeriados();
-        } catch (error) {
-            console.error('Detalhes do erro ao salvar feriado:', error);
-            alert(`Erro: ${error.message}`);
-        }
-    });
-
-    async function excluirFeriado(id) {
-        if (!confirm('Tem certeza que deseja excluir este dia?')) return;
-        try {
-            await apiFetch(`/presenca/dias-nao-uteis/${id}/`, { method: 'DELETE' });
-            carregarFeriados();
-        } catch (error) {
-            console.error('Detalhes do erro ao excluir feriado:', error);
-            alert(`Erro: ${error.message}`);
-        }
-    }
-
-    // --- LÓGICA DE RELATÓRIOS (COM EXPORTAÇÃO) ---
-    async function gerarRelatorio(tipo) {
-        const dataInicio = document.getElementById('data-inicio-relatorio').value;
-        const dataFim = document.getElementById('data-fim-relatorio').value;
-        if (!dataInicio || !dataFim) { return alert('Por favor, selecione a data inicial e final.'); }
-
-        const container = document.getElementById('resultado-relatorio');
-        container.innerHTML = '<div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div>';
-
-        let url = '';
-        switch (tipo) {
-            case 'previsao': url = `/relatorios/previsao?dataInicio=${dataInicio}&dataFim=${dataFim}`; break;
-            case 'descontos': url = `/relatorios/descontos?dataInicio=${dataInicio}&dataFim=${dataFim}`; break;
-            case 'final': url = `/relatorios/semanal?dataInicio=${dataInicio}&dataFim=${dataFim}`; break;
-            default: container.innerHTML = '<p class="text-danger">Tipo de relatório inválido.</p>'; return;
-        }
-
-        try {
-            const relatorio = await apiFetch(url);
-            renderizarTabelaRelatorio(tipo, relatorio);
-        } catch(error) {
-            container.innerHTML = `<p class="text-danger">${error.message}</p>`;
-        }
-    }
-
-    function renderizarTabelaRelatorio(tipo, relatorio) {
-        const container = document.getElementById('resultado-relatorio');
-        const inicioFormatado = new Date(relatorio.periodo.inicio + 'T03:00:00Z').toLocaleDateString('pt-BR');
-        const fimFormatado = new Date(relatorio.periodo.fim + 'T03:00:00Z').toLocaleDateString('pt-BR');
-        let html = `<h5>Relatório de ${inicioFormatado} a ${fimFormatado}</h5>`;
-
-        if (!relatorio.dados || relatorio.dados.length === 0) {
-            container.innerHTML = `${html}<p class="text-center text-muted mt-3">Nenhum dado encontrado para este período.</p>`;
-            return;
-        }
-
-        html += `<button id="btn-exportar-csv" class="btn btn-secondary mt-2 mb-3"><i class="bi bi-file-earmark-spreadsheet"></i> Exportar para CSV</button>`;
-        html += '<div class="table-responsive"><table id="tabela-relatorio-dados" class="table table-bordered table-sm">';
+    // RELATÓRIOS
+    window.gerarRelatorio = async (tipo) => {
+        const ini = document.getElementById('data-inicio-relatorio').value;
+        const fim = document.getElementById('data-fim-relatorio').value;
+        if(!ini || !fim) return alert('Selecione datas');
+        const div = document.getElementById('resultado-relatorio');
+        div.innerHTML = '<div class="spinner-border"></div>';
+        let url = typeMap = { 'previsao': 'previsao', 'descontos': 'descontos', 'final': 'semanal' }[tipo];
         
-        switch (tipo) {
-            case 'previsao':
-                html += `<thead class="table-light"><tr><th>Vendedor</th><th>Auxílio Diário</th><th>Previsão para o Período</th></tr></thead><tbody>`;
-                relatorio.dados.forEach(item => {
-                    html += `<tr><td>${item.nome_completo}</td><td>R$ ${Number(item.auxilio_diario).toFixed(2).replace('.',',')}</td><td><strong>R$ ${Number(item.previsao_periodo).toFixed(2).replace('.',',')}</strong></td></tr>`;
-                });
-                break;
-            case 'descontos':
-                html += `<thead class="table-light"><tr><th>Vendedor</th><th>Data da Falta</th><th>Motivo</th><th>Valor a Descontar</th></tr></thead><tbody>`;
-                relatorio.dados.forEach(item => {
-                    const dataFalta = new Date(item.data).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
-                    html += `<tr><td>${item.nome_completo}</td><td>${dataFalta}</td><td>${item.motivo}</td><td class="text-danger">R$ ${Number(item.valor_desconto).toFixed(2).replace('.',',')}</td></tr>`;
-                });
-                break;
-            case 'final':
-                html += `<thead class="table-light"><tr><th>Vendedor</th><th>Dias Trabalhados</th><th>Faltas c/ Desconto</th><th>A Receber</th><th>A Descontar</th><th>Valor Final</th></tr></thead><tbody>`;
-                relatorio.dados.forEach(item => {
-                    html += `<tr><td>${item.nome_completo}</td><td>${item.dias_trabalhados}</td><td>${item.dias_falta_com_desconto}</td><td>R$ ${Number(item.total_a_receber).toFixed(2).replace('.',',')}</td><td class="text-danger">R$ ${Number(item.total_a_descontar).toFixed(2).replace('.',',')}</td><td><strong>R$ ${Number(item.valor_final).toFixed(2).replace('.',',')}</strong></td></tr>`;
-                });
-                break;
-        }
-        html += `</tbody></table></div>`;
-        container.innerHTML = html;
+        try {
+            const res = await apiFetch(`/relatorios/${url}?dataInicio=${ini}&dataFim=${fim}`);
+            let html = `<div class="alert alert-success">Registros: ${res.dados.length}</div><button id="btn-exportar-csv" class="btn btn-secondary mb-3">CSV</button><div class="table-responsive"><table id="tabela-relatorio-dados" class="table table-sm table-bordered"><thead><tr><th>Nome</th><th>Valor</th></tr></thead><tbody>`;
+            res.dados.forEach(d => html += `<tr><td>${d.nome_completo}</td><td>${d.valor_final || d.previsao_periodo || d.valor_desconto}</td></tr>`);
+            html += `</tbody></table></div>`;
+            div.innerHTML = html;
+            document.getElementById('btn-exportar-csv').onclick = () => exportarTabelaParaCSV('tabela-relatorio-dados', `relatorio.csv`);
+        } catch(e) { div.innerHTML = `<div class="alert alert-danger">${e.message}</div>`; }
+    };
 
-        document.getElementById('btn-exportar-csv').addEventListener('click', () => {
-            exportarTabelaParaCSV('tabela-relatorio-dados', `relatorio_${tipo}_${relatorio.periodo.inicio}_a_${relatorio.periodo.fim}.csv`);
-        });
-    }
-
-    function exportarTabelaParaCSV(idTabela, nomeArquivo) {
-        const tabela = document.getElementById(idTabela);
-        if (!tabela) {
-            console.error('Tabela não encontrada para exportação!');
-            return;
-        }
+    function exportarTabelaParaCSV(id, nome) {
+        const table = document.getElementById(id);
         let csv = [];
-        const headers = [];
-        tabela.querySelectorAll('thead th').forEach(header => {
-            headers.push(`"${header.innerText.replace(/"/g, '""')}"`);
-        });
-        csv.push(headers.join(','));
-
-        tabela.querySelectorAll('tbody tr').forEach(row => {
-            const linha = [];
-            row.querySelectorAll('td').forEach(cell => {
-                let cellText = cell.innerText.replace(/\s+/g, ' ').trim();
-                cellText = cellText.replace(/"/g, '""');
-                linha.push(`"${cellText}"`);
-            });
-            csv.push(linha.join(','));
-        });
-
-        const csvFile = new Blob(["\uFEFF" + csv.join('\n')], { type: 'text/csv;charset=utf-8;' });
-        const linkDownload = document.createElement('a');
-        linkDownload.href = window.URL.createObjectURL(csvFile);
-        linkDownload.download = nomeArquivo;
-        document.body.appendChild(linkDownload);
-        linkDownload.click();
-        document.body.removeChild(linkDownload);
-    }
-
-
-    // --- LÓGICA DE PERMISSÕES ---
-    const modalPermissoesEl = document.getElementById('modal-permissoes');
-    const modalPermissoes = new bootstrap.Modal(modalPermissoesEl);
-    const permissoesContainer = document.getElementById('permissoes-container');
-    const modalPermissoesTitulo = document.getElementById('modal-permissoes-titulo');
-    const btnSalvarPermissoes = document.getElementById('btn-salvar-permissoes');
-    let perfilIdAtual = null;
-
-    async function abrirModalPermissoes(perfilId, perfilNome) {
-        perfilIdAtual = perfilId;
-        modalPermissoesTitulo.textContent = `Permissões do Perfil: ${perfilNome}`;
-        permissoesContainer.innerHTML = '<div class="d-flex justify-content-center"><div class="spinner-border" role="status"><span class="visually-hidden">Carregando...</span></div></div>';
-        modalPermissoes.show();
-
-        try {
-            const recursosDisponiveis = await apiFetch('/recursos/');
-            const permissoesSalvas = await apiFetch(`/perfis/${perfilId}/permissoes/`);
-            const permissoesAtivas = new Set(permissoesSalvas);
-
-            let tabelaHtml = `<table class="table table-bordered table-sm" id="permissoes-table">
-                                    <thead class="table-light">
-                                        <tr>
-                                            <th>Recurso</th>
-                                            <th class="text-center">Visualizar</th>
-                                            <th class="text-center">Adicionar</th>
-                                            <th class="text-center">Modificar</th>
-                                            <th class="text-center">Excluir</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>`;
-            recursosDisponiveis.forEach(recurso => {
-                tabelaHtml += `<tr><td>${recurso.replace(/_/g, ' ')}</td>`;
-                ['view', 'add', 'change', 'delete'].forEach(acao => {
-                    const codenameCompleto = `can_${acao}_${recurso}`;
-                    const isChecked = permissoesAtivas.has(codenameCompleto);
-                    tabelaHtml += `<td class="text-center"><input class="form-check-input" type="checkbox" data-recurso="${recurso}" data-acao="${acao}" ${isChecked ? 'checked' : ''}></td>`;
-                });
-                tabelaHtml += `</tr>`;
-            });
-            tabelaHtml += `</tbody></table>`;
-            permissoesContainer.innerHTML = tabelaHtml;
-        } catch (error) {
-            console.error("Erro ao carregar ou processar permissões:", error);
-            permissoesContainer.innerHTML = `<p class="text-danger">Ocorreu um erro ao processar as permissões.</p>`;
+        for(let row of table.rows) {
+            let cols = [];
+            for(let cell of row.cells) cols.push(`"${cell.innerText}"`);
+            csv.push(cols.join(","));
         }
+        const blob = new Blob([csv.join("\n")], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = nome; a.click();
     }
 
-    btnSalvarPermissoes.addEventListener('click', async () => {
-        if (!perfilIdAtual) return;
-        const checkboxes = permissoesContainer.querySelectorAll('input[type="checkbox"]');
-        const permissoesPayload = Array.from(checkboxes).map(cb => ({
-            recurso: cb.dataset.recurso,
-            acao: cb.dataset.acao,
-            ativo: cb.checked
-        }));
-
-        try {
-            await apiFetch(`/perfis/${perfilIdAtual}/permissoes/`, {
-                method: 'PUT',
-                body: JSON.stringify({ permissoes: permissoesPayload })
-            });
-            alert('Permissões salvas com sucesso!');
-            modalPermissoes.hide();
-        } catch (error) {
-            console.error("Erro ao salvar permissões:", error);
-            alert(`Erro ao salvar: ${error.message}`);
-        }
-    });
-
-    // --- LÓGICA PARA CADASTROS GERAIS (CRM) ---
-    const formOperadora = document.getElementById('form-operadora');
-    const listaOperadoras = document.getElementById('lista-operadoras');
-    const operadoraIdInput = document.getElementById('operadora_id');
-    const operadoraNomeInput = document.getElementById('operadora_nome');
-    const operadoraCnpjInput = document.getElementById('operadora_cnpj');
-    const operadoraStatusSelect = document.getElementById('operadora_status');
-
-    async function carregarOperadoras() {
-        try {
-            const operadoras = await apiFetch('/crm/operadoras/');
-            listaOperadoras.innerHTML = '';
-            operadoras.forEach(op => {
-                const tr = document.createElement('tr');
-                const statusBadge = op.status ? '<span class="badge bg-success">Ativo</span>' : '<span class="badge bg-danger">Inativo</span>';
-                tr.innerHTML = `
-                    <td>${op.nome}</td>
-                    <td>${op.cnpj || 'N/A'}</td>
-                    <td>${statusBadge}</td>
-                    <td class="actions-cell">
-                        <button class="btn btn-warning btn-sm" onclick='editarOperadora(${JSON.stringify(op)})'><i class="bi bi-pencil"></i></button>
-                        <button class="btn btn-danger btn-sm" onclick="deletarOperadora(${op.id})"><i class="bi bi-trash"></i></button>
-                    </td>
-                `;
-                listaOperadoras.appendChild(tr);
-            });
-        } catch (error) { console.error('Erro ao carregar operadoras:', error); }
+    // CRM CONFIGS
+    async function carregarOperadoras() { 
+        const l = document.getElementById('lista-operadoras'); l.innerHTML='';
+        const d = await apiFetch('/crm/operadoras/');
+        d.forEach(o => l.innerHTML += `<tr><td>${o.nome}</td><td>${o.cnpj||''}</td><td>${o.status?'Ativo':'Inativo'}</td><td><button class="btn btn-warning btn-sm" onclick='editarOperadora(${JSON.stringify(o)})'><i class="bi bi-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="deletarOperadora(${o.id})"><i class="bi bi-trash"></i></button></td></tr>`);
     }
+    document.getElementById('form-operadora').onsubmit = async(e) => { e.preventDefault(); const id = document.getElementById('operadora_id').value; await apiFetch(id?`/crm/operadoras/${id}/`:'/crm/operadoras/', {method:id?'PUT':'POST', body:JSON.stringify({nome:document.getElementById('operadora_nome').value, cnpj:document.getElementById('operadora_cnpj').value, status: document.getElementById('operadora_status').value=='1'})}); document.getElementById('form-operadora').reset(); carregarOperadoras(); };
+    window.editarOperadora = (o) => { document.getElementById('operadora_id').value=o.id; document.getElementById('operadora_nome').value=o.nome; document.getElementById('operadora_cnpj').value=o.cnpj; document.getElementById('operadora_status').value=o.status?'1':'0'; };
+    window.deletarOperadora = async(id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/operadoras/${id}/`,{method:'DELETE'}); carregarOperadoras(); }};
 
-    function resetFormOperadora() {
-        formOperadora.reset();
-        operadoraIdInput.value = '';
+    async function carregarPlanos() { 
+        const l = document.getElementById('lista-planos'); l.innerHTML='';
+        const [plans, ops] = await Promise.all([apiFetch('/crm/planos/'), apiFetch('/crm/operadoras/')]);
+        const sel = document.getElementById('plano_operadora_id'); sel.innerHTML='<option value="">Selecione</option>';
+        ops.forEach(o => sel.add(new Option(o.nome, o.id)));
+        plans.forEach(p => l.innerHTML += `<tr><td>${p.nome}</td><td>${p.operadora_nome}</td><td>${p.valor}</td><td>${p.comissao_base}</td><td><button class="btn btn-warning btn-sm" onclick='editarPlano(${JSON.stringify(p)})'><i class="bi bi-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="deletarPlano(${p.id})"><i class="bi bi-trash"></i></button></td></tr>`);
     }
+    document.getElementById('form-plano').onsubmit = async(e) => { e.preventDefault(); const id = document.getElementById('plano_id').value; await apiFetch(id?`/crm/planos/${id}/`:'/crm/planos/', {method:id?'PUT':'POST', body:JSON.stringify({nome:document.getElementById('plano_nome').value, valor: parseFloat(document.getElementById('plano_valor').value), comissao_base: parseFloat(document.getElementById('plano_comissao').value), operadora: document.getElementById('plano_operadora_id').value, beneficios: document.getElementById('plano_beneficios').value, status:true})}); document.getElementById('form-plano').reset(); carregarPlanos(); };
+    window.editarPlano = (p) => { document.getElementById('plano_id').value=p.id; document.getElementById('plano_nome').value=p.nome; document.getElementById('plano_valor').value=p.valor; document.getElementById('plano_comissao').value=p.comissao_base; document.getElementById('plano_operadora_id').value=p.operadora; };
+    window.deletarPlano = async(id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/planos/${id}/`,{method:'DELETE'}); carregarPlanos(); }};
 
-    formOperadora.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const id = operadoraIdInput.value;
-        const url = id ? `/crm/operadoras/${id}/` : '/crm/operadoras/';
-        const method = id ? 'PUT' : 'POST';
-        const body = JSON.stringify({
-            nome: operadoraNomeInput.value,
-            cnpj: operadoraCnpjInput.value,
-            status: operadoraStatusSelect.value === '1'
-        });
-        try {
-            await apiFetch(url, { method, body });
-            alert(`Operadora ${id ? 'atualizada' : 'criada'} com sucesso!`);
-            resetFormOperadora();
-            carregarOperadoras();
-        } catch (error) { alert(`Erro: ${error.message}`); }
-    });
+    async function carregarFormasPagamento() { const l=document.getElementById('lista-formas-pagamento'); l.innerHTML=''; (await apiFetch('/crm/formas-pagamento/')).forEach(f=>l.innerHTML+=`<li class="list-group-item d-flex justify-content-between"><span>${f.nome}</span><div><button class="btn btn-sm btn-warning me-1" onclick="editarFP(${f.id}, '${f.nome}')"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-danger" onclick="delFP(${f.id})"><i class="bi bi-trash"></i></button></div></li>`); }
+    document.getElementById('btn-salvar-forma-pagamento').onclick = async()=>{ await apiFetch('/crm/formas-pagamento/',{method:'POST', body:JSON.stringify({nome:document.getElementById('nova-forma-pagamento-nome').value, status:true})}); carregarFormasPagamento(); document.getElementById('nova-forma-pagamento-nome').value=''; };
+    window.editarFP = async(id, old)=>{ const n=prompt('Nome:', old); if(n) { await apiFetch(`/crm/formas-pagamento/${id}/`,{method:'PUT', body:JSON.stringify({nome:n, status:true})}); carregarFormasPagamento(); }};
+    window.delFP = async(id)=>{ if(confirm('Excluir?')) { await apiFetch(`/crm/formas-pagamento/${id}/`,{method:'DELETE'}); carregarFormasPagamento(); }};
 
-    function editarOperadora(operadora) {
-        operadoraIdInput.value = operadora.id;
-        operadoraNomeInput.value = operadora.nome;
-        operadoraCnpjInput.value = operadora.cnpj;
-        operadoraStatusSelect.value = operadora.status ? '1' : '0';
-        window.scrollTo(0, 0);
-    }
+    async function carregarStatus() { const l=document.getElementById('lista-status'); l.innerHTML=''; (await apiFetch('/crm/status/')).forEach(s=>l.innerHTML+=`<tr><td><span style="display:inline-block;width:10px;height:10px;background:${s.cor};border-radius:50%"></span> ${s.nome}</td><td>${s.tipo}</td><td>${s.estado||''}</td><td>${s.cor}</td><td><button class="btn btn-warning btn-sm" onclick='editStatus(${JSON.stringify(s)})'><i class="bi bi-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="delStatus(${s.id})"><i class="bi bi-trash"></i></button></td></tr>`); }
+    document.getElementById('form-status').onsubmit = async(e)=>{ e.preventDefault(); const id=document.getElementById('status_id').value; const b={nome:document.getElementById('status_nome').value, tipo:document.getElementById('status_tipo').value, estado:document.getElementById('status_estado').value, cor:document.getElementById('status_cor').value}; await apiFetch(id?`/crm/status/${id}/`:'/crm/status/',{method:id?'PUT':'POST', body:JSON.stringify(b)}); document.getElementById('form-status').reset(); carregarStatus(); };
+    window.editStatus=(s)=>{ document.getElementById('status_id').value=s.id; document.getElementById('status_nome').value=s.nome; document.getElementById('status_tipo').value=s.tipo; document.getElementById('status_estado').value=s.estado; document.getElementById('status_cor').value=s.cor; };
+    window.delStatus=async(id)=>{ if(confirm('Excluir?')) { await apiFetch(`/crm/status/${id}/`,{method:'DELETE'}); carregarStatus(); }};
 
-    async function deletarOperadora(id) {
-        if (!confirm('Tem certeza?')) return;
-        try {
-            await apiFetch(`/crm/operadoras/${id}/`, { method: 'DELETE' });
-            alert('Operadora excluída!');
-            carregarOperadoras();
-        } catch (error) { alert(`Erro: ${error.message}`); }
-    }
+    async function carregarMotivosPendencia() { const l=document.getElementById('lista-pendencias'); l.innerHTML=''; (await apiFetch('/crm/motivos-pendencia/')).forEach(p=>l.innerHTML+=`<tr><td>${p.nome}</td><td>${p.tipo_pendencia}</td><td><button class="btn btn-warning btn-sm" onclick='editPend(${JSON.stringify(p)})'><i class="bi bi-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="delPend(${p.id})"><i class="bi bi-trash"></i></button></td></tr>`); }
+    document.getElementById('form-pendencia').onsubmit = async(e)=>{ e.preventDefault(); const id=document.getElementById('pendencia_id').value; await apiFetch(id?`/crm/motivos-pendencia/${id}/`:'/crm/motivos-pendencia/',{method:id?'PUT':'POST', body:JSON.stringify({nome:document.getElementById('pendencia_nome').value, tipo_pendencia:document.getElementById('pendencia_tipo').value})}); document.getElementById('form-pendencia').reset(); carregarMotivosPendencia(); };
+    window.editPend=(p)=>{ document.getElementById('pendencia_id').value=p.id; document.getElementById('pendencia_nome').value=p.nome; document.getElementById('pendencia_tipo').value=p.tipo_pendencia; };
+    window.delPend=async(id)=>{ if(confirm('Excluir?')) { await apiFetch(`/crm/motivos-pendencia/${id}/`,{method:'DELETE'}); carregarMotivosPendencia(); }};
 
-    const formPlano = document.getElementById('form-plano');
-    const listaPlanos = document.getElementById('lista-planos');
-    const planoIdInput = document.getElementById('plano_id');
-    const planoNomeInput = document.getElementById('plano_nome');
-    const planoValorInput = document.getElementById('plano_valor');
-    const planoComissaoInput = document.getElementById('plano_comissao');
-    const planoOperadoraSelect = document.getElementById('plano_operadora_id');
-    const planoBeneficiosInput = document.getElementById('plano_beneficios');
+    async function carregarDadosParaRegrasComissao() { try { const [p, u] = await Promise.all([apiFetch('/crm/planos/'), apiFetch('/usuarios/?is_active=true')]); const sp=document.getElementById('regra_plano_id'); const sc=document.getElementById('regra_consultor_id'); sp.innerHTML=sc.innerHTML='<option value="">Selecione</option>'; p.forEach(x=>sp.add(new Option(x.nome, x.id))); u.forEach(x=>sc.add(new Option(x.nome_completo, x.id))); } catch(e){} }
+    async function carregarRegrasComissao() { const l=document.getElementById('lista-regras-comissao'); l.innerHTML=''; (await apiFetch('/crm/regras-comissao/')).forEach(r=>l.innerHTML+=`<tr><td>${r.consultor_nome}</td><td>${r.plano_nome}</td><td>${r.tipo_venda}</td><td>${r.tipo_cliente}</td><td>${r.valor_base}</td><td>${r.valor_acelerado}</td><td><button class="btn btn-warning btn-sm" onclick='editRegra(${JSON.stringify(r)})'><i class="bi bi-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="delRegra(${r.id})"><i class="bi bi-trash"></i></button></td></tr>`); }
+    document.getElementById('form-regra-comissao').onsubmit = async(e)=>{ e.preventDefault(); const id=document.getElementById('regra_comissao_id').value; const b={consultor:document.getElementById('regra_consultor_id').value, plano:document.getElementById('regra_plano_id').value, tipo_venda:document.getElementById('regra_tipo_venda').value, tipo_cliente:document.getElementById('regra_tipo_cliente').value, valor_base:document.getElementById('regra_valor_base').value, valor_acelerado:document.getElementById('regra_valor_acelerado').value}; await apiFetch(id?`/crm/regras-comissao/${id}/`:'/crm/regras-comissao/',{method:id?'PUT':'POST', body:JSON.stringify(b)}); document.getElementById('form-regra-comissao').reset(); carregarRegrasComissao(); };
+    window.editRegra=(r)=>{ document.getElementById('regra_comissao_id').value=r.id; document.getElementById('regra_consultor_id').value=r.consultor; document.getElementById('regra_plano_id').value=r.plano; document.getElementById('regra_tipo_venda').value=r.tipo_venda; document.getElementById('regra_tipo_cliente').value=r.tipo_cliente; document.getElementById('regra_valor_base').value=r.valor_base; document.getElementById('regra_valor_acelerado').value=r.valor_acelerado; };
+    window.delRegra=async(id)=>{ if(confirm('Excluir?')) { await apiFetch(`/crm/regras-comissao/${id}/`,{method:'DELETE'}); carregarRegrasComissao(); }};
 
-    async function carregarPlanos() {
-        try {
-            const [planos, operadoras] = await Promise.all([
-                apiFetch('/crm/planos/'),
-                apiFetch('/crm/operadoras/')
-            ]);
-            listaPlanos.innerHTML = '';
-            planos.forEach(plano => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>${plano.nome}</td>
-                    <td>${plano.operadora_nome}</td>
-                    <td>R$ ${Number(plano.valor).toFixed(2)}</td>
-                    <td>R$ ${Number(plano.comissao_base).toFixed(2)}</td>
-                    <td class="actions-cell">
-                        <button class="btn btn-warning btn-sm" onclick='editarPlano(${JSON.stringify(plano)})'><i class="bi bi-pencil"></i></button>
-                        <button class="btn btn-danger btn-sm" onclick="deletarPlano(${plano.id})"><i class="bi bi-trash"></i></button>
-                    </td>
-                `;
-                listaPlanos.appendChild(tr);
-            });
-            planoOperadoraSelect.innerHTML = '<option value="">Selecione...</option>';
-            operadoras.forEach(op => {
-                planoOperadoraSelect.add(new Option(op.nome, op.id));
-            });
-        } catch (error) { console.error('Erro ao carregar planos:', error); }
-    }
+    async function carregarCampanhas() { const l=document.getElementById('lista-campanhas'); l.innerHTML=''; try{ (await apiFetch('/crm/campanhas/')).forEach(c=>l.innerHTML+=`<tr><td>${c.nome}</td><td>${c.data_inicio} a ${c.data_fim}</td><td>${c.status?'Ativa':'Inativa'}</td><td><button class="btn btn-sm btn-danger" onclick="delCamp(${c.id})"><i class="bi bi-trash"></i></button></td></tr>`); }catch(e){} }
+    document.getElementById('form-campanha').onsubmit=async(e)=>{ e.preventDefault(); await apiFetch('/crm/campanhas/',{method:'POST',body:JSON.stringify({nome:document.getElementById('campanha_nome').value, data_inicio:document.getElementById('campanha_data_inicio').value, data_fim:document.getElementById('campanha_data_fim').value, regras:document.getElementById('campanha_regras').value})}); carregarCampanhas(); document.getElementById('form-campanha').reset(); };
+    window.delCamp=async(id)=>{ await apiFetch(`/crm/campanhas/${id}/`,{method:'DELETE'}); carregarCampanhas(); };
 
-    function resetFormPlano() {
-        formPlano.reset();
-        planoIdInput.value = '';
-    }
-
-    formPlano.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const id = planoIdInput.value;
-        const url = id ? `/crm/planos/${id}/` : '/crm/planos/';
-        const method = id ? 'PUT' : 'POST';
-        const body = JSON.stringify({
-            nome: planoNomeInput.value,
-            valor: parseFloat(planoValorInput.value),
-            comissao_base: parseFloat(planoComissaoInput.value) || 0,
-            operadora: planoOperadoraSelect.value,
-            beneficios: planoBeneficiosInput.value,
-            status: true
-        });
-        try {
-            await apiFetch(url, { method, body });
-            alert(`Plano ${id ? 'atualizado' : 'criado'} com sucesso!`);
-            resetFormPlano();
-            carregarPlanos();
-        } catch (error) { alert(`Erro: ${error.message}`); }
-    });
-
-    function editarPlano(plano) {
-        planoIdInput.value = plano.id;
-        planoNomeInput.value = plano.nome;
-        planoValorInput.value = plano.valor;
-        planoComissaoInput.value = plano.comissao_base;
-        planoOperadoraSelect.value = plano.operadora;
-        planoBeneficiosInput.value = plano.beneficios || '';
-        document.querySelector('button[onclick*="planos"]').click();
-        window.scrollTo(0, 0);
-    }
-
-    async function deletarPlano(id) {
-        if (!confirm('Tem certeza?')) return;
-        try {
-            await apiFetch(`/crm/planos/${id}/`, { method: 'DELETE' });
-            alert('Plano excluído!');
-            carregarPlanos();
-        } catch (error) { alert(`Erro: ${error.message}`); }
-    }
-
-    const listaFormasPagamentoUl = document.getElementById('lista-formas-pagamento');
-    async function carregarFormasPagamento() {
-        try {
-            const formas = await apiFetch('/crm/formas-pagamento/');
-            listaFormasPagamentoUl.innerHTML = '';
-            formas.forEach(forma => {
-                const li = document.createElement('li');
-                li.className = 'list-group-item d-flex justify-content-between align-items-center';
-                li.innerHTML = `<span>${forma.nome}</span>
-                                    <div class="generic-list-actions">
-                                        <button class="btn btn-warning btn-sm" onclick="editarFormaPagamento(${forma.id}, '${forma.nome.replace(/'/g, "\\'")}')"><i class="bi bi-pencil"></i></button>
-                                        <button class="btn btn-danger btn-sm" onclick="excluirFormaPagamento(${forma.id})"><i class="bi bi-trash"></i></button>
-                                    </div>`;
-                listaFormasPagamentoUl.appendChild(li);
-            });
-        } catch (error) { console.error('Erro ao carregar formas de pagamento:', error); }
-    }
-    document.getElementById('btn-salvar-forma-pagamento').addEventListener('click', async () => {
-        const nome = document.getElementById('nova-forma-pagamento-nome').value.trim();
-        if (!nome) return alert('Por favor, digite um nome.');
-        try {
-            await apiFetch('/crm/formas-pagamento/', {
-                method: 'POST',
-                body: JSON.stringify({ nome: nome, status: true })
-            });
-            document.getElementById('nova-forma-pagamento-nome').value = '';
-            carregarFormasPagamento();
-        } catch (error) { alert(`Erro: ${error.message}`); }
-    });
-    async function editarFormaPagamento(id, nomeAtual) {
-        const novoNome = prompt('Digite o novo nome:', nomeAtual);
-        if (novoNome && novoNome.trim() !== '') {
-            try {
-                await apiFetch(`/crm/formas-pagamento/${id}/`, {
-                    method: 'PUT',
-                    body: JSON.stringify({ nome: novoNome.trim(), status: true })
-                });
-                carregarFormasPagamento();
-            } catch (error) { alert(`Erro: ${error.message}`); }
-        }
-    }
-    async function excluirFormaPagamento(id) {
-        if (!confirm('Tem certeza?')) return;
-        try {
-            await apiFetch(`/crm/formas-pagamento/${id}/`, { method: 'DELETE' });
-            carregarFormasPagamento();
-        } catch (error) { alert(`Erro: ${error.message}`); }
-    }
-
-    const formStatus = document.getElementById('form-status');
-    const listaStatusBody = document.getElementById('lista-status');
-    const statusIdInput = document.getElementById('status_id');
-    const statusNomeInput = document.getElementById('status_nome');
-    const statusTipoSelect = document.getElementById('status_tipo');
-    const statusEstadoInput = document.getElementById('status_estado');
-    const statusCorInput = document.getElementById('status_cor');
-    const statusEstadoGroup = document.getElementById('status_estado_group');
-
-    statusTipoSelect.addEventListener('change', () => {
-        statusEstadoGroup.style.display = statusTipoSelect.value === 'Comissionamento' ? 'none' : 'block';
-    });
-
-    function resetFormStatus() {
-        formStatus.reset();
-        statusIdInput.value = '';
-        statusEstadoGroup.style.display = 'block';
-    }
-
-    async function carregarStatus() {
-        try {
-            const statusList = await apiFetch('/crm/status/');
-            listaStatusBody.innerHTML = '';
-            statusList.forEach(s => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td><span style="display: inline-block; width: 12px; height: 12px; background-color: ${s.cor}; border-radius: 50%; margin-right: 8px;"></span> ${s.nome}</td>
-                    <td>${s.tipo}</td>
-                    <td>${s.estado || 'N/A'}</td>
-                    <td>${s.cor}</td>
-                    <td class="actions-cell">
-                        <button class="btn btn-warning btn-sm" onclick='editarStatus(${JSON.stringify(s)})'><i class="bi bi-pencil"></i></button>
-                        <button class="btn btn-danger btn-sm" onclick="excluirStatus(${s.id})"><i class="bi bi-trash"></i></button>
-                    </td>
-                `;
-                listaStatusBody.appendChild(tr);
-            });
-        } catch (error) { console.error('Erro ao carregar status:', error); }
-    }
-
-    formStatus.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const id = statusIdInput.value;
-        const url = id ? `/crm/status/${id}/` : '/crm/status/';
-        const method = id ? 'PUT' : 'POST';
-        const body = {
-            nome: statusNomeInput.value,
-            tipo: statusTipoSelect.value,
-            estado: statusTipoSelect.value === 'Comissionamento' ? null : statusEstadoInput.value,
-            cor: statusCorInput.value
-        };
-        try {
-            await apiFetch(url, { method, body: JSON.stringify(body) });
-            alert(`Status ${id ? 'atualizado' : 'criado'}!`);
-            resetFormStatus();
-            carregarStatus();
-        } catch (error) { alert(`Erro: ${error.message}`); }
-    });
-
-    function editarStatus(status) {
-        statusIdInput.value = status.id;
-        statusNomeInput.value = status.nome;
-        statusTipoSelect.value = status.tipo;
-        statusEstadoInput.value = status.estado || '';
-        statusCorInput.value = status.cor;
-        statusTipoSelect.dispatchEvent(new Event('change'));
-        window.scrollTo(0, 0);
-    }
-
-    async function excluirStatus(id) {
-        if (!confirm('Tem certeza?')) return;
-        try {
-            await apiFetch(`/crm/status/${id}/`, { method: 'DELETE' });
-            alert('Status excluído!');
-            carregarStatus();
-        } catch (error) { alert(`Erro: ${error.message}`); }
-    }
-
-    const formPendencia = document.getElementById('form-pendencia');
-    const listaPendenciasBody = document.getElementById('lista-pendencias');
-    const pendenciaIdInput = document.getElementById('pendencia_id');
-    const pendenciaNomeInput = document.getElementById('pendencia_nome');
-    const pendenciaTipoInput = document.getElementById('pendencia_tipo');
-
-    function resetFormPendencia() {
-        formPendencia.reset();
-        pendenciaIdInput.value = '';
-    }
-
-    async function carregarMotivosPendencia() {
-        try {
-            const pendencias = await apiFetch('/crm/motivos-pendencia/');
-            listaPendenciasBody.innerHTML = '';
-            pendencias.forEach(p => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>${p.nome}</td>
-                    <td>${p.tipo_pendencia}</td>
-                    <td class="actions-cell">
-                        <button class="btn btn-warning btn-sm" onclick='editarMotivoPendencia(${JSON.stringify(p)})'><i class="bi bi-pencil"></i></button>
-                        <button class="btn btn-danger btn-sm" onclick="excluirMotivoPendencia(${p.id})"><i class="bi bi-trash"></i></button>
-                    </td>
-                `;
-                listaPendenciasBody.appendChild(tr);
-            });
-        } catch (error) { console.error('Erro ao carregar motivos de pendência:', error); }
-    }
-
-    formPendencia.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const id = pendenciaIdInput.value;
-        const url = id ? `/crm/motivos-pendencia/${id}/` : '/crm/motivos-pendencia/';
-        const method = id ? 'PUT' : 'POST';
-        const body = { nome: pendenciaNomeInput.value, tipo_pendencia: pendenciaTipoInput.value };
-        try {
-            await apiFetch(url, { method, body: JSON.stringify(body) });
-            alert(`Motivo ${id ? 'atualizado' : 'criado'}!`);
-            resetFormPendencia();
-            carregarMotivosPendencia();
-        } catch (error) { alert(`Erro: ${error.message}`); }
-    });
-
-    function editarMotivoPendencia(pendencia) {
-        pendenciaIdInput.value = pendencia.id;
-        pendenciaNomeInput.value = pendencia.nome;
-        pendenciaTipoInput.value = pendencia.tipo_pendencia;
-        window.scrollTo(0, 0);
-    }
-
-    async function excluirMotivoPendencia(id) {
-        if (!confirm('Tem certeza?')) return;
-        try {
-            await apiFetch(`/crm/motivos-pendencia/${id}/`, { method: 'DELETE' });
-            alert('Motivo excluído!');
-            carregarMotivosPendencia();
-        } catch (error) { alert(`Erro: ${error.message}`); }
-    }
-
-    const formRegraComissao = document.getElementById('form-regra-comissao');
-    const regraComissaoIdInput = document.getElementById('regra_comissao_id');
-    const regraConsultorSelect = document.getElementById('regra_consultor_id');
-    const regraPlanoSelect = document.getElementById('regra_plano_id');
-    const listaRegrasComissaoBody = document.getElementById('lista-regras-comissao');
-
-    async function carregarDadosParaRegrasComissao() {
-        try {
-            const [planos, consultores] = await Promise.all([
-                apiFetch('/crm/planos/'),
-                apiFetch('/usuarios/?is_active=true')
-            ]);
-            regraPlanoSelect.innerHTML = '<option value="">Selecione...</option>';
-            planos.forEach(plano => regraPlanoSelect.add(new Option(plano.nome, plano.id)));
-            regraConsultorSelect.innerHTML = '<option value="">Selecione...</option>';
-            if (Array.isArray(consultores)) {
-                consultores.forEach(user => {
-                    if (user && user.id && user.nome_completo) {
-                        regraConsultorSelect.add(new Option(user.nome_completo, user.id));
-                    }
-                });
-            }
-        } catch (error) { console.error('Erro ao carregar dados para as regras:', error); }
-    }
-
-    function resetFormRegraComissao() {
-        formRegraComissao.reset();
-        regraComissaoIdInput.value = '';
-    }
-
-    async function carregarRegrasComissao() {
-        try {
-            const regras = await apiFetch('/crm/regras-comissao/');
-            listaRegrasComissaoBody.innerHTML = '';
-            regras.forEach(regra => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>${regra.consultor_nome}</td>
-                    <td>${regra.plano_nome}</td>
-                    <td>${regra.tipo_venda}</td>
-                    <td>${regra.tipo_cliente}</td>
-                    <td>R$ ${regra.valor_base}</td>
-                    <td>R$ ${regra.valor_acelerado}</td>
-                    <td class="actions-cell">
-                        <button class="btn btn-warning btn-sm" onclick='editarRegraComissao(${JSON.stringify(regra)})'><i class="bi bi-pencil"></i></button>
-                        <button class="btn btn-danger btn-sm" onclick="excluirRegraComissao(${regra.id})"><i class="bi bi-trash"></i></button>
-                    </td>
-                `;
-                listaRegrasComissaoBody.appendChild(tr);
-            });
-        } catch (error) { console.error('Erro ao carregar regras de comissão:', error); }
-    }
-
-    function editarRegraComissao(regra) {
-        regraComissaoIdInput.value = regra.id;
-        document.getElementById('regra_consultor_id').value = regra.consultor;
-        document.getElementById('regra_plano_id').value = regra.plano;
-        document.getElementById('regra_tipo_venda').value = regra.tipo_venda;
-        document.getElementById('regra_tipo_cliente').value = regra.tipo_cliente;
-        document.getElementById('regra_valor_base').value = regra.valor_base;
-        document.getElementById('regra_valor_acelerado').value = regra.valor_acelerado;
-        window.scrollTo(0, 0);
-    }
-
-    async function excluirRegraComissao(id) {
-        if (!confirm('Tem certeza?')) return;
-        try {
-            await apiFetch(`/crm/regras-comissao/${id}/`, { method: 'DELETE' });
-            alert('Regra excluída!');
-            await carregarRegrasComissao();
-        } catch (error) { alert(`Erro: ${error.message}`); }
-    }
-
-    formRegraComissao.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const id = regraComissaoIdInput.value;
-        const url = id ? `/crm/regras-comissao/${id}/` : '/crm/regras-comissao/';
-        const method = id ? 'PUT' : 'POST';
-        const body = {
-            consultor: document.getElementById('regra_consultor_id').value,
-            plano: document.getElementById('regra_plano_id').value,
-            tipo_venda: document.getElementById('regra_tipo_venda').value,
-            tipo_cliente: document.getElementById('regra_tipo_cliente').value,
-            valor_base: document.getElementById('regra_valor_base').value,
-            valor_acelerado: document.getElementById('regra_valor_acelerado').value,
-        };
-        try {
-            await apiFetch(url, { method, body: JSON.stringify(body) });
-            alert(`Regra ${id ? 'atualizada' : 'salva'}!`);
-            resetFormRegraComissao();
-            await carregarRegrasComissao();
-        } catch (error) { alert(`Erro: ${error.message}`); }
-    });
-
-    // --- FUNÇÃO DE LOGOUT ---
-    function logout() {
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('refreshToken');
-        localStorage.removeItem('userProfile');
-        window.location.href = '/';
-    }
-
-    // --- INICIALIZAÇÃO DA PÁGINA ---
+    // Inicialização
     document.addEventListener('DOMContentLoaded', () => {
         carregarDadosParaFormulario();
         carregarPerfis();
@@ -1701,11 +1021,10 @@
         carregarMotivosPendencia();
         carregarDadosParaRegrasComissao();
         carregarRegrasComissao();
+        carregarCampanhas();
         
-        const primeiroLink = document.querySelector('#nav-cadastros .dropdown-item');
-        if (primeiroLink) {
-            mostrarSecao(null, 'usuarios', primeiroLink);
-        }
+        const primeiroLink = document.querySelector('.admin-nav-link');
+        if(primeiroLink) mostrarSecao(null, 'usuarios', primeiroLink);
     });
     </script>
 

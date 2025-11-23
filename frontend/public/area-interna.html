@@ -5,31 +5,38 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Área Interna - Record PAP</title>
-    
-    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}">
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=1.2">
+    <style>
+        /* Ajuste fino para a mensagem de boas-vindas */
+        #user-info {
+            margin-bottom: 2rem;
+            font-size: 1rem;
+            color: #6c757d;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            display: inline-block;
+        }
+    </style>
 </head>
 <body>
 
     <header class="main-header">
         <div class="header-container">
             <a href="/"><img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo"></a>
-            <nav class="main-nav">
-                <ul id="main-menu">
-                    <li><a href="/">Início</a></li>
-                    <li><a href="/#planos">Planos</a></li>
-                    <li class="whatsapp-chat">
-                        <a href="https://wa.me/31994588810" target="_blank" aria-label="Fale conosco no WhatsApp">
-                            <img src="https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg" alt="WhatsApp">
-                        </a>
-                    </li>
-                    <li><button id="logoutButton" class="nav-button logout-button">Sair</button></li>
+            
+            <button class="menu-toggle" id="menu-toggle" aria-label="Abrir menu">
+                <div class="bar"></div>
+                <div class="bar"></div>
+                <div class="bar"></div>
+            </button>
+
+            <nav class="main-nav" id="main-nav">
+                <ul>
+                    <li><a href="/">Voltar ao Site</a></li>
+                    <li><button id="logoutButton" class="nav-button logout-button">Sair do Sistema</button></li>
                 </ul>
             </nav>
-            <button class="menu-toggle" id="menu-toggle" aria-label="Abrir menu">
-                <span class="bar"></span>
-                <span class="bar"></span>
-                <span class="bar"></span>
-            </button>
         </div>
     </header>
 
@@ -37,101 +44,110 @@
         <section class="area-interna-section">
             <div class="area-interna-container">
                 <h1>Bem-vindo à Área Interna</h1>
-                <p class="area-interna-subtitle">Selecione uma das opções abaixo para continuar.</p>
+                
+                <div id="user-info" style="display: none;"></div>
+
+                <p class="area-interna-subtitle">Selecione uma ferramenta para acessar:</p>
+                
                 <div class="button-group" id="botoes-area-interna">
+                    <p>Carregando permissões...</p>
                 </div>
             </div>
         </section>
     </main>
 
     <footer id="contato">
-        <p>Record PAP - Internet Fibra Ótica</p>
-        <p>Contato: (31) 99458-8810 | E-mail: <a href="mailto:suporte@recordpap.com.br">suporte@recordpap.com.br</a></p>
-        <p><a href="#">Política de Privacidade</a> | <a href="#">Termos de Uso</a></p>
+        <p>Record PAP - Sistema Interno</p>
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-    <script src="{% static 'js/auth.js' %}"></script>
-    <script src="{% static 'js/menu.js' %}"></script>
+    <script src="{% static 'js/auth.js' %}?v=1.2"></script>
+    <script src="{% static 'js/menu.js' %}?v=1.2"></script>
+    
     <script>
+        // Script da Área Interna
         document.addEventListener('DOMContentLoaded', function() {
-            // Script original da página (com links corrigidos)
-            verificarAutenticacao();
-
-            function jwt_decode(token) {
-                try {
-                    const base64Url = token.split('.')[1];
-                    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-                    const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
-                        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-                    }).join(''));
-                    return JSON.parse(jsonPayload);
-                } catch (e) { return null; }
-            }
-
             const token = localStorage.getItem('accessToken');
-            const decodedToken = jwt_decode(token);
-            const userProfile = decodedToken ? decodedToken.perfil : null;
-
-            if (!userProfile) {
-                alert('Sessão inválida ou perfil não encontrado. Faça login novamente.');
-                logout();
+            if (!token) {
+                window.location.href = '/';
                 return;
             }
 
-            // URLs com / no final
+            function parseJwt (token) {
+                try { return JSON.parse(atob(token.split('.')[1])); } catch (e) { return null; }
+            }
+            
+            const userPayload = parseJwt(token);
+            // Tenta ler 'user_role' (Grupo) ou 'perfil' (Legado)
+            const userProfile = userPayload ? (userPayload.user_role || userPayload.perfil) : 'Vendedor';
+
+            // --- CONFIGURAÇÃO DE BOTÕES POR PERFIL ---
+            // Agora 'Record Vendas' aparece para todos
             const permissoes = {
                 'Admin': [
+                    { texto: 'Record Vendas', href: '/crm-vendas/' },
+                    { texto: 'Gestão de Governança', href: '/governanca/' },
                     { texto: 'Controle de Presença', href: '/presenca/' },
-                    { texto: 'Governança', href: '/governanca/' },
-                    { texto: 'Esteira de Vendas', href: '/auditoria/' }
-                ],
-                'Vendedor': [
-                    { texto: 'Esteira de Vendas', href: '/crm-vendas/' }
-                ],
-                'Supervisor': [
-                    { texto: 'Controle de Presença', href: '/presenca/' },
-                    { texto: 'Esteira de Vendas', href: '/auditoria/' }
-                ],
-                'Gerente': [
-                    { texto: 'Controle de Presença', href: '/presenca/' },
-                    { texto: 'Esteira de Vendas', href: '/auditoria/' }
-                ],
-                'BackOffice': [
-                    { texto: 'Controle de Presença', href: '/presenca/' },
-                    { texto: 'Esteira de Vendas', href: '/auditoria/' }
+                    { texto: 'Esteira de Vendas', href: '/esteira/' },
+                    { texto: 'Auditoria', href: '/auditoria/' },
+                    { texto: 'Comissionamento', href: '/comissionamento/' }
                 ],
                 'Diretoria': [
+                    { texto: 'Record Vendas', href: '/crm-vendas/' },
+                    { texto: 'Gestão de Governança', href: '/governanca/' },
                     { texto: 'Controle de Presença', href: '/presenca/' },
-                    { texto: 'Governança', href: '/governanca/' },
-                    { texto: 'Esteira de Vendas', href: '/auditoria/' }
+                    { texto: 'Esteira de Vendas', href: '/esteira/' },
+                    { texto: 'Auditoria', href: '/auditoria/' },
+                    { texto: 'Comissionamento', href: '/comissionamento/' }
+                ],
+                'BackOffice': [
+                    { texto: 'Record Vendas', href: '/crm-vendas/' },
+                    { texto: 'Controle de Presença', href: '/presenca/' },
+                    { texto: 'Esteira de Vendas', href: '/esteira/' },
+                    { texto: 'Auditoria', href: '/auditoria/' }
+                ],
+                'Supervisor': [
+                    { texto: 'Record Vendas', href: '/crm-vendas/' },
+                    { texto: 'Controle de Presença', href: '/presenca/' },
+                    { texto: 'Esteira de Vendas', href: '/esteira/' }
+                ],
+                'Vendedor': [
+                    { texto: 'Record Vendas', href: '/crm-vendas/' }
                 ]
             };
 
             const containerBotoes = document.getElementById('botoes-area-interna');
+            const userInfoDiv = document.getElementById('user-info');
+            
             containerBotoes.innerHTML = '';
 
-            const botoesPermitidos = permissoes[userProfile] || [];
+            // Seleciona os botões ou usa 'Vendedor' como padrão seguro
+            const botoes = permissoes[userProfile] || permissoes['Vendedor'];
 
-            if (botoesPermitidos.length > 0) {
-                botoesPermitidos.forEach(botaoInfo => {
-                    const botao = document.createElement('a');
-                    botao.href = botaoInfo.href;
-                    botao.className = 'action-button';
-                    botao.textContent = botaoInfo.texto;
-                    containerBotoes.appendChild(botao);
+            if (botoes) {
+                botoes.forEach(btn => {
+                    const a = document.createElement('a');
+                    a.href = btn.href;
+                    a.className = 'action-button';
+                    a.textContent = btn.texto;
+                    containerBotoes.appendChild(a);
                 });
             } else {
-                const p = document.createElement('p');
-                p.textContent = 'Você não tem permissões de acesso definidas.';
-                p.style.color = 'var(--cor-texto-secundaria)';
-                containerBotoes.appendChild(p);
+                containerBotoes.innerHTML = '<p>Perfil não identificado ou sem acesso.</p>';
             }
-            
-            const logoutButton = document.getElementById('logoutButton');
-            if (logoutButton) {
-                logoutButton.addEventListener('click', () => { logout(); });
+
+            // MOSTRA INFORMAÇÕES DO USUÁRIO NO LOCAL CORRETO (TOPO)
+            if(userPayload && userPayload.username) {
+                userInfoDiv.innerHTML = `Logado como: <strong>${userPayload.username}</strong> <span class="badge bg-secondary ms-2">${userProfile}</span>`;
+                userInfoDiv.style.display = 'inline-block';
             }
+
+            document.getElementById('logoutButton').addEventListener('click', () => {
+                localStorage.removeItem('accessToken');
+                localStorage.removeItem('refreshToken');
+                localStorage.removeItem('userProfile');
+                window.location.href = '/';
+            });
         });
     </script>
 </body>

@@ -14,10 +14,13 @@ urlpatterns = [
     # ROTAS DA API (BACKEND)
     # =======================================================================
     
-    # Rotas de Autenticação
+    # Rotas de Autenticação (JWT e Login)
     path('api/auth/login/', LoginView.as_view(), name='token_obtain_pair'),
     path('api/auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     
+    # Correção do Login: Redireciona chamadas diretas de /login/ para a view de autenticação
+    path('login/', LoginView.as_view(), name='login_direct'),
+
     path('api/', include('usuarios.urls')),
     path('api/presenca/', include('presenca.urls')),
     path('api/crm/', include('crm_app.urls')),
@@ -37,7 +40,5 @@ urlpatterns = [
     path('comissionamento/', TemplateView.as_view(template_name='comissionamento.html'), name='comissionamento'),
     path('salvar-osab/', TemplateView.as_view(template_name='salvar_osab.html'), name='salvar-osab'),
     path('salvar-churn/', TemplateView.as_view(template_name='salvar_churn.html'), name='salvar-churn'),
-    
-    # --- ROTA ADICIONADA AQUI ---
     path('salvar-ciclo-pagamento/', TemplateView.as_view(template_name='salvar_ciclo_pagamento.html'), name='salvar-ciclo-pagamento'),
 ]

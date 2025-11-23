@@ -5,7 +5,67 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Record PAP - Internet Fibra Ótica</title>
-    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=1.1">
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=2.0">
+    
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+
+    <style>
+        /* Ajustes Locais Específicos da Landing Page */
+        
+        /* Hero Section */
+        .hero-section {
+            padding-top: 120px;
+            min-height: 80vh;
+            display: flex;
+            align-items: center;
+            background-color: var(--cor-fundo);
+        }
+        
+        @media (max-width: 768px) {
+            .hero-section {
+                background-position: center right; 
+                text-align: center;
+                padding-top: 100px;
+                min-height: 60vh;
+            }
+            .hero-content h1 { font-size: 2.2rem; } 
+            .hero-content p { font-size: 1.1rem; }
+        }
+
+        /* Cards de Planos */
+        .card-item {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            justify-content: space-between;
+            border-top: 5px solid var(--cor-primaria);
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        /* Grid de Cards */
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            padding: 20px 0;
+        }
+        
+        /* Modal Mobile */
+        @media (max-width: 576px) {
+            .modal-overlay .modal-content {
+                padding: 1.5rem;
+                width: 90%;
+                margin: 0 10px;
+            }
+            .hero-content { padding: 0 15px; }
+        }
+    </style>
 </head>
 <body>
     
@@ -14,107 +74,140 @@
             <a href="/"><img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo"></a>
             
             <button class="menu-toggle" id="menu-toggle" aria-label="Abrir menu">
-                <div class="bar"></div>
-                <div class="bar"></div>
-                <div class="bar"></div>
+                <div class="bar"></div><div class="bar"></div><div class="bar"></div>
             </button>
 
             <nav class="main-nav" id="main-nav">
                 <ul>
-                    <li><a href="#inicio">Início</a></li>
-                    <li><a href="#planos">Planos</a></li>
-                    <li><a href="#depoimentos">Depoimentos</a></li>
-                    <li><a href="#contato">Contato</a></li>
-                    <li><a href="/area-interna/" class="nav-button">Área Interna</a></li>
+                    <li><a href="#inicio" class="menu-link">Início</a></li>
+                    <li><a href="#planos" class="menu-link">Planos</a></li>
+                    <li><a href="#depoimentos" class="menu-link">Depoimentos</a></li>
+                    <li><a href="#contato" class="menu-link">Contato</a></li>
+                    <li>
+                        <a href="#" class="nav-button btn-login-trigger" id="btnOpenLogin">Área Interna</a>
+                    </li>
                 </ul>
             </nav>
         </div>
     </header>
 
-    <div class="modal-overlay" id="loginModalOverlay">
-        <div class="modal-content">
-            <h3>Login na Área Interna</h3>
+    <div class="modal-overlay" id="loginModalOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; align-items: center; justify-content: center;">
+        <div class="modal-content" style="background: white; padding: 2rem; border-radius: 12px; max-width: 400px; width: 100%;">
+            <div style="text-align: center; margin-bottom: 25px;">
+                <h3 style="color: var(--cor-texto); font-weight: 800;">Acesso Restrito</h3>
+                <p style="color: var(--cor-texto-suave); font-size: 0.9rem;">Digite suas credenciais para continuar</p>
+            </div>
+
             <form id="loginForm">
-                <div class="form-group">
-                    <label for="username">Usuário</label>
-                    <input type="text" id="username" name="username" required>
+                <div class="form-group mb-3">
+                    <label for="username" class="form-label">Usuário</label>
+                    <input type="text" id="username" name="username" class="form-control" required autocapitalize="none">
                 </div>
-                <div class="form-group">
-                    <label for="password">Senha</label>
-                    <input type="password" id="password" name="password" required>
+                <div class="form-group mb-3">
+                    <label for="password" class="form-label">Senha</label>
+                    <input type="password" id="password" name="password" class="form-control" required>
                 </div>
-                <div class="modal-actions">
-                    <button type="button" class="btn btn-cancelar" id="cancelarLogin">Cancelar</button>
-                    <button type="submit" class="btn btn-confirmar">Entrar</button>
+                
+                <div id="error-message" style="display: none; background-color: #ffe6e6; color: var(--cor-perigo); padding: 10px; border-radius: 6px; margin: 15px 0; font-size: 0.9rem; text-align: center;"></div>
+
+                <div class="modal-actions d-grid gap-2">
+                    <button type="submit" class="btn btn-primary btn-lg">Entrar</button>
+                    <button type="button" class="btn btn-light" id="btnCancelLogin">Cancelar</button>
                 </div>
-                <div id="error-message" style="display: none; color: var(--cor-erro); text-align: center; margin-top: 1rem;"></div>
             </form>
         </div>
     </div>
 
     <main>
         <section id="inicio" class="hero-section">
-            <div class="hero-content">
-                <h1>Internet Fibra Ótica de Alta Velocidade</h1>
-                <p>Conecte-se com a melhor internet da região!</p>
-                <a href="#planos" class="cta-button">Conheça Nossos Planos</a>
-            </div>
-        </section>
-
-        <section id="planos" class="planos-section">
-            <div class="section-container">
-                <h2>Nossos Planos</h2>
-                <div class="cards-grid">
-                    <div class="card-item">
-                        <h3>500 Mbps</h3>
-                        <p>Perfeito para múltiplos dispositivos e jogos online.</p>
-                        <a href="https://wa.me/31994588810?text=Quero%20o%20plano%20de%20500%20Mbps" target="_blank">Contratar</a>
-                    </div>
-                    <div class="card-item">
-                        <h3>700 Mbps</h3>
-                        <p>Ótimo para famílias grandes e uso profissional.</p>
-                        <a href="https://wa.me/31994588810?text=Quero%20o%20plano%20de%20700%20Mbps" target="_blank">Contratar</a>
-                    </div>
-                    <div class="card-item">
-                        <h3>1 Gbps</h3>
-                        <p>Máxima velocidade para demandas extremas e futuro-proof.</p>
-                        <a href="https://wa.me/31994588810?text=Quero%20o%20plano%20de%201%20Gbps" target="_blank">Contratar</a>
+            <div class="container hero-content">
+                <div class="row">
+                    <div class="col-lg-6">
+                        <h1 class="display-4 fw-bold mb-3">Internet Fibra Ótica de Alta Velocidade</h1>
+                        <p class="lead mb-4">Conecte-se com a melhor internet da região! Estabilidade e velocidade para sua casa e empresa.</p>
+                        <a href="#planos" class="btn btn-primary btn-lg rounded-pill px-5">Conheça Nossos Planos</a>
                     </div>
                 </div>
             </div>
         </section>
 
-        <section id="depoimentos" class="depoimentos-section">
-            <div class="section-container">
-                <h2>O que nossos clientes dizem</h2>
+        <section id="planos" class="planos-section py-5">
+            <div class="container section-container">
+                <h2 class="text-center mb-5">Nossos Planos</h2>
                 <div class="cards-grid">
                     <div class="card-item">
-                        <p>"A melhor internet que já tive! Rápida e estável, nunca me deixa na mão."</p>
-                        <h4><strong>João Silva</strong></h4>
+                        <div>
+                            <h3 class="text-primary">500 Mbps</h3>
+                            <p>Perfeito para múltiplos dispositivos e jogos online.</p>
+                        </div>
+                        <a href="https://wa.me/31994588810?text=Quero%20o%20plano%20de%20500%20Mbps" target="_blank" class="btn btn-primary rounded-pill w-100 mt-3">Contratar</a>
                     </div>
                     <div class="card-item">
-                        <p>"Atendimento excelente e a instalação foi super rápida. Recomendo demais!"</p>
-                        <h4><strong>Maria Oliveira</strong></h4>
+                        <div>
+                            <h3 class="text-primary">700 Mbps</h3>
+                            <p>Ótimo para famílias grandes e uso profissional.</p>
+                        </div>
+                        <a href="https://wa.me/31994588810?text=Quero%20o%20plano%20de%20700%20Mbps" target="_blank" class="btn btn-primary rounded-pill w-100 mt-3">Contratar</a>
                     </div>
                     <div class="card-item">
-                        <p>"Finalmente uma internet confiável para trabalhar de casa. Vale cada centavo."</p>
-                        <h4><strong>Carlos Souza</strong></h4>
+                        <div>
+                            <h3 class="text-primary">1 Gbps</h3>
+                            <p>Máxima velocidade para demandas extremas.</p>
+                        </div>
+                        <a href="https://wa.me/31994588810?text=Quero%20o%20plano%20de%201%20Gbps" target="_blank" class="btn btn-primary rounded-pill w-100 mt-3">Contratar</a>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="depoimentos" class="depoimentos-section py-5 bg-light">
+            <div class="container section-container">
+                <h2 class="text-center mb-5">O que nossos clientes dizem</h2>
+                <div class="cards-grid">
+                    <div class="card-item" style="border-top: none; border-left: 5px solid var(--cor-sucesso);">
+                        <p class="fst-italic">"A melhor internet que já tive! Rápida e estável, nunca me deixa na mão."</p>
+                        <h4 class="mt-auto fs-6 fw-bold">- João Silva</h4>
+                    </div>
+                    <div class="card-item" style="border-top: none; border-left: 5px solid var(--cor-sucesso);">
+                        <p class="fst-italic">"Atendimento excelente e a instalação foi super rápida. Recomendo demais!"</p>
+                        <h4 class="mt-auto fs-6 fw-bold">- Maria Oliveira</h4>
+                    </div>
+                    <div class="card-item" style="border-top: none; border-left: 5px solid var(--cor-sucesso);">
+                        <p class="fst-italic">"Finalmente uma internet confiável para trabalhar de casa. Vale cada centavo."</p>
+                        <h4 class="mt-auto fs-6 fw-bold">- Carlos Souza</h4>
                     </div>
                 </div>
             </div>
         </section>
     </main>
 
-    <footer id="contato">
-        <p>Record PAP - Internet Fibra Ótica</p>
-        <p>Contato: (31) 99458-8810 | E-mail: <a href="mailto:suporte@recordpap.com.br">suporte@recordpap.com.br</a></p>
-        <p><a href="#">Política de Privacidade</a> | <a href="#">Termos de Uso</a></p>
+    <footer id="contato" class="bg-dark text-white py-5 text-center">
+        <div class="container">
+            <p class="h4 mb-3">Record PAP - Internet Fibra Ótica</p>
+            <p class="mb-2">Contato: (31) 99458-8810</p>
+            <p class="mb-4">E-mail: <a href="mailto:suporte@recordpap.com.br" class="text-white">suporte@recordpap.com.br</a></p>
+            <p class="small text-muted mb-0"><a href="#" class="text-muted text-decoration-none">Política de Privacidade</a> | <a href="#" class="text-muted text-decoration-none">Termos de Uso</a></p>
+        </div>
     </footer>
 
-    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-    <script src="{% static 'js/auth.js' %}?v=1.1"></script>
-    <script src="{% static 'js/ui.js' %}?v=1.1"></script>
-
-    <script src="{% static 'js/menu.js' %}?v=1.1"></script>
+    <script src="{% static 'js/auth.js' %}?v=2.0"></script>
+    
+    <script src="{% static 'js/menu.js' %}?v=1.3"></script>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Fecha o menu mobile ao clicar em um link de navegação
+            const menuLinks = document.querySelectorAll('.menu-link');
+            const nav = document.getElementById('main-nav');
+            
+            menuLinks.forEach(link => {
+                link.addEventListener('click', () => {
+                    if(nav && nav.classList.contains('active')) {
+                        nav.classList.remove('active');
+                    }
+                });
+            });
+        });
+    </script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-# crm_app/serializers.py
+# site-record/crm_app/serializers.py
 
 from rest_framework import serializers
 import re
@@ -55,10 +55,40 @@ class RegraComissaoSerializer(serializers.ModelSerializer):
 
 class ClienteSerializer(serializers.ModelSerializer):
     vendas_count = serializers.IntegerField(read_only=True, required=False)
+    
+    # Campos extras puxados do histórico
+    telefone1 = serializers.SerializerMethodField()
+    telefone2 = serializers.SerializerMethodField()
+    nome_mae = serializers.SerializerMethodField()
+    data_nascimento = serializers.SerializerMethodField()
 
     class Meta:
         model = Cliente
-        fields = ['id', 'cpf_cnpj', 'nome_razao_social', 'email', 'vendas_count']
+        fields = [
+            'id', 'cpf_cnpj', 'nome_razao_social', 'email', 'vendas_count',
+            'telefone1', 'telefone2', 'nome_mae', 'data_nascimento'
+        ]
+
+    def get_last_sale(self, obj):
+        if not hasattr(obj, '_last_sale_cache'):
+            obj._last_sale_cache = obj.vendas.filter(ativo=True).order_by('-data_criacao').first()
+        return obj._last_sale_cache
+
+    def get_telefone1(self, obj):
+        last = self.get_last_sale(obj)
+        return last.telefone1 if last and last.telefone1 else ""
+
+    def get_telefone2(self, obj):
+        last = self.get_last_sale(obj)
+        return last.telefone2 if last and last.telefone2 else ""
+
+    def get_nome_mae(self, obj):
+        last = self.get_last_sale(obj)
+        return last.nome_mae if last and last.nome_mae else ""
+
+    def get_data_nascimento(self, obj):
+        last = self.get_last_sale(obj)
+        return last.data_nascimento if last and last.data_nascimento else None
 
 class HistoricoAlteracaoVendaSerializer(serializers.ModelSerializer):
     usuario = serializers.StringRelatedField(read_only=True)
@@ -87,7 +117,10 @@ class VendaSerializer(serializers.ModelSerializer):
             'id', 'vendedor', 'cliente', 'plano', 'forma_pagamento',
             'status_tratamento', 'status_esteira', 'status_comissionamento',
             'status_final', 'data_criacao',
-            'forma_entrada', 'cpf_representante_legal', 'telefone1', 'telefone2',
+            'forma_entrada', 
+            'cpf_representante_legal', 'nome_representante_legal',
+            'nome_mae', 'data_nascimento',
+            'telefone1', 'telefone2',
             'cep', 'logradouro', 'numero_residencia', 'complemento', 'bairro',
             'cidade', 'estado', 'data_pedido', 'ordem_servico', 'data_agendamento',
             'periodo_agendamento', 'data_instalacao', 'antecipou_instalacao', 'motivo_pendencia',
@@ -106,13 +139,12 @@ class VendaSerializer(serializers.ModelSerializer):
         ultimo_historico = obj.historico_alteracoes.order_by('-data_alteracao').first()
         if ultimo_historico and ultimo_historico.usuario:
             return ultimo_historico.usuario.username
-        # Fallback para o vendedor original se não houver histórico
         return obj.vendedor.username if obj.vendedor else "Sistema"
 
 class VendaDetailSerializer(serializers.ModelSerializer):
     cliente_cpf_cnpj = serializers.CharField(source='cliente.cpf_cnpj', read_only=True)
-    # AGORA O NOME DO CLIENTE É EDITÁVEL, ENTÃO USAMOS O CAMPO PADRÃO
     cliente_nome_razao_social = serializers.CharField(source='cliente.nome_razao_social')
+    cliente_email = serializers.CharField(source='cliente.email', read_only=True)
 
     class Meta:
         model = Venda
@@ -126,7 +158,9 @@ class VendaDetailSerializer(serializers.ModelSerializer):
             'status_comissionamento',
             'motivo_pendencia',
             'cliente_cpf_cnpj',
-            'cliente_nome_razao_social', # Campo adicionado
+            'cliente_nome_razao_social',
+            'cliente_email',
+            'nome_mae', 'data_nascimento',
             'telefone1',
             'telefone2',
             'cep',
@@ -145,7 +179,10 @@ class VendaDetailSerializer(serializers.ModelSerializer):
             'data_instalacao',
             'antecipou_instalacao',
             'data_pagamento',
-            'valor_pago'
+            'valor_pago',
+            'cpf_representante_legal', 
+            'nome_representante_legal',
+            'forma_entrada',
         ]
 
 class VendaCreateSerializer(serializers.ModelSerializer):
@@ -156,7 +193,13 @@ class VendaCreateSerializer(serializers.ModelSerializer):
     cliente_email = serializers.EmailField(write_only=True, required=False, allow_blank=True)
     telefone1 = serializers.CharField(max_length=20, required=False, allow_blank=True)
     telefone2 = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    
     cpf_representante_legal = serializers.CharField(max_length=14, required=False, allow_blank=True)
+    nome_representante_legal = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    
+    nome_mae = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    data_nascimento = serializers.DateField(required=False, allow_null=True)
+    
     ponto_referencia = serializers.CharField(max_length=255, required=True)
     observacoes = serializers.CharField(required=False, allow_blank=True)
 
@@ -164,9 +207,11 @@ class VendaCreateSerializer(serializers.ModelSerializer):
         model = Venda
         fields = [
             'cliente_cpf_cnpj', 'cliente_nome_razao_social', 'cliente_email',
+            'nome_mae', 'data_nascimento',
             'forma_pagamento', 'plano', 'cep', 'logradouro', 'numero_residencia',
             'complemento', 'bairro', 'cidade', 'estado', 'forma_entrada',
-            'telefone1', 'telefone2', 'cpf_representante_legal',
+            'telefone1', 'telefone2', 
+            'cpf_representante_legal', 'nome_representante_legal',
             'ponto_referencia', 'observacoes'
         ]
 
@@ -177,12 +222,15 @@ class VendaCreateSerializer(serializers.ModelSerializer):
         return data
 
 class VendaUpdateSerializer(serializers.ModelSerializer):
-    # Campo para receber o novo nome do cliente
+    # Mapeamento para edição do Cliente
     cliente_nome_razao_social = serializers.CharField(source='cliente.nome_razao_social', required=False)
+    cliente_cpf_cnpj = serializers.CharField(source='cliente.cpf_cnpj', required=False)
+    cliente_email = serializers.EmailField(source='cliente.email', required=False)
 
     vendedor = serializers.PrimaryKeyRelatedField(queryset=Usuario.objects.all(), required=False)
     plano = serializers.PrimaryKeyRelatedField(queryset=Plano.objects.all(), required=False)
     forma_pagamento = serializers.PrimaryKeyRelatedField(queryset=FormaPagamento.objects.all(), required=False)
+    
     status_tratamento = serializers.PrimaryKeyRelatedField(queryset=StatusCRM.objects.filter(tipo='Tratamento'), required=False, allow_null=True)
     status_esteira = serializers.PrimaryKeyRelatedField(queryset=StatusCRM.objects.filter(tipo='Esteira'), required=False, allow_null=True)
     status_comissionamento = serializers.PrimaryKeyRelatedField(queryset=StatusCRM.objects.filter(tipo='Comissionamento'), required=False, allow_null=True)
@@ -191,7 +239,21 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Venda
         fields = '__all__'
-        read_only_fields = ('data_criacao', 'cliente')
+        # ADICIONADO 'forma_entrada' AQUI PARA SER IGNORADO NA EDIÇÃO
+        read_only_fields = ('data_criacao', 'cliente', 'forma_entrada')
+
+    def validate(self, data):
+        # Aplica Uppercase também na edição
+        for key, value in data.items():
+            if isinstance(value, str) and key not in ['cliente', 'cliente_email', 'observacoes']:
+                data[key] = value.upper()
+        
+        # Se houver dados do cliente, aplica uppercase neles também
+        if 'cliente' in data:
+            if 'nome_razao_social' in data['cliente']:
+                data['cliente']['nome_razao_social'] = data['cliente']['nome_razao_social'].upper()
+        
+        return data
 
     def _get_field_repr(self, instance_value):
         if hasattr(instance_value, 'nome'):
@@ -199,59 +261,58 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
         return str(instance_value)
 
     def update(self, instance, validated_data):
-        # Pega o usuário da requisição (passado pela view)
         request = self.context.get('request')
         user = request.user if request else None
 
-        # Dicionário para registrar alterações
+        # 1. Atualiza dados do Cliente
+        cliente_data = validated_data.pop('cliente', {})
+        if cliente_data:
+            cliente_instance = instance.cliente
+            mudou = False
+            if 'nome_razao_social' in cliente_data and cliente_data['nome_razao_social'] != cliente_instance.nome_razao_social:
+                cliente_instance.nome_razao_social = cliente_data['nome_razao_social']
+                mudou = True
+            if 'cpf_cnpj' in cliente_data and cliente_data['cpf_cnpj'] != cliente_instance.cpf_cnpj:
+                cliente_instance.cpf_cnpj = cliente_data['cpf_cnpj']
+                mudou = True
+            if 'email' in cliente_data and cliente_data['email'] != cliente_instance.email:
+                cliente_instance.email = cliente_data['email']
+                mudou = True
+            if mudou:
+                cliente_instance.save()
+
+        # 2. Monitora alterações de status
         alteracoes = {}
-        
-        # Campos de status para monitorar
         campos_status = ['status_tratamento', 'status_esteira', 'status_comissionamento']
         for campo in campos_status:
-            novo_valor = validated_data.get(campo)
-            valor_antigo = getattr(instance, campo)
-            if novo_valor != valor_antigo:
-                alteracoes[campo] = {
-                    'de': self._get_field_repr(valor_antigo) if valor_antigo else "Nenhum",
-                    'para': self._get_field_repr(novo_valor) if novo_valor else "Nenhum"
-                }
+            novo = validated_data.get(campo)
+            if novo:
+                antigo = getattr(instance, campo)
+                if novo != antigo:
+                    alteracoes[campo] = {
+                        'de': self._get_field_repr(antigo) if antigo else "Nenhum",
+                        'para': self._get_field_repr(novo)
+                    }
 
-        # Lógica para editar o nome do cliente
-        if 'cliente' in validated_data and 'nome_razao_social' in validated_data['cliente']:
-            novo_nome_cliente = validated_data['cliente']['nome_razao_social']
-            cliente_instance = instance.cliente
-            if cliente_instance.nome_razao_social != novo_nome_cliente:
-                alteracoes['nome_cliente'] = {
-                    'de': cliente_instance.nome_razao_social,
-                    'para': novo_nome_cliente
-                }
-                cliente_instance.nome_razao_social = novo_nome_cliente
-                cliente_instance.save()
-            # Remove o dado aninhado para não interferir no update principal
-            validated_data.pop('cliente')
-
-        # Lógica de automação de status (existente)
-        novo_status_tratamento = validated_data.get('status_tratamento', instance.status_tratamento)
-        if novo_status_tratamento and novo_status_tratamento.nome.lower() == 'cadastrada' and not instance.status_esteira:
+        # 3. Automação de status
+        novo_tratamento = validated_data.get('status_tratamento', instance.status_tratamento)
+        if novo_tratamento and novo_tratamento.nome.lower() == 'cadastrada' and not instance.status_esteira:
             try:
-                status_inicial_esteira = StatusCRM.objects.get(nome__iexact="AGENDADO", tipo__iexact="Esteira")
-                validated_data['status_esteira'] = status_inicial_esteira
-            except StatusCRM.DoesNotExist:
-                print("ATENÇÃO: O status inicial 'AGENDADO' para a Esteira não foi encontrado.")
+                st_ini = StatusCRM.objects.get(nome__iexact="AGENDADO", tipo__iexact="Esteira")
+                validated_data['status_esteira'] = st_ini
+            except: pass
 
-        novo_status_esteira = validated_data.get('status_esteira', instance.status_esteira)
-        if novo_status_esteira and novo_status_esteira.nome.lower() == 'instalada' and not instance.status_comissionamento:
+        novo_esteira = validated_data.get('status_esteira', instance.status_esteira)
+        if novo_esteira and novo_esteira.nome.lower() == 'instalada' and not instance.status_comissionamento:
             try:
-                status_inicial_comissao = StatusCRM.objects.get(nome__iexact="PENDENTE", tipo__iexact="Comissionamento")
-                validated_data['status_comissionamento'] = status_inicial_comissao
-            except StatusCRM.DoesNotExist:
-                print("ATENÇÃO: O status inicial 'PENDENTE' para o Comissionamento não foi encontrado.")
+                st_com = StatusCRM.objects.get(nome__iexact="PENDENTE", tipo__iexact="Comissionamento")
+                validated_data['status_comissionamento'] = st_com
+            except: pass
 
-        # Executa a atualização da venda
+        # 4. Atualiza Venda
         updated_instance = super().update(instance, validated_data)
 
-        # Se houveram alterações de status, cria um registro no histórico
+        # 5. Salva Histórico
         if alteracoes and user:
             HistoricoAlteracaoVenda.objects.create(
                 venda=updated_instance,

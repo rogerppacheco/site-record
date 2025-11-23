@@ -1,60 +1,70 @@
-# crm_app/views.py
+# site-record/crm_app/views.py
 
-# NOVAS IMPORTAÇÕES ADICIONADAS NO TOPO DO ARQUIVO
 import logging
-# --------------------------------------------------
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+from collections import defaultdict
+from operator import itemgetter
+from io import BytesIO
 
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Sum
 from django.utils import timezone
-from django.contrib.auth import get_user_model
+from django.utils.timezone import now
+from django.contrib.auth import get_user_model, authenticate
+from django.views.decorators.csrf import ensure_csrf_cookie
+from django.utils.decorators import method_decorator
+from django.http import JsonResponse, HttpResponse
+from django.template.loader import get_template
+
 from rest_framework import generics, viewsets, status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
-import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
-from django.utils.timezone import now
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from django.contrib.auth import authenticate
-from django.views.decorators.csrf import ensure_csrf_cookie
-from django.utils.decorators import method_decorator
-from django.http import JsonResponse
-from collections import defaultdict
-from operator import itemgetter
 
+from xhtml2pdf import pisa 
 
 from usuarios.permissions import CheckAPIPermission
-
 from .models import (
     Operadora, Plano, FormaPagamento, StatusCRM, MotivoPendencia,
     RegraComissao, Cliente, Venda, ImportacaoOsab, ImportacaoChurn,
-    CicloPagamento, HistoricoAlteracaoVenda
+    CicloPagamento, HistoricoAlteracaoVenda, PagamentoComissao
 )
 from .serializers import (
     OperadoraSerializer, PlanoSerializer, FormaPagamentoSerializer,
     StatusCRMSerializer, MotivoPendenciaSerializer, RegraComissaoSerializer,
     VendaSerializer, VendaCreateSerializer, ClienteSerializer,
     VendaUpdateSerializer, ImportacaoOsabSerializer, ImportacaoChurnSerializer,
-    CicloPagamentoSerializer,
-    VendaDetailSerializer
+    CicloPagamentoSerializer, VendaDetailSerializer
 )
 
-# NOVO LOGGER ADICIONADO AQUI
 logger = logging.getLogger(__name__)
+
+# --- FUNÇÃO AUXILIAR DE SEGURANÇA ---
+def is_member(user, groups):
+    """Verifica se o usuário pertence a algum dos grupos listados."""
+    if user.is_superuser:
+        return True
+    if user.groups.filter(name__in=groups).exists():
+        return True
+    if hasattr(user, 'perfil') and user.perfil and user.perfil.nome in groups:
+        return True
+    return False
+# ------------------------------------
 
 class OperadoraListCreateView(generics.ListCreateAPIView):
     queryset = Operadora.objects.filter(ativo=True)
     serializer_class = OperadoraSerializer
     permission_classes = [CheckAPIPermission]
-    resource_name = 'operadoras'
+    resource_name = 'operadora'
 
 class OperadoraDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Operadora.objects.all()
     serializer_class = OperadoraSerializer
     permission_classes = [CheckAPIPermission]
-    resource_name = 'operadoras'
+    resource_name = 'operadora'
 
 class PlanoListCreateView(generics.ListCreateAPIView):
     queryset = Plano.objects.filter(ativo=True)
@@ -79,12 +89,11 @@ class FormaPagamentoDetailView(generics.RetrieveUpdateDestroyAPIView):
 class StatusCRMListCreateView(generics.ListCreateAPIView):
     serializer_class = StatusCRMSerializer
     permission_classes = [permissions.IsAuthenticated]
-    resource_name = 'status_crm'
+    resource_name = 'statuscrm'
 
     def get_queryset(self):
         user = self.request.user
-        perfil_nome = user.perfil.nome if hasattr(user, 'perfil') and user.perfil else None
-        if user.is_superuser or perfil_nome in ['Diretoria', 'BackOffice']:
+        if is_member(user, ['Diretoria', 'BackOffice', 'Admin', 'Supervisor']):
             queryset = StatusCRM.objects.all()
             tipo = self.request.query_params.get('tipo', None)
             if tipo:
@@ -96,7 +105,7 @@ class StatusCRMDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = StatusCRM.objects.all()
     serializer_class = StatusCRMSerializer
     permission_classes = [CheckAPIPermission]
-    resource_name = 'status_crm'
+    resource_name = 'statuscrm'
 
 class MotivoPendenciaListCreateView(generics.ListCreateAPIView):
     queryset = MotivoPendencia.objects.all()
@@ -107,25 +116,25 @@ class MotivoPendenciaDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = MotivoPendencia.objects.all()
     serializer_class = MotivoPendenciaSerializer
     permission_classes = [CheckAPIPermission]
-    resource_name = 'motivos_pendencia'
+    resource_name = 'motivopendencia'
 
 class RegraComissaoListCreateView(generics.ListCreateAPIView):
     queryset = RegraComissao.objects.all()
     serializer_class = RegraComissaoSerializer
     permission_classes = [CheckAPIPermission]
-    resource_name = 'regras_comissao'
+    resource_name = 'regracomissao'
 
 class RegraComissaoDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = RegraComissao.objects.all()
     serializer_class = RegraComissaoSerializer
     permission_classes = [CheckAPIPermission]
-    resource_name = 'regras_comissao'
+    resource_name = 'regracomissao'
 
 class VendaViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated, CheckAPIPermission]
-    resource_name = 'vendas'
+    resource_name = 'venda'
     
-    # <<< ALTERAÇÃO 1: QUERYSET PRINCIPAL AGORA FILTRA APENAS VENDAS ATIVAS >>>
+    # Queryset base inicial
     queryset = Venda.objects.filter(ativo=True).order_by('-data_criacao')
 
     def get_serializer_context(self):
@@ -143,69 +152,120 @@ class VendaViewSet(viewsets.ModelViewSet):
         return VendaSerializer
 
     def get_queryset(self):
-        # Utiliza o queryset da classe que já está filtrado por 'ativo=True'
-        queryset = self.queryset
+        """
+        Lógica Central de Filtragem de Vendas com base nas regras:
+        - Minhas Vendas: Somente vendas do usuário (Vendedor, Supervisor, Backoffice).
+        - Visão de Equipe:
+            * Vendedor: Vazio.
+            * Supervisor: Apenas vendas dos LIDERADOS.
+            * Backoffice: Todas as vendas da empresa (Mês Atual).
+            * Admin/Diretoria: Todas as vendas.
+        """
+        queryset = super().get_queryset() # Traz Venda.objects.filter(ativo=True)
         user = self.request.user
-        perfil_nome = user.perfil.nome if hasattr(user, 'perfil') and user.perfil else None
-
+        
+        # Otimização de consulta
         queryset = queryset.select_related(
             'vendedor', 'cliente', 'plano', 'forma_pagamento',
             'status_tratamento', 'status_esteira', 'status_comissionamento',
             'motivo_pendencia'
         ).prefetch_related('historico_alteracoes__usuario')
 
-        if not (user.is_superuser or perfil_nome in ['Diretoria', 'BackOffice', 'Admin']):
-            if perfil_nome == 'Supervisor':
+        # Parâmetro que define se estamos na aba "Minhas Vendas" ou "Visão de Equipe"
+        # O frontend deve enviar ?view=minhas_vendas ou ?view=visao_equipe (ou 'geral')
+        view_type = self.request.query_params.get('view', 'minhas_vendas')
+
+        # --- REGRAS DE ESCOPO (HIERARQUIA) ---
+
+        if view_type == 'minhas_vendas':
+            # REGRA 1: "Minhas Vendas"
+            # Vendedor, Supervisor e Backoffice só veem suas próprias vendas aqui.
+            queryset = queryset.filter(vendedor=user)
+
+        else: # view_type == 'visao_equipe' ou 'geral'
+            # REGRA 2: "Visão de Equipe"
+            
+            # Se for Admin ou Diretoria, vê tudo
+            if is_member(user, ['Diretoria', 'Admin']):
+                pass 
+            
+            # Se for Backoffice
+            elif is_member(user, ['BackOffice']):
+                # Regra: "minha equipe devem aparecer todas as vendas da empresa do mês atual"
+                data_inicio_param = self.request.query_params.get('data_inicio')
+                if not data_inicio_param:
+                    hoje = timezone.now()
+                    # CORREÇÃO: Filtra Mês Atual usando Created OR Installed para não perder dados
+                    inicio_mes = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                    queryset = queryset.filter(
+                        Q(data_criacao__gte=inicio_mes) | 
+                        Q(data_instalacao__gte=inicio_mes)
+                    )
+            
+            # Se for Supervisor
+            elif is_member(user, ['Supervisor']):
+                # Regra: "vendas de equipe aparecer todas as vendas de liderados por ele"
                 liderados_ids = list(user.liderados.values_list('id', flat=True))
-                liderados_ids.append(user.id)
                 queryset = queryset.filter(vendedor_id__in=liderados_ids)
+            
+            # Se for Vendedor
             else:
-                queryset = queryset.filter(vendedor=user)
+                # Vendedor não tem visão de equipe
+                return queryset.none()
 
-        if getattr(self, 'action', None) == 'list':
-            ordem_servico = self.request.query_params.get('ordem_servico')
-            data_inicio_str = self.request.query_params.get('data_inicio')
-            data_fim_str = self.request.query_params.get('data_fim')
-            consultor_id = self.request.query_params.get('consultor_id')
-            view_type = self.request.query_params.get('view', 'minhas_vendas')
-            flow = self.request.query_params.get('flow')
+        # --- FILTROS DE URL (DATA, STATUS, FLOW) ---
+        
+        ordem_servico = self.request.query_params.get('ordem_servico')
+        data_inicio_str = self.request.query_params.get('data_inicio')
+        data_fim_str = self.request.query_params.get('data_fim')
+        consultor_id = self.request.query_params.get('consultor_id')
+        flow = self.request.query_params.get('flow')
 
-            is_management_profile = user.is_superuser or perfil_nome in ['Diretoria', 'BackOffice', 'Admin']
-            if is_management_profile and flow:
-                view_type = self.request.query_params.get('view', 'geral')
+        # Filtro por Consultor Específico
+        if consultor_id:
+            if view_type != 'minhas_vendas':
+                queryset = queryset.filter(vendedor_id=consultor_id)
 
-            if is_management_profile:
-                if view_type == 'minhas_vendas':
-                    queryset = queryset.filter(vendedor=user)
-                elif consultor_id:
-                    queryset = queryset.filter(vendedor_id=consultor_id)
+        # Filtros de Fluxo (Esteira, Auditoria, Comissionamento)
+        # Importante: Só aplicar exclusões se o frontend solicitar explicitamente o fluxo
+        if flow == 'auditoria':
+            queryset = queryset.filter(status_tratamento__isnull=False, status_esteira__isnull=True)
+        elif flow == 'esteira':
+            queryset = queryset.filter(status_esteira__isnull=False, status_comissionamento__isnull=True).exclude(status_esteira__nome__iexact='Instalada')
+        elif flow == 'comissionamento':
+            queryset = queryset.filter(status_esteira__nome__iexact='Instalada').exclude(status_comissionamento__nome__iexact='Pago')
 
-            if flow == 'auditoria':
-                queryset = queryset.filter(status_tratamento__isnull=False, status_esteira__isnull=True)
-            elif flow == 'esteira':
-                queryset = queryset.filter(status_esteira__isnull=False, status_comissionamento__isnull=True).exclude(status_esteira__nome__iexact='Instalada')
-            elif flow == 'comissionamento':
-                queryset = queryset.filter(status_esteira__nome__iexact='Instalada').exclude(status_comissionamento__nome__iexact='Pago')
+        # Busca por OS
+        if ordem_servico:
+            queryset = queryset.filter(ordem_servico__icontains=ordem_servico)
 
-            if ordem_servico:
-                queryset = queryset.filter(ordem_servico__icontains=ordem_servico)
-
-            if is_management_profile:
-                if data_inicio_str:
-                    try:
-                        data_inicio = datetime.strptime(data_inicio_str, '%Y-%m-%d').date()
-                        queryset = queryset.filter(data_criacao__gte=data_inicio)
-                    except (ValueError, TypeError): pass
-                if data_fim_str:
-                    try:
-                        data_fim = datetime.strptime(data_fim_str, '%Y-%m-%d').date()
-                        data_fim += timedelta(days=1)
-                        queryset = queryset.filter(data_criacao__lt=data_fim)
-                    except (ValueError, TypeError): pass
-            else:
-                hoje = now()
-                inicio_mes = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-                queryset = queryset.filter(data_criacao__gte=inicio_mes)
+        # Filtro de Data Personalizado (se enviado pela URL)
+        if data_inicio_str and data_fim_str:
+            try:
+                data_inicio = datetime.strptime(data_inicio_str, '%Y-%m-%d').date()
+                data_fim = datetime.strptime(data_fim_str, '%Y-%m-%d').date()
+                data_fim_ajustada = data_fim + timedelta(days=1)
+                
+                queryset = queryset.filter(
+                    Q(data_criacao__range=(data_inicio, data_fim_ajustada)) |
+                    Q(data_instalacao__range=(data_inicio, data_fim_ajustada))
+                )
+            except (ValueError, TypeError): 
+                pass
+        
+        # Filtro de Data Padrão (Mês Atual) se não for gestor e não enviou data
+        elif view_type == 'minhas_vendas' and not is_member(user, ['Diretoria', 'BackOffice', 'Admin']):
+             # CORREÇÃO CRÍTICA:
+             # O padrão agora é buscar vendas criadas OU instaladas neste mês.
+             # Isso resolve o problema de vendas criadas mês passado mas instaladas agora.
+             hoje = now()
+             inicio_mes = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+             
+             queryset = queryset.filter(
+                Q(data_criacao__gte=inicio_mes) | 
+                Q(data_instalacao__gte=inicio_mes)
+             )
+                
         return queryset
 
     def perform_create(self, serializer):
@@ -218,48 +278,31 @@ class VendaViewSet(viewsets.ModelViewSet):
         )
         if not created:
             cliente.nome_razao_social = nome
-            if email:
-                cliente.email = email
+            if email: cliente.email = email
             cliente.save()
         try:
             status_inicial = StatusCRM.objects.get(nome__iexact="SEM TRATAMENTO", tipo__iexact="Tratamento")
         except StatusCRM.DoesNotExist:
             status_inicial = None
-            print("ATENÇÃO: O status inicial 'SEM TRATAMENTO' para o Tratamento não foi encontrado.")
         serializer.save(vendedor=self.request.user, cliente=cliente, status_tratamento=status_inicial)
 
     def perform_update(self, serializer):
         serializer.save(request=self.request)
 
-    # <<< ALTERAÇÃO 2: MÉTODO DESTROY AGORA FAZ A EXCLUSÃO LÓGICA (SOFT DELETE) >>>
     def destroy(self, request, *args, **kwargs):
         try:
             instance = self.get_object()
-            
-            # Marca a venda como inativa em vez de apagar do banco de dados
             instance.ativo = False
             instance.save()
-
-            # Cria um registro no histórico para auditar quem excluiu a venda
             HistoricoAlteracaoVenda.objects.create(
                 venda=instance,
                 usuario=request.user,
-                alteracoes={
-                    "acao": "exclusao_logica",
-                    "detalhe": f"Venda marcada como inativa por {request.user.username}."
-                }
+                alteracoes={"acao": "exclusao_logica", "detalhe": f"Venda inativada por {request.user.username}."}
             )
-            
-            # Retorna uma resposta de sucesso
             return Response(status=status.HTTP_204_NO_CONTENT)
-
         except Exception as e:
-            # Captura qualquer erro inesperado e o registra
-            logger.error(f"Erro inesperado ao realizar soft delete da venda {kwargs.get('pk')}: {e}", exc_info=True)
-            return Response(
-                {"detail": f"Ocorreu um erro inesperado ao tentar excluir a venda: {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            logger.error(f"Erro ao excluir venda {kwargs.get('pk')}: {e}", exc_info=True)
+            return Response({"detail": "Erro ao excluir venda."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class VendasStatusCountView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -271,7 +314,6 @@ class VendasStatusCountView(APIView):
         queryset = venda_viewset.get_queryset()
 
         status_counts = list(queryset.values('status_esteira__nome').annotate(count=Count('id')).order_by('-count'))
-
         order_priority = {"INSTALADA": 0, "AGENDADO": 1}
         filtered_counts = [item for item in status_counts if item.get('status_esteira__nome')]
 
@@ -280,19 +322,145 @@ class VendasStatusCountView(APIView):
             return (order_priority.get(nome, 99), -item['count'])
 
         sorted_counts = sorted(filtered_counts, key=sort_key)
-        resultado_final = {item['status_esteira__nome']: item['count'] for item in sorted_counts}
-        return Response(resultado_final)
+        return Response({item['status_esteira__nome']: item['count'] for item in sorted_counts})
 
+class DashboardResumoView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        User = get_user_model()
+        user = request.user
+        hoje = now()
+        inicio_mes = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        proximo_mes = (inicio_mes + timedelta(days=32)).replace(day=1)
+        
+        usuarios_para_calcular = []
+        
+        # --- LÓGICA DE DASHBOARD (KPIS) ---
+        if is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
+            usuarios_para_calcular = User.objects.filter(is_active=True)
+        elif is_member(user, ['Supervisor']):
+            # Supervisor vê apenas suas próprias vendas nos Cards do Dashboard
+            usuarios_para_calcular = [user]
+        else: # Vendedor
+            usuarios_para_calcular = [user]
+
+        total_registradas_geral = 0
+        total_instaladas_geral = 0
+        comissao_total_geral = 0.0
+        status_counts_geral = defaultdict(int)
+        meta_display = 0
+        detalhes_listas = defaultdict(list)
+
+        exibir_comissao = True 
+
+        for vendedor in usuarios_para_calcular:
+            # CORREÇÃO: Campo correto é meta_comissao, não meta_vendas
+            meta_individual = getattr(vendedor, 'meta_comissao', 0) or 0
+            meta_display += float(meta_individual)
+
+            # 1. REGISTRADAS
+            vendas_registro = Venda.objects.filter(
+                vendedor=vendedor, ativo=True,
+                data_criacao__gte=inicio_mes, data_criacao__lt=proximo_mes
+            ).select_related('cliente', 'status_esteira')
+            
+            qtd_registradas = vendas_registro.count()
+            bateu_meta = qtd_registradas >= float(meta_individual)
+
+            for v in vendas_registro:
+                nome_status = v.status_esteira.nome.upper() if v.status_esteira else 'AGUARDANDO'
+                if nome_status != 'INSTALADA':
+                    status_counts_geral[nome_status] += 1
+                
+                obj_venda = {
+                    'id': v.id,
+                    'cliente': v.cliente.nome_razao_social if v.cliente else 'S/C',
+                    'status': nome_status,
+                    'data_iso': v.data_criacao.isoformat(), 
+                    'vendedor': vendedor.username
+                }
+                detalhes_listas['TOTAL_REGISTRADAS'].append(obj_venda)
+                if nome_status != 'INSTALADA':
+                    detalhes_listas[nome_status].append(obj_venda)
+
+            # 2. INSTALADAS
+            vendas_instaladas = Venda.objects.filter(
+                vendedor=vendedor, ativo=True,
+                status_esteira__nome__iexact='INSTALADA',
+                data_instalacao__gte=inicio_mes, data_instalacao__lt=proximo_mes
+            ).select_related('plano', 'cliente')
+
+            qtd_instaladas = vendas_instaladas.count()
+            status_counts_geral['INSTALADA'] += qtd_instaladas
+
+            for vi in vendas_instaladas:
+                obj_inst = {
+                    'id': vi.id,
+                    'cliente': vi.cliente.nome_razao_social if vi.cliente else 'S/C',
+                    'status': 'INSTALADA',
+                    'data_iso': vi.data_instalacao.isoformat() if vi.data_instalacao else None,
+                    'vendedor': vendedor.username
+                }
+                detalhes_listas['TOTAL_INSTALADAS'].append(obj_inst)
+                detalhes_listas['INSTALADA'].append(obj_inst)
+
+            # COMISSÃO 
+            regras = RegraComissao.objects.filter(consultor=vendedor).select_related('plano')
+            comissao_vendedor = 0.0
+            for v in vendas_instaladas:
+                valor_item = 0.0 
+                doc = v.cliente.cpf_cnpj if v.cliente else ''
+                doc_limpo = ''.join(filter(str.isdigit, doc))
+                tipo_cliente_venda = 'CNPJ' if len(doc_limpo) > 11 else 'CPF'
+                
+                regra_encontrada = None
+                for r in regras:
+                    # Verifica regra com base no plano e cliente (IGNORANDO O CANAL CONFORME SOLICITADO)
+                    if r.plano.id == v.plano.id and r.tipo_cliente == tipo_cliente_venda:
+                        regra_encontrada = r
+                        break
+                
+                if regra_encontrada:
+                    valor_item = float(regra_encontrada.valor_acelerado if bateu_meta else regra_encontrada.valor_base)
+                else:
+                    # Se não tem regra, não paga comissão (ou 0.0) - Não usa mais a base do plano (empresa)
+                    valor_item = 0.0
+                
+                comissao_vendedor += valor_item
+
+            total_registradas_geral += qtd_registradas
+            total_instaladas_geral += qtd_instaladas
+            comissao_total_geral += comissao_vendedor
+
+        percentual_aproveitamento = 0.0
+        if total_registradas_geral > 0:
+            percentual_aproveitamento = (total_instaladas_geral / total_registradas_geral) * 100
+
+        valor_comissao_final = comissao_total_geral
+
+        dados = {
+            "periodo": f"{inicio_mes.strftime('%d/%m')} a {hoje.strftime('%d/%m')}",
+            "meta": meta_display,
+            "total_vendas": total_registradas_geral,
+            "total_instaladas": total_instaladas_geral,
+            "percentual_meta": round((total_registradas_geral / meta_display * 100), 1) if meta_display > 0 else 0,
+            "percentual_aproveitamento": round(percentual_aproveitamento, 1),
+            "status_bateu_meta": (total_registradas_geral >= meta_display) if meta_display > 0 else False,
+            "comissao_estimada": valor_comissao_final,
+            "exibir_comissao": exibir_comissao, 
+            "status_detalhado": status_counts_geral,
+            "detalhes_listas": detalhes_listas
+        }
+        return Response(dados)
 
 class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
-    # <<< ALTERAÇÃO 3: FILTRA CLIENTES APENAS DE VENDAS ATIVAS >>>
     queryset = Cliente.objects.filter(vendas__ativo=True).distinct()
     serializer_class = ClienteSerializer
     permission_classes = [CheckAPIPermission]
-    resource_name = 'clientes'
+    resource_name = 'cliente'
 
     def get_queryset(self):
-        # Garante que a contagem de vendas também considere apenas as ativas
         queryset = super().get_queryset().annotate(vendas_count=Count('vendas', filter=Q(vendas__ativo=True)))
         search_query = self.request.query_params.get('search', None)
         if search_query:
@@ -301,6 +469,169 @@ class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
                 Q(nome_razao_social__icontains=search_query)
             )
         return queryset
+
+class ListaVendedoresView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        User = get_user_model()
+        vendedores = User.objects.filter(is_active=True).values('id', 'username').order_by('username')
+        return Response(list(vendedores))
+
+class ComissionamentoView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        hoje = timezone.now()
+        try:
+            ano = int(request.query_params.get('ano', hoje.year))
+            mes = int(request.query_params.get('mes', hoje.month))
+        except ValueError:
+            ano = hoje.year
+            mes = hoje.month
+        
+        data_inicio = datetime(ano, mes, 1)
+        if mes == 12:
+            data_fim = datetime(ano + 1, 1, 1)
+        else:
+            data_fim = datetime(ano, mes + 1, 1)
+
+        print(f"\n=== INICIANDO CÁLCULO DE COMISSÃO {mes}/{ano} ===")
+
+        User = get_user_model()
+        consultores = User.objects.filter(is_active=True).order_by('username')
+        relatorio = []
+        todas_regras = list(RegraComissao.objects.select_related('plano', 'consultor').all())
+        
+        anomes_str = f"{ano}{mes:02d}"
+        churns_mes = ImportacaoChurn.objects.filter(anomes_retirada=anomes_str)
+
+        for consultor in consultores:
+            print(f"\n--- Calculando para: {consultor.username} ---")
+            
+            vendas = Venda.objects.filter(
+                vendedor=consultor,
+                ativo=True,
+                status_esteira__nome__iexact='INSTALADA',
+                data_instalacao__gte=data_inicio,
+                data_instalacao__lt=data_fim
+            ).select_related('plano', 'forma_pagamento', 'cliente')
+
+            qtd_instaladas = vendas.count()
+            meta = consultor.meta_comissao or 0
+            atingimento = (qtd_instaladas / meta * 100) if meta > 0 else 0
+            bateu_meta = qtd_instaladas >= meta
+            
+            print(f"Vendas Instaladas: {qtd_instaladas} | Meta: {meta} | Bateu Meta? {bateu_meta}")
+
+            comissao_bruta = 0.0
+            for v in vendas:
+                doc = v.cliente.cpf_cnpj if v.cliente else ''
+                doc_limpo = ''.join(filter(str.isdigit, doc))
+                tipo_cliente = 'CNPJ' if len(doc_limpo) > 11 else 'CPF'
+                
+                # 1. Tenta achar regra específica do consultor (IGNORANDO CANAL)
+                regra = next((r for r in todas_regras if r.plano_id == v.plano_id and r.tipo_cliente == tipo_cliente and r.consultor_id == consultor.id), None)
+                
+                # 2. Se não achar, tenta regra geral (sem consultor) (IGNORANDO CANAL)
+                if not regra:
+                    regra = next((r for r in todas_regras if r.plano_id == v.plano_id and r.tipo_cliente == tipo_cliente and r.consultor is None), None)
+                
+                valor_item = 0.0
+                fonte_valor = "Nenhum"
+
+                if regra:
+                    valor_item = float(regra.valor_acelerado if bateu_meta else regra.valor_base)
+                    fonte_valor = f"Regra (ID: {regra.id})"
+                else:
+                    # Se não achou regra, valor é 0 (conforme solicitado, não usa valor da empresa)
+                    valor_item = 0.0
+                    fonte_valor = "Sem Regra Definida"
+                
+                comissao_bruta += valor_item
+                print(f" > Venda #{v.id} ({v.plano.nome}): +R${valor_item} [Fonte: {fonte_valor}]")
+
+            # --- CÁLCULO DOS DESCONTOS (CORRIGIDO) ---
+            
+            # 1. Boletos
+            qtd_boleto = 0
+            for v in vendas:
+                if v.forma_pagamento and 'BOLETO' in v.forma_pagamento.nome.upper():
+                    qtd_boleto += 1
+            
+            valor_desc_boleto_unit = float(consultor.desconto_boleto or 0)
+            desc_boleto_total = qtd_boleto * valor_desc_boleto_unit
+            if desc_boleto_total > 0:
+                print(f" > Desconto Boleto: {qtd_boleto} x {valor_desc_boleto_unit} = -{desc_boleto_total}")
+
+            # 2. Inclusão (Viabilidade)
+            qtd_inclusao = vendas.filter(inclusao=True).count()
+            valor_desc_inclusao_unit = float(consultor.desconto_inclusao_viabilidade or 0)
+            desc_inclusao_total = qtd_inclusao * valor_desc_inclusao_unit
+            if desc_inclusao_total > 0:
+                print(f" > Desconto Inclusão: {qtd_inclusao} x {valor_desc_inclusao_unit} = -{desc_inclusao_total}")
+
+            # 3. Antecipação
+            qtd_antecipacao = vendas.filter(antecipou_instalacao=True).count()
+            valor_desc_antecipacao_unit = float(consultor.desconto_instalacao_antecipada or 0)
+            desc_antecipacao_total = qtd_antecipacao * valor_desc_antecipacao_unit
+            if desc_antecipacao_total > 0:
+                print(f" > Desconto Antecipação: {qtd_antecipacao} x {valor_desc_antecipacao_unit} = -{desc_antecipacao_total}")
+
+            # 4. CNPJ (Adiantamento)
+            qtd_cnpj = 0
+            for v in vendas:
+                doc = v.cliente.cpf_cnpj if v.cliente else ''
+                if len(''.join(filter(str.isdigit, doc))) > 11:
+                    qtd_cnpj += 1
+            
+            valor_desc_cnpj_unit = float(consultor.adiantamento_cnpj or 0)
+            desc_cnpj_total = qtd_cnpj * valor_desc_cnpj_unit
+            if desc_cnpj_total > 0:
+                print(f" > Desc. CNPJ: {qtd_cnpj} x {valor_desc_cnpj_unit} = -{desc_cnpj_total}")
+
+            valor_churn_total = 0.0
+            premiacao = 0.0 
+            bonus = 0.0
+            total_descontos = desc_boleto_total + desc_inclusao_total + desc_antecipacao_total + desc_cnpj_total + valor_churn_total
+            valor_liquido = (comissao_bruta + premiacao + bonus) - total_descontos
+
+            print(f" = TOTAL FINAL {consultor.username}: Bruto {comissao_bruta} - Desc {total_descontos} = Liq {valor_liquido}")
+
+            relatorio.append({
+                'consultor_id': consultor.id,
+                'consultor_nome': consultor.username.upper(),
+                'qtd_instaladas': qtd_instaladas,
+                'meta': meta,
+                'atingimento_pct': round(atingimento, 1),
+                'comissao_bruta': comissao_bruta,
+                'desc_boleto': desc_boleto_total,
+                'desc_inclusao': desc_inclusao_total,
+                'desc_antecipacao': desc_antecipacao_total,
+                'desc_cnpj': desc_cnpj_total,
+                'valor_liquido': valor_liquido,
+            })
+
+        historico = []
+        for i in range(6):
+            d = hoje - timedelta(days=30*i)
+            mes_iter = d.month
+            ano_iter = d.year
+            total_ciclo = CicloPagamento.objects.filter(ano=ano_iter, mes=str(mes_iter)).aggregate(Sum('valor_comissao_final'))['valor_comissao_final__sum'] or 0
+            fechamento = PagamentoComissao.objects.filter(referencia_ano=ano_iter, referencia_mes=mes_iter).first()
+            total_pago = fechamento.total_pago_consultores if fechamento else 0.0
+            historico.append({
+                'ano_mes': f"{mes_iter}/{ano_iter}",
+                'total_pago_equipe': total_pago,
+                'total_recebido_ciclo': total_ciclo,
+                'status': 'Fechado' if fechamento else 'Aberto'
+            })
+
+        return Response({
+            'periodo': f"{mes}/{ano}",
+            'relatorio_consultores': relatorio,
+            'historico_pagamentos': historico
+        })
 
 @method_decorator(ensure_csrf_cookie, name='dispatch')
 class LoginView(APIView):
@@ -315,100 +646,62 @@ class LoginView(APIView):
                 'access_token': str(refresh.access_token),
                 'refresh_token': str(refresh)
             })
-            response.set_cookie(
-                'access_token', str(refresh.access_token),
-                httponly=True, secure=True, samesite='Lax'
-            )
+            response.set_cookie('access_token', str(refresh.access_token), httponly=True, secure=True, samesite='Lax')
             return response
         else:
-            return Response(
-                {"detail": "Credenciais inválidas"},
-                status=status.HTTP_401_UNAUTHORIZED
-            )
+            return Response({"detail": "Credenciais inválidas"}, status=status.HTTP_401_UNAUTHORIZED)
 
 class ImportacaoOsabView(APIView):
     permission_classes = [CheckAPIPermission]
     resource_name = 'importacao_osab'
     parser_classes = [MultiPartParser, FormParser]
-
     def _clean_key(self, key):
-        if pd.isna(key) or key is None:
-            return None
+        if pd.isna(key) or key is None: return None
         return str(key).replace('.0', '').strip()
-
     def get(self, request):
         queryset = ImportacaoOsab.objects.all().order_by('-id')
         serializer = ImportacaoOsabSerializer(queryset, many=True)
         return Response(serializer.data)
-
     def post(self, request, *args, **kwargs):
         file_obj = request.FILES.get('file')
-        if not file_obj:
-            return Response({'error': 'Nenhum arquivo foi enviado.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not file_obj: return Response({'error': 'Nenhum arquivo foi enviado.'}, status=status.HTTP_400_BAD_REQUEST)
         try:
             df = None
-            if file_obj.name.endswith('.xlsb'):
-                df = pd.read_excel(file_obj, engine='pyxlsb')
-            elif file_obj.name.endswith(('.xlsx', '.xls')):
-                df = pd.read_excel(file_obj)
-            else:
-                return Response({'error': 'Formato de arquivo inválido.'}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            return Response({'error': f'Erro ao ler o arquivo: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
-        
+            if file_obj.name.endswith('.xlsb'): df = pd.read_excel(file_obj, engine='pyxlsb')
+            elif file_obj.name.endswith(('.xlsx', '.xls')): df = pd.read_excel(file_obj)
+            else: return Response({'error': 'Formato de arquivo inválido.'}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e: return Response({'error': f'Erro ao ler o arquivo: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
         df.columns = [str(col).strip().upper() for col in df.columns]
-        if 'DOCUMENTO' not in df.columns or 'SITUACAO' not in df.columns:
-            return Response({"error": "O arquivo precisa conter as colunas 'DOCUMENTO' e 'SITUACAO'."}, status=status.HTTP_400_BAD_REQUEST)
-        
+        if 'DOCUMENTO' not in df.columns or 'SITUACAO' not in df.columns: return Response({"error": "O arquivo precisa conter as colunas 'DOCUMENTO' e 'SITUACAO'."}, status=status.HTTP_400_BAD_REQUEST)
         df = df.replace({np.nan: None, pd.NaT: None})
-        STATUS_MAP = {
-            'CONCLUÍDO': 'INSTALADA', 'CANCELADO': 'CANCELADA', 'CANCELADO - SEM APROVISIONAMENTO': 'CANCELADA', 'PENDÊNCIA CLIENTE': 'PENDENCIADA', 'PENDÊNCIA TÉCNICA': 'PENDENCIADA', 'EM APROVISIONAMENTO': 'EM ANDAMENTO', 'AGUARDANDO PAGAMENTO': 'AGUARDANDO PAGAMENTO', 'REPROVADO ANALISE DE FRAUDE': 'REPROVADO CARTÃO DE CRÉDITO', 'DRAFT': 'DRAFT', 'DRAFT - PRAZO CC EXPIRADO': 'DRAFT',
-        }
+        STATUS_MAP = {'CONCLUÍDO': 'INSTALADA', 'CANCELADO': 'CANCELADA', 'CANCELADO - SEM APROVISIONAMENTO': 'CANCELADA', 'PENDÊNCIA CLIENTE': 'PENDENCIADA', 'PENDÊNCIA TÉCNICA': 'PENDENCIADA', 'EM APROVISIONAMENTO': 'EM ANDAMENTO', 'AGUARDANDO PAGAMENTO': 'AGUARDANDO PAGAMENTO', 'REPROVADO ANALISE DE FRAUDE': 'REPROVADO CARTÃO DE CRÉDITO', 'DRAFT': 'DRAFT', 'DRAFT - PRAZO CC EXPIRADO': 'DRAFT'}
         status_esteira_objects = StatusCRM.objects.filter(tipo='Esteira')
         status_esteira_map = {status.nome.upper(): status for status in status_esteira_objects}
-        
-        # Filtra apenas vendas ativas
         vendas_com_os = Venda.objects.filter(ativo=True, ordem_servico__isnull=False).exclude(ordem_servico__exact='')
         vendas_map = {self._clean_key(v.ordem_servico): v for v in vendas_com_os}
-        
         report = {"status": "sucesso", "total_registros": len(df), "criados": 0, "atualizados": 0, "vendas_encontradas": 0, "ja_corretos": 0, "status_nao_mapeado": 0, "erros": []}
         vendas_para_atualizar = []
-        
         for index, row in df.iterrows():
-            documento_limpo = self._clean_key(row.get('DOCUMENTO'))
-            situacao_osab = row.get('SITUACAO')
-            if not documento_limpo: continue
-
-            venda = vendas_map.get(documento_limpo)
+            doc = self._clean_key(row.get('DOCUMENTO'))
+            sit = row.get('SITUACAO')
+            if not doc: continue
+            venda = vendas_map.get(doc)
             if not venda:
-                report["erros"].append(f"Linha {index + 2}: Documento {documento_limpo} não encontrado no sistema (ou a venda está inativa).")
+                report["erros"].append(f"Linha {index + 2}: Documento {doc} não encontrado.")
                 continue
-            
             report["vendas_encontradas"] += 1
-            if not situacao_osab: continue
-            
-            target_status_name = STATUS_MAP.get(str(situacao_osab).upper())
-            if not target_status_name:
-                report["status_nao_mapeado"] += 1
-                report["erros"].append(f"Linha {index + 2}: Status '{situacao_osab}' do doc {documento_limpo} não mapeado.")
-                continue
-
-            target_status_obj = status_esteira_map.get(target_status_name.upper())
-            if not target_status_obj:
-                report["status_nao_mapeado"] += 1
-                report["erros"].append(f"Linha {index + 2}: Status mapeado '{target_status_name}' do doc {documento_limpo} não existe no DB.")
-                continue
-
-            if venda.status_esteira and venda.status_esteira.id == target_status_obj.id:
-                report["ja_corretos"] += 1
+            if not sit: continue
+            target_name = STATUS_MAP.get(str(sit).upper())
+            if not target_name: report["status_nao_mapeado"] += 1; continue
+            target_obj = status_esteira_map.get(target_name.upper())
+            if not target_obj: report["status_nao_mapeado"] += 1; continue
+            if venda.status_esteira and venda.status_esteira.id == target_obj.id: report["ja_corretos"] += 1
             else:
-                venda.status_esteira = target_status_obj
+                venda.status_esteira = target_obj
                 vendas_para_atualizar.append(venda)
-        
         if vendas_para_atualizar:
             report["atualizados"] = len(vendas_para_atualizar)
             Venda.objects.bulk_update(vendas_para_atualizar, ['status_esteira'])
-        
         return Response(report, status=status.HTTP_200_OK)
 
 class ImportacaoOsabDetailView(generics.RetrieveUpdateAPIView):
@@ -420,53 +713,36 @@ class ImportacaoChurnView(APIView):
     permission_classes = [CheckAPIPermission]
     resource_name = 'importacao_churn'
     parser_classes = [MultiPartParser, FormParser]
-
     def get(self, request):
         queryset = ImportacaoChurn.objects.all().order_by('-id')
         serializer = ImportacaoChurnSerializer(queryset, many=True)
         return Response(serializer.data)
-
     def post(self, request, *args, **kwargs):
         file_obj = request.FILES.get('file')
-        if not file_obj:
-            return Response({'error': 'Nenhum arquivo foi enviado.'}, status=status.HTTP_400_BAD_REQUEST)
-        coluna_map = {
-            'UF': 'uf', 'PRODUTO': 'produto', 'MATRICULA_VENDEDOR': 'matricula_vendedor', 'GV': 'gv', 'SAP_PRINCIPAL_FIM': 'sap_principal_fim', 'GESTAO': 'gestao', 'ST_REGIONAL': 'st_regional', 'GC': 'gc', 'NUMERO_PEDIDO': 'numero_pedido', 'DT_GROSS': 'dt_gross', 'ANOMES_GROSS': 'anomes_gross', 'DT_RETIRADA': 'dt_retirada', 'ANOMES_RETIRADA': 'anomes_retirada', 'GRUPO_UNIDADE': 'grupo_unidade', 'CODIGO_SAP': 'codigo_sap', 'MUNICIPIO': 'municipio', 'TIPO_RETIRADA': 'tipo_retirada', 'MOTIVO_RETIRADA': 'motivo_retirada', 'SUBMOTIVO_RETIRADA': 'submotivo_retirada', 'CLASSIFICACAO': 'classificacao', 'DESC_APELIDO': 'desc_apelido',
-        }
-        colunas_esperadas = list(coluna_map.keys())
+        if not file_obj: return Response({'error': 'Nenhum arquivo.'}, status=400)
+        coluna_map = {'UF': 'uf', 'PRODUTO': 'produto', 'MATRICULA_VENDEDOR': 'matricula_vendedor', 'GV': 'gv', 'SAP_PRINCIPAL_FIM': 'sap_principal_fim', 'GESTAO': 'gestao', 'ST_REGIONAL': 'st_regional', 'GC': 'gc', 'NUMERO_PEDIDO': 'numero_pedido', 'DT_GROSS': 'dt_gross', 'ANOMES_GROSS': 'anomes_gross', 'DT_RETIRADA': 'dt_retirada', 'ANOMES_RETIRADA': 'anomes_retirada', 'GRUPO_UNIDADE': 'grupo_unidade', 'CODIGO_SAP': 'codigo_sap', 'MUNICIPIO': 'municipio', 'TIPO_RETIRADA': 'tipo_retirada', 'MOTIVO_RETIRADA': 'motivo_retirada', 'SUBMOTIVO_RETIRADA': 'submotivo_retirada', 'CLASSIFICACAO': 'classificacao', 'DESC_APELIDO': 'desc_apelido'}
         try:
-            df = None
-            if file_obj.name.endswith('.xlsb'):
-                df = pd.read_excel(file_obj, engine='pyxlsb', usecols=lambda c: c.strip().upper() in colunas_esperadas)
-            elif file_obj.name.endswith(('.xlsx', '.xls')):
-                df = pd.read_excel(file_obj, usecols=lambda c: c.strip().upper() in colunas_esperadas)
-            else:
-                return Response({'error': 'Formato de arquivo inválido.'}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            return Response({'error': f'Erro ao ler o arquivo: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+            df = pd.read_excel(file_obj) if file_obj.name.endswith(('.xlsx', '.xls')) else None
+            if df is None: return Response({'error': 'Formato inválido.'}, status=400)
+        except Exception as e: return Response({'error': str(e)}, status=400)
         df.columns = [str(col).strip().upper() for col in df.columns]
-        date_fields_churn = ['DT_GROSS', 'DT_RETIRADA']
-        for field in date_fields_churn:
-            if field in df.columns:
-                df[field] = pd.to_datetime(df[field], errors='coerce')
+        for f in ['DT_GROSS', 'DT_RETIRADA']:
+            if f in df.columns: df[f] = pd.to_datetime(df[f], errors='coerce')
         df = df.replace({np.nan: None, pd.NaT: None})
         df.rename(columns=coluna_map, inplace=True)
-        registros_criados, registros_atualizados, erros_importacao = 0, 0, []
-        model_fields = {f.name for f in ImportacaoChurn._meta.get_fields()}
-        for index, row in df.iterrows():
-            row_data = row.to_dict()
-            numero_pedido = row_data.get('numero_pedido')
-            if not numero_pedido:
-                erros_importacao.append(f'Linha {index+2}: Número do pedido ausente.')
-                continue
-            defaults_data = {key: value for key, value in row_data.items() if key in model_fields}
+        criados, atualizados, erros = 0, 0, []
+        fields = {f.name for f in ImportacaoChurn._meta.get_fields()}
+        for idx, row in df.iterrows():
+            data = row.to_dict()
+            pedido = data.get('numero_pedido')
+            if not pedido: continue
+            defaults = {k: v for k, v in data.items() if k in fields}
             try:
-                obj, created = ImportacaoChurn.objects.update_or_create(numero_pedido=numero_pedido, defaults=defaults_data)
-                if created: registros_criados += 1
-                else: registros_atualizados += 1
-            except Exception as e:
-                erros_importacao.append(f'Linha {index+2}: Erro ao salvar: {str(e)}')
-        return Response({'status': 'sucesso', 'total_registros': len(df), 'criados': registros_criados, 'atualizados': registros_atualizados, 'erros': erros_importacao}, status=status.HTTP_200_OK)
+                obj, created = ImportacaoChurn.objects.update_or_create(numero_pedido=pedido, defaults=defaults)
+                if created: criados += 1
+                else: atualizados += 1
+            except Exception as e: erros.append(f"Linha {idx+2}: {e}")
+        return Response({'status': 'sucesso', 'total_registros': len(df), 'criados': criados, 'atualizados': atualizados, 'erros': erros}, status=200)
 
 class ImportacaoChurnDetailView(generics.RetrieveUpdateAPIView):
     queryset = ImportacaoChurn.objects.all()
@@ -477,160 +753,286 @@ class ImportacaoCicloPagamentoView(APIView):
     permission_classes = [CheckAPIPermission]
     resource_name = 'importacao_ciclo_pagamento'
     parser_classes = [MultiPartParser, FormParser]
-
     def post(self, request, *args, **kwargs):
         file_obj = request.FILES.get('file')
-        if not file_obj:
-            return Response({'error': 'Nenhum arquivo enviado.'}, status=status.HTTP_400_BAD_REQUEST)
-        coluna_map = {
-            'ANO': 'ano', 'MES': 'mes', 'QUINZENA': 'quinzena', 'CICLO': 'ciclo', 'CICLO_COMPLEMENTAR': 'ciclo_complementar', 'EVENTO': 'evento', 'SUB_EVENTO': 'sub_evento', 'CANAL_DETALHADO': 'canal_detalhado', 'CANAL_AGRUPADO': 'canal_agrupado', 'SUB_CANAL': 'sub_canal', 'COD_SAP': 'cod_sap', 'COD_SAP_AGR': 'cod_sap_agr', 'PARCEIRO_AGR': 'parceiro_agr', 'UF_PARCEIRO_AGR': 'uf_parceiro_agr', 'FAMILIA': 'familia', 'PRODUTO': 'produto', 'OFERTA': 'oferta', 'PLANO_DETALHADO': 'plano_detalhado', 'CELULA': 'celula', 'METODO_PAGAMENTO': 'metodo_pagamento', 'CONTRATO': 'contrato', 'NUM_OS_PEDIDO_SIEBEL': 'num_os_pedido_siebel', 'ID_BUNDLE': 'id_bundle', 'DATA_ATV': 'data_atv', 'DATA_RETIRADA': 'data_retirada', 'QTD': 'qtd', 'COMISSAO_BRUTA': 'comissao_bruta', 'FATOR': 'fator', 'IQ': 'iq', 'VALOR_COMISSAO_FINAL': 'valor_comissao_final'
-        }
-        colunas_esperadas = list(coluna_map.keys())
+        if not file_obj: return Response({'error': 'Arquivo não enviado.'}, status=400)
+        coluna_map = {'ANO': 'ano', 'MES': 'mes', 'QUINZENA': 'quinzena', 'CICLO': 'ciclo', 'CICLO_COMPLEMENTAR': 'ciclo_complementar', 'EVENTO': 'evento', 'SUB_EVENTO': 'sub_evento', 'CANAL_DETALHADO': 'canal_detalhado', 'CANAL_AGRUPADO': 'canal_agrupado', 'SUB_CANAL': 'sub_canal', 'COD_SAP': 'cod_sap', 'COD_SAP_AGR': 'cod_sap_agr', 'PARCEIRO_AGR': 'parceiro_agr', 'UF_PARCEIRO_AGR': 'uf_parceiro_agr', 'FAMILIA': 'familia', 'PRODUTO': 'produto', 'OFERTA': 'oferta', 'PLANO_DETALHADO': 'plano_detalhado', 'CELULA': 'celula', 'METODO_PAGAMENTO': 'metodo_pagamento', 'CONTRATO': 'contrato', 'NUM_OS_PEDIDO_SIEBEL': 'num_os_pedido_siebel', 'ID_BUNDLE': 'id_bundle', 'DATA_ATV': 'data_atv', 'DATA_RETIRADA': 'data_retirada', 'QTD': 'qtd', 'COMISSAO_BRUTA': 'comissao_bruta', 'FATOR': 'fator', 'IQ': 'iq', 'VALOR_COMISSAO_FINAL': 'valor_comissao_final'}
         try:
-            df = None
-            if file_obj.name.endswith('.xlsb'):
-                df = pd.read_excel(file_obj, engine='pyxlsb', usecols=lambda c: c.strip().upper() in colunas_esperadas)
-            elif file_obj.name.endswith(('.xlsx', '.xls')):
-                df = pd.read_excel(file_obj, usecols=lambda c: c.strip().upper() in colunas_esperadas)
-            else:
-                return Response({'error': 'Formato de arquivo inválido.'}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            return Response({'error': f'Erro ao ler o arquivo: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+            df = pd.read_excel(file_obj)
+        except Exception as e: return Response({'error': str(e)}, status=400)
         df.columns = [str(col).strip().upper() for col in df.columns]
         df.rename(columns=coluna_map, inplace=True)
-        date_fields = ['data_atv', 'data_retirada']
-        for field in date_fields:
-            if field in df.columns:
-                df[field] = pd.to_datetime(df[field], errors='coerce')
-        numeric_fields = ['comissao_bruta', 'fator', 'iq', 'valor_comissao_final']
-        for field in numeric_fields:
-            if field in df.columns:
-                df[field] = df[field].astype(str).str.replace('R$', '', regex=False).str.replace('.', '', regex=False).str.replace(',', '.', regex=False)
-                df[field] = pd.to_numeric(df[field], errors='coerce')
+        for f in ['data_atv', 'data_retirada']:
+            if f in df.columns: df[f] = pd.to_datetime(df[f], errors='coerce')
+        for f in ['comissao_bruta', 'fator', 'iq', 'valor_comissao_final']:
+            if f in df.columns:
+                df[f] = df[f].astype(str).str.replace('R$', '', regex=False).str.replace('.', '', regex=False).str.replace(',', '.', regex=False)
+                df[f] = pd.to_numeric(df[f], errors='coerce')
         df = df.replace({np.nan: None, pd.NaT: None})
-        registros_criados, registros_atualizados, erros = 0, 0, []
-        model_fields = {f.name for f in CicloPagamento._meta.get_fields()}
-        for index, row in df.iterrows():
-            row_data = row.to_dict()
-            contrato = row_data.get('contrato')
-            if not contrato:
-                erros.append(f'Linha {index+2}: O número do contrato é obrigatório.')
-                continue
-            defaults_data = {key: value for key, value in row_data.items() if key in model_fields}
+        criados, atualizados, erros = 0, 0, []
+        fields = {f.name for f in CicloPagamento._meta.get_fields()}
+        for idx, row in df.iterrows():
+            data = row.to_dict()
+            contrato = data.get('contrato')
+            if not contrato: continue
+            defaults = {k: v for k, v in data.items() if k in fields}
             try:
-                obj, created = CicloPagamento.objects.update_or_create(contrato=contrato, defaults=defaults_data)
-                if created: registros_criados += 1
-                else: registros_atualizados += 1
-            except Exception as e:
-                erros.append(f'Linha {index+2}: Erro ao salvar o registro: {str(e)}')
-        return Response({'total_registros': len(df), 'criados': registros_criados, 'atualizados': registros_atualizados, 'erros': erros}, status=status.HTTP_200_OK)
+                obj, created = CicloPagamento.objects.update_or_create(contrato=contrato, defaults=defaults)
+                if created: criados += 1
+                else: atualizados += 1
+            except Exception as e: erros.append(f"Linha {idx+2}: {e}")
+        return Response({'total': len(df), 'criados': criados, 'atualizados': atualizados, 'erros': erros}, status=200)
 
 class PerformanceVendasView(APIView):
     permission_classes = [permissions.IsAuthenticated]
-
     def get(self, request, *args, **kwargs):
         User = get_user_model()
         hoje = timezone.now().date()
-        
         start_of_week = hoje - timedelta(days=hoje.weekday())
         start_of_month = hoje.replace(day=1)
-        
-        # Filtra apenas vendas ativas
-        base_filters = (
-            Q(ativo=True) &
-            Q(status_tratamento__isnull=False) & 
-            (Q(status_esteira__isnull=True) | ~Q(status_esteira__nome__iexact='CANCELADA'))
-        )
-        
         current_user = self.request.user
-        perfil_nome = current_user.perfil.nome if hasattr(current_user, 'perfil') and current_user.perfil else None
-        
-        if current_user.is_superuser or perfil_nome in ['Diretoria', 'BackOffice', 'Admin']:
+        if is_member(current_user, ['Diretoria', 'BackOffice', 'Admin']):
             users_to_process = User.objects.filter(is_active=True).select_related('supervisor')
-        elif perfil_nome == 'Supervisor':
+        elif is_member(current_user, ['Supervisor']):
             users_to_process = User.objects.filter(Q(id=current_user.id) | Q(supervisor=current_user), is_active=True).select_related('supervisor')
         else:
             users_to_process = User.objects.filter(id=current_user.id, is_active=True).select_related('supervisor')
-            
-        vendas = Venda.objects.filter(base_filters).values('vendedor_id').annotate(
-            total_dia=Count('id', filter=Q(data_pedido__date=hoje)),
-            total_mes=Count('id', filter=Q(data_pedido__date__gte=start_of_month)),
-            total_mes_instalado=Count('id', filter=Q(data_pedido__date__gte=start_of_month, status_esteira__nome__iexact='Instalada')),
-            vendas_segunda=Count('id', filter=Q(data_pedido__date=start_of_week)),
-            vendas_terca=Count('id', filter=Q(data_pedido__date=start_of_week + timedelta(days=1))),
-            vendas_quarta=Count('id', filter=Q(data_pedido__date=start_of_week + timedelta(days=2))),
-            vendas_quinta=Count('id', filter=Q(data_pedido__date=start_of_week + timedelta(days=3))),
-            vendas_sexta=Count('id', filter=Q(data_pedido__date=start_of_week + timedelta(days=4))),
-            vendas_sabado=Count('id', filter=Q(data_pedido__date=start_of_week + timedelta(days=5)))
-        )
-        
+        base_filters = (Q(ativo=True) & Q(status_tratamento__isnull=False) & (Q(status_esteira__isnull=True) | ~Q(status_esteira__nome__iexact='CANCELADA')))
+        vendas = Venda.objects.filter(base_filters).values('vendedor_id').annotate(total_dia=Count('id', filter=Q(data_pedido__date=hoje)), total_mes=Count('id', filter=Q(data_pedido__date__gte=start_of_month)), total_mes_instalado=Count('id', filter=Q(data_pedido__date__gte=start_of_month, status_esteira__nome__iexact='Instalada')), vendas_segunda=Count('id', filter=Q(data_pedido__date=start_of_week)), vendas_terca=Count('id', filter=Q(data_pedido__date=start_of_week + timedelta(days=1))), vendas_quarta=Count('id', filter=Q(data_pedido__date=start_of_week + timedelta(days=2))), vendas_quinta=Count('id', filter=Q(data_pedido__date=start_of_week + timedelta(days=3))), vendas_sexta=Count('id', filter=Q(data_pedido__date=start_of_week + timedelta(days=4))), vendas_sabado=Count('id', filter=Q(data_pedido__date=start_of_week + timedelta(days=5))))
         vendas_por_vendedor = {v['vendedor_id']: v for v in vendas}
-
-        teams = defaultdict(lambda: {
-            'supervisor_name': 'Sem Supervisor',
-            'members': [],
-            'totals': {
-                'daily': 0,
-                'weekly_breakdown': {'seg': 0, 'ter': 0, 'qua': 0, 'qui': 0, 'sex': 0, 'sab': 0},
-                'weekly_total': 0,
-                'monthly': {'total': 0, 'instalados': 0}
-            }
-        })
-
+        teams = defaultdict(lambda: {'supervisor_name': 'Sem Supervisor', 'members': [], 'totals': {'daily': 0, 'weekly_breakdown': {'seg': 0, 'ter': 0, 'qua': 0, 'qui': 0, 'sex': 0, 'sab': 0}, 'weekly_total': 0, 'monthly': {'total': 0, 'instalados': 0}}})
         for user in users_to_process:
             supervisor_id = user.supervisor.id if user.supervisor else 'none'
-            if supervisor_id != 'none' and user.supervisor:
-                 teams[supervisor_id]['supervisor_name'] = user.supervisor.username
-
+            if supervisor_id != 'none' and user.supervisor: teams[supervisor_id]['supervisor_name'] = user.supervisor.username
             v_data = vendas_por_vendedor.get(user.id, {})
-            
-            weekly_total = sum([
-                v_data.get('vendas_segunda', 0), v_data.get('vendas_terca', 0), v_data.get('vendas_quarta', 0),
-                v_data.get('vendas_quinta', 0), v_data.get('vendas_sexta', 0), v_data.get('vendas_sabado', 0)
-            ])
-            
+            weekly_total = sum([v_data.get('vendas_segunda', 0), v_data.get('vendas_terca', 0), v_data.get('vendas_quarta', 0), v_data.get('vendas_quinta', 0), v_data.get('vendas_sexta', 0), v_data.get('vendas_sabado', 0)])
             total_mes = v_data.get('total_mes', 0)
             instalados_mes = v_data.get('total_mes_instalado', 0)
-            
             aproveitamento_str = f"{(instalados_mes / total_mes * 100):.1f}%" if total_mes > 0 else "0.0%"
-
-            teams[supervisor_id]['members'].append({
-                'name': user.username,
-                'daily': v_data.get('total_dia', 0),
-                'weekly_breakdown': {
-                    'seg': v_data.get('vendas_segunda', 0), 'ter': v_data.get('vendas_terca', 0),
-                    'qua': v_data.get('vendas_quarta', 0), 'qui': v_data.get('vendas_quinta', 0),
-                    'sex': v_data.get('vendas_sexta', 0), 'sab': v_data.get('vendas_sabado', 0)
-                },
-                'weekly_total': weekly_total,
-                'monthly': {
-                    'total': total_mes,
-                    'instalados': instalados_mes,
-                    'aproveitamento': aproveitamento_str
-                }
-            })
-
+            teams[supervisor_id]['members'].append({'name': user.username, 'daily': v_data.get('total_dia', 0), 'weekly_breakdown': {'seg': v_data.get('vendas_segunda', 0), 'ter': v_data.get('vendas_terca', 0), 'qua': v_data.get('vendas_quarta', 0), 'qui': v_data.get('vendas_quinta', 0), 'sex': v_data.get('vendas_sexta', 0), 'sab': v_data.get('vendas_sabado', 0)}, 'weekly_total': weekly_total, 'monthly': {'total': total_mes, 'instalados': instalados_mes, 'aproveitamento': aproveitamento_str}})
         final_result = []
         for supervisor_id, team_data in teams.items():
-            if not team_data['members']:
-                continue
-
+            if not team_data['members']: continue
             team_data['members'] = sorted(team_data['members'], key=itemgetter('name'))
-
             for member in team_data['members']:
                 team_data['totals']['daily'] += member['daily']
-                for day, count in member['weekly_breakdown'].items():
-                    team_data['totals']['weekly_breakdown'][day] += count
+                for day, count in member['weekly_breakdown'].items(): team_data['totals']['weekly_breakdown'][day] += count
                 team_data['totals']['weekly_total'] += member['weekly_total']
                 team_data['totals']['monthly']['total'] += member['monthly']['total']
                 team_data['totals']['monthly']['instalados'] += member['monthly']['instalados']
-            
-            total_geral_mes = team_data['totals']['monthly']['total']
-            instalados_geral_mes = team_data['totals']['monthly']['instalados']
-            team_data['totals']['monthly']['aproveitamento'] = f"{(instalados_geral_mes / total_geral_mes * 100):.1f}%" if total_geral_mes > 0 else "0.0%"
-            
+            total_geral = team_data['totals']['monthly']['total']
+            inst_geral = team_data['totals']['monthly']['instalados']
+            team_data['totals']['monthly']['aproveitamento'] = f"{(inst_geral / total_geral * 100):.1f}%" if total_geral > 0 else "0.0%"
             final_result.append(team_data)
-        
         final_result = sorted(final_result, key=itemgetter('supervisor_name'))
-
         return Response(final_result)
+
+class FecharPagamentoView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        try:
+            ano = int(request.data.get('ano'))
+            mes = int(request.data.get('mes'))
+            total_pago = request.data.get('total_pago', 0)
+            
+            status_pago = StatusCRM.objects.filter(tipo='Comissionamento', nome__iexact='PAGO').first()
+            if not status_pago:
+                status_pago = StatusCRM.objects.create(tipo='Comissionamento', nome='PAGO', cor='#198754')
+
+            data_inicio = datetime(ano, mes, 1)
+            if mes == 12: data_fim = datetime(ano + 1, 1, 1)
+            else: data_fim = datetime(ano, mes + 1, 1)
+
+            vendas_para_atualizar = Venda.objects.filter(
+                ativo=True,
+                status_esteira__nome__iexact='INSTALADA',
+                data_instalacao__gte=data_inicio,
+                data_instalacao__lt=data_fim
+            ).exclude(status_comissionamento=status_pago)
+
+            count = vendas_para_atualizar.count()
+            vendas_para_atualizar.update(
+                status_comissionamento=status_pago,
+                data_pagamento_comissao=timezone.now().date()
+            )
+
+            PagamentoComissao.objects.update_or_create(
+                referencia_ano=ano,
+                referencia_mes=mes,
+                defaults={
+                    'total_pago_consultores': total_pago,
+                    'data_fechamento': timezone.now()
+                }
+            )
+
+            return Response({"mensagem": f"Fechamento realizado! {count} vendas atualizadas.", "vendas_atualizadas": count})
+        
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+class ReabrirPagamentoView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        try:
+            ano = int(request.data.get('ano'))
+            mes = int(request.data.get('mes'))
+
+            status_pendente = StatusCRM.objects.filter(tipo='Comissionamento', nome__iexact='PENDENTE').first()
+            if not status_pendente:
+                return Response({"error": "Status 'PENDENTE' de comissionamento não encontrado."}, status=400)
+
+            data_inicio = datetime(ano, mes, 1)
+            if mes == 12: data_fim = datetime(ano + 1, 1, 1)
+            else: data_fim = datetime(ano, mes + 1, 1)
+
+            vendas_revertidas = Venda.objects.filter(
+                status_esteira__nome__iexact='INSTALADA',
+                data_instalacao__gte=data_inicio,
+                data_instalacao__lt=data_fim,
+                status_comissionamento__nome__iexact='PAGO'
+            ).update(
+                status_comissionamento=status_pendente,
+                data_pagamento_comissao=None
+            )
+
+            PagamentoComissao.objects.filter(referencia_ano=ano, referencia_mes=mes).delete()
+
+            return Response({"mensagem": "Mês reaberto com sucesso!", "vendas_revertidas": vendas_revertidas})
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+class GerarRelatorioPDFView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        ano = int(request.data.get('ano'))
+        mes = int(request.data.get('mes'))
+        consultores_ids = request.data.get('consultores', [])
+
+        data_inicio = datetime(ano, mes, 1)
+        if mes == 12: data_fim = datetime(ano + 1, 1, 1)
+        else: data_fim = datetime(ano, mes + 1, 1)
+
+        vendas = Venda.objects.filter(
+            ativo=True,
+            status_esteira__nome__iexact='INSTALADA',
+            data_instalacao__gte=data_inicio,
+            data_instalacao__lt=data_fim
+        ).select_related('vendedor', 'cliente', 'plano', 'forma_pagamento', 'status_esteira')
+
+        if consultores_ids:
+            vendas = vendas.filter(vendedor_id__in=consultores_ids)
+
+        anomes_str = f"{ano}{mes:02d}"
+        churns = ImportacaoChurn.objects.filter(anomes_retirada=anomes_str)
+        churn_map = {c.numero_pedido: c for c in churns}
+
+        lista_final = []
+        for v in vendas:
+            eh_dacc = "SIM" if v.forma_pagamento and "DÉBITO" in v.forma_pagamento.nome.upper() else "NÃO"
+            
+            chave_busca = v.ordem_servico or "SEM_OS"
+            dados_churn = churn_map.get(chave_busca)
+            
+            status_final = "ATIVO"
+            dt_churn = "-"
+            motivo_churn = "-"
+            
+            if dados_churn:
+                status_final = "CHURN"
+                dt_churn = dados_churn.dt_retirada.strftime('%d/%m/%Y') if dados_churn.dt_retirada else "S/D"
+                motivo_churn = dados_churn.motivo_retirada or "Não informado"
+
+            lista_final.append({
+                'vendedor': v.vendedor.username.upper() if v.vendedor else 'SEM VENDEDOR',
+                'cpf_cnpj': v.cliente.cpf_cnpj,
+                'dacc': eh_dacc,
+                'cliente': v.cliente.nome_razao_social.upper(),
+                'plano': v.plano.nome.upper(),
+                'dt_criacao': v.data_criacao.strftime('%d/%m/%Y'),
+                'dt_instalacao': v.data_instalacao.strftime('%d/%m/%Y') if v.data_instalacao else "-",
+                'os': v.ordem_servico or "-",
+                'status_esteira': v.status_esteira.nome.upper() if v.status_esteira else "-",
+                'dt_churn': dt_churn,
+                'motivo_churn': motivo_churn,
+                'situacao': status_final,
+                'style_class': 'color: red; font-weight: bold;' if status_final == 'CHURN' else ''
+            })
+
+        lista_final.sort(key=itemgetter('vendedor', 'cliente'))
+
+        # FIX: META TAG CHARSET UTF-8
+        html_string = f"""
+        <html>
+        <head>
+            <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+            <style>
+                @page {{ size: A4 landscape; margin: 1cm; }}
+                body {{ font-family: Helvetica, sans-serif; font-size: 9px; }}
+                table {{ width: 100%; border-collapse: collapse; }}
+                th {{ background-color: #f2f2f2; border: 1px solid #ccc; padding: 4px; text-align: left; font-weight: bold; }}
+                td {{ border: 1px solid #ccc; padding: 3px; }}
+                h2 {{ text-align: center; color: #333; margin-bottom: 5px; }}
+                .meta {{ text-align: center; font-size: 10px; margin-bottom: 15px; color: #666; }}
+            </style>
+        </head>
+        <body>
+            <h2>Extrato de Comissionamento - {mes}/{ano}</h2>
+            <div class="meta">Gerado em: {timezone.now().strftime('%d/%m/%Y %H:%M')} | Total Vendas: {len(lista_final)}</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>VENDEDOR</th>
+                        <th>CPF/CNPJ</th>
+                        <th>DACC</th>
+                        <th>CLIENTE</th>
+                        <th>PLANO</th>
+                        <th>DT VENDA</th>
+                        <th>DT INST</th>
+                        <th>O.S.</th>
+                        <th>STATUS</th>
+                        <th>DT CHURN</th>
+                        <th>MOTIVO</th>
+                        <th>SITUAÇÃO</th>
+                    </tr>
+                </thead>
+                <tbody>
+        """
+        
+        for item in lista_final:
+            html_string += f"""
+            <tr style="{item['style_class']}">
+                <td>{item['vendedor']}</td>
+                <td>{item['cpf_cnpj']}</td>
+                <td>{item['dacc']}</td>
+                <td>{item['cliente'][:25]}</td>
+                <td>{item['plano']}</td>
+                <td>{item['dt_criacao']}</td>
+                <td>{item['dt_instalacao']}</td>
+                <td>{item['os']}</td>
+                <td>{item['status_esteira']}</td>
+                <td>{item['dt_churn']}</td>
+                <td>{item['motivo_churn'][:15]}</td>
+                <td>{item['situacao']}</td>
+            </tr>
+            """
+        
+        html_string += """
+                </tbody>
+            </table>
+        </body>
+        </html>
+        """
+
+        result = BytesIO()
+        # FIX: ENCODING UTF-8
+        pdf = pisa.pisaDocument(BytesIO(html_string.encode("UTF-8")), result, encoding='utf-8')
+        
+        if not pdf.err:
+            response = HttpResponse(result.getvalue(), content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="extrato_comissao_{mes}_{ano}.pdf"'
+            return response
+        return Response({"error": "Erro ao gerar PDF"}, status=500)

@@ -13,7 +13,13 @@ from .views import (
     ImportacaoOsabView, ImportacaoOsabDetailView,
     ImportacaoChurnView, ImportacaoChurnDetailView,
     ImportacaoCicloPagamentoView,
-    PerformanceVendasView
+    PerformanceVendasView,
+    DashboardResumoView,
+    ListaVendedoresView,
+    ComissionamentoView, # <---
+    FecharPagamentoView, # <---
+    ReabrirPagamentoView, # <---
+    GerarRelatorioPDFView # <---
 )
 
 router = DefaultRouter()
@@ -37,13 +43,21 @@ urlpatterns = [
     path('regras-comissao/<int:pk>/', RegraComissaoDetailView.as_view(), name='regracomissao-detail'),
     path('vendas/status-counts/', VendasStatusCountView.as_view(), name='vendas-status-counts'),
     
+    path('dashboard-resumo/', DashboardResumoView.as_view(), name='dashboard-resumo'),
+    path('lista-vendedores/', ListaVendedoresView.as_view(), name='lista-vendedores'),
+    
+    # --- NOVAS ROTAS COMISSIONAMENTO ---
+    path('comissionamento/', ComissionamentoView.as_view(), name='comissionamento'),
+    path('comissionamento/fechar/', FecharPagamentoView.as_view(), name='fechar-pagamento'),
+    path('comissionamento/reabrir/', ReabrirPagamentoView.as_view(), name='reabrir-pagamento'),
+    path('comissionamento/pdf/', GerarRelatorioPDFView.as_view(), name='gerar-pdf-comissao'),
+
     path('import/osab/', ImportacaoOsabView.as_view(), name='importacao-osab'),
     path('import/osab/<int:pk>/', ImportacaoOsabDetailView.as_view(), name='importacao-osab-detail'),
     path('import/churn/', ImportacaoChurnView.as_view(), name='importacao-churn'),
     path('import/churn/<int:pk>/', ImportacaoChurnDetailView.as_view(), name='importacao-churn-detail'),
     path('import/ciclo-pagamento/', ImportacaoCicloPagamentoView.as_view(), name='importacao-ciclo-pagamento'),
     
-    # Rota para a nova API de performance
     path('relatorios/performance-vendas/', PerformanceVendasView.as_view(), name='performance-vendas'),
     
     path('', include(router.urls)),

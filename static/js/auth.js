@@ -1,4 +1,4 @@
-// static/js/auth.js - VERSÃO FINAL UNIFICADA
+// static/js/auth.js - VERSÃO FINAL CORRIGIDA
 
 // URL base da API. Uma string vazia funciona para a mesma origem.
 const API_URL = '';
@@ -40,53 +40,79 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Tenta encontrar os elementos do modal na página
     const loginModal = document.getElementById('loginModalOverlay');
-    const areaInternaButton = document.querySelector('a.nav-button[href="/area-interna/"]');
+    const areaInternaButton = document.querySelector('a.nav-button[href="/area-interna/"]'); // Seletor específico se existir href
+    const btnOpenLogin = document.getElementById('btnOpenLogin'); // Seletor pelo ID (mais seguro)
     const loginForm = document.getElementById('loginForm');
-    const cancelarLogin = document.getElementById('cancelarLogin');
+    const cancelarLogin = document.getElementById('btnCancelLogin'); // ID corrigido conforme seu HTML
 
-    // **Esta lógica SÓ será executada se o modal de login existir na página (ou seja, na index.html)**
-    if (loginModal && areaInternaButton && loginForm && cancelarLogin) {
+    // **Esta lógica SÓ será executada se o modal de login existir na página**
+    if (loginModal && loginForm) {
         
-        // Adiciona evento ao botão "Área Interna" para abrir o modal
-        areaInternaButton.addEventListener('click', function(event) {
-            event.preventDefault(); // Impede a navegação direta
+        // Função para abrir o modal
+        const openModal = function(event) {
+            event.preventDefault();
             const token = localStorage.getItem('accessToken');
             if (token) {
-                // Se já tiver token, vai direto para a área interna
                 window.location.href = '/area-interna/';
             } else {
-                // Se não, abre o modal de login
-                loginModal.classList.add('active');
+                loginModal.style.display = 'flex'; // Usa style.display para forçar a visibilidade
+                const userInput = document.getElementById('username');
+                if(userInput) userInput.focus();
             }
+        };
+
+        // Adiciona evento aos botões de abrir login
+        if (areaInternaButton) areaInternaButton.addEventListener('click', openModal);
+        if (btnOpenLogin) btnOpenLogin.addEventListener('click', openModal);
+
+        // Botão Cancelar
+        if (cancelarLogin) {
+            cancelarLogin.addEventListener('click', function() {
+                loginModal.style.display = 'none';
+            });
+        }
+
+        // Fechar clicando fora
+        loginModal.addEventListener('click', function(e) {
+            if(e.target === loginModal) loginModal.style.display = 'none';
         });
 
-        // Adiciona evento ao botão "Cancelar" para fechar o modal
-        cancelarLogin.addEventListener('click', function() {
-            loginModal.classList.remove('active');
-        });
-
-        // Adiciona evento de submit ao formulário de login
+        // Submit do Formulário
         loginForm.addEventListener('submit', async function(e) {
             e.preventDefault();
+            const submitBtn = loginForm.querySelector('button[type="submit"]');
+            const originalText = submitBtn ? submitBtn.innerText : 'Entrar';
+            
+            if(submitBtn) {
+                submitBtn.innerText = 'Entrando...';
+                submitBtn.disabled = true;
+            }
+
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
-            await login(username, password); // Chama a sua função de login global
+            
+            await login(username, password); 
+            
+            if(submitBtn) {
+                submitBtn.innerText = originalText;
+                submitBtn.disabled = false;
+            }
         });
     }
 
     // **Esta lógica de logout será executada em TODAS as páginas**
-    const logoutButton = document.querySelector('.logout-button');
-    if (logoutButton) {
-        logoutButton.addEventListener('click', function(event) {
+    const logoutButtons = document.querySelectorAll('.logout-button');
+    logoutButtons.forEach(btn => {
+        btn.addEventListener('click', function(event) {
             event.preventDefault();
-            logout(); // Chama a sua função de logout global
+            logout(); 
         });
-    }
+    });
 });
 
 
 /**
- * Função para realizar o login do usuário. (SEU CÓDIGO ORIGINAL MANTIDO)
+ * Função para realizar o login do usuário.
  */
 async function login(username, password) {
     try {
@@ -99,21 +125,35 @@ async function login(username, password) {
 
         if (!response.ok) {
             const errorData = await response.json();
-            alert('Falha na autenticação: ' + (errorData.detail || 'Usuário ou senha inválidos.'));
+            const errorMsg = document.getElementById('error-message');
+            if(errorMsg) {
+                errorMsg.innerText = 'Falha: ' + (errorData.detail || 'Usuário ou senha incorretos');
+                errorMsg.style.display = 'block';
+            } else {
+                alert('Falha na autenticação: ' + (errorData.detail || 'Usuário ou senha inválidos.'));
+            }
             throw new Error('Falha na autenticação');
         }
 
         const data = await response.json();
-        if (data.token) {
-            localStorage.setItem('accessToken', data.token);
-            const decodedToken = jwt_decode(data.token);
+        
+        // === CORREÇÃO CRÍTICA AQUI ===
+        // O Django retorna 'access', mas seu código antigo buscava 'token'
+        const accessToken = data.access || data.token; 
+        
+        if (accessToken) {
+            localStorage.setItem('accessToken', accessToken);
+            if(data.refresh) localStorage.setItem('refreshToken', data.refresh);
+
+            const decodedToken = jwt_decode(accessToken);
             if (decodedToken && decodedToken.perfil) {
                 localStorage.setItem('userProfile', decodedToken.perfil);
             }
+            
             window.location.href = '/area-interna/';
             return true;
         } else {
-            alert('Ocorreu um erro inesperado durante o login. Tente novamente.');
+            alert('Erro: O servidor não retornou um token válido.');
             return false;
         }
     } catch (error) {
@@ -127,8 +167,9 @@ async function login(username, password) {
  */
 function logout() {
     localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken'); // Limpa o refresh token também
     localStorage.removeItem('userProfile');
-    clearTimeout(inactivityTimer); // Para o timer de inatividade
+    clearTimeout(inactivityTimer); 
     window.location.href = '/';
 }
 
@@ -138,8 +179,11 @@ function logout() {
 function verificarAutenticacao() {
     const token = localStorage.getItem('accessToken');
     if (!token) {
-        alert('Você precisa estar logado para acessar esta página.');
-        window.location.href = '/';
+        // Se estiver na home, não faz nada, senão redireciona
+        if (window.location.pathname !== '/') {
+            alert('Você precisa estar logado para acessar esta página.');
+            window.location.href = '/';
+        }
     }
 }
 
@@ -196,6 +240,7 @@ const apiClient = {
         if (response.status === 204) return { data: null };
         return { data: await response.json() };
     },
+    // ... (outros métodos mantidos iguais)
     patch: async function(url, data) {
         const token = localStorage.getItem('accessToken');
         const response = await fetch(`${API_URL}${url}`, {
@@ -226,25 +271,5 @@ const apiClient = {
             throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
         }
         return { data: null };
-    },
-    postMultipart: async function(url, formData) {
-        const token = localStorage.getItem('accessToken');
-        const headers = { 'Authorization': `Bearer ${token}` };
-        const response = await fetch(`${API_URL}${url}`, {
-            method: 'POST',
-            headers: headers,
-            body: formData,
-            credentials: 'include'
-        });
-        if (!response.ok) {
-            let errorDetails = response.statusText;
-            try {
-                const errorData = await response.json();
-                errorDetails = errorData.error || JSON.stringify(errorData);
-            } catch (e) {}
-            throw new Error(`HTTP error! status: ${response.status} - ${errorDetails}`);
-        }
-        if (response.status === 204) return { data: null };
-        return { data: await response.json() };
     }
 };

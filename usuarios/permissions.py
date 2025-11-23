@@ -1,57 +1,54 @@
+# site-record/usuarios/permissions.py
+
 from rest_framework import permissions
 
 class CheckAPIPermission(permissions.BasePermission):
     """
-    Verifica as permissões do usuário dinamicamente com base no
-    modelo PermissaoPerfil no banco de dados.
-
-    Para usar, você deve definir um atributo 'resource_name' na sua ViewSet.
-    Exemplo:
+    Verifica as permissões do usuário usando o sistema nativo do Django (Grupos e Permissions).
+    
+    Mantém a compatibilidade com a lógica antiga de 'resource_name' definida nas Views.
+    Exemplo na View:
         class VendaViewSet(viewsets.ModelViewSet):
             permission_classes = [CheckAPIPermission]
-            resource_name = 'vendas' # O nome do recurso como está no BD
-            ...
+            resource_name = 'venda'  # Nome do model (ex: 'venda', 'cliente')
     """
     def has_permission(self, request, view):
-        # O usuário precisa estar autenticado para continuar
+        # 1. Verifica se o usuário está logado
         if not request.user or not request.user.is_authenticated:
             return False
 
-        # Superusuário e o perfil 'Diretoria' sempre terão acesso total
-        if request.user.is_superuser or (hasattr(request.user, 'perfil') and request.user.perfil and request.user.perfil.nome == 'Diretoria'):
+        # 2. Superusuário sempre tem acesso total
+        if request.user.is_superuser:
             return True
 
-        # Pega o nome do recurso definido na ViewSet (ex: 'vendas', 'presenca')
+        # 3. Identifica o recurso (Model) que a View está acessando
         resource_name = getattr(view, 'resource_name', None)
         if not resource_name:
-            # Por segurança, se o programador esqueceu de definir o nome do recurso na view, o acesso é negado.
-            print(f"ALERTA DE SEGURANÇA: 'resource_name' não foi definido em {view.__class__.__name__}")
+            # Se a view não definir 'resource_name', bloqueia por segurança
+            # (Ou permite se for apenas leitura, dependendo da sua política. Aqui bloqueamos.)
+            print(f"ALERTA DE SEGURANÇA: 'resource_name' não definido em {view.__class__.__name__}")
             return False
 
-        # Mapeia o método HTTP (GET, POST, etc.) para o campo de permissão no seu modelo
+        # 4. Mapeia o método HTTP para a ação do Django (view, add, change, delete)
         method_map = {
-            'GET': 'pode_ver',
-            'OPTIONS': 'pode_ver', # Geralmente usado para pre-flight requests
-            'HEAD': 'pode_ver',
-            'POST': 'pode_criar',
-            'PUT': 'pode_editar',
-            'PATCH': 'pode_editar',
-            'DELETE': 'pode_excluir',
+            'GET': 'view',
+            'OPTIONS': 'view',
+            'HEAD': 'view',
+            'POST': 'add',
+            'PUT': 'change',
+            'PATCH': 'change',
+            'DELETE': 'delete',
         }
-        required_permission_field = method_map.get(request.method)
-
-        if not required_permission_field:
-            return False # Nega acesso se o método HTTP não for reconhecido
-
-        # Verifica se existe uma permissão no banco de dados para o perfil do usuário
-        # que corresponda ao recurso e à ação necessária.
-        if not hasattr(request.user, 'perfil') or not request.user.perfil:
-            return False # Nega acesso se o usuário não tiver perfil
         
-        # Esta é a consulta principal:
-        has_perm = request.user.perfil.permissoes.filter(
-            recurso=resource_name,
-            **{required_permission_field: True} # Isso se transforma em, por exemplo, pode_ver=True
-        ).exists()
+        action = method_map.get(request.method)
+        if not action:
+            return False
 
-        return has_perm
+        # 5. Constrói o codename da permissão (ex: 'crm_app.view_venda')
+        # Nota: O 'app_label' padrão aqui é 'crm_app'. Se tiver recursos de outros apps, 
+        # você pode precisar definir 'resource_app' na View também.
+        app_label = getattr(view, 'resource_app', 'crm_app') 
+        permission_codename = f'{app_label}.{action}_{resource_name}'
+
+        # 6. Verifica se o usuário tem essa permissão (via Grupo ou direta)
+        return request.user.has_perm(permission_codename)

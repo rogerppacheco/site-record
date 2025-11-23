@@ -4,338 +4,402 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lançamento de Presença - Record PAP</title>
+    <title>Controle de Presença - Record PAP</title>
     
-    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=1.4">
+    
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
+
+    <style>
+        /* Layout de Cards */
+        .presence-card {
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            background: #fff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            transition: transform 0.2s;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+        .presence-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        
+        /* Barra de Status (Topo) */
+        .card-status-bar {
+            height: 6px;
+            width: 100%;
+            border-top-left-radius: 10px;
+            border-top-right-radius: 10px;
+        }
+        .status-pendente { background-color: #dee2e6; }
+        .status-presente { background-color: var(--cor-sucesso); }
+        .status-ausente { background-color: var(--cor-perigo); }
+        .status-justificado { background-color: var(--cor-aviso); }
+
+        /* Avatar */
+        .avatar-circle {
+            width: 45px; height: 45px;
+            background-color: #f8f9fa;
+            color: #6c757d;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: bold; font-size: 1.1rem;
+            border: 1px solid #e9ecef;
+            flex-shrink: 0;
+        }
+        
+        /* Auditoria */
+        .audit-info {
+            font-size: 0.75rem;
+            color: #6c757d;
+            background-color: #fdfdfd;
+            border-top: 1px solid #f0f0f0;
+            margin-top: auto; /* Empurra para o final do card */
+            padding: 10px 15px;
+            border-bottom-left-radius: 10px;
+            border-bottom-right-radius: 10px;
+            line-height: 1.4;
+        }
+        .audit-line { margin-bottom: 3px; }
+
+        .nav-tabs .nav-link { color: #666; font-weight: 600; cursor: pointer; }
+        .nav-tabs .nav-link.active { color: var(--cor-primaria); border-bottom: 3px solid var(--cor-primaria); }
+
+        @media (max-width: 576px) {
+            .header-controls { flex-direction: column; align-items: stretch; gap: 10px; }
+        }
+    </style>
 </head>
 <body>
+
     <header class="main-header">
         <div class="header-container">
-            <a href="/"><img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo"></a>
-            <nav class="main-nav">
-                <ul id="main-menu">
-                    <li><a href="/area-interna/">Área Interna</a></li>
+            <a href="/"><img src="{% static 'logo.png' %}" alt="Logo" class="logo"></a>
+            <button class="menu-toggle" id="menu-toggle"><div class="bar"></div><div class="bar"></div><div class="bar"></div></button>
+            <nav class="main-nav" id="main-nav">
+                <ul>
+                    <li><a href="/area-interna/">Voltar</a></li>
                     <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
                 </ul>
             </nav>
-            <button class="menu-toggle" id="menu-toggle" aria-label="Abrir menu">
-                <span class="bar"></span>
-                <span class="bar"></span>
-                <span class="bar"></span>
-            </button>
         </div>
     </header>
 
-    <main>
-        <div class="main-content">
-            <h1>Lançamento de Presença</h1>
-
-            <div class="date-search-container" id="date-search-container">
-                <input type="date" id="data-pesquisa">
-                <button id="btn-pesquisar" class="btn-pesquisar">Pesquisar</button>
-            </div>
-
-            <div class="tab-container" id="tab-container">
-                <button class="tab-button active" onclick="switchTab('minha-equipe', this)">Minha Equipe</button>
-                <button class="tab-button" onclick="switchTab('todos-usuarios', this)">Todos os Usuários</button>
-            </div>
+    <main class="area-interna-section">
+        <div class="system-container" style="max-width: 1400px;">
             
-            <p id="data-hoje"></p>
-            
-            <div id="lista-vendedores">
-                <p>Carregando equipe...</p>
+            <div class="d-flex justify-content-between align-items-center mb-4 header-controls">
+                <div>
+                    <h1 style="font-size: 1.8rem; margin: 0;">Controle de Presença</h1>
+                    <p class="text-muted mb-0">Gerencie a presença diária da equipe.</p>
+                </div>
+                
+                <div id="container-filtro-data" class="d-flex gap-2">
+                    <input type="date" id="data-presenca" class="form-control" onchange="carregarDadosIniciais()">
+                    <button class="btn btn-outline-secondary" onclick="carregarDadosIniciais()"><i class="bi bi-arrow-clockwise"></i></button>
+                </div>
+                <div id="display-data-hoje" class="d-none fw-bold text-primary align-self-center">
+                    <i class="bi bi-calendar-event"></i> <span id="texto-data-fixa"></span>
+                </div>
             </div>
+
+            <ul class="nav nav-tabs mb-4" id="tab-container">
+                <li class="nav-item">
+                    <a class="nav-link active" onclick="switchTab('minha-equipe', this)">Minha Equipe</a>
+                </li>
+                <li class="nav-item" id="tab-todos">
+                    <a class="nav-link" onclick="switchTab('todos-usuarios', this)">Todos os Usuários</a>
+                </li>
+            </ul>
+            
+            <div id="grid-colaboradores" class="row g-3">
+                <div class="col-12 text-center py-5">
+                    <div class="spinner-border text-primary"></div>
+                    <p class="mt-2 text-muted">Carregando equipe...</p>
+                </div>
+            </div>
+
         </div>
     </main>
 
-    <div id="modal-motivo" class="modal-overlay">
-        <div class="modal-content">
-            <h3 id="modal-title">Motivo da Ausência</h3>
-            <div class="form-group">
-                <label for="select-motivo">Motivo:</label>
-                <select id="select-motivo"></select>
-            </div>
-            <div class="form-group">
-                <label for="obs-motivo">Observação (opcional):</label>
-                <textarea id="obs-motivo" rows="3" placeholder="Detalhes adicionais..."></textarea>
-            </div>
-            <div class="modal-actions">
-                <button class="btn btn-cancelar" onclick="fecharModal()">Cancelar</button>
-                <button id="btn-confirmar-ausencia" class="btn btn-confirmar">Confirmar Ausência</button>
+    <div class="modal fade" id="modal-ausencia" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title" id="modal-title">Registrar Ausência</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Motivo</label>
+                        <select class="form-select" id="select-motivo"></select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Observação</label>
+                        <textarea class="form-control" id="obs-motivo" rows="2" placeholder="Detalhes opcionais..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-danger" id="btn-confirmar-ausencia">Confirmar</button>
+                </div>
             </div>
         </div>
     </div>
 
-    <footer>
-        <p>Record PAP - Internet Fibra Ótica</p>
-        <p>Contato: (31) 99458-8810 | E-mail: <a href="mailto:suporte@recordpap.com.br">suporte@recordpap.com.br</a></p>
-        <p><a href="#">Política de Privacidade</a> | <a href="#">Termos de Uso</a></p>
-    </footer>
+    <script src="{% static 'js/auth.js' %}?v=1.3"></script>
+    <script src="{% static 'js/menu.js' %}?v=1.3"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
-    <script src="{% static 'js/auth.js' %}"></script>
     <script>
-        const apiUrl = '';
-
         const token = localStorage.getItem('accessToken');
+        if(!token) window.location.href = '/';
 
-        function jwt_decode(token) {
-            try {
-                const base64Url = token.split('.')[1];
-                const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-                const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
-                    return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-                }).join(''));
-                return JSON.parse(jsonPayload);
-            } catch (e) {
-                return null;
-            }
+        // --- SEGURANÇA E PERFIL ---
+        const decoded = jwt_decode(token);
+        const userRole = decoded.user_role || decoded.perfil || 'Vendedor';
+        const isSuperuser = decoded.is_superuser || false;
+
+        // Permissão: Bloqueia Vendedores
+        if (userRole === 'Vendedor' && !isSuperuser) {
+            alert('Acesso restrito a gestores.');
+            window.location.href = '/area-interna/';
         }
-
-        const decodedToken = jwt_decode(token);
-        const userProfile = decodedToken ? (decodedToken.perfil || 'Admin') : null;
-        const isSuperuser = decodedToken ? decodedToken.is_superuser : false;
+        
+        // Endpoints (Usando apiClient do auth.js)
+        const API_MOTIVOS = '/api/presenca/motivos/';
+        const API_REGISTROS = '/api/presenca/registros/';
 
         let motivosDisponiveis = [];
         let activeTab = 'minha-equipe';
+        let modalAusencia;
 
-        function switchTab(tabName, element) {
+        document.addEventListener('DOMContentLoaded', () => {
+            modalAusencia = new bootstrap.Modal(document.getElementById('modal-ausencia'));
+
+            // Configurar Data
+            const hoje = new Date();
+            const inputData = document.getElementById('data-presenca');
+            inputData.valueAsDate = hoje;
+
+            // Regra de Visibilidade da Data
+            const isDiretoriaOrAdmin = (userRole === 'Diretoria' || userRole === 'Admin' || isSuperuser || userRole === 'BackOffice');
+
+            if (!isDiretoriaOrAdmin) {
+                // Supervisor: Esconde data e aba Todos
+                document.getElementById('container-filtro-data').classList.remove('d-flex');
+                document.getElementById('container-filtro-data').style.display = 'none';
+                document.getElementById('display-data-hoje').classList.remove('d-none');
+                document.getElementById('texto-data-fixa').textContent = hoje.toLocaleDateString('pt-BR');
+                
+                document.getElementById('tab-todos').style.display = 'none';
+            } else {
+                // Diretoria: Define aba ativa como 'todos-usuarios'
+                activeTab = 'todos-usuarios';
+                document.querySelectorAll('.nav-link').forEach(b => b.classList.remove('active'));
+                document.querySelector('#tab-todos .nav-link').classList.add('active');
+            }
+
+            carregarMotivos();
+            carregarDadosIniciais();
+        });
+
+        window.switchTab = function(tabName, element) {
             activeTab = tabName;
-            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.nav-link').forEach(btn => btn.classList.remove('active'));
             element.classList.add('active');
             carregarDadosIniciais();
         }
 
-        async function apiFetch(endpoint, options = {}) {
-            const headers = { 'Content-Type': 'application/json', ...options.headers };
-            const token = localStorage.getItem('accessToken'); 
-            if (token) {
-                headers['Authorization'] = `Bearer ${token}`;
-            }
-
-            const response = await fetch(`${apiUrl}/api${endpoint}`, { ...options, headers });
-            
-            const novoToken = response.headers.get('X-Access-Token'); 
-            if (novoToken) {
-                localStorage.setItem('accessToken', novoToken);
-                console.log('Novo token de acesso foi atualizado!');
-            }
-
-            if (response.status === 401) {
-                alert('Sua sessão expirou. Por favor, faça login novamente.');
-                logout();
-                throw new Error('Não autorizado');
-            }
-            if (!response.ok) {
-                const errorData = await response.json();
-                let errorMessage = "Ocorreu um erro.";
-                if (errorData.detail) {
-                    errorMessage = errorData.detail;
-                } else {
-                    errorMessage = JSON.stringify(errorData).replace(/["{}[\]]/g, ' ');
-                }
-                throw new Error(errorMessage);
-            }
-            if (response.status === 204) return null;
-            return response.json();
-        }
-
-        function logout() {
-            localStorage.removeItem('accessToken');
-            localStorage.removeItem('refreshToken');
-            localStorage.removeItem('userProfile');
-            window.location.href = '/';
+        async function carregarMotivos() {
+            try {
+                const res = await apiClient.get('/api/presenca/motivos/');
+                motivosDisponiveis = res.data;
+            } catch(e){}
         }
 
         async function carregarDadosIniciais() {
-            const dataInput = document.getElementById('data-pesquisa');
-            const dataSelecionada = dataInput.value;
+            const data = document.getElementById('data-presenca').value;
+            const grid = document.getElementById('grid-colaboradores');
+            grid.innerHTML = '<div class="col-12 text-center py-5"><div class="spinner-border text-primary"></div><p class="mt-2">Carregando...</p></div>';
 
-            if (!dataSelecionada) {
-                alert('Por favor, selecione uma data.');
-                return;
-            };
-
-            const dataDisplay = document.getElementById('data-hoje');
-            const [ano, mes, dia] = dataSelecionada.split('-');
-            dataDisplay.textContent = `Exibindo data: ${dia}/${mes}/${ano}`;
-
-            const listaDiv = document.getElementById('lista-vendedores');
-            listaDiv.innerHTML = '<p>Carregando dados...</p>';
-
-            // --- INÍCIO DA ALTERAÇÃO ---
-            // Adicionamos o parâmetro '&participa_controle_presenca=true' para filtrar os usuários
-            const equipeEndpoint = (userProfile === 'Diretoria' || userProfile === 'Admin' || isSuperuser) && activeTab === 'todos-usuarios'
-                ? '/presenca/todos-usuarios/?participa_controle_presenca=true'
-                : '/presenca/minha-equipe/?participa_controle_presenca=true';
-            // --- FIM DA ALTERAÇÃO ---
+            const equipeEndpoint = (activeTab === 'todos-usuarios')
+                ? '/api/presenca/todos-usuarios/?participa_controle_presenca=true'
+                : '/api/presenca/minha-equipe/?participa_controle_presenca=true';
 
             try {
-                const [motivos, equipe, presencasDoDia] = await Promise.all([
-                    apiFetch('/presenca/motivos/'),
-                    apiFetch(equipeEndpoint),
-                    apiFetch(`/presenca/presencas/?data=${dataSelecionada}`)
+                const [equipeRes, presencasRes] = await Promise.all([
+                    apiClient.get(equipeEndpoint),
+                    apiClient.get(`${API_REGISTROS}?data=${data}`)
                 ]);
+                
+                const equipe = equipeRes.data;
+                const presencasDoDia = presencasRes.data;
 
-                motivosDisponiveis = motivos;
-                renderizarEquipe(equipe, presencasDoDia);
+                if(equipe) renderizarCards(equipe, presencasDoDia || []);
+                else grid.innerHTML = '<div class="col-12 text-center text-danger py-4">Erro ao carregar equipe.</div>';
 
-            } catch (error) {
-                console.error('Erro ao carregar dados:', error);
-                listaDiv.innerHTML = `<p style="color: var(--cor-erro);">Erro ao carregar dados. Verifique a conexão e tente novamente.</p>`;
+            } catch(e) {
+                console.error(e);
+                grid.innerHTML = '<div class="col-12 text-center text-danger py-4">Erro de conexão.</div>';
             }
         }
 
-        function renderizarEquipe(equipe, presencasDoDia) {
-            const listaDiv = document.getElementById('lista-vendedores');
-            listaDiv.innerHTML = '';
-            const presencasMap = presencasDoDia.reduce((map, p) => {
-                map[p.colaborador] = p;
-                return map;
-            }, {});
-            if (equipe.length === 0) {
-                listaDiv.innerHTML = activeTab === 'minha-equipe'
-                    ? '<p>Você não possui vendedores associados à sua equipe.</p>'
-                    : '<p>Nenhum usuário encontrado.</p>';
+        function renderizarCards(lista, presencasDoDia) {
+            const grid = document.getElementById('grid-colaboradores');
+            grid.innerHTML = '';
+            
+            const presencasMap = presencasDoDia.reduce((map, p) => { map[p.colaborador] = p; return map; }, {});
+
+            if (lista.length === 0) {
+                grid.innerHTML = '<div class="col-12 text-center text-muted py-5">Nenhum colaborador encontrado.</div>';
                 return;
             }
-            equipe.forEach(vendedor => {
-                const nomeCompleto = vendedor.nome_completo;
-                const registro = presencasMap[vendedor.id];
-                const vendedorDiv = document.createElement('div');
-                vendedorDiv.id = `vendedor-${vendedor.id}`;
-                vendedorDiv.className = 'colaborador-item';
-                vendedorDiv.dataset.presenceId = registro ? registro.id : '';
-                let conteudoInterno;
+
+            lista.forEach(p => {
+                const registro = presencasMap[p.id];
+                
+                let barClass = 'status-pendente';
+                let statusText = 'Pendente';
+                let statusColor = 'text-muted';
+                let cardBorder = '#ced4da';
+                
                 if (registro) {
-                    const statusText = registro.status ? 'Presente' : 'Ausente';
-                    const motivoText = !registro.status && registro.motivo_nome ? `(${registro.motivo_nome})` : '';
-                    
-                    const dataLancamento = new Date(registro.criado_em).toLocaleString('pt-BR');
-                    const lancadoPor = registro.lancado_por_nome || 'Sistema';
-
-                    let editadoPorInfo = '';
-                    if (registro.editado_por_nome) {
-                        const dataEdicao = new Date(registro.editado_em).toLocaleString('pt-BR');
-                        editadoPorInfo = `<p class="status-info"><strong>Editado por:</strong> ${registro.editado_por_nome} em ${dataEdicao}</p>`;
+                    if (registro.status) {
+                        barClass = 'status-presente';
+                        statusText = 'Presente';
+                        statusColor = 'text-success';
+                        cardBorder = 'var(--cor-sucesso)';
+                    } else {
+                        const desc = registro.motivo_nome || 'Motivo não informado';
+                        statusText = `Ausente: ${desc}`;
+                        statusColor = 'text-danger';
+                        barClass = registro.motivo_ausencia?.gera_desconto ? 'status-ausente' : 'status-justificado';
+                        cardBorder = registro.motivo_ausencia?.gera_desconto ? 'var(--cor-perigo)' : 'var(--cor-aviso)';
                     }
-
-                    vendedorDiv.classList.add(registro.status ? 'presente' : 'ausente');
-                    let editButton = '';
-                    if (userProfile === 'Diretoria' || userProfile === 'Admin' || isSuperuser) {
-                        editButton = `<button class="btn btn-editar" onclick="ativarModoEdicao(${vendedor.id}, '${nomeCompleto}')">Editar</button>`;
-                    }
-                    
-                    conteudoInterno = `
-                        <div class="colaborador-info">
-                            <h3>${nomeCompleto}</h3>
-                            <p class="status-info"><strong>Status:</strong> ${statusText} ${motivoText}</p>
-                            <p class="status-info"><strong>Lançado por:</strong> ${lancadoPor} em ${dataLancamento}</p>
-                            ${editadoPorInfo}
-                        </div>
-                        <div class="colaborador-actions">${editButton}</div>`;
-
-                } else {
-                    conteudoInterno = `<div class="colaborador-info"><h3>${nomeCompleto}</h3></div><div class="colaborador-actions"><button class="btn btn-presente" onclick="salvarStatus(${vendedor.id}, '${nomeCompleto}', true)">Presente</button><button class="btn btn-ausente" onclick="abrirModalAusencia(${vendedor.id}, '${nomeCompleto}')">Ausente</button></div>`;
                 }
-                vendedorDiv.innerHTML = conteudoInterno;
-                listaDiv.appendChild(vendedorDiv);
+
+                const iniciais = p.first_name ? (p.first_name[0] + (p.last_name ? p.last_name[0] : '')).toUpperCase() : '??';
+                const cardCol = document.createElement('div');
+                
+                // --- CORREÇÃO DO GRID ---
+                // Notebooks (lg): 3 cards por linha
+                // Tablets (md): 2 cards por linha
+                cardCol.className = 'col-12 col-md-6 col-lg-4';
+
+                // Auditoria
+                let auditHtml = '';
+                if (registro) {
+                    const opts = { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' };
+                    
+                    let lines = [];
+                    if (registro.criado_em) {
+                        const dtCriado = new Date(registro.criado_em).toLocaleString('pt-BR', opts);
+                        const userCriado = (registro.lancado_por_nome || 'Sistema').toUpperCase();
+                        lines.push(`<div class="audit-line">Lançado por: <strong>${userCriado}</strong> em ${dtCriado}</div>`);
+                    }
+                    if (registro.editado_em && registro.editado_por_nome) {
+                        const dtEdit = new Date(registro.editado_em).toLocaleString('pt-BR', opts);
+                        const userEdit = registro.editado_por_nome.toUpperCase();
+                        lines.push(`<div class="audit-line">Editado por: <strong>${userEdit}</strong> em ${dtEdit}</div>`);
+                    }
+                    
+                    if (lines.length > 0) {
+                        auditHtml = `<div class="audit-info">${lines.join('')}</div>`;
+                    }
+                }
+
+                // Botões
+                let buttonsHtml = '';
+                if (!registro) {
+                    buttonsHtml = `
+                        <div class="d-flex gap-2 mt-3 px-3 pb-3">
+                            <button class="btn btn-sm btn-success flex-grow-1" onclick="salvarStatus(${p.id}, '${p.first_name}', true)">Presente</button>
+                            <button class="btn btn-sm btn-danger flex-grow-1" onclick="abrirModalAusencia(${p.id}, '${p.first_name}')">Ausência</button>
+                        </div>
+                    `;
+                } else {
+                    buttonsHtml = `
+                        <div class="d-flex justify-content-end mt-2 px-3 pb-2">
+                            <button class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size: 0.8rem;" onclick="resetarCard(${p.id}, '${p.first_name}')">Alterar</button>
+                        </div>
+                    `;
+                }
+
+                cardCol.innerHTML = `
+                    <div class="presence-card" id="card-${p.id}" style="border-left: 5px solid ${cardBorder};">
+                        <div class="p-3 flex-grow-1">
+                            <div class="d-flex align-items-center gap-3 mb-2">
+                                <div class="avatar-circle flex-shrink-0">${iniciais}</div>
+                                <div class="overflow-hidden flex-grow-1">
+                                    <h6 class="mb-0 text-truncate fw-bold text-dark" title="${p.nome_completo}">${p.nome_completo}</h6>
+                                    <small class="fw-bold ${statusColor}">${statusText}</small>
+                                </div>
+                            </div>
+                            
+                            <div id="acoes-${p.id}">
+                                ${buttonsHtml}
+                            </div>
+
+                            ${auditHtml}
+                        </div>
+                    </div>
+                `;
+                grid.appendChild(cardCol);
             });
         }
 
-        function ativarModoEdicao(vendedorId, nomeCompleto) {
-            const vendedorDiv = document.getElementById(`vendedor-${vendedorId}`);
-            vendedorDiv.classList.remove('presente', 'ausente');
-            vendedorDiv.innerHTML = `<div class="colaborador-info"><h3>${nomeCompleto}</h3></div><div class="colaborador-actions"><button class="btn btn-presente" onclick="salvarStatus(${vendedorId}, '${nomeCompleto}', true)">Presente</button><button class="btn btn-ausente" onclick="abrirModalAusencia(${vendedorId}, '${nomeCompleto}')">Ausente</button></div>`;
+        // Habilita botões novamente para edição
+        window.resetarCard = function(id, nome) {
+            const divAcoes = document.getElementById(`acoes-${id}`);
+            divAcoes.innerHTML = `
+                <div class="d-flex gap-2 mt-2 px-3 pb-3 border-top pt-3">
+                    <button class="btn btn-sm btn-success flex-grow-1" onclick="salvarStatus(${id}, '${nome}', true)">Presente</button>
+                    <button class="btn btn-sm btn-danger flex-grow-1" onclick="abrirModalAusencia(${id}, '${nome}')">Ausência</button>
+                </div>
+            `;
         }
 
-        async function salvarStatus(vendedorId, nomeVendedor, presente, detalhesAusencia = {}) {
-            const data = document.getElementById('data-pesquisa').value;
-            const card = document.getElementById(`vendedor-${vendedorId}`);
-            const presenceId = card.dataset.presenceId;
-            const isUpdating = !!presenceId;
-            const method = isUpdating ? 'PUT' : 'POST';
-            const endpoint = isUpdating ? `/presenca/presencas/${presenceId}/`: '/presenca/presencas/';
+        async function salvarStatus(vendedorId, nome, presente, detalhes = {}) {
+            const data = document.getElementById('data-presenca').value;
             const body = {
                 colaborador: vendedorId,
                 data: data,
                 status: presente,
-                motivo: presente === false ? detalhesAusencia.motivoId : null,
-                observacao: presente === false ? (detalhesAusencia.observacao || "") : ""
+                motivo: !presente ? detalhes.motivoId : null,
+                observacao: !presente ? detalhes.observacao : ""
             };
+
             try {
-                await apiFetch(endpoint, { method, body: JSON.stringify(body) });
-                carregarDadosIniciais();
-            } catch (error) {
-                console.error('Erro ao salvar presença:', error);
-                alert(`Erro ao salvar: ${error.message}.`);
-            }
+                await apiClient.post(API_REGISTROS, body); 
+                carregarDadosIniciais(); 
+            } catch (e) { alert('Erro ao salvar.'); console.error(e); }
         }
 
-        const modal = document.getElementById('modal-motivo');
-        window.abrirModalAusencia = (vendedorId, nomeVendedor) => {
-            document.getElementById('modal-title').textContent = `Motivo da Ausência de ${nomeVendedor}`;
-            const selectMotivo = document.getElementById('select-motivo');
-            selectMotivo.innerHTML = '<option value="">Selecione um motivo...</option>';
-            motivosDisponiveis.forEach(m => selectMotivo.add(new Option(m.motivo, m.id)));
+        window.abrirModalAusencia = function(id, nome) {
+            document.getElementById('modal-title').textContent = `Registrar Ausência: ${nome}`;
+            const select = document.getElementById('select-motivo');
+            select.innerHTML = '<option value="">Selecione...</option>';
+            motivosDisponiveis.forEach(m => select.add(new Option(m.motivo, m.id)));
             document.getElementById('obs-motivo').value = '';
-            modal.classList.add('active'); // Usa a classe para a transição
-            document.getElementById('btn-confirmar-ausencia').onclick = () => {
-                const motivoId = document.getElementById('select-motivo').value;
-                if (!motivoId) { return alert('Por favor, selecione um motivo da lista.'); }
-                const observacao = document.getElementById('obs-motivo').value;
-                salvarStatus(vendedorId, nomeVendedor, false, { motivoId, observacao });
-                fecharModal();
-            };
-        }
-
-        window.fecharModal = () => { modal.classList.remove('active'); }
-        window.onclick = function(event) {
-            if (event.target == modal) {
-                fecharModal();
-            }
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            if (!token) {
-                window.location.href = '/';
-                return;
-            }
             
-            const dateSearchContainer = document.getElementById('date-search-container');
-            const tabContainer = document.getElementById('tab-container');
+            document.getElementById('btn-confirmar-ausencia').onclick = function() {
+                const motivoId = select.value;
+                if (!motivoId) { alert('Selecione o motivo.'); return; }
+                const obs = document.getElementById('obs-motivo').value;
+                salvarStatus(id, nome, false, { motivoId: motivoId, observacao: obs });
+                modalAusencia.hide();
+            };
+            modalAusencia.show();
+        }
 
-            // Lógica para o menu mobile
-            const menuToggle = document.getElementById('menu-toggle');
-            const mainMenu = document.getElementById('main-menu');
-            if (menuToggle && mainMenu) {
-                menuToggle.addEventListener('click', () => mainMenu.classList.toggle('active'));
-            }
-
-            // Lógica para mostrar/esconder o campo de data e abas
-            if (userProfile === 'Diretoria' || userProfile === 'Admin' || isSuperuser) {
-                dateSearchContainer.style.display = 'flex';
-                tabContainer.style.display = 'flex';
-            } else {
-                dateSearchContainer.style.display = 'flex';
-                tabContainer.style.display = 'flex';
-                const todosUsuariosTab = tabContainer.querySelector('.tab-button:last-child');
-                if (todosUsuariosTab) {
-                    todosUsuariosTab.style.display = 'none';
-                }
-            }
-
-            const dataInput = document.getElementById('data-pesquisa');
-            const hoje = new Date();
-            const dia = String(hoje.getDate()).padStart(2, '0');
-            const mes = String(hoje.getMonth() + 1).padStart(2, '0');
-            const ano = hoje.getFullYear();
-            dataInput.value = `${ano}-${mes}-${dia}`;
-
-            const btnPesquisar = document.getElementById('btn-pesquisar');
-            btnPesquisar.addEventListener('click', carregarDadosIniciais);
-
-            carregarDadosIniciais();
-        });
+        window.logout = function() { localStorage.removeItem('accessToken'); window.location.href='/'; }
     </script>
 </body>
 </html>
