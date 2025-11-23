@@ -329,9 +329,9 @@
                 const iniciais = p.first_name ? (p.first_name[0] + (p.last_name ? p.last_name[0] : '')).toUpperCase() : '??';
                 const cardCol = document.createElement('div');
                 
-                // --- CORREÇÃO DO GRID ---
-                // col-sm-6 (2 cards em tela pequena), col-lg-4 (3 cards), col-xl-3 (4 cards)
-                cardCol.className = 'col-12 col-sm-6 col-lg-4 col-xl-3';
+                // --- CORREÇÃO DO GRID (DENSIDADE) ---
+                // col-lg-3 (4 cards em laptops), col-xl-3 (4 cards em monitores grandes)
+                cardCol.className = 'col-12 col-sm-6 col-md-4 col-lg-3 col-xl-3';
 
                 // Auditoria
                 let auditHtml = '';
