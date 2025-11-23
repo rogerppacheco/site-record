@@ -882,10 +882,13 @@
         if (user) {
             ['nome_completo', 'cpf', 'email', 'username'].forEach(id => document.getElementById(id).value = user[id] || '');
             
+            // CORREÇÃO DO ISSUE 1: Verificar se tem grupos, senão tenta perfil legado, senão vazio
             if (user.groups && user.groups.length > 0) {
                 document.getElementById('perfil_id').value = user.groups[0].id;
             } else if (user.perfil) {
                 document.getElementById('perfil_id').value = user.perfil;
+            } else {
+                document.getElementById('perfil_id').value = '';
             }
 
             document.getElementById('supervisor_id').value = user.supervisor || '';
