@@ -289,7 +289,42 @@ class VendaViewSet(viewsets.ModelViewSet):
         serializer.save(vendedor=self.request.user, cliente=cliente, status_tratamento=status_inicial)
 
     def perform_update(self, serializer):
-        serializer.save(request=self.request)
+        # 1. Captura o estado antes da mudança
+        venda_antes = self.get_object()
+        status_esteira_antes = venda_antes.status_esteira
+        status_tratamento_antes = venda_antes.status_tratamento
+        
+        # 2. Salva a alteração
+        venda_atualizada = serializer.save()
+        
+        # 3. Gera histórico se houve mudança de status
+        alteracoes = {}
+        
+        # Verifica mudança na Esteira
+        if venda_antes.status_esteira != venda_atualizada.status_esteira:
+            alteracoes['status_esteira'] = {
+                'de': str(status_esteira_antes), 
+                'para': str(venda_atualizada.status_esteira)
+            }
+            
+        # Verifica mudança no Tratamento
+        if venda_antes.status_tratamento != venda_atualizada.status_tratamento:
+            alteracoes['status_tratamento'] = {
+                'de': str(status_tratamento_antes), 
+                'para': str(venda_atualizada.status_tratamento)
+            }
+
+        # Se houve alterações importantes, salva no histórico
+        if alteracoes:
+            try:
+                HistoricoAlteracaoVenda.objects.create(
+                    venda=venda_atualizada,
+                    usuario=self.request.user,
+                    alteracoes=alteracoes
+                )
+            except Exception as e:
+                # Loga o erro mas não trava a atualização da venda
+                logger.error(f"Erro ao salvar histórico: {e}")
 
     def destroy(self, request, *args, **kwargs):
         try:
