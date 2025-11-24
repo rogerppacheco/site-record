@@ -16,6 +16,9 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.utils.decorators import method_decorator
 from django.http import JsonResponse, HttpResponse
 from django.template.loader import get_template
+from django.conf import settings
+from django.core.mail import EmailMultiAlternatives
+from django.utils.html import strip_tags
 
 from rest_framework import generics, viewsets, status, permissions
 from rest_framework.response import Response
@@ -134,7 +137,6 @@ class VendaViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated, CheckAPIPermission]
     resource_name = 'venda'
     
-    # Queryset base inicial
     queryset = Venda.objects.filter(ativo=True).order_by('-data_criacao')
 
     def get_serializer_context(self):
@@ -152,11 +154,6 @@ class VendaViewSet(viewsets.ModelViewSet):
         return VendaSerializer
 
     def get_queryset(self):
-        """
-        Lógica Central de Filtragem de Vendas.
-        Define se o usuário vê apenas suas vendas ou a visão de equipe/geral.
-        """
-        # 1. Queryset Base (Otimizado)
         queryset = Venda.objects.filter(ativo=True).select_related(
             'vendedor', 'cliente', 'plano', 'forma_pagamento',
             'status_tratamento', 'status_esteira', 'status_comissionamento',
@@ -165,56 +162,32 @@ class VendaViewSet(viewsets.ModelViewSet):
         
         user = self.request.user
 
-        # ==============================================================================
-        # REGRA DE OURO: PERMISSÃO DE EDIÇÃO/DETALHE
-        # Se a ação for recuperar (retrieve) ou editar (update) um item específico pelo ID,
-        # ignoramos os filtros de data e fluxo para evitar o erro 404.
-        # ==============================================================================
         if self.action in ['retrieve', 'update', 'partial_update', 'destroy']:
-            # Admin, Diretoria e Backoffice podem editar TUDO
             if user.is_superuser or is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
                 return queryset
-            
-            # Supervisor pode editar vendas dele e da equipe
             if is_member(user, ['Supervisor']):
                 liderados_ids = list(user.liderados.values_list('id', flat=True))
                 liderados_ids.append(user.id)
                 return queryset.filter(vendedor_id__in=liderados_ids)
-            
-            # Vendedor só edita a dele
             return queryset.filter(vendedor=user)
 
-        # ==============================================================================
-        # LÓGICA DE LISTAGEM (Tabelas e Filtros)
-        # ==============================================================================
         view_type = self.request.query_params.get('view')
         flow = self.request.query_params.get('flow')
 
-        # Se não foi especificado o view_type na URL:
         if not view_type:
-            # Se for um fluxo de gestão (Auditoria/Esteira) e o usuário for Gestor:
             if flow and is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
                 view_type = 'geral'
             else:
-                # Caso contrário (Dashboard ou Vendedor), padrão é 'minhas_vendas'
                 view_type = 'minhas_vendas'
 
-        # --- REGRAS DE ESCOPO PARA LISTAGEM ---
-
         if view_type == 'minhas_vendas':
-            # REGRA 1: "Minhas Vendas"
             queryset = queryset.filter(vendedor=user)
 
         elif view_type == 'visao_equipe' or view_type == 'geral':
-            # REGRA 2: "Visão de Equipe / Geral"
-            
             if is_member(user, ['Diretoria', 'Admin']):
-                pass # Vê tudo
-            
+                pass 
             elif is_member(user, ['BackOffice']):
-                # Backoffice na listagem geral tem filtro padrão de data (mês atual) se não passar data
                 data_inicio_param = self.request.query_params.get('data_inicio')
-                # Se não tem data na URL, aplica filtro de mês atual para não pesar a listagem
                 if not data_inicio_param and self.action == 'list':
                     hoje = timezone.now()
                     inicio_mes = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -222,30 +195,22 @@ class VendaViewSet(viewsets.ModelViewSet):
                         Q(data_criacao__gte=inicio_mes) | 
                         Q(data_instalacao__gte=inicio_mes)
                     )
-            
             elif is_member(user, ['Supervisor']):
-                # Regra: "vendas de equipe aparecer todas as vendas de liderados por ele"
                 liderados_ids = list(user.liderados.values_list('id', flat=True))
-                liderados_ids.append(user.id) # Supervisor vê as dele também
+                liderados_ids.append(user.id)
                 queryset = queryset.filter(vendedor_id__in=liderados_ids)
-            
             else:
-                # Se um vendedor tentar forçar 'geral', não vê nada
                 return queryset.none()
 
-        # --- FILTROS DE URL (DATA, STATUS, FLOW) ---
-        
         ordem_servico = self.request.query_params.get('ordem_servico')
         data_inicio_str = self.request.query_params.get('data_inicio')
         data_fim_str = self.request.query_params.get('data_fim')
         consultor_id = self.request.query_params.get('consultor_id')
         
-        # Filtro por Consultor Específico
         if consultor_id:
             if view_type != 'minhas_vendas':
                 queryset = queryset.filter(vendedor_id=consultor_id)
 
-        # Filtros de Fluxo (Esteira, Auditoria, Comissionamento)
         if flow == 'auditoria':
             queryset = queryset.filter(status_tratamento__isnull=False, status_esteira__isnull=True)
         elif flow == 'esteira':
@@ -253,11 +218,9 @@ class VendaViewSet(viewsets.ModelViewSet):
         elif flow == 'comissionamento':
             queryset = queryset.filter(status_esteira__nome__iexact='Instalada').exclude(status_comissionamento__nome__iexact='Pago')
 
-        # Busca por OS
         if ordem_servico:
             queryset = queryset.filter(ordem_servico__icontains=ordem_servico)
 
-        # Filtro de Data Personalizado
         if data_inicio_str and data_fim_str:
             try:
                 data_inicio = datetime.strptime(data_inicio_str, '%Y-%m-%d').date()
@@ -271,7 +234,6 @@ class VendaViewSet(viewsets.ModelViewSet):
             except (ValueError, TypeError): 
                 pass
         
-        # Filtro de Data Padrão para Minhas Vendas (apenas se for listagem padrão)
         elif view_type == 'minhas_vendas' and self.action == 'list' and not is_member(user, ['Diretoria', 'BackOffice', 'Admin']):
              hoje = now()
              inicio_mes = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -296,58 +258,42 @@ class VendaViewSet(viewsets.ModelViewSet):
             if email: cliente.email = email
             cliente.save()
             
-        # --- LÓGICA DE STATUS INICIAL ---
         status_inicial = StatusCRM.objects.filter(nome__iexact="SEM TRATAMENTO", tipo__iexact="Tratamento").first()
-        
         if not status_inicial:
             status_inicial = StatusCRM.objects.filter(tipo__iexact="Tratamento").first()
 
         serializer.save(vendedor=self.request.user, cliente=cliente, status_tratamento=status_inicial)
 
     def perform_update(self, serializer):
-        # 1. Captura o estado antes da mudança
         venda_antes = self.get_object()
         status_esteira_antes = venda_antes.status_esteira
         status_tratamento_antes = venda_antes.status_tratamento
         
-        # --- 2. LÓGICA DE LIMPEZA DE DADOS (NOVA) ---
-        # Verifica se o status_esteira está sendo alterado
         novo_status = serializer.validated_data.get('status_esteira')
         extra_updates = {}
 
         if novo_status:
             nome_status = novo_status.nome.upper()
-            
-            # Regra 1: Se não estiver em Pendência, limpa o motivo
             if 'PENDEN' not in nome_status and 'PENDÊN' not in nome_status:
                 extra_updates['motivo_pendencia'] = None
-            
-            # Regra 2: Se não estiver Agendado E NEM Instalada, limpa data e turno (preserva histórico se instalada)
             if 'AGENDADO' not in nome_status and 'INSTALADA' not in nome_status:
                 extra_updates['data_agendamento'] = None
                 extra_updates['periodo_agendamento'] = None
 
-        # 3. Salva a alteração (aplicando as limpezas)
         venda_atualizada = serializer.save(**extra_updates)
         
-        # 4. Gera histórico se houve mudança de status
         alteracoes = {}
-        
-        # Verifica mudança na Esteira
         if venda_antes.status_esteira != venda_atualizada.status_esteira:
             alteracoes['status_esteira'] = {
                 'de': str(status_esteira_antes), 
                 'para': str(venda_atualizada.status_esteira)
             }
-            
-        # Verifica mudança no Tratamento
         if venda_antes.status_tratamento != venda_atualizada.status_tratamento:
             alteracoes['status_tratamento'] = {
                 'de': str(status_tratamento_antes), 
                 'para': str(venda_atualizada.status_tratamento)
             }
 
-        # Se houve alterações importantes, salva no histórico
         if alteracoes:
             try:
                 HistoricoAlteracaoVenda.objects.create(
@@ -356,7 +302,6 @@ class VendaViewSet(viewsets.ModelViewSet):
                     alteracoes=alteracoes
                 )
             except Exception as e:
-                # Loga o erro mas não trava a atualização da venda
                 logger.error(f"Erro ao salvar histórico: {e}")
 
     def destroy(self, request, *args, **kwargs):
@@ -406,13 +351,11 @@ class DashboardResumoView(APIView):
         
         usuarios_para_calcular = []
         
-        # --- LÓGICA DE DASHBOARD (KPIS) ---
         if is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
             usuarios_para_calcular = User.objects.filter(is_active=True)
         elif is_member(user, ['Supervisor']):
-            # Supervisor vê apenas suas próprias vendas nos Cards do Dashboard
             usuarios_para_calcular = [user]
-        else: # Vendedor
+        else:
             usuarios_para_calcular = [user]
 
         total_registradas_geral = 0
@@ -428,7 +371,6 @@ class DashboardResumoView(APIView):
             meta_individual = getattr(vendedor, 'meta_comissao', 0) or 0
             meta_display += float(meta_individual)
 
-            # 1. REGISTRADAS
             vendas_registro = Venda.objects.filter(
                 vendedor=vendedor, ativo=True,
                 data_criacao__gte=inicio_mes, data_criacao__lt=proximo_mes
@@ -453,7 +395,6 @@ class DashboardResumoView(APIView):
                 if nome_status != 'INSTALADA':
                     detalhes_listas[nome_status].append(obj_venda)
 
-            # 2. INSTALADAS
             vendas_instaladas = Venda.objects.filter(
                 vendedor=vendedor, ativo=True,
                 status_esteira__nome__iexact='INSTALADA',
@@ -474,7 +415,6 @@ class DashboardResumoView(APIView):
                 detalhes_listas['TOTAL_INSTALADAS'].append(obj_inst)
                 detalhes_listas['INSTALADA'].append(obj_inst)
 
-            # COMISSÃO 
             regras = RegraComissao.objects.filter(consultor=vendedor).select_related('plano')
             comissao_vendedor = 0.0
             for v in vendas_instaladas:
@@ -529,11 +469,6 @@ class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
     resource_name = 'cliente'
 
     def get_queryset(self):
-        """
-        Lógica Central de Filtragem de Vendas.
-        Define se o usuário vê apenas suas vendas ou a visão de equipe/geral.
-        """
-        # 1. Queryset Base (Otimizado)
         queryset = Venda.objects.filter(ativo=True).select_related(
             'vendedor', 'cliente', 'plano', 'forma_pagamento',
             'status_tratamento', 'status_esteira', 'status_comissionamento',
@@ -542,35 +477,17 @@ class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
         
         user = self.request.user
 
-        # ==============================================================================
-        # REGRA DE OURO: Ações de Detalhe (Editar, Ver, Excluir)
-        # Se estou tentando acessar UMA venda específica (pelo ID), as regras são mais simples.
-        # Não aplicamos filtros de data aqui para evitar o erro "No Venda matches..."
-        # ==============================================================================
         if self.action in ['retrieve', 'update', 'partial_update', 'destroy']:
-            # Superusuários, Diretoria e Admin veem TUDO sempre
             if user.is_superuser or is_member(user, ['Diretoria', 'Admin']):
                 return queryset
-            
-            # BackOffice vê TUDO (sem filtro de data na edição)
             if is_member(user, ['BackOffice']):
                 return queryset
-                
-            # Supervisor vê sua equipe + suas próprias vendas
             if is_member(user, ['Supervisor']):
                 liderados_ids = list(user.liderados.values_list('id', flat=True))
                 liderados_ids.append(user.id)
                 return queryset.filter(vendedor_id__in=liderados_ids)
-            
-            # Vendedor só vê as suas
             return queryset.filter(vendedor=user)
 
-        # ==============================================================================
-        # LÓGICA DE LISTAGEM (Tabelas, Filtros de URL, Dashboard)
-        # Aqui aplicamos filtros de View, Data e Flow.
-        # ==============================================================================
-        
-        # 1. Definição da Visão (View Type)
         view_type = self.request.query_params.get('view')
         flow = self.request.query_params.get('flow')
 
@@ -580,16 +497,13 @@ class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
             else:
                 view_type = 'minhas_vendas'
 
-        # 2. Aplicação da Visão
         if view_type == 'minhas_vendas':
             queryset = queryset.filter(vendedor=user)
 
         elif view_type == 'visao_equipe' or view_type == 'geral':
             if is_member(user, ['Diretoria', 'Admin']):
-                pass # Vê tudo
-            
+                pass 
             elif is_member(user, ['BackOffice']):
-                # Backoffice na listagem geral tem filtro padrão de data (mês atual) se não passar data
                 data_inicio_param = self.request.query_params.get('data_inicio')
                 if not data_inicio_param and self.action == 'list':
                     hoje = timezone.now()
@@ -598,17 +512,13 @@ class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
                         Q(data_criacao__gte=inicio_mes) | 
                         Q(data_instalacao__gte=inicio_mes)
                     )
-            
             elif is_member(user, ['Supervisor']):
                 liderados_ids = list(user.liderados.values_list('id', flat=True))
                 liderados_ids.append(user.id)
                 queryset = queryset.filter(vendedor_id__in=liderados_ids)
-            
             else:
-                # Se um vendedor tentar forçar 'geral', não vê nada
                 return queryset.none()
 
-        # 3. Filtros Específicos (Busca, Flow, Consultor)
         ordem_servico = self.request.query_params.get('ordem_servico')
         data_inicio_str = self.request.query_params.get('data_inicio')
         data_fim_str = self.request.query_params.get('data_fim')
@@ -640,7 +550,6 @@ class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
             except (ValueError, TypeError): 
                 pass
         
-        # Filtro de Data Padrão para Minhas Vendas (apenas visualização padrão)
         elif view_type == 'minhas_vendas' and not is_member(user, ['Diretoria', 'BackOffice', 'Admin']):
              hoje = now()
              inicio_mes = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -677,8 +586,6 @@ class ComissionamentoView(APIView):
         else:
             data_fim = datetime(ano, mes + 1, 1)
 
-        print(f"\n=== INICIANDO CÁLCULO DE COMISSÃO {mes}/{ano} ===")
-
         User = get_user_model()
         consultores = User.objects.filter(is_active=True).order_by('username')
         relatorio = []
@@ -688,8 +595,6 @@ class ComissionamentoView(APIView):
         churns_mes = ImportacaoChurn.objects.filter(anomes_retirada=anomes_str)
 
         for consultor in consultores:
-            print(f"\n--- Calculando para: {consultor.username} ---")
-            
             vendas = Venda.objects.filter(
                 vendedor=consultor,
                 ativo=True,
@@ -703,8 +608,6 @@ class ComissionamentoView(APIView):
             atingimento = (qtd_instaladas / meta * 100) if meta > 0 else 0
             bateu_meta = qtd_instaladas >= meta
             
-            print(f"Vendas Instaladas: {qtd_instaladas} | Meta: {meta} | Bateu Meta? {bateu_meta}")
-
             comissao_bruta = 0.0
             for v in vendas:
                 doc = v.cliente.cpf_cnpj if v.cliente else ''
@@ -718,21 +621,14 @@ class ComissionamentoView(APIView):
                     regra = next((r for r in todas_regras if r.plano_id == v.plano_id and r.tipo_cliente == tipo_cliente and r.tipo_venda == canal_vendedor and r.consultor is None), None)
                 
                 valor_item = 0.0
-                fonte_valor = "Nenhum"
 
                 if regra:
                     valor_item = float(regra.valor_acelerado if bateu_meta else regra.valor_base)
-                    fonte_valor = f"Regra (ID: {regra.id})"
                 else:
                     valor_item = 0.0
-                    fonte_valor = "Sem Regra Definida"
                 
                 comissao_bruta += valor_item
-                print(f" > Venda #{v.id} ({v.plano.nome}): +R${valor_item} [Fonte: {fonte_valor}]")
 
-            # --- CÁLCULO DOS DESCONTOS ---
-            
-            # 1. Boletos
             qtd_boleto = 0
             for v in vendas:
                 if v.forma_pagamento and 'BOLETO' in v.forma_pagamento.nome.upper():
@@ -740,24 +636,15 @@ class ComissionamentoView(APIView):
             
             valor_desc_boleto_unit = float(consultor.desconto_boleto or 0)
             desc_boleto_total = qtd_boleto * valor_desc_boleto_unit
-            if desc_boleto_total > 0:
-                print(f" > Desconto Boleto: {qtd_boleto} x {valor_desc_boleto_unit} = -{desc_boleto_total}")
 
-            # 2. Inclusão (Viabilidade)
             qtd_inclusao = vendas.filter(inclusao=True).count()
             valor_desc_inclusao_unit = float(consultor.desconto_inclusao_viabilidade or 0)
             desc_inclusao_total = qtd_inclusao * valor_desc_inclusao_unit
-            if desc_inclusao_total > 0:
-                print(f" > Desconto Inclusão: {qtd_inclusao} x {valor_desc_inclusao_unit} = -{desc_inclusao_total}")
 
-            # 3. Antecipação
             qtd_antecipacao = vendas.filter(antecipou_instalacao=True).count()
             valor_desc_antecipacao_unit = float(consultor.desconto_instalacao_antecipada or 0)
             desc_antecipacao_total = qtd_antecipacao * valor_desc_antecipacao_unit
-            if desc_antecipacao_total > 0:
-                print(f" > Desconto Antecipação: {qtd_antecipacao} x {valor_desc_antecipacao_unit} = -{desc_antecipacao_total}")
 
-            # 4. CNPJ (Adiantamento)
             qtd_cnpj = 0
             for v in vendas:
                 doc = v.cliente.cpf_cnpj if v.cliente else ''
@@ -766,16 +653,12 @@ class ComissionamentoView(APIView):
             
             valor_desc_cnpj_unit = float(consultor.adiantamento_cnpj or 0)
             desc_cnpj_total = qtd_cnpj * valor_desc_cnpj_unit
-            if desc_cnpj_total > 0:
-                print(f" > Desc. CNPJ: {qtd_cnpj} x {valor_desc_cnpj_unit} = -{desc_cnpj_total}")
 
             valor_churn_total = 0.0
             premiacao = 0.0 
             bonus = 0.0
             total_descontos = desc_boleto_total + desc_inclusao_total + desc_antecipacao_total + desc_cnpj_total + valor_churn_total
             valor_liquido = (comissao_bruta + premiacao + bonus) - total_descontos
-
-            print(f" = TOTAL FINAL {consultor.username}: Bruto {comissao_bruta} - Desc {total_descontos} = Liq {valor_liquido}")
 
             relatorio.append({
                 'consultor_id': consultor.id,
@@ -1143,7 +1026,6 @@ class GerarRelatorioPDFView(APIView):
 
         lista_final.sort(key=itemgetter('vendedor', 'cliente'))
 
-        # FIX: META TAG CHARSET UTF-8
         html_string = f"""
         <html>
         <head>
@@ -1207,7 +1089,6 @@ class GerarRelatorioPDFView(APIView):
         """
 
         result = BytesIO()
-        # FIX: ENCODING UTF-8
         pdf = pisa.pisaDocument(BytesIO(html_string.encode("UTF-8")), result, encoding='utf-8')
         
         if not pdf.err:
@@ -1215,3 +1096,221 @@ class GerarRelatorioPDFView(APIView):
             response['Content-Disposition'] = f'attachment; filename="extrato_comissao_{mes}_{ano}.pdf"'
             return response
         return Response({"error": "Erro ao gerar PDF"}, status=500)
+
+class EnviarExtratoEmailView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        try:
+            # 1. Receber filtros
+            ano = int(request.data.get('ano'))
+            mes = int(request.data.get('mes'))
+            consultor_id = request.data.get('consultor_id')
+            email_destino = request.data.get('email_destino') 
+
+            if not consultor_id:
+                return Response({"error": "Selecione um consultor."}, status=400)
+
+            User = get_user_model()
+            consultor = User.objects.get(id=consultor_id)
+            
+            target_email = email_destino or getattr(consultor, 'email', None)
+            
+            if not target_email:
+                return Response({"error": "Nenhum e-mail fornecido ou encontrado para este consultor."}, status=400)
+
+            # 2. Buscar Vendas 
+            data_inicio = datetime(ano, mes, 1)
+            if mes == 12: data_fim = datetime(ano + 1, 1, 1)
+            else: data_fim = datetime(ano, mes + 1, 1)
+
+            vendas = Venda.objects.filter(
+                ativo=True,
+                vendedor_id=consultor_id,
+                status_esteira__nome__iexact='INSTALADA',
+                data_instalacao__gte=data_inicio,
+                data_instalacao__lt=data_fim
+            ).select_related('plano', 'forma_pagamento', 'cliente')
+
+            if not vendas.exists():
+                return Response({"error": "Nenhuma venda instalada neste período para enviar."}, status=400)
+
+            # 3. Prepara dados para a tabela do e-mail
+            anomes_str = f"{ano}{mes:02d}"
+            churns = ImportacaoChurn.objects.filter(anomes_retirada=anomes_str)
+            churn_map = {c.numero_pedido: c for c in churns}
+
+            lista_detalhada = []
+            for v in vendas:
+                eh_dacc = "SIM" if v.forma_pagamento and "DÉBITO" in v.forma_pagamento.nome.upper() else "NÃO"
+                
+                chave_busca = v.ordem_servico or "SEM_OS"
+                dados_churn = churn_map.get(chave_busca)
+                
+                status_final = "ATIVO"
+                dt_churn = "-"
+                motivo_churn = "-"
+                
+                if dados_churn:
+                    status_final = "CHURN"
+                    dt_churn = dados_churn.dt_retirada.strftime('%d/%m/%Y') if dados_churn.dt_retirada else "S/D"
+                    motivo_churn = dados_churn.motivo_retirada or "Não informado"
+
+                # Tenta pegar dt_pedido, se não tiver, usa dt_criacao
+                dt_pedido = v.data_pedido.strftime('%d/%m/%Y') if v.data_pedido else v.data_criacao.strftime('%d/%m/%Y')
+                dt_inst = v.data_instalacao.strftime('%d/%m/%Y') if v.data_instalacao else "-"
+
+                lista_detalhada.append({
+                    'vendedor': v.vendedor.username.upper() if v.vendedor else 'SEM VENDEDOR',
+                    'cpf_cnpj': v.cliente.cpf_cnpj,
+                    'dacc': eh_dacc,
+                    'cliente': v.cliente.nome_razao_social.upper(),
+                    'plano': v.plano.nome.upper(),
+                    'dt_pedido': dt_pedido,
+                    'dt_inst': dt_inst,
+                    'os': v.ordem_servico or "-",
+                    'situacao': v.status_esteira.nome.upper() if v.status_esteira else "-",
+                    'dt_churn': dt_churn,
+                    'motivo_churn': motivo_churn,
+                    'churn_ativo': status_final,
+                    'color_style': 'color: red;' if status_final == 'CHURN' else ''
+                })
+            
+            lista_detalhada.sort(key=itemgetter('cliente'))
+
+            # 4. Gerar HTML do Corpo do E-mail (Tabela Detalhada)
+            html_content = f"""
+            <html>
+            <body style="font-family: Arial, sans-serif; font-size: 12px;">
+                <h2 style="color: #333;">Extrato de Comissionamento - {consultor.username.upper()}</h2>
+                <p>Referência: <strong>{mes}/{ano}</strong></p>
+                
+                <table border="1" cellpadding="4" cellspacing="0" style="border-collapse: collapse; width: 100%; font-size: 10px;">
+                    <thead>
+                        <tr style="background-color: #f2f2f2;">
+                            <th>VENDEDOR</th>
+                            <th>CPF/CNPJ</th>
+                            <th>DACC</th>
+                            <th>NOME CLIENTE</th>
+                            <th>PLANO</th>
+                            <th>DT PEDIDO</th>
+                            <th>DT INST</th>
+                            <th>O.S</th>
+                            <th>SITUAÇÃO</th>
+                            <th>DT CHURN</th>
+                            <th>MOTIVO CHURN</th>
+                            <th>STATUS</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            """
+            
+            for item in lista_detalhada:
+                html_content += f"""
+                    <tr style="{item['color_style']}">
+                        <td>{item['vendedor']}</td>
+                        <td>{item['cpf_cnpj']}</td>
+                        <td>{item['dacc']}</td>
+                        <td>{item['cliente'][:20]}</td> <td>{item['plano']}</td>
+                        <td>{item['dt_pedido']}</td>
+                        <td>{item['dt_inst']}</td>
+                        <td>{item['os']}</td>
+                        <td>{item['situacao']}</td>
+                        <td>{item['dt_churn']}</td>
+                        <td>{item['motivo_churn'][:20]}</td>
+                        <td><strong>{item['churn_ativo']}</strong></td>
+                    </tr>
+                """
+            
+            html_content += """
+                    </tbody>
+                </table>
+                <br>
+                <p>Segue em anexo o extrato detalhado em PDF.</p>
+                <p>Atenciosamente,<br>Equipe Financeira</p>
+            </body>
+            </html>
+            """
+
+            # 5. Gerar PDF em memória (Reutilizando lógica de dados, mas gerando HTML específico para PDF)
+            # (Aqui mantive a geração do PDF separada para garantir a formatação correta do anexo)
+            html_pdf = f"""
+            <html>
+            <head>
+                <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+                <style>
+                    @page {{ size: A4 landscape; margin: 1cm; }}
+                    body {{ font-family: Helvetica, sans-serif; font-size: 9px; }}
+                    table {{ width: 100%; border-collapse: collapse; }}
+                    th {{ background-color: #f2f2f2; border: 1px solid #ccc; padding: 4px; text-align: left; font-weight: bold; }}
+                    td {{ border: 1px solid #ccc; padding: 3px; }}
+                    h2 {{ text-align: center; color: #333; margin-bottom: 5px; }}
+                    .meta {{ text-align: center; font-size: 10px; margin-bottom: 15px; color: #666; }}
+                </style>
+            </head>
+            <body>
+                <h2>Extrato de Comissionamento - {mes}/{ano}</h2>
+                <div class="meta">Gerado em: {timezone.now().strftime('%d/%m/%Y %H:%M')} | Total Vendas: {len(lista_detalhada)}</div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>VENDEDOR</th>
+                            <th>CPF/CNPJ</th>
+                            <th>DACC</th>
+                            <th>CLIENTE</th>
+                            <th>PLANO</th>
+                            <th>DT VENDA</th>
+                            <th>DT INST</th>
+                            <th>O.S.</th>
+                            <th>STATUS</th>
+                            <th>DT CHURN</th>
+                            <th>MOTIVO</th>
+                            <th>SITUAÇÃO</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            """
+            for item in lista_detalhada:
+                html_pdf += f"""
+                <tr style="{item.get('color_style', '')}">
+                    <td>{item['vendedor']}</td>
+                    <td>{item['cpf_cnpj']}</td>
+                    <td>{item['dacc']}</td>
+                    <td>{item['cliente'][:25]}</td>
+                    <td>{item['plano']}</td>
+                    <td>{item['dt_pedido']}</td>
+                    <td>{item['dt_inst']}</td>
+                    <td>{item['os']}</td>
+                    <td>{item['situacao']}</td>
+                    <td>{item['dt_churn']}</td>
+                    <td>{item['motivo_churn'][:15]}</td>
+                    <td>{item['churn_ativo']}</td>
+                </tr>
+                """
+            html_pdf += "</tbody></table></body></html>"
+
+            pdf_buffer = BytesIO()
+            pdf_gen = pisa.pisaDocument(BytesIO(html_pdf.encode("UTF-8")), pdf_buffer, encoding='utf-8')
+            
+            if pdf_gen.err:
+                return Response({"error": "Erro interno ao gerar PDF para anexo."}, status=500)
+            
+            pdf_bytes = pdf_buffer.getvalue()
+
+            # 6. Enviar E-mail
+            subject = f"Extrato Comissionamento - {mes}/{ano} - {consultor.username}"
+            text_content = strip_tags(html_content)
+            
+            msg = EmailMultiAlternatives(subject, text_content, settings.DEFAULT_FROM_EMAIL, [target_email])
+            msg.attach_alternative(html_content, "text/html")
+            
+            filename = f"Extrato_{consultor.username}_{mes}_{ano}.pdf"
+            msg.attach(filename, pdf_bytes, 'application/pdf')
+            
+            msg.send()
+
+            return Response({"mensagem": f"E-mail enviado com sucesso para {target_email}!"})
+
+        except Exception as e:
+            logger.error(f"Erro ao enviar email: {e}")
+            return Response({"error": str(e)}, status=500)

@@ -24,17 +24,12 @@
     <header class="main-header">
         <div class="header-container">
             <a href="/"><img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo"></a>
-            
-            <button class="menu-toggle" id="menu-toggle" aria-label="Abrir menu">
-                <div class="bar"></div>
-                <div class="bar"></div>
-                <div class="bar"></div>
-            </button>
-
+            <button class="menu-toggle" id="menu-toggle"><div class="bar"></div><div class="bar"></div><div class="bar"></div></button>
             <nav class="main-nav" id="main-nav">
                 <ul>
-                    <li><a href="/">Voltar ao Site</a></li>
-                    <li><button id="logoutButton" class="nav-button logout-button">Sair do Sistema</button></li>
+                    <li><a href="/crm-vendas/" style="color: var(--cor-primaria);">Nova Venda</a></li>
+                    
+                    <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
                 </ul>
             </nav>
         </div>
