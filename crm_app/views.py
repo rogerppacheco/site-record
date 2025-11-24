@@ -156,50 +156,66 @@ class VendaViewSet(viewsets.ModelViewSet):
         Lógica Central de Filtragem de Vendas.
         Define se o usuário vê apenas suas vendas ou a visão de equipe/geral.
         """
-        queryset = super().get_queryset() # Traz Venda.objects.filter(ativo=True)
-        user = self.request.user
-        
-        # Otimização de consulta
-        queryset = queryset.select_related(
+        # 1. Queryset Base (Otimizado)
+        queryset = Venda.objects.filter(ativo=True).select_related(
             'vendedor', 'cliente', 'plano', 'forma_pagamento',
             'status_tratamento', 'status_esteira', 'status_comissionamento',
             'motivo_pendencia'
-        ).prefetch_related('historico_alteracoes__usuario')
+        ).prefetch_related('historico_alteracoes__usuario').order_by('-data_criacao')
+        
+        user = self.request.user
 
-        # --- DEFINIÇÃO INTELIGENTE DA VISÃO (VIEW TYPE) ---
+        # ==============================================================================
+        # REGRA DE OURO: PERMISSÃO DE EDIÇÃO/DETALHE
+        # Se a ação for recuperar (retrieve) ou editar (update) um item específico pelo ID,
+        # ignoramos os filtros de data e fluxo para evitar o erro 404.
+        # ==============================================================================
+        if self.action in ['retrieve', 'update', 'partial_update', 'destroy']:
+            # Admin, Diretoria e Backoffice podem editar TUDO
+            if user.is_superuser or is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
+                return queryset
+            
+            # Supervisor pode editar vendas dele e da equipe
+            if is_member(user, ['Supervisor']):
+                liderados_ids = list(user.liderados.values_list('id', flat=True))
+                liderados_ids.append(user.id)
+                return queryset.filter(vendedor_id__in=liderados_ids)
+            
+            # Vendedor só edita a dele
+            return queryset.filter(vendedor=user)
+
+        # ==============================================================================
+        # LÓGICA DE LISTAGEM (Tabelas e Filtros)
+        # ==============================================================================
         view_type = self.request.query_params.get('view')
         flow = self.request.query_params.get('flow')
 
         # Se não foi especificado o view_type na URL:
         if not view_type:
             # Se for um fluxo de gestão (Auditoria/Esteira) e o usuário for Gestor:
-            # Assume 'geral' (vê tudo) para não esconder vendas de outros vendedores.
             if flow and is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
                 view_type = 'geral'
             else:
                 # Caso contrário (Dashboard ou Vendedor), padrão é 'minhas_vendas'
                 view_type = 'minhas_vendas'
 
-        # --- REGRAS DE ESCOPO (HIERARQUIA) ---
+        # --- REGRAS DE ESCOPO PARA LISTAGEM ---
 
         if view_type == 'minhas_vendas':
             # REGRA 1: "Minhas Vendas"
-            # Filtra estritamente pelo usuário logado
             queryset = queryset.filter(vendedor=user)
 
-        else: # view_type == 'visao_equipe' ou 'geral'
+        elif view_type == 'visao_equipe' or view_type == 'geral':
             # REGRA 2: "Visão de Equipe / Geral"
             
-            # Se for Admin ou Diretoria, vê tudo (sem filtro de vendedor)
             if is_member(user, ['Diretoria', 'Admin']):
-                pass 
+                pass # Vê tudo
             
-            # Se for Backoffice
             elif is_member(user, ['BackOffice']):
-                # Regra: "minha equipe devem aparecer todas as vendas da empresa do mês atual"
+                # Backoffice na listagem geral tem filtro padrão de data (mês atual) se não passar data
                 data_inicio_param = self.request.query_params.get('data_inicio')
-                # Se não tem data na URL, aplica filtro de mês atual
-                if not data_inicio_param:
+                # Se não tem data na URL, aplica filtro de mês atual para não pesar a listagem
+                if not data_inicio_param and self.action == 'list':
                     hoje = timezone.now()
                     inicio_mes = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
                     queryset = queryset.filter(
@@ -207,14 +223,14 @@ class VendaViewSet(viewsets.ModelViewSet):
                         Q(data_instalacao__gte=inicio_mes)
                     )
             
-            # Se for Supervisor
             elif is_member(user, ['Supervisor']):
                 # Regra: "vendas de equipe aparecer todas as vendas de liderados por ele"
                 liderados_ids = list(user.liderados.values_list('id', flat=True))
+                liderados_ids.append(user.id) # Supervisor vê as dele também
                 queryset = queryset.filter(vendedor_id__in=liderados_ids)
             
-            # Se for Vendedor tentando acessar visão geral
             else:
+                # Se um vendedor tentar forçar 'geral', não vê nada
                 return queryset.none()
 
         # --- FILTROS DE URL (DATA, STATUS, FLOW) ---
@@ -255,8 +271,8 @@ class VendaViewSet(viewsets.ModelViewSet):
             except (ValueError, TypeError): 
                 pass
         
-        # Filtro de Data Padrão (Mês Atual) para "Minhas Vendas"
-        elif view_type == 'minhas_vendas' and not is_member(user, ['Diretoria', 'BackOffice', 'Admin']):
+        # Filtro de Data Padrão (Mês Atual) para "Minhas Vendas" (apenas se for listagem padrão)
+        elif view_type == 'minhas_vendas' and self.action == 'list' and not is_member(user, ['Diretoria', 'BackOffice', 'Admin']):
              hoje = now()
              inicio_mes = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
              queryset = queryset.filter(
@@ -496,13 +512,126 @@ class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
     resource_name = 'cliente'
 
     def get_queryset(self):
-        queryset = super().get_queryset().annotate(vendas_count=Count('vendas', filter=Q(vendas__ativo=True)))
-        search_query = self.request.query_params.get('search', None)
-        if search_query:
-            queryset = queryset.filter(
-                Q(cpf_cnpj__icontains=search_query) |
-                Q(nome_razao_social__icontains=search_query)
-            )
+        """
+        Lógica Central de Filtragem de Vendas.
+        Define se o usuário vê apenas suas vendas ou a visão de equipe/geral.
+        """
+        # 1. Queryset Base (Otimizado)
+        queryset = Venda.objects.filter(ativo=True).select_related(
+            'vendedor', 'cliente', 'plano', 'forma_pagamento',
+            'status_tratamento', 'status_esteira', 'status_comissionamento',
+            'motivo_pendencia'
+        ).prefetch_related('historico_alteracoes__usuario')
+        
+        user = self.request.user
+
+        # ==============================================================================
+        # REGRA DE OURO: Ações de Detalhe (Editar, Ver, Excluir)
+        # Se estou tentando acessar UMA venda específica (pelo ID), as regras são mais simples.
+        # Não aplicamos filtros de data aqui para evitar o erro "No Venda matches..."
+        # ==============================================================================
+        if self.action in ['retrieve', 'update', 'partial_update', 'destroy']:
+            # Superusuários, Diretoria e Admin veem TUDO sempre
+            if user.is_superuser or is_member(user, ['Diretoria', 'Admin']):
+                return queryset
+            
+            # BackOffice vê TUDO (sem filtro de data na edição)
+            if is_member(user, ['BackOffice']):
+                return queryset
+                
+            # Supervisor vê sua equipe + suas próprias vendas
+            if is_member(user, ['Supervisor']):
+                liderados_ids = list(user.liderados.values_list('id', flat=True))
+                liderados_ids.append(user.id)
+                return queryset.filter(vendedor_id__in=liderados_ids)
+            
+            # Vendedor só vê as suas
+            return queryset.filter(vendedor=user)
+
+        # ==============================================================================
+        # LÓGICA DE LISTAGEM (Tabelas, Filtros de URL, Dashboard)
+        # Aqui aplicamos filtros de View, Data e Flow.
+        # ==============================================================================
+        
+        # 1. Definição da Visão (View Type)
+        view_type = self.request.query_params.get('view')
+        flow = self.request.query_params.get('flow')
+
+        if not view_type:
+            if flow and is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
+                view_type = 'geral'
+            else:
+                view_type = 'minhas_vendas'
+
+        # 2. Aplicação da Visão
+        if view_type == 'minhas_vendas':
+            queryset = queryset.filter(vendedor=user)
+
+        elif view_type == 'visao_equipe' or view_type == 'geral':
+            if is_member(user, ['Diretoria', 'Admin']):
+                pass # Vê tudo
+            
+            elif is_member(user, ['BackOffice']):
+                # Backoffice na listagem geral tem filtro padrão de data (mês atual) se não passar data
+                data_inicio_param = self.request.query_params.get('data_inicio')
+                if not data_inicio_param and self.action == 'list':
+                    hoje = timezone.now()
+                    inicio_mes = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                    queryset = queryset.filter(
+                        Q(data_criacao__gte=inicio_mes) | 
+                        Q(data_instalacao__gte=inicio_mes)
+                    )
+            
+            elif is_member(user, ['Supervisor']):
+                liderados_ids = list(user.liderados.values_list('id', flat=True))
+                liderados_ids.append(user.id)
+                queryset = queryset.filter(vendedor_id__in=liderados_ids)
+            
+            else:
+                # Se um vendedor tentar forçar 'geral', não vê nada
+                return queryset.none()
+
+        # 3. Filtros Específicos (Busca, Flow, Consultor)
+        ordem_servico = self.request.query_params.get('ordem_servico')
+        data_inicio_str = self.request.query_params.get('data_inicio')
+        data_fim_str = self.request.query_params.get('data_fim')
+        consultor_id = self.request.query_params.get('consultor_id')
+        
+        if consultor_id:
+            if view_type != 'minhas_vendas':
+                queryset = queryset.filter(vendedor_id=consultor_id)
+
+        if flow == 'auditoria':
+            queryset = queryset.filter(status_tratamento__isnull=False, status_esteira__isnull=True)
+        elif flow == 'esteira':
+            queryset = queryset.filter(status_esteira__isnull=False, status_comissionamento__isnull=True).exclude(status_esteira__nome__iexact='Instalada')
+        elif flow == 'comissionamento':
+            queryset = queryset.filter(status_esteira__nome__iexact='Instalada').exclude(status_comissionamento__nome__iexact='Pago')
+
+        if ordem_servico:
+            queryset = queryset.filter(ordem_servico__icontains=ordem_servico)
+
+        if data_inicio_str and data_fim_str:
+            try:
+                data_inicio = datetime.strptime(data_inicio_str, '%Y-%m-%d').date()
+                data_fim = datetime.strptime(data_fim_str, '%Y-%m-%d').date()
+                data_fim_ajustada = data_fim + timedelta(days=1)
+                queryset = queryset.filter(
+                    Q(data_criacao__range=(data_inicio, data_fim_ajustada)) |
+                    Q(data_instalacao__range=(data_inicio, data_fim_ajustada))
+                )
+            except (ValueError, TypeError): 
+                pass
+        
+        # Filtro de Data Padrão para Minhas Vendas (apenas visualização padrão)
+        elif view_type == 'minhas_vendas' and not is_member(user, ['Diretoria', 'BackOffice', 'Admin']):
+             hoje = now()
+             inicio_mes = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+             queryset = queryset.filter(
+                Q(data_criacao__gte=inicio_mes) | 
+                Q(data_instalacao__gte=inicio_mes)
+             )
+                
         return queryset
 
 class ListaVendedoresView(APIView):

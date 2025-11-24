@@ -44,7 +44,7 @@
                     <h1 style="font-size: 1.8rem; margin: 0;">Auditoria</h1>
                     <p class="text-muted mb-0">Validação e qualidade das vendas.</p>
                 </div>
-                <button class="btn btn-outline-secondary" onclick="carregarVendas()">
+                <button class="btn btn-outline-secondary" onclick="carregarVendas()" id="btn-atualizar">
                     <i class="bi bi-arrow-clockwise"></i> Atualizar
                 </button>
             </div>
@@ -102,7 +102,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
-                    <button type="button" class="btn btn-primary" onclick="salvarAlteracoes()">Salvar Dados</button>
+                    <button type="button" class="btn btn-primary" id="btn-salvar-detalhes" onclick="salvarAlteracoes()">Salvar Dados</button>
                 </div>
             </div>
         </div>
@@ -143,7 +143,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" onclick="cancelarAgendamento()">Cancelar</button>
-                    <button type="button" class="btn btn-primary" onclick="salvarAgendamento()">Confirmar e Salvar</button>
+                    <button type="button" class="btn btn-primary" id="btn-salvar-agendamento" onclick="salvarAgendamento()">Confirmar e Salvar</button>
                 </div>
             </div>
         </div>
@@ -185,7 +185,7 @@
         }
 
         let vendas = [];
-        // Variáveis temporárias para o fluxo de Agendamento
+        // Variáveis temporárias
         let tempVendaId = null;
         let tempStatusId = null;
         let tempSelectElement = null;
@@ -199,8 +199,44 @@
             document.getElementById('edit-cep').addEventListener('blur', buscarCepEdit);
         });
 
+        // --- HELPER PARA EXIBIR ERROS DETALHADOS ---
+        function mostrarErroDetalhado(error, contexto = 'atualizar') {
+            console.error(`Erro ao ${contexto}:`, error);
+            
+            let mensagem = `Erro ao ${contexto}.`;
+            
+            if (error.response) {
+                // O servidor respondeu com um status de erro (4xx, 5xx)
+                mensagem += `\nStatus: ${error.response.status} (${error.response.statusText})`;
+                
+                if (error.response.data) {
+                    // Tenta extrair a mensagem de erro do Django/DRF
+                    if (error.response.data.detail) {
+                        mensagem += `\nDetalhe: ${error.response.data.detail}`;
+                    } else if (typeof error.response.data === 'object') {
+                        // Se for erro de validação de formulário (JSON)
+                        mensagem += `\n${JSON.stringify(error.response.data, null, 2).replace(/["{}]/g, '')}`;
+                    } else {
+                        mensagem += `\nResposta: ${String(error.response.data).substring(0, 100)}...`;
+                    }
+                }
+            } else if (error.request) {
+                // A requisição foi feita mas não houve resposta (Erro de rede)
+                mensagem += "\nSem resposta do servidor. Verifique sua conexão.";
+            } else {
+                mensagem += `\n${error.message}`;
+            }
+
+            alert(mensagem);
+        }
+
         async function carregarVendas() {
             const tbody = document.getElementById('tabela-auditoria-body');
+            const btn = document.getElementById('btn-atualizar');
+            
+            // Feedback visual de carregamento
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Atualizando...';
             tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>';
             
             try {
@@ -213,62 +249,62 @@
                 tbody.innerHTML = '';
                 if(vendas.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">Nenhuma venda para auditoria.</td></tr>';
-                    return;
-                }
+                } else {
+                    vendas.forEach(v => {
+                        const dataFmt = new Date(v.data_criacao).toLocaleDateString('pt-BR');
+                        
+                        let selectStatus = `<select class="form-select form-select-sm status-select" onchange="atualizarStatus(${v.id}, this)">`;
+                        selectStatus += `<option value="">Selecione...</option>`;
+                        statusOptions.forEach(s => {
+                            const selected = (v.status_tratamento && v.status_tratamento.id === s.id) ? 'selected' : '';
+                            selectStatus += `<option value="${s.id}" ${selected}>${s.nome}</option>`;
+                        });
+                        selectStatus += `</select>`;
 
-                vendas.forEach(v => {
-                    const dataFmt = new Date(v.data_criacao).toLocaleDateString('pt-BR');
-                    
-                    let selectStatus = `<select class="form-select form-select-sm status-select" onchange="atualizarStatus(${v.id}, this)">`;
-                    selectStatus += `<option value="">Selecione...</option>`;
-                    statusOptions.forEach(s => {
-                        const selected = (v.status_tratamento && v.status_tratamento.id === s.id) ? 'selected' : '';
-                        selectStatus += `<option value="${s.id}" ${selected}>${s.nome}</option>`;
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td class="fw-bold text-primary">#${v.id}</td>
+                            <td>${dataFmt}</td>
+                            <td><div class="fw-bold">${v.cliente.nome_razao_social}</div><div class="small text-muted">${v.cliente.cpf_cnpj}</div></td>
+                            <td>${v.vendedor.username}</td>
+                            <td>${selectStatus}</td>
+                            <td class="text-end">
+                                <button class="btn btn-sm btn-outline-secondary me-1" onclick="abrirDetalhes(${v.id})" title="Editar Dados"><i class="bi bi-pencil"></i></button>
+                                <button class="btn btn-sm btn-success" onclick="gerarAprovacao(${v.id})" title="Aprovar"><i class="bi bi-check-lg"></i></button>
+                            </td>
+                        `;
+                        tbody.appendChild(tr);
                     });
-                    selectStatus += `</select>`;
-
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td class="fw-bold text-primary">#${v.id}</td>
-                        <td>${dataFmt}</td>
-                        <td><div class="fw-bold">${v.cliente.nome_razao_social}</div><div class="small text-muted">${v.cliente.cpf_cnpj}</div></td>
-                        <td>${v.vendedor.username}</td>
-                        <td>${selectStatus}</td>
-                        <td class="text-end">
-                            <button class="btn btn-sm btn-outline-secondary me-1" onclick="abrirDetalhes(${v.id})" title="Editar Dados"><i class="bi bi-pencil"></i></button>
-                            <button class="btn btn-sm btn-success" onclick="gerarAprovacao(${v.id})" title="Aprovar"><i class="bi bi-check-lg"></i></button>
-                        </td>
-                    `;
-                    tbody.appendChild(tr);
-                });
+                }
             } catch (e) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Erro ao carregar.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Erro ao carregar vendas. Tente novamente.</td></tr>';
+                console.error(e);
+            } finally {
+                // Restaura o botão
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Atualizar';
             }
         }
 
-        // --- LÓGICA NOVA: DETECÇÃO DE STATUS E MODAL AGENDAMENTO ---
         async function atualizarStatus(id, selectElem) {
             const statusId = selectElem.value;
             const statusTexto = selectElem.options[selectElem.selectedIndex].text.toUpperCase();
 
-            // Se for CADASTRADA, interrompe e abre modal
             if (statusTexto === 'CADASTRADA') {
-                // Guarda dados para usar depois
                 tempVendaId = id;
                 tempStatusId = statusId;
                 tempSelectElement = selectElem;
                 
-                // Limpa e abre modal
                 document.getElementById('form-agendamento').reset();
                 document.getElementById('agenda-os').classList.remove('is-invalid');
                 modalAgendamento.show();
             } else {
-                // Se for qualquer outro status, salva direto
                 salvarStatusNoBanco(id, statusId);
             }
         }
 
         async function salvarAgendamento() {
+            const btn = document.getElementById('btn-salvar-agendamento');
             const os = document.getElementById('agenda-os').value.trim();
             const data = document.getElementById('agenda-data').value;
             const turno = document.getElementById('agenda-turno').value;
@@ -278,21 +314,22 @@
                 return;
             }
 
-            // VALIDAÇÃO DE O.S. DUPLICADA
+            btn.disabled = true;
+            btn.innerHTML = 'Salvando...';
+
             try {
                 const res = await apiClient.get(`/api/crm/vendas/?ordem_servico=${os}`);
-                // Se a lista retornada não for vazia, a O.S. já existe
-                // (Verifica se não é a mesma venda que estamos editando)
                 const duplicada = res.data.some(v => v.id !== tempVendaId);
                 
                 if (duplicada) {
                     document.getElementById('agenda-os').classList.add('is-invalid');
-                    return; // Para aqui
+                    btn.disabled = false;
+                    btn.innerHTML = 'Confirmar e Salvar';
+                    return; 
                 } else {
                     document.getElementById('agenda-os').classList.remove('is-invalid');
                 }
 
-                // Se passou, salva tudo
                 const dadosExtras = {
                     ordem_servico: os,
                     data_agendamento: data,
@@ -303,14 +340,15 @@
                 modalAgendamento.hide();
 
             } catch (e) {
-                alert("Erro ao validar O.S.");
-                console.error(e);
+                mostrarErroDetalhado(e, 'validar O.S.');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = 'Confirmar e Salvar';
             }
         }
 
         function cancelarAgendamento() {
             modalAgendamento.hide();
-            // Recarrega a tabela para voltar o select ao estado anterior
             carregarVendas(); 
         }
 
@@ -318,13 +356,19 @@
             try {
                 const payload = { status_tratamento: statusId, ...extras };
                 await apiClient.patch(`/api/crm/vendas/${id}/`, payload);
-                // Sucesso (opcional: recarregar tabela se quiser garantir sincronia)
+                
+                // Se tiver extras (agendamento), recarrega para garantir que tudo está sinc
+                if(Object.keys(extras).length > 0) {
+                    carregarVendas();
+                }
+                // Se for apenas status, não precisa recarregar tudo para ser mais rápido,
+                // pois o select já mudou visualmente.
+
             } catch(e) { 
-                alert('Erro ao atualizar status.'); 
-                carregarVendas(); // Reverte em caso de erro
+                mostrarErroDetalhado(e, 'atualizar status'); 
+                carregarVendas(); // Reverte a mudança visual em caso de erro
             }
         }
-        // -----------------------------------------------------------
 
         function abrirDetalhes(id) {
             const v = vendas.find(x => x.id === id);
@@ -349,7 +393,12 @@
         }
 
         async function salvarAlteracoes() {
+            const btn = document.getElementById('btn-salvar-detalhes');
             const id = document.getElementById('edit-id').value;
+            
+            btn.disabled = true;
+            btn.innerHTML = 'Salvando...';
+
             const body = {
                 telefone1: document.getElementById('edit-tel1').value,
                 telefone2: document.getElementById('edit-tel2').value,
@@ -367,13 +416,20 @@
                 await apiClient.patch(`/api/crm/vendas/${id}/`, body); 
                 modalDetalhes.hide(); 
                 carregarVendas(); 
-                alert('Salvo com sucesso!'); 
-            } catch(e){ alert('Erro ao salvar'); }
+                alert('Dados salvos com sucesso!'); 
+            } catch(e){ 
+                mostrarErroDetalhado(e, 'salvar alterações');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = 'Salvar Dados';
+            }
         }
         
         async function buscarCepEdit(e) {
             const cep = e.target.value.replace(/\D/g, '');
             if (cep.length === 8) {
+                // Mostra feedback visual simples (cursor de espera)
+                document.body.style.cursor = 'wait';
                 try {
                     const res = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
                     const d = await res.json();
@@ -384,6 +440,7 @@
                         document.getElementById('edit-estado').value = d.uf.toUpperCase();
                     }
                 } catch(e){}
+                document.body.style.cursor = 'default';
             }
         }
 
@@ -397,8 +454,11 @@
         }
         
         function copiarMensagem() { 
-            navigator.clipboard.writeText(document.getElementById('aprovacao-mensagem').value); 
-            alert('Copiado para a área de transferência!'); 
+            const txt = document.getElementById('aprovacao-mensagem');
+            txt.select();
+            navigator.clipboard.writeText(txt.value).then(() => {
+                alert('Copiado para a área de transferência!'); 
+            });
         }
 
         function logout() { localStorage.removeItem('accessToken'); window.location.href = '/'; }
