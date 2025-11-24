@@ -98,7 +98,17 @@
                 <div class="card border-0 shadow-none">
                     <div class="table-responsive">
                         <table class="table table-hover align-middle mb-0">
-                            <thead class="table-light"><tr><th>ID</th><th>Data</th><th>Cliente</th><th>Vendedor</th><th>Plano</th><th>Status Esteira</th><th class="text-end">Ações</th></tr></thead>
+                            <thead class="table-light">
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Data</th>
+                                    <th>Cliente</th>
+                                    <th>Vendedor</th>
+                                    <th>Plano</th>
+                                    <th>Status Esteira</th>
+                                    <th>Motivo Pendência</th> <th class="text-end">Ações</th>
+                                </tr>
+                            </thead>
                             <tbody id="tabela-vendas-body"></tbody>
                         </table>
                     </div>
@@ -316,7 +326,7 @@
         // --- FUNÇÃO DE CARREGAMENTO DE VENDAS (RECRIADA) ---
         async function carregarVendas() {
             const tbody = document.getElementById('tabela-vendas-body');
-            tbody.innerHTML = '<tr><td colspan="7" class="text-center">Carregando...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center">Carregando...</td></tr>';
 
             // Pegar valores dos filtros
             const inicio = document.getElementById('filtro-inicio').value;
@@ -336,7 +346,7 @@
                 tbody.innerHTML = '';
 
                 if (!vendas || vendas.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Nenhuma venda encontrada no período.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">Nenhuma venda encontrada no período.</td></tr>';
                     return;
                 }
 
@@ -356,6 +366,9 @@
                     const clienteNome = v.cliente ? (v.cliente.nome_razao_social || v.cliente.nome || v.cliente_nome) : (v.cliente_nome_razao_social || 'N/A');
                     const vendedorNome = v.vendedor ? (v.vendedor.username || v.vendedor.nome) : (v.vendedor_nome || 'N/A');
                     const planoNome = v.plano ? (v.plano.nome) : (v.plano_nome || 'N/A');
+                    
+                    // Lógica para extrair motivo da pendência
+                    const motivoPendencia = v.motivo_pendencia ? (v.motivo_pendencia.nome || v.motivo_pendencia) : '-';
 
                     const row = `
                         <tr>
@@ -365,6 +378,7 @@
                             <td>${vendedorNome}</td> 
                             <td>${planoNome}</td>
                             <td><span class="badge ${badgeClass}">${statusNome}</span></td>
+                            <td class="text-danger small fw-bold">${motivoPendencia}</td>
                             <td class="text-end">
                                 <button onclick="editarVenda(${v.id})" class="btn btn-sm btn-outline-primary me-1" title="Editar"><i class="bi bi-pencil"></i></button>
                                 <button onclick="excluirVenda(${v.id})" class="btn btn-sm btn-outline-danger" title="Excluir"><i class="bi bi-trash"></i></button>
@@ -376,7 +390,7 @@
 
             } catch (error) {
                 console.error(error);
-                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger">Erro ao carregar vendas. Verifique o console.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger">Erro ao carregar vendas. Verifique o console.</td></tr>';
             }
         }
         // -----------------------------------------------------
@@ -496,7 +510,20 @@
         function preencherFormularioCliente(cliente) { document.getElementById('input-cpf').value = cliente.cpf_cnpj; document.getElementById('input-nome').value = cliente.nome_razao_social; document.getElementById('input-email').value = cliente.email || ''; if(cliente.telefone1) document.getElementById('input-telefone').value = cliente.telefone1; if(cliente.telefone2) document.getElementById('input-telefone2').value = cliente.telefone2; if(cliente.nome_mae) document.getElementById('input-nome-mae').value = cliente.nome_mae; if(cliente.data_nascimento) document.getElementById('input-data-nascimento').value = cliente.data_nascimento; verificarRegraCNPJ(cliente.cpf_cnpj); }
         async function buscarRepresentante(cpf) { try { const res = await apiFetch(`/crm/clientes/?search=${cpf}`); if(res && res.length > 0) { const rep = res.find(cli => cli.cpf_cnpj.replace(/\D/g, '') === cpf.replace(/\D/g, '')); if (rep) document.getElementById('input-nome-rep').value = rep.nome_razao_social; } } catch(e){} }
         async function buscarCepNovaVenda(e) { const cep = e.target.value.replace(/\D/g, ''); if (cep.length === 8) { try { const res = await fetch(`https://viacep.com.br/ws/${cep}/json/`); const d = await res.json(); if(!d.erro) { document.getElementById('nova-logradouro').value = d.logradouro.toUpperCase(); document.getElementById('nova-bairro').value = d.bairro.toUpperCase(); document.getElementById('nova-cidade').value = d.localidade.toUpperCase(); document.getElementById('nova-estado').value = d.uf.toUpperCase(); } } catch(e){ } } }
-        async function carregarAuxiliares() { try { const [planos, formas, status] = await Promise.all([apiFetch('/crm/planos/'), apiFetch('/crm/formas-pagamento/'), apiFetch('/crm/status/')]); const selPlano = document.getElementById('select-plano'); selPlano.innerHTML = '<option value="">Selecione...</option>'; if(planos) planos.forEach(p => selPlano.innerHTML += `<option value="${p.id}">${p.nome} - R$${p.valor}</option>`); const selPag = document.getElementById('select-pagamento'); selPag.innerHTML = '<option value="">Selecione...</option>'; if(formas) formas.forEach(f => selPag.innerHTML += `<option value="${f.id}">${f.nome}</option>`); const selStatus = document.getElementById('select-status-esteira'); selStatus.innerHTML = '<option value="">Selecione...</option>'; if(status) status.forEach(s => selStatus.innerHTML += `<option value="${s.id}">${s.nome}</option>`); } catch(e) {} }
+        async function carregarAuxiliares() { 
+            try { 
+                // --- CORREÇÃO AQUI: Filtra apenas status de Esteira para evitar o erro 'pk inválido' ---
+                const [planos, formas, status] = await Promise.all([
+                    apiFetch('/crm/planos/'), 
+                    apiFetch('/crm/formas-pagamento/'), 
+                    apiFetch('/crm/status/?tipo=Esteira') 
+                ]); 
+                
+                const selPlano = document.getElementById('select-plano'); selPlano.innerHTML = '<option value="">Selecione...</option>'; if(planos) planos.forEach(p => selPlano.innerHTML += `<option value="${p.id}">${p.nome} - R$${p.valor}</option>`); 
+                const selPag = document.getElementById('select-pagamento'); selPag.innerHTML = '<option value="">Selecione...</option>'; if(formas) formas.forEach(f => selPag.innerHTML += `<option value="${f.id}">${f.nome}</option>`); 
+                const selStatus = document.getElementById('select-status-esteira'); selStatus.innerHTML = '<option value="">Selecione...</option>'; if(status) status.forEach(s => selStatus.innerHTML += `<option value="${s.id}">${s.nome}</option>`); 
+            } catch(e) {} 
+        }
 
         async function editarVenda(id) {
             try {

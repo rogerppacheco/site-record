@@ -44,10 +44,7 @@
                     <h1 style="font-size: 1.8rem; margin: 0;">Auditoria</h1>
                     <p class="text-muted mb-0">Validação e qualidade das vendas.</p>
                 </div>
-                <button class="btn btn-outline-secondary" onclick="carregarVendas()" id="btn-atualizar">
-                    <i class="bi bi-arrow-clockwise"></i> Atualizar
-                </button>
-            </div>
+                </div>
 
             <div class="card border-0 shadow-none">
                 <div class="table-responsive">
@@ -185,10 +182,10 @@
         }
 
         let vendas = [];
-        // Variáveis temporárias
         let tempVendaId = null;
         let tempStatusId = null;
         let tempSelectElement = null;
+        let updateInterval;
 
         const modalDetalhes = new bootstrap.Modal(document.getElementById('modal-detalhes'));
         const modalAgendamento = new bootstrap.Modal(document.getElementById('modal-agendamento'));
@@ -197,47 +194,45 @@
         document.addEventListener('DOMContentLoaded', () => {
             carregarVendas();
             document.getElementById('edit-cep').addEventListener('blur', buscarCepEdit);
+
+            // --- ATUALIZAÇÃO AUTOMÁTICA ---
+            updateInterval = setInterval(() => {
+                const isModalOpen = document.querySelector('.modal.show');
+                const isSelectFocused = document.activeElement && document.activeElement.tagName === 'SELECT';
+                
+                // Só atualiza se não tiver modal aberto E o usuário não estiver mexendo num select
+                if (!isModalOpen && !isSelectFocused) {
+                    carregarVendas(true); 
+                }
+            }, 5000);
         });
 
         // --- HELPER PARA EXIBIR ERROS DETALHADOS ---
         function mostrarErroDetalhado(error, contexto = 'atualizar') {
             console.error(`Erro ao ${contexto}:`, error);
-            
             let mensagem = `Erro ao ${contexto}.`;
-            
             if (error.response) {
-                // O servidor respondeu com um status de erro (4xx, 5xx)
                 mensagem += `\nStatus: ${error.response.status} (${error.response.statusText})`;
-                
                 if (error.response.data) {
-                    // Tenta extrair a mensagem de erro do Django/DRF
                     if (error.response.data.detail) {
                         mensagem += `\nDetalhe: ${error.response.data.detail}`;
                     } else if (typeof error.response.data === 'object') {
-                        // Se for erro de validação de formulário (JSON)
                         mensagem += `\n${JSON.stringify(error.response.data, null, 2).replace(/["{}]/g, '')}`;
                     } else {
                         mensagem += `\nResposta: ${String(error.response.data).substring(0, 100)}...`;
                     }
                 }
-            } else if (error.request) {
-                // A requisição foi feita mas não houve resposta (Erro de rede)
-                mensagem += "\nSem resposta do servidor. Verifique sua conexão.";
-            } else {
-                mensagem += `\n${error.message}`;
             }
-
             alert(mensagem);
         }
 
-        async function carregarVendas() {
+        async function carregarVendas(silent = false) {
             const tbody = document.getElementById('tabela-auditoria-body');
-            const btn = document.getElementById('btn-atualizar');
             
-            // Feedback visual de carregamento
-            btn.disabled = true;
-            btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Atualizando...';
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>';
+            // Só mostra loading se NÃO for silencioso (primeira carga)
+            if (!silent) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>';
+            }
             
             try {
                 const statusRes = await apiClient.get('/api/crm/status/?tipo=Tratamento');
@@ -246,10 +241,12 @@
                 const res = await apiClient.get('/api/crm/vendas/?flow=auditoria');
                 vendas = res.data;
 
-                tbody.innerHTML = '';
+                // Se não for silent, limpa. Se for silent, só substitui.
                 if(vendas.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">Nenhuma venda para auditoria.</td></tr>';
                 } else {
+                    // Limpa antes de recriar para evitar duplicação visual rápida
+                    tbody.innerHTML = '';
                     vendas.forEach(v => {
                         const dataFmt = new Date(v.data_criacao).toLocaleDateString('pt-BR');
                         
@@ -277,12 +274,8 @@
                     });
                 }
             } catch (e) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Erro ao carregar vendas. Tente novamente.</td></tr>';
+                if (!silent) tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Erro ao carregar vendas. Tente novamente.</td></tr>';
                 console.error(e);
-            } finally {
-                // Restaura o botão
-                btn.disabled = false;
-                btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Atualizar';
             }
         }
 
@@ -349,7 +342,7 @@
 
         function cancelarAgendamento() {
             modalAgendamento.hide();
-            carregarVendas(); 
+            carregarVendas(true); 
         }
 
         async function salvarStatusNoBanco(id, statusId, extras = {}) {
@@ -357,16 +350,12 @@
                 const payload = { status_tratamento: statusId, ...extras };
                 await apiClient.patch(`/api/crm/vendas/${id}/`, payload);
                 
-                // Se tiver extras (agendamento), recarrega para garantir que tudo está sinc
                 if(Object.keys(extras).length > 0) {
-                    carregarVendas();
+                    carregarVendas(true);
                 }
-                // Se for apenas status, não precisa recarregar tudo para ser mais rápido,
-                // pois o select já mudou visualmente.
-
             } catch(e) { 
                 mostrarErroDetalhado(e, 'atualizar status'); 
-                carregarVendas(); // Reverte a mudança visual em caso de erro
+                carregarVendas(true); 
             }
         }
 
@@ -415,7 +404,7 @@
             try { 
                 await apiClient.patch(`/api/crm/vendas/${id}/`, body); 
                 modalDetalhes.hide(); 
-                carregarVendas(); 
+                carregarVendas(true); 
                 alert('Dados salvos com sucesso!'); 
             } catch(e){ 
                 mostrarErroDetalhado(e, 'salvar alterações');
@@ -428,7 +417,6 @@
         async function buscarCepEdit(e) {
             const cep = e.target.value.replace(/\D/g, '');
             if (cep.length === 8) {
-                // Mostra feedback visual simples (cursor de espera)
                 document.body.style.cursor = 'wait';
                 try {
                     const res = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
