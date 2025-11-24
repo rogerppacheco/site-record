@@ -269,22 +269,40 @@ class VendaViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
+        # Log para saber quem está tentando criar
+        logger.info(f"[DEBUG VENDA] Iniciando criação de venda. Usuário: {self.request.user.username}")
+
         cpf_cnpj = serializer.validated_data.pop('cliente_cpf_cnpj')
         nome = serializer.validated_data.pop('cliente_nome_razao_social')
         email = serializer.validated_data.pop('cliente_email', None)
+        
         cliente, created = Cliente.objects.get_or_create(
             cpf_cnpj=cpf_cnpj,
             defaults={'nome_razao_social': nome, 'email': email}
         )
+        
         if not created:
             cliente.nome_razao_social = nome
             if email: cliente.email = email
             cliente.save()
+        
+        status_inicial = None
         try:
+            # Tenta buscar o status e loga o resultado
             status_inicial = StatusCRM.objects.get(nome__iexact="SEM TRATAMENTO", tipo__iexact="Tratamento")
+            logger.info(f"[DEBUG VENDA] Status 'SEM TRATAMENTO' encontrado: ID {status_inicial.id}")
         except StatusCRM.DoesNotExist:
+            # AQUI ESTÁ O PULO DO GATO: Se cair aqui, o log vai te avisar
+            logger.error(f"[DEBUG VENDA] ALERTA CRÍTICO: Status 'SEM TRATAMENTO' (tipo Tratamento) NÃO foi encontrado no banco para o usuário {self.request.user.username}!")
             status_inicial = None
-        serializer.save(vendedor=self.request.user, cliente=cliente, status_tratamento=status_inicial)
+        except Exception as e:
+            logger.error(f"[DEBUG VENDA] Erro inesperado ao buscar status inicial: {str(e)}")
+            status_inicial = None
+
+        # Salva a venda e captura o objeto criado
+        venda_criada = serializer.save(vendedor=self.request.user, cliente=cliente, status_tratamento=status_inicial)
+        
+        logger.info(f"[DEBUG VENDA] Venda criada com Sucesso. ID: {venda_criada.id} | Status Definido: {venda_criada.status_tratamento}")
 
     def perform_update(self, serializer):
         serializer.save(request=self.request)
