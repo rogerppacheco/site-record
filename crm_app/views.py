@@ -271,7 +271,7 @@ class VendaViewSet(viewsets.ModelViewSet):
             except (ValueError, TypeError): 
                 pass
         
-        # Filtro de Data Padrão (Mês Atual) para "Minhas Vendas" (apenas se for listagem padrão)
+        # Filtro de Data Padrão para Minhas Vendas (apenas se for listagem padrão)
         elif view_type == 'minhas_vendas' and self.action == 'list' and not is_member(user, ['Diretoria', 'BackOffice', 'Admin']):
              hoje = now()
              inicio_mes = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -296,7 +296,7 @@ class VendaViewSet(viewsets.ModelViewSet):
             if email: cliente.email = email
             cliente.save()
             
-        # --- LÓGICA DE STATUS INICIAL (Mantida a correção anterior) ---
+        # --- LÓGICA DE STATUS INICIAL ---
         status_inicial = StatusCRM.objects.filter(nome__iexact="SEM TRATAMENTO", tipo__iexact="Tratamento").first()
         
         if not status_inicial:
@@ -310,10 +310,27 @@ class VendaViewSet(viewsets.ModelViewSet):
         status_esteira_antes = venda_antes.status_esteira
         status_tratamento_antes = venda_antes.status_tratamento
         
-        # 2. Salva a alteração
-        venda_atualizada = serializer.save()
+        # --- 2. LÓGICA DE LIMPEZA DE DADOS (NOVA) ---
+        # Verifica se o status_esteira está sendo alterado
+        novo_status = serializer.validated_data.get('status_esteira')
+        extra_updates = {}
+
+        if novo_status:
+            nome_status = novo_status.nome.upper()
+            
+            # Regra 1: Se não estiver em Pendência, limpa o motivo
+            if 'PENDEN' not in nome_status and 'PENDÊN' not in nome_status:
+                extra_updates['motivo_pendencia'] = None
+            
+            # Regra 2: Se não estiver Agendado E NEM Instalada, limpa data e turno (preserva histórico se instalada)
+            if 'AGENDADO' not in nome_status and 'INSTALADA' not in nome_status:
+                extra_updates['data_agendamento'] = None
+                extra_updates['periodo_agendamento'] = None
+
+        # 3. Salva a alteração (aplicando as limpezas)
+        venda_atualizada = serializer.save(**extra_updates)
         
-        # 3. Gera histórico se houve mudança de status
+        # 4. Gera histórico se houve mudança de status
         alteracoes = {}
         
         # Verifica mudança na Esteira
