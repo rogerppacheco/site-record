@@ -153,13 +153,8 @@ class VendaViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """
-        Lógica Central de Filtragem de Vendas com base nas regras:
-        - Minhas Vendas: Somente vendas do usuário (Vendedor, Supervisor, Backoffice).
-        - Visão de Equipe:
-            * Vendedor: Vazio.
-            * Supervisor: Apenas vendas dos LIDERADOS.
-            * Backoffice: Todas as vendas da empresa (Mês Atual).
-            * Admin/Diretoria: Todas as vendas.
+        Lógica Central de Filtragem de Vendas.
+        Define se o usuário vê apenas suas vendas ou a visão de equipe/geral.
         """
         queryset = super().get_queryset() # Traz Venda.objects.filter(ativo=True)
         user = self.request.user
@@ -171,21 +166,31 @@ class VendaViewSet(viewsets.ModelViewSet):
             'motivo_pendencia'
         ).prefetch_related('historico_alteracoes__usuario')
 
-        # Parâmetro que define se estamos na aba "Minhas Vendas" ou "Visão de Equipe"
-        # O frontend deve enviar ?view=minhas_vendas ou ?view=visao_equipe (ou 'geral')
-        view_type = self.request.query_params.get('view', 'minhas_vendas')
+        # --- DEFINIÇÃO INTELIGENTE DA VISÃO (VIEW TYPE) ---
+        view_type = self.request.query_params.get('view')
+        flow = self.request.query_params.get('flow')
+
+        # Se não foi especificado o view_type na URL:
+        if not view_type:
+            # Se for um fluxo de gestão (Auditoria/Esteira) e o usuário for Gestor:
+            # Assume 'geral' (vê tudo) para não esconder vendas de outros vendedores.
+            if flow and is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
+                view_type = 'geral'
+            else:
+                # Caso contrário (Dashboard ou Vendedor), padrão é 'minhas_vendas'
+                view_type = 'minhas_vendas'
 
         # --- REGRAS DE ESCOPO (HIERARQUIA) ---
 
         if view_type == 'minhas_vendas':
             # REGRA 1: "Minhas Vendas"
-            # Vendedor, Supervisor e Backoffice só veem suas próprias vendas aqui.
+            # Filtra estritamente pelo usuário logado
             queryset = queryset.filter(vendedor=user)
 
         else: # view_type == 'visao_equipe' ou 'geral'
-            # REGRA 2: "Visão de Equipe"
+            # REGRA 2: "Visão de Equipe / Geral"
             
-            # Se for Admin ou Diretoria, vê tudo
+            # Se for Admin ou Diretoria, vê tudo (sem filtro de vendedor)
             if is_member(user, ['Diretoria', 'Admin']):
                 pass 
             
@@ -193,9 +198,9 @@ class VendaViewSet(viewsets.ModelViewSet):
             elif is_member(user, ['BackOffice']):
                 # Regra: "minha equipe devem aparecer todas as vendas da empresa do mês atual"
                 data_inicio_param = self.request.query_params.get('data_inicio')
+                # Se não tem data na URL, aplica filtro de mês atual
                 if not data_inicio_param:
                     hoje = timezone.now()
-                    # CORREÇÃO: Filtra Mês Atual usando Created OR Installed para não perder dados
                     inicio_mes = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
                     queryset = queryset.filter(
                         Q(data_criacao__gte=inicio_mes) | 
@@ -208,9 +213,8 @@ class VendaViewSet(viewsets.ModelViewSet):
                 liderados_ids = list(user.liderados.values_list('id', flat=True))
                 queryset = queryset.filter(vendedor_id__in=liderados_ids)
             
-            # Se for Vendedor
+            # Se for Vendedor tentando acessar visão geral
             else:
-                # Vendedor não tem visão de equipe
                 return queryset.none()
 
         # --- FILTROS DE URL (DATA, STATUS, FLOW) ---
@@ -219,15 +223,13 @@ class VendaViewSet(viewsets.ModelViewSet):
         data_inicio_str = self.request.query_params.get('data_inicio')
         data_fim_str = self.request.query_params.get('data_fim')
         consultor_id = self.request.query_params.get('consultor_id')
-        flow = self.request.query_params.get('flow')
-
+        
         # Filtro por Consultor Específico
         if consultor_id:
             if view_type != 'minhas_vendas':
                 queryset = queryset.filter(vendedor_id=consultor_id)
 
         # Filtros de Fluxo (Esteira, Auditoria, Comissionamento)
-        # Importante: Só aplicar exclusões se o frontend solicitar explicitamente o fluxo
         if flow == 'auditoria':
             queryset = queryset.filter(status_tratamento__isnull=False, status_esteira__isnull=True)
         elif flow == 'esteira':
@@ -239,7 +241,7 @@ class VendaViewSet(viewsets.ModelViewSet):
         if ordem_servico:
             queryset = queryset.filter(ordem_servico__icontains=ordem_servico)
 
-        # Filtro de Data Personalizado (se enviado pela URL)
+        # Filtro de Data Personalizado
         if data_inicio_str and data_fim_str:
             try:
                 data_inicio = datetime.strptime(data_inicio_str, '%Y-%m-%d').date()
@@ -253,14 +255,10 @@ class VendaViewSet(viewsets.ModelViewSet):
             except (ValueError, TypeError): 
                 pass
         
-        # Filtro de Data Padrão (Mês Atual) se não for gestor e não enviou data
+        # Filtro de Data Padrão (Mês Atual) para "Minhas Vendas"
         elif view_type == 'minhas_vendas' and not is_member(user, ['Diretoria', 'BackOffice', 'Admin']):
-             # CORREÇÃO CRÍTICA:
-             # O padrão agora é buscar vendas criadas OU instaladas neste mês.
-             # Isso resolve o problema de vendas criadas mês passado mas instaladas agora.
              hoje = now()
              inicio_mes = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-             
              queryset = queryset.filter(
                 Q(data_criacao__gte=inicio_mes) | 
                 Q(data_instalacao__gte=inicio_mes)
@@ -269,9 +267,6 @@ class VendaViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
-        # Log para saber quem está tentando criar
-        logger.info(f"[DEBUG VENDA] Iniciando criação de venda. Usuário: {self.request.user.username}")
-
         cpf_cnpj = serializer.validated_data.pop('cliente_cpf_cnpj')
         nome = serializer.validated_data.pop('cliente_nome_razao_social')
         email = serializer.validated_data.pop('cliente_email', None)
@@ -280,29 +275,18 @@ class VendaViewSet(viewsets.ModelViewSet):
             cpf_cnpj=cpf_cnpj,
             defaults={'nome_razao_social': nome, 'email': email}
         )
-        
         if not created:
             cliente.nome_razao_social = nome
             if email: cliente.email = email
             cliente.save()
+            
+        # --- LÓGICA DE STATUS INICIAL (Mantida a correção anterior) ---
+        status_inicial = StatusCRM.objects.filter(nome__iexact="SEM TRATAMENTO", tipo__iexact="Tratamento").first()
         
-        status_inicial = None
-        try:
-            # Tenta buscar o status e loga o resultado
-            status_inicial = StatusCRM.objects.get(nome__iexact="SEM TRATAMENTO", tipo__iexact="Tratamento")
-            logger.info(f"[DEBUG VENDA] Status 'SEM TRATAMENTO' encontrado: ID {status_inicial.id}")
-        except StatusCRM.DoesNotExist:
-            # AQUI ESTÁ O PULO DO GATO: Se cair aqui, o log vai te avisar
-            logger.error(f"[DEBUG VENDA] ALERTA CRÍTICO: Status 'SEM TRATAMENTO' (tipo Tratamento) NÃO foi encontrado no banco para o usuário {self.request.user.username}!")
-            status_inicial = None
-        except Exception as e:
-            logger.error(f"[DEBUG VENDA] Erro inesperado ao buscar status inicial: {str(e)}")
-            status_inicial = None
+        if not status_inicial:
+            status_inicial = StatusCRM.objects.filter(tipo__iexact="Tratamento").first()
 
-        # Salva a venda e captura o objeto criado
-        venda_criada = serializer.save(vendedor=self.request.user, cliente=cliente, status_tratamento=status_inicial)
-        
-        logger.info(f"[DEBUG VENDA] Venda criada com Sucesso. ID: {venda_criada.id} | Status Definido: {venda_criada.status_tratamento}")
+        serializer.save(vendedor=self.request.user, cliente=cliente, status_tratamento=status_inicial)
 
     def perform_update(self, serializer):
         serializer.save(request=self.request)
@@ -373,7 +357,6 @@ class DashboardResumoView(APIView):
         exibir_comissao = True 
 
         for vendedor in usuarios_para_calcular:
-            # CORREÇÃO: Campo correto é meta_comissao, não meta_vendas
             meta_individual = getattr(vendedor, 'meta_comissao', 0) or 0
             meta_display += float(meta_individual)
 
@@ -434,15 +417,14 @@ class DashboardResumoView(APIView):
                 
                 regra_encontrada = None
                 for r in regras:
-                    # Verifica regra com base no plano e cliente (IGNORANDO O CANAL CONFORME SOLICITADO)
-                    if r.plano.id == v.plano.id and r.tipo_cliente == tipo_cliente_venda:
+                    canal_vendedor = getattr(vendedor, 'canal', 'PAP') or 'PAP'
+                    if r.plano.id == v.plano.id and r.tipo_cliente == tipo_cliente_venda and r.tipo_venda == canal_vendedor:
                         regra_encontrada = r
                         break
                 
                 if regra_encontrada:
                     valor_item = float(regra_encontrada.valor_acelerado if bateu_meta else regra_encontrada.valor_base)
                 else:
-                    # Se não tem regra, não paga comissão (ou 0.0) - Não usa mais a base do plano (empresa)
                     valor_item = 0.0
                 
                 comissao_vendedor += valor_item
@@ -547,13 +529,12 @@ class ComissionamentoView(APIView):
                 doc = v.cliente.cpf_cnpj if v.cliente else ''
                 doc_limpo = ''.join(filter(str.isdigit, doc))
                 tipo_cliente = 'CNPJ' if len(doc_limpo) > 11 else 'CPF'
+                canal_vendedor = getattr(consultor, 'canal', 'PAP') or 'PAP'
                 
-                # 1. Tenta achar regra específica do consultor (IGNORANDO CANAL)
-                regra = next((r for r in todas_regras if r.plano_id == v.plano_id and r.tipo_cliente == tipo_cliente and r.consultor_id == consultor.id), None)
+                regra = next((r for r in todas_regras if r.plano_id == v.plano_id and r.tipo_cliente == tipo_cliente and r.tipo_venda == canal_vendedor and r.consultor_id == consultor.id), None)
                 
-                # 2. Se não achar, tenta regra geral (sem consultor) (IGNORANDO CANAL)
                 if not regra:
-                    regra = next((r for r in todas_regras if r.plano_id == v.plano_id and r.tipo_cliente == tipo_cliente and r.consultor is None), None)
+                    regra = next((r for r in todas_regras if r.plano_id == v.plano_id and r.tipo_cliente == tipo_cliente and r.tipo_venda == canal_vendedor and r.consultor is None), None)
                 
                 valor_item = 0.0
                 fonte_valor = "Nenhum"
@@ -562,14 +543,13 @@ class ComissionamentoView(APIView):
                     valor_item = float(regra.valor_acelerado if bateu_meta else regra.valor_base)
                     fonte_valor = f"Regra (ID: {regra.id})"
                 else:
-                    # Se não achou regra, valor é 0 (conforme solicitado, não usa valor da empresa)
                     valor_item = 0.0
                     fonte_valor = "Sem Regra Definida"
                 
                 comissao_bruta += valor_item
                 print(f" > Venda #{v.id} ({v.plano.nome}): +R${valor_item} [Fonte: {fonte_valor}]")
 
-            # --- CÁLCULO DOS DESCONTOS (CORRIGIDO) ---
+            # --- CÁLCULO DOS DESCONTOS ---
             
             # 1. Boletos
             qtd_boleto = 0
