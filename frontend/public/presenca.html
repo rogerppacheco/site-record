@@ -118,6 +118,11 @@
         .nav-tabs .nav-link { color: #666; font-weight: 600; cursor: pointer; }
         .nav-tabs .nav-link.active { color: var(--cor-primaria); border-bottom: 3px solid var(--cor-primaria); }
 
+        /* GARANTIA DE OCULTAÇÃO NO CSS */
+        .restricted-access {
+            display: none !important;
+        }
+
         /* --- RESPONSIVIDADE --- */
         @media (max-width: 768px) {
             .system-container {
@@ -164,11 +169,12 @@
                     <p class="text-muted mb-0">Gerencie a presença diária da equipe.</p>
                 </div>
                 
-                <div id="container-filtro-data" class="d-flex gap-2">
+                <div id="container-filtro-data" class="gap-2 restricted-access">
                     <input type="date" id="data-presenca" class="form-control" onchange="carregarDadosIniciais()">
                     <button class="btn btn-outline-secondary" onclick="carregarDadosIniciais()"><i class="bi bi-arrow-clockwise"></i></button>
                 </div>
-                <div id="display-data-hoje" class="d-none fw-bold text-primary align-self-center">
+
+                <div id="display-data-hoje" class="fw-bold text-primary align-self-center">
                     <i class="bi bi-calendar-event"></i> <span id="texto-data-fixa"></span>
                 </div>
             </div>
@@ -177,7 +183,7 @@
                 <li class="nav-item">
                     <a class="nav-link active" onclick="switchTab('minha-equipe', this)">Minha Equipe</a>
                 </li>
-                <li class="nav-item" id="tab-todos">
+                <li class="nav-item restricted-access" id="tab-todos">
                     <a class="nav-link" onclick="switchTab('todos-usuarios', this)">Todos os Usuários</a>
                 </li>
             </ul>
@@ -226,11 +232,15 @@
         if(!token) window.location.href = '/';
 
         const decoded = jwt_decode(token);
-        const userRole = decoded.user_role || decoded.perfil || 'Vendedor';
+        // Normaliza o perfil para garantir comparação correta
+        const userRole = (decoded.user_role || decoded.perfil || 'Vendedor');
         const isSuperuser = decoded.is_superuser || false;
 
+        // --- DEBUG NO CONSOLE (F12) PARA VOCÊ CONFERIR ---
+        console.log("Perfil Detectado:", userRole);
+        console.log("É Superusuário?", isSuperuser);
+
         // Lógica de Permissão para Visualizar Botões de Edição
-        // Apenas Diretoria, Admin e Superusuário podem alterar/excluir
         const isGestorSupremo = isSuperuser || userRole === 'Diretoria' || userRole === 'Admin';
 
         if (userRole === 'Vendedor' && !isSuperuser) {
@@ -252,17 +262,30 @@
             const inputData = document.getElementById('data-presenca');
             inputData.valueAsDate = hoje;
 
-            const isDiretoriaOrAdmin = (userRole === 'Diretoria' || userRole === 'Admin' || isSuperuser || userRole === 'BackOffice');
+            // --- LÓGICA RESTRITIVA ---
+            // Se for superusuário (Roger ID 1), ele VAI entrar aqui.
+            const isDiretoriaOrAdmin = (userRole === 'Diretoria' || userRole === 'Admin' || isSuperuser);
 
-            if (!isDiretoriaOrAdmin) {
-                document.getElementById('container-filtro-data').style.display = 'none';
-                document.getElementById('display-data-hoje').classList.remove('d-none');
-                document.getElementById('texto-data-fixa').textContent = hoje.toLocaleDateString('pt-BR');
-                document.getElementById('tab-todos').style.display = 'none';
-            } else {
+            if (isDiretoriaOrAdmin) {
+                // Remove a classe que oculta e ajusta o display
+                const filtro = document.getElementById('container-filtro-data');
+                filtro.classList.remove('restricted-access');
+                filtro.classList.add('d-flex');
+                
+                document.getElementById('display-data-hoje').style.display = 'none';
+                
+                const abaTodos = document.getElementById('tab-todos');
+                abaTodos.classList.remove('restricted-access');
+                
+                // Define aba padrão como todos
                 activeTab = 'todos-usuarios';
                 document.querySelectorAll('.nav-link').forEach(b => b.classList.remove('active'));
                 document.querySelector('#tab-todos .nav-link').classList.add('active');
+            } else {
+                // Garante que a data fixa apareça
+                document.getElementById('texto-data-fixa').textContent = hoje.toLocaleDateString('pt-BR');
+                // Garante que a aba ativa seja "Minha Equipe"
+                activeTab = 'minha-equipe';
             }
 
             carregarMotivos();
