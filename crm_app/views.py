@@ -1102,215 +1102,179 @@ class EnviarExtratoEmailView(APIView):
 
     def post(self, request):
         try:
-            # 1. Receber filtros
+            # 1. Receber dados
             ano = int(request.data.get('ano'))
             mes = int(request.data.get('mes'))
-            consultor_id = request.data.get('consultor_id')
-            email_destino = request.data.get('email_destino') 
+            consultores_ids = request.data.get('consultores', []) 
+            email_destino_manual = request.data.get('email_destino') 
 
-            if not consultor_id:
-                return Response({"error": "Selecione um consultor."}, status=400)
+            if not consultores_ids:
+                return Response({"error": "Nenhum consultor selecionado."}, status=400)
 
             User = get_user_model()
-            consultor = User.objects.get(id=consultor_id)
-            
-            target_email = email_destino or getattr(consultor, 'email', None)
-            
-            if not target_email:
-                return Response({"error": "Nenhum e-mail fornecido ou encontrado para este consultor."}, status=400)
-
-            # 2. Buscar Vendas 
             data_inicio = datetime(ano, mes, 1)
             if mes == 12: data_fim = datetime(ano + 1, 1, 1)
             else: data_fim = datetime(ano, mes + 1, 1)
 
-            vendas = Venda.objects.filter(
-                ativo=True,
-                vendedor_id=consultor_id,
-                status_esteira__nome__iexact='INSTALADA',
-                data_instalacao__gte=data_inicio,
-                data_instalacao__lt=data_fim
-            ).select_related('plano', 'forma_pagamento', 'cliente')
-
-            if not vendas.exists():
-                return Response({"error": "Nenhuma venda instalada neste período para enviar."}, status=400)
-
-            # 3. Prepara dados para a tabela do e-mail
+            # Carregar dados de churn para o mês
             anomes_str = f"{ano}{mes:02d}"
             churns = ImportacaoChurn.objects.filter(anomes_retirada=anomes_str)
             churn_map = {c.numero_pedido: c for c in churns}
 
-            lista_detalhada = []
-            for v in vendas:
-                eh_dacc = "SIM" if v.forma_pagamento and "DÉBITO" in v.forma_pagamento.nome.upper() else "NÃO"
-                
-                chave_busca = v.ordem_servico or "SEM_OS"
-                dados_churn = churn_map.get(chave_busca)
-                
-                status_final = "ATIVO"
-                dt_churn = "-"
-                motivo_churn = "-"
-                
-                if dados_churn:
-                    status_final = "CHURN"
-                    dt_churn = dados_churn.dt_retirada.strftime('%d/%m/%Y') if dados_churn.dt_retirada else "S/D"
-                    motivo_churn = dados_churn.motivo_retirada or "Não informado"
+            sucessos = 0
+            erros = []
 
-                # Tenta pegar dt_pedido, se não tiver, usa dt_criacao
-                dt_pedido = v.data_pedido.strftime('%d/%m/%Y') if v.data_pedido else v.data_criacao.strftime('%d/%m/%Y')
-                dt_inst = v.data_instalacao.strftime('%d/%m/%Y') if v.data_instalacao else "-"
+            # 2. Loop para processar cada consultor selecionado
+            for c_id in consultores_ids:
+                try:
+                    consultor = User.objects.get(id=c_id)
+                    
+                    # Regra de E-mail: 
+                    target_email = None
+                    if len(consultores_ids) == 1 and email_destino_manual:
+                        target_email = email_destino_manual
+                    else:
+                        target_email = getattr(consultor, 'email', None)
 
-                lista_detalhada.append({
-                    'vendedor': v.vendedor.username.upper() if v.vendedor else 'SEM VENDEDOR',
-                    'cpf_cnpj': v.cliente.cpf_cnpj,
-                    'dacc': eh_dacc,
-                    'cliente': v.cliente.nome_razao_social.upper(),
-                    'plano': v.plano.nome.upper(),
-                    'dt_pedido': dt_pedido,
-                    'dt_inst': dt_inst,
-                    'os': v.ordem_servico or "-",
-                    'situacao': v.status_esteira.nome.upper() if v.status_esteira else "-",
-                    'dt_churn': dt_churn,
-                    'motivo_churn': motivo_churn,
-                    'churn_ativo': status_final,
-                    'color_style': 'color: red;' if status_final == 'CHURN' else ''
-                })
-            
-            lista_detalhada.sort(key=itemgetter('cliente'))
+                    if not target_email:
+                        erros.append(f"{consultor.username}: Sem e-mail cadastrado.")
+                        continue
 
-            # 4. Gerar HTML do Corpo do E-mail (Tabela Detalhada)
-            html_content = f"""
-            <html>
-            <body style="font-family: Arial, sans-serif; font-size: 12px;">
-                <h2 style="color: #333;">Extrato de Comissionamento - {consultor.username.upper()}</h2>
-                <p>Referência: <strong>{mes}/{ano}</strong></p>
-                
-                <table border="1" cellpadding="4" cellspacing="0" style="border-collapse: collapse; width: 100%; font-size: 10px;">
-                    <thead>
-                        <tr style="background-color: #f2f2f2;">
-                            <th>VENDEDOR</th>
-                            <th>CPF/CNPJ</th>
-                            <th>DACC</th>
-                            <th>NOME CLIENTE</th>
-                            <th>PLANO</th>
-                            <th>DT PEDIDO</th>
-                            <th>DT INST</th>
-                            <th>O.S</th>
-                            <th>SITUAÇÃO</th>
-                            <th>DT CHURN</th>
-                            <th>MOTIVO CHURN</th>
-                            <th>STATUS</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            """
-            
-            for item in lista_detalhada:
-                html_content += f"""
-                    <tr style="{item['color_style']}">
-                        <td>{item['vendedor']}</td>
-                        <td>{item['cpf_cnpj']}</td>
-                        <td>{item['dacc']}</td>
-                        <td>{item['cliente'][:20]}</td> <td>{item['plano']}</td>
-                        <td>{item['dt_pedido']}</td>
-                        <td>{item['dt_inst']}</td>
-                        <td>{item['os']}</td>
-                        <td>{item['situacao']}</td>
-                        <td>{item['dt_churn']}</td>
-                        <td>{item['motivo_churn'][:20]}</td>
-                        <td><strong>{item['churn_ativo']}</strong></td>
-                    </tr>
-                """
-            
-            html_content += """
-                    </tbody>
-                </table>
-                <br>
-                <p>Segue em anexo o extrato detalhado em PDF.</p>
-                <p>Atenciosamente,<br>Equipe Financeira</p>
-            </body>
-            </html>
-            """
+                    # Buscar Vendas do Consultor
+                    vendas = Venda.objects.filter(
+                        ativo=True,
+                        vendedor_id=c_id,
+                        status_esteira__nome__iexact='INSTALADA',
+                        data_instalacao__gte=data_inicio,
+                        data_instalacao__lt=data_fim
+                    ).select_related('plano', 'forma_pagamento', 'cliente')
 
-            # 5. Gerar PDF em memória (Reutilizando lógica de dados, mas gerando HTML específico para PDF)
-            # (Aqui mantive a geração do PDF separada para garantir a formatação correta do anexo)
-            html_pdf = f"""
-            <html>
-            <head>
-                <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-                <style>
-                    @page {{ size: A4 landscape; margin: 1cm; }}
-                    body {{ font-family: Helvetica, sans-serif; font-size: 9px; }}
-                    table {{ width: 100%; border-collapse: collapse; }}
-                    th {{ background-color: #f2f2f2; border: 1px solid #ccc; padding: 4px; text-align: left; font-weight: bold; }}
-                    td {{ border: 1px solid #ccc; padding: 3px; }}
-                    h2 {{ text-align: center; color: #333; margin-bottom: 5px; }}
-                    .meta {{ text-align: center; font-size: 10px; margin-bottom: 15px; color: #666; }}
-                </style>
-            </head>
-            <body>
-                <h2>Extrato de Comissionamento - {mes}/{ano}</h2>
-                <div class="meta">Gerado em: {timezone.now().strftime('%d/%m/%Y %H:%M')} | Total Vendas: {len(lista_detalhada)}</div>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>VENDEDOR</th>
-                            <th>CPF/CNPJ</th>
-                            <th>DACC</th>
-                            <th>CLIENTE</th>
-                            <th>PLANO</th>
-                            <th>DT VENDA</th>
-                            <th>DT INST</th>
-                            <th>O.S.</th>
-                            <th>STATUS</th>
-                            <th>DT CHURN</th>
-                            <th>MOTIVO</th>
-                            <th>SITUAÇÃO</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            """
-            for item in lista_detalhada:
-                html_pdf += f"""
-                <tr style="{item.get('color_style', '')}">
-                    <td>{item['vendedor']}</td>
-                    <td>{item['cpf_cnpj']}</td>
-                    <td>{item['dacc']}</td>
-                    <td>{item['cliente'][:25]}</td>
-                    <td>{item['plano']}</td>
-                    <td>{item['dt_pedido']}</td>
-                    <td>{item['dt_inst']}</td>
-                    <td>{item['os']}</td>
-                    <td>{item['situacao']}</td>
-                    <td>{item['dt_churn']}</td>
-                    <td>{item['motivo_churn'][:15]}</td>
-                    <td>{item['churn_ativo']}</td>
-                </tr>
-                """
-            html_pdf += "</tbody></table></body></html>"
+                    if not vendas.exists():
+                        erros.append(f"{consultor.username}: Sem vendas instaladas no período.")
+                        continue
 
-            pdf_buffer = BytesIO()
-            pdf_gen = pisa.pisaDocument(BytesIO(html_pdf.encode("UTF-8")), pdf_buffer, encoding='utf-8')
-            
-            if pdf_gen.err:
-                return Response({"error": "Erro interno ao gerar PDF para anexo."}, status=500)
-            
-            pdf_bytes = pdf_buffer.getvalue()
+                    # --- Montar Dados ---
+                    lista_detalhada = []
+                    for v in vendas:
+                        eh_dacc = "SIM" if v.forma_pagamento and "DÉBITO" in v.forma_pagamento.nome.upper() else "NÃO"
+                        chave_busca = v.ordem_servico or "SEM_OS"
+                        dados_churn = churn_map.get(chave_busca)
+                        
+                        status_final = "ATIVO"
+                        dt_churn = "-"
+                        motivo_churn = "-"
+                        if dados_churn:
+                            status_final = "CHURN"
+                            dt_churn = dados_churn.dt_retirada.strftime('%d/%m/%Y') if dados_churn.dt_retirada else "S/D"
+                            motivo_churn = dados_churn.motivo_retirada or "Não informado"
 
-            # 6. Enviar E-mail
-            subject = f"Extrato Comissionamento - {mes}/{ano} - {consultor.username}"
-            text_content = strip_tags(html_content)
-            
-            msg = EmailMultiAlternatives(subject, text_content, settings.DEFAULT_FROM_EMAIL, [target_email])
-            msg.attach_alternative(html_content, "text/html")
-            
-            filename = f"Extrato_{consultor.username}_{mes}_{ano}.pdf"
-            msg.attach(filename, pdf_bytes, 'application/pdf')
-            
-            msg.send()
+                        dt_pedido = v.data_pedido.strftime('%d/%m/%Y') if v.data_pedido else v.data_criacao.strftime('%d/%m/%Y')
+                        dt_inst = v.data_instalacao.strftime('%d/%m/%Y') if v.data_instalacao else "-"
 
-            return Response({"mensagem": f"E-mail enviado com sucesso para {target_email}!"})
+                        lista_detalhada.append({
+                            'vendedor': v.vendedor.username.upper() if v.vendedor else 'SEM VENDEDOR',
+                            'cpf_cnpj': v.cliente.cpf_cnpj,
+                            'dacc': eh_dacc,
+                            'cliente': v.cliente.nome_razao_social.upper(),
+                            'plano': v.plano.nome.upper(),
+                            'dt_pedido': dt_pedido,
+                            'dt_inst': dt_inst,
+                            'os': v.ordem_servico or "-",
+                            'situacao': v.status_esteira.nome.upper() if v.status_esteira else "-",
+                            'dt_churn': dt_churn,
+                            'motivo_churn': motivo_churn,
+                            'churn_ativo': status_final,
+                            'color_style': 'color: red;' if status_final == 'CHURN' else ''
+                        })
+                    
+                    lista_detalhada.sort(key=itemgetter('cliente'))
+
+                    # --- Gerar HTML E-mail ---
+                    html_content = f"""
+                    <html>
+                    <body style="font-family: Arial, sans-serif; font-size: 12px;">
+                        <h2 style="color: #333;">Extrato de Comissionamento - {consultor.username.upper()}</h2>
+                        <p>Referência: <strong>{mes}/{ano}</strong></p>
+                        <table border="1" cellpadding="4" cellspacing="0" style="border-collapse: collapse; width: 100%; font-size: 10px;">
+                            <thead style="background-color: #f2f2f2;">
+                                <tr>
+                                    <th>VENDEDOR</th><th>CPF/CNPJ</th><th>DACC</th><th>NOME CLIENTE</th><th>PLANO</th>
+                                    <th>DT PEDIDO</th><th>DT INST</th><th>O.S</th><th>SITUAÇÃO</th>
+                                    <th>DT CHURN</th><th>MOTIVO CHURN</th><th>CHURN_OU_ATIVO</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                    """
+                    for item in lista_detalhada:
+                        html_content += f"""
+                            <tr style="{item['color_style']}">
+                                <td>{item['vendedor']}</td>
+                                <td>{item['cpf_cnpj']}</td>
+                                <td>{item['dacc']}</td>
+                                <td>{item['cliente'][:20]}</td>
+                                <td>{item['plano']}</td>
+                                <td>{item['dt_pedido']}</td>
+                                <td>{item['dt_inst']}</td>
+                                <td>{item['os']}</td>
+                                <td>{item['situacao']}</td>
+                                <td>{item['dt_churn']}</td>
+                                <td>{item['motivo_churn'][:20]}</td>
+                                <td><strong>{item['churn_ativo']}</strong></td>
+                            </tr>
+                        """
+                    html_content += "</tbody></table><br><p>Segue anexo detalhado.</p></body></html>"
+
+                    # --- Gerar PDF (Anexo) ---
+                    html_pdf = f"""
+                    <html><head><meta charset="utf-8">
+                    <style>@page {{ size: A4 landscape; margin: 1cm; }} body {{ font-family: Helvetica; font-size: 9px; }} table {{ width: 100%; border-collapse: collapse; }} th, td {{ border: 1px solid #ccc; padding: 3px; }} th {{ background: #f2f2f2; }}</style>
+                    </head><body>
+                        <h2>Extrato {mes}/{ano} - {consultor.username.upper()}</h2>
+                        <table><thead><tr>
+                            <th>VENDEDOR</th><th>CPF/CNPJ</th><th>DACC</th><th>CLIENTE</th><th>PLANO</th>
+                            <th>DT PEDIDO</th><th>DT INST</th><th>O.S</th><th>SITUAÇÃO</th>
+                            <th>DT CHURN</th><th>MOTIVO</th><th>STATUS</th>
+                        </tr></thead><tbody>
+                    """
+                    for item in lista_detalhada:
+                        html_pdf += f"""<tr style="{item.get('color_style', '')}">
+                            <td>{item['vendedor']}</td><td>{item['cpf_cnpj']}</td><td>{item['dacc']}</td>
+                            <td>{item['cliente'][:25]}</td><td>{item['plano']}</td><td>{item['dt_pedido']}</td>
+                            <td>{item['dt_inst']}</td><td>{item['os']}</td><td>{item['situacao']}</td>
+                            <td>{item['dt_churn']}</td><td>{item['motivo_churn'][:15]}</td><td>{item['churn_ativo']}</td>
+                        </tr>"""
+                    html_pdf += "</tbody></table></body></html>"
+
+                    pdf_buffer = BytesIO()
+                    pisa_status = pisa.pisaDocument(BytesIO(html_pdf.encode("UTF-8")), pdf_buffer, encoding='utf-8')
+                    
+                    if pisa_status.err:
+                        erros.append(f"{consultor.username}: Erro ao gerar PDF.")
+                        continue
+
+                    # --- Enviar ---
+                    msg = EmailMultiAlternatives(
+                        f"Extrato Comissionamento - {mes}/{ano} - {consultor.username}",
+                        strip_tags(html_content),
+                        settings.DEFAULT_FROM_EMAIL,
+                        [target_email]
+                    )
+                    msg.attach_alternative(html_content, "text/html")
+                    msg.attach(f"Extrato_{consultor.username}_{mes}_{ano}.pdf", pdf_buffer.getvalue(), 'application/pdf')
+                    msg.send()
+                    
+                    sucessos += 1
+
+                except Exception as e:
+                    erros.append(f"Erro interno id {c_id}: {str(e)}")
+
+            # 3. Retorno Final
+            msg_final = f"Processo finalizado. Enviados: {sucessos}."
+            if erros:
+                msg_final += f" Falhas: {len(erros)}. Detalhes: {', '.join(erros)}"
+            
+            return Response({"mensagem": msg_final, "sucessos": sucessos, "erros": erros})
 
         except Exception as e:
-            logger.error(f"Erro ao enviar email: {e}")
+            logger.error(f"Erro geral envio email: {e}")
             return Response({"error": str(e)}, status=500)

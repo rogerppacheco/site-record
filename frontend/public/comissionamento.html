@@ -151,18 +151,22 @@
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body">
-            <p>O sistema enviará o <strong>PDF em anexo</strong> e um <strong>Resumo por Velocidade</strong> no corpo do e-mail.</p>
+            <p>O sistema enviará o extrato individual (PDF e Tabela) para cada consultor selecionado.</p>
             
             <div class="mb-3">
-                <label class="form-label">Consultor Selecionado</label>
-                <input type="text" class="form-control" id="email-consultor-nome" readonly>
-                <input type="hidden" id="email-consultor-id">
+                <label class="form-label">Destinatários</label>
+                <input type="text" class="form-control bg-light" id="email-consultor-nome" readonly>
+                <input type="hidden" id="email-consultores-ids">
             </div>
             
-            <div class="mb-3">
-                <label class="form-label">E-mail de Destino</label>
+            <div class="mb-3" id="div-email-destino">
+                <label class="form-label">E-mail de Destino (Opcional)</label>
                 <input type="email" class="form-control" id="email-destino-input" placeholder="nome@exemplo.com">
-                <small class="text-muted">Se deixar vazio, usará o e-mail do cadastro do consultor (se houver).</small>
+                <small class="text-muted">Se vazio, usa o e-mail do cadastro do consultor.</small>
+            </div>
+            
+            <div id="div-aviso-massa" class="alert alert-info d-none">
+                <small><i class="bi bi-info-circle"></i> Como você selecionou múltiplos consultores, o sistema usará <b>obrigatoriamente</b> o e-mail cadastrado no perfil de cada um.</small>
             </div>
           </div>
           <div class="modal-footer">
@@ -322,30 +326,41 @@
         // --- FUNÇÕES DE E-MAIL ADICIONADAS ---
         function abrirModalEmail() {
             const checks = document.querySelectorAll('.check-consultor:checked');
-            if(checks.length !== 1) { 
-                alert("Por favor, selecione EXATAMENTE UM consultor para enviar o e-mail individual."); 
+            if(checks.length === 0) { 
+                alert("Selecione pelo menos um consultor."); 
                 return; 
             }
             
-            const id = checks[0].value;
-            // Pega o nome da linha da tabela (coluna 2, index 1)
-            const nome = checks[0].closest('tr').cells[1].innerText; 
+            const ids = Array.from(checks).map(c => c.value);
+            document.getElementById('email-consultores-ids').value = JSON.stringify(ids);
             
-            document.getElementById('email-consultor-id').value = id;
-            document.getElementById('email-consultor-nome').value = nome;
-            document.getElementById('email-destino-input').value = "";
+            const nomeField = document.getElementById('email-consultor-nome');
+            const emailDiv = document.getElementById('div-email-destino');
+            const avisoMassa = document.getElementById('div-aviso-massa');
             
+            if (ids.length === 1) {
+                const nome = checks[0].closest('tr').cells[1].innerText; 
+                nomeField.value = nome;
+                emailDiv.classList.remove('d-none');
+                avisoMassa.classList.add('d-none');
+            } else {
+                nomeField.value = `${ids.length} consultores selecionados`;
+                emailDiv.classList.add('d-none'); 
+                avisoMassa.classList.remove('d-none'); 
+            }
+            
+            document.getElementById('email-destino-input').value = ""; 
             new bootstrap.Modal(document.getElementById('modalEmail')).show();
         }
 
         async function confirmarEnvioEmail() {
-            const id = document.getElementById('email-consultor-id').value;
+            const idsStr = document.getElementById('email-consultores-ids').value;
+            if(!idsStr) return;
+            const ids = JSON.parse(idsStr); 
+            
             const email = document.getElementById('email-destino-input').value;
             const ano = document.getElementById('filtro-ano').value;
             const mes = document.getElementById('filtro-mes').value;
-            
-            // Validação simples
-            // Se o email estiver vazio, o backend tentará usar o do cadastro.
             
             const btnText = document.getElementById('btn-email-text');
             const spinner = document.getElementById('btn-email-spinner');
@@ -354,13 +369,15 @@
             spinner.classList.remove('d-none');
             
             try {
-                await axios.post(`${apiUrl}email/`, { 
+                const res = await axios.post(`${apiUrl}email/`, { 
                     ano, mes, 
-                    consultor_id: id, 
+                    consultores: ids, 
                     email_destino: email 
                 });
-                alert("E-mail enviado com sucesso!");
+                
+                alert(res.data.mensagem); 
                 bootstrap.Modal.getInstance(document.getElementById('modalEmail')).hide();
+                
             } catch(e) { 
                 alert("Erro ao enviar: " + (e.response?.data?.error || e.message)); 
             } finally {
