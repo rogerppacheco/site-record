@@ -29,7 +29,10 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 
 from xhtml2pdf import pisa 
 
-from usuarios.permissions import CheckAPIPermission
+# --- ALTERAÇÃO 1: Importando VendaPermission ---
+from usuarios.permissions import CheckAPIPermission, VendaPermission
+# -----------------------------------------------
+
 from .models import (
     Operadora, Plano, FormaPagamento, StatusCRM, MotivoPendencia,
     RegraComissao, Cliente, Venda, ImportacaoOsab, ImportacaoChurn,
@@ -134,7 +137,9 @@ class RegraComissaoDetailView(generics.RetrieveUpdateDestroyAPIView):
     resource_name = 'regracomissao'
 
 class VendaViewSet(viewsets.ModelViewSet):
-    permission_classes = [permissions.IsAuthenticated, CheckAPIPermission]
+    # --- ALTERAÇÃO 2: Trocando a permissão restrita pela permissão inteligente ---
+    permission_classes = [VendaPermission] 
+    # -----------------------------------------------------------------------------
     resource_name = 'venda'
     
     queryset = Venda.objects.filter(ativo=True).order_by('-data_criacao')
