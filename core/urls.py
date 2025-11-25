@@ -1,5 +1,3 @@
-# site-record/core/urls.py
-
 from django.urls import path
 from .views import (
     IndexView, 
@@ -11,7 +9,8 @@ from .views import (
     ConsultaTratamentoView, 
     AuditoriaView,
     SalvarOsabView,
-    SalvarChurnView  # 1. Importe a nova View
+    SalvarChurnView,
+    calendario_fiscal_view  # <--- Importante: A view deve estar importada aqui
 )
 
 urlpatterns = [
@@ -24,7 +23,9 @@ urlpatterns = [
     path('consulta-tratamento/', ConsultaTratamentoView.as_view(), name='consulta-tratamento'),
     path('auditoria/', AuditoriaView.as_view(), name='auditoria'),
     path('salvar-osab/', SalvarOsabView.as_view(), name='salvar-osab'),
-
-    # 2. Adicione esta nova linha para a página de salvar churn
     path('salvar-churn/', SalvarChurnView.as_view(), name='salvar-churn'),
+
+    # Rotas do Calendário (Certifique-se que estas linhas estão presentes)
+    path('calendario/', calendario_fiscal_view, name='calendario_fiscal_atual'),
+    path('calendario/<int:ano>/<int:mes>/', calendario_fiscal_view, name='calendario_fiscal'),
 ]

@@ -1,10 +1,11 @@
-# gestao_equipes/urls.py
-
 from django.contrib import admin
 from django.urls import path, include
 from django.views.generic import TemplateView
 from usuarios.views import LoginView
 from rest_framework_simplejwt.views import TokenRefreshView
+
+# 1. IMPORTAR A VIEW DO CALENDÁRIO AQUI (Fundamental para funcionar)
+from core.views import calendario_fiscal_view 
 
 urlpatterns = [
     # ROTA DE ADMIN
@@ -41,4 +42,9 @@ urlpatterns = [
     path('salvar-osab/', TemplateView.as_view(template_name='salvar_osab.html'), name='salvar-osab'),
     path('salvar-churn/', TemplateView.as_view(template_name='salvar_churn.html'), name='salvar-churn'),
     path('salvar-ciclo-pagamento/', TemplateView.as_view(template_name='salvar_ciclo_pagamento.html'), name='salvar-ciclo-pagamento'),
+
+    # 2. ADICIONAR AS ROTAS DO CALENDÁRIO AQUI
+    # (Como o core/urls.py não é lido, definimos direto aqui)
+    path('calendario/', calendario_fiscal_view, name='calendario_fiscal_atual'),
+    path('calendario/<int:ano>/<int:mes>/', calendario_fiscal_view, name='calendario_fiscal'),
 ]

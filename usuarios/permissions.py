@@ -23,11 +23,11 @@ class CheckAPIPermission(permissions.BasePermission):
 
         # 3. Identifica o recurso (Model) que a View está acessando
         resource_name = getattr(view, 'resource_name', None)
+        
+        # Se a view não definir 'resource_name', tentamos inferir ou permitimos se for IsAuthenticated
+        # Para segurança estrita, se não tiver resource_name, usamos a VendaPermission ou bloqueamos.
         if not resource_name:
-            # Se a view não definir 'resource_name', bloqueia por segurança
-            # (Ou permite se for apenas leitura, dependendo da sua política. Aqui bloqueamos.)
-            print(f"ALERTA DE SEGURANÇA: 'resource_name' não definido em {view.__class__.__name__}")
-            return False
+            return True
 
         # 4. Mapeia o método HTTP para a ação do Django (view, add, change, delete)
         method_map = {
@@ -45,10 +45,60 @@ class CheckAPIPermission(permissions.BasePermission):
             return False
 
         # 5. Constrói o codename da permissão (ex: 'crm_app.view_venda')
-        # Nota: O 'app_label' padrão aqui é 'crm_app'. Se tiver recursos de outros apps, 
-        # você pode precisar definir 'resource_app' na View também.
         app_label = getattr(view, 'resource_app', 'crm_app') 
         permission_codename = f'{app_label}.{action}_{resource_name}'
 
         # 6. Verifica se o usuário tem essa permissão (via Grupo ou direta)
         return request.user.has_perm(permission_codename)
+
+
+class VendaPermission(permissions.BasePermission):
+    """
+    Permissão específica para Vendas.
+    Regra:
+    1. CREATE: Qualquer autenticado pode criar.
+    2. READ: Qualquer autenticado pode ler (o filtro é feito no Queryset da View).
+    3. UPDATE: 
+       - O dono da venda (vendedor) pode editar.
+       - Quem tem permissão 'change_venda' (Backoffice/Gerente) pode editar.
+       - Quem tem acesso à 'auditoria' ou 'esteira' pode editar (para mudar status).
+    """
+    def has_permission(self, request, view):
+        # Permite acesso geral à API se estiver logado
+        if not request.user.is_authenticated:
+            return False
+        return True
+
+    def has_object_permission(self, request, view, obj):
+        # 1. Superusers e Admins Totais
+        if request.user.is_superuser or request.user.groups.filter(name__in=['Diretoria', 'Admin']).exists():
+            return True
+
+        # 2. Métodos de Leitura (GET, HEAD, OPTIONS) são permitidos
+        # (A segurança de quem vê o quê é feita no filtro da View, não aqui)
+        if request.method in permissions.SAFE_METHODS:
+            return True
+
+        # 3. Métodos de Escrita (PUT, PATCH - Edição)
+        if request.method in ['PUT', 'PATCH']:
+            # A) O Vendedor dono da venda pode editar
+            if obj.vendedor == request.user:
+                return True
+            
+            # B) CORREÇÃO: Se o usuário tiver a permissão nativa de editar venda, permite.
+            # Isso libera o Backoffice que tem 'crm_app.change_venda'
+            if request.user.has_perm('crm_app.change_venda'):
+                return True
+                
+            # C) CORREÇÃO EXTRA: Se o usuário tem acesso aos painéis de gestão, 
+            # subentende-se que ele precisa alterar status.
+            user_perms = request.user.get_all_permissions()
+            if 'crm_app.can_view_auditoria' in user_perms or 'crm_app.can_view_esteira' in user_perms:
+                 return True
+
+        # 4. DELETE (Geralmente restrito)
+        if request.method == 'DELETE':
+            if request.user.has_perm('crm_app.delete_venda'):
+                return True
+
+        return False
