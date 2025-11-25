@@ -1,5 +1,3 @@
-# site-record/crm_app/views.py
-
 import logging
 import pandas as pd
 import numpy as np
@@ -26,6 +24,7 @@ from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.exceptions import PermissionDenied, NotFound
 
 from xhtml2pdf import pisa 
 
@@ -35,14 +34,16 @@ from usuarios.permissions import CheckAPIPermission, VendaPermission
 from .models import (
     Operadora, Plano, FormaPagamento, StatusCRM, MotivoPendencia,
     RegraComissao, Cliente, Venda, ImportacaoOsab, ImportacaoChurn,
-    CicloPagamento, HistoricoAlteracaoVenda, PagamentoComissao
+    CicloPagamento, HistoricoAlteracaoVenda, PagamentoComissao,
+    Campanha 
 )
 from .serializers import (
     OperadoraSerializer, PlanoSerializer, FormaPagamentoSerializer,
     StatusCRMSerializer, MotivoPendenciaSerializer, RegraComissaoSerializer,
     VendaSerializer, VendaCreateSerializer, ClienteSerializer,
     VendaUpdateSerializer, ImportacaoOsabSerializer, ImportacaoChurnSerializer,
-    CicloPagamentoSerializer, VendaDetailSerializer
+    CicloPagamentoSerializer, VendaDetailSerializer,
+    CampanhaSerializer 
 )
 
 logger = logging.getLogger(__name__)
@@ -91,6 +92,18 @@ class FormaPagamentoDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = FormaPagamentoSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+# --- VIEWS DE CAMPANHAS ---
+class CampanhaListCreateView(generics.ListCreateAPIView):
+    queryset = Campanha.objects.filter(ativo=True)
+    serializer_class = CampanhaSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+class CampanhaDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Campanha.objects.all()
+    serializer_class = CampanhaSerializer
+    permission_classes = [permissions.IsAuthenticated]
+# --------------------------
+
 class StatusCRMListCreateView(generics.ListCreateAPIView):
     serializer_class = StatusCRMSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -136,7 +149,6 @@ class RegraComissaoDetailView(generics.RetrieveUpdateDestroyAPIView):
     resource_name = 'regracomissao'
 
 class VendaViewSet(viewsets.ModelViewSet):
-    # Permissão inteligente que libera BackOffice/Esteira para editar status
     permission_classes = [VendaPermission] 
     resource_name = 'venda'
     
@@ -308,8 +320,9 @@ class VendaViewSet(viewsets.ModelViewSet):
                 logger.error(f"Erro ao salvar histórico: {e}")
 
     def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        
         try:
-            instance = self.get_object()
             instance.ativo = False
             instance.save()
             HistoricoAlteracaoVenda.objects.create(
@@ -349,13 +362,9 @@ class DashboardResumoView(APIView):
         User = get_user_model()
         user = request.user
         
-        # --- CHECAGEM DE PERMISSÃO PARA CARD FINANCEIRO ---
         tem_permissao_card = user.has_perm('crm_app.can_view_comissao_dashboard')
         eh_gestor = is_member(user, ['Diretoria', 'Admin'])
-        
-        # Só exibe se tiver permissão explícita ou for gestor
         exibir_comissao = tem_permissao_card or eh_gestor
-        # --------------------------------------------------
 
         hoje = now()
         inicio_mes = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -425,7 +434,6 @@ class DashboardResumoView(APIView):
                 detalhes_listas['TOTAL_INSTALADAS'].append(obj_inst)
                 detalhes_listas['INSTALADA'].append(obj_inst)
 
-            # --- SÓ CALCULA COMISSÃO SE TIVER PERMISSÃO (Economia de Performance) ---
             if exibir_comissao:
                 regras = RegraComissao.objects.filter(consultor=vendedor).select_related('plano')
                 comissao_vendedor = 0.0
@@ -447,7 +455,6 @@ class DashboardResumoView(APIView):
                     
                     comissao_vendedor += valor_item
                 comissao_total_geral += comissao_vendedor
-            # -----------------------------------------------------------------------
 
             total_registradas_geral += qtd_registradas
             total_instaladas_geral += qtd_instaladas
@@ -456,7 +463,6 @@ class DashboardResumoView(APIView):
         if total_registradas_geral > 0:
             percentual_aproveitamento = (total_instaladas_geral / total_registradas_geral) * 100
 
-        # Se não tem permissão, retorna 0.0
         valor_comissao_final = comissao_total_geral if exibir_comissao else 0.0
 
         dados = {

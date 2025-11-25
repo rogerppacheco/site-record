@@ -1,5 +1,3 @@
-# site-record/crm_app/models.py
-
 from django.db import models
 from usuarios.models import Usuario
 from django.conf import settings
@@ -306,3 +304,15 @@ class HistoricoAlteracaoVenda(models.Model):
     def __str__(self):
         usuario_str = self.usuario.username if self.usuario else 'N/A'
         return f"Alteração na Venda #{self.venda.id} por {usuario_str} em {self.data_alteracao.strftime('%d/%m/%Y %H:%M')}"
+
+class Campanha(models.Model):
+    nome = models.CharField(max_length=100, unique=True)
+    ativo = models.BooleanField(default=True)
+    data_criacao = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.nome
+
+    class Meta:
+        verbose_name = "Campanha"
+        verbose_name_plural = "Campanhas"

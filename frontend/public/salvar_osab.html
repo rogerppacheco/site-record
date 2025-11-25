@@ -4,211 +4,209 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Salvar OSAB</title>
+    <title>Importar OSAB - Record PAP</title>
+    
+    <link rel="icon" type="image/png" href="{% static 'logo.png' %}">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=1.3">
+    
     <style>
-        body { font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding-bottom: 50px; }
-        .main-header { background-color: #fff; padding: 1rem 2rem; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); position: sticky; top: 0; z-index: 1020; }
-        .header-container { max-width: 95%; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; }
-        .logo { max-height: 40px; }
-        .main-nav ul { list-style: none; display: flex; gap: 1.5rem; align-items: center; margin-bottom: 0; padding: 0; }
-        .main-nav a { text-decoration: none; color: #1a1a1a; font-weight: 500; }
-        .main-nav a:hover { color: #888; }
-        .action-button { background-color: #1a1a1a; color: #fff; padding: 0.5rem 1rem; border-radius: 0.25rem; text-decoration: none; font-size: 0.9rem; font-weight: 600; cursor: pointer; border: 1px solid transparent;}
-        .logout-button { background-color: #dc3545; }
-        .submenu-nav.bg-dark .nav-link,
-        .submenu-nav.bg-dark .dropdown-menu .dropdown-item {
-            color: rgba(255, 255, 255, 0.75);
+        /* Layout Padrão */
+        body { overflow-x: hidden; background-color: var(--cor-fundo); }
+        .main-header { position: fixed; top: 0; left: 0; width: 100%; z-index: 1000; background-color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.05); height: 80px; }
+        .admin-wrapper { display: flex; min-height: 100vh; padding-top: 80px; }
+        .admin-sidebar { width: 280px; background: #fff; border-right: 1px solid var(--cor-borda); padding: 1.5rem; display: flex; flex-direction: column; position: fixed; top: 80px; left: 0; bottom: 0; overflow-y: auto; z-index: 900; }
+        .admin-content { flex: 1; margin-left: 280px; padding: 2rem; max-width: 1600px; width: calc(100% - 280px); }
+        .admin-nav-link { display: flex; align-items: center; padding: 10px 15px; color: var(--cor-texto); text-decoration: none; border-radius: 8px; margin-bottom: 5px; font-weight: 500; transition: all 0.2s; }
+        .admin-nav-link i { margin-right: 12px; font-size: 1.1rem; color: var(--cor-secundaria); }
+        .admin-nav-link:hover { background-color: #f0f4ff; color: var(--cor-primaria); }
+        .admin-nav-link.active { background-color: var(--cor-primaria); color: #fff; }
+        .admin-nav-link.active i { color: #fff; }
+        .nav-section-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--cor-texto-suave); margin-top: 1.5rem; margin-bottom: 0.5rem; font-weight: 700; }
+        
+        /* Upload Box */
+        .upload-box { border: 2px dashed #dee2e6; border-radius: 10px; padding: 3rem; text-align: center; background-color: #fff; transition: all 0.3s; cursor: pointer; }
+        .upload-box:hover { border-color: var(--cor-primaria); background-color: #f8f9fa; }
+        .upload-icon { font-size: 3rem; color: var(--cor-secundaria); margin-bottom: 1rem; }
+
+        @media (max-width: 992px) {
+            .admin-sidebar { transform: translateX(-100%); transition: transform 0.3s; }
+            .admin-sidebar.show { transform: translateX(0); }
+            .admin-content { margin-left: 0; padding: 1rem; width: 100%; }
         }
-        .submenu-nav.bg-dark .nav-link:hover,
-        .submenu-nav.bg-dark .dropdown-menu .dropdown-item:hover {
-            color: #fff;
-        }
-        .submenu-nav.bg-dark .nav-link.active {
-            color: #fff;
-            font-weight: bold;
-        }
-        .container { max-width: 800px; }
     </style>
 </head>
 <body>
+
     <header class="main-header">
         <div class="header-container">
-            <a href="/">
-                <img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo">
-            </a>
-            <nav class="main-nav">
+            <a href="/"><img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo"></a>
+            <button class="btn btn-light d-lg-none me-2" onclick="document.querySelector('.admin-sidebar').classList.toggle('show')"><i class="bi bi-list"></i></button>
+            <nav class="main-nav d-none d-lg-flex" id="main-nav">
                 <ul>
-                    <li><a href="/area-interna/">Área Interna</a></li>
-                    <li><span class="navbar-text me-3" id="welcome-user"></span></li>
-                    <li><button class="btn btn-danger btn-sm" id="logoutButton">Sair</button></li>
+                    <li><a href="/governanca/">Voltar para Governança</a></li>
+                    <li><span id="welcome-user" style="font-size: 0.9rem; color: #666; margin-right: 10px;"></span></li>
+                    <li><button id="logoutButton" class="nav-button logout-button">Sair</button></li>
                 </ul>
             </nav>
         </div>
     </header>
 
-    <nav class="navbar navbar-expand-lg submenu-nav navbar-dark bg-dark">
-        <div class="container-fluid" style="max-width: 1200px;">
-            <div class="collapse navbar-collapse">
-                <ul class="navbar-nav">
-                    <li class="nav-item"><a class="nav-link" href="/presenca/">Controle de Presença</a></li>
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            Vendas
-                        </a>
-                        <ul class="dropdown-menu dropdown-menu-dark">
-                            <li><a class="dropdown-item" href="/crm-vendas/">Cadastrar Venda</a></li>
-                            <li><a class="dropdown-item" href="/auditoria/">Auditoria</a></li>
-                            <li><a class="dropdown-item" href="/esteira/">Esteira</a></li>
-                            <li><a class="dropdown-item" href="/comissionamento/">Comissionamento</a></li>
-                        </ul>
-                    </li>
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle active" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            Importações
-                        </a>
-                        <ul class="dropdown-menu dropdown-menu-dark">
-                            <li><a class="dropdown-item active" href="/salvar-osab/">Salvar OSAB</a></li>
-                            <li><a class="dropdown-item" href="/salvar-churn/">Salvar Churn</a></li>
-                            <li><a class="dropdown-item" href="/salvar-ciclo-pagamento/">Salvar Ciclo de Pagamento</a></li>
-                            </ul>
-                    </li>
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            Cadastros
-                        </a>
-                        <ul class="dropdown-menu dropdown-menu-dark">
-                            <li><a class="dropdown-item" href="/governanca/">Governança</a></li>
-                        </ul>
-                    </li>
-                </ul>
-            </div>
-        </div>
-    </nav>
+    <div class="admin-wrapper">
+        <!-- Sidebar Padrão -->
+        <nav class="admin-sidebar">
+            <div class="nav-section-title">Importações</div>
+            <a href="/salvar-osab/" class="admin-nav-link active"><i class="bi bi-cloud-upload-fill"></i> Importar OSAB</a>
+            <a href="/salvar-churn/" class="admin-nav-link"><i class="bi bi-file-earmark-x"></i> Importar Churn</a>
+            <a href="/salvar-ciclo-pagamento/" class="admin-nav-link"><i class="bi bi-calendar-range"></i> Ciclo Pagamento</a>
+            
+            <div class="nav-section-title">Acesso Rápido</div>
+            <a href="/governanca/" class="admin-nav-link"><i class="bi bi-speedometer2"></i> Governança</a>
+            <a href="/crm-vendas/" class="admin-nav-link"><i class="bi bi-cart-plus"></i> Nova Venda</a>
+        </nav>
 
-    <main class="container mt-5">
-        <div class="card shadow-sm">
-            <div class="card-header">
-                <h4 class="mb-0">Importar Arquivo OSAB</h4>
+        <main class="admin-content">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h3>Importação de Base OSAB</h3>
             </div>
-            <div class="card-body">
-                <p>Selecione um arquivo .xlsb ou .xlsx para importar.</p>
-                <form id="importForm" class="mt-3">
-                    <div class="mb-3">
-                        <label for="fileInput" class="form-label">Arquivo OSAB</label>
-                        <input class="form-control" type="file" id="fileInput" accept=".xlsb, .xlsx" required>
+
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle-fill me-2"></i>
+                        O arquivo deve conter as colunas <strong>DOCUMENTO</strong> e <strong>SITUACAO</strong>. Formatos aceitos: <code>.xlsx</code>, <code>.xls</code>, <code>.xlsb</code>.
                     </div>
-                    <button type="submit" class="btn btn-primary">
-                        <span id="buttonText">Importar</span>
-                        <span id="spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
-                    </button>
-                </form>
-                <div id="resultArea" class="mt-4"></div>
+
+                    <form id="upload-form">
+                        <div class="upload-box" onclick="document.getElementById('file-input').click()">
+                            <i class="bi bi-file-earmark-spreadsheet upload-icon"></i>
+                            <h5>Clique para selecionar o arquivo</h5>
+                            <p class="text-muted small">ou arraste e solte aqui</p>
+                            <input type="file" id="file-input" name="file" accept=".xlsx,.xls,.xlsb" style="display: none;" onchange="mostrarNomeArquivo()">
+                            <p id="file-name" class="mt-2 fw-bold text-primary"></p>
+                        </div>
+
+                        <div class="d-grid gap-2 mt-4">
+                            <button type="submit" class="btn btn-primary btn-lg" id="btn-importar">
+                                <span id="btn-text"><i class="bi bi-upload"></i> Iniciar Importação</span>
+                                <div id="spinner" class="spinner-border spinner-border-sm d-none" role="status"></div>
+                            </button>
+                        </div>
+                    </form>
+
+                    <div id="result-area" class="mt-4"></div>
+                </div>
             </div>
-        </div>
-    </main>
-    
+        </main>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="{% static 'js/auth.js' %}"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
+    <script src="{% static 'js/auth.js' %}?v=1.3"></script>
+    
     <script>
-        // Funções auxiliares (poderiam vir de auth.js, mas são definidas aqui para garantir o funcionamento)
-        function jwt_decode(token) { try { return JSON.parse(atob(token.split('.')[1])); } catch (e) { return null; } }
-        function logout() {
-            localStorage.removeItem('accessToken');
-            localStorage.removeItem('refreshToken');
-            localStorage.removeItem('userProfile');
-            window.location.href = '/';
-        }
-        const apiUrl = '';
-        async function apiFetch(endpoint, options = {}) {
-            const headers = {
-                ...options.headers,
-            };
-            const token = localStorage.getItem('accessToken');
-            if (token) {
-                headers['Authorization'] = `Bearer ${token}`;
-            }
-            const response = await fetch(`${apiUrl}/api/${endpoint}`, { ...options, headers });
-            if (response.status === 401) {
-                alert('Sua sessão expirou ou o token é inválido. Por favor, faça login novamente.');
-                logout();
-                throw new Error('Não autorizado');
-            }
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                const errorMessage = errorData.error || response.statusText;
-                throw new Error(errorMessage);
-            }
-            return response.json();
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            const token = localStorage.getItem('accessToken');
-            if (!token) {
-                alert('Acesso negado. Faça o login para continuar.');
-                window.location.href = '/';
-                return;
-            }
-            const decodedToken = jwt_decode(token);
-            if (decodedToken && decodedToken.username) {
-                document.getElementById('welcome-user').textContent = `Bem-vindo, ${decodedToken.username}!`;
-            }
-            document.getElementById('logoutButton').addEventListener('click', logout);
-
-            // Adiciona o ouvinte para o formulário de importação
-            document.getElementById('importForm').addEventListener('submit', handleImport);
+        // Inicialização Básica de Auth
+        const token = localStorage.getItem('accessToken');
+        if (!token) window.location.href = '/';
+        const decoded = jwt_decode(token);
+        if(document.getElementById('welcome-user')) document.getElementById('welcome-user').textContent = `Olá, ${decoded.username}`;
+        
+        document.getElementById('logoutButton').addEventListener('click', () => {
+            localStorage.removeItem('accessToken'); window.location.href = '/';
         });
 
-        async function handleImport(event) {
-            event.preventDefault();
-            const fileInput = document.getElementById('fileInput');
-            const file = fileInput.files[0];
-            const resultArea = document.getElementById('resultArea');
-            const buttonText = document.getElementById('buttonText');
-            const spinner = document.getElementById('spinner');
+        const apiUrl = ''; 
 
-            if (!file) {
-                resultArea.innerHTML = '<div class="alert alert-warning">Por favor, selecione um arquivo.</div>';
+        function mostrarNomeArquivo() {
+            const fileInput = document.getElementById('file-input');
+            const fileNameDisplay = document.getElementById('file-name');
+            if (fileInput.files.length > 0) {
+                fileNameDisplay.textContent = fileInput.files[0].name;
+            } else {
+                fileNameDisplay.textContent = '';
+            }
+        }
+
+        // Função fetch simplificada local (pode usar a do auth.js se preferir)
+        async function apiFetchLocal(url, options={}) {
+            const headers = options.headers || {};
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+            // Não setar Content-Type para FormData, o browser faz isso
+            
+            const response = await fetch(url, { ...options, headers });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Erro na requisição');
+            return data;
+        }
+
+        document.getElementById('upload-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const fileInput = document.getElementById('file-input');
+            const resultArea = document.getElementById('result-area');
+            const btn = document.getElementById('btn-importar');
+            const spinner = document.getElementById('spinner');
+            const btnText = document.getElementById('btn-text');
+
+            if (fileInput.files.length === 0) {
+                alert("Por favor, selecione um arquivo.");
                 return;
             }
 
             const formData = new FormData();
-            formData.append('file', file);
-            
-            buttonText.classList.add('d-none');
+            formData.append('file', fileInput.files[0]);
+
+            // UI Loading
+            btn.disabled = true;
+            btnText.classList.add('d-none');
             spinner.classList.remove('d-none');
             resultArea.innerHTML = '';
 
             try {
-                const response = await apiFetch('crm/importacao-osab/', {
+                // Endpoint ajustado conforme urls.py (/api/crm/import/osab/)
+                const data = await apiFetchLocal('/api/crm/import/osab/', {
                     method: 'POST',
-                    body: formData,
-                    headers: {}
+                    body: formData
                 });
 
-                let message = `<div class="alert alert-success">
-                                    <strong>Importação concluída com sucesso!</strong><br>
-                                    Total de registros processados: ${response.total_registros}<br>
-                                    Registros criados: ${response.criados}<br>
-                                    Registros atualizados: ${response.atualizados}<br>
-                               </div>`;
+                let html = `
+                    <div class="alert alert-success">
+                        <h4 class="alert-heading"><i class="bi bi-check-circle"></i> Sucesso!</h4>
+                        <p>Arquivo processado com êxito.</p>
+                        <hr>
+                        <ul class="mb-0">
+                            <li>Total Processado: <strong>${data.total_registros}</strong></li>
+                            <li>Criados: <strong>${data.criados}</strong></li>
+                            <li>Atualizados (Status): <strong>${data.atualizados}</strong></li>
+                            <li>Encontrados na Base: <strong>${data.vendas_encontradas}</strong></li>
+                            <li>Status Desconhecido/Não Mapeado: <strong>${data.status_nao_mapeado}</strong></li>
+                        </ul>
+                    </div>
+                `;
                 
-                if (response.erros.length > 0) {
-                    message += `<div class="alert alert-danger mt-3">
-                                    <strong>Erros na importação:</strong><br>
-                                    <ul>${response.erros.map(e => `<li>${e}</li>`).join('')}</ul>
-                                </div>`;
+                if (data.erros && data.erros.length > 0) {
+                    html += `
+                        <div class="alert alert-warning mt-3">
+                            <strong>Atenção aos seguintes detalhes:</strong>
+                            <ul class="mt-2 mb-0 small" style="max-height: 200px; overflow-y: auto;">
+                                ${data.erros.map(e => `<li>${e}</li>`).join('')}
+                            </ul>
+                        </div>
+                    `;
                 }
+                resultArea.innerHTML = html;
 
-                resultArea.innerHTML = message;
             } catch (error) {
-                resultArea.innerHTML = `<div class="alert alert-danger">Erro ao importar o arquivo: ${error.message}</div>`;
+                resultArea.innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> ${error.message}</div>`;
             } finally {
-                buttonText.classList.remove('d-none');
+                btn.disabled = false;
+                btnText.classList.remove('d-none');
                 spinner.classList.add('d-none');
+                fileInput.value = '';
+                document.getElementById('file-name').textContent = '';
             }
-        }
+        });
     </script>
 </body>
 </html>

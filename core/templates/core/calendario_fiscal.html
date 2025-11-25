@@ -37,7 +37,6 @@
 </head>
 <body>
 
-    <!-- Barra de navegação simples (só aparece se abrir fora da aba) -->
     {% if not modo_iframe %}
     <nav class="navbar navbar-light bg-white shadow-sm mb-4 navbar-top rounded">
         <div class="container-fluid">
@@ -55,7 +54,6 @@
                 </h3>
             </div>
             
-            <!-- TOTAIS (DASHBOARD RÁPIDO) -->
             <div class="col-md-4 text-center">
                 <div class="card shadow-sm border-0 bg-white">
                     <div class="card-body py-2 d-flex justify-content-center gap-4">
@@ -71,7 +69,6 @@
                 </div>
             </div>
 
-            <!-- NAVEGAÇÃO ENTRE MESES -->
             <div class="col-md-4 text-end">
                 <div class="btn-group shadow-sm">
                     <a href="{% url 'calendario_fiscal' nav_ant.year nav_ant.month %}{% if modo_iframe %}?modo=iframe{% endif %}" class="btn btn-light border"><i class="bi bi-chevron-left"></i> Anterior</a>
@@ -113,7 +110,6 @@
                                                 
                                                 <input type="hidden" name="dia_id" value="{{ dia.id }}">
                                                 
-                                                <!-- Inputs de Peso (Alterado step para 0.01) -->
                                                 <div class="input-group input-group-sm mb-2">
                                                     <span class="input-group-text text-primary fw-bold" title="Peso Venda Bruta">VB</span>
                                                     <input type="number" step="0.01" min="0" max="2" name="peso_venda" 
@@ -128,13 +124,11 @@
                                                            value="{{ dia.peso_instalacao|stringformat:'.2f'|default:'0.00' }}">
                                                 </div>
 
-                                                <!-- Campo de Obs -->
                                                 <input type="text" name="observacao" class="form-control form-control-sm obs-input" 
                                                        placeholder="Obs..." value="{{ dia.observacao|default:'' }}">
                                             </td>
                                         {% else %}
-                                            <td class="bg-light text-muted align-middle text-center"></td> <!-- Dia vazio -->
-                                        {% endif %}
+                                            <td class="bg-light text-muted align-middle text-center"></td> {% endif %}
                                     {% endfor %}
                                 </tr>
                                 {% endfor %}

@@ -14,7 +14,8 @@ from .models import (
     ImportacaoOsab,
     ImportacaoChurn,
     CicloPagamento,
-    HistoricoAlteracaoVenda
+    HistoricoAlteracaoVenda,
+    Campanha  # <--- ADICIONADO
 )
 from usuarios.models import Usuario
 from usuarios.serializers import UsuarioSerializer
@@ -34,6 +35,13 @@ class FormaPagamentoSerializer(serializers.ModelSerializer):
     class Meta:
         model = FormaPagamento
         fields = ['id', 'nome', 'ativo', 'aplica_desconto']
+
+# --- ADICIONADO O SERIALIZER DA CAMPANHA ---
+class CampanhaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Campanha
+        fields = '__all__'
+# -------------------------------------------
 
 class StatusCRMSerializer(serializers.ModelSerializer):
     class Meta:
