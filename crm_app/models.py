@@ -98,7 +98,6 @@ class Venda(models.Model):
     status_tratamento = models.ForeignKey(StatusCRM, on_delete=models.SET_NULL, null=True, blank=True, related_name='vendas_tratamento', limit_choices_to={'tipo': 'Tratamento'})
     status_esteira = models.ForeignKey(StatusCRM, on_delete=models.SET_NULL, null=True, blank=True, related_name='vendas_esteira', limit_choices_to={'tipo': 'Esteira'})
     
-    # Status Oficial Financeiro
     status_comissionamento = models.ForeignKey(StatusCRM, on_delete=models.SET_NULL, null=True, blank=True, related_name='vendas_comissionamento', limit_choices_to={'tipo': 'Comissionamento'})
 
     data_criacao = models.DateTimeField(auto_now_add=True)
@@ -129,11 +128,9 @@ class Venda(models.Model):
     antecipou_instalacao = models.BooleanField(default=False)
     motivo_pendencia = models.ForeignKey(MotivoPendencia, on_delete=models.SET_NULL, null=True, blank=True, related_name='vendas_pendentes')
 
-    # CAMPOS DE COMISSIONAMENTO
     inclusao = models.BooleanField(default=False, verbose_name="Inclusão/Viabilidade")
     data_pagamento_comissao = models.DateField(null=True, blank=True, verbose_name="Data Pagamento Comissão")
     
-    # Legado
     data_pagamento = models.DateField(null=True, blank=True) 
     valor_pago = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
 
@@ -142,9 +139,14 @@ class Venda(models.Model):
         db_table = 'crm_venda'
         verbose_name = "Venda"
         verbose_name_plural = "Vendas"
-        permissions = [("pode_reverter_status", "Pode reverter o status")]
+        # --- MAPA COMPLETO DE PERMISSÕES ---
+        permissions = [
+            ("pode_reverter_status", "Pode reverter o status"),
+            ("can_view_auditoria", "Pode visualizar auditoria"),
+            ("can_view_esteira", "Pode visualizar esteira"),
+            ("can_view_comissao_dashboard", "Pode visualizar card de comissão"), # Nova
+        ]
 
-# MODELO DE HISTÓRICO (Aba 2)
 class PagamentoComissao(models.Model):
     referencia_ano = models.IntegerField()
     referencia_mes = models.IntegerField()

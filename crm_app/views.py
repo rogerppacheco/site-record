@@ -29,9 +29,8 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 
 from xhtml2pdf import pisa 
 
-# --- ALTERAÇÃO 1: Importando VendaPermission ---
+# Importando permissões customizadas
 from usuarios.permissions import CheckAPIPermission, VendaPermission
-# -----------------------------------------------
 
 from .models import (
     Operadora, Plano, FormaPagamento, StatusCRM, MotivoPendencia,
@@ -137,9 +136,8 @@ class RegraComissaoDetailView(generics.RetrieveUpdateDestroyAPIView):
     resource_name = 'regracomissao'
 
 class VendaViewSet(viewsets.ModelViewSet):
-    # --- ALTERAÇÃO 2: Trocando a permissão restrita pela permissão inteligente ---
+    # Permissão inteligente que libera BackOffice/Esteira para editar status
     permission_classes = [VendaPermission] 
-    # -----------------------------------------------------------------------------
     resource_name = 'venda'
     
     queryset = Venda.objects.filter(ativo=True).order_by('-data_criacao')
@@ -350,6 +348,15 @@ class DashboardResumoView(APIView):
     def get(self, request, *args, **kwargs):
         User = get_user_model()
         user = request.user
+        
+        # --- CHECAGEM DE PERMISSÃO PARA CARD FINANCEIRO ---
+        tem_permissao_card = user.has_perm('crm_app.can_view_comissao_dashboard')
+        eh_gestor = is_member(user, ['Diretoria', 'Admin'])
+        
+        # Só exibe se tiver permissão explícita ou for gestor
+        exibir_comissao = tem_permissao_card or eh_gestor
+        # --------------------------------------------------
+
         hoje = now()
         inicio_mes = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         proximo_mes = (inicio_mes + timedelta(days=32)).replace(day=1)
@@ -369,8 +376,6 @@ class DashboardResumoView(APIView):
         status_counts_geral = defaultdict(int)
         meta_display = 0
         detalhes_listas = defaultdict(list)
-
-        exibir_comissao = True 
 
         for vendedor in usuarios_para_calcular:
             meta_individual = getattr(vendedor, 'meta_comissao', 0) or 0
@@ -420,37 +425,39 @@ class DashboardResumoView(APIView):
                 detalhes_listas['TOTAL_INSTALADAS'].append(obj_inst)
                 detalhes_listas['INSTALADA'].append(obj_inst)
 
-            regras = RegraComissao.objects.filter(consultor=vendedor).select_related('plano')
-            comissao_vendedor = 0.0
-            for v in vendas_instaladas:
-                valor_item = 0.0 
-                doc = v.cliente.cpf_cnpj if v.cliente else ''
-                doc_limpo = ''.join(filter(str.isdigit, doc))
-                tipo_cliente_venda = 'CNPJ' if len(doc_limpo) > 11 else 'CPF'
-                
-                regra_encontrada = None
-                for r in regras:
-                    canal_vendedor = getattr(vendedor, 'canal', 'PAP') or 'PAP'
-                    if r.plano.id == v.plano.id and r.tipo_cliente == tipo_cliente_venda and r.tipo_venda == canal_vendedor:
-                        regra_encontrada = r
-                        break
-                
-                if regra_encontrada:
-                    valor_item = float(regra_encontrada.valor_acelerado if bateu_meta else regra_encontrada.valor_base)
-                else:
-                    valor_item = 0.0
-                
-                comissao_vendedor += valor_item
+            # --- SÓ CALCULA COMISSÃO SE TIVER PERMISSÃO (Economia de Performance) ---
+            if exibir_comissao:
+                regras = RegraComissao.objects.filter(consultor=vendedor).select_related('plano')
+                comissao_vendedor = 0.0
+                for v in vendas_instaladas:
+                    valor_item = 0.0 
+                    doc = v.cliente.cpf_cnpj if v.cliente else ''
+                    doc_limpo = ''.join(filter(str.isdigit, doc))
+                    tipo_cliente_venda = 'CNPJ' if len(doc_limpo) > 11 else 'CPF'
+                    
+                    regra_encontrada = None
+                    for r in regras:
+                        canal_vendedor = getattr(vendedor, 'canal', 'PAP') or 'PAP'
+                        if r.plano.id == v.plano.id and r.tipo_cliente == tipo_cliente_venda and r.tipo_venda == canal_vendedor:
+                            regra_encontrada = r
+                            break
+                    
+                    if regra_encontrada:
+                        valor_item = float(regra_encontrada.valor_acelerado if bateu_meta else regra_encontrada.valor_base)
+                    
+                    comissao_vendedor += valor_item
+                comissao_total_geral += comissao_vendedor
+            # -----------------------------------------------------------------------
 
             total_registradas_geral += qtd_registradas
             total_instaladas_geral += qtd_instaladas
-            comissao_total_geral += comissao_vendedor
 
         percentual_aproveitamento = 0.0
         if total_registradas_geral > 0:
             percentual_aproveitamento = (total_instaladas_geral / total_registradas_geral) * 100
 
-        valor_comissao_final = comissao_total_geral
+        # Se não tem permissão, retorna 0.0
+        valor_comissao_final = comissao_total_geral if exibir_comissao else 0.0
 
         dados = {
             "periodo": f"{inicio_mes.strftime('%d/%m')} a {hoje.strftime('%d/%m')}",
