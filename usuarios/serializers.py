@@ -1,5 +1,3 @@
-# site-record/usuarios/serializers.py
-
 from rest_framework import serializers
 from .models import Usuario, Perfil, PermissaoPerfil
 from django.contrib.auth import get_user_model
@@ -85,7 +83,8 @@ class UsuarioSerializer(serializers.ModelSerializer):
             'desconto_instalacao_antecipada', 'adiantamento_cnpj', 'desconto_inss_fixo',
             'is_active', 'is_staff',
             'canal',
-            'participa_controle_presenca'
+            'participa_controle_presenca',
+            'tel_whatsapp' # <--- ADICIONADO AQUI
         ]
 
     def create(self, validated_data):
@@ -119,7 +118,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'id', 'username', 'first_name', 'last_name', 'nome_completo', 'email', 'cpf',
             'perfil', 'perfil_nome', 'groups',
             'supervisor', 'supervisor_nome',
-            'is_active', 'is_staff'
+            'is_active', 'is_staff',
+            'tel_whatsapp' # Adicionado aqui também para que o usuário veja seu próprio whats
         ]
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):

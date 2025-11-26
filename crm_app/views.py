@@ -25,6 +25,10 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.exceptions import PermissionDenied, NotFound
+# --- IMPORTS WHATSAPP ---
+from rest_framework.decorators import api_view, permission_classes
+from .whatsapp_service import WhatsAppService
+# ------------------------
 
 from xhtml2pdf import pisa 
 
@@ -480,103 +484,26 @@ class DashboardResumoView(APIView):
         }
         return Response(dados)
 
+# --- CORREÇÃO AQUI: CLIENTEVIEWSET ---
 class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Cliente.objects.filter(vendas__ativo=True).distinct()
+    queryset = Cliente.objects.all()
     serializer_class = ClienteSerializer
     permission_classes = [CheckAPIPermission]
     resource_name = 'cliente'
 
     def get_queryset(self):
-        queryset = Venda.objects.filter(ativo=True).select_related(
-            'vendedor', 'cliente', 'plano', 'forma_pagamento',
-            'status_tratamento', 'status_esteira', 'status_comissionamento',
-            'motivo_pendencia'
-        ).prefetch_related('historico_alteracoes__usuario')
+        # Garante que buscamos em CLIENTES e não em Vendas
+        queryset = Cliente.objects.all().order_by('nome_razao_social')
         
-        user = self.request.user
-
-        if self.action in ['retrieve', 'update', 'partial_update', 'destroy']:
-            if user.is_superuser or is_member(user, ['Diretoria', 'Admin']):
-                return queryset
-            if is_member(user, ['BackOffice']):
-                return queryset
-            if is_member(user, ['Supervisor']):
-                liderados_ids = list(user.liderados.values_list('id', flat=True))
-                liderados_ids.append(user.id)
-                return queryset.filter(vendedor_id__in=liderados_ids)
-            return queryset.filter(vendedor=user)
-
-        view_type = self.request.query_params.get('view')
-        flow = self.request.query_params.get('flow')
-
-        if not view_type:
-            if flow and is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
-                view_type = 'geral'
-            else:
-                view_type = 'minhas_vendas'
-
-        if view_type == 'minhas_vendas':
-            queryset = queryset.filter(vendedor=user)
-
-        elif view_type == 'visao_equipe' or view_type == 'geral':
-            if is_member(user, ['Diretoria', 'Admin']):
-                pass 
-            elif is_member(user, ['BackOffice']):
-                data_inicio_param = self.request.query_params.get('data_inicio')
-                if not data_inicio_param and self.action == 'list':
-                    hoje = timezone.now()
-                    inicio_mes = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-                    queryset = queryset.filter(
-                        Q(data_criacao__gte=inicio_mes) | 
-                        Q(data_instalacao__gte=inicio_mes)
-                    )
-            elif is_member(user, ['Supervisor']):
-                liderados_ids = list(user.liderados.values_list('id', flat=True))
-                liderados_ids.append(user.id)
-                queryset = queryset.filter(vendedor_id__in=liderados_ids)
-            else:
-                return queryset.none()
-
-        ordem_servico = self.request.query_params.get('ordem_servico')
-        data_inicio_str = self.request.query_params.get('data_inicio')
-        data_fim_str = self.request.query_params.get('data_fim')
-        consultor_id = self.request.query_params.get('consultor_id')
-        
-        if consultor_id:
-            if view_type != 'minhas_vendas':
-                queryset = queryset.filter(vendedor_id=consultor_id)
-
-        if flow == 'auditoria':
-            queryset = queryset.filter(status_tratamento__isnull=False, status_esteira__isnull=True)
-        elif flow == 'esteira':
-            queryset = queryset.filter(status_esteira__isnull=False, status_comissionamento__isnull=True).exclude(status_esteira__nome__iexact='Instalada')
-        elif flow == 'comissionamento':
-            queryset = queryset.filter(status_esteira__nome__iexact='Instalada').exclude(status_comissionamento__nome__iexact='Pago')
-
-        if ordem_servico:
-            queryset = queryset.filter(ordem_servico__icontains=ordem_servico)
-
-        if data_inicio_str and data_fim_str:
-            try:
-                data_inicio = datetime.strptime(data_inicio_str, '%Y-%m-%d').date()
-                data_fim = datetime.strptime(data_fim_str, '%Y-%m-%d').date()
-                data_fim_ajustada = data_fim + timedelta(days=1)
-                queryset = queryset.filter(
-                    Q(data_criacao__range=(data_inicio, data_fim_ajustada)) |
-                    Q(data_instalacao__range=(data_inicio, data_fim_ajustada))
-                )
-            except (ValueError, TypeError): 
-                pass
-        
-        elif view_type == 'minhas_vendas' and not is_member(user, ['Diretoria', 'BackOffice', 'Admin']):
-             hoje = now()
-             inicio_mes = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-             queryset = queryset.filter(
-                Q(data_criacao__gte=inicio_mes) | 
-                Q(data_instalacao__gte=inicio_mes)
-             )
-                
+        search = self.request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(
+                Q(nome_razao_social__icontains=search) | 
+                Q(cpf_cnpj__icontains=search)
+            )
+            
         return queryset
+# -------------------------------------
 
 class ListaVendedoresView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -1296,3 +1223,20 @@ class EnviarExtratoEmailView(APIView):
         except Exception as e:
             logger.error(f"Erro geral envio email: {e}")
             return Response({"error": str(e)}, status=500)
+
+# --- NOVO ENDPOINT PARA VERIFICAR WHATSAPP ---
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def api_verificar_whatsapp(request, telefone):
+    """
+    Endpoint para o front-end verificar se um número tem WhatsApp.
+    Uso: GET /api/crm/verificar-zap/5531999999999/
+    """
+    service = WhatsAppService()
+    # O serviço já trata a formatação, mas garantimos que chegue limpo
+    existe = service.verificar_numero_existe(telefone)
+    
+    return Response({
+        'telefone': telefone,
+        'possui_whatsapp': existe
+    })

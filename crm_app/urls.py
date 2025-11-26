@@ -20,7 +20,9 @@ from .views import (
     GerarRelatorioPDFView,
     EnviarExtratoEmailView,
     # Importar as views de campanha
-    CampanhaListCreateView, CampanhaDetailView 
+    CampanhaListCreateView, CampanhaDetailView,
+    # Import da nova view de WhatsApp
+    api_verificar_whatsapp
 )
 
 router = DefaultRouter()
@@ -75,6 +77,9 @@ urlpatterns = [
     
     # --- RELATÓRIOS ---
     path('relatorios/performance-vendas/', PerformanceVendasView.as_view(), name='performance-vendas'),
+
+    # --- API AUXILIARES (Nova Rota) ---
+    path('verificar-zap/<str:telefone>/', api_verificar_whatsapp, name='api_verificar_zap'),
     
     # --- ROTAS DO ROUTER (Vendas, Clientes, etc) ---
     path('', include(router.urls)),

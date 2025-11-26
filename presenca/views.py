@@ -1,15 +1,18 @@
-# site-record/presenca/views.py
-
 from rest_framework import viewsets, status, generics
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated 
 from django.http import Http404
+
+# CORREÇÃO 1: Importar MotivoAusencia em vez de Motivo
 from .models import MotivoAusencia, Presenca, DiaNaoUtil
+
+# CORREÇÃO 2: Importar MotivoAusenciaSerializer em vez de MotivoSerializer
 from .serializers import MotivoAusenciaSerializer, PresencaSerializer, DiaNaoUtilSerializer
 from usuarios.models import Usuario
 from usuarios.serializers import UsuarioSerializer
 
 class MotivoViewSet(viewsets.ModelViewSet):
+    # CORREÇÃO 3: Usar MotivoAusencia e MotivoAusenciaSerializer
     queryset = MotivoAusencia.objects.all().order_by('motivo')
     serializer_class = MotivoAusenciaSerializer
     permission_classes = [IsAuthenticated]
@@ -85,7 +88,6 @@ class PresencaViewSet(viewsets.ModelViewSet):
             print(f"DEBUG: Erro genérico: {e}")
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-    # (Mantendo Create e Update como estavam)
     def create(self, request, *args, **kwargs):
         data = request.data.copy()
         colaborador_id = data.get('colaborador')
@@ -122,7 +124,7 @@ class MinhaEquipeListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
     def get_queryset(self):
         user = self.request.user
-        return user.liderados.all().order_by('first_name')
+        return user.liderados.filter(is_active=True).order_by('first_name')
 
 class TodosUsuariosListView(generics.ListAPIView):
     queryset = Usuario.objects.filter(is_active=True, participa_controle_presenca=True).order_by('first_name')
