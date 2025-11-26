@@ -44,7 +44,7 @@
                     <h1 style="font-size: 1.8rem; margin: 0;">Auditoria</h1>
                     <p class="text-muted mb-0">Validação e qualidade das vendas.</p>
                 </div>
-                </div>
+            </div>
 
             <div class="card border-0 shadow-none">
                 <div class="table-responsive">
@@ -76,24 +76,89 @@
                 <div class="modal-body">
                     <form id="form-edit-venda">
                         <input type="hidden" id="edit-id">
+                        
+                        <h6 class="text-primary border-bottom pb-2 mb-3"><i class="bi bi-info-circle"></i> Dados da Venda</h6>
+                        <div class="row g-3 mb-3 bg-light p-2 rounded">
+                            <div class="col-md-3">
+                                <label class="form-label small fw-bold text-muted">Vendedor</label>
+                                <input type="text" class="form-control form-control-sm" id="view-vendedor" readonly disabled>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small fw-bold text-muted">Data Venda</label>
+                                <input type="text" class="form-control form-control-sm" id="view-data" readonly disabled>
+                            </div>
+                             <div class="col-md-3">
+                                <label class="form-label small fw-bold text-muted">Forma Entrada</label>
+                                <input type="text" class="form-control form-control-sm" id="view-entrada" readonly disabled>
+                            </div>
+                             <div class="col-md-3">
+                                <label class="form-label small fw-bold text-muted">Status Atual</label>
+                                <input type="text" class="form-control form-control-sm" id="view-status" readonly disabled>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold text-muted">Plano</label>
+                                <input type="text" class="form-control form-control-sm" id="view-plano" readonly disabled>
+                            </div>
+                             <div class="col-md-6">
+                                <label class="form-label small fw-bold text-muted">Forma de Pagamento</label>
+                                <input type="text" class="form-control form-control-sm" id="view-pagamento" readonly disabled>
+                            </div>
+                        </div>
+
+                        <h6 class="text-primary border-bottom pb-2 mb-3 mt-4"><i class="bi bi-person"></i> Dados do Cliente</h6>
                         <div class="row g-3">
-                            <div class="col-md-6"><label class="form-label fw-bold">Cliente</label><input type="text" class="form-control" id="edit-cliente" readonly></div>
-                            <div class="col-md-6"><label class="form-label fw-bold">CPF/CNPJ</label><input type="text" class="form-control" id="edit-cpf" readonly></div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Nome Cliente (Razão Social)</label>
+                                <input type="text" class="form-control" id="edit-cliente" readonly>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">CPF/CNPJ</label>
+                                <input type="text" class="form-control" id="edit-cpf" readonly>
+                            </div>
                             
-                            <div class="col-md-6"><label class="form-label">Telefone 1</label><input type="text" class="form-control" id="edit-tel1"></div>
-                            <div class="col-md-6"><label class="form-label">Telefone 2</label><input type="text" class="form-control" id="edit-tel2"></div>
+                            <div class="col-md-6">
+                                <label class="form-label">Nome da Mãe</label>
+                                <input type="text" class="form-control" id="edit-nome-mae">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Data de Nascimento</label>
+                                <input type="date" class="form-control" id="edit-nasc">
+                            </div>
                             
-                            <div class="col-12"><hr></div>
-                            <div class="col-md-4"><label class="form-label">CEP</label><input type="text" class="form-control" id="edit-cep"></div>
-                            <div class="col-md-8"><label class="form-label">Logradouro</label><input type="text" class="form-control" id="edit-logradouro"></div>
-                            <div class="col-md-4"><label class="form-label">Número</label><input type="text" class="form-control" id="edit-numero"></div>
+                            <div class="col-md-8">
+                                <label class="form-label">Nome Representante Legal</label>
+                                <input type="text" class="form-control" id="edit-nome-rep">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">CPF Rep. Legal</label>
+                                <input type="text" class="form-control" id="edit-cpf-rep">
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label">Telefone 1</label>
+                                <input type="text" class="form-control" id="edit-tel1">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Telefone 2</label>
+                                <input type="text" class="form-control" id="edit-tel2">
+                            </div>
+                        </div>
+
+                        <h6 class="text-primary border-bottom pb-2 mb-3 mt-4"><i class="bi bi-geo-alt"></i> Endereço & Instalação</h6>
+                        <div class="row g-3">
+                            <div class="col-md-3"><label class="form-label">CEP</label><input type="text" class="form-control" id="edit-cep"></div>
+                            <div class="col-md-7"><label class="form-label">Logradouro</label><input type="text" class="form-control" id="edit-logradouro"></div>
+                            <div class="col-md-2"><label class="form-label">Número</label><input type="text" class="form-control" id="edit-numero"></div>
+                            
+                            <div class="col-md-4"><label class="form-label">Complemento</label><input type="text" class="form-control" id="edit-complemento"></div>
                             <div class="col-md-4"><label class="form-label">Bairro</label><input type="text" class="form-control" id="edit-bairro"></div>
-                            <div class="col-md-4"><label class="form-label">Cidade</label><input type="text" class="form-control" id="edit-cidade"></div>
-                            <div class="col-md-2"><label class="form-label">UF</label><input type="text" class="form-control" id="edit-estado"></div>
-                            <div class="col-md-10"><label class="form-label">Ponto Ref.</label><input type="text" class="form-control" id="edit-referencia"></div>
+                            <div class="col-md-3"><label class="form-label">Cidade</label><input type="text" class="form-control" id="edit-cidade"></div>
+                            <div class="col-md-1"><label class="form-label">UF</label><input type="text" class="form-control" id="edit-estado"></div>
+                            
+                            <div class="col-12"><label class="form-label">Ponto de Referência</label><input type="text" class="form-control" id="edit-referencia"></div>
                             
                             <div class="col-12"><hr></div>
-                            <div class="col-12"><label class="form-label">Observações</label><textarea class="form-control" id="edit-obs" rows="2"></textarea></div>
+                            <div class="col-12"><label class="form-label fw-bold">Observações</label><textarea class="form-control" id="edit-obs" rows="3"></textarea></div>
                         </div>
                     </form>
                 </div>
@@ -359,19 +424,44 @@
             }
         }
 
+        // Função atualizada para preencher todos os novos campos
         function abrirDetalhes(id) {
             const v = vendas.find(x => x.id === id);
             if(!v) return;
             
+            // ID Oculto
             document.getElementById('edit-id').value = v.id;
+
+            // --- BLOCO 1: INFORMATIVOS (READONLY) ---
+            document.getElementById('view-vendedor').value = v.vendedor ? v.vendedor.username : '-';
+            document.getElementById('view-data').value = new Date(v.data_criacao).toLocaleDateString('pt-BR');
+            document.getElementById('view-entrada').value = v.forma_entrada || '-';
+            document.getElementById('view-status').value = v.status_tratamento ? v.status_tratamento.nome : '-';
+            
+            const nomePlano = v.plano ? v.plano.nome : 'Sem Plano';
+            const valorPlano = v.plano ? `R$ ${v.plano.valor}` : '';
+            document.getElementById('view-plano').value = `${nomePlano} - ${valorPlano}`;
+            
+            document.getElementById('view-pagamento').value = v.forma_pagamento ? v.forma_pagamento.nome : '-';
+
+            // --- BLOCO 2: DADOS CLIENTE ---
             document.getElementById('edit-cliente').value = v.cliente.nome_razao_social;
             document.getElementById('edit-cpf').value = v.cliente.cpf_cnpj;
             
+            document.getElementById('edit-nome-mae').value = v.nome_mae || '';
+            document.getElementById('edit-nasc').value = v.data_nascimento || ''; // Formato esperado YYYY-MM-DD já vem da API
+            
+            document.getElementById('edit-nome-rep').value = v.nome_representante_legal || '';
+            document.getElementById('edit-cpf-rep').value = v.cpf_representante_legal || '';
+
             document.getElementById('edit-tel1').value = v.telefone1 || '';
             document.getElementById('edit-tel2').value = v.telefone2 || '';
+
+            // --- BLOCO 3: ENDEREÇO ---
             document.getElementById('edit-cep').value = v.cep || '';
             document.getElementById('edit-logradouro').value = v.logradouro || '';
             document.getElementById('edit-numero').value = v.numero_residencia || '';
+            document.getElementById('edit-complemento').value = v.complemento || ''; // Novo campo
             document.getElementById('edit-bairro').value = v.bairro || '';
             document.getElementById('edit-cidade').value = v.cidade || '';
             document.getElementById('edit-estado').value = v.estado || '';
@@ -381,6 +471,7 @@
             modalDetalhes.show();
         }
 
+        // Função atualizada para salvar os novos campos editáveis
         async function salvarAlteracoes() {
             const btn = document.getElementById('btn-salvar-detalhes');
             const id = document.getElementById('edit-id').value;
@@ -388,23 +479,36 @@
             btn.disabled = true;
             btn.innerHTML = 'Salvando...';
 
+            // Monta o objeto com TODOS os campos editáveis
             const body = {
+                // Contato
                 telefone1: document.getElementById('edit-tel1').value,
                 telefone2: document.getElementById('edit-tel2').value,
+                
+                // Dados Pessoais Extras
+                nome_mae: document.getElementById('edit-nome-mae').value,
+                data_nascimento: document.getElementById('edit-nasc').value || null, // null se estiver vazio para evitar erro de data
+                nome_representante_legal: document.getElementById('edit-nome-rep').value,
+                cpf_representante_legal: document.getElementById('edit-cpf-rep').value,
+
+                // Endereço Completo
                 cep: document.getElementById('edit-cep').value,
                 logradouro: document.getElementById('edit-logradouro').value,
                 numero_residencia: document.getElementById('edit-numero').value,
+                complemento: document.getElementById('edit-complemento').value,
                 bairro: document.getElementById('edit-bairro').value,
                 cidade: document.getElementById('edit-cidade').value,
                 estado: document.getElementById('edit-estado').value,
                 ponto_referencia: document.getElementById('edit-referencia').value,
+                
+                // Obs
                 observacoes: document.getElementById('edit-obs').value
             };
             
             try { 
                 await apiClient.patch(`/api/crm/vendas/${id}/`, body); 
                 modalDetalhes.hide(); 
-                carregarVendas(true); 
+                carregarVendas(true); // Recarrega a lista para atualizar os dados em memória
                 alert('Dados salvos com sucesso!'); 
             } catch(e){ 
                 mostrarErroDetalhado(e, 'salvar alterações');
