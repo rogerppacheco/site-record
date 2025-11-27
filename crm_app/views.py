@@ -1,7 +1,7 @@
 import logging
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from collections import defaultdict
 from operator import itemgetter
 from io import BytesIO
@@ -62,6 +62,25 @@ def is_member(user, groups):
     if hasattr(user, 'perfil') and user.perfil and user.perfil.nome in groups:
         return True
     return False
+
+# --- FUNÇÃO PARA PEGAR/CRIAR O USUÁRIO ROBÔ DA IMPORTAÇÃO ---
+def get_osab_bot_user():
+    User = get_user_model()
+    # Tenta buscar ou criar, passando uma senha dummy para passar na validação 'full_clean'
+    bot, created = User.objects.get_or_create(
+        username='OSAB_IMPORT',
+        defaults={
+            'first_name': 'OSAB',
+            'last_name': 'Automático',
+            'email': 'osab_import@sistema.local',
+            'is_active': True,
+            'password': 'senha_temporaria_validacao_sistema' # Necessário para passar no save() do model
+        }
+    )
+    if created:
+        bot.set_unusable_password() # Invalida a senha para ninguém logar com ela
+        bot.save()
+    return bot
 # ------------------------------------
 
 class OperadoraListCreateView(generics.ListCreateAPIView):
@@ -484,7 +503,6 @@ class DashboardResumoView(APIView):
         }
         return Response(dados)
 
-# --- CORREÇÃO AQUI: CLIENTEVIEWSET ---
 class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Cliente.objects.all()
     serializer_class = ClienteSerializer
@@ -492,7 +510,6 @@ class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
     resource_name = 'cliente'
 
     def get_queryset(self):
-        # Garante que buscamos em CLIENTES e não em Vendas
         queryset = Cliente.objects.all().order_by('nome_razao_social')
         
         search = self.request.query_params.get('search')
@@ -503,7 +520,6 @@ class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
             )
             
         return queryset
-# -------------------------------------
 
 class ListaVendedoresView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -662,53 +678,272 @@ class ImportacaoOsabView(APIView):
     permission_classes = [CheckAPIPermission]
     resource_name = 'importacao_osab'
     parser_classes = [MultiPartParser, FormParser]
+
     def _clean_key(self, key):
         if pd.isna(key) or key is None: return None
         return str(key).replace('.0', '').strip()
+
     def get(self, request):
-        queryset = ImportacaoOsab.objects.all().order_by('-id')
+        queryset = ImportacaoOsab.objects.all().order_by('-id')[:100]
         serializer = ImportacaoOsabSerializer(queryset, many=True)
         return Response(serializer.data)
+
     def post(self, request, *args, **kwargs):
         file_obj = request.FILES.get('file')
         if not file_obj: return Response({'error': 'Nenhum arquivo foi enviado.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # --- MAPEAMENTO NOVO DA PLANILHA ---
+        coluna_map = {
+            'PRODUTO': 'produto',
+            'UF': 'uf',
+            'DT_REF': 'dt_ref',
+            'PEDIDO': 'documento',
+            'SEGMENTO': 'segmento',
+            'LOCALIDADE': 'localidade',
+            'CELULA': 'celula',
+            'ID_BUNDLE': 'id_bundle',
+            'TELEFONE': 'telefone',
+            'VELOCIDADE': 'velocidade',
+            'MATRICULA_VENDEDOR': 'matricula_vendedor',
+            'CLASSE_PRODUTO': 'classe_produto',
+            'NOME_CNAL': 'nome_canal',
+            'PDV_SAP': 'pdv_sap',
+            'DESCRICAO': 'descricao',
+            'DATA_ABERTURA': 'data_abertura',
+            'DATA_FECHAMENTO': 'data_fechamento',
+            'SITUACAO': 'situacao',
+            'CLASSIFICACAO': 'classificacao',
+            'DATA_AGENDAMENTO': 'data_agendamento',
+            'COD_PENDENCIA': 'cod_pendencia',
+            'DESC_PENDENCIA': 'desc_pendencia',
+            'NUMERO_BA': 'numero_ba',
+            'FG_VENDA_VALIDA': 'fg_venda_valida',
+            'DESC_MOTIVO_ORDEM': 'desc_motivo_ordem',
+            'DESC_SUB_MOTIVO_ORDEM': 'desc_sub_motivo_ordem',
+            'MEIO_PAGAMENTO': 'meio_pagamento',
+            'CAMPANHA': 'campanha',
+            'FLG_MEI': 'flg_mei',
+            'NM_DIRETORIA': 'nm_diretoria',
+            'NM_REGIONAL': 'nm_regional',
+            'CD_REDE': 'cd_rede',
+            'GP_CANAL': 'gp_canal',
+            'GERENCIA': 'gerencia',
+            'NM_GC': 'gc',
+        }
+
         try:
             df = None
             if file_obj.name.endswith('.xlsb'): df = pd.read_excel(file_obj, engine='pyxlsb')
             elif file_obj.name.endswith(('.xlsx', '.xls')): df = pd.read_excel(file_obj)
             else: return Response({'error': 'Formato de arquivo inválido.'}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e: return Response({'error': f'Erro ao ler o arquivo: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+        
         df.columns = [str(col).strip().upper() for col in df.columns]
-        if 'DOCUMENTO' not in df.columns or 'SITUACAO' not in df.columns: return Response({"error": "O arquivo precisa conter as colunas 'DOCUMENTO' e 'SITUACAO'."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        date_cols = ['DT_REF', 'DATA_ABERTURA', 'DATA_FECHAMENTO', 'DATA_AGENDAMENTO']
+        for col in date_cols:
+            if col in df.columns:
+                df[col] = pd.to_datetime(df[col], errors='coerce')
+
         df = df.replace({np.nan: None, pd.NaT: None})
-        STATUS_MAP = {'CONCLUÍDO': 'INSTALADA', 'CANCELADO': 'CANCELADA', 'CANCELADO - SEM APROVISIONAMENTO': 'CANCELADA', 'PENDÊNCIA CLIENTE': 'PENDENCIADA', 'PENDÊNCIA TÉCNICA': 'PENDENCIADA', 'EM APROVISIONAMENTO': 'EM ANDAMENTO', 'AGUARDANDO PAGAMENTO': 'AGUARDANDO PAGAMENTO', 'REPROVADO ANALISE DE FRAUDE': 'REPROVADO CARTÃO DE CRÉDITO', 'DRAFT': 'DRAFT', 'DRAFT - PRAZO CC EXPIRADO': 'DRAFT'}
+
+        colunas_validas = {k: v for k, v in coluna_map.items() if k in df.columns}
+        
+        # --- MAPEAMENTO DE STATUS (OSAB -> SISTEMA) ---
+        STATUS_MAP = {
+            'REPROVADO ANALISE DE FRAUDE-PAYMENT_NOT_AUTHORIZED_RULE': 'REPROVADO CARTÃO DE CRÉDITO',
+            'DRAFT-PAYMENT_STATUS_FAILED': 'DRAFT',
+            'DRAFT-INVALID_SESSION_DATA': 'DRAFT',
+            'DRAFT-SESSION_DATA_INVALID': 'DRAFT',
+            'AGUARDANDO PAGAMENTO-SESSION_DATA_INVALID': 'AGUARDANDO PAGAMENTO',
+            'AGUARDANDO PAGAMENTO-INVALID_SESSION_DATA': 'AGUARDANDO PAGAMENTO',
+            'EM APROVISIONAMENTO': 'EM ANDAMENTO',
+            'PENDÊNCIA CLIENTE': 'PENDENCIADA', 'PENDENCIA CLIENTE': 'PENDENCIADA',
+            'CANCELADO': 'CANCELADA',
+            'CONCLUÍDO': 'INSTALADA', 'CONCLUIDO': 'INSTALADA',
+            'PENDÊNCIA TÉCNICA': 'PENDENCIADA', 'PENDENCIA TECNICA': 'PENDENCIADA'
+        }
+        
         status_esteira_objects = StatusCRM.objects.filter(tipo='Esteira')
         status_esteira_map = {status.nome.upper(): status for status in status_esteira_objects}
+        
         vendas_com_os = Venda.objects.filter(ativo=True, ordem_servico__isnull=False).exclude(ordem_servico__exact='')
         vendas_map = {self._clean_key(v.ordem_servico): v for v in vendas_com_os}
-        report = {"status": "sucesso", "total_registros": len(df), "criados": 0, "atualizados": 0, "vendas_encontradas": 0, "ja_corretos": 0, "status_nao_mapeado": 0, "erros": []}
-        vendas_para_atualizar = []
+        
+        # --- PREPARAÇÃO PARA PENDÊNCIAS ---
+        todos_motivos = MotivoPendencia.objects.all()
+        motivo_pendencia_map = {}
+        for m in todos_motivos:
+            codigo = "".join(filter(str.isdigit, m.nome))[:2]
+            if codigo:
+                motivo_pendencia_map[codigo] = m
+        
+        motivo_validar_osab, _ = MotivoPendencia.objects.get_or_create(
+            nome="VALIDAR OSAB", 
+            defaults={'tipo_pendencia': 'Operacional'}
+        )
+
+        osab_bot = get_osab_bot_user()
+
+        report = {
+            "status": "sucesso", 
+            "total_registros": len(df), 
+            "criados": 0,             
+            "atualizados": 0,          
+            "vendas_encontradas": 0, 
+            "ja_corretos": 0, 
+            "status_nao_mapeado": 0, 
+            "erros": []
+        }
+        
+        vendas_para_atualizar_db = []
+        registros_criados = 0
+        registros_atualizados_imp = 0
+        
+        historicos_para_criar = []
+
         for index, row in df.iterrows():
-            doc = self._clean_key(row.get('DOCUMENTO'))
-            sit = row.get('SITUACAO')
-            if not doc: continue
-            venda = vendas_map.get(doc)
-            if not venda:
-                report["erros"].append(f"Linha {index + 2}: Documento {doc} não encontrado.")
-                continue
-            report["vendas_encontradas"] += 1
-            if not sit: continue
-            target_name = STATUS_MAP.get(str(sit).upper())
-            if not target_name: report["status_nao_mapeado"] += 1; continue
-            target_obj = status_esteira_map.get(target_name.upper())
-            if not target_obj: report["status_nao_mapeado"] += 1; continue
-            if venda.status_esteira and venda.status_esteira.id == target_obj.id: report["ja_corretos"] += 1
-            else:
-                venda.status_esteira = target_obj
-                vendas_para_atualizar.append(venda)
-        if vendas_para_atualizar:
-            report["atualizados"] = len(vendas_para_atualizar)
-            Venda.objects.bulk_update(vendas_para_atualizar, ['status_esteira'])
+            try:
+                # 1. PROCESSAMENTO DA TABELA IMPORTACAO_OSAB
+                dados_model = {}
+                for col_planilha, campo_model in colunas_validas.items():
+                    val = row.get(col_planilha)
+                    if col_planilha == 'PEDIDO' and val is not None:
+                        val = self._clean_key(val)
+                    
+                    if isinstance(val, (pd.Timestamp, datetime)):
+                        val = val.date()
+                    
+                    dados_model[campo_model] = val
+                
+                doc_chave = dados_model.get('documento')
+                
+                if doc_chave:
+                    obj_existente = ImportacaoOsab.objects.filter(documento=doc_chave).first()
+                    
+                    should_create = False
+                    should_update = False
+
+                    if not obj_existente:
+                        should_create = True
+                    else:
+                        nova_dt = dados_model.get('dt_ref')
+                        antiga_dt = obj_existente.dt_ref
+                        
+                        if nova_dt:
+                            if not antiga_dt:
+                                should_update = True
+                            elif nova_dt > antiga_dt:
+                                should_update = True
+                    
+                    if should_create:
+                        ImportacaoOsab.objects.create(**dados_model)
+                        registros_criados += 1
+                    elif should_update:
+                        for key, value in dados_model.items():
+                            setattr(obj_existente, key, value)
+                        obj_existente.save()
+                        registros_atualizados_imp += 1
+
+                # 2. ATUALIZACAO DE STATUS DA VENDA
+                doc = self._clean_key(row.get('PEDIDO'))
+                sit = row.get('SITUACAO')
+                
+                if not doc: continue
+                
+                venda = vendas_map.get(doc)
+                if not venda: continue
+                
+                report["vendas_encontradas"] += 1
+                
+                if not sit: continue
+                
+                target_name = STATUS_MAP.get(str(sit).strip())
+                if not target_name:
+                    target_name = STATUS_MAP.get(str(sit).strip().upper())
+                
+                if not target_name:
+                    sit_upper = str(sit).strip().upper()
+                    if sit_upper.startswith("DRAFT"):
+                        target_name = "DRAFT"
+                    elif sit_upper.startswith("AGUARDANDO PAGAMENTO"):
+                        target_name = "AGUARDANDO PAGAMENTO"
+                
+                if not target_name: 
+                    report["status_nao_mapeado"] += 1
+                    continue
+                
+                target_obj = status_esteira_map.get(target_name.upper())
+                if not target_obj: 
+                    report["status_nao_mapeado"] += 1
+                    continue
+                
+                mudou_status = (venda.status_esteira is None) or (venda.status_esteira.id != target_obj.id)
+                mudou_pendencia = False
+                mudou_data_instalacao = False
+
+                novo_motivo_pendencia = None
+                if target_name == "PENDENCIADA":
+                    cod_pendencia_planilha = str(row.get('COD_PENDENCIA', '')).strip()
+                    prefixo = cod_pendencia_planilha[:2] if len(cod_pendencia_planilha) >= 2 else cod_pendencia_planilha
+                    
+                    if prefixo in motivo_pendencia_map:
+                        novo_motivo_pendencia = motivo_pendencia_map[prefixo]
+                    else:
+                        novo_motivo_pendencia = motivo_validar_osab
+                    
+                    if venda.motivo_pendencia != novo_motivo_pendencia:
+                        venda.motivo_pendencia = novo_motivo_pendencia
+                        mudou_pendencia = True
+
+                # NOVA REGRA: Atualizar Data Instalação se for INSTALADA
+                if target_name == 'INSTALADA':
+                    data_fechamento = row.get('DATA_FECHAMENTO')
+                    if data_fechamento and not pd.isna(data_fechamento):
+                        if isinstance(data_fechamento, (pd.Timestamp, datetime)):
+                            data_fechamento = data_fechamento.date()
+                        
+                        if venda.data_instalacao != data_fechamento:
+                            venda.data_instalacao = data_fechamento
+                            mudou_data_instalacao = True
+
+                if not mudou_status and not mudou_pendencia and not mudou_data_instalacao:
+                    report["ja_corretos"] += 1
+                else:
+                    if mudou_status:
+                        venda.status_esteira = target_obj
+                    
+                    vendas_para_atualizar_db.append(venda)
+                    
+                    detalhes_hist = {}
+                    if mudou_status:
+                        detalhes_hist['status_esteira'] = f"Alterado para {target_obj.nome} via Importação OSAB"
+                    if mudou_pendencia:
+                        detalhes_hist['motivo_pendencia'] = f"Definido como {novo_motivo_pendencia.nome} (Cód: {row.get('COD_PENDENCIA')})"
+                    if mudou_data_instalacao:
+                        detalhes_hist['data_instalacao'] = f"Atualizada para {venda.data_instalacao} via OSAB"
+                    
+                    historicos_para_criar.append(
+                        HistoricoAlteracaoVenda(
+                            venda=venda,
+                            usuario=osab_bot,
+                            alteracoes=detalhes_hist
+                        )
+                    )
+
+            except Exception as ex:
+                report['erros'].append(f"Erro linha {index}: {str(ex)}")
+
+        report["criados"] = registros_criados
+        
+        if vendas_para_atualizar_db:
+            report["atualizados"] = len(vendas_para_atualizar_db)
+            campos_update = ['status_esteira', 'data_instalacao', 'motivo_pendencia']
+            Venda.objects.bulk_update(vendas_para_atualizar_db, campos_update)
+            
+            if historicos_para_criar:
+                HistoricoAlteracaoVenda.objects.bulk_create(historicos_para_criar)
+
         return Response(report, status=status.HTTP_200_OK)
 
 class ImportacaoOsabDetailView(generics.RetrieveUpdateAPIView):

@@ -137,12 +137,11 @@ class Venda(models.Model):
         db_table = 'crm_venda'
         verbose_name = "Venda"
         verbose_name_plural = "Vendas"
-        # --- MAPA COMPLETO DE PERMISSÕES ---
         permissions = [
             ("pode_reverter_status", "Pode reverter o status"),
             ("can_view_auditoria", "Pode visualizar auditoria"),
             ("can_view_esteira", "Pode visualizar esteira"),
-            ("can_view_comissao_dashboard", "Pode visualizar card de comissão"), # Nova
+            ("can_view_comissao_dashboard", "Pode visualizar card de comissão"), 
         ]
 
 class PagamentoComissao(models.Model):
@@ -159,11 +158,12 @@ class PagamentoComissao(models.Model):
         ordering = ['-referencia_ano', '-referencia_mes']
 
 class ImportacaoOsab(models.Model):
+    # --- Campos Antigos (Mantidos para compatibilidade) ---
     produto = models.CharField(max_length=255, null=True, blank=True)
     filial = models.CharField(max_length=255, null=True, blank=True)
     uf = models.CharField(max_length=2, null=True, blank=True)
     dt_ref = models.DateField(null=True, blank=True)
-    documento = models.CharField(max_length=255, null=True, blank=True)
+    documento = models.CharField(max_length=255, null=True, blank=True) # Mapeado para PEDIDO
     segmento = models.CharField(max_length=255, null=True, blank=True)
     localidade = models.CharField(max_length=255, null=True, blank=True)
     estacao = models.CharField(max_length=255, null=True, blank=True)
@@ -173,7 +173,7 @@ class ImportacaoOsab(models.Model):
     velocidade = models.CharField(max_length=255, null=True, blank=True)
     matricula_vendedor = models.CharField(max_length=50, null=True, blank=True, verbose_name="Matrícula do Vendedor")
     classe_produto = models.CharField(max_length=255, null=True, blank=True)
-    nome_canal = models.CharField(max_length=255, null=True, blank=True)
+    nome_canal = models.CharField(max_length=255, null=True, blank=True) # Mapeado para NOME_CNAL
     pdv_sap = models.CharField(max_length=255, null=True, blank=True)
     descricao = models.CharField(max_length=255, null=True, blank=True)
     data_abertura = models.DateField(null=True, blank=True)
@@ -201,18 +201,32 @@ class ImportacaoOsab(models.Model):
     oferta = models.CharField(max_length=255, null=True, blank=True)
     comunidade = models.CharField(max_length=255, null=True, blank=True)
     gv = models.CharField(max_length=255, null=True, blank=True)
-    gc = models.CharField(max_length=255, null=True, blank=True)
+    gc = models.CharField(max_length=255, null=True, blank=True) # Mapeado para NM_GC
     sap_principal_fim = models.CharField(max_length=255, null=True, blank=True)
     gestao = models.CharField(max_length=255, null=True, blank=True)
     st_regional = models.CharField(max_length=255, null=True, blank=True)
     meio_pagamento = models.CharField(max_length=255, null=True, blank=True)
     flag_vll = models.CharField(max_length=255, null=True, blank=True)
     status_checkout = models.CharField(max_length=255, null=True, blank=True)
-    numero_ba = models.CharField(max_length=255, null=True, blank=True, unique=True)
+    numero_ba = models.CharField(max_length=255, null=True, blank=True)
     venda_no_app = models.CharField(max_length=255, null=True, blank=True)
 
+    # --- NOVOS CAMPOS DA ATUALIZAÇÃO (2025) ---
+    celula = models.CharField(max_length=255, null=True, blank=True)
+    classificacao = models.CharField(max_length=255, null=True, blank=True)
+    fg_venda_valida = models.CharField(max_length=255, null=True, blank=True)
+    desc_motivo_ordem = models.CharField(max_length=255, null=True, blank=True)
+    desc_sub_motivo_ordem = models.CharField(max_length=255, null=True, blank=True)
+    campanha = models.CharField(max_length=255, null=True, blank=True)
+    flg_mei = models.CharField(max_length=255, null=True, blank=True)
+    nm_diretoria = models.CharField(max_length=255, null=True, blank=True)
+    nm_regional = models.CharField(max_length=255, null=True, blank=True)
+    cd_rede = models.CharField(max_length=255, null=True, blank=True)
+    gp_canal = models.CharField(max_length=255, null=True, blank=True)
+    gerencia = models.CharField(max_length=255, null=True, blank=True)
+
     def __str__(self):
-        return f"Importação OSAB - BA {self.numero_ba}"
+        return f"Importação OSAB - DOC {self.documento}"
     class Meta:
         db_table = 'crm_importacao_osab'
         verbose_name = "Importação OSAB"
