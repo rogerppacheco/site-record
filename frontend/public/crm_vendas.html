@@ -205,7 +205,21 @@
                             <div class="col-12 col-md-6"><label>Nome da Mãe</label><input type="text" class="form-control" id="input-nome-mae" name="nome_mae" oninput="this.value = this.value.toUpperCase()"></div>
                             <div class="col-12 col-md-6"><label>Data Nascimento</label><input type="date" class="form-control" id="input-data-nascimento" name="data_nascimento"></div>
                             <div class="col-12 col-md-6"><label>Email</label><input type="email" class="form-control" id="input-email" name="cliente_email"></div>
-                            <div class="col-12 col-md-6"><div class="row g-2"><div class="col-6"><label>Telefone 1 <span class="text-danger">*</span></label><input type="text" class="form-control" id="input-telefone" name="telefone1" required></div><div class="col-6"><label>Telefone 2 <span class="text-danger">*</span></label><input type="text" class="form-control" id="input-telefone2" name="telefone2" required></div></div></div>
+                            
+                            <div class="col-12 col-md-6">
+                                <div class="row g-2">
+                                    <div class="col-6">
+                                        <label>Telefone 1 (WhatsApp) <span class="text-danger">*</span></label>
+                                        <input type="text" class="form-control" id="input-telefone" name="telefone1" required onblur="verificarWhatsApp(this)">
+                                        <div id="feedback-whatsapp" class="form-text mt-1" style="font-size: 0.8rem; min-height: 1.2em;"></div>
+                                    </div>
+                                    <div class="col-6">
+                                        <label>Telefone 2 <span class="text-danger">*</span></label>
+                                        <input type="text" class="form-control" id="input-telefone2" name="telefone2" required>
+                                    </div>
+                                </div>
+                            </div>
+
                         </div>
 
                         <div id="area-representante" class="row g-3 mt-2" style="display: none; background-color: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #e9ecef;">
@@ -247,7 +261,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" form="form-nova-venda" class="btn btn-primary">Salvar</button>
+                    <button type="submit" form="form-nova-venda" id="btn-salvar-venda" class="btn btn-primary">Salvar</button>
                 </div>
             </div>
         </div>
@@ -408,7 +422,10 @@
             document.getElementById('form-nova-venda').reset();
             document.getElementById('id-venda-edicao').value = '';
             document.getElementById('titulo-modal-venda').innerHTML = 'Registrar Venda <span id="badge-origem" class="badge bg-secondary ms-2"></span>';
-            
+            document.getElementById('feedback-whatsapp').innerHTML = ''; // Limpa msg anterior
+            document.getElementById('input-telefone').classList.remove('is-valid', 'is-invalid'); // Limpa status visual
+            document.getElementById('btn-salvar-venda').disabled = false; // Garante que o botão inicia ativo
+
             // Esconde campos de gestão no cadastro
             document.getElementById('container-status-esteira').classList.add('d-none'); 
             document.getElementById('container-vendedor-modal').classList.add('d-none'); 
@@ -568,6 +585,11 @@
                     areaStatus.classList.add('d-none');
                     areaVendedor.classList.add('d-none');
                 }
+                
+                // Limpa avisos de whatsapp ao abrir edição
+                document.getElementById('feedback-whatsapp').innerHTML = '';
+                document.getElementById('input-telefone').classList.remove('is-valid', 'is-invalid');
+                document.getElementById('btn-salvar-venda').disabled = false;
 
                 modalNovaVenda.show();
             } catch (e) { 
@@ -605,6 +627,47 @@
 
         async function excluirVenda(id) { if(!confirm('Tem certeza?')) return; try { await apiFetch(`/crm/vendas/${id}/`, { method: 'DELETE' }); carregarVendas(); } catch(e) { alert('Erro ao excluir.'); } }
         function logout() { localStorage.removeItem('accessToken'); window.location.href = '/'; }
+        
+        // --- FUNÇÃO NOVA: VERIFICA WHATSAPP (Bloqueia Salvar) ---
+        async function verificarWhatsApp(input) {
+            const telefone = input.value.replace(/\D/g, ''); 
+            const feedbackDiv = document.getElementById('feedback-whatsapp');
+            const btnSalvar = document.getElementById('btn-salvar-venda');
+
+            if (telefone.length < 10) return;
+
+            // Feedback Visual: Verificando...
+            input.classList.remove('is-valid', 'is-invalid');
+            if(feedbackDiv) feedbackDiv.innerHTML = '<span class="text-warning spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> <span class="text-warning small">Verificando WhatsApp...</span>';
+            if(btnSalvar) btnSalvar.disabled = true; // Bloqueia
+
+            try {
+                // Usa apiFetch existente
+                const data = await apiFetch(`/crm/verificar-zap/${telefone}/`, { method: 'GET' });
+
+                if (data && data.possui_whatsapp) {
+                    // Sucesso
+                    input.classList.add('is-valid');
+                    input.classList.remove('is-invalid');
+                    if(feedbackDiv) feedbackDiv.innerHTML = '<span class="text-success fw-bold small"><i class="bi bi-whatsapp"></i> WhatsApp Confirmado!</span>';
+                    if(btnSalvar) btnSalvar.disabled = false; // Libera
+                } else {
+                    // Falha (Não é ZAP)
+                    input.classList.add('is-invalid');
+                    input.classList.remove('is-valid');
+                    if(feedbackDiv) feedbackDiv.innerHTML = '<span class="text-danger fw-bold small"><i class="bi bi-x-circle"></i> Este número NÃO possui WhatsApp.</span>';
+                    // Mantém Bloqueado
+                    if(btnSalvar) btnSalvar.disabled = true;
+                    alert("Atenção: O número informado não possui WhatsApp válido. Verifique se digitou corretamente.");
+                }
+            } catch (error) {
+                console.error("Erro verificação WhatsApp:", error);
+                // Em caso de erro na API (Servidor fora), liberamos para não travar a operação
+                input.classList.remove('is-valid', 'is-invalid');
+                if(feedbackDiv) feedbackDiv.innerHTML = '<span class="text-warning small">Não foi possível verificar (API Offline).</span>';
+                if(btnSalvar) btnSalvar.disabled = false;
+            }
+        }
     </script>
 </body>
 </html>

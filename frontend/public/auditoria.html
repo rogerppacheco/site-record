@@ -7,13 +7,19 @@
     <title>Auditoria de Vendas - Record PAP</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=1.4">
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=1.9">
     <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
     <style>
         .status-select { min-width: 160px; font-size: 0.9rem; border-radius: 6px; }
         #aprovacao-mensagem { white-space: pre-wrap; font-family: monospace; font-size: 0.9rem; }
         .table-responsive { border-radius: 8px; overflow: hidden; }
         .form-control:disabled, .form-control[readonly] { background-color: #f8f9fa; opacity: 1; }
+        
+        /* Estilos do Script de Auditoria */
+        .script-section { background-color: #f8f9fa; border-left: 5px solid var(--cor-primaria); padding: 15px; margin-bottom: 20px; border-radius: 4px; }
+        .script-title { color: var(--cor-primaria); font-weight: bold; margin-bottom: 10px; text-transform: uppercase; font-size: 0.9rem; }
+        .script-text { font-size: 1.1rem; line-height: 1.6; color: #333; }
+        .dado-sistema { color: #0d6efd; font-weight: bold; background-color: #e7f1ff; padding: 2px 6px; border-radius: 4px; border: 1px dashed #0d6efd; }
         
         @media (max-width: 576px) {
             .header-controls { flex-direction: column; align-items: flex-start; gap: 10px; }
@@ -38,7 +44,6 @@
 
     <main class="area-interna-section">
         <div class="system-container" style="max-width: 1600px;">
-            
             <div class="d-flex justify-content-between align-items-center mb-4 header-controls">
                 <div>
                     <h1 style="font-size: 1.8rem; margin: 0;">Auditoria</h1>
@@ -76,87 +81,36 @@
                 <div class="modal-body">
                     <form id="form-edit-venda">
                         <input type="hidden" id="edit-id">
-                        
                         <h6 class="text-primary border-bottom pb-2 mb-3"><i class="bi bi-info-circle"></i> Dados da Venda</h6>
                         <div class="row g-3 mb-3 bg-light p-2 rounded">
-                            <div class="col-md-3">
-                                <label class="form-label small fw-bold text-muted">Vendedor</label>
-                                <input type="text" class="form-control form-control-sm" id="view-vendedor" readonly disabled>
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label small fw-bold text-muted">Data Venda</label>
-                                <input type="text" class="form-control form-control-sm" id="view-data" readonly disabled>
-                            </div>
-                             <div class="col-md-3">
-                                <label class="form-label small fw-bold text-muted">Forma Entrada</label>
-                                <input type="text" class="form-control form-control-sm" id="view-entrada" readonly disabled>
-                            </div>
-                             <div class="col-md-3">
-                                <label class="form-label small fw-bold text-muted">Status Atual</label>
-                                <input type="text" class="form-control form-control-sm" id="view-status" readonly disabled>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold text-muted">Plano</label>
-                                <input type="text" class="form-control form-control-sm" id="view-plano" readonly disabled>
-                            </div>
-                             <div class="col-md-6">
-                                <label class="form-label small fw-bold text-muted">Forma de Pagamento</label>
-                                <input type="text" class="form-control form-control-sm" id="view-pagamento" readonly disabled>
-                            </div>
+                            <div class="col-md-3"><label class="form-label small fw-bold text-muted">Vendedor</label><input type="text" class="form-control form-control-sm" id="view-vendedor" readonly disabled></div>
+                            <div class="col-md-3"><label class="form-label small fw-bold text-muted">Data Venda</label><input type="text" class="form-control form-control-sm" id="view-data" readonly disabled></div>
+                            <div class="col-md-3"><label class="form-label small fw-bold text-muted">Forma Entrada</label><input type="text" class="form-control form-control-sm" id="view-entrada" readonly disabled></div>
+                            <div class="col-md-3"><label class="form-label small fw-bold text-muted">Status Atual</label><input type="text" class="form-control form-control-sm" id="view-status" readonly disabled></div>
+                            <div class="col-md-6"><label class="form-label small fw-bold text-muted">Plano</label><input type="text" class="form-control form-control-sm" id="view-plano" readonly disabled></div>
+                            <div class="col-md-6"><label class="form-label small fw-bold text-muted">Forma de Pagamento</label><input type="text" class="form-control form-control-sm" id="view-pagamento" readonly disabled></div>
                         </div>
-
                         <h6 class="text-primary border-bottom pb-2 mb-3 mt-4"><i class="bi bi-person"></i> Dados do Cliente</h6>
                         <div class="row g-3">
-                            <div class="col-md-6">
-                                <label class="form-label fw-bold">Nome Cliente (Razão Social)</label>
-                                <input type="text" class="form-control" id="edit-cliente" readonly>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label fw-bold">CPF/CNPJ</label>
-                                <input type="text" class="form-control" id="edit-cpf" readonly>
-                            </div>
-                            
-                            <div class="col-md-6">
-                                <label class="form-label">Nome da Mãe</label>
-                                <input type="text" class="form-control" id="edit-nome-mae">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Data de Nascimento</label>
-                                <input type="date" class="form-control" id="edit-nasc">
-                            </div>
-                            
-                            <div class="col-md-8">
-                                <label class="form-label">Nome Representante Legal</label>
-                                <input type="text" class="form-control" id="edit-nome-rep">
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">CPF Rep. Legal</label>
-                                <input type="text" class="form-control" id="edit-cpf-rep">
-                            </div>
-
-                            <div class="col-md-6">
-                                <label class="form-label">Telefone 1</label>
-                                <input type="text" class="form-control" id="edit-tel1">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Telefone 2</label>
-                                <input type="text" class="form-control" id="edit-tel2">
-                            </div>
+                            <div class="col-md-6"><label class="form-label fw-bold">Nome Cliente</label><input type="text" class="form-control" id="edit-cliente" readonly></div>
+                            <div class="col-md-6"><label class="form-label fw-bold">CPF/CNPJ</label><input type="text" class="form-control" id="edit-cpf" readonly></div>
+                            <div class="col-md-6"><label class="form-label">Nome da Mãe</label><input type="text" class="form-control" id="edit-nome-mae"></div>
+                            <div class="col-md-6"><label class="form-label">Data de Nascimento</label><input type="date" class="form-control" id="edit-nasc"></div>
+                            <div class="col-md-8"><label class="form-label">Nome Rep. Legal</label><input type="text" class="form-control" id="edit-nome-rep"></div>
+                            <div class="col-md-4"><label class="form-label">CPF Rep. Legal</label><input type="text" class="form-control" id="edit-cpf-rep"></div>
+                            <div class="col-md-6"><label class="form-label">Telefone 1</label><input type="text" class="form-control" id="edit-tel1"></div>
+                            <div class="col-md-6"><label class="form-label">Telefone 2</label><input type="text" class="form-control" id="edit-tel2"></div>
                         </div>
-
-                        <h6 class="text-primary border-bottom pb-2 mb-3 mt-4"><i class="bi bi-geo-alt"></i> Endereço & Instalação</h6>
+                        <h6 class="text-primary border-bottom pb-2 mb-3 mt-4"><i class="bi bi-geo-alt"></i> Endereço</h6>
                         <div class="row g-3">
                             <div class="col-md-3"><label class="form-label">CEP</label><input type="text" class="form-control" id="edit-cep"></div>
                             <div class="col-md-7"><label class="form-label">Logradouro</label><input type="text" class="form-control" id="edit-logradouro"></div>
                             <div class="col-md-2"><label class="form-label">Número</label><input type="text" class="form-control" id="edit-numero"></div>
-                            
                             <div class="col-md-4"><label class="form-label">Complemento</label><input type="text" class="form-control" id="edit-complemento"></div>
                             <div class="col-md-4"><label class="form-label">Bairro</label><input type="text" class="form-control" id="edit-bairro"></div>
                             <div class="col-md-3"><label class="form-label">Cidade</label><input type="text" class="form-control" id="edit-cidade"></div>
                             <div class="col-md-1"><label class="form-label">UF</label><input type="text" class="form-control" id="edit-estado"></div>
-                            
                             <div class="col-12"><label class="form-label">Ponto de Referência</label><input type="text" class="form-control" id="edit-referencia"></div>
-                            
                             <div class="col-12"><hr></div>
                             <div class="col-12"><label class="form-label fw-bold">Observações</label><textarea class="form-control" id="edit-obs" rows="3"></textarea></div>
                         </div>
@@ -170,6 +124,128 @@
         </div>
     </div>
 
+    <div class="modal fade" id="modal-script-auditoria" tabindex="-1">
+        <div class="modal-dialog modal-fullscreen">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="bi bi-headset"></i> Roteiro de Auditoria - Venda #<span id="script-id-venda"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body bg-light">
+                    <div class="container py-3">
+                        
+                        <div class="script-section shadow-sm bg-white">
+                            <div class="script-title">1. Introdução</div>
+                            <p class="script-text">
+                                "Bom (dia/tarde), tudo bem? Aqui é <strong><span id="script-user-logado" class="text-primary"></span></strong> da Nio Fibra. 
+                                Estou ligando para confirmar os dados do seu pedido e passar algumas informações importantes. 
+                                Posso prosseguir com a auditoria?"
+                            </p>
+                        </div>
+
+                        <div class="script-section shadow-sm bg-white">
+                            <div class="script-title">2. Confirmação de Identidade</div>
+                            <p class="script-text">"Poderia, por gentileza, confirmar seu nome completo?"</p>
+                            <div class="dado-sistema mb-2"><i class="bi bi-person"></i> Sistema: <span id="script-cliente-nome"></span></div>
+                            
+                            <p class="script-text mt-3">"Poderia me informar os três primeiros números do seu CPF?"</p>
+                            <div class="dado-sistema mb-2"><i class="bi bi-card-heading"></i> Sistema: <span id="script-cliente-cpf"></span></div>
+
+                            <p class="script-text mt-3">"Poderia confirmar o nome da sua mãe e sua data de nascimento?"</p>
+                            <div class="row">
+                                <div class="col-md-6"><div class="dado-sistema"><i class="bi bi-person-standing-dress"></i> Mãe: <span id="script-cliente-mae"></span></div></div>
+                                <div class="col-md-6">
+                                    <div class="dado-sistema">
+                                        <i class="bi bi-calendar"></i> Nasc: <span id="script-cliente-nasc"></span>
+                                        <span id="script-cliente-idade" class="ms-2 text-muted small" style="font-style: italic;"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="script-section shadow-sm bg-white">
+                            <div class="script-title">3. Contato e WhatsApp</div>
+                            <p class="script-text">"Qual é o seu número de telefone no WhatsApp?"</p>
+                            <div class="dado-sistema mb-3"><i class="bi bi-whatsapp"></i> Sistema: <span id="script-cliente-tel1"></span></div>
+                            
+                            <div class="alert alert-info border-info">
+                                <i class="bi bi-info-circle-fill"></i> <strong>Aviso Importante:</strong><br>
+                                "Lembrando que é nesse número que você receberá a confirmação do pedido. Para confirmar a instalação, 
+                                preciso que após receber a mensagem da Nio no seu WhatsApp você digite 'SIM'. 
+                                No WhatsApp da Nio, você poderá acompanhar a instalação em tempo real e até mesmo reagendar. Ficou claro?"
+                            </div>
+
+                            <p class="script-text mt-2">"Poderia me informar um segundo telefone de contato e seu e-mail?"</p>
+                            <div class="dado-sistema"><i class="bi bi-phone"></i> Tel 2: <span id="script-cliente-tel2"></span></div>
+                            <div class="dado-sistema mt-1"><i class="bi bi-envelope"></i> Email: <span id="script-cliente-email"></span></div>
+                        </div>
+
+                        <div class="script-section shadow-sm bg-white">
+                            <div class="script-title">4. Endereço de Instalação</div>
+                            <p class="script-text">"Agora, vamos confirmar o seu endereço de instalação. Poderia confirmar Nome da Rua, Número e CEP?"</p>
+                            <div class="dado-sistema"><i class="bi bi-geo-alt-fill"></i> <span id="script-endereco-completo"></span></div>
+                        </div>
+
+                        <div class="script-section shadow-sm bg-white">
+                            <div class="script-title">5. Plano e Pagamento</div>
+                            <p class="script-text">
+                                "O plano que você contratou foi o <span class="dado-sistema" id="script-plano-nome"></span> 
+                                com o valor de <span class="dado-sistema" id="script-plano-valor"></span> 
+                                e a forma de pagamento foi <span class="dado-sistema" id="script-forma-pag"></span>."
+                            </p>
+                            <p class="script-text mt-2">"A fidelidade do plano é de 12 meses. Você está ciente do valor contratado, do plano e da fidelidade mencionada?"</p>
+                            <div class="alert alert-warning border-warning mt-2" id="script-alerta-cartao" style="display: none;">
+                                <i class="bi bi-credit-card"></i> <strong>Se Cartão de Crédito:</strong> "É importante verificar se você possui limite disponível."
+                            </div>
+                        </div>
+
+                        <div class="script-section shadow-sm bg-white">
+                            <div class="script-title">6. Agendamento & Observações</div>
+                            <p class="script-text">"Poderia me informar qual o melhor dia da semana e horário (manhã ou tarde) para agendarmos a instalação?"</p>
+                            
+                            <div class="row g-3 p-3 bg-light border rounded mb-3">
+                                <div class="col-12 text-primary fw-bold small text-uppercase">Agendamento Preferencial</div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold">Data</label>
+                                    <input type="date" id="script-agendamento-data" class="form-control">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold">Turno</label>
+                                    <select id="script-agendamento-turno" class="form-select">
+                                        <option value="">Selecione...</option>
+                                        <option value="MANHA">Manhã</option>
+                                        <option value="TARDE">Tarde</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label fw-bold text-primary"><i class="bi bi-pencil-square"></i> Observação da Venda (Editável)</label>
+                                <textarea class="form-control" id="script-obs-venda" rows="3" placeholder="Adicione informações relevantes da auditoria aqui..."></textarea>
+                            </div>
+                        </div>
+
+                        <div class="script-section shadow-sm bg-white">
+                            <div class="script-title">7. Encerramento</div>
+                            <p class="script-text">
+                                "Para finalizar, gostaria de informar que temos o aplicativo Nio. Nele, você pode acompanhar a internet, 
+                                solicitar fatura e pedir suporte. Qualquer dúvida, você pode entrar em contato conosco pelo WhatsApp.
+                                Agradeço sua atenção e tenha um ótimo dia!"
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-secondary btn-lg" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-success btn-lg fw-bold" onclick="finalizarAuditoriaComSucesso()">
+                        <i class="bi bi-check-circle"></i> Tudo Certo (Aprovar & Salvar)
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade" id="modal-agendamento" tabindex="-1" data-bs-backdrop="static">
         <div class="modal-dialog">
             <div class="modal-content border-primary">
@@ -178,9 +254,7 @@
                     <button type="button" class="btn-close btn-close-white" onclick="cancelarAgendamento()"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="alert alert-info small">
-                        Você alterou o status para <strong>CADASTRADA</strong>. Preencha os dados da O.S. para confirmar.
-                    </div>
+                    <div class="alert alert-info small">Você alterou o status para <strong>CADASTRADA</strong>. Preencha os dados da O.S. para confirmar.</div>
                     <form id="form-agendamento">
                         <div class="mb-3">
                             <label class="form-label fw-bold">Número da O.S. <span class="text-danger">*</span></label>
@@ -219,8 +293,8 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <p>Copie a mensagem abaixo para enviar no grupo:</p>
-                    <textarea id="aprovacao-mensagem" class="form-control mb-3" rows="6" readonly></textarea>
+                    <p>Copie a mensagem abaixo para enviar no grupo (Backup):</p>
+                    <textarea id="aprovacao-mensagem" class="form-control mb-3" rows="12" readonly></textarea>
                     <button class="btn btn-outline-success w-100" onclick="copiarMensagem()"><i class="bi bi-whatsapp"></i> Copiar Mensagem</button>
                 </div>
             </div>
@@ -236,7 +310,6 @@
         const token = localStorage.getItem('accessToken');
         if(!token) window.location.href = '/';
 
-        // --- SEGURANÇA ---
         const decodedToken = jwt_decode(token);
         const userProfile = decodedToken ? (decodedToken.user_role || decodedToken.perfil) : null;
         const allowedProfiles = ['Diretoria', 'BackOffice', 'Admin'];
@@ -247,12 +320,15 @@
         }
 
         let vendas = [];
+        let globalStatusOptions = [];
         let tempVendaId = null;
         let tempStatusId = null;
         let tempSelectElement = null;
         let updateInterval;
+        let vendaEmAuditoria = null; 
 
         const modalDetalhes = new bootstrap.Modal(document.getElementById('modal-detalhes'));
+        const modalScript = new bootstrap.Modal(document.getElementById('modal-script-auditoria'));
         const modalAgendamento = new bootstrap.Modal(document.getElementById('modal-agendamento'));
         const aprovacaoModal = new bootstrap.Modal(document.getElementById('modal-aprovacao'));
 
@@ -260,64 +336,57 @@
             carregarVendas();
             document.getElementById('edit-cep').addEventListener('blur', buscarCepEdit);
 
-            // --- ATUALIZAÇÃO AUTOMÁTICA ---
             updateInterval = setInterval(() => {
                 const isModalOpen = document.querySelector('.modal.show');
                 const isSelectFocused = document.activeElement && document.activeElement.tagName === 'SELECT';
-                
-                // Só atualiza se não tiver modal aberto E o usuário não estiver mexendo num select
-                if (!isModalOpen && !isSelectFocused) {
-                    carregarVendas(true); 
-                }
+                if (!isModalOpen && !isSelectFocused) { carregarVendas(true); }
             }, 5000);
         });
 
-        // --- HELPER PARA EXIBIR ERROS DETALHADOS ---
         function mostrarErroDetalhado(error, contexto = 'atualizar') {
             console.error(`Erro ao ${contexto}:`, error);
-            let mensagem = `Erro ao ${contexto}.`;
-            if (error.response) {
-                mensagem += `\nStatus: ${error.response.status} (${error.response.statusText})`;
-                if (error.response.data) {
-                    if (error.response.data.detail) {
-                        mensagem += `\nDetalhe: ${error.response.data.detail}`;
-                    } else if (typeof error.response.data === 'object') {
-                        mensagem += `\n${JSON.stringify(error.response.data, null, 2).replace(/["{}]/g, '')}`;
-                    } else {
-                        mensagem += `\nResposta: ${String(error.response.data).substring(0, 100)}...`;
-                    }
-                }
-            }
-            alert(mensagem);
+            alert(`Erro ao ${contexto}. Verifique o console.`);
+        }
+
+        function calcularIdade(dataNascimento) {
+            if (!dataNascimento) return '';
+            const hoje = new Date();
+            const partes = dataNascimento.split('-');
+            const nascimento = new Date(partes[0], partes[1] - 1, partes[2]);
+            let anos = hoje.getFullYear() - nascimento.getFullYear();
+            let meses = hoje.getMonth() - nascimento.getMonth();
+            let dias = hoje.getDate() - nascimento.getDate();
+            if (meses < 0 || (meses === 0 && dias < 0)) { anos--; meses += 12; }
+            if (dias < 0) { meses--; if (meses < 0) meses = 11; }
+            return `(${anos} anos e ${meses} meses)`;
         }
 
         async function carregarVendas(silent = false) {
             const tbody = document.getElementById('tabela-auditoria-body');
-            
-            // Só mostra loading se NÃO for silencioso (primeira carga)
-            if (!silent) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>';
-            }
+            if (!silent) tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>';
             
             try {
                 const statusRes = await apiClient.get('/api/crm/status/?tipo=Tratamento');
-                const statusOptions = statusRes.data;
-
+                globalStatusOptions = statusRes.data;
                 const res = await apiClient.get('/api/crm/vendas/?flow=auditoria');
-                vendas = res.data;
+                
+                // FILTRO DE ESTADO "FECHADO": 
+                // Se o status tiver 'estado' = FECHADO, não mostra na lista.
+                vendas = res.data.filter(v => {
+                    if (!v.status_tratamento || !v.status_tratamento.estado) return true; // Mostra se não tiver estado definido
+                    return v.status_tratamento.estado.toUpperCase() !== 'FECHADO';
+                });
 
-                // Se não for silent, limpa. Se for silent, só substitui.
                 if(vendas.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">Nenhuma venda para auditoria.</td></tr>';
                 } else {
-                    // Limpa antes de recriar para evitar duplicação visual rápida
                     tbody.innerHTML = '';
                     vendas.forEach(v => {
                         const dataFmt = new Date(v.data_criacao).toLocaleDateString('pt-BR');
                         
                         let selectStatus = `<select class="form-select form-select-sm status-select" onchange="atualizarStatus(${v.id}, this)">`;
                         selectStatus += `<option value="">Selecione...</option>`;
-                        statusOptions.forEach(s => {
+                        globalStatusOptions.forEach(s => {
                             const selected = (v.status_tratamento && v.status_tratamento.id === s.id) ? 'selected' : '';
                             selectStatus += `<option value="${s.id}" ${selected}>${s.nome}</option>`;
                         });
@@ -331,6 +400,7 @@
                             <td>${v.vendedor.username}</td>
                             <td>${selectStatus}</td>
                             <td class="text-end">
+                                <button class="btn btn-sm btn-dark me-1" onclick="iniciarAuditoriaScript(${v.id})" title="Fazer Auditoria (Script)"><i class="bi bi-headset"></i></button>
                                 <button class="btn btn-sm btn-outline-secondary me-1" onclick="abrirDetalhes(${v.id})" title="Editar Dados"><i class="bi bi-pencil"></i></button>
                                 <button class="btn btn-sm btn-success" onclick="gerarAprovacao(${v.id})" title="Aprovar"><i class="bi bi-check-lg"></i></button>
                             </td>
@@ -339,7 +409,7 @@
                     });
                 }
             } catch (e) {
-                if (!silent) tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Erro ao carregar vendas. Tente novamente.</td></tr>';
+                if (!silent) tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Erro ao carregar vendas.</td></tr>';
                 console.error(e);
             }
         }
@@ -352,7 +422,6 @@
                 tempVendaId = id;
                 tempStatusId = statusId;
                 tempSelectElement = selectElem;
-                
                 document.getElementById('form-agendamento').reset();
                 document.getElementById('agenda-os').classList.remove('is-invalid');
                 modalAgendamento.show();
@@ -367,131 +436,197 @@
             const data = document.getElementById('agenda-data').value;
             const turno = document.getElementById('agenda-turno').value;
 
-            if (!os || !data || !turno) {
-                alert("Por favor, preencha todos os campos.");
-                return;
-            }
-
-            btn.disabled = true;
-            btn.innerHTML = 'Salvando...';
+            if (!os || !data || !turno) { alert("Preencha todos os campos."); return; }
+            btn.disabled = true; btn.innerHTML = 'Salvando...';
 
             try {
                 const res = await apiClient.get(`/api/crm/vendas/?ordem_servico=${os}`);
                 const duplicada = res.data.some(v => v.id !== tempVendaId);
-                
                 if (duplicada) {
                     document.getElementById('agenda-os').classList.add('is-invalid');
-                    btn.disabled = false;
-                    btn.innerHTML = 'Confirmar e Salvar';
-                    return; 
-                } else {
-                    document.getElementById('agenda-os').classList.remove('is-invalid');
-                }
-
-                const dadosExtras = {
-                    ordem_servico: os,
-                    data_agendamento: data,
-                    periodo_agendamento: turno
-                };
-
+                    btn.disabled = false; btn.innerHTML = 'Confirmar e Salvar'; return; 
+                } 
+                document.getElementById('agenda-os').classList.remove('is-invalid');
+                const dadosExtras = { ordem_servico: os, data_agendamento: data, periodo_agendamento: turno };
                 await salvarStatusNoBanco(tempVendaId, tempStatusId, dadosExtras);
                 modalAgendamento.hide();
-
-            } catch (e) {
-                mostrarErroDetalhado(e, 'validar O.S.');
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = 'Confirmar e Salvar';
-            }
+            } catch (e) { mostrarErroDetalhado(e, 'validar O.S.'); } 
+            finally { btn.disabled = false; btn.innerHTML = 'Confirmar e Salvar'; }
         }
 
-        function cancelarAgendamento() {
-            modalAgendamento.hide();
-            carregarVendas(true); 
-        }
+        function cancelarAgendamento() { modalAgendamento.hide(); carregarVendas(true); }
 
         async function salvarStatusNoBanco(id, statusId, extras = {}) {
             try {
-                const payload = { status_tratamento: statusId, ...extras };
-                await apiClient.patch(`/api/crm/vendas/${id}/`, payload);
+                await apiClient.patch(`/api/crm/vendas/${id}/`, { status_tratamento: statusId, ...extras });
+                // Força refresh sempre para que, se o status for FECHADO, o item suma da tela
+                carregarVendas(true);
+            } catch(e) { mostrarErroDetalhado(e, 'atualizar status'); carregarVendas(true); }
+        }
+
+        // --- SCRIPT DE AUDITORIA ---
+        function iniciarAuditoriaScript(id) {
+            const v = vendas.find(x => x.id === id);
+            if(!v) return;
+            vendaEmAuditoria = v;
+
+            const payload = jwt_decode(token);
+            const nomeUsuario = payload.user_name || payload.username || 'Consultor'; 
+            document.getElementById('script-user-logado').textContent = nomeUsuario.toUpperCase();
+
+            document.getElementById('script-id-venda').textContent = v.id;
+            document.getElementById('script-cliente-nome').textContent = v.cliente.nome_razao_social || 'NÃO INFORMADO';
+            document.getElementById('script-cliente-cpf').textContent = v.cliente.cpf_cnpj || 'NÃO INFORMADO';
+            document.getElementById('script-cliente-mae').textContent = v.nome_mae || 'NÃO CADASTRADO';
+            
+            const dtNasc = v.data_nascimento || '';
+            const textoNasc = dtNasc ? new Date(dtNasc).toLocaleDateString('pt-BR') : 'NÃO CADASTRADO';
+            document.getElementById('script-cliente-nasc').textContent = textoNasc;
+            document.getElementById('script-cliente-idade').textContent = calcularIdade(dtNasc);
+
+            document.getElementById('script-cliente-tel1').textContent = v.telefone1 || '-';
+            document.getElementById('script-cliente-tel2').textContent = v.telefone2 || 'Não informado';
+            document.getElementById('script-cliente-email').textContent = v.cliente.email || 'Não informado';
+
+            const end = `${v.logradouro || ''}, ${v.numero_residencia || ''} ${v.complemento ? '- ' + v.complemento : ''} - ${v.bairro || ''} - CEP: ${v.cep || ''}`;
+            document.getElementById('script-endereco-completo').textContent = end;
+
+            document.getElementById('script-plano-nome').textContent = v.plano ? v.plano.nome : '-';
+            
+            let valorDisplay = v.plano ? parseFloat(v.plano.valor) : 0.0;
+            const formaPag = v.forma_pagamento ? v.forma_pagamento.nome.toUpperCase() : '';
+            
+            if(formaPag.includes('CARTÃO') || formaPag.includes('CREDITO')) {
+                valorDisplay -= 10.0;
+                document.getElementById('script-alerta-cartao').style.display = 'block';
+            } else {
+                document.getElementById('script-alerta-cartao').style.display = 'none';
+            }
+            document.getElementById('script-plano-valor').textContent = valorDisplay.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
+            document.getElementById('script-forma-pag').textContent = v.forma_pagamento ? v.forma_pagamento.nome : '-';
+
+            document.getElementById('script-obs-venda').value = v.observacoes || ''; 
+            document.getElementById('script-agendamento-data').value = v.data_agendamento || '';
+            document.getElementById('script-agendamento-turno').value = v.periodo_agendamento || '';
+
+            modalScript.show();
+        }
+
+        async function finalizarAuditoriaComSucesso() {
+            if(!vendaEmAuditoria) return;
+
+            const statusAuditada = globalStatusOptions.find(s => s.nome.toUpperCase() === 'AUDITADA');
+            if(!statusAuditada) { alert("Erro: Status 'AUDITADA' não encontrado."); return; }
+
+            const dataAg = document.getElementById('script-agendamento-data').value;
+            const turnoAg = document.getElementById('script-agendamento-turno').value;
+            const obsNova = document.getElementById('script-obs-venda').value;
+
+            const body = { status_tratamento: statusAuditada.id };
+            if(dataAg) body.data_agendamento = dataAg;
+            if(turnoAg) body.periodo_agendamento = turnoAg;
+            if(obsNova !== (vendaEmAuditoria.observacoes || '')) { body.observacoes = obsNova; }
+
+            try {
+                await apiClient.patch(`/api/crm/vendas/${vendaEmAuditoria.id}/`, body);
+                modalScript.hide();
                 
-                if(Object.keys(extras).length > 0) {
-                    carregarVendas(true);
-                }
-            } catch(e) { 
-                mostrarErroDetalhado(e, 'atualizar status'); 
-                carregarVendas(true); 
+                // Se o status "AUDITADA" tiver estado "FECHADO", a venda vai sumir da lista no próximo refresh.
+                // Mas para a mensagem funcionar, atualizamos o objeto local
+                if(dataAg) vendaEmAuditoria.data_agendamento = dataAg;
+                if(turnoAg) vendaEmAuditoria.periodo_agendamento = turnoAg;
+                vendaEmAuditoria.observacoes = obsNova;
+                
+                carregarVendas(true); // Atualiza a lista (pode fazer a venda sumir)
+                gerarAprovacao(vendaEmAuditoria.id); // Gera msg com os dados atualizados
+
+            } catch(e) {
+                mostrarErroDetalhado(e, 'salvar auditoria');
             }
         }
 
-        // Função atualizada para preencher todos os novos campos
+        function gerarAprovacao(id) {
+            const v = vendas.find(x => x.id === id) || vendaEmAuditoria; 
+            if(!v) return;
+
+            let dacc = 'NÃO';
+            if(v.forma_pagamento && v.forma_pagamento.nome.toUpperCase().includes('DÉBITO')) { dacc = 'SIM'; }
+
+            let agendamentoStr = 'A confirmar';
+            if(v.data_agendamento) {
+                const parts = v.data_agendamento.split('-');
+                const dataBr = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                let horario = '';
+                if(v.periodo_agendamento === 'MANHA') horario = '8h às 12h';
+                else if(v.periodo_agendamento === 'TARDE') horario = '13h às 18h';
+                agendamentoStr = `Agendamento confirmado para o dia ${dataBr}`;
+                if(horario) agendamentoStr += ` entre ${horario}`;
+            }
+
+            const vendedorNome = v.vendedor ? (v.vendedor.username || v.vendedor.nome) : 'N/A';
+            const os = v.ordem_servico || 'Gerando...';
+
+            const msg = `APROVADO!✅✅
+PLANO ADQUIRIDO: ${v.plano ? v.plano.nome : '-'}
+NOME DO CLIENTE: ${v.cliente.nome_razao_social}
+CPF/CNPJ: ${v.cliente.cpf_cnpj}
+OS: ${os}
+DACC: ${dacc}
+AGENDAMENTO: ${agendamentoStr}
+VENDEDOR: ${vendedorNome}
+⚠FATURA, SEGUNDA VIA OU DÚVIDAS
+https://www.niointernet.com.br/
+WhatsApp: 31985186530
+Para que sua instalação seja concluída favor salvar esse CTO no seu telefone, Técnico Nio 21 2533-9053 para receber informações da Visita.`;
+
+            document.getElementById('aprovacao-mensagem').value = msg;
+            aprovacaoModal.show();
+        }
+        
         function abrirDetalhes(id) {
             const v = vendas.find(x => x.id === id);
             if(!v) return;
-            
-            // ID Oculto
             document.getElementById('edit-id').value = v.id;
-
-            // --- BLOCO 1: INFORMATIVOS (READONLY) ---
             document.getElementById('view-vendedor').value = v.vendedor ? v.vendedor.username : '-';
             document.getElementById('view-data').value = new Date(v.data_criacao).toLocaleDateString('pt-BR');
             document.getElementById('view-entrada').value = v.forma_entrada || '-';
             document.getElementById('view-status').value = v.status_tratamento ? v.status_tratamento.nome : '-';
-            
             const nomePlano = v.plano ? v.plano.nome : 'Sem Plano';
             const valorPlano = v.plano ? `R$ ${v.plano.valor}` : '';
             document.getElementById('view-plano').value = `${nomePlano} - ${valorPlano}`;
-            
             document.getElementById('view-pagamento').value = v.forma_pagamento ? v.forma_pagamento.nome : '-';
-
-            // --- BLOCO 2: DADOS CLIENTE ---
             document.getElementById('edit-cliente').value = v.cliente.nome_razao_social;
             document.getElementById('edit-cpf').value = v.cliente.cpf_cnpj;
-            
             document.getElementById('edit-nome-mae').value = v.nome_mae || '';
-            document.getElementById('edit-nasc').value = v.data_nascimento || ''; // Formato esperado YYYY-MM-DD já vem da API
-            
+            document.getElementById('edit-nasc').value = v.data_nascimento || '';
             document.getElementById('edit-nome-rep').value = v.nome_representante_legal || '';
             document.getElementById('edit-cpf-rep').value = v.cpf_representante_legal || '';
-
             document.getElementById('edit-tel1').value = v.telefone1 || '';
             document.getElementById('edit-tel2').value = v.telefone2 || '';
-
-            // --- BLOCO 3: ENDEREÇO ---
             document.getElementById('edit-cep').value = v.cep || '';
             document.getElementById('edit-logradouro').value = v.logradouro || '';
             document.getElementById('edit-numero').value = v.numero_residencia || '';
-            document.getElementById('edit-complemento').value = v.complemento || ''; // Novo campo
+            document.getElementById('edit-complemento').value = v.complemento || '';
             document.getElementById('edit-bairro').value = v.bairro || '';
             document.getElementById('edit-cidade').value = v.cidade || '';
             document.getElementById('edit-estado').value = v.estado || '';
             document.getElementById('edit-referencia').value = v.ponto_referencia || '';
             document.getElementById('edit-obs').value = v.observacoes || '';
-            
             modalDetalhes.show();
         }
 
-        // Função atualizada para salvar os novos campos editáveis
         async function salvarAlteracoes() {
             const btn = document.getElementById('btn-salvar-detalhes');
             const id = document.getElementById('edit-id').value;
-            
-            btn.disabled = true;
-            btn.innerHTML = 'Salvando...';
+            btn.disabled = true; btn.innerHTML = 'Salvando...';
 
-            // Monta o objeto com TODOS os campos editáveis
             const body = {
-                // Contato
                 telefone1: document.getElementById('edit-tel1').value,
                 telefone2: document.getElementById('edit-tel2').value,
-                
-                // Dados Pessoais Extras
                 nome_mae: document.getElementById('edit-nome-mae').value,
-                data_nascimento: document.getElementById('edit-nasc').value || null, // null se estiver vazio para evitar erro de data
+                data_nascimento: document.getElementById('edit-nasc').value || null,
                 nome_representante_legal: document.getElementById('edit-nome-rep').value,
                 cpf_representante_legal: document.getElementById('edit-cpf-rep').value,
-
-                // Endereço Completo
                 cep: document.getElementById('edit-cep').value,
                 logradouro: document.getElementById('edit-logradouro').value,
                 numero_residencia: document.getElementById('edit-numero').value,
@@ -500,22 +635,16 @@
                 cidade: document.getElementById('edit-cidade').value,
                 estado: document.getElementById('edit-estado').value,
                 ponto_referencia: document.getElementById('edit-referencia').value,
-                
-                // Obs
                 observacoes: document.getElementById('edit-obs').value
             };
             
             try { 
                 await apiClient.patch(`/api/crm/vendas/${id}/`, body); 
                 modalDetalhes.hide(); 
-                carregarVendas(true); // Recarrega a lista para atualizar os dados em memória
+                carregarVendas(true); 
                 alert('Dados salvos com sucesso!'); 
-            } catch(e){ 
-                mostrarErroDetalhado(e, 'salvar alterações');
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = 'Salvar Dados';
-            }
+            } catch(e){ mostrarErroDetalhado(e, 'salvar alterações'); } 
+            finally { btn.disabled = false; btn.innerHTML = 'Salvar Dados'; }
         }
         
         async function buscarCepEdit(e) {
@@ -536,21 +665,10 @@
             }
         }
 
-        function gerarAprovacao(id) {
-            const v = vendas.find(x=>x.id===id);
-            let msg = `*VENDA APROVADA* ✅\n\nCliente: ${v.cliente.nome_razao_social}\nCPF/CNPJ: ${v.cliente.cpf_cnpj}\nPlano: ${v.plano?.nome}\nValor: R$ ${v.plano?.valor}\nVendedor: ${v.vendedor.username}`;
-            if(v.observacoes) msg += `\nObs: ${v.observacoes}`;
-            
-            document.getElementById('aprovacao-mensagem').value = msg;
-            aprovacaoModal.show();
-        }
-        
         function copiarMensagem() { 
             const txt = document.getElementById('aprovacao-mensagem');
             txt.select();
-            navigator.clipboard.writeText(txt.value).then(() => {
-                alert('Copiado para a área de transferência!'); 
-            });
+            navigator.clipboard.writeText(txt.value).then(() => { alert('Copiado!'); });
         }
 
         function logout() { localStorage.removeItem('accessToken'); window.location.href = '/'; }

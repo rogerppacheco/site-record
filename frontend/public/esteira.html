@@ -7,14 +7,19 @@
     <title>Esteira de Vendas - Record PAP</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=1.7">
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=2.2">
     <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
     <style>
-        .status-select { min-width: 160px; font-size: 0.9rem; } 
+        /* Ajuste para manter a seta do select visível e o texto legível */
+        .status-select { 
+            min-width: 160px; 
+            font-size: 0.9rem; 
+            font-weight: 600;
+            border: 1px solid rgba(0,0,0,0.1);
+        } 
         .nav-tabs .nav-link.active { color: var(--cor-primaria); border-bottom: 3px solid var(--cor-primaria); background: transparent; }
         input[type="text"], textarea { text-transform: uppercase; }
         
-        /* Estilo para abas de data */
         .nav-link.data-tab { font-size: 0.85rem; color: #666; }
         .nav-link.data-tab.active { color: var(--cor-primaria); font-weight: bold; }
 
@@ -52,7 +57,7 @@
                 <li class="nav-item"><a class="nav-link active" href="#" onclick="filtrarStatus('TODOS', this)">Todos</a></li>
                 <li class="nav-item"><a class="nav-link" href="#" onclick="filtrarStatus('AGENDADO', this)">Agendados</a></li>
                 <li class="nav-item"><a class="nav-link" href="#" onclick="filtrarStatus('PENDEN', this)">Pendentes</a></li>
-                </ul>
+            </ul>
 
             <div class="card border-0 shadow-none">
                 <div class="table-responsive">
@@ -60,15 +65,16 @@
                         <thead class="table-light">
                             <tr>
                                 <th>ID</th>
-                                <th>Data</th>
+                                <th>Data Venda</th> 
                                 <th>O.S.</th>
-                                <th>Agendamento</th>
+                                <th>Data Agendada</th> 
                                 <th>Turno</th>
                                 <th>Cliente</th>
                                 <th>Vendedor</th>
                                 <th>Plano</th>
                                 <th>Status Atual</th>
-                                <th>Motivo Pendência</th> <th>Ações</th>
+                                <th>Motivo Pendência</th> 
+                                <th>Ações</th>
                             </tr>
                         </thead>
                         <tbody id="tabela-esteira-body"></tbody>
@@ -194,22 +200,11 @@
                 <div class="modal-body">
                     <div class="alert alert-warning small">Informe o motivo para continuar.</div>
                     <form id="form-pendencia">
-                        <div class="mb-3">
-                            <label class="form-label fw-bold">Motivo *</label>
-                            <select class="form-select" id="pendencia-motivo" required>
-                                <option value="">Carregando motivos...</option>
-                            </select>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Observação Adicional</label>
-                            <textarea class="form-control uppercase-input" id="pendencia-obs" rows="3" placeholder="Detalhes..."></textarea>
-                        </div>
+                        <div class="mb-3"><label class="form-label fw-bold">Motivo *</label><select class="form-select" id="pendencia-motivo" required><option value="">Carregando motivos...</option></select></div>
+                        <div class="mb-3"><label class="form-label">Observação Adicional</label><textarea class="form-control uppercase-input" id="pendencia-obs" rows="3" placeholder="Detalhes..."></textarea></div>
                     </form>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" onclick="cancelarAcaoStatus()">Cancelar</button>
-                    <button type="button" class="btn btn-primary" onclick="salvarPendencia()">Confirmar</button>
-                </div>
+                <div class="modal-footer"><button type="button" class="btn btn-secondary" onclick="cancelarAcaoStatus()">Cancelar</button><button type="button" class="btn btn-primary" onclick="salvarPendencia()">Confirmar</button></div>
             </div>
         </div>
     </div>
@@ -221,17 +216,8 @@
     
     <script>
         const apiUrl = '';
-        
-        function getVal(id) {
-            const el = document.getElementById(id);
-            if (!el) return null;
-            return el.value === "" ? null : el.value;
-        }
-
-        function setVal(id, valor) {
-            const el = document.getElementById(id);
-            if (el) el.value = (valor !== null && valor !== undefined) ? valor : '';
-        }
+        function getVal(id) { const el = document.getElementById(id); if (!el) return null; return el.value === "" ? null : el.value; }
+        function setVal(id, valor) { const el = document.getElementById(id); if (el) el.value = (valor !== null && valor !== undefined) ? valor : ''; }
 
         async function apiFetch(endpoint, options = {}) {
             const headers = { 'Content-Type': 'application/json', ...options.headers };
@@ -248,43 +234,28 @@
 
         const token = localStorage.getItem('accessToken');
         if(!token) window.location.href = '/';
-
         const decodedToken = jwt_decode(token);
         const userProfile = decodedToken ? (decodedToken.user_role || decodedToken.perfil) : null;
         const allowedProfiles = ['Diretoria', 'BackOffice', 'Supervisor', 'Admin'];
-
-        if (!allowedProfiles.includes(userProfile)) {
-            alert('Acesso negado.');
-            window.location.href = '/area-interna/';
-        }
+        if (!allowedProfiles.includes(userProfile)) { alert('Acesso negado.'); window.location.href = '/area-interna/'; }
 
         let filtroAtual = 'TODOS';
         let tempVendaId = null;
         let tempStatusId = null;
-        
         const modalEditar = new bootstrap.Modal(document.getElementById('modal-editar-venda'));
         const modalAgendamento = new bootstrap.Modal(document.getElementById('modal-agendamento'));
         const modalInstalacao = new bootstrap.Modal(document.getElementById('modal-instalacao'));
         const modalPendencia = new bootstrap.Modal(document.getElementById('modal-pendencia'));
-        
         let updateInterval;
 
         document.addEventListener('DOMContentLoaded', () => {
             carregarVendas();
             carregarMotivosPendencia();
-            
-            document.querySelectorAll('input[type="text"], textarea').forEach(input => {
-                input.addEventListener('input', function() { this.value = this.value.toUpperCase(); });
-            });
-
-            // Atualização Automática com Pausa
+            document.querySelectorAll('input[type="text"], textarea').forEach(input => { input.addEventListener('input', function() { this.value = this.value.toUpperCase(); }); });
             updateInterval = setInterval(() => {
                 const isModalOpen = document.querySelector('.modal.show');
                 const isSelectFocused = document.activeElement && document.activeElement.tagName === 'SELECT';
-                
-                if (!isModalOpen && !isSelectFocused) {
-                    carregarVendas(true); 
-                }
+                if (!isModalOpen && !isSelectFocused) { carregarVendas(true); }
             }, 5000);
         });
 
@@ -298,65 +269,76 @@
             } catch (e) { console.error("Erro ao carregar motivos:", e); }
         }
 
+        function formatarDataSemFuso(dataIso) {
+            if (!dataIso) return '-';
+            const [ano, mes, dia] = dataIso.split('-');
+            return `${dia}/${mes}/${ano}`;
+        }
+
+        // --- FUNÇÃO DE CONTRASTE (REINSERIDA) ---
+        function getContrastColor(hexcolor) {
+            if(!hexcolor) return '#000000';
+            hexcolor = hexcolor.replace("#", "");
+            if(hexcolor.length !== 6) return '#000000';
+            var r = parseInt(hexcolor.substr(0,2),16);
+            var g = parseInt(hexcolor.substr(2,2),16);
+            var b = parseInt(hexcolor.substr(4,2),16);
+            var yiq = ((r*299)+(g*587)+(b*114))/1000;
+            return (yiq >= 128) ? '#000000' : '#FFFFFF';
+        }
+
         async function carregarVendas(silent = false) {
             const tbody = document.getElementById('tabela-esteira-body');
-            if (!silent) {
-                tbody.innerHTML = '<tr><td colspan="11" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>';
-            }
+            if (!silent) { tbody.innerHTML = '<tr><td colspan="11" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>'; }
             
             try {
+                const timestamp = new Date().getTime();
                 const [vendasRes, statusRes] = await Promise.all([
-                    apiFetch('/crm/vendas/?flow=esteira'),
+                    apiFetch(`/crm/vendas/?flow=esteira&_t=${timestamp}`),
                     apiFetch('/crm/status/?tipo=Esteira')
                 ]);
                 
                 let vendas = Array.isArray(vendasRes) ? vendasRes : (vendasRes.results || []);
                 const statusLista = Array.isArray(statusRes) ? statusRes : (statusRes.results || []);
 
-                // 1. Gerar Abas de Data com base em TODOS os dados recebidos
+                vendas = vendas.filter(v => {
+                    if (!v.status_esteira || !v.status_esteira.estado) return true; 
+                    return v.status_esteira.estado.toUpperCase() !== 'FECHADO';
+                });
+
                 gerarAbasDeData(vendas);
 
-                // 2. Aplicar Filtros
-                if(filtroAtual === 'TODOS') {
-                    // Sem filtro adicional
-                } 
-                else if (filtroAtual === 'AGENDADO') {
-                    vendas = vendas.filter(v => v.status_esteira && v.status_esteira.nome.toUpperCase().includes('AGENDADO'));
-                }
-                else if (filtroAtual === 'PENDEN') {
-                    // Pega PENDENTE, PENDÊNCIA, PENDENCIADA
-                    vendas = vendas.filter(v => v.status_esteira && v.status_esteira.nome.toUpperCase().includes('PENDEN'));
-                }
-                else {
-                    // Filtro por Data (YYYY-MM-DD)
-                    vendas = vendas.filter(v => v.data_agendamento === filtroAtual);
-                }
+                if(filtroAtual === 'TODOS') {} 
+                else if (filtroAtual === 'AGENDADO') vendas = vendas.filter(v => v.status_esteira && v.status_esteira.nome.toUpperCase().includes('AGENDADO'));
+                else if (filtroAtual === 'PENDEN') vendas = vendas.filter(v => v.status_esteira && v.status_esteira.nome.toUpperCase().includes('PENDEN'));
+                else vendas = vendas.filter(v => v.data_agendamento === filtroAtual);
 
-                // Esconde canceladas (padrão)
                 vendas = vendas.filter(v => !v.status_esteira || !v.status_esteira.nome.toUpperCase().includes('CANCEL'));
 
-                if(vendas.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="11" class="text-center py-4 text-muted">Nenhuma venda encontrada nesta etapa.</td></tr>';
-                    return;
-                }
+                if(vendas.length === 0) { tbody.innerHTML = '<tr><td colspan="11" class="text-center py-4 text-muted">Nenhuma venda encontrada nesta etapa.</td></tr>'; return; }
 
                 let htmlContent = '';
                 vendas.forEach(v => {
                     const dataFmt = new Date(v.data_criacao).toLocaleDateString('pt-BR');
                     const osAtual = v.ordem_servico || '-';
-                    const dataAgendada = v.data_agendamento ? new Date(v.data_agendamento).toLocaleDateString('pt-BR') : '-';
+                    const dataAgendada = formatarDataSemFuso(v.data_agendamento); 
                     const turno = v.periodo_agendamento || '-';
+                    const motivoPendencia = v.motivo_pendencia ? (v.motivo_pendencia.nome || v.motivo_pendencia) : '-';
+
+                    // --- LÓGICA DE COR NO SELECT (REINSERIDA) ---
+                    const corFundo = (v.status_esteira && v.status_esteira.cor) ? v.status_esteira.cor : '#FFFFFF';
+                    const corTexto = getContrastColor(corFundo);
                     
-                    let selectStatus = `<select class="form-select form-select-sm status-select" data-os="${osAtual}" onchange="atualizarStatus(${v.id}, this)">`;
-                    selectStatus += `<option value="">Selecione...</option>`;
+                    let selectStatus = `<select class="form-select form-select-sm status-select" 
+                        style="background-color: ${corFundo}; color: ${corTexto}; border-color: ${corFundo !== '#FFFFFF' ? corFundo : '#ced4da'};" 
+                        data-os="${osAtual}" onchange="atualizarStatus(${v.id}, this)">`;
+                    
+                    selectStatus += `<option value="" style="background-color: white; color: black;">Selecione...</option>`;
                     statusLista.forEach(s => {
                         const selected = (v.status_esteira && v.status_esteira.id === s.id) ? 'selected' : '';
-                        selectStatus += `<option value="${s.id}" ${selected}>${s.nome}</option>`;
+                        selectStatus += `<option value="${s.id}" ${selected} style="background-color: white; color: black;">${s.nome}</option>`;
                     });
                     selectStatus += `</select>`;
-
-                    // Lógica para extrair motivo da pendência
-                    const motivoPendencia = v.motivo_pendencia ? (v.motivo_pendencia.nome || v.motivo_pendencia) : '-';
 
                     htmlContent += `
                         <tr>
@@ -365,64 +347,31 @@
                             <td>${osAtual}</td>
                             <td>${dataAgendada}</td>
                             <td>${turno}</td>
-                            <td>
-                                <div class="fw-bold">${v.cliente.nome_razao_social}</div>
-                                <div class="small text-muted">${v.cliente.cpf_cnpj}</div>
-                            </td>
+                            <td><div class="fw-bold">${v.cliente.nome_razao_social}</div><div class="small text-muted">${v.cliente.cpf_cnpj}</div></td>
                             <td>${v.vendedor.username}</td>
                             <td>${v.plano?.nome || '-'}</td>
                             <td>${selectStatus}</td>
                             <td class="text-danger small fw-bold">${motivoPendencia}</td>
-                            <td>
-                                <button class="btn btn-sm btn-outline-primary" onclick="abrirEdicao(${v.id})"><i class="bi bi-pencil"></i></button>
-                            </td>
-                        </tr>
-                    `;
+                            <td><button class="btn btn-sm btn-outline-primary" onclick="abrirEdicao(${v.id})"><i class="bi bi-pencil"></i></button></td>
+                        </tr>`;
                 });
                 tbody.innerHTML = htmlContent;
-
-            } catch (e) { 
-                console.error(e); 
-                if(!silent) tbody.innerHTML = '<tr><td colspan="11" class="text-center text-danger">Erro ao carregar.</td></tr>'; 
-            }
+            } catch (e) { if(!silent) tbody.innerHTML = '<tr><td colspan="11" class="text-center text-danger">Erro ao carregar.</td></tr>'; }
         }
 
-        // --- NOVA LÓGICA DE ABAS DE DATA ---
         function gerarAbasDeData(todasVendas) {
             const ul = document.getElementById('abas-esteira');
-            // Remove abas de data antigas (mantém as 3 primeiras fixas)
-            while (ul.children.length > 3) {
-                ul.removeChild(ul.lastChild);
-            }
-
-            // Extrai datas únicas de vendas Agendadas
+            while (ul.children.length > 3) { ul.removeChild(ul.lastChild); }
             const datasUnicas = new Set();
-            todasVendas.forEach(v => {
-                if (v.data_agendamento && v.status_esteira && v.status_esteira.nome.toUpperCase().includes('AGENDADO')) {
-                    datasUnicas.add(v.data_agendamento);
-                }
-            });
-
-            // Ordena e cria as abas
+            todasVendas.forEach(v => { if (v.data_agendamento && v.status_esteira && v.status_esteira.nome.toUpperCase().includes('AGENDADO')) { datasUnicas.add(v.data_agendamento); } });
             Array.from(datasUnicas).sort().forEach(dataIso => {
-                // Converte YYYY-MM-DD para DD/MM para exibição
                 const partes = dataIso.split('-');
-                const dataExibicao = `${partes[2]}/${partes[1]}`; // DD/MM
-
-                const li = document.createElement('li');
-                li.className = 'nav-item';
-                
-                const a = document.createElement('a');
-                a.className = `nav-link data-tab ${filtroAtual === dataIso ? 'active' : ''}`;
-                a.href = '#';
-                a.textContent = dataExibicao; // Exibe 25/11
-                a.onclick = (e) => {
-                    e.preventDefault();
-                    filtrarStatus(dataIso, a); // Filtra por 2025-11-25
-                };
-
-                li.appendChild(a);
-                ul.appendChild(li);
+                const dataExibicao = `${partes[2]}/${partes[1]}`; 
+                const li = document.createElement('li'); li.className = 'nav-item';
+                const a = document.createElement('a'); a.className = `nav-link data-tab ${filtroAtual === dataIso ? 'active' : ''}`;
+                a.href = '#'; a.textContent = dataExibicao; 
+                a.onclick = (e) => { e.preventDefault(); filtrarStatus(dataIso, a); };
+                li.appendChild(a); ul.appendChild(li);
             });
         }
 
@@ -442,22 +391,19 @@
             if (statusTexto === 'CADASTRADA' || statusTexto === 'AGENDADO') {
                 document.getElementById('form-agendamento').reset();
                 document.getElementById('agenda-os').classList.remove('is-invalid');
+                
                 const campoOS = document.getElementById('agenda-os');
-                const msgNovo = document.getElementById('msg-agendamento-novo');
-                const msgExistente = document.getElementById('msg-agendamento-existente');
+                document.getElementById('agenda-data').value = '';
+                document.getElementById('agenda-turno').value = '';
 
                 if (osExistente && osExistente.trim() !== "-" && osExistente.trim() !== "") {
-                    campoOS.value = osExistente;
-                    campoOS.readOnly = true;
-                    campoOS.classList.add('bg-light');
-                    if(msgNovo) msgNovo.style.display = 'none';
-                    if(msgExistente) msgExistente.style.display = 'inline';
+                    campoOS.value = osExistente; campoOS.readOnly = true; campoOS.classList.add('bg-light');
+                    document.getElementById('msg-agendamento-novo').style.display = 'none';
+                    document.getElementById('msg-agendamento-existente').style.display = 'inline';
                 } else {
-                    campoOS.value = '';
-                    campoOS.readOnly = false;
-                    campoOS.classList.remove('bg-light');
-                    if(msgNovo) msgNovo.style.display = 'inline';
-                    if(msgExistente) msgExistente.style.display = 'none';
+                    campoOS.value = ''; campoOS.readOnly = false; campoOS.classList.remove('bg-light');
+                    document.getElementById('msg-agendamento-novo').style.display = 'inline';
+                    document.getElementById('msg-agendamento-existente').style.display = 'none';
                 }
                 modalAgendamento.show();
             } 
@@ -469,16 +415,10 @@
             else if (statusTexto.includes('PENDEN') || statusTexto.includes('CANCEL')) {
                 document.getElementById('form-pendencia').reset();
                 const titulo = document.getElementById('titulo-modal-pendencia');
-                if(titulo) {
-                    titulo.innerHTML = statusTexto.includes('CANCEL') 
-                        ? '<i class="bi bi-x-circle-fill"></i> Motivo do Cancelamento' 
-                        : '<i class="bi bi-exclamation-triangle-fill"></i> Registrar Pendência';
-                }
+                if(titulo) titulo.innerHTML = statusTexto.includes('CANCEL') ? '<i class="bi bi-x-circle-fill"></i> Motivo do Cancelamento' : '<i class="bi bi-exclamation-triangle-fill"></i> Registrar Pendência';
                 modalPendencia.show();
             } 
-            else {
-                salvarStatusNoBanco(id, { status_esteira: statusId });
-            }
+            else { salvarStatusNoBanco(id, { status_esteira: statusId }); }
         }
 
         async function salvarAgendamento() {
@@ -486,35 +426,25 @@
             const data = getVal('agenda-data');
             const turno = getVal('agenda-turno');
             if (!os || !data || !turno) { alert("Preencha todos os campos."); return; }
-            
             const campoOS = document.getElementById('agenda-os');
             if (!campoOS.readOnly) {
                 try {
                     const res = await apiFetch(`/crm/vendas/?ordem_servico=${os}`);
-                    const duplicada = res.some(v => v.id !== tempVendaId);
-                    if (duplicada) { document.getElementById('agenda-os').classList.add('is-invalid'); return; }
+                    if (res.some(v => v.id !== tempVendaId)) { document.getElementById('agenda-os').classList.add('is-invalid'); return; }
                 } catch (e) { alert("Erro ao validar O.S."); return; }
             }
-
-            const payload = { status_esteira: tempStatusId, ordem_servico: os, data_agendamento: data, periodo_agendamento: turno };
-            await salvarStatusNoBanco(tempVendaId, payload);
+            await salvarStatusNoBanco(tempVendaId, { status_esteira: tempStatusId, ordem_servico: os, data_agendamento: data, periodo_agendamento: turno });
             modalAgendamento.hide();
         }
 
         async function salvarInstalacao() {
-            const dataInst = getVal('instalacao-data');
-            const antecipou = getVal('instalacao-antecipou');
-            const payload = { status_esteira: tempStatusId, data_instalacao: dataInst, antecipou_instalacao: (antecipou === 'true') };
-            await salvarStatusNoBanco(tempVendaId, payload);
+            await salvarStatusNoBanco(tempVendaId, { status_esteira: tempStatusId, data_instalacao: getVal('instalacao-data'), antecipou_instalacao: (getVal('instalacao-antecipou') === 'true') });
             modalInstalacao.hide();
         }
 
         async function salvarPendencia() {
-            const motivoId = getVal('pendencia-motivo');
-            const obs = getVal('pendencia-obs');
-            if (!motivoId) { alert("Selecione o motivo."); return; }
-            const payload = { status_esteira: tempStatusId, motivo_pendencia: motivoId, observacoes: obs };
-            await salvarStatusNoBanco(tempVendaId, payload);
+            if (!getVal('pendencia-motivo')) { alert("Selecione o motivo."); return; }
+            await salvarStatusNoBanco(tempVendaId, { status_esteira: tempStatusId, motivo_pendencia: getVal('pendencia-motivo'), observacoes: getVal('pendencia-obs') });
             modalPendencia.hide();
         }
 
@@ -523,10 +453,7 @@
             catch(e) { alert('Erro ao atualizar status: ' + e.message); carregarVendas(true); }
         }
         
-        function cancelarAcaoStatus() { 
-            modalAgendamento.hide(); modalInstalacao.hide(); modalPendencia.hide();
-            carregarVendas(true); 
-        }
+        function cancelarAcaoStatus() { modalAgendamento.hide(); modalInstalacao.hide(); modalPendencia.hide(); carregarVendas(true); }
 
         async function abrirEdicao(id) {
             setVal('edit-venda-id-hidden', id);
@@ -534,89 +461,55 @@
             if(divInst) divInst.style.display = 'none';
 
             try {
-                const [v, pRes, sRes, fRes] = await Promise.all([
-                    apiFetch(`/crm/vendas/${id}/`),
-                    apiFetch('/crm/planos/'),
-                    apiFetch('/crm/status/?tipo=Esteira'),
-                    apiFetch('/crm/formas-pagamento/')
-                ]);
-                
+                const [v, pRes, sRes, fRes] = await Promise.all([ apiFetch(`/crm/vendas/${id}/`), apiFetch('/crm/planos/'), apiFetch('/crm/status/?tipo=Esteira'), apiFetch('/crm/formas-pagamento/') ]);
                 const planos = Array.isArray(pRes) ? pRes : (pRes.results || []);
                 const statusLista = Array.isArray(sRes) ? sRes : (sRes.results || []);
                 const formas = Array.isArray(fRes) ? fRes : (fRes.results || []);
 
-                const pSel = document.getElementById('edit-plano');
-                if(pSel) { pSel.innerHTML = ''; planos.forEach(p => pSel.innerHTML += `<option value="${p.id}" ${v.plano==p.id?'selected':''}>${p.nome}</option>`); }
+                const pSel = document.getElementById('edit-plano'); pSel.innerHTML = ''; planos.forEach(p => pSel.innerHTML += `<option value="${p.id}" ${v.plano==p.id?'selected':''}>${p.nome}</option>`);
+                const sSel = document.getElementById('edit-status-esteira'); sSel.innerHTML = ''; statusLista.forEach(s => sSel.innerHTML += `<option value="${s.id}" ${v.status_esteira==s.id?'selected':''}>${s.nome}</option>`);
+                const pgSel = document.getElementById('edit-pagamento'); pgSel.innerHTML = ''; formas.forEach(f => pgSel.innerHTML += `<option value="${f.id}" ${v.forma_pagamento==f.id?'selected':''}>${f.nome}</option>`);
                 
-                const sSel = document.getElementById('edit-status-esteira');
-                if(sSel) { sSel.innerHTML = ''; statusLista.forEach(s => sSel.innerHTML += `<option value="${s.id}" ${v.status_esteira==s.id?'selected':''}>${s.nome}</option>`); }
-
-                const pgSel = document.getElementById('edit-pagamento');
-                if(pgSel) { pgSel.innerHTML = ''; formas.forEach(f => pgSel.innerHTML += `<option value="${f.id}" ${v.forma_pagamento==f.id?'selected':''}>${f.nome}</option>`); }
-                
-                setVal('edit-cliente-nome', v.cliente_nome_razao_social);
-                setVal('edit-cliente-cpf', v.cliente_cpf_cnpj);
-                setVal('edit-telefone1', v.telefone1);
-                setVal('edit-telefone2', v.telefone2);
-                setVal('edit-nome-mae', v.nome_mae);
-                setVal('edit-data-nascimento', v.data_nascimento);
-                
-                setVal('edit-cep', v.cep);
-                setVal('edit-logradouro', v.logradouro);
-                setVal('edit-numero', v.numero_residencia);
-                setVal('edit-complemento', v.complemento);
-                setVal('edit-bairro', v.bairro);
-                setVal('edit-cidade', v.cidade);
-                setVal('edit-estado', v.estado);
-                setVal('edit-referencia', v.ponto_referencia);
-                setVal('edit-observacoes', v.observacoes);
+                setVal('edit-cliente-nome', v.cliente_nome_razao_social); setVal('edit-cliente-cpf', v.cliente_cpf_cnpj);
+                setVal('edit-telefone1', v.telefone1); setVal('edit-telefone2', v.telefone2);
+                setVal('edit-nome-mae', v.nome_mae); setVal('edit-data-nascimento', v.data_nascimento);
+                setVal('edit-cep', v.cep); setVal('edit-logradouro', v.logradouro); setVal('edit-numero', v.numero_residencia);
+                setVal('edit-complemento', v.complemento); setVal('edit-bairro', v.bairro); setVal('edit-cidade', v.cidade);
+                setVal('edit-estado', v.estado); setVal('edit-referencia', v.ponto_referencia); setVal('edit-observacoes', v.observacoes);
 
                 if (v.status_esteira) {
                     const statusObj = statusLista.find(s => s.id == v.status_esteira);
                     if (statusObj && statusObj.nome.toUpperCase() === 'INSTALADA') {
-                        if(divInst) divInst.style.display = 'block';
+                        document.getElementById('campos-instalacao-modal').style.display = 'block';
                         setVal('edit-data-instalacao-modal', v.data_instalacao);
                         setVal('edit-antecipou-modal', v.antecipou_instalacao ? 'true' : 'false');
                     }
                 }
                 modalEditar.show();
-            } catch(e) { console.error(e); alert('Erro ao abrir edição. ' + e.message); }
+            } catch(e) { console.error(e); alert('Erro ao abrir edição.'); }
         }
 
         function verificarStatusInstaladaModal(select) {
             const texto = select.options[select.selectedIndex].text.toUpperCase();
-            const div = document.getElementById('campos-instalacao-modal');
-            if(div) div.style.display = (texto === 'INSTALADA') ? 'block' : 'none';
+            document.getElementById('campos-instalacao-modal').style.display = (texto === 'INSTALADA') ? 'block' : 'none';
         }
 
         async function salvarEdicaoVenda() {
             const id = getVal('edit-venda-id-hidden');
             const body = {
                 cliente: { nome_razao_social: getVal('edit-cliente-nome') },
-                plano: getVal('edit-plano'),
-                forma_pagamento: getVal('edit-pagamento'),
-                status_esteira: getVal('edit-status-esteira'),
-                nome_mae: getVal('edit-nome-mae'),
-                data_nascimento: getVal('edit-data-nascimento'),
-                telefone1: getVal('edit-telefone1'),
-                telefone2: getVal('edit-telefone2'),
-                cep: getVal('edit-cep'),
-                logradouro: getVal('edit-logradouro'),
-                numero_residencia: getVal('edit-numero'),
-                complemento: getVal('edit-complemento'),
-                bairro: getVal('edit-bairro'),
-                cidade: getVal('edit-cidade'),
-                estado: getVal('edit-estado'),
-                ponto_referencia: getVal('edit-referencia'),
-                observacoes: getVal('edit-observacoes')
+                plano: getVal('edit-plano'), forma_pagamento: getVal('edit-pagamento'), status_esteira: getVal('edit-status-esteira'),
+                nome_mae: getVal('edit-nome-mae'), data_nascimento: getVal('edit-data-nascimento'),
+                telefone1: getVal('edit-telefone1'), telefone2: getVal('edit-telefone2'),
+                cep: getVal('edit-cep'), logradouro: getVal('edit-logradouro'), numero_residencia: getVal('edit-numero'),
+                complemento: getVal('edit-complemento'), bairro: getVal('edit-bairro'), cidade: getVal('edit-cidade'),
+                estado: getVal('edit-estado'), ponto_referencia: getVal('edit-referencia'), observacoes: getVal('edit-observacoes')
             };
-            
             const divInst = document.getElementById('campos-instalacao-modal');
             if (divInst && divInst.style.display !== 'none') {
                 body.data_instalacao = getVal('edit-data-instalacao-modal');
                 body.antecipou_instalacao = getVal('edit-antecipou-modal') === 'true';
             }
-            
             try { await apiFetch(`/crm/vendas/${id}/`, { method: 'PATCH', body: JSON.stringify(body) }); modalEditar.hide(); carregarVendas(true); alert('Salvo!'); } catch(e){ alert('Erro ao salvar.'); }
         }
 
