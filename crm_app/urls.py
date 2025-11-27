@@ -7,6 +7,7 @@ from .views import (
     StatusCRMListCreateView, StatusCRMDetailView,
     MotivoPendenciaListCreateView, MotivoPendenciaDetailView,
     RegraComissaoListCreateView, RegraComissaoDetailView,
+    RegraComissaoExportView, RegraComissaoImportView, # <--- NOVAS VIEWS IMPORTADAS
     VendaViewSet, ClienteViewSet, VendasStatusCountView,
     ImportacaoOsabView, ImportacaoOsabDetailView,
     ImportacaoChurnView, ImportacaoChurnDetailView,
@@ -51,8 +52,13 @@ urlpatterns = [
     path('motivos-pendencia/', MotivoPendenciaListCreateView.as_view(), name='motivopendencia-list-create'),
     path('motivos-pendencia/<int:pk>/', MotivoPendenciaDetailView.as_view(), name='motivopendencia-detail'),
     
+    # --- REGRAS DE COMISSÃO (COM NOVAS ROTAS) ---
     path('regras-comissao/', RegraComissaoListCreateView.as_view(), name='regracomissao-list-create'),
     path('regras-comissao/<int:pk>/', RegraComissaoDetailView.as_view(), name='regracomissao-detail'),
+    
+    path('regras-comissao/exportar/', RegraComissaoExportView.as_view(), name='regracomissao-export'), # <--- NOVA
+    path('regras-comissao/importar/', RegraComissaoImportView.as_view(), name='regracomissao-import'), # <--- NOVA
+    # --------------------------------------------
 
     # --- DASHBOARD E ANALYTICS ---
     path('vendas/status-counts/', VendasStatusCountView.as_view(), name='vendas-status-counts'),

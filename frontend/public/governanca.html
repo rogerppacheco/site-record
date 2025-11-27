@@ -308,7 +308,27 @@
                                     </div>
                                 </form>
                             </div>
-                            <h5 class="mt-4 mb-3">Regras Cadastradas</h5>
+                            
+                            <div class="d-flex justify-content-between align-items-center mb-3 mt-4">
+                                <h5 class="mb-0">Regras Cadastradas</h5>
+                                
+                                <div class="d-flex gap-2">
+                                    <div class="input-group input-group-sm" style="width: 250px;">
+                                        <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                                        <input type="text" id="filtro-regras" class="form-control" placeholder="Buscar regra..." onkeyup="filtrarRegras(this.value)">
+                                    </div>
+
+                                    <button class="btn btn-sm btn-outline-success" onclick="exportarRegras()" title="Baixar todas as regras">
+                                        <i class="bi bi-file-earmark-excel"></i> Exportar
+                                    </button>
+                                    
+                                    <button class="btn btn-sm btn-success" onclick="triggerImportRegras()" title="Importar regras via Excel">
+                                        <i class="bi bi-cloud-upload"></i> Importar
+                                    </button>
+                                    <input type="file" id="input-import-regras" hidden accept=".xlsx, .xls" onchange="uploadRegras(this)">
+                                </div>
+                            </div>
+
                             <div class="table-responsive">
                                 <table class="table table-hover align-middle mb-0"><thead class="table-light"><tr><th>Consultor</th><th>Plano</th><th>Tipo</th><th>Cliente</th><th>Base</th><th>Acelerado</th><th>Ações</th></tr></thead><tbody id="lista-regras-comissao"></tbody></table>
                             </div>
@@ -666,6 +686,18 @@
 
         try {
             const response = await fetch(`${apiUrl}/api${endpoint}`, { ...options, headers });
+            
+            // Tratamento especial para Download (Blob)
+            if (options.isBlob) {
+                if (!response.ok) throw new Error('Erro no download.');
+                return await response.blob();
+            }
+
+            // Upload de Arquivo não usa Content-Type JSON
+            if (options.body instanceof FormData) {
+                delete headers['Content-Type'];
+            }
+
             let responseData = {};
             const contentType = response.headers.get("content-type");
             if (contentType && contentType.indexOf("application/json") !== -1) {
@@ -1105,7 +1137,107 @@
     window.editPend=(p)=>{ document.getElementById('pendencia_id').value=p.id; document.getElementById('pendencia_nome').value=p.nome; document.getElementById('pendencia_tipo').value=p.tipo_pendencia; };
     window.delPend=async(id)=>{ if(confirm('Excluir?')) { await apiFetch(`/crm/motivos-pendencia/${id}/`,{method:'DELETE'}); carregarMotivosPendencia(); }};
     async function carregarDadosParaRegrasComissao() { try { const [p, u] = await Promise.all([apiFetch('/crm/planos/'), apiFetch('/usuarios/?is_active=true')]); const sp=document.getElementById('regra_plano_id'); const sc=document.getElementById('regra_consultor_id'); sp.innerHTML=sc.innerHTML='<option value="">Selecione</option>'; p.forEach(x=>sp.add(new Option(x.nome, x.id))); u.forEach(x=>sc.add(new Option(x.nome_completo, x.id))); } catch(e){} }
-    async function carregarRegrasComissao() { const l=document.getElementById('lista-regras-comissao'); l.innerHTML=''; (await apiFetch('/crm/regras-comissao/')).forEach(r=>l.innerHTML+=`<tr><td>${r.consultor_nome}</td><td>${r.plano_nome}</td><td>${r.tipo_venda}</td><td>${r.tipo_cliente}</td><td>${r.valor_base}</td><td>${r.valor_acelerado}</td><td><button class="btn btn-warning btn-sm" onclick='editRegra(${JSON.stringify(r)})'><i class="bi bi-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="delRegra(${r.id})"><i class="bi bi-trash"></i></button></td></tr>`); }
+    
+    // --- LÓGICA ATUALIZADA DE REGRAS DE COMISSÃO (FILTRO, IMPORT E EXPORT) ---
+    async function carregarRegrasComissao(termoBusca = '') { 
+        const l=document.getElementById('lista-regras-comissao'); 
+        l.innerHTML='<tr><td colspan="7" class="text-center">Carregando...</td></tr>'; 
+        try {
+            const url = termoBusca ? `/crm/regras-comissao/?search=${termoBusca}` : '/crm/regras-comissao/';
+            const regras = await apiFetch(url);
+            l.innerHTML = '';
+            
+            if(regras.length === 0) {
+                l.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Nenhuma regra encontrada.</td></tr>';
+                return;
+            }
+
+            regras.forEach(r => {
+                l.innerHTML += `
+                    <tr>
+                        <td>${r.consultor_nome || '<span class="text-muted">Todos</span>'}</td>
+                        <td>${r.plano_nome}</td>
+                        <td>${r.tipo_venda}</td>
+                        <td>${r.tipo_cliente}</td>
+                        <td>${r.valor_base}</td>
+                        <td>${r.valor_acelerado}</td>
+                        <td>
+                            <button class="btn btn-warning btn-sm" onclick='editRegra(${JSON.stringify(r)})'><i class="bi bi-pencil"></i></button>
+                            <button class="btn btn-danger btn-sm" onclick="delRegra(${r.id})"><i class="bi bi-trash"></i></button>
+                        </td>
+                    </tr>`;
+            });
+        } catch(e) {
+            console.error(e);
+            l.innerHTML = '<tr><td colspan="7" class="text-danger text-center">Erro ao carregar regras.</td></tr>';
+        }
+    }
+
+    // Debounce para o filtro não chamar a API a cada letra
+    let timeoutFiltroRegras = null;
+    function filtrarRegras(valor) {
+        clearTimeout(timeoutFiltroRegras);
+        timeoutFiltroRegras = setTimeout(() => {
+            carregarRegrasComissao(valor);
+        }, 500);
+    }
+
+    // Exportar Excel
+    async function exportarRegras() {
+        try {
+            const blob = await apiFetch('/crm/regras-comissao/exportar/', { isBlob: true });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `regras_comissao_${new Date().toISOString().slice(0,10)}.xlsx`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        } catch(e) {
+            alert('Erro ao exportar: ' + e.message);
+        }
+    }
+
+    // Importar Excel
+    function triggerImportRegras() {
+        document.getElementById('input-import-regras').click();
+    }
+
+    async function uploadRegras(input) {
+        if (!input.files || !input.files[0]) return;
+        const file = input.files[0];
+        
+        const formData = new FormData();
+        formData.append('file', file);
+
+        if(!confirm(`Confirma a importação do arquivo "${file.name}"?`)) {
+            input.value = ''; // Limpa seleção
+            return;
+        }
+
+        try {
+            const res = await apiFetch('/crm/regras-comissao/importar/', {
+                method: 'POST',
+                body: formData
+            });
+
+            alert(`Importação concluída!\n\nCriados: ${res.criados}\nAtualizados: ${res.atualizados}\nErros: ${res.erros.length}`);
+            
+            if(res.erros.length > 0) {
+                console.warn('Erros na importação:', res.erros);
+                alert('Alguns erros ocorreram. Verifique o console (F12) para detalhes.');
+            }
+
+            carregarRegrasComissao(); // Recarrega a lista
+        } catch(e) {
+            alert('Falha na importação: ' + e.message);
+        } finally {
+            input.value = ''; // Limpa para permitir re-seleção do mesmo arquivo
+        }
+    }
+
+    // --------------------------------------------------------------------------
+
     document.getElementById('form-regra-comissao').onsubmit = async(e)=>{ e.preventDefault(); const id=document.getElementById('regra_comissao_id').value; const b={consultor:document.getElementById('regra_consultor_id').value, plano:document.getElementById('regra_plano_id').value, tipo_venda:document.getElementById('regra_tipo_venda').value, tipo_cliente:document.getElementById('regra_tipo_cliente').value, valor_base:document.getElementById('regra_valor_base').value, valor_acelerado:document.getElementById('regra_valor_acelerado').value}; await apiFetch(id?`/crm/regras-comissao/${id}/`:'/crm/regras-comissao/',{method:id?'PUT':'POST', body:JSON.stringify(b)}); document.getElementById('form-regra-comissao').reset(); carregarRegrasComissao(); };
     window.editRegra=(r)=>{ document.getElementById('regra_comissao_id').value=r.id; document.getElementById('regra_consultor_id').value=r.consultor; document.getElementById('regra_plano_id').value=r.plano; document.getElementById('regra_tipo_venda').value=r.tipo_venda; document.getElementById('regra_tipo_cliente').value=r.tipo_cliente; document.getElementById('regra_valor_base').value=r.valor_base; document.getElementById('regra_valor_acelerado').value=r.valor_acelerado; };
     window.delRegra=async(id)=>{ if(confirm('Excluir?')) { await apiFetch(`/crm/regras-comissao/${id}/`,{method:'DELETE'}); carregarRegrasComissao(); }};

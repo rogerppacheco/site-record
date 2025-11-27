@@ -29,6 +29,14 @@
         
         .btn-filter { background-color: #0d6efd; color: white; }
         .btn-filter:hover { background-color: #0b5ed7; color: white; }
+
+        .btn-toggle-detalhe {
+            width: 24px; height: 24px; 
+            padding: 0; 
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.2s;
+        }
+        .btn-toggle-detalhe:hover { background-color: #e9ecef; }
     </style>
 </head>
 <body>
@@ -92,21 +100,13 @@
                                     <thead>
                                         <tr>
                                             <th style="width: 40px;">#</th>
-                                            <th rowspan="2" style="width: 200px;">CONSULTOR</th>
-                                            <th colspan="3" class="text-center border-left-strong">PRODUÇÃO</th>
-                                            <th rowspan="2" class="text-end border-left-strong text-primary">COMISSÃO<br>BRUTA</th>
-                                            <th colspan="4" class="text-center border-left-strong text-danger">DESCONTOS</th>
-                                            <th rowspan="2" class="text-end border-left-strong text-success bg-light">LÍQUIDO<br>A PAGAR</th>
-                                        </tr>
-                                        <tr>
-                                            <th></th>
-                                            <th class="text-center border-left-strong">Inst.</th>
-                                            <th class="text-center">Meta</th>
+                                            <th>CONSULTOR</th>
+                                            <th class="text-center">QTD</th>
+                                            <th class="text-center">META</th>
                                             <th class="text-center">%</th>
-                                            <th class="text-end border-left-strong fw-normal">Boleto</th>
-                                            <th class="text-end fw-normal">Inclusão</th>
-                                            <th class="text-end fw-normal">Antecip.</th>
-                                            <th class="text-end fw-normal">CNPJ</th>
+                                            <th class="text-end text-primary">COMISSÃO BRUTA</th>
+                                            <th class="text-end text-danger">TOTAL DESCONTOS</th>
+                                            <th class="text-end text-success bg-light border-start">LÍQUIDO A PAGAR</th>
                                         </tr>
                                     </thead>
                                     <tbody id="tbody-consultores"></tbody>
@@ -201,7 +201,7 @@
             const ano = document.getElementById('filtro-ano').value;
             const tbody = document.getElementById('tbody-consultores');
             
-            tbody.innerHTML = '<tr><td colspan="12" class="text-center py-5"><div class="spinner-border text-primary"></div></td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center py-5"><div class="spinner-border text-primary"></div></td></tr>';
 
             try {
                 const res = await axios.get(`${apiUrl}?ano=${ano}&mes=${mes}`);
@@ -215,48 +215,131 @@
                 atualizarBotoesAcao(historicoAtual ? historicoAtual.status : 'Aberto', dados.relatorio_consultores);
 
             } catch (error) {
-                tbody.innerHTML = `<tr><td colspan="12" class="text-center text-danger p-4">Erro ao carregar dados: ${error.message}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger p-4">Erro ao carregar dados: ${error.message}</td></tr>`;
             }
         }
 
+        // --- FUNÇÃO DE RENDERIZAÇÃO ATUALIZADA (Accordion) ---
         function renderizarTabela(lista) {
             const tbody = document.getElementById('tbody-consultores');
             tbody.innerHTML = '';
             let totBruta = 0, totLiq = 0;
 
             if (lista.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="12" class="text-center py-4 text-muted">Nenhum dado encontrado.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-muted">Nenhum dado encontrado.</td></tr>';
                 return;
             }
 
             lista.forEach(c => {
                 totBruta += c.comissao_bruta;
                 totLiq += c.valor_liquido;
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
+
+                // 1. Linha MESTRE (Resumo)
+                const trMaster = document.createElement('tr');
+                trMaster.className = 'border-bottom';
+                trMaster.innerHTML = `
                     <td class="text-center"><input type="checkbox" class="form-check-input check-consultor" value="${c.consultor_id}"></td>
-                    <td class="fw-bold text-dark">${c.consultor_nome}</td>
-                    <td class="text-center border-left-strong">${c.qtd_instaladas}</td>
+                    <td>
+                        <div class="d-flex align-items-center">
+                            <button class="btn btn-sm btn-light border me-2 rounded-circle shadow-sm btn-toggle-detalhe" 
+                                    type="button" 
+                                    data-bs-toggle="collapse" 
+                                    data-bs-target="#collapse-${c.consultor_id}"
+                                    onclick="this.querySelector('i').classList.toggle('bi-plus-lg'); this.querySelector('i').classList.toggle('bi-dash-lg');">
+                                <i class="bi bi-plus-lg text-primary small"></i>
+                            </button>
+                            <span class="fw-bold text-dark">${c.consultor_nome}</span>
+                        </div>
+                    </td>
+                    <td class="text-center">${c.qtd_instaladas}</td>
                     <td class="text-center text-muted">${c.meta}</td>
-                    <td class="text-center"><span class="badge ${c.atingimento_pct >= 100 ? 'bg-success' : 'bg-secondary'}">${c.atingimento_pct}%</span></td>
-                    <td class="money-col text-end text-primary border-left-strong">${fmtMoney(c.comissao_bruta)}</td>
-                    <td class="money-col text-end text-danger border-left-strong">${c.desc_boleto > 0 ? '-'+fmtMoney(c.desc_boleto) : '-'}</td>
-                    <td class="money-col text-end text-danger">${c.desc_inclusao > 0 ? '-'+fmtMoney(c.desc_inclusao) : '-'}</td>
-                    <td class="money-col text-end text-danger">${c.desc_antecipacao > 0 ? '-'+fmtMoney(c.desc_antecipacao) : '-'}</td>
-                    <td class="money-col text-end text-danger">${c.desc_cnpj > 0 ? '-'+fmtMoney(c.desc_cnpj) : '-'}</td>
-                    <td class="money-col text-end text-success border-left-strong bg-light fw-bold">${fmtMoney(c.valor_liquido)}</td>
+                    <td class="text-center">
+                        <span class="badge ${c.atingimento_pct >= 100 ? 'bg-success' : 'bg-secondary'}">${c.atingimento_pct}%</span>
+                    </td>
+                    <td class="money-col text-end text-primary">${fmtMoney(c.comissao_bruta)}</td>
+                    <td class="money-col text-end text-danger small">
+                        ${c.total_descontos > 0 ? '- '+fmtMoney(c.total_descontos) : '-'}
+                    </td>
+                    <td class="money-col text-end text-success bg-light border-start fw-bold">${fmtMoney(c.valor_liquido)}</td>
                 `;
-                tbody.appendChild(tr);
+                tbody.appendChild(trMaster);
+
+                // 2. Linha DETALHE (Accordion)
+                const trDetail = document.createElement('tr');
+                trDetail.className = 'bg-light';
+                
+                // Gera linhas dos planos
+                let htmlPlanos = c.detalhes_planos.map(p => `
+                    <tr>
+                        <td class="ps-3 text-secondary fw-bold" style="font-size: 0.85rem;">${p.plano}</td>
+                        <td class="text-center text-dark">${p.qtd}</td>
+                        <td class="text-end text-muted small">${fmtMoney(p.unitario)}</td>
+                        <td class="text-end fw-bold text-dark pe-3">${fmtMoney(p.total)}</td>
+                    </tr>
+                `).join('');
+                if (c.detalhes_planos.length === 0) htmlPlanos = '<tr><td colspan="4" class="text-center small text-muted py-2">Nenhuma venda instalada.</td></tr>';
+
+                // Gera lista de descontos
+                let htmlDescontos = c.detalhes_descontos.map(d => `
+                    <div class="d-flex justify-content-between small mb-1 text-danger">
+                        <span>${d.motivo}</span>
+                        <span>- ${fmtMoney(d.valor)}</span>
+                    </div>
+                `).join('');
+                if (c.detalhes_descontos.length === 0) htmlDescontos = '<div class="text-muted small fst-italic">Sem descontos aplicados.</div>';
+
+                trDetail.innerHTML = `
+                    <td colspan="8" class="p-0 border-0">
+                        <div class="collapse" id="collapse-${c.consultor_id}">
+                            <div class="row g-0">
+                                <div class="col-md-8 border-end">
+                                    <div class="p-3">
+                                        <h6 class="text-uppercase text-muted small fw-bold mb-2"><i class="bi bi-cart-check"></i> Detalhamento por Plano</h6>
+                                        <table class="table table-sm table-borderless mb-0 rounded bg-white shadow-sm overflow-hidden">
+                                            <thead class="table-light border-bottom small text-secondary">
+                                                <tr>
+                                                    <th class="ps-3">Plano</th>
+                                                    <th class="text-center">Qtd</th>
+                                                    <th class="text-end">Unit.</th>
+                                                    <th class="text-end pe-3">Total</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>${htmlPlanos}</tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                <div class="col-md-4 bg-white">
+                                    <div class="p-3 h-100">
+                                        <h6 class="text-uppercase text-muted small fw-bold mb-3"><i class="bi bi-calculator"></i> Fechamento</h6>
+                                        <div class="d-flex justify-content-between small mb-2">
+                                            <span class="text-secondary">Comissão Bruta</span>
+                                            <span class="fw-bold text-primary">${fmtMoney(c.comissao_bruta)}</span>
+                                        </div>
+                                        <div class="border-top border-bottom py-2 my-2 bg-light px-2 rounded">
+                                            ${htmlDescontos}
+                                        </div>
+                                        <div class="d-flex justify-content-between align-items-center mt-3 pt-2 border-top">
+                                            <span class="fw-bold text-uppercase text-success small">Total a Receber</span>
+                                            <span class="fs-5 fw-bold text-success">${fmtMoney(c.valor_liquido)}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(trDetail);
             });
 
             document.getElementById('tfoot-totais').innerHTML = `
                 <tr>
                     <td colspan="5" class="text-end text-uppercase text-muted small">Totais do Mês:</td>
-                    <td class="text-end text-primary border-left-strong">${fmtMoney(totBruta)}</td>
-                    <td colspan="4" class="border-left-strong"></td>
-                    <td class="text-end text-success border-left-strong bg-light">${fmtMoney(totLiq)}</td>
+                    <td class="text-end text-primary">${fmtMoney(totBruta)}</td>
+                    <td></td>
+                    <td class="text-end text-success bg-light border-start">${fmtMoney(totLiq)}</td>
                 </tr>`;
         }
+        // -----------------------------------------------------
 
         function renderizarHistorico(lista) {
             const tbody = document.getElementById('tbody-historico');
@@ -323,7 +406,6 @@
             } catch(e) { alert("Erro ao gerar PDF."); }
         }
 
-        // --- FUNÇÕES DE E-MAIL ADICIONADAS ---
         function abrirModalEmail() {
             const checks = document.querySelectorAll('.check-consultor:checked');
             if(checks.length === 0) { 
@@ -339,7 +421,8 @@
             const avisoMassa = document.getElementById('div-aviso-massa');
             
             if (ids.length === 1) {
-                const nome = checks[0].closest('tr').cells[1].innerText; 
+                // Pega nome da coluna ao lado do checkbox
+                const nome = checks[0].closest('tr').cells[1].innerText.trim(); 
                 nomeField.value = nome;
                 emailDiv.classList.remove('d-none');
                 avisoMassa.classList.add('d-none');
@@ -385,7 +468,6 @@
                 spinner.classList.add('d-none');
             }
         }
-        // -------------------------------------
 
         function toggleTodos(source) {
             document.querySelectorAll('.check-consultor').forEach(c => c.checked = source.checked);

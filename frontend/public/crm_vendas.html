@@ -168,15 +168,39 @@
     <div class="modal fade" id="modal-aviso-cliente" tabindex="-1" style="z-index: 1060;">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content border-warning">
-                <div class="modal-header bg-warning text-dark"><h5 class="modal-title fw-bold"><i class="bi bi-exclamation-triangle-fill"></i> Atenção</h5><button type="button" class="btn-close" onclick="fecharModalAviso()"></button></div>
-                <div class="modal-body">
-                    <p class="fw-bold">Este cliente já possui vendas registradas!</p>
-                    <p>Cliente: <strong id="aviso-nome-cliente"></strong> | Vendas Ativas: <strong id="aviso-qtd-vendas"></strong></p>
-                    <p class="small text-muted">Deseja cadastrar uma nova venda mesmo assim?</p>
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title fw-bold"><i class="bi bi-exclamation-triangle-fill"></i> Atenção: Cliente Recorrente</h5>
+                    <button type="button" class="btn-close" onclick="fecharModalAviso()"></button>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" onclick="fecharModalAviso()">Cancelar</button>
-                    <button type="button" class="btn btn-primary" onclick="confirmarClienteExistente()">Sim, Continuar</button>
+                <div class="modal-body">
+                    <div class="alert alert-light border text-center mb-3">
+                        <h4 class="fw-bold text-warning" id="aviso-qtd-vendas" style="font-size: 2.5rem;">0</h4>
+                        <span class="text-muted text-uppercase small fw-bold">Vendas Ativas Encontradas</span>
+                    </div>
+
+                    <p class="text-center mb-3">
+                        O cliente <strong id="aviso-nome-cliente"></strong> já possui histórico em nossa base.
+                    </p>
+
+                    <div class="alert alert-danger" role="alert">
+                        <div class="d-flex align-items-center mb-2">
+                            <i class="bi bi-shield-lock-fill fs-3 me-3"></i>
+                            <div>
+                                <strong>Aviso de Segurança:</strong><br>
+                                Esta venda passará por uma <u>auditoria mais apurada</u> devido à duplicidade de CPF/CNPJ.
+                            </div>
+                        </div>
+                        <hr>
+                        <p class="mb-0 fw-bold text-center small text-uppercase">
+                            <i class="bi bi-exclamation-circle"></i> Essa venda poderá gerar uma recompra ou uma venda indevida!
+                        </p>
+                    </div>
+
+                    <p class="small text-muted text-center mt-3">Deseja continuar com este CPF ou informar um novo?</p>
+                </div>
+                <div class="modal-footer justify-content-center">
+                    <button type="button" class="btn btn-outline-secondary px-4" onclick="fecharModalAviso()">Informar Outro CPF</button>
+                    <button type="button" class="btn btn-warning px-4 fw-bold" onclick="confirmarClienteExistente()">Sim, Continuar Venda</button>
                 </div>
             </div>
         </div>

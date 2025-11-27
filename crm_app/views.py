@@ -18,7 +18,7 @@ from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.utils.html import strip_tags
 
-from rest_framework import generics, viewsets, status, permissions
+from rest_framework import generics, viewsets, status, permissions, filters
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
@@ -160,16 +160,134 @@ class MotivoPendenciaDetailView(generics.RetrieveUpdateDestroyAPIView):
     resource_name = 'motivopendencia'
 
 class RegraComissaoListCreateView(generics.ListCreateAPIView):
-    queryset = RegraComissao.objects.all()
+    queryset = RegraComissao.objects.all().order_by('consultor__username', 'plano__nome')
     serializer_class = RegraComissaoSerializer
     permission_classes = [CheckAPIPermission]
     resource_name = 'regracomissao'
+    
+    # Adicionando suporte a filtros no Backend também (opcional, mas bom para performance se tiver muitas regras)
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['consultor__username', 'consultor__first_name', 'plano__nome', 'tipo_venda', 'tipo_cliente']
 
 class RegraComissaoDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = RegraComissao.objects.all()
     serializer_class = RegraComissaoSerializer
     permission_classes = [CheckAPIPermission]
     resource_name = 'regracomissao'
+
+# --- NOVAS VIEWS PARA IMPORTAÇÃO/EXPORTAÇÃO DE REGRAS ---
+
+class RegraComissaoExportView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        regras = RegraComissao.objects.select_related('consultor', 'plano').all()
+        
+        data = []
+        for r in regras:
+            data.append({
+                'CONSULTOR_LOGIN': r.consultor.username if r.consultor else 'TODOS',
+                'PLANO': r.plano.nome,
+                'TIPO_VENDA': r.tipo_venda,
+                'TIPO_CLIENTE': r.tipo_cliente,
+                'VALOR_BASE': float(r.valor_base),
+                'VALOR_ACELERADO': float(r.valor_acelerado)
+            })
+            
+        df = pd.DataFrame(data)
+        
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = f'attachment; filename=regras_comissao_{timezone.now().strftime("%Y%m%d")}.xlsx'
+        
+        with pd.ExcelWriter(response, engine='xlsxwriter') as writer:
+            df.to_excel(writer, sheet_name='Regras', index=False)
+            
+        return response
+
+class RegraComissaoImportView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        file_obj = request.FILES.get('file')
+        if not file_obj:
+            return Response({'error': 'Arquivo não enviado.'}, status=400)
+            
+        try:
+            df = pd.read_excel(file_obj)
+            # Normalizar colunas
+            df.columns = [str(col).strip().upper() for col in df.columns]
+            
+            required_cols = ['PLANO', 'TIPO_VENDA', 'TIPO_CLIENTE', 'VALOR_BASE', 'VALOR_ACELERADO']
+            for col in required_cols:
+                if col not in df.columns:
+                    return Response({'error': f'Coluna obrigatória ausente: {col}'}, status=400)
+            
+            User = get_user_model()
+            criados = 0
+            atualizados = 0
+            erros = []
+            
+            # Cache para performance
+            users_map = {u.username.upper(): u for u in User.objects.all()}
+            planos_map = {p.nome.upper(): p for p in Plano.objects.all()}
+            
+            for index, row in df.iterrows():
+                try:
+                    # Identificar Consultor (Pode ser por Username ou vazio)
+                    consultor_login = str(row.get('CONSULTOR_LOGIN', '')).strip().upper()
+                    consultor_obj = None
+                    if consultor_login and consultor_login != 'NAN' and consultor_login != 'TODOS':
+                        consultor_obj = users_map.get(consultor_login)
+                        if not consultor_obj:
+                            erros.append(f"Linha {index+2}: Usuário '{consultor_login}' não encontrado.")
+                            continue
+                            
+                    # Identificar Plano
+                    plano_nome = str(row.get('PLANO', '')).strip().upper()
+                    plano_obj = planos_map.get(plano_nome)
+                    if not plano_obj:
+                        erros.append(f"Linha {index+2}: Plano '{plano_nome}' não encontrado.")
+                        continue
+                        
+                    # Validar Tipos
+                    tipo_venda = str(row.get('TIPO_VENDA')).strip().upper()
+                    if tipo_venda not in ['PAP', 'TELAG']: tipo_venda = 'PAP' # Default ou erro
+                    
+                    tipo_cliente = str(row.get('TIPO_CLIENTE')).strip().upper()
+                    if tipo_cliente not in ['CPF', 'CNPJ']: tipo_cliente = 'CPF'
+                    
+                    val_base = row.get('VALOR_BASE', 0)
+                    val_acelerado = row.get('VALOR_ACELERADO', 0)
+                    
+                    obj, created = RegraComissao.objects.update_or_create(
+                        consultor=consultor_obj,
+                        plano=plano_obj,
+                        tipo_venda=tipo_venda,
+                        tipo_cliente=tipo_cliente,
+                        defaults={
+                            'valor_base': val_base,
+                            'valor_acelerado': val_acelerado
+                        }
+                    )
+                    
+                    if created: criados += 1
+                    else: atualizados += 1
+                    
+                except Exception as e:
+                    erros.append(f"Linha {index+2}: Erro inesperado - {str(e)}")
+            
+            return Response({
+                'status': 'sucesso',
+                'criados': criados,
+                'atualizados': atualizados,
+                'erros': erros
+            })
+            
+        except Exception as e:
+            return Response({'error': str(e)}, status=400)
+
+# --------------------------------------------------------
 
 class VendaViewSet(viewsets.ModelViewSet):
     permission_classes = [VendaPermission] 
@@ -510,7 +628,10 @@ class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
     resource_name = 'cliente'
 
     def get_queryset(self):
-        queryset = Cliente.objects.all().order_by('nome_razao_social')
+        # ANOTAÇÃO: Conta vendas onde ativo=True
+        queryset = Cliente.objects.annotate(
+            vendas_count=Count('vendas', filter=Q(vendas__ativo=True))
+        ).order_by('nome_razao_social')
         
         search = self.request.query_params.get('search')
         if search:
@@ -529,6 +650,7 @@ class ListaVendedoresView(APIView):
         vendedores = User.objects.filter(is_active=True).values('id', 'username').order_by('username')
         return Response(list(vendedores))
 
+# --- VIEW ATUALIZADA COM DETALHAMENTO DE PLANOS ---
 class ComissionamentoView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -552,9 +674,6 @@ class ComissionamentoView(APIView):
         relatorio = []
         todas_regras = list(RegraComissao.objects.select_related('plano', 'consultor').all())
         
-        anomes_str = f"{ano}{mes:02d}"
-        churns_mes = ImportacaoChurn.objects.filter(anomes_retirada=anomes_str)
-
         for consultor in consultores:
             vendas = Venda.objects.filter(
                 vendedor=consultor,
@@ -570,56 +689,66 @@ class ComissionamentoView(APIView):
             bateu_meta = qtd_instaladas >= meta
             
             comissao_bruta = 0.0
+            
+            # --- AGREGADORES ---
+            stats_planos = defaultdict(lambda: {'qtd': 0, 'total': 0.0})
+            stats_descontos = defaultdict(float)
+            
             for v in vendas:
+                # 1. Regra de Comissão
                 doc = v.cliente.cpf_cnpj if v.cliente else ''
                 doc_limpo = ''.join(filter(str.isdigit, doc))
                 tipo_cliente = 'CNPJ' if len(doc_limpo) > 11 else 'CPF'
                 canal_vendedor = getattr(consultor, 'canal', 'PAP') or 'PAP'
                 
                 regra = next((r for r in todas_regras if r.plano_id == v.plano_id and r.tipo_cliente == tipo_cliente and r.tipo_venda == canal_vendedor and r.consultor_id == consultor.id), None)
-                
                 if not regra:
                     regra = next((r for r in todas_regras if r.plano_id == v.plano_id and r.tipo_cliente == tipo_cliente and r.tipo_venda == canal_vendedor and r.consultor is None), None)
                 
-                valor_item = 0.0
-
-                if regra:
-                    valor_item = float(regra.valor_acelerado if bateu_meta else regra.valor_base)
-                else:
-                    valor_item = 0.0
-                
+                valor_item = float(regra.valor_acelerado if bateu_meta else regra.valor_base) if regra else 0.0
                 comissao_bruta += valor_item
 
-            qtd_boleto = 0
-            for v in vendas:
+                # AGREGAR PLANO (Nome, ValorUnit)
+                key_plano = (v.plano.nome, valor_item)
+                stats_planos[key_plano]['qtd'] += 1
+                stats_planos[key_plano]['total'] += valor_item
+
+                # 2. Calcular Descontos (Acumulado)
                 if v.forma_pagamento and 'BOLETO' in v.forma_pagamento.nome.upper():
-                    qtd_boleto += 1
-            
-            valor_desc_boleto_unit = float(consultor.desconto_boleto or 0)
-            desc_boleto_total = qtd_boleto * valor_desc_boleto_unit
+                    val = float(consultor.desconto_boleto or 0)
+                    if val > 0: stats_descontos['Boleto'] += val
 
-            qtd_inclusao = vendas.filter(inclusao=True).count()
-            valor_desc_inclusao_unit = float(consultor.desconto_inclusao_viabilidade or 0)
-            desc_inclusao_total = qtd_inclusao * valor_desc_inclusao_unit
+                if v.inclusao:
+                    val = float(consultor.desconto_inclusao_viabilidade or 0)
+                    if val > 0: stats_descontos['Inclusão/Viab.'] += val
 
-            qtd_antecipacao = vendas.filter(antecipou_instalacao=True).count()
-            valor_desc_antecipacao_unit = float(consultor.desconto_instalacao_antecipada or 0)
-            desc_antecipacao_total = qtd_antecipacao * valor_desc_antecipacao_unit
+                if v.antecipou_instalacao:
+                    val = float(consultor.desconto_instalacao_antecipada or 0)
+                    if val > 0: stats_descontos['Antecipação'] += val
 
-            qtd_cnpj = 0
-            for v in vendas:
-                doc = v.cliente.cpf_cnpj if v.cliente else ''
-                if len(''.join(filter(str.isdigit, doc))) > 11:
-                    qtd_cnpj += 1
-            
-            valor_desc_cnpj_unit = float(consultor.adiantamento_cnpj or 0)
-            desc_cnpj_total = qtd_cnpj * valor_desc_cnpj_unit
+                if len(doc_limpo) > 11:
+                    val = float(consultor.adiantamento_cnpj or 0)
+                    if val > 0: stats_descontos['Adiant. CNPJ'] += val
 
-            valor_churn_total = 0.0
+            # Consolidação Final
+            total_descontos = sum(stats_descontos.values())
             premiacao = 0.0 
             bonus = 0.0
-            total_descontos = desc_boleto_total + desc_inclusao_total + desc_antecipacao_total + desc_cnpj_total + valor_churn_total
             valor_liquido = (comissao_bruta + premiacao + bonus) - total_descontos
+
+            # Formatar lista de planos
+            lista_planos_detalhe = []
+            for (nome_plano, unitario), dados in stats_planos.items():
+                lista_planos_detalhe.append({
+                    'plano': nome_plano,
+                    'unitario': unitario,
+                    'qtd': dados['qtd'],
+                    'total': dados['total']
+                })
+            lista_planos_detalhe.sort(key=lambda x: x['total'], reverse=True)
+
+            # Formatar lista de descontos
+            lista_descontos_detalhe = [{'motivo': k, 'valor': v} for k, v in stats_descontos.items()]
 
             relatorio.append({
                 'consultor_id': consultor.id,
@@ -628,11 +757,10 @@ class ComissionamentoView(APIView):
                 'meta': meta,
                 'atingimento_pct': round(atingimento, 1),
                 'comissao_bruta': comissao_bruta,
-                'desc_boleto': desc_boleto_total,
-                'desc_inclusao': desc_inclusao_total,
-                'desc_antecipacao': desc_antecipacao_total,
-                'desc_cnpj': desc_cnpj_total,
+                'total_descontos': total_descontos,
                 'valor_liquido': valor_liquido,
+                'detalhes_planos': lista_planos_detalhe,
+                'detalhes_descontos': lista_descontos_detalhe
             })
 
         historico = []
@@ -655,6 +783,7 @@ class ComissionamentoView(APIView):
             'relatorio_consultores': relatorio,
             'historico_pagamentos': historico
         })
+# -----------------------------------------------------
 
 @method_decorator(ensure_csrf_cookie, name='dispatch')
 class LoginView(APIView):
