@@ -81,6 +81,9 @@
                     <h1 style="font-size: 1.8rem; margin: 0;">Esteira de Vendas</h1>
                     <p class="text-muted mb-0">Acompanhamento e tratamento de pendências.</p>
                 </div>
+                <button onclick="carregarVendas()" class="btn btn-outline-primary fw-bold shadow-sm">
+                    <i class="bi bi-arrow-clockwise"></i> Atualizar Lista
+                </button>
             </div>
 
             <ul class="nav nav-tabs mb-3" id="abas-esteira">
@@ -276,17 +279,14 @@
         const modalAgendamento = new bootstrap.Modal(document.getElementById('modal-agendamento'));
         const modalInstalacao = new bootstrap.Modal(document.getElementById('modal-instalacao'));
         const modalPendencia = new bootstrap.Modal(document.getElementById('modal-pendencia'));
-        let updateInterval;
+        
+        // --- ALTERAÇÃO AQUI: Loop removido! ---
+        // O setInterval que causava o consumo excessivo foi deletado.
 
         document.addEventListener('DOMContentLoaded', () => {
             carregarVendas();
             carregarMotivosPendencia();
             document.querySelectorAll('input[type="text"], textarea').forEach(input => { input.addEventListener('input', function() { this.value = this.value.toUpperCase(); }); });
-            updateInterval = setInterval(() => {
-                const isModalOpen = document.querySelector('.modal.show');
-                const isSelectFocused = document.activeElement && document.activeElement.tagName === 'SELECT';
-                if (!isModalOpen && !isSelectFocused) { carregarVendas(true); }
-            }, 5000);
         });
 
         async function carregarMotivosPendencia() {

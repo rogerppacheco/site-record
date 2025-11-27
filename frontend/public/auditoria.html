@@ -82,6 +82,9 @@
                     <h1 style="font-size: 1.8rem; margin: 0;">Auditoria</h1>
                     <p class="text-muted mb-0">Validação e qualidade das vendas.</p>
                 </div>
+                <button onclick="carregarVendas()" class="btn btn-outline-primary fw-bold shadow-sm">
+                    <i class="bi bi-arrow-clockwise"></i> Atualizar Lista
+                </button>
             </div>
 
             <div class="card border-0 shadow-none" style="background: transparent;">
@@ -357,7 +360,6 @@
         let tempVendaId = null;
         let tempStatusId = null;
         let tempSelectElement = null;
-        let updateInterval;
         let vendaEmAuditoria = null; 
 
         const modalDetalhes = new bootstrap.Modal(document.getElementById('modal-detalhes'));
@@ -368,12 +370,6 @@
         document.addEventListener('DOMContentLoaded', () => {
             carregarVendas();
             document.getElementById('edit-cep').addEventListener('blur', buscarCepEdit);
-
-            updateInterval = setInterval(() => {
-                const isModalOpen = document.querySelector('.modal.show');
-                const isSelectFocused = document.activeElement && document.activeElement.tagName === 'SELECT';
-                if (!isModalOpen && !isSelectFocused) { carregarVendas(true); }
-            }, 5000);
         });
 
         function mostrarErroDetalhado(error, contexto = 'atualizar') {
