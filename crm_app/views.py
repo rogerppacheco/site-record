@@ -288,17 +288,20 @@ class VendaViewSet(viewsets.ModelViewSet):
         return queryset
 
     # --- AÇÃO 1: PEGAR TAREFA (TRAVAR VENDA) ---
+    # Esta ação estava faltando no seu código anterior
     @action(detail=True, methods=['post'], url_path='alocar-auditoria')
     def alocar_auditoria(self, request, pk=None):
         venda = self.get_object()
         usuario = request.user
 
+        # Verifica se já está travada por OUTRA pessoa
         if venda.auditor_atual and venda.auditor_atual != usuario:
             return Response(
                 {"detail": f"Esta venda já está sendo auditada por {venda.auditor_atual}."},
                 status=status.HTTP_409_CONFLICT
             )
         
+        # Trava para o usuário atual
         venda.auditor_atual = usuario
         venda.save()
         
@@ -311,6 +314,7 @@ class VendaViewSet(viewsets.ModelViewSet):
         venda = self.get_object()
         usuario = request.user
         
+        # Permissão para liberar: O próprio dono ou Supervisores/Admins
         is_supervisor = is_member(usuario, ['Diretoria', 'Admin', 'Supervisor'])
         
         if venda.auditor_atual and venda.auditor_atual != usuario and not is_supervisor:
@@ -981,6 +985,7 @@ class EnviarExtratoEmailView(APIView):
                         status_final = "ATIVO"
                         dt_churn = "-"
                         motivo_churn = "-"
+                        
                         if dados_churn:
                             status_final = "CHURN"
                             dt_churn = dados_churn.dt_retirada.strftime('%d/%m/%Y') if dados_churn.dt_retirada else "S/D"
