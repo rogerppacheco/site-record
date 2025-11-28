@@ -49,13 +49,20 @@ class Usuario(AbstractUser):
         help_text="Marque se este usuário deve aparecer na tela de controle de presença."
     )
 
-    # --- NOVO CAMPO: WHATSAPP ---
+    # --- WHATSAPP ---
     tel_whatsapp = models.CharField(
         max_length=20, 
         blank=True, 
         null=True, 
         verbose_name="WhatsApp do Consultor",
         help_text="Número com DDD (apenas números). O sistema verificará se possui WhatsApp."
+    )
+
+    # --- SEGURANÇA (NOVO CAMPO OBRIGATÓRIO) ---
+    obriga_troca_senha = models.BooleanField(
+        default=False, 
+        verbose_name="Obrigar troca de senha?",
+        help_text="Se marcado, o usuário deverá trocar a senha no próximo login."
     )
 
     class Meta(AbstractUser.Meta):
@@ -71,31 +78,28 @@ class Usuario(AbstractUser):
         super().clean()
         
         if self.tel_whatsapp:
-            # Importação local para evitar ciclo de imports (crm_app <-> usuarios)
             try:
                 from crm_app.whatsapp_service import WhatsAppService
-                
                 service = WhatsAppService()
-                existe = service.verificar_numero_existe(self.tel_whatsapp)
-                
-                if not existe:
-                    raise ValidationError({
-                        'tel_whatsapp': f"O número {self.tel_whatsapp} não possui uma conta de WhatsApp válida segundo a API."
-                    })
+                # Verifica apenas se configurado para evitar travamento em dev
+                if service.token and service.instance_id:
+                    existe = service.verificar_numero_existe(self.tel_whatsapp)
+                    if not existe:
+                        raise ValidationError({
+                            'tel_whatsapp': f"O número {self.tel_whatsapp} não possui uma conta de WhatsApp válida segundo a API."
+                        })
             except ImportError:
-                pass # Evita erro se o app crm_app não estiver carregado ainda
+                pass
             except Exception as e:
-                # Se a API falhar (ex: sem internet), não impede o cadastro, mas loga se possível
                 pass
 
     def save(self, *args, **kwargs):
-        self.full_clean()  # Força a execução do clean() antes de salvar
+        self.full_clean()
         super().save(*args, **kwargs)
 
 class PermissaoPerfil(models.Model):
     perfil = models.ForeignKey(Perfil, on_delete=models.CASCADE, related_name='permissoes')
     recurso = models.CharField(max_length=100, help_text="O nome do recurso (ex: 'operadoras', 'planos')")
-    
     pode_ver = models.BooleanField(default=False)
     pode_criar = models.BooleanField(default=False)
     pode_editar = models.BooleanField(default=False)

@@ -4,7 +4,10 @@ import numpy as np
 from datetime import datetime, timedelta, date
 from collections import defaultdict
 from operator import itemgetter
+import base64
 from io import BytesIO
+import json
+import os 
 
 from django.db.models import Count, Q, Sum
 from django.utils import timezone
@@ -17,17 +20,19 @@ from django.template.loader import get_template
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.utils.html import strip_tags
+from django.contrib.staticfiles import finders
 
-from rest_framework import generics, viewsets, status, permissions, filters
+from rest_framework import generics, viewsets, status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.exceptions import PermissionDenied, NotFound
+
 # --- IMPORTS WHATSAPP ---
 from rest_framework.decorators import api_view, permission_classes
-from .whatsapp_service import WhatsAppService
+from .whatsapp_service import WhatsAppService 
 # ------------------------
 
 from xhtml2pdf import pisa 
@@ -160,134 +165,16 @@ class MotivoPendenciaDetailView(generics.RetrieveUpdateDestroyAPIView):
     resource_name = 'motivopendencia'
 
 class RegraComissaoListCreateView(generics.ListCreateAPIView):
-    queryset = RegraComissao.objects.all().order_by('consultor__username', 'plano__nome')
+    queryset = RegraComissao.objects.all()
     serializer_class = RegraComissaoSerializer
     permission_classes = [CheckAPIPermission]
     resource_name = 'regracomissao'
-    
-    # Adicionando suporte a filtros no Backend também (opcional, mas bom para performance se tiver muitas regras)
-    filter_backends = [filters.SearchFilter]
-    search_fields = ['consultor__username', 'consultor__first_name', 'plano__nome', 'tipo_venda', 'tipo_cliente']
 
 class RegraComissaoDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = RegraComissao.objects.all()
     serializer_class = RegraComissaoSerializer
     permission_classes = [CheckAPIPermission]
     resource_name = 'regracomissao'
-
-# --- NOVAS VIEWS PARA IMPORTAÇÃO/EXPORTAÇÃO DE REGRAS ---
-
-class RegraComissaoExportView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request):
-        regras = RegraComissao.objects.select_related('consultor', 'plano').all()
-        
-        data = []
-        for r in regras:
-            data.append({
-                'CONSULTOR_LOGIN': r.consultor.username if r.consultor else 'TODOS',
-                'PLANO': r.plano.nome,
-                'TIPO_VENDA': r.tipo_venda,
-                'TIPO_CLIENTE': r.tipo_cliente,
-                'VALOR_BASE': float(r.valor_base),
-                'VALOR_ACELERADO': float(r.valor_acelerado)
-            })
-            
-        df = pd.DataFrame(data)
-        
-        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        response['Content-Disposition'] = f'attachment; filename=regras_comissao_{timezone.now().strftime("%Y%m%d")}.xlsx'
-        
-        with pd.ExcelWriter(response, engine='xlsxwriter') as writer:
-            df.to_excel(writer, sheet_name='Regras', index=False)
-            
-        return response
-
-class RegraComissaoImportView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-    parser_classes = [MultiPartParser, FormParser]
-
-    def post(self, request):
-        file_obj = request.FILES.get('file')
-        if not file_obj:
-            return Response({'error': 'Arquivo não enviado.'}, status=400)
-            
-        try:
-            df = pd.read_excel(file_obj)
-            # Normalizar colunas
-            df.columns = [str(col).strip().upper() for col in df.columns]
-            
-            required_cols = ['PLANO', 'TIPO_VENDA', 'TIPO_CLIENTE', 'VALOR_BASE', 'VALOR_ACELERADO']
-            for col in required_cols:
-                if col not in df.columns:
-                    return Response({'error': f'Coluna obrigatória ausente: {col}'}, status=400)
-            
-            User = get_user_model()
-            criados = 0
-            atualizados = 0
-            erros = []
-            
-            # Cache para performance
-            users_map = {u.username.upper(): u for u in User.objects.all()}
-            planos_map = {p.nome.upper(): p for p in Plano.objects.all()}
-            
-            for index, row in df.iterrows():
-                try:
-                    # Identificar Consultor (Pode ser por Username ou vazio)
-                    consultor_login = str(row.get('CONSULTOR_LOGIN', '')).strip().upper()
-                    consultor_obj = None
-                    if consultor_login and consultor_login != 'NAN' and consultor_login != 'TODOS':
-                        consultor_obj = users_map.get(consultor_login)
-                        if not consultor_obj:
-                            erros.append(f"Linha {index+2}: Usuário '{consultor_login}' não encontrado.")
-                            continue
-                            
-                    # Identificar Plano
-                    plano_nome = str(row.get('PLANO', '')).strip().upper()
-                    plano_obj = planos_map.get(plano_nome)
-                    if not plano_obj:
-                        erros.append(f"Linha {index+2}: Plano '{plano_nome}' não encontrado.")
-                        continue
-                        
-                    # Validar Tipos
-                    tipo_venda = str(row.get('TIPO_VENDA')).strip().upper()
-                    if tipo_venda not in ['PAP', 'TELAG']: tipo_venda = 'PAP' # Default ou erro
-                    
-                    tipo_cliente = str(row.get('TIPO_CLIENTE')).strip().upper()
-                    if tipo_cliente not in ['CPF', 'CNPJ']: tipo_cliente = 'CPF'
-                    
-                    val_base = row.get('VALOR_BASE', 0)
-                    val_acelerado = row.get('VALOR_ACELERADO', 0)
-                    
-                    obj, created = RegraComissao.objects.update_or_create(
-                        consultor=consultor_obj,
-                        plano=plano_obj,
-                        tipo_venda=tipo_venda,
-                        tipo_cliente=tipo_cliente,
-                        defaults={
-                            'valor_base': val_base,
-                            'valor_acelerado': val_acelerado
-                        }
-                    )
-                    
-                    if created: criados += 1
-                    else: atualizados += 1
-                    
-                except Exception as e:
-                    erros.append(f"Linha {index+2}: Erro inesperado - {str(e)}")
-            
-            return Response({
-                'status': 'sucesso',
-                'criados': criados,
-                'atualizados': atualizados,
-                'erros': erros
-            })
-            
-        except Exception as e:
-            return Response({'error': str(e)}, status=400)
-
-# --------------------------------------------------------
 
 class VendaViewSet(viewsets.ModelViewSet):
     permission_classes = [VendaPermission] 
@@ -401,12 +288,12 @@ class VendaViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
-        cpf_cnpj = serializer.validated_data.pop('cliente_cpf_cnpj')
+        cpf = serializer.validated_data.pop('cliente_cpf_cnpj')
         nome = serializer.validated_data.pop('cliente_nome_razao_social')
         email = serializer.validated_data.pop('cliente_email', None)
         
         cliente, created = Cliente.objects.get_or_create(
-            cpf_cnpj=cpf_cnpj,
+            cpf_cnpj=cpf,
             defaults={'nome_razao_social': nome, 'email': email}
         )
         if not created:
@@ -650,7 +537,6 @@ class ListaVendedoresView(APIView):
         vendedores = User.objects.filter(is_active=True).values('id', 'username').order_by('username')
         return Response(list(vendedores))
 
-# --- VIEW ATUALIZADA COM DETALHAMENTO DE PLANOS ---
 class ComissionamentoView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -783,25 +669,396 @@ class ComissionamentoView(APIView):
             'relatorio_consultores': relatorio,
             'historico_pagamentos': historico
         })
-# -----------------------------------------------------
 
-@method_decorator(ensure_csrf_cookie, name='dispatch')
-class LoginView(APIView):
-    permission_classes = [AllowAny]
+class FecharPagamentoView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
     def post(self, request):
-        username = request.data.get('username')
-        password = request.data.get('password')
-        user = authenticate(request, username=username, password=password)
-        if user is not None:
-            refresh = RefreshToken.for_user(user)
-            response = JsonResponse({
-                'access_token': str(refresh.access_token),
-                'refresh_token': str(refresh)
+        try:
+            ano = int(request.data.get('ano'))
+            mes = int(request.data.get('mes'))
+            total_pago = request.data.get('total_pago', 0)
+            
+            status_pago = StatusCRM.objects.filter(tipo='Comissionamento', nome__iexact='PAGO').first()
+            if not status_pago:
+                status_pago = StatusCRM.objects.create(tipo='Comissionamento', nome='PAGO', cor='#198754')
+
+            data_inicio = datetime(ano, mes, 1)
+            if mes == 12: data_fim = datetime(ano + 1, 1, 1)
+            else: data_fim = datetime(ano, mes + 1, 1)
+
+            vendas_para_atualizar = Venda.objects.filter(
+                ativo=True,
+                status_esteira__nome__iexact='INSTALADA',
+                data_instalacao__gte=data_inicio,
+                data_instalacao__lt=data_fim
+            ).exclude(status_comissionamento=status_pago)
+
+            count = vendas_para_atualizar.count()
+            vendas_para_atualizar.update(
+                status_comissionamento=status_pago,
+                data_pagamento_comissao=timezone.now().date()
+            )
+
+            PagamentoComissao.objects.update_or_create(
+                referencia_ano=ano,
+                referencia_mes=mes,
+                defaults={
+                    'total_pago_consultores': total_pago,
+                    'data_fechamento': timezone.now()
+                }
+            )
+
+            return Response({"mensagem": f"Fechamento realizado! {count} vendas atualizadas.", "vendas_atualizadas": count})
+        
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+class ReabrirPagamentoView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        try:
+            ano = int(request.data.get('ano'))
+            mes = int(request.data.get('mes'))
+
+            status_pendente = StatusCRM.objects.filter(tipo='Comissionamento', nome__iexact='PENDENTE').first()
+            if not status_pendente:
+                return Response({"error": "Status 'PENDENTE' de comissionamento não encontrado."}, status=400)
+
+            data_inicio = datetime(ano, mes, 1)
+            if mes == 12: data_fim = datetime(ano + 1, 1, 1)
+            else: data_fim = datetime(ano, mes + 1, 1)
+
+            vendas_revertidas = Venda.objects.filter(
+                status_esteira__nome__iexact='INSTALADA',
+                data_instalacao__gte=data_inicio,
+                data_instalacao__lt=data_fim,
+                status_comissionamento__nome__iexact='PAGO'
+            ).update(
+                status_comissionamento=status_pendente,
+                data_pagamento_comissao=None
+            )
+
+            PagamentoComissao.objects.filter(referencia_ano=ano, referencia_mes=mes).delete()
+
+            return Response({"mensagem": "Mês reaberto com sucesso!", "vendas_revertidas": vendas_revertidas})
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+class GerarRelatorioPDFView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        ano = int(request.data.get('ano'))
+        mes = int(request.data.get('mes'))
+        consultores_ids = request.data.get('consultores', [])
+
+        data_inicio = datetime(ano, mes, 1)
+        if mes == 12: data_fim = datetime(ano + 1, 1, 1)
+        else: data_fim = datetime(ano, mes + 1, 1)
+
+        vendas = Venda.objects.filter(
+            ativo=True,
+            status_esteira__nome__iexact='INSTALADA',
+            data_instalacao__gte=data_inicio,
+            data_instalacao__lt=data_fim
+        ).select_related('vendedor', 'cliente', 'plano', 'forma_pagamento', 'status_esteira')
+
+        if consultores_ids:
+            vendas = vendas.filter(vendedor_id__in=consultores_ids)
+
+        anomes_str = f"{ano}{mes:02d}"
+        churns = ImportacaoChurn.objects.filter(anomes_retirada=anomes_str)
+        churn_map = {c.numero_pedido: c for c in churns}
+
+        lista_final = []
+        for v in vendas:
+            eh_dacc = "SIM" if v.forma_pagamento and "DÉBITO" in v.forma_pagamento.nome.upper() else "NÃO"
+            
+            chave_busca = v.ordem_servico or "SEM_OS"
+            dados_churn = churn_map.get(chave_busca)
+            
+            status_final = "ATIVO"
+            dt_churn = "-"
+            motivo_churn = "-"
+            
+            if dados_churn:
+                status_final = "CHURN"
+                dt_churn = dados_churn.dt_retirada.strftime('%d/%m/%Y') if dados_churn.dt_retirada else "S/D"
+                motivo_churn = dados_churn.motivo_retirada or "Não informado"
+
+            lista_final.append({
+                'vendedor': v.vendedor.username.upper() if v.vendedor else 'SEM VENDEDOR',
+                'cpf_cnpj': v.cliente.cpf_cnpj,
+                'dacc': eh_dacc,
+                'cliente': v.cliente.nome_razao_social.upper(),
+                'plano': v.plano.nome.upper(),
+                'dt_criacao': v.data_criacao.strftime('%d/%m/%Y'),
+                'dt_instalacao': v.data_instalacao.strftime('%d/%m/%Y') if v.data_instalacao else "-",
+                'os': v.ordem_servico or "-",
+                'status_esteira': v.status_esteira.nome.upper() if v.status_esteira else "-",
+                'dt_churn': dt_churn,
+                'motivo_churn': motivo_churn,
+                'situacao': status_final,
+                'style_class': 'color: red; font-weight: bold;' if status_final == 'CHURN' else ''
             })
-            response.set_cookie('access_token', str(refresh.access_token), httponly=True, secure=True, samesite='Lax')
+
+        lista_final.sort(key=itemgetter('vendedor', 'cliente'))
+
+        html_string = f"""
+        <html>
+        <head>
+            <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+            <style>
+                @page {{ size: A4 landscape; margin: 1cm; }}
+                body {{ font-family: Helvetica, sans-serif; font-size: 9px; }}
+                table {{ width: 100%; border-collapse: collapse; }}
+                th {{ background-color: #f2f2f2; border: 1px solid #ccc; padding: 4px; text-align: left; font-weight: bold; }}
+                td {{ border: 1px solid #ccc; padding: 3px; }}
+                h2 {{ text-align: center; color: #333; margin-bottom: 5px; }}
+                .meta {{ text-align: center; font-size: 10px; margin-bottom: 15px; color: #666; }}
+            </style>
+        </head>
+        <body>
+            <h2>Extrato de Comissionamento - {mes}/{ano}</h2>
+            <div class="meta">Gerado em: {timezone.now().strftime('%d/%m/%Y %H:%M')} | Total Vendas: {len(lista_final)}</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>VENDEDOR</th>
+                        <th>CPF/CNPJ</th>
+                        <th>DACC</th>
+                        <th>CLIENTE</th>
+                        <th>PLANO</th>
+                        <th>DT VENDA</th>
+                        <th>DT INST</th>
+                        <th>O.S.</th>
+                        <th>STATUS</th>
+                        <th>DT CHURN</th>
+                        <th>MOTIVO</th>
+                        <th>SITUAÇÃO</th>
+                    </tr>
+                </thead>
+                <tbody>
+        """
+        
+        for item in lista_final:
+            html_string += f"""
+            <tr style="{item['style_class']}">
+                <td>{item['vendedor']}</td>
+                <td>{item['cpf_cnpj']}</td>
+                <td>{item['dacc']}</td>
+                <td>{item['cliente'][:25]}</td>
+                <td>{item['plano']}</td>
+                <td>{item['dt_criacao']}</td>
+                <td>{item['dt_instalacao']}</td>
+                <td>{item['os']}</td>
+                <td>{item['status_esteira']}</td>
+                <td>{item['dt_churn']}</td>
+                <td>{item['motivo_churn'][:15]}</td>
+                <td>{item['situacao']}</td>
+            </tr>
+            """
+        
+        html_string += """
+                </tbody>
+            </table>
+        </body>
+        </html>
+        """
+
+        result = BytesIO()
+        pdf = pisa.pisaDocument(BytesIO(html_string.encode("UTF-8")), result, encoding='utf-8')
+        
+        if not pdf.err:
+            response = HttpResponse(result.getvalue(), content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="extrato_comissao_{mes}_{ano}.pdf"'
             return response
-        else:
-            return Response({"detail": "Credenciais inválidas"}, status=status.HTTP_401_UNAUTHORIZED)
+        return Response({"error": "Erro ao gerar PDF"}, status=500)
+
+class EnviarExtratoEmailView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        try:
+            # 1. Receber dados
+            ano = int(request.data.get('ano'))
+            mes = int(request.data.get('mes'))
+            consultores_ids = request.data.get('consultores', []) 
+            email_destino_manual = request.data.get('email_destino') 
+
+            if not consultores_ids:
+                return Response({"error": "Nenhum consultor selecionado."}, status=400)
+
+            User = get_user_model()
+            data_inicio = datetime(ano, mes, 1)
+            if mes == 12: data_fim = datetime(ano + 1, 1, 1)
+            else: data_fim = datetime(ano, mes + 1, 1)
+
+            # Carregar dados de churn para o mês
+            anomes_str = f"{ano}{mes:02d}"
+            churns = ImportacaoChurn.objects.filter(anomes_retirada=anomes_str)
+            churn_map = {c.numero_pedido: c for c in churns}
+
+            sucessos = 0
+            erros = []
+
+            # 2. Loop para processar cada consultor selecionado
+            for c_id in consultores_ids:
+                try:
+                    consultor = User.objects.get(id=c_id)
+                    
+                    # Regra de E-mail: 
+                    target_email = None
+                    if len(consultores_ids) == 1 and email_destino_manual:
+                        target_email = email_destino_manual
+                    else:
+                        target_email = getattr(consultor, 'email', None)
+
+                    if not target_email:
+                        erros.append(f"{consultor.username}: Sem e-mail cadastrado.")
+                        continue
+
+                    # Buscar Vendas do Consultor
+                    vendas = Venda.objects.filter(
+                        ativo=True,
+                        vendedor_id=c_id,
+                        status_esteira__nome__iexact='INSTALADA',
+                        data_instalacao__gte=data_inicio,
+                        data_instalacao__lt=data_fim
+                    ).select_related('plano', 'forma_pagamento', 'cliente')
+
+                    if not vendas.exists():
+                        erros.append(f"{consultor.username}: Sem vendas instaladas no período.")
+                        continue
+
+                    # --- Montar Dados ---
+                    lista_detalhada = []
+                    for v in vendas:
+                        eh_dacc = "SIM" if v.forma_pagamento and "DÉBITO" in v.forma_pagamento.nome.upper() else "NÃO"
+                        chave_busca = v.ordem_servico or "SEM_OS"
+                        dados_churn = churn_map.get(chave_busca)
+                        
+                        status_final = "ATIVO"
+                        dt_churn = "-"
+                        motivo_churn = "-"
+                        if dados_churn:
+                            status_final = "CHURN"
+                            dt_churn = dados_churn.dt_retirada.strftime('%d/%m/%Y') if dados_churn.dt_retirada else "S/D"
+                            motivo_churn = dados_churn.motivo_retirada or "Não informado"
+
+                        dt_pedido = v.data_pedido.strftime('%d/%m/%Y') if v.data_pedido else v.data_criacao.strftime('%d/%m/%Y')
+                        dt_inst = v.data_instalacao.strftime('%d/%m/%Y') if v.data_instalacao else "-"
+
+                        lista_detalhada.append({
+                            'vendedor': v.vendedor.username.upper() if v.vendedor else 'SEM VENDEDOR',
+                            'cpf_cnpj': v.cliente.cpf_cnpj,
+                            'dacc': eh_dacc,
+                            'cliente': v.cliente.nome_razao_social.upper(),
+                            'plano': v.plano.nome.upper(),
+                            'dt_pedido': dt_pedido,
+                            'dt_inst': dt_inst,
+                            'os': v.ordem_servico or "-",
+                            'situacao': v.status_esteira.nome.upper() if v.status_esteira else "-",
+                            'dt_churn': dt_churn,
+                            'motivo_churn': motivo_churn,
+                            'churn_ativo': status_final,
+                            'color_style': 'color: red;' if status_final == 'CHURN' else ''
+                        })
+                    
+                    lista_detalhada.sort(key=itemgetter('cliente'))
+
+                    # --- Gerar HTML E-mail ---
+                    html_content = f"""
+                    <html>
+                    <body style="font-family: Arial, sans-serif; font-size: 12px;">
+                        <h2 style="color: #333;">Extrato de Comissionamento - {consultor.username.upper()}</h2>
+                        <p>Referência: <strong>{mes}/{ano}</strong></p>
+                        <table border="1" cellpadding="4" cellspacing="0" style="border-collapse: collapse; width: 100%; font-size: 10px;">
+                            <thead style="background-color: #f2f2f2;">
+                                <tr>
+                                    <th>VENDEDOR</th><th>CPF/CNPJ</th><th>DACC</th><th>NOME CLIENTE</th><th>PLANO</th>
+                                    <th>DT PEDIDO</th><th>DT INST</th><th>O.S</th><th>SITUAÇÃO</th>
+                                    <th>DT CHURN</th><th>MOTIVO CHURN</th><th>CHURN_OU_ATIVO</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                    """
+                    for item in lista_detalhada:
+                        html_content += f"""
+                            <tr style="{item['color_style']}">
+                                <td>{item['vendedor']}</td>
+                                <td>{item['cpf_cnpj']}</td>
+                                <td>{item['dacc']}</td>
+                                <td>{item['cliente'][:20]}</td>
+                                <td>{item['plano']}</td>
+                                <td>{item['dt_pedido']}</td>
+                                <td>{item['dt_inst']}</td>
+                                <td>{item['os']}</td>
+                                <td>{item['situacao']}</td>
+                                <td>{item['dt_churn']}</td>
+                                <td>{item['motivo_churn'][:20]}</td>
+                                <td><strong>{item['churn_ativo']}</strong></td>
+                            </tr>
+                        """
+                    html_content += "</tbody></table><br><p>Segue anexo detalhado.</p></body></html>"
+
+                    # --- Gerar PDF (Anexo) ---
+                    html_pdf = f"""
+                    <html><head><meta charset="utf-8">
+                    <style>@page {{ size: A4 landscape; margin: 1cm; }} body {{ font-family: Helvetica; font-size: 9px; }} table {{ width: 100%; border-collapse: collapse; }} th, td {{ border: 1px solid #ccc; padding: 3px; }} th {{ background: #f2f2f2; }}</style>
+                    </head><body>
+                        <h2>Extrato {mes}/{ano} - {consultor.username.upper()}</h2>
+                        <table><thead><tr>
+                            <th>VENDEDOR</th><th>CPF/CNPJ</th><th>DACC</th><th>CLIENTE</th><th>PLANO</th>
+                            <th>DT PEDIDO</th><th>DT INST</th><th>O.S</th><th>SITUAÇÃO</th>
+                            <th>DT CHURN</th><th>MOTIVO</th><th>STATUS</th>
+                        </tr></thead><tbody>
+                    """
+                    for item in lista_detalhada:
+                        html_pdf += f"""<tr style="{item.get('color_style', '')}">
+                            <td>{item['vendedor']}</td><td>{item['cpf_cnpj']}</td><td>{item['dacc']}</td>
+                            <td>{item['cliente'][:25]}</td><td>{item['plano']}</td><td>{item['dt_pedido']}</td>
+                            <td>{item['dt_inst']}</td><td>{item['os']}</td><td>{item['situacao']}</td>
+                            <td>{item['dt_churn']}</td><td>{item['motivo_churn'][:15]}</td><td>{item['churn_ativo']}</td>
+                        </tr>"""
+                    html_pdf += "</tbody></table></body></html>"
+
+                    pdf_buffer = BytesIO()
+                    pisa_status = pisa.pisaDocument(BytesIO(html_pdf.encode("UTF-8")), pdf_buffer, encoding='utf-8')
+                    
+                    if pisa_status.err:
+                        erros.append(f"{consultor.username}: Erro ao gerar PDF.")
+                        continue
+
+                    # --- Enviar ---
+                    msg = EmailMultiAlternatives(
+                        f"Extrato Comissionamento - {mes}/{ano} - {consultor.username}",
+                        strip_tags(html_content),
+                        settings.DEFAULT_FROM_EMAIL,
+                        [target_email]
+                    )
+                    msg.attach_alternative(html_content, "text/html")
+                    msg.attach(f"Extrato_{consultor.username}_{mes}_{ano}.pdf", pdf_buffer.getvalue(), 'application/pdf')
+                    msg.send()
+                    
+                    sucessos += 1
+
+                except Exception as e:
+                    erros.append(f"Erro interno id {c_id}: {str(e)}")
+
+            # 3. Retorno Final
+            msg_final = f"Processo finalizado. Enviados: {sucessos}."
+            if erros:
+                msg_final += f" Falhas: {len(erros)}. Detalhes: {', '.join(erros)}"
+            
+            return Response({"mensagem": msg_final, "sucessos": sucessos, "erros": erros})
+
+        except Exception as e:
+            logger.error(f"Erro geral envio email: {e}")
+            return Response({"error": str(e)}, status=500)
 
 class ImportacaoOsabView(APIView):
     permission_classes = [CheckAPIPermission]
@@ -1198,409 +1455,131 @@ class PerformanceVendasView(APIView):
         final_result = sorted(final_result, key=itemgetter('supervisor_name'))
         return Response(final_result)
 
-class FecharPagamentoView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+# --- LOGIN E TROCA DE SENHA ---
 
+@method_decorator(ensure_csrf_cookie, name='dispatch')
+class LoginView(APIView):
+    permission_classes = [AllowAny]
     def post(self, request):
-        try:
-            ano = int(request.data.get('ano'))
-            mes = int(request.data.get('mes'))
-            total_pago = request.data.get('total_pago', 0)
-            
-            status_pago = StatusCRM.objects.filter(tipo='Comissionamento', nome__iexact='PAGO').first()
-            if not status_pago:
-                status_pago = StatusCRM.objects.create(tipo='Comissionamento', nome='PAGO', cor='#198754')
-
-            data_inicio = datetime(ano, mes, 1)
-            if mes == 12: data_fim = datetime(ano + 1, 1, 1)
-            else: data_fim = datetime(ano, mes + 1, 1)
-
-            vendas_para_atualizar = Venda.objects.filter(
-                ativo=True,
-                status_esteira__nome__iexact='INSTALADA',
-                data_instalacao__gte=data_inicio,
-                data_instalacao__lt=data_fim
-            ).exclude(status_comissionamento=status_pago)
-
-            count = vendas_para_atualizar.count()
-            vendas_para_atualizar.update(
-                status_comissionamento=status_pago,
-                data_pagamento_comissao=timezone.now().date()
-            )
-
-            PagamentoComissao.objects.update_or_create(
-                referencia_ano=ano,
-                referencia_mes=mes,
-                defaults={
-                    'total_pago_consultores': total_pago,
-                    'data_fechamento': timezone.now()
-                }
-            )
-
-            return Response({"mensagem": f"Fechamento realizado! {count} vendas atualizadas.", "vendas_atualizadas": count})
+        username = request.data.get('username')
+        password = request.data.get('password')
         
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
-class ReabrirPagamentoView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def post(self, request):
-        try:
-            ano = int(request.data.get('ano'))
-            mes = int(request.data.get('mes'))
-
-            status_pendente = StatusCRM.objects.filter(tipo='Comissionamento', nome__iexact='PENDENTE').first()
-            if not status_pendente:
-                return Response({"error": "Status 'PENDENTE' de comissionamento não encontrado."}, status=400)
-
-            data_inicio = datetime(ano, mes, 1)
-            if mes == 12: data_fim = datetime(ano + 1, 1, 1)
-            else: data_fim = datetime(ano, mes + 1, 1)
-
-            vendas_revertidas = Venda.objects.filter(
-                status_esteira__nome__iexact='INSTALADA',
-                data_instalacao__gte=data_inicio,
-                data_instalacao__lt=data_fim,
-                status_comissionamento__nome__iexact='PAGO'
-            ).update(
-                status_comissionamento=status_pendente,
-                data_pagamento_comissao=None
-            )
-
-            PagamentoComissao.objects.filter(referencia_ano=ano, referencia_mes=mes).delete()
-
-            return Response({"mensagem": "Mês reaberto com sucesso!", "vendas_revertidas": vendas_revertidas})
-
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
-class GerarRelatorioPDFView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def post(self, request):
-        ano = int(request.data.get('ano'))
-        mes = int(request.data.get('mes'))
-        consultores_ids = request.data.get('consultores', [])
-
-        data_inicio = datetime(ano, mes, 1)
-        if mes == 12: data_fim = datetime(ano + 1, 1, 1)
-        else: data_fim = datetime(ano, mes + 1, 1)
-
-        vendas = Venda.objects.filter(
-            ativo=True,
-            status_esteira__nome__iexact='INSTALADA',
-            data_instalacao__gte=data_inicio,
-            data_instalacao__lt=data_fim
-        ).select_related('vendedor', 'cliente', 'plano', 'forma_pagamento', 'status_esteira')
-
-        if consultores_ids:
-            vendas = vendas.filter(vendedor_id__in=consultores_ids)
-
-        anomes_str = f"{ano}{mes:02d}"
-        churns = ImportacaoChurn.objects.filter(anomes_retirada=anomes_str)
-        churn_map = {c.numero_pedido: c for c in churns}
-
-        lista_final = []
-        for v in vendas:
-            eh_dacc = "SIM" if v.forma_pagamento and "DÉBITO" in v.forma_pagamento.nome.upper() else "NÃO"
+        u = authenticate(request, username=username, password=password)
+        
+        if u:
+            refresh = RefreshToken.for_user(u)
             
-            chave_busca = v.ordem_servico or "SEM_OS"
-            dados_churn = churn_map.get(chave_busca)
-            
-            status_final = "ATIVO"
-            dt_churn = "-"
-            motivo_churn = "-"
-            
-            if dados_churn:
-                status_final = "CHURN"
-                dt_churn = dados_churn.dt_retirada.strftime('%d/%m/%Y') if dados_churn.dt_retirada else "S/D"
-                motivo_churn = dados_churn.motivo_retirada or "Não informado"
+            # Verifica se o usuário precisa trocar a senha
+            # Usamos getattr com default False para evitar erro caso o campo não exista
+            precisa_trocar = getattr(u, 'must_change_password', False)
 
-            lista_final.append({
-                'vendedor': v.vendedor.username.upper() if v.vendedor else 'SEM VENDEDOR',
-                'cpf_cnpj': v.cliente.cpf_cnpj,
-                'dacc': eh_dacc,
-                'cliente': v.cliente.nome_razao_social.upper(),
-                'plano': v.plano.nome.upper(),
-                'dt_criacao': v.data_criacao.strftime('%d/%m/%Y'),
-                'dt_instalacao': v.data_instalacao.strftime('%d/%m/%Y') if v.data_instalacao else "-",
-                'os': v.ordem_servico or "-",
-                'status_esteira': v.status_esteira.nome.upper() if v.status_esteira else "-",
-                'dt_churn': dt_churn,
-                'motivo_churn': motivo_churn,
-                'situacao': status_final,
-                'style_class': 'color: red; font-weight: bold;' if status_final == 'CHURN' else ''
+            return JsonResponse({
+                'access_token': str(refresh.access_token),
+                'refresh_token': str(refresh),
+                'must_change_password': precisa_trocar,  # Envia o flag para o frontend
+                'user_id': u.id
             })
+            
+        return Response({"detail": "Credenciais inválidas"}, status=401)
 
-        lista_final.sort(key=itemgetter('vendedor', 'cliente'))
-
-        html_string = f"""
-        <html>
-        <head>
-            <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-            <style>
-                @page {{ size: A4 landscape; margin: 1cm; }}
-                body {{ font-family: Helvetica, sans-serif; font-size: 9px; }}
-                table {{ width: 100%; border-collapse: collapse; }}
-                th {{ background-color: #f2f2f2; border: 1px solid #ccc; padding: 4px; text-align: left; font-weight: bold; }}
-                td {{ border: 1px solid #ccc; padding: 3px; }}
-                h2 {{ text-align: center; color: #333; margin-bottom: 5px; }}
-                .meta {{ text-align: center; font-size: 10px; margin-bottom: 15px; color: #666; }}
-            </style>
-        </head>
-        <body>
-            <h2>Extrato de Comissionamento - {mes}/{ano}</h2>
-            <div class="meta">Gerado em: {timezone.now().strftime('%d/%m/%Y %H:%M')} | Total Vendas: {len(lista_final)}</div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>VENDEDOR</th>
-                        <th>CPF/CNPJ</th>
-                        <th>DACC</th>
-                        <th>CLIENTE</th>
-                        <th>PLANO</th>
-                        <th>DT VENDA</th>
-                        <th>DT INST</th>
-                        <th>O.S.</th>
-                        <th>STATUS</th>
-                        <th>DT CHURN</th>
-                        <th>MOTIVO</th>
-                        <th>SITUAÇÃO</th>
-                    </tr>
-                </thead>
-                <tbody>
-        """
-        
-        for item in lista_final:
-            html_string += f"""
-            <tr style="{item['style_class']}">
-                <td>{item['vendedor']}</td>
-                <td>{item['cpf_cnpj']}</td>
-                <td>{item['dacc']}</td>
-                <td>{item['cliente'][:25]}</td>
-                <td>{item['plano']}</td>
-                <td>{item['dt_criacao']}</td>
-                <td>{item['dt_instalacao']}</td>
-                <td>{item['os']}</td>
-                <td>{item['status_esteira']}</td>
-                <td>{item['dt_churn']}</td>
-                <td>{item['motivo_churn'][:15]}</td>
-                <td>{item['situacao']}</td>
-            </tr>
-            """
-        
-        html_string += """
-                </tbody>
-            </table>
-        </body>
-        </html>
-        """
-
-        result = BytesIO()
-        pdf = pisa.pisaDocument(BytesIO(html_string.encode("UTF-8")), result, encoding='utf-8')
-        
-        if not pdf.err:
-            response = HttpResponse(result.getvalue(), content_type='application/pdf')
-            response['Content-Disposition'] = f'attachment; filename="extrato_comissao_{mes}_{ano}.pdf"'
-            return response
-        return Response({"error": "Erro ao gerar PDF"}, status=500)
-
-class EnviarExtratoEmailView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+class DefinirNovaSenhaView(APIView):
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        try:
-            # 1. Receber dados
-            ano = int(request.data.get('ano'))
-            mes = int(request.data.get('mes'))
-            consultores_ids = request.data.get('consultores', []) 
-            email_destino_manual = request.data.get('email_destino') 
-
-            if not consultores_ids:
-                return Response({"error": "Nenhum consultor selecionado."}, status=400)
-
-            User = get_user_model()
-            data_inicio = datetime(ano, mes, 1)
-            if mes == 12: data_fim = datetime(ano + 1, 1, 1)
-            else: data_fim = datetime(ano, mes + 1, 1)
-
-            # Carregar dados de churn para o mês
-            anomes_str = f"{ano}{mes:02d}"
-            churns = ImportacaoChurn.objects.filter(anomes_retirada=anomes_str)
-            churn_map = {c.numero_pedido: c for c in churns}
-
-            sucessos = 0
-            erros = []
-
-            # 2. Loop para processar cada consultor selecionado
-            for c_id in consultores_ids:
-                try:
-                    consultor = User.objects.get(id=c_id)
-                    
-                    # Regra de E-mail: 
-                    target_email = None
-                    if len(consultores_ids) == 1 and email_destino_manual:
-                        target_email = email_destino_manual
-                    else:
-                        target_email = getattr(consultor, 'email', None)
-
-                    if not target_email:
-                        erros.append(f"{consultor.username}: Sem e-mail cadastrado.")
-                        continue
-
-                    # Buscar Vendas do Consultor
-                    vendas = Venda.objects.filter(
-                        ativo=True,
-                        vendedor_id=c_id,
-                        status_esteira__nome__iexact='INSTALADA',
-                        data_instalacao__gte=data_inicio,
-                        data_instalacao__lt=data_fim
-                    ).select_related('plano', 'forma_pagamento', 'cliente')
-
-                    if not vendas.exists():
-                        erros.append(f"{consultor.username}: Sem vendas instaladas no período.")
-                        continue
-
-                    # --- Montar Dados ---
-                    lista_detalhada = []
-                    for v in vendas:
-                        eh_dacc = "SIM" if v.forma_pagamento and "DÉBITO" in v.forma_pagamento.nome.upper() else "NÃO"
-                        chave_busca = v.ordem_servico or "SEM_OS"
-                        dados_churn = churn_map.get(chave_busca)
-                        
-                        status_final = "ATIVO"
-                        dt_churn = "-"
-                        motivo_churn = "-"
-                        if dados_churn:
-                            status_final = "CHURN"
-                            dt_churn = dados_churn.dt_retirada.strftime('%d/%m/%Y') if dados_churn.dt_retirada else "S/D"
-                            motivo_churn = dados_churn.motivo_retirada or "Não informado"
-
-                        dt_pedido = v.data_pedido.strftime('%d/%m/%Y') if v.data_pedido else v.data_criacao.strftime('%d/%m/%Y')
-                        dt_inst = v.data_instalacao.strftime('%d/%m/%Y') if v.data_instalacao else "-"
-
-                        lista_detalhada.append({
-                            'vendedor': v.vendedor.username.upper() if v.vendedor else 'SEM VENDEDOR',
-                            'cpf_cnpj': v.cliente.cpf_cnpj,
-                            'dacc': eh_dacc,
-                            'cliente': v.cliente.nome_razao_social.upper(),
-                            'plano': v.plano.nome.upper(),
-                            'dt_pedido': dt_pedido,
-                            'dt_inst': dt_inst,
-                            'os': v.ordem_servico or "-",
-                            'situacao': v.status_esteira.nome.upper() if v.status_esteira else "-",
-                            'dt_churn': dt_churn,
-                            'motivo_churn': motivo_churn,
-                            'churn_ativo': status_final,
-                            'color_style': 'color: red;' if status_final == 'CHURN' else ''
-                        })
-                    
-                    lista_detalhada.sort(key=itemgetter('cliente'))
-
-                    # --- Gerar HTML E-mail ---
-                    html_content = f"""
-                    <html>
-                    <body style="font-family: Arial, sans-serif; font-size: 12px;">
-                        <h2 style="color: #333;">Extrato de Comissionamento - {consultor.username.upper()}</h2>
-                        <p>Referência: <strong>{mes}/{ano}</strong></p>
-                        <table border="1" cellpadding="4" cellspacing="0" style="border-collapse: collapse; width: 100%; font-size: 10px;">
-                            <thead style="background-color: #f2f2f2;">
-                                <tr>
-                                    <th>VENDEDOR</th><th>CPF/CNPJ</th><th>DACC</th><th>NOME CLIENTE</th><th>PLANO</th>
-                                    <th>DT PEDIDO</th><th>DT INST</th><th>O.S</th><th>SITUAÇÃO</th>
-                                    <th>DT CHURN</th><th>MOTIVO CHURN</th><th>CHURN_OU_ATIVO</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                    """
-                    for item in lista_detalhada:
-                        html_content += f"""
-                            <tr style="{item['color_style']}">
-                                <td>{item['vendedor']}</td>
-                                <td>{item['cpf_cnpj']}</td>
-                                <td>{item['dacc']}</td>
-                                <td>{item['cliente'][:20]}</td>
-                                <td>{item['plano']}</td>
-                                <td>{item['dt_pedido']}</td>
-                                <td>{item['dt_inst']}</td>
-                                <td>{item['os']}</td>
-                                <td>{item['situacao']}</td>
-                                <td>{item['dt_churn']}</td>
-                                <td>{item['motivo_churn'][:20]}</td>
-                                <td><strong>{item['churn_ativo']}</strong></td>
-                            </tr>
-                        """
-                    html_content += "</tbody></table><br><p>Segue anexo detalhado.</p></body></html>"
-
-                    # --- Gerar PDF (Anexo) ---
-                    html_pdf = f"""
-                    <html><head><meta charset="utf-8">
-                    <style>@page {{ size: A4 landscape; margin: 1cm; }} body {{ font-family: Helvetica; font-size: 9px; }} table {{ width: 100%; border-collapse: collapse; }} th, td {{ border: 1px solid #ccc; padding: 3px; }} th {{ background: #f2f2f2; }}</style>
-                    </head><body>
-                        <h2>Extrato {mes}/{ano} - {consultor.username.upper()}</h2>
-                        <table><thead><tr>
-                            <th>VENDEDOR</th><th>CPF/CNPJ</th><th>DACC</th><th>CLIENTE</th><th>PLANO</th>
-                            <th>DT PEDIDO</th><th>DT INST</th><th>O.S</th><th>SITUAÇÃO</th>
-                            <th>DT CHURN</th><th>MOTIVO</th><th>STATUS</th>
-                        </tr></thead><tbody>
-                    """
-                    for item in lista_detalhada:
-                        html_pdf += f"""<tr style="{item.get('color_style', '')}">
-                            <td>{item['vendedor']}</td><td>{item['cpf_cnpj']}</td><td>{item['dacc']}</td>
-                            <td>{item['cliente'][:25]}</td><td>{item['plano']}</td><td>{item['dt_pedido']}</td>
-                            <td>{item['dt_inst']}</td><td>{item['os']}</td><td>{item['situacao']}</td>
-                            <td>{item['dt_churn']}</td><td>{item['motivo_churn'][:15]}</td><td>{item['churn_ativo']}</td>
-                        </tr>"""
-                    html_pdf += "</tbody></table></body></html>"
-
-                    pdf_buffer = BytesIO()
-                    pisa_status = pisa.pisaDocument(BytesIO(html_pdf.encode("UTF-8")), pdf_buffer, encoding='utf-8')
-                    
-                    if pisa_status.err:
-                        erros.append(f"{consultor.username}: Erro ao gerar PDF.")
-                        continue
-
-                    # --- Enviar ---
-                    msg = EmailMultiAlternatives(
-                        f"Extrato Comissionamento - {mes}/{ano} - {consultor.username}",
-                        strip_tags(html_content),
-                        settings.DEFAULT_FROM_EMAIL,
-                        [target_email]
-                    )
-                    msg.attach_alternative(html_content, "text/html")
-                    msg.attach(f"Extrato_{consultor.username}_{mes}_{ano}.pdf", pdf_buffer.getvalue(), 'application/pdf')
-                    msg.send()
-                    
-                    sucessos += 1
-
-                except Exception as e:
-                    erros.append(f"Erro interno id {c_id}: {str(e)}")
-
-            # 3. Retorno Final
-            msg_final = f"Processo finalizado. Enviados: {sucessos}."
-            if erros:
-                msg_final += f" Falhas: {len(erros)}. Detalhes: {', '.join(erros)}"
+        nova_senha = request.data.get('nova_senha')
+        if not nova_senha:
+            return Response({"error": "A nova senha é obrigatória."}, status=400)
+        
+        user = request.user
+        user.set_password(nova_senha)
+        
+        # Se o modelo tiver esse campo, atualizamos para False
+        if hasattr(user, 'must_change_password'):
+            user.must_change_password = False
             
-            return Response({"mensagem": msg_final, "sucessos": sucessos, "erros": erros})
-
-        except Exception as e:
-            logger.error(f"Erro geral envio email: {e}")
-            return Response({"error": str(e)}, status=500)
+        user.save()
+        return Response({"mensagem": "Senha alterada com sucesso!"})
 
 # --- NOVO ENDPOINT PARA VERIFICAR WHATSAPP ---
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def api_verificar_whatsapp(request, telefone):
-    """
-    Endpoint para o front-end verificar se um número tem WhatsApp.
-    Uso: GET /api/crm/verificar-zap/5531999999999/
-    """
     service = WhatsAppService()
-    # O serviço já trata a formatação, mas garantimos que chegue limpo
-    existe = service.verificar_numero_existe(telefone)
-    
-    return Response({
-        'telefone': telefone,
-        'possui_whatsapp': existe
-    })
+    return Response({'telefone': telefone, 'possui_whatsapp': service.verificar_numero_existe(telefone)})
+
+# --- VIEW ENVIO WHATSAPP ---
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def enviar_comissao_whatsapp(request):
+    try:
+        data = json.loads(request.body)
+        ano = int(data.get('ano'))
+        mes = int(data.get('mes'))
+        consultores_ids = data.get('consultores', [])
+
+        if not consultores_ids:
+            return JsonResponse({'error': 'Nenhum consultor selecionado'}, status=400)
+
+        User = get_user_model()
+        data_inicio = datetime(ano, mes, 1)
+        if mes == 12: data_fim = datetime(ano + 1, 1, 1)
+        else: data_fim = datetime(ano, mes + 1, 1)
+
+        img_path = os.path.join(settings.BASE_DIR, 'static', 'img', 'banner_comissao.png')
+        
+        imagem_b64_final = None
+        if os.path.exists(img_path):
+            try:
+                with open(img_path, "rb") as img_file:
+                    encoded_string = base64.b64encode(img_file.read()).decode('utf-8')
+                    imagem_b64_final = f"data:image/png;base64,{encoded_string}"
+            except Exception as e:
+                print(f"Erro ao ler imagem: {e}")
+
+        service = WhatsAppService()
+        sucessos = 0
+        erros = []
+
+        for user_id in consultores_ids:
+            try:
+                consultor = User.objects.get(id=user_id)
+                telefone = getattr(consultor, 'tel_whatsapp', None)
+                
+                if not telefone:
+                    erros.append(f"{consultor.username}: Sem WhatsApp.")
+                    continue
+                
+                pdf_buffer = BytesIO()
+                html_dummy = f"""
+                <html>
+                <body>
+                    <h1 style="color: blue;">Extrato de Comissão</h1>
+                    <p>Referência: {mes}/{ano}</p>
+                    <p>Consultor: <strong>{consultor.username}</strong></p>
+                    <p>Este é um teste de envio.</p>
+                </body>
+                </html>
+                """
+                pisa.CreatePDF(BytesIO(html_dummy.encode('utf-8')), dest=pdf_buffer)
+                pdf_bytes = pdf_buffer.getvalue()
+                pdf_b64 = base64.b64encode(pdf_bytes).decode('utf-8')
+                pdf_final = f"data:application/pdf;base64,{pdf_b64}"
+
+                msg = f"Olá {consultor.username}, segue seu extrato de {mes}/{ano}."
+                service.enviar_mensagem_texto(telefone, msg)
+                
+                if imagem_b64_final:
+                    service.enviar_imagem_b64(telefone, imagem_b64_final, caption="Pagamento")
+                
+                service.enviar_pdf_b64(telefone, pdf_final, nome_arquivo="extrato.pdf")
+                sucessos += 1
+
+            except Exception as e:
+                print(f"Erro user {user_id}: {e}")
+                erros.append(str(e))
+
+        return JsonResponse({'mensagem': f'Enviado: {sucessos}. Erros: {len(erros)}'})
+
+    except Exception as e:
+        print(f"Erro Geral View: {e}")
+        return JsonResponse({'error': str(e)}, status=500)

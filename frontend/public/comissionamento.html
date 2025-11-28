@@ -90,6 +90,9 @@
                             <button class="btn btn-outline-primary btn-sm ms-2" onclick="abrirModalEmail()">
                                 <i class="bi bi-envelope-at"></i> Enviar E-mail
                             </button>
+                            <button class="btn btn-success btn-sm ms-2 text-white" onclick="enviarComissaoWhatsapp()">
+                                <i class="bi bi-whatsapp"></i> Enviar via WhatsApp
+                            </button>
                         </div>
                     </div>
 
@@ -404,6 +407,25 @@
                 document.body.appendChild(link);
                 link.click();
             } catch(e) { alert("Erro ao gerar PDF."); }
+        }
+
+        async function enviarComissaoWhatsapp() {
+            const checks = document.querySelectorAll('.check-consultor:checked');
+            if(checks.length === 0) { alert("Selecione pelo menos um consultor."); return; }
+            
+            const ids = Array.from(checks).map(c => c.value);
+            const ano = document.getElementById('filtro-ano').value;
+            const mes = document.getElementById('filtro-mes').value;
+
+            if(!confirm(`Deseja enviar extratos via WhatsApp para ${ids.length} consultores selecionados?`)) return;
+
+            try {
+                alert("Iniciando envio... Isso pode demorar alguns segundos.");
+                const res = await axios.post(`${apiUrl}whatsapp/`, { ano, mes, consultores: ids });
+                alert(res.data.mensagem);
+            } catch(e) { 
+                alert("Erro ao enviar: " + (e.response?.data?.error || e.message)); 
+            }
         }
 
         function abrirModalEmail() {
