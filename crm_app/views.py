@@ -21,6 +21,7 @@ from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.utils.html import strip_tags
 from django.contrib.staticfiles import finders
+from django.db import transaction  # Importação necessária para finalizar_auditoria
 
 from rest_framework import generics, viewsets, status, permissions
 from rest_framework.response import Response
@@ -204,7 +205,15 @@ class VendaViewSet(viewsets.ModelViewSet):
         
         user = self.request.user
 
-        if self.action in ['retrieve', 'update', 'partial_update', 'destroy']:
+        # CORREÇÃO AQUI: Adicionado alocar_auditoria, liberar_auditoria e finalizar_auditoria na lista
+        # Isso permite que o Auditor (que não é o vendedor) encontre a venda no banco.
+        acoes_gestao = [
+            'retrieve', 'update', 'partial_update', 'destroy',
+            'alocar_auditoria', 'liberar_auditoria', 'finalizar_auditoria',
+            'pendentes_auditoria'
+        ]
+
+        if self.action in acoes_gestao:
             if user.is_superuser or is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
                 return queryset
             if is_member(user, ['Supervisor']):
@@ -286,7 +295,33 @@ class VendaViewSet(viewsets.ModelViewSet):
                 
         return queryset
 
-    # --- CORREÇÃO APLICADA: URL_PATH ADICIONADO ---
+    # --- AÇÃO: LISTA PENDENTES DE AUDITORIA ---
+    @action(detail=False, methods=['get'])
+    def pendentes_auditoria(self, request):
+        """
+        Retorna vendas que estão na fase de auditoria (status_tratamento definido, esteira null)
+        """
+        # A lógica de filtro já está no get_queryset com flow='auditoria',
+        # mas podemos forçar aqui para garantir.
+        # Aqui usamos o get_queryset que já aplica as regras de permissão.
+        
+        # Sobrescreve parâmetros para forçar visão de auditoria
+        request.GET._mutable = True
+        request.GET['flow'] = 'auditoria'
+        request.GET['view'] = 'geral' # Força visão geral para auditores verem tudo
+        request.GET._mutable = False
+        
+        vendas = self.filter_queryset(self.get_queryset())
+        
+        page = self.paginate_queryset(vendas)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(vendas, many=True)
+        return Response(serializer.data)
+
+    # --- AÇÃO: ALOCAR AUDITORIA ---
     @action(detail=True, methods=['post'], url_path='alocar-auditoria')
     def alocar_auditoria(self, request, pk=None):
         venda = self.get_object()
@@ -306,6 +341,7 @@ class VendaViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(venda)
         return Response(serializer.data)
 
+    # --- AÇÃO: LIBERAR AUDITORIA ---
     @action(detail=True, methods=['post'], url_path='liberar-auditoria')
     def liberar_auditoria(self, request, pk=None):
         venda = self.get_object()
@@ -324,6 +360,59 @@ class VendaViewSet(viewsets.ModelViewSet):
         venda.save()
         
         return Response({"detail": "Venda liberada com sucesso."})
+
+    # --- AÇÃO: FINALIZAR AUDITORIA (Estava faltando!) ---
+    @action(detail=True, methods=['post'], url_path='finalizar_auditoria')
+    def finalizar_auditoria(self, request, pk=None):
+        venda = self.get_object()
+        
+        # Pega dados do body
+        status_novo_id = request.data.get('status') # ID do Status ou Nome? O Front manda "Aprovada/Reprovada" texto ou ID?
+        # O frontend auditoria.html manda texto "Aprovada", "Reprovada". 
+        # Precisamos mapear para IDs de StatusCRM.
+        
+        observacoes = request.data.get('observacoes', '')
+
+        if not status_novo_id:
+             return Response({"detail": "Status inválido."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Mapeamento simples de Strings para StatusCRM (Ajuste conforme seus nomes no banco)
+        status_obj = None
+        
+        # Tenta achar pelo ID direto se for numérico
+        if str(status_novo_id).isdigit():
+             status_obj = StatusCRM.objects.filter(id=int(status_novo_id)).first()
+        else:
+             # Busca por nome (ex: Aprovada -> APROVADA / AUDITADA)
+             termo = str(status_novo_id).upper()
+             if 'APROVAD' in termo: termo = 'AUDITADA' # Geralmente o status final de auditoria é AUDITADA
+             
+             status_obj = StatusCRM.objects.filter(nome__iexact=termo, tipo='Tratamento').first()
+             
+             # Fallback genérico
+             if not status_obj:
+                 status_obj = StatusCRM.objects.filter(nome__icontains=termo, tipo='Tratamento').first()
+
+        if not status_obj:
+             return Response({"detail": f"Status '{status_novo_id}' não encontrado no banco."}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            venda.status_tratamento = status_obj
+            if observacoes:
+                venda.observacoes = observacoes
+            
+            # Libera a alocação após finalizar
+            venda.auditor_atual = None
+            venda.save()
+            
+            # Log histórico
+            HistoricoAlteracaoVenda.objects.create(
+                venda=venda,
+                usuario=request.user,
+                alteracoes={'status_tratamento': f"Auditoria finalizada: {status_obj.nome}"}
+            )
+
+        return Response({"status": "Auditoria finalizada com sucesso."})
 
     def perform_create(self, serializer):
         cpf = serializer.validated_data.pop('cliente_cpf_cnpj')
@@ -1213,7 +1302,7 @@ class ImportacaoOsabView(APIView):
         report = {
             "status": "sucesso", 
             "total_registros": len(df), 
-            "criados": 0,             
+            "criados": 0,              
             "atualizados": 0,          
             "vendas_encontradas": 0, 
             "ja_corretos": 0, 
