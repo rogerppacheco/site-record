@@ -29,9 +29,9 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.exceptions import PermissionDenied, NotFound
+from rest_framework.decorators import api_view, permission_classes, action # <--- ACTION IMPORTADA
 
 # --- IMPORTS WHATSAPP ---
-from rest_framework.decorators import api_view, permission_classes
 from .whatsapp_service import WhatsAppService 
 # ------------------------
 
@@ -200,7 +200,7 @@ class VendaViewSet(viewsets.ModelViewSet):
         queryset = Venda.objects.filter(ativo=True).select_related(
             'vendedor', 'cliente', 'plano', 'forma_pagamento',
             'status_tratamento', 'status_esteira', 'status_comissionamento',
-            'motivo_pendencia'
+            'motivo_pendencia', 'auditor_atual'
         ).prefetch_related('historico_alteracoes__usuario').order_by('-data_criacao')
         
         user = self.request.user
@@ -286,6 +286,43 @@ class VendaViewSet(viewsets.ModelViewSet):
              )
                 
         return queryset
+
+    # --- AÇÃO 1: PEGAR TAREFA (TRAVAR VENDA) ---
+    @action(detail=True, methods=['post'], url_path='alocar-auditoria')
+    def alocar_auditoria(self, request, pk=None):
+        venda = self.get_object()
+        usuario = request.user
+
+        if venda.auditor_atual and venda.auditor_atual != usuario:
+            return Response(
+                {"detail": f"Esta venda já está sendo auditada por {venda.auditor_atual}."},
+                status=status.HTTP_409_CONFLICT
+            )
+        
+        venda.auditor_atual = usuario
+        venda.save()
+        
+        serializer = self.get_serializer(venda)
+        return Response(serializer.data)
+
+    # --- AÇÃO 2: LIBERAR TAREFA (DESTRAVAR) ---
+    @action(detail=True, methods=['post'], url_path='liberar-auditoria')
+    def liberar_auditoria(self, request, pk=None):
+        venda = self.get_object()
+        usuario = request.user
+        
+        is_supervisor = is_member(usuario, ['Diretoria', 'Admin', 'Supervisor'])
+        
+        if venda.auditor_atual and venda.auditor_atual != usuario and not is_supervisor:
+             return Response(
+                {"detail": "Você não tem permissão para liberar uma venda travada por outro auditor."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        venda.auditor_atual = None
+        venda.save()
+        
+        return Response({"detail": "Venda liberada com sucesso."})
 
     def perform_create(self, serializer):
         cpf = serializer.validated_data.pop('cliente_cpf_cnpj')

@@ -54,6 +54,20 @@
         .table-responsive::-webkit-scrollbar { height: 6px; }
         .table-responsive::-webkit-scrollbar-thumb { background-color: #ccc; border-radius: 4px; }
         
+        /* --- NOVOS ESTILOS PARA A TRAVA DE AUDITORIA --- */
+        .locked-row { opacity: 0.7; background-color: #f8f9fa !important; }
+        .auditor-badge { 
+            font-size: 0.75rem; 
+            background: #ffeeba; 
+            color: #856404; 
+            padding: 2px 6px; 
+            border-radius: 4px; 
+            border: 1px solid #ffeeba; 
+            display: inline-flex; 
+            align-items: center; 
+            gap: 4px; 
+        }
+
         @media (max-width: 576px) {
             .header-controls { flex-direction: column; align-items: flex-start; gap: 10px; }
             .header-controls button { width: 100%; }
@@ -97,7 +111,8 @@
                                 <th>Cliente</th>
                                 <th>Vendedor</th>
                                 <th>Status Tratamento</th>
-                                <th>Resp. Alteração</th> <th class="text-end pe-3">Ações</th>
+                                <th>Auditor</th> <th>Resp. Alteração</th>
+                                <th class="text-end pe-3">Ações</th>
                             </tr>
                         </thead>
                         <tbody id="tabela-auditoria-body"></tbody>
@@ -160,12 +175,12 @@
         </div>
     </div>
 
-    <div class="modal fade" id="modal-script-auditoria" tabindex="-1">
+    <div class="modal fade" id="modal-script-auditoria" tabindex="-1" data-bs-backdrop="static">
         <div class="modal-dialog modal-fullscreen">
             <div class="modal-content">
                 <div class="modal-header bg-primary text-white">
                     <h5 class="modal-title"><i class="bi bi-headset"></i> Roteiro de Auditoria - Venda #<span id="script-id-venda"></span></h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    <button type="button" class="btn-close btn-close-white" onclick="fecharScriptSemSalvar()"></button>
                 </div>
                 <div class="modal-body bg-light">
                     <div class="container py-3">
@@ -255,7 +270,7 @@
                                 </div>
                             </div>
 
-                            <div class="mb-3">
+                            <div class="mb-3 p-3 bg-white border rounded">
                                 <label class="form-label fw-bold text-primary"><i class="bi bi-pencil-square"></i> Observação da Venda (Editável)</label>
                                 <textarea class="form-control" id="script-obs-venda" rows="3" placeholder="Adicione informações relevantes da auditoria aqui..."></textarea>
                             </div>
@@ -272,11 +287,17 @@
 
                     </div>
                 </div>
-                <div class="modal-footer bg-light">
-                    <button type="button" class="btn btn-secondary btn-lg" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="button" class="btn btn-success btn-lg fw-bold" onclick="finalizarAuditoriaComSucesso()">
-                        <i class="bi bi-check-circle"></i> Tudo Certo (Aprovar & Salvar)
+                <div class="modal-footer bg-light justify-content-between">
+                    <button type="button" class="btn btn-danger btn-lg fw-bold" onclick="abrirModalReprovacao()">
+                        <i class="bi bi-x-circle"></i> REPROVAR / PENDÊNCIA
                     </button>
+                    
+                    <div>
+                        <button type="button" class="btn btn-secondary btn-lg me-2" onclick="fecharScriptSemSalvar()">Sair (Liberar)</button>
+                        <button type="button" class="btn btn-success btn-lg fw-bold" onclick="finalizarAuditoriaComSucesso()">
+                            <i class="bi bi-check-circle"></i> APROVAR
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -321,6 +342,36 @@
         </div>
     </div>
 
+    <div class="modal fade" id="modal-reprovacao" tabindex="-1" style="z-index: 1060;">
+        <div class="modal-dialog">
+            <div class="modal-content border-danger">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title"><i class="bi bi-exclamation-triangle-fill"></i> Reprovar Venda</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Selecione o motivo da reprovação ou pendência:</p>
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Novo Status</label>
+                        <select class="form-select" id="repro-status">
+                            <option value="">Selecione...</option>
+                            </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Observação Obrigatória</label>
+                        <textarea class="form-control" id="repro-obs" rows="4" placeholder="Descreva o motivo da reprovação/pendência para o vendedor corrigir..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-danger" onclick="confirmarReprovacao()">Confirmar Reprovação</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade" id="modal-aprovacao" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
@@ -333,30 +384,31 @@
                     <textarea id="aprovacao-mensagem" class="form-control mb-3" rows="12" readonly></textarea>
                     <button class="btn btn-outline-success w-100" onclick="copiarMensagem()"><i class="bi bi-whatsapp"></i> Copiar Mensagem</button>
                 </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                </div>
             </div>
         </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-    
     <script src="{% static 'js/auth.js' %}?v=3.1"></script>
     <script src="{% static 'js/menu.js' %}?v=1.3"></script>
-    
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     
     <script>
+        // --- 1. CONFIGURAÇÃO INICIAL E PERMISSÕES ---
         const token = localStorage.getItem('accessToken');
         if(!token) window.location.href = '/';
 
         const decodedToken = jwt_decode(token);
         const userProfile = decodedToken ? (decodedToken.user_role || decodedToken.perfil) : null;
-        const allowedProfiles = ['Diretoria', 'BackOffice', 'Admin'];
+        const currentUserId = decodedToken ? decodedToken.user_id : null; 
+        
+        // Verifica se é supervisor/admin para liberar cadeados
+        const isSupervisor = ['Diretoria', 'Admin', 'Supervisor', 'BackOffice'].includes(userProfile);
 
-        if (!allowedProfiles.includes(userProfile)) {
-            alert('Acesso negado. Apenas BackOffice e Diretoria podem acessar a Auditoria.');
-            window.location.href = '/area-interna/';
-        }
-
+        // --- VARIÁVEIS GLOBAIS ---
         let vendas = [];
         let globalStatusOptions = [];
         let tempVendaId = null;
@@ -368,6 +420,7 @@
         const modalScript = new bootstrap.Modal(document.getElementById('modal-script-auditoria'));
         const modalAgendamento = new bootstrap.Modal(document.getElementById('modal-agendamento'));
         const aprovacaoModal = new bootstrap.Modal(document.getElementById('modal-aprovacao'));
+        const modalReprovacao = new bootstrap.Modal(document.getElementById('modal-reprovacao'));
 
         document.addEventListener('DOMContentLoaded', () => {
             carregarVendas();
@@ -392,9 +445,10 @@
             return `(${anos} anos e ${meses} meses)`;
         }
 
+        // --- 2. CARREGAMENTO DA LISTA COM CADEADOS ---
         async function carregarVendas(silent = false) {
             const tbody = document.getElementById('tabela-auditoria-body');
-            if (!silent) tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>';
+            if (!silent) tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>';
             
             try {
                 const timestamp = new Date().getTime();
@@ -408,110 +462,103 @@
                 });
 
                 if(vendas.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">Nenhuma venda para auditoria.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-muted">Nenhuma venda pendente.</td></tr>';
                 } else {
                     tbody.innerHTML = '';
                     vendas.forEach(v => {
                         const dataFmt = new Date(v.data_criacao).toLocaleDateString('pt-BR');
+                        const statusNome = v.status_tratamento ? v.status_tratamento.nome : '-';
+                        const alteradoPor = v.alterado_por || '-';
                         
-                        // --- LÓGICA DE CARD FLUTUANTE ---
+                        // LÓGICA DO CADEADO
+                        const auditorId = v.auditor_atual_id; 
+                        const auditorNome = v.auditor_atual_nome;
+                        const estaTravado = auditorId !== null;
+                        const travadoPorMim = auditorId === currentUserId;
+                        
+                        let classeLinha = '';
+                        let auditorHtml = '-';
+                        let botoesHtml = '';
+
+                        // Define o HTML da coluna "Auditor" e Estado da Linha
+                        if (estaTravado) {
+                            if (travadoPorMim) {
+                                auditorHtml = `<span class="auditor-badge bg-success text-white"><i class="bi bi-person-fill"></i> VOCÊ</span>`;
+                                botoesHtml = `<button class="btn btn-sm btn-primary rounded-pill px-3" onclick="tentarAuditoria(${v.id})">Continuar <i class="bi bi-arrow-right"></i></button>`;
+                            } else {
+                                classeLinha = 'locked-row';
+                                auditorHtml = `<span class="auditor-badge"><i class="bi bi-lock-fill"></i> ${auditorNome}</span>`;
+                                if (isSupervisor) {
+                                    botoesHtml = `<button class="btn btn-sm btn-outline-danger" onclick="liberarVenda(${v.id})" title="Forçar Liberação"><i class="bi bi-unlock-fill"></i></button>`;
+                                } else {
+                                    botoesHtml = `<span class="text-muted small"><i class="bi bi-lock"></i> Em uso</span>`;
+                                }
+                            }
+                        } else {
+                            // Livre para pegar
+                            botoesHtml = `
+                                <button class="btn btn-sm btn-dark me-1 rounded-circle p-2" onclick="tentarAuditoria(${v.id})" title="Iniciar Auditoria"><i class="bi bi-headset"></i></button>
+                                <button class="btn btn-sm btn-outline-secondary me-1 rounded-circle p-2" onclick="abrirDetalhes(${v.id})" title="Editar"><i class="bi bi-pencil"></i></button>
+                            `;
+                        }
+
                         const corFundo = (v.status_tratamento && v.status_tratamento.cor) ? v.status_tratamento.cor : 'transparent';
                         const rowStyle = `
-                            background: #fff; 
-                            border: 1px solid rgba(0,0,0,0.1); 
-                            box-shadow: -4px 4px 0px ${corFundo}, 0 8px 20px rgba(0,0,0,0.08); 
-                            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-                            border-radius: 10px;
-                            overflow: hidden;
+                            background: #fff; border: 1px solid rgba(0,0,0,0.1); 
+                            box-shadow: -4px 4px 0px ${corFundo}; border-radius: 10px;
                         `;
-
-                        let selectStatus = `<select class="form-select form-select-sm status-select" onchange="atualizarStatus(${v.id}, this)">`;
-                        selectStatus += `<option value="">Selecione...</option>`;
-                        globalStatusOptions.forEach(s => {
-                            const selected = (v.status_tratamento && v.status_tratamento.id === s.id) ? 'selected' : '';
-                            selectStatus += `<option value="${s.id}" ${selected}>${s.nome}</option>`;
-                        });
-                        selectStatus += `</select>`;
-
-                        const alteradoPor = v.alterado_por || '-';
 
                         const tr = document.createElement('tr');
                         tr.style.cssText = rowStyle;
-                        tr.onmouseover = function() { this.style.transform = 'translateY(-3px)'; };
-                        tr.onmouseout = function() { this.style.transform = 'translateY(0)'; };
+                        if(classeLinha) tr.classList.add(classeLinha);
 
                         tr.innerHTML = `
                             <td class="fw-bold text-primary ps-4">#${v.id}</td>
                             <td>${dataFmt}</td>
                             <td><div class="fw-bold text-dark">${v.cliente.nome_razao_social}</div><div class="small text-muted">${v.cliente.cpf_cnpj}</div></td>
                             <td>${v.vendedor.username}</td>
-                            <td>${selectStatus}</td>
+                            <td><span class="badge bg-light text-dark border">${statusNome}</span></td>
+                            <td>${auditorHtml}</td>
                             <td><small class="text-muted fw-bold">${alteradoPor}</small></td>
-                            <td class="text-end pe-4">
-                                <button class="btn btn-sm btn-dark me-1 rounded-circle p-2" onclick="iniciarAuditoriaScript(${v.id})" title="Fazer Auditoria (Script)"><i class="bi bi-headset"></i></button>
-                                <button class="btn btn-sm btn-outline-secondary me-1 rounded-circle p-2" onclick="abrirDetalhes(${v.id})" title="Editar Dados"><i class="bi bi-pencil"></i></button>
-                                <button class="btn btn-sm btn-success rounded-circle p-2" onclick="gerarAprovacao(${v.id})" title="Aprovar"><i class="bi bi-check-lg"></i></button>
-                            </td>
+                            <td class="text-end pe-4">${botoesHtml}</td>
                         `;
                         tbody.appendChild(tr);
                     });
                 }
             } catch (e) {
-                if (!silent) tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Erro ao carregar vendas.</td></tr>';
                 console.error(e);
+                if(!silent) tbody.innerHTML = '<tr><td colspan="8" class="text-danger text-center">Erro ao carregar vendas.</td></tr>';
             }
         }
 
-        async function atualizarStatus(id, selectElem) {
-            const statusId = selectElem.value;
-            const statusTexto = selectElem.options[selectElem.selectedIndex].text.toUpperCase();
-
-            if (statusTexto === 'CADASTRADA') {
-                tempVendaId = id;
-                tempStatusId = statusId;
-                tempSelectElement = selectElem;
-                document.getElementById('form-agendamento').reset();
-                document.getElementById('agenda-os').classList.remove('is-invalid');
-                modalAgendamento.show();
-            } else {
-                salvarStatusNoBanco(id, statusId);
-            }
-        }
-
-        async function salvarAgendamento() {
-            const btn = document.getElementById('btn-salvar-agendamento');
-            const os = document.getElementById('agenda-os').value.trim();
-            const data = document.getElementById('agenda-data').value;
-            const turno = document.getElementById('agenda-turno').value;
-
-            if (!os || !data || !turno) { alert("Preencha todos os campos."); return; }
-            btn.disabled = true; btn.innerHTML = 'Salvando...';
-
+        // --- 3. LÓGICA DE TRAVAMENTO (LOCK) ---
+        async function tentarAuditoria(id) {
             try {
-                const res = await apiClient.get(`/api/crm/vendas/?ordem_servico=${os}`);
-                const duplicada = res.data.some(v => v.id !== tempVendaId);
-                if (duplicada) {
-                    document.getElementById('agenda-os').classList.add('is-invalid');
-                    btn.disabled = false; btn.innerHTML = 'Confirmar e Salvar'; return; 
-                } 
-                document.getElementById('agenda-os').classList.remove('is-invalid');
-                const dadosExtras = { ordem_servico: os, data_agendamento: data, periodo_agendamento: turno };
-                await salvarStatusNoBanco(tempVendaId, tempStatusId, dadosExtras);
-                modalAgendamento.hide();
-            } catch (e) { mostrarErroDetalhado(e, 'validar O.S.'); } 
-            finally { btn.disabled = false; btn.innerHTML = 'Confirmar e Salvar'; }
-        }
-
-        function cancelarAgendamento() { modalAgendamento.hide(); carregarVendas(true); }
-
-        async function salvarStatusNoBanco(id, statusId, extras = {}) {
-            try {
-                await apiClient.patch(`/api/crm/vendas/${id}/`, { status_tratamento: statusId, ...extras });
+                // Chama endpoint de alocação (Action criada na View)
+                await apiClient.post(`/api/crm/vendas/${id}/alocar-auditoria/`, {});
+                iniciarAuditoriaScript(id); // Inicia o script visualmente
+                carregarVendas(true); // Atualiza lista
+            } catch (e) {
+                if (e.message && e.message.includes('409')) {
+                    alert('Esta venda acabou de ser pega por outro auditor!');
+                } else {
+                    alert('Erro ao tentar acessar a venda. Tente novamente.');
+                }
                 carregarVendas(true);
-            } catch(e) { mostrarErroDetalhado(e, 'atualizar status'); carregarVendas(true); }
+            }
         }
 
-        // --- SCRIPT DE AUDITORIA ---
+        async function liberarVenda(id) {
+            if(!confirm("Tem certeza que deseja forçar a liberação desta venda?")) return;
+            try {
+                await apiClient.post(`/api/crm/vendas/${id}/liberar-auditoria/`, {});
+                carregarVendas(true);
+            } catch (e) {
+                alert('Erro ao liberar venda.');
+            }
+        }
+
+        // --- 4. FLUXO DO SCRIPT (MODAL PRINCIPAL) ---
         function iniciarAuditoriaScript(id) {
             const v = vendas.find(x => x.id === id);
             if(!v) return;
@@ -559,34 +606,87 @@
             modalScript.show();
         }
 
+        function fecharScriptSemSalvar() {
+            // Libera a venda ao sair sem salvar
+            if(vendaEmAuditoria) {
+                apiClient.post(`/api/crm/vendas/${vendaEmAuditoria.id}/liberar-auditoria/`, {})
+                    .then(() => carregarVendas(true))
+                    .catch(() => {});
+            }
+            modalScript.hide();
+        }
+
+        // --- 5. FLUXO DE APROVAÇÃO E REPROVAÇÃO ---
+
         async function finalizarAuditoriaComSucesso() {
             if(!vendaEmAuditoria) return;
 
             const statusAuditada = globalStatusOptions.find(s => s.nome.toUpperCase() === 'AUDITADA');
             if(!statusAuditada) { alert("Erro: Status 'AUDITADA' não encontrado."); return; }
 
-            const dataAg = document.getElementById('script-agendamento-data').value;
-            const turnoAg = document.getElementById('script-agendamento-turno').value;
             const obsNova = document.getElementById('script-obs-venda').value;
 
-            const body = { status_tratamento: statusAuditada.id };
-            if(dataAg) body.data_agendamento = dataAg;
-            if(turnoAg) body.periodo_agendamento = turnoAg;
-            if(obsNova !== (vendaEmAuditoria.observacoes || '')) { body.observacoes = obsNova; }
-
             try {
-                await apiClient.patch(`/api/crm/vendas/${vendaEmAuditoria.id}/`, body);
+                await apiClient.patch(`/api/crm/vendas/${vendaEmAuditoria.id}/`, {
+                    status_tratamento: statusAuditada.id,
+                    observacoes: obsNova
+                });
+                
+                // Libera
+                await apiClient.post(`/api/crm/vendas/${vendaEmAuditoria.id}/liberar-auditoria/`, {});
+
                 modalScript.hide();
-                
-                if(dataAg) vendaEmAuditoria.data_agendamento = dataAg;
-                if(turnoAg) vendaEmAuditoria.periodo_agendamento = turnoAg;
-                vendaEmAuditoria.observacoes = obsNova;
-                
-                carregarVendas(true); 
+                carregarVendas(true);
                 gerarAprovacao(vendaEmAuditoria.id); 
 
             } catch(e) {
                 mostrarErroDetalhado(e, 'salvar auditoria');
+            }
+        }
+
+        function abrirModalReprovacao() {
+            const statusNegativos = globalStatusOptions.filter(s => {
+                const nome = s.nome.toUpperCase();
+                return !['AUDITADA', 'FECHADO', 'CADASTRADA'].includes(nome);
+            });
+
+            const select = document.getElementById('repro-status');
+            select.innerHTML = '<option value="">Selecione o motivo...</option>';
+            statusNegativos.forEach(s => {
+                select.innerHTML += `<option value="${s.id}">${s.nome}</option>`;
+            });
+
+            document.getElementById('repro-obs').value = '';
+            modalReprovacao.show();
+        }
+
+        async function confirmarReprovacao() {
+            const statusId = document.getElementById('repro-status').value;
+            const obs = document.getElementById('repro-obs').value;
+
+            if(!statusId) { alert("Selecione um status."); return; }
+            if(!obs) { alert("A observação é obrigatória na reprovação."); return; }
+
+            const btn = document.querySelector('#modal-reprovacao .btn-danger');
+            btn.disabled = true; btn.innerText = "Salvando...";
+
+            try {
+                await apiClient.patch(`/api/crm/vendas/${vendaEmAuditoria.id}/`, {
+                    status_tratamento: statusId,
+                    observacoes: obs 
+                });
+
+                await apiClient.post(`/api/crm/vendas/${vendaEmAuditoria.id}/liberar-auditoria/`, {});
+
+                modalReprovacao.hide();
+                modalScript.hide(); 
+                carregarVendas(true);
+                alert("Venda reprovada/pendenciada com sucesso.");
+
+            } catch (e) {
+                alert("Erro ao reprovar venda.");
+            } finally {
+                btn.disabled = false; btn.innerText = "Confirmar Reprovação";
             }
         }
 
@@ -628,6 +728,7 @@ Para que sua instalação seja concluída favor salvar esse CTO no seu telefone,
             aprovacaoModal.show();
         }
         
+        // --- FUNÇÕES DE DETALHES E AGENDAMENTO (MANTIDAS) ---
         function abrirDetalhes(id) {
             const v = vendas.find(x => x.id === id);
             if(!v) return;
@@ -709,6 +810,48 @@ Para que sua instalação seja concluída favor salvar esse CTO no seu telefone,
                 document.body.style.cursor = 'default';
             }
         }
+
+        async function atualizarStatus(id, selectElem) {
+            const statusId = selectElem.value;
+            const statusTexto = selectElem.options[selectElem.selectedIndex].text.toUpperCase();
+
+            if (statusTexto === 'CADASTRADA') {
+                tempVendaId = id;
+                tempStatusId = statusId;
+                tempSelectElement = selectElem;
+                document.getElementById('form-agendamento').reset();
+                document.getElementById('agenda-os').classList.remove('is-invalid');
+                modalAgendamento.show();
+            } else {
+                salvarStatusNoBanco(id, statusId);
+            }
+        }
+
+        async function salvarAgendamento() {
+            const btn = document.getElementById('btn-salvar-agendamento');
+            const os = document.getElementById('agenda-os').value.trim();
+            const data = document.getElementById('agenda-data').value;
+            const turno = document.getElementById('agenda-turno').value;
+
+            if (!os || !data || !turno) { alert("Preencha todos os campos."); return; }
+            btn.disabled = true; btn.innerHTML = 'Salvando...';
+
+            try {
+                const res = await apiClient.get(`/api/crm/vendas/?ordem_servico=${os}`);
+                const duplicada = res.data.some(v => v.id !== tempVendaId);
+                if (duplicada) {
+                    document.getElementById('agenda-os').classList.add('is-invalid');
+                    btn.disabled = false; btn.innerHTML = 'Confirmar e Salvar'; return; 
+                } 
+                document.getElementById('agenda-os').classList.remove('is-invalid');
+                const dadosExtras = { ordem_servico: os, data_agendamento: data, periodo_agendamento: turno };
+                await salvarStatusNoBanco(tempVendaId, tempStatusId, dadosExtras);
+                modalAgendamento.hide();
+            } catch (e) { mostrarErroDetalhado(e, 'validar O.S.'); } 
+            finally { btn.disabled = false; btn.innerHTML = 'Confirmar e Salvar'; }
+        }
+
+        function cancelarAgendamento() { modalAgendamento.hide(); carregarVendas(true); }
 
         function copiarMensagem() { 
             const txt = document.getElementById('aprovacao-mensagem');

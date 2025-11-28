@@ -15,7 +15,7 @@ from .models import (
     ImportacaoChurn,
     CicloPagamento,
     HistoricoAlteracaoVenda,
-    Campanha  # <--- ADICIONADO
+    Campanha 
 )
 from usuarios.models import Usuario
 from usuarios.serializers import UsuarioSerializer
@@ -36,12 +36,10 @@ class FormaPagamentoSerializer(serializers.ModelSerializer):
         model = FormaPagamento
         fields = ['id', 'nome', 'ativo', 'aplica_desconto']
 
-# --- ADICIONADO O SERIALIZER DA CAMPANHA ---
 class CampanhaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Campanha
         fields = '__all__'
-# -------------------------------------------
 
 class StatusCRMSerializer(serializers.ModelSerializer):
     class Meta:
@@ -63,8 +61,6 @@ class RegraComissaoSerializer(serializers.ModelSerializer):
 
 class ClienteSerializer(serializers.ModelSerializer):
     vendas_count = serializers.IntegerField(read_only=True, required=False)
-    
-    # Campos extras puxados do histórico
     telefone1 = serializers.SerializerMethodField()
     telefone2 = serializers.SerializerMethodField()
     nome_mae = serializers.SerializerMethodField()
@@ -118,6 +114,10 @@ class VendaSerializer(serializers.ModelSerializer):
     status_final = serializers.SerializerMethodField()
     historico_alteracoes = HistoricoAlteracaoVendaSerializer(many=True, read_only=True)
     alterado_por = serializers.SerializerMethodField()
+    
+    # NOVOS CAMPOS PARA AUDITORIA
+    auditor_atual_nome = serializers.SerializerMethodField()
+    auditor_atual_id = serializers.SerializerMethodField()
 
     class Meta:
         model = Venda
@@ -134,8 +134,15 @@ class VendaSerializer(serializers.ModelSerializer):
             'periodo_agendamento', 'data_instalacao', 'antecipou_instalacao', 'motivo_pendencia',
             'ponto_referencia', 'observacoes',
             'historico_alteracoes',
-            'data_pagamento', 'valor_pago', 'alterado_por'
+            'data_pagamento', 'valor_pago', 'alterado_por',
+            'auditor_atual', 'auditor_atual_nome', 'auditor_atual_id' # <---
         ]
+
+    def get_auditor_atual_nome(self, obj):
+        return obj.auditor_atual.get_full_name() or obj.auditor_atual.username if obj.auditor_atual else None
+
+    def get_auditor_atual_id(self, obj):
+        return obj.auditor_atual.id if obj.auditor_atual else None
 
     def get_status_final(self, obj):
         if obj.status_comissionamento: return obj.status_comissionamento.nome
@@ -230,7 +237,6 @@ class VendaCreateSerializer(serializers.ModelSerializer):
         return data
 
 class VendaUpdateSerializer(serializers.ModelSerializer):
-    # Mapeamento para edição do Cliente
     cliente_nome_razao_social = serializers.CharField(source='cliente.nome_razao_social', required=False)
     cliente_cpf_cnpj = serializers.CharField(source='cliente.cpf_cnpj', required=False)
     cliente_email = serializers.EmailField(source='cliente.email', required=False)
@@ -247,16 +253,13 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Venda
         fields = '__all__'
-        # ADICIONADO 'forma_entrada' AQUI PARA SER IGNORADO NA EDIÇÃO
         read_only_fields = ('data_criacao', 'cliente', 'forma_entrada')
 
     def validate(self, data):
-        # Aplica Uppercase também na edição
         for key, value in data.items():
             if isinstance(value, str) and key not in ['cliente', 'cliente_email', 'observacoes']:
                 data[key] = value.upper()
         
-        # Se houver dados do cliente, aplica uppercase neles também
         if 'cliente' in data:
             if 'nome_razao_social' in data['cliente']:
                 data['cliente']['nome_razao_social'] = data['cliente']['nome_razao_social'].upper()
@@ -272,7 +275,6 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         user = request.user if request else None
 
-        # 1. Atualiza dados do Cliente
         cliente_data = validated_data.pop('cliente', {})
         if cliente_data:
             cliente_instance = instance.cliente
@@ -289,7 +291,6 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
             if mudou:
                 cliente_instance.save()
 
-        # 2. Monitora alterações de status
         alteracoes = {}
         campos_status = ['status_tratamento', 'status_esteira', 'status_comissionamento']
         for campo in campos_status:
@@ -302,7 +303,6 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
                         'para': self._get_field_repr(novo)
                     }
 
-        # 3. Automação de status
         novo_tratamento = validated_data.get('status_tratamento', instance.status_tratamento)
         if novo_tratamento and novo_tratamento.nome.lower() == 'cadastrada' and not instance.status_esteira:
             try:
@@ -317,10 +317,8 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
                 validated_data['status_comissionamento'] = st_com
             except: pass
 
-        # 4. Atualiza Venda
         updated_instance = super().update(instance, validated_data)
 
-        # 5. Salva Histórico
         if alteracoes and user:
             HistoricoAlteracaoVenda.objects.create(
                 venda=updated_instance,
