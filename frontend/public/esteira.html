@@ -280,9 +280,6 @@
         const modalInstalacao = new bootstrap.Modal(document.getElementById('modal-instalacao'));
         const modalPendencia = new bootstrap.Modal(document.getElementById('modal-pendencia'));
         
-        // --- ALTERAÇÃO AQUI: Loop removido! ---
-        // O setInterval que causava o consumo excessivo foi deletado.
-
         document.addEventListener('DOMContentLoaded', () => {
             carregarVendas();
             carregarMotivosPendencia();
@@ -343,6 +340,13 @@
                     const turno = v.periodo_agendamento || '-';
                     const motivoPendencia = v.motivo_pendencia ? (v.motivo_pendencia.nome || v.motivo_pendencia) : '-';
 
+                    // --- CORREÇÃO DO NOME DO VENDEDOR (Robustez) ---
+                    let nomeVendedor = 'N/A';
+                    if (v.vendedor_nome) nomeVendedor = v.vendedor_nome;
+                    else if (v.vendedor && v.vendedor.username) nomeVendedor = v.vendedor.username;
+                    else if (v.vendedor && v.vendedor.first_name) nomeVendedor = v.vendedor.first_name;
+                    else if (typeof v.vendedor === 'string') nomeVendedor = v.vendedor;
+
                     // --- LÓGICA DE CARD FLUTUANTE (Neubrutalism) ---
                     const corFundo = (v.status_esteira && v.status_esteira.cor) ? v.status_esteira.cor : 'transparent';
                     const rowStyle = `
@@ -372,8 +376,7 @@
                             <td>${dataAgendada}</td>
                             <td>${turno}</td>
                             <td><div class="fw-bold text-dark">${v.cliente.nome_razao_social}</div><div class="small text-muted">${v.cliente.cpf_cnpj}</div></td>
-                            <td>${v.vendedor.username}</td>
-                            <td>${v.plano?.nome || '-'}</td>
+                            <td>${nomeVendedor}</td> <td>${v.plano?.nome || '-'}</td>
                             <td>${selectStatus}</td>
                             <td class="text-danger small fw-bold">${motivoPendencia}</td>
                             <td><small class="text-muted fw-bold">${alteradoPor}</small></td>

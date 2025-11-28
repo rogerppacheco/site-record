@@ -44,8 +44,8 @@
         } 
 
         /* Estilos do Script de Auditoria */
-        .script-section { background-color: #f8f9fa; border-left: 5px solid var(--cor-primaria); padding: 15px; margin-bottom: 20px; border-radius: 4px; }
-        .script-title { color: var(--cor-primaria); font-weight: bold; margin-bottom: 10px; text-transform: uppercase; font-size: 0.9rem; }
+        .script-section { background-color: #f8f9fa; border-left: 5px solid var(--cor-primaria, #0d6efd); padding: 15px; margin-bottom: 20px; border-radius: 4px; }
+        .script-title { color: var(--cor-primaria, #0d6efd); font-weight: bold; margin-bottom: 10px; text-transform: uppercase; font-size: 0.9rem; }
         .script-text { font-size: 1.1rem; line-height: 1.6; color: #333; }
         .dado-sistema { color: #0d6efd; font-weight: bold; background-color: #e7f1ff; padding: 2px 6px; border-radius: 4px; border: 1px dashed #0d6efd; }
         #aprovacao-mensagem { white-space: pre-wrap; font-family: monospace; font-size: 0.9rem; }
@@ -356,7 +356,7 @@
                         <label class="form-label fw-bold">Novo Status</label>
                         <select class="form-select" id="repro-status">
                             <option value="">Selecione...</option>
-                            </select>
+                        </select>
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-bold">Observação Obrigatória</label>
@@ -407,7 +407,6 @@
         let vendas = [];
         let globalStatusOptions = [];
         let tempVendaId = null;
-        let tempStatusId = null;
         let vendaEmAuditoria = null; 
 
         const modalDetalhes = new bootstrap.Modal(document.getElementById('modal-detalhes'));
@@ -468,6 +467,12 @@
                         const estaTravado = auditorId !== null;
                         const travadoPorMim = auditorId === currentUserId;
                         
+                        // CORREÇÃO DO NOME DO VENDEDOR (EVITAR UNDEFINED)
+                        let nomeVendedor = 'N/A';
+                        if (v.vendedor_nome) nomeVendedor = v.vendedor_nome;
+                        else if (v.vendedor && v.vendedor.username) nomeVendedor = v.vendedor.username;
+                        else if (v.vendedor && v.vendedor.first_name) nomeVendedor = v.vendedor.first_name;
+
                         let classeLinha = '';
                         let auditorHtml = '-';
                         let botoesHtml = '';
@@ -502,8 +507,8 @@
                         tr.innerHTML = `
                             <td class="fw-bold text-primary ps-4">#${v.id}</td>
                             <td>${dataFmt}</td>
-                            <td><div class="fw-bold">${v.cliente.nome_razao_social}</div><div class="small text-muted">${v.cliente.cpf_cnpj}</div></td>
-                            <td>${v.vendedor.username}</td>
+                            <td><div class="fw-bold">${v.cliente.nome_razao_social || 'S/ Nome'}</div><div class="small text-muted">${v.cliente.cpf_cnpj || ''}</div></td>
+                            <td>${nomeVendedor}</td>
                             <td><span class="badge bg-light text-dark border">${statusNome}</span></td>
                             <td>${auditorHtml}</td>
                             <td><small class="text-muted fw-bold">${alteradoPor}</small></td>
@@ -611,20 +616,14 @@
         // --- FLUXO 2: APROVAR E CADASTRAR (ABRE MODAL OS) ---
         function prepararAgendamento() {
             if(!vendaEmAuditoria) return;
-            
-            // Fecha script e abre agendamento
             modalScript.hide();
-            
             document.getElementById('form-agendamento').reset();
             document.getElementById('agenda-os').classList.remove('is-invalid');
             
-            // Pré-preenche se já tiver dados
             if(vendaEmAuditoria.data_agendamento) document.getElementById('agenda-data').value = vendaEmAuditoria.data_agendamento;
             if(vendaEmAuditoria.periodo_agendamento) document.getElementById('agenda-turno').value = vendaEmAuditoria.periodo_agendamento;
             
-            // Define quem está sendo editado (para usar na função de salvar)
             tempVendaId = vendaEmAuditoria.id; 
-            
             modalAgendamento.show();
         }
 
@@ -634,19 +633,15 @@
             const os = document.getElementById('agenda-os').value.trim();
             const data = document.getElementById('agenda-data').value;
             const turno = document.getElementById('agenda-turno').value;
-
-            // Usa vendaEmAuditoria se veio do script, ou tempVendaId se veio da lista
             const idAlvo = vendaEmAuditoria ? vendaEmAuditoria.id : tempVendaId;
 
             if (!os || !data || !turno) { alert("Preencha todos os campos."); return; }
             btn.disabled = true; btn.innerHTML = 'Salvando...';
 
-            // Status CADASTRADA
             const statusCadastrada = globalStatusOptions.find(s => s.nome.toUpperCase() === 'CADASTRADA');
             if(!statusCadastrada) { alert("Status 'CADASTRADA' não encontrado!"); btn.disabled=false; return; }
 
             try {
-                // Valida Duplicidade
                 const res = await apiClient.get(`/api/crm/vendas/?ordem_servico=${os}`);
                 const duplicada = res.data.some(v => v.id !== idAlvo);
                 if (duplicada) {
@@ -655,7 +650,6 @@
                 } 
                 document.getElementById('agenda-os').classList.remove('is-invalid');
 
-                // Prepara dados
                 const body = { 
                     status_tratamento: statusCadastrada.id, 
                     ordem_servico: os, 
@@ -663,15 +657,12 @@
                     periodo_agendamento: turno 
                 };
                 
-                // Se veio do script, inclui a observação
                 if(vendaEmAuditoria) {
                     body.observacoes = document.getElementById('script-obs-venda').value;
                 }
 
-                // Salva
                 await apiClient.patch(`/api/crm/vendas/${idAlvo}/`, body);
                 
-                // Libera (caso esteja travado)
                 if(vendaEmAuditoria) {
                     await apiClient.post(`/api/crm/vendas/${idAlvo}/liberar-auditoria/`, {});
                 }
@@ -679,9 +670,7 @@
                 modalAgendamento.hide();
                 carregarVendas(true);
                 
-                // Se veio do script, mostra Zap
                 if(vendaEmAuditoria) {
-                    // Atualiza objeto local para o zap ficar certo
                     vendaEmAuditoria.ordem_servico = os;
                     vendaEmAuditoria.data_agendamento = data;
                     vendaEmAuditoria.periodo_agendamento = turno;
@@ -689,19 +678,13 @@
                 } else {
                     alert("Agendamento salvo com sucesso!");
                 }
-
             } catch (e) { mostrarErroDetalhado(e, 'salvar agendamento'); } 
             finally { btn.disabled = false; btn.innerHTML = 'Confirmar e Enviar'; }
         }
 
         function cancelarAgendamento() { 
             modalAgendamento.hide(); 
-            // Se veio do script, reabre o script. Se não, apenas libera.
-            if(vendaEmAuditoria) {
-                modalScript.show();
-            } else {
-                carregarVendas(true);
-            }
+            if(vendaEmAuditoria) { modalScript.show(); } else { carregarVendas(true); }
         }
 
         // --- REPROVAÇÃO ---
@@ -739,7 +722,7 @@
             finally { btn.disabled = false; btn.innerText = "Confirmar Reprovação"; }
         }
 
-        // --- EXTRAS ---
+        // --- EXTRAS E FUNÇÕES QUE FALTAVAM ---
         function gerarAprovacao(id) {
             const v = vendas.find(x => x.id === id) || vendaEmAuditoria; 
             if(!v) return;
@@ -749,7 +732,12 @@
                 const parts = v.data_agendamento.split('-');
                 agendamentoStr = `${parts[2]}/${parts[1]}/${parts[0]} - ${v.periodo_agendamento}`;
             }
-            const vendedor = v.vendedor ? (v.vendedor.username || v.vendedor.nome) : 'N/A';
+            
+            // Tratamento robusto do vendedor para o ZAP
+            let vendedor = 'N/A';
+            if (v.vendedor_nome) vendedor = v.vendedor_nome;
+            else if (v.vendedor && v.vendedor.username) vendedor = v.vendedor.username;
+
             const os = v.ordem_servico || 'Em processamento';
 
             const msg = `✅ APROVADO! Venda #${v.id}
@@ -765,24 +753,112 @@ DACC: ${dacc}`;
             aprovacaoModal.show();
         }
 
+        // FUNÇÃO QUE ESTAVA FALTANDO/INCOMPLETA: Abrir Detalhes com dados reais
         function abrirDetalhes(id) {
             const v = vendas.find(x => x.id === id);
             if(!v) return;
             document.getElementById('edit-id').value = v.id;
-            // Preenche campos do modal detalhes (igual seu código original)
-            document.getElementById('view-vendedor').value = v.vendedor ? v.vendedor.username : '-';
-            // ... (restante dos campos)
+            
+            // Dados informativos (apenas leitura)
+            let vendedorShow = 'N/A';
+            if (v.vendedor_nome) vendedorShow = v.vendedor_nome;
+            else if (v.vendedor && v.vendedor.username) vendedorShow = v.vendedor.username;
+            
+            document.getElementById('view-vendedor').value = vendedorShow;
+            document.getElementById('view-data').value = new Date(v.data_criacao).toLocaleDateString('pt-BR');
+            document.getElementById('view-entrada').value = v.forma_entrada || '-';
+            document.getElementById('view-status').value = v.status_tratamento ? v.status_tratamento.nome : '-';
+            document.getElementById('view-plano').value = v.plano ? v.plano.nome : '-';
+            document.getElementById('view-pagamento').value = v.forma_pagamento ? v.forma_pagamento.nome : '-';
+
+            // Dados Editáveis (Cliente e Endereço) - Carregados do objeto venda
+            document.getElementById('edit-cliente').value = v.cliente.nome_razao_social || '';
+            document.getElementById('edit-cpf').value = v.cliente.cpf_cnpj || '';
+            document.getElementById('edit-nome-mae').value = v.nome_mae || '';
+            document.getElementById('edit-nasc').value = v.data_nascimento || '';
+            document.getElementById('edit-nome-rep').value = v.nome_representante_legal || '';
+            document.getElementById('edit-cpf-rep').value = v.cpf_representante_legal || '';
+            document.getElementById('edit-tel1').value = v.telefone1 || '';
+            document.getElementById('edit-tel2').value = v.telefone2 || '';
+            
+            document.getElementById('edit-cep').value = v.cep || '';
+            document.getElementById('edit-logradouro').value = v.logradouro || '';
+            document.getElementById('edit-numero').value = v.numero_residencia || '';
+            document.getElementById('edit-complemento').value = v.complemento || '';
+            document.getElementById('edit-bairro').value = v.bairro || '';
+            document.getElementById('edit-cidade').value = v.cidade || '';
+            document.getElementById('edit-estado').value = v.estado || '';
+            document.getElementById('edit-referencia').value = v.ponto_referencia || '';
+            document.getElementById('edit-obs').value = v.observacoes || '';
+
             modalDetalhes.show();
         }
 
-        // (Mantenha salvarAlteracoes, buscarCepEdit, copiarMensagem, logout iguais)
-        async function salvarAlteracoes() { /* ... código original ... */ }
-        async function buscarCepEdit(e) { /* ... código original ... */ }
+        // FUNÇÃO QUE ESTAVA FALTANDO: Salvar alterações do modal de edição
+        async function salvarAlteracoes() {
+            const id = document.getElementById('edit-id').value;
+            if(!id) return;
+            
+            const btn = document.getElementById('btn-salvar-detalhes');
+            btn.disabled = true; btn.innerHTML = 'Salvando...';
+
+            const payload = {
+                nome_mae: document.getElementById('edit-nome-mae').value,
+                data_nascimento: document.getElementById('edit-nasc').value,
+                nome_representante_legal: document.getElementById('edit-nome-rep').value,
+                cpf_representante_legal: document.getElementById('edit-cpf-rep').value,
+                telefone1: document.getElementById('edit-tel1').value,
+                telefone2: document.getElementById('edit-tel2').value,
+                cep: document.getElementById('edit-cep').value,
+                logradouro: document.getElementById('edit-logradouro').value,
+                numero_residencia: document.getElementById('edit-numero').value,
+                complemento: document.getElementById('edit-complemento').value,
+                bairro: document.getElementById('edit-bairro').value,
+                cidade: document.getElementById('edit-cidade').value,
+                estado: document.getElementById('edit-estado').value,
+                ponto_referencia: document.getElementById('edit-referencia').value,
+                observacoes: document.getElementById('edit-obs').value
+            };
+
+            try {
+                await apiClient.patch(`/api/crm/vendas/${id}/`, payload);
+                alert("Dados atualizados com sucesso!");
+                modalDetalhes.hide();
+                carregarVendas(true);
+            } catch(e) {
+                mostrarErroDetalhado(e, "salvar alterações");
+            } finally {
+                btn.disabled = false; btn.innerHTML = 'Salvar Dados';
+            }
+        }
+
+        // FUNÇÃO QUE ESTAVA FALTANDO: Buscar CEP
+        async function buscarCepEdit(e) {
+            const cep = e.target.value.replace(/\D/g, '');
+            if(cep.length !== 8) return;
+            
+            try {
+                const res = await axios.get(`https://viacep.com.br/ws/${cep}/json/`);
+                if(!res.data.erro) {
+                    document.getElementById('edit-logradouro').value = res.data.logradouro;
+                    document.getElementById('edit-bairro').value = res.data.bairro;
+                    document.getElementById('edit-cidade').value = res.data.localidade;
+                    document.getElementById('edit-estado').value = res.data.uf;
+                    document.getElementById('edit-numero').focus();
+                } else {
+                    alert('CEP não encontrado.');
+                }
+            } catch(error) {
+                console.error('Erro CEP:', error);
+            }
+        }
+
         function copiarMensagem() { 
             const txt = document.getElementById('aprovacao-mensagem');
             txt.select();
             navigator.clipboard.writeText(txt.value).then(() => { alert('Copiado!'); });
         }
+        
         function logout() { localStorage.removeItem('accessToken'); window.location.href = '/'; }
     </script>
 </body>

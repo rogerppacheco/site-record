@@ -29,7 +29,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.exceptions import PermissionDenied, NotFound
-from rest_framework.decorators import api_view, permission_classes, action # <--- ACTION IMPORTADA
+from rest_framework.decorators import api_view, permission_classes, action 
 
 # --- IMPORTS WHATSAPP ---
 from .whatsapp_service import WhatsAppService 
@@ -71,7 +71,6 @@ def is_member(user, groups):
 # --- FUNÇÃO PARA PEGAR/CRIAR O USUÁRIO ROBÔ DA IMPORTAÇÃO ---
 def get_osab_bot_user():
     User = get_user_model()
-    # Tenta buscar ou criar, passando uma senha dummy para passar na validação 'full_clean'
     bot, created = User.objects.get_or_create(
         username='OSAB_IMPORT',
         defaults={
@@ -79,11 +78,11 @@ def get_osab_bot_user():
             'last_name': 'Automático',
             'email': 'osab_import@sistema.local',
             'is_active': True,
-            'password': 'senha_temporaria_validacao_sistema' # Necessário para passar no save() do model
+            'password': 'senha_temporaria_validacao_sistema'
         }
     )
     if created:
-        bot.set_unusable_password() # Invalida a senha para ninguém logar com ela
+        bot.set_unusable_password()
         bot.save()
     return bot
 # ------------------------------------
@@ -287,8 +286,7 @@ class VendaViewSet(viewsets.ModelViewSet):
                 
         return queryset
 
-    # --- AÇÃO 1: PEGAR TAREFA (TRAVAR VENDA) ---
-    # Esta ação estava faltando no seu código anterior
+    # --- CORREÇÃO APLICADA: URL_PATH ADICIONADO ---
     @action(detail=True, methods=['post'], url_path='alocar-auditoria')
     def alocar_auditoria(self, request, pk=None):
         venda = self.get_object()
@@ -308,7 +306,6 @@ class VendaViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(venda)
         return Response(serializer.data)
 
-    # --- AÇÃO 2: LIBERAR TAREFA (DESTRAVAR) ---
     @action(detail=True, methods=['post'], url_path='liberar-auditoria')
     def liberar_auditoria(self, request, pk=None):
         venda = self.get_object()

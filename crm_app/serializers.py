@@ -103,13 +103,21 @@ class HistoricoAlteracaoVendaSerializer(serializers.ModelSerializer):
 
 
 class VendaSerializer(serializers.ModelSerializer):
+    # Campos aninhados para exibição (read_only)
     cliente = ClienteSerializer(read_only=True)
+    vendedor_detalhes = UsuarioSerializer(source='vendedor', read_only=True)
+    
+    # Campos explícitos para garantir que o ID seja enviado corretamente
+    cliente_id = serializers.PrimaryKeyRelatedField(
+        queryset=Cliente.objects.all(), source='cliente', write_only=False
+    )
+    vendedor_nome = serializers.ReadOnlyField(source='vendedor.username')
+
     plano = PlanoSerializer(read_only=True)
     forma_pagamento = FormaPagamentoSerializer(read_only=True)
     status_tratamento = StatusCRMSerializer(read_only=True)
     status_esteira = StatusCRMSerializer(read_only=True)
     status_comissionamento = StatusCRMSerializer(read_only=True)
-    vendedor = UsuarioSerializer(read_only=True)
     motivo_pendencia = MotivoPendenciaSerializer(read_only=True)
     status_final = serializers.SerializerMethodField()
     historico_alteracoes = HistoricoAlteracaoVendaSerializer(many=True, read_only=True)
@@ -122,7 +130,10 @@ class VendaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Venda
         fields = [
-            'id', 'vendedor', 'cliente', 'plano', 'forma_pagamento',
+            'id', 
+            'vendedor', 'vendedor_nome', 'vendedor_detalhes',
+            'cliente', 'cliente_id',
+            'plano', 'forma_pagamento',
             'status_tratamento', 'status_esteira', 'status_comissionamento',
             'status_final', 'data_criacao',
             'forma_entrada', 
@@ -135,7 +146,7 @@ class VendaSerializer(serializers.ModelSerializer):
             'ponto_referencia', 'observacoes',
             'historico_alteracoes',
             'data_pagamento', 'valor_pago', 'alterado_por',
-            'auditor_atual', 'auditor_atual_nome', 'auditor_atual_id' # <---
+            'auditor_atual', 'auditor_atual_nome', 'auditor_atual_id'
         ]
 
     def get_auditor_atual_nome(self, obj):
