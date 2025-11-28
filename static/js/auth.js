@@ -1,4 +1,4 @@
-// static/js/auth.js - VERSÃO BLINDADA (CORREÇÃO DO REFRESH)
+// static/js/auth.js - VERSÃO CORRIGIDA (SEGURANÇA + AUDITORIA)
 
 const API_URL = '';
 
@@ -40,7 +40,7 @@ if (localStorage.getItem('accessToken')) {
     resetInactivityTimer();
 }
 
-// --- CLIENTE API ---
+// --- CLIENTE API COMPLETO (GET, POST, PATCH, DELETE) ---
 const apiClient = {
     get: async function(url) {
         const token = localStorage.getItem('accessToken');
@@ -76,6 +76,44 @@ const apiClient = {
         }
         if (response.status === 204) return { data: null };
         return { data: await response.json() };
+    },
+    patch: async function(url, data) {
+        const token = localStorage.getItem('accessToken');
+        const csrftoken = getCookie('csrftoken');
+        const response = await fetch(`${API_URL}${url}`, {
+            method: 'PATCH',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken
+            },
+            mode: 'same-origin',
+            body: JSON.stringify(data),
+            credentials: 'include'
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+        }
+        if (response.status === 204) return { data: null };
+        return { data: await response.json() };
+    },
+    delete: async function(url) {
+        const token = localStorage.getItem('accessToken');
+        const csrftoken = getCookie('csrftoken');
+        const response = await fetch(`${API_URL}${url}`, {
+            method: 'DELETE',
+            headers: { 
+                'Authorization': `Bearer ${token}`,
+                'X-CSRFToken': csrftoken
+            },
+            credentials: 'include'
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+        }
+        return { data: null };
     }
 };
 
@@ -84,25 +122,28 @@ function forcarModalTrocaSenha() {
     const modal = document.getElementById('modalTrocaSenha');
     const loginOverlay = document.getElementById('loginModalOverlay');
     
-    if(loginOverlay) loginOverlay.style.display = 'none'; // Garante que o login fecha
+    if(loginOverlay) loginOverlay.style.display = 'none'; 
     
     if (modal) {
         modal.style.display = 'flex';
-        // Limpa campos para evitar cache visual
+        // Limpa campos
         const s1 = document.getElementById('novaSenhaInput');
         const s2 = document.getElementById('confirmaSenhaInput');
         if(s1) s1.value = '';
         if(s2) s2.value = '';
     } else {
         console.error("Modal de troca não encontrado. Bloqueando acesso.");
-        alert("Troca de senha obrigatória. Contate o suporte se a janela não abrir.");
+        // Se estiver em uma página interna sem o modal, redireciona para a home onde o modal existe
+        if(window.location.pathname !== '/') {
+            alert("Troca de senha obrigatória. Redirecionando para a tela inicial.");
+            window.location.href = '/';
+        }
     }
 }
 
 document.addEventListener('DOMContentLoaded', function() {
     
     // --- VERIFICAÇÃO DE SEGURANÇA AO CARREGAR A PÁGINA ---
-    // Se o usuário deu F5 mas tem a trava 'trocaPendente', abrimos o modal na cara dele.
     if (localStorage.getItem('accessToken') && localStorage.getItem('trocaPendente') === 'true') {
         forcarModalTrocaSenha();
     }
@@ -114,7 +155,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const loginForm = document.getElementById('loginForm');
     const cancelarLogin = document.getElementById('btnCancelLogin');
 
-    // --- 1. CONFIGURAÇÃO MODAL ESQUECI A SENHA ---
+    // --- 1. MODAL ESQUECI A SENHA ---
     const linkEsqueci = document.getElementById('linkEsqueciSenha');
     if(linkEsqueci) {
         linkEsqueci.addEventListener('click', function(e) {
@@ -161,7 +202,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // --- 2. CONFIGURAÇÃO MODAL TROCA DE SENHA ---
+    // --- 2. MODAL TROCA DE SENHA ---
     const formTroca = document.getElementById('formTrocaSenha');
     if(formTroca) {
         formTroca.addEventListener('submit', async function(e) {
@@ -191,17 +232,15 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // --- 3. LÓGICA DO LOGIN E BOTÕES ---
+    // --- 3. LOGIN ---
     if (loginModal && loginForm) {
-        
         const openModal = function(event) {
             event.preventDefault();
-            
-            // SEGURANÇA: Verifica se tem troca pendente ANTES de deixar entrar
             if (localStorage.getItem('accessToken')) {
+                // SEGURANÇA: Verifica se tem troca pendente
                 if (localStorage.getItem('trocaPendente') === 'true') {
                     forcarModalTrocaSenha();
-                    return; // PARA TUDO AQUI
+                    return; 
                 }
                 window.location.href = '/area-interna/';
             } else {
@@ -213,14 +252,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (areaInternaButton) areaInternaButton.addEventListener('click', openModal);
         if (btnOpenLogin) btnOpenLogin.addEventListener('click', openModal);
-
-        if (cancelarLogin) {
-            cancelarLogin.addEventListener('click', function() {
-                loginModal.style.display = 'none';
-            });
-        }
-
-        loginModal.addEventListener('click', function(e) {
+        if (cancelarLogin) cancelarLogin.addEventListener('click', () => loginModal.style.display = 'none');
+        
+        loginModal.addEventListener('click', (e) => {
             if(e.target === loginModal) loginModal.style.display = 'none';
         });
 
@@ -228,24 +262,17 @@ document.addEventListener('DOMContentLoaded', function() {
             e.preventDefault();
             const submitBtn = loginForm.querySelector('button[type="submit"]');
             const originalText = submitBtn ? submitBtn.innerText : 'Entrar';
-            
             if(submitBtn) { submitBtn.innerText = 'Entrando...'; submitBtn.disabled = true; }
 
             const u = document.getElementById('username').value;
             const p = document.getElementById('password').value;
-            
             await login(u, p); 
-            
             if(submitBtn) { submitBtn.innerText = originalText; submitBtn.disabled = false; }
         });
     }
 
-    const logoutButtons = document.querySelectorAll('.logout-button');
-    logoutButtons.forEach(btn => {
-        btn.addEventListener('click', function(event) {
-            event.preventDefault();
-            logout(); 
-        });
+    document.querySelectorAll('.logout-button').forEach(btn => {
+        btn.addEventListener('click', (e) => { e.preventDefault(); logout(); });
     });
 });
 
@@ -281,20 +308,14 @@ async function login(username, password) {
                 localStorage.setItem('userProfile', decodedToken.perfil);
             }
             
-            // --- TRAVA DE SEGURANÇA AQUI ---
+            // --- TRAVA DE SEGURANÇA ---
             if (data.obriga_troca_senha === true) {
-                // 1. Ativa a trava no navegador
                 localStorage.setItem('trocaPendente', 'true');
-                
-                // 2. Fecha login, abre troca
                 const loginM = document.getElementById('loginModalOverlay');
                 if(loginM) loginM.style.display = 'none';
-                
                 forcarModalTrocaSenha();
-                
-                return false; // IMPEDE REDIRECIONAMENTO
+                return false; 
             } else {
-                // Se não precisa trocar, garante que a trava não existe (caso tenha sobrado lixo)
                 localStorage.removeItem('trocaPendente');
             }
 
@@ -314,7 +335,7 @@ function logout() {
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('userProfile');
-    localStorage.removeItem('trocaPendente'); // Limpa a trava ao sair
+    localStorage.removeItem('trocaPendente');
     clearTimeout(inactivityTimer); 
     window.location.href = '/';
 }
