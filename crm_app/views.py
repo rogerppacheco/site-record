@@ -21,7 +21,7 @@ from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.utils.html import strip_tags
 from django.contrib.staticfiles import finders
-from django.db import transaction  # Importação necessária para finalizar_auditoria
+from django.db import transaction
 
 from rest_framework import generics, viewsets, status, permissions
 from rest_framework.response import Response
@@ -205,8 +205,7 @@ class VendaViewSet(viewsets.ModelViewSet):
         
         user = self.request.user
 
-        # CORREÇÃO AQUI: Adicionado alocar_auditoria, liberar_auditoria e finalizar_auditoria na lista
-        # Isso permite que o Auditor (que não é o vendedor) encontre a venda no banco.
+        # Ações de gestão que exigem visão ampla
         acoes_gestao = [
             'retrieve', 'update', 'partial_update', 'destroy',
             'alocar_auditoria', 'liberar_auditoria', 'finalizar_auditoria',
@@ -214,19 +213,24 @@ class VendaViewSet(viewsets.ModelViewSet):
         ]
 
         if self.action in acoes_gestao:
-            if user.is_superuser or is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
+            # CORREÇÃO: Adicionado 'Auditoria' e 'Qualidade' para garantir que eles encontrem a venda
+            grupos_gestao = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
+            
+            if user.is_superuser or is_member(user, grupos_gestao):
                 return queryset
+            
             if is_member(user, ['Supervisor']):
                 liderados_ids = list(user.liderados.values_list('id', flat=True))
                 liderados_ids.append(user.id)
                 return queryset.filter(vendedor_id__in=liderados_ids)
+            
             return queryset.filter(vendedor=user)
 
         view_type = self.request.query_params.get('view')
         flow = self.request.query_params.get('flow')
 
         if not view_type:
-            if flow and is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
+            if flow and is_member(user, ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']):
                 view_type = 'geral'
             else:
                 view_type = 'minhas_vendas'
@@ -237,7 +241,7 @@ class VendaViewSet(viewsets.ModelViewSet):
         elif view_type == 'visao_equipe' or view_type == 'geral':
             if is_member(user, ['Diretoria', 'Admin']):
                 pass 
-            elif is_member(user, ['BackOffice']):
+            elif is_member(user, ['BackOffice', 'Auditoria', 'Qualidade']):
                 data_inicio_param = self.request.query_params.get('data_inicio')
                 if not data_inicio_param and self.action == 'list':
                     hoje = timezone.now()
@@ -285,7 +289,7 @@ class VendaViewSet(viewsets.ModelViewSet):
             except (ValueError, TypeError): 
                 pass
         
-        elif view_type == 'minhas_vendas' and self.action == 'list' and not is_member(user, ['Diretoria', 'BackOffice', 'Admin']):
+        elif view_type == 'minhas_vendas' and self.action == 'list' and not is_member(user, ['Diretoria', 'BackOffice', 'Admin', 'Auditoria']):
              hoje = now()
              inicio_mes = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
              queryset = queryset.filter(
@@ -298,17 +302,9 @@ class VendaViewSet(viewsets.ModelViewSet):
     # --- AÇÃO: LISTA PENDENTES DE AUDITORIA ---
     @action(detail=False, methods=['get'])
     def pendentes_auditoria(self, request):
-        """
-        Retorna vendas que estão na fase de auditoria (status_tratamento definido, esteira null)
-        """
-        # A lógica de filtro já está no get_queryset com flow='auditoria',
-        # mas podemos forçar aqui para garantir.
-        # Aqui usamos o get_queryset que já aplica as regras de permissão.
-        
-        # Sobrescreve parâmetros para forçar visão de auditoria
         request.GET._mutable = True
         request.GET['flow'] = 'auditoria'
-        request.GET['view'] = 'geral' # Força visão geral para auditores verem tudo
+        request.GET['view'] = 'geral' 
         request.GET._mutable = False
         
         vendas = self.filter_queryset(self.get_queryset())
@@ -321,11 +317,17 @@ class VendaViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(vendas, many=True)
         return Response(serializer.data)
 
-    # --- AÇÃO: ALOCAR AUDITORIA ---
-    @action(detail=True, methods=['post'], url_path='alocar-auditoria')
+    # --- AÇÃO: ALOCAR AUDITORIA (CORREÇÃO 403) ---
+    # Adicionado permission_classes=[IsAuthenticated] para sobrescrever a restrição da VendaPermission
+    @action(detail=True, methods=['post'], url_path='alocar-auditoria', permission_classes=[permissions.IsAuthenticated])
     def alocar_auditoria(self, request, pk=None):
         venda = self.get_object()
         usuario = request.user
+
+        # Segurança Extra: Bloqueia se o usuário não for de um grupo de gestão
+        grupos_permitidos = ['Diretoria', 'Admin', 'BackOffice', 'Supervisor', 'Auditoria', 'Qualidade']
+        if not is_member(usuario, grupos_permitidos):
+             return Response({"detail": "Permissão negada. Apenas auditores podem alocar vendas."}, status=status.HTTP_403_FORBIDDEN)
 
         # Verifica se já está travada por OUTRA pessoa
         if venda.auditor_atual and venda.auditor_atual != usuario:
@@ -342,12 +344,11 @@ class VendaViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     # --- AÇÃO: LIBERAR AUDITORIA ---
-    @action(detail=True, methods=['post'], url_path='liberar-auditoria')
+    @action(detail=True, methods=['post'], url_path='liberar-auditoria', permission_classes=[permissions.IsAuthenticated])
     def liberar_auditoria(self, request, pk=None):
         venda = self.get_object()
         usuario = request.user
         
-        # Permissão para liberar: O próprio dono ou Supervisores/Admins
         is_supervisor = is_member(usuario, ['Diretoria', 'Admin', 'Supervisor'])
         
         if venda.auditor_atual and venda.auditor_atual != usuario and not is_supervisor:
@@ -361,35 +362,29 @@ class VendaViewSet(viewsets.ModelViewSet):
         
         return Response({"detail": "Venda liberada com sucesso."})
 
-    # --- AÇÃO: FINALIZAR AUDITORIA (Estava faltando!) ---
-    @action(detail=True, methods=['post'], url_path='finalizar_auditoria')
+    # --- AÇÃO: FINALIZAR AUDITORIA ---
+    @action(detail=True, methods=['post'], url_path='finalizar_auditoria', permission_classes=[permissions.IsAuthenticated])
     def finalizar_auditoria(self, request, pk=None):
         venda = self.get_object()
         
-        # Pega dados do body
-        status_novo_id = request.data.get('status') # ID do Status ou Nome? O Front manda "Aprovada/Reprovada" texto ou ID?
-        # O frontend auditoria.html manda texto "Aprovada", "Reprovada". 
-        # Precisamos mapear para IDs de StatusCRM.
-        
+        # Segurança Extra
+        grupos_permitidos = ['Diretoria', 'Admin', 'BackOffice', 'Supervisor', 'Auditoria', 'Qualidade']
+        if not is_member(request.user, grupos_permitidos):
+             return Response({"detail": "Permissão negada."}, status=status.HTTP_403_FORBIDDEN)
+
+        status_novo_id = request.data.get('status')
         observacoes = request.data.get('observacoes', '')
 
         if not status_novo_id:
              return Response({"detail": "Status inválido."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Mapeamento simples de Strings para StatusCRM (Ajuste conforme seus nomes no banco)
         status_obj = None
-        
-        # Tenta achar pelo ID direto se for numérico
         if str(status_novo_id).isdigit():
              status_obj = StatusCRM.objects.filter(id=int(status_novo_id)).first()
         else:
-             # Busca por nome (ex: Aprovada -> APROVADA / AUDITADA)
              termo = str(status_novo_id).upper()
-             if 'APROVAD' in termo: termo = 'AUDITADA' # Geralmente o status final de auditoria é AUDITADA
-             
+             if 'APROVAD' in termo: termo = 'AUDITADA'
              status_obj = StatusCRM.objects.filter(nome__iexact=termo, tipo='Tratamento').first()
-             
-             # Fallback genérico
              if not status_obj:
                  status_obj = StatusCRM.objects.filter(nome__icontains=termo, tipo='Tratamento').first()
 
@@ -401,11 +396,9 @@ class VendaViewSet(viewsets.ModelViewSet):
             if observacoes:
                 venda.observacoes = observacoes
             
-            # Libera a alocação após finalizar
             venda.auditor_atual = None
             venda.save()
             
-            # Log histórico
             HistoricoAlteracaoVenda.objects.create(
                 venda=venda,
                 usuario=request.user,
