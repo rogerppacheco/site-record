@@ -5,77 +5,119 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Auditoria de Vendas - Record PAP</title>
+    <link rel="shortcut icon" href="{% static 'logo.png' %}" type="image/x-icon">
+    
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=3.0">
+    
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=3.3">
+    
     <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
+    
     <style>
-        /* --- ESTILO DE CARDS FLUTUANTES NA TABELA --- */
-        table.table {
-            border-collapse: separate !important; 
-            border-spacing: 0 16px !important;    
+        /* Estilos Específicos da Auditoria */
+        .script-section { 
+            background-color: #fff; 
+            border-left: 5px solid var(--cor-primaria, #0d6efd); 
+            padding: 25px; 
+            margin-bottom: 25px; 
+            border-radius: 6px; 
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .script-title { 
+            color: var(--cor-primaria, #0d6efd); 
+            font-weight: 800; 
+            margin-bottom: 15px; 
+            text-transform: uppercase; 
+            font-size: 0.95rem; 
+            border-bottom: 1px solid #eee;
+            padding-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .script-text { 
+            font-size: 1.15rem; 
+            line-height: 1.6; 
+            color: #212529; 
+            margin-bottom: 15px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .script-highlight {
+            background-color: #e8f0fe;
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: #0d6efd;
+            font-weight: bold;
         }
         
-        /* Reset das células */
-        .table > :not(caption) > * > * {
-            background-color: transparent; 
-            border-bottom-width: 0;
-            box-shadow: none;
-            vertical-align: middle;
-        }
-
-        /* Estilo do cabeçalho */
-        .table thead th {
-            border: none;
-            font-size: 0.85rem;
-            text-transform: uppercase;
-            color: #6c757d;
-            font-weight: 600;
-            letter-spacing: 0.5px;
-            padding-bottom: 0;
-        }
-
-        /* Select limpo */
-        .status-select { 
-            min-width: 160px; 
-            font-size: 0.9rem; 
-            border: 1px solid #dee2e6;
-            background-color: #f8f9fa;
-        } 
-
-        /* Estilos do Script de Auditoria */
-        .script-section { background-color: #f8f9fa; border-left: 5px solid var(--cor-primaria, #0d6efd); padding: 15px; margin-bottom: 20px; border-radius: 4px; }
-        .script-title { color: var(--cor-primaria, #0d6efd); font-weight: bold; margin-bottom: 10px; text-transform: uppercase; font-size: 0.9rem; }
-        .script-text { font-size: 1.1rem; line-height: 1.6; color: #333; }
-        .dado-sistema { color: #0d6efd; font-weight: bold; background-color: #e7f1ff; padding: 2px 6px; border-radius: 4px; border: 1px dashed #0d6efd; }
-        #aprovacao-mensagem { white-space: pre-wrap; font-family: monospace; font-size: 0.9rem; }
-
-        /* Esconde barra de rolagem horizontal padrão se não for necessária */
-        .table-responsive::-webkit-scrollbar { height: 6px; }
-        .table-responsive::-webkit-scrollbar-thumb { background-color: #ccc; border-radius: 4px; }
-        
-        /* --- NOVOS ESTILOS PARA A TRAVA DE AUDITORIA --- */
-        .locked-row { opacity: 0.7; background-color: #f8f9fa !important; }
+        /* Badges e Tabela */
         .auditor-badge { 
             font-size: 0.75rem; 
-            background: #ffeeba; 
-            color: #856404; 
-            padding: 2px 6px; 
+            background: #e9ecef; 
+            color: #495057; 
+            padding: 4px 10px; 
             border-radius: 4px; 
-            border: 1px solid #ffeeba; 
+            border: 1px solid #dee2e6; 
             display: inline-flex; 
             align-items: center; 
-            gap: 4px; 
+            gap: 5px; 
+            font-weight: 600;
+        }
+        .locked-row { opacity: 0.9; background-color: #fffbf0 !important; }
+        
+        /* Inputs no script */
+        .form-control-script {
+            border: 1px solid #ced4da;
+            background-color: #f8f9fa;
+            font-weight: 600;
+            color: #495057;
+        }
+        .form-control-script:focus {
+            background-color: #fff;
+            border-color: var(--cor-primaria, #0d6efd);
+            box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.15);
+        }
+        .input-readonly-look {
+            background-color: #e9ecef !important;
+            border: none;
         }
 
-        @media (max-width: 576px) {
-            .header-controls { flex-direction: column; align-items: flex-start; gap: 10px; }
-            .header-controls button { width: 100%; }
-            .btn-action-responsive { width: 100%; margin-bottom: 10px; }
+        /* Botões */
+        .btn-auditar {
+            background-color: #212529; 
+            color: white;
+            border-radius: 50px; 
+            padding: 6px 16px;
+            font-size: 0.85rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            border: none;
+            transition: transform 0.2s, box-shadow 0.2s;
+            text-decoration: none;
+        }
+        .btn-auditar:hover { 
+            background-color: #000; 
+            transform: translateY(-1px); 
+            color: #fff; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        }
+        
+        /* Overlay */
+        .loading-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.8); z-index: 9999; text-align: center; padding-top: 20%;
         }
     </style>
 </head>
 <body>
+
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Carregando...</span>
+        </div>
+    </div>
 
     <header class="main-header">
         <div class="header-container">
@@ -92,187 +134,242 @@
 
     <main class="area-interna-section">
         <div class="system-container" style="max-width: 1600px;">
+            
             <div class="d-flex justify-content-between align-items-center mb-4 header-controls">
                 <div>
-                    <h1 style="font-size: 1.8rem; margin: 0;">Auditoria</h1>
-                    <p class="text-muted mb-0">Validação e qualidade das vendas.</p>
+                    <h1 style="font-size: 1.8rem; margin: 0;">Auditoria de Vendas</h1>
+                    <p class="text-muted mb-0">Validação de dados e qualidade (Script Editável).</p>
                 </div>
-                <button onclick="carregarVendas()" class="btn btn-outline-primary fw-bold shadow-sm">
+                <button class="btn btn-outline-primary fw-bold shadow-sm" onclick="carregarVendasPendentes()">
                     <i class="bi bi-arrow-clockwise"></i> Atualizar Lista
                 </button>
             </div>
 
             <div class="card border-0 shadow-none" style="background: transparent;">
                 <div class="table-responsive" style="overflow-y: visible; overflow-x: auto; padding: 4px;">
-                    <table class="table mb-0">
-                        <thead>
+                    <table class="table table-hover mb-0 bg-white rounded shadow-sm align-middle">
+                        <thead class="table-light">
                             <tr>
                                 <th class="ps-3">ID</th>
-                                <th>Data</th>
-                                <th>Cliente</th>
+                                <th>Data Venda</th>
+                                <th>Cliente / CPF</th>
                                 <th>Vendedor</th>
+                                <th>Produto</th>
                                 <th>Status Tratamento</th>
                                 <th>Auditor</th>
-                                <th>Resp. Alteração</th>
-                                <th class="text-end pe-3">Ações</th>
+                                <th class="text-end pe-4">Ações</th>
                             </tr>
                         </thead>
-                        <tbody id="tabela-auditoria-body"></tbody>
+                        <tbody id="listaVendasBody">
+                            </tbody>
                     </table>
                 </div>
             </div>
         </div>
     </main>
 
-    <div class="modal fade" id="modal-detalhes" tabindex="-1">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Detalhes da Venda</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="form-edit-venda">
-                        <input type="hidden" id="edit-id">
-                        <h6 class="text-primary border-bottom pb-2 mb-3"><i class="bi bi-info-circle"></i> Dados da Venda</h6>
-                        <div class="row g-3 mb-3 bg-light p-2 rounded">
-                            <div class="col-md-3"><label class="form-label small fw-bold text-muted">Vendedor</label><input type="text" class="form-control form-control-sm" id="view-vendedor" readonly disabled></div>
-                            <div class="col-md-3"><label class="form-label small fw-bold text-muted">Data Venda</label><input type="text" class="form-control form-control-sm" id="view-data" readonly disabled></div>
-                            <div class="col-md-3"><label class="form-label small fw-bold text-muted">Forma Entrada</label><input type="text" class="form-control form-control-sm" id="view-entrada" readonly disabled></div>
-                            <div class="col-md-3"><label class="form-label small fw-bold text-muted">Status Atual</label><input type="text" class="form-control form-control-sm" id="view-status" readonly disabled></div>
-                            <div class="col-md-6"><label class="form-label small fw-bold text-muted">Plano</label><input type="text" class="form-control form-control-sm" id="view-plano" readonly disabled></div>
-                            <div class="col-md-6"><label class="form-label small fw-bold text-muted">Forma de Pagamento</label><input type="text" class="form-control form-control-sm" id="view-pagamento" readonly disabled></div>
-                        </div>
-                        <h6 class="text-primary border-bottom pb-2 mb-3 mt-4"><i class="bi bi-person"></i> Dados do Cliente</h6>
-                        <div class="row g-3">
-                            <div class="col-md-6"><label class="form-label fw-bold">Nome Cliente</label><input type="text" class="form-control" id="edit-cliente" readonly></div>
-                            <div class="col-md-6"><label class="form-label fw-bold">CPF/CNPJ</label><input type="text" class="form-control" id="edit-cpf" readonly></div>
-                            <div class="col-md-6"><label class="form-label">Nome da Mãe</label><input type="text" class="form-control" id="edit-nome-mae"></div>
-                            <div class="col-md-6"><label class="form-label">Data de Nascimento</label><input type="date" class="form-control" id="edit-nasc"></div>
-                            <div class="col-md-8"><label class="form-label">Nome Rep. Legal</label><input type="text" class="form-control" id="edit-nome-rep"></div>
-                            <div class="col-md-4"><label class="form-label">CPF Rep. Legal</label><input type="text" class="form-control" id="edit-cpf-rep"></div>
-                            <div class="col-md-6"><label class="form-label">Telefone 1</label><input type="text" class="form-control" id="edit-tel1"></div>
-                            <div class="col-md-6"><label class="form-label">Telefone 2</label><input type="text" class="form-control" id="edit-tel2"></div>
-                        </div>
-                        <h6 class="text-primary border-bottom pb-2 mb-3 mt-4"><i class="bi bi-geo-alt"></i> Endereço</h6>
-                        <div class="row g-3">
-                            <div class="col-md-3"><label class="form-label">CEP</label><input type="text" class="form-control" id="edit-cep"></div>
-                            <div class="col-md-7"><label class="form-label">Logradouro</label><input type="text" class="form-control" id="edit-logradouro"></div>
-                            <div class="col-md-2"><label class="form-label">Número</label><input type="text" class="form-control" id="edit-numero"></div>
-                            <div class="col-md-4"><label class="form-label">Complemento</label><input type="text" class="form-control" id="edit-complemento"></div>
-                            <div class="col-md-4"><label class="form-label">Bairro</label><input type="text" class="form-control" id="edit-bairro"></div>
-                            <div class="col-md-3"><label class="form-label">Cidade</label><input type="text" class="form-control" id="edit-cidade"></div>
-                            <div class="col-md-1"><label class="form-label">UF</label><input type="text" class="form-control" id="edit-estado"></div>
-                            <div class="col-12"><label class="form-label">Ponto de Referência</label><input type="text" class="form-control" id="edit-referencia"></div>
-                            <div class="col-12"><hr></div>
-                            <div class="col-12"><label class="form-label fw-bold">Observações</label><textarea class="form-control" id="edit-obs" rows="3"></textarea></div>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
-                    <button type="button" class="btn btn-primary" id="btn-salvar-detalhes" onclick="salvarAlteracoes()">Salvar Dados</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal fade" id="modal-script-auditoria" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal fade" id="modalAuditoria" tabindex="-1" data-bs-backdrop="static" aria-hidden="true">
         <div class="modal-dialog modal-fullscreen">
             <div class="modal-content">
                 <div class="modal-header bg-primary text-white">
-                    <h5 class="modal-title"><i class="bi bi-headset"></i> Roteiro de Auditoria - Venda #<span id="script-id-venda"></span></h5>
+                    <h5 class="modal-title"><i class="bi bi-headset me-2"></i>Roteiro de Auditoria - Venda #<span id="script-id-venda"></span></h5>
                     <button type="button" class="btn-close btn-close-white" onclick="fecharScriptSemSalvar()"></button>
                 </div>
                 <div class="modal-body bg-light">
-                    <div class="container py-3">
+                    <input type="hidden" id="auditoria_id_venda">
+                    
+                    <div class="container py-4" style="max-width: 1100px;">
                         
-                        <div class="script-section shadow-sm bg-white">
+                        <div class="script-section">
                             <div class="script-title">1. Introdução</div>
                             <p class="script-text">
-                                "Bom (dia/tarde), tudo bem? Aqui é <strong><span id="script-user-logado" class="text-primary"></span></strong> da Nio Fibra. 
+                                "Bom (dia/tarde), tudo bem? Aqui é <strong><span id="script-user-logado" class="text-primary text-uppercase"></span></strong> da Nio Fibra. 
                                 Estou ligando para confirmar os dados do seu pedido e passar algumas informações importantes. 
                                 Posso prosseguir com a auditoria?"
                             </p>
                         </div>
 
-                        <div class="script-section shadow-sm bg-white">
+                        <div class="script-section">
                             <div class="script-title">2. Confirmação de Identidade</div>
-                            <p class="script-text">"Poderia, por gentileza, confirmar seu nome completo?"</p>
-                            <div class="dado-sistema mb-2"><i class="bi bi-person"></i> Sistema: <span id="script-cliente-nome"></span></div>
                             
-                            <p class="script-text mt-3">"Poderia me informar os três primeiros números do seu CPF?"</p>
-                            <div class="dado-sistema mb-2"><i class="bi bi-card-heading"></i> Sistema: <span id="script-cliente-cpf"></span></div>
+                            <p class="script-text mb-1">"Poderia, por gentileza, confirmar seu nome completo?"</p>
+                            <div class="mb-3">
+                                <input type="text" class="form-control form-control-script uppercase-input fs-5 text-primary" id="audit-cliente-nome">
+                            </div>
 
-                            <p class="script-text mt-3">"Poderia confirmar o nome da sua mãe e sua data de nascimento?"</p>
-                            <div class="row">
-                                <div class="col-md-6"><div class="dado-sistema"><i class="bi bi-person-standing-dress"></i> Mãe: <span id="script-cliente-mae"></span></div></div>
+                            <p class="script-text mb-1">"Poderia me informar os três primeiros números do seu CPF?"</p>
+                            <div class="mb-3">
+                                 <input type="text" class="form-control form-control-script" id="audit-cliente-cpf" maxlength="18" onkeyup="mascaraCPF(this)">
+                            </div>
+
+                            <p class="script-text mb-1">"Poderia confirmar o nome da sua mãe e sua data de nascimento?"</p>
+                            <div class="row g-3">
                                 <div class="col-md-6">
-                                    <div class="dado-sistema">
-                                        <i class="bi bi-calendar"></i> Nasc: <span id="script-cliente-nasc"></span>
-                                        <span id="script-cliente-idade" class="ms-2 text-muted small" style="font-style: italic;"></span>
+                                    <label class="small text-muted">Mãe</label>
+                                    <input type="text" class="form-control form-control-script uppercase-input" id="audit-nome-mae">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="small text-muted">Data Nasc.</label>
+                                    <input type="date" class="form-control form-control-script" id="audit-data-nasc" onchange="calcularIdadeAuto()">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="small text-muted">Idade</label>
+                                    <input type="text" class="form-control bg-white" id="audit-idade-calc" readonly>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="script-section">
+                            <div class="script-title">3. Contato e WhatsApp</div>
+                            <p class="script-text mb-2">"Qual é o seu número de telefone no WhatsApp?"</p>
+                            
+                            <div class="mb-3" style="max-width: 400px;">
+                                <div class="input-group">
+                                    <span class="input-group-text bg-success text-white"><i class="bi bi-whatsapp"></i></span>
+                                    <input type="text" class="form-control form-control-script fs-5" id="audit-tel1" maxlength="15" onkeyup="mascaraTelefone(this)">
+                                </div>
+                            </div>
+
+                            <div class="alert alert-warning border-warning my-4">
+                                <div class="d-flex">
+                                    <div class="me-3 fs-3"><i class="bi bi-exclamation-triangle-fill text-warning"></i></div>
+                                    <div>
+                                        <h6 class="fw-bold">Aviso Importante (Ler Obrigatóriamente):</h6>
+                                        <p class="mb-0 fst-italic fs-5">
+                                            "Lembrando que é nesse número que você receberá a confirmação do pedido. 
+                                            Para confirmar a instalação, preciso que após receber a mensagem da Nio no seu WhatsApp você digite <strong>'SIM'</strong>. 
+                                            No WhatsApp da Nio, você poderá acompanhar a instalação em tempo real e até mesmo reagendar. Ficou claro?"
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <p class="script-text mb-2">"Poderia me informar um segundo telefone de contato e seu e-mail?"</p>
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="small text-muted">Tel 2</label>
+                                    <input type="text" class="form-control form-control-script" id="audit-tel2" maxlength="15" onkeyup="mascaraTelefone(this)">
+                                </div>
+                                <div class="col-md-8">
+                                    <label class="small text-muted">E-mail</label>
+                                    <input type="email" class="form-control form-control-script" id="audit-email">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="script-section">
+                            <div class="script-title">4. Endereço de Instalação</div>
+                            <p class="script-text mb-3">"Agora, vamos confirmar o seu endereço de instalação. Poderia confirmar Nome da Rua, Número e CEP?"</p>
+                            
+                            <div class="row g-2">
+                                <div class="col-md-2">
+                                    <div class="form-floating">
+                                        <input type="text" class="form-control form-control-script" id="audit-cep" maxlength="9" onkeyup="mascaraCEP(this)">
+                                        <label>CEP</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-floating">
+                                        <input type="text" class="form-control form-control-script uppercase-input" id="audit-logradouro">
+                                        <label>Rua / Logradouro</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-2">
+                                    <div class="form-floating">
+                                        <input type="text" class="form-control form-control-script" id="audit-numero">
+                                        <label>Número</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-2">
+                                    <div class="form-floating">
+                                        <input type="text" class="form-control form-control-script uppercase-input" id="audit-uf">
+                                        <label>UF</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-floating">
+                                        <input type="text" class="form-control form-control-script uppercase-input" id="audit-complemento">
+                                        <label>Complemento</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-floating">
+                                        <input type="text" class="form-control form-control-script uppercase-input" id="audit-bairro">
+                                        <label>Bairro</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-floating">
+                                        <input type="text" class="form-control form-control-script uppercase-input" id="audit-cidade">
+                                        <label>Cidade</label>
+                                    </div>
+                                </div>
+                                <div class="col-12">
+                                    <div class="form-floating">
+                                        <input type="text" class="form-control form-control-script uppercase-input" id="audit-ref">
+                                        <label>Ponto de Referência</label>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div class="script-section shadow-sm bg-white">
-                            <div class="script-title">3. Contato e WhatsApp</div>
-                            <p class="script-text">"Qual é o seu número de telefone no WhatsApp?"</p>
-                            <div class="dado-sistema mb-3"><i class="bi bi-whatsapp"></i> Sistema: <span id="script-cliente-tel1"></span></div>
-                            
-                            <div class="alert alert-info border-info">
-                                <i class="bi bi-info-circle-fill"></i> <strong>Aviso Importante:</strong><br>
-                                "Lembrando que é nesse número que você receberá a confirmação do pedido. Para confirmar a instalação, 
-                                preciso que após receber a mensagem da Nio no seu WhatsApp você digite 'SIM'. 
-                                No WhatsApp da Nio, você poderá acompanhar a instalação em tempo real e até mesmo reagendar. Ficou claro?"
-                            </div>
-
-                            <p class="script-text mt-2">"Poderia me informar um segundo telefone de contato e seu e-mail?"</p>
-                            <div class="dado-sistema"><i class="bi bi-phone"></i> Tel 2: <span id="script-cliente-tel2"></span></div>
-                            <div class="dado-sistema mt-1"><i class="bi bi-envelope"></i> Email: <span id="script-cliente-email"></span></div>
-                        </div>
-
-                        <div class="script-section shadow-sm bg-white">
-                            <div class="script-title">4. Endereço de Instalação</div>
-                            <p class="script-text">"Agora, vamos confirmar o seu endereço de instalação. Poderia confirmar Nome da Rua, Número e CEP?"</p>
-                            <div class="dado-sistema"><i class="bi bi-geo-alt-fill"></i> <span id="script-endereco-completo"></span></div>
-                        </div>
-
-                        <div class="script-section shadow-sm bg-white">
+                        <div class="script-section">
                             <div class="script-title">5. Plano e Pagamento</div>
-                            <p class="script-text">
-                                "O plano que você contratou foi o <span class="dado-sistema" id="script-plano-nome"></span> 
-                                com o valor de <span class="dado-sistema" id="script-plano-valor"></span> 
-                                e a forma de pagamento foi <span class="dado-sistema" id="script-forma-pag"></span>."
-                            </p>
-                            <p class="script-text mt-2">"A fidelidade do plano é de 12 meses. Você está ciente do valor contratado, do plano e da fidelidade mencionada?"</p>
-                            <div class="alert alert-warning border-warning mt-2" id="script-alerta-cartao" style="display: none;">
-                                <i class="bi bi-credit-card"></i> <strong>Se Cartão de Crédito:</strong> "É importante verificar se você possui limite disponível."
-                            </div>
-                        </div>
-
-                        <div class="script-section shadow-sm bg-white">
-                            <div class="script-title">6. Agendamento & Observações</div>
-                            <p class="script-text">"Poderia me informar qual o melhor dia da semana e horário (manhã ou tarde) para agendarmos a instalação?"</p>
                             
-                            <div class="row g-3 p-3 bg-light border rounded mb-3">
-                                <div class="col-12 text-primary fw-bold small text-uppercase">Agendamento Preferencial (Vendedor)</div>
-                                <div class="col-md-6">
-                                    <strong>Data:</strong> <span id="script-agendamento-data-display">-</span>
-                                </div>
-                                <div class="col-md-6">
-                                    <strong>Turno:</strong> <span id="script-agendamento-turno-display">-</span>
-                                </div>
+                            <div class="p-3 bg-primary-subtle border border-primary rounded mb-3">
+                                <p class="script-text mb-0">
+                                    "O plano que você contratou foi o <strong class="text-primary text-uppercase" id="txt-plano-nome">...</strong> 
+                                    com o valor de <strong class="text-success" id="txt-plano-valor">R$ ...</strong> 
+                                    e a forma de pagamento foi <strong class="text-dark text-uppercase" id="txt-pagamento-nome">...</strong>."
+                                </p>
                             </div>
 
-                            <div class="mb-3 p-3 bg-white border rounded">
-                                <label class="form-label fw-bold text-primary"><i class="bi bi-pencil-square"></i> Observações da Auditoria (Obrigatório se tiver divergência)</label>
-                                <textarea class="form-control" id="script-obs-venda" rows="3" placeholder="Anote aqui qualquer detalhe da auditoria..."></textarea>
+                            <p class="script-text mb-3">"A fidelidade do plano é de 12 meses. Você está ciente do valor contratado, do plano e da fidelidade mencionada?"</p>
+
+                            <div class="row g-3 p-3 bg-light rounded border">
+                                <div class="col-12 text-muted fw-bold small text-uppercase mb-1">Dados do Sistema (Corrija se necessário):</div>
+                                <div class="col-md-6">
+                                    <label class="form-label small">Plano Selecionado</label>
+                                    <select class="form-select form-control-script" id="audit-plano" onchange="atualizarTextoPlano()"></select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small">Forma de Pagamento</label>
+                                    <select class="form-select form-control-script" id="audit-pagamento" onchange="atualizarTextoPlano()"></select>
+                                </div>
                             </div>
                         </div>
 
-                        <div class="script-section shadow-sm bg-white">
+                        <div class="script-section">
+                            <div class="script-title">6. Agendamento & Observações</div>
+                            <p class="script-text mb-3">"Poderia me informar qual o melhor dia da semana e horário (manhã ou tarde) para agendarmos a instalação?"</p>
+                            
+                            <div class="card bg-light border-0 mb-3">
+                                <div class="card-body">
+                                    <h6 class="card-subtitle mb-3 text-muted text-uppercase small fw-bold">Agendamento Preferencial (Vendedor)</h6>
+                                    <div class="row g-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label fw-bold">Data</label>
+                                            <input type="date" class="form-control" id="audit-data-agendamento">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label fw-bold">Turno</label>
+                                            <select class="form-select" id="audit-turno-agendamento">
+                                                <option value="">Não agendado</option>
+                                                <option value="MANHA">Manhã</option>
+                                                <option value="TARDE">Tarde</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mb-2">
+                                <label class="form-label fw-bold text-danger">Observações da Auditoria (Obrigatório se houver divergência)</label>
+                                <textarea class="form-control uppercase-input" id="script-obs-venda" rows="3" placeholder="Anote aqui qualquer divergência, correção ou detalhe importante..."></textarea>
+                            </div>
+                        </div>
+
+                        <div class="script-section">
                             <div class="script-title">7. Encerramento</div>
                             <p class="script-text">
                                 "Para finalizar, gostaria de informar que temos o aplicativo Nio. Nele, você pode acompanhar a internet, 
@@ -283,61 +380,25 @@
 
                     </div>
                 </div>
-                <div class="modal-footer bg-light justify-content-between flex-wrap">
-                    <button type="button" class="btn btn-danger btn-lg fw-bold btn-action-responsive" onclick="abrirModalReprovacao()">
-                        <i class="bi bi-x-circle"></i> REPROVAR
+                
+                <div class="modal-footer bg-light justify-content-between flex-wrap shadow-lg">
+                    <button type="button" class="btn btn-danger btn-lg fw-bold" onclick="abrirModalReprovacao()">
+                        <i class="bi bi-x-circle-fill"></i> REPROVAR / PENDENCIAR
                     </button>
                     
-                    <div class="d-flex gap-2 flex-wrap justify-content-end w-sm-100">
-                        <button type="button" class="btn btn-secondary btn-lg btn-action-responsive" onclick="fecharScriptSemSalvar()">Sair (Liberar)</button>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-secondary btn-lg" onclick="fecharScriptSemSalvar()">
+                            Sair (Liberar)
+                        </button>
                         
-                        <button type="button" class="btn btn-success btn-lg fw-bold btn-action-responsive" onclick="finalizarComoAuditada()">
-                            <i class="bi bi-check-circle"></i> APROVAR (Auditada)
+                        <button type="button" class="btn btn-success btn-lg fw-bold" onclick="finalizarComoAuditada()">
+                            <i class="bi bi-check-circle-fill"></i> APROVAR (Só Auditar)
                         </button>
 
-                        <button type="button" class="btn btn-primary btn-lg fw-bold btn-action-responsive" onclick="prepararAgendamento()">
-                            <i class="bi bi-calendar-plus"></i> APROVAR E CADASTRAR
+                        <button type="button" class="btn btn-primary btn-lg fw-bold" onclick="prepararAgendamento()">
+                            <i class="bi bi-calendar-plus-fill"></i> APROVAR E CADASTRAR
                         </button>
                     </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal fade" id="modal-agendamento" tabindex="-1" data-bs-backdrop="static">
-        <div class="modal-dialog">
-            <div class="modal-content border-primary">
-                <div class="modal-header bg-primary text-white">
-                    <h5 class="modal-title"><i class="bi bi-calendar-check"></i> Dados do Agendamento (Esteira)</h5>
-                    <button type="button" class="btn-close btn-close-white" onclick="cancelarAgendamento()"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="alert alert-info small">Você está aprovando e movendo para a esteira (<strong>CADASTRADA</strong>). Preencha os dados da O.S.</div>
-                    <form id="form-agendamento">
-                        <div class="mb-3">
-                            <label class="form-label fw-bold">Número da O.S. <span class="text-danger">*</span></label>
-                            <input type="text" class="form-control" id="agenda-os" required placeholder="Digite a O.S. da Operadora">
-                            <div id="os-feedback" class="invalid-feedback">Esta O.S. já existe no sistema!</div>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label fw-bold">Data Agendada <span class="text-danger">*</span></label>
-                                <input type="date" class="form-control" id="agenda-data" required>
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label fw-bold">Turno <span class="text-danger">*</span></label>
-                                <select class="form-select" id="agenda-turno" required>
-                                    <option value="">Selecione...</option>
-                                    <option value="MANHA">Manhã</option>
-                                    <option value="TARDE">Tarde</option>
-                                </select>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" onclick="cancelarAgendamento()">Voltar</button>
-                    <button type="button" class="btn btn-primary" id="btn-salvar-agendamento" onclick="salvarAgendamento()">Confirmar e Enviar</button>
                 </div>
             </div>
         </div>
@@ -347,25 +408,48 @@
         <div class="modal-dialog">
             <div class="modal-content border-danger">
                 <div class="modal-header bg-danger text-white">
-                    <h5 class="modal-title"><i class="bi bi-exclamation-triangle-fill"></i> Reprovar Venda</h5>
+                    <h5 class="modal-title">Reprovar / Pendenciar Venda</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <p>Selecione o motivo da reprovação ou pendência:</p>
+                    <p>Selecione o motivo de reprovação ou pendência:</p>
                     <div class="mb-3">
                         <label class="form-label fw-bold">Novo Status</label>
                         <select class="form-select" id="repro-status">
-                            <option value="">Selecione...</option>
+                            <option value="">Carregando...</option>
                         </select>
                     </div>
+
+                    <div id="div-campos-aguardando-pagamento" style="display: none;" class="p-3 mb-3 bg-light border rounded">
+                        <div class="text-danger small fw-bold text-uppercase mb-2">Preencha os dados do pedido criado:</div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Número da O.S. <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="repro-os" placeholder="Ex: 12345">
+                        </div>
+                        <div class="row">
+                            <div class="col-6">
+                                <label class="form-label fw-bold">Data Agendada <span class="text-danger">*</span></label>
+                                <input type="date" class="form-control" id="repro-data">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label fw-bold">Turno <span class="text-danger">*</span></label>
+                                <select class="form-select" id="repro-turno">
+                                    <option value="">Selecione...</option>
+                                    <option value="MANHA">Manhã</option>
+                                    <option value="TARDE">Tarde</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="mb-3">
                         <label class="form-label fw-bold">Observação Obrigatória</label>
-                        <textarea class="form-control" id="repro-obs" rows="4" placeholder="Descreva o motivo para o vendedor..."></textarea>
+                        <textarea class="form-control uppercase-input" id="repro-obs" rows="4"></textarea>
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="button" class="btn btn-danger" onclick="confirmarReprovacao()">Confirmar Reprovação</button>
+                    <button type="button" class="btn btn-danger" onclick="confirmarReprovacao()">Confirmar</button>
                 </div>
             </div>
         </div>
@@ -381,7 +465,9 @@
                 <div class="modal-body">
                     <p>Copie a mensagem abaixo para enviar no grupo:</p>
                     <textarea id="aprovacao-mensagem" class="form-control mb-3" rows="12" readonly></textarea>
-                    <button class="btn btn-outline-success w-100" onclick="copiarMensagem()"><i class="bi bi-whatsapp"></i> Copiar Mensagem</button>
+                    <button id="btn-copiar" class="btn btn-outline-success w-100" onclick="copiarMensagem()">
+                        <i class="bi bi-whatsapp"></i> Copiar Mensagem
+                    </button>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
@@ -390,475 +476,571 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <div class="modal fade" id="modal-agendamento" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog">
+            <div class="modal-content border-primary">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">Dados do Agendamento (Esteira)</h5>
+                    <button type="button" class="btn-close btn-close-white" onclick="cancelarAgendamento()"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info small">Você está aprovando e movendo para a esteira (<strong>CADASTRADA</strong>). Preencha a O.S.</div>
+                    <form id="form-agendamento">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Número da O.S. <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="agenda-os" required>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold">Data Agendada <span class="text-danger">*</span></label>
+                                <input type="date" class="form-control" id="agenda-data-final" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold">Turno <span class="text-danger">*</span></label>
+                                <select class="form-select" id="agenda-turno-final" required>
+                                    <option value="">Selecione...</option>
+                                    <option value="MANHA">Manhã</option>
+                                    <option value="TARDE">Tarde</option>
+                                </select>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="cancelarAgendamento()">Voltar</button>
+                    <button type="button" class="btn btn-primary" onclick="salvarAgendamentoFinal()">Confirmar e Enviar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{% static 'js/auth.js' %}?v=3.1"></script>
     <script src="{% static 'js/menu.js' %}?v=1.3"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     
     <script>
-        const token = localStorage.getItem('accessToken');
-        if(!token) window.location.href = '/';
-
-        const decodedToken = jwt_decode(token);
-        const userProfile = decodedToken ? (decodedToken.user_role || decodedToken.perfil) : null;
-        const currentUserId = decodedToken ? decodedToken.user_id : null; 
-        const isSupervisor = ['Diretoria', 'Admin', 'Supervisor', 'BackOffice'].includes(userProfile);
-
+        // Configurações Globais
+        const API_BASE = '/api/crm/vendas';
+        const API_AUX = '/api/crm';
+        
         let vendas = [];
+        let vendaEmAuditoria = null;
         let globalStatusOptions = [];
-        let tempVendaId = null;
-        let vendaEmAuditoria = null; 
+        let planosOptions = [];
+        let formasPagamentoOptions = [];
 
-        const modalDetalhes = new bootstrap.Modal(document.getElementById('modal-detalhes'));
-        const modalScript = new bootstrap.Modal(document.getElementById('modal-script-auditoria'));
-        const modalAgendamento = new bootstrap.Modal(document.getElementById('modal-agendamento'));
-        const aprovacaoModal = new bootstrap.Modal(document.getElementById('modal-aprovacao'));
+        // Inicialização dos Modais
+        const modalAuditoria = new bootstrap.Modal(document.getElementById('modalAuditoria'));
         const modalReprovacao = new bootstrap.Modal(document.getElementById('modal-reprovacao'));
+        const modalAprovacao = new bootstrap.Modal(document.getElementById('modal-aprovacao'));
+        const modalAgendamento = new bootstrap.Modal(document.getElementById('modal-agendamento'));
 
-        document.addEventListener('DOMContentLoaded', () => {
-            carregarVendas();
-            document.getElementById('edit-cep').addEventListener('blur', buscarCepEdit);
+        $(document).ready(function() {
+            if (!localStorage.getItem('accessToken')) {
+                window.location.href = '/';
+                return;
+            }
+
+            $(document).on('input', '.uppercase-input', function() {
+                this.value = this.value.toUpperCase();
+            });
+
+            // Monitorar mudança no dropdown de reprovação para mostrar campos extras
+            $('#repro-status').change(function() {
+                const text = $(this).find('option:selected').text().toUpperCase();
+                if(text.includes('AGUARDANDO PAGAMENTO')) {
+                    $('#div-campos-aguardando-pagamento').slideDown();
+                } else {
+                    $('#div-campos-aguardando-pagamento').slideUp();
+                    $('#repro-os').val('');
+                    // Se ocultar, podemos optar por limpar ou manter os dados. 
+                    // Como já copiamos do principal ao abrir, talvez seja melhor manter ou limpar. 
+                    // Vou limpar para evitar envio acidental se mudar de status.
+                    // Mas vou restaurar os valores originais da auditoria caso o usuário volte atrás?
+                    // Por simplicidade, vou limpar apenas o OS que é exclusivo daqui.
+                    // Data e Turno vou manter preenchidos caso ele volte para Aguardando Pagamento.
+                }
+            });
+
+            carregarAuxiliares().then(() => {
+                carregarVendasPendentes();
+            });
+            
+            iniciarMonitoramentoInatividade();
         });
 
-        function mostrarErroDetalhado(error, contexto = 'atualizar') {
-            console.error(`Erro ao ${contexto}:`, error);
-            alert(`Erro ao ${contexto}. Verifique o console.`);
-        }
-
-        function calcularIdade(dataNascimento) {
-            if (!dataNascimento) return '';
-            const hoje = new Date();
-            const parts = dataNascimento.split('-');
-            const nascimento = new Date(parts[0], parts[1] - 1, parts[2]);
-            let anos = hoje.getFullYear() - nascimento.getFullYear();
-            let meses = hoje.getMonth() - nascimento.getMonth();
-            let dias = hoje.getDate() - nascimento.getDate();
-            if (meses < 0 || (meses === 0 && dias < 0)) { anos--; meses += 12; }
-            if (dias < 0) { meses--; if (meses < 0) meses = 11; }
-            return `(${anos} anos e ${meses} meses)`;
-        }
-
-        async function carregarVendas(silent = false) {
-            const tbody = document.getElementById('tabela-auditoria-body');
-            if (!silent) tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>';
-            
-            try {
-                const timestamp = new Date().getTime();
-                const statusRes = await apiClient.get('/api/crm/status/?tipo=Tratamento');
-                globalStatusOptions = statusRes.data;
-                const res = await apiClient.get(`/api/crm/vendas/?flow=auditoria&_t=${timestamp}`);
-                
-                vendas = res.data.filter(v => {
-                    if (!v.status_tratamento || !v.status_tratamento.estado) return true; 
-                    return v.status_tratamento.estado.toUpperCase() !== 'FECHADO';
-                });
-
-                if(vendas.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-muted">Nenhuma venda pendente.</td></tr>';
-                } else {
-                    tbody.innerHTML = '';
-                    vendas.forEach(v => {
-                        const dataFmt = new Date(v.data_criacao).toLocaleDateString('pt-BR');
-                        const statusNome = v.status_tratamento ? v.status_tratamento.nome : '-';
-                        const alteradoPor = v.alterado_por || '-';
-                        
-                        const auditorId = v.auditor_atual_id; 
-                        const auditorNome = v.auditor_atual_nome;
-                        const estaTravado = auditorId !== null;
-                        const travadoPorMim = auditorId === currentUserId;
-                        
-                        // CORREÇÃO DO NOME DO VENDEDOR (EVITAR UNDEFINED)
-                        let nomeVendedor = 'N/A';
-                        if (v.vendedor_nome) nomeVendedor = v.vendedor_nome;
-                        else if (v.vendedor && v.vendedor.username) nomeVendedor = v.vendedor.username;
-                        else if (v.vendedor && v.vendedor.first_name) nomeVendedor = v.vendedor.first_name;
-
-                        let classeLinha = '';
-                        let auditorHtml = '-';
-                        let botoesHtml = '';
-
-                        if (estaTravado) {
-                            if (travadoPorMim) {
-                                auditorHtml = `<span class="auditor-badge bg-success text-white"><i class="bi bi-person-fill"></i> VOCÊ</span>`;
-                                botoesHtml = `<button class="btn btn-sm btn-primary rounded-pill px-3" onclick="tentarAuditoria(${v.id})">Continuar <i class="bi bi-arrow-right"></i></button>`;
-                            } else {
-                                classeLinha = 'locked-row';
-                                auditorHtml = `<span class="auditor-badge"><i class="bi bi-lock-fill"></i> ${auditorNome}</span>`;
-                                if (isSupervisor) {
-                                    botoesHtml = `<button class="btn btn-sm btn-outline-danger" onclick="liberarVenda(${v.id})" title="Forçar Liberação"><i class="bi bi-unlock-fill"></i></button>`;
-                                } else {
-                                    botoesHtml = `<span class="text-muted small"><i class="bi bi-lock"></i> Em uso</span>`;
-                                }
-                            }
-                        } else {
-                            botoesHtml = `
-                                <button class="btn btn-sm btn-dark me-1 rounded-circle p-2" onclick="tentarAuditoria(${v.id})" title="Iniciar Auditoria"><i class="bi bi-headset"></i></button>
-                                <button class="btn btn-sm btn-outline-secondary me-1 rounded-circle p-2" onclick="abrirDetalhes(${v.id})" title="Editar"><i class="bi bi-pencil"></i></button>
-                            `;
-                        }
-
-                        const corFundo = (v.status_tratamento && v.status_tratamento.cor) ? v.status_tratamento.cor : 'transparent';
-                        const rowStyle = `background: #fff; border: 1px solid rgba(0,0,0,0.1); box-shadow: -4px 4px 0px ${corFundo}; border-radius: 10px;`;
-
-                        const tr = document.createElement('tr');
-                        tr.style.cssText = rowStyle;
-                        if(classeLinha) tr.classList.add(classeLinha);
-
-                        tr.innerHTML = `
-                            <td class="fw-bold text-primary ps-4">#${v.id}</td>
-                            <td>${dataFmt}</td>
-                            <td><div class="fw-bold">${v.cliente.nome_razao_social || 'S/ Nome'}</div><div class="small text-muted">${v.cliente.cpf_cnpj || ''}</div></td>
-                            <td>${nomeVendedor}</td>
-                            <td><span class="badge bg-light text-dark border">${statusNome}</span></td>
-                            <td>${auditorHtml}</td>
-                            <td><small class="text-muted fw-bold">${alteradoPor}</small></td>
-                            <td class="text-end pe-4">${botoesHtml}</td>
-                        `;
-                        tbody.appendChild(tr);
-                    });
-                }
-            } catch (e) {
-                if(!silent) tbody.innerHTML = '<tr><td colspan="8" class="text-danger text-center">Erro ao carregar vendas.</td></tr>';
+        // --- MÁSCARAS ---
+        function mascaraCPF(i) {
+            let v = i.value;
+            if(v.length > 14) { 
+                v = v.replace(/\D/g, "").replace(/^(\d{2})(\d)/, "$1.$2").replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3").replace(/\.(\d{3})(\d)/, ".$1/$2").replace(/(\d{4})(\d)/, "$1-$2");
+            } else { 
+                v = v.replace(/\D/g, "").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d{1,2})$/, "$1-$2");
             }
+            i.value = v;
         }
 
-        async function tentarAuditoria(id) {
-            try {
-                await apiClient.post(`/api/crm/vendas/${id}/alocar-auditoria/`, {});
-                iniciarAuditoriaScript(id);
-                carregarVendas(true);
-            } catch (e) {
-                if (e.message && e.message.includes('409')) { alert('Esta venda acabou de ser pega por outro auditor!'); } 
-                else { alert('Erro ao tentar acessar a venda. Tente novamente.'); }
-                carregarVendas(true);
-            }
+        function mascaraTelefone(i) {
+            let v = i.value.replace(/\D/g, "").replace(/^(\d{2})(\d)/g, "($1) $2").replace(/(\d)(\d{4})$/, "$1-$2");
+            i.value = v;
         }
 
-        async function liberarVenda(id) {
-            if(!confirm("Tem certeza que deseja forçar a liberação desta venda?")) return;
-            try {
-                await apiClient.post(`/api/crm/vendas/${id}/liberar-auditoria/`, {});
-                carregarVendas(true);
-            } catch (e) { alert('Erro ao liberar venda.'); }
+        function mascaraCEP(i) {
+            let v = i.value.replace(/\D/g, "").replace(/^(\d{5})(\d)/, "$1-$2");
+            i.value = v;
         }
 
-        function iniciarAuditoriaScript(id) {
-            const v = vendas.find(x => x.id === id);
-            if(!v) return;
-            vendaEmAuditoria = v;
-
-            const payload = jwt_decode(token);
-            document.getElementById('script-user-logado').textContent = (payload.user_name || 'Consultor').toUpperCase();
-            document.getElementById('script-id-venda').textContent = v.id;
-            document.getElementById('script-cliente-nome').textContent = v.cliente.nome_razao_social || 'NÃO INFORMADO';
-            document.getElementById('script-cliente-cpf').textContent = v.cliente.cpf_cnpj || 'NÃO INFORMADO';
-            document.getElementById('script-obs-venda').value = v.observacoes || '';
-            
-            // Dados Agendamento (Display apenas)
-            document.getElementById('script-agendamento-data-display').textContent = v.data_agendamento ? new Date(v.data_agendamento).toLocaleDateString('pt-BR') : 'Não agendado';
-            document.getElementById('script-agendamento-turno-display').textContent = v.periodo_agendamento || 'Não agendado';
-
-            // Demais campos
-            const dtNasc = v.data_nascimento || '';
-            document.getElementById('script-cliente-nasc').textContent = dtNasc ? new Date(dtNasc).toLocaleDateString('pt-BR') : 'N/A';
-            document.getElementById('script-cliente-idade').textContent = calcularIdade(dtNasc);
-            document.getElementById('script-cliente-mae').textContent = v.nome_mae || 'N/A';
-            document.getElementById('script-cliente-tel1').textContent = v.telefone1 || '-';
-            document.getElementById('script-cliente-tel2').textContent = v.telefone2 || 'Não informado';
-            document.getElementById('script-cliente-email').textContent = v.cliente.email || 'Não informado';
-            
-            const end = `${v.logradouro || ''}, ${v.numero_residencia || ''} ${v.complemento ? '- ' + v.complemento : ''} - ${v.bairro || ''} - CEP: ${v.cep || ''}`;
-            document.getElementById('script-endereco-completo').textContent = end;
-            document.getElementById('script-plano-nome').textContent = v.plano ? v.plano.nome : '-';
-            let valorDisplay = v.plano ? parseFloat(v.plano.valor) : 0.0;
-            const formaPag = v.forma_pagamento ? v.forma_pagamento.nome.toUpperCase() : '';
-            if(formaPag.includes('CARTÃO') || formaPag.includes('CREDITO')) {
-                valorDisplay -= 10.0;
-                document.getElementById('script-alerta-cartao').style.display = 'block';
-            } else {
-                document.getElementById('script-alerta-cartao').style.display = 'none';
-            }
-            document.getElementById('script-plano-valor').textContent = valorDisplay.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
-            document.getElementById('script-forma-pag').textContent = v.forma_pagamento ? v.forma_pagamento.nome : '-';
-
-            modalScript.show();
-        }
-
-        function fecharScriptSemSalvar() {
-            if(vendaEmAuditoria) {
-                apiClient.post(`/api/crm/vendas/${vendaEmAuditoria.id}/liberar-auditoria/`, {})
-                    .then(() => carregarVendas(true)).catch(() => {});
-            }
-            modalScript.hide();
-        }
-
-        // --- FLUXO 1: APROVAR (SOMENTE AUDITADA) ---
-        async function finalizarComoAuditada() {
-            if(!vendaEmAuditoria) return;
-            const statusAuditada = globalStatusOptions.find(s => s.nome.toUpperCase() === 'AUDITADA');
-            if(!statusAuditada) { alert("Status 'AUDITADA' não encontrado!"); return; }
-
-            const obsNova = document.getElementById('script-obs-venda').value;
-
-            try {
-                await apiClient.patch(`/api/crm/vendas/${vendaEmAuditoria.id}/`, {
-                    status_tratamento: statusAuditada.id,
-                    observacoes: obsNova
-                });
-                await apiClient.post(`/api/crm/vendas/${vendaEmAuditoria.id}/liberar-auditoria/`, {});
-                
-                modalScript.hide();
-                carregarVendas(true);
-                gerarAprovacao(vendaEmAuditoria.id); 
-            } catch(e) { mostrarErroDetalhado(e, 'salvar auditoria'); }
-        }
-
-        // --- FLUXO 2: APROVAR E CADASTRAR (ABRE MODAL OS) ---
-        function prepararAgendamento() {
-            if(!vendaEmAuditoria) return;
-            modalScript.hide();
-            document.getElementById('form-agendamento').reset();
-            document.getElementById('agenda-os').classList.remove('is-invalid');
-            
-            if(vendaEmAuditoria.data_agendamento) document.getElementById('agenda-data').value = vendaEmAuditoria.data_agendamento;
-            if(vendaEmAuditoria.periodo_agendamento) document.getElementById('agenda-turno').value = vendaEmAuditoria.periodo_agendamento;
-            
-            tempVendaId = vendaEmAuditoria.id; 
-            modalAgendamento.show();
-        }
-
-        // --- SALVAR DO MODAL DE AGENDAMENTO (UNIFICADO) ---
-        async function salvarAgendamento() {
-            const btn = document.getElementById('btn-salvar-agendamento');
-            const os = document.getElementById('agenda-os').value.trim();
-            const data = document.getElementById('agenda-data').value;
-            const turno = document.getElementById('agenda-turno').value;
-            const idAlvo = vendaEmAuditoria ? vendaEmAuditoria.id : tempVendaId;
-
-            if (!os || !data || !turno) { alert("Preencha todos os campos."); return; }
-            btn.disabled = true; btn.innerHTML = 'Salvando...';
-
-            const statusCadastrada = globalStatusOptions.find(s => s.nome.toUpperCase() === 'CADASTRADA');
-            if(!statusCadastrada) { alert("Status 'CADASTRADA' não encontrado!"); btn.disabled=false; return; }
-
-            try {
-                const res = await apiClient.get(`/api/crm/vendas/?ordem_servico=${os}`);
-                const duplicada = res.data.some(v => v.id !== idAlvo);
-                if (duplicada) {
-                    document.getElementById('agenda-os').classList.add('is-invalid');
-                    btn.disabled = false; btn.innerHTML = 'Confirmar e Enviar'; return; 
-                } 
-                document.getElementById('agenda-os').classList.remove('is-invalid');
-
-                const body = { 
-                    status_tratamento: statusCadastrada.id, 
-                    ordem_servico: os, 
-                    data_agendamento: data, 
-                    periodo_agendamento: turno 
-                };
-                
-                if(vendaEmAuditoria) {
-                    body.observacoes = document.getElementById('script-obs-venda').value;
+        function aplicarMascarasManuais() {
+            const els = ['audit-cliente-cpf', 'audit-tel1', 'audit-tel2', 'audit-cep'];
+            els.forEach(id => {
+                const el = document.getElementById(id);
+                if(el && el.value) {
+                    if(id.includes('cpf')) mascaraCPF(el);
+                    else if(id.includes('tel')) mascaraTelefone(el);
+                    else if(id.includes('cep')) mascaraCEP(el);
                 }
-
-                await apiClient.patch(`/api/crm/vendas/${idAlvo}/`, body);
-                
-                if(vendaEmAuditoria) {
-                    await apiClient.post(`/api/crm/vendas/${idAlvo}/liberar-auditoria/`, {});
-                }
-
-                modalAgendamento.hide();
-                carregarVendas(true);
-                
-                if(vendaEmAuditoria) {
-                    vendaEmAuditoria.ordem_servico = os;
-                    vendaEmAuditoria.data_agendamento = data;
-                    vendaEmAuditoria.periodo_agendamento = turno;
-                    gerarAprovacao(idAlvo);
-                } else {
-                    alert("Agendamento salvo com sucesso!");
-                }
-            } catch (e) { mostrarErroDetalhado(e, 'salvar agendamento'); } 
-            finally { btn.disabled = false; btn.innerHTML = 'Confirmar e Enviar'; }
-        }
-
-        function cancelarAgendamento() { 
-            modalAgendamento.hide(); 
-            if(vendaEmAuditoria) { modalScript.show(); } else { carregarVendas(true); }
-        }
-
-        // --- REPROVAÇÃO ---
-        function abrirModalReprovacao() {
-            const statusNegativos = globalStatusOptions.filter(s => {
-                const nome = s.nome.toUpperCase();
-                return !['AUDITADA', 'FECHADO', 'CADASTRADA', 'APROVADA'].includes(nome);
             });
-            const select = document.getElementById('repro-status');
-            select.innerHTML = '<option value="">Selecione o motivo...</option>';
-            statusNegativos.forEach(s => select.innerHTML += `<option value="${s.id}">${s.nome}</option>`);
-            document.getElementById('repro-obs').value = '';
+        }
+
+        function iniciarMonitoramentoInatividade() {
+            let tempoInativo = 0;
+            const TEMPO_LIMITE = 15 * 60; 
+            function resetar() { tempoInativo = 0; }
+            document.onmousemove = resetar;
+            document.onclick = resetar;
+            document.onkeypress = resetar;
+            setInterval(() => {
+                tempoInativo++;
+                if (tempoInativo >= TEMPO_LIMITE) logout();
+            }, 1000);
+        }
+
+        async function carregarAuxiliares() {
+            try {
+                const [statusRes, planosRes, pagRes] = await Promise.all([
+                    apiClient.get(`${API_AUX}/status/?tipo=Tratamento`),
+                    apiClient.get(`${API_AUX}/planos/`),
+                    apiClient.get(`${API_AUX}/formas-pagamento/`)
+                ]);
+                globalStatusOptions = statusRes.data;
+                planosOptions = planosRes.data;
+                formasPagamentoOptions = pagRes.data;
+
+                const selPlano = $('#audit-plano');
+                const selPag = $('#audit-pagamento');
+                selPlano.empty().append('<option value="">Selecione...</option>');
+                selPag.empty().append('<option value="">Selecione...</option>');
+                
+                planosOptions.forEach(p => selPlano.append(`<option value="${p.id}">${p.nome}</option>`));
+                formasPagamentoOptions.forEach(f => selPag.append(`<option value="${f.id}">${f.nome}</option>`));
+            } catch(e) { console.error("Erro auxiliares", e); }
+        }
+
+        // --- ATUALIZA TEXTO DO PLANO ---
+        function atualizarTextoPlano() {
+            const planoId = $('#audit-plano').val();
+            const pagId = $('#audit-pagamento').val();
+            
+            const plano = planosOptions.find(p => p.id == planoId);
+            const pag = formasPagamentoOptions.find(f => f.id == pagId);
+            
+            if (plano) {
+                $('#txt-plano-nome').text(plano.nome.toUpperCase());
+                $('#txt-plano-valor').text('R$ ' + parseFloat(plano.valor).toFixed(2).replace('.', ','));
+            } else {
+                $('#txt-plano-nome').text('...');
+                $('#txt-plano-valor').text('R$ ...');
+            }
+            
+            if (pag) {
+                $('#txt-pagamento-nome').text(pag.nome.toUpperCase());
+            } else {
+                $('#txt-pagamento-nome').text('...');
+            }
+        }
+
+        function carregarVendasPendentes() {
+            $('#loadingOverlay').show();
+            apiClient.get(`${API_BASE}/pendentes_auditoria/`)
+            .then(response => {
+                const tbody = $('#listaVendasBody');
+                tbody.empty();
+                const lista = response.data.results || response.data;
+
+                if (!lista || lista.length === 0) {
+                    tbody.append('<tr><td colspan="8" class="text-center text-muted py-4">Nenhuma venda pendente.</td></tr>');
+                    return;
+                }
+
+                lista.forEach(v => {
+                    let nomeCliente = 'N/A';
+                    let cpfCliente = '-';
+                    
+                    if (v.cliente && typeof v.cliente === 'object') {
+                        nomeCliente = v.cliente.nome_razao_social || 'N/A';
+                        cpfCliente = v.cliente.cpf_cnpj || '-';
+                    } else {
+                         nomeCliente = v.cliente_nome_razao_social || v.cliente_nome || 'N/A';
+                         cpfCliente = v.cliente_cpf_cnpj || v.cliente_cpf || '-';
+                    }
+
+                    let nomeVendedor = v.vendedor_nome || (v.vendedor ? v.vendedor.username : 'N/A');
+                    let produto = (v.plano && v.plano.nome) ? v.plano.nome : (v.plano_nome || '-');
+                    let statusNome = (v.status_tratamento && v.status_tratamento.nome) ? v.status_tratamento.nome : (v.status_tratamento || '-');
+                    let dataFormatada = v.data_criacao ? new Date(v.data_criacao).toLocaleDateString('pt-BR') : '-';
+
+                    let token = localStorage.getItem('accessToken');
+                    let myId = token ? parseInt(jwt_decode(token).user_id) : null;
+                    const nomeAuditor = v.auditor_atual_nome || `ID: ${v.auditor_atual}`;
+                    
+                    let auditorInfo = '-';
+                    let btnHtml = '';
+                    let classeLinha = '';
+
+                    if (v.auditor_atual && v.auditor_atual !== myId) {
+                        classeLinha = 'locked-row';
+                        auditorInfo = `
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="auditor-badge text-truncate" style="max-width: 100px;" title="${nomeAuditor}">
+                                    <i class="bi bi-lock-fill"></i> ${nomeAuditor}
+                                </span>
+                                <button class="btn btn-sm btn-outline-danger border-0" onclick="forcarLiberacao(${v.id})" title="Desbloquear (Admin)">
+                                    <i class="bi bi-unlock"></i>
+                                </button>
+                            </div>`;
+                        btnHtml = `<span class="badge bg-secondary">Em uso</span>`;
+                    } else if (v.auditor_atual === myId) {
+                        auditorInfo = `<span class="auditor-badge bg-success text-white">VOCÊ</span>`;
+                        btnHtml = `<button class="btn btn-auditar" onclick="retomarAuditoria(${v.id})"><i class="bi bi-play-circle"></i> Continuar</button>`;
+                    } else {
+                        btnHtml = `<button class="btn btn-auditar" onclick="tentarAuditoria(${v.id})"><i class="bi bi-headset"></i> Auditar</button>`;
+                    }
+
+                    tbody.append(`
+                        <tr class="${classeLinha}">
+                            <td class="fw-bold text-primary">#${v.id}</td>
+                            <td>${dataFormatada}</td>
+                            <td>
+                                <div class="fw-bold text-dark">${nomeCliente}</div>
+                                <div class="small text-muted" style="font-size: 0.8rem;">${cpfCliente}</div>
+                            </td>
+                            <td>${nomeVendedor}</td>
+                            <td>${produto}</td>
+                            <td><span class="badge bg-warning text-dark">${statusNome}</span></td>
+                            <td>${auditorInfo}</td>
+                            <td class="text-end">${btnHtml}</td>
+                        </tr>
+                    `);
+                });
+            })
+            .catch(e => { console.error(e); alert('Erro ao carregar vendas.'); })
+            .finally(() => $('#loadingOverlay').hide());
+        }
+
+        function tentarAuditoria(id) {
+            if(!confirm(`Iniciar auditoria da Venda #${id}?`)) return;
+            alocarVenda(id);
+        }
+
+        function retomarAuditoria(id) {
+            carregarDadosNoScript(id);
+        }
+
+        function alocarVenda(id) {
+            $('#loadingOverlay').show();
+            apiClient.post(`${API_BASE}/${id}/alocar-auditoria/`, {})
+            .then(() => carregarDadosNoScript(id))
+            .catch(err => { 
+                $('#loadingOverlay').hide();
+                if(err.response && err.response.status === 409) {
+                    alert('Venda já alocada por outro auditor.');
+                    carregarVendasPendentes();
+                } else {
+                    alert('Erro ao alocar venda.');
+                }
+            });
+        }
+
+        function forcarLiberacao(id) {
+            if(!confirm("Forçar desbloqueio? (Apenas Admin/Supervisor)")) return;
+            $('#loadingOverlay').show();
+            apiClient.post(`${API_BASE}/${id}/liberar-auditoria/`, {})
+            .then(() => { alert("Liberada."); carregarVendasPendentes(); })
+            .catch(() => { $('#loadingOverlay').hide(); alert("Sem permissão."); });
+        }
+
+        // --- CARREGAR DADOS NO MODAL (SCRIPT) ---
+        function carregarDadosNoScript(id) {
+            apiClient.get(`${API_BASE}/${id}/`)
+            .then(res => {
+                const v = res.data;
+                vendaEmAuditoria = v;
+
+                $('#loadingOverlay').hide();
+                $('#auditoria_id_venda').val(v.id);
+                $('#script-id-venda').text(v.id);
+                
+                try {
+                    const tokenDecoded = jwt_decode(localStorage.getItem('accessToken'));
+                    $('#script-user-logado').text(tokenDecoded.user_name || tokenDecoded.username || 'Consultor');
+                } catch(e) {}
+
+                const nomeCli = (v.cliente && v.cliente.nome_razao_social) ? v.cliente.nome_razao_social : (v.cliente_nome_razao_social || '');
+                const cpfCli = (v.cliente && v.cliente.cpf_cnpj) ? v.cliente.cpf_cnpj : (v.cliente_cpf_cnpj || '');
+                const emailCli = (v.cliente && v.cliente.email) ? v.cliente.email : (v.cliente_email || '');
+
+                $('#audit-cliente-nome').val(nomeCli);
+                $('#audit-cliente-cpf').val(cpfCli);
+                $('#audit-email').val(emailCli);
+
+                $('#audit-nome-mae').val(v.nome_mae || '');
+                $('#audit-data-nasc').val(v.data_nascimento || '');
+                $('#audit-tel1').val(v.telefone1 || '');
+                $('#audit-tel2').val(v.telefone2 || '');
+                
+                $('#audit-cep').val(v.cep || '');
+                $('#audit-logradouro').val(v.logradouro || '');
+                $('#audit-numero').val(v.numero_residencia || '');
+                $('#audit-complemento').val(v.complemento || '');
+                $('#audit-bairro').val(v.bairro || '');
+                $('#audit-cidade').val(v.cidade || '');
+                $('#audit-uf').val(v.estado || '');
+                $('#audit-ref').val(v.ponto_referencia || '');
+
+                const planoId = (v.plano && v.plano.id) ? v.plano.id : v.plano;
+                const pagId = (v.forma_pagamento && v.forma_pagamento.id) ? v.forma_pagamento.id : v.forma_pagamento;
+                
+                if(planoId) $('#audit-plano').val(planoId);
+                if(pagId) $('#audit-pagamento').val(pagId);
+
+                // Preencher campos de agendamento (também usado no modal reprovação se tiver)
+                $('#audit-data-agendamento').val(v.data_agendamento || '');
+                $('#audit-turno-agendamento').val(v.periodo_agendamento || '');
+                $('#script-obs-venda').val(v.observacoes || '');
+
+                calcularIdadeAuto();
+                atualizarTextoPlano(); 
+                aplicarMascarasManuais(); 
+                modalAuditoria.show();
+            })
+            .catch(e => {
+                console.error(e);
+                $('#loadingOverlay').hide();
+                alert('Erro ao abrir venda.');
+            });
+        }
+
+        function calcularIdadeAuto() {
+            const dn = $('#audit-data-nasc').val();
+            if(!dn) { $('#audit-idade-calc').val(''); return; }
+            const nasc = new Date(dn);
+            const hoje = new Date();
+            let idade = hoje.getFullYear() - nasc.getFullYear();
+            if (hoje.getMonth() < nasc.getMonth() || (hoje.getMonth() === nasc.getMonth() && hoje.getDate() < nasc.getDate())) idade--;
+            $('#audit-idade-calc').val(idade + ' anos');
+        }
+
+        function coletarDadosAuditoria() {
+            return {
+                cliente_nome: $('#audit-cliente-nome').val(),
+                cliente_cpf: $('#audit-cliente-cpf').val(),
+                cliente_email: $('#audit-email').val(),
+                nome_mae: $('#audit-nome-mae').val(),
+                data_nascimento: $('#audit-data-nasc').val(),
+                telefone1: $('#audit-tel1').val(),
+                telefone2: $('#audit-tel2').val(),
+                cep: $('#audit-cep').val(),
+                logradouro: $('#audit-logradouro').val(),
+                numero: $('#audit-numero').val(),
+                complemento: $('#audit-complemento').val(),
+                bairro: $('#audit-bairro').val(),
+                cidade: $('#audit-cidade').val(),
+                estado: $('#audit-uf').val(),
+                referencia: $('#audit-ref').val(),
+                plano: $('#audit-plano').val(),
+                forma_pagamento: $('#audit-pagamento').val(),
+                data_agendamento: $('#audit-data-agendamento').val(),
+                periodo_agendamento: $('#audit-turno-agendamento').val()
+            };
+        }
+
+        function finalizarComoAuditada() {
+            if(!confirm("Aprovar venda como AUDITADA?")) return;
+            enviarFinalizacao('AUDITADA', $('#script-obs-venda').val(), coletarDadosAuditoria());
+        }
+
+        async function abrirModalReprovacao() {
+            const sel = $('#repro-status');
+            
+            if (globalStatusOptions.length === 0) {
+                 try {
+                    const statusRes = await apiClient.get(`${API_AUX}/status/?tipo=Tratamento`);
+                    globalStatusOptions = statusRes.data;
+                 } catch(e) { console.log("Tentativa de recarga falhou", e); }
+            }
+
+            sel.empty().append('<option value="">Selecione...</option>');
+            
+            if (globalStatusOptions.length > 0) {
+                const repros = globalStatusOptions.filter(s => {
+                    const nm = s.nome.toUpperCase();
+                    return !nm.includes('AUDITADA') && !nm.includes('APROVAD') && !nm.includes('CADASTRAD');
+                });
+                repros.forEach(s => sel.append(`<option value="${s.id}">${s.nome}</option>`));
+            } else {
+                sel.append('<option disabled>Nenhum status carregado</option>');
+            }
+            
+            // Reseta campos extras e O.S. (não existe na Seção 6)
+            $('#div-campos-aguardando-pagamento').hide();
+            $('#repro-os').val('');
+            
+            // COPIA VALORES DA SEÇÃO 6 PARA O MODAL
+            $('#repro-data').val($('#audit-data-agendamento').val());
+            $('#repro-turno').val($('#audit-turno-agendamento').val());
+
+            $('#repro-obs').val($('#script-obs-venda').val()); 
             modalReprovacao.show();
         }
 
-        async function confirmarReprovacao() {
-            const statusId = document.getElementById('repro-status').value;
-            const obs = document.getElementById('repro-obs').value;
-            if(!statusId || !obs) { alert("Selecione status e preencha a observação."); return; }
-
-            const btn = document.querySelector('#modal-reprovacao .btn-danger');
-            btn.disabled = true; btn.innerText = "Salvando...";
-
-            try {
-                await apiClient.patch(`/api/crm/vendas/${vendaEmAuditoria.id}/`, {
-                    status_tratamento: statusId,
-                    observacoes: obs 
-                });
-                await apiClient.post(`/api/crm/vendas/${vendaEmAuditoria.id}/liberar-auditoria/`, {});
-                modalReprovacao.hide();
-                modalScript.hide(); 
-                carregarVendas(true);
-                alert("Venda reprovada com sucesso.");
-            } catch (e) { alert("Erro ao reprovar venda."); } 
-            finally { btn.disabled = false; btn.innerText = "Confirmar Reprovação"; }
-        }
-
-        // --- EXTRAS E FUNÇÕES QUE FALTAVAM ---
-        function gerarAprovacao(id) {
-            const v = vendas.find(x => x.id === id) || vendaEmAuditoria; 
-            if(!v) return;
-            let dacc = (v.forma_pagamento && v.forma_pagamento.nome.toUpperCase().includes('DÉBITO')) ? 'SIM' : 'NÃO';
-            let agendamentoStr = 'A confirmar';
-            if(v.data_agendamento) {
-                const parts = v.data_agendamento.split('-');
-                agendamentoStr = `${parts[2]}/${parts[1]}/${parts[0]} - ${v.periodo_agendamento}`;
-            }
+        function confirmarReprovacao() {
+            const stId = $('#repro-status').val();
+            const obs = $('#repro-obs').val();
+            const stText = $('#repro-status option:selected').text().toUpperCase();
             
-            // Tratamento robusto do vendedor para o ZAP
-            let vendedor = 'N/A';
-            if (v.vendedor_nome) vendedor = v.vendedor_nome;
-            else if (v.vendedor && v.vendedor.username) vendedor = v.vendedor.username;
+            if(!stId || !obs) { alert('Selecione o status e informe o motivo.'); return; }
 
-            const os = v.ordem_servico || 'Em processamento';
+            // Lógica Especial para AGUARDANDO PAGAMENTO
+            if (stText.includes('AGUARDANDO PAGAMENTO')) {
+                const os = $('#repro-os').val();
+                const dt = $('#repro-data').val();
+                const tr = $('#repro-turno').val();
 
-            const msg = `✅ APROVADO! Venda #${v.id}
-Cliente: ${v.cliente.nome_razao_social}
-CPF: ${v.cliente.cpf_cnpj}
-Plano: ${v.plano ? v.plano.nome : '-'}
-OS: ${os}
-Agendamento: ${agendamentoStr}
-Vendedor: ${vendedor}
-DACC: ${dacc}`;
-
-            document.getElementById('aprovacao-mensagem').value = msg;
-            aprovacaoModal.show();
-        }
-
-        // FUNÇÃO QUE ESTAVA FALTANDO/INCOMPLETA: Abrir Detalhes com dados reais
-        function abrirDetalhes(id) {
-            const v = vendas.find(x => x.id === id);
-            if(!v) return;
-            document.getElementById('edit-id').value = v.id;
-            
-            // Dados informativos (apenas leitura)
-            let vendedorShow = 'N/A';
-            if (v.vendedor_nome) vendedorShow = v.vendedor_nome;
-            else if (v.vendedor && v.vendedor.username) vendedorShow = v.vendedor.username;
-            
-            document.getElementById('view-vendedor').value = vendedorShow;
-            document.getElementById('view-data').value = new Date(v.data_criacao).toLocaleDateString('pt-BR');
-            document.getElementById('view-entrada').value = v.forma_entrada || '-';
-            document.getElementById('view-status').value = v.status_tratamento ? v.status_tratamento.nome : '-';
-            document.getElementById('view-plano').value = v.plano ? v.plano.nome : '-';
-            document.getElementById('view-pagamento').value = v.forma_pagamento ? v.forma_pagamento.nome : '-';
-
-            // Dados Editáveis (Cliente e Endereço) - Carregados do objeto venda
-            document.getElementById('edit-cliente').value = v.cliente.nome_razao_social || '';
-            document.getElementById('edit-cpf').value = v.cliente.cpf_cnpj || '';
-            document.getElementById('edit-nome-mae').value = v.nome_mae || '';
-            document.getElementById('edit-nasc').value = v.data_nascimento || '';
-            document.getElementById('edit-nome-rep').value = v.nome_representante_legal || '';
-            document.getElementById('edit-cpf-rep').value = v.cpf_representante_legal || '';
-            document.getElementById('edit-tel1').value = v.telefone1 || '';
-            document.getElementById('edit-tel2').value = v.telefone2 || '';
-            
-            document.getElementById('edit-cep').value = v.cep || '';
-            document.getElementById('edit-logradouro').value = v.logradouro || '';
-            document.getElementById('edit-numero').value = v.numero_residencia || '';
-            document.getElementById('edit-complemento').value = v.complemento || '';
-            document.getElementById('edit-bairro').value = v.bairro || '';
-            document.getElementById('edit-cidade').value = v.cidade || '';
-            document.getElementById('edit-estado').value = v.estado || '';
-            document.getElementById('edit-referencia').value = v.ponto_referencia || '';
-            document.getElementById('edit-obs').value = v.observacoes || '';
-
-            modalDetalhes.show();
-        }
-
-        // FUNÇÃO QUE ESTAVA FALTANDO: Salvar alterações do modal de edição
-        async function salvarAlteracoes() {
-            const id = document.getElementById('edit-id').value;
-            if(!id) return;
-            
-            const btn = document.getElementById('btn-salvar-detalhes');
-            btn.disabled = true; btn.innerHTML = 'Salvando...';
-
-            const payload = {
-                nome_mae: document.getElementById('edit-nome-mae').value,
-                data_nascimento: document.getElementById('edit-nasc').value,
-                nome_representante_legal: document.getElementById('edit-nome-rep').value,
-                cpf_representante_legal: document.getElementById('edit-cpf-rep').value,
-                telefone1: document.getElementById('edit-tel1').value,
-                telefone2: document.getElementById('edit-tel2').value,
-                cep: document.getElementById('edit-cep').value,
-                logradouro: document.getElementById('edit-logradouro').value,
-                numero_residencia: document.getElementById('edit-numero').value,
-                complemento: document.getElementById('edit-complemento').value,
-                bairro: document.getElementById('edit-bairro').value,
-                cidade: document.getElementById('edit-cidade').value,
-                estado: document.getElementById('edit-estado').value,
-                ponto_referencia: document.getElementById('edit-referencia').value,
-                observacoes: document.getElementById('edit-obs').value
-            };
-
-            try {
-                await apiClient.patch(`/api/crm/vendas/${id}/`, payload);
-                alert("Dados atualizados com sucesso!");
-                modalDetalhes.hide();
-                carregarVendas(true);
-            } catch(e) {
-                mostrarErroDetalhado(e, "salvar alterações");
-            } finally {
-                btn.disabled = false; btn.innerHTML = 'Salvar Dados';
-            }
-        }
-
-        // FUNÇÃO QUE ESTAVA FALTANDO: Buscar CEP
-        async function buscarCepEdit(e) {
-            const cep = e.target.value.replace(/\D/g, '');
-            if(cep.length !== 8) return;
-            
-            try {
-                const res = await axios.get(`https://viacep.com.br/ws/${cep}/json/`);
-                if(!res.data.erro) {
-                    document.getElementById('edit-logradouro').value = res.data.logradouro;
-                    document.getElementById('edit-bairro').value = res.data.bairro;
-                    document.getElementById('edit-cidade').value = res.data.localidade;
-                    document.getElementById('edit-estado').value = res.data.uf;
-                    document.getElementById('edit-numero').focus();
-                } else {
-                    alert('CEP não encontrado.');
+                if (!os || !dt || !tr) {
+                    alert('Para este status, é obrigatório informar O.S, Data e Turno.');
+                    return;
                 }
-            } catch(error) {
-                console.error('Erro CEP:', error);
+
+                $('#loadingOverlay').show();
+                
+                // 1. Salva dados de agendamento via PATCH antes de finalizar
+                apiClient.patch(`${API_BASE}/${vendaEmAuditoria.id}/`, {
+                    ordem_servico: os,
+                    data_agendamento: dt,
+                    periodo_agendamento: tr
+                })
+                .then(() => {
+                    // 2. Finaliza auditoria com o status
+                    const dados = coletarDadosAuditoria();
+                    // Atualiza dados locais tbm para garantir envio correto no zap
+                    dados.data_agendamento = dt;
+                    dados.periodo_agendamento = tr;
+                    
+                    return enviarFinalizacao(stId, obs, dados, true);
+                })
+                .catch(e => {
+                    console.error(e);
+                    alert('Erro ao salvar dados de agendamento: ' + e.message);
+                    $('#loadingOverlay').hide();
+                });
+
+            } else {
+                // Fluxo Normal de Reprovação
+                $('#loadingOverlay').show();
+                enviarFinalizacao(stId, obs, coletarDadosAuditoria(), true); 
             }
         }
 
-        function copiarMensagem() { 
-            const txt = document.getElementById('aprovacao-mensagem');
-            txt.select();
-            navigator.clipboard.writeText(txt.value).then(() => { alert('Copiado!'); });
+        function prepararAgendamento() {
+            const dados = coletarDadosAuditoria();
+            if(!dados.plano || !dados.forma_pagamento) { alert('Selecione Plano e Pagamento.'); return; }
+            
+            modalAuditoria.hide();
+            $('#agenda-os').val(vendaEmAuditoria.ordem_servico || '');
+            if(dados.data_agendamento) $('#agenda-data-final').val(dados.data_agendamento);
+            if(dados.periodo_agendamento) $('#agenda-turno-final').val(dados.periodo_agendamento);
+            modalAgendamento.show();
         }
-        
+
+        function salvarAgendamentoFinal() {
+            const os = $('#agenda-os').val();
+            const dt = $('#agenda-data-final').val();
+            const tr = $('#agenda-turno-final').val();
+            if(!os || !dt || !tr) { alert('Preencha todos os campos.'); return; }
+
+            $('#loadingOverlay').show();
+            
+            // Busca AGENDADO na esteira (em vez de CADASTRADA)
+            apiClient.get(`${API_AUX}/status/?tipo=Esteira`)
+            .then(res => {
+                const st = res.data.find(s => s.nome.toUpperCase() === 'AGENDADO');
+                if(!st) throw new Error("Status AGENDADO não encontrado.");
+                return apiClient.patch(`${API_BASE}/${vendaEmAuditoria.id}/`, {
+                    ordem_servico: os, data_agendamento: dt, periodo_agendamento: tr, status_esteira: st.id
+                });
+            })
+            .then(() => {
+                const dados = coletarDadosAuditoria();
+                dados.data_agendamento = dt; 
+                dados.periodo_agendamento = tr;
+                // Envia CADASTRADA como status de Tratamento
+                return enviarFinalizacao('CADASTRADA', $('#script-obs-venda').val(), dados, false, true);
+            })
+            .catch(e => {
+                console.error(e);
+                alert('Erro ao cadastrar: ' + e.message);
+                $('#loadingOverlay').hide();
+            });
+        }
+
+        function enviarFinalizacao(statusParam, obs, dadosEdicao, fechaModalRepro=false, abreZapAprovacao=false) {
+            const payload = { status: statusParam, observacoes: obs, dados_atualizados: dadosEdicao };
+            
+            return apiClient.post(`${API_BASE}/${vendaEmAuditoria.id}/finalizar_auditoria/`, payload)
+            .then(() => {
+                alert('Salvo com sucesso!');
+                if(fechaModalRepro) modalReprovacao.hide();
+                modalAgendamento.hide();
+                modalAuditoria.hide();
+                if(abreZapAprovacao) gerarAprovacaoMsg(dadosEdicao);
+                else carregarVendasPendentes();
+            })
+            .catch(e => { console.error(e); alert('Erro ao finalizar.'); })
+            .finally(() => { if(!abreZapAprovacao) $('#loadingOverlay').hide(); });
+        }
+
+        function fecharScriptSemSalvar() {
+            if(confirm("Sair sem salvar?")) {
+                apiClient.post(`${API_BASE}/${vendaEmAuditoria.id}/liberar-auditoria/`, {})
+                .finally(() => { modalAuditoria.hide(); carregarVendasPendentes(); });
+            }
+        }
+
+        function cancelarAgendamento() {
+            modalAgendamento.hide();
+            modalAuditoria.show();
+        }
+
+        function gerarAprovacaoMsg(dados) {
+            $('#loadingOverlay').hide();
+            let txt = `✅ *VENDA APROVADA - RECORD PAP*\n\n*Cliente:* ${dados.cliente_nome}\n*CPF:* ${dados.cliente_cpf}\n*Plano:* ${$('#audit-plano option:selected').text()}\n*End:* ${dados.logradouro}, ${dados.numero}\n`;
+            if($('#agenda-os').val()) txt += `*OS:* ${$('#agenda-os').val()}\n`;
+            if(dados.data_agendamento) txt += `*Agendamento:* ${dados.data_agendamento.split('-').reverse().join('/')} - ${dados.periodo_agendamento}\n`;
+            
+            try { txt += `\n*Auditor:* ${jwt_decode(localStorage.getItem('accessToken')).username}`; } catch(e){}
+            
+            $('#aprovacao-mensagem').val(txt);
+            modalAprovacao.show();
+            document.getElementById('modal-aprovacao').addEventListener('hidden.bs.modal', () => carregarVendasPendentes(), {once:true});
+        }
+
+        function copiarMensagem() {
+            const copyText = document.getElementById("aprovacao-mensagem");
+            copyText.select();
+            navigator.clipboard.writeText(copyText.value).then(() => alert("Copiado!"));
+        }
+
         function logout() { localStorage.removeItem('accessToken'); window.location.href = '/'; }
     </script>
 </body>

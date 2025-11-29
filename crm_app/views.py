@@ -205,7 +205,6 @@ class VendaViewSet(viewsets.ModelViewSet):
         
         user = self.request.user
 
-        # Ações de gestão que exigem visão ampla
         acoes_gestao = [
             'retrieve', 'update', 'partial_update', 'destroy',
             'alocar_auditoria', 'liberar_auditoria', 'finalizar_auditoria',
@@ -213,7 +212,6 @@ class VendaViewSet(viewsets.ModelViewSet):
         ]
 
         if self.action in acoes_gestao:
-            # CORREÇÃO: Adicionado 'Auditoria' e 'Qualidade' para garantir que eles encontrem a venda
             grupos_gestao = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
             
             if user.is_superuser or is_member(user, grupos_gestao):
@@ -307,36 +305,37 @@ class VendaViewSet(viewsets.ModelViewSet):
         request.GET['view'] = 'geral' 
         request.GET._mutable = False
         
-        vendas = self.filter_queryset(self.get_queryset())
+        # 1) Filtrar apenas o que o usuário pode ver
+        qs = self.filter_queryset(self.get_queryset())
         
-        page = self.paginate_queryset(vendas)
+        # 2) Filtro EXTRA: Remover vendas cujo status_tratamento tenha estado='FECHADO'
+        # Isso atende à regra: "Quando um status de tratamento for ligado ao ESTADO FECHADO... o pedido não pode mais aparecer na lista"
+        qs = qs.exclude(status_tratamento__estado__iexact='FECHADO')
+        
+        page = self.paginate_queryset(qs)
         if page is not None:
             serializer = self.get_serializer(page, many=True)
             return self.get_paginated_response(serializer.data)
 
-        serializer = self.get_serializer(vendas, many=True)
+        serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
 
-    # --- AÇÃO: ALOCAR AUDITORIA (CORREÇÃO 403) ---
-    # Adicionado permission_classes=[IsAuthenticated] para sobrescrever a restrição da VendaPermission
+    # --- AÇÃO: ALOCAR AUDITORIA ---
     @action(detail=True, methods=['post'], url_path='alocar-auditoria', permission_classes=[permissions.IsAuthenticated])
     def alocar_auditoria(self, request, pk=None):
         venda = self.get_object()
         usuario = request.user
 
-        # Segurança Extra: Bloqueia se o usuário não for de um grupo de gestão
         grupos_permitidos = ['Diretoria', 'Admin', 'BackOffice', 'Supervisor', 'Auditoria', 'Qualidade']
         if not is_member(usuario, grupos_permitidos):
              return Response({"detail": "Permissão negada. Apenas auditores podem alocar vendas."}, status=status.HTTP_403_FORBIDDEN)
 
-        # Verifica se já está travada por OUTRA pessoa
         if venda.auditor_atual and venda.auditor_atual != usuario:
             return Response(
                 {"detail": f"Esta venda já está sendo auditada por {venda.auditor_atual}."},
                 status=status.HTTP_409_CONFLICT
             )
         
-        # Trava para o usuário atual
         venda.auditor_atual = usuario
         venda.save()
         
@@ -362,22 +361,23 @@ class VendaViewSet(viewsets.ModelViewSet):
         
         return Response({"detail": "Venda liberada com sucesso."})
 
-    # --- AÇÃO: FINALIZAR AUDITORIA ---
+    # --- AÇÃO: FINALIZAR AUDITORIA + EDICAO DE DADOS + ZAP REPROVACAO ---
     @action(detail=True, methods=['post'], url_path='finalizar_auditoria', permission_classes=[permissions.IsAuthenticated])
     def finalizar_auditoria(self, request, pk=None):
         venda = self.get_object()
         
-        # Segurança Extra
         grupos_permitidos = ['Diretoria', 'Admin', 'BackOffice', 'Supervisor', 'Auditoria', 'Qualidade']
         if not is_member(request.user, grupos_permitidos):
              return Response({"detail": "Permissão negada."}, status=status.HTTP_403_FORBIDDEN)
 
         status_novo_id = request.data.get('status')
         observacoes = request.data.get('observacoes', '')
+        dados_edicao = request.data.get('dados_atualizados', {})
 
         if not status_novo_id:
              return Response({"detail": "Status inválido."}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Buscar o Objeto Status
         status_obj = None
         if str(status_novo_id).isdigit():
              status_obj = StatusCRM.objects.filter(id=int(status_novo_id)).first()
@@ -392,18 +392,97 @@ class VendaViewSet(viewsets.ModelViewSet):
              return Response({"detail": f"Status '{status_novo_id}' não encontrado no banco."}, status=status.HTTP_400_BAD_REQUEST)
 
         with transaction.atomic():
+            # 1. Aplicar Edições nos dados da Venda e Cliente (Se houver)
+            if dados_edicao:
+                # Dados do Cliente
+                cli_updates = {}
+                if 'cliente_nome' in dados_edicao: cli_updates['nome_razao_social'] = dados_edicao['cliente_nome']
+                if 'cliente_cpf' in dados_edicao: cli_updates['cpf_cnpj'] = dados_edicao['cliente_cpf']
+                if 'cliente_email' in dados_edicao: cli_updates['email'] = dados_edicao['cliente_email']
+                
+                if cli_updates:
+                    for k, v in cli_updates.items():
+                        setattr(venda.cliente, k, v)
+                    venda.cliente.save()
+
+                # Dados da Venda
+                if 'nome_mae' in dados_edicao: venda.nome_mae = dados_edicao['nome_mae']
+                if 'data_nascimento' in dados_edicao: venda.data_nascimento = dados_edicao['data_nascimento'] or None
+                if 'telefone1' in dados_edicao: venda.telefone1 = dados_edicao['telefone1']
+                if 'telefone2' in dados_edicao: venda.telefone2 = dados_edicao['telefone2']
+                
+                # Endereço
+                if 'cep' in dados_edicao: venda.cep = dados_edicao['cep']
+                if 'logradouro' in dados_edicao: venda.logradouro = dados_edicao['logradouro']
+                if 'numero' in dados_edicao: venda.numero_residencia = dados_edicao['numero']
+                if 'complemento' in dados_edicao: venda.complemento = dados_edicao['complemento']
+                if 'bairro' in dados_edicao: venda.bairro = dados_edicao['bairro']
+                if 'cidade' in dados_edicao: venda.cidade = dados_edicao['cidade']
+                if 'estado' in dados_edicao: venda.estado = dados_edicao['estado']
+                if 'referencia' in dados_edicao: venda.ponto_referencia = dados_edicao['referencia']
+
+                # IDs de Relacionamento (Plano/Pagamento)
+                if 'plano' in dados_edicao and dados_edicao['plano']: venda.plano_id = dados_edicao['plano']
+                if 'forma_pagamento' in dados_edicao and dados_edicao['forma_pagamento']: venda.forma_pagamento_id = dados_edicao['forma_pagamento']
+
+                # Agendamento e Datas
+                if 'data_agendamento' in dados_edicao: venda.data_agendamento = dados_edicao['data_agendamento'] or None
+                if 'periodo_agendamento' in dados_edicao: venda.periodo_agendamento = dados_edicao['periodo_agendamento']
+
+            # 2. Status e Automação Esteira
             venda.status_tratamento = status_obj
-            if observacoes:
-                venda.observacoes = observacoes
-            
+            if observacoes: venda.observacoes = observacoes
             venda.auditor_atual = None
+            
+            # SE APROVADA (CADASTRADA), move para ESTEIRA (AGENDADO)
+            if status_obj.nome.upper() == 'CADASTRADA' and not venda.status_esteira:
+                st_agendado = StatusCRM.objects.filter(nome__iexact='AGENDADO', tipo='Esteira').first()
+                if st_agendado:
+                    venda.status_esteira = st_agendado
+
             venda.save()
             
             HistoricoAlteracaoVenda.objects.create(
                 venda=venda,
                 usuario=request.user,
-                alteracoes={'status_tratamento': f"Auditoria finalizada: {status_obj.nome}"}
+                alteracoes={'status_tratamento': f"Auditoria finalizada: {status_obj.nome}", 'dados_editados': bool(dados_edicao)}
             )
+
+            # 3. ENVIO DE WHATSAPP (Lógica Ajustada para Reprovação)
+            nm_st = status_obj.nome.upper()
+            
+            # Lista de status de SUCESSO (que NÃO devem enviar mensagem de erro)
+            # Se o status escolhido NÃO estiver aqui, o sistema entende como Reprovação/Pendência
+            STATUS_SUCESSO = ['AUDITADA', 'CADASTRADA', 'APROVADA', 'INSTALADA', 'AGENDADO', 'CONCLUIDA', 'CONCLUÍDA']
+            
+            eh_repro = not any(s in nm_st for s in STATUS_SUCESSO)
+            
+            if eh_repro and venda.vendedor and venda.vendedor.tel_whatsapp:
+                try:
+                    svc = WhatsAppService()
+                    
+                    # Monta endereço completo
+                    end_parts = []
+                    if venda.logradouro: end_parts.append(venda.logradouro)
+                    if venda.numero_residencia: end_parts.append(venda.numero_residencia)
+                    if venda.complemento: end_parts.append(venda.complemento)
+                    if venda.bairro: end_parts.append(venda.bairro)
+                    if venda.cidade: end_parts.append(f"{venda.cidade}/{venda.estado or ''}")
+                    end_str = ", ".join(end_parts) if end_parts else "Endereço não informado"
+
+                    # Formatação da Mensagem conforme solicitado
+                    msg_text = (
+                        f"*Nome Completo:* {venda.cliente.nome_razao_social}\n"
+                        f"*CPF/CNPJ:* {venda.cliente.cpf_cnpj}\n"
+                        f"*Endereço de Instalação:* {end_str}\n"
+                        f"*Status de Auditoria:* {status_obj.nome}\n"
+                        f"*Observações:* {observacoes or 'Verificar no sistema.'}"
+                    )
+                    
+                    svc.enviar_mensagem_texto(venda.vendedor.tel_whatsapp, msg_text)
+                    logger.info(f"Zap de reprovação enviado para {venda.vendedor.username}")
+                except Exception as e:
+                    logger.error(f"Erro ao enviar Zap Reprovação: {e}")
 
         return Response({"status": "Auditoria finalizada com sucesso."})
 
@@ -594,7 +673,7 @@ class DashboardResumoView(APIView):
                     regra_encontrada = None
                     for r in regras:
                         canal_vendedor = getattr(vendedor, 'canal', 'PAP') or 'PAP'
-                        if r.plano.id == v.plano.id and r.tipo_cliente == tipo_cliente_venda and r.tipo_venda == canal_vendedor:
+                        if r.plano.id == v.plano.id and r.tipo_cliente == tipo_cliente and r.tipo_venda == canal_vendedor:
                             regra_encontrada = r
                             break
                     
