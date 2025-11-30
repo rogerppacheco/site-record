@@ -81,9 +81,17 @@
                     <h1 style="font-size: 1.8rem; margin: 0;">Esteira de Vendas</h1>
                     <p class="text-muted mb-0">Acompanhamento e tratamento de pendências.</p>
                 </div>
-                <button onclick="carregarVendas()" class="btn btn-outline-primary fw-bold shadow-sm">
-                    <i class="bi bi-arrow-clockwise"></i> Atualizar Lista
-                </button>
+                
+                <div class="d-flex gap-2">
+                    <div class="input-group" style="max-width: 300px;">
+                        <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                        <input type="text" id="filtro-busca" class="form-control" placeholder="Buscar CPF ou OS..." onkeyup="if(event.key === 'Enter') carregarVendas()">
+                    </div>
+
+                    <button onclick="carregarVendas()" class="btn btn-outline-primary fw-bold shadow-sm">
+                        <i class="bi bi-arrow-clockwise"></i> Atualizar Lista
+                    </button>
+                </div>
             </div>
 
             <ul class="nav nav-tabs mb-3" id="abas-esteira">
@@ -304,12 +312,19 @@
 
         async function carregarVendas(silent = false) {
             const tbody = document.getElementById('tabela-esteira-body');
+            const busca = document.getElementById('filtro-busca').value; // Captura a busca
+            
             if (!silent) { tbody.innerHTML = '<tr><td colspan="11" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>'; }
             
             try {
                 const timestamp = new Date().getTime();
+                
+                // --- MONTAGEM DA URL COM BUSCA ---
+                let url = `/crm/vendas/?flow=esteira&_t=${timestamp}`;
+                if(busca) url += `&search=${busca}`; // Adiciona o parâmetro de busca
+
                 const [vendasRes, statusRes] = await Promise.all([
-                    apiFetch(`/crm/vendas/?flow=esteira&_t=${timestamp}`),
+                    apiFetch(url),
                     apiFetch('/crm/status/?tipo=Esteira')
                 ]);
                 
@@ -340,14 +355,12 @@
                     const turno = v.periodo_agendamento || '-';
                     const motivoPendencia = v.motivo_pendencia ? (v.motivo_pendencia.nome || v.motivo_pendencia) : '-';
 
-                    // --- CORREÇÃO DO NOME DO VENDEDOR (Robustez) ---
                     let nomeVendedor = 'N/A';
                     if (v.vendedor_nome) nomeVendedor = v.vendedor_nome;
                     else if (v.vendedor && v.vendedor.username) nomeVendedor = v.vendedor.username;
                     else if (v.vendedor && v.vendedor.first_name) nomeVendedor = v.vendedor.first_name;
                     else if (typeof v.vendedor === 'string') nomeVendedor = v.vendedor;
 
-                    // --- LÓGICA DE CARD FLUTUANTE (Neubrutalism) ---
                     const corFundo = (v.status_esteira && v.status_esteira.cor) ? v.status_esteira.cor : 'transparent';
                     const rowStyle = `
                         background: #fff; 
