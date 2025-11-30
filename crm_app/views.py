@@ -205,6 +205,15 @@ class VendaViewSet(viewsets.ModelViewSet):
         
         user = self.request.user
 
+        # 1. Filtro de Busca (Search) - Prioritário
+        search = self.request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(
+                Q(ordem_servico__icontains=search) |
+                Q(cliente__cpf_cnpj__icontains=search) |
+                Q(cliente__nome_razao_social__icontains=search)
+            )
+
         acoes_gestao = [
             'retrieve', 'update', 'partial_update', 'destroy',
             'alocar_auditoria', 'liberar_auditoria', 'finalizar_auditoria',
@@ -240,14 +249,16 @@ class VendaViewSet(viewsets.ModelViewSet):
             if is_member(user, ['Diretoria', 'Admin']):
                 pass 
             elif is_member(user, ['BackOffice', 'Auditoria', 'Qualidade']):
-                data_inicio_param = self.request.query_params.get('data_inicio')
-                if not data_inicio_param and self.action == 'list':
-                    hoje = timezone.now()
-                    inicio_mes = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-                    queryset = queryset.filter(
-                        Q(data_criacao__gte=inicio_mes) | 
-                        Q(data_instalacao__gte=inicio_mes)
-                    )
+                # Se for busca, não limita data. Se for lista normal, limita.
+                if not search:
+                    data_inicio_param = self.request.query_params.get('data_inicio')
+                    if not data_inicio_param and self.action == 'list':
+                        hoje = timezone.now()
+                        inicio_mes = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                        queryset = queryset.filter(
+                            Q(data_criacao__gte=inicio_mes) | 
+                            Q(data_instalacao__gte=inicio_mes)
+                        )
             elif is_member(user, ['Supervisor']):
                 liderados_ids = list(user.liderados.values_list('id', flat=True))
                 liderados_ids.append(user.id)
@@ -287,7 +298,8 @@ class VendaViewSet(viewsets.ModelViewSet):
             except (ValueError, TypeError): 
                 pass
         
-        elif view_type == 'minhas_vendas' and self.action == 'list' and not is_member(user, ['Diretoria', 'BackOffice', 'Admin', 'Auditoria']):
+        elif view_type == 'minhas_vendas' and self.action == 'list' and not search and not is_member(user, ['Diretoria', 'BackOffice', 'Admin', 'Auditoria']):
+             # Só filtra padrão se NÃO tiver busca
              hoje = now()
              inicio_mes = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
              queryset = queryset.filter(
@@ -305,11 +317,7 @@ class VendaViewSet(viewsets.ModelViewSet):
         request.GET['view'] = 'geral' 
         request.GET._mutable = False
         
-        # 1) Filtrar apenas o que o usuário pode ver
         qs = self.filter_queryset(self.get_queryset())
-        
-        # 2) Filtro EXTRA: Remover vendas cujo status_tratamento tenha estado='FECHADO'
-        # Isso atende à regra: "Quando um status de tratamento for ligado ao ESTADO FECHADO... o pedido não pode mais aparecer na lista"
         qs = qs.exclude(status_tratamento__estado__iexact='FECHADO')
         
         page = self.paginate_queryset(qs)
@@ -452,7 +460,6 @@ class VendaViewSet(viewsets.ModelViewSet):
             nm_st = status_obj.nome.upper()
             
             # Lista de status de SUCESSO (que NÃO devem enviar mensagem de erro)
-            # Se o status escolhido NÃO estiver aqui, o sistema entende como Reprovação/Pendência
             STATUS_SUCESSO = ['AUDITADA', 'CADASTRADA', 'APROVADA', 'INSTALADA', 'AGENDADO', 'CONCLUIDA', 'CONCLUÍDA']
             
             eh_repro = not any(s in nm_st for s in STATUS_SUCESSO)
@@ -470,7 +477,6 @@ class VendaViewSet(viewsets.ModelViewSet):
                     if venda.cidade: end_parts.append(f"{venda.cidade}/{venda.estado or ''}")
                     end_str = ", ".join(end_parts) if end_parts else "Endereço não informado"
 
-                    # Formatação da Mensagem conforme solicitado
                     msg_text = (
                         f"*Nome Completo:* {venda.cliente.nome_razao_social}\n"
                         f"*CPF/CNPJ:* {venda.cliente.cpf_cnpj}\n"
@@ -548,7 +554,6 @@ class VendaViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
-        
         try:
             instance.ativo = False
             instance.save()
@@ -589,22 +594,38 @@ class DashboardResumoView(APIView):
         User = get_user_model()
         user = request.user
         
-        tem_permissao_card = user.has_perm('crm_app.can_view_comissao_dashboard')
-        eh_gestor = is_member(user, ['Diretoria', 'Admin'])
-        exibir_comissao = tem_permissao_card or eh_gestor
-
-        hoje = now()
-        inicio_mes = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        proximo_mes = (inicio_mes + timedelta(days=32)).replace(day=1)
+        # --- FILTRO DE DATAS ---
+        # Se não vier, usa o mês atual
+        data_inicio_str = request.query_params.get('data_inicio')
+        data_fim_str = request.query_params.get('data_fim')
         
+        hoje = now()
+        
+        if data_inicio_str and data_fim_str:
+            try:
+                data_inicio = datetime.strptime(data_inicio_str, '%Y-%m-%d')
+                data_fim = datetime.strptime(data_fim_str, '%Y-%m-%d')
+                data_fim_ajustada = data_fim + timedelta(days=1) # Inclui o dia todo
+            except ValueError:
+                data_inicio = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                data_fim_ajustada = (data_inicio + timedelta(days=32)).replace(day=1)
+        else:
+            # Padrão: Mês Atual
+            data_inicio = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            data_fim_ajustada = (data_inicio + timedelta(days=32)).replace(day=1)
+
+        # Filtro de Usuários (Hierarquia)
         usuarios_para_calcular = []
         
         if is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
             usuarios_para_calcular = User.objects.filter(is_active=True)
         elif is_member(user, ['Supervisor']):
-            usuarios_para_calcular = [user]
+            ids = list(user.liderados.values_list('id', flat=True)) + [user.id]
+            usuarios_para_calcular = User.objects.filter(id__in=ids)
         else:
             usuarios_para_calcular = [user]
+
+        exibir_comissao = user.has_perm('crm_app.can_view_comissao_dashboard') or is_member(user, ['Diretoria', 'Admin'])
 
         total_registradas_geral = 0
         total_instaladas_geral = 0
@@ -619,7 +640,7 @@ class DashboardResumoView(APIView):
 
             vendas_registro = Venda.objects.filter(
                 vendedor=vendedor, ativo=True,
-                data_criacao__gte=inicio_mes, data_criacao__lt=proximo_mes
+                data_criacao__gte=data_inicio, data_criacao__lt=data_fim_ajustada
             ).select_related('cliente', 'status_esteira')
             
             qtd_registradas = vendas_registro.count()
@@ -641,10 +662,11 @@ class DashboardResumoView(APIView):
                 if nome_status != 'INSTALADA':
                     detalhes_listas[nome_status].append(obj_venda)
 
+            # Para instaladas, filtramos pela DATA DE INSTALAÇÃO no período
             vendas_instaladas = Venda.objects.filter(
                 vendedor=vendedor, ativo=True,
                 status_esteira__nome__iexact='INSTALADA',
-                data_instalacao__gte=inicio_mes, data_instalacao__lt=proximo_mes
+                data_instalacao__gte=data_inicio, data_instalacao__lt=data_fim_ajustada
             ).select_related('plano', 'cliente')
 
             qtd_instaladas = vendas_instaladas.count()
@@ -673,7 +695,7 @@ class DashboardResumoView(APIView):
                     regra_encontrada = None
                     for r in regras:
                         canal_vendedor = getattr(vendedor, 'canal', 'PAP') or 'PAP'
-                        if r.plano.id == v.plano.id and r.tipo_cliente == tipo_cliente and r.tipo_venda == canal_vendedor:
+                        if r.plano.id == v.plano.id and r.tipo_cliente == tipo_cliente_venda and r.tipo_venda == canal_vendedor:
                             regra_encontrada = r
                             break
                     
@@ -693,7 +715,7 @@ class DashboardResumoView(APIView):
         valor_comissao_final = comissao_total_geral if exibir_comissao else 0.0
 
         dados = {
-            "periodo": f"{inicio_mes.strftime('%d/%m')} a {hoje.strftime('%d/%m')}",
+            "periodo": f"{data_inicio.strftime('%d/%m')} a {data_fim_ajustada.strftime('%d/%m')}",
             "meta": meta_display,
             "total_vendas": total_registradas_geral,
             "total_instaladas": total_instaladas_geral,
@@ -945,6 +967,78 @@ class ReabrirPagamentoView(APIView):
 
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+class ExportarVendasExcelView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        # 1. Segurança: Apenas Diretoria pode baixar
+        if not is_member(request.user, ['Diretoria']):
+             return Response({"detail": "Acesso negado. Apenas Diretoria."}, status=status.HTTP_403_FORBIDDEN)
+
+        # 2. Buscar Vendas (Todas as ativas)
+        vendas = Venda.objects.filter(ativo=True).select_related(
+            'cliente', 'plano', 'forma_pagamento', 'status_esteira', 'status_tratamento', 'vendedor'
+        ).order_by('-data_criacao')
+
+        # 3. Montar os Dados
+        data = []
+        for v in vendas:
+            # Lógicas específicas de campo
+            eh_dacc = "SIM" if v.forma_pagamento and "DÉBITO" in v.forma_pagamento.nome.upper() else "NÃO"
+            
+            doc = v.cliente.cpf_cnpj if v.cliente else ""
+            doc_limpo = ''.join(filter(str.isdigit, doc))
+            eh_cnpj = len(doc_limpo) > 11
+            
+            val_cpf = doc if not eh_cnpj else ""
+            val_cnpj = doc if eh_cnpj else ""
+            
+            # Datas formatadas
+            dt_ped = v.data_pedido.strftime('%d/%m/%Y') if v.data_pedido else (v.data_criacao.strftime('%d/%m/%Y') if v.data_criacao else "")
+            dt_inst = v.data_instalacao.strftime('%d/%m/%Y') if v.data_instalacao else ""
+            
+            # Status (Prioriza Esteira, se não tiver, pega Tratamento)
+            situacao = v.status_esteira.nome if v.status_esteira else (v.status_tratamento.nome if v.status_tratamento else "")
+
+            row = {
+                "DACC": eh_dacc,
+                "NOME": v.cliente.nome_razao_social if v.cliente else "",
+                "CPF": val_cpf,
+                "CONTAGEM_CPF/CNPJ": "CNPJ" if eh_cnpj else "CPF", 
+                "1 CONTATO": v.telefone1 or "",
+                "2 CONTATO": v.telefone2 or "",
+                "CNPJ": val_cnpj,
+                "PLANO": v.plano.nome if v.plano else "",
+                "DT PEDIDO": dt_ped,
+                "DT INST": dt_inst,
+                "PERÍODO": v.get_periodo_agendamento_display() if v.periodo_agendamento else "",
+                "BUNDLE": "", 
+                "UF_VENDA": v.estado or "",
+                "MÉTODO DE PAGAMENTO": v.forma_pagamento.nome if v.forma_pagamento else "",
+                "RECADASTRADA": "", 
+                "OS": v.ordem_servico or "",
+                "SITUAÇÃO": situacao,
+                "VENDEDOR": v.vendedor.username if v.vendedor else "",
+                "VENC": "", 
+                "BO_CONVERTIDO_CC": "", 
+                "ROTA DO DIA": "", 
+                "EMAIL": v.cliente.email if v.cliente else "",
+                "OBS": v.observacoes or ""
+            }
+            data.append(row)
+
+        # 4. Gerar DataFrame e Excel
+        df = pd.DataFrame(data)
+        
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        now_str = datetime.now().strftime("%Y%m%d_%H%M")
+        response['Content-Disposition'] = f'attachment; filename="Base_Vendas_{now_str}.xlsx"'
+        
+        with pd.ExcelWriter(response, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Vendas')
+            
+        return response
 
 class GerarRelatorioPDFView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -1783,76 +1877,3 @@ def enviar_comissao_whatsapp(request):
     except Exception as e:
         print(f"Erro Geral View: {e}")
         return JsonResponse({'error': str(e)}, status=500)
-# No final de crm_app/views.py
-
-class ExportarVendasExcelView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request):
-        # 1. Segurança: Apenas Diretoria pode baixar
-        if not is_member(request.user, ['Diretoria']):
-             return Response({"detail": "Acesso negado. Apenas Diretoria."}, status=status.HTTP_403_FORBIDDEN)
-
-        # 2. Buscar Vendas (Todas as ativas)
-        vendas = Venda.objects.filter(ativo=True).select_related(
-            'cliente', 'plano', 'forma_pagamento', 'status_esteira', 'status_tratamento', 'vendedor'
-        ).order_by('-data_criacao')
-
-        # 3. Montar os Dados
-        data = []
-        for v in vendas:
-            # Lógicas específicas de campo
-            eh_dacc = "SIM" if v.forma_pagamento and "DÉBITO" in v.forma_pagamento.nome.upper() else "NÃO"
-            
-            doc = v.cliente.cpf_cnpj if v.cliente else ""
-            doc_limpo = ''.join(filter(str.isdigit, doc))
-            eh_cnpj = len(doc_limpo) > 11
-            
-            val_cpf = doc if not eh_cnpj else ""
-            val_cnpj = doc if eh_cnpj else ""
-            
-            # Datas formatadas
-            dt_ped = v.data_pedido.strftime('%d/%m/%Y') if v.data_pedido else (v.data_criacao.strftime('%d/%m/%Y') if v.data_criacao else "")
-            dt_inst = v.data_instalacao.strftime('%d/%m/%Y') if v.data_instalacao else ""
-            
-            # Status (Prioriza Esteira, se não tiver, pega Tratamento)
-            situacao = v.status_esteira.nome if v.status_esteira else (v.status_tratamento.nome if v.status_tratamento else "")
-
-            row = {
-                "DACC": eh_dacc,
-                "NOME": v.cliente.nome_razao_social if v.cliente else "",
-                "CPF": val_cpf,
-                "CONTAGEM_CPF/CNPJ": "CNPJ" if eh_cnpj else "CPF", # Coloquei o TIPO do documento. Se for uma contagem numérica, me avise.
-                "1 CONTATO": v.telefone1 or "",
-                "2 CONTATO": v.telefone2 or "",
-                "CNPJ": val_cnpj,
-                "PLANO": v.plano.nome if v.plano else "",
-                "DT PEDIDO": dt_ped,
-                "DT INST": dt_inst,
-                "PERÍODO": v.get_periodo_agendamento_display() if v.periodo_agendamento else "",
-                "BUNDLE": "", # Campo não encontrado no sistema atual
-                "UF_VENDA": v.estado or "",
-                "MÉTODO DE PAGAMENTO": v.forma_pagamento.nome if v.forma_pagamento else "",
-                "RECADASTRADA": "", # Campo não encontrado
-                "OS": v.ordem_servico or "",
-                "SITUAÇÃO": situacao,
-                "VENDEDOR": v.vendedor.username if v.vendedor else "",
-                "VENC": "", # Dia de vencimento não está na tabela de Venda (está na importação OSAB, mas nem sempre tem link)
-                "BO_CONVERTIDO_CC": "", # Campo não encontrado
-                "ROTA DO DIA": "", # Campo não encontrado
-                "EMAIL": v.cliente.email if v.cliente else "",
-                "OBS": v.observacoes or ""
-            }
-            data.append(row)
-
-        # 4. Gerar DataFrame e Excel
-        df = pd.DataFrame(data)
-        
-        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        now_str = datetime.now().strftime("%Y%m%d_%H%M")
-        response['Content-Disposition'] = f'attachment; filename="Base_Vendas_{now_str}.xlsx"'
-        
-        with pd.ExcelWriter(response, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='Vendas')
-            
-        return response

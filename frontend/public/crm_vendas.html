@@ -87,13 +87,21 @@
 
             <div id="conteudo-lista">
                 <div class="filter-bar mb-4 shadow-sm" id="barra-filtros">
+                    <div class="filter-item">
+                        <label class="form-label small fw-bold text-muted">Buscar (CPF/OS/Nome)</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                            <input type="text" id="filtro-busca" class="form-control form-control-sm" placeholder="Digite para buscar...">
+                        </div>
+                    </div>
+
                     <div class="filter-item"><label class="form-label small fw-bold text-muted">Início</label><input type="date" id="filtro-inicio" class="form-control form-control-sm"></div>
                     <div class="filter-item"><label class="form-label small fw-bold text-muted">Fim</label><input type="date" id="filtro-fim" class="form-control form-control-sm"></div>
                     <div class="filter-item d-none" id="container-filtro-vendedor">
                         <label class="form-label small fw-bold text-muted">Vendedor</label>
                         <select id="filtro-vendedor" class="form-select form-select-sm"><option value="">Todos</option></select>
                     </div>
-                    <div class="filter-item" style="flex: 0 0 auto;"><button onclick="carregarVendas()" class="btn btn-sm btn-primary w-100"><i class="bi bi-filter"></i> Filtrar</button></div>
+                    <div class="filter-item" style="flex: 0 0 auto;"><button onclick="aplicarFiltros()" class="btn btn-sm btn-primary w-100"><i class="bi bi-filter"></i> Filtrar</button></div>
                 </div>
 
                 <div id="aviso-filtro-bloqueado" class="alert alert-light border mb-3 d-none text-center text-muted">
@@ -124,6 +132,9 @@
             </div>
 
             <div id="conteudo-dashboard" style="display: none;">
+                <div class="alert alert-info py-2 small mb-4">
+                    <i class="bi bi-info-circle"></i> Os dados abaixo refletem o período selecionado no filtro acima.
+                </div>
                 <div class="row g-4">
                     <div class="col-md-4">
                         <div class="dash-card bg-gradient-primary" onclick="abrirDetalheDashboard('TOTAL_REGISTRADAS', 'Vendas Registradas')">
@@ -236,7 +247,7 @@
                             <div class="col-12 col-md-6"><label>Nome Completo <span class="text-danger">*</span></label><input type="text" class="form-control" id="input-nome" name="cliente_nome_razao_social" required oninput="this.value = this.value.toUpperCase()"></div>
                             <div class="col-12 col-md-6"><label>Nome da Mãe</label><input type="text" class="form-control" id="input-nome-mae" name="nome_mae" oninput="this.value = this.value.toUpperCase()"></div>
                             <div class="col-12 col-md-6"><label>Data Nascimento</label><input type="date" class="form-control" id="input-data-nascimento" name="data_nascimento"></div>
-                            <div class="col-12 col-md-6"><label>Email</label><input type="email" class="form-control" id="input-email" name="cliente_email"></div>
+                            <div class="col-12 col-md-6"><label>Email <span class="text-danger">*</span></label><input type="email" class="form-control" id="input-email" name="cliente_email" required></div>
                             
                             <div class="col-12 col-md-6">
                                 <div class="row g-2">
@@ -246,8 +257,8 @@
                                         <div id="feedback-whatsapp" class="form-text mt-1" style="font-size: 0.8rem; min-height: 1.2em;"></div>
                                     </div>
                                     <div class="col-6">
-                                        <label>Telefone 2 <span class="text-danger">*</span></label>
-                                        <input type="text" class="form-control" id="input-telefone2" name="telefone2" required>
+                                        <label>Telefone 2</label>
+                                        <input type="text" class="form-control" id="input-telefone2" name="telefone2">
                                     </div>
                                 </div>
                             </div>
@@ -265,8 +276,12 @@
                             <div class="col-12 col-md-6"><label>Plano <span class="text-danger">*</span></label><select class="form-select" name="plano" id="select-plano" required></select></div>
                             <div class="col-12 col-md-6"><label>Forma de Pagamento <span class="text-danger">*</span></label><select class="form-select" name="forma_pagamento" id="select-pagamento" required></select></div>
                             
+                            <div class="col-12 col-md-6 d-none" id="container-status-gestao">
+                                <label class="fw-bold text-secondary">Status Tratamento</label>
+                                <select class="form-select" name="status_tratamento" id="select-status-tratamento"></select>
+                            </div>
                             <div class="col-12 col-md-6 d-none" id="container-status-esteira">
-                                <label class="fw-bold text-success">Status Atual (Esteira)</label>
+                                <label class="fw-bold text-success">Status Esteira</label>
                                 <select class="form-select border-success" name="status_esteira" id="select-status-esteira"></select>
                             </div>
 
@@ -280,13 +295,13 @@
 
                         <h6 class="text-primary border-bottom pb-2 mb-3 mt-4">Endereço de Instalação</h6>
                         <div class="row g-3">
-                            <div class="col-12 col-md-4"><label>CEP</label><input type="text" class="form-control" name="cep" id="nova-cep"></div>
-                            <div class="col-12 col-md-8"><label>Logradouro</label><input type="text" class="form-control" name="logradouro" id="nova-logradouro" oninput="this.value = this.value.toUpperCase()"></div>
-                            <div class="col-6 col-md-2"><label>Número</label><input type="text" class="form-control" name="numero_residencia" id="nova-numero" oninput="this.value = this.value.toUpperCase()"></div>
+                            <div class="col-12 col-md-4"><label>CEP <span class="text-danger">*</span></label><input type="text" class="form-control" name="cep" id="nova-cep" required></div>
+                            <div class="col-12 col-md-8"><label>Logradouro <span class="text-danger">*</span></label><input type="text" class="form-control" name="logradouro" id="nova-logradouro" oninput="this.value = this.value.toUpperCase()" required></div>
+                            <div class="col-6 col-md-2"><label>Número <span class="text-danger">*</span></label><input type="text" class="form-control" name="numero_residencia" id="nova-numero" oninput="this.value = this.value.toUpperCase()" required></div>
                             <div class="col-6 col-md-3"><label>Complemento</label><input type="text" class="form-control" name="complemento" id="nova-complemento" oninput="this.value = this.value.toUpperCase()"></div>
-                            <div class="col-6 col-md-3"><label>Bairro</label><input type="text" class="form-control" name="bairro" id="nova-bairro" oninput="this.value = this.value.toUpperCase()"></div>
-                            <div class="col-6 col-md-2"><label>Cidade</label><input type="text" class="form-control" name="cidade" id="nova-cidade" oninput="this.value = this.value.toUpperCase()"></div>
-                            <div class="col-6 col-md-2"><label>UF</label><input type="text" class="form-control" name="estado" id="nova-estado" maxlength="2" style="text-transform: uppercase;"></div>
+                            <div class="col-6 col-md-3"><label>Bairro <span class="text-danger">*</span></label><input type="text" class="form-control" name="bairro" id="nova-bairro" oninput="this.value = this.value.toUpperCase()" required></div>
+                            <div class="col-6 col-md-2"><label>Cidade <span class="text-danger">*</span></label><input type="text" class="form-control" name="cidade" id="nova-cidade" oninput="this.value = this.value.toUpperCase()" required></div>
+                            <div class="col-6 col-md-2"><label>UF <span class="text-danger">*</span></label><input type="text" class="form-control" name="estado" id="nova-estado" maxlength="2" style="text-transform: uppercase;" required></div>
                             <div class="col-12"><label>Ponto de Referência <span class="text-danger">*</span></label><input type="text" class="form-control" name="ponto_referencia" id="nova-referencia" required oninput="this.value = this.value.toUpperCase()"></div>
                         </div>
                     </form>
@@ -338,7 +353,7 @@
             
             if(['Supervisor', 'Diretoria', 'BackOffice', 'Admin'].includes(userProfile)) { carregarVendedores(); }
             
-            carregarVendas(); 
+            aplicarFiltros(); 
 
             document.getElementById('form-nova-venda').addEventListener('submit', salvarVenda);
             document.getElementById('nova-cep').addEventListener('blur', buscarCepNovaVenda);
@@ -346,6 +361,17 @@
             document.getElementById('input-cpf-rep').addEventListener('input', function(e) { clearTimeout(debounceRepTimer); if(e.target.value.replace(/\D/g, '').length >= 11) debounceRepTimer = setTimeout(() => buscarRepresentante(e.target.value.replace(/\D/g, '')), 600); });
             document.querySelectorAll('.uppercase-input, input[type="text"]:not(#input-email)').forEach(input => { input.addEventListener('input', function() { this.value = this.value.toUpperCase(); }); });
         });
+
+        // --- NOVA FUNÇÃO UNIFICADA DE FILTROS ---
+        function aplicarFiltros() {
+            // Verifica qual aba está ativa para saber o que recarregar
+            const abaAtiva = document.querySelector('.nav-link.active').innerText;
+            if(abaAtiva === 'Dashboard') {
+                carregarDashboard();
+            } else {
+                carregarVendas();
+            }
+        }
 
         async function carregarVendedores() {
             try {
@@ -373,10 +399,15 @@
             const inicio = document.getElementById('filtro-inicio').value;
             const fim = document.getElementById('filtro-fim').value;
             const vendedor = document.getElementById('filtro-vendedor').value;
+            const busca = document.getElementById('filtro-busca').value;
+            
+            // Determina a view baseada na aba ativa
+            const viewAtual = document.querySelector('.nav-link.active').innerText === 'Minhas Vendas' ? 'minhas_vendas' : 'geral';
             
             let url = `/crm/vendas/?view=${viewAtual}`;
             if(inicio) url += `&data_inicio=${inicio}`;
             if(fim) url += `&data_fim=${fim}`;
+            if(busca) url += `&search=${busca}`; // Envia a busca
             if(viewAtual === 'geral' && vendedor) url += `&consultor_id=${vendedor}`;
 
             try {
@@ -384,7 +415,7 @@
                 tbody.innerHTML = '';
 
                 if (!vendas || vendas.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted">Nenhuma venda encontrada no período.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted">Nenhuma venda encontrada.</td></tr>';
                     return;
                 }
 
@@ -493,6 +524,7 @@
 
             document.getElementById('container-status-esteira').classList.add('d-none'); 
             document.getElementById('container-vendedor-modal').classList.add('d-none'); 
+            document.getElementById('container-status-gestao').classList.add('d-none'); // Esconde status tratamento por padrão
 
             ['input-nome', 'input-email', 'input-telefone', 'input-telefone2', 'input-nome-mae', 'input-data-nascimento'].forEach(id => {
                 const el = document.getElementById(id);
@@ -551,8 +583,11 @@
         }
 
         async function carregarDashboard() {
+            const inicio = document.getElementById('filtro-inicio').value;
+            const fim = document.getElementById('filtro-fim').value;
             try {
-                const d = await apiFetch('/crm/dashboard-resumo/');
+                // Passa as datas para o backend calcular corretamente o período
+                const d = await apiFetch(`/crm/dashboard-resumo/?data_inicio=${inicio}&data_fim=${fim}`);
                 dashboardDataCache = d.detalhes_listas || {};
 
                 document.getElementById('dash-total').textContent = d.total_vendas;
@@ -637,15 +672,19 @@
         async function buscarCepNovaVenda(e) { const cep = e.target.value.replace(/\D/g, ''); if (cep.length === 8) { try { const res = await fetch(`https://viacep.com.br/ws/${cep}/json/`); const d = await res.json(); if(!d.erro) { document.getElementById('nova-logradouro').value = d.logradouro.toUpperCase(); document.getElementById('nova-bairro').value = d.bairro.toUpperCase(); document.getElementById('nova-cidade').value = d.localidade.toUpperCase(); document.getElementById('nova-estado').value = d.uf.toUpperCase(); } } catch(e){ } } }
         async function carregarAuxiliares() { 
             try { 
-                const [planos, formas, status] = await Promise.all([
+                const [planos, formas, statusEst, statusTrat] = await Promise.all([
                     apiFetch('/crm/planos/'), 
                     apiFetch('/crm/formas-pagamento/'), 
-                    apiFetch('/crm/status/?tipo=Esteira') 
+                    apiFetch('/crm/status/?tipo=Esteira'),
+                    apiFetch('/crm/status/?tipo=Tratamento')
                 ]); 
                 
                 const selPlano = document.getElementById('select-plano'); selPlano.innerHTML = '<option value="">Selecione...</option>'; if(planos) planos.forEach(p => selPlano.innerHTML += `<option value="${p.id}">${p.nome} - R$${p.valor}</option>`); 
                 const selPag = document.getElementById('select-pagamento'); selPag.innerHTML = '<option value="">Selecione...</option>'; if(formas) formas.forEach(f => selPag.innerHTML += `<option value="${f.id}">${f.nome}</option>`); 
-                const selStatus = document.getElementById('select-status-esteira'); selStatus.innerHTML = '<option value="">Selecione...</option>'; if(status) status.forEach(s => selStatus.innerHTML += `<option value="${s.id}">${s.nome}</option>`); 
+                
+                const selEst = document.getElementById('select-status-esteira'); selEst.innerHTML = '<option value="">Selecione...</option>'; if(statusEst) statusEst.forEach(s => selEst.innerHTML += `<option value="${s.id}">${s.nome}</option>`);
+                
+                const selTrat = document.getElementById('select-status-tratamento'); selTrat.innerHTML = '<option value="">Selecione...</option>'; if(statusTrat) statusTrat.forEach(s => selTrat.innerHTML += `<option value="${s.id}">${s.nome}</option>`);
             } catch(e) {} 
         }
 
@@ -667,8 +706,8 @@
                 verificarRegraCNPJ(venda.cliente_cpf_cnpj);
                 document.getElementById('input-cpf-rep').value = venda.cpf_representante_legal || '';
                 document.getElementById('input-nome-rep').value = venda.nome_representante_legal || '';
-                document.getElementById('select-plano').value = venda.plano || '';
-                document.getElementById('select-pagamento').value = venda.forma_pagamento || '';
+                document.getElementById('select-plano').value = venda.plano ? venda.plano.id : '';
+                document.getElementById('select-pagamento').value = venda.forma_pagamento ? venda.forma_pagamento.id : '';
                 document.getElementById('input-observacoes').value = venda.observacoes || '';
                 document.getElementById('nova-cep').value = venda.cep || '';
                 document.getElementById('nova-logradouro').value = venda.logradouro || '';
@@ -681,14 +720,19 @@
 
                 const areaStatus = document.getElementById('container-status-esteira');
                 const areaVendedor = document.getElementById('container-vendedor-modal');
+                const areaTrat = document.getElementById('container-status-gestao');
+
                 if(['Admin', 'Diretoria', 'BackOffice'].includes(userProfile)) {
                     areaStatus.classList.remove('d-none');
                     areaVendedor.classList.remove('d-none'); 
+                    areaTrat.classList.remove('d-none');
                     document.getElementById('select-status-esteira').value = venda.status_esteira || '';
+                    document.getElementById('select-status-tratamento').value = venda.status_tratamento || '';
                     document.getElementById('select-vendedor-modal').value = venda.vendedor || ''; 
                 } else {
                     areaStatus.classList.add('d-none');
                     areaVendedor.classList.add('d-none');
+                    areaTrat.classList.add('d-none');
                 }
                 
                 document.getElementById('feedback-whatsapp').innerHTML = '';
@@ -715,7 +759,7 @@
                 await apiFetch(url, { method: method, body: JSON.stringify(data) });
                 modalNovaVenda.hide(); form.reset(); document.getElementById('id-venda-edicao').value = '';
                 document.getElementById('titulo-modal-venda').innerHTML = 'Registrar Venda <span id="badge-origem" class="badge bg-secondary ms-2"></span>';
-                carregarVendas();
+                aplicarFiltros(); // Usa a nova função unificada
                 alert(idEdicao ? 'Venda atualizada!' : 'Venda registrada!');
             } catch (error) { 
                 let msg = "Erro ao salvar.";
