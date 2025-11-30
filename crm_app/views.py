@@ -104,7 +104,6 @@ class OperadoraDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [CheckAPIPermission]
     resource_name = 'operadora'
 
-# --- CORREÇÃO APLICADA AQUI (PlanoListCreateView) ---
 class PlanoListCreateView(generics.ListCreateAPIView):
     serializer_class = PlanoSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -119,7 +118,6 @@ class PlanoListCreateView(generics.ListCreateAPIView):
             queryset = queryset.filter(operadora_id=operadora_id)
             
         return queryset
-# ----------------------------------------------------
 
 class PlanoDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Plano.objects.all()
@@ -709,8 +707,12 @@ class DashboardResumoView(APIView):
                 return 0
             return (float(valor_atual) / float(peso_realizado)) * float(peso_total)
 
-        # --- FILTROS DE USUÁRIOS ---
-        # Verifica se veio filtro de consultor específico na URL
+        # --- FILTROS DE USUÁRIOS (QUEM VAI SER CALCULADO) ---
+        # Regras atualizadas:
+        # Diretoria/Admin/BackOffice -> Todos usuários ativos
+        # Supervisor -> Apenas ele mesmo (nos cards)
+        # Vendedor -> Apenas ele mesmo
+
         consultor_filtro_id = request.query_params.get('consultor_id')
         
         if consultor_filtro_id:
@@ -718,12 +720,23 @@ class DashboardResumoView(APIView):
         elif is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
             usuarios_para_calcular = User.objects.filter(is_active=True)
         elif is_member(user, ['Supervisor']):
-            ids = list(user.liderados.values_list('id', flat=True)) + [user.id]
-            usuarios_para_calcular = User.objects.filter(id__in=ids)
+             # ALTERADO: Supervisor vê apenas seus números nos cards, não da equipe inteira
+            usuarios_para_calcular = [user]
         else:
             usuarios_para_calcular = [user]
 
-        exibir_comissao = user.has_perm('crm_app.can_view_comissao_dashboard') or is_member(user, ['Diretoria', 'Admin'])
+        # --- PERMISSÃO DE VISUALIZAÇÃO DE COMISSÃO ---
+        # 1. Diretoria e Admin: SIM (Veem o total da empresa)
+        # 2. BackOffice: NÃO (Não veem comissão)
+        # 3. Supervisor e Vendedor: SIM (Veem apenas o seu, definido pelo filtro usuarios_para_calcular)
+        
+        if is_member(user, ['Diretoria', 'Admin']):
+            exibir_comissao = True
+        elif is_member(user, ['BackOffice']):
+            exibir_comissao = False
+        else:
+            # Supervisor e Vendedor veem o seu por padrão
+            exibir_comissao = True
         
         # --- VERIFICAÇÃO PARA O CARD DE DIRETORIA ---
         is_diretoria = is_member(user, ['Diretoria'])
