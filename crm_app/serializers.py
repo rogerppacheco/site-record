@@ -5,7 +5,8 @@ import re
 from .models import (
     Operadora, Plano, FormaPagamento, StatusCRM, MotivoPendencia,
     RegraComissao, Cliente, Venda, ImportacaoOsab, ImportacaoChurn,
-    CicloPagamento, HistoricoAlteracaoVenda, Campanha
+    CicloPagamento, HistoricoAlteracaoVenda, Campanha,
+    ComissaoOperadora  # <--- ADICIONADO AQUI
 )
 from usuarios.models import Usuario
 from usuarios.serializers import UsuarioSerializer
@@ -315,3 +316,10 @@ class ImportacaoChurnSerializer(serializers.ModelSerializer):
     class Meta: model = ImportacaoChurn; fields = '__all__'
 class CicloPagamentoSerializer(serializers.ModelSerializer):
     class Meta: model = CicloPagamento; fields = '__all__'
+
+# --- SERIALIZER NOVO PARA O MÓDULO DE COMISSÃO DA OPERADORA ---
+class ComissaoOperadoraSerializer(serializers.ModelSerializer):
+    plano_nome = serializers.ReadOnlyField(source='plano.nome')
+    class Meta:
+        model = ComissaoOperadora
+        fields = '__all__'

@@ -25,17 +25,16 @@
             z-index: 1000;
             background-color: #fff;
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-            height: 80px; /* Altura definida para cálculos */
+            height: 80px;
         }
 
-        /* Wrapper para compensar o header fixo */
         .admin-wrapper { 
             display: flex; 
             min-height: 100vh; 
-            padding-top: 80px; /* Espaço para o header não cobrir o conteúdo */
+            padding-top: 80px; 
         }
         
-        /* Sidebar Melhorada com Scroll */
+        /* Sidebar Melhorada */
         .admin-sidebar {
             width: 280px; 
             background: #fff; 
@@ -43,41 +42,26 @@
             padding: 1.5rem; 
             display: flex; 
             flex-direction: column; 
-            
-            /* Fixar sidebar na lateral */
             position: fixed;
-            top: 80px; /* Começa logo abaixo do header */
+            top: 80px; 
             left: 0;
-            bottom: 0; /* Vai até o fim da tela */
-            
-            /* Scroll interno apenas na sidebar se necessário */
+            bottom: 0; 
             overflow-y: auto; 
             z-index: 900; 
             box-shadow: 2px 0 5px rgba(0,0,0,0.02);
         }
 
-        /* Estilização da barra de rolagem da sidebar (Webkit) */
-        .admin-sidebar::-webkit-scrollbar {
-            width: 6px;
-        }
-        .admin-sidebar::-webkit-scrollbar-track {
-            background: #f1f1f1; 
-        }
-        .admin-sidebar::-webkit-scrollbar-thumb {
-            background: #ccc; 
-            border-radius: 3px;
-        }
-        .admin-sidebar::-webkit-scrollbar-thumb:hover {
-            background: #bbb; 
-        }
+        .admin-sidebar::-webkit-scrollbar { width: 6px; }
+        .admin-sidebar::-webkit-scrollbar-track { background: #f1f1f1; }
+        .admin-sidebar::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+        .admin-sidebar::-webkit-scrollbar-thumb:hover { background: #bbb; }
 
-        /* Área de Conteúdo com margem para a sidebar fixa */
         .admin-content {
             flex: 1; 
-            margin-left: 280px; /* Empurra o conteúdo para a direita */
+            margin-left: 280px; 
             padding: 2rem; 
             max-width: 1600px;
-            width: calc(100% - 280px); /* Largura restante */
+            width: calc(100% - 280px); 
         }
 
         .nav-section-title {
@@ -104,34 +88,21 @@
         .card-body { padding: 1.5rem; }
         .table-responsive { border-radius: 8px; }
         
-        /* Permissões */
         .perm-list { max-height: 300px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 6px; padding: 10px; background: #f8f9fa; }
         .perm-item { display: flex; align-items: center; padding: 6px 0; border-bottom: 1px solid #e9ecef; }
         .perm-item:last-child { border-bottom: none; }
         .perm-label { margin-left: 10px; font-size: 0.9rem; cursor: pointer; flex-grow: 1; user-select: none; }
         .badge-perm { font-weight: normal; font-size: 0.75rem; margin-right: 4px; margin-bottom: 4px; display: inline-block; }
 
-        /* Botões de Ação Pequenos */
-        .btn-xs {
-            padding: 0.25rem 0.5rem;
-            font-size: 0.75rem;
-            line-height: 1.5;
-            border-radius: 0.2rem;
-        }
+        .btn-xs { padding: 0.25rem 0.5rem; font-size: 0.75rem; line-height: 1.5; border-radius: 0.2rem; }
 
-        /* iframe do calendário */
-        #iframe-calendario {
-            width: 100%;
-            height: 750px; /* Altura fixa para caber o mês inteiro */
-            border: none;
-            display: block;
-        }
+        #iframe-calendario { width: 100%; height: 750px; border: none; display: block; }
 
         @media (max-width: 992px) {
             .admin-sidebar { 
                 transform: translateX(-100%); 
                 transition: transform 0.3s;
-                top: 80px; /* Abaixo do header mobile também */
+                top: 80px; 
                 height: calc(100vh - 80px);
             }
             .admin-sidebar.show { transform: translateX(0); }
@@ -257,7 +228,7 @@
                     <button class="btn btn-confirmar" id="btn-adicionar-perfil"><i class="bi bi-plus-lg"></i> Novo Perfil</button>
                 </div>
                 
-                <div class="alert alert-info py-2 small"><i class="bi bi-info-circle"></i> Defina aqui quais módulos cada cargo pode acessar (Esteira, Comissão, Auditoria).</div>
+                <div class="alert alert-info py-2 small"><i class="bi bi-info-circle"></i> Defina aqui quais módulos cada cargo pode acessar.</div>
 
                 <div class="card">
                     <div class="card-body p-0">
@@ -270,8 +241,7 @@
                                         <th class="text-center" style="width: 180px;">Ações</th>
                                     </tr>
                                 </thead>
-                                <tbody id="perfis-tabela-corpo">
-                                    </tbody>
+                                <tbody id="perfis-tabela-corpo"></tbody>
                             </table>
                         </div>
                     </div>
@@ -284,14 +254,16 @@
                     <div class="card-header">
                         <ul class="nav nav-tabs card-header-tabs">
                             <li class="nav-item"><button class="nav-link active" onclick="openTab(event, 'regras_comissao_tab')">Regras de Comissão</button></li>
+                            <li class="nav-item"><button class="nav-link" onclick="openTab(event, 'recebimento_operadora_tab')">Recebimento Operadora</button></li>
                             <li class="nav-item"><button class="nav-link" onclick="openTab(event, 'config_mensal_tab')">Configurações do Mês</button></li>
                             <li class="nav-item"><button class="nav-link" onclick="openTab(event, 'campanhas_tab')">Campanhas</button></li>
                         </ul>
                     </div>
                     <div class="card-body">
+                        
                         <div id="regras_comissao_tab" class="tab-content active">
                             <div class="bg-light p-4 rounded border mb-4">
-                                <h5 class="text-primary mb-3">Nova Regra</h5>
+                                <h5 class="text-primary mb-3">Nova Regra (Pagamento ao Vendedor)</h5>
                                 <form id="form-regra-comissao">
                                     <input type="hidden" id="regra_comissao_id">
                                     <div class="row g-3">
@@ -311,26 +283,65 @@
                             
                             <div class="d-flex justify-content-between align-items-center mb-3 mt-4">
                                 <h5 class="mb-0">Regras Cadastradas</h5>
-                                
                                 <div class="d-flex gap-2">
                                     <div class="input-group input-group-sm" style="width: 250px;">
                                         <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
                                         <input type="text" id="filtro-regras" class="form-control" placeholder="Buscar regra..." onkeyup="filtrarRegras(this.value)">
                                     </div>
-
-                                    <button class="btn btn-sm btn-outline-success" onclick="exportarRegras()" title="Baixar todas as regras">
-                                        <i class="bi bi-file-earmark-excel"></i> Exportar
-                                    </button>
-                                    
-                                    <button class="btn btn-sm btn-success" onclick="triggerImportRegras()" title="Importar regras via Excel">
-                                        <i class="bi bi-cloud-upload"></i> Importar
-                                    </button>
+                                    <button class="btn btn-sm btn-outline-success" onclick="exportarRegras()" title="Baixar todas as regras"><i class="bi bi-file-earmark-excel"></i> Exportar</button>
+                                    <button class="btn btn-sm btn-success" onclick="triggerImportRegras()" title="Importar regras via Excel"><i class="bi bi-cloud-upload"></i> Importar</button>
                                     <input type="file" id="input-import-regras" hidden accept=".xlsx, .xls" onchange="uploadRegras(this)">
                                 </div>
                             </div>
 
                             <div class="table-responsive">
                                 <table class="table table-hover align-middle mb-0"><thead class="table-light"><tr><th>Consultor</th><th>Plano</th><th>Tipo</th><th>Cliente</th><th>Base</th><th>Acelerado</th><th>Ações</th></tr></thead><tbody id="lista-regras-comissao"></tbody></table>
+                            </div>
+                        </div>
+
+                        <div id="recebimento_operadora_tab" class="tab-content" style="display:none;">
+                            <div class="bg-light p-4 rounded border mb-4">
+                                <h5 class="text-success mb-3"><i class="bi bi-bank"></i> Configuração de Recebimento (Operadora -> Empresa)</h5>
+                                <form id="form-comissao-operadora">
+                                    <input type="hidden" id="co_id">
+                                    <div class="row g-3 align-items-end">
+                                        <div class="col-md-4">
+                                            <label class="form-label fw-bold">Plano Vendido</label>
+                                            <select id="co_plano_id" class="form-select" required></select>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label class="form-label fw-bold">Comissão Base (R$)</label>
+                                            <input type="number" class="form-control" id="co_valor_base" step="0.01" required placeholder="0,00">
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label class="form-label fw-bold text-success">Bônus Transição (R$)</label>
+                                            <input type="number" class="form-control border-success" id="co_bonus" step="0.01" value="0" placeholder="0,00">
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label class="form-label small text-muted">Validade Bônus (Fim)</label>
+                                            <input type="date" class="form-control" id="co_data_fim">
+                                        </div>
+                                        <div class="col-md-2">
+                                            <button type="submit" class="btn btn-success w-100">Salvar Config</button>
+                                        </div>
+                                    </div>
+                                </form>
+                            </div>
+
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Plano</th>
+                                            <th>Recebimento Base</th>
+                                            <th class="text-success">Bônus Transição</th>
+                                            <th>Validade Bônus</th>
+                                            <th class="fw-bold">Total Recebido</th>
+                                            <th class="text-end">Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="lista-comissoes-operadora"></tbody>
+                                </table>
                             </div>
                         </div>
 
@@ -712,27 +723,21 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
-    <script src="{% static 'js/auth.js' %}?v=1.3"></script>
-    <script src="{% static 'js/menu.js' %}?v=1.3"></script>
+    <script src="{% static 'js/auth.js' %}?v=1.5"></script>
+    <script src="{% static 'js/menu.js' %}?v=1.5"></script>
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     
     <script>
     const apiUrl = '';
     
-    // Funções de UI (Abas e Seções)
+    // --- UI HELPERS ---
     function openTab(evt, tabName) {
         evt.preventDefault();
         const parent = evt.currentTarget.closest('.card');
-        parent.querySelectorAll('.tab-content').forEach(t => {
-            t.classList.remove("active");
-            t.style.display = "none";
-        });
+        parent.querySelectorAll('.tab-content').forEach(t => { t.classList.remove("active"); t.style.display = "none"; });
         parent.querySelectorAll('.nav-link').forEach(l => l.classList.remove("active"));
         const target = document.getElementById(tabName);
-        if(target){
-            target.style.display = "block";
-            target.classList.add("active");
-        }
+        if(target){ target.style.display = "block"; target.classList.add("active"); }
         evt.currentTarget.classList.add("active");
     }
 
@@ -745,35 +750,38 @@
         if (menuItem) menuItem.classList.add('active');
     }
 
+    // --- API FETCH CORRIGIDO (RESOLVE O ERRO 404 e PREFIXO /api) ---
     async function apiFetch(endpoint, options = {}) {
         const headers = { 'Content-Type': 'application/json', ...options.headers };
         const token = localStorage.getItem('accessToken');
         if (token) headers['Authorization'] = `Bearer ${token}`;
 
         try {
-            // Nota: O endpoint passado já é concatenado com apiUrl/api abaixo.
-            // Para as rotas de relatório que estão em 'presenca/relatorio-financeiro/', 
-            // a string endpoint deve começar com '/presenca/...'
+            // CORREÇÃO CRÍTICA: Se não começar com /api, adiciona.
+            // Ex: '/presenca/motivos/' vira '/api/presenca/motivos/'
+            let finalEndpoint = endpoint;
+            if (!endpoint.startsWith('/api')) {
+                // Remove a barra inicial se houver para evitar //api//...
+                const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+                finalEndpoint = `/api${cleanEndpoint}`;
+            }
             
-            const response = await fetch(`${apiUrl}/api${endpoint}`, { ...options, headers });
-            
-            // Tratamento especial para Download (Blob)
+            const fetchUrl = `${apiUrl}${finalEndpoint}`; 
+
+            const response = await fetch(fetchUrl, { ...options, headers });
+
             if (options.isBlob) {
                 if (!response.ok) throw new Error('Erro no download.');
                 return await response.blob();
             }
 
-            // Upload de Arquivo não usa Content-Type JSON
-            if (options.body instanceof FormData) {
-                delete headers['Content-Type'];
-            }
+            if (options.body instanceof FormData) delete headers['Content-Type'];
 
             let responseData = {};
             const contentType = response.headers.get("content-type");
             if (contentType && contentType.indexOf("application/json") !== -1) {
-                try { responseData = await response.clone().json(); } catch (e) { console.error("Erro JSON", e); }
+                try { responseData = await response.clone().json(); } catch (e) { }
             }
-            if (responseData && responseData.token) localStorage.setItem('accessToken', responseData.token);
             if (response.status === 401) { alert('Sessão expirada.'); logout(); throw new Error('Não autorizado'); }
             if (!response.ok) {
                 const errorData = responseData || await response.text();
@@ -783,10 +791,15 @@
             return responseData;
         } catch (e) { throw e; }
     }
+    
+    // Helper para o Relatório Financeiro (GET simples)
+    async function fetchDados(url, options = {}) {
+        return apiFetch(url, options); // Reutiliza a lógica corrigida acima
+    }
 
     function logout() { localStorage.removeItem('accessToken'); window.location.href = '/'; }
 
-    // Inicialização e Auth
+    // --- AUTH CHECK ---
     const token = localStorage.getItem('accessToken');
     if (!token) window.location.href = '/';
     const decodedToken = jwt_decode(token);
@@ -811,16 +824,15 @@
     // ====================================================================
     const API_GRUPOS = '/grupos/';
     const API_PERMISSOES = '/permissoes/';
-    let todosUsuariosCache = []; // Cache local para filtro rápido
+    let todosUsuariosCache = []; 
     let todasPermissoes = [];
     const perfilModal = new bootstrap.Modal(document.getElementById('perfilModal'));
     const excluirPerfilModal = new bootstrap.Modal(document.getElementById('excluirPerfilModal'));
-    // NOVO MODAL DE USUÁRIO
     const userModal = new bootstrap.Modal(document.getElementById('userModal'));
     const userForm = document.getElementById('user-form');
 
     // ====================================================================
-    // GESTÃO DE PERFIS
+    // 1. GESTÃO DE PERFIS
     // ====================================================================
     async function carregarPerfis() {
         const tbody = document.getElementById('perfis-tabela-corpo');
@@ -828,7 +840,6 @@
         try {
             const grupos = await apiFetch(API_GRUPOS);
             tbody.innerHTML = '';
-            
             const selectMassa = document.getElementById('novo-perfil-massa');
             selectMassa.innerHTML = '<option value="">Alterar Perfil para...</option>';
 
@@ -838,31 +849,11 @@
             }
 
             grupos.forEach(grupo => {
-                const badges = grupo.permissions_details.map(p => 
-                    `<span class="badge bg-info text-dark badge-perm">${formatarNomePermissao(p.name)}</span>`
-                ).join('');
-
+                const badges = grupo.permissions_details.map(p => `<span class="badge bg-info text-dark badge-perm">${formatarNomePermissao(p.name)}</span>`).join('');
                 selectMassa.add(new Option(grupo.name, grupo.id));
-
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td class="fw-bold text-primary">${grupo.name}</td>
-                    <td>${badges || '<span class="text-muted small fst-italic">Sem permissões especiais</span>'}</td>
-                    <td class="text-end">
-                        <button class="btn btn-xs btn-outline-primary me-1" onclick='editarPerfil(${JSON.stringify(grupo)})' title="Editar">
-                            <i class="bi bi-pencil"></i>
-                        </button>
-                        <button class="btn btn-xs btn-outline-danger" onclick="confirmarExclusaoPerfil(${grupo.id}, '${grupo.name}')" title="Excluir">
-                            <i class="bi bi-trash"></i>
-                        </button>
-                    </td>
-                `;
-                tbody.appendChild(tr);
+                tbody.innerHTML += `<tr><td class="fw-bold text-primary">${grupo.name}</td><td>${badges || '<span class="text-muted small fst-italic">Sem permissões especiais</span>'}</td><td class="text-end"><button class="btn btn-xs btn-outline-primary me-1" onclick='editarPerfil(${JSON.stringify(grupo)})' title="Editar"><i class="bi bi-pencil"></i></button><button class="btn btn-xs btn-outline-danger" onclick="confirmarExclusaoPerfil(${grupo.id}, '${grupo.name}')" title="Excluir"><i class="bi bi-trash"></i></button></td></tr>`;
             });
-        } catch (e) {
-            console.error(e);
-            tbody.innerHTML = '<tr><td colspan="3" class="text-danger text-center">Erro ao carregar perfis.</td></tr>';
-        }
+        } catch (e) { console.error(e); tbody.innerHTML = '<tr><td colspan="3" class="text-danger text-center">Erro ao carregar perfis.</td></tr>'; }
     }
 
     async function abrirModalPerfil(grupo = null) {
@@ -873,16 +864,7 @@
         const container = document.getElementById('lista-permissoes');
         container.innerHTML = '<div class="text-center text-muted"><div class="spinner-border spinner-border-sm"></div> Carregando...</div>';
         perfilModal.show();
-
-        if (todasPermissoes.length === 0) {
-            try {
-                const res = await apiFetch(API_PERMISSOES);
-                todasPermissoes = res;
-            } catch(e) {
-                container.innerHTML = '<div class="text-danger small">Erro ao carregar lista de permissões.</div>';
-                return;
-            }
-        }
+        if (todasPermissoes.length === 0) { try { const res = await apiFetch(API_PERMISSOES); todasPermissoes = res; } catch(e) { container.innerHTML = '<div class="text-danger small">Erro ao carregar lista.</div>'; return; } }
         renderizarListaPermissoes(grupo ? grupo.permissions : []);
     }
     
@@ -892,22 +874,13 @@
         todasPermissoes.forEach(p => {
             const isChecked = permsAtuais.includes(p.id) ? 'checked' : '';
             const nomeAmigavel = formatarNomePermissao(p.name);
-            container.innerHTML += `
-                <div class="perm-item form-check">
-                    <input class="form-check-input" type="checkbox" value="${p.id}" id="perm-${p.id}" ${isChecked}>
-                    <label class="form-check-label perm-label" for="perm-${p.id}">
-                        <strong>${nomeAmigavel}</strong> <span class="text-muted small ms-2">(${p.codename})</span>
-                    </label>
-                </div>
-            `;
+            container.innerHTML += `<div class="perm-item form-check"><input class="form-check-input" type="checkbox" value="${p.id}" id="perm-${p.id}" ${isChecked}><label class="form-check-label perm-label" for="perm-${p.id}"><strong>${nomeAmigavel}</strong> <span class="text-muted small ms-2">(${p.codename})</span></label></div>`;
         });
     }
 
     document.getElementById('filtro-permissoes').addEventListener('input', function(e) {
         const termo = e.target.value.toLowerCase();
-        document.querySelectorAll('.perm-item').forEach(item => {
-            item.style.display = item.innerText.toLowerCase().includes(termo) ? 'flex' : 'none';
-        });
+        document.querySelectorAll('.perm-item').forEach(item => { item.style.display = item.innerText.toLowerCase().includes(termo) ? 'flex' : 'none'; });
     });
 
     window.editarPerfil = (grupo) => abrirModalPerfil(grupo);
@@ -923,190 +896,70 @@
         try {
             if (id) await apiFetch(`${API_GRUPOS}${id}/`, { method: 'PATCH', body: JSON.stringify(payload) });
             else await apiFetch(API_GRUPOS, { method: 'POST', body: JSON.stringify(payload) });
-            perfilModal.hide();
-            carregarPerfis();
-            alert('Perfil salvo com sucesso!');
-        } catch (e) { alert('Erro ao salvar perfil.'); console.error(e); }
+            perfilModal.hide(); carregarPerfis(); alert('Perfil salvo com sucesso!');
+        } catch (e) { alert('Erro ao salvar perfil.'); }
     }
 
-    window.confirmarExclusaoPerfil = (id, nome) => {
-        document.getElementById('id-perfil-excluir').value = id;
-        document.getElementById('nome-perfil-excluir').textContent = nome;
-        excluirPerfilModal.show();
-    };
-
-    document.getElementById('btn-confirmar-exclusao-perfil').onclick = async () => {
-        const id = document.getElementById('id-perfil-excluir').value;
-        try { 
-            await apiFetch(`${API_GRUPOS}${id}/`, { method: 'DELETE' }); 
-            excluirPerfilModal.hide(); 
-            carregarPerfis(); 
-        } catch(e){ alert(e.message); }
-    };
-
-    function formatarNomePermissao(nome) {
-        return nome.replace('Can view', 'Visualizar').replace('Can add', 'Adicionar').replace('Can change', 'Editar').replace('Can delete', 'Excluir').replace('Pode visualizar', 'Acesso a').replace('venda', 'Venda').replace('comissao', 'Comissão');
-    }
-
+    window.confirmarExclusaoPerfil = (id, nome) => { document.getElementById('id-perfil-excluir').value = id; document.getElementById('nome-perfil-excluir').textContent = nome; excluirPerfilModal.show(); };
+    document.getElementById('btn-confirmar-exclusao-perfil').onclick = async () => { const id = document.getElementById('id-perfil-excluir').value; try { await apiFetch(`${API_GRUPOS}${id}/`, { method: 'DELETE' }); excluirPerfilModal.hide(); carregarPerfis(); } catch(e){ alert(e.message); } };
+    function formatarNomePermissao(nome) { return nome.replace('Can view', 'Visualizar').replace('Can add', 'Adicionar').replace('Can change', 'Editar').replace('Can delete', 'Excluir').replace('Pode visualizar', 'Acesso a').replace('venda', 'Venda').replace('comissao', 'Comissão'); }
 
     // ====================================================================
-    // GESTÃO DE USUÁRIOS (COM FILTRO E AÇÃO EM MASSA)
+    // 2. GESTÃO DE USUÁRIOS
     // ====================================================================
-    
     function mostrarListaUsuarios(status, btn) {
         document.getElementById('lista-status-titulo').textContent = status === 'ativos' ? 'Ativos' : 'Inativos';
         document.getElementById('lista-status-titulo').className = status === 'ativos' ? 'badge bg-success' : 'badge bg-secondary';
-        if(btn) {
-            btn.parentElement.querySelectorAll('.btn').forEach(b => b.classList.remove('active', 'btn-outline-primary', 'btn-outline-secondary'));
-            btn.classList.add('active', 'btn-outline-primary');
-        }
+        if(btn) { btn.parentElement.querySelectorAll('.btn').forEach(b => b.classList.remove('active', 'btn-outline-primary', 'btn-outline-secondary')); btn.classList.add('active', 'btn-outline-primary'); }
         carregarUsuarios(status);
     }
 
-    async function carregarUsuarios(status = 'ativos') {
-        try {
-            const usuarios = await apiFetch(`/usuarios/?is_active=${status === 'ativos'}`);
-            todosUsuariosCache = usuarios; // Guarda no cache para busca
-            renderizarTabelaUsuarios(usuarios, status);
-        } catch (e) { console.error(e); }
-    }
+    async function carregarUsuarios(status = 'ativos') { try { const usuarios = await apiFetch(`/usuarios/?is_active=${status === 'ativos'}`); todosUsuariosCache = usuarios; renderizarTabelaUsuarios(usuarios, status); } catch (e) { console.error(e); } }
 
     function renderizarTabelaUsuarios(lista, status) {
-        const userListBody = document.getElementById('user-list-body');
-        userListBody.innerHTML = '';
-        
+        const userListBody = document.getElementById('user-list-body'); userListBody.innerHTML = '';
         const isAtivos = status === 'ativos';
         const headerRow = document.getElementById('user-list-header');
-        headerRow.innerHTML = isAtivos 
-            ? `<th style="width: 40px;"><input type="checkbox" id="check-all" onclick="toggleTodos(this)"></th><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Líder</th><th class="text-end">Ações</th>`
-            : `<th>Nome</th><th>E-mail</th><th>Perfil</th><th class="text-end">Ações</th>`;
-
-        if (lista.length === 0) {
-            userListBody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Nenhum usuário encontrado.</td></tr>';
-            return;
-        }
-        
+        headerRow.innerHTML = isAtivos ? `<th style="width: 40px;"><input type="checkbox" id="check-all" onclick="toggleTodos(this)"></th><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Líder</th><th class="text-end">Ações</th>` : `<th>Nome</th><th>E-mail</th><th>Perfil</th><th class="text-end">Ações</th>`;
+        if (lista.length === 0) { userListBody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Nenhum usuário encontrado.</td></tr>'; return; }
         lista.forEach(user => {
             let perfilDisplay = '<span class="badge bg-secondary">Sem Perfil</span>';
-            if (user.groups && user.groups.length > 0) {
-                perfilDisplay = `<span class="badge bg-success">${user.groups[0].name}</span>`;
-            } else if (user.perfil_nome) {
-                perfilDisplay = `<span class="badge bg-warning text-dark" title="Atualize o cadastro para o novo sistema">${user.perfil_nome} (Legado)</span>`;
-            }
-
-            const tr = document.createElement('tr');
+            if (user.groups && user.groups.length > 0) perfilDisplay = `<span class="badge bg-success">${user.groups[0].name}</span>`;
+            else if (user.perfil_nome) perfilDisplay = `<span class="badge bg-warning text-dark">${user.perfil_nome} (Legado)</span>`;
             const checkHtml = isAtivos ? `<td><input type="checkbox" class="user-check" value="${user.id}" onclick="atualizarContador()"></td>` : '';
             const liderHtml = isAtivos ? `<td>${user.supervisor_nome || '-'}</td>` : '';
-            const acoes = isAtivos 
-                ? `<button class="btn btn-xs btn-outline-warning me-1" onclick='abrirModalUsuario(${JSON.stringify(user)})' title="Editar"><i class="bi bi-pencil"></i></button><button class="btn btn-xs btn-outline-danger" onclick="inativarUsuario(${user.id})" title="Inativar"><i class="bi bi-trash"></i></button>`
-                : `<button class="btn btn-xs btn-outline-success" onclick="reativarUsuario(${user.id})" title="Reativar"><i class="bi bi-check-circle"></i></button>`;
-            
-            tr.innerHTML = `${checkHtml}<td>${user.nome_completo}</td><td>${user.email}</td><td>${perfilDisplay}</td>${liderHtml}<td class="text-end">${acoes}</td>`;
-            userListBody.appendChild(tr);
+            const acoes = isAtivos ? `<button class="btn btn-xs btn-outline-warning me-1" onclick='abrirModalUsuario(${JSON.stringify(user)})' title="Editar"><i class="bi bi-pencil"></i></button><button class="btn btn-xs btn-outline-danger" onclick="inativarUsuario(${user.id})" title="Inativar"><i class="bi bi-trash"></i></button>` : `<button class="btn btn-xs btn-outline-success" onclick="reativarUsuario(${user.id})" title="Reativar"><i class="bi bi-check-circle"></i></button>`;
+            userListBody.innerHTML += `<tr>${checkHtml}<td>${user.nome_completo}</td><td>${user.email}</td><td>${perfilDisplay}</td>${liderHtml}<td class="text-end">${acoes}</td></tr>`;
         });
         atualizarContador();
     }
 
-    document.getElementById('busca-usuario').addEventListener('input', (e) => {
-        const termo = e.target.value.toLowerCase();
-        const filtrados = todosUsuariosCache.filter(u => 
-            u.nome_completo.toLowerCase().includes(termo) || 
-            u.email.toLowerCase().includes(termo) ||
-            u.username.toLowerCase().includes(termo)
-        );
-        const statusAtual = document.getElementById('lista-status-titulo').textContent === 'Ativos' ? 'ativos' : 'inativos';
-        renderizarTabelaUsuarios(filtrados, statusAtual);
-    });
+    document.getElementById('busca-usuario').addEventListener('input', (e) => { const termo = e.target.value.toLowerCase(); const filtrados = todosUsuariosCache.filter(u => u.nome_completo.toLowerCase().includes(termo) || u.email.toLowerCase().includes(termo) || u.username.toLowerCase().includes(termo)); const statusAtual = document.getElementById('lista-status-titulo').textContent === 'Ativos' ? 'ativos' : 'inativos'; renderizarTabelaUsuarios(filtrados, statusAtual); });
+    window.toggleTodos = (source) => { document.querySelectorAll('.user-check').forEach(c => c.checked = source.checked); atualizarContador(); }
+    window.atualizarContador = () => { const count = document.querySelectorAll('.user-check:checked').length; document.getElementById('count-selecionados').textContent = count; const barraAcoes = document.getElementById('acoes-massa'); if (count > 0) { barraAcoes.classList.remove('d-none'); barraAcoes.classList.add('d-flex'); } else { barraAcoes.classList.add('d-none'); barraAcoes.classList.remove('d-flex'); } }
+    window.aplicarMudancaPerfilEmMassa = async () => { const novoPerfilId = document.getElementById('novo-perfil-massa').value; if (!novoPerfilId) return alert('Selecione um perfil para aplicar.'); const checkboxes = document.querySelectorAll('.user-check:checked'); if (checkboxes.length === 0) return; if (!confirm(`Deseja alterar o perfil de ${checkboxes.length} usuários?`)) return; const ids = Array.from(checkboxes).map(c => c.value); let sucessos = 0; for (const userId of ids) { try { await apiFetch(`/usuarios/${userId}/`, { method: 'PATCH', body: JSON.stringify({ groups: [parseInt(novoPerfilId)] }) }); sucessos++; } catch (e) { console.error(e); } } alert(`${sucessos} atualizados.`); carregarUsuarios('ativos'); document.getElementById('check-all').checked = false; }
 
-    window.toggleTodos = (source) => {
-        document.querySelectorAll('.user-check').forEach(c => c.checked = source.checked);
-        atualizarContador();
-    }
-
-    window.atualizarContador = () => {
-        const count = document.querySelectorAll('.user-check:checked').length;
-        document.getElementById('count-selecionados').textContent = count;
-        const barraAcoes = document.getElementById('acoes-massa');
-        if (count > 0) {
-            barraAcoes.classList.remove('d-none');
-            barraAcoes.classList.add('d-flex');
-        } else {
-            barraAcoes.classList.add('d-none');
-            barraAcoes.classList.remove('d-flex');
-        }
-    }
-
-    window.aplicarMudancaPerfilEmMassa = async () => {
-        const novoPerfilId = document.getElementById('novo-perfil-massa').value;
-        if (!novoPerfilId) return alert('Selecione um perfil para aplicar.');
-        
-        const checkboxes = document.querySelectorAll('.user-check:checked');
-        if (checkboxes.length === 0) return;
-
-        if (!confirm(`Deseja alterar o perfil de ${checkboxes.length} usuários para o selecionado?`)) return;
-
-        const ids = Array.from(checkboxes).map(c => c.value);
-        let sucessos = 0;
-
-        for (const userId of ids) {
-            try {
-                await apiFetch(`/usuarios/${userId}/`, { 
-                    method: 'PATCH', 
-                    body: JSON.stringify({ groups: [parseInt(novoPerfilId)] }) 
-                });
-                sucessos++;
-            } catch (e) { console.error(`Erro ao atualizar usuário ${userId}`, e); }
-        }
-
-        alert(`${sucessos} usuários atualizados com sucesso.`);
-        carregarUsuarios('ativos');
-        document.getElementById('check-all').checked = false;
-    }
-
-    // --- LOGICA DO MODAL DE USUÁRIO (NOVO) ---
     async function abrirModalUsuario(user = null) {
-        // Reseta o formulário e abas
         document.getElementById('user-form').reset();
-        const tab = new bootstrap.Tab(document.getElementById('dados-tab'));
-        tab.show(); 
-        
+        new bootstrap.Tab(document.getElementById('dados-tab')).show(); 
         const userIdInput = document.getElementById('user_id');
         userIdInput.value = user ? user.id : '';
-        
         document.getElementById('userModalTitle').textContent = user ? 'Editar Usuário' : 'Novo Usuário';
         document.getElementById('senha').required = !user; 
-
-        // Preenche dropdowns antes de setar valores
         await carregarDadosParaFormulario();
 
         if (user) {
-            // Atualizado para usar "usuario_login" em vez de "username" para evitar conflito de ID
             document.getElementById('nome_completo').value = user.nome_completo || '';
             document.getElementById('cpf').value = user.cpf || '';
             document.getElementById('email').value = user.email || '';
-            
-            // --- ATUALIZAÇÃO: PREENCHE WHATSAPP ---
             document.getElementById('tel_whatsapp').value = user.tel_whatsapp || '';
-            
             document.getElementById('usuario_login').value = user.username || '';
-            
-            // CORREÇÃO DO ISSUE 1: Verificar se tem grupos, senão tenta perfil legado, senão vazio
-            if (user.groups && user.groups.length > 0) {
-                document.getElementById('perfil_id').value = user.groups[0].id;
-            } else if (user.perfil) {
-                document.getElementById('perfil_id').value = user.perfil;
-            } else {
-                document.getElementById('perfil_id').value = '';
-            }
-
+            if (user.groups && user.groups.length > 0) document.getElementById('perfil_id').value = user.groups[0].id;
+            else if (user.perfil) document.getElementById('perfil_id').value = user.perfil;
             document.getElementById('supervisor_id').value = user.supervisor || '';
             document.getElementById('participa_controle_presenca').checked = user.participa_controle_presenca;
-            
-            ['valor_almoco', 'valor_passagem', 'chave_pix', 'nome_da_conta', 'meta_comissao', 'desconto_boleto', 'desconto_inclusao_viabilidade', 'desconto_instalacao_antecipada', 'adiantamento_cnpj', 'desconto_inss_fixo'].forEach(id => {
-                document.getElementById(id).value = user[id] || '';
-            });
+            ['valor_almoco', 'valor_passagem', 'chave_pix', 'nome_da_conta', 'meta_comissao', 'desconto_boleto', 'desconto_inclusao_viabilidade', 'desconto_instalacao_antecipada', 'adiantamento_cnpj', 'desconto_inss_fixo'].forEach(id => { document.getElementById(id).value = user[id] || ''; });
         }
-
         userModal.show();
     }
 
@@ -1123,29 +976,19 @@
 
     userForm.addEventListener('submit', async function(e) {
         e.preventDefault();
-        const userIdInput = document.getElementById('user_id');
-        const id = userIdInput.value;
-        const isEditing = !!id;
-        const url = isEditing ? `/usuarios/${id}/` : '/usuarios/';
-        const method = isEditing ? 'PUT' : 'POST';
-
+        const id = document.getElementById('user_id').value;
+        const url = id ? `/usuarios/${id}/` : '/usuarios/';
+        const method = id ? 'PUT' : 'POST';
         const nomeCompleto = document.getElementById('nome_completo').value.trim();
-        const nomeParts = nomeCompleto.split(' ');
-        const firstName = nomeParts.shift();
-        const lastName = nomeParts.join(' ');
-        const perfilSelecionado = document.getElementById('perfil_id').value;
-
+        const parts = nomeCompleto.split(' ');
         const body = {
-            first_name: firstName, last_name: lastName,
+            first_name: parts.shift(), last_name: parts.join(' '),
             cpf: document.getElementById('cpf').value,
             email: document.getElementById('email').value,
-            
-            // --- ATUALIZAÇÃO: ENVIA WHATSAPP ---
             tel_whatsapp: document.getElementById('tel_whatsapp').value,
-
-            username: document.getElementById('usuario_login').value, // Atualizado ID
+            username: document.getElementById('usuario_login').value,
             supervisor: document.getElementById('supervisor_id').value || null,
-            groups: perfilSelecionado ? [parseInt(perfilSelecionado)] : [],
+            groups: document.getElementById('perfil_id').value ? [parseInt(document.getElementById('perfil_id').value)] : [],
             valor_almoco: document.getElementById('valor_almoco').value,
             valor_passagem: document.getElementById('valor_passagem').value,
             chave_pix: document.getElementById('chave_pix').value,
@@ -1158,297 +1001,388 @@
             desconto_inss_fixo: document.getElementById('desconto_inss_fixo').value,
             participa_controle_presenca: document.getElementById('participa_controle_presenca').checked
         };
-
-        const senha = document.getElementById('senha').value;
-        if (senha) body.password = senha;
-
-        try {
-            await apiFetch(url, { method, body: JSON.stringify(body) });
-            alert('Salvo com sucesso!');
-            userModal.hide();
-            mostrarListaUsuarios('ativos', null);
-        } catch (e) { alert(`Erro: ${e.message}`); }
+        if (document.getElementById('senha').value) body.password = document.getElementById('senha').value;
+        try { await apiFetch(url, { method, body: JSON.stringify(body) }); alert('Salvo!'); userModal.hide(); mostrarListaUsuarios('ativos', null); } catch (e) { alert(`Erro: ${e.message}`); }
     });
 
     async function inativarUsuario(id) { if(confirm('Inativar?')) { await apiFetch(`/usuarios/${id}/`, { method: 'DELETE' }); mostrarListaUsuarios('ativos'); } }
     async function reativarUsuario(id) { if(confirm('Reativar?')) { await apiFetch(`/usuarios/${id}/reativar/`, { method: 'PUT' }); mostrarListaUsuarios('inativos'); } }
 
-    // --- CADASTROS GERAIS (Mantidos e Compactados) ---
+    // ====================================================================
+    // 3. CADASTROS GERAIS CRM (FUNÇÕES QUE ESTAVAM FALTANDO)
+    // ====================================================================
+    
+    // --- OPERADORAS ---
+    async function carregarOperadoras() {
+        const lista = await apiFetch('/crm/operadoras/');
+        const tbody = document.getElementById('lista-operadoras');
+        tbody.innerHTML = '';
+        lista.forEach(o => {
+            const st = o.ativo ? '<span class="badge bg-success">Ativo</span>' : '<span class="badge bg-danger">Inativo</span>';
+            tbody.innerHTML += `
+                <tr>
+                    <td>${o.nome}</td><td>${o.cnpj || '-'}</td><td>${st}</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-warning" onclick='editarOperadora(${JSON.stringify(o)})'><i class="bi bi-pencil"></i></button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="excluirOperadora(${o.id})"><i class="bi bi-trash"></i></button>
+                    </td>
+                </tr>`;
+        });
+        // Atualiza select em planos
+        const selPlanos = document.getElementById('plano_operadora_id');
+        if(selPlanos) {
+            selPlanos.innerHTML = '<option value="">Selecione...</option>';
+            lista.filter(x=>x.ativo).forEach(o => selPlanos.add(new Option(o.nome, o.id)));
+        }
+    }
+    
+    document.getElementById('form-operadora').onsubmit = async(e) => {
+        e.preventDefault();
+        const id = document.getElementById('operadora_id').value;
+        const body = {
+            nome: document.getElementById('operadora_nome').value,
+            cnpj: document.getElementById('operadora_cnpj').value,
+            ativo: document.getElementById('operadora_status').value == '1'
+        };
+        try {
+            if(id) await apiFetch(`/crm/operadoras/${id}/`, {method:'PUT', body: JSON.stringify(body)});
+            else await apiFetch('/crm/operadoras/', {method:'POST', body: JSON.stringify(body)});
+            document.getElementById('form-operadora').reset(); document.getElementById('operadora_id').value='';
+            carregarOperadoras();
+        } catch(e){ alert(e.message); }
+    };
+    window.editarOperadora = (o) => { document.getElementById('operadora_id').value=o.id; document.getElementById('operadora_nome').value=o.nome; document.getElementById('operadora_cnpj').value=o.cnpj; document.getElementById('operadora_status').value = o.ativo ? '1' : '0'; };
+    window.excluirOperadora = async (id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/operadoras/${id}/`, {method:'DELETE'}); carregarOperadoras(); } };
+
+    // --- PLANOS ---
+    async function carregarPlanos() {
+        const lista = await apiFetch('/crm/planos/');
+        const tbody = document.getElementById('lista-planos');
+        tbody.innerHTML = '';
+        lista.forEach(p => {
+            tbody.innerHTML += `<tr><td>${p.nome}</td><td>${p.operadora_nome || '-'}</td><td>${p.valor}</td><td>${p.comissao}</td><td><button class="btn btn-sm btn-outline-warning" onclick='editarPlano(${JSON.stringify(p)})'><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="excluirPlano(${p.id})"><i class="bi bi-trash"></i></button></td></tr>`;
+        });
+    }
+    document.getElementById('form-plano').onsubmit = async(e) => {
+        e.preventDefault();
+        const id = document.getElementById('plano_id').value;
+        const body = {
+            nome: document.getElementById('plano_nome').value,
+            valor: document.getElementById('plano_valor').value,
+            comissao: document.getElementById('plano_comissao').value,
+            operadora: document.getElementById('plano_operadora_id').value,
+            ativo: true
+        };
+        try {
+            if(id) await apiFetch(`/crm/planos/${id}/`, {method:'PUT', body: JSON.stringify(body)});
+            else await apiFetch('/crm/planos/', {method:'POST', body: JSON.stringify(body)});
+            document.getElementById('form-plano').reset(); document.getElementById('plano_id').value='';
+            carregarPlanos();
+        } catch(e){ alert(e.message); }
+    };
+    window.editarPlano = (p) => { 
+        document.getElementById('plano_id').value = p.id; 
+        document.getElementById('plano_nome').value = p.nome;
+        document.getElementById('plano_valor').value = p.valor;
+        document.getElementById('plano_comissao').value = p.comissao;
+        document.getElementById('plano_operadora_id').value = p.operadora;
+    };
+    window.excluirPlano = async (id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/planos/${id}/`, {method:'DELETE'}); carregarPlanos(); } };
+
+    // --- FORMAS PAGAMENTO ---
+    async function carregarFormasPagamento() {
+        const lista = await apiFetch('/crm/formas-pagamento/');
+        const ul = document.getElementById('lista-formas-pagamento');
+        ul.innerHTML = '';
+        lista.forEach(f => {
+            ul.innerHTML += `<li class="list-group-item d-flex justify-content-between">${f.nome} <button class="btn btn-sm btn-danger" onclick="excluirFormaPagamento(${f.id})"><i class="bi bi-trash"></i></button></li>`;
+        });
+    }
+    document.getElementById('btn-salvar-forma-pagamento').onclick = async () => {
+        const nome = document.getElementById('nova-forma-pagamento-nome').value;
+        if(!nome) return;
+        await apiFetch('/crm/formas-pagamento/', {method:'POST', body:JSON.stringify({nome, ativo:true})});
+        document.getElementById('nova-forma-pagamento-nome').value='';
+        carregarFormasPagamento();
+    };
+    window.excluirFormaPagamento = async(id)=>{ if(confirm('Excluir?')) { await apiFetch(`/crm/formas-pagamento/${id}/`, {method:'DELETE'}); carregarFormasPagamento(); } };
+
+    // --- STATUS ---
+    async function carregarStatus() {
+        const lista = await apiFetch('/crm/status/');
+        const tbody = document.getElementById('lista-status');
+        tbody.innerHTML = '';
+        lista.forEach(s => {
+            tbody.innerHTML += `<tr><td>${s.nome}</td><td>${s.tipo}</td><td>${s.estado||'-'}</td><td><span class="badge" style="background:${s.cor};color:#000">${s.cor}</span></td><td><button class="btn btn-sm btn-danger" onclick="excluirStatus(${s.id})"><i class="bi bi-trash"></i></button></td></tr>`;
+        });
+    }
+    document.getElementById('form-status').onsubmit = async(e) => {
+        e.preventDefault();
+        const body = {
+            nome: document.getElementById('status_nome').value,
+            tipo: document.getElementById('status_tipo').value,
+            estado: document.getElementById('status_estado').value,
+            cor: document.getElementById('status_cor').value
+        };
+        await apiFetch('/crm/status/', {method:'POST', body: JSON.stringify(body)});
+        document.getElementById('form-status').reset();
+        carregarStatus();
+    };
+    window.excluirStatus = async(id)=>{ if(confirm('Excluir?')) { await apiFetch(`/crm/status/${id}/`, {method:'DELETE'}); carregarStatus(); } };
+
+    // --- PENDÊNCIAS ---
+    async function carregarMotivosPendencia() {
+        const lista = await apiFetch('/crm/motivos-pendencia/');
+        const tbody = document.getElementById('lista-pendencias');
+        tbody.innerHTML = '';
+        lista.forEach(p => {
+            tbody.innerHTML += `<tr><td>${p.nome}</td><td>${p.tipo_pendencia}</td><td><button class="btn btn-sm btn-danger" onclick="excluirPendencia(${p.id})"><i class="bi bi-trash"></i></button></td></tr>`;
+        });
+    }
+    document.getElementById('form-pendencia').onsubmit = async(e) => {
+        e.preventDefault();
+        const body = {
+            nome: document.getElementById('pendencia_nome').value,
+            tipo_pendencia: document.getElementById('pendencia_tipo').value
+        };
+        await apiFetch('/crm/motivos-pendencia/', {method:'POST', body: JSON.stringify(body)});
+        document.getElementById('form-pendencia').reset();
+        carregarMotivosPendencia();
+    };
+    window.excluirPendencia = async(id)=>{ if(confirm('Excluir?')) { await apiFetch(`/crm/motivos-pendencia/${id}/`, {method:'DELETE'}); carregarMotivosPendencia(); } };
+
+    // --- REGRAS COMISSÃO ---
+    async function carregarDadosParaRegrasComissao() {
+        const [planos, users] = await Promise.all([apiFetch('/crm/planos/'), apiFetch('/usuarios/?is_active=true')]);
+        const selPlanos = document.getElementById('regra_plano_id');
+        const selUsers = document.getElementById('regra_consultor_id');
+        selPlanos.innerHTML = '<option value="">Selecione...</option>';
+        selUsers.innerHTML = '<option value="">Todos</option>';
+        planos.forEach(p => selPlanos.add(new Option(p.nome, p.id)));
+        users.forEach(u => selUsers.add(new Option(u.nome_completo, u.id)));
+    }
+    async function carregarRegrasComissao() {
+        const lista = await apiFetch('/crm/regras-comissao/');
+        const tbody = document.getElementById('lista-regras-comissao');
+        tbody.innerHTML = '';
+        lista.forEach(r => {
+            tbody.innerHTML += `<tr><td>${r.consultor_nome||'TODOS'}</td><td>${r.plano_nome}</td><td>${r.tipo_venda}</td><td>${r.tipo_cliente}</td><td>${r.valor_base}</td><td>${r.valor_acelerado}</td><td><button class="btn btn-sm btn-danger" onclick="excluirRegra(${r.id})"><i class="bi bi-trash"></i></button></td></tr>`;
+        });
+    }
+    document.getElementById('form-regra-comissao').onsubmit = async(e) => {
+        e.preventDefault();
+        const body = {
+            consultor: document.getElementById('regra_consultor_id').value || null,
+            plano: document.getElementById('regra_plano_id').value,
+            tipo_venda: document.getElementById('regra_tipo_venda').value,
+            tipo_cliente: document.getElementById('regra_tipo_cliente').value,
+            valor_base: document.getElementById('regra_valor_base').value,
+            valor_acelerado: document.getElementById('regra_valor_acelerado').value
+        };
+        await apiFetch('/crm/regras-comissao/', {method:'POST', body: JSON.stringify(body)});
+        carregarRegrasComissao();
+        resetFormRegraComissao();
+    };
+    function resetFormRegraComissao() { document.getElementById('form-regra-comissao').reset(); }
+    window.excluirRegra = async(id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/regras-comissao/${id}/`, {method:'DELETE'}); carregarRegrasComissao(); } };
+
+    // --- CAMPANHAS ---
+    async function carregarCampanhas() {
+        const lista = await apiFetch('/crm/campanhas/');
+        const tbody = document.getElementById('lista-campanhas');
+        tbody.innerHTML = '';
+        lista.forEach(c => {
+            tbody.innerHTML += `<tr><td>${c.nome}</td><td>${c.data_inicio} a ${c.data_fim}</td><td>${c.ativo?'Ativa':'Inativa'}</td><td><button class="btn btn-sm btn-danger" onclick="excluirCampanha(${c.id})"><i class="bi bi-trash"></i></button></td></tr>`;
+        });
+    }
+    document.getElementById('form-campanha').onsubmit = async(e) => {
+        e.preventDefault();
+        const body = {
+            nome: document.getElementById('campanha_nome').value,
+            data_inicio: document.getElementById('campanha_data_inicio').value,
+            data_fim: document.getElementById('campanha_data_fim').value,
+            regras: document.getElementById('campanha_regras').value,
+            ativo: true
+        };
+        await apiFetch('/crm/campanhas/', {method:'POST', body: JSON.stringify(body)});
+        document.getElementById('form-campanha').reset();
+        carregarCampanhas();
+    };
+    function resetFormCampanha() { document.getElementById('form-campanha').reset(); }
+    window.excluirCampanha = async(id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/campanhas/${id}/`, {method:'DELETE'}); carregarCampanhas(); } };
+
+    // ====================================================================
+    // 4. MOTIVOS E FERIADOS (PRESENÇA)
+    // ====================================================================
     const listaMotivosUl = document.getElementById('lista-motivos');
     const motivoModal = new bootstrap.Modal(document.getElementById('modal-edicao-motivo'));
-    async function carregarMotivos() { const m = await apiFetch('/presenca/motivos/'); listaMotivosUl.innerHTML = ''; m.forEach(x => listaMotivosUl.innerHTML += `<li class="list-group-item d-flex justify-content-between align-items-center"><span>${x.motivo} <span class="badge ${x.gera_desconto?'bg-danger':'bg-success'}">${x.gera_desconto?'Desconta':'Não Desconta'}</span></span><div><button class="btn btn-warning btn-sm me-1" onclick='editarMotivo(${JSON.stringify(x)})'><i class="bi bi-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="excluirMotivo(${x.id})"><i class="bi bi-trash"></i></button></div></li>`); }
-    document.getElementById('btn-salvar-motivo').onclick = async () => { await apiFetch('/presenca/motivos/', { method: 'POST', body: JSON.stringify({ motivo: document.getElementById('novo-motivo-nome').value, gera_desconto: document.getElementById('novo-motivo-desconto').checked }) }); carregarMotivos(); document.getElementById('novo-motivo-nome').value = ''; };
+    
+    async function carregarMotivos() { 
+        // O apiFetch corrigido vai transformar '/presenca/motivos/' em '/api/presenca/motivos/'
+        const m = await apiFetch('/presenca/motivos/'); 
+        listaMotivosUl.innerHTML = ''; 
+        m.forEach(x => listaMotivosUl.innerHTML += `<li class="list-group-item d-flex justify-content-between align-items-center"><span>${x.motivo} <span class="badge ${x.gera_desconto?'bg-danger':'bg-success'}">${x.gera_desconto?'Desconta':'Não Desconta'}</span></span><div><button class="btn btn-warning btn-sm me-1" onclick='editarMotivo(${JSON.stringify(x)})'><i class="bi bi-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="excluirMotivo(${x.id})"><i class="bi bi-trash"></i></button></div></li>`); 
+    }
+    
+    document.getElementById('btn-salvar-motivo').onclick = async () => { 
+        await apiFetch('/presenca/motivos/', { method: 'POST', body: JSON.stringify({ motivo: document.getElementById('novo-motivo-nome').value, gera_desconto: document.getElementById('novo-motivo-desconto').checked }) }); 
+        carregarMotivos(); 
+        document.getElementById('novo-motivo-nome').value = ''; 
+    };
     window.editarMotivo = (m) => { document.getElementById('motivo-id-input').value = m.id; document.getElementById('motivo-nome-input').value = m.motivo; document.getElementById('motivo-desconto-input').checked = m.gera_desconto; motivoModal.show(); };
     document.getElementById('form-edicao-motivo').onsubmit = async (e) => { e.preventDefault(); const id = document.getElementById('motivo-id-input').value; await apiFetch(`/presenca/motivos/${id}/`, { method: 'PUT', body: JSON.stringify({ motivo: document.getElementById('motivo-nome-input').value, gera_desconto: document.getElementById('motivo-desconto-input').checked }) }); motivoModal.hide(); carregarMotivos(); };
     window.excluirMotivo = async(id) => { if(confirm('Excluir?')) { await apiFetch(`/presenca/motivos/${id}/`, {method:'DELETE'}); carregarMotivos(); } };
-    const listaFeriados = document.getElementById('lista-feriados'); async function carregarFeriados() { const f = await apiFetch('/presenca/dias-nao-uteis/'); listaFeriados.innerHTML = ''; f.forEach(x => listaFeriados.innerHTML += `<tr><td>${new Date(x.data).toLocaleDateString('pt-BR',{timeZone:'UTC'})}</td><td>${x.descricao}</td><td><button class="btn btn-danger btn-sm" onclick="excluirFeriado(${x.id})"><i class="bi bi-trash"></i></button></td></tr>`); }
+    
+    const listaFeriados = document.getElementById('lista-feriados'); 
+    async function carregarFeriados() { 
+        const f = await apiFetch('/presenca/dias-nao-uteis/'); 
+        listaFeriados.innerHTML = ''; 
+        f.forEach(x => listaFeriados.innerHTML += `<tr><td>${new Date(x.data).toLocaleDateString('pt-BR',{timeZone:'UTC'})}</td><td>${x.descricao}</td><td><button class="btn btn-danger btn-sm" onclick="excluirFeriado(${x.id})"><i class="bi bi-trash"></i></button></td></tr>`); 
+    }
     document.getElementById('btn-salvar-feriado').onclick = async () => { await apiFetch('/presenca/dias-nao-uteis/', { method: 'POST', body: JSON.stringify({ data: document.getElementById('novo-feriado-data').value, descricao: document.getElementById('novo-feriado-descricao').value }) }); carregarFeriados(); document.getElementById('novo-feriado-data').value = ''; };
     window.excluirFeriado = async(id) => { if(confirm('Excluir?')) { await apiFetch(`/presenca/dias-nao-uteis/${id}/`, {method:'DELETE'}); carregarFeriados(); } };
     
-    // --- LÓGICA DE RELATÓRIOS FINANCEIROS (NOVO) ---
+    // --- LÓGICA DE RELATÓRIOS FINANCEIROS ---
     const fmtMoeda = (val) => parseFloat(val).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-
     async function carregarRelatorioFinanceiro() {
         const ini = document.getElementById('finDataInicio').value;
         const fim = document.getElementById('finDataFim').value;
-
         if (!ini || !fim) { alert("Por favor, selecione as datas."); return; }
-
         const tbodyPrev = document.getElementById('tbodyPrevisao');
         const tbodyDesc = document.getElementById('tbodyDescontos');
         tbodyPrev.innerHTML = '<tr><td colspan="4" class="text-center">Carregando...</td></tr>';
         tbodyDesc.innerHTML = '<tr><td colspan="6" class="text-center">Carregando...</td></tr>';
         document.getElementById('cardPrevisao').style.display = 'block';
         document.getElementById('cardDescontos').style.display = 'block';
-
         try {
-            const data = await apiFetch(`/presenca/relatorio-financeiro/?inicio=${ini}&fim=${fim}`);
-
-            tbodyPrev.innerHTML = '';
-            if (data.previsao.length === 0) {
-                 tbodyPrev.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Nenhum registro no período.</td></tr>';
-            }
-            data.previsao.forEach(item => {
-                tbodyPrev.innerHTML += `<tr><td>${item.nome}</td><td>${item.dias_uteis}</td><td>${fmtMoeda(item.valor_diario)}</td><td class="fw-bold text-primary">${fmtMoeda(item.total_receber)}</td></tr>`;
+            const data = await fetchDados(`/presenca/relatorio-financeiro/?inicio=${ini}&fim=${fim}`);
+            tbodyPrev.innerHTML = ''; data.previsao.forEach(item => { tbodyPrev.innerHTML += `<tr><td>${item.nome}</td><td>${item.dias_uteis}</td><td>${fmtMoeda(item.valor_diario)}</td><td class="fw-bold text-primary">${fmtMoeda(item.total_receber)}</td></tr>`; });
+            tbodyDesc.innerHTML = ''; data.descontos.forEach(item => { 
+                let faltasHtml = item.qtd_faltas; 
+                if (item.qtd_faltas > 0) { const datasStr = encodeURIComponent(JSON.stringify(item.datas_faltas)); faltasHtml = `<a href="javascript:void(0)" class="text-danger fw-bold text-decoration-none" onclick="abrirModalFaltas('${item.nome}', '${datasStr}')">${item.qtd_faltas} <i class="bi bi-eye-fill"></i></a>`; }
+                tbodyDesc.innerHTML += `<tr><td>${item.nome}</td><td>${item.dias_uteis}</td><td>${faltasHtml}</td><td>${fmtMoeda(item.valor_diario)}</td><td class="text-danger">${fmtMoeda(item.valor_desconto)}</td><td class="fw-bold text-success">${fmtMoeda(item.total_receber)}</td></tr>`; 
             });
-
-            tbodyDesc.innerHTML = '';
-            if (data.descontos.length === 0) {
-                 tbodyDesc.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Nenhum registro no período.</td></tr>';
-            }
-            data.descontos.forEach(item => {
-                let faltasHtml = item.qtd_faltas;
-                if (item.qtd_faltas > 0) {
-                    const datasStr = encodeURIComponent(JSON.stringify(item.datas_faltas));
-                    faltasHtml = `<a href="javascript:void(0)" class="text-danger fw-bold text-decoration-none" onclick="abrirModalFaltas('${item.nome}', '${datasStr}')">${item.qtd_faltas} <i class="bi bi-eye-fill"></i></a>`;
-                }
-                tbodyDesc.innerHTML += `<tr><td>${item.nome}</td><td>${item.dias_uteis}</td><td>${faltasHtml}</td><td>${fmtMoeda(item.valor_diario)}</td><td class="text-danger">${fmtMoeda(item.valor_desconto)}</td><td class="fw-bold text-success">${fmtMoeda(item.total_receber)}</td></tr>`;
-            });
-
-        } catch (error) {
-            console.error(error);
-            alert("Erro ao carregar relatório: " + error.message);
-            tbodyPrev.innerHTML = '';
-            tbodyDesc.innerHTML = '';
-        }
+        } catch (error) { alert("Erro ao carregar relatório."); }
     }
 
-    function abrirModalFaltas(nome, datasEncoded) {
-        const datas = JSON.parse(decodeURIComponent(datasEncoded));
-        document.getElementById('modalNomeColab').innerText = nome;
-        const lista = document.getElementById('listaFaltas');
-        lista.innerHTML = '';
-        if (datas.length === 0) lista.innerHTML = '<li class="list-group-item">Nenhuma falta.</li>';
-        else datas.forEach(d => lista.innerHTML += `<li class="list-group-item py-1 text-danger"><i class="bi bi-x-circle"></i> ${d}</li>`);
-        new bootstrap.Modal(document.getElementById('modalFaltas')).show();
-    }
+    function abrirModalFaltas(nome, datasEncoded) { const datas = JSON.parse(decodeURIComponent(datasEncoded)); document.getElementById('modalNomeColab').innerText = nome; const lista = document.getElementById('listaFaltas'); lista.innerHTML = ''; if (datas.length === 0) lista.innerHTML = '<li class="list-group-item">Nenhuma falta.</li>'; else datas.forEach(d => lista.innerHTML += `<li class="list-group-item py-1 text-danger"><i class="bi bi-x-circle"></i> ${d}</li>`); new bootstrap.Modal(document.getElementById('modalFaltas')).show(); }
+    async function baixarExcelFinanceiro() { const ini = document.getElementById('finDataInicio').value; const fim = document.getElementById('finDataFim').value; if (!ini || !fim) return alert("Selecione o período."); try { const blob = await fetchDados(`/presenca/relatorio-financeiro/excel/?inicio=${ini}&fim=${fim}`, { isBlob: true }); const url = window.URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `Financeiro_${ini}_${fim}.xlsx`; document.body.appendChild(a); a.click(); a.remove(); } catch (err) { alert("Erro ao baixar Excel."); } }
 
-    async function baixarExcelFinanceiro() {
-        const ini = document.getElementById('finDataInicio').value;
-        const fim = document.getElementById('finDataFim').value;
-        if (!ini || !fim) return alert("Selecione o período.");
-
+    // --- NOVA LÓGICA: RECEBIMENTO OPERADORA (NOVO) ---
+    async function carregarComissoesOperadora() {
+        const tbody = document.getElementById('lista-comissoes-operadora');
+        const selPlano = document.getElementById('co_plano_id');
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center">Carregando...</td></tr>';
+        
         try {
-            const blob = await apiFetch(`/presenca/relatorio-financeiro/excel/?inicio=${ini}&fim=${fim}`, { isBlob: true });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.href = url;
-            a.download = `Financeiro_${ini}_${fim}.xlsx`;
-            document.body.appendChild(a); a.click(); a.remove();
-        } catch (err) { alert("Erro ao baixar Excel: " + err.message); }
-    }
+            // 1. Carregar Planos no Select
+            const planos = await apiFetch('/crm/planos/');
+            selPlano.innerHTML = '<option value="">Selecione um Plano...</option>';
+            if(planos) planos.forEach(p => selPlano.add(new Option(p.nome, p.id)));
 
-    async function carregarOperadoras() { const l = document.getElementById('lista-operadoras'); l.innerHTML=''; (await apiFetch('/crm/operadoras/')).forEach(o => l.innerHTML += `<tr><td>${o.nome}</td><td>${o.cnpj||''}</td><td>${o.status?'Ativo':'Inativo'}</td><td><button class="btn btn-warning btn-sm" onclick='editarOperadora(${JSON.stringify(o)})'><i class="bi bi-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="deletarOperadora(${o.id})"><i class="bi bi-trash"></i></button></td></tr>`); }
-    document.getElementById('form-operadora').onsubmit = async(e) => { e.preventDefault(); const id = document.getElementById('operadora_id').value; await apiFetch(id?`/crm/operadoras/${id}/`:'/crm/operadoras/', {method:id?'PUT':'POST', body:JSON.stringify({nome:document.getElementById('operadora_nome').value, cnpj:document.getElementById('operadora_cnpj').value, status: document.getElementById('operadora_status').value=='1'})}); document.getElementById('form-operadora').reset(); carregarOperadoras(); };
-    window.editarOperadora = (o) => { document.getElementById('operadora_id').value=o.id; document.getElementById('operadora_nome').value=o.nome; document.getElementById('operadora_cnpj').value=o.cnpj; document.getElementById('operadora_status').value=o.status?'1':'0'; };
-    window.deletarOperadora = async(id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/operadoras/${id}/`,{method:'DELETE'}); carregarOperadoras(); }};
-    async function carregarPlanos() { const l = document.getElementById('lista-planos'); l.innerHTML=''; const [plans, ops] = await Promise.all([apiFetch('/crm/planos/'), apiFetch('/crm/operadoras/')]); const sel = document.getElementById('plano_operadora_id'); sel.innerHTML='<option value="">Selecione</option>'; ops.forEach(o => sel.add(new Option(o.nome, o.id))); plans.forEach(p => l.innerHTML += `<tr><td>${p.nome}</td><td>${p.operadora_nome}</td><td>${p.valor}</td><td>${p.comissao_base}</td><td><button class="btn btn-warning btn-sm" onclick='editarPlano(${JSON.stringify(p)})'><i class="bi bi-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="deletarPlano(${p.id})"><i class="bi bi-trash"></i></button></td></tr>`); }
-    document.getElementById('form-plano').onsubmit = async(e) => { e.preventDefault(); const id = document.getElementById('plano_id').value; await apiFetch(id?`/crm/planos/${id}/`:'/crm/planos/', {method:id?'PUT':'POST', body:JSON.stringify({nome:document.getElementById('plano_nome').value, valor: parseFloat(document.getElementById('plano_valor').value), comissao_base: parseFloat(document.getElementById('plano_comissao').value), operadora: document.getElementById('plano_operadora_id').value, beneficios: document.getElementById('plano_beneficios').value, status:true})}); document.getElementById('form-plano').reset(); carregarPlanos(); };
-    window.editarPlano = (p) => { document.getElementById('plano_id').value=p.id; document.getElementById('plano_nome').value=p.nome; document.getElementById('plano_valor').value=p.valor; document.getElementById('plano_comissao').value=p.comissao_base; document.getElementById('plano_operadora_id').value=p.operadora; };
-    window.deletarPlano = async(id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/planos/${id}/`,{method:'DELETE'}); carregarPlanos(); }};
-    async function carregarFormasPagamento() { const l=document.getElementById('lista-formas-pagamento'); l.innerHTML=''; (await apiFetch('/crm/formas-pagamento/')).forEach(f=>l.innerHTML+=`<li class="list-group-item d-flex justify-content-between"><span>${f.nome}</span><div><button class="btn btn-sm btn-warning me-1" onclick="editarFP(${f.id}, '${f.nome}')"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-danger" onclick="delFP(${f.id})"><i class="bi bi-trash"></i></button></div></li>`); }
-    document.getElementById('btn-salvar-forma-pagamento').onclick = async()=>{ await apiFetch('/crm/formas-pagamento/',{method:'POST', body:JSON.stringify({nome:document.getElementById('nova-forma-pagamento-nome').value, status:true})}); carregarFormasPagamento(); document.getElementById('nova-forma-pagamento-nome').value=''; };
-    window.editarFP = async(id, old)=>{ const n=prompt('Nome:', old); if(n) { await apiFetch(`/crm/formas-pagamento/${id}/`,{method:'PUT', body:JSON.stringify({nome:n, status:true})}); carregarFormasPagamento(); }};
-    window.delFP = async(id)=>{ if(confirm('Excluir?')) { await apiFetch(`/crm/formas-pagamento/${id}/`,{method:'DELETE'}); carregarFormasPagamento(); }};
-    async function carregarStatus() { const l=document.getElementById('lista-status'); l.innerHTML=''; (await apiFetch('/crm/status/')).forEach(s=>l.innerHTML+=`<tr><td><span style="display:inline-block;width:10px;height:10px;background:${s.cor};border-radius:50%"></span> ${s.nome}</td><td>${s.tipo}</td><td>${s.estado||''}</td><td>${s.cor}</td><td><button class="btn btn-warning btn-sm" onclick='editStatus(${JSON.stringify(s)})'><i class="bi bi-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="delStatus(${s.id})"><i class="bi bi-trash"></i></button></td></tr>`); }
-    document.getElementById('form-status').onsubmit = async(e)=>{ e.preventDefault(); const id=document.getElementById('status_id').value; const b={nome:document.getElementById('status_nome').value, tipo:document.getElementById('status_tipo').value, estado:document.getElementById('status_estado').value, cor:document.getElementById('status_cor').value}; await apiFetch(id?`/crm/status/${id}/`:'/crm/status/',{method:id?'PUT':'POST', body:JSON.stringify(b)}); document.getElementById('form-status').reset(); carregarStatus(); };
-    window.editStatus=(s)=>{ document.getElementById('status_id').value=s.id; document.getElementById('status_nome').value=s.nome; document.getElementById('status_tipo').value=s.tipo; document.getElementById('status_estado').value=s.estado; document.getElementById('status_cor').value=s.cor; };
-    window.delStatus=async(id)=>{ if(confirm('Excluir?')) { await apiFetch(`/crm/status/${id}/`,{method:'DELETE'}); carregarStatus(); }};
-    async function carregarMotivosPendencia() { const l=document.getElementById('lista-pendencias'); l.innerHTML=''; (await apiFetch('/crm/motivos-pendencia/')).forEach(p=>l.innerHTML+=`<tr><td>${p.nome}</td><td>${p.tipo_pendencia}</td><td><button class="btn btn-warning btn-sm" onclick='editPend(${JSON.stringify(p)})'><i class="bi bi-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="delPend(${p.id})"><i class="bi bi-trash"></i></button></td></tr>`); }
-    document.getElementById('form-pendencia').onsubmit = async(e)=>{ e.preventDefault(); const id=document.getElementById('pendencia_id').value; await apiFetch(id?`/crm/motivos-pendencia/${id}/`:'/crm/motivos-pendencia/',{method:id?'PUT':'POST', body:JSON.stringify({nome:document.getElementById('pendencia_nome').value, tipo_pendencia:document.getElementById('pendencia_tipo').value})}); document.getElementById('form-pendencia').reset(); carregarMotivosPendencia(); };
-    window.editPend=(p)=>{ document.getElementById('pendencia_id').value=p.id; document.getElementById('pendencia_nome').value=p.nome; document.getElementById('pendencia_tipo').value=p.tipo_pendencia; };
-    window.delPend=async(id)=>{ if(confirm('Excluir?')) { await apiFetch(`/crm/motivos-pendencia/${id}/`,{method:'DELETE'}); carregarMotivosPendencia(); }};
-    async function carregarDadosParaRegrasComissao() { try { const [p, u] = await Promise.all([apiFetch('/crm/planos/'), apiFetch('/usuarios/?is_active=true')]); const sp=document.getElementById('regra_plano_id'); const sc=document.getElementById('regra_consultor_id'); sp.innerHTML=sc.innerHTML='<option value="">Selecione</option>'; p.forEach(x=>sp.add(new Option(x.nome, x.id))); u.forEach(x=>sc.add(new Option(x.nome_completo, x.id))); } catch(e){} }
-    
-    // --- LÓGICA ATUALIZADA DE REGRAS DE COMISSÃO (FILTRO, IMPORT E EXPORT) ---
-    async function carregarRegrasComissao(termoBusca = '') { 
-        const l=document.getElementById('lista-regras-comissao'); 
-        l.innerHTML='<tr><td colspan="7" class="text-center">Carregando...</td></tr>'; 
-        try {
-            const url = termoBusca ? `/crm/regras-comissao/?search=${termoBusca}` : '/crm/regras-comissao/';
-            const regras = await apiFetch(url);
-            l.innerHTML = '';
+            // 2. Carregar Lista
+            const lista = await apiFetch('/crm/comissoes-operadora/');
+            tbody.innerHTML = '';
             
-            if(regras.length === 0) {
-                l.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Nenhuma regra encontrada.</td></tr>';
+            if(lista.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Nenhum registro encontrado.</td></tr>';
                 return;
             }
 
-            regras.forEach(r => {
-                l.innerHTML += `
+            lista.forEach(co => {
+                const total = parseFloat(co.valor_base || 0) + parseFloat(co.bonus_transicao || 0);
+                let dtFim = '-';
+                if (co.data_fim_bonus) {
+                    const d = new Date(co.data_fim_bonus);
+                    if (!isNaN(d.getTime())) {
+                         dtFim = d.toLocaleDateString('pt-BR', {timeZone: 'UTC'});
+                    }
+                }
+                
+                tbody.innerHTML += `
                     <tr>
-                        <td>${r.consultor_nome || '<span class="text-muted">Todos</span>'}</td>
-                        <td>${r.plano_nome}</td>
-                        <td>${r.tipo_venda}</td>
-                        <td>${r.tipo_cliente}</td>
-                        <td>${r.valor_base}</td>
-                        <td>${r.valor_acelerado}</td>
-                        <td>
-                            <button class="btn btn-warning btn-sm" onclick='editRegra(${JSON.stringify(r)})'><i class="bi bi-pencil"></i></button>
-                            <button class="btn btn-danger btn-sm" onclick="delRegra(${r.id})"><i class="bi bi-trash"></i></button>
+                        <td class="fw-bold">${co.plano_nome || 'Plano ID ' + co.plano}</td>
+                        <td>${fmtMoeda(co.valor_base)}</td>
+                        <td class="text-success fw-bold">${fmtMoeda(co.bonus_transicao)}</td>
+                        <td>${dtFim}</td>
+                        <td class="fw-bold text-primary">${fmtMoeda(total)}</td>
+                        <td class="text-end">
+                            <button class="btn btn-warning btn-sm" onclick='editarComissaoOp(${JSON.stringify(co)})'><i class="bi bi-pencil"></i></button>
+                            <button class="btn btn-danger btn-sm" onclick="deletarComissaoOp(${co.id})"><i class="bi bi-trash"></i></button>
                         </td>
-                    </tr>`;
+                    </tr>
+                `;
             });
-        } catch(e) {
-            console.error(e);
-            l.innerHTML = '<tr><td colspan="7" class="text-danger text-center">Erro ao carregar regras.</td></tr>';
-        }
-    }
-
-    // Debounce para o filtro não chamar a API a cada letra
-    let timeoutFiltroRegras = null;
-    function filtrarRegras(valor) {
-        clearTimeout(timeoutFiltroRegras);
-        timeoutFiltroRegras = setTimeout(() => {
-            carregarRegrasComissao(valor);
-        }, 500);
-    }
-
-    // Exportar Excel
-    async function exportarRegras() {
-        try {
-            const blob = await apiFetch('/crm/regras-comissao/exportar/', { isBlob: true });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `regras_comissao_${new Date().toISOString().slice(0,10)}.xlsx`;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-        } catch(e) {
-            alert('Erro ao exportar: ' + e.message);
-        }
-    }
-
-    // Importar Excel
-    function triggerImportRegras() {
-        document.getElementById('input-import-regras').click();
-    }
-
-    async function uploadRegras(input) {
-        if (!input.files || !input.files[0]) return;
-        const file = input.files[0];
-        
-        const formData = new FormData();
-        formData.append('file', file);
-
-        if(!confirm(`Confirma a importação do arquivo "${file.name}"?`)) {
-            input.value = ''; // Limpa seleção
-            return;
-        }
-
-        try {
-            const res = await apiFetch('/crm/regras-comissao/importar/', {
-                method: 'POST',
-                body: formData
-            });
-
-            alert(`Importação concluída!\n\nCriados: ${res.criados}\nAtualizados: ${res.atualizados}\nErros: ${res.erros.length}`);
-            
-            if(res.erros.length > 0) {
-                console.warn('Erros na importação:', res.erros);
-                alert('Alguns erros ocorreram. Verifique o console (F12) para detalhes.');
-            }
-
-            carregarRegrasComissao(); // Recarrega a lista
-        } catch(e) {
-            alert('Falha na importação: ' + e.message);
-        } finally {
-            input.value = ''; // Limpa para permitir re-seleção do mesmo arquivo
-        }
-    }
-
-    // --------------------------------------------------------------------------
-
-    document.getElementById('form-regra-comissao').onsubmit = async(e)=>{ e.preventDefault(); const id=document.getElementById('regra_comissao_id').value; const b={consultor:document.getElementById('regra_consultor_id').value, plano:document.getElementById('regra_plano_id').value, tipo_venda:document.getElementById('regra_tipo_venda').value, tipo_cliente:document.getElementById('regra_tipo_cliente').value, valor_base:document.getElementById('regra_valor_base').value, valor_acelerado:document.getElementById('regra_valor_acelerado').value}; await apiFetch(id?`/crm/regras-comissao/${id}/`:'/crm/regras-comissao/',{method:id?'PUT':'POST', body:JSON.stringify(b)}); document.getElementById('form-regra-comissao').reset(); carregarRegrasComissao(); };
-    window.editRegra=(r)=>{ document.getElementById('regra_comissao_id').value=r.id; document.getElementById('regra_consultor_id').value=r.consultor; document.getElementById('regra_plano_id').value=r.plano; document.getElementById('regra_tipo_venda').value=r.tipo_venda; document.getElementById('regra_tipo_cliente').value=r.tipo_cliente; document.getElementById('regra_valor_base').value=r.valor_base; document.getElementById('regra_valor_acelerado').value=r.valor_acelerado; };
-    window.delRegra=async(id)=>{ if(confirm('Excluir?')) { await apiFetch(`/crm/regras-comissao/${id}/`,{method:'DELETE'}); carregarRegrasComissao(); }};
-    async function carregarCampanhas() { const l=document.getElementById('lista-campanhas'); l.innerHTML=''; try{ (await apiFetch('/crm/campanhas/')).forEach(c=>l.innerHTML+=`<tr><td>${c.nome}</td><td>${c.data_inicio} a ${c.data_fim}</td><td>${c.status?'Ativa':'Inativa'}</td><td><button class="btn btn-sm btn-danger" onclick="delCamp(${c.id})"><i class="bi bi-trash"></i></button></td></tr>`); }catch(e){} }
-    document.getElementById('form-campanha').onsubmit=async(e)=>{ e.preventDefault(); await apiFetch('/crm/campanhas/',{method:'POST',body:JSON.stringify({nome:document.getElementById('campanha_nome').value, data_inicio:document.getElementById('campanha_data_inicio').value, data_fim:document.getElementById('campanha_data_fim').value, regras:document.getElementById('campanha_regras').value})}); carregarCampanhas(); document.getElementById('form-campanha').reset(); };
-    window.delCamp=async(id)=>{ await apiFetch(`/crm/campanhas/${id}/`,{method:'DELETE'}); carregarCampanhas(); };
-
-    // --- FUNÇÃO VISUAL DE VERIFICAÇÃO DE WHATSAPP ---
-    async function verificarWhatsAppRealTime(input) {
-        const telefone = input.value.replace(/\D/g, ''); // Remove tudo que não é número
-        const iconSpan = document.getElementById('icon-whatsapp-status');
-        const iconI = iconSpan.querySelector('i');
-        const msgDiv = document.getElementById('msg-whatsapp-status');
-
-        // Se estiver vazio, reseta o visual
-        if (telefone.length < 10) {
-            iconSpan.className = 'input-group-text bg-white text-muted';
-            iconI.className = 'bi bi-whatsapp';
-            msgDiv.textContent = 'Digite apenas números com DDD.';
-            msgDiv.className = 'form-text small';
-            return;
-        }
-
-        // Mostra Loading (Spinner)
-        iconI.className = 'spinner-border spinner-border-sm text-primary';
-        msgDiv.textContent = 'Verificando na Z-API...';
-        msgDiv.className = 'form-text small text-primary';
-        input.disabled = true; // Trava o campo enquanto verifica
-
-        try {
-            // Chama a API que criamos
-            // Nota: apiFetch já adiciona o '/api' antes, então use '/crm/verificar-zap/...'
-            const resultado = await apiFetch(`/crm/verificar-zap/${telefone}/`);
-
-            if (resultado.possui_whatsapp) {
-                // SUCESSO: Ícone Verde e Check
-                iconSpan.className = 'input-group-text bg-success text-white';
-                iconI.className = 'bi bi-check-circle-fill';
-                msgDiv.innerHTML = '<span class="text-success fw-bold">Número validado!</span>';
-                input.classList.remove('is-invalid');
-                input.classList.add('is-valid');
-            } else {
-                // FALHA: Ícone Vermelho e X
-                iconSpan.className = 'input-group-text bg-danger text-white';
-                iconI.className = 'bi bi-x-circle-fill';
-                msgDiv.innerHTML = '<span class="text-danger fw-bold">Este número não possui WhatsApp!</span>';
-                input.classList.add('is-invalid');
-            }
 
         } catch (error) {
             console.error(error);
-            // Erro na requisição (API fora do ar, etc)
-            iconSpan.className = 'input-group-text bg-warning text-dark';
-            iconI.className = 'bi bi-exclamation-triangle';
-            msgDiv.textContent = 'Não foi possível validar agora. (Mas pode salvar)';
-        } finally {
-            input.disabled = false; // Destrava o campo
+            tbody.innerHTML = '<tr><td colspan="6" class="text-danger text-center">Erro ao carregar dados. Verifique se o módulo backend está ativo.</td></tr>';
         }
+    }
+
+    document.getElementById('form-comissao-operadora').onsubmit = async (e) => {
+        e.preventDefault();
+        const id = document.getElementById('co_id').value;
+        const payload = {
+            plano: document.getElementById('co_plano_id').value,
+            valor_base: document.getElementById('co_valor_base').value,
+            bonus_transicao: document.getElementById('co_bonus').value,
+            data_fim_bonus: document.getElementById('co_data_fim').value || null
+        };
+
+        try {
+            if(id) await apiFetch(`/crm/comissoes-operadora/${id}/`, { method: 'PUT', body: JSON.stringify(payload) });
+            else await apiFetch('/crm/comissoes-operadora/', { method: 'POST', body: JSON.stringify(payload) });
+            
+            document.getElementById('form-comissao-operadora').reset();
+            document.getElementById('co_id').value = '';
+            carregarComissoesOperadora();
+            alert('Salvo com sucesso!');
+        } catch(err) {
+            alert('Erro ao salvar: ' + (err.detail || err));
+        }
+    };
+
+    window.editarComissaoOp = (co) => {
+        document.getElementById('co_id').value = co.id;
+        document.getElementById('co_plano_id').value = co.plano;
+        document.getElementById('co_valor_base').value = co.valor_base;
+        document.getElementById('co_bonus').value = co.bonus_transicao;
+        document.getElementById('co_data_fim').value = co.data_fim_bonus || '';
+        // Força aba aberta
+        openTab({ preventDefault: () => {} }, 'recebimento_operadora_tab');
+        document.querySelector("button[onclick*='recebimento_operadora_tab']").classList.add('active');
+        document.querySelector("button[onclick*='regras_comissao_tab']").classList.remove('active');
+        document.getElementById('regras_comissao_tab').style.display = 'none';
+        document.getElementById('form-comissao-operadora').scrollIntoView({ behavior: 'smooth' });
+    };
+
+    window.deletarComissaoOp = async (id) => {
+        if(!confirm('Excluir este registro?')) return;
+        try {
+            await apiFetch(`/crm/comissoes-operadora/${id}/`, { method: 'DELETE' });
+            carregarComissoesOperadora();
+        } catch(e) { alert('Erro ao excluir.'); }
+    };
+
+    // --- VERIFICAÇÃO WHATSAPP ---
+    async function verificarWhatsAppRealTime(input) {
+        const telefone = input.value.replace(/\D/g, ''); const iconSpan = document.getElementById('icon-whatsapp-status'); const iconI = iconSpan.querySelector('i'); const msgDiv = document.getElementById('msg-whatsapp-status');
+        if (telefone.length < 10) { iconSpan.className = 'input-group-text bg-white text-muted'; iconI.className = 'bi bi-whatsapp'; msgDiv.textContent = 'Digite apenas números com DDD.'; return; }
+        iconI.className = 'spinner-border spinner-border-sm text-primary'; msgDiv.textContent = 'Verificando na Z-API...'; input.disabled = true;
+        try { const resultado = await apiFetch(`/crm/verificar-zap/${telefone}/`); if (resultado.possui_whatsapp) { iconSpan.className = 'input-group-text bg-success text-white'; iconI.className = 'bi bi-check-circle-fill'; msgDiv.innerHTML = '<span class="text-success fw-bold">Número validado!</span>'; input.classList.add('is-valid'); } else { iconSpan.className = 'input-group-text bg-danger text-white'; iconI.className = 'bi bi-x-circle-fill'; msgDiv.innerHTML = '<span class="text-danger fw-bold">Este número não possui WhatsApp!</span>'; input.classList.add('is-invalid'); } } catch (error) { console.error(error); iconSpan.className = 'input-group-text bg-warning text-dark'; iconI.className = 'bi bi-exclamation-triangle'; msgDiv.textContent = 'Não foi possível validar agora. (Mas pode salvar)'; } finally { input.disabled = false; }
     }
 
     // Inicialização
     document.addEventListener('DOMContentLoaded', () => {
         carregarDadosParaFormulario();
         carregarPerfis();
-        
-        // CHAMADA CORRIGIDA: Carrega a lista automaticamente
         carregarUsuarios('ativos'); 
 
         carregarMotivos();
         carregarFeriados();
+        
+        // Chamada das funções que antes estavam faltando:
         carregarOperadoras();
         carregarPlanos();
         carregarFormasPagamento();
@@ -1457,6 +1391,7 @@
         carregarDadosParaRegrasComissao();
         carregarRegrasComissao();
         carregarCampanhas();
+        carregarComissoesOperadora(); 
         
         const primeiroLink = document.querySelector('.admin-nav-link');
         if(primeiroLink) mostrarSecao(null, 'usuarios', primeiroLink);

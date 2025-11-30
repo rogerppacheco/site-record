@@ -3,13 +3,13 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     MotivoViewSet, PresencaViewSet, DiaNaoUtilViewSet, 
     MinhaEquipeListView, TodosUsuariosListView,
-    # Importando as novas views
     RelatorioFinanceiroView, ExportarRelatorioFinanceiroExcelView
 )
 
 router = DefaultRouter()
 router.register(r'motivos', MotivoViewSet, basename='motivo')
-router.register(r'presenca', PresencaViewSet, basename='presenca')
+# CORREÇÃO: Mudado de 'presenca' para 'registros' para atender ao frontend que chama /api/presenca/registros/
+router.register(r'registros', PresencaViewSet, basename='presenca') 
 router.register(r'dias-nao-uteis', DiaNaoUtilViewSet)
 
 urlpatterns = [
@@ -17,7 +17,7 @@ urlpatterns = [
     path('minha-equipe/', MinhaEquipeListView.as_view(), name='minha-equipe'),
     path('todos-usuarios/', TodosUsuariosListView.as_view(), name='todos-usuarios'),
     
-    # --- NOVAS ROTAS DE RELATÓRIO FINANCEIRO ---
+    # Novas rotas financeiras
     path('relatorio-financeiro/', RelatorioFinanceiroView.as_view(), name='relatorio-financeiro'),
     path('relatorio-financeiro/excel/', ExportarRelatorioFinanceiroExcelView.as_view(), name='relatorio-financeiro-excel'),
 ]

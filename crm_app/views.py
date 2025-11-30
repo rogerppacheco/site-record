@@ -49,7 +49,7 @@ from .models import (
     Operadora, Plano, FormaPagamento, StatusCRM, MotivoPendencia,
     RegraComissao, Cliente, Venda, ImportacaoOsab, ImportacaoChurn,
     CicloPagamento, HistoricoAlteracaoVenda, PagamentoComissao,
-    Campanha 
+    Campanha, ComissaoOperadora 
 )
 from .serializers import (
     OperadoraSerializer, PlanoSerializer, FormaPagamentoSerializer,
@@ -57,7 +57,7 @@ from .serializers import (
     VendaSerializer, VendaCreateSerializer, ClienteSerializer,
     VendaUpdateSerializer, ImportacaoOsabSerializer, ImportacaoChurnSerializer,
     CicloPagamentoSerializer, VendaDetailSerializer,
-    CampanhaSerializer 
+    CampanhaSerializer, ComissaoOperadoraSerializer 
 )
 
 logger = logging.getLogger(__name__)
@@ -104,10 +104,22 @@ class OperadoraDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [CheckAPIPermission]
     resource_name = 'operadora'
 
+# --- CORREÇÃO APLICADA AQUI (PlanoListCreateView) ---
 class PlanoListCreateView(generics.ListCreateAPIView):
-    queryset = Plano.objects.filter(ativo=True)
     serializer_class = PlanoSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        # Filtra apenas planos ativos
+        queryset = Plano.objects.filter(ativo=True)
+        
+        # Se vier o parâmetro 'operadora' na URL, filtra por ele
+        operadora_id = self.request.query_params.get('operadora')
+        if operadora_id:
+            queryset = queryset.filter(operadora_id=operadora_id)
+            
+        return queryset
+# ----------------------------------------------------
 
 class PlanoDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Plano.objects.all()
@@ -135,6 +147,13 @@ class CampanhaDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = CampanhaSerializer
     permission_classes = [permissions.IsAuthenticated]
 # --------------------------
+
+# --- VIEWSET DE COMISSÃO OPERADORA (NOVO) ---
+class ComissaoOperadoraViewSet(viewsets.ModelViewSet):
+    queryset = ComissaoOperadora.objects.select_related('plano').all()
+    serializer_class = ComissaoOperadoraSerializer
+    permission_classes = [permissions.IsAuthenticated]
+# --------------------------------------------
 
 class StatusCRMListCreateView(generics.ListCreateAPIView):
     serializer_class = StatusCRMSerializer
@@ -251,6 +270,7 @@ class VendaViewSet(viewsets.ModelViewSet):
             if is_member(user, ['Diretoria', 'Admin']):
                 pass 
             elif is_member(user, ['BackOffice', 'Auditoria', 'Qualidade']):
+                # Se não tem busca nem data, otimiza carregando só o mês atual
                 if not search:
                     data_inicio_param = self.request.query_params.get('data_inicio')
                     if not data_inicio_param and self.action == 'list':
@@ -650,7 +670,6 @@ class DashboardResumoView(APIView):
         user = request.user
         
         # --- FILTRO DE DATAS ---
-        # Se não vier, usa o mês atual
         data_inicio_str = request.query_params.get('data_inicio')
         data_fim_str = request.query_params.get('data_fim')
         
@@ -660,17 +679,15 @@ class DashboardResumoView(APIView):
             try:
                 data_inicio = datetime.strptime(data_inicio_str, '%Y-%m-%d')
                 data_fim = datetime.strptime(data_fim_str, '%Y-%m-%d')
-                data_fim_ajustada = data_fim + timedelta(days=1) # Inclui o dia todo
+                data_fim_ajustada = data_fim + timedelta(days=1)
             except ValueError:
                 data_inicio = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
                 data_fim_ajustada = (data_inicio + timedelta(days=32)).replace(day=1)
         else:
-            # Padrão: Mês Atual
             data_inicio = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
             data_fim_ajustada = (data_inicio + timedelta(days=32)).replace(day=1)
 
-        # --- CÁLCULO DOS PESOS FISCAIS (NOVO TRECHO) ---
-        # Peso Venda (VB)
+        # --- PESOS FISCAIS ---
         peso_total_venda = DiaFiscal.objects.filter(
             data__range=(data_inicio.date(), (data_fim_ajustada - timedelta(days=1)).date())
         ).aggregate(s=Sum('peso_venda'))['s'] or 0
@@ -679,7 +696,6 @@ class DashboardResumoView(APIView):
             data__range=(data_inicio.date(), hoje.date())
         ).aggregate(s=Sum('peso_venda'))['s'] or 0
 
-        # Peso Instalação (Gross) - Usado para Instaladas e Comissão
         peso_total_inst = DiaFiscal.objects.filter(
             data__range=(data_inicio.date(), (data_fim_ajustada - timedelta(days=1)).date())
         ).aggregate(s=Sum('peso_instalacao'))['s'] or 0
@@ -688,17 +704,18 @@ class DashboardResumoView(APIView):
             data__range=(data_inicio.date(), hoje.date())
         ).aggregate(s=Sum('peso_instalacao'))['s'] or 0
 
-        # Função auxiliar de projeção
         def calcular_projecao(valor_atual, peso_realizado, peso_total):
             if not peso_realizado or float(peso_realizado) == 0:
                 return 0
             return (float(valor_atual) / float(peso_realizado)) * float(peso_total)
-        # -----------------------------------------------
 
-        # Filtro de Usuários (Hierarquia)
-        usuarios_para_calcular = []
+        # --- FILTROS DE USUÁRIOS ---
+        # Verifica se veio filtro de consultor específico na URL
+        consultor_filtro_id = request.query_params.get('consultor_id')
         
-        if is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
+        if consultor_filtro_id:
+            usuarios_para_calcular = User.objects.filter(id=consultor_filtro_id)
+        elif is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
             usuarios_para_calcular = User.objects.filter(is_active=True)
         elif is_member(user, ['Supervisor']):
             ids = list(user.liderados.values_list('id', flat=True)) + [user.id]
@@ -707,6 +724,19 @@ class DashboardResumoView(APIView):
             usuarios_para_calcular = [user]
 
         exibir_comissao = user.has_perm('crm_app.can_view_comissao_dashboard') or is_member(user, ['Diretoria', 'Admin'])
+        
+        # --- VERIFICAÇÃO PARA O CARD DE DIRETORIA ---
+        is_diretoria = is_member(user, ['Diretoria'])
+        mapa_comissao_operadora = {}
+        if is_diretoria:
+            # Carrega tabela de preços da operadora em memória para performance
+            configs = ComissaoOperadora.objects.all()
+            for c in configs:
+                mapa_comissao_operadora[c.plano_id] = {
+                    'base': float(c.valor_base),
+                    'bonus': float(c.bonus_transicao),
+                    'fim_bonus': c.data_fim_bonus
+                }
 
         total_registradas_geral = 0
         total_instaladas_geral = 0
@@ -715,10 +745,16 @@ class DashboardResumoView(APIView):
         meta_display = 0
         detalhes_listas = defaultdict(list)
 
+        # Variáveis exclusivas Diretoria
+        faturamento_operadora_real = 0.0
+        mix_velocidade = defaultdict(int)
+        mix_pagamento = defaultdict(int)
+
         for vendedor in usuarios_para_calcular:
             meta_individual = getattr(vendedor, 'meta_comissao', 0) or 0
             meta_display += float(meta_individual)
 
+            # Vendas Registradas (Data Criação)
             vendas_registro = Venda.objects.filter(
                 vendedor=vendedor, ativo=True,
                 data_criacao__gte=data_inicio, data_criacao__lt=data_fim_ajustada
@@ -733,37 +769,52 @@ class DashboardResumoView(APIView):
                     status_counts_geral[nome_status] += 1
                 
                 obj_venda = {
-                    'id': v.id,
-                    'cliente': v.cliente.nome_razao_social if v.cliente else 'S/C',
-                    'status': nome_status,
-                    'data_iso': v.data_criacao.isoformat(), 
-                    'vendedor': vendedor.username
+                    'id': v.id, 'cliente': v.cliente.nome_razao_social if v.cliente else 'S/C',
+                    'status': nome_status, 'data_iso': v.data_criacao.isoformat(), 'vendedor': vendedor.username
                 }
                 detalhes_listas['TOTAL_REGISTRADAS'].append(obj_venda)
-                if nome_status != 'INSTALADA':
-                    detalhes_listas[nome_status].append(obj_venda)
+                if nome_status != 'INSTALADA': detalhes_listas[nome_status].append(obj_venda)
 
-            # Para instaladas, filtramos pela DATA DE INSTALAÇÃO no período
+            # Vendas Instaladas (Data Instalação)
             vendas_instaladas = Venda.objects.filter(
                 vendedor=vendedor, ativo=True,
                 status_esteira__nome__iexact='INSTALADA',
                 data_instalacao__gte=data_inicio, data_instalacao__lt=data_fim_ajustada
-            ).select_related('plano', 'cliente')
+            ).select_related('plano', 'cliente', 'forma_pagamento')
 
             qtd_instaladas = vendas_instaladas.count()
             status_counts_geral['INSTALADA'] += qtd_instaladas
 
             for vi in vendas_instaladas:
                 obj_inst = {
-                    'id': vi.id,
-                    'cliente': vi.cliente.nome_razao_social if vi.cliente else 'S/C',
-                    'status': 'INSTALADA',
-                    'data_iso': vi.data_instalacao.isoformat() if vi.data_instalacao else None,
+                    'id': vi.id, 'cliente': vi.cliente.nome_razao_social if vi.cliente else 'S/C',
+                    'status': 'INSTALADA', 'data_iso': vi.data_instalacao.isoformat() if vi.data_instalacao else None,
                     'vendedor': vendedor.username
                 }
                 detalhes_listas['TOTAL_INSTALADAS'].append(obj_inst)
                 detalhes_listas['INSTALADA'].append(obj_inst)
 
+                # --- LÓGICA DIRETORIA: MIX E RECEBIMENTO OPERADORA ---
+                if is_diretoria:
+                    # 1. Mix Velocidade (Baseado no nome do plano)
+                    nome_plano = vi.plano.nome if vi.plano else "Outros"
+                    mix_velocidade[nome_plano] += 1
+
+                    # 2. Mix Pagamento
+                    nome_pgto = vi.forma_pagamento.nome if vi.forma_pagamento else "Não Informado"
+                    mix_pagamento[nome_pgto] += 1
+
+                    # 3. Faturamento
+                    if vi.plano_id in mapa_comissao_operadora:
+                        cfg = mapa_comissao_operadora[vi.plano_id]
+                        valor_venda = cfg['base']
+                        # Verifica bônus
+                        if cfg['bonus'] > 0:
+                            if not cfg['fim_bonus'] or (vi.data_instalacao and vi.data_instalacao <= cfg['fim_bonus']):
+                                valor_venda += cfg['bonus']
+                        faturamento_operadora_real += valor_venda
+
+            # Lógica de Comissão (Vendedor) existente
             if exibir_comissao:
                 regras = RegraComissao.objects.filter(consultor=vendedor).select_related('plano')
                 comissao_vendedor = 0.0
@@ -779,10 +830,8 @@ class DashboardResumoView(APIView):
                         if r.plano.id == v.plano.id and r.tipo_cliente == tipo_cliente_venda and r.tipo_venda == canal_vendedor:
                             regra_encontrada = r
                             break
-                    
                     if regra_encontrada:
                         valor_item = float(regra_encontrada.valor_acelerado if bateu_meta else regra_encontrada.valor_base)
-                    
                     comissao_vendedor += valor_item
                 comissao_total_geral += comissao_vendedor
 
@@ -795,7 +844,7 @@ class DashboardResumoView(APIView):
 
         valor_comissao_final = comissao_total_geral if exibir_comissao else 0.0
 
-        # --- CÁLCULO DAS PROJEÇÕES FINAIS ---
+        # Projeções Padrão
         projecao_vendas = calcular_projecao(total_registradas_geral, peso_realizado_venda, peso_total_venda)
         projecao_instaladas = calcular_projecao(total_instaladas_geral, peso_realizado_inst, peso_total_inst)
         projecao_comissao = calcular_projecao(valor_comissao_final, peso_realizado_inst, peso_total_inst)
@@ -803,17 +852,12 @@ class DashboardResumoView(APIView):
         dados = {
             "periodo": f"{data_inicio.strftime('%d/%m')} a {data_fim_ajustada.strftime('%d/%m')}",
             "meta": meta_display,
-            
-            # Reais
             "total_vendas": total_registradas_geral,
             "total_instaladas": total_instaladas_geral,
             "comissao_estimada": valor_comissao_final,
-            
-            # Projeções
             "projecao_vendas": round(projecao_vendas, 1),
             "projecao_instaladas": round(projecao_instaladas, 1),
             "projecao_comissao": round(projecao_comissao, 2),
-
             "percentual_meta": round((total_registradas_geral / meta_display * 100), 1) if meta_display > 0 else 0,
             "percentual_aproveitamento": round(percentual_aproveitamento, 1),
             "status_bateu_meta": (total_registradas_geral >= meta_display) if meta_display > 0 else False,
@@ -821,6 +865,19 @@ class DashboardResumoView(APIView):
             "status_detalhado": status_counts_geral,
             "detalhes_listas": detalhes_listas
         }
+
+        # --- DADOS EXTRAS DIRETORIA ---
+        if is_diretoria:
+            # Projeção do Faturamento com base nos pesos fiscais
+            fat_projetado = calcular_projecao(faturamento_operadora_real, peso_realizado_inst, peso_total_inst)
+            
+            dados['diretoria_data'] = {
+                'faturamento_real': round(faturamento_operadora_real, 2),
+                'faturamento_projetado': round(fat_projetado, 2),
+                'mix_velocidade': mix_velocidade,
+                'mix_pagamento': mix_pagamento
+            }
+
         return Response(dados)
 
 class ClienteViewSet(viewsets.ReadOnlyModelViewSet):

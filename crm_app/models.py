@@ -340,3 +340,14 @@ class Campanha(models.Model):
     class Meta:
         verbose_name = "Campanha"
         verbose_name_plural = "Campanhas"
+class ComissaoOperadora(models.Model):
+    plano = models.OneToOneField(Plano, on_delete=models.CASCADE, related_name='comissao_operadora', verbose_name="Plano")
+    valor_base = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, verbose_name="Valor Base")
+    bonus_transicao = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, verbose_name="Bônus Transição")
+    
+    # Opcional: Datas para saber quando o bônus expira
+    data_inicio_bonus = models.DateField(null=True, blank=True, verbose_name="Início Bônus")
+    data_fim_bonus = models.DateField(null=True, blank=True, verbose_name="Fim Bônus")
+
+    def __str__(self):
+        return f"Recebimento {self.plano.nome}"

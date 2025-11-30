@@ -19,8 +19,11 @@ from .views import (
     ReabrirPagamentoView,
     GerarRelatorioPDFView,
     EnviarExtratoEmailView,
-    ExportarVendasExcelView,  # <--- NOVA VIEW IMPORTADA
+    ExportarVendasExcelView,
     CampanhaListCreateView, CampanhaDetailView,
+    # --- Adicionado o import que faltava abaixo ---
+    ComissaoOperadoraViewSet,
+    # ----------------------------------------------
     api_verificar_whatsapp,
     enviar_comissao_whatsapp,
     LoginView,
@@ -30,6 +33,9 @@ from .views import (
 router = DefaultRouter()
 router.register(r'vendas', VendaViewSet, basename='venda')
 router.register(r'clientes', ClienteViewSet, basename='cliente')
+
+# Agora o registro abaixo funcionará pois o import foi feito acima
+router.register(r'comissoes-operadora', ComissaoOperadoraViewSet, basename='comissao-operadora')
 
 urlpatterns = [
     # --- CADASTROS BÁSICOS ---
