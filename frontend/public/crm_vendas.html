@@ -62,14 +62,21 @@
     </header>
 
     <main class="area-interna-section">
-        <div class="system-container" style="max-width: 1700px;"> <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3 header-controls">
+        <div class="system-container" style="max-width: 1700px;"> 
+            <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3 header-controls">
                 <div>
                     <h1 style="font-size: 1.8rem; margin: 0;">Vendas</h1>
                     <p class="text-muted mb-0">Gerencie vendas e acompanhe o status.</p>
                 </div>
-                <button class="btn btn-primary shadow-sm fw-bold" onclick="abrirModalOrigem()">
-                    <i class="bi bi-plus-lg"></i> Nova Venda
-                </button>
+                <div class="d-flex gap-2">
+                    <button id="btn-exportar-excel" class="btn btn-success shadow-sm fw-bold d-none" onclick="exportarExcelDiretoria()">
+                        <i class="bi bi-file-earmark-excel-fill"></i> Baixar Base
+                    </button>
+                    
+                    <button class="btn btn-primary shadow-sm fw-bold" onclick="abrirModalOrigem()">
+                        <i class="bi bi-plus-lg"></i> Nova Venda
+                    </button>
+                </div>
             </div>
 
             <ul class="nav nav-tabs mb-3" id="abas-navegacao">
@@ -399,11 +406,9 @@
                         if (typeof v.status_tratamento === 'object') {
                             statusTratamentoNome = v.status_tratamento.nome;
                         } else {
-                            // Se vier apenas o ID ou string, tenta usar o nome se disponível, ou o próprio valor
                             statusTratamentoNome = v.status_tratamento_nome || v.status_tratamento;
                         }
                     } else if (v.status_comissionamento) {
-                         // Fallback caso o backend mande como comissionamento
                          statusTratamentoNome = v.status_comissionamento;
                     }
 
@@ -517,6 +522,11 @@
                 const perfisGestao = ['Supervisor', 'Diretoria', 'BackOffice', 'Admin'];
                 if (perfisGestao.includes(userProfile)) document.getElementById('aba-equipe').classList.remove('d-none');
                 if (!['Diretoria', 'Admin'].includes(userProfile)) { document.getElementById('barra-filtros').style.display = 'none'; document.getElementById('aviso-filtro-bloqueado').classList.remove('d-none'); }
+                
+                // NOVO: Exibir botão de exportação se for Diretoria
+                if (userProfile === 'Diretoria') {
+                    document.getElementById('btn-exportar-excel').classList.remove('d-none');
+                }
             } catch(e) {}
         }
 
@@ -577,6 +587,45 @@
                 });
             }
             modalDetalhe.show();
+        }
+
+        // --- NOVA FUNÇÃO DE EXPORTAÇÃO ---
+        function exportarExcelDiretoria() {
+            if(!confirm("Deseja baixar a base completa de vendas em Excel?")) return;
+            
+            const btn = document.getElementById('btn-exportar-excel');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Gerando...';
+            btn.disabled = true;
+
+            // Usa fetch direto para lidar com o blob
+            fetch(`${apiUrl}/api/crm/vendas/exportar-excel/`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': 'Bearer ' + localStorage.getItem('accessToken')
+                }
+            })
+            .then(response => {
+                if (response.status === 403) throw new Error("Acesso Negado: Apenas Diretoria.");
+                if (!response.ok) throw new Error("Erro ao gerar arquivo.");
+                return response.blob();
+            })
+            .then(blob => {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Base_Vendas_${new Date().toISOString().slice(0,10)}.xlsx`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+            })
+            .catch(err => {
+                alert(err.message);
+            })
+            .finally(() => {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            });
         }
 
         async function buscarCliente(termo) { try { const res = await apiFetch(`/crm/clientes/?search=${termo}`); const lista = document.getElementById('sugestoes-cliente'); lista.innerHTML = ''; if(res && res.length > 0) { res.forEach(cli => { const item = document.createElement('div'); item.className = 'sugestao-item'; item.innerHTML = `<strong>${cli.nome_razao_social}</strong><br><small>${cli.cpf_cnpj}</small>`; item.onclick = () => selecionarCliente(cli); lista.appendChild(item); }); lista.style.display = 'block'; } else { lista.style.display = 'none'; } } catch(e) {} }
@@ -700,7 +749,7 @@
                 if (data && data.possui_whatsapp) {
                     input.classList.add('is-valid');
                     input.classList.remove('is-invalid');
-                    if(feedbackDiv) feedbackDiv.innerHTML = '<span class="text-success fw-bold small"><i class="bi bi-whatsapp"></i> WhatsApp Confirmado!</span>';
+                    if(feedbackDiv) feedbackDiv.innerHTML = '<span class="text-success fw-bold small"><i class="bi bi-whatsapp\"></i> WhatsApp Confirmado!</span>';
                     if(btnSalvar) btnSalvar.disabled = false; 
                 } else {
                     input.classList.add('is-invalid');

@@ -1783,3 +1783,76 @@ def enviar_comissao_whatsapp(request):
     except Exception as e:
         print(f"Erro Geral View: {e}")
         return JsonResponse({'error': str(e)}, status=500)
+# No final de crm_app/views.py
+
+class ExportarVendasExcelView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        # 1. Segurança: Apenas Diretoria pode baixar
+        if not is_member(request.user, ['Diretoria']):
+             return Response({"detail": "Acesso negado. Apenas Diretoria."}, status=status.HTTP_403_FORBIDDEN)
+
+        # 2. Buscar Vendas (Todas as ativas)
+        vendas = Venda.objects.filter(ativo=True).select_related(
+            'cliente', 'plano', 'forma_pagamento', 'status_esteira', 'status_tratamento', 'vendedor'
+        ).order_by('-data_criacao')
+
+        # 3. Montar os Dados
+        data = []
+        for v in vendas:
+            # Lógicas específicas de campo
+            eh_dacc = "SIM" if v.forma_pagamento and "DÉBITO" in v.forma_pagamento.nome.upper() else "NÃO"
+            
+            doc = v.cliente.cpf_cnpj if v.cliente else ""
+            doc_limpo = ''.join(filter(str.isdigit, doc))
+            eh_cnpj = len(doc_limpo) > 11
+            
+            val_cpf = doc if not eh_cnpj else ""
+            val_cnpj = doc if eh_cnpj else ""
+            
+            # Datas formatadas
+            dt_ped = v.data_pedido.strftime('%d/%m/%Y') if v.data_pedido else (v.data_criacao.strftime('%d/%m/%Y') if v.data_criacao else "")
+            dt_inst = v.data_instalacao.strftime('%d/%m/%Y') if v.data_instalacao else ""
+            
+            # Status (Prioriza Esteira, se não tiver, pega Tratamento)
+            situacao = v.status_esteira.nome if v.status_esteira else (v.status_tratamento.nome if v.status_tratamento else "")
+
+            row = {
+                "DACC": eh_dacc,
+                "NOME": v.cliente.nome_razao_social if v.cliente else "",
+                "CPF": val_cpf,
+                "CONTAGEM_CPF/CNPJ": "CNPJ" if eh_cnpj else "CPF", # Coloquei o TIPO do documento. Se for uma contagem numérica, me avise.
+                "1 CONTATO": v.telefone1 or "",
+                "2 CONTATO": v.telefone2 or "",
+                "CNPJ": val_cnpj,
+                "PLANO": v.plano.nome if v.plano else "",
+                "DT PEDIDO": dt_ped,
+                "DT INST": dt_inst,
+                "PERÍODO": v.get_periodo_agendamento_display() if v.periodo_agendamento else "",
+                "BUNDLE": "", # Campo não encontrado no sistema atual
+                "UF_VENDA": v.estado or "",
+                "MÉTODO DE PAGAMENTO": v.forma_pagamento.nome if v.forma_pagamento else "",
+                "RECADASTRADA": "", # Campo não encontrado
+                "OS": v.ordem_servico or "",
+                "SITUAÇÃO": situacao,
+                "VENDEDOR": v.vendedor.username if v.vendedor else "",
+                "VENC": "", # Dia de vencimento não está na tabela de Venda (está na importação OSAB, mas nem sempre tem link)
+                "BO_CONVERTIDO_CC": "", # Campo não encontrado
+                "ROTA DO DIA": "", # Campo não encontrado
+                "EMAIL": v.cliente.email if v.cliente else "",
+                "OBS": v.observacoes or ""
+            }
+            data.append(row)
+
+        # 4. Gerar DataFrame e Excel
+        df = pd.DataFrame(data)
+        
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        now_str = datetime.now().strftime("%Y%m%d_%H%M")
+        response['Content-Disposition'] = f'attachment; filename="Base_Vendas_{now_str}.xlsx"'
+        
+        with pd.ExcelWriter(response, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Vendas')
+            
+        return response

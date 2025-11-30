@@ -19,11 +19,12 @@ from .views import (
     ReabrirPagamentoView,
     GerarRelatorioPDFView,
     EnviarExtratoEmailView,
+    ExportarVendasExcelView,  # <--- NOVA VIEW IMPORTADA
     CampanhaListCreateView, CampanhaDetailView,
     api_verificar_whatsapp,
     enviar_comissao_whatsapp,
     LoginView,
-    DefinirNovaSenhaView  # <--- Importado
+    DefinirNovaSenhaView 
 )
 
 router = DefaultRouter()
@@ -58,6 +59,9 @@ urlpatterns = [
     path('comissionamento/email/', EnviarExtratoEmailView.as_view(), name='enviar-email-comissao'),
     path('comissionamento/whatsapp/', enviar_comissao_whatsapp, name='enviar-whatsapp-comissao'),
 
+    # --- ROTA NOVA DE EXPORTAÇÃO ---
+    path('vendas/exportar-excel/', ExportarVendasExcelView.as_view(), name='exportar-vendas-excel'),
+
     # --- IMPORTAÇÕES ---
     path('import/osab/', ImportacaoOsabView.as_view(), name='importacao-osab'),
     path('import/osab/<int:pk>/', ImportacaoOsabDetailView.as_view(), name='importacao-osab-detail'),
@@ -72,7 +76,7 @@ urlpatterns = [
     path('verificar-zap/<str:telefone>/', api_verificar_whatsapp, name='api_verificar_zap'),
     
     # --- AUTENTICAÇÃO CUSTOMIZADA ---
-    path('login/', LoginView.as_view(), name='custom-login'), # Sobrescreve a rota de login padrão
+    path('login/', LoginView.as_view(), name='custom-login'), 
     path('definir-nova-senha/', DefinirNovaSenhaView.as_view(), name='definir-nova-senha'),
     
     # --- ROTAS DO ROUTER (Vendas, Clientes, etc) ---
