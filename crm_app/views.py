@@ -32,6 +32,10 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.exceptions import PermissionDenied, NotFound
 from rest_framework.decorators import api_view, permission_classes, action 
 
+# --- IMPORTS EXTRAS PARA O DASHBOARD ---
+from core.models import DiaFiscal 
+# ---------------------------------------
+
 # --- IMPORTS WHATSAPP ---
 from .whatsapp_service import WhatsAppService 
 # ------------------------
@@ -247,7 +251,6 @@ class VendaViewSet(viewsets.ModelViewSet):
             if is_member(user, ['Diretoria', 'Admin']):
                 pass 
             elif is_member(user, ['BackOffice', 'Auditoria', 'Qualidade']):
-                # Se não tem busca nem data, otimiza carregando só o mês atual
                 if not search:
                     data_inicio_param = self.request.query_params.get('data_inicio')
                     if not data_inicio_param and self.action == 'list':
@@ -666,6 +669,32 @@ class DashboardResumoView(APIView):
             data_inicio = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
             data_fim_ajustada = (data_inicio + timedelta(days=32)).replace(day=1)
 
+        # --- CÁLCULO DOS PESOS FISCAIS (NOVO TRECHO) ---
+        # Peso Venda (VB)
+        peso_total_venda = DiaFiscal.objects.filter(
+            data__range=(data_inicio.date(), (data_fim_ajustada - timedelta(days=1)).date())
+        ).aggregate(s=Sum('peso_venda'))['s'] or 0
+
+        peso_realizado_venda = DiaFiscal.objects.filter(
+            data__range=(data_inicio.date(), hoje.date())
+        ).aggregate(s=Sum('peso_venda'))['s'] or 0
+
+        # Peso Instalação (Gross) - Usado para Instaladas e Comissão
+        peso_total_inst = DiaFiscal.objects.filter(
+            data__range=(data_inicio.date(), (data_fim_ajustada - timedelta(days=1)).date())
+        ).aggregate(s=Sum('peso_instalacao'))['s'] or 0
+
+        peso_realizado_inst = DiaFiscal.objects.filter(
+            data__range=(data_inicio.date(), hoje.date())
+        ).aggregate(s=Sum('peso_instalacao'))['s'] or 0
+
+        # Função auxiliar de projeção
+        def calcular_projecao(valor_atual, peso_realizado, peso_total):
+            if not peso_realizado or float(peso_realizado) == 0:
+                return 0
+            return (float(valor_atual) / float(peso_realizado)) * float(peso_total)
+        # -----------------------------------------------
+
         # Filtro de Usuários (Hierarquia)
         usuarios_para_calcular = []
         
@@ -766,15 +795,28 @@ class DashboardResumoView(APIView):
 
         valor_comissao_final = comissao_total_geral if exibir_comissao else 0.0
 
+        # --- CÁLCULO DAS PROJEÇÕES FINAIS ---
+        projecao_vendas = calcular_projecao(total_registradas_geral, peso_realizado_venda, peso_total_venda)
+        projecao_instaladas = calcular_projecao(total_instaladas_geral, peso_realizado_inst, peso_total_inst)
+        projecao_comissao = calcular_projecao(valor_comissao_final, peso_realizado_inst, peso_total_inst)
+
         dados = {
             "periodo": f"{data_inicio.strftime('%d/%m')} a {data_fim_ajustada.strftime('%d/%m')}",
             "meta": meta_display,
+            
+            # Reais
             "total_vendas": total_registradas_geral,
             "total_instaladas": total_instaladas_geral,
+            "comissao_estimada": valor_comissao_final,
+            
+            # Projeções
+            "projecao_vendas": round(projecao_vendas, 1),
+            "projecao_instaladas": round(projecao_instaladas, 1),
+            "projecao_comissao": round(projecao_comissao, 2),
+
             "percentual_meta": round((total_registradas_geral / meta_display * 100), 1) if meta_display > 0 else 0,
             "percentual_aproveitamento": round(percentual_aproveitamento, 1),
             "status_bateu_meta": (total_registradas_geral >= meta_display) if meta_display > 0 else False,
-            "comissao_estimada": valor_comissao_final,
             "exibir_comissao": exibir_comissao, 
             "status_detalhado": status_counts_geral,
             "detalhes_listas": detalhes_listas
@@ -1857,6 +1899,7 @@ def enviar_comissao_whatsapp(request):
     except Exception as e:
         print(f"Erro Geral View: {e}")
         return JsonResponse({'error': str(e)}, status=500)
+
 class ExportarVendasExcelView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 

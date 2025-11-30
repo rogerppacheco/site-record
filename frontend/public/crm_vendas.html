@@ -590,11 +590,34 @@
                 const d = await apiFetch(`/crm/dashboard-resumo/?data_inicio=${inicio}&data_fim=${fim}`);
                 dashboardDataCache = d.detalhes_listas || {};
 
-                document.getElementById('dash-total').textContent = d.total_vendas;
+                // --- Vendas Registradas ---
+                let htmlVendas = d.total_vendas;
+                if (d.projecao_vendas > 0) {
+                    htmlVendas += `<div style="font-size: 1rem; opacity: 0.8; font-weight: normal; margin-top: 5px;">
+                        <i class="bi bi-graph-up-arrow"></i> Proj: ${Math.round(d.projecao_vendas)}
+                    </div>`;
+                }
+                document.getElementById('dash-total').innerHTML = htmlVendas;
                 document.getElementById('dash-meta-info').innerHTML = `Meta: ${d.meta} | Atingido: <strong>${d.percentual_meta}%</strong>`;
-                document.getElementById('dash-instaladas').textContent = d.total_instaladas || 0;
+
+                // --- Vendas Instaladas ---
+                let htmlInstaladas = d.total_instaladas || 0;
+                if (d.projecao_instaladas > 0) {
+                    htmlInstaladas += `<div style="font-size: 1rem; opacity: 0.8; font-weight: normal; margin-top: 5px;">
+                        <i class="bi bi-graph-up-arrow"></i> Proj: ${Math.round(d.projecao_instaladas)}
+                    </div>`;
+                }
+                document.getElementById('dash-instaladas').innerHTML = htmlInstaladas;
                 document.getElementById('dash-aproveitamento').textContent = `Aproveitamento: ${d.percentual_aproveitamento}%`;
-                document.getElementById('dash-comissao').textContent = d.comissao_estimada.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
+
+                // --- Comissão ---
+                let htmlComissao = d.comissao_estimada.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
+                if (d.projecao_comissao > 0) {
+                    htmlComissao += `<div style="font-size: 1rem; opacity: 0.8; font-weight: normal; margin-top: 5px;">
+                        <i class="bi bi-graph-up-arrow"></i> Proj: ${d.projecao_comissao.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}
+                    </div>`;
+                }
+                document.getElementById('dash-comissao').innerHTML = htmlComissao;
                 
                 const container = document.getElementById('dash-status-container');
                 container.innerHTML = '';
