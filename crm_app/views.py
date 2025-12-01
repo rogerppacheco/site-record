@@ -271,7 +271,9 @@ class VendaViewSet(viewsets.ModelViewSet):
                 # Se não tem busca nem data, otimiza carregando só o mês atual
                 if not search:
                     data_inicio_param = self.request.query_params.get('data_inicio')
-                    if not data_inicio_param and self.action == 'list':
+                    
+                    # CORREÇÃO AQUI: Se for fluxo 'esteira', NÃO filtra por data, mostra tudo.
+                    if not data_inicio_param and self.action == 'list' and flow != 'esteira':
                         hoje = timezone.now()
                         inicio_mes = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
                         queryset = queryset.filter(
@@ -297,8 +299,14 @@ class VendaViewSet(viewsets.ModelViewSet):
         # 6. Filtros de Fluxo (Abas)
         if flow == 'auditoria':
             queryset = queryset.filter(status_tratamento__isnull=False, status_esteira__isnull=True)
+        
         elif flow == 'esteira':
-            queryset = queryset.filter(status_esteira__isnull=False, status_comissionamento__isnull=True).exclude(status_esteira__nome__iexact='Instalada')
+            # CORREÇÃO AQUI: Filtra tudo que tenha status de esteira E estado = 'ABERTO'
+            queryset = queryset.filter(
+                status_esteira__isnull=False, 
+                status_esteira__estado__iexact='ABERTO'
+            )
+            
         elif flow == 'comissionamento':
             queryset = queryset.filter(status_esteira__nome__iexact='Instalada').exclude(status_comissionamento__nome__iexact='Pago')
 
