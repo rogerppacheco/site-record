@@ -5,10 +5,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CRM de Vendas - Record PAP</title>
+    
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    
+    <link href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+    <link href="https://cdn.datatables.net/fixedheader/3.3.2/css/fixedHeader.bootstrap5.min.css" rel="stylesheet">
+
     <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=2.3">
+    
     <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
+    
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+
     <style>
         /* Garante visual maiúsculo */
         input[type="text"], textarea { text-transform: uppercase; }
@@ -32,6 +41,11 @@
         .nav-tabs .nav-link { color: var(--cor-texto-suave); font-weight: 600; border: none; border-bottom: 3px solid transparent; }
         .nav-tabs .nav-link.active { color: var(--cor-primaria); border-bottom: 3px solid var(--cor-primaria); background: transparent; }
         
+        /* Abas de Status (Pills) */
+        .nav-pills .nav-link { color: #555; background-color: #f8f9fa; border: 1px solid #ddd; margin-right: 5px; font-size: 0.9rem; }
+        .nav-pills .nav-link.active { background-color: var(--cor-primaria); color: white; border-color: var(--cor-primaria); }
+        .nav-pills .nav-link:hover:not(.active) { background-color: #e9ecef; }
+
         .dash-card { border-radius: 12px; border: none; color: white; padding: 20px; height: 100%; position: relative; overflow: hidden; transition: transform 0.2s; cursor: pointer; }
         .dash-card:hover { transform: translateY(-3px); }
         .dash-card h3 { font-size: 2.5rem; font-weight: bold; margin: 0; }
@@ -42,6 +56,9 @@
         .bg-gradient-info { background: linear-gradient(45deg, #36b9cc, #258391); }
         .bg-gradient-warning { background: linear-gradient(45deg, #f6c23e, #dda20a); color: #fff; }
         
+        /* Ajuste inputs do DataTables */
+        thead input { width: 100%; padding: 3px; box-sizing: border-box; font-size: 0.85rem; border: 1px solid #ccc; border-radius: 4px; }
+
         @media (max-width: 576px) { .header-controls { flex-direction: column; align-items: flex-start; gap: 10px; } .header-controls button { width: 100%; } }
     </style>
 </head>
@@ -86,12 +103,42 @@
             </ul>
 
             <div id="conteudo-lista">
+                <div class="mb-3">
+                    <ul class="nav nav-pills" id="abas-status">
+                        <li class="nav-item">
+                            <a class="nav-link active" href="#" onclick="filtrarPorStatus('', this)">
+                                <i class="bi bi-collection"></i> Todos
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" onclick="filtrarPorStatus('PENDENTE', this)">
+                                <i class="bi bi-hourglass-split"></i> Pendentes
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" onclick="filtrarPorStatus('AGENDADO', this)">
+                                <i class="bi bi-calendar-event"></i> Agendados
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" onclick="filtrarPorStatus('INSTALADA', this)">
+                                <i class="bi bi-check-circle-fill"></i> Instalados
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" onclick="filtrarPorStatus('CANCELADO', this)">
+                                <i class="bi bi-x-circle-fill"></i> Cancelados
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+
                 <div class="filter-bar mb-4 shadow-sm" id="barra-filtros">
                     <div class="filter-item">
-                        <label class="form-label small fw-bold text-muted">Buscar (CPF/OS/Nome)</label>
+                        <label class="form-label small fw-bold text-muted">Buscar Global</label>
                         <div class="input-group">
                             <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
-                            <input type="text" id="filtro-busca" class="form-control form-control-sm" placeholder="Digite para buscar...">
+                            <input type="text" id="filtro-busca" class="form-control form-control-sm" placeholder="CPF, Nome ou OS...">
                         </div>
                     </div>
 
@@ -110,7 +157,7 @@
 
                 <div class="card border-0 shadow-none">
                     <div class="table-responsive">
-                        <table class="table table-hover align-middle mb-0">
+                        <table id="tabela-vendas" class="table table-hover align-middle mb-0" style="width:100%">
                             <thead class="table-light">
                                 <tr>
                                     <th class="ps-3">ID</th>
@@ -120,7 +167,8 @@
                                     <th>Plano</th>
                                     <th>O.S.</th>
                                     <th>Agendamento</th>
-                                    <th>Auditoria</th> <th>Status Esteira</th>
+                                    <th>Auditoria</th> 
+                                    <th>Status Esteira</th>
                                     <th>Motivo Pendência</th> 
                                     <th class="text-end pe-3">Ações</th>
                                 </tr>
@@ -136,7 +184,6 @@
                     <i class="bi bi-info-circle"></i> Os dados abaixo refletem o período selecionado no filtro acima.
                 </div>
 
-                <!-- LINHA EXCLUSIVA DIRETORIA (FATURAMENTO) -->
                 <div class="row mb-4" id="row-diretoria" style="display:none;">
                     <div class="col-12">
                         <div class="card border-0 shadow-sm" style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); color: white; cursor: pointer;" onclick="abrirModalMix()">
@@ -195,47 +242,17 @@
     <div class="modal fade" id="modalDetalheDashboard" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title fw-bold" id="tituloDetalheDashboard">Detalhes</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body p-0">
-                    <div class="list-group list-group-flush" id="listaDetalheDashboard"></div>
-                </div>
+                <div class="modal-header"><h5 class="modal-title fw-bold" id="tituloDetalheDashboard">Detalhes</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body p-0"><div class="list-group list-group-flush" id="listaDetalheDashboard"></div></div>
             </div>
         </div>
     </div>
 
-    <!-- MODAL DE MIX (VELOCIDADE E PAGAMENTO) -->
     <div class="modal fade" id="modalMix" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-centered">
             <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title fw-bold"><i class="bi bi-graph-up"></i> Detalhamento de Vendas (Mix)</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="row">
-                        <div class="col-md-6 border-end">
-                            <h6 class="text-center fw-bold mb-3 text-primary">Mix de Velocidade/Plano</h6>
-                            <div class="table-responsive">
-                                <table class="table table-sm table-striped">
-                                    <thead class="table-light"><tr><th>Plano</th><th class="text-end">Qtd</th><th class="text-end">%</th></tr></thead>
-                                    <tbody id="tbody-mix-velocidade"></tbody>
-                                </table>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <h6 class="text-center fw-bold mb-3 text-success">Mix Forma de Pagamento</h6>
-                            <div class="table-responsive">
-                                <table class="table table-sm table-striped">
-                                    <thead class="table-light"><tr><th>Forma Pagto</th><th class="text-end">Qtd</th><th class="text-end">%</th></tr></thead>
-                                    <tbody id="tbody-mix-pagamento"></tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <div class="modal-header"><h5 class="modal-title fw-bold"><i class="bi bi-graph-up"></i> Detalhamento de Vendas (Mix)</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body"><div class="row"><div class="col-md-6 border-end"><h6 class="text-center fw-bold mb-3 text-primary">Mix de Velocidade/Plano</h6><div class="table-responsive"><table class="table table-sm table-striped"><thead class="table-light"><tr><th>Plano</th><th class="text-end">Qtd</th><th class="text-end">%</th></tr></thead><tbody id="tbody-mix-velocidade"></tbody></table></div></div><div class="col-md-6"><h6 class="text-center fw-bold mb-3 text-success">Mix Forma de Pagamento</h6><div class="table-responsive"><table class="table table-sm table-striped"><thead class="table-light"><tr><th>Forma Pagto</th><th class="text-end">Qtd</th><th class="text-end">%</th></tr></thead><tbody id="tbody-mix-pagamento"></tbody></table></div></div></div></div>
             </div>
         </div>
     </div>
@@ -245,40 +262,9 @@
     <div class="modal fade" id="modal-aviso-cliente" tabindex="-1" style="z-index: 1060;">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content border-warning">
-                <div class="modal-header bg-warning text-dark">
-                    <h5 class="modal-title fw-bold"><i class="bi bi-exclamation-triangle-fill"></i> Atenção: Cliente Recorrente</h5>
-                    <button type="button" class="btn-close" onclick="fecharModalAviso()"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="alert alert-light border text-center mb-3">
-                        <h4 class="fw-bold text-warning" id="aviso-qtd-vendas" style="font-size: 2.5rem;">0</h4>
-                        <span class="text-muted text-uppercase small fw-bold">Vendas Ativas Encontradas</span>
-                    </div>
-
-                    <p class="text-center mb-3">
-                        O cliente <strong id="aviso-nome-cliente"></strong> já possui histórico em nossa base.
-                    </p>
-
-                    <div class="alert alert-danger" role="alert">
-                        <div class="d-flex align-items-center mb-2">
-                            <i class="bi bi-shield-lock-fill fs-3 me-3"></i>
-                            <div>
-                                <strong>Aviso de Segurança:</strong><br>
-                                Esta venda passará por uma <u>auditoria mais apurada</u> devido à duplicidade de CPF/CNPJ.
-                            </div>
-                        </div>
-                        <hr>
-                        <p class="mb-0 fw-bold text-center small text-uppercase">
-                            <i class="bi bi-exclamation-circle"></i> Essa venda poderá gerar uma recompra ou uma venda indevida!
-                        </p>
-                    </div>
-
-                    <p class="small text-muted text-center mt-3">Deseja continuar com este CPF ou informar um novo?</p>
-                </div>
-                <div class="modal-footer justify-content-center">
-                    <button type="button" class="btn btn-outline-secondary px-4" onclick="fecharModalAviso()">Informar Outro CPF</button>
-                    <button type="button" class="btn btn-warning px-4 fw-bold" onclick="confirmarClienteExistente()">Sim, Continuar Venda</button>
-                </div>
+                <div class="modal-header bg-warning text-dark"><h5 class="modal-title fw-bold"><i class="bi bi-exclamation-triangle-fill"></i> Atenção: Cliente Recorrente</h5><button type="button" class="btn-close" onclick="fecharModalAviso()"></button></div>
+                <div class="modal-body"><div class="alert alert-light border text-center mb-3"><h4 class="fw-bold text-warning" id="aviso-qtd-vendas" style="font-size: 2.5rem;">0</h4><span class="text-muted text-uppercase small fw-bold">Vendas Ativas Encontradas</span></div><p class="text-center mb-3">O cliente <strong id="aviso-nome-cliente"></strong> já possui histórico em nossa base.</p><div class="alert alert-danger" role="alert"><div class="d-flex align-items-center mb-2"><i class="bi bi-shield-lock-fill fs-3 me-3"></i><div><strong>Aviso de Segurança:</strong><br>Esta venda passará por uma <u>auditoria mais apurada</u> devido à duplicidade de CPF/CNPJ.</div></div><hr><p class="mb-0 fw-bold text-center small text-uppercase"><i class="bi bi-exclamation-circle"></i> Essa venda poderá gerar uma recompra ou uma venda indevida!</p></div><p class="small text-muted text-center mt-3">Deseja continuar com este CPF ou informar um novo?</p></div>
+                <div class="modal-footer justify-content-center"><button type="button" class="btn btn-outline-secondary px-4" onclick="fecharModalAviso()">Informar Outro CPF</button><button type="button" class="btn btn-warning px-4 fw-bold" onclick="confirmarClienteExistente()">Sim, Continuar Venda</button></div>
             </div>
         </div>
     </div>
@@ -286,71 +272,29 @@
     <div class="modal fade" id="modal-nova-venda" tabindex="-1">
         <div class="modal-dialog modal-lg modal-dialog-scrollable">
             <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title fw-bold" id="titulo-modal-venda">Registrar Venda <span id="badge-origem" class="badge bg-secondary ms-2"></span></h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
+                <div class="modal-header"><h5 class="modal-title fw-bold" id="titulo-modal-venda">Registrar Venda <span id="badge-origem" class="badge bg-secondary ms-2"></span></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
                     <form id="form-nova-venda">
-                        <input type="hidden" name="forma_entrada" id="input-forma-entrada">
-                        <input type="hidden" id="id-venda-edicao"> 
-                        
+                        <input type="hidden" name="forma_entrada" id="input-forma-entrada"><input type="hidden" id="id-venda-edicao"> 
                         <h6 class="text-primary border-bottom pb-2 mb-3">Dados do Cliente</h6>
                         <div class="row g-3">
-                            <div class="col-12 col-md-6 position-relative">
-                                <label>CPF/CNPJ <span class="text-danger">*</span></label>
-                                <input type="text" class="form-control" id="input-cpf" name="cliente_cpf_cnpj" required placeholder="Digite para buscar..." autocomplete="off">
-                                <div id="sugestoes-cliente"></div>
-                            </div>
+                            <div class="col-12 col-md-6 position-relative"><label>CPF/CNPJ <span class="text-danger">*</span></label><input type="text" class="form-control" id="input-cpf" name="cliente_cpf_cnpj" required placeholder="Digite para buscar..." autocomplete="off"><div id="sugestoes-cliente"></div></div>
                             <div class="col-12 col-md-6"><label>Nome Completo <span class="text-danger">*</span></label><input type="text" class="form-control" id="input-nome" name="cliente_nome_razao_social" required oninput="this.value = this.value.toUpperCase()"></div>
                             <div class="col-12 col-md-6"><label>Nome da Mãe</label><input type="text" class="form-control" id="input-nome-mae" name="nome_mae" oninput="this.value = this.value.toUpperCase()"></div>
                             <div class="col-12 col-md-6"><label>Data Nascimento</label><input type="date" class="form-control" id="input-data-nascimento" name="data_nascimento"></div>
                             <div class="col-12 col-md-6"><label>Email <span class="text-danger">*</span></label><input type="email" class="form-control" id="input-email" name="cliente_email" required></div>
-                            
-                            <div class="col-12 col-md-6">
-                                <div class="row g-2">
-                                    <div class="col-6">
-                                        <label>Telefone 1 (WhatsApp) <span class="text-danger">*</span></label>
-                                        <input type="text" class="form-control" id="input-telefone" name="telefone1" required onblur="verificarWhatsApp(this)">
-                                        <div id="feedback-whatsapp" class="form-text mt-1" style="font-size: 0.8rem; min-height: 1.2em;"></div>
-                                    </div>
-                                    <div class="col-6">
-                                        <label>Telefone 2</label>
-                                        <input type="text" class="form-control" id="input-telefone2" name="telefone2">
-                                    </div>
-                                </div>
-                            </div>
-
+                            <div class="col-12 col-md-6"><div class="row g-2"><div class="col-6"><label>Telefone 1 (WhatsApp) <span class="text-danger">*</span></label><input type="text" class="form-control" id="input-telefone" name="telefone1" required onblur="verificarWhatsApp(this)"><div id="feedback-whatsapp" class="form-text mt-1" style="font-size: 0.8rem; min-height: 1.2em;"></div></div><div class="col-6"><label>Telefone 2</label><input type="text" class="form-control" id="input-telefone2" name="telefone2"></div></div></div>
                         </div>
-
-                        <div id="area-representante" class="row g-3 mt-2" style="display: none; background-color: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #e9ecef;">
-                            <div class="col-12"><h6 class="text-secondary border-bottom pb-2 mb-0" style="font-size: 0.9rem;">Representante Legal (Obrigatório para CNPJ)</h6></div>
-                            <div class="col-12 col-md-6"><label>CPF do Representante <span class="text-danger">*</span></label><input type="text" class="form-control" id="input-cpf-rep" name="cpf_representante_legal"></div>
-                            <div class="col-12 col-md-6"><label>Nome do Representante</label><input type="text" class="form-control" id="input-nome-rep" name="nome_representante_legal" readonly style="background-color: #e9ecef;" oninput="this.value = this.value.toUpperCase()"></div>
-                        </div>
-
+                        <div id="area-representante" class="row g-3 mt-2" style="display: none; background-color: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #e9ecef;"><div class="col-12"><h6 class="text-secondary border-bottom pb-2 mb-0" style="font-size: 0.9rem;">Representante Legal (Obrigatório para CNPJ)</h6></div><div class="col-12 col-md-6"><label>CPF do Representante <span class="text-danger">*</span></label><input type="text" class="form-control" id="input-cpf-rep" name="cpf_representante_legal"></div><div class="col-12 col-md-6"><label>Nome do Representante</label><input type="text" class="form-control" id="input-nome-rep" name="nome_representante_legal" readonly style="background-color: #e9ecef;" oninput="this.value = this.value.toUpperCase()"></div></div>
                         <h6 class="text-primary border-bottom pb-2 mb-3 mt-4">Dados da Venda</h6>
                         <div class="row g-3">
                             <div class="col-12 col-md-6"><label>Plano <span class="text-danger">*</span></label><select class="form-select" name="plano" id="select-plano" required></select></div>
                             <div class="col-12 col-md-6"><label>Forma de Pagamento <span class="text-danger">*</span></label><select class="form-select" name="forma_pagamento" id="select-pagamento" required></select></div>
-                            
-                            <div class="col-12 col-md-6 d-none" id="container-status-gestao">
-                                <label class="fw-bold text-secondary">Status Tratamento</label>
-                                <select class="form-select" name="status_tratamento" id="select-status-tratamento"></select>
-                            </div>
-                            <div class="col-12 col-md-6 d-none" id="container-status-esteira">
-                                <label class="fw-bold text-success">Status Esteira</label>
-                                <select class="form-select border-success" name="status_esteira" id="select-status-esteira"></select>
-                            </div>
-
-                            <div class="col-12 col-md-6 d-none" id="container-vendedor-modal">
-                                <label class="fw-bold text-secondary">Vendedor (Responsável)</label>
-                                <select class="form-select" name="vendedor" id="select-vendedor-modal"></select>
-                            </div>
-
+                            <div class="col-12 col-md-6 d-none" id="container-status-gestao"><label class="fw-bold text-secondary">Status Tratamento</label><select class="form-select" name="status_tratamento" id="select-status-tratamento"></select></div>
+                            <div class="col-12 col-md-6 d-none" id="container-status-esteira"><label class="fw-bold text-success">Status Esteira</label><select class="form-select border-success" name="status_esteira" id="select-status-esteira"></select></div>
+                            <div class="col-12 col-md-6 d-none" id="container-vendedor-modal"><label class="fw-bold text-secondary">Vendedor (Responsável)</label><select class="form-select" name="vendedor" id="select-vendedor-modal"></select></div>
                             <div class="col-12"><label>Observações</label><textarea class="form-control" name="observacoes" id="input-observacoes" rows="2" oninput="this.value = this.value.toUpperCase()"></textarea></div>
                         </div>
-
                         <h6 class="text-primary border-bottom pb-2 mb-3 mt-4">Endereço de Instalação</h6>
                         <div class="row g-3">
                             <div class="col-12 col-md-4"><label>CEP <span class="text-danger">*</span></label><input type="text" class="form-control" name="cep" id="nova-cep" required></div>
@@ -364,13 +308,14 @@
                         </div>
                     </form>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" form="form-nova-venda" id="btn-salvar-venda" class="btn btn-primary">Salvar</button>
-                </div>
+                <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button type="submit" form="form-nova-venda" id="btn-salvar-venda" class="btn btn-primary">Salvar</button></div>
             </div>
         </div>
     </div>
+
+    <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.4/js/dataTables.bootstrap5.min.js"></script>
+    <script src="https://cdn.datatables.net/fixedheader/3.3.2/js/dataTables.fixedHeader.min.js"></script>
 
     <script src="{% static 'js/auth.js' %}?v=2.1"></script>
     <script src="{% static 'js/menu.js' %}?v=2.1"></script>
@@ -395,10 +340,9 @@
 
         let modalOrigem, modalNovaVenda, modalAviso, modalDetalhe, modalMix;
         let clienteTemp = null, debounceTimer, debounceRepTimer, viewAtual = 'minhas_vendas', userProfile = null;
-        
-        // --- NOVO: CACHE PARA O MIX ---
         let dadosMixCache = null;
-        let dashboardDataCache = {}; // Cache para detalhes do dashboard
+        let dashboardDataCache = {}; 
+        let statusEsteiraAtual = ''; // Variável para o filtro de abas
 
         document.addEventListener('DOMContentLoaded', async () => {
             modalOrigem = new bootstrap.Modal(document.getElementById('modal-origem-venda'));
@@ -425,14 +369,22 @@
             document.querySelectorAll('.uppercase-input, input[type="text"]:not(#input-email)').forEach(input => { input.addEventListener('input', function() { this.value = this.value.toUpperCase(); }); });
         });
 
-        // --- FUNÇÃO UNIFICADA DE FILTROS ---
         function aplicarFiltros() {
-            const abaAtiva = document.querySelector('.nav-link.active').innerText;
+            const abaAtiva = document.querySelector('.nav-tabs .nav-link.active').innerText;
             if(abaAtiva === 'Dashboard') {
                 carregarDashboard();
             } else {
                 carregarVendas();
             }
+        }
+
+        function filtrarPorStatus(status, element) {
+            // Atualiza visual das abas
+            document.querySelectorAll('#abas-status .nav-link').forEach(l => l.classList.remove('active'));
+            element.classList.add('active');
+            
+            statusEsteiraAtual = status;
+            carregarVendas();
         }
 
         async function carregarVendedores() {
@@ -455,20 +407,29 @@
         }
 
         async function carregarVendas() {
+            // --- 1. DESTRUIR DATATABLE ANTES DE RECARREGAR ---
+            if ($.fn.DataTable.isDataTable('#tabela-vendas')) {
+                $('#tabela-vendas').DataTable().destroy();
+            }
+
             const tbody = document.getElementById('tabela-vendas-body');
             tbody.innerHTML = '<tr><td colspan="11" class="text-center">Carregando...</td></tr>';
+
+            // Remove a linha de filtros do DataTables se existir (para recriar limpa)
+            $('#tabela-vendas thead tr.filters').remove();
 
             const inicio = document.getElementById('filtro-inicio').value;
             const fim = document.getElementById('filtro-fim').value;
             const vendedor = document.getElementById('filtro-vendedor').value;
             const busca = document.getElementById('filtro-busca').value;
             
-            const viewAtual = document.querySelector('.nav-link.active').innerText === 'Minhas Vendas' ? 'minhas_vendas' : 'geral';
+            const viewAtual = document.querySelector('.nav-tabs .nav-link.active').innerText === 'Minhas Vendas' ? 'minhas_vendas' : 'geral';
             
             let url = `/crm/vendas/?view=${viewAtual}`;
             if(inicio) url += `&data_inicio=${inicio}`;
             if(fim) url += `&data_fim=${fim}`;
             if(busca) url += `&search=${busca}`; 
+            if(statusEsteiraAtual) url += `&status=${statusEsteiraAtual}`;
             if(viewAtual === 'geral' && vendedor) url += `&consultor_id=${vendedor}`;
 
             try {
@@ -493,11 +454,7 @@
                     let badgeTratamentoClass = 'bg-light text-muted border';
 
                     if (v.status_tratamento) {
-                        if (typeof v.status_tratamento === 'object') {
-                            statusTratamentoNome = v.status_tratamento.nome;
-                        } else {
-                            statusTratamentoNome = v.status_tratamento_nome || v.status_tratamento;
-                        }
+                        statusTratamentoNome = (typeof v.status_tratamento === 'object') ? v.status_tratamento.nome : (v.status_tratamento_nome || v.status_tratamento);
                     } else if (v.status_comissionamento) {
                          statusTratamentoNome = v.status_comissionamento;
                     }
@@ -519,47 +476,91 @@
 
                     const planoNome = v.plano ? (v.plano.nome) : (v.plano_nome || 'N/A');
                     const motivoPendencia = v.motivo_pendencia ? (v.motivo_pendencia.nome || v.motivo_pendencia) : '-';
-
                     const osDisplay = v.ordem_servico ? `<span class="fw-bold text-dark">#${v.ordem_servico}</span>` : '<span class="text-muted">-</span>';
 
                     let agendamentoDisplay = '<span class="text-muted">-</span>';
                     if(v.data_agendamento) {
                         const parts = v.data_agendamento.split('-');
                         const turno = v.periodo_agendamento || '';
-                        agendamentoDisplay = `
-                            <div style="line-height:1.2">
-                                <span>${parts[2]}/${parts[1]}</span><br>
-                                <span class="badge bg-light text-dark border">${turno}</span>
-                            </div>`;
+                        agendamentoDisplay = `<span>${parts[2]}/${parts[1]}</span> <span class="badge bg-light text-dark border ms-1">${turno}</span>`;
                     }
 
                     const row = `
                         <tr>
                             <td class="ps-3 fw-bold">#${v.id}</td>
                             <td>${dataFormatada}</td>
-                            <td>
-                                <div class="fw-bold">${clienteNome}</div>
-                                <div class="small text-muted">${v.cliente_cpf_cnpj || ''}</div>
-                            </td>
+                            <td><div class="fw-bold">${clienteNome}</div><div class="small text-muted">${v.cliente_cpf_cnpj || ''}</div></td>
                             <td>${nomeVendedor}</td> 
                             <td>${planoNome}</td>
                             <td>${osDisplay}</td>
                             <td>${agendamentoDisplay}</td>
-                            <td><span class="status-badge ${badgeTratamentoClass}">${statusTratamentoNome}</span></td> <td><span class="status-badge ${badgeClass}">${statusNome}</span></td>
+                            <td><span class="status-badge ${badgeTratamentoClass}">${statusTratamentoNome}</span></td>
+                            <td><span class="status-badge ${badgeClass}">${statusNome}</span></td>
                             <td class="text-danger small fw-bold">${motivoPendencia}</td>
                             <td class="text-end pe-3">
                                 <button onclick="editarVenda(${v.id})" class="btn btn-sm btn-outline-primary me-1" title="Editar"><i class="bi bi-pencil"></i></button>
                                 <button onclick="excluirVenda(${v.id})" class="btn btn-sm btn-outline-danger" title="Excluir"><i class="bi bi-trash"></i></button>
                             </td>
-                        </tr>
-                    `;
+                        </tr>`;
                     tbody.innerHTML += row;
                 });
+
+                // --- 2. INICIALIZAR DATATABLE APÓS CARREGAR DADOS ---
+                iniciarDataTable();
 
             } catch (error) {
                 console.error(error);
                 tbody.innerHTML = '<tr><td colspan="11" class="text-center text-danger">Erro ao carregar vendas. Verifique o console.</td></tr>';
             }
+        }
+
+        // --- FUNÇÃO DE INICIALIZAÇÃO DO DATATABLE COM FILTROS ---
+        function iniciarDataTable() {
+            // Clona o cabeçalho para criar a linha de inputs
+            $('#tabela-vendas thead tr').clone(true).addClass('filters').appendTo('#tabela-vendas thead');
+
+            const table = $('#tabela-vendas').DataTable({
+                orderCellsTop: true,
+                fixedHeader: true,
+                paging: true,
+                pageLength: 25,
+                language: {
+                    url: "//cdn.datatables.net/plug-ins/1.13.4/i18n/pt-BR.json"
+                },
+                columnDefs: [
+                    { orderable: false, targets: 10 } // Desativa ordenação na coluna de ações
+                ],
+                initComplete: function () {
+                    var api = this.api();
+
+                    // Para cada coluna
+                    api.columns().eq(0).each(function (colIdx) {
+                        // Não adicionar filtro na coluna de Ações (índice 10)
+                        if (colIdx == 10) {
+                            $('.filters th').eq($(api.column(colIdx).header()).index()).html('');
+                            return;
+                        }
+
+                        var cell = $('.filters th').eq($(api.column(colIdx).header()).index());
+                        var title = $(cell).text();
+                        
+                        // Adiciona o input
+                        $(cell).html('<input type="text" placeholder="🔍 ' + title + '" />');
+
+                        // Evento de filtro
+                        $('input', $('.filters th').eq($(api.column(colIdx).header()).index()))
+                            .off('keyup change')
+                            .on('keyup change', function (e) {
+                                e.stopPropagation();
+                                var regexr = '({search})'; 
+                                var cursorPosition = this.selectionStart;
+                                api.column(colIdx)
+                                    .search(this.value != '' ? regexr.replace('{search}', '(((' + this.value + ')))') : '', this.value != '', this.value == '')
+                                    .draw();
+                            });
+                    });
+                }
+            });
         }
 
         function verificarRegraCNPJ(valor) {
@@ -609,8 +610,16 @@
                 const payload = jwt_decode(token);
                 userProfile = payload.user_role || payload.perfil || 'Vendedor'; 
                 const perfisGestao = ['Supervisor', 'Diretoria', 'BackOffice', 'Admin'];
-                if (perfisGestao.includes(userProfile)) document.getElementById('aba-equipe').classList.remove('d-none');
-                if (!['Diretoria', 'Admin'].includes(userProfile)) { document.getElementById('barra-filtros').style.display = 'none'; document.getElementById('aviso-filtro-bloqueado').classList.remove('d-none'); }
+                
+                if (perfisGestao.includes(userProfile)) {
+                    document.getElementById('aba-equipe').classList.remove('d-none');
+                }
+                
+                // CORREÇÃO: BackOffice incluído na lista que vê a barra de filtros
+                if (!['Diretoria', 'Admin', 'BackOffice'].includes(userProfile)) { 
+                    document.getElementById('barra-filtros').style.display = 'none'; 
+                    document.getElementById('aviso-filtro-bloqueado').classList.remove('d-none'); 
+                }
                 
                 if (userProfile === 'Diretoria') {
                     document.getElementById('btn-exportar-excel').classList.remove('d-none');
@@ -619,7 +628,7 @@
         }
 
         function alterarAba(tipo, elemento) {
-            document.querySelectorAll('.nav-tabs .nav-link').forEach(l => l.classList.remove('active'));
+            document.querySelectorAll('#abas-navegacao .nav-link').forEach(l => l.classList.remove('active'));
             elemento.classList.add('active');
             const divLista = document.getElementById('conteudo-lista');
             const divDash = document.getElementById('conteudo-dashboard');
@@ -697,12 +706,8 @@
                 const rowDiretoria = document.getElementById('row-diretoria');
                 if (d.diretoria_data) {
                     rowDiretoria.style.display = 'flex';
-                    
-                    // Preenche valores do card
                     document.getElementById('dir-fat-real').textContent = d.diretoria_data.faturamento_real.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
                     document.getElementById('dir-fat-proj').textContent = d.diretoria_data.faturamento_projetado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                    
-                    // Guarda dados para o modal
                     dadosMixCache = d.diretoria_data;
                 } else {
                     rowDiretoria.style.display = 'none';
@@ -711,44 +716,21 @@
             } catch(e) {}
         }
 
-        // --- FUNÇÃO PARA ABRIR O MODAL DE MIX ---
         function abrirModalMix() {
             if (!dadosMixCache) return;
-            
             const preencherTabela = (tbodyId, dadosObj) => {
                 const tbody = document.getElementById(tbodyId);
                 tbody.innerHTML = '';
-                
-                // Converte objeto em array e ordena por qtd decrescente
                 const lista = Object.entries(dadosObj).sort((a, b) => b[1] - a[1]);
-                
-                // Calcula total para porcentagem
                 const total = lista.reduce((acc, curr) => acc + curr[1], 0);
-                
                 lista.forEach(([nome, qtd]) => {
                     const pct = total > 0 ? ((qtd / total) * 100).toFixed(1) : 0;
-                    tbody.innerHTML += `
-                        <tr>
-                            <td>${nome}</td>
-                            <td class="text-end fw-bold">${qtd}</td>
-                            <td class="text-end text-muted small">${pct}%</td>
-                        </tr>
-                    `;
+                    tbody.innerHTML += `<tr><td>${nome}</td><td class="text-end fw-bold">${qtd}</td><td class="text-end text-muted small">${pct}%</td></tr>`;
                 });
-                
-                // Linha de total
-                tbody.innerHTML += `
-                    <tr class="table-active fw-bold">
-                        <td>TOTAL</td>
-                        <td class="text-end">${total}</td>
-                        <td class="text-end">100%</td>
-                    </tr>
-                `;
+                tbody.innerHTML += `<tr class="table-active fw-bold"><td>TOTAL</td><td class="text-end">${total}</td><td class="text-end">100%</td></tr>`;
             };
-
             preencherTabela('tbody-mix-velocidade', dadosMixCache.mix_velocidade);
             preencherTabela('tbody-mix-pagamento', dadosMixCache.mix_pagamento);
-            
             modalMix.show();
         }
 
@@ -774,7 +756,6 @@
 
         function exportarExcelDiretoria() {
             if(!confirm("Deseja baixar a base completa de vendas em Excel?")) return;
-            
             const btn = document.getElementById('btn-exportar-excel');
             const originalText = btn.innerHTML;
             btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Gerando...';

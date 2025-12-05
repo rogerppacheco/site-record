@@ -229,6 +229,11 @@ class VendaViewSet(viewsets.ModelViewSet):
         flow = self.request.query_params.get('flow')
         search = self.request.query_params.get('search') 
         
+        # --- 0. Filtro por Status (Abas) ---
+        status_filter = self.request.query_params.get('status')
+        if status_filter:
+            queryset = queryset.filter(status_esteira__nome__iexact=status_filter)
+
         # 1. Filtro de Busca (Prioritário)
         if search:
             queryset = queryset.filter(
@@ -265,14 +270,14 @@ class VendaViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(vendedor=user)
 
         elif view_type == 'visao_equipe' or view_type == 'geral':
-            if is_member(user, ['Diretoria', 'Admin']):
+            # --- CORREÇÃO: BackOffice agora vê tudo igual Diretoria/Admin ---
+            if is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
                 pass 
-            elif is_member(user, ['BackOffice', 'Auditoria', 'Qualidade']):
+            elif is_member(user, ['Auditoria', 'Qualidade']):
                 # Se não tem busca nem data, otimiza carregando só o mês atual
-                if not search:
+                if not search and not status_filter:
                     data_inicio_param = self.request.query_params.get('data_inicio')
                     
-                    # CORREÇÃO AQUI: Se for fluxo 'esteira', NÃO filtra por data, mostra tudo.
                     if not data_inicio_param and self.action == 'list' and flow != 'esteira':
                         hoje = timezone.now()
                         inicio_mes = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -301,7 +306,7 @@ class VendaViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(status_tratamento__isnull=False, status_esteira__isnull=True)
         
         elif flow == 'esteira':
-            # CORREÇÃO AQUI: Filtra tudo que tenha status de esteira E estado = 'ABERTO'
+            # Filtra tudo que tenha status de esteira E estado = 'ABERTO'
             queryset = queryset.filter(
                 status_esteira__isnull=False, 
                 status_esteira__estado__iexact='ABERTO'
@@ -313,8 +318,8 @@ class VendaViewSet(viewsets.ModelViewSet):
         if ordem_servico:
             queryset = queryset.filter(ordem_servico__icontains=ordem_servico)
 
-        # 5. Filtros de Data (Só aplica se não estiver buscando por texto)
-        if not search:
+        # 5. Filtros de Data (Só aplica se não estiver buscando por texto ou status específico)
+        if not search and not status_filter:
             if data_inicio_str and data_fim_str:
                 try:
                     dt_ini = datetime.strptime(data_inicio_str, '%Y-%m-%d').date()
@@ -1568,8 +1573,8 @@ class ImportacaoOsabView(APIView):
         report = {
             "status": "sucesso", 
             "total_registros": len(df), 
-            "criados": 0,              
-            "atualizados": 0,          
+            "criados": 0,               
+            "atualizados": 0,           
             "vendas_encontradas": 0, 
             "ja_corretos": 0, 
             "status_nao_mapeado": 0, 
