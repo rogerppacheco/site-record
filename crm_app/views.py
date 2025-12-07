@@ -9,7 +9,7 @@ from io import BytesIO
 import json
 import os 
 import calendar
-import re # <--- ADICIONADO IMPORT RE
+import re 
 
 from django.db.models import Count, Q, Sum
 from django.utils import timezone
@@ -510,16 +510,22 @@ class VendaViewSet(viewsets.ModelViewSet):
 
                 # 3. ENVIO DE WHATSAPP SE REPROVADA OU PENDENTE (Biometria)
                 nm_st = status_obj.nome.upper()
+                
+                # Lista de status de SUCESSO (que NÃO devem enviar mensagem de erro)
                 STATUS_SUCESSO = ['AUDITADA', 'CADASTRADA', 'APROVADA', 'INSTALADA', 'AGENDADO', 'CONCLUIDA', 'CONCLUÍDA']
+                
                 eh_repro = not any(s in nm_st for s in STATUS_SUCESSO)
                 
                 if eh_repro and venda.vendedor and venda.vendedor.tel_whatsapp:
                     try:
                         svc = WhatsAppService()
+                        
                         end_parts = []
                         if venda.logradouro: end_parts.append(venda.logradouro)
                         if venda.numero_residencia: end_parts.append(venda.numero_residencia)
+                        if venda.complemento: end_parts.append(venda.complemento)
                         if venda.bairro: end_parts.append(venda.bairro)
+                        if venda.cidade: end_parts.append(f"{venda.cidade}/{venda.estado or ''}")
                         end_str = ", ".join(end_parts) if end_parts else "Endereço não informado"
 
                         msg_text = (
@@ -529,15 +535,16 @@ class VendaViewSet(viewsets.ModelViewSet):
                             f"*Status de Auditoria:* {status_obj.nome}\n"
                             f"*Observações:* {observacoes or 'Verificar no sistema.'}"
                         )
+                        
                         svc.enviar_mensagem_texto(venda.vendedor.tel_whatsapp, msg_text)
                         logger.info(f"Zap de reprovação enviado para {venda.vendedor.username}")
-                    except Exception as e_zap:
-                        logger.error(f"Erro ao enviar Zap Reprovação: {e_zap}")
+                    except Exception as e:
+                        logger.error(f"Erro ao enviar Zap Reprovação: {e}")
 
             return Response({"status": "Auditoria finalizada com sucesso."})
 
         except Exception as e:
-            logger.error(f"Erro crítico ao finalizar auditoria da venda {pk}: {str(e)}", exc_info=True)
+            logger.error(f"Erro crítico auditoria: {str(e)}", exc_info=True)
             return Response({"detail": f"Erro ao salvar dados: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
 
     # --- AÇÃO NOVO: REENVIAR WHATSAPP APROVAÇÃO ---
@@ -745,54 +752,84 @@ class DashboardResumoView(APIView):
         data_fim_str = request.query_params.get('data_fim')
         
         hoje = now()
+        hoje_date = hoje.date()
         
         if data_inicio_str and data_fim_str:
             try:
                 data_inicio = datetime.strptime(data_inicio_str, '%Y-%m-%d')
                 data_fim = datetime.strptime(data_fim_str, '%Y-%m-%d')
+                # Ajuste para pegar o dia fim inclusive
                 data_fim_ajustada = data_fim + timedelta(days=1)
+                data_fim_date = data_fim.date()
             except ValueError:
                 data_inicio = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
                 data_fim_ajustada = (data_inicio + timedelta(days=32)).replace(day=1)
+                data_fim_date = (data_fim_ajustada - timedelta(days=1)).date()
         else:
+            # Padrão: Mês Atual
             data_inicio = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
             data_fim_ajustada = (data_inicio + timedelta(days=32)).replace(day=1)
+            data_fim_date = (data_fim_ajustada - timedelta(days=1)).date()
 
-        # --- PESOS FISCAIS (Com Fallback para Calendário) ---
-        peso_total_venda = DiaFiscal.objects.filter(
-            data__range=(data_inicio.date(), (data_fim_ajustada - timedelta(days=1)).date())
-        ).aggregate(s=Sum('peso_venda'))['s'] or 0
+        # --- LÓGICA DE PROJEÇÃO (CORREÇÃO TOTAL DO MÊS) ---
+        # 1. Determinar o ÚLTIMO DIA DO MÊS da data de início (para calcular a META MENSAL CORRETA)
+        last_day_of_month = calendar.monthrange(data_inicio.year, data_inicio.month)[1]
+        data_fim_mes_projetado = data_inicio.replace(day=last_day_of_month).date()
 
-        peso_realizado_venda = DiaFiscal.objects.filter(
-            data__range=(data_inicio.date(), hoje.date())
-        ).aggregate(s=Sum('peso_venda'))['s'] or 0
+        # 2. Carrega todos os dias fiscais do mês inteiro (para o denominador da projeção)
+        dias_fiscais_db = DiaFiscal.objects.filter(
+            data__range=(data_inicio.date(), data_fim_mes_projetado)
+        )
+        mapa_fiscais = {d.data: d for d in dias_fiscais_db}
 
-        peso_total_inst = DiaFiscal.objects.filter(
-            data__range=(data_inicio.date(), (data_fim_ajustada - timedelta(days=1)).date())
-        ).aggregate(s=Sum('peso_instalacao'))['s'] or 0
+        # 3. Calcular Pesos Acumulados
+        peso_total_mes_venda = 0.0 # Peso do Mês Inteiro
+        peso_realizado_venda = 0.0 # Peso até o limite do filtro (ou hoje)
+        
+        peso_total_mes_inst = 0.0
+        peso_realizado_inst = 0.0
+        
+        # Limite para "Realizado": O menor entre (Hoje) e (Fim do Filtro Selecionado)
+        # Ex: Se filtrei 01 a 05, o realizado é até dia 05. Se filtrei 01 a 31, o realizado é até Hoje.
+        limite_realizado = min(hoje_date, data_fim_date)
 
-        peso_realizado_inst = DiaFiscal.objects.filter(
-            data__range=(data_inicio.date(), hoje.date())
-        ).aggregate(s=Sum('peso_instalacao'))['s'] or 0
+        # Loop Dia a Dia (1 até 31)
+        data_iter = data_inicio.date()
+        
+        while data_iter <= data_fim_mes_projetado:
+            # Define os pesos do dia (Prioridade: Banco > Fallback Padrão)
+            if data_iter in mapa_fiscais:
+                p_venda = float(mapa_fiscais[data_iter].peso_venda)
+                p_inst = float(mapa_fiscais[data_iter].peso_instalacao)
+            else:
+                # Fallback se não tiver no banco
+                weekday = data_iter.weekday() # 0=Seg, 6=Dom
+                if weekday == 6: 
+                    p_venda = 0.0; p_inst = 0.0
+                elif weekday == 5: 
+                    p_venda = 0.5; p_inst = 0.5
+                else: 
+                    p_venda = 1.0; p_inst = 1.0
+            
+            # Acumula no Total do Mês
+            peso_total_mes_venda += p_venda
+            peso_total_mes_inst += p_inst
+            
+            # Acumula no Realizado (Se estiver dentro do período válido)
+            if data_iter <= limite_realizado:
+                peso_realizado_venda += p_venda
+                peso_realizado_inst += p_inst
+            
+            data_iter += timedelta(days=1)
 
-        # Se não houver configuração fiscal, assume dias corridos do mês
-        if peso_total_venda == 0 or peso_total_inst == 0:
-            ultimo_dia_mes = (data_fim_ajustada - timedelta(days=1)).day
-            dia_atual = hoje.day if hoje.month == data_inicio.month else ultimo_dia_mes
-            peso_total_venda = peso_total_inst = ultimo_dia_mes
-            peso_realizado_venda = peso_realizado_inst = dia_atual
-
+        # Função de Projeção
         def calcular_projecao(valor_atual, peso_realizado, peso_total):
             if not peso_realizado or float(peso_realizado) == 0:
                 return 0
+            # Regra de 3: (Valor / PesoRealizado) * PesoTotalMes
             return (float(valor_atual) / float(peso_realizado)) * float(peso_total)
 
-        # --- FILTROS DE USUÁRIOS (QUEM VAI SER CALCULADO) ---
-        # Regras atualizadas:
-        # Diretoria/Admin/BackOffice -> Todos usuários ativos
-        # Supervisor -> Apenas ele mesmo (nos cards)
-        # Vendedor -> Apenas ele mesmo
-
+        # --- FILTROS DE USUÁRIOS ---
         consultor_filtro_id = request.query_params.get('consultor_id')
         
         if consultor_filtro_id:
@@ -800,29 +837,17 @@ class DashboardResumoView(APIView):
         elif is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
             usuarios_para_calcular = User.objects.filter(is_active=True)
         elif is_member(user, ['Supervisor']):
-             # ALTERADO: Supervisor vê apenas seus números nos cards, não da equipe inteira
             usuarios_para_calcular = [user]
         else:
             usuarios_para_calcular = [user]
 
-        # --- PERMISSÃO DE VISUALIZAÇÃO DE COMISSÃO ---
-        # 1. Diretoria e Admin: SIM (Veem o total da empresa)
-        # 2. BackOffice: NÃO (Não veem comissão)
-        # 3. Supervisor e Vendedor: SIM (Veem apenas o seu, definido pelo filtro usuarios_para_calcular)
+        if is_member(user, ['Diretoria', 'Admin']): exibir_comissao = True
+        elif is_member(user, ['BackOffice']): exibir_comissao = False
+        else: exibir_comissao = True
         
-        if is_member(user, ['Diretoria', 'Admin']):
-            exibir_comissao = True
-        elif is_member(user, ['BackOffice']):
-            exibir_comissao = False
-        else:
-            # Supervisor e Vendedor veem o seu por padrão
-            exibir_comissao = True
-        
-        # --- VERIFICAÇÃO PARA O CARD DE DIRETORIA ---
         is_diretoria = is_member(user, ['Diretoria'])
         mapa_comissao_operadora = {}
         if is_diretoria:
-            # Carrega tabela de preços da operadora em memória para performance
             configs = ComissaoOperadora.objects.all()
             for c in configs:
                 mapa_comissao_operadora[c.plano_id] = {
@@ -838,7 +863,6 @@ class DashboardResumoView(APIView):
         meta_display = 0
         detalhes_listas = defaultdict(list)
 
-        # Variáveis exclusivas Diretoria
         faturamento_operadora_real = 0.0
         mix_velocidade = defaultdict(int)
         mix_pagamento = defaultdict(int)
@@ -847,7 +871,7 @@ class DashboardResumoView(APIView):
             meta_individual = getattr(vendedor, 'meta_comissao', 0) or 0
             meta_display += float(meta_individual)
 
-            # Vendas Registradas (Data Criação)
+            # Vendas Registradas
             vendas_registro = Venda.objects.filter(
                 vendedor=vendedor, ativo=True,
                 data_criacao__gte=data_inicio, data_criacao__lt=data_fim_ajustada
@@ -868,7 +892,7 @@ class DashboardResumoView(APIView):
                 detalhes_listas['TOTAL_REGISTRADAS'].append(obj_venda)
                 if nome_status != 'INSTALADA': detalhes_listas[nome_status].append(obj_venda)
 
-            # Vendas Instaladas (Data Instalação)
+            # Vendas Instaladas
             vendas_instaladas = Venda.objects.filter(
                 vendedor=vendedor, ativo=True,
                 status_esteira__nome__iexact='INSTALADA',
@@ -887,27 +911,20 @@ class DashboardResumoView(APIView):
                 detalhes_listas['TOTAL_INSTALADAS'].append(obj_inst)
                 detalhes_listas['INSTALADA'].append(obj_inst)
 
-                # --- LÓGICA DIRETORIA: MIX E RECEBIMENTO OPERADORA ---
                 if is_diretoria:
-                    # 1. Mix Velocidade (Baseado no nome do plano)
                     nome_plano = vi.plano.nome if vi.plano else "Outros"
                     mix_velocidade[nome_plano] += 1
-
-                    # 2. Mix Pagamento
                     nome_pgto = vi.forma_pagamento.nome if vi.forma_pagamento else "Não Informado"
                     mix_pagamento[nome_pgto] += 1
 
-                    # 3. Faturamento
                     if vi.plano_id in mapa_comissao_operadora:
                         cfg = mapa_comissao_operadora[vi.plano_id]
                         valor_venda = cfg['base']
-                        # Verifica bônus
                         if cfg['bonus'] > 0:
                             if not cfg['fim_bonus'] or (vi.data_instalacao and vi.data_instalacao <= cfg['fim_bonus']):
                                 valor_venda += cfg['bonus']
                         faturamento_operadora_real += valor_venda
 
-            # Lógica de Comissão (Vendedor) existente
             if exibir_comissao:
                 regras = RegraComissao.objects.filter(consultor=vendedor).select_related('plano')
                 comissao_vendedor = 0.0
@@ -937,13 +954,17 @@ class DashboardResumoView(APIView):
 
         valor_comissao_final = comissao_total_geral if exibir_comissao else 0.0
 
-        # Projeções Padrão
-        projecao_vendas = calcular_projecao(total_registradas_geral, peso_realizado_venda, peso_total_venda)
-        projecao_instaladas = calcular_projecao(total_instaladas_geral, peso_realizado_inst, peso_total_inst)
-        projecao_comissao = calcular_projecao(valor_comissao_final, peso_realizado_inst, peso_total_inst)
+        # --- APLICAÇÃO DA PROJEÇÃO ---
+        # Usa o Peso Total do Mês Inteiro vs Peso Realizado até agora
+        projecao_vendas = calcular_projecao(total_registradas_geral, peso_realizado_venda, peso_total_mes_venda)
+        projecao_instaladas = calcular_projecao(total_instaladas_geral, peso_realizado_inst, peso_total_mes_inst)
+        projecao_comissao = calcular_projecao(valor_comissao_final, peso_realizado_inst, peso_total_mes_inst)
+
+        # Período exibido no título do card (pode ser o filtro selecionado)
+        periodo_str = f"{data_inicio.strftime('%d/%m')} a {data_fim_date.strftime('%d/%m')}"
 
         dados = {
-            "periodo": f"{data_inicio.strftime('%d/%m')} a {data_fim_ajustada.strftime('%d/%m')}",
+            "periodo": periodo_str,
             "meta": meta_display,
             "total_vendas": total_registradas_geral,
             "total_instaladas": total_instaladas_geral,
@@ -959,11 +980,8 @@ class DashboardResumoView(APIView):
             "detalhes_listas": detalhes_listas
         }
 
-        # --- DADOS EXTRAS DIRETORIA ---
         if is_diretoria:
-            # Projeção do Faturamento com base nos pesos fiscais
-            fat_projetado = calcular_projecao(faturamento_operadora_real, peso_realizado_inst, peso_total_inst)
-            
+            fat_projetado = calcular_projecao(faturamento_operadora_real, peso_realizado_inst, peso_total_mes_inst)
             dados['diretoria_data'] = {
                 'faturamento_real': round(faturamento_operadora_real, 2),
                 'faturamento_projetado': round(fat_projetado, 2),
@@ -973,7 +991,6 @@ class DashboardResumoView(APIView):
 
         return Response(dados)
 
-# --- CLIENTE VIEWSET (MODIFICADA) ---
 class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Cliente.objects.all()
     serializer_class = ClienteSerializer
