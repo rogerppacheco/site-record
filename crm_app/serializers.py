@@ -6,7 +6,7 @@ from .models import (
     Operadora, Plano, FormaPagamento, StatusCRM, MotivoPendencia,
     RegraComissao, Cliente, Venda, ImportacaoOsab, ImportacaoChurn,
     CicloPagamento, HistoricoAlteracaoVenda, Campanha,
-    ComissaoOperadora  # <--- ADICIONADO AQUI
+    ComissaoOperadora
 )
 from usuarios.models import Usuario
 from usuarios.serializers import UsuarioSerializer
@@ -177,8 +177,13 @@ class VendaCreateSerializer(serializers.ModelSerializer):
     cliente_cpf_cnpj = serializers.CharField(write_only=True, max_length=18)
     cliente_nome_razao_social = serializers.CharField(write_only=True, max_length=255)
     cliente_email = serializers.EmailField(write_only=True, required=False, allow_blank=True)
-    telefone1 = serializers.CharField(max_length=20, required=False, allow_blank=True)
-    telefone2 = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    
+    # Telefone 1 Obrigatório
+    telefone1 = serializers.CharField(max_length=20, required=True)
+    
+    # ALTERAÇÃO: Telefone 2 agora é OBRIGATÓRIO (required=True e sem allow_blank)
+    telefone2 = serializers.CharField(max_length=20, required=True)
+    
     cpf_representante_legal = serializers.CharField(max_length=14, required=False, allow_blank=True)
     nome_representante_legal = serializers.CharField(max_length=255, required=False, allow_blank=True)
     nome_mae = serializers.CharField(max_length=255, required=False, allow_blank=True)

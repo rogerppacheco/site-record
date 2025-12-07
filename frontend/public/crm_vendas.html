@@ -12,36 +12,24 @@
     <link href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css" rel="stylesheet">
     <link href="https://cdn.datatables.net/fixedheader/3.3.2/css/fixedHeader.bootstrap5.min.css" rel="stylesheet">
 
-    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=2.3">
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=2.7">
     
     <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
-    
     <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
 
     <style>
-        /* Garante visual maiúsculo */
         input[type="text"], textarea { text-transform: uppercase; }
-        
         .filter-bar { background: #fff; padding: 15px; border-radius: 12px; border: 1px solid var(--cor-borda); display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
         .filter-item { flex: 1; min-width: 140px; }
         .status-badge { font-size: 0.75rem; padding: 4px 8px; border-radius: 12px; font-weight: 600; letter-spacing: 0.5px; display: inline-block; min-width: 80px; text-align: center; }
         
-        .btn-origem { height: 120px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 1.2rem; font-weight: bold; transition: transform 0.2s; }
-        .btn-origem:hover { transform: scale(1.03); }
-        .btn-origem i { font-size: 2.5rem; margin-bottom: 10px; }
-
-        /* Autocomplete */
-        #sugestoes-cliente {
-            position: absolute; background: white; width: 100%; border: 1px solid #ddd; border-radius: 0 0 8px 8px;
-            z-index: 1055; max-height: 200px; overflow-y: auto; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: none;
-        }
-        .sugestao-item { padding: 10px; cursor: pointer; border-bottom: 1px solid #eee; }
-        .sugestao-item:hover { background-color: #f8f9fa; color: var(--cor-primaria); }
+        .btn-origem { height: 140px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 1.3rem; font-weight: bold; transition: all 0.3s ease; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-width: 2px; }
+        .btn-origem:hover { transform: translateY(-5px); box-shadow: 0 8px 12px rgba(0,0,0,0.15); }
+        .btn-origem i { font-size: 3.5rem; margin-bottom: 15px; }
 
         .nav-tabs .nav-link { color: var(--cor-texto-suave); font-weight: 600; border: none; border-bottom: 3px solid transparent; }
         .nav-tabs .nav-link.active { color: var(--cor-primaria); border-bottom: 3px solid var(--cor-primaria); background: transparent; }
         
-        /* Abas de Status (Pills) */
         .nav-pills .nav-link { color: #555; background-color: #f8f9fa; border: 1px solid #ddd; margin-right: 5px; font-size: 0.9rem; }
         .nav-pills .nav-link.active { background-color: var(--cor-primaria); color: white; border-color: var(--cor-primaria); }
         .nav-pills .nav-link:hover:not(.active) { background-color: #e9ecef; }
@@ -56,8 +44,9 @@
         .bg-gradient-info { background: linear-gradient(45deg, #36b9cc, #258391); }
         .bg-gradient-warning { background: linear-gradient(45deg, #f6c23e, #dda20a); color: #fff; }
         
-        /* Ajuste inputs do DataTables */
         thead input { width: 100%; padding: 3px; box-sizing: border-box; font-size: 0.85rem; border: 1px solid #ccc; border-radius: 4px; }
+        
+        .input-loading { background: url('https://i.gifer.com/ZZ5H.gif') no-repeat right 10px center; background-size: 20px; }
 
         @media (max-width: 576px) { .header-controls { flex-direction: column; align-items: flex-start; gap: 10px; } .header-controls button { width: 100%; } }
     </style>
@@ -105,31 +94,11 @@
             <div id="conteudo-lista">
                 <div class="mb-3">
                     <ul class="nav nav-pills" id="abas-status">
-                        <li class="nav-item">
-                            <a class="nav-link active" href="#" onclick="filtrarPorStatus('', this)">
-                                <i class="bi bi-collection"></i> Todos
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="#" onclick="filtrarPorStatus('PENDENTE', this)">
-                                <i class="bi bi-hourglass-split"></i> Pendentes
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="#" onclick="filtrarPorStatus('AGENDADO', this)">
-                                <i class="bi bi-calendar-event"></i> Agendados
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="#" onclick="filtrarPorStatus('INSTALADA', this)">
-                                <i class="bi bi-check-circle-fill"></i> Instalados
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="#" onclick="filtrarPorStatus('CANCELADO', this)">
-                                <i class="bi bi-x-circle-fill"></i> Cancelados
-                            </a>
-                        </li>
+                        <li class="nav-item"><a class="nav-link active" href="#" onclick="filtrarPorStatus('', this)"><i class="bi bi-collection"></i> Todos</a></li>
+                        <li class="nav-item"><a class="nav-link" href="#" onclick="filtrarPorStatus('PENDENTE', this)"><i class="bi bi-hourglass-split"></i> Pendentes</a></li>
+                        <li class="nav-item"><a class="nav-link" href="#" onclick="filtrarPorStatus('AGENDADO', this)"><i class="bi bi-calendar-event"></i> Agendados</a></li>
+                        <li class="nav-item"><a class="nav-link" href="#" onclick="filtrarPorStatus('INSTALADA', this)"><i class="bi bi-check-circle-fill"></i> Instalados</a></li>
+                        <li class="nav-item"><a class="nav-link" href="#" onclick="filtrarPorStatus('CANCELADO', this)"><i class="bi bi-x-circle-fill"></i> Cancelados</a></li>
                     </ul>
                 </div>
 
@@ -160,17 +129,7 @@
                         <table id="tabela-vendas" class="table table-hover align-middle mb-0" style="width:100%">
                             <thead class="table-light">
                                 <tr>
-                                    <th class="ps-3">ID</th>
-                                    <th>Data</th>
-                                    <th>Cliente</th>
-                                    <th>Vendedor</th>
-                                    <th>Plano</th>
-                                    <th>O.S.</th>
-                                    <th>Agendamento</th>
-                                    <th>Auditoria</th> 
-                                    <th>Status Esteira</th>
-                                    <th>Motivo Pendência</th> 
-                                    <th class="text-end pe-3">Ações</th>
+                                    <th class="ps-3">ID</th><th>Data</th><th>Cliente</th><th>Vendedor</th><th>Plano</th><th>O.S.</th><th>Agendamento</th><th>Auditoria</th><th>Status Esteira</th><th>Motivo Pendência</th><th class="text-end pe-3">Ações</th>
                                 </tr>
                             </thead>
                             <tbody id="tabela-vendas-body"></tbody>
@@ -180,84 +139,74 @@
             </div>
 
             <div id="conteudo-dashboard" style="display: none;">
-                <div class="alert alert-info py-2 small mb-4">
-                    <i class="bi bi-info-circle"></i> Os dados abaixo refletem o período selecionado no filtro acima.
-                </div>
-
+                <div class="alert alert-info py-2 small mb-4"><i class="bi bi-info-circle"></i> Os dados abaixo refletem o período selecionado no filtro acima.</div>
                 <div class="row mb-4" id="row-diretoria" style="display:none;">
                     <div class="col-12">
                         <div class="card border-0 shadow-sm" style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); color: white; cursor: pointer;" onclick="abrirModalMix()">
                             <div class="card-body d-flex justify-content-between align-items-center">
-                                <div>
-                                    <h6 class="text-uppercase mb-1" style="font-size: 0.8rem; opacity: 0.9;">Receita Operadora (Instaladas)</h6>
-                                    <div class="d-flex align-items-baseline">
-                                        <h2 class="mb-0 fw-bold me-3" id="dir-fat-real">R$ 0,00</h2>
-                                        <small class="text-info bg-white bg-opacity-10 px-2 py-1 rounded">
-                                            Proj: <span id="dir-fat-proj">R$ 0,00</span>
-                                        </small>
-                                    </div>
-                                </div>
-                                <div class="text-end">
-                                    <i class="bi bi-pie-chart-fill fs-1 opacity-50"></i>
-                                    <div class="small mt-1 opacity-75">Clique para ver Mix</div>
-                                </div>
+                                <div><h6 class="text-uppercase mb-1" style="font-size: 0.8rem; opacity: 0.9;">Receita Operadora (Instaladas)</h6><div class="d-flex align-items-baseline"><h2 class="mb-0 fw-bold me-3" id="dir-fat-real">R$ 0,00</h2><small class="text-info bg-white bg-opacity-10 px-2 py-1 rounded">Proj: <span id="dir-fat-proj">R$ 0,00</span></small></div></div>
+                                <div class="text-end"><i class="bi bi-pie-chart-fill fs-1 opacity-50"></i><div class="small mt-1 opacity-75">Clique para ver Mix</div></div>
                             </div>
                         </div>
                     </div>
                 </div>
-
                 <div class="row g-4">
                     <div class="col-md-4">
                         <div class="dash-card bg-gradient-primary" onclick="abrirDetalheDashboard('TOTAL_REGISTRADAS', 'Vendas Registradas')">
-                            <div class="icon-bg"><i class="bi bi-cart-check"></i></div>
-                            <p>Vendas Registradas (Mês)</p>
-                            <h3 id="dash-total">0</h3>
-                            <small id="dash-meta-info" class="text-white-50"></small>
+                            <div class="icon-bg"><i class="bi bi-cart-check"></i></div><p>Vendas Registradas (Mês)</p><h3 id="dash-total">0</h3><small id="dash-meta-info" class="text-white-50"></small>
                         </div>
                     </div>
                     <div class="col-md-4">
                         <div class="dash-card bg-gradient-info" onclick="abrirDetalheDashboard('TOTAL_INSTALADAS', 'Vendas Instaladas')">
-                            <div class="icon-bg"><i class="bi bi-check-circle"></i></div>
-                            <p>Vendas Instaladas (Mês)</p>
-                            <h3 id="dash-instaladas">0</h3>
-                            <small id="dash-aproveitamento" class="text-white-50 fw-bold"></small>
+                            <div class="icon-bg"><i class="bi bi-check-circle"></i></div><p>Vendas Instaladas (Mês)</p><h3 id="dash-instaladas">0</h3><small id="dash-aproveitamento" class="text-white-50 fw-bold"></small>
                         </div>
                     </div>
                     <div class="col-md-4" id="card-comissao-wrapper">
                         <div class="dash-card bg-gradient-success" style="cursor: default; transform: none;">
-                            <div class="icon-bg"><i class="bi bi-cash-coin"></i></div>
-                            <p>Comissão Estimada</p>
-                            <h3 id="dash-comissao">R$ 0,00</h3>
-                            <small class="text-white-50" id="resumo-projecao-comissao">Baseada nas instalações</small>
+                            <div class="icon-bg"><i class="bi bi-cash-coin"></i></div><p>Comissão Estimada</p><h3 id="dash-comissao">R$ 0,00</h3><small class="text-white-50" id="resumo-projecao-comissao">Baseada nas instalações</small>
                         </div>
                     </div>
                 </div>
-                
                 <h5 class="mt-5 mb-3 text-muted">Detalhe por Status</h5>
                 <div class="row g-3" id="dash-status-container"></div>
             </div>
         </div>
     </main>
 
-    <div class="modal fade" id="modalDetalheDashboard" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
-            <div class="modal-content">
-                <div class="modal-header"><h5 class="modal-title fw-bold" id="tituloDetalheDashboard">Detalhes</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-                <div class="modal-body p-0"><div class="list-group list-group-flush" id="listaDetalheDashboard"></div></div>
+    <div class="modal fade" id="modalDetalheDashboard" tabindex="-1"><div class="modal-dialog modal-dialog-centered modal-dialog-scrollable"><div class="modal-content"><div class="modal-header"><h5 class="modal-title fw-bold" id="tituloDetalheDashboard">Detalhes</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body p-0"><div class="list-group list-group-flush" id="listaDetalheDashboard"></div></div></div></div></div>
+    <div class="modal fade" id="modalMix" tabindex="-1"><div class="modal-dialog modal-lg modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title fw-bold"><i class="bi bi-graph-up"></i> Detalhamento de Vendas (Mix)</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="row"><div class="col-md-6 border-end"><h6 class="text-center fw-bold mb-3 text-primary">Mix de Velocidade/Plano</h6><div class="table-responsive"><table class="table table-sm table-striped"><thead class="table-light"><tr><th>Plano</th><th class="text-end">Qtd</th><th class="text-end">%</th></tr></thead><tbody id="tbody-mix-velocidade"></tbody></table></div></div><div class="col-md-6"><h6 class="text-center fw-bold mb-3 text-success">Mix Forma de Pagamento</h6><div class="table-responsive"><table class="table table-sm table-striped"><thead class="table-light"><tr><th>Forma Pagto</th><th class="text-end">Qtd</th><th class="text-end">%</th></tr></thead><tbody id="tbody-mix-pagamento"></tbody></table></div></div></div></div></div></div></div>
+
+    <div class="modal fade" id="modal-origem-venda" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 bg-transparent">
+                <div class="modal-body p-0">
+                    <div class="card border-0 shadow-lg" style="border-radius: 20px; overflow: hidden;">
+                        <div class="card-header bg-white border-0 pt-4 pb-2 text-center">
+                            <h4 class="fw-bold text-dark mb-1">Nova Venda</h4>
+                            <p class="text-muted small mb-0">Selecione a origem do cadastro</p>
+                            <button type="button" class="btn-close position-absolute top-0 end-0 m-3" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="card-body p-5">
+                            <div class="row g-4">
+                                <div class="col-6">
+                                    <button onclick="selecionarOrigem('APP')" class="btn btn-outline-primary w-100 btn-origem">
+                                        <i class="bi bi-phone"></i>
+                                        <span>Via APP</span>
+                                    </button>
+                                </div>
+                                <div class="col-6">
+                                    <button onclick="selecionarOrigem('SEM_APP')" class="btn btn-outline-secondary w-100 btn-origem">
+                                        <i class="bi bi-journal-x"></i>
+                                        <span>Sem APP</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
-
-    <div class="modal fade" id="modalMix" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header"><h5 class="modal-title fw-bold"><i class="bi bi-graph-up"></i> Detalhamento de Vendas (Mix)</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-                <div class="modal-body"><div class="row"><div class="col-md-6 border-end"><h6 class="text-center fw-bold mb-3 text-primary">Mix de Velocidade/Plano</h6><div class="table-responsive"><table class="table table-sm table-striped"><thead class="table-light"><tr><th>Plano</th><th class="text-end">Qtd</th><th class="text-end">%</th></tr></thead><tbody id="tbody-mix-velocidade"></tbody></table></div></div><div class="col-md-6"><h6 class="text-center fw-bold mb-3 text-success">Mix Forma de Pagamento</h6><div class="table-responsive"><table class="table table-sm table-striped"><thead class="table-light"><tr><th>Forma Pagto</th><th class="text-end">Qtd</th><th class="text-end">%</th></tr></thead><tbody id="tbody-mix-pagamento"></tbody></table></div></div></div></div>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal fade" id="modal-origem-venda" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header border-0 pb-0"><h5 class="modal-title fw-bold">Origem da Venda</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body text-center pt-4 pb-5"><p class="text-muted mb-4">Como essa venda foi realizada?</p><div class="row g-3"><div class="col-6"><button onclick="selecionarOrigem('APP')" class="btn btn-outline-primary w-100 btn-origem shadow-sm"><i class="bi bi-phone"></i>Via APP</button></div><div class="col-6"><button onclick="selecionarOrigem('SEM_APP')" class="btn btn-outline-secondary w-100 btn-origem shadow-sm"><i class="bi bi-journal-x"></i>Sem APP</button></div></div></div></div></div></div>
     
     <div class="modal fade" id="modal-aviso-cliente" tabindex="-1" style="z-index: 1060;">
         <div class="modal-dialog modal-dialog-centered">
@@ -265,6 +214,25 @@
                 <div class="modal-header bg-warning text-dark"><h5 class="modal-title fw-bold"><i class="bi bi-exclamation-triangle-fill"></i> Atenção: Cliente Recorrente</h5><button type="button" class="btn-close" onclick="fecharModalAviso()"></button></div>
                 <div class="modal-body"><div class="alert alert-light border text-center mb-3"><h4 class="fw-bold text-warning" id="aviso-qtd-vendas" style="font-size: 2.5rem;">0</h4><span class="text-muted text-uppercase small fw-bold">Vendas Ativas Encontradas</span></div><p class="text-center mb-3">O cliente <strong id="aviso-nome-cliente"></strong> já possui histórico em nossa base.</p><div class="alert alert-danger" role="alert"><div class="d-flex align-items-center mb-2"><i class="bi bi-shield-lock-fill fs-3 me-3"></i><div><strong>Aviso de Segurança:</strong><br>Esta venda passará por uma <u>auditoria mais apurada</u> devido à duplicidade de CPF/CNPJ.</div></div><hr><p class="mb-0 fw-bold text-center small text-uppercase"><i class="bi bi-exclamation-circle"></i> Essa venda poderá gerar uma recompra ou uma venda indevida!</p></div><p class="small text-muted text-center mt-3">Deseja continuar com este CPF ou informar um novo?</p></div>
                 <div class="modal-footer justify-content-center"><button type="button" class="btn btn-outline-secondary px-4" onclick="fecharModalAviso()">Informar Outro CPF</button><button type="button" class="btn btn-warning px-4 fw-bold" onclick="confirmarClienteExistente()">Sim, Continuar Venda</button></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modal-cep-nao-encontrado" tabindex="-1" style="z-index: 2000;">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-light">
+                    <h5 class="modal-title fw-bold text-danger"><i class="bi bi-geo-alt-fill"></i> CEP Não Encontrado</h5>
+                    <button type="button" class="btn-close" onclick="acaoCepManual(false)"></button>
+                </div>
+                <div class="modal-body text-center">
+                    <p class="mb-3">O CEP informado não retornou nenhum endereço na base dos Correios.</p>
+                    <p class="text-muted small">Deseja preencher o endereço manualmente?</p>
+                </div>
+                <div class="modal-footer justify-content-center">
+                    <button type="button" class="btn btn-outline-secondary" onclick="acaoCepManual(false)">Não, corrigir CEP</button>
+                    <button type="button" class="btn btn-primary fw-bold" onclick="acaoCepManual(true)">Sim, preencher manual</button>
+                </div>
             </div>
         </div>
     </div>
@@ -278,12 +246,24 @@
                         <input type="hidden" name="forma_entrada" id="input-forma-entrada"><input type="hidden" id="id-venda-edicao"> 
                         <h6 class="text-primary border-bottom pb-2 mb-3">Dados do Cliente</h6>
                         <div class="row g-3">
-                            <div class="col-12 col-md-6 position-relative"><label>CPF/CNPJ <span class="text-danger">*</span></label><input type="text" class="form-control" id="input-cpf" name="cliente_cpf_cnpj" required placeholder="Digite para buscar..." autocomplete="off"><div id="sugestoes-cliente"></div></div>
+                            <div class="col-12 col-md-6 position-relative">
+                                <label>CPF/CNPJ <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="input-cpf" name="cliente_cpf_cnpj" required placeholder="Apenas números" autocomplete="off" onblur="verificarCpfOnBlur(this)" oninput="this.value = this.value.replace(/\D/g, '')">
+                                <div class="invalid-feedback">CPF Inválido. Verifique os números.</div>
+                            </div>
                             <div class="col-12 col-md-6"><label>Nome Completo <span class="text-danger">*</span></label><input type="text" class="form-control" id="input-nome" name="cliente_nome_razao_social" required oninput="this.value = this.value.toUpperCase()"></div>
                             <div class="col-12 col-md-6"><label>Nome da Mãe</label><input type="text" class="form-control" id="input-nome-mae" name="nome_mae" oninput="this.value = this.value.toUpperCase()"></div>
-                            <div class="col-12 col-md-6"><label>Data Nascimento</label><input type="date" class="form-control" id="input-data-nascimento" name="data_nascimento"></div>
+                            <div class="col-12 col-md-6">
+                                <label>Data Nascimento</label>
+                                <input type="date" class="form-control date-paste-enabled" id="input-data-nascimento" name="data_nascimento">
+                            </div>
                             <div class="col-12 col-md-6"><label>Email <span class="text-danger">*</span></label><input type="email" class="form-control" id="input-email" name="cliente_email" required></div>
-                            <div class="col-12 col-md-6"><div class="row g-2"><div class="col-6"><label>Telefone 1 (WhatsApp) <span class="text-danger">*</span></label><input type="text" class="form-control" id="input-telefone" name="telefone1" required onblur="verificarWhatsApp(this)"><div id="feedback-whatsapp" class="form-text mt-1" style="font-size: 0.8rem; min-height: 1.2em;"></div></div><div class="col-6"><label>Telefone 2</label><input type="text" class="form-control" id="input-telefone2" name="telefone2"></div></div></div>
+                            <div class="col-12 col-md-6">
+                                <div class="row g-2">
+                                    <div class="col-6"><label>Telefone 1 (WhatsApp) <span class="text-danger">*</span></label><input type="text" class="form-control" id="input-telefone" name="telefone1" required onblur="verificarWhatsApp(this)"><div id="feedback-whatsapp" class="form-text mt-1" style="font-size: 0.8rem; min-height: 1.2em;"></div></div>
+                                    <div class="col-6"><label>Telefone 2 <span class="text-danger">*</span></label><input type="text" class="form-control" id="input-telefone2" name="telefone2" required></div>
+                                </div>
+                            </div>
                         </div>
                         <div id="area-representante" class="row g-3 mt-2" style="display: none; background-color: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #e9ecef;"><div class="col-12"><h6 class="text-secondary border-bottom pb-2 mb-0" style="font-size: 0.9rem;">Representante Legal (Obrigatório para CNPJ)</h6></div><div class="col-12 col-md-6"><label>CPF do Representante <span class="text-danger">*</span></label><input type="text" class="form-control" id="input-cpf-rep" name="cpf_representante_legal"></div><div class="col-12 col-md-6"><label>Nome do Representante</label><input type="text" class="form-control" id="input-nome-rep" name="nome_representante_legal" readonly style="background-color: #e9ecef;" oninput="this.value = this.value.toUpperCase()"></div></div>
                         <h6 class="text-primary border-bottom pb-2 mb-3 mt-4">Dados da Venda</h6>
@@ -338,11 +318,11 @@
         const token = localStorage.getItem('accessToken');
         if(!token) window.location.href = '/';
 
-        let modalOrigem, modalNovaVenda, modalAviso, modalDetalhe, modalMix;
+        let modalOrigem, modalNovaVenda, modalAviso, modalDetalhe, modalMix, modalCep;
         let clienteTemp = null, debounceTimer, debounceRepTimer, viewAtual = 'minhas_vendas', userProfile = null;
         let dadosMixCache = null;
         let dashboardDataCache = {}; 
-        let statusEsteiraAtual = ''; // Variável para o filtro de abas
+        let statusEsteiraAtual = ''; 
 
         document.addEventListener('DOMContentLoaded', async () => {
             modalOrigem = new bootstrap.Modal(document.getElementById('modal-origem-venda'));
@@ -350,6 +330,7 @@
             modalAviso = new bootstrap.Modal(document.getElementById('modal-aviso-cliente'));
             modalDetalhe = new bootstrap.Modal(document.getElementById('modalDetalheDashboard'));
             modalMix = new bootstrap.Modal(document.getElementById('modalMix'));
+            modalCep = new bootstrap.Modal(document.getElementById('modal-cep-nao-encontrado'));
             
             const hoje = new Date();
             document.getElementById('filtro-inicio').valueAsDate = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
@@ -364,10 +345,158 @@
 
             document.getElementById('form-nova-venda').addEventListener('submit', salvarVenda);
             document.getElementById('nova-cep').addEventListener('blur', buscarCepNovaVenda);
-            document.getElementById('input-cpf').addEventListener('input', function(e) { clearTimeout(debounceTimer); verificarRegraCNPJ(e.target.value); if(e.target.value.length > 2) debounceTimer = setTimeout(() => buscarCliente(e.target.value), 500); else document.getElementById('sugestoes-cliente').style.display = 'none'; });
+            
+            // --- CPF: Máscara Apenas ---
+            const inputCpf = document.getElementById('input-cpf');
+            inputCpf.addEventListener('input', function(e) { 
+                e.target.value = e.target.value.replace(/\D/g, ''); 
+                e.target.classList.remove('is-invalid'); // Remove erro ao digitar
+            });
+
             document.getElementById('input-cpf-rep').addEventListener('input', function(e) { clearTimeout(debounceRepTimer); if(e.target.value.replace(/\D/g, '').length >= 11) debounceRepTimer = setTimeout(() => buscarRepresentante(e.target.value.replace(/\D/g, '')), 600); });
             document.querySelectorAll('.uppercase-input, input[type="text"]:not(#input-email)').forEach(input => { input.addEventListener('input', function() { this.value = this.value.toUpperCase(); }); });
+
+            // --- Lógica de Colar Data (Flexibilidade) ---
+            document.querySelectorAll('.date-paste-enabled').forEach(input => {
+                input.addEventListener('paste', (event) => {
+                    const paste = (event.clipboardData || window.clipboardData).getData('text');
+                    if (paste) {
+                        let clean = paste.replace(/\D/g, '');
+                        if (clean.length === 8) {
+                            event.preventDefault();
+                            const dia = clean.substring(0, 2);
+                            const mes = clean.substring(2, 4);
+                            const ano = clean.substring(4, 8);
+                            if (parseInt(mes) <= 12 && parseInt(dia) <= 31) {
+                                input.value = `${ano}-${mes}-${dia}`;
+                            }
+                        }
+                    }
+                });
+            });
         });
+
+        // --- VALIDAÇÃO CPF E BUSCA AO SAIR (ONBLUR) ---
+        async function verificarCpfOnBlur(input) {
+            const cpf = input.value.replace(/\D/g, '');
+            input.classList.remove('is-invalid', 'is-valid');
+            
+            // 1. Validação Matemática
+            if (cpf.length === 0) return; // Campo vazio, ignora
+            
+            // Se maior que 11 dígitos, é CNPJ - Verifica Regra de Representante
+            verificarRegraCNPJ(cpf);
+
+            if (cpf.length === 11) { // Só valida matemática de CPF se for CPF
+                let valido = true;
+                if (/^(\d)\1{10}$/.test(cpf)) valido = false;
+                else {
+                    let soma = 0, resto;
+                    for (let i = 1; i <= 9; i++) soma += parseInt(cpf.substring(i-1, i)) * (11 - i);
+                    resto = (soma * 10) % 11;
+                    if (resto === 10 || resto === 11) resto = 0;
+                    if (resto !== parseInt(cpf.substring(9, 10))) valido = false;
+                    
+                    soma = 0;
+                    for (let i = 1; i <= 10; i++) soma += parseInt(cpf.substring(i-1, i)) * (12 - i);
+                    resto = (soma * 10) % 11;
+                    if (resto === 10 || resto === 11) resto = 0;
+                    if (resto !== parseInt(cpf.substring(10, 11))) valido = false;
+                }
+
+                if (!valido) {
+                    input.classList.add('is-invalid'); // Mostra erro visual
+                    return; // Não busca no banco se inválido
+                } else {
+                    input.classList.add('is-valid');
+                }
+            }
+
+            // 2. Busca no Banco de Dados (Se CPF ou CNPJ válido/preenchido)
+            if (cpf.length >= 11) {
+                input.classList.add('input-loading'); // Adiciona spinner (css opcional)
+                try {
+                    const res = await apiFetch(`/crm/clientes/?search=${cpf}`);
+                    // Filtra match exato
+                    const cliente = res.find(c => c.cpf_cnpj.replace(/\D/g, '') === cpf);
+
+                    if (cliente) {
+                        preencherFormularioCliente(cliente, true); // true = BLOQUEAR campos
+                    } else {
+                        alternarBloqueioCampos(false); // false = DESBLOQUEAR campos (novo cliente)
+                        // Limpa campos para garantir que não restou lixo de uma busca anterior
+                        limparCamposCliente();
+                    }
+                } catch(e) {
+                    console.error(e);
+                    alternarBloqueioCampos(false); // Em caso de erro, libera edição
+                } finally {
+                    input.classList.remove('input-loading');
+                }
+            }
+        }
+
+        function alternarBloqueioCampos(bloquear) {
+            const ids = ['input-nome', 'input-email', 'input-telefone', 'input-telefone2', 'input-nome-mae', 'input-data-nascimento'];
+            ids.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.readOnly = bloquear;
+            });
+        }
+
+        function limparCamposCliente() {
+            const ids = ['input-nome', 'input-email', 'input-telefone', 'input-telefone2', 'input-nome-mae', 'input-data-nascimento'];
+            ids.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+        }
+
+        // --- CEP INTELIGENTE COM MODAL ---
+        async function buscarCepNovaVenda(e) { 
+            const cep = e.target.value.replace(/\D/g, ''); 
+            if (cep.length !== 8) return; 
+            
+            const fields = ['nova-logradouro', 'nova-bairro', 'nova-cidade', 'nova-estado'];
+            // Mostra loading
+            fields.forEach(id => document.getElementById(id).value = '...');
+
+            try { 
+                const res = await fetch(`https://viacep.com.br/ws/${cep}/json/`); 
+                const d = await res.json(); 
+                
+                if(!d.erro) { 
+                    document.getElementById('nova-logradouro').value = d.logradouro.toUpperCase(); 
+                    document.getElementById('nova-bairro').value = d.bairro.toUpperCase(); 
+                    document.getElementById('nova-cidade').value = d.localidade.toUpperCase(); 
+                    document.getElementById('nova-estado').value = d.uf.toUpperCase(); 
+                    // Foca no número
+                    document.getElementById('nova-numero').focus();
+                } else {
+                    // CEP não encontrado na base do governo - Abre Modal
+                    modalCep.show();
+                }
+            } catch(err) { 
+                // Erro de rede ou API fora do ar
+                modalCep.show();
+            } 
+        }
+
+        function acaoCepManual(manual) {
+            modalCep.hide();
+            const ids = ['nova-logradouro', 'nova-bairro', 'nova-cidade', 'nova-estado'];
+            
+            if (manual) {
+                // Limpa os campos de "..." e foca no logradouro para digitar
+                ids.forEach(id => document.getElementById(id).value = '');
+                setTimeout(() => document.getElementById('nova-logradouro').focus(), 300);
+            } else {
+                // Não, corrigir CEP: limpa tudo e foca no CEP
+                ids.forEach(id => document.getElementById(id).value = '');
+                document.getElementById('nova-cep').value = '';
+                setTimeout(() => document.getElementById('nova-cep').focus(), 300);
+            }
+        }
 
         function aplicarFiltros() {
             const abaAtiva = document.querySelector('.nav-tabs .nav-link.active').innerText;
@@ -379,10 +508,8 @@
         }
 
         function filtrarPorStatus(status, element) {
-            // Atualiza visual das abas
             document.querySelectorAll('#abas-status .nav-link').forEach(l => l.classList.remove('active'));
             element.classList.add('active');
-            
             statusEsteiraAtual = status;
             carregarVendas();
         }
@@ -392,10 +519,8 @@
                 const vendedores = await apiFetch('/crm/lista-vendedores/');
                 const selectFiltro = document.getElementById('filtro-vendedor');
                 const selectModal = document.getElementById('select-vendedor-modal'); 
-                
                 selectFiltro.innerHTML = '<option value="">Todos</option>';
                 selectModal.innerHTML = '<option value="">Selecione...</option>';
-
                 if(vendedores) {
                     vendedores.forEach(v => {
                         const opt = `<option value="${v.id}">${v.username}</option>`;
@@ -407,22 +532,15 @@
         }
 
         async function carregarVendas() {
-            // --- 1. DESTRUIR DATATABLE ANTES DE RECARREGAR ---
-            if ($.fn.DataTable.isDataTable('#tabela-vendas')) {
-                $('#tabela-vendas').DataTable().destroy();
-            }
-
+            if ($.fn.DataTable.isDataTable('#tabela-vendas')) { $('#tabela-vendas').DataTable().destroy(); }
             const tbody = document.getElementById('tabela-vendas-body');
             tbody.innerHTML = '<tr><td colspan="11" class="text-center">Carregando...</td></tr>';
-
-            // Remove a linha de filtros do DataTables se existir (para recriar limpa)
             $('#tabela-vendas thead tr.filters').remove();
 
             const inicio = document.getElementById('filtro-inicio').value;
             const fim = document.getElementById('filtro-fim').value;
             const vendedor = document.getElementById('filtro-vendedor').value;
             const busca = document.getElementById('filtro-busca').value;
-            
             const viewAtual = document.querySelector('.nav-tabs .nav-link.active').innerText === 'Minhas Vendas' ? 'minhas_vendas' : 'geral';
             
             let url = `/crm/vendas/?view=${viewAtual}`;
@@ -435,16 +553,13 @@
             try {
                 const vendas = await apiFetch(url);
                 tbody.innerHTML = '';
-
                 if (!vendas || vendas.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted">Nenhuma venda encontrada.</td></tr>';
                     return;
                 }
-
                 vendas.forEach(v => {
                     let badgeClass = 'bg-secondary text-white';
                     const statusNome = v.status_esteira ? v.status_esteira.nome : (v.status_esteira_nome || 'Aguardando');
-                    
                     if (statusNome === 'INSTALADA' || statusNome === 'Instalada') badgeClass = 'bg-success text-white';
                     else if (statusNome.toUpperCase().includes('CANCELADA')) badgeClass = 'bg-danger text-white';
                     else if (statusNome.toUpperCase().includes('AGENDADO')) badgeClass = 'bg-info text-dark';
@@ -452,12 +567,8 @@
 
                     let statusTratamentoNome = '-';
                     let badgeTratamentoClass = 'bg-light text-muted border';
-
-                    if (v.status_tratamento) {
-                        statusTratamentoNome = (typeof v.status_tratamento === 'object') ? v.status_tratamento.nome : (v.status_tratamento_nome || v.status_tratamento);
-                    } else if (v.status_comissionamento) {
-                         statusTratamentoNome = v.status_comissionamento;
-                    }
+                    if (v.status_tratamento) statusTratamentoNome = (typeof v.status_tratamento === 'object') ? v.status_tratamento.nome : (v.status_tratamento_nome || v.status_tratamento);
+                    else if (v.status_comissionamento) statusTratamentoNome = v.status_comissionamento;
 
                     const stUpper = String(statusTratamentoNome).toUpperCase();
                     if (stUpper.includes('APROVAD') || stUpper.includes('OK')) badgeTratamentoClass = 'bg-success text-white';
@@ -498,69 +609,56 @@
                             <td><span class="status-badge ${badgeClass}">${statusNome}</span></td>
                             <td class="text-danger small fw-bold">${motivoPendencia}</td>
                             <td class="text-end pe-3">
+                                <button onclick="reenviarWhatsApp(${v.id})" class="btn btn-sm btn-outline-success me-1" title="Reenviar Aprovação"><i class="bi bi-whatsapp"></i></button>
                                 <button onclick="editarVenda(${v.id})" class="btn btn-sm btn-outline-primary me-1" title="Editar"><i class="bi bi-pencil"></i></button>
                                 <button onclick="excluirVenda(${v.id})" class="btn btn-sm btn-outline-danger" title="Excluir"><i class="bi bi-trash"></i></button>
                             </td>
                         </tr>`;
                     tbody.innerHTML += row;
                 });
-
-                // --- 2. INICIALIZAR DATATABLE APÓS CARREGAR DADOS ---
                 iniciarDataTable();
-
             } catch (error) {
                 console.error(error);
-                tbody.innerHTML = '<tr><td colspan="11" class="text-center text-danger">Erro ao carregar vendas. Verifique o console.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="11" class="text-center text-danger">Erro ao carregar vendas.</td></tr>';
             }
         }
 
-        // --- FUNÇÃO DE INICIALIZAÇÃO DO DATATABLE COM FILTROS ---
         function iniciarDataTable() {
-            // Clona o cabeçalho para criar a linha de inputs
             $('#tabela-vendas thead tr').clone(true).addClass('filters').appendTo('#tabela-vendas thead');
-
             const table = $('#tabela-vendas').DataTable({
                 orderCellsTop: true,
                 fixedHeader: true,
                 paging: true,
                 pageLength: 25,
-                language: {
-                    url: "//cdn.datatables.net/plug-ins/1.13.4/i18n/pt-BR.json"
-                },
-                columnDefs: [
-                    { orderable: false, targets: 10 } // Desativa ordenação na coluna de ações
-                ],
+                language: { url: "//cdn.datatables.net/plug-ins/1.13.4/i18n/pt-BR.json" },
+                columnDefs: [{ orderable: false, targets: 10 }],
                 initComplete: function () {
                     var api = this.api();
-
-                    // Para cada coluna
                     api.columns().eq(0).each(function (colIdx) {
-                        // Não adicionar filtro na coluna de Ações (índice 10)
-                        if (colIdx == 10) {
-                            $('.filters th').eq($(api.column(colIdx).header()).index()).html('');
-                            return;
-                        }
-
+                        if (colIdx == 10) { $('.filters th').eq($(api.column(colIdx).header()).index()).html(''); return; }
                         var cell = $('.filters th').eq($(api.column(colIdx).header()).index());
                         var title = $(cell).text();
-                        
-                        // Adiciona o input
                         $(cell).html('<input type="text" placeholder="🔍 ' + title + '" />');
-
-                        // Evento de filtro
                         $('input', $('.filters th').eq($(api.column(colIdx).header()).index()))
                             .off('keyup change')
                             .on('keyup change', function (e) {
                                 e.stopPropagation();
                                 var regexr = '({search})'; 
-                                var cursorPosition = this.selectionStart;
-                                api.column(colIdx)
-                                    .search(this.value != '' ? regexr.replace('{search}', '(((' + this.value + ')))') : '', this.value != '', this.value == '')
-                                    .draw();
+                                api.column(colIdx).search(this.value != '' ? regexr.replace('{search}', '(((' + this.value + ')))') : '', this.value != '', this.value == '').draw();
                             });
                     });
                 }
             });
+        }
+
+        async function reenviarWhatsApp(id) {
+            if(!confirm("Deseja reenviar a mensagem de aprovação para o vendedor responsável?")) return;
+            try {
+                const res = await apiFetch(`/crm/vendas/${id}/reenviar-whatsapp-aprovacao/`, { method: 'POST' });
+                alert(res.detail || "Enviado!");
+            } catch(e) {
+                alert("Erro ao enviar: " + (e.detail || e));
+            }
         }
 
         function verificarRegraCNPJ(valor) {
@@ -579,18 +677,18 @@
             document.getElementById('feedback-whatsapp').innerHTML = ''; 
             document.getElementById('input-telefone').classList.remove('is-valid', 'is-invalid'); 
             document.getElementById('btn-salvar-venda').disabled = false; 
-
             document.getElementById('container-status-esteira').classList.add('d-none'); 
             document.getElementById('container-vendedor-modal').classList.add('d-none'); 
             document.getElementById('container-status-gestao').classList.add('d-none'); 
-
             ['input-nome', 'input-email', 'input-telefone', 'input-telefone2', 'input-nome-mae', 'input-data-nascimento'].forEach(id => {
                 const el = document.getElementById(id);
-                if(el) el.readOnly = false;
+                if(el) {
+                    el.readOnly = false;
+                    el.value = ''; // Limpa valores
+                }
             });
             const areaRep = document.getElementById('area-representante');
             if(areaRep) areaRep.style.display = 'none';
-
             modalOrigem.show();
         }
 
@@ -610,20 +708,12 @@
                 const payload = jwt_decode(token);
                 userProfile = payload.user_role || payload.perfil || 'Vendedor'; 
                 const perfisGestao = ['Supervisor', 'Diretoria', 'BackOffice', 'Admin'];
-                
-                if (perfisGestao.includes(userProfile)) {
-                    document.getElementById('aba-equipe').classList.remove('d-none');
-                }
-                
-                // CORREÇÃO: BackOffice incluído na lista que vê a barra de filtros
+                if (perfisGestao.includes(userProfile)) { document.getElementById('aba-equipe').classList.remove('d-none'); }
                 if (!['Diretoria', 'Admin', 'BackOffice'].includes(userProfile)) { 
                     document.getElementById('barra-filtros').style.display = 'none'; 
                     document.getElementById('aviso-filtro-bloqueado').classList.remove('d-none'); 
                 }
-                
-                if (userProfile === 'Diretoria') {
-                    document.getElementById('btn-exportar-excel').classList.remove('d-none');
-                }
+                if (userProfile === 'Diretoria') { document.getElementById('btn-exportar-excel').classList.remove('d-none'); }
             } catch(e) {}
         }
 
@@ -632,14 +722,10 @@
             elemento.classList.add('active');
             const divLista = document.getElementById('conteudo-lista');
             const divDash = document.getElementById('conteudo-dashboard');
-
             if (tipo === 'dashboard') { 
-                divLista.style.display = 'none'; 
-                divDash.style.display = 'block'; 
-                carregarDashboard(); 
+                divLista.style.display = 'none'; divDash.style.display = 'block'; carregarDashboard(); 
             } else {
-                divDash.style.display = 'none'; 
-                divLista.style.display = 'block';
+                divDash.style.display = 'none'; divLista.style.display = 'block';
                 viewAtual = (tipo === 'minhas_vendas') ? 'minhas_vendas' : 'geral';
                 document.getElementById('container-filtro-vendedor').classList.toggle('d-none', viewAtual === 'minhas_vendas');
                 if (viewAtual === 'geral') carregarVendedores();
@@ -651,68 +737,36 @@
             const inicio = document.getElementById('filtro-inicio').value;
             const fim = document.getElementById('filtro-fim').value;
             const consultorId = document.getElementById('filtro-vendedor').value;
-
             let url = `/crm/dashboard-resumo/?data_inicio=${inicio}&data_fim=${fim}`;
             if (consultorId) url += `&consultor_id=${consultorId}`;
-
             try {
                 const d = await apiFetch(url);
                 dashboardDataCache = d.detalhes_listas || {};
-
-                // --- Vendas Registradas ---
                 let htmlVendas = d.total_vendas;
-                if (d.projecao_vendas > 0) {
-                    htmlVendas += `<div style="font-size: 1rem; opacity: 0.8; font-weight: normal; margin-top: 5px;">
-                        <i class="bi bi-graph-up-arrow"></i> Proj: ${Math.round(d.projecao_vendas)}
-                    </div>`;
-                }
+                if (d.projecao_vendas > 0) { htmlVendas += `<div style="font-size: 1rem; opacity: 0.8; font-weight: normal; margin-top: 5px;"><i class="bi bi-graph-up-arrow"></i> Proj: ${Math.round(d.projecao_vendas)}</div>`; }
                 document.getElementById('dash-total').innerHTML = htmlVendas;
                 document.getElementById('dash-meta-info').innerHTML = `Meta: ${d.meta} | Atingido: <strong>${d.percentual_meta}%</strong>`;
-
-                // --- Vendas Instaladas ---
                 let htmlInstaladas = d.total_instaladas || 0;
-                if (d.projecao_instaladas > 0) {
-                    htmlInstaladas += `<div style="font-size: 1rem; opacity: 0.8; font-weight: normal; margin-top: 5px;">
-                        <i class="bi bi-graph-up-arrow"></i> Proj: ${Math.round(d.projecao_instaladas)}
-                    </div>`;
-                }
+                if (d.projecao_instaladas > 0) { htmlInstaladas += `<div style="font-size: 1rem; opacity: 0.8; font-weight: normal; margin-top: 5px;"><i class="bi bi-graph-up-arrow"></i> Proj: ${Math.round(d.projecao_instaladas)}</div>`; }
                 document.getElementById('dash-instaladas').innerHTML = htmlInstaladas;
                 document.getElementById('dash-aproveitamento').textContent = `Aproveitamento: ${d.percentual_aproveitamento}%`;
-
-                // --- Comissão ---
                 const cardComissao = document.getElementById('card-comissao-wrapper');
                 if (d.exibir_comissao && cardComissao) {
                     cardComissao.style.display = 'block';
                     let htmlComissao = d.comissao_estimada.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
-                    let txtProj = 'Baseada nas instalações';
-                    if (d.projecao_comissao > 0) {
-                        htmlComissao += `<div style="font-size: 1rem; opacity: 0.8; font-weight: normal; margin-top: 5px;">
-                            <i class="bi bi-graph-up-arrow"></i> Proj: ${d.projecao_comissao.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}
-                        </div>`;
-                    }
+                    if (d.projecao_comissao > 0) { htmlComissao += `<div style="font-size: 1rem; opacity: 0.8; font-weight: normal; margin-top: 5px;"><i class="bi bi-graph-up-arrow"></i> Proj: ${d.projecao_comissao.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</div>`; }
                     document.getElementById('dash-comissao').innerHTML = htmlComissao;
-                    document.getElementById('resumo-projecao-comissao').textContent = txtProj;
-                } else if(cardComissao) {
-                    cardComissao.style.display = 'none';
-                }
-                
+                } else if(cardComissao) { cardComissao.style.display = 'none'; }
                 const container = document.getElementById('dash-status-container');
                 container.innerHTML = '';
-                for (const [status, count] of Object.entries(d.status_detalhado)) {
-                    container.innerHTML += `<div class="col-6 col-md-3"><div class="p-3 border rounded bg-white shadow-sm text-center" onclick="abrirDetalheDashboard('${status}', '${status}')" style="cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.03)'" onmouseout="this.style.transform='scale(1)'"><h5 class="fw-bold text-secondary">${count}</h5><small class="text-muted fw-bold text-uppercase">${status}</small></div></div>`;
-                }
-
-                // --- LÓGICA DIRETORIA (NOVO) ---
+                for (const [status, count] of Object.entries(d.status_detalhado)) { container.innerHTML += `<div class="col-6 col-md-3"><div class="p-3 border rounded bg-white shadow-sm text-center" onclick="abrirDetalheDashboard('${status}', '${status}')" style="cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.03)'" onmouseout="this.style.transform='scale(1)'"><h5 class="fw-bold text-secondary">${count}</h5><small class="text-muted fw-bold text-uppercase">${status}</small></div></div>`; }
                 const rowDiretoria = document.getElementById('row-diretoria');
                 if (d.diretoria_data) {
                     rowDiretoria.style.display = 'flex';
                     document.getElementById('dir-fat-real').textContent = d.diretoria_data.faturamento_real.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
                     document.getElementById('dir-fat-proj').textContent = d.diretoria_data.faturamento_projetado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
                     dadosMixCache = d.diretoria_data;
-                } else {
-                    rowDiretoria.style.display = 'none';
-                }
-
+                } else { rowDiretoria.style.display = 'none'; }
             } catch(e) {}
         }
 
@@ -723,10 +777,7 @@
                 tbody.innerHTML = '';
                 const lista = Object.entries(dadosObj).sort((a, b) => b[1] - a[1]);
                 const total = lista.reduce((acc, curr) => acc + curr[1], 0);
-                lista.forEach(([nome, qtd]) => {
-                    const pct = total > 0 ? ((qtd / total) * 100).toFixed(1) : 0;
-                    tbody.innerHTML += `<tr><td>${nome}</td><td class="text-end fw-bold">${qtd}</td><td class="text-end text-muted small">${pct}%</td></tr>`;
-                });
+                lista.forEach(([nome, qtd]) => { const pct = total > 0 ? ((qtd / total) * 100).toFixed(1) : 0; tbody.innerHTML += `<tr><td>${nome}</td><td class="text-end fw-bold">${qtd}</td><td class="text-end text-muted small">${pct}%</td></tr>`; });
                 tbody.innerHTML += `<tr class="table-active fw-bold"><td>TOTAL</td><td class="text-end">${total}</td><td class="text-end">100%</td></tr>`;
             };
             preencherTabela('tbody-mix-velocidade', dadosMixCache.mix_velocidade);
@@ -739,7 +790,6 @@
             const listaEl = document.getElementById('listaDetalheDashboard');
             listaEl.innerHTML = '';
             const itens = dashboardDataCache[chaveLista] || [];
-
             if (itens.length === 0) { listaEl.innerHTML = '<div class="text-center p-4 text-muted">Nenhuma venda encontrada.</div>'; } 
             else {
                 itens.forEach(item => {
@@ -758,67 +808,35 @@
             if(!confirm("Deseja baixar a base completa de vendas em Excel?")) return;
             const btn = document.getElementById('btn-exportar-excel');
             const originalText = btn.innerHTML;
-            btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Gerando...';
-            btn.disabled = true;
-
-            fetch(`${apiUrl}/api/crm/vendas/exportar-excel/`, {
-                method: 'GET',
-                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('accessToken') }
-            })
-            .then(response => {
-                if (response.status === 403) throw new Error("Acesso Negado: Apenas Diretoria.");
-                if (!response.ok) throw new Error("Erro ao gerar arquivo.");
-                return response.blob();
-            })
-            .then(blob => {
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `Base_Vendas_${new Date().toISOString().slice(0,10)}.xlsx`;
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-            })
-            .catch(err => { alert(err.message); })
-            .finally(() => {
-                btn.innerHTML = originalText;
-                btn.disabled = false;
-            });
+            btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Gerando...'; btn.disabled = true;
+            fetch(`${apiUrl}/api/crm/vendas/exportar-excel/`, { method: 'GET', headers: { 'Authorization': 'Bearer ' + localStorage.getItem('accessToken') } })
+            .then(response => { if (response.status === 403) throw new Error("Acesso Negado: Apenas Diretoria."); if (!response.ok) throw new Error("Erro ao gerar arquivo."); return response.blob(); })
+            .then(blob => { const url = window.URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `Base_Vendas_${new Date().toISOString().slice(0,10)}.xlsx`; document.body.appendChild(a); a.click(); a.remove(); })
+            .catch(err => { alert(err.message); }).finally(() => { btn.innerHTML = originalText; btn.disabled = false; });
         }
 
-        async function buscarCliente(termo) { try { const res = await apiFetch(`/crm/clientes/?search=${termo}`); const lista = document.getElementById('sugestoes-cliente'); lista.innerHTML = ''; if(res && res.length > 0) { res.forEach(cli => { const item = document.createElement('div'); item.className = 'sugestao-item'; item.innerHTML = `<strong>${cli.nome_razao_social}</strong><br><small>${cli.cpf_cnpj}</small>`; item.onclick = () => selecionarCliente(cli); lista.appendChild(item); }); lista.style.display = 'block'; } else { lista.style.display = 'none'; } } catch(e) {} }
-        function selecionarCliente(cliente) { document.getElementById('sugestoes-cliente').style.display = 'none'; if(cliente.vendas_count > 0) { clienteTemp = cliente; document.getElementById('aviso-nome-cliente').textContent = cliente.nome_razao_social; document.getElementById('aviso-qtd-vendas').textContent = cliente.vendas_count; modalAviso.show(); } else { preencherFormularioCliente(cliente); } }
-        function confirmarClienteExistente() { try { if(clienteTemp) { preencherFormularioCliente(clienteTemp); clienteTemp = null; } } catch(e) {} modalAviso.hide(); }
-        function fecharModalAviso() { modalAviso.hide(); document.getElementById('input-cpf').value = ''; }
-        function preencherFormularioCliente(cliente) { document.getElementById('input-cpf').value = cliente.cpf_cnpj; document.getElementById('input-nome').value = cliente.nome_razao_social; document.getElementById('input-email').value = cliente.email || ''; if(cliente.telefone1) document.getElementById('input-telefone').value = cliente.telefone1; if(cliente.telefone2) document.getElementById('input-telefone2').value = cliente.telefone2; if(cliente.nome_mae) document.getElementById('input-nome-mae').value = cliente.nome_mae; if(cliente.data_nascimento) document.getElementById('input-data-nascimento').value = cliente.data_nascimento; verificarRegraCNPJ(cliente.cpf_cnpj); }
+        function preencherFormularioCliente(cliente, lock = false) { 
+            document.getElementById('input-cpf').value = cliente.cpf_cnpj; 
+            document.getElementById('input-nome').value = cliente.nome_razao_social; 
+            document.getElementById('input-email').value = cliente.email || ''; 
+            if(cliente.telefone1) document.getElementById('input-telefone').value = cliente.telefone1; 
+            if(cliente.telefone2) document.getElementById('input-telefone2').value = cliente.telefone2; 
+            if(cliente.nome_mae) document.getElementById('input-nome-mae').value = cliente.nome_mae; 
+            if(cliente.data_nascimento) document.getElementById('input-data-nascimento').value = cliente.data_nascimento; 
+            
+            verificarRegraCNPJ(cliente.cpf_cnpj);
+            alternarBloqueioCampos(lock);
+        }
+
         async function buscarRepresentante(cpf) { try { const res = await apiFetch(`/crm/clientes/?search=${cpf}`); if(res && res.length > 0) { const rep = res.find(cli => cli.cpf_cnpj.replace(/\D/g, '') === cpf.replace(/\D/g, '')); if (rep) document.getElementById('input-nome-rep').value = rep.nome_razao_social; } } catch(e){} }
-        async function buscarCepNovaVenda(e) { const cep = e.target.value.replace(/\D/g, ''); if (cep.length === 8) { try { const res = await fetch(`https://viacep.com.br/ws/${cep}/json/`); const d = await res.json(); if(!d.erro) { document.getElementById('nova-logradouro').value = d.logradouro.toUpperCase(); document.getElementById('nova-bairro').value = d.bairro.toUpperCase(); document.getElementById('nova-cidade').value = d.localidade.toUpperCase(); document.getElementById('nova-estado').value = d.uf.toUpperCase(); } } catch(e){ } } }
-        async function carregarAuxiliares() { 
-            try { 
-                const [planos, formas, statusEst, statusTrat] = await Promise.all([
-                    apiFetch('/crm/planos/'), 
-                    apiFetch('/crm/formas-pagamento/'), 
-                    apiFetch('/crm/status/?tipo=Esteira'),
-                    apiFetch('/crm/status/?tipo=Tratamento')
-                ]); 
-                
-                const selPlano = document.getElementById('select-plano'); selPlano.innerHTML = '<option value="">Selecione...</option>'; if(planos) planos.forEach(p => selPlano.innerHTML += `<option value="${p.id}">${p.nome} - R$${p.valor}</option>`); 
-                const selPag = document.getElementById('select-pagamento'); selPag.innerHTML = '<option value="">Selecione...</option>'; if(formas) formas.forEach(f => selPag.innerHTML += `<option value="${f.id}">${f.nome}</option>`); 
-                
-                const selEst = document.getElementById('select-status-esteira'); selEst.innerHTML = '<option value="">Selecione...</option>'; if(statusEst) statusEst.forEach(s => selEst.innerHTML += `<option value="${s.id}">${s.nome}</option>`);
-                
-                const selTrat = document.getElementById('select-status-tratamento'); selTrat.innerHTML = '<option value="">Selecione...</option>'; if(statusTrat) statusTrat.forEach(s => selTrat.innerHTML += `<option value="${s.id}">${s.nome}</option>`);
-            } catch(e) {} 
-        }
+        async function carregarAuxiliares() { try { const [planos, formas, statusEst, statusTrat] = await Promise.all([apiFetch('/crm/planos/'), apiFetch('/crm/formas-pagamento/'), apiFetch('/crm/status/?tipo=Esteira'), apiFetch('/crm/status/?tipo=Tratamento')]); const selPlano = document.getElementById('select-plano'); selPlano.innerHTML = '<option value="">Selecione...</option>'; if(planos) planos.forEach(p => selPlano.innerHTML += `<option value="${p.id}">${p.nome} - R$${p.valor}</option>`); const selPag = document.getElementById('select-pagamento'); selPag.innerHTML = '<option value="">Selecione...</option>'; if(formas) formas.forEach(f => selPag.innerHTML += `<option value="${f.id}">${f.nome}</option>`); const selEst = document.getElementById('select-status-esteira'); selEst.innerHTML = '<option value="">Selecione...</option>'; if(statusEst) statusEst.forEach(s => selEst.innerHTML += `<option value="${s.id}">${s.nome}</option>`); const selTrat = document.getElementById('select-status-tratamento'); selTrat.innerHTML = '<option value="">Selecione...</option>'; if(statusTrat) statusTrat.forEach(s => selTrat.innerHTML += `<option value="${s.id}">${s.nome}</option>`); } catch(e) {} }
 
         async function editarVenda(id) {
             try {
                 const venda = await apiFetch(`/crm/vendas/${id}/`);
                 document.getElementById('titulo-modal-venda').textContent = `Editar Venda #${id}`;
                 document.getElementById('id-venda-edicao').value = id;
-                
                 document.getElementById('input-forma-entrada').value = venda.forma_entrada || '';
-
                 document.getElementById('input-cpf').value = venda.cliente_cpf_cnpj || '';
                 document.getElementById('input-nome').value = venda.cliente_nome_razao_social || '';
                 document.getElementById('input-email').value = venda.cliente_email || '';
@@ -829,8 +847,11 @@
                 verificarRegraCNPJ(venda.cliente_cpf_cnpj);
                 document.getElementById('input-cpf-rep').value = venda.cpf_representante_legal || '';
                 document.getElementById('input-nome-rep').value = venda.nome_representante_legal || '';
-                document.getElementById('select-plano').value = venda.plano ? venda.plano.id : '';
-                document.getElementById('select-pagamento').value = venda.forma_pagamento ? venda.forma_pagamento.id : '';
+                
+                // CORREÇÃO: Pega o ID mesmo se vier objeto, ou string se vier ID
+                document.getElementById('select-plano').value = venda.plano?.id || venda.plano || '';
+                document.getElementById('select-pagamento').value = venda.forma_pagamento?.id || venda.forma_pagamento || '';
+                
                 document.getElementById('input-observacoes').value = venda.observacoes || '';
                 document.getElementById('nova-cep').value = venda.cep || '';
                 document.getElementById('nova-logradouro').value = venda.logradouro || '';
@@ -853,20 +874,18 @@
                     document.getElementById('select-status-tratamento').value = venda.status_tratamento || '';
                     document.getElementById('select-vendedor-modal').value = venda.vendedor || ''; 
                 } else {
-                    areaStatus.classList.add('d-none');
-                    areaVendedor.classList.add('d-none');
-                    areaTrat.classList.add('d-none');
+                    areaStatus.classList.add('d-none'); areaVendedor.classList.add('d-none'); areaTrat.classList.add('d-none');
                 }
                 
                 document.getElementById('feedback-whatsapp').innerHTML = '';
                 document.getElementById('input-telefone').classList.remove('is-valid', 'is-invalid');
                 document.getElementById('btn-salvar-venda').disabled = false;
-
+                
+                // Edição sempre permite alterar (ou defina lógica de bloqueio se necessário)
+                alternarBloqueioCampos(false); 
+                
                 modalNovaVenda.show();
-            } catch (e) { 
-                console.error(e);
-                alert("Erro ao carregar dados para edição."); 
-            }
+            } catch (e) { console.error(e); alert("Erro ao carregar dados para edição."); }
         }
 
         async function salvarVenda(e) {
@@ -877,7 +896,6 @@
             const idEdicao = document.getElementById('id-venda-edicao').value;
             const method = idEdicao ? 'PUT' : 'POST';
             const url = idEdicao ? `/crm/vendas/${idEdicao}/` : '/crm/vendas/';
-
             try {
                 await apiFetch(url, { method: method, body: JSON.stringify(data) });
                 modalNovaVenda.hide(); form.reset(); document.getElementById('id-venda-edicao').value = '';
@@ -903,24 +921,18 @@
             const telefone = input.value.replace(/\D/g, ''); 
             const feedbackDiv = document.getElementById('feedback-whatsapp');
             const btnSalvar = document.getElementById('btn-salvar-venda');
-
             if (telefone.length < 10) return;
-
             input.classList.remove('is-valid', 'is-invalid');
             if(feedbackDiv) feedbackDiv.innerHTML = '<span class="text-warning spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> <span class="text-warning small">Verificando WhatsApp...</span>';
             if(btnSalvar) btnSalvar.disabled = true; 
-
             try {
                 const data = await apiFetch(`/crm/verificar-zap/${telefone}/`, { method: 'GET' });
-
                 if (data && data.possui_whatsapp) {
-                    input.classList.add('is-valid');
-                    input.classList.remove('is-invalid');
+                    input.classList.add('is-valid'); input.classList.remove('is-invalid');
                     if(feedbackDiv) feedbackDiv.innerHTML = '<span class="text-success fw-bold small"><i class="bi bi-whatsapp"></i> WhatsApp Confirmado!</span>';
                     if(btnSalvar) btnSalvar.disabled = false; 
                 } else {
-                    input.classList.add('is-invalid');
-                    input.classList.remove('is-valid');
+                    input.classList.add('is-invalid'); input.classList.remove('is-valid');
                     if(feedbackDiv) feedbackDiv.innerHTML = '<span class="text-danger fw-bold small"><i class="bi bi-x-circle"></i> Este número NÃO possui WhatsApp.</span>';
                     if(btnSalvar) btnSalvar.disabled = true;
                     alert("Atenção: O número informado não possui WhatsApp válido. Verifique se digitou corretamente.");
