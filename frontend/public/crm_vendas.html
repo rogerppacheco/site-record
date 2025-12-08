@@ -5,24 +5,35 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CRM de Vendas - Record PAP</title>
+    
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    
     <link href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css" rel="stylesheet">
     <link href="https://cdn.datatables.net/fixedheader/3.3.2/css/fixedHeader.bootstrap5.min.css" rel="stylesheet">
+
     <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=2.7">
+    
     <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+
     <style>
         input[type="text"], textarea { text-transform: uppercase; }
         .filter-bar { background: #fff; padding: 15px; border-radius: 12px; border: 1px solid var(--cor-borda); display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
         .filter-item { flex: 1; min-width: 140px; }
         .status-badge { font-size: 0.75rem; padding: 4px 8px; border-radius: 12px; font-weight: 600; letter-spacing: 0.5px; display: inline-block; min-width: 80px; text-align: center; }
+        
         .btn-origem { height: 140px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 1.3rem; font-weight: bold; transition: all 0.3s ease; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-width: 2px; }
         .btn-origem:hover { transform: translateY(-5px); box-shadow: 0 8px 12px rgba(0,0,0,0.15); }
+        .btn-origem i { font-size: 3.5rem; margin-bottom: 15px; }
+
         .nav-tabs .nav-link { color: var(--cor-texto-suave); font-weight: 600; border: none; border-bottom: 3px solid transparent; }
         .nav-tabs .nav-link.active { color: var(--cor-primaria); border-bottom: 3px solid var(--cor-primaria); background: transparent; }
+        
         .nav-pills .nav-link { color: #555; background-color: #f8f9fa; border: 1px solid #ddd; margin-right: 5px; font-size: 0.9rem; }
         .nav-pills .nav-link.active { background-color: var(--cor-primaria); color: white; border-color: var(--cor-primaria); }
+        .nav-pills .nav-link:hover:not(.active) { background-color: #e9ecef; }
+
         .dash-card { border-radius: 12px; border: none; color: white; padding: 20px; height: 100%; position: relative; overflow: hidden; transition: transform 0.2s; cursor: pointer; }
         .dash-card:hover { transform: translateY(-3px); }
         .dash-card h3 { font-size: 2.5rem; font-weight: bold; margin: 0; }
@@ -32,12 +43,16 @@
         .bg-gradient-success { background: linear-gradient(45deg, #1cc88a, #13855c); }
         .bg-gradient-info { background: linear-gradient(45deg, #36b9cc, #258391); }
         .bg-gradient-warning { background: linear-gradient(45deg, #f6c23e, #dda20a); color: #fff; }
+        
         thead input { width: 100%; padding: 3px; box-sizing: border-box; font-size: 0.85rem; border: 1px solid #ccc; border-radius: 4px; }
+        
         .input-loading { background: url('https://i.gifer.com/ZZ5H.gif') no-repeat right 10px center; background-size: 20px; }
+
         @media (max-width: 576px) { .header-controls { flex-direction: column; align-items: flex-start; gap: 10px; } .header-controls button { width: 100%; } }
     </style>
 </head>
 <body>
+
     <header class="main-header">
         <div class="header-container">
             <a href="/"><img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo"></a>
@@ -124,7 +139,7 @@
             </div>
 
             <div id="conteudo-dashboard" style="display: none;">
-               <div class="alert alert-info py-2 small mb-4"><i class="bi bi-info-circle"></i> Os dados abaixo refletem o período selecionado no filtro acima.</div>
+                <div class="alert alert-info py-2 small mb-4"><i class="bi bi-info-circle"></i> Os dados abaixo refletem o período selecionado no filtro acima.</div>
                 <div class="row mb-4" id="row-diretoria" style="display:none;">
                     <div class="col-12">
                         <div class="card border-0 shadow-sm" style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); color: white; cursor: pointer;" onclick="abrirModalMix()">
@@ -612,6 +627,7 @@
             });
             const areaRep = document.getElementById('area-representante');
             if(areaRep) areaRep.style.display = 'none';
+            
             modalOrigem.show();
         }
 
@@ -706,7 +722,6 @@
             }
         }
 
-        // ... (As funções carregarDashboard, abrirModalMix, abrirDetalheDashboard, exportarExcelDiretoria, preencherFormularioCliente, buscarRepresentante, carregarAuxiliares permanecem iguais) ...
         async function carregarDashboard() {
             const inicio = document.getElementById('filtro-inicio').value;
             const fim = document.getElementById('filtro-fim').value;
@@ -790,16 +805,44 @@
         }
 
         function preencherFormularioCliente(cliente, lock = false) { 
+            // Atualiza o CPF
             document.getElementById('input-cpf').value = cliente.cpf_cnpj; 
-            document.getElementById('input-nome').value = cliente.nome_razao_social; 
-            document.getElementById('input-email').value = cliente.email || ''; 
-            if(cliente.telefone1) document.getElementById('input-telefone').value = cliente.telefone1; 
-            if(cliente.telefone2) document.getElementById('input-telefone2').value = cliente.telefone2; 
-            if(cliente.nome_mae) document.getElementById('input-nome-mae').value = cliente.nome_mae; 
-            if(cliente.data_nascimento) document.getElementById('input-data-nascimento').value = cliente.data_nascimento; 
             
+            // Helper function to fill and determine lock state
+            const preencherCampoInteligente = (id, valor) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+
+                // Fill value (or empty string if null/undefined)
+                el.value = valor || '';
+
+                if (lock) {
+                    // IF locking mode (Customer Found):
+                    // ONLY lock if there is a value. If empty, allow editing.
+                    if (valor && String(valor).trim() !== '') {
+                        el.readOnly = true;
+                    } else {
+                        el.readOnly = false; // Allow filling missing info
+                    }
+                } else {
+                    // IF not locking mode (New Customer or Reset):
+                    el.readOnly = false;
+                }
+            };
+
+            // Apply logic to fields
+            preencherCampoInteligente('input-nome', cliente.nome_razao_social);
+            preencherCampoInteligente('input-email', cliente.email);
+            preencherCampoInteligente('input-telefone', cliente.telefone1);
+            preencherCampoInteligente('input-telefone2', cliente.telefone2);
+            preencherCampoInteligente('input-nome-mae', cliente.nome_mae);
+            preencherCampoInteligente('input-data-nascimento', cliente.data_nascimento);
+            
+            // Check CNPJ rule
             verificarRegraCNPJ(cliente.cpf_cnpj);
-            alternarBloqueioCampos(lock);
+            
+            // NOTE: Removed old 'alternarBloqueioCampos(lock)' call 
+            // because the logic above handles it field by field.
         }
 
         async function buscarRepresentante(cpf) { try { const res = await apiFetch(`/crm/clientes/?search=${cpf}`); if(res && res.length > 0) { const rep = res.find(cli => cli.cpf_cnpj.replace(/\D/g, '') === cpf.replace(/\D/g, '')); if (rep) document.getElementById('input-nome-rep').value = rep.nome_razao_social; } } catch(e){} }
@@ -880,6 +923,11 @@
                     return;
                 }
             }
+
+            // CORREÇÃO: Limpar campos de data vazios para evitar erro de validação no Backend
+            if (data.data_nascimento === "") data.data_nascimento = null;
+            if (data.plano === "") data.plano = null;
+            if (data.forma_pagamento === "") data.forma_pagamento = null;
 
             try {
                 await apiFetch(url, { method: method, body: JSON.stringify(data) });
