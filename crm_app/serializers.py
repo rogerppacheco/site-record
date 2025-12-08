@@ -170,23 +170,30 @@ class VendaDetailSerializer(serializers.ModelSerializer):
         ]
 
 class VendaCreateSerializer(serializers.ModelSerializer):
-    plano = serializers.PrimaryKeyRelatedField(queryset=Plano.objects.all())
-    forma_pagamento = serializers.PrimaryKeyRelatedField(queryset=FormaPagamento.objects.all())
+    # ALTERAÇÃO: Campos de Plano e Pagamento tornados opcionais para criação flexível
+    plano = serializers.PrimaryKeyRelatedField(queryset=Plano.objects.all(), required=False, allow_null=True)
+    forma_pagamento = serializers.PrimaryKeyRelatedField(queryset=FormaPagamento.objects.all(), required=False, allow_null=True)
+    
     cliente_cpf_cnpj = serializers.CharField(write_only=True, max_length=18)
     cliente_nome_razao_social = serializers.CharField(write_only=True, max_length=255)
     cliente_email = serializers.EmailField(write_only=True, required=False, allow_blank=True)
     
-    # Telefone 1 Obrigatório
     telefone1 = serializers.CharField(max_length=20, required=True)
-    
-    # Telefone 2 Obrigatório (Conforme pedido anterior)
     telefone2 = serializers.CharField(max_length=20, required=True)
+    
+    # ALTERAÇÃO: Campos de endereço agora opcionais no Serializer
+    cep = serializers.CharField(required=False, allow_blank=True)
+    logradouro = serializers.CharField(required=False, allow_blank=True)
+    numero_residencia = serializers.CharField(required=False, allow_blank=True)
+    bairro = serializers.CharField(required=False, allow_blank=True)
+    cidade = serializers.CharField(required=False, allow_blank=True)
+    estado = serializers.CharField(required=False, allow_blank=True)
+    ponto_referencia = serializers.CharField(max_length=255, required=False, allow_blank=True)
     
     cpf_representante_legal = serializers.CharField(max_length=14, required=False, allow_blank=True)
     nome_representante_legal = serializers.CharField(max_length=255, required=False, allow_blank=True)
     nome_mae = serializers.CharField(max_length=255, required=False, allow_blank=True)
     data_nascimento = serializers.DateField(required=False, allow_null=True)
-    ponto_referencia = serializers.CharField(max_length=255, required=True)
     observacoes = serializers.CharField(required=False, allow_blank=True)
 
     class Meta:
@@ -206,7 +213,6 @@ class VendaCreateSerializer(serializers.ModelSerializer):
         return data
 
 class VendaUpdateSerializer(serializers.ModelSerializer):
-    # Aceita dicionário para atualizar dados aninhados
     cliente = serializers.DictField(required=False, write_only=True)
 
     cliente_nome_razao_social = serializers.CharField(source='cliente.nome_razao_social', required=False)
@@ -231,7 +237,6 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
             if isinstance(value, str) and key not in ['cliente', 'cliente_email', 'observacoes']:
                 data[key] = value.upper()
         
-        # Garante maiúsculo dentro do dict cliente
         if 'cliente' in data and isinstance(data['cliente'], dict):
             if 'nome_razao_social' in data['cliente']:
                 val = data['cliente']['nome_razao_social']
@@ -247,13 +252,11 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         user = request.user if request else None
 
-        # --- PROTEÇÃO E ATUALIZAÇÃO DO CLIENTE ---
         cliente_data = validated_data.pop('cliente', {})
         if cliente_data:
             cliente_instance = instance.cliente
             mudou = False
             
-            # Só atualiza se o valor NÃO for vazio, evitando apagar dados por erro do front
             novo_nome = cliente_data.get('nome_razao_social')
             if novo_nome and novo_nome.strip() and novo_nome != cliente_instance.nome_razao_social:
                 cliente_instance.nome_razao_social = novo_nome.upper()
@@ -272,7 +275,6 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
 
             if mudou:
                 cliente_instance.save()
-        # ----------------------------------------
 
         alteracoes = {}
         campos_status = ['status_tratamento', 'status_esteira', 'status_comissionamento']
@@ -308,7 +310,6 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
         if not value: return value
         pattern = re.compile(r'^\(?([1-9]{2})\)? ?(9[1-9][0-9]{3}|[2-5][0-9]{3})\-?[0-9]{4}$')
         if not pattern.match(str(value)):
-            # Não bloquear, apenas retornar (validação estrita pode atrapalhar legado)
             pass
         return value
     def validate_telefone1(self, value): return self.validate_telefone(value, "Telefone 1")
@@ -321,14 +322,12 @@ class ImportacaoChurnSerializer(serializers.ModelSerializer):
 class CicloPagamentoSerializer(serializers.ModelSerializer):
     class Meta: model = CicloPagamento; fields = '__all__'
 
-# --- SERIALIZER DE COMISSÃO OPERADORA ---
 class ComissaoOperadoraSerializer(serializers.ModelSerializer):
     plano_nome = serializers.ReadOnlyField(source='plano.nome')
     class Meta:
         model = ComissaoOperadora
         fields = '__all__'
 
-# --- SERIALIZER DE COMUNICADO (RECORD INFORMA) ---
 class ComunicadoSerializer(serializers.ModelSerializer):
     criado_por_nome = serializers.ReadOnlyField(source='criado_por.username')
     class Meta:

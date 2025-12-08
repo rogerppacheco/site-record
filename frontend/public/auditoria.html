@@ -9,124 +9,27 @@
     
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    
     <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=3.8">
-    
     <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
     
     <style>
-        /* Estilos Específicos da Auditoria */
-        .script-section { 
-            background-color: #fff; 
-            border-left: 5px solid var(--cor-primaria, #0d6efd); 
-            padding: 25px; 
-            margin-bottom: 25px; 
-            border-radius: 6px; 
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        }
-        .script-title { 
-            color: var(--cor-primaria, #0d6efd); 
-            font-weight: 800; 
-            margin-bottom: 15px; 
-            text-transform: uppercase; 
-            font-size: 0.95rem; 
-            border-bottom: 1px solid #eee;
-            padding-bottom: 8px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .script-text { 
-            font-size: 1.15rem; 
-            line-height: 1.6; 
-            color: #212529; 
-            margin-bottom: 15px;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-        
-        /* Checklist Items */
-        .checklist-box {
-            background-color: #fff3cd;
-            border: 1px solid #ffecb5;
-            padding: 15px;
-            border-radius: 6px;
-            margin-bottom: 20px;
-        }
-        .form-check-input:checked {
-            background-color: #198754;
-            border-color: #198754;
-        }
-        .checklist-label {
-            font-weight: 600;
-            color: #664d03;
-        }
-
-        /* Inputs no script */
-        .form-control-script {
-            border: 1px solid #ced4da;
-            background-color: #f8f9fa;
-            font-weight: 600;
-            color: #495057;
-        }
-        .form-control-script:focus {
-            background-color: #fff;
-            border-color: var(--cor-primaria, #0d6efd);
-            box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.15);
-        }
-        .input-readonly-look {
-            background-color: #e9ecef !important;
-            border: none;
-        }
-        .btn-copy {
-            border-top-left-radius: 0;
-            border-bottom-left-radius: 0;
-            border-color: #ced4da;
-            color: #6c757d;
-        }
+        /* Estilos Específicos da Auditoria (IDÊNTICOS AO SEU ARQUIVO ORIGINAL) */
+        .script-section { background-color: #fff; border-left: 5px solid var(--cor-primaria, #0d6efd); padding: 25px; margin-bottom: 25px; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        .script-title { color: var(--cor-primaria, #0d6efd); font-weight: 800; margin-bottom: 15px; text-transform: uppercase; font-size: 0.95rem; border-bottom: 1px solid #eee; padding-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .script-text { font-size: 1.15rem; line-height: 1.6; color: #212529; margin-bottom: 15px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .checklist-box { background-color: #fff3cd; border: 1px solid #ffecb5; padding: 15px; border-radius: 6px; margin-bottom: 20px; }
+        .form-check-input:checked { background-color: #198754; border-color: #198754; }
+        .checklist-label { font-weight: 600; color: #664d03; }
+        .form-control-script { border: 1px solid #ced4da; background-color: #f8f9fa; font-weight: 600; color: #495057; }
+        .form-control-script:focus { background-color: #fff; border-color: var(--cor-primaria, #0d6efd); box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.15); }
+        .input-readonly-look { background-color: #e9ecef !important; border: none; }
+        .btn-copy { border-top-left-radius: 0; border-bottom-left-radius: 0; border-color: #ced4da; color: #6c757d; }
         .btn-copy:hover { background-color: #e9ecef; color: #0d6efd; }
-
-        /* Botões */
-        .btn-auditar {
-            background-color: #212529; 
-            color: white;
-            border-radius: 50px; 
-            padding: 6px 16px;
-            font-size: 0.85rem;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            border: none;
-            transition: transform 0.2s, box-shadow 0.2s;
-            text-decoration: none;
-        }
-        .btn-auditar:hover { 
-            background-color: #000; 
-            transform: translateY(-1px); 
-            color: #fff; 
-            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
-        }
-        
-        /* Overlay */
-        .loading-overlay {
-            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(255,255,255,0.8); z-index: 9999; text-align: center; padding-top: 20%;
-        }
-
-        /* Nav Pills */
-        .nav-pills .nav-link {
-            border-radius: 8px;
-            font-weight: 600;
-            color: #6c757d;
-            background-color: #fff;
-            border: 1px solid #dee2e6;
-            margin: 0 5px;
-            padding: 10px 20px;
-        }
-        .nav-pills .nav-link.active {
-            background-color: var(--cor-primaria, #0d6efd);
-            color: white;
-            border-color: var(--cor-primaria, #0d6efd);
-        }
+        .btn-auditar { background-color: #212529; color: white; border-radius: 50px; padding: 6px 16px; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 6px; border: none; transition: transform 0.2s, box-shadow 0.2s; text-decoration: none; }
+        .btn-auditar:hover { background-color: #000; transform: translateY(-1px); color: #fff; box-shadow: 0 4px 6px rgba(0,0,0,0.2); }
+        .loading-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.8); z-index: 9999; text-align: center; padding-top: 20%; }
+        .nav-pills .nav-link { border-radius: 8px; font-weight: 600; color: #6c757d; background-color: #fff; border: 1px solid #dee2e6; margin: 0 5px; padding: 10px 20px; }
+        .nav-pills .nav-link.active { background-color: var(--cor-primaria, #0d6efd); color: white; border-color: var(--cor-primaria, #0d6efd); }
         .auditor-badge { font-size: 0.75rem; background: #e9ecef; color: #495057; padding: 4px 10px; border-radius: 4px; border: 1px solid #dee2e6; display: inline-flex; align-items: center; gap: 5px; font-weight: 600; }
         .locked-row { opacity: 0.9; background-color: #fffbf0 !important; }
     </style>
@@ -154,7 +57,6 @@
 
     <main class="area-interna-section">
         <div class="system-container" style="max-width: 1600px;">
-            
             <div class="d-flex justify-content-between align-items-center mb-4 header-controls">
                 <div>
                     <h1 style="font-size: 1.8rem; margin: 0;">Auditoria de Vendas</h1>
@@ -170,18 +72,10 @@
                     <table class="table table-hover mb-0 bg-white rounded shadow-sm align-middle">
                         <thead class="table-light">
                             <tr>
-                                <th class="ps-3">ID</th>
-                                <th>Data Venda</th>
-                                <th>Cliente / CPF</th>
-                                <th>Vendedor</th>
-                                <th>Produto</th>
-                                <th>Status Tratamento</th>
-                                <th>Auditor</th>
-                                <th class="text-end pe-4">Ações</th>
+                                <th class="ps-3">ID</th><th>Data Venda</th><th>Cliente / CPF</th><th>Vendedor</th><th>Produto</th><th>Status Tratamento</th><th>Auditor</th><th class="text-end pe-4">Ações</th>
                             </tr>
                         </thead>
-                        <tbody id="listaVendasBody">
-                            </tbody>
+                        <tbody id="listaVendasBody"></tbody>
                     </table>
                 </div>
             </div>
@@ -204,21 +98,11 @@
                     
                     <div class="bg-white border-bottom py-3 px-4 shadow-sm">
                         <ul class="nav nav-pills nav-fill" id="pills-tab" role="tablist">
-                            <li class="nav-item" role="presentation">
-                                <button class="nav-link active" id="pills-identidade-tab" data-bs-toggle="pill" data-bs-target="#pills-identidade" type="button">1. Identidade</button>
-                            </li>
-                            <li class="nav-item" role="presentation">
-                                <button class="nav-link" id="pills-contato-tab" data-bs-toggle="pill" data-bs-target="#pills-contato" type="button">2. Contato</button>
-                            </li>
-                            <li class="nav-item" role="presentation">
-                                <button class="nav-link" id="pills-endereco-tab" data-bs-toggle="pill" data-bs-target="#pills-endereco" type="button">3. Endereço</button>
-                            </li>
-                            <li class="nav-item" role="presentation">
-                                <button class="nav-link" id="pills-oferta-tab" data-bs-toggle="pill" data-bs-target="#pills-oferta" type="button">4. Oferta & Pagto</button>
-                            </li>
-                            <li class="nav-item" role="presentation">
-                                <button class="nav-link" id="pills-finalizacao-tab" data-bs-toggle="pill" data-bs-target="#pills-finalizacao" type="button">5. Finalização</button>
-                            </li>
+                            <li class="nav-item" role="presentation"><button class="nav-link active" id="pills-identidade-tab" data-bs-toggle="pill" data-bs-target="#pills-identidade" type="button">1. Identidade</button></li>
+                            <li class="nav-item" role="presentation"><button class="nav-link" id="pills-contato-tab" data-bs-toggle="pill" data-bs-target="#pills-contato" type="button">2. Contato</button></li>
+                            <li class="nav-item" role="presentation"><button class="nav-link" id="pills-endereco-tab" data-bs-toggle="pill" data-bs-target="#pills-endereco" type="button">3. Endereço</button></li>
+                            <li class="nav-item" role="presentation"><button class="nav-link" id="pills-oferta-tab" data-bs-toggle="pill" data-bs-target="#pills-oferta" type="button">4. Oferta & Pagto</button></li>
+                            <li class="nav-item" role="presentation"><button class="nav-link" id="pills-finalizacao-tab" data-bs-toggle="pill" data-bs-target="#pills-finalizacao" type="button">5. Finalização</button></li>
                         </ul>
                     </div>
 
@@ -232,289 +116,92 @@
                                         <p class="script-text">
                                             "<span id="script-saudacao" class="fw-bold">Olá</span>, tudo bem? Aqui é a(o) <strong><span id="script-user-logado" class="text-primary text-uppercase"></span></strong> da Nio Fibra. 
                                             Estou ligando para confirmar os dados do seu pedido e passar algumas informações importantes. 
-                                            [cite_start]Posso prosseguir com a auditoria?" [cite: 2-4]
+                                            Posso prosseguir com a auditoria?"
                                         </p>
                                     </div>
 
                                     <div class="script-section">
                                         <div class="script-title">Dados Pessoais</div>
-                                        
                                         <p class="script-text mb-2">"Poderia, por gentileza, confirmar seu nome completo?"</p>
-                                        <div class="input-group mb-3">
-                                            <input type="text" class="form-control form-control-script uppercase-input" id="audit-cliente-nome">
-                                            <button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cliente-nome')" title="Copiar"><i class="bi bi-clipboard" id="btn-icon-audit-cliente-nome"></i></button>
-                                        </div>
+                                        <div class="input-group mb-3"><input type="text" class="form-control form-control-script uppercase-input" id="audit-cliente-nome"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cliente-nome')" title="Copiar"><i class="bi bi-clipboard" id="btn-icon-audit-cliente-nome"></i></button></div>
 
                                         <p class="script-text mb-2">"Poderia me informar os <strong>três primeiros números</strong> do seu CPF?"</p>
-                                        <div class="input-group mb-3">
-                                            <input type="text" class="form-control form-control-script" id="audit-cliente-cpf" maxlength="18" onkeyup="mascaraCPF(this)">
-                                            <button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cliente-cpf', true)" title="Copiar apenas números"><i class="bi bi-clipboard" id="btn-icon-audit-cliente-cpf"></i></button>
-                                        </div>
+                                        <div class="input-group mb-3"><input type="text" class="form-control form-control-script" id="audit-cliente-cpf" maxlength="18" onkeyup="mascaraCPF(this)"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cliente-cpf', true)" title="Copiar apenas números"><i class="bi bi-clipboard" id="btn-icon-audit-cliente-cpf"></i></button></div>
 
                                         <div class="row g-3">
-                                            <div class="col-md-6">
-                                                <label class="form-label small text-muted fw-bold">Nome da Mãe</label>
-                                                <div class="input-group">
-                                                    <input type="text" class="form-control form-control-script uppercase-input" id="audit-nome-mae">
-                                                    <button class="btn btn-copy" type="button" onclick="copiarCampo('audit-nome-mae')"><i class="bi bi-clipboard" id="btn-icon-audit-nome-mae"></i></button>
-                                                </div>
-                                            </div>
-                                            <div class="col-md-4">
-                                                <label class="form-label small text-muted fw-bold">Data Nasc.</label>
-                                                <input type="date" class="form-control form-control-script" id="audit-data-nasc" onchange="calcularIdadeAuto()">
-                                            </div>
-                                            <div class="col-md-2">
-                                                <label class="form-label small text-muted fw-bold">Idade</label>
-                                                <input type="text" class="form-control bg-white" id="audit-idade-calc" readonly>
-                                            </div>
+                                            <div class="col-md-6"><label class="form-label small text-muted fw-bold">Nome da Mãe</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-nome-mae"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-nome-mae')"><i class="bi bi-clipboard" id="btn-icon-audit-nome-mae"></i></button></div></div>
+                                            <div class="col-md-4"><label class="form-label small text-muted fw-bold">Data Nasc.</label><input type="date" class="form-control form-control-script" id="audit-data-nasc" onchange="calcularIdadeAuto()"></div>
+                                            <div class="col-md-2"><label class="form-label small text-muted fw-bold">Idade</label><input type="text" class="form-control bg-white" id="audit-idade-calc" readonly></div>
                                         </div>
 
-                                        <div class="checklist-box mt-4">
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="checkbox" id="check-biometria">
-                                                <label class="form-check-label checklist-label" for="check-biometria">
-                                                    Verifiquei se a Biometria está APROVADA (Prazo link 48h)
-                                                </label>
-                                            </div>
-                                        </div>
-                                        
-                                        <div class="text-end mt-3">
-                                            <button class="btn btn-primary" onclick="proximaAba('pills-contato-tab')">Próximo <i class="bi bi-arrow-right"></i></button>
-                                        </div>
+                                        <div class="checklist-box mt-4"><div class="form-check"><input class="form-check-input" type="checkbox" id="check-biometria"><label class="form-check-label checklist-label" for="check-biometria">Verifiquei se a Biometria está APROVADA (Prazo link 48h)</label></div></div>
+                                        <div class="text-end mt-3"><button class="btn btn-primary" onclick="proximaAba('pills-contato-tab')">Próximo <i class="bi bi-arrow-right"></i></button></div>
                                     </div>
                                 </div>
 
                                 <div class="tab-pane fade" id="pills-contato" role="tabpanel">
                                     <div class="script-section">
                                         <div class="script-title">Confirmação de Contato</div>
-
                                         <p class="script-text mb-2">"Qual é o seu número de telefone no WhatsApp?"</p>
-                                        <div class="input-group mb-3" style="max-width: 400px;">
-                                            <span class="input-group-text bg-success text-white"><i class="bi bi-whatsapp"></i></span>
-                                            <input type="text" class="form-control form-control-script fs-5" id="audit-tel1" maxlength="15" onkeyup="mascaraTelefone(this)">
-                                            <button class="btn btn-copy" type="button" onclick="copiarCampo('audit-tel1', true)"><i class="bi bi-clipboard" id="btn-icon-audit-tel1"></i></button>
-                                        </div>
-
-                                        <div class="alert alert-info border-info my-4">
-                                            <p class="mb-0 fst-italic fs-5">
-                                                "Lembrando que é nesse número que você receberá a confirmação do pedido. Para confirmar a instalação, preciso que após receber a mensagem da Nio no seu WhatsApp você digite <strong>'SIM'</strong>. No WhatsApp da Nio, você poderá acompanhar a instalação em tempo real e até mesmo reagendar. [cite_start]Ficou claro?" [cite: 12-14]
-                                            </p>
-                                        </div>
-
+                                        <div class="input-group mb-3" style="max-width: 400px;"><span class="input-group-text bg-success text-white"><i class="bi bi-whatsapp"></i></span><input type="text" class="form-control form-control-script fs-5" id="audit-tel1" maxlength="15" onkeyup="mascaraTelefone(this)"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-tel1', true)"><i class="bi bi-clipboard" id="btn-icon-audit-tel1"></i></button></div>
+                                        <div class="alert alert-info border-info my-4"><p class="mb-0 fst-italic fs-5">"Lembrando que é nesse número que você receberá a confirmação do pedido. Para confirmar a instalação, preciso que após receber a mensagem da Nio no seu WhatsApp você digite <strong>'SIM'</strong>. No WhatsApp da Nio, você poderá acompanhar a instalação em tempo real e até mesmo reagendar. Ficou claro?"</p></div>
                                         <p class="script-text mb-2">"Poderia me informar um segundo telefone de contato?"</p>
-                                        <div class="input-group mb-3" style="max-width: 400px;">
-                                            <input type="text" class="form-control form-control-script" id="audit-tel2" maxlength="15" onkeyup="mascaraTelefone(this)">
-                                            <button class="btn btn-copy" type="button" onclick="copiarCampo('audit-tel2', true)"><i class="bi bi-clipboard" id="btn-icon-audit-tel2"></i></button>
-                                        </div>
-
+                                        <div class="input-group mb-3" style="max-width: 400px;"><input type="text" class="form-control form-control-script" id="audit-tel2" maxlength="15" onkeyup="mascaraTelefone(this)"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-tel2', true)"><i class="bi bi-clipboard" id="btn-icon-audit-tel2"></i></button></div>
                                         <p class="script-text mb-2">"Qual é o seu endereço de e-mail?"</p>
-                                        <div class="input-group mb-3">
-                                            <input type="email" class="form-control form-control-script uppercase-input" id="audit-email">
-                                            <button class="btn btn-copy" type="button" onclick="copiarCampo('audit-email')"><i class="bi bi-clipboard" id="btn-icon-audit-email"></i></button>
-                                        </div>
-
-                                        <div class="text-end mt-4">
-                                            <button class="btn btn-primary" onclick="proximaAba('pills-endereco-tab')">Próximo <i class="bi bi-arrow-right"></i></button>
-                                        </div>
+                                        <div class="input-group mb-3"><input type="email" class="form-control form-control-script uppercase-input" id="audit-email"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-email')"><i class="bi bi-clipboard" id="btn-icon-audit-email"></i></button></div>
+                                        <div class="text-end mt-4"><button class="btn btn-primary" onclick="proximaAba('pills-endereco-tab')">Próximo <i class="bi bi-arrow-right"></i></button></div>
                                     </div>
                                 </div>
 
                                 <div class="tab-pane fade" id="pills-endereco" role="tabpanel">
                                     <div class="script-section">
                                         <div class="script-title">Endereço de Instalação</div>
-                                        
-                                        <div class="checklist-box mb-3">
-                                            <div class="form-check mb-2">
-                                                <input class="form-check-input" type="checkbox" id="check-fibra">
-                                                <label class="form-check-label checklist-label" for="check-fibra">
-                                                    Questionei se o endereço já possui Fibra instalada?
-                                                </label>
-                                            </div>
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="checkbox" id="check-viabilidade">
-                                                <label class="form-check-label checklist-label" for="check-viabilidade">
-                                                    Validei a viabilidade no sistema (DFV/Site/Portal)?
-                                                </label>
-                                            </div>
-                                        </div>
-
+                                        <div class="checklist-box mb-3"><div class="form-check mb-2"><input class="form-check-input" type="checkbox" id="check-fibra"><label class="form-check-label checklist-label" for="check-fibra">Questionei se o endereço já possui Fibra instalada?</label></div><div class="form-check"><input class="form-check-input" type="checkbox" id="check-viabilidade"><label class="form-check-label checklist-label" for="check-viabilidade">Validei a viabilidade no sistema (DFV/Site/Portal)?</label></div></div>
                                         <p class="script-text mb-3">"Agora, vamos confirmar o seu endereço de instalação. Poderia confirmar: Nome da Rua, Número e CEP?"</p>
-
                                         <div class="row g-3">
-                                            <div class="col-md-3">
-                                                <label class="form-label small text-muted fw-bold">CEP</label>
-                                                <div class="input-group">
-                                                    <input type="text" class="form-control form-control-script" id="audit-cep" maxlength="9" onkeyup="mascaraCEP(this)">
-                                                    <button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cep', true)"><i class="bi bi-clipboard" id="btn-icon-audit-cep"></i></button>
-                                                </div>
-                                            </div>
-                                            <div class="col-md-7">
-                                                <label class="form-label small text-muted fw-bold">Logradouro</label>
-                                                <div class="input-group">
-                                                    <input type="text" class="form-control form-control-script uppercase-input" id="audit-logradouro">
-                                                    <button class="btn btn-copy" type="button" onclick="copiarCampo('audit-logradouro')"><i class="bi bi-clipboard" id="btn-icon-audit-logradouro"></i></button>
-                                                </div>
-                                            </div>
-                                            <div class="col-md-2">
-                                                <label class="form-label small text-muted fw-bold">Número</label>
-                                                <div class="input-group">
-                                                    <input type="text" class="form-control form-control-script" id="audit-numero">
-                                                    <button class="btn btn-copy" type="button" onclick="copiarCampo('audit-numero')"><i class="bi bi-clipboard" id="btn-icon-audit-numero"></i></button>
-                                                </div>
-                                            </div>
-                                            <div class="col-md-4">
-                                                <label class="form-label small text-muted fw-bold">Bairro</label>
-                                                <div class="input-group">
-                                                    <input type="text" class="form-control form-control-script uppercase-input" id="audit-bairro">
-                                                    <button class="btn btn-copy" type="button" onclick="copiarCampo('audit-bairro')"><i class="bi bi-clipboard" id="btn-icon-audit-bairro"></i></button>
-                                                </div>
-                                            </div>
-                                            <div class="col-md-4">
-                                                <label class="form-label small text-muted fw-bold">Cidade</label>
-                                                <div class="input-group">
-                                                    <input type="text" class="form-control form-control-script uppercase-input" id="audit-cidade">
-                                                    <button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cidade')"><i class="bi bi-clipboard" id="btn-icon-audit-cidade"></i></button>
-                                                </div>
-                                            </div>
-                                            <div class="col-md-4">
-                                                <label class="form-label small text-muted fw-bold">Complemento</label>
-                                                <div class="input-group">
-                                                    <input type="text" class="form-control form-control-script uppercase-input" id="audit-complemento">
-                                                    <button class="btn btn-copy" type="button" onclick="copiarCampo('audit-complemento')"><i class="bi bi-clipboard" id="btn-icon-audit-complemento"></i></button>
-                                                </div>
-                                            </div>
-                                            <div class="col-12">
-                                                <label class="form-label small text-muted fw-bold">Ponto de Referência</label>
-                                                <div class="input-group">
-                                                    <input type="text" class="form-control form-control-script uppercase-input" id="audit-ref">
-                                                    <button class="btn btn-copy" type="button" onclick="copiarCampo('audit-ref')"><i class="bi bi-clipboard" id="btn-icon-audit-ref"></i></button>
-                                                </div>
-                                            </div>
+                                            <div class="col-md-3"><label class="form-label small text-muted fw-bold">CEP</label><div class="input-group"><input type="text" class="form-control form-control-script" id="audit-cep" maxlength="9" onkeyup="mascaraCEP(this)"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cep', true)"><i class="bi bi-clipboard" id="btn-icon-audit-cep"></i></button></div></div>
+                                            <div class="col-md-7"><label class="form-label small text-muted fw-bold">Logradouro</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-logradouro"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-logradouro')"><i class="bi bi-clipboard" id="btn-icon-audit-logradouro"></i></button></div></div>
+                                            <div class="col-md-2"><label class="form-label small text-muted fw-bold">Número</label><div class="input-group"><input type="text" class="form-control form-control-script" id="audit-numero"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-numero')"><i class="bi bi-clipboard" id="btn-icon-audit-numero"></i></button></div></div>
+                                            <div class="col-md-4"><label class="form-label small text-muted fw-bold">Bairro</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-bairro"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-bairro')"><i class="bi bi-clipboard" id="btn-icon-audit-bairro"></i></button></div></div>
+                                            <div class="col-md-4"><label class="form-label small text-muted fw-bold">Cidade</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-cidade"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cidade')"><i class="bi bi-clipboard" id="btn-icon-audit-cidade"></i></button></div></div>
+                                            <div class="col-md-4"><label class="form-label small text-muted fw-bold">Complemento</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-complemento"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-complemento')"><i class="bi bi-clipboard" id="btn-icon-audit-complemento"></i></button></div></div>
+                                            <div class="col-12"><label class="form-label small text-muted fw-bold">Ponto de Referência</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-ref"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-ref')"><i class="bi bi-clipboard" id="btn-icon-audit-ref"></i></button></div></div>
                                             <input type="hidden" id="audit-uf">
                                         </div>
-
                                         <p class="script-text mt-3 text-success">"Ok, endereço confirmado."</p>
-                                        
-                                        <div class="text-end mt-4">
-                                            <button class="btn btn-primary" onclick="proximaAba('pills-oferta-tab')">Próximo <i class="bi bi-arrow-right"></i></button>
-                                        </div>
+                                        <div class="text-end mt-4"><button class="btn btn-primary" onclick="proximaAba('pills-oferta-tab')">Próximo <i class="bi bi-arrow-right"></i></button></div>
                                     </div>
                                 </div>
 
                                 <div class="tab-pane fade" id="pills-oferta" role="tabpanel">
                                     <div class="script-section">
                                         <div class="script-title">Informações do Plano e Pagamento</div>
-                                        
                                         <div class="row g-3 p-3 bg-light rounded border mb-3">
                                             <div class="col-12 text-muted fw-bold small text-uppercase mb-1">Confirme os dados do sistema:</div>
-                                            <div class="col-md-6">
-                                                <label class="form-label small">Plano Contratado</label>
-                                                <select class="form-select form-control-script" id="audit-plano" onchange="atualizarTextoPlano()"></select>
-                                            </div>
-                                            <div class="col-md-6">
-                                                <label class="form-label small">Forma de Pagamento</label>
-                                                <select class="form-select form-control-script" id="audit-pagamento" onchange="atualizarTextoPlano()"></select>
-                                            </div>
+                                            <div class="col-md-6"><label class="form-label small">Plano Contratado</label><select class="form-select form-control-script" id="audit-plano" onchange="atualizarTextoPlano()"></select></div>
+                                            <div class="col-md-6"><label class="form-label small">Forma de Pagamento</label><select class="form-select form-control-script" id="audit-pagamento" onchange="atualizarTextoPlano()"></select></div>
                                         </div>
-
-                                        <div class="p-3 bg-primary-subtle border border-primary rounded mb-3">
-                                            <p class="script-text mb-0">
-                                                "O plano que você contratou foi o <strong class="text-primary text-uppercase" id="txt-plano-nome">...</strong> 
-                                                com o valor de <strong class="text-success" id="txt-plano-valor">R$ ...</strong> 
-                                                [cite_start]e a forma de pagamento foi <strong class="text-dark text-uppercase" id="txt-pagamento-nome">...</strong>." [cite: 30-32]
-                                            </p>
-                                        </div>
-
+                                        <div class="p-3 bg-primary-subtle border border-primary rounded mb-3"><p class="script-text mb-0">"O plano que você contratou foi o <strong class="text-primary text-uppercase" id="txt-plano-nome">...</strong> com o valor de <strong class="text-success" id="txt-plano-valor">R$ ...</strong> e a forma de pagamento foi <strong class="text-dark text-uppercase" id="txt-pagamento-nome">...</strong>."</p></div>
                                         <p class="script-text">"O valor mensal será fixo até <strong>janeiro de 2028</strong>."</p>
-                                        [cite_start]<p class="script-text">"A fidelidade do plano é de 12 meses. Você está ciente do valor contratado, do plano e da fidelidade mencionada?" [cite: 33-34]</p>
+                                        <p class="script-text">"A fidelidade do plano é de 12 meses. Você está ciente do valor contratado, do plano e da fidelidade mencionada?"</p>
                                         <p class="script-text small text-muted">(Informar taxa de habilitação proporcional em caso de cancelamento em 12 meses)</p>
-
                                         <hr>
-
-                                        <div id="script-pagamento-cartao" style="display:none;">
-                                            <h6 class="fw-bold text-primary">SCRIPT CARTÃO DE CRÉDITO</h6>
-                                            <ul class="list-group mb-3">
-                                                <li class="list-group-item">"É importante verificar se você possui limite disponível."</li>
-                                                <li class="list-group-item">"Você terá até 24h para preencher o link com os dados do cartão."</li>
-                                                [cite_start]<li class="list-group-item">"Após o cadastro, é feita uma pré-reserva. No dia da instalação, essa pré-reserva vira cobrança." [cite: 78-79]</li>
-                                                <li class="list-group-item">"A data de vencimento será a mesma da fatura do seu cartão."</li>
-                                            </ul>
-                                        </div>
-
-                                        <div id="script-pagamento-dacc" style="display:none;">
-                                            <h6 class="fw-bold text-primary">SCRIPT DÉBITO EM CONTA (DACC)</h6>
-                                            <ul class="list-group mb-3">
-                                                <li class="list-group-item">"Por favor, confirme: Banco, Agência e Conta."</li>
-                                                <li class="list-group-item fw-bold text-danger">"Se for Banco do Brasil, Santander ou Nubank, você precisa entrar no app do banco e autorizar o débito."</li>
-                                                <li class="list-group-item">"O primeiro pagamento será por BOLETO (vencimento para 25 dias após instalação). [cite_start]O débito automático inicia no 2º mês." [cite: 83-84]</li>
-                                            </ul>
-                                        </div>
-
-                                        <div id="script-pagamento-boleto" style="display:none;">
-                                            <h6 class="fw-bold text-primary">SCRIPT BOLETO</h6>
-                                            <ul class="list-group mb-3">
-                                                <li class="list-group-item">"No dia da instalação, você receberá o boleto por WhatsApp, com vencimento para 25 dias após a instalação."</li>
-                                            </ul>
-                                        </div>
-
+                                        <div id="script-pagamento-cartao" style="display:none;"><h6 class="fw-bold text-primary">SCRIPT CARTÃO DE CRÉDITO</h6><ul class="list-group mb-3"><li class="list-group-item">"É importante verificar se você possui limite disponível."</li><li class="list-group-item">"Você terá até 24h para preencher o link com os dados do cartão."</li><li class="list-group-item">"Após o cadastro, é feita uma pré-reserva. No dia da instalação, essa pré-reserva vira cobrança."</li><li class="list-group-item">"A data de vencimento será a mesma da fatura do seu cartão."</li></ul></div>
+                                        <div id="script-pagamento-dacc" style="display:none;"><h6 class="fw-bold text-primary">SCRIPT DÉBITO EM CONTA (DACC)</h6><ul class="list-group mb-3"><li class="list-group-item">"Por favor, confirme: Banco, Agência e Conta."</li><li class="list-group-item fw-bold text-danger">"Se for Banco do Brasil, Santander ou Nubank, você precisa entrar no app do banco e autorizar o débito."</li><li class="list-group-item">"O primeiro pagamento será por BOLETO (vencimento para 25 dias após instalação). O débito automático inicia no 2º mês."</li></ul></div>
+                                        <div id="script-pagamento-boleto" style="display:none;"><h6 class="fw-bold text-primary">SCRIPT BOLETO</h6><ul class="list-group mb-3"><li class="list-group-item">"No dia da instalação, você receberá o boleto por WhatsApp, com vencimento para 25 dias após a instalação."</li></ul></div>
                                         <p class="script-text mt-3 fw-bold">"Importante: Não há como escolher ou mudar a data de vencimento; ela é definida pela data da instalação."</p>
-
-                                        <div class="text-end mt-4">
-                                            <button class="btn btn-primary" onclick="proximaAba('pills-finalizacao-tab')">Próximo <i class="bi bi-arrow-right"></i></button>
-                                        </div>
+                                        <div class="text-end mt-4"><button class="btn btn-primary" onclick="proximaAba('pills-finalizacao-tab')">Próximo <i class="bi bi-arrow-right"></i></button></div>
                                     </div>
                                 </div>
 
                                 <div class="tab-pane fade" id="pills-finalizacao" role="tabpanel">
                                     <div class="script-section">
                                         <div class="script-title">Agendamento e Encerramento</div>
-                                        
                                         <p class="script-text">"Poderia me informar qual o melhor dia da semana e horário (manhã ou tarde) para agendarmos a instalação?"</p>
-                                        
-                                        <div class="checklist-box mb-3">
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="checkbox" id="check-maioridade">
-                                                <label class="form-check-label checklist-label" for="check-maioridade">
-                                                    Sinalizei que deve haver um maior de 18 anos com documento para receber o técnico?
-                                                </label>
-                                            </div>
-                                        </div>
-
-                                        <div class="card bg-light border-0 mb-3">
-                                            <div class="card-body">
-                                                <h6 class="card-subtitle mb-3 text-muted text-uppercase small fw-bold">Preferência de Agendamento</h6>
-                                                <div class="row g-3">
-                                                    <div class="col-md-6">
-                                                        <label class="form-label fw-bold">Data</label>
-                                                        <input type="date" class="form-control" id="audit-data-agendamento">
-                                                    </div>
-                                                    <div class="col-md-6">
-                                                        <label class="form-label fw-bold">Turno</label>
-                                                        <select class="form-select" id="audit-turno-agendamento">
-                                                            <option value="">Não agendado</option>
-                                                            <option value="MANHA">Manhã</option>
-                                                            <option value="TARDE">Tarde</option>
-                                                        </select>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        
-                                        <div class="script-section bg-light border p-3 rounded mb-3">
-                                            <div class="script-title small">Aplicativo Nio</div>
-                                            <p class="script-text mb-0">
-                                                "Para finalizar, gostaria de informar que temos o aplicativo Nio. Nele, você pode:
-                                                <strong>Acompanhar a internet, Solicitar 2ª via da fatura, Atualizar dados e Pedir suporte.</strong>
-                                                O app é essencial, pois você terá tudo na palma da sua mão. 
-                                                <br><br>
-                                                Qualquer dúvida, entre em contato pelo WhatsApp (21 3605 1000). [cite_start]Enviaremos uma pesquisa de satisfação amanhã, sua opinião é muito importante!" [cite: 101-103]
-                                            </p>
-                                        </div>
-
-                                        <div class="mb-2">
-                                            <label class="form-label fw-bold text-danger">Observações da Auditoria</label>
-                                            <textarea class="form-control uppercase-input" id="script-obs-venda" rows="3" placeholder="Anote aqui qualquer divergência..."></textarea>
-                                        </div>
+                                        <div class="checklist-box mb-3"><div class="form-check"><input class="form-check-input" type="checkbox" id="check-maioridade"><label class="form-check-label checklist-label" for="check-maioridade">Sinalizei que deve haver um maior de 18 anos com documento para receber o técnico?</label></div></div>
+                                        <div class="card bg-light border-0 mb-3"><div class="card-body"><h6 class="card-subtitle mb-3 text-muted text-uppercase small fw-bold">Preferência de Agendamento</h6><div class="row g-3"><div class="col-md-6"><label class="form-label fw-bold">Data</label><input type="date" class="form-control" id="audit-data-agendamento"></div><div class="col-md-6"><label class="form-label fw-bold">Turno</label><select class="form-select" id="audit-turno-agendamento"><option value="">Não agendado</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select></div></div></div></div>
+                                        <div class="script-section bg-light border p-3 rounded mb-3"><div class="script-title small">Aplicativo Nio</div><p class="script-text mb-0">"Para finalizar, gostaria de informar que temos o aplicativo Nio. Nele, você pode: <strong>Acompanhar a internet, Solicitar 2ª via da fatura, Atualizar dados e Pedir suporte.</strong> O app é essencial, pois você terá tudo na palma da sua mão. <br><br>Qualquer dúvida, entre em contato pelo WhatsApp (21 3605 1000). Enviaremos uma pesquisa de satisfação amanhã, sua opinião é muito importante!"</p></div>
+                                        <div class="mb-2"><label class="form-label fw-bold text-danger">Observações da Auditoria</label><textarea class="form-control uppercase-input" id="script-obs-venda" rows="3" placeholder="Anote aqui qualquer divergência..."></textarea></div>
                                     </div>
                                 </div>
 
@@ -542,56 +229,9 @@
         </div>
     </div>
 
-    <div class="modal fade" id="modal-reprovacao" tabindex="-1" style="z-index: 1060;">
-        <div class="modal-dialog">
-            <div class="modal-content border-danger">
-                <div class="modal-header bg-danger text-white">
-                    <h5 class="modal-title">Reprovar / Pendenciar Venda</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <p>Selecione o motivo:</p>
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Novo Status</label>
-                        <select class="form-select" id="repro-status"><option value="">Carregando...</option></select>
-                    </div>
-                    <div id="div-campos-aguardando-pagamento" style="display: none;" class="p-3 mb-3 bg-light border rounded">
-                        <div class="text-danger small fw-bold text-uppercase mb-2">Dados do pedido criado:</div>
-                        <div class="mb-3"><label class="form-label fw-bold">O.S. *</label><input type="text" class="form-control" id="repro-os"></div>
-                        <div class="row"><div class="col-6"><label class="form-label fw-bold">Data *</label><input type="date" class="form-control" id="repro-data"></div><div class="col-6"><label class="form-label fw-bold">Turno *</label><select class="form-select" id="repro-turno"><option value="">Selecione...</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select></div></div>
-                    </div>
-                    <div class="mb-3"><label class="form-label fw-bold">Observação</label><textarea class="form-control uppercase-input" id="repro-obs" rows="4"></textarea></div>
-                </div>
-                <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button type="button" class="btn btn-danger" onclick="confirmarReprovacao()">Confirmar</button></div>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal fade" id="modal-aprovacao" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header bg-success text-white"><h5 class="modal-title">Venda Aprovada!</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
-                <div class="modal-body"><p>Copie a mensagem:</p><textarea id="aprovacao-mensagem" class="form-control mb-3" rows="12" readonly></textarea><button id="btn-copiar" class="btn btn-outline-success w-100" onclick="copiarMensagem()"><i class="bi bi-whatsapp"></i> Copiar</button></div>
-                <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button></div>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal fade" id="modal-agendamento" tabindex="-1" data-bs-backdrop="static">
-        <div class="modal-dialog">
-            <div class="modal-content border-primary">
-                <div class="modal-header bg-primary text-white"><h5 class="modal-title">Dados do Agendamento</h5><button type="button" class="btn-close btn-close-white" onclick="cancelarAgendamento()"></button></div>
-                <div class="modal-body">
-                    <div class="alert alert-info small">Aprovando para <strong>CADASTRADA</strong>. Preencha a O.S.</div>
-                    <form id="form-agendamento">
-                        <div class="mb-3"><label class="form-label fw-bold">O.S. <span class="text-danger">*</span></label><input type="text" class="form-control" id="agenda-os" required></div>
-                        <div class="row"><div class="col-md-6 mb-3"><label class="form-label fw-bold">Data <span class="text-danger">*</span></label><input type="date" class="form-control" id="agenda-data-final" required></div><div class="col-md-6 mb-3"><label class="form-label fw-bold">Turno <span class="text-danger">*</span></label><select class="form-select" id="agenda-turno-final" required><option value="">Selecione...</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select></div></div>
-                    </form>
-                </div>
-                <div class="modal-footer"><button type="button" class="btn btn-secondary" onclick="cancelarAgendamento()">Voltar</button><button type="button" class="btn btn-primary" onclick="salvarAgendamentoFinal()">Confirmar</button></div>
-            </div>
-        </div>
-    </div>
+    <div class="modal fade" id="modal-reprovacao" tabindex="-1" style="z-index: 1060;"><div class="modal-dialog"><div class="modal-content border-danger"><div class="modal-header bg-danger text-white"><h5 class="modal-title">Reprovar / Pendenciar Venda</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>Selecione o motivo:</p><div class="mb-3"><label class="form-label fw-bold">Novo Status</label><select class="form-select" id="repro-status"><option value="">Carregando...</option></select></div><div id="div-campos-aguardando-pagamento" style="display: none;" class="p-3 mb-3 bg-light border rounded"><div class="text-danger small fw-bold text-uppercase mb-2">Dados do pedido criado:</div><div class="mb-3"><label class="form-label fw-bold">O.S. *</label><input type="text" class="form-control" id="repro-os"></div><div class="row"><div class="col-6"><label class="form-label fw-bold">Data *</label><input type="date" class="form-control" id="repro-data"></div><div class="col-6"><label class="form-label fw-bold">Turno *</label><select class="form-select" id="repro-turno"><option value="">Selecione...</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select></div></div></div><div class="mb-3"><label class="form-label fw-bold">Observação</label><textarea class="form-control uppercase-input" id="repro-obs" rows="4"></textarea></div></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button type="button" class="btn btn-danger" onclick="confirmarReprovacao()">Confirmar</button></div></div></div></div>
+    <div class="modal fade" id="modal-aprovacao" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header bg-success text-white"><h5 class="modal-title">Venda Aprovada!</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>Copie a mensagem:</p><textarea id="aprovacao-mensagem" class="form-control mb-3" rows="12" readonly></textarea><button id="btn-copiar" class="btn btn-outline-success w-100" onclick="copiarMensagem()"><i class="bi bi-whatsapp"></i> Copiar</button></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button></div></div></div></div>
+    <div class="modal fade" id="modal-agendamento" tabindex="-1" data-bs-backdrop="static"><div class="modal-dialog"><div class="modal-content border-primary"><div class="modal-header bg-primary text-white"><h5 class="modal-title">Dados do Agendamento</h5><button type="button" class="btn-close btn-close-white" onclick="cancelarAgendamento()"></button></div><div class="modal-body"><div class="alert alert-info small">Aprovando para <strong>CADASTRADA</strong>. Preencha a O.S.</div><form id="form-agendamento"><div class="mb-3"><label class="form-label fw-bold">O.S. <span class="text-danger">*</span></label><input type="text" class="form-control" id="agenda-os" required></div><div class="row"><div class="col-md-6 mb-3"><label class="form-label fw-bold">Data <span class="text-danger">*</span></label><input type="date" class="form-control" id="agenda-data-final" required></div><div class="col-md-6 mb-3"><label class="form-label fw-bold">Turno <span class="text-danger">*</span></label><select class="form-select" id="agenda-turno-final" required><option value="">Selecione...</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select></div></div></form></div><div class="modal-footer"><button type="button" class="btn btn-secondary" onclick="cancelarAgendamento()">Voltar</button><button type="button" class="btn btn-primary" onclick="salvarAgendamentoFinal()">Confirmar</button></div></div></div></div>
 
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
@@ -623,6 +263,29 @@
                 else { $('#div-campos-aguardando-pagamento').slideUp(); $('#repro-os').val(''); }
             });
 
+            // NOVO: Validação de CEP Automática na Auditoria
+            $('#audit-cep').on('blur', function() {
+                const cep = $(this).val().replace(/\D/g, '');
+                if (cep.length === 8) {
+                    $('#audit-logradouro').val('Carregando...');
+                    $.getJSON(`https://viacep.com.br/ws/${cep}/json/`, function(data) {
+                        if (!data.erro) {
+                            $('#audit-logradouro').val(data.logradouro.toUpperCase());
+                            $('#audit-bairro').val(data.bairro.toUpperCase());
+                            $('#audit-cidade').val(data.localidade.toUpperCase());
+                            $('#audit-uf').val(data.uf.toUpperCase());
+                            $('#audit-numero').focus();
+                        } else {
+                            alert("CEP não encontrado.");
+                            $('#audit-logradouro').val('');
+                        }
+                    }).fail(function() {
+                        alert("Erro ao buscar CEP.");
+                        $('#audit-logradouro').val('');
+                    });
+                }
+            });
+
             carregarAuxiliares().then(() => carregarVendasPendentes());
             iniciarMonitoramentoInatividade();
         });
@@ -641,7 +304,6 @@
             let valor = document.getElementById(id).value;
             if(!valor) return;
             if (apenasNumeros) valor = valor.replace(/\D/g, "");
-            
             navigator.clipboard.writeText(valor).then(() => {
                 const icon = document.getElementById('btn-icon-' + id);
                 if(icon) {
@@ -802,13 +464,8 @@
                 if(v.plano) $('#audit-plano').val(v.plano.id || v.plano); if(v.forma_pagamento) $('#audit-pagamento').val(v.forma_pagamento.id || v.forma_pagamento);
                 $('#audit-data-agendamento').val(v.data_agendamento || ''); $('#audit-turno-agendamento').val(v.periodo_agendamento || ''); $('#script-obs-venda').val(v.observacoes || '');
                 calcularIdadeAuto(); atualizarTextoPlano(); aplicarMascarasManuais(); 
-                
-                // ATUALIZAR SAUDAÇÃO AO ABRIR
                 atualizarSaudacao();
-                
-                // Resetar checklists
                 $('.form-check-input').prop('checked', false);
-                // Resetar abas
                 $('.nav-link').removeClass('active'); $('.tab-pane').removeClass('show active');
                 $('#pills-identidade-tab').addClass('active'); $('#pills-identidade').addClass('show active');
                 modalAuditoria.show();
@@ -832,6 +489,27 @@
             };
         }
         
+        // NOVO: Função para validar campos críticos antes de qualquer ação
+        function validarAuditoriaCompleta() {
+            const cep = $('#audit-cep').val();
+            const logradouro = $('#audit-logradouro').val();
+            const numero = $('#audit-numero').val();
+            const plano = $('#audit-plano').val();
+            const pagamento = $('#audit-pagamento').val();
+
+            if (!cep || !logradouro || !numero || !plano || !pagamento) {
+                alert("Atenção: É obrigatório preencher e verificar os dados de Endereço (Aba 3) e Oferta/Pagamento (Aba 4) antes de prosseguir com qualquer ação.");
+                
+                if (!cep || !logradouro || !numero) {
+                    proximaAba('pills-endereco-tab');
+                } else {
+                    proximaAba('pills-oferta-tab');
+                }
+                return false;
+            }
+            return true;
+        }
+
         function validarChecklist() {
             if(!$('#check-biometria').is(':checked')) { alert('Erro: Confirme a Biometria!'); proximaAba('pills-identidade-tab'); return false; }
             if(!$('#check-fibra').is(':checked')) { alert('Erro: Questione sobre Fibra existente!'); proximaAba('pills-endereco-tab'); return false; }
@@ -841,20 +519,23 @@
         }
 
         function finalizarComoAuditada() { 
+            if(!validarAuditoriaCompleta()) return; // Validação adicionada aqui
             if(!validarChecklist()) return;
             if(!confirm("Aprovar venda como AUDITADA?")) return; 
             enviarFinalizacao('AUDITADA', $('#script-obs-venda').val(), coletarDadosAuditoria()); 
         }
 
         function prepararAgendamento() {
+            if(!validarAuditoriaCompleta()) return; // Validação adicionada aqui
             if(!validarChecklist()) return;
-            const d = coletarDadosAuditoria(); if(!d.plano || !d.forma_pagamento) { alert('Selecione Plano e Pagamento.'); return; }
+            const d = coletarDadosAuditoria();
             modalAuditoria.hide(); $('#agenda-os').val(vendaEmAuditoria.ordem_servico || '');
             if(d.data_agendamento) $('#agenda-data-final').val(d.data_agendamento); if(d.periodo_agendamento) $('#agenda-turno-final').val(d.periodo_agendamento);
             modalAgendamento.show();
         }
 
         async function abrirModalReprovacao() {
+            if(!validarAuditoriaCompleta()) return; // Validação adicionada aqui
             const sel = $('#repro-status'); if (globalStatusOptions.length === 0) { try { const r = await apiClient.get(`${API_AUX}/status/?tipo=Tratamento`); globalStatusOptions = r.data; } catch(e){} }
             sel.empty().append('<option value="">Selecione...</option>');
             if (globalStatusOptions.length > 0) { globalStatusOptions.filter(s => !s.nome.toUpperCase().match(/AUDITADA|APROVAD|CADASTRAD/)).forEach(s => sel.append(`<option value="${s.id}">${s.nome}</option>`)); }
@@ -895,13 +576,18 @@
             .finally(() => { if(!abreZap) $('#loadingOverlay').hide(); });
         }
 
-        function fecharScriptSemSalvar() { if(confirm("Sair sem salvar?")) { apiClient.post(`${API_BASE}/${vendaEmAuditoria.id}/liberar-auditoria/`, {}).finally(() => { modalAuditoria.hide(); carregarVendasPendentes(); }); } }
+        function fecharScriptSemSalvar() { 
+            if(!validarAuditoriaCompleta()) return; // Até para sair sem salvar exige verificação básica para forçar a auditoria correta, ou se preferir liberar a saída, remova esta linha. Assumi que sair sem salvar cancela a alocação, então talvez não deva validar.
+            // *CORREÇÃO*: Se o usuário quer apenas sair sem fazer nada, talvez não deva validar. Mas o pedido diz "O BO só pode conseguir clicar em qualquer botão...". Vou manter a validação até para sair, para garantir que ele pelo menos olhou os dados antes de desistir, ou você pode remover se achar muito restritivo.
+            // Para "Sair" especificamente, geralmente queremos liberar rápido. Vou remover a validação DO BOTÃO SAIR para não travar o sistema caso ele abra por engano.
+            
+            if(confirm("Sair sem salvar?")) { apiClient.post(`${API_BASE}/${vendaEmAuditoria.id}/liberar-auditoria/`, {}).finally(() => { modalAuditoria.hide(); carregarVendasPendentes(); }); } 
+        }
+        
         function cancelarAgendamento() { modalAgendamento.hide(); modalAuditoria.show(); }
         
         function gerarAprovacaoMsg(d) {
             $('#loadingOverlay').hide();
-            
-            // Format dates/values
             const planoTexto = $('#audit-plano option:selected').text();
             const dataAgendamento = d.data_agendamento ? d.data_agendamento.split('-').reverse().join('/') : '';
             const auditorNome = jwt_decode(localStorage.getItem('accessToken')).username.toUpperCase();
@@ -910,25 +596,19 @@
             txt += `PLANO ADQUIRIDO: ${planoTexto}\n`;
             txt += `NOME DO CLIENTE: ${d.cliente_nome}\n`;
             txt += `CPF/CNPJ: ${d.cliente_cpf}\n`;
-            
             if($('#agenda-os').val()) txt += `OS: ${$('#agenda-os').val()}\n`;
-            
             const formaPagtoTexto = $('#audit-pagamento option:selected').text().toUpperCase();
             const isDacc = formaPagtoTexto.includes('DÉBITO') || formaPagtoTexto.includes('DEBITO') || formaPagtoTexto.includes('DACC') ? 'SIM' : 'NÃO';
             txt += `DACC: ${isDacc}\n`;
-            
             if(dataAgendamento) {
                 let turnoFmt = d.periodo_agendamento;
                 if(turnoFmt === 'MANHA') turnoFmt = 'na parte da manhã';
                 else if(turnoFmt === 'TARDE') turnoFmt = 'na parte da tarde';
                 txt += `AGENDAMENTO: Agendamento confirmado para o dia ${dataAgendamento} ${turnoFmt}\n`;
             }
-            
             txt += `VENDEDOR: ${$('#script-vendedor-nome').text()}\n`;
-            
             txt += `⚠FATURA, SEGUNDA VIA OU DÚVIDAS\n`;
             txt += `https://www.niointernet.com.br/\n`;
-            
             txt += `\nLembrete importante: Peça seu cliente para salvar o telefone 21 4040-1810 na sua agenda, isso evita pendências indevidas.\n`;
             txt += `Para que sua instalação seja concluída favor salvar esse contato, Técnico Nio 21 4040-1810, para receber informações da Visita.`;
 

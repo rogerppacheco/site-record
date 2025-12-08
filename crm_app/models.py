@@ -90,8 +90,10 @@ class Venda(models.Model):
     ativo = models.BooleanField(default=True, verbose_name="Venda Ativa")
     vendedor = models.ForeignKey(Usuario, on_delete=models.SET_NULL, null=True, related_name='vendas')
     cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name='vendas')
-    plano = models.ForeignKey(Plano, on_delete=models.PROTECT)
-    forma_pagamento = models.ForeignKey(FormaPagamento, on_delete=models.PROTECT)
+    
+    # ALTERAÇÃO: Tornando Plano e Forma de Pagamento Opcionais no Banco para Venda Rápida
+    plano = models.ForeignKey(Plano, on_delete=models.PROTECT, null=True, blank=True)
+    forma_pagamento = models.ForeignKey(FormaPagamento, on_delete=models.PROTECT, null=True, blank=True)
 
     status_tratamento = models.ForeignKey(StatusCRM, on_delete=models.SET_NULL, null=True, blank=True, related_name='vendas_tratamento', limit_choices_to={'tipo': 'Tratamento'})
     status_esteira = models.ForeignKey(StatusCRM, on_delete=models.SET_NULL, null=True, blank=True, related_name='vendas_esteira', limit_choices_to={'tipo': 'Esteira'})
@@ -108,6 +110,8 @@ class Venda(models.Model):
     
     telefone1 = models.CharField(max_length=20, blank=True, null=True)
     telefone2 = models.CharField(max_length=20, blank=True, null=True)
+    
+    # ALTERAÇÃO: Tornando Endereço Opcional no Banco
     cep = models.CharField(max_length=9, blank=True, null=True)
     logradouro = models.CharField(max_length=255, blank=True, null=True)
     numero_residencia = models.CharField(max_length=20, blank=True, null=True)
@@ -116,6 +120,7 @@ class Venda(models.Model):
     cidade = models.CharField(max_length=100, blank=True, null=True)
     estado = models.CharField(max_length=2, blank=True, null=True)
     ponto_referencia = models.CharField(max_length=255, blank=True, null=True)
+    
     observacoes = models.TextField(blank=True, null=True)
 
     ordem_servico = models.CharField(max_length=50, null=True, blank=True)
@@ -132,7 +137,6 @@ class Venda(models.Model):
     data_pagamento = models.DateField(null=True, blank=True) 
     valor_pago = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
 
-    # --- NOVO CAMPO PARA CONTROLE DE CONCORRÊNCIA NA AUDITORIA ---
     auditor_atual = models.ForeignKey(
         settings.AUTH_USER_MODEL, 
         on_delete=models.SET_NULL, 
@@ -168,7 +172,6 @@ class PagamentoComissao(models.Model):
         ordering = ['-referencia_ano', '-referencia_mes']
 
 class ImportacaoOsab(models.Model):
-    # --- Campos Antigos ---
     produto = models.CharField(max_length=255, null=True, blank=True)
     filial = models.CharField(max_length=255, null=True, blank=True)
     uf = models.CharField(max_length=2, null=True, blank=True)
@@ -220,8 +223,6 @@ class ImportacaoOsab(models.Model):
     status_checkout = models.CharField(max_length=255, null=True, blank=True)
     numero_ba = models.CharField(max_length=255, null=True, blank=True)
     venda_no_app = models.CharField(max_length=255, null=True, blank=True)
-
-    # --- NOVOS CAMPOS ---
     celula = models.CharField(max_length=255, null=True, blank=True)
     classificacao = models.CharField(max_length=255, null=True, blank=True)
     fg_venda_valida = models.CharField(max_length=255, null=True, blank=True)
@@ -352,7 +353,6 @@ class ComissaoOperadora(models.Model):
     def __str__(self):
         return f"Recebimento {self.plano.nome}"
 
-# --- NOVO MODELO: RECORD INFORMA (COMUNICADO) ---
 class Comunicado(models.Model):
     PERFIL_CHOICES = [
         ('TODOS', 'Todos'),
