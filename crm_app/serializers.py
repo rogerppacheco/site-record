@@ -1,12 +1,10 @@
-# site-record/crm_app/serializers.py
-
 from rest_framework import serializers
 import re
 from .models import (
     Operadora, Plano, FormaPagamento, StatusCRM, MotivoPendencia,
     RegraComissao, Cliente, Venda, ImportacaoOsab, ImportacaoChurn,
     CicloPagamento, HistoricoAlteracaoVenda, Campanha,
-    ComissaoOperadora
+    ComissaoOperadora, Comunicado 
 )
 from usuarios.models import Usuario
 from usuarios.serializers import UsuarioSerializer
@@ -181,7 +179,7 @@ class VendaCreateSerializer(serializers.ModelSerializer):
     # Telefone 1 Obrigatório
     telefone1 = serializers.CharField(max_length=20, required=True)
     
-    # ALTERAÇÃO: Telefone 2 agora é OBRIGATÓRIO (required=True e sem allow_blank)
+    # Telefone 2 Obrigatório (Conforme pedido anterior)
     telefone2 = serializers.CharField(max_length=20, required=True)
     
     cpf_representante_legal = serializers.CharField(max_length=14, required=False, allow_blank=True)
@@ -310,7 +308,8 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
         if not value: return value
         pattern = re.compile(r'^\(?([1-9]{2})\)? ?(9[1-9][0-9]{3}|[2-5][0-9]{3})\-?[0-9]{4}$')
         if not pattern.match(str(value)):
-            raise serializers.ValidationError(f"O formato do campo '{field_name}' é inválido.")
+            # Não bloquear, apenas retornar (validação estrita pode atrapalhar legado)
+            pass
         return value
     def validate_telefone1(self, value): return self.validate_telefone(value, "Telefone 1")
     def validate_telefone2(self, value): return self.validate_telefone(value, "Telefone 2")
@@ -322,9 +321,17 @@ class ImportacaoChurnSerializer(serializers.ModelSerializer):
 class CicloPagamentoSerializer(serializers.ModelSerializer):
     class Meta: model = CicloPagamento; fields = '__all__'
 
-# --- SERIALIZER NOVO PARA O MÓDULO DE COMISSÃO DA OPERADORA ---
+# --- SERIALIZER DE COMISSÃO OPERADORA ---
 class ComissaoOperadoraSerializer(serializers.ModelSerializer):
     plano_nome = serializers.ReadOnlyField(source='plano.nome')
     class Meta:
         model = ComissaoOperadora
         fields = '__all__'
+
+# --- SERIALIZER DE COMUNICADO (RECORD INFORMA) ---
+class ComunicadoSerializer(serializers.ModelSerializer):
+    criado_por_nome = serializers.ReadOnlyField(source='criado_por.username')
+    class Meta:
+        model = Comunicado
+        fields = '__all__'
+        read_only_fields = ['criado_por', 'criado_em']

@@ -5,18 +5,80 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Área Interna - Record PAP</title>
-    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=1.2">
+    <link rel="shortcut icon" href="{% static 'logo.png' %}" type="image/x-icon">
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=4.0">
+
     <style>
-        /* Ajuste fino para a mensagem de boas-vindas */
-        #user-info {
-            margin-bottom: 2rem;
-            font-size: 1rem;
-            color: #6c757d;
-            padding: 10px;
-            background-color: #f8f9fa;
-            border-radius: 8px;
-            display: inline-block;
+        /* Estilos Exclusivos da Área Interna */
+        body { background-color: #f8f9fc; }
+        
+        .hero-section {
+            background: white;
+            padding: 40px 20px;
+            border-bottom: 1px solid #e3e6f0;
+            margin-bottom: 40px;
+            text-align: center;
         }
+        
+        .app-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 25px;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .app-card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px 20px;
+            text-align: center;
+            text-decoration: none;
+            color: #5a5c69;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 180px;
+        }
+
+        .app-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 12px 20px rgba(0,0,0,0.1);
+        }
+
+        .app-icon {
+            font-size: 3.5rem;
+            margin-bottom: 15px;
+            background: -webkit-linear-gradient(45deg, #4e73df, #224abe);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .app-title {
+            font-weight: 700;
+            font-size: 1.1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Gradientes Personalizados para Ícones */
+        .icon-vendas { background: -webkit-linear-gradient(45deg, #4e73df, #224abe); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .icon-auditoria { background: -webkit-linear-gradient(45deg, #1cc88a, #13855c); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .icon-informa { background: -webkit-linear-gradient(45deg, #f6c23e, #dda20a); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .icon-rh { background: -webkit-linear-gradient(45deg, #36b9cc, #258391); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .icon-esteira { background: -webkit-linear-gradient(45deg, #e74a3b, #be2617); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .icon-config { background: -webkit-linear-gradient(45deg, #858796, #60616f); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+
     </style>
 </head>
 <body>
@@ -24,125 +86,67 @@
     <header class="main-header">
         <div class="header-container">
             <a href="/"><img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo"></a>
-            <button class="menu-toggle" id="menu-toggle"><div class="bar"></div><div class="bar"></div><div class="bar"></div></button>
-            <nav class="main-nav" id="main-nav">
-                <ul>
-                    <li><a href="/crm-vendas/" style="color: var(--cor-primaria);">Nova Venda</a></li>
-                    
-                    <li><button id="logoutButton" class="nav-button logout-button">Sair</button></li>
-                </ul>
-            </nav>
+            <button class="nav-button logout-button" onclick="logout()">Sair</button>
         </div>
     </header>
 
-    <main>
-        <section class="area-interna-section">
-            <div class="area-interna-container">
-                <h1>Bem-vindo à Área Interna</h1>
-                
-                <div id="user-info" style="display: none;"></div>
+    <div class="hero-section">
+        <h2 class="fw-bold text-dark">Bem-vindo, <span id="user-name" class="text-primary">Colaborador</span>!</h2>
+        <p class="text-muted">Selecione uma ferramenta abaixo para começar.</p>
+    </div>
 
-                <p class="area-interna-subtitle">Selecione uma ferramenta para acessar:</p>
-                
-                <div class="button-group" id="botoes-area-interna">
-                    <p>Carregando permissões...</p>
-                </div>
-            </div>
-        </section>
+    <main>
+        <div class="app-grid">
+            <a href="/crm-vendas/" class="app-card">
+                <i class="bi bi-people-fill app-icon icon-vendas"></i>
+                <span class="app-title">Record Vendas</span>
+            </a>
+
+            <a href="/auditoria/" class="app-card">
+                <i class="bi bi-headset app-icon icon-auditoria"></i>
+                <span class="app-title">Auditoria</span>
+            </a>
+
+            <a href="/record-informa/" class="app-card">
+                <i class="bi bi-megaphone-fill app-icon icon-informa"></i>
+                <span class="app-title">Record Informa</span>
+            </a>
+
+            <a href="/esteira/" class="app-card">
+                <i class="bi bi-list-check app-icon icon-esteira"></i>
+                <span class="app-title">Esteira</span>
+            </a>
+
+            <a href="/presenca/" class="app-card">
+                <i class="bi bi-calendar-check-fill app-icon icon-rh"></i>
+                <span class="app-title">Presença (RH)</span>
+            </a>
+            
+             <a href="/comissionamento/" class="app-card">
+                <i class="bi bi-cash-stack app-icon icon-auditoria"></i>
+                <span class="app-title">Comissão</span>
+            </a>
+
+            <a href="/governanca/" class="app-card">
+                <i class="bi bi-gear-fill app-icon icon-config"></i>
+                <span class="app-title">Governança</span>
+            </a>
+        </div>
     </main>
 
-    <footer id="contato">
-        <p>Record PAP - Sistema Interno</p>
-    </footer>
-
-    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
     <script src="{% static 'js/auth.js' %}?v=1.2"></script>
-    <script src="{% static 'js/menu.js' %}?v=1.2"></script>
-    
     <script>
-        // Script da Área Interna
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', () => {
             const token = localStorage.getItem('accessToken');
-            if (!token) {
-                window.location.href = '/';
-                return;
-            }
-
-            function parseJwt (token) {
-                try { return JSON.parse(atob(token.split('.')[1])); } catch (e) { return null; }
-            }
-            
-            const userPayload = parseJwt(token);
-            // Tenta ler 'user_role' (Grupo) ou 'perfil' (Legado)
-            const userProfile = userPayload ? (userPayload.user_role || userPayload.perfil) : 'Vendedor';
-
-            // --- CONFIGURAÇÃO DE BOTÕES POR PERFIL ---
-            // Agora 'Record Vendas' aparece para todos
-            const permissoes = {
-                'Admin': [
-                    { texto: 'Record Vendas', href: '/crm-vendas/' },
-                    { texto: 'Gestão de Governança', href: '/governanca/' },
-                    { texto: 'Controle de Presença', href: '/presenca/' },
-                    { texto: 'Esteira de Vendas', href: '/esteira/' },
-                    { texto: 'Auditoria', href: '/auditoria/' },
-                    { texto: 'Comissionamento', href: '/comissionamento/' }
-                ],
-                'Diretoria': [
-                    { texto: 'Record Vendas', href: '/crm-vendas/' },
-                    { texto: 'Gestão de Governança', href: '/governanca/' },
-                    { texto: 'Controle de Presença', href: '/presenca/' },
-                    { texto: 'Esteira de Vendas', href: '/esteira/' },
-                    { texto: 'Auditoria', href: '/auditoria/' },
-                    { texto: 'Comissionamento', href: '/comissionamento/' }
-                ],
-                'BackOffice': [
-                    { texto: 'Record Vendas', href: '/crm-vendas/' },
-                    { texto: 'Esteira de Vendas', href: '/esteira/' },
-                    { texto: 'Auditoria', href: '/auditoria/' }
-                ],
-                'Supervisor': [
-                    { texto: 'Record Vendas', href: '/crm-vendas/' },
-                    { texto: 'Controle de Presença', href: '/presenca/' },
-                    { texto: 'Esteira de Vendas', href: '/esteira/' }
-                ],
-                'Vendedor': [
-                    { texto: 'Record Vendas', href: '/crm-vendas/' }
-                ]
-            };
-
-            const containerBotoes = document.getElementById('botoes-area-interna');
-            const userInfoDiv = document.getElementById('user-info');
-            
-            containerBotoes.innerHTML = '';
-
-            // Seleciona os botões ou usa 'Vendedor' como padrão seguro
-            const botoes = permissoes[userProfile] || permissoes['Vendedor'];
-
-            if (botoes) {
-                botoes.forEach(btn => {
-                    const a = document.createElement('a');
-                    a.href = btn.href;
-                    a.className = 'action-button';
-                    a.textContent = btn.texto;
-                    containerBotoes.appendChild(a);
-                });
-            } else {
-                containerBotoes.innerHTML = '<p>Perfil não identificado ou sem acesso.</p>';
-            }
-
-            // MOSTRA INFORMAÇÕES DO USUÁRIO NO LOCAL CORRETO (TOPO)
-            if(userPayload && userPayload.username) {
-                userInfoDiv.innerHTML = `Logado como: <strong>${userPayload.username}</strong> <span class="badge bg-secondary ms-2">${userProfile}</span>`;
-                userInfoDiv.style.display = 'inline-block';
-            }
-
-            document.getElementById('logoutButton').addEventListener('click', () => {
-                localStorage.removeItem('accessToken');
-                localStorage.removeItem('refreshToken');
-                localStorage.removeItem('userProfile');
-                window.location.href = '/';
-            });
+            if (!token) { window.location.href = '/'; return; }
+            try {
+                const payload = jwt_decode(token);
+                const nome = payload.user_name || payload.username || 'Colaborador';
+                document.getElementById('user-name').innerText = nome.split(' ')[0]; // Pega só o primeiro nome
+            } catch (e) { console.error(e); }
         });
+        function logout() { localStorage.removeItem('accessToken'); window.location.href = '/'; }
     </script>
 </body>
 </html>

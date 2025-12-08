@@ -51,7 +51,7 @@ from .models import (
     Operadora, Plano, FormaPagamento, StatusCRM, MotivoPendencia,
     RegraComissao, Cliente, Venda, ImportacaoOsab, ImportacaoChurn,
     CicloPagamento, HistoricoAlteracaoVenda, PagamentoComissao,
-    Campanha, ComissaoOperadora 
+    Campanha, ComissaoOperadora, Comunicado
 )
 from .serializers import (
     OperadoraSerializer, PlanoSerializer, FormaPagamentoSerializer,
@@ -59,7 +59,7 @@ from .serializers import (
     VendaSerializer, VendaCreateSerializer, ClienteSerializer,
     VendaUpdateSerializer, ImportacaoOsabSerializer, ImportacaoChurnSerializer,
     CicloPagamentoSerializer, VendaDetailSerializer,
-    CampanhaSerializer, ComissaoOperadoraSerializer 
+    CampanhaSerializer, ComissaoOperadoraSerializer, ComunicadoSerializer
 )
 
 logger = logging.getLogger(__name__)
@@ -93,6 +93,8 @@ def get_osab_bot_user():
         bot.save()
     return bot
 
+# --- VIEWS GENÉRICAS ---
+
 class OperadoraListCreateView(generics.ListCreateAPIView):
     queryset = Operadora.objects.filter(ativo=True)
     serializer_class = OperadoraSerializer
@@ -112,12 +114,9 @@ class PlanoListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         # Filtra apenas planos ativos
         queryset = Plano.objects.filter(ativo=True)
-        
-        # Se vier o parâmetro 'operadora' na URL, filtra por ele
         operadora_id = self.request.query_params.get('operadora')
         if operadora_id:
             queryset = queryset.filter(operadora_id=operadora_id)
-            
         return queryset
 
 class PlanoDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -135,7 +134,6 @@ class FormaPagamentoDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = FormaPagamentoSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-# --- VIEWS DE CAMPANHAS ---
 class CampanhaListCreateView(generics.ListCreateAPIView):
     queryset = Campanha.objects.filter(ativo=True)
     serializer_class = CampanhaSerializer
@@ -145,14 +143,11 @@ class CampanhaDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Campanha.objects.all()
     serializer_class = CampanhaSerializer
     permission_classes = [permissions.IsAuthenticated]
-# --------------------------
 
-# --- VIEWSET DE COMISSÃO OPERADORA (NOVO) ---
 class ComissaoOperadoraViewSet(viewsets.ModelViewSet):
     queryset = ComissaoOperadora.objects.select_related('plano').all()
     serializer_class = ComissaoOperadoraSerializer
     permission_classes = [permissions.IsAuthenticated]
-# --------------------------------------------
 
 class StatusCRMListCreateView(generics.ListCreateAPIView):
     serializer_class = StatusCRMSerializer
@@ -198,6 +193,16 @@ class RegraComissaoDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [CheckAPIPermission]
     resource_name = 'regracomissao'
 
+class ComunicadoViewSet(viewsets.ModelViewSet):
+    queryset = Comunicado.objects.all().order_by('-id')
+    serializer_class = ComunicadoSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def perform_create(self, serializer):
+        serializer.save(criado_por=self.request.user)
+
+# --- VENDA VIEWSET ---
+
 class VendaViewSet(viewsets.ModelViewSet):
     permission_classes = [VendaPermission] 
     resource_name = 'venda'
@@ -209,12 +214,9 @@ class VendaViewSet(viewsets.ModelViewSet):
         return context
 
     def get_serializer_class(self):
-        if self.action == 'retrieve':
-            return VendaDetailSerializer
-        if self.action == 'create':
-            return VendaCreateSerializer
-        if self.action in ['update', 'partial_update']:
-            return VendaUpdateSerializer
+        if self.action == 'retrieve': return VendaDetailSerializer
+        if self.action == 'create': return VendaCreateSerializer
+        if self.action in ['update', 'partial_update']: return VendaUpdateSerializer
         return VendaSerializer
 
     def get_queryset(self):
@@ -230,22 +232,17 @@ class VendaViewSet(viewsets.ModelViewSet):
         flow = self.request.query_params.get('flow')
         search = self.request.query_params.get('search') 
         
-        # --- 0. Filtro por Status (Abas) ---
         status_filter = self.request.query_params.get('status')
         if status_filter:
-            # Correção para o filtro de Cancelados
             if status_filter.upper() == 'CANCELADO':
-                # Busca flexível por CANCELAD (pega Cancelada ou Cancelado)
                 queryset = queryset.filter(status_esteira__nome__icontains='CANCELAD')
             else:
                 queryset = queryset.filter(status_esteira__nome__iexact=status_filter)
 
-        # 1. Filtro de Busca (Prioritário)
         if search:
-            # Tenta limpar o search também, caso o usuário tenha colado CPF com pontos
+            # Tenta limpar o search também
             search_clean = re.sub(r'\D', '', search)
             
-            # Monta query combinada: busca textual OU busca pelo número limpo (para CPF/OS)
             filters = Q(ordem_servico__icontains=search) | \
                       Q(cliente__nome_razao_social__icontains=search) | \
                       Q(cliente__cpf_cnpj__icontains=search)
@@ -256,12 +253,7 @@ class VendaViewSet(viewsets.ModelViewSet):
 
             queryset = queryset.filter(filters)
 
-        # 2. Filtros de Permissão
-        acoes_gestao = [
-            'retrieve', 'update', 'partial_update', 'destroy',
-            'alocar_auditoria', 'liberar_auditoria', 'finalizar_auditoria',
-            'pendentes_auditoria', 'reenviar_whatsapp_aprovacao'
-        ]
+        acoes_gestao = ['retrieve', 'update', 'partial_update', 'destroy', 'alocar_auditoria', 'liberar_auditoria', 'finalizar_auditoria', 'pendentes_auditoria', 'reenviar_whatsapp_aprovacao']
 
         if self.action in acoes_gestao:
             grupos_gestao = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
@@ -273,7 +265,6 @@ class VendaViewSet(viewsets.ModelViewSet):
                 return queryset.filter(vendedor_id__in=liderados_ids)
             return queryset.filter(vendedor=user)
 
-        # 3. Filtros de View
         if not view_type:
             if flow and is_member(user, ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']):
                 view_type = 'geral'
@@ -287,7 +278,6 @@ class VendaViewSet(viewsets.ModelViewSet):
             if is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
                 pass 
             elif is_member(user, ['Auditoria', 'Qualidade']):
-                # Se não tem busca nem data, otimiza carregando só o mês atual
                 if not search and not status_filter:
                     data_inicio_param = self.request.query_params.get('data_inicio')
                     
@@ -314,24 +304,16 @@ class VendaViewSet(viewsets.ModelViewSet):
             if view_type != 'minhas_vendas':
                 queryset = queryset.filter(vendedor_id=consultor_id)
 
-        # 6. Filtros de Fluxo (Abas)
         if flow == 'auditoria':
             queryset = queryset.filter(status_tratamento__isnull=False, status_esteira__isnull=True)
-        
         elif flow == 'esteira':
-            # Filtra tudo que tenha status de esteira E estado = 'ABERTO'
-            queryset = queryset.filter(
-                status_esteira__isnull=False, 
-                status_esteira__estado__iexact='ABERTO'
-            )
-            
+            queryset = queryset.filter(status_esteira__isnull=False, status_esteira__estado__iexact='ABERTO')
         elif flow == 'comissionamento':
             queryset = queryset.filter(status_esteira__nome__iexact='Instalada').exclude(status_comissionamento__nome__iexact='Pago')
 
         if ordem_servico:
             queryset = queryset.filter(ordem_servico__icontains=ordem_servico)
 
-        # 5. Filtros de Data (Só aplica se não estiver buscando por texto ou status específico)
         if not search and not status_filter:
             if data_inicio_str and data_fim_str:
                 try:
@@ -346,22 +328,30 @@ class VendaViewSet(viewsets.ModelViewSet):
                 
         return queryset
 
+    # --- AÇÃO: REENVIAR ZAP APROVAÇÃO ---
+    @action(detail=True, methods=['post'], url_path='reenviar-whatsapp-aprovacao', permission_classes=[permissions.IsAuthenticated])
+    def reenviar_whatsapp_aprovacao(self, request, pk=None):
+        venda = self.get_object()
+        if not venda.vendedor or not venda.vendedor.tel_whatsapp:
+            return Response({"detail": "Venda sem vendedor ou vendedor sem WhatsApp cadastrado."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            svc = WhatsAppService()
+            svc.enviar_mensagem_cadastrada(venda, telefone_destino=venda.vendedor.tel_whatsapp)
+            return Response({"detail": "Mensagem reenviada com sucesso!"})
+        except Exception as e:
+            logger.error(f"Erro reenvio zap: {e}")
+            return Response({"detail": "Erro ao tentar enviar mensagem."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
     # --- AÇÃO: LISTA PENDENTES DE AUDITORIA ---
     @action(detail=False, methods=['get'])
     def pendentes_auditoria(self, request):
-        request.GET._mutable = True
-        request.GET['flow'] = 'auditoria'
-        request.GET['view'] = 'geral' 
-        request.GET._mutable = False
-        
+        request.GET._mutable = True; request.GET['flow'] = 'auditoria'; request.GET['view'] = 'geral'; request.GET._mutable = False
         qs = self.filter_queryset(self.get_queryset())
         qs = qs.exclude(status_tratamento__estado__iexact='FECHADO')
-        
         page = self.paginate_queryset(qs)
         if page is not None:
             serializer = self.get_serializer(page, many=True)
             return self.get_paginated_response(serializer.data)
-
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
 
@@ -370,20 +360,13 @@ class VendaViewSet(viewsets.ModelViewSet):
     def alocar_auditoria(self, request, pk=None):
         venda = self.get_object()
         usuario = request.user
-
         grupos_permitidos = ['Diretoria', 'Admin', 'BackOffice', 'Supervisor', 'Auditoria', 'Qualidade']
         if not is_member(usuario, grupos_permitidos):
              return Response({"detail": "Permissão negada. Apenas auditores podem alocar vendas."}, status=status.HTTP_403_FORBIDDEN)
-
         if venda.auditor_atual and venda.auditor_atual != usuario:
-            return Response(
-                {"detail": f"Esta venda já está sendo auditada por {venda.auditor_atual}."},
-                status=status.HTTP_409_CONFLICT
-            )
-        
+            return Response({"detail": f"Esta venda já está sendo auditada por {venda.auditor_atual}."}, status=status.HTTP_409_CONFLICT)
         venda.auditor_atual = usuario
         venda.save()
-        
         serializer = self.get_serializer(venda)
         return Response(serializer.data)
 
@@ -392,25 +375,17 @@ class VendaViewSet(viewsets.ModelViewSet):
     def liberar_auditoria(self, request, pk=None):
         venda = self.get_object()
         usuario = request.user
-        
         is_supervisor = is_member(usuario, ['Diretoria', 'Admin', 'Supervisor'])
-        
         if venda.auditor_atual and venda.auditor_atual != usuario and not is_supervisor:
-             return Response(
-                {"detail": "Você não tem permissão para liberar uma venda travada por outro auditor."},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
+             return Response({"detail": "Você não tem permissão para liberar uma venda travada por outro auditor."}, status=status.HTTP_403_FORBIDDEN)
         venda.auditor_atual = None
         venda.save()
-        
         return Response({"detail": "Venda liberada com sucesso."})
 
-    # --- AÇÃO: FINALIZAR AUDITORIA + EDICAO DE DADOS + ZAP REPROVACAO ---
+    # --- AÇÃO: FINALIZAR AUDITORIA ---
     @action(detail=True, methods=['post'], url_path='finalizar_auditoria', permission_classes=[permissions.IsAuthenticated])
     def finalizar_auditoria(self, request, pk=None):
         venda = self.get_object()
-        
         grupos_permitidos = ['Diretoria', 'Admin', 'BackOffice', 'Supervisor', 'Auditoria', 'Qualidade']
         if not is_member(request.user, grupos_permitidos):
              return Response({"detail": "Permissão negada."}, status=status.HTTP_403_FORBIDDEN)
@@ -422,7 +397,6 @@ class VendaViewSet(viewsets.ModelViewSet):
         if not status_novo_id:
              return Response({"detail": "Status inválido."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Buscar o Objeto Status
         status_obj = None
         if str(status_novo_id).isdigit():
              status_obj = StatusCRM.objects.filter(id=int(status_novo_id)).first()
@@ -438,37 +412,22 @@ class VendaViewSet(viewsets.ModelViewSet):
 
         try:
             with transaction.atomic():
-                # 1. Aplicar Edições nos dados da Venda e Cliente (Se houver)
                 if dados_edicao:
-                    # Dados do Cliente
                     cli_updates = {}
                     if 'cliente_nome' in dados_edicao: cli_updates['nome_razao_social'] = dados_edicao['cliente_nome'].upper()
-                    
-                    if 'cliente_cpf' in dados_edicao: 
-                        # LIMPEZA DE CPF NO BACKOFFICE TAMBÉM
-                        cli_updates['cpf_cnpj'] = re.sub(r'\D', '', dados_edicao['cliente_cpf'])
-
+                    if 'cliente_cpf' in dados_edicao: cli_updates['cpf_cnpj'] = re.sub(r'\D', '', dados_edicao['cliente_cpf'])
                     if 'cliente_email' in dados_edicao: cli_updates['email'] = dados_edicao['cliente_email']
                     
                     if cli_updates:
-                        for k, v in cli_updates.items():
-                            setattr(venda.cliente, k, v)
+                        for k, v in cli_updates.items(): setattr(venda.cliente, k, v)
                         venda.cliente.save()
 
-                    # Dados da Venda - Tratamento de Erros Comuns
                     if 'nome_mae' in dados_edicao: venda.nome_mae = (dados_edicao['nome_mae'] or '').upper()
-                    
                     if 'data_nascimento' in dados_edicao: 
                         dt = dados_edicao['data_nascimento']
-                        if dt == "": 
-                            venda.data_nascimento = None
-                        else:
-                            venda.data_nascimento = dt # Espera formato YYYY-MM-DD
-
+                        venda.data_nascimento = None if dt == "" else dt
                     if 'telefone1' in dados_edicao: venda.telefone1 = dados_edicao['telefone1']
                     if 'telefone2' in dados_edicao: venda.telefone2 = dados_edicao['telefone2']
-                    
-                    # Endereço (Limita tamanho para evitar crash)
                     if 'cep' in dados_edicao: venda.cep = str(dados_edicao['cep'])[:9]
                     if 'logradouro' in dados_edicao: venda.logradouro = (dados_edicao['logradouro'] or '').upper()
                     if 'numero' in dados_edicao: venda.numero_residencia = dados_edicao['numero']
@@ -477,28 +436,20 @@ class VendaViewSet(viewsets.ModelViewSet):
                     if 'cidade' in dados_edicao: venda.cidade = (dados_edicao['cidade'] or '').upper()
                     if 'estado' in dados_edicao: venda.estado = str(dados_edicao['estado'] or '').upper()[:2]
                     if 'referencia' in dados_edicao: venda.ponto_referencia = (dados_edicao['referencia'] or '').upper()
-
-                    # IDs de Relacionamento (Plano/Pagamento)
                     if 'plano' in dados_edicao and dados_edicao['plano']: venda.plano_id = dados_edicao['plano']
                     if 'forma_pagamento' in dados_edicao and dados_edicao['forma_pagamento']: venda.forma_pagamento_id = dados_edicao['forma_pagamento']
-
-                    # Agendamento e Datas
                     if 'data_agendamento' in dados_edicao: 
                         dt_ag = dados_edicao['data_agendamento']
                         venda.data_agendamento = None if dt_ag == "" else dt_ag
-                        
                     if 'periodo_agendamento' in dados_edicao: venda.periodo_agendamento = dados_edicao['periodo_agendamento']
 
-                # 2. Status e Automação Esteira
                 venda.status_tratamento = status_obj
                 if observacoes: venda.observacoes = observacoes
                 venda.auditor_atual = None
                 
-                # SE APROVADA (CADASTRADA), move para ESTEIRA (AGENDADO)
                 if status_obj.nome.upper() == 'CADASTRADA' and not venda.status_esteira:
                     st_agendado = StatusCRM.objects.filter(nome__iexact='AGENDADO', tipo='Esteira').first()
-                    if st_agendado:
-                        venda.status_esteira = st_agendado
+                    if st_agendado: venda.status_esteira = st_agendado
 
                 venda.save()
                 
@@ -508,24 +459,17 @@ class VendaViewSet(viewsets.ModelViewSet):
                     alteracoes={'status_tratamento': f"Auditoria finalizada: {status_obj.nome}", 'dados_editados': bool(dados_edicao)}
                 )
 
-                # 3. ENVIO DE WHATSAPP SE REPROVADA OU PENDENTE (Biometria)
                 nm_st = status_obj.nome.upper()
-                
-                # Lista de status de SUCESSO (que NÃO devem enviar mensagem de erro)
                 STATUS_SUCESSO = ['AUDITADA', 'CADASTRADA', 'APROVADA', 'INSTALADA', 'AGENDADO', 'CONCLUIDA', 'CONCLUÍDA']
-                
                 eh_repro = not any(s in nm_st for s in STATUS_SUCESSO)
                 
                 if eh_repro and venda.vendedor and venda.vendedor.tel_whatsapp:
                     try:
                         svc = WhatsAppService()
-                        
                         end_parts = []
                         if venda.logradouro: end_parts.append(venda.logradouro)
                         if venda.numero_residencia: end_parts.append(venda.numero_residencia)
-                        if venda.complemento: end_parts.append(venda.complemento)
                         if venda.bairro: end_parts.append(venda.bairro)
-                        if venda.cidade: end_parts.append(f"{venda.cidade}/{venda.estado or ''}")
                         end_str = ", ".join(end_parts) if end_parts else "Endereço não informado"
 
                         msg_text = (
@@ -535,11 +479,10 @@ class VendaViewSet(viewsets.ModelViewSet):
                             f"*Status de Auditoria:* {status_obj.nome}\n"
                             f"*Observações:* {observacoes or 'Verificar no sistema.'}"
                         )
-                        
                         svc.enviar_mensagem_texto(venda.vendedor.tel_whatsapp, msg_text)
                         logger.info(f"Zap de reprovação enviado para {venda.vendedor.username}")
-                    except Exception as e:
-                        logger.error(f"Erro ao enviar Zap Reprovação: {e}")
+                    except Exception as e_zap:
+                        logger.error(f"Erro ao enviar Zap Reprovação: {e_zap}")
 
             return Response({"status": "Auditoria finalizada com sucesso."})
 
@@ -547,27 +490,7 @@ class VendaViewSet(viewsets.ModelViewSet):
             logger.error(f"Erro crítico auditoria: {str(e)}", exc_info=True)
             return Response({"detail": f"Erro ao salvar dados: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
 
-    # --- AÇÃO NOVO: REENVIAR WHATSAPP APROVAÇÃO ---
-    @action(detail=True, methods=['post'], url_path='reenviar-whatsapp-aprovacao', permission_classes=[permissions.IsAuthenticated])
-    def reenviar_whatsapp_aprovacao(self, request, pk=None):
-        venda = self.get_object()
-        
-        # Permitir apenas se tiver vendedor e WhatsApp
-        if not venda.vendedor or not venda.vendedor.tel_whatsapp:
-            return Response({"detail": "Venda sem vendedor ou vendedor sem WhatsApp cadastrado."}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            svc = WhatsAppService()
-            svc.enviar_mensagem_cadastrada(venda, telefone_destino=venda.vendedor.tel_whatsapp)
-            return Response({"detail": "Mensagem reenviada com sucesso!"})
-        except Exception as e:
-            logger.error(f"Erro reenvio zap: {e}")
-            return Response({"detail": "Erro ao tentar enviar mensagem."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
     def perform_create(self, serializer):
-        # ----------------------------------------------------
-        # CORREÇÃO: Limpar CPF/CNPJ antes de salvar ou buscar
-        # ----------------------------------------------------
         raw_cpf = serializer.validated_data.pop('cliente_cpf_cnpj')
         cpf_limpo = re.sub(r'\D', '', raw_cpf)
         
@@ -605,20 +528,10 @@ class VendaViewSet(viewsets.ModelViewSet):
                 extra_updates['data_agendamento'] = None
                 extra_updates['periodo_agendamento'] = None
 
-        # ----------------------------------------------------
-        # CORREÇÃO: Limpar CPF/CNPJ se houver atualização do cliente
-        # ----------------------------------------------------
-        # O Serializer VendaUpdateSerializer espera 'cliente' como um dict. 
-        # A limpeza real acontece dentro do `update` do Serializer ou aqui?
-        # É melhor garantir.
-        
-        # Como o VendaUpdateSerializer manipula o cliente no método .update() dele,
-        # vamos injetar a limpeza dentro dos validated_data antes de salvar
         cliente_data = serializer.validated_data.get('cliente')
         if cliente_data and 'cpf_cnpj' in cliente_data:
              cliente_data['cpf_cnpj'] = re.sub(r'\D', '', cliente_data['cpf_cnpj'])
 
-        # Salva as alterações
         venda_atualizada = serializer.save(**extra_updates)
         
         alteracoes = {}
@@ -644,11 +557,9 @@ class VendaViewSet(viewsets.ModelViewSet):
                 logger.error(f"Erro ao salvar histórico: {e}")
 
         # --- 2. NOVA LÓGICA DE NOTIFICAÇÃO WHATSAPP (ESTEIRA) ---
-        # Verifica se houve mudança no status da esteira
         if venda_atualizada.status_esteira and venda_atualizada.status_esteira != status_esteira_antes:
             novo_status_nome = venda_atualizada.status_esteira.nome.upper()
             
-            # Verifica se é um status que deve disparar notificação (e não é Cancelamento)
             if ('PENDEN' in novo_status_nome or 'AGENDADO' in novo_status_nome or 'INSTALADA' in novo_status_nome) and 'CANCEL' not in novo_status_nome:
                 
                 if venda_atualizada.vendedor and venda_atualizada.vendedor.tel_whatsapp:
@@ -681,7 +592,8 @@ class VendaViewSet(viewsets.ModelViewSet):
                                 f"*O.S:* {os_num}\n"
                                 f"*Status:* {status_label}\n"
                                 f"*Data e turno agendado:* {data_ag} - {turno}\n"
-                                f"*Observação:* {obs}"
+                                f"*Observação:* {obs}\n\n"
+                                f"Lembrete: Peça ao seu cliente que salve o número 21 4040-1810, o técnico toda vez que coloca uma pendência o CO Digital faz uma ligação automática ao cliente para confirmar. Salvando o número ele atende e evita pendências indevidas!"
                             )
 
                         elif 'INSTALADA' in novo_status_nome:
@@ -706,7 +618,6 @@ class VendaViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
-        
         try:
             instance.ativo = False
             instance.save()
@@ -747,7 +658,6 @@ class DashboardResumoView(APIView):
         User = get_user_model()
         user = request.user
         
-        # --- FILTRO DE DATAS ---
         data_inicio_str = request.query_params.get('data_inicio')
         data_fim_str = request.query_params.get('data_fim')
         
@@ -758,7 +668,6 @@ class DashboardResumoView(APIView):
             try:
                 data_inicio = datetime.strptime(data_inicio_str, '%Y-%m-%d')
                 data_fim = datetime.strptime(data_fim_str, '%Y-%m-%d')
-                # Ajuste para pegar o dia fim inclusive
                 data_fim_ajustada = data_fim + timedelta(days=1)
                 data_fim_date = data_fim.date()
             except ValueError:
@@ -766,72 +675,51 @@ class DashboardResumoView(APIView):
                 data_fim_ajustada = (data_inicio + timedelta(days=32)).replace(day=1)
                 data_fim_date = (data_fim_ajustada - timedelta(days=1)).date()
         else:
-            # Padrão: Mês Atual
             data_inicio = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
             data_fim_ajustada = (data_inicio + timedelta(days=32)).replace(day=1)
             data_fim_date = (data_fim_ajustada - timedelta(days=1)).date()
 
-        # --- LÓGICA DE PROJEÇÃO (CORREÇÃO TOTAL DO MÊS) ---
-        # 1. Determinar o ÚLTIMO DIA DO MÊS da data de início (para calcular a META MENSAL CORRETA)
         last_day_of_month = calendar.monthrange(data_inicio.year, data_inicio.month)[1]
         data_fim_mes_projetado = data_inicio.replace(day=last_day_of_month).date()
 
-        # 2. Carrega todos os dias fiscais do mês inteiro (para o denominador da projeção)
         dias_fiscais_db = DiaFiscal.objects.filter(
             data__range=(data_inicio.date(), data_fim_mes_projetado)
         )
         mapa_fiscais = {d.data: d for d in dias_fiscais_db}
 
-        # 3. Calcular Pesos Acumulados
-        peso_total_mes_venda = 0.0 # Peso do Mês Inteiro
-        peso_realizado_venda = 0.0 # Peso até o limite do filtro (ou hoje)
-        
+        peso_total_mes_venda = 0.0
+        peso_realizado_venda = 0.0
         peso_total_mes_inst = 0.0
         peso_realizado_inst = 0.0
         
-        # Limite para "Realizado": O menor entre (Hoje) e (Fim do Filtro Selecionado)
-        # Ex: Se filtrei 01 a 05, o realizado é até dia 05. Se filtrei 01 a 31, o realizado é até Hoje.
         limite_realizado = min(hoje_date, data_fim_date)
 
-        # Loop Dia a Dia (1 até 31)
         data_iter = data_inicio.date()
-        
         while data_iter <= data_fim_mes_projetado:
-            # Define os pesos do dia (Prioridade: Banco > Fallback Padrão)
             if data_iter in mapa_fiscais:
                 p_venda = float(mapa_fiscais[data_iter].peso_venda)
                 p_inst = float(mapa_fiscais[data_iter].peso_instalacao)
             else:
-                # Fallback se não tiver no banco
-                weekday = data_iter.weekday() # 0=Seg, 6=Dom
-                if weekday == 6: 
-                    p_venda = 0.0; p_inst = 0.0
-                elif weekday == 5: 
-                    p_venda = 0.5; p_inst = 0.5
-                else: 
-                    p_venda = 1.0; p_inst = 1.0
+                weekday = data_iter.weekday()
+                if weekday == 6: p_venda = 0.0; p_inst = 0.0
+                elif weekday == 5: p_venda = 0.5; p_inst = 0.5
+                else: p_venda = 1.0; p_inst = 1.0
             
-            # Acumula no Total do Mês
             peso_total_mes_venda += p_venda
             peso_total_mes_inst += p_inst
             
-            # Acumula no Realizado (Se estiver dentro do período válido)
             if data_iter <= limite_realizado:
                 peso_realizado_venda += p_venda
                 peso_realizado_inst += p_inst
             
             data_iter += timedelta(days=1)
 
-        # Função de Projeção
         def calcular_projecao(valor_atual, peso_realizado, peso_total):
             if not peso_realizado or float(peso_realizado) == 0:
                 return 0
-            # Regra de 3: (Valor / PesoRealizado) * PesoTotalMes
             return (float(valor_atual) / float(peso_realizado)) * float(peso_total)
 
-        # --- FILTROS DE USUÁRIOS ---
         consultor_filtro_id = request.query_params.get('consultor_id')
-        
         if consultor_filtro_id:
             usuarios_para_calcular = User.objects.filter(id=consultor_filtro_id)
         elif is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
@@ -871,7 +759,6 @@ class DashboardResumoView(APIView):
             meta_individual = getattr(vendedor, 'meta_comissao', 0) or 0
             meta_display += float(meta_individual)
 
-            # Vendas Registradas
             vendas_registro = Venda.objects.filter(
                 vendedor=vendedor, ativo=True,
                 data_criacao__gte=data_inicio, data_criacao__lt=data_fim_ajustada
@@ -892,7 +779,6 @@ class DashboardResumoView(APIView):
                 detalhes_listas['TOTAL_REGISTRADAS'].append(obj_venda)
                 if nome_status != 'INSTALADA': detalhes_listas[nome_status].append(obj_venda)
 
-            # Vendas Instaladas
             vendas_instaladas = Venda.objects.filter(
                 vendedor=vendedor, ativo=True,
                 status_esteira__nome__iexact='INSTALADA',
@@ -954,13 +840,10 @@ class DashboardResumoView(APIView):
 
         valor_comissao_final = comissao_total_geral if exibir_comissao else 0.0
 
-        # --- APLICAÇÃO DA PROJEÇÃO ---
-        # Usa o Peso Total do Mês Inteiro vs Peso Realizado até agora
         projecao_vendas = calcular_projecao(total_registradas_geral, peso_realizado_venda, peso_total_mes_venda)
         projecao_instaladas = calcular_projecao(total_instaladas_geral, peso_realizado_inst, peso_total_mes_inst)
         projecao_comissao = calcular_projecao(valor_comissao_final, peso_realizado_inst, peso_total_mes_inst)
 
-        # Período exibido no título do card (pode ser o filtro selecionado)
         periodo_str = f"{data_inicio.strftime('%d/%m')} a {data_fim_date.strftime('%d/%m')}"
 
         dados = {
@@ -1006,7 +889,6 @@ class ClienteViewSet(viewsets.ReadOnlyModelViewSet):
         if search:
             filters = Q(nome_razao_social__icontains=search) | Q(cpf_cnpj__icontains=search)
             
-            # --- CORREÇÃO: Tentar formatar CPF/CNPJ se for numérico ---
             clean_search = ''.join(filter(str.isdigit, search))
             if len(clean_search) == 11:
                 cpf_fmt = f"{clean_search[:3]}.{clean_search[3:6]}.{clean_search[6:9]}-{clean_search[9:]}"
@@ -1066,12 +948,10 @@ class ComissionamentoView(APIView):
             
             comissao_bruta = 0.0
             
-            # --- AGREGADORES ---
             stats_planos = defaultdict(lambda: {'qtd': 0, 'total': 0.0})
             stats_descontos = defaultdict(float)
             
             for v in vendas:
-                # 1. Regra de Comissão
                 doc = v.cliente.cpf_cnpj if v.cliente else ''
                 doc_limpo = ''.join(filter(str.isdigit, doc))
                 tipo_cliente = 'CNPJ' if len(doc_limpo) > 11 else 'CPF'
@@ -1084,12 +964,10 @@ class ComissionamentoView(APIView):
                 valor_item = float(regra.valor_acelerado if bateu_meta else regra.valor_base) if regra else 0.0
                 comissao_bruta += valor_item
 
-                # AGREGAR PLANO (Nome, ValorUnit)
                 key_plano = (v.plano.nome, valor_item)
                 stats_planos[key_plano]['qtd'] += 1
                 stats_planos[key_plano]['total'] += valor_item
 
-                # 2. Calcular Descontos (Acumulado)
                 if v.forma_pagamento and 'BOLETO' in v.forma_pagamento.nome.upper():
                     val = float(consultor.desconto_boleto or 0)
                     if val > 0: stats_descontos['Boleto'] += val
@@ -1106,13 +984,11 @@ class ComissionamentoView(APIView):
                     val = float(consultor.adiantamento_cnpj or 0)
                     if val > 0: stats_descontos['Adiant. CNPJ'] += val
 
-            # Consolidação Final
             total_descontos = sum(stats_descontos.values())
             premiacao = 0.0 
             bonus = 0.0
             valor_liquido = (comissao_bruta + premiacao + bonus) - total_descontos
 
-            # Formatar lista de planos
             lista_planos_detalhe = []
             for (nome_plano, unitario), dados in stats_planos.items():
                 lista_planos_detalhe.append({
@@ -1123,7 +999,6 @@ class ComissionamentoView(APIView):
                 })
             lista_planos_detalhe.sort(key=lambda x: x['total'], reverse=True)
 
-            # Formatar lista de descontos
             lista_descontos_detalhe = [{'motivo': k, 'valor': v} for k, v in stats_descontos.items()]
 
             relatorio.append({
@@ -1959,15 +1834,10 @@ class LoginView(APIView):
         
         if u:
             refresh = RefreshToken.for_user(u)
-            
-            # Verifica se o usuário precisa trocar a senha
-            # Usamos getattr com default False para evitar erro caso o campo não exista
-            precisa_trocar = getattr(u, 'must_change_password', False)
-
             return JsonResponse({
                 'access_token': str(refresh.access_token),
                 'refresh_token': str(refresh),
-                'must_change_password': precisa_trocar,  # Envia o flag para o frontend
+                'must_change_password': getattr(u, 'must_change_password', False),
                 'user_id': u.id
             })
             
@@ -1983,11 +1853,7 @@ class DefinirNovaSenhaView(APIView):
         
         user = request.user
         user.set_password(nova_senha)
-        
-        # Se o modelo tiver esse campo, atualizamos para False
-        if hasattr(user, 'must_change_password'):
-            user.must_change_password = False
-            
+        if hasattr(user, 'must_change_password'): user.must_change_password = False
         user.save()
         return Response({"mensagem": "Senha alterada com sucesso!"})
 
@@ -2081,24 +1947,21 @@ class ExportarVendasExcelView(APIView):
     def get(self, request):
         user = request.user
         
-        # 1. Base Queryset (Mesma lógica de segurança do VendaViewSet)
+        # 1. Base Queryset
         queryset = Venda.objects.filter(ativo=True).select_related(
             'cliente', 'plano', 'vendedor', 'status_esteira', 'forma_pagamento'
         )
 
         # 2. Filtros de Hierarquia
-        # Se não for de grupos de gestão, aplica filtros
         if not is_member(user, ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']):
             if is_member(user, ['Supervisor']):
-                # Supervisor vê liderados + ele mesmo
                 liderados_ids = list(user.liderados.values_list('id', flat=True))
                 liderados_ids.append(user.id)
                 queryset = queryset.filter(vendedor_id__in=liderados_ids)
             else:
-                # Vendedor vê apenas suas vendas
                 queryset = queryset.filter(vendedor=user)
 
-        # 3. Filtros de Data (Opcional: pega da URL se existir)
+        # 3. Filtros de Data
         data_inicio = request.query_params.get('data_inicio')
         data_fim = request.query_params.get('data_fim')
         
@@ -2106,7 +1969,6 @@ class ExportarVendasExcelView(APIView):
             try:
                 dt_ini = datetime.strptime(data_inicio, '%Y-%m-%d').date()
                 dt_fim = datetime.strptime(data_fim, '%Y-%m-%d').date() + timedelta(days=1)
-                # Filtra por data de criação
                 queryset = queryset.filter(data_criacao__range=(dt_ini, dt_fim))
             except ValueError:
                 pass 
@@ -2137,7 +1999,6 @@ class ExportarVendasExcelView(APIView):
         nome_arquivo = f"relatorio_vendas_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
         response['Content-Disposition'] = f'attachment; filename="{nome_arquivo}"'
 
-        # Requer que o 'openpyxl' esteja instalado no ambiente (pip install openpyxl)
         try:
             with pd.ExcelWriter(response, engine='openpyxl') as writer:
                 df.to_excel(writer, sheet_name='Vendas', index=False)

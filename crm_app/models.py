@@ -340,14 +340,50 @@ class Campanha(models.Model):
     class Meta:
         verbose_name = "Campanha"
         verbose_name_plural = "Campanhas"
+
 class ComissaoOperadora(models.Model):
     plano = models.OneToOneField(Plano, on_delete=models.CASCADE, related_name='comissao_operadora', verbose_name="Plano")
     valor_base = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, verbose_name="Valor Base")
     bonus_transicao = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, verbose_name="Bônus Transição")
     
-    # Opcional: Datas para saber quando o bônus expira
     data_inicio_bonus = models.DateField(null=True, blank=True, verbose_name="Início Bônus")
     data_fim_bonus = models.DateField(null=True, blank=True, verbose_name="Fim Bônus")
 
     def __str__(self):
         return f"Recebimento {self.plano.nome}"
+
+# --- NOVO MODELO: RECORD INFORMA (COMUNICADO) ---
+class Comunicado(models.Model):
+    PERFIL_CHOICES = [
+        ('TODOS', 'Todos'),
+        ('VENDEDOR', 'Vendedores'),
+        ('SUPERVISOR', 'Supervisores'),
+        ('BACKOFFICE', 'Backoffice'),
+        ('DIRETORIA', 'Diretoria'),
+    ]
+    STATUS_CHOICES = [
+        ('PENDENTE', 'Pendente'),
+        ('ENVIADO', 'Enviado'),
+        ('CANCELADO', 'Cancelado'),
+        ('ERRO', 'Erro'),
+    ]
+
+    titulo = models.CharField(max_length=200, verbose_name="Título Interno")
+    mensagem = models.TextField(verbose_name="Mensagem WhatsApp")
+    
+    data_programada = models.DateField()
+    hora_programada = models.TimeField()
+    
+    perfil_destino = models.CharField(max_length=20, choices=PERFIL_CHOICES, default='TODOS')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDENTE')
+    
+    criado_em = models.DateTimeField(auto_now_add=True)
+    criado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.titulo} - {self.get_status_display()}"
+    
+    class Meta:
+        verbose_name = "Comunicado (Record Informa)"
+        verbose_name_plural = "Comunicados"
+        ordering = ['-data_programada', '-hora_programada']

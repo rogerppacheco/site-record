@@ -1,50 +1,43 @@
 from django.contrib import admin
 from django.urls import path, include
 from django.views.generic import TemplateView
-from usuarios.views import LoginView
-from rest_framework_simplejwt.views import TokenRefreshView
-
-# 1. IMPORTAR A VIEW DO CALENDÁRIO AQUI (Fundamental para funcionar)
-from core.views import calendario_fiscal_view 
+from usuarios.views import LoginView  # <--- CORREÇÃO AQUI (Era login_view)
 
 urlpatterns = [
-    # ROTA DE ADMIN
     path('admin/', admin.site.urls),
-
-    # =======================================================================
-    # ROTAS DA API (BACKEND)
-    # =======================================================================
     
-    # Rotas de Autenticação (JWT e Login)
-    path('api/auth/login/', LoginView.as_view(), name='token_obtain_pair'),
-    path('api/auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    # API AUTH
+    path('api/auth/login/', LoginView.as_view(), name='token_obtain_pair'), # <--- CORREÇÃO AQUI (.as_view())
+    path('api/auth/token/refresh/', include('djoser.urls.jwt')),
     
-    # Correção do Login: Redireciona chamadas diretas de /login/ para a view de autenticação
-    path('login/', LoginView.as_view(), name='login_direct'),
-
-    path('api/', include('usuarios.urls')),
+    # APIS DO SISTEMA
+    path('api/', include('djoser.urls')),
     path('api/presenca/', include('presenca.urls')),
     path('api/crm/', include('crm_app.urls')),
     path('api/osab/', include('osab.urls')),
     path('api/relatorios/', include('relatorios.urls')),
 
-    # =======================================================================
-    # ROTAS DO FRONTEND
-    # =======================================================================
-    path('', TemplateView.as_view(template_name='index.html'), name='home'),
-    path('area-interna/', TemplateView.as_view(template_name='area-interna.html'), name='area-interna'),
-    path('auditoria/', TemplateView.as_view(template_name='auditoria.html'), name='auditoria'),
-    path('crm-vendas/', TemplateView.as_view(template_name='crm_vendas.html'), name='crm_vendas'),
-    path('governanca/', TemplateView.as_view(template_name='governanca.html'), name='governanca'),
-    path('presenca/', TemplateView.as_view(template_name='presenca.html'), name='presenca'),
-    path('esteira/', TemplateView.as_view(template_name='esteira.html'), name='esteira'),
-    path('comissionamento/', TemplateView.as_view(template_name='comissionamento.html'), name='comissionamento'),
-    path('salvar-osab/', TemplateView.as_view(template_name='salvar_osab.html'), name='salvar-osab'),
-    path('salvar-churn/', TemplateView.as_view(template_name='salvar_churn.html'), name='salvar-churn'),
-    path('salvar-ciclo-pagamento/', TemplateView.as_view(template_name='salvar_ciclo_pagamento.html'), name='salvar-ciclo-pagamento'),
+    # PÁGINAS FRONTEND (HTML)
+    path('', TemplateView.as_view(template_name='public/index.html'), name='home'),
+    path('area-interna/', TemplateView.as_view(template_name='public/area-interna.html'), name='area-interna'),
+    
+    # MÓDULO RECORD INFORMA
+    path('record-informa/', TemplateView.as_view(template_name='public/record_informa.html'), name='record-informa'),
 
-    # 2. ADICIONAR AS ROTAS DO CALENDÁRIO AQUI
-    # (Como o core/urls.py não é lido, definimos direto aqui)
-    path('calendario/', calendario_fiscal_view, name='calendario_fiscal_atual'),
-    path('calendario/<int:ano>/<int:mes>/', calendario_fiscal_view, name='calendario_fiscal'),
+    # OUTROS MÓDULOS
+    path('auditoria/', TemplateView.as_view(template_name='public/auditoria.html'), name='auditoria'),
+    path('crm-vendas/', TemplateView.as_view(template_name='public/crm_vendas.html'), name='crm_vendas'),
+    path('governanca/', TemplateView.as_view(template_name='public/governanca.html'), name='governanca'),
+    path('presenca/', TemplateView.as_view(template_name='public/presenca.html'), name='presenca'),
+    path('esteira/', TemplateView.as_view(template_name='public/esteira.html'), name='esteira'),
+    path('comissionamento/', TemplateView.as_view(template_name='public/comissionamento.html'), name='comissionamento'),
+
+    # Telas de Importação
+    path('salvar-osab/', TemplateView.as_view(template_name='public/salvar_osab.html'), name='salvar-osab'),
+    path('salvar-churn/', TemplateView.as_view(template_name='public/salvar_churn.html'), name='salvar-churn'),
+    path('salvar-ciclo-pagamento/', TemplateView.as_view(template_name='public/salvar_ciclo_pagamento.html'), name='salvar-ciclo-pagamento'),
+    
+    # Calendário
+    path('calendario/', TemplateView.as_view(template_name='core/calendario_fiscal.html'), name='calendario_fiscal_atual'),
+    path('calendario/<int:ano>/<int:mes>/', TemplateView.as_view(template_name='core/calendario_fiscal.html'), name='calendario_fiscal'),
 ]
