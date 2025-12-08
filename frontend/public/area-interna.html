@@ -10,7 +10,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     
-    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=4.0">
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=4.1">
 
     <style>
         /* Estilos Exclusivos da Área Interna */
@@ -44,12 +44,15 @@
             transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
             position: relative;
             overflow: hidden;
-            display: flex;
+            display: flex; /* Flex para garantir alinhamento */
             flex-direction: column;
             align-items: center;
             justify-content: center;
             height: 180px;
         }
+
+        /* Oculta o card por padrão até o JS validar o perfil (evita piscar) */
+        .app-card { display: none; }
 
         .app-card:hover {
             transform: translateY(-8px);
@@ -97,37 +100,37 @@
 
     <main>
         <div class="app-grid">
-            <a href="/crm-vendas/" class="app-card">
+            <a href="/crm-vendas/" class="app-card" id="card-vendas">
                 <i class="bi bi-people-fill app-icon icon-vendas"></i>
-                <span class="app-title">Record Vendas</span>
+                <span class="app-title">CRM Vendas</span>
             </a>
 
-            <a href="/auditoria/" class="app-card">
+            <a href="/auditoria/" class="app-card" id="card-auditoria">
                 <i class="bi bi-headset app-icon icon-auditoria"></i>
                 <span class="app-title">Auditoria</span>
             </a>
 
-            <a href="/record-informa/" class="app-card">
+            <a href="/record-informa/" class="app-card" id="card-informa">
                 <i class="bi bi-megaphone-fill app-icon icon-informa"></i>
                 <span class="app-title">Record Informa</span>
             </a>
 
-            <a href="/esteira/" class="app-card">
+            <a href="/esteira/" class="app-card" id="card-esteira">
                 <i class="bi bi-list-check app-icon icon-esteira"></i>
                 <span class="app-title">Esteira</span>
             </a>
 
-            <a href="/presenca/" class="app-card">
+            <a href="/presenca/" class="app-card" id="card-presenca">
                 <i class="bi bi-calendar-check-fill app-icon icon-rh"></i>
                 <span class="app-title">Presença (RH)</span>
             </a>
             
-             <a href="/comissionamento/" class="app-card">
+             <a href="/comissionamento/" class="app-card" id="card-comissao">
                 <i class="bi bi-cash-stack app-icon icon-auditoria"></i>
                 <span class="app-title">Comissão</span>
             </a>
 
-            <a href="/governanca/" class="app-card">
+            <a href="/governanca/" class="app-card" id="card-governanca">
                 <i class="bi bi-gear-fill app-icon icon-config"></i>
                 <span class="app-title">Governança</span>
             </a>
@@ -140,12 +143,47 @@
         document.addEventListener('DOMContentLoaded', () => {
             const token = localStorage.getItem('accessToken');
             if (!token) { window.location.href = '/'; return; }
+            
+            let userProfile = 'Vendedor'; // Padrão
+            
             try {
                 const payload = jwt_decode(token);
                 const nome = payload.user_name || payload.username || 'Colaborador';
-                document.getElementById('user-name').innerText = nome.split(' ')[0]; // Pega só o primeiro nome
+                document.getElementById('user-name').innerText = nome.split(' ')[0];
+                
+                // Normaliza o perfil vindo do token
+                userProfile = payload.user_role || payload.perfil || 'Vendedor';
             } catch (e) { console.error(e); }
+
+            // --- REGRAS DE VISIBILIDADE (Quem vê o quê) ---
+            const regras = {
+                // Acesso Total
+                'Diretoria': 'all',
+                'Admin': 'all',
+
+                // Acesso Backoffice (Vendas, Informa, Esteira, Auditoria)
+                'BackOffice': ['card-vendas', 'card-informa', 'card-esteira', 'card-auditoria'],
+
+                // Acesso Supervisor (Vendas + Presença)
+                'Supervisor': ['card-vendas', 'card-presenca'],
+
+                // Acesso Vendedor (Vendas + Presença)
+                'Vendedor': ['card-vendas', 'card-presenca']
+            };
+
+            const cardsPermitidos = regras[userProfile] || regras['Vendedor']; // Fallback seguro
+
+            // Aplica a visibilidade
+            const todosCards = document.querySelectorAll('.app-card');
+            todosCards.forEach(card => {
+                if (cardsPermitidos === 'all' || cardsPermitidos.includes(card.id)) {
+                    card.style.display = 'flex'; // Exibe (flex para alinhar ícone e texto)
+                } else {
+                    card.style.display = 'none'; // Mantém oculto
+                }
+            });
         });
+
         function logout() { localStorage.removeItem('accessToken'); window.location.href = '/'; }
     </script>
 </body>
