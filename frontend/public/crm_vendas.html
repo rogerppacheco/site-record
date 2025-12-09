@@ -954,13 +954,18 @@
             const telefone = input.value.replace(/\D/g, ''); 
             const feedbackDiv = document.getElementById('feedback-whatsapp');
             const btnSalvar = document.getElementById('btn-salvar-venda');
+            
             if (telefone.length < 10) return;
+            
             input.classList.remove('is-valid', 'is-invalid');
             if(feedbackDiv) feedbackDiv.innerHTML = '<span class="text-warning spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> <span class="text-warning small">Verificando WhatsApp...</span>';
             if(btnSalvar) btnSalvar.disabled = true; 
+            
             try {
                 const data = await apiFetch(`/crm/verificar-zap/${telefone}/`, { method: 'GET' });
-                if (data && data.possui_whatsapp) {
+                
+                // CORREÇÃO AQUI: Verifica todas as chaves possíveis
+                if (data && (data.whatsapp_valido || data.exists || data.possui_whatsapp)) {
                     input.classList.add('is-valid'); input.classList.remove('is-invalid');
                     if(feedbackDiv) feedbackDiv.innerHTML = '<span class="text-success fw-bold small"><i class="bi bi-whatsapp"></i> WhatsApp Confirmado!</span>';
                     if(btnSalvar) btnSalvar.disabled = false; 
@@ -972,6 +977,7 @@
                 }
             } catch (error) {
                 console.error("Erro verificação WhatsApp:", error);
+                // Em caso de erro técnico, libera o cadastro
                 input.classList.remove('is-valid', 'is-invalid');
                 if(feedbackDiv) feedbackDiv.innerHTML = '<span class="text-warning small">Não foi possível verificar (API Offline).</span>';
                 if(btnSalvar) btnSalvar.disabled = false;

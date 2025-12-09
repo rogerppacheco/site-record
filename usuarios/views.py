@@ -2,7 +2,7 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.views import APIView  # <--- Importação ADICIONADA importante
+from rest_framework.views import APIView  # <--- ESTA LINHA ERA A QUE FALTAVA
 from django.contrib.auth.models import ContentType, Group, Permission
 from django.db import transaction
 from django.utils.crypto import get_random_string
@@ -63,7 +63,6 @@ class UsuarioViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     # --- NOVA SEGURANÇA: ESQUECI A SENHA ---
-    # CORREÇÃO AQUI: Adicionado authentication_classes=[] para ignorar CSRF/Session
     @action(detail=False, methods=['post'], permission_classes=[AllowAny], authentication_classes=[], url_path='esqueci-senha')
     def solicitar_reset_senha(self, request):
         serializer = ResetSenhaSolicitacaoSerializer(data=request.data)
@@ -79,7 +78,6 @@ class UsuarioViewSet(viewsets.ModelViewSet):
                     break
             
             if not usuario:
-                # Retorno genérico ou 404
                 return Response({"detail": "CPF não encontrado."}, status=404)
 
             if not usuario.tel_whatsapp:
@@ -115,7 +113,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
         
         return Response(serializer.errors, status=400)
 
-    # --- NOVA SEGURANÇA: DEFINIR SENHA DEFINITIVA (Action) ---
+    # --- NOVA SEGURANÇA: DEFINIR SENHA DEFINITIVA ---
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated], url_path='definir-senha')
     def definir_nova_senha(self, request):
         serializer = TrocaSenhaSerializer(data=request.data)
@@ -131,7 +129,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
         
         return Response(serializer.errors, status=400)
 
-# --- OUTRAS VIEWSETS (Mantidas iguais) ---
+# --- OUTRAS VIEWSETS ---
 
 class GrupoViewSet(viewsets.ModelViewSet):
     queryset = Group.objects.all().order_by('name')
@@ -205,8 +203,7 @@ class RecursoViewSet(viewsets.ViewSet):
                 recursos_formatados.append(f"{app}_{model}")
         return Response(recursos_formatados)
 
-# --- CLASSE ADICIONADA: DefinirNovaSenhaView ---
-# Necessária para a rota 'auth/definir-senha/' no urls.py
+# CLASSE ADICIONADA PARA EVITAR ERRO DE IMPORTAÇÃO NO URLS.PY
 class DefinirNovaSenhaView(APIView):
     permission_classes = [IsAuthenticated]
 

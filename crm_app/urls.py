@@ -1,8 +1,8 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
-# --- IMPORTAÇÃO CORRIGIDA ---
-# Importe as views de autenticação do app 'usuarios'
+# --- CORREÇÃO IMPORTANTE AQUI ---
+# Importamos as views de login/senha do app 'usuarios', onde elas estão definidas.
 from usuarios.views import LoginView, DefinirNovaSenhaView
 
 from .views import (
@@ -38,10 +38,8 @@ from .views import (
     # WhatsApp e Novos Recursos
     api_verificar_whatsapp,
     enviar_comissao_whatsapp,
-    ImportarKMLView,
-    WebhookWhatsAppView,
-    
-    # REMOVA LoginView e DefinirNovaSenhaView daqui, pois já importamos acima
+    ImportarKMLView,        
+    WebhookWhatsAppView,    
 )
 
 router = DefaultRouter()
@@ -57,8 +55,7 @@ urlpatterns = [
     path('auth/login/', LoginView.as_view(), name='auth-login'),
     path('auth/definir-senha/', DefinirNovaSenhaView.as_view(), name='definir-senha'),
 
-    # ... (o restante das URLs continua igual) ...
-    # --- Cadastros Gerais (Views Manuais) ---
+    # --- Cadastros Gerais ---
     path('operadoras/', OperadoraListCreateView.as_view(), name='operadora-list'),
     path('operadoras/<int:pk>/', OperadoraDetailView.as_view(), name='operadora-detail'),
     
@@ -100,7 +97,7 @@ urlpatterns = [
     path('import/churn/<int:pk>/', ImportacaoChurnDetailView.as_view(), name='importacao-churn-detail'),
     path('import/ciclo-pagamento/', ImportacaoCicloPagamentoView.as_view(), name='importacao-ciclo-pagamento'),
     
-    # --- NOVAS ROTAS (MAPA E WHATSAPP) ---
+    # --- Novos Recursos ---
     path('importar-kml/', ImportarKMLView.as_view(), name='importar-kml'),
     path('webhook-whatsapp/', WebhookWhatsAppView.as_view(), name='webhook-whatsapp'),
     

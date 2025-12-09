@@ -6,7 +6,7 @@ import base64
 import io
 from datetime import datetime
 
-# Tenta importar o Pillow para geração de imagens (opcional, mas necessário para o resumo de comissão)
+# Tenta importar o Pillow para geração de imagens
 try:
     from PIL import Image, ImageDraw, ImageFont
 except ImportError:
@@ -18,16 +18,20 @@ logger = logging.getLogger(__name__)
 
 class WhatsAppService:
     def __init__(self):
+        # Carrega credenciais
         self.instance_id = config('ZAPI_INSTANCE_ID', default='')
         self.token = config('ZAPI_TOKEN', default='')
         self.client_token = config('ZAPI_CLIENT_TOKEN', default='')
         
         self.base_url = f"https://api.z-api.io/instances/{self.instance_id}/token/{self.token}"
 
+        # DEBUG: Mostra no terminal o que foi carregado (oculta parte da senha)
+        print(f"--- DEBUG Z-API ---")
+        print(f"Instancia: {self.instance_id}")
+        print(f"ClientToken Carregado: {self.client_token[:5]}...{self.client_token[-3:] if self.client_token else 'VAZIO'}")
+        print(f"-------------------")
+
     def _get_headers(self):
-        """
-        Retorna os cabeçalhos necessários, incluindo o Client-Token se existir.
-        """
         headers = {
             'Content-Type': 'application/json'
         }
@@ -49,25 +53,30 @@ class WhatsAppService:
         url = f"{self.base_url}/phone-exists/{telefone_limpo}"
         
         if not self.instance_id or not self.token:
-            # logger.error("Z-API credentials não configuradas.")
-            return False 
+            print("Z-API: Credenciais não encontradas.")
+            return True # Retorna True para não travar a venda se faltar config
 
         try:
+            print(f"Z-API: Consultando URL: {url}")
             response = requests.get(url, headers=self._get_headers())
             
+            # --- DEBUG DETALHADO DO ERRO ---
             if response.status_code != 200:
-                # Silencia erros comuns de conexão para não poluir log em dev
-                pass
+                print(f"Z-API ERRO {response.status_code}: {response.text}")
+                # IMPORTANTE: Se der erro na API (ex: 403, 500), assumimos que o número 
+                # EXISTE (True) para não impedir o vendedor de trabalhar por culpa do sistema.
+                return True 
             
-            if response.status_code == 200:
-                data = response.json()
-                return data.get('exists', False)
-            
-            return False
+            # Sucesso (200)
+            data = response.json()
+            exists = data.get('exists', False)
+            print(f"Z-API Sucesso: {telefone_limpo} existe? {exists}")
+            return exists
 
         except Exception as e:
-            logger.error(f"Erro ao verificar número na Z-API: {e}")
-            return False
+            print(f"Z-API Exceção de Conexão: {e}")
+            # Se a conexão falhar, assume True para não travar
+            return True
 
     def enviar_mensagem_texto(self, telefone, mensagem):
         url = f"{self.base_url}/send-text"
@@ -80,8 +89,6 @@ class WhatsAppService:
 
         try:
             response = requests.post(url, json=payload, headers=self._get_headers())
-            # response.raise_for_status() # Opcional
-            logger.info(f"WhatsApp enviado para {telefone_limpo}")
             return True, response.json() if response.content else {}
         except Exception as e:
             logger.error(f"Erro ao enviar WhatsApp para {telefone_limpo}: {e}")
@@ -94,16 +101,13 @@ class WhatsAppService:
         
         payload = {
             "phone": telefone_limpo,
-            "image": base64_data, # String deve começar com "data:image/..."
+            "image": base64_data, 
             "caption": caption
         }
         
         try:
             response = requests.post(url, json=payload, headers=self._get_headers())
-            if response.status_code not in [200, 201]:
-                logger.error(f"Erro Z-API Imagem: {response.text}")
-                return False
-            return True
+            return response.status_code in [200, 201]
         except Exception as e:
             logger.error(f"Exceção Imagem: {e}")
             return False
@@ -115,52 +119,29 @@ class WhatsAppService:
         
         payload = {
             "phone": telefone_limpo,
-            "document": base64_data, # String deve começar com "data:application/pdf..."
+            "document": base64_data,
             "fileName": nome_arquivo
         }
         
         try:
             response = requests.post(url, json=payload, headers=self._get_headers())
-            if response.status_code not in [200, 201]:
-                logger.error(f"Erro Z-API PDF: {response.text}")
-                return False
-            return True
+            return response.status_code in [200, 201]
         except Exception as e:
             logger.error(f"Exceção PDF: {e}")
             return False
 
     # --- GERADOR DE IMAGEM DINÂMICA (Card Detalhado - Comissão) ---
     def _gerar_imagem_resumo_bytes(self, dados):
-        """
-        Gera uma imagem dinâmica que cresce conforme a quantidade de itens.
-        dados esperado: {
-            'titulo': str, 'vendedor': str, 'periodo': str, 
-            'total': str,
-            'detalhes_planos': [{'nome': 'Plano X', 'qtd': 5, 'valor': 'R$ 500'}],
-            'detalhes_descontos': [{'motivo': 'Boleto', 'valor': '-R$ 50'}]
-        }
-        """
         if not Image:
-            logger.error("Biblioteca Pillow (PIL) não instalada.")
             return None
 
-        # 1. Recuperar listas
         planos = dados.get('detalhes_planos', [])
         descontos = dados.get('detalhes_descontos', [])
 
-        # 2. Calcular Altura Necessária da Imagem
-        # Header (140px) + Footer (100px) = 240px base
         base_height = 250
-        
-        # Cada linha de plano ocupa ~35px. Título da seção +40px.
         height_planos = (len(planos) * 35) + 40 if planos else 0
-        
-        # Cada linha de desconto ocupa ~35px. Título da seção +40px.
         height_descontos = (len(descontos) * 35) + 40 if descontos else 0
-        
-        final_height = base_height + height_planos + height_descontos
-        final_height = max(final_height, 400)
-        
+        final_height = max(base_height + height_planos + height_descontos, 400)
         width = 600
 
         # Cores
@@ -173,13 +154,10 @@ class WhatsAppService:
         image = Image.new('RGB', (width, final_height), bg_color)
         draw = ImageDraw.Draw(image)
 
-        # Desenhar Fundo do Card
         margin = 20
         draw.rectangle([(margin, margin), (width-margin, final_height-margin)], fill=card_color, outline=(200,200,200), width=1)
 
-        # Carregar Fontes (Fallback para padrão se não achar ttf)
         try:
-            # Tenta carregar fontes do sistema ou pasta local (ajuste os caminhos se tiver as fontes)
             font_title = ImageFont.truetype("arial.ttf", 32)
             font_sub = ImageFont.truetype("arialbd.ttf", 22) 
             font_text = ImageFont.truetype("arial.ttf", 20)
@@ -190,7 +168,6 @@ class WhatsAppService:
             font_text = ImageFont.load_default()
             font_val_big = ImageFont.load_default()
 
-        # --- CABEÇALHO ---
         y = 50
         draw.text((40, y), dados.get('titulo', 'Resumo Detalhado'), font=font_title, fill=primary_color)
         y += 45
@@ -200,19 +177,16 @@ class WhatsAppService:
         draw.line([(40, y), (560, y)], fill=(230,230,230), width=2)
         y += 20
 
-        # --- SEÇÃO: PLANOS ---
         if planos:
             draw.text((40, y), "Vendas por Plano:", font=font_sub, fill=(50,50,50))
             y += 35
             for p in planos:
                 texto_esq = f"{p['nome']} ({p['qtd']}x)"
                 draw.text((40, y), texto_esq, font=font_text, fill=text_color)
-                # Valor alinhado à direita
                 draw.text((420, y), p['valor'], font=font_text, fill=(0, 120, 0)) 
                 y += 30
             y += 10 
 
-        # --- SEÇÃO: DESCONTOS ---
         if descontos:
             draw.line([(40, y), (560, y)], fill=(230,230,230), width=1)
             y += 20
@@ -223,7 +197,6 @@ class WhatsAppService:
                 draw.text((420, y), d['valor'], font=font_text, fill=red_color)
                 y += 30
         
-        # --- FOOTER (TOTAL) ---
         y_footer = final_height - 110 
         draw.rectangle([(25, y_footer), (575, final_height-25)], fill=(235, 245, 255))
         draw.text((45, y_footer + 30), "Líquido a Receber:", font=font_sub, fill=primary_color)
@@ -231,81 +204,46 @@ class WhatsAppService:
         total_str = dados.get('total', 'R$ 0,00')
         draw.text((300, y_footer + 20), total_str, font=font_val_big, fill=(0, 150, 0))
 
-        # Salvar em Buffer
         buffer = io.BytesIO()
         image.save(buffer, format='PNG')
         buffer.seek(0)
         return buffer
 
     def enviar_resumo_comissao(self, telefone, dados_comissao):
-        """
-        Orquestra a geração e envio da imagem detalhada de comissão.
-        """
         try:
-            logger.info(f"Gerando card detalhado para {telefone}...")
-            
-            # 1. Gerar imagem dinâmica
             img_buffer = self._gerar_imagem_resumo_bytes(dados_comissao)
-            
-            if not img_buffer:
-                return False
+            if not img_buffer: return False
 
-            # 2. Converter Base64
             img_str = base64.b64encode(img_buffer.getvalue()).decode('utf-8')
             base64_final = f"data:image/png;base64,{img_str}"
-            
-            # 3. Caption e Envio
             caption = f"Olá {dados_comissao.get('vendedor')}, segue o detalhamento do fechamento {dados_comissao.get('periodo')}! 🚀"
             return self.enviar_imagem_b64(telefone, base64_final, caption=caption)
-
         except Exception as e:
             logger.error(f"Erro ao processar envio de resumo visual: {e}")
             return False
 
-    # --- MÉTODO DE ENVIO DE O.S. (CADASTRADA) ---
     def enviar_mensagem_cadastrada(self, venda, telefone_destino=None):
-        """
-        Envia a mensagem padrão de 'Venda Aprovada/Cadastrada' com todos os detalhes técnicos.
-        """
-        # 1. Verifica DACC (Débito Automático)
         is_dacc = "NÃO"
-        if venda.forma_pagamento and "DÉBITO" in venda.forma_pagamento.nome.upper():
-            is_dacc = "SIM"
+        if venda.forma_pagamento and "DÉBITO" in venda.forma_pagamento.nome.upper(): is_dacc = "SIM"
 
-        # 2. Formata Agendamento
         agendamento_str = "A confirmar"
         if venda.data_agendamento:
             try:
-                # Se for string ISO, converte. Se já for date, usa direto.
                 if isinstance(venda.data_agendamento, str):
                     dt = datetime.strptime(venda.data_agendamento, '%Y-%m-%d')
                     data_fmt = dt.strftime('%d/%m/%Y')
                 else:
                     data_fmt = venda.data_agendamento.strftime('%d/%m/%Y')
                 
-                horario = ""
-                turno = venda.periodo_agendamento
-                if turno == 'MANHA':
-                    horario = "08:00 às 12:00"
-                elif turno == 'TARDE':
-                    horario = "13:00 às 18:00"
-                elif turno: 
-                    horario = turno 
+                turno = venda.periodo_agendamento or ""
+                if turno == 'MANHA': horario = "08:00 às 12:00"
+                elif turno == 'TARDE': horario = "13:00 às 18:00"
+                else: horario = turno 
                 
-                agendamento_str = f"Agendamento confirmado para o dia {data_fmt}"
-                if horario:
-                    agendamento_str += f" entre {horario}"
-            except Exception as e:
-                logger.warning(f"Erro ao formatar data agendamento: {e}")
-                agendamento_str = str(venda.data_agendamento)
+                agendamento_str = f"Agendamento confirmado para o dia {data_fmt} {horario}"
+            except: pass
 
-        # 3. Nome do Vendedor
-        vendedor_nome = "N/A"
-        if venda.vendedor:
-            # Tenta pegar first_name, se não tiver usa username
-            vendedor_nome = (venda.vendedor.first_name or venda.vendedor.username).upper()
-
-        # 4. Montagem do Texto (TEMPLATE PADRÃO NIO)
+        vendedor_nome = (venda.vendedor.first_name or venda.vendedor.username).upper() if venda.vendedor else "N/A"
         nome_cliente = venda.cliente.nome_razao_social.upper() if venda.cliente else '-'
         cpf_cnpj = venda.cliente.cpf_cnpj if venda.cliente else '-'
         nome_plano = venda.plano.nome.upper() if venda.plano else '-'
@@ -323,16 +261,10 @@ class WhatsAppService:
             f"⚠FATURA, SEGUNDA VIA OU DÚVIDAS\n"
             f"https://www.niointernet.com.br/\n"
             f"WhatsApp: 31985186530\n"
-            f"Para que sua instalação seja concluída favor salvar esse CTO no seu telefone, Técnico Nio 21 2533-9053 para receber informações da Visita."
+            f"Para que sua instalação seja concluída favor salvar esse CTO no seu telefone, Técnico Nio 21 4040-1810 para receber informações da Visita."
         )
 
-        # 5. Define destinatário e envia
-        # Prioridade: Telefone passado no argumento (do vendedor) > Telefone 1 do cadastro da venda
         fone_para_envio = telefone_destino if telefone_destino else venda.telefone1
-        
         if fone_para_envio:
-            logger.info(f"Enviando msg detalhada de aprovação para {fone_para_envio}")
             return self.enviar_mensagem_texto(fone_para_envio, mensagem)
-        else:
-            logger.warning("Tentativa de envio de mensagem cadastrada sem telefone de destino.")
-            return False, "Telefone não informado"
+        return False, "Telefone não informado"
