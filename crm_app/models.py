@@ -424,3 +424,13 @@ class AreaVenda(models.Model):
     class Meta:
         verbose_name = "Área de Venda (KML)"
         verbose_name_plural = "Áreas de Venda (KML)"
+# --- Adicione no final de crm_app/models.py ---
+
+class SessaoWhatsapp(models.Model):
+    telefone = models.CharField(max_length=20, unique=True)
+    etapa = models.CharField(max_length=50) # ex: 'AGUARDANDO_CEP', 'AGUARDANDO_NUMERO'
+    dados_temp = models.JSONField(default=dict) # Para guardar o CEP enquanto espera o número
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.telefone} - {self.etapa}"

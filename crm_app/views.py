@@ -40,8 +40,9 @@ from core.models import DiaFiscal
 from .whatsapp_service import WhatsAppService 
 from .utils import verificar_viabilidade_por_cep
 from xhtml2pdf import pisa 
-
+from .models import SessaoWhatsapp # Importe o novo modelo
 from usuarios.permissions import CheckAPIPermission, VendaPermission
+from .utils import verificar_viabilidade_por_coordenadas, verificar_viabilidade_exata
 
 from .models import (
     Operadora, Plano, FormaPagamento, StatusCRM, MotivoPendencia,
@@ -1895,76 +1896,90 @@ class ImportarKMLView(APIView):
             return Response({'error': f'Erro crítico KML: {str(e)}'}, status=500)
 
 class WebhookWhatsAppView(APIView):
-    """
-    Recebe mensagens do Z-API (Webhook).
-    Se for um CEP, verifica viabilidade e responde.
-    """
     permission_classes = [AllowAny]
 
     def post(self, request, *args, **kwargs):
         try:
             data = request.data
-            
-            # Log para debug (ajuda a ver o que está chegando)
-            # logger.info(f"Webhook recebido: {data}")
+            if isinstance(data, list): data = data[0] if len(data) > 0 else {}
+            if not isinstance(data, dict): return Response({'status': 'ignored'})
 
-            # Z-API às vezes manda lista de mensagens. Pega a primeira se for lista.
-            if isinstance(data, list):
-                if len(data) > 0:
-                    data = data[0]
-                else:
-                    return Response({'status': 'empty_list'})
-
-            # Se data ainda não for dict, aborta
-            if not isinstance(data, dict):
-                return Response({'status': 'invalid_format'}, status=400)
-            
-            # Tenta extrair telefone e texto de várias formas possíveis
             phone = data.get('phone') or data.get('sender')
-            
+            if not phone: return Response({'status': 'ignored'})
+
+            # Extrair texto
             text = ""
-            if 'message' in data and isinstance(data['message'], dict):
-                # Formato novo/padrão
-                text = data['message'].get('text', '')
-            elif 'text' in data and isinstance(data['text'], dict):
-                # Formato antigo/alternativo
-                text = data['text'].get('message', '')
+            if 'text' in data and isinstance(data['text'], dict):
+                text = data['text'].get('message', '').strip()
             elif 'text' in data and isinstance(data['text'], str):
-                # Texto direto
-                text = data['text']
+                text = data['text'].strip()
 
-            # Se não achou dados vitais, ignora (pode ser status de entrega, etc)
-            if not phone or not text:
-                return Response({'status': 'ignored_no_text'}, status=200)
+            service = WhatsAppService()
 
-            # Verifica se é um CEP (8 dígitos)
-            if re.match(r'^\d{5}-?\d{3}$', text.strip()):
-                
-                resultado = verificar_viabilidade_por_cep(text.strip())
-                
-                service = WhatsAppService()
-                
-                if resultado['viabilidade']:
-                    resp = (
-                        f"✅ *Viabilidade Encontrada!*\n\n"
-                        f"📍 *Célula:* {resultado['celula']}\n"
-                        f"🏙 *Município:* {resultado['municipio']}\n"
-                        f"📊 *Status:* {resultado['status']}\n"
-                        f"🏠 *HP Viável:* {resultado['hp_viavel']}\n\n"
-                        f"Pode prosseguir com a venda!"
-                    )
+            # 1. VERIFICAÇÃO POR LOCALIZAÇÃO (MAPA - CLIPE)
+            # Se mandar localização, ignora o fluxo de texto e responde na hora
+            if 'location' in data or data.get('type') == 'location':
+                loc_data = data.get('location') or data
+                if loc_data and 'latitude' in loc_data:
+                    lat = float(loc_data['latitude'])
+                    lng = float(loc_data['longitude'])
+                    res = verificar_viabilidade_por_coordenadas(lat, lng)
+                    service.enviar_mensagem_texto(phone, res['msg'])
+                    # Limpa sessão se existir
+                    SessaoWhatsapp.objects.filter(telefone=phone).delete()
+                    return Response({'status': 'loc_processed'})
+
+            # 2. FLUXO DE CONVERSA (TEXTO)
+            # Recupera ou cria sessão
+            sessao, _ = SessaoWhatsapp.objects.get_or_create(
+                telefone=phone, 
+                defaults={'etapa': 'MENU'}
+            )
+
+            msg_upper = text.upper()
+
+            # GATILHO INICIAL: "VIABILIDADE"
+            if msg_upper == "VIABILIDADE":
+                sessao.etapa = 'AGUARDANDO_CEP'
+                sessao.dados_temp = {} # Limpa dados anteriores
+                sessao.save()
+                service.enviar_mensagem_texto(phone, "Olá! 🌍\nPor favor, digite o *CEP* do local (apenas números):")
+                return Response({'status': 'step_1_cep'})
+
+            # ETAPA 1: RECEBEU O CEP -> PEDE NÚMERO
+            elif sessao.etapa == 'AGUARDANDO_CEP':
+                # Validação básica de CEP
+                cep_limpo = "".join(filter(str.isdigit, text))
+                if len(cep_limpo) == 8:
+                    sessao.dados_temp = {'cep': cep_limpo}
+                    sessao.etapa = 'AGUARDANDO_NUMERO'
+                    sessao.save()
+                    service.enviar_mensagem_texto(phone, "Certo! Agora digite o *NÚMERO* da fachada (ou 'SN' se não tiver):")
                 else:
-                    resp = f"❌ {resultado['msg']}"
+                    service.enviar_mensagem_texto(phone, "⚠️ CEP inválido. Por favor, digite um CEP com 8 dígitos:")
+                return Response({'status': 'step_2_num'})
+
+            # ETAPA 2: RECEBEU O NÚMERO -> PROCESSA TUDO
+            elif sessao.etapa == 'AGUARDANDO_NUMERO':
+                cep = sessao.dados_temp.get('cep')
+                numero = text
                 
-                # Envia a resposta
-                service.enviar_mensagem_texto(phone, resp)
-                return Response({'status': 'replied'})
+                service.enviar_mensagem_texto(phone, "🔎 Buscando no mapa, aguarde um instante...")
+                
+                # Chama a nova função exata
+                resultado = verificar_viabilidade_exata(cep, numero)
+                
+                service.enviar_mensagem_texto(phone, resultado['msg'])
+                
+                # Reseta o robô
+                sessao.delete()
+                return Response({'status': 'finished'})
 
             return Response({'status': 'no_action'})
 
         except Exception as e:
             logger.error(f"Webhook Error: {e}", exc_info=True)
-            return Response({'status': 'error', 'detail': str(e)}, status=500)
+            return Response({'status': 'error'}, status=500)
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])

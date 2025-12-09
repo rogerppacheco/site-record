@@ -84,3 +84,5 @@ xhtml2pdf==0.2.16
 zopfli==0.2.3.post1
 mysqlclient==2.2.4
 gunicorn==21.2.0
+shapely==2.0.6
+requests==2.31.0
