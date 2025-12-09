@@ -10,6 +10,7 @@ import json
 import os 
 import calendar
 import re 
+import xml.etree.ElementTree as ET
 
 from django.db.models import Count, Q, Sum
 from django.utils import timezone
@@ -34,24 +35,19 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.exceptions import PermissionDenied, NotFound
 from rest_framework.decorators import api_view, permission_classes, action 
 
-# --- IMPORTS EXTRAS PARA O DASHBOARD ---
+# --- IMPORTS EXTRAS ---
 from core.models import DiaFiscal 
-# ---------------------------------------
-
-# --- IMPORTS WHATSAPP ---
 from .whatsapp_service import WhatsAppService 
-# ------------------------
-
+from .utils import verificar_viabilidade_por_cep
 from xhtml2pdf import pisa 
 
-# Importando permissões customizadas
 from usuarios.permissions import CheckAPIPermission, VendaPermission
 
 from .models import (
     Operadora, Plano, FormaPagamento, StatusCRM, MotivoPendencia,
     RegraComissao, Cliente, Venda, ImportacaoOsab, ImportacaoChurn,
     CicloPagamento, HistoricoAlteracaoVenda, PagamentoComissao,
-    Campanha, ComissaoOperadora, Comunicado
+    Campanha, ComissaoOperadora, Comunicado, AreaVenda
 )
 from .serializers import (
     OperadoraSerializer, PlanoSerializer, FormaPagamentoSerializer,
@@ -64,9 +60,7 @@ from .serializers import (
 
 logger = logging.getLogger(__name__)
 
-# --- FUNÇÃO AUXILIAR DE SEGURANÇA ---
 def is_member(user, groups):
-    """Verifica se o usuário pertence a algum dos grupos listados."""
     if user.is_superuser:
         return True
     if user.groups.filter(name__in=groups).exists():
@@ -75,7 +69,6 @@ def is_member(user, groups):
         return True
     return False
 
-# --- FUNÇÃO PARA PEGAR/CRIAR O USUÁRIO ROBÔ DA IMPORTAÇÃO ---
 def get_osab_bot_user():
     User = get_user_model()
     bot, created = User.objects.get_or_create(
@@ -92,8 +85,6 @@ def get_osab_bot_user():
         bot.set_unusable_password()
         bot.save()
     return bot
-
-# --- VIEWS GENÉRICAS ---
 
 class OperadoraListCreateView(generics.ListCreateAPIView):
     queryset = Operadora.objects.filter(ativo=True)
@@ -112,7 +103,6 @@ class PlanoListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        # Filtra apenas planos ativos
         queryset = Plano.objects.filter(ativo=True)
         operadora_id = self.request.query_params.get('operadora')
         if operadora_id:
@@ -201,8 +191,6 @@ class ComunicadoViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(criado_por=self.request.user)
 
-# --- VENDA VIEWSET ---
-
 class VendaViewSet(viewsets.ModelViewSet):
     permission_classes = [VendaPermission] 
     resource_name = 'venda'
@@ -227,7 +215,6 @@ class VendaViewSet(viewsets.ModelViewSet):
         ).prefetch_related('historico_alteracoes__usuario').order_by('-data_criacao')
         
         user = self.request.user
-        
         view_type = self.request.query_params.get('view')
         flow = self.request.query_params.get('flow')
         search = self.request.query_params.get('search') 
@@ -240,17 +227,13 @@ class VendaViewSet(viewsets.ModelViewSet):
                 queryset = queryset.filter(status_esteira__nome__iexact=status_filter)
 
         if search:
-            # Tenta limpar o search também
             search_clean = re.sub(r'\D', '', search)
-            
             filters = Q(ordem_servico__icontains=search) | \
                       Q(cliente__nome_razao_social__icontains=search) | \
                       Q(cliente__cpf_cnpj__icontains=search)
-            
             if search_clean:
                 filters |= Q(cliente__cpf_cnpj__icontains=search_clean)
                 filters |= Q(ordem_servico__icontains=search_clean)
-
             queryset = queryset.filter(filters)
 
         acoes_gestao = ['retrieve', 'update', 'partial_update', 'destroy', 'alocar_auditoria', 'liberar_auditoria', 'finalizar_auditoria', 'pendentes_auditoria', 'reenviar_whatsapp_aprovacao']
@@ -273,21 +256,16 @@ class VendaViewSet(viewsets.ModelViewSet):
 
         if view_type == 'minhas_vendas':
             queryset = queryset.filter(vendedor=user)
-
         elif view_type == 'visao_equipe' or view_type == 'geral':
             if is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
                 pass 
             elif is_member(user, ['Auditoria', 'Qualidade']):
                 if not search and not status_filter:
                     data_inicio_param = self.request.query_params.get('data_inicio')
-                    
                     if not data_inicio_param and self.action == 'list' and flow != 'esteira':
                         hoje = timezone.now()
                         inicio_mes = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-                        queryset = queryset.filter(
-                            Q(data_criacao__gte=inicio_mes) | 
-                            Q(data_instalacao__gte=inicio_mes)
-                        )
+                        queryset = queryset.filter(Q(data_criacao__gte=inicio_mes) | Q(data_instalacao__gte=inicio_mes))
             elif is_member(user, ['Supervisor']):
                 liderados_ids = list(user.liderados.values_list('id', flat=True))
                 liderados_ids.append(user.id)
@@ -325,10 +303,8 @@ class VendaViewSet(viewsets.ModelViewSet):
                  hoje = now()
                  inicio_mes = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
                  queryset = queryset.filter(Q(data_criacao__gte=inicio_mes) | Q(data_instalacao__gte=inicio_mes))
-                
         return queryset
 
-    # --- AÇÃO: REENVIAR ZAP APROVAÇÃO ---
     @action(detail=True, methods=['post'], url_path='reenviar-whatsapp-aprovacao', permission_classes=[permissions.IsAuthenticated])
     def reenviar_whatsapp_aprovacao(self, request, pk=None):
         venda = self.get_object()
@@ -342,7 +318,6 @@ class VendaViewSet(viewsets.ModelViewSet):
             logger.error(f"Erro reenvio zap: {e}")
             return Response({"detail": "Erro ao tentar enviar mensagem."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    # --- AÇÃO: LISTA PENDENTES DE AUDITORIA ---
     @action(detail=False, methods=['get'])
     def pendentes_auditoria(self, request):
         request.GET._mutable = True; request.GET['flow'] = 'auditoria'; request.GET['view'] = 'geral'; request.GET._mutable = False
@@ -355,7 +330,6 @@ class VendaViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
 
-    # --- AÇÃO: ALOCAR AUDITORIA ---
     @action(detail=True, methods=['post'], url_path='alocar-auditoria', permission_classes=[permissions.IsAuthenticated])
     def alocar_auditoria(self, request, pk=None):
         venda = self.get_object()
@@ -370,7 +344,6 @@ class VendaViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(venda)
         return Response(serializer.data)
 
-    # --- AÇÃO: LIBERAR AUDITORIA ---
     @action(detail=True, methods=['post'], url_path='liberar-auditoria', permission_classes=[permissions.IsAuthenticated])
     def liberar_auditoria(self, request, pk=None):
         venda = self.get_object()
@@ -382,7 +355,6 @@ class VendaViewSet(viewsets.ModelViewSet):
         venda.save()
         return Response({"detail": "Venda liberada com sucesso."})
 
-    # --- AÇÃO: FINALIZAR AUDITORIA ---
     @action(detail=True, methods=['post'], url_path='finalizar_auditoria', permission_classes=[permissions.IsAuthenticated])
     def finalizar_auditoria(self, request, pk=None):
         venda = self.get_object()
@@ -2006,3 +1978,159 @@ class ExportarVendasExcelView(APIView):
             return Response({"detail": f"Erro ao gerar Excel: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         return response
+
+# ==============================================================================
+# NOVAS CLASSES PARA O MAPA E WHATSAPP (IMPORTAÇÃO KML E WEBHOOK)
+# ==============================================================================
+
+class ImportarKMLView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, *args, **kwargs):
+        file_obj = request.FILES.get('file')
+        if not file_obj:
+            return Response({'error': 'Nenhum arquivo enviado.'}, status=400)
+
+        if not file_obj.name.endswith('.kml'):
+             return Response({'error': 'Por favor, envie um arquivo .kml (se for .kmz, descompacte antes).'}, status=400)
+
+        try:
+            tree = ET.parse(file_obj)
+            root = tree.getroot()
+            ns = {'kml': 'http://www.opengis.net/kml/2.2'}
+            
+            # Tenta sem namespace se falhar
+            placemarks = root.findall('.//kml:Placemark', ns)
+            if not placemarks:
+                placemarks = root.findall('.//Placemark')
+
+            criados = 0
+            
+            for pm in placemarks:
+                try:
+                    def find_text(elem, tag):
+                        res = elem.find(f'kml:{tag}', ns)
+                        if res is None: res = elem.find(tag)
+                        return res.text if res is not None else ""
+
+                    nome = find_text(pm, 'name')
+                    description = find_text(pm, 'description')
+                    
+                    coords_text = ""
+                    poly = pm.find('.//kml:Polygon//kml:coordinates', ns)
+                    if poly is None: poly = pm.find('.//Polygon//coordinates')
+                    if poly is not None:
+                        coords_text = poly.text.strip()
+                    
+                    def extrair(chave):
+                        match = re.search(rf'<strong>{chave}:\s*</strong>(.*?)(?:<br>|$)', description, re.IGNORECASE)
+                        return match.group(1).strip() if match else None
+
+                    obj = AreaVenda()
+                    obj.nome_kml = nome or "Sem Nome"
+                    obj.coordenadas = coords_text
+                    obj.celula = extrair('Célula')
+                    obj.uf = extrair('UF')
+                    obj.municipio = extrair('Município')
+                    obj.estacao = extrair('Estação')
+                    obj.cluster = extrair('Cluster Célula')
+                    obj.status_venda = extrair('Status Venda Célula')
+                    obj.ocupacao = extrair('Ocup \(%\)')
+                    obj.atingimento_meta = extrair('Atingimento/Meta \(%\)')
+                    
+                    for campo, chave in [('prioridade','Prioridade'), ('aging','Aging'), ('hc','HC'), ('hp','HP'), ('hp_viavel','HP Viável'), ('hp_viavel_total','HP Viável Total')]:
+                        val = extrair(chave)
+                        try: setattr(obj, campo, int(val) if val else 0)
+                        except: setattr(obj, campo, 0)
+                    
+                    val_hc = extrair('HC Esperado')
+                    if val_hc:
+                        try: obj.hc_esperado = float(val_hc.replace(',', '.'))
+                        except: obj.hc_esperado = 0.0
+
+                    obj.save()
+                    criados += 1
+                    
+                except Exception as e:
+                    logger.error(f"Erro item KML: {e}")
+
+            return Response({
+                'status': 'sucesso',
+                'mensagem': f'Mapa importado! {criados} áreas processadas.',
+            })
+
+        except Exception as e:
+            return Response({'error': f'Erro crítico KML: {str(e)}'}, status=500)
+
+class WebhookWhatsAppView(APIView):
+    """
+    Recebe mensagens do Z-API (Webhook).
+    Se for um CEP, verifica viabilidade e responde.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        try:
+            data = request.data
+            
+            # Log para debug (ajuda a ver o que está chegando)
+            # logger.info(f"Webhook recebido: {data}")
+
+            # Z-API às vezes manda lista de mensagens. Pega a primeira se for lista.
+            if isinstance(data, list):
+                if len(data) > 0:
+                    data = data[0]
+                else:
+                    return Response({'status': 'empty_list'})
+
+            # Se data ainda não for dict, aborta
+            if not isinstance(data, dict):
+                return Response({'status': 'invalid_format'}, status=400)
+            
+            # Tenta extrair telefone e texto de várias formas possíveis
+            phone = data.get('phone') or data.get('sender')
+            
+            text = ""
+            if 'message' in data and isinstance(data['message'], dict):
+                # Formato novo/padrão
+                text = data['message'].get('text', '')
+            elif 'text' in data and isinstance(data['text'], dict):
+                # Formato antigo/alternativo
+                text = data['text'].get('message', '')
+            elif 'text' in data and isinstance(data['text'], str):
+                # Texto direto
+                text = data['text']
+
+            # Se não achou dados vitais, ignora (pode ser status de entrega, etc)
+            if not phone or not text:
+                return Response({'status': 'ignored_no_text'}, status=200)
+
+            # Verifica se é um CEP (8 dígitos)
+            if re.match(r'^\d{5}-?\d{3}$', text.strip()):
+                
+                resultado = verificar_viabilidade_por_cep(text.strip())
+                
+                service = WhatsAppService()
+                
+                if resultado['viabilidade']:
+                    resp = (
+                        f"✅ *Viabilidade Encontrada!*\n\n"
+                        f"📍 *Célula:* {resultado['celula']}\n"
+                        f"🏙 *Município:* {resultado['municipio']}\n"
+                        f"📊 *Status:* {resultado['status']}\n"
+                        f"🏠 *HP Viável:* {resultado['hp_viavel']}\n\n"
+                        f"Pode prosseguir com a venda!"
+                    )
+                else:
+                    resp = f"❌ {resultado['msg']}"
+                
+                # Envia a resposta
+                service.enviar_mensagem_texto(phone, resp)
+                return Response({'status': 'replied'})
+
+            return Response({'status': 'no_action'})
+
+        except Exception as e:
+            logger.error(f"Webhook Error: {e}", exc_info=True)
+            return Response({'status': 'error', 'detail': str(e)}, status=500)

@@ -80,6 +80,15 @@
         .admin-nav-link.active { background-color: var(--cor-primaria); color: #fff; box-shadow: var(--sombra-suave); }
         .admin-nav-link.active i { color: #fff; }
 
+        /* Estilo para links do submenu */
+        .hover-link:hover { 
+            color: var(--cor-primaria) !important; 
+            background-color: #e9ecef; 
+            border-radius: 4px; 
+            padding-left: 10px !important; 
+            transition: all 0.2s; 
+        }
+
         .content-section { display: none; animation: fadeIn 0.3s ease-out; }
         .content-section.active { display: block; }
 
@@ -165,7 +174,27 @@
                 <div class="nav-section-title mt-0">Acesso Rápido</div>
                 <a href="/presenca/" class="admin-nav-link"><i class="bi bi-clock-history"></i> Presença</a>
                 <a href="/crm-vendas/" class="admin-nav-link"><i class="bi bi-cart-plus"></i> Nova Venda</a>
-                <a href="/salvar-osab/" class="admin-nav-link"><i class="bi bi-cloud-upload"></i> Importações</a>
+                
+                <a class="admin-nav-link" data-bs-toggle="collapse" href="#menuImportacoes" role="button" aria-expanded="false" aria-controls="menuImportacoes">
+                    <i class="bi bi-cloud-upload"></i> Importações
+                    <i class="bi bi-chevron-down ms-auto" style="font-size: 0.8rem;"></i>
+                </a>
+                <div class="collapse" id="menuImportacoes">
+                    <div class="bg-light rounded p-2 ms-3 mt-1 border">
+                        <a href="/salvar-osab/" class="d-block text-decoration-none text-secondary py-2 px-2 small hover-link">
+                            <i class="bi bi-file-earmark-spreadsheet me-2"></i>Importar OSAB
+                        </a>
+                        <a href="/salvar-churn/" class="d-block text-decoration-none text-secondary py-2 px-2 small hover-link">
+                            <i class="bi bi-arrow-repeat me-2"></i>Importar Churn
+                        </a>
+                        <a href="/salvar-ciclo-pagamento/" class="d-block text-decoration-none text-secondary py-2 px-2 small hover-link">
+                            <i class="bi bi-calendar-range me-2"></i>Ciclo Pagamento
+                        </a>
+                        <a href="/importar-mapa/" class="d-block text-decoration-none text-secondary py-2 px-2 small hover-link">
+                            <i class="bi bi-map-fill me-2"></i>Importar Mapa (KML)
+                        </a>
+                    </div>
+                </div>
             </div>
         </nav>
 
@@ -707,18 +736,18 @@
     </div>
 
     <div class="modal fade" id="modalFaltas" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-sm modal-dialog-centered">
-        <div class="modal-content">
-          <div class="modal-header bg-danger text-white">
-            <h5 class="modal-title fs-6">Detalhe das Faltas</h5>
-            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-          </div>
-          <div class="modal-body">
-            <p class="mb-2 fw-bold" id="modalNomeColab"></p>
-            <ul id="listaFaltas" class="list-group list-group-flush small"></ul>
-          </div>
+        <div class="modal-dialog modal-sm modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title fs-6">Detalhe das Faltas</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-2 fw-bold" id="modalNomeColab"></p>
+                    <ul id="listaFaltas" class="list-group list-group-flush small"></ul>
+                </div>
+            </div>
         </div>
-      </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>

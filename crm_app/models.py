@@ -91,7 +91,6 @@ class Venda(models.Model):
     vendedor = models.ForeignKey(Usuario, on_delete=models.SET_NULL, null=True, related_name='vendas')
     cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name='vendas')
     
-    # ALTERAÇÃO: Tornando Plano e Forma de Pagamento Opcionais no Banco para Venda Rápida
     plano = models.ForeignKey(Plano, on_delete=models.PROTECT, null=True, blank=True)
     forma_pagamento = models.ForeignKey(FormaPagamento, on_delete=models.PROTECT, null=True, blank=True)
 
@@ -111,7 +110,6 @@ class Venda(models.Model):
     telefone1 = models.CharField(max_length=20, blank=True, null=True)
     telefone2 = models.CharField(max_length=20, blank=True, null=True)
     
-    # ALTERAÇÃO: Tornando Endereço Opcional no Banco
     cep = models.CharField(max_length=9, blank=True, null=True)
     logradouro = models.CharField(max_length=255, blank=True, null=True)
     numero_residencia = models.CharField(max_length=20, blank=True, null=True)
@@ -387,3 +385,42 @@ class Comunicado(models.Model):
         verbose_name = "Comunicado (Record Informa)"
         verbose_name_plural = "Comunicados"
         ordering = ['-data_programada', '-hora_programada']
+
+# --- NOVO MODELO: MAPA DE VIABILIDADE (KML) ---
+class AreaVenda(models.Model):
+    # Identificação
+    nome_kml = models.CharField(max_length=255, help_text="Nome que estava no Placemark")
+    celula = models.CharField(max_length=255, null=True, blank=True)
+    uf = models.CharField(max_length=2, null=True, blank=True)
+    municipio = models.CharField(max_length=100, null=True, blank=True)
+    bairro = models.CharField(max_length=100, null=True, blank=True)
+    
+    # Dados Operacionais
+    prioridade = models.IntegerField(default=0, null=True, blank=True)
+    estacao = models.CharField(max_length=50, null=True, blank=True)
+    aging = models.IntegerField(default=0, null=True, blank=True)
+    cluster = models.CharField(max_length=50, null=True, blank=True)
+    status_venda = models.CharField(max_length=100, null=True, blank=True)
+    
+    # Indicadores Numéricos
+    hc = models.IntegerField(default=0, verbose_name="HC")
+    hp = models.IntegerField(default=0, verbose_name="HP")
+    hp_viavel = models.IntegerField(default=0, verbose_name="HP Viável")
+    hp_viavel_total = models.IntegerField(default=0, verbose_name="HP Viável Total")
+    
+    ocupacao = models.CharField(max_length=20, null=True, blank=True, help_text="Percentual texto")
+    hc_esperado = models.FloatField(default=0.0)
+    atingimento_meta = models.CharField(max_length=20, null=True, blank=True)
+    
+    # Geometria (Guardando como Texto para evitar complexidade de PostGIS agora)
+    # Ex: "-43.93,-19.79,0 -43.93,-19.79,0 ..."
+    coordenadas = models.TextField(null=True, blank=True)
+
+    data_importacao = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.municipio} - {self.celula} ({self.nome_kml})"
+
+    class Meta:
+        verbose_name = "Área de Venda (KML)"
+        verbose_name_plural = "Áreas de Venda (KML)"

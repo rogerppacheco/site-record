@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.urls import path, include
 from django.views.generic import TemplateView
 from usuarios.views import LoginView
-# Importe a nova view do calendário
+# Importe a view do calendário
 from core.views import calendario_fiscal_view
 
 urlpatterns = [
@@ -16,17 +16,15 @@ urlpatterns = [
     # APIS DO SISTEMA
     path('api/', include('djoser.urls')),
     
-    # --- CORREÇÃO DO ERRO 404 (USUARIOS) ---
-    # Inclui as rotas do app usuarios (onde estão UsuarioViewSet e GrupoViewSet)
+    # Rotas do app usuarios
     path('api/', include('usuarios.urls')), 
-    # ---------------------------------------
 
     path('api/presenca/', include('presenca.urls')),
     path('api/crm/', include('crm_app.urls')),
     path('api/osab/', include('osab.urls')),
     path('api/relatorios/', include('relatorios.urls')),
     
-    # Se o app core tiver API (DiaFiscal), inclua também:
+    # Se o app core tiver API
     path('api/core/', include('core.urls')), 
 
     # PÁGINAS FRONTEND
@@ -45,8 +43,10 @@ urlpatterns = [
     path('salvar-churn/', TemplateView.as_view(template_name='public/salvar_churn.html'), name='salvar-churn'),
     path('salvar-ciclo-pagamento/', TemplateView.as_view(template_name='public/salvar_ciclo_pagamento.html'), name='salvar-ciclo-pagamento'),
     
-    # --- CORREÇÃO DO ERRO 500 (CALENDÁRIO) ---
-    # Aponta para a view Python, não TemplateView direta
+    # --- ROTA QUE CORRIGE O ERRO 404 ---
+    path('importar-mapa/', TemplateView.as_view(template_name='public/importar_mapa.html'), name='importar-mapa'),
+    
+    # CALENDÁRIO
     path('calendario/', calendario_fiscal_view, name='calendario_fiscal_atual'),
     path('calendario/<int:ano>/<int:mes>/', calendario_fiscal_view, name='calendario_fiscal'),
 ]
