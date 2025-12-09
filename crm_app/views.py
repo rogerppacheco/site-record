@@ -1793,196 +1793,6 @@ class PerformanceVendasView(APIView):
         final_result = sorted(final_result, key=itemgetter('supervisor_name'))
         return Response(final_result)
 
-# --- LOGIN E TROCA DE SENHA ---
-
-@method_decorator(ensure_csrf_cookie, name='dispatch')
-class LoginView(APIView):
-    permission_classes = [AllowAny]
-    def post(self, request):
-        username = request.data.get('username')
-        password = request.data.get('password')
-        
-        u = authenticate(request, username=username, password=password)
-        
-        if u:
-            refresh = RefreshToken.for_user(u)
-            return JsonResponse({
-                'access_token': str(refresh.access_token),
-                'refresh_token': str(refresh),
-                'must_change_password': getattr(u, 'must_change_password', False),
-                'user_id': u.id
-            })
-            
-        return Response({"detail": "Credenciais inválidas"}, status=401)
-
-class DefinirNovaSenhaView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        nova_senha = request.data.get('nova_senha')
-        if not nova_senha:
-            return Response({"error": "A nova senha é obrigatória."}, status=400)
-        
-        user = request.user
-        user.set_password(nova_senha)
-        if hasattr(user, 'must_change_password'): user.must_change_password = False
-        user.save()
-        return Response({"mensagem": "Senha alterada com sucesso!"})
-
-# --- NOVO ENDPOINT PARA VERIFICAR WHATSAPP ---
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def api_verificar_whatsapp(request, telefone):
-    service = WhatsAppService()
-    return Response({'telefone': telefone, 'possui_whatsapp': service.verificar_numero_existe(telefone)})
-
-# --- VIEW ENVIO WHATSAPP ---
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def enviar_comissao_whatsapp(request):
-    try:
-        data = json.loads(request.body)
-        ano = int(data.get('ano'))
-        mes = int(data.get('mes'))
-        consultores_ids = data.get('consultores', [])
-
-        if not consultores_ids:
-            return JsonResponse({'error': 'Nenhum consultor selecionado'}, status=400)
-
-        User = get_user_model()
-        data_inicio = datetime(ano, mes, 1)
-        if mes == 12: data_fim = datetime(ano + 1, 1, 1)
-        else: data_fim = datetime(ano, mes + 1, 1)
-
-        img_path = os.path.join(settings.BASE_DIR, 'static', 'img', 'banner_comissao.png')
-        
-        imagem_b64_final = None
-        if os.path.exists(img_path):
-            try:
-                with open(img_path, "rb") as img_file:
-                    encoded_string = base64.b64encode(img_file.read()).decode('utf-8')
-                    imagem_b64_final = f"data:image/png;base64,{encoded_string}"
-            except Exception as e:
-                print(f"Erro ao ler imagem: {e}")
-
-        service = WhatsAppService()
-        sucessos = 0
-        erros = []
-
-        for user_id in consultores_ids:
-            try:
-                consultor = User.objects.get(id=user_id)
-                telefone = getattr(consultor, 'tel_whatsapp', None)
-                
-                if not telefone:
-                    erros.append(f"{consultor.username}: Sem WhatsApp.")
-                    continue
-                
-                pdf_buffer = BytesIO()
-                html_dummy = f"""
-                <html>
-                <body>
-                    <h1 style="color: blue;">Extrato de Comissão</h1>
-                    <p>Referência: {mes}/{ano}</p>
-                    <p>Consultor: <strong>{consultor.username}</strong></p>
-                    <p>Este é um teste de envio.</p>
-                </body>
-                </html>
-                """
-                pisa.CreatePDF(BytesIO(html_dummy.encode('utf-8')), dest=pdf_buffer)
-                pdf_bytes = pdf_buffer.getvalue()
-                pdf_b64 = base64.b64encode(pdf_bytes).decode('utf-8')
-                pdf_final = f"data:application/pdf;base64,{pdf_b64}"
-
-                msg = f"Olá {consultor.username}, segue seu extrato de {mes}/{ano}."
-                service.enviar_mensagem_texto(telefone, msg)
-                
-                if imagem_b64_final:
-                    service.enviar_imagem_b64(telefone, imagem_b64_final, caption="Pagamento")
-                
-                service.enviar_pdf_b64(telefone, pdf_final, nome_arquivo="extrato.pdf")
-                sucessos += 1
-
-            except Exception as e:
-                print(f"Erro user {user_id}: {e}")
-                erros.append(str(e))
-
-        return JsonResponse({'mensagem': f'Enviado: {sucessos}. Erros: {len(erros)}'})
-
-    except Exception as e:
-        print(f"Erro Geral View: {e}")
-        return JsonResponse({'error': str(e)}, status=500)
-
-class ExportarVendasExcelView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request):
-        user = request.user
-        
-        # 1. Base Queryset
-        queryset = Venda.objects.filter(ativo=True).select_related(
-            'cliente', 'plano', 'vendedor', 'status_esteira', 'forma_pagamento'
-        )
-
-        # 2. Filtros de Hierarquia
-        if not is_member(user, ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']):
-            if is_member(user, ['Supervisor']):
-                liderados_ids = list(user.liderados.values_list('id', flat=True))
-                liderados_ids.append(user.id)
-                queryset = queryset.filter(vendedor_id__in=liderados_ids)
-            else:
-                queryset = queryset.filter(vendedor=user)
-
-        # 3. Filtros de Data
-        data_inicio = request.query_params.get('data_inicio')
-        data_fim = request.query_params.get('data_fim')
-        
-        if data_inicio and data_fim:
-            try:
-                dt_ini = datetime.strptime(data_inicio, '%Y-%m-%d').date()
-                dt_fim = datetime.strptime(data_fim, '%Y-%m-%d').date() + timedelta(days=1)
-                queryset = queryset.filter(data_criacao__range=(dt_ini, dt_fim))
-            except ValueError:
-                pass 
-
-        # 4. Montar dados para o Excel
-        dados_exportacao = []
-        for venda in queryset:
-            dados_exportacao.append({
-                'ID': venda.id,
-                'Data Venda': venda.data_criacao.strftime('%d/%m/%Y') if venda.data_criacao else '',
-                'Vendedor': venda.vendedor.username if venda.vendedor else 'S/V',
-                'Cliente': venda.cliente.nome_razao_social if venda.cliente else 'N/A',
-                'CPF/CNPJ': venda.cliente.cpf_cnpj if venda.cliente else '',
-                'Plano': venda.plano.nome if venda.plano else '',
-                'Forma Pagto': venda.forma_pagamento.nome if venda.forma_pagamento else '',
-                'Status Esteira': venda.status_esteira.nome if venda.status_esteira else 'Aguardando',
-                'OS': venda.ordem_servico or '',
-                'Data Instalação': venda.data_instalacao.strftime('%d/%m/%Y') if venda.data_instalacao else '',
-            })
-
-        if not dados_exportacao:
-            return Response({"detail": "Nenhum registro encontrado para exportação."}, status=status.HTTP_404_NOT_FOUND)
-
-        # 5. Gerar DataFrame e Resposta
-        df = pd.DataFrame(dados_exportacao)
-        
-        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        nome_arquivo = f"relatorio_vendas_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
-        response['Content-Disposition'] = f'attachment; filename="{nome_arquivo}"'
-
-        try:
-            with pd.ExcelWriter(response, engine='openpyxl') as writer:
-                df.to_excel(writer, sheet_name='Vendas', index=False)
-        except Exception as e:
-            return Response({"detail": f"Erro ao gerar Excel: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        return response
-
-# ==============================================================================
-# NOVAS CLASSES PARA O MAPA E WHATSAPP (IMPORTAÇÃO KML E WEBHOOK)
-# ==============================================================================
-
 class ImportarKMLView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
@@ -2000,13 +1810,25 @@ class ImportarKMLView(APIView):
             root = tree.getroot()
             ns = {'kml': 'http://www.opengis.net/kml/2.2'}
             
-            # Tenta sem namespace se falhar
             placemarks = root.findall('.//kml:Placemark', ns)
             if not placemarks:
                 placemarks = root.findall('.//Placemark')
 
-            criados = 0
+            areas_para_criar = []
+            erros = 0
             
+            # Compilar regex fora do loop para performance
+            regex_cache = {}
+
+            def extrair_rapido(chave, texto):
+                if chave not in regex_cache:
+                    regex_cache[chave] = re.compile(rf'<strong>{chave}:\s*</strong>(.*?)(?:<br>|$)', re.IGNORECASE)
+                match = regex_cache[chave].search(texto)
+                return match.group(1).strip() if match else None
+
+            # Limpar tabela antes? Opcional. Se quiser limpar, descomente:
+            # AreaVenda.objects.all().delete()
+
             for pm in placemarks:
                 try:
                     def find_text(elem, tag):
@@ -2023,41 +1845,50 @@ class ImportarKMLView(APIView):
                     if poly is not None:
                         coords_text = poly.text.strip()
                     
-                    def extrair(chave):
-                        match = re.search(rf'<strong>{chave}:\s*</strong>(.*?)(?:<br>|$)', description, re.IGNORECASE)
-                        return match.group(1).strip() if match else None
+                    # Pular se não tiver coordenadas (economiza tempo)
+                    if not coords_text:
+                        continue
 
-                    obj = AreaVenda()
-                    obj.nome_kml = nome or "Sem Nome"
-                    obj.coordenadas = coords_text
-                    obj.celula = extrair('Célula')
-                    obj.uf = extrair('UF')
-                    obj.municipio = extrair('Município')
-                    obj.estacao = extrair('Estação')
-                    obj.cluster = extrair('Cluster Célula')
-                    obj.status_venda = extrair('Status Venda Célula')
-                    obj.ocupacao = extrair('Ocup \(%\)')
-                    obj.atingimento_meta = extrair('Atingimento/Meta \(%\)')
+                    obj = AreaVenda(
+                        nome_kml=nome or "Sem Nome",
+                        coordenadas=coords_text,
+                        celula=extrair_rapido('Célula', description),
+                        uf=extrair_rapido('UF', description),
+                        municipio=extrair_rapido('Município', description),
+                        estacao=extrair_rapido('Estação', description),
+                        cluster=extrair_rapido('Cluster Célula', description),
+                        status_venda=extrair_rapido('Status Venda Célula', description),
+                        ocupacao=extrair_rapido(r'Ocup \(%\)', description),
+                        atingimento_meta=extrair_rapido(r'Atingimento/Meta \(%\)', description)
+                    )
                     
+                    # Inteiros
                     for campo, chave in [('prioridade','Prioridade'), ('aging','Aging'), ('hc','HC'), ('hp','HP'), ('hp_viavel','HP Viável'), ('hp_viavel_total','HP Viável Total')]:
-                        val = extrair(chave)
+                        val = extrair_rapido(chave, description)
                         try: setattr(obj, campo, int(val) if val else 0)
                         except: setattr(obj, campo, 0)
                     
-                    val_hc = extrair('HC Esperado')
+                    # Float
+                    val_hc = extrair_rapido('HC Esperado', description)
                     if val_hc:
                         try: obj.hc_esperado = float(val_hc.replace(',', '.'))
                         except: obj.hc_esperado = 0.0
-
-                    obj.save()
-                    criados += 1
+                    
+                    areas_para_criar.append(obj)
                     
                 except Exception as e:
-                    logger.error(f"Erro item KML: {e}")
+                    # Não logar erro individual para não spammar log e atrasar
+                    erros += 1
+
+            # SALVAMENTO EM LOTE (BULK INSERT) - AQUI ESTÁ O GANHO DE PERFORMANCE
+            # Divide em lotes de 1000 para não estourar memória do banco
+            batch_size = 1000
+            for i in range(0, len(areas_para_criar), batch_size):
+                AreaVenda.objects.bulk_create(areas_para_criar[i:i + batch_size])
 
             return Response({
                 'status': 'sucesso',
-                'mensagem': f'Mapa importado! {criados} áreas processadas.',
+                'mensagem': f'Importação concluída! {len(areas_para_criar)} áreas importadas.',
             })
 
         except Exception as e:
@@ -2134,3 +1965,153 @@ class WebhookWhatsAppView(APIView):
         except Exception as e:
             logger.error(f"Webhook Error: {e}", exc_info=True)
             return Response({'status': 'error', 'detail': str(e)}, status=500)
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def api_verificar_whatsapp(request, telefone):
+    """
+    Verifica se um número possui WhatsApp válido usando a API externa (Z-API).
+    """
+    try:
+        svc = WhatsAppService()
+        existe = svc.verificar_numero_existe(telefone)
+        return Response({"telefone": telefone, "whatsapp_valido": existe})
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def enviar_comissao_whatsapp(request):
+    """
+    Calcula o resumo da comissão e envia um card (imagem) via WhatsApp para o consultor.
+    """
+    try:
+        ano = int(request.data.get('ano'))
+        mes = int(request.data.get('mes'))
+        consultores_ids = request.data.get('consultores', [])
+
+        if not consultores_ids:
+            return Response({"error": "Nenhum consultor selecionado."}, status=status.HTTP_400_BAD_REQUEST)
+
+        User = get_user_model()
+        
+        # Define datas de início e fim do mês
+        data_inicio = datetime(ano, mes, 1)
+        if mes == 12:
+            data_fim = datetime(ano + 1, 1, 1)
+        else:
+            data_fim = datetime(ano, mes + 1, 1)
+        
+        svc = WhatsAppService()
+        todas_regras = list(RegraComissao.objects.select_related('plano', 'consultor').all())
+        
+        sucessos = 0
+        erros = []
+
+        for c_id in consultores_ids:
+            try:
+                consultor = User.objects.get(id=c_id)
+                telefone = consultor.tel_whatsapp
+                
+                if not telefone:
+                    erros.append(f"{consultor.username}: Sem WhatsApp cadastrado.")
+                    continue
+
+                # --- 1. Calcular Comissão (Versão simplificada para o Card) ---
+                vendas = Venda.objects.filter(
+                    vendedor=consultor,
+                    ativo=True,
+                    status_esteira__nome__iexact='INSTALADA',
+                    data_instalacao__gte=data_inicio,
+                    data_instalacao__lt=data_fim
+                ).select_related('plano', 'forma_pagamento', 'cliente')
+
+                qtd_instaladas = vendas.count()
+                meta = consultor.meta_comissao or 0
+                bateu_meta = qtd_instaladas >= meta
+
+                stats_planos = defaultdict(lambda: {'qtd': 0, 'valor_unit': 0.0, 'total': 0.0})
+                stats_descontos = defaultdict(float)
+                comissao_bruta = 0.0
+
+                for v in vendas:
+                    # Encontrar regra
+                    doc = v.cliente.cpf_cnpj if v.cliente else ''
+                    doc_limpo = ''.join(filter(str.isdigit, doc))
+                    tipo_cliente = 'CNPJ' if len(doc_limpo) > 11 else 'CPF'
+                    canal_vendedor = getattr(consultor, 'canal', 'PAP') or 'PAP'
+                    
+                    regra = next((r for r in todas_regras if r.plano_id == v.plano_id and r.tipo_cliente == tipo_cliente and r.tipo_venda == canal_vendedor and r.consultor_id == consultor.id), None)
+                    if not regra:
+                        regra = next((r for r in todas_regras if r.plano_id == v.plano_id and r.tipo_cliente == tipo_cliente and r.tipo_venda == canal_vendedor and r.consultor is None), None)
+                    
+                    valor_item = float(regra.valor_acelerado if bateu_meta else regra.valor_base) if regra else 0.0
+                    comissao_bruta += valor_item
+                    
+                    # Agrupar por Plano
+                    nm_plano = v.plano.nome
+                    stats_planos[nm_plano]['qtd'] += 1
+                    stats_planos[nm_plano]['total'] += valor_item
+
+                    # Calcular Descontos
+                    if v.forma_pagamento and 'BOLETO' in v.forma_pagamento.nome.upper():
+                        val = float(consultor.desconto_boleto or 0)
+                        if val > 0: stats_descontos['Boleto'] += val
+                    
+                    if v.inclusao:
+                        val = float(consultor.desconto_inclusao_viabilidade or 0)
+                        if val > 0: stats_descontos['Inclusão'] += val
+
+                    if v.antecipou_instalacao:
+                        val = float(consultor.desconto_instalacao_antecipada or 0)
+                        if val > 0: stats_descontos['Antecipação'] += val
+                    
+                    if len(doc_limpo) > 11:
+                        val = float(consultor.adiantamento_cnpj or 0)
+                        if val > 0: stats_descontos['Adiant. CNPJ'] += val
+
+                total_descontos = sum(stats_descontos.values())
+                liquido = comissao_bruta - total_descontos
+
+                # --- 2. Preparar Dados para a Imagem ---
+                detalhes_planos = []
+                for p_nome, dados in stats_planos.items():
+                    detalhes_planos.append({
+                        'nome': p_nome, 
+                        'qtd': dados['qtd'], 
+                        'valor': f"R$ {dados['total']:.2f}".replace('.', ',')
+                    })
+                
+                detalhes_descontos = []
+                for motivo, val in stats_descontos.items():
+                     detalhes_descontos.append({
+                        'motivo': motivo, 
+                        'valor': f"-R$ {val:.2f}".replace('.', ',')
+                     })
+
+                dados_img = {
+                    'titulo': 'Resumo Comissionamento',
+                    'vendedor': consultor.username.upper(),
+                    'periodo': f"{mes}/{ano}",
+                    'total': f"R$ {liquido:.2f}".replace('.', ','),
+                    'detalhes_planos': detalhes_planos,
+                    'detalhes_descontos': detalhes_descontos
+                }
+
+                # --- 3. Enviar ---
+                if svc.enviar_resumo_comissao(telefone, dados_img):
+                    sucessos += 1
+                else:
+                    erros.append(f"{consultor.username}: Falha no envio (Z-API).")
+
+            except Exception as e:
+                logger.error(f"Erro ao processar envio para {c_id}: {e}")
+                erros.append(f"ID {c_id}: Erro interno.")
+
+        return Response({
+            "mensagem": f"Processamento concluído. Sucessos: {sucessos}. Falhas: {len(erros)}",
+            "detalhes_erro": erros
+        })
+
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

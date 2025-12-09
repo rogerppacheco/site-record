@@ -1,7 +1,12 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
+
+# --- IMPORTAÇÃO CORRIGIDA ---
+# Importe as views de autenticação do app 'usuarios'
+from usuarios.views import LoginView, DefinirNovaSenhaView
+
 from .views import (
-    # ViewSets (Existem no views.py)
+    # ViewSets
     VendaViewSet, 
     ClienteViewSet, 
     ComissaoOperadoraViewSet,
@@ -33,16 +38,13 @@ from .views import (
     # WhatsApp e Novos Recursos
     api_verificar_whatsapp,
     enviar_comissao_whatsapp,
-    ImportarKMLView,        # NOVO
-    WebhookWhatsAppView,    # NOVO
+    ImportarKMLView,
+    WebhookWhatsAppView,
     
-    # Auth
-    LoginView,
-    DefinirNovaSenhaView
+    # REMOVA LoginView e DefinirNovaSenhaView daqui, pois já importamos acima
 )
 
 router = DefaultRouter()
-# Apenas ViewSets verdadeiros devem ser registrados aqui
 router.register(r'vendas', VendaViewSet, basename='venda')
 router.register(r'clientes', ClienteViewSet, basename='cliente')
 router.register(r'comissoes-operadora', ComissaoOperadoraViewSet, basename='comissao-operadora')
@@ -55,6 +57,7 @@ urlpatterns = [
     path('auth/login/', LoginView.as_view(), name='auth-login'),
     path('auth/definir-senha/', DefinirNovaSenhaView.as_view(), name='definir-senha'),
 
+    # ... (o restante das URLs continua igual) ...
     # --- Cadastros Gerais (Views Manuais) ---
     path('operadoras/', OperadoraListCreateView.as_view(), name='operadora-list'),
     path('operadoras/<int:pk>/', OperadoraDetailView.as_view(), name='operadora-detail'),

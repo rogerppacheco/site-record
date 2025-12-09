@@ -2,6 +2,7 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.views import APIView  # <--- Importação ADICIONADA importante
 from django.contrib.auth.models import ContentType, Group, Permission
 from django.db import transaction
 from django.utils.crypto import get_random_string
@@ -114,7 +115,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
         
         return Response(serializer.errors, status=400)
 
-    # --- NOVA SEGURANÇA: DEFINIR SENHA DEFINITIVA ---
+    # --- NOVA SEGURANÇA: DEFINIR SENHA DEFINITIVA (Action) ---
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated], url_path='definir-senha')
     def definir_nova_senha(self, request):
         serializer = TrocaSenhaSerializer(data=request.data)
@@ -203,3 +204,22 @@ class RecursoViewSet(viewsets.ViewSet):
             for model in models:
                 recursos_formatados.append(f"{app}_{model}")
         return Response(recursos_formatados)
+
+# --- CLASSE ADICIONADA: DefinirNovaSenhaView ---
+# Necessária para a rota 'auth/definir-senha/' no urls.py
+class DefinirNovaSenhaView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = TrocaSenhaSerializer(data=request.data)
+        if serializer.is_valid():
+            usuario = request.user
+            nova_senha = serializer.validated_data['nova_senha']
+            
+            usuario.set_password(nova_senha)
+            usuario.obriga_troca_senha = False 
+            usuario.save()
+            
+            return Response({"detail": "Senha alterada com sucesso!"})
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
