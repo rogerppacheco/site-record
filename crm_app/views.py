@@ -24,7 +24,8 @@ from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.utils.html import strip_tags
 from django.contrib.staticfiles import finders
-from django.db import transaction
+# CORREÇÃO 1: Importar IntegrityError para tratar duplicidade
+from django.db import transaction, IntegrityError
 
 from rest_framework import generics, viewsets, status, permissions
 from rest_framework.response import Response
@@ -38,11 +39,10 @@ from rest_framework.decorators import api_view, permission_classes, action
 # --- IMPORTS EXTRAS ---
 from core.models import DiaFiscal 
 from .whatsapp_service import WhatsAppService 
-from .utils import verificar_viabilidade_por_cep
+from .utils import verificar_viabilidade_por_cep, verificar_viabilidade_por_coordenadas, verificar_viabilidade_exata
 from xhtml2pdf import pisa 
-from .models import SessaoWhatsapp # Importe o novo modelo
+from .models import SessaoWhatsapp 
 from usuarios.permissions import CheckAPIPermission, VendaPermission
-from .utils import verificar_viabilidade_por_coordenadas, verificar_viabilidade_exata
 
 from .models import (
     Operadora, Plano, FormaPagamento, StatusCRM, MotivoPendencia,
@@ -1926,15 +1926,20 @@ class WebhookWhatsAppView(APIView):
                     res = verificar_viabilidade_por_coordenadas(lat, lng)
                     service.enviar_mensagem_texto(phone, res['msg'])
                     # Limpa sessão se existir
-                    SessaoWhatsapp.objects.filter(telefone=phone).delete()
+                    try: SessaoWhatsapp.objects.filter(telefone=phone).delete()
+                    except: pass
                     return Response({'status': 'loc_processed'})
 
             # 2. FLUXO DE CONVERSA (TEXTO)
-            # Recupera ou cria sessão
-            sessao, _ = SessaoWhatsapp.objects.get_or_create(
-                telefone=phone, 
-                defaults={'etapa': 'MENU'}
-            )
+            # Recupera ou cria sessão com proteção contra Race Condition
+            try:
+                sessao, created = SessaoWhatsapp.objects.get_or_create(
+                    telefone=phone, 
+                    defaults={'etapa': 'MENU'}
+                )
+            except IntegrityError:
+                # Se der erro de duplicidade (concorrencia), recupera a que foi criada no milissegundo anterior
+                sessao = SessaoWhatsapp.objects.get(telefone=phone)
 
             msg_upper = text.upper()
 
@@ -1978,7 +1983,7 @@ class WebhookWhatsAppView(APIView):
             return Response({'status': 'no_action'})
 
         except Exception as e:
-            logger.error(f"Webhook Error: {e}", exc_info=True)
+            # logger.error(f"Webhook Error: {e}", exc_info=True)
             return Response({'status': 'error'}, status=500)
 
 @api_view(['GET'])

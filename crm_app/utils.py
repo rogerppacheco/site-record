@@ -1,6 +1,8 @@
 import requests
+import logging
 from shapely.geometry import Point, Polygon
-# ATENÇÃO: NÃO importe AreaVenda aqui no topo para evitar erro de ciclo!
+
+logger = logging.getLogger(__name__)
 
 def verificar_viabilidade_por_coordenadas(lat, lon):
     """
@@ -86,20 +88,40 @@ def _executar_busca_nominatim(url, eh_exata=False):
     headers = {'User-Agent': 'RecordPAP-CRM/1.0'}
     try:
         response = requests.get(url, headers=headers, timeout=5)
-        data = response.json()
         
-        if not data:
+        try:
+            data = response.json()
+        except ValueError:
+            return {'viabilidade': False, 'msg': 'Erro ao ler resposta do mapa (JSON inválido).'}
+        
+        # Proteção contra lista vazia (não achou nada)
+        if not data or (isinstance(data, list) and len(data) == 0):
             if eh_exata:
-                # Se falhar na busca exata, avisa
                 return {'viabilidade': False, 'erro_busca': True, 'msg': 'Número não localizado.'}
             return {'viabilidade': False, 'msg': 'CEP não localizado no mapa.'}
+        
+        # Proteção contra erro de API (KeyError: 0)
+        # Se a API retornar um dicionário (erro), transformamos em lista ou tratamos
+        if isinstance(data, dict):
+            # Se a API retornou erro explícito
+            if 'error' in data:
+                 return {'viabilidade': False, 'msg': f"Erro na API de Mapa: {data.get('error')}"}
+            # Se for um único resultado não envelopado em lista (raro no nominatim, mas possível)
+            item = data
+        else:
+            # Pega o primeiro item da lista
+            item = data[0]
             
-        # Pega a lat/long do resultado
-        lat = float(data[0]['lat'])
-        lon = float(data[0]['lon'])
+        # Pega a lat/long com segurança
+        lat = float(item.get('lat', 0))
+        lon = float(item.get('lon', 0))
+        
+        if lat == 0 or lon == 0:
+             return {'viabilidade': False, 'msg': 'Coordenadas inválidas recebidas.'}
         
         # Chama a função de geometria que criamos acima
         return verificar_viabilidade_por_coordenadas(lat, lon)
         
     except Exception as e:
+        logger.error(f"Erro Busca Mapa: {e}")
         return {'viabilidade': False, 'msg': f"Erro técnico na busca: {str(e)}"}
