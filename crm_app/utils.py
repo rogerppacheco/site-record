@@ -66,6 +66,7 @@ def verificar_viabilidade_por_coordenadas(lat, lon):
 def verificar_viabilidade_por_cep(cep):
     """
     Busca pelo CENTRO do CEP (menos preciso).
+    Usa parâmetros estruturados (postalcode), então PODE usar country.
     """
     cep_limpo = "".join(filter(str.isdigit, str(cep)))
     url = f"https://nominatim.openstreetmap.org/search?postalcode={cep_limpo}&country=Brazil&format=json"
@@ -74,11 +75,12 @@ def verificar_viabilidade_por_cep(cep):
 def verificar_viabilidade_exata(cep, numero):
     """
     Busca por Rua + Número + CEP (mais preciso).
+    Usa parâmetro livre (q), então NÃO pode usar country (usamos countrycodes).
     """
     cep_limpo = "".join(filter(str.isdigit, str(cep)))
     query = f"{numero}, {cep_limpo}"
-    # A flag limit=1 ajuda a focar no melhor resultado
-    url = f"https://nominatim.openstreetmap.org/search?q={query}&country=Brazil&format=json&limit=1"
+    # CORREÇÃO: Trocamos 'country=Brazil' por 'countrycodes=br' para evitar o erro 400
+    url = f"https://nominatim.openstreetmap.org/search?q={query}&countrycodes=br&format=json&limit=1"
     return _executar_busca_nominatim(url, eh_exata=True)
 
 def _executar_busca_nominatim(url, eh_exata=False):
@@ -89,30 +91,32 @@ def _executar_busca_nominatim(url, eh_exata=False):
     try:
         response = requests.get(url, headers=headers, timeout=5)
         
+        # Tenta ler o JSON
         try:
             data = response.json()
         except ValueError:
             return {'viabilidade': False, 'msg': 'Erro ao ler resposta do mapa (JSON inválido).'}
         
+        # Se vier dicionário de erro (como o code 400 que você recebeu)
+        if isinstance(data, dict) and 'error' in data:
+             # Se for erro de parâmetro, retornamos msg técnica para debug
+             if 'message' in data:
+                 return {'viabilidade': False, 'msg': f"Erro na API de Mapa: {data.get('message')}"}
+             return {'viabilidade': False, 'msg': f"Erro na API de Mapa: {data.get('error')}"}
+
         # Proteção contra lista vazia (não achou nada)
         if not data or (isinstance(data, list) and len(data) == 0):
             if eh_exata:
                 return {'viabilidade': False, 'erro_busca': True, 'msg': 'Número não localizado.'}
             return {'viabilidade': False, 'msg': 'CEP não localizado no mapa.'}
         
-        # Proteção contra erro de API (KeyError: 0)
-        # Se a API retornar um dicionário (erro), transformamos em lista ou tratamos
-        if isinstance(data, dict):
-            # Se a API retornou erro explícito
-            if 'error' in data:
-                 return {'viabilidade': False, 'msg': f"Erro na API de Mapa: {data.get('error')}"}
-            # Se for um único resultado não envelopado em lista (raro no nominatim, mas possível)
-            item = data
-        else:
-            # Pega o primeiro item da lista
+        # Pega o primeiro item da lista com segurança
+        if isinstance(data, list):
             item = data[0]
-            
-        # Pega a lat/long com segurança
+        else:
+            item = data
+
+        # Pega a lat/long
         lat = float(item.get('lat', 0))
         lon = float(item.get('lon', 0))
         
