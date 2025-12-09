@@ -1970,15 +1970,24 @@ class WebhookWhatsAppView(APIView):
 @permission_classes([permissions.IsAuthenticated])
 def api_verificar_whatsapp(request, telefone):
     """
-    MODO BYPASS: Retorna sempre SUCESSO para não travar a operação.
-    Envia chaves duplicadas para garantir compatibilidade com qualquer versão do Front-end.
+    Verifica se um número possui WhatsApp válido usando a API externa (Z-API).
     """
-    return Response({
-        "telefone": telefone,
-        "whatsapp_valido": True,  # Para versões novas
-        "exists": True,           # Para versões antigas ou padrão Z-API
-        "status": "bypassed"
-    })
+    try:
+        svc = WhatsAppService()
+        # Chama a API de verdade
+        existe = svc.verificar_numero_existe(telefone)
+        
+        # Retorna com múltiplas chaves para garantir compatibilidade com qualquer versão do seu HTML
+        return Response({
+            "telefone": telefone,
+            "whatsapp_valido": existe,  # Usado em algumas versões
+            "possui_whatsapp": existe,  # Usado no seu crm_vendas.html atual
+            "exists": existe            # Padrão Z-API
+        })
+    except Exception as e:
+        # Se der erro interno, não trava a venda (retorna erro 500 mas o log registra)
+        logger.error(f"Erro view verificar zap: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
