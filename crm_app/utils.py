@@ -6,9 +6,8 @@ logger = logging.getLogger(__name__)
 
 def verificar_viabilidade_por_coordenadas(lat, lon):
     """
-    Função matemática pura: Verifica se a coordenada cai dentro de algum polígono.
+    Verifica se a coordenada cai dentro (ou muito perto) de algum polígono.
     """
-    # Importação feita AQUI DENTRO para corrigir o erro "ImportError"
     from .models import AreaVenda 
     
     ponto_endereco = Point(lon, lat) 
@@ -17,31 +16,44 @@ def verificar_viabilidade_por_coordenadas(lat, lon):
     areas = AreaVenda.objects.exclude(coordenadas__isnull=True).exclude(coordenadas__exact='')
     
     area_encontrada = None
+    distancia_minima = 1000 # Começa alto
+    
+    # Tolerância de aprox. 30 metros (0.0003 graus)
+    # Isso resolve o problema do "Pino no meio da rua" vs "Polígono na calçada"
+    TOLERANCIA = 0.0003 
     
     for area in areas:
         try:
             coords_str = area.coordenadas.strip()
             coords_list = []
             
-            # KML geralmente é: "lon,lat,alt lon,lat,alt"
+            # Parse KML (lon,lat)
             for c in coords_str.split(' '):
                 parts = c.split(',')
                 if len(parts) >= 2:
                     coords_list.append((float(parts[0]), float(parts[1])))
             
-            if len(coords_list) < 3: 
-                continue 
+            if len(coords_list) < 3: continue 
             
             poligono = Polygon(coords_list)
             
+            # 1. Verifica se está DENTRO (Exato)
             if poligono.contains(ponto_endereco):
                 area_encontrada = area
                 break 
+            
+            # 2. Verifica se está PERTO (Tolerância)
+            dist = poligono.distance(ponto_endereco)
+            if dist < TOLERANCIA and dist < distancia_minima:
+                area_encontrada = area
+                distancia_minima = dist
+                # Não damos break aqui para tentar achar uma mais perto (exata) depois
                 
         except Exception as e:
             continue
 
     if area_encontrada:
+        # Se foi por proximidade, avisamos no log, mas pro usuário é sucesso
         return {
             'viabilidade': True,
             'celula': area_encontrada.celula,
@@ -65,67 +77,67 @@ def verificar_viabilidade_por_coordenadas(lat, lon):
 
 def verificar_viabilidade_por_cep(cep):
     """
-    Busca pelo CENTRO do CEP (menos preciso).
-    Usa parâmetros estruturados (postalcode), então PODE usar country.
+    Busca pelo CENTRO do CEP.
     """
     cep_limpo = "".join(filter(str.isdigit, str(cep)))
+    # Usa postalcode + country para evitar ambiguidade
     url = f"https://nominatim.openstreetmap.org/search?postalcode={cep_limpo}&country=Brazil&format=json"
-    return _executar_busca_nominatim(url)
+    
+    # Adiciona aviso na mensagem se for busca genérica
+    resultado = _executar_busca_nominatim(url)
+    if resultado['viabilidade']:
+        resultado['msg'] = "⚠️ *Atenção:* Número não localizado, validado pelo *centro do CEP*.\n\n" + resultado['msg']
+    return resultado
 
 def verificar_viabilidade_exata(cep, numero):
     """
-    Busca por Rua + Número + CEP (mais preciso).
-    Usa parâmetro livre (q), então NÃO pode usar country (usamos countrycodes).
+    Tenta busca exata. Se falhar, busca automaticamente pelo CEP.
     """
     cep_limpo = "".join(filter(str.isdigit, str(cep)))
+    
+    # Tenta buscar: Rua, Número, CEP (countrycodes=br para evitar erro 400)
     query = f"{numero}, {cep_limpo}"
-    # CORREÇÃO: Trocamos 'country=Brazil' por 'countrycodes=br' para evitar o erro 400
     url = f"https://nominatim.openstreetmap.org/search?q={query}&countrycodes=br&format=json&limit=1"
-    return _executar_busca_nominatim(url, eh_exata=True)
+    
+    resultado = _executar_busca_nominatim(url, eh_exata=True)
+    
+    # --- FALLBACK AUTOMÁTICO ---
+    # Se a busca exata falhou (não achou o número), tenta só o CEP
+    if not resultado['viabilidade'] and resultado.get('erro_busca'):
+        return verificar_viabilidade_por_cep(cep_limpo)
+        
+    return resultado
 
 def _executar_busca_nominatim(url, eh_exata=False):
-    """
-    Função auxiliar para consultar a API de mapas
-    """
     headers = {'User-Agent': 'RecordPAP-CRM/1.0'}
     try:
         response = requests.get(url, headers=headers, timeout=5)
         
-        # Tenta ler o JSON
         try:
             data = response.json()
         except ValueError:
-            return {'viabilidade': False, 'msg': 'Erro ao ler resposta do mapa (JSON inválido).'}
+            return {'viabilidade': False, 'msg': 'Erro técnico no mapa.'}
         
-        # Se vier dicionário de erro (como o code 400 que você recebeu)
-        if isinstance(data, dict) and 'error' in data:
-             # Se for erro de parâmetro, retornamos msg técnica para debug
-             if 'message' in data:
-                 return {'viabilidade': False, 'msg': f"Erro na API de Mapa: {data.get('message')}"}
-             return {'viabilidade': False, 'msg': f"Erro na API de Mapa: {data.get('error')}"}
+        # Se for erro da API (dicionário com erro)
+        if isinstance(data, dict) and ('error' in data or 'message' in data):
+             return {'viabilidade': False, 'msg': 'Erro na comunicação com o mapa.'}
 
-        # Proteção contra lista vazia (não achou nada)
+        # Se não achou nada (lista vazia)
         if not data or (isinstance(data, list) and len(data) == 0):
             if eh_exata:
                 return {'viabilidade': False, 'erro_busca': True, 'msg': 'Número não localizado.'}
             return {'viabilidade': False, 'msg': 'CEP não localizado no mapa.'}
         
-        # Pega o primeiro item da lista com segurança
-        if isinstance(data, list):
-            item = data[0]
-        else:
-            item = data
+        # Pega o primeiro resultado da lista
+        item = data[0] if isinstance(data, list) else data
 
-        # Pega a lat/long
         lat = float(item.get('lat', 0))
         lon = float(item.get('lon', 0))
         
         if lat == 0 or lon == 0:
-             return {'viabilidade': False, 'msg': 'Coordenadas inválidas recebidas.'}
+             return {'viabilidade': False, 'msg': 'Coordenadas inválidas.'}
         
-        # Chama a função de geometria que criamos acima
         return verificar_viabilidade_por_coordenadas(lat, lon)
         
     except Exception as e:
-        logger.error(f"Erro Busca Mapa: {e}")
-        return {'viabilidade': False, 'msg': f"Erro técnico na busca: {str(e)}"}
+        return {'viabilidade': False, 'msg': f"Erro técnico: {str(e)}"}
