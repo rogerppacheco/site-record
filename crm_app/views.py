@@ -1520,7 +1520,7 @@ class ImportacaoOsabView(APIView):
             'GERENCIA': 'gerencia', 'NM_GC': 'gc',
         }
 
-        # Status básicos (Regras complexas são tratadas no loop)
+        # Status básicos (Esteira)
         STATUS_MAP = {
             'CONCLUÍDO': 'INSTALADA', 'CONCLUIDO': 'INSTALADA', 'EXECUTADO': 'INSTALADA',
             'PENDÊNCIA CLIENTE': 'PENDENCIADA', 'PENDENCIA CLIENTE': 'PENDENCIADA',
@@ -1540,8 +1540,9 @@ class ImportacaoOsabView(APIView):
         df.columns = [str(col).strip().upper() for col in df.columns]
         df = df.replace({np.nan: None, pd.NaT: None})
 
-        # --- CACHES ---
+        # --- CACHES (Agora carregamos Esteira E Tratamento) ---
         status_esteira_map = {s.nome.upper(): s for s in StatusCRM.objects.filter(tipo='Esteira')}
+        status_tratamento_map = {s.nome.upper(): s for s in StatusCRM.objects.filter(tipo='Tratamento')} # <--- NOVO
         
         mapa_pagamentos = {}
         for fp in FormaPagamento.objects.filter(ativo=True):
@@ -1550,7 +1551,6 @@ class ImportacaoOsabView(APIView):
         motivo_pendencia_map = {}
         import re
         for m in MotivoPendencia.objects.all():
-            # Regex pega o primeiro grupo de números no início da string
             match = re.match(r'^(\d+)', m.nome.strip())
             if match:
                 codigo_full = match.group(1)
@@ -1598,70 +1598,121 @@ class ImportacaoOsabView(APIView):
                 sit_osab_raw = str(row.get('SITUACAO', '')).strip().upper()
                 if sit_osab_raw == "NONE" or sit_osab_raw == "NAN": sit_osab_raw = ""
 
-                # --- LÓGICA DE DECISÃO DE STATUS ALVO ---
-                target_status_nome = None
+                # --- VARIÁVEIS DE CONTROLE ---
+                target_status_esteira = None
+                target_status_tratamento = None # <--- Para lidar com Reprovado
                 target_data_agenda = None
                 target_motivo_pendencia = None
                 
-                # 1. Caso Vazio ou Fraude (Regra do Cartão)
-                is_fraude = "PAYMENT_NOT_AUTHORIZED" in sit_osab_raw
-                if not sit_osab_raw or is_fraude:
-                    pgto_raw = self._normalize_text(row.get('MEIO_PAGAMENTO'))
-                    if "CARTAO" in pgto_raw:
-                        target_status_nome = "REPROVADO CARTÃO DE CRÉDITO"
-                    else:
-                        # Se vazio e não é cartão, mantemos o que está ou definimos DRAFT?
-                        # O usuário disse "ficará parado na auditoria". Se já estiver em auditoria, não mexe.
-                        # Se precisar forçar um status, descomente abaixo:
-                        # target_status_nome = "DRAFT" 
-                        pass # Não altera status se não for cartão
-
-                # 2. Caso Em Aprovisionamento (Regra da Data)
-                elif sit_osab_raw == "EM APROVISIONAMENTO":
-                    dt_ag_raw = row.get('DATA_AGENDAMENTO')
-                    dt_ag = safe_date_convert(dt_ag_raw)
-                    
-                    if dt_ag and dt_ag.year >= 2000:
-                        target_status_nome = "AGENDADO"
-                        target_data_agenda = dt_ag
-                    else:
-                        target_status_nome = "PENDENCIADA"
-                        target_motivo_pendencia = motivo_sem_agenda
-
-                # 3. Demais Casos (Mapeamento Padrão)
-                else:
-                    target_status_nome = STATUS_MAP.get(sit_osab_raw)
-                    # Tratamento parcial se não achou exato
-                    if not target_status_nome:
-                        if sit_osab_raw.startswith("DRAFT"): target_status_nome = "DRAFT"
-                        elif "AGUARDANDO PAGAMENTO" in sit_osab_raw: target_status_nome = "AGUARDANDO PAGAMENTO"
-                        elif "REPROVADO" in sit_osab_raw: target_status_nome = "REPROVADO CARTÃO DE CRÉDITO"
-
-                # Se depois de tudo isso não tivermos um status alvo, ignoramos (ou logamos erro)
-                if not target_status_nome:
-                    log_item["resultado"] = "SEM_MUDANCA"; log_item["detalhe"] = f"Status '{sit_osab_raw}' sem ação definida."; report["logs_detalhados"].append(log_item); continue
-
-                target_status_obj = status_esteira_map.get(target_status_nome)
-                if not target_status_obj:
-                    log_item["resultado"] = "ERRO_CONFIG"; log_item["detalhe"] = f"Status '{target_status_nome}' não existe no CRM."; report["logs_detalhados"].append(log_item); continue
-
-                # --- APLICAÇÃO DAS ALTERAÇÕES ---
                 houve_alteracao = False
                 detalhes_hist = {}
                 motivos_ignorados = []
 
-                # A. Status
-                st_atual = venda.status_esteira.nome.upper() if venda.status_esteira else "N/A"
-                if not venda.status_esteira or venda.status_esteira.id != target_status_obj.id:
-                    detalhes_hist['status_esteira'] = f"De '{st_atual}' para '{target_status_nome}'"
-                    venda.status_esteira = target_status_obj
-                    houve_alteracao = True
-                    # Limpa pendência se saiu de pendenciada (exceto se a nova tbm for)
-                    if 'PENDEN' not in target_status_nome: venda.motivo_pendencia = None
-                else:
-                    motivos_ignorados.append(f"Status ok ({st_atual})")
+                # --- 1. LÓGICA DE DECISÃO ---
+                
+                # CASO: Vazio ou Fraude (Regra do Cartão - TRATAMENTO)
+                is_fraude = "PAYMENT_NOT_AUTHORIZED" in sit_osab_raw
+                if not sit_osab_raw or is_fraude:
+                    pgto_raw = self._normalize_text(row.get('MEIO_PAGAMENTO'))
+                    if "CARTAO" in pgto_raw:
+                        # Busca no mapa de TRATAMENTO, não Esteira
+                        st_reprovado = status_tratamento_map.get("REPROVADO CARTÃO DE CRÉDITO")
+                        if st_reprovado:
+                            target_status_tratamento = st_reprovado
+                        else:
+                            motivos_ignorados.append("Status 'REPROVADO CARTÃO DE CRÉDITO' não achado em Tratamento")
+                    else:
+                        pass # Mantém o que está
 
-                # B. Pagamento (Mandatório)
+                # CASO: Em Aprovisionamento (Esteira)
+                elif sit_osab_raw == "EM APROVISIONAMENTO":
+                    dt_ag_raw = row.get('DATA_AGENDAMENTO')
+                    dt_ag = safe_date_convert(dt_ag_raw)
+                    if dt_ag and dt_ag.year >= 2000:
+                        target_status_esteira = status_esteira_map.get("AGENDADO")
+                        target_data_agenda = dt_ag
+                    else:
+                        target_status_esteira = status_esteira_map.get("PENDENCIADA")
+                        target_motivo_pendencia = motivo_sem_agenda
+
+                # DEMAIS CASOS (Esteira Padrão)
+                else:
+                    nome_est = STATUS_MAP.get(sit_osab_raw)
+                    if not nome_est:
+                        if sit_osab_raw.startswith("DRAFT"): nome_est = "DRAFT"
+                        elif "AGUARDANDO PAGAMENTO" in sit_osab_raw: nome_est = "AGUARDANDO PAGAMENTO"
+                        elif "REPROVADO" in sit_osab_raw: 
+                            # Se for reprovado e não caiu na regra acima, talvez seja esteira
+                             nome_est = "REPROVADO CARTÃO DE CRÉDITO"
+                    
+                    if nome_est:
+                         # Tenta achar na Esteira
+                         target_status_esteira = status_esteira_map.get(nome_est)
+
+                # --- APLICAÇÃO ---
+
+                # A. Atualizar Tratamento (Prioridade para Regra do Cartão)
+                if target_status_tratamento:
+                    if venda.status_tratamento != target_status_tratamento:
+                        detalhes_hist['status_tratamento'] = f"De '{venda.status_tratamento}' para '{target_status_tratamento.nome}'"
+                        venda.status_tratamento = target_status_tratamento
+                        houve_alteracao = True
+                    else:
+                        motivos_ignorados.append(f"Tratamento já é {target_status_tratamento.nome}")
+
+                # B. Atualizar Esteira (Se definido)
+                if target_status_esteira:
+                    if venda.status_esteira != target_status_esteira:
+                        detalhes_hist['status_esteira'] = f"De '{venda.status_esteira}' para '{target_status_esteira.nome}'"
+                        venda.status_esteira = target_status_esteira
+                        houve_alteracao = True
+                        if 'PENDEN' not in target_status_esteira.nome.upper(): venda.motivo_pendencia = None
+                    else:
+                        motivos_ignorados.append(f"Esteira já é {target_status_esteira.nome}")
+
+                    # Regras adicionais de Esteira
+                    nome_est_upper = target_status_esteira.nome.upper()
+
+                    # C. Datas
+                    if 'INSTALADA' in nome_est_upper:
+                        raw_dt = row.get('DATA_FECHAMENTO')
+                        nova_dt = safe_date_convert(raw_dt)
+                        if nova_dt and nova_dt.year >= 2000:
+                            db_valido = (venda.data_instalacao and venda.data_instalacao.year >= 2000)
+                            if not db_valido or venda.data_instalacao != nova_dt:
+                                detalhes_hist['data_instalacao'] = f"De '{venda.data_instalacao}' para '{nova_dt}'"
+                                venda.data_instalacao = nova_dt
+                                houve_alteracao = True
+                        else:
+                             motivos_ignorados.append(f"Sem Data Fechamento válida")
+
+                    elif 'AGENDADO' in nome_est_upper:
+                        nova_dt_ag = target_data_agenda
+                        if not nova_dt_ag: nova_dt_ag = safe_date_convert(row.get('DATA_AGENDAMENTO'))
+                        
+                        if nova_dt_ag and nova_dt_ag.year >= 2000:
+                            db_ag_valido = (venda.data_agendamento and venda.data_agendamento.year >= 2000)
+                            if not db_ag_valido or venda.data_agendamento != nova_dt_ag:
+                                detalhes_hist['data_agendamento'] = f"De '{venda.data_agendamento}' para '{nova_dt_ag}'"
+                                venda.data_agendamento = nova_dt_ag
+                                houve_alteracao = True
+
+                    # D. Pendência
+                    elif 'PENDEN' in nome_est_upper:
+                        novo_motivo = target_motivo_pendencia
+                        if not novo_motivo:
+                            cod_full = str(row.get('COD_PENDENCIA', '')).replace('.0', '').strip()
+                            novo_motivo = motivo_pendencia_map.get(cod_full)
+                            if not novo_motivo and len(cod_full) >= 2:
+                                 novo_motivo = motivo_pendencia_map.get(cod_full[:2])
+                            if not novo_motivo: novo_motivo = motivo_padrao_osab
+                        
+                        if venda.motivo_pendencia_id != novo_motivo.id:
+                            detalhes_hist['motivo_pendencia'] = f"Atualizado para '{novo_motivo.nome}'"
+                            venda.motivo_pendencia = novo_motivo
+                            houve_alteracao = True
+
+                # E. Pagamento (Sempre verifica, independente do status)
                 pgto_osab_raw = row.get('MEIO_PAGAMENTO')
                 if pgto_osab_raw:
                     pgto_norm = self._normalize_text(pgto_osab_raw)
@@ -1677,68 +1728,16 @@ class ImportacaoOsabView(APIView):
                         venda.forma_pagamento = novo_fp
                         houve_alteracao = True
 
-                # C. Datas Específicas
-                if target_status_nome == 'INSTALADA':
-                    raw_dt = row.get('DATA_FECHAMENTO')
-                    nova_dt = safe_date_convert(raw_dt)
-                    if nova_dt and nova_dt.year >= 2000:
-                        db_valido = (venda.data_instalacao and venda.data_instalacao.year >= 2000)
-                        if not db_valido or venda.data_instalacao != nova_dt:
-                            detalhes_hist['data_instalacao'] = f"De '{venda.data_instalacao}' para '{nova_dt}'"
-                            venda.data_instalacao = nova_dt
-                            houve_alteracao = True
-                        else:
-                            motivos_ignorados.append("Data Instalação ok")
-                    else:
-                        motivos_ignorados.append(f"Data Fechamento Inválida ({raw_dt})")
-
-                elif target_status_nome == 'AGENDADO':
-                    # Se veio do "Em Aprovisionamento", já temos a data calculada acima
-                    nova_dt_ag = target_data_agenda
-                    # Se não veio, tentamos pegar agora
-                    if not nova_dt_ag:
-                        nova_dt_ag = safe_date_convert(row.get('DATA_AGENDAMENTO'))
-                    
-                    if nova_dt_ag and nova_dt_ag.year >= 2000:
-                        db_ag_valido = (venda.data_agendamento and venda.data_agendamento.year >= 2000)
-                        if not db_ag_valido or venda.data_agendamento != nova_dt_ag:
-                            detalhes_hist['data_agendamento'] = f"De '{venda.data_agendamento}' para '{nova_dt_ag}'"
-                            venda.data_agendamento = nova_dt_ag
-                            houve_alteracao = True
-                        else:
-                            motivos_ignorados.append("Data Agendamento ok")
-
-                # D. Pendência (Se for o caso)
-                if target_status_nome == 'PENDENCIADA':
-                    novo_motivo = None
-                    if target_motivo_pendencia:
-                        novo_motivo = target_motivo_pendencia # Veio do aprovisionamento
-                    else:
-                        # Pega o código da planilha e remove o .0 se existir
-                        cod_full = str(row.get('COD_PENDENCIA', '')).replace('.0', '').strip()
-                        # Tenta achar exato (Ex: '7020')
-                        novo_motivo = motivo_pendencia_map.get(cod_full)
-                        
-                        # Se não achar exato, tenta pegar os primeiros 2 digitos como fallback (Ex: '70' para '7020')
-                        if not novo_motivo and len(cod_full) >= 2:
-                             novo_motivo = motivo_pendencia_map.get(cod_full[:2])
-                        
-                        # Se ainda não achar, usa padrão
-                        if not novo_motivo:
-                            novo_motivo = motivo_padrao_osab
-                    
-                    if venda.motivo_pendencia_id != novo_motivo.id:
-                        detalhes_hist['motivo_pendencia'] = f"De '{venda.motivo_pendencia}' para '{novo_motivo.nome}'"
-                        venda.motivo_pendencia = novo_motivo
-                        houve_alteracao = True
-
                 # Commit
                 if houve_alteracao:
                     log_item["resultado"] = "ATUALIZAR"; log_item["detalhe"] = " | ".join([f"{k}: {v}" for k,v in detalhes_hist.items()])
                     vendas_para_atualizar_db.append(venda)
                     historicos_para_criar.append(HistoricoAlteracaoVenda(venda=venda, usuario=osab_bot, alteracoes=detalhes_hist))
                 else:
-                    log_item["resultado"] = "JA_CORRETO"; log_item["detalhe"] = " | ".join(motivos_ignorados)
+                    if not target_status_esteira and not target_status_tratamento:
+                         log_item["resultado"] = "SEM_MUDANCA"; log_item["detalhe"] = f"Status '{sit_osab_raw}' não gerou ação."
+                    else:
+                        log_item["resultado"] = "JA_CORRETO"; log_item["detalhe"] = " | ".join(motivos_ignorados)
                     report["ja_corretos"] += 1
                 report["logs_detalhados"].append(log_item)
 
@@ -1748,7 +1747,7 @@ class ImportacaoOsabView(APIView):
 
         if vendas_para_atualizar_db:
             report["atualizados"] = len(vendas_para_atualizar_db)
-            campos = ['status_esteira', 'data_instalacao', 'data_agendamento', 'forma_pagamento', 'motivo_pendencia']
+            campos = ['status_esteira', 'status_tratamento', 'data_instalacao', 'data_agendamento', 'forma_pagamento', 'motivo_pendencia']
             Venda.objects.bulk_update(vendas_para_atualizar_db, campos)
             if historicos_para_criar: HistoricoAlteracaoVenda.objects.bulk_create(historicos_para_criar)
 
