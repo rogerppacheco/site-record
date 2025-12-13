@@ -1,0 +1,74 @@
+[
+{
+  "model": "crm_app.plano",
+  "pk": 1,
+  "fields": {
+    "nome": "NIO FIBRA ESSENCIAL 500MB",
+    "valor": "100.00",
+    "operadora": 1,
+    "beneficios": "",
+    "ativo": true,
+    "comissao_base": "350.00"
+  }
+},
+{
+  "model": "crm_app.plano",
+  "pk": 2,
+  "fields": {
+    "nome": "NIO FIBRA SUPER 700MB",
+    "valor": "130.00",
+    "operadora": 1,
+    "beneficios": "",
+    "ativo": true,
+    "comissao_base": "450.00"
+  }
+},
+{
+  "model": "crm_app.plano",
+  "pk": 3,
+  "fields": {
+    "nome": "NIO FIBRA ULTRA 1GB",
+    "valor": "160.00",
+    "operadora": 1,
+    "beneficios": "",
+    "ativo": true,
+    "comissao_base": "550.00"
+  }
+},
+{
+  "model": "crm_app.operadora",
+  "pk": 1,
+  "fields": {
+    "nome": "NIO",
+    "cnpj": "00000000000001",
+    "ativo": true
+  }
+},
+{
+  "model": "crm_app.formapagamento",
+  "pk": 1,
+  "fields": {
+    "nome": "BOLETO",
+    "ativo": true,
+    "aplica_desconto": false
+  }
+},
+{
+  "model": "crm_app.formapagamento",
+  "pk": 2,
+  "fields": {
+    "nome": "CARTÃO DE CRÉDITO",
+    "ativo": true,
+    "aplica_desconto": false
+  }
+},
+{
+  "model": "crm_app.formapagamento",
+  "pk": 3,
+  "fields": {
+    "nome": "DÉBITO AUTOMÁTICO",
+    "ativo": true,
+    "aplica_desconto": false
+  }
+}
+]

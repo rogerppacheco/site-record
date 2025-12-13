@@ -7,10 +7,11 @@ from operator import itemgetter
 import base64
 from io import BytesIO
 import json
-import os 
+import os
 import calendar
-import re 
+import re
 import xml.etree.ElementTree as ET
+import unicodedata 
 
 from django.db.models import Count, Q, Sum
 from django.utils import timezone
@@ -24,7 +25,8 @@ from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.utils.html import strip_tags
 from django.contrib.staticfiles import finders
-# CORREÇÃO CRÍTICA: Importar transaction e IntegrityError para o Webhook funcionar sem duplicidade
+
+# --- CORREÇÃO CRÍTICA: Importar transaction e IntegrityError ---
 from django.db import transaction, IntegrityError
 
 from rest_framework import generics, viewsets, status, permissions
@@ -34,22 +36,25 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.exceptions import PermissionDenied, NotFound
-from rest_framework.decorators import api_view, permission_classes, action 
+from rest_framework.decorators import api_view, permission_classes, action
 
 # --- IMPORTS EXTRAS DO PROJETO ---
-from core.models import DiaFiscal 
-from .whatsapp_service import WhatsAppService 
-from xhtml2pdf import pisa 
+from core.models import DiaFiscal
+from .whatsapp_service import WhatsAppService
+from xhtml2pdf import pisa
 from usuarios.permissions import CheckAPIPermission, VendaPermission
+import openpyxl 
+from openpyxl.styles import Font, PatternFill
+
 
 # Funções de Mapa (Geometria e Busca)
 from .utils import (
-    verificar_viabilidade_por_cep, 
-    verificar_viabilidade_por_coordenadas, 
+    verificar_viabilidade_por_cep,
+    verificar_viabilidade_por_coordenadas,
     verificar_viabilidade_exata
 )
 
-# Modelos do App (Incluindo as novas tabelas DFV e SessaoWhatsapp)
+# Modelos do App
 from .models import (
     Operadora, Plano, FormaPagamento, StatusCRM, MotivoPendencia,
     RegraComissao, Cliente, Venda, ImportacaoOsab, ImportacaoChurn,
@@ -202,7 +207,7 @@ class ComunicadoViewSet(viewsets.ModelViewSet):
         serializer.save(criado_por=self.request.user)
 
 class VendaViewSet(viewsets.ModelViewSet):
-    permission_classes = [VendaPermission] 
+    permission_classes = [VendaPermission]
     resource_name = 'venda'
     queryset = Venda.objects.filter(ativo=True).order_by('-data_criacao')
 
@@ -227,15 +232,31 @@ class VendaViewSet(viewsets.ModelViewSet):
         user = self.request.user
         view_type = self.request.query_params.get('view')
         flow = self.request.query_params.get('flow')
-        search = self.request.query_params.get('search') 
+        search = self.request.query_params.get('search')
         
+        # --- REGRA DE DATA OBRIGATÓRIA (MÊS ATUAL) ---
+        grupos_livres = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
+        eh_gestao_total = is_member(user, grupos_livres)
+
+        if not eh_gestao_total and not search:
+            # Se não for gestão e não estiver buscando por CPF/OS específico:
+            hoje = timezone.now()
+            inicio_mes = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            # Filtra vendas criadas ou instaladas neste mês
+            queryset = queryset.filter(Q(data_criacao__gte=inicio_mes) | Q(data_instalacao__gte=inicio_mes))
+
+        # --- FILTRO DE STATUS ---
         status_filter = self.request.query_params.get('status')
         if status_filter:
-            if status_filter.upper() == 'CANCELADO':
+            status_upper = status_filter.upper()
+            if status_upper == 'CANCELADO':
                 queryset = queryset.filter(status_esteira__nome__icontains='CANCELAD')
+            elif 'PENDEN' in status_upper:
+                queryset = queryset.filter(status_esteira__nome__icontains='PENDEN')
             else:
                 queryset = queryset.filter(status_esteira__nome__iexact=status_filter)
 
+        # --- FILTRO DE BUSCA GLOBAL ---
         if search:
             search_clean = re.sub(r'\D', '', search)
             filters = Q(ordem_servico__icontains=search) | \
@@ -246,11 +267,12 @@ class VendaViewSet(viewsets.ModelViewSet):
                 filters |= Q(ordem_servico__icontains=search_clean)
             queryset = queryset.filter(filters)
 
-        acoes_gestao = ['retrieve', 'update', 'partial_update', 'destroy', 'alocar_auditoria', 'liberar_auditoria', 'finalizar_auditoria', 'pendentes_auditoria', 'reenviar_whatsapp_aprovacao']
+        # --- PERMISSÕES DE VISUALIZAÇÃO ---
+        acoes_gestao = ['retrieve', 'update', 'partial_update', 'destroy', 'alocar_auditoria', 'liberar_auditoria', 'finalizar_auditoria', 'pendentes_auditoria', 'reenviar_whatsapp_aprovacao', 'exportar_excel']
 
         if self.action in acoes_gestao:
-            grupos_gestao = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
-            if user.is_superuser or is_member(user, grupos_gestao):
+            grupos_gestao_acao = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
+            if user.is_superuser or is_member(user, grupos_gestao_acao):
                 return queryset
             if is_member(user, ['Supervisor']):
                 liderados_ids = list(user.liderados.values_list('id', flat=True))
@@ -266,16 +288,12 @@ class VendaViewSet(viewsets.ModelViewSet):
 
         if view_type == 'minhas_vendas':
             queryset = queryset.filter(vendedor=user)
+        
         elif view_type == 'visao_equipe' or view_type == 'geral':
             if is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
                 pass 
             elif is_member(user, ['Auditoria', 'Qualidade']):
-                if not search and not status_filter:
-                    data_inicio_param = self.request.query_params.get('data_inicio')
-                    if not data_inicio_param and self.action == 'list' and flow != 'esteira':
-                        hoje = timezone.now()
-                        inicio_mes = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-                        queryset = queryset.filter(Q(data_criacao__gte=inicio_mes) | Q(data_instalacao__gte=inicio_mes))
+                pass # Já filtrado no inicio
             elif is_member(user, ['Supervisor']):
                 liderados_ids = list(user.liderados.values_list('id', flat=True))
                 liderados_ids.append(user.id)
@@ -283,6 +301,7 @@ class VendaViewSet(viewsets.ModelViewSet):
             else:
                 return queryset.none()
 
+        # Filtros Avançados (Data, OS, Consultor)
         ordem_servico = self.request.query_params.get('ordem_servico')
         data_inicio_str = self.request.query_params.get('data_inicio')
         data_fim_str = self.request.query_params.get('data_fim')
@@ -302,17 +321,14 @@ class VendaViewSet(viewsets.ModelViewSet):
         if ordem_servico:
             queryset = queryset.filter(ordem_servico__icontains=ordem_servico)
 
-        if not search and not status_filter:
-            if data_inicio_str and data_fim_str:
-                try:
-                    dt_ini = datetime.strptime(data_inicio_str, '%Y-%m-%d').date()
-                    dt_fim = datetime.strptime(data_fim_str, '%Y-%m-%d').date() + timedelta(days=1)
-                    queryset = queryset.filter(Q(data_criacao__range=(dt_ini, dt_fim)) | Q(data_instalacao__range=(dt_ini, dt_fim)))
-                except: pass
-            elif view_type == 'minhas_vendas' and self.action == 'list' and not is_member(user, ['Diretoria', 'BackOffice', 'Admin', 'Auditoria']):
-                 hoje = now()
-                 inicio_mes = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-                 queryset = queryset.filter(Q(data_criacao__gte=inicio_mes) | Q(data_instalacao__gte=inicio_mes))
+        # Se houver datas especificas vindas do front (e o usuário tiver permissão de filtrar), aplica
+        if data_inicio_str and data_fim_str and eh_gestao_total:
+            try:
+                dt_ini = datetime.strptime(data_inicio_str, '%Y-%m-%d').date()
+                dt_fim = datetime.strptime(data_fim_str, '%Y-%m-%d').date() + timedelta(days=1)
+                queryset = queryset.filter(Q(data_criacao__range=(dt_ini, dt_fim)) | Q(data_instalacao__range=(dt_ini, dt_fim)))
+            except: pass
+            
         return queryset
 
     @action(detail=True, methods=['post'], url_path='reenviar-whatsapp-aprovacao', permission_classes=[permissions.IsAuthenticated])
@@ -612,6 +628,51 @@ class VendaViewSet(viewsets.ModelViewSet):
         except Exception as e:
             logger.error(f"Erro ao excluir venda {kwargs.get('pk')}: {e}", exc_info=True)
             return Response({"detail": "Erro ao excluir venda."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    # --- NOVA AÇÃO: EXPORTAR EXCEL ---
+    @action(detail=False, methods=['get'], url_path='exportar-excel')
+    def exportar_excel(self, request):
+        user = request.user
+        # Apenas Diretoria, Admin e BackOffice podem exportar
+        if not is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
+            return Response({"detail": "Acesso negado."}, status=status.HTTP_403_FORBIDDEN)
+
+        # Pega todos os dados (sem paginação)
+        vendas = self.filter_queryset(self.get_queryset())
+        
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Base de Vendas"
+
+        headers = ['ID', 'Data Venda', 'Vendedor', 'Supervisor', 'Cliente', 'CPF/CNPJ', 'Plano', 'Status Esteira', 'Data Instalação', 'Status Pagamento', 'OS', 'Motivo Pendência']
+        ws.append(headers)
+        
+        # Estilo Cabeçalho
+        for cell in ws[1]:
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
+
+        for v in vendas:
+            sup_nome = v.vendedor.supervisor.username if v.vendedor and v.vendedor.supervisor else '-'
+            ws.append([
+                v.id,
+                v.data_criacao.strftime('%d/%m/%Y') if v.data_criacao else '-',
+                v.vendedor.username if v.vendedor else '-',
+                sup_nome,
+                v.cliente.nome_razao_social if v.cliente else '-',
+                v.cliente.cpf_cnpj if v.cliente else '-',
+                v.plano.nome if v.plano else '-',
+                v.status_esteira.nome if v.status_esteira else '-',
+                v.data_instalacao.strftime('%d/%m/%Y') if v.data_instalacao else '-',
+                v.status_comissionamento.nome if v.status_comissionamento else '-',
+                v.ordem_servico or '-',
+                v.motivo_pendencia.nome if v.motivo_pendencia else '-'
+            ])
+
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = f'attachment; filename=base_vendas_{datetime.now().strftime("%Y%m%d")}.xlsx'
+        wb.save(response)
+        return response
 
 class VendasStatusCountView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -1417,266 +1478,288 @@ class ImportacaoOsabView(APIView):
         if pd.isna(key) or key is None: return None
         return str(key).replace('.0', '').strip()
 
-    def get(self, request):
-        queryset = ImportacaoOsab.objects.all().order_by('-id')[:100]
-        serializer = ImportacaoOsabSerializer(queryset, many=True)
-        return Response(serializer.data)
+    def _normalize_text(self, text):
+        if not text: return ""
+        text = str(text).upper().strip()
+        import unicodedata
+        return ''.join(c for c in unicodedata.normalize('NFD', text) if unicodedata.category(c) != 'Mn')
 
     def post(self, request, *args, **kwargs):
         file_obj = request.FILES.get('file')
-        if not file_obj: return Response({'error': 'Nenhum arquivo foi enviado.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not file_obj: return Response({'error': 'Nenhum arquivo enviado.'}, status=400)
         
-        # --- MAPEAMENTO NOVO DA PLANILHA ---
+        # --- FUNÇÃO DATA SEGURA ---
+        def safe_date_convert(val):
+            try:
+                if pd.isna(val) or val == "" or val is None: return None
+                if isinstance(val, (datetime, date, pd.Timestamp)):
+                    return val.date() if isinstance(val, (datetime, pd.Timestamp)) else val
+                if isinstance(val, (float, int)):
+                    if val < 100: return None 
+                    return (datetime(1899, 12, 30) + timedelta(days=float(val))).date()
+                if isinstance(val, str):
+                    val = val.strip()
+                    return pd.to_datetime(val, dayfirst=True, errors='coerce').date()
+            except: return None
+            return None
+
         coluna_map = {
-            'PRODUTO': 'produto',
-            'UF': 'uf',
-            'DT_REF': 'dt_ref',
-            'PEDIDO': 'documento',
-            'SEGMENTO': 'segmento',
-            'LOCALIDADE': 'localidade',
-            'CELULA': 'celula',
-            'ID_BUNDLE': 'id_bundle',
-            'TELEFONE': 'telefone',
-            'VELOCIDADE': 'velocidade',
-            'MATRICULA_VENDEDOR': 'matricula_vendedor',
-            'CLASSE_PRODUTO': 'classe_produto',
-            'NOME_CNAL': 'nome_canal',
-            'PDV_SAP': 'pdv_sap',
-            'DESCRICAO': 'descricao',
-            'DATA_ABERTURA': 'data_abertura',
-            'DATA_FECHAMENTO': 'data_fechamento',
-            'SITUACAO': 'situacao',
-            'CLASSIFICACAO': 'classificacao',
-            'DATA_AGENDAMENTO': 'data_agendamento',
-            'COD_PENDENCIA': 'cod_pendencia',
-            'DESC_PENDENCIA': 'desc_pendencia',
-            'NUMERO_BA': 'numero_ba',
-            'FG_VENDA_VALIDA': 'fg_venda_valida',
-            'DESC_MOTIVO_ORDEM': 'desc_motivo_ordem',
-            'DESC_SUB_MOTIVO_ORDEM': 'desc_sub_motivo_ordem',
-            'MEIO_PAGAMENTO': 'meio_pagamento',
-            'CAMPANHA': 'campanha',
-            'FLG_MEI': 'flg_mei',
-            'NM_DIRETORIA': 'nm_diretoria',
-            'NM_REGIONAL': 'nm_regional',
-            'CD_REDE': 'cd_rede',
-            'GP_CANAL': 'gp_canal',
-            'GERENCIA': 'gerencia',
-            'NM_GC': 'gc',
+            'PRODUTO': 'produto', 'UF': 'uf', 'DT_REF': 'dt_ref', 'PEDIDO': 'documento',
+            'SEGMENTO': 'segmento', 'LOCALIDADE': 'localidade', 'CELULA': 'celula',
+            'ID_BUNDLE': 'id_bundle', 'TELEFONE': 'telefone', 'VELOCIDADE': 'velocidade',
+            'MATRICULA_VENDEDOR': 'matricula_vendedor', 'CLASSE_PRODUTO': 'classe_produto',
+            'NOME_CNAL': 'nome_canal', 'PDV_SAP': 'pdv_sap', 'DESCRICAO': 'descricao',
+            'DATA_ABERTURA': 'data_abertura', 'DATA_FECHAMENTO': 'data_fechamento',
+            'SITUACAO': 'situacao', 'CLASSIFICACAO': 'classificacao',
+            'DATA_AGENDAMENTO': 'data_agendamento', 'COD_PENDENCIA': 'cod_pendencia',
+            'DESC_PENDENCIA': 'desc_pendencia', 'NUMERO_BA': 'numero_ba',
+            'FG_VENDA_VALIDA': 'fg_venda_valida', 'DESC_MOTIVO_ORDEM': 'desc_motivo_ordem',
+            'DESC_SUB_MOTIVO_ORDEM': 'desc_sub_motivo_ordem', 'MEIO_PAGAMENTO': 'meio_pagamento',
+            'CAMPANHA': 'campanha', 'FLG_MEI': 'flg_mei', 'NM_DIRETORIA': 'nm_diretoria',
+            'NM_REGIONAL': 'nm_regional', 'CD_REDE': 'cd_rede', 'GP_CANAL': 'gp_canal',
+            'GERENCIA': 'gerencia', 'NM_GC': 'gc',
+        }
+
+        # Status básicos (Regras complexas são tratadas no loop)
+        STATUS_MAP = {
+            'CONCLUÍDO': 'INSTALADA', 'CONCLUIDO': 'INSTALADA', 'EXECUTADO': 'INSTALADA',
+            'PENDÊNCIA CLIENTE': 'PENDENCIADA', 'PENDENCIA CLIENTE': 'PENDENCIADA',
+            'PENDÊNCIA TÉCNICA': 'PENDENCIADA', 'PENDENCIA TECNICA': 'PENDENCIADA',
+            'CANCELADO': 'CANCELADA', 'EM CANCELAMENTO': 'CANCELADA',
+            'AGENDADO': 'AGENDADO', 'DRAFT': 'DRAFT', 
+            'AGUARDANDO PAGAMENTO': 'AGUARDANDO PAGAMENTO'
         }
 
         try:
             df = None
             if file_obj.name.endswith('.xlsb'): df = pd.read_excel(file_obj, engine='pyxlsb')
             elif file_obj.name.endswith(('.xlsx', '.xls')): df = pd.read_excel(file_obj)
-            else: return Response({'error': 'Formato de arquivo inválido.'}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e: return Response({'error': f'Erro ao ler o arquivo: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+            else: return Response({'error': 'Formato inválido.'}, status=400)
+        except Exception as e: return Response({'error': f'Erro leitura arquivo: {str(e)}'}, status=400)
         
         df.columns = [str(col).strip().upper() for col in df.columns]
-        
-        date_cols = ['DT_REF', 'DATA_ABERTURA', 'DATA_FECHAMENTO', 'DATA_AGENDAMENTO']
-        for col in date_cols:
-            if col in df.columns:
-                df[col] = pd.to_datetime(df[col], errors='coerce')
-
         df = df.replace({np.nan: None, pd.NaT: None})
 
-        colunas_validas = {k: v for k, v in coluna_map.items() if k in df.columns}
+        # --- CACHES ---
+        status_esteira_map = {s.nome.upper(): s for s in StatusCRM.objects.filter(tipo='Esteira')}
         
-        # --- MAPEAMENTO DE STATUS (OSAB -> SISTEMA) ---
-        STATUS_MAP = {
-            'REPROVADO ANALISE DE FRAUDE-PAYMENT_NOT_AUTHORIZED_RULE': 'REPROVADO CARTÃO DE CRÉDITO',
-            'DRAFT-PAYMENT_STATUS_FAILED': 'DRAFT',
-            'DRAFT-INVALID_SESSION_DATA': 'DRAFT',
-            'DRAFT-SESSION_DATA_INVALID': 'DRAFT',
-            'AGUARDANDO PAGAMENTO-SESSION_DATA_INVALID': 'AGUARDANDO PAGAMENTO',
-            'AGUARDANDO PAGAMENTO-INVALID_SESSION_DATA': 'AGUARDANDO PAGAMENTO',
-            'EM APROVISIONAMENTO': 'EM ANDAMENTO',
-            'PENDÊNCIA CLIENTE': 'PENDENCIADA', 'PENDENCIA CLIENTE': 'PENDENCIADA',
-            'CANCELADO': 'CANCELADA',
-            'CONCLUÍDO': 'INSTALADA', 'CONCLUIDO': 'INSTALADA',
-            'PENDÊNCIA TÉCNICA': 'PENDENCIADA', 'PENDENCIA TECNICA': 'PENDENCIADA'
-        }
+        mapa_pagamentos = {}
+        for fp in FormaPagamento.objects.filter(ativo=True):
+            mapa_pagamentos[self._normalize_text(fp.nome)] = fp
         
-        status_esteira_objects = StatusCRM.objects.filter(tipo='Esteira')
-        status_esteira_map = {status.nome.upper(): status for status in status_esteira_objects}
-        
-        vendas_com_os = Venda.objects.filter(ativo=True, ordem_servico__isnull=False).exclude(ordem_servico__exact='')
-        vendas_map = {self._clean_key(v.ordem_servico): v for v in vendas_com_os}
-        
-        # --- PREPARAÇÃO PARA PENDÊNCIAS ---
-        todos_motivos = MotivoPendencia.objects.all()
         motivo_pendencia_map = {}
-        for m in todos_motivos:
-            codigo = "".join(filter(str.isdigit, m.nome))[:2]
-            if codigo:
-                motivo_pendencia_map[codigo] = m
+        import re
+        for m in MotivoPendencia.objects.all():
+            # Regex pega o primeiro grupo de números no início da string
+            match = re.match(r'^(\d+)', m.nome.strip())
+            if match:
+                codigo_full = match.group(1)
+                motivo_pendencia_map[codigo_full] = m
         
-        motivo_validar_osab, _ = MotivoPendencia.objects.get_or_create(
-            nome="VALIDAR OSAB", 
-            defaults={'tipo_pendencia': 'Operacional'}
-        )
+        motivo_padrao_osab, _ = MotivoPendencia.objects.get_or_create(nome="VALIDAR OSAB", defaults={'tipo_pendencia': 'Operacional'})
+        motivo_sem_agenda, _ = MotivoPendencia.objects.get_or_create(nome="APROVISIONAMENTO S/ DATA", defaults={'tipo_pendencia': 'Sistêmica'})
 
+        vendas_com_os = Venda.objects.filter(ativo=True).exclude(ordem_servico__isnull=True).exclude(ordem_servico='')
+        vendas_map = {self._clean_key(v.ordem_servico): v for v in vendas_com_os}
         osab_bot = get_osab_bot_user()
 
         report = {
-            "status": "sucesso", 
-            "total_registros": len(df), 
-            "criados": 0,               
-            "atualizados": 0,           
-            "vendas_encontradas": 0, 
-            "ja_corretos": 0, 
-            "status_nao_mapeado": 0, 
-            "erros": []
+            "status": "sucesso", "total_registros": len(df), "criados": 0, "atualizados": 0, 
+            "vendas_encontradas": 0, "ja_corretos": 0, "erros": [], "logs_detalhados": [], "arquivo_excel_b64": None
         }
         
         vendas_para_atualizar_db = []
-        registros_criados = 0
-        registros_atualizados_imp = 0
-        
         historicos_para_criar = []
 
         for index, row in df.iterrows():
+            log_item = {"linha": index + 2, "pedido": str(row.get('PEDIDO')), "status_osab": str(row.get('SITUACAO')), "resultado": "", "detalhe": ""}
             try:
-                # 1. PROCESSAMENTO DA TABELA IMPORTACAO_OSAB
+                # Salvar Bruto
+                colunas_validas = {k: v for k, v in coluna_map.items() if k in df.columns}
                 dados_model = {}
                 for col_planilha, campo_model in colunas_validas.items():
                     val = row.get(col_planilha)
-                    if col_planilha == 'PEDIDO' and val is not None:
-                        val = self._clean_key(val)
-                    
-                    if isinstance(val, (pd.Timestamp, datetime)):
-                        val = val.date()
-                    
+                    if col_planilha == 'PEDIDO': val = self._clean_key(val)
+                    if campo_model in ['dt_ref', 'data_abertura', 'data_fechamento', 'data_agendamento']: val = safe_date_convert(val)
                     dados_model[campo_model] = val
                 
                 doc_chave = dados_model.get('documento')
-                
-                if doc_chave:
-                    obj_existente = ImportacaoOsab.objects.filter(documento=doc_chave).first()
-                    
-                    should_create = False
-                    should_update = False
+                if doc_chave: ImportacaoOsab.objects.update_or_create(documento=doc_chave, defaults=dados_model)
 
-                    if not obj_existente:
-                        should_create = True
-                    else:
-                        nova_dt = dados_model.get('dt_ref')
-                        antiga_dt = obj_existente.dt_ref
-                        
-                        if nova_dt:
-                            if not antiga_dt:
-                                should_update = True
-                            elif nova_dt > antiga_dt:
-                                should_update = True
-                    
-                    if should_create:
-                        ImportacaoOsab.objects.create(**dados_model)
-                        registros_criados += 1
-                    elif should_update:
-                        for key, value in dados_model.items():
-                            setattr(obj_existente, key, value)
-                        obj_existente.save()
-                        registros_atualizados_imp += 1
+                # Processar Venda
+                if not doc_chave: 
+                    log_item["resultado"] = "IGNORADO"; log_item["detalhe"] = "Sem pedido"; report["logs_detalhados"].append(log_item); continue
 
-                # 2. ATUALIZACAO DE STATUS DA VENDA
-                doc = self._clean_key(row.get('PEDIDO'))
-                sit = row.get('SITUACAO')
-                
-                if not doc: continue
-                
-                venda = vendas_map.get(doc)
-                if not venda: continue
+                venda = vendas_map.get(doc_chave)
+                if not venda:
+                    log_item["resultado"] = "NAO_ENCONTRADO"; log_item["detalhe"] = "OS não existe no CRM"; report["logs_detalhados"].append(log_item); continue
                 
                 report["vendas_encontradas"] += 1
-                
-                if not sit: continue
-                
-                target_name = STATUS_MAP.get(str(sit).strip())
-                if not target_name:
-                    target_name = STATUS_MAP.get(str(sit).strip().upper())
-                
-                if not target_name:
-                    sit_upper = str(sit).strip().upper()
-                    if sit_upper.startswith("DRAFT"):
-                        target_name = "DRAFT"
-                    elif sit_upper.startswith("AGUARDANDO PAGAMENTO"):
-                        target_name = "AGUARDANDO PAGAMENTO"
-                
-                if not target_name: 
-                    report["status_nao_mapeado"] += 1
-                    continue
-                
-                target_obj = status_esteira_map.get(target_name.upper())
-                if not target_obj: 
-                    report["status_nao_mapeado"] += 1
-                    continue
-                
-                mudou_status = (venda.status_esteira is None) or (venda.status_esteira.id != target_obj.id)
-                mudou_pendencia = False
-                mudou_data_instalacao = False
+                sit_osab_raw = str(row.get('SITUACAO', '')).strip().upper()
+                if sit_osab_raw == "NONE" or sit_osab_raw == "NAN": sit_osab_raw = ""
 
-                novo_motivo_pendencia = None
-                if target_name == "PENDENCIADA":
-                    cod_pendencia_planilha = str(row.get('COD_PENDENCIA', '')).strip()
-                    prefixo = cod_pendencia_planilha[:2] if len(cod_pendencia_planilha) >= 2 else cod_pendencia_planilha
-                    
-                    if prefixo in motivo_pendencia_map:
-                        novo_motivo_pendencia = motivo_pendencia_map[prefixo]
+                # --- LÓGICA DE DECISÃO DE STATUS ALVO ---
+                target_status_nome = None
+                target_data_agenda = None
+                target_motivo_pendencia = None
+                
+                # 1. Caso Vazio ou Fraude (Regra do Cartão)
+                is_fraude = "PAYMENT_NOT_AUTHORIZED" in sit_osab_raw
+                if not sit_osab_raw or is_fraude:
+                    pgto_raw = self._normalize_text(row.get('MEIO_PAGAMENTO'))
+                    if "CARTAO" in pgto_raw:
+                        target_status_nome = "REPROVADO CARTÃO DE CRÉDITO"
                     else:
-                        novo_motivo_pendencia = motivo_validar_osab
+                        # Se vazio e não é cartão, mantemos o que está ou definimos DRAFT?
+                        # O usuário disse "ficará parado na auditoria". Se já estiver em auditoria, não mexe.
+                        # Se precisar forçar um status, descomente abaixo:
+                        # target_status_nome = "DRAFT" 
+                        pass # Não altera status se não for cartão
+
+                # 2. Caso Em Aprovisionamento (Regra da Data)
+                elif sit_osab_raw == "EM APROVISIONAMENTO":
+                    dt_ag_raw = row.get('DATA_AGENDAMENTO')
+                    dt_ag = safe_date_convert(dt_ag_raw)
                     
-                    if venda.motivo_pendencia != novo_motivo_pendencia:
-                        venda.motivo_pendencia = novo_motivo_pendencia
-                        mudou_pendencia = True
+                    if dt_ag and dt_ag.year >= 2000:
+                        target_status_nome = "AGENDADO"
+                        target_data_agenda = dt_ag
+                    else:
+                        target_status_nome = "PENDENCIADA"
+                        target_motivo_pendencia = motivo_sem_agenda
 
-                # NOVA REGRA: Atualizar Data Instalação se for INSTALADA
-                if target_name == 'INSTALADA':
-                    data_fechamento = row.get('DATA_FECHAMENTO')
-                    if data_fechamento and not pd.isna(data_fechamento):
-                        if isinstance(data_fechamento, (pd.Timestamp, datetime)):
-                            data_fechamento = data_fechamento.date()
-                        
-                        if venda.data_instalacao != data_fechamento:
-                            venda.data_instalacao = data_fechamento
-                            mudou_data_instalacao = True
-
-                if not mudou_status and not mudou_pendencia and not mudou_data_instalacao:
-                    report["ja_corretos"] += 1
+                # 3. Demais Casos (Mapeamento Padrão)
                 else:
-                    if mudou_status:
-                        venda.status_esteira = target_obj
+                    target_status_nome = STATUS_MAP.get(sit_osab_raw)
+                    # Tratamento parcial se não achou exato
+                    if not target_status_nome:
+                        if sit_osab_raw.startswith("DRAFT"): target_status_nome = "DRAFT"
+                        elif "AGUARDANDO PAGAMENTO" in sit_osab_raw: target_status_nome = "AGUARDANDO PAGAMENTO"
+                        elif "REPROVADO" in sit_osab_raw: target_status_nome = "REPROVADO CARTÃO DE CRÉDITO"
+
+                # Se depois de tudo isso não tivermos um status alvo, ignoramos (ou logamos erro)
+                if not target_status_nome:
+                    log_item["resultado"] = "SEM_MUDANCA"; log_item["detalhe"] = f"Status '{sit_osab_raw}' sem ação definida."; report["logs_detalhados"].append(log_item); continue
+
+                target_status_obj = status_esteira_map.get(target_status_nome)
+                if not target_status_obj:
+                    log_item["resultado"] = "ERRO_CONFIG"; log_item["detalhe"] = f"Status '{target_status_nome}' não existe no CRM."; report["logs_detalhados"].append(log_item); continue
+
+                # --- APLICAÇÃO DAS ALTERAÇÕES ---
+                houve_alteracao = False
+                detalhes_hist = {}
+                motivos_ignorados = []
+
+                # A. Status
+                st_atual = venda.status_esteira.nome.upper() if venda.status_esteira else "N/A"
+                if not venda.status_esteira or venda.status_esteira.id != target_status_obj.id:
+                    detalhes_hist['status_esteira'] = f"De '{st_atual}' para '{target_status_nome}'"
+                    venda.status_esteira = target_status_obj
+                    houve_alteracao = True
+                    # Limpa pendência se saiu de pendenciada (exceto se a nova tbm for)
+                    if 'PENDEN' not in target_status_nome: venda.motivo_pendencia = None
+                else:
+                    motivos_ignorados.append(f"Status ok ({st_atual})")
+
+                # B. Pagamento (Mandatório)
+                pgto_osab_raw = row.get('MEIO_PAGAMENTO')
+                if pgto_osab_raw:
+                    pgto_norm = self._normalize_text(pgto_osab_raw)
+                    novo_fp = None
+                    if pgto_norm in mapa_pagamentos: novo_fp = mapa_pagamentos[pgto_norm]
+                    else:
+                        for k, v in mapa_pagamentos.items():
+                            if pgto_norm in k or k in pgto_norm: novo_fp = v; break
                     
+                    if novo_fp and (not venda.forma_pagamento or venda.forma_pagamento.id != novo_fp.id):
+                        old_fp = venda.forma_pagamento.nome if venda.forma_pagamento else "N/A"
+                        detalhes_hist['forma_pagamento'] = f"De '{old_fp}' para '{novo_fp.nome}'"
+                        venda.forma_pagamento = novo_fp
+                        houve_alteracao = True
+
+                # C. Datas Específicas
+                if target_status_nome == 'INSTALADA':
+                    raw_dt = row.get('DATA_FECHAMENTO')
+                    nova_dt = safe_date_convert(raw_dt)
+                    if nova_dt and nova_dt.year >= 2000:
+                        db_valido = (venda.data_instalacao and venda.data_instalacao.year >= 2000)
+                        if not db_valido or venda.data_instalacao != nova_dt:
+                            detalhes_hist['data_instalacao'] = f"De '{venda.data_instalacao}' para '{nova_dt}'"
+                            venda.data_instalacao = nova_dt
+                            houve_alteracao = True
+                        else:
+                            motivos_ignorados.append("Data Instalação ok")
+                    else:
+                        motivos_ignorados.append(f"Data Fechamento Inválida ({raw_dt})")
+
+                elif target_status_nome == 'AGENDADO':
+                    # Se veio do "Em Aprovisionamento", já temos a data calculada acima
+                    nova_dt_ag = target_data_agenda
+                    # Se não veio, tentamos pegar agora
+                    if not nova_dt_ag:
+                        nova_dt_ag = safe_date_convert(row.get('DATA_AGENDAMENTO'))
+                    
+                    if nova_dt_ag and nova_dt_ag.year >= 2000:
+                        db_ag_valido = (venda.data_agendamento and venda.data_agendamento.year >= 2000)
+                        if not db_ag_valido or venda.data_agendamento != nova_dt_ag:
+                            detalhes_hist['data_agendamento'] = f"De '{venda.data_agendamento}' para '{nova_dt_ag}'"
+                            venda.data_agendamento = nova_dt_ag
+                            houve_alteracao = True
+                        else:
+                            motivos_ignorados.append("Data Agendamento ok")
+
+                # D. Pendência (Se for o caso)
+                if target_status_nome == 'PENDENCIADA':
+                    novo_motivo = None
+                    if target_motivo_pendencia:
+                        novo_motivo = target_motivo_pendencia # Veio do aprovisionamento
+                    else:
+                        # Pega o código da planilha e remove o .0 se existir
+                        cod_full = str(row.get('COD_PENDENCIA', '')).replace('.0', '').strip()
+                        # Tenta achar exato (Ex: '7020')
+                        novo_motivo = motivo_pendencia_map.get(cod_full)
+                        
+                        # Se não achar exato, tenta pegar os primeiros 2 digitos como fallback (Ex: '70' para '7020')
+                        if not novo_motivo and len(cod_full) >= 2:
+                             novo_motivo = motivo_pendencia_map.get(cod_full[:2])
+                        
+                        # Se ainda não achar, usa padrão
+                        if not novo_motivo:
+                            novo_motivo = motivo_padrao_osab
+                    
+                    if venda.motivo_pendencia_id != novo_motivo.id:
+                        detalhes_hist['motivo_pendencia'] = f"De '{venda.motivo_pendencia}' para '{novo_motivo.nome}'"
+                        venda.motivo_pendencia = novo_motivo
+                        houve_alteracao = True
+
+                # Commit
+                if houve_alteracao:
+                    log_item["resultado"] = "ATUALIZAR"; log_item["detalhe"] = " | ".join([f"{k}: {v}" for k,v in detalhes_hist.items()])
                     vendas_para_atualizar_db.append(venda)
-                    
-                    detalhes_hist = {}
-                    if mudou_status:
-                        detalhes_hist['status_esteira'] = f"Alterado para {target_obj.nome} via Importação OSAB"
-                    if mudou_pendencia:
-                        detalhes_hist['motivo_pendencia'] = f"Definido como {novo_motivo_pendencia.nome} (Cód: {row.get('COD_PENDENCIA')})"
-                    if mudou_data_instalacao:
-                        detalhes_hist['data_instalacao'] = f"Atualizada para {venda.data_instalacao} via OSAB"
-                    
-                    historicos_para_criar.append(
-                        HistoricoAlteracaoVenda(
-                            venda=venda,
-                            usuario=osab_bot,
-                            alteracoes=detalhes_hist
-                        )
-                    )
+                    historicos_para_criar.append(HistoricoAlteracaoVenda(venda=venda, usuario=osab_bot, alteracoes=detalhes_hist))
+                else:
+                    log_item["resultado"] = "JA_CORRETO"; log_item["detalhe"] = " | ".join(motivos_ignorados)
+                    report["ja_corretos"] += 1
+                report["logs_detalhados"].append(log_item)
 
             except Exception as ex:
-                report['erros'].append(f"Erro linha {index}: {str(ex)}")
+                log_item["resultado"] = "ERRO_CRITICO"; log_item["detalhe"] = str(ex)
+                report["logs_detalhados"].append(log_item); report['erros'].append(f"Linha {index}: {ex}")
 
-        report["criados"] = registros_criados
-        
         if vendas_para_atualizar_db:
             report["atualizados"] = len(vendas_para_atualizar_db)
-            campos_update = ['status_esteira', 'data_instalacao', 'motivo_pendencia']
-            Venda.objects.bulk_update(vendas_para_atualizar_db, campos_update)
-            
-            if historicos_para_criar:
-                HistoricoAlteracaoVenda.objects.bulk_create(historicos_para_criar)
+            campos = ['status_esteira', 'data_instalacao', 'data_agendamento', 'forma_pagamento', 'motivo_pendencia']
+            Venda.objects.bulk_update(vendas_para_atualizar_db, campos)
+            if historicos_para_criar: HistoricoAlteracaoVenda.objects.bulk_create(historicos_para_criar)
+
+        # Gerar Excel
+        try:
+            if report["logs_detalhados"]:
+                df_logs = pd.DataFrame(report["logs_detalhados"])
+                output = BytesIO()
+                df_logs.to_excel(output, index=False, sheet_name='Log')
+                report['arquivo_excel_b64'] = base64.b64encode(output.getvalue()).decode('utf-8')
+        except: pass
 
         return Response(report, status=status.HTTP_200_OK)
 
@@ -1915,7 +1998,7 @@ class ImportarDFVView(APIView):
         
         try:
             # Lê o CSV (delimitador ; conforme seu arquivo)
-            df = pd.read_csv(file_obj, sep=';', dtype=str, encoding='utf-8') # Adicionado encoding utf-8 por precaução
+            df = pd.read_csv(file_obj, sep=';', dtype=str, encoding='utf-8') 
             df = df.replace({np.nan: None})
             
             # Normaliza nomes de colunas (remove espaços e poe maiusculo)
@@ -1930,7 +2013,6 @@ class ImportarDFVView(APIView):
                 # Tratamento da Fachada (Número)
                 fachada_raw = str(row.get('NUM_FACHADA', '')).strip()
                 
-                # Mapeamento exato com a base 'DDD 31 BELO HORIZONTE.csv'
                 objs.append(DFV(
                     uf=row.get('UF'),
                     municipio=row.get('MUNICIPIO'),
@@ -2176,7 +2258,7 @@ def enviar_comissao_whatsapp(request):
                      detalhes_descontos.append({
                         'motivo': motivo, 
                         'valor': f"-R$ {val:.2f}".replace('.', ',')
-                     })
+                      })
 
                 dados_img = {
                     'titulo': 'Resumo Comissionamento',

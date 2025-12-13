@@ -1,0 +1,742 @@
+[
+{
+  "model": "crm_app.statuscrm",
+  "pk": 1,
+  "fields": {
+    "nome": "SEM TRATAMENTO",
+    "tipo": "Tratamento",
+    "estado": "ABERTO",
+    "cor": "#a8a3a3"
+  }
+},
+{
+  "model": "crm_app.statuscrm",
+  "pk": 2,
+  "fields": {
+    "nome": "AUDITADA",
+    "tipo": "Tratamento",
+    "estado": "ABERTO",
+    "cor": "#ffffff"
+  }
+},
+{
+  "model": "crm_app.statuscrm",
+  "pk": 3,
+  "fields": {
+    "nome": "FALTA BIOMETRIA",
+    "tipo": "Tratamento",
+    "estado": "ABERTO",
+    "cor": "#f3c9c9"
+  }
+},
+{
+  "model": "crm_app.statuscrm",
+  "pk": 4,
+  "fields": {
+    "nome": "NA FILA DE CADASTRO",
+    "tipo": "Tratamento",
+    "estado": "ABERTO",
+    "cor": "#ffffff"
+  }
+},
+{
+  "model": "crm_app.statuscrm",
+  "pk": 5,
+  "fields": {
+    "nome": "CADASTRADA",
+    "tipo": "Tratamento",
+    "estado": "FECHADO",
+    "cor": "#ffffff"
+  }
+},
+{
+  "model": "crm_app.statuscrm",
+  "pk": 6,
+  "fields": {
+    "nome": "LIBERAÇÃO DE ENDEREÇO",
+    "tipo": "Tratamento",
+    "estado": "ABERTO",
+    "cor": "#ffffff"
+  }
+},
+{
+  "model": "crm_app.statuscrm",
+  "pk": 7,
+  "fields": {
+    "nome": "CLIENTE DESISTIU",
+    "tipo": "Tratamento",
+    "estado": "FECHADO",
+    "cor": "#ffffff"
+  }
+},
+{
+  "model": "crm_app.statuscrm",
+  "pk": 8,
+  "fields": {
+    "nome": "SEM CONTATO",
+    "tipo": "Tratamento",
+    "estado": "ABERTO",
+    "cor": "#ffffff"
+  }
+},
+{
+  "model": "crm_app.statuscrm",
+  "pk": 9,
+  "fields": {
+    "nome": "PENDENTE VENDEDOR",
+    "tipo": "Tratamento",
+    "estado": "ABERTO",
+    "cor": "#ffffff"
+  }
+},
+{
+  "model": "crm_app.statuscrm",
+  "pk": 10,
+  "fields": {
+    "nome": "NÃO CHEGOU NO PAP ADMIN",
+    "tipo": "Tratamento",
+    "estado": "ABERTO",
+    "cor": "#ffffff"
+  }
+},
+{
+  "model": "crm_app.statuscrm",
+  "pk": 11,
+  "fields": {
+    "nome": "DUPLICIDADE",
+    "tipo": "Tratamento",
+    "estado": "FECHADO",
+    "cor": "#ffffff"
+  }
+},
+{
+  "model": "crm_app.statuscrm",
+  "pk": 12,
+  "fields": {
+    "nome": "CONSTA PEDIDO",
+    "tipo": "Tratamento",
+    "estado": "FECHADO",
+    "cor": "#ffffff"
+  }
+},
+{
+  "model": "crm_app.statuscrm",
+  "pk": 13,
+  "fields": {
+    "nome": "CANCELADA",
+    "tipo": "Esteira",
+    "estado": "FECHADO",
+    "cor": "#ffffff"
+  }
+},
+{
+  "model": "crm_app.statuscrm",
+  "pk": 14,
+  "fields": {
+    "nome": "VERIFICAR A BOV",
+    "tipo": "Esteira",
+    "estado": "ABERTO",
+    "cor": "#ffffff"
+  }
+},
+{
+  "model": "crm_app.statuscrm",
+  "pk": 15,
+  "fields": {
+    "nome": "VIABILIDADE PARCIAL",
+    "tipo": "Esteira",
+    "estado": "ABERTO",
+    "cor": "#ffffff"
+  }
+},
+{
+  "model": "crm_app.statuscrm",
+  "pk": 16,
+  "fields": {
+    "nome": "PENDENCIADA",
+    "tipo": "Esteira",
+    "estado": "ABERTO",
+    "cor": "#fe0b48"
+  }
+},
+{
+  "model": "crm_app.statuscrm",
+  "pk": 17,
+  "fields": {
+    "nome": "INSTALADA",
+    "tipo": "Esteira",
+    "estado": "FECHADO",
+    "cor": "#ffffff"
+  }
+},
+{
+  "model": "crm_app.statuscrm",
+  "pk": 19,
+  "fields": {
+    "nome": "AGENDA RETIRADA",
+    "tipo": "Esteira",
+    "estado": "ABERTO",
+    "cor": "#ffffff"
+  }
+},
+{
+  "model": "crm_app.statuscrm",
+  "pk": 20,
+  "fields": {
+    "nome": "INSTALADA OUTRO PDV",
+    "tipo": "Esteira",
+    "estado": "ABERTO",
+    "cor": "#ffffff"
+  }
+},
+{
+  "model": "crm_app.statuscrm",
+  "pk": 21,
+  "fields": {
+    "nome": "CHURN",
+    "tipo": "Esteira",
+    "estado": "FECHADO",
+    "cor": "#ffffff"
+  }
+},
+{
+  "model": "crm_app.statuscrm",
+  "pk": 22,
+  "fields": {
+    "nome": "REPROVADO CARTÃO DE CRÉDITO",
+    "tipo": "Tratamento",
+    "estado": "FECHADO",
+    "cor": "#ffffff"
+  }
+},
+{
+  "model": "crm_app.statuscrm",
+  "pk": 24,
+  "fields": {
+    "nome": "DRAFT",
+    "tipo": "Esteira",
+    "estado": "FECHADO",
+    "cor": "#ffffff"
+  }
+},
+{
+  "model": "crm_app.statuscrm",
+  "pk": 25,
+  "fields": {
+    "nome": "AGENDADO",
+    "tipo": "Esteira",
+    "estado": "ABERTO",
+    "cor": "#e4f221"
+  }
+},
+{
+  "model": "crm_app.statuscrm",
+  "pk": 26,
+  "fields": {
+    "nome": "CPF NÃO APROVA",
+    "tipo": "Tratamento",
+    "estado": "FECHADO",
+    "cor": "#7b1919"
+  }
+},
+{
+  "model": "crm_app.statuscrm",
+  "pk": 28,
+  "fields": {
+    "nome": "AGUARDANDO PAGAMENTO",
+    "tipo": "Tratamento",
+    "estado": "ABERTO",
+    "cor": "#51e6c8"
+  }
+},
+{
+  "model": "crm_app.statuscrm",
+  "pk": 29,
+  "fields": {
+    "nome": "SEM CONTATO - CAIXA POSTAL",
+    "tipo": "Tratamento",
+    "estado": "ABERTO",
+    "cor": "#a731af"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 1,
+  "fields": {
+    "nome": "7048 - SEM POTÊNCIA",
+    "tipo_pendencia": "TÉCNICA"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 2,
+  "fields": {
+    "nome": "7065 - LOCAL FECHADO",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 3,
+  "fields": {
+    "nome": "VALIDAR OSAB",
+    "tipo_pendencia": "Operacional"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 4,
+  "fields": {
+    "nome": "7015-CANCELAR POR DESISTÊNCIA NO CLIENTE",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 5,
+  "fields": {
+    "nome": "0009-ABRIR CHAMADO, PEDIDO NÃO CONCLUÍDO",
+    "tipo_pendencia": "TÉCNICA"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 6,
+  "fields": {
+    "nome": "7079-ACESSO IMPO. OBRA",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 7,
+  "fields": {
+    "nome": "7047-ACESSO IMPOS. P/ ADM / CONDOM.",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 8,
+  "fields": {
+    "nome": "0012-ADIANTADO O VALOR SETEMBRO",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 9,
+  "fields": {
+    "nome": "7017-AG.  AVISO CLIE. P/ INSTALAÇÃO",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 10,
+  "fields": {
+    "nome": "7087-AGEND FUT EXEC PROJ INFRA CLI",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 11,
+  "fields": {
+    "nome": "7110-AGEND. IMPLANTAÇÃO OBRA",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 12,
+  "fields": {
+    "nome": "7109-AGEND. PROJETO OBRA",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 13,
+  "fields": {
+    "nome": "0015-AGENDAMENTO CANCELADO",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 14,
+  "fields": {
+    "nome": "7002-AGENDAMENTO FUTURO DE OBRA",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 15,
+  "fields": {
+    "nome": "0001-AGENDAMENTO OCO",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 16,
+  "fields": {
+    "nome": "7105-ALTERA END FIBRA",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 17,
+  "fields": {
+    "nome": "7102-ALTERA END FIBRA OM",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 18,
+  "fields": {
+    "nome": "7101-ALTERA END FIBRA SBL8",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 19,
+  "fields": {
+    "nome": "7098-ANALISE ORÇAMENTO MERCADO",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 20,
+  "fields": {
+    "nome": "7036-ÁREA DE RISCO INDETERMINADA",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 21,
+  "fields": {
+    "nome": "7035-AREA DE RISCO MOMENTANEA",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 22,
+  "fields": {
+    "nome": "7080-AREA DE RISCO OBRA",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 23,
+  "fields": {
+    "nome": "7106-BA DE FALHA DE REDE ABERTO",
+    "tipo_pendencia": "TÉCNICA"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 24,
+  "fields": {
+    "nome": "7084-CANC S/ RETOR CLI A RISC OBRA",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 25,
+  "fields": {
+    "nome": "7078-CANC. DESIST. SERV.OBRA",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 26,
+  "fields": {
+    "nome": "7076-CANC. ERRO DADOS CLI. OBRA",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 27,
+  "fields": {
+    "nome": "7093-CANC. ERRO DADOS RECEP",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 28,
+  "fields": {
+    "nome": "7067-CANC. P/ S/ RETOR CLI A. RISC",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 29,
+  "fields": {
+    "nome": "7075-CANC. POR INVIA. TEC. OBRA",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 30,
+  "fields": {
+    "nome": "7094-CANC. VI RECEP",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 31,
+  "fields": {
+    "nome": "7033-CANCELAMENTO DE AGENDAMENTO",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 32,
+  "fields": {
+    "nome": "7040-CANCELAMENTO POR BLOQ DE ACESSO",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 34,
+  "fields": {
+    "nome": "7009-CANCELAR POR ERRO DADOS CLIE.",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 35,
+  "fields": {
+    "nome": "7001-CANCELAR POR FALTA DE RECURSO",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 36,
+  "fields": {
+    "nome": "7008-CANCELAR POR INVIABILIDADE TÉCNICA",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 37,
+  "fields": {
+    "nome": "7081-CHUVA EM OBRA",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 38,
+  "fields": {
+    "nome": "7108-CHUVA EM OBRA",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 39,
+  "fields": {
+    "nome": "7021-CLIE. SOLICITA REAGENDAR ATIV.",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 40,
+  "fields": {
+    "nome": "7016-CLIENTE AUSENTE",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 41,
+  "fields": {
+    "nome": "7071-CONSTRUCAO PROJ. FTTH",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 42,
+  "fields": {
+    "nome": "7029-CONSULTA DE AGENDAMENTO",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 43,
+  "fields": {
+    "nome": "7068-DESIGNAÇÃO ERRADA CDOE/CDOI",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 44,
+  "fields": {
+    "nome": "7050-DUPLICIDADE PARALELA",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 45,
+  "fields": {
+    "nome": "7038-EM PROCESSO DE REALOCAR FACILIDADE",
+    "tipo_pendencia": "TÉCNICA"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 46,
+  "fields": {
+    "nome": "7099-END. CORRETO INVIÁVEL",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 47,
+  "fields": {
+    "nome": "7082-END. N LOCA. OBRA",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 48,
+  "fields": {
+    "nome": "7049-ENDEREÇO NÃO LOCALIZADO",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 49,
+  "fields": {
+    "nome": "0008-ERRO AO EMITIR COM NOVO ENDEREEÇO PELO CRV",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 50,
+  "fields": {
+    "nome": "7023-EXCLUSÃO DE PONTO ADICIONAL",
+    "tipo_pendencia": "TÉCNICA"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 51,
+  "fields": {
+    "nome": "0004-FALHA DE ETAPAS DO PROCESSO",
+    "tipo_pendencia": "TÉCNICA"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 52,
+  "fields": {
+    "nome": "7041-FALTA DE MATERIAL PARA OBRA",
+    "tipo_pendencia": "TÉCNICA"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 53,
+  "fields": {
+    "nome": "7004-FALTA DE PORTA OLT",
+    "tipo_pendencia": "TÉCNICA"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 54,
+  "fields": {
+    "nome": "7073-FALTA DOC CLIENTE",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 56,
+  "fields": {
+    "nome": "7018-FALTA EQUIPAMENTO / MATERIAL",
+    "tipo_pendencia": "TÉCNICA"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 57,
+  "fields": {
+    "nome": "0013-FECHADO EM WFM",
+    "tipo_pendencia": "TÉCNICA"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 58,
+  "fields": {
+    "nome": "0007-FIM DA ESTEIRA - SEM CONTATO",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 59,
+  "fields": {
+    "nome": "7015-CANCELAR POR DESISTÊNCIA NO CLIENTE",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 60,
+  "fields": {
+    "nome": "7095-PROPENSÃO À INEFICÁCIA - CLIENTE",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 61,
+  "fields": {
+    "nome": "7066-VENDA INDEVIDA",
+    "tipo_pendencia": "CLIENTE"
+  }
+},
+{
+  "model": "crm_app.motivopendencia",
+  "pk": 62,
+  "fields": {
+    "nome": "7020-PROJETO ENGENHARIA FTTH",
+    "tipo_pendencia": "TÉCNICA"
+  }
+}
+]
