@@ -85,3 +85,4 @@ zopfli==0.2.3.post1
 mysqlclient==2.2.4
 gunicorn==21.2.0
 openpyxl==3.1.2
+pyxlsb==1.0.10
