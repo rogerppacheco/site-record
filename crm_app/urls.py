@@ -1,8 +1,8 @@
 from django.urls import path, include
+from django.views.generic import TemplateView # <--- IMPORTANTE: Importar o TemplateView para renderizar o HTML
 from rest_framework.routers import DefaultRouter
 
-# --- CORREÇÃO IMPORTANTE AQUI ---
-# Importamos as views de login/senha do app 'usuarios', onde elas estão definidas.
+# IMPORTAÇÃO CORRETA DAS VIEWS DE AUTH (DO USUARIOS)
 from usuarios.views import LoginView, DefinirNovaSenhaView
 
 from .views import (
@@ -35,10 +35,11 @@ from .views import (
     ImportacaoCicloPagamentoView,
     PerformanceVendasView,
     
-    # WhatsApp e Novos Recursos
+    # NOVAS VIEWS
     api_verificar_whatsapp,
     enviar_comissao_whatsapp,
     ImportarKMLView,        
+    ImportarDFVView,
     WebhookWhatsAppView,    
 )
 
@@ -51,6 +52,9 @@ router.register(r'comunicados', ComunicadoViewSet, basename='comunicados')
 urlpatterns = [
     path('', include(router.urls)),
     
+    # --- ROTA DA NOVA CENTRAL DE IMPORTAÇÕES (MENU) ---
+    path('importacoes/', TemplateView.as_view(template_name='importacoes.html'), name='central-importacoes'),
+
     # --- Auth ---
     path('auth/login/', LoginView.as_view(), name='auth-login'),
     path('auth/definir-senha/', DefinirNovaSenhaView.as_view(), name='definir-senha'),
@@ -90,15 +94,16 @@ urlpatterns = [
     path('enviar-extrato-email/', EnviarExtratoEmailView.as_view(), name='enviar-extrato-email'),
     path('comissionamento/whatsapp/', enviar_comissao_whatsapp, name='enviar-whatsapp-comissao'),
     
-    # --- Importações ---
+    # --- Importações (Processamento e Telas Específicas) ---
     path('import/osab/', ImportacaoOsabView.as_view(), name='importacao-osab'),
     path('import/osab/<int:pk>/', ImportacaoOsabDetailView.as_view(), name='importacao-osab-detail'),
     path('import/churn/', ImportacaoChurnView.as_view(), name='importacao-churn'),
     path('import/churn/<int:pk>/', ImportacaoChurnDetailView.as_view(), name='importacao-churn-detail'),
     path('import/ciclo-pagamento/', ImportacaoCicloPagamentoView.as_view(), name='importacao-ciclo-pagamento'),
     
-    # --- Novos Recursos ---
+    # --- NOVOS RECURSOS (MAPA E DFV) ---
     path('importar-kml/', ImportarKMLView.as_view(), name='importar-kml'),
+    path('importar-dfv/', ImportarDFVView.as_view(), name='importar-dfv'),
     path('webhook-whatsapp/', WebhookWhatsAppView.as_view(), name='webhook-whatsapp'),
     
     # --- Performance ---

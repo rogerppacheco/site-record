@@ -434,3 +434,29 @@ class SessaoWhatsapp(models.Model):
 
     def __str__(self):
         return f"{self.telefone} - {self.etapa}"
+
+class DFV(models.Model):
+    uf = models.CharField(max_length=2, null=True, blank=True)
+    municipio = models.CharField(max_length=100, null=True, blank=True)
+    logradouro = models.CharField(max_length=255, null=True, blank=True)
+    num_fachada = models.CharField(max_length=50, null=True, blank=True, help_text="Número da fachada")
+    complemento = models.CharField(max_length=255, null=True, blank=True)
+    cep = models.CharField(max_length=10, null=True, blank=True)
+    bairro = models.CharField(max_length=100, null=True, blank=True)
+    
+    tipo_viabilidade = models.CharField(max_length=100, null=True, blank=True)
+    tipo_rede = models.CharField(max_length=50, null=True, blank=True) # Ex: GPON, Reuso
+    celula = models.CharField(max_length=50, null=True, blank=True)
+    
+    data_importacao = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.logradouro}, {self.num_fachada} - {self.municipio}"
+        
+    class Meta:
+        verbose_name = "Base DFV"
+        verbose_name_plural = "Base DFV"
+        indexes = [
+            models.Index(fields=['cep']),
+            models.Index(fields=['cep', 'num_fachada']),
+        ]

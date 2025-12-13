@@ -5,34 +5,45 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Importar Ciclo de Pagamento - Record PAP</title>
-    
     <link rel="icon" type="image/png" href="{% static 'logo.png' %}">
+    
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=1.3">
-    
-    <style>
-        /* Layout Padrão */
-        body { overflow-x: hidden; background-color: var(--cor-fundo); }
-        .main-header { position: fixed; top: 0; left: 0; width: 100%; z-index: 1000; background-color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.05); height: 80px; }
-        .admin-wrapper { display: flex; min-height: 100vh; padding-top: 80px; }
-        .admin-sidebar { width: 280px; background: #fff; border-right: 1px solid var(--cor-borda); padding: 1.5rem; display: flex; flex-direction: column; position: fixed; top: 80px; left: 0; bottom: 0; overflow-y: auto; z-index: 900; }
-        .admin-content { flex: 1; margin-left: 280px; padding: 2rem; max-width: 1600px; width: calc(100% - 280px); }
-        .admin-nav-link { display: flex; align-items: center; padding: 10px 15px; color: var(--cor-texto); text-decoration: none; border-radius: 8px; margin-bottom: 5px; font-weight: 500; transition: all 0.2s; }
-        .admin-nav-link i { margin-right: 12px; font-size: 1.1rem; color: var(--cor-secundaria); }
-        .admin-nav-link:hover { background-color: #f0f4ff; color: var(--cor-primaria); }
-        .admin-nav-link.active { background-color: var(--cor-primaria); color: #fff; }
-        .admin-nav-link.active i { color: #fff; }
-        .nav-section-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--cor-texto-suave); margin-top: 1.5rem; margin-bottom: 0.5rem; font-weight: 700; }
-        
-        .upload-box { border: 2px dashed #dee2e6; border-radius: 10px; padding: 3rem; text-align: center; background-color: #fff; transition: all 0.3s; cursor: pointer; }
-        .upload-box:hover { border-color: var(--cor-primaria); background-color: #f8f9fa; }
-        .upload-icon { font-size: 3rem; color: #198754; margin-bottom: 1rem; }
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=1.4">
 
-        @media (max-width: 992px) {
-            .admin-sidebar { transform: translateX(-100%); transition: transform 0.3s; }
-            .admin-sidebar.show { transform: translateX(0); }
-            .admin-content { margin-left: 0; padding: 1rem; width: 100%; }
+    <style>
+        body { background-color: var(--cor-fundo); }
+
+        /* Estilo do Botão Voltar no Header */
+        .btn-header-voltar {
+            color: #5a5c69;
+            text-decoration: none;
+            font-weight: 500;
+            margin-right: 20px;
+            padding: 8px 15px;
+            border-radius: 5px;
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .btn-header-voltar:hover {
+            background-color: #f0f4ff;
+            color: #2e59d9;
+        }
+        
+        .main-content {
+            margin-top: 100px;
+            padding-bottom: 40px;
+        }
+
+        .result-box {
+            background-color: #d1e7dd;
+            border: 1px solid #badbcc;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+            color: #0f5132;
         }
     </style>
 </head>
@@ -41,149 +52,132 @@
     <header class="main-header">
         <div class="header-container">
             <a href="/"><img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo"></a>
-            <button class="btn btn-light d-lg-none me-2" onclick="document.querySelector('.admin-sidebar').classList.toggle('show')"><i class="bi bi-list"></i></button>
-            <nav class="main-nav d-none d-lg-flex" id="main-nav">
-                <ul>
-                    <li><a href="/governanca/">Voltar para Governança</a></li>
-                    <li><span id="welcome-user" style="font-size: 0.9rem; color: #666; margin-right: 10px;"></span></li>
-                    <li><button id="logoutButton" class="nav-button logout-button">Sair</button></li>
-                </ul>
-            </nav>
+            
+            <div class="d-flex align-items-center">
+                <a href="/importacoes/" class="btn-header-voltar">
+                    <i class="bi bi-arrow-left"></i> Voltar
+                </a>
+                
+                <button class="nav-button logout-button" onclick="logout()">Sair</button>
+            </div>
         </div>
     </header>
 
-    <div class="admin-wrapper">
-        <nav class="admin-sidebar">
-            <div class="nav-section-title">Importações</div>
-            <a href="/salvar-osab/" class="admin-nav-link"><i class="bi bi-cloud-upload"></i> Importar OSAB</a>
-            <a href="/salvar-churn/" class="admin-nav-link"><i class="bi bi-file-earmark-x"></i> Importar Churn</a>
-            <a href="/salvar-ciclo-pagamento/" class="admin-nav-link active"><i class="bi bi-calendar-range-fill"></i> Ciclo Pagamento</a>
-            
-            <div class="nav-section-title">Acesso Rápido</div>
-            <a href="/governanca/" class="admin-nav-link"><i class="bi bi-speedometer2"></i> Governança</a>
-            <a href="/crm-vendas/" class="admin-nav-link"><i class="bi bi-cart-plus"></i> Nova Venda</a>
-        </nav>
-
-        <main class="admin-content">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h3>Importação de Ciclo de Pagamento</h3>
+    <div class="container main-content" style="max-width: 800px;">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-success text-white py-3">
+                <h4 class="mb-0 fw-bold"><i class="bi bi-calendar-range-fill"></i> Importar Ciclo de Pagamento</h4>
             </div>
+            <div class="card-body p-4">
+                
+                <div class="alert alert-success bg-opacity-10 border-success text-success">
+                    <i class="bi bi-cash-coin me-2"></i>
+                    Importe aqui os arquivos de fechamento financeiro para cálculo de comissões.<br>
+                    Formatos aceitos: <code>.xlsx</code>, <code>.xls</code>.
+                </div>
 
-            <div class="card border-0 shadow-sm">
-                <div class="card-body">
-                    <div class="alert alert-success bg-opacity-10 border-success text-success">
-                        <i class="bi bi-cash-coin me-2"></i>
-                        Importe aqui os arquivos de fechamento financeiro para cálculo de comissões.
+                <form id="formImportCiclo">
+                    <div class="mb-4">
+                        <label for="fileCiclo" class="form-label fw-bold">Arquivo Excel (Financeiro)</label>
+                        <input class="form-control form-control-lg border-success" type="file" id="fileCiclo" accept=".xlsx,.xls" required>
                     </div>
 
-                    <form id="upload-form">
-                        <div class="upload-box" onclick="document.getElementById('file-input').click()">
-                            <i class="bi bi-file-earmark-spreadsheet upload-icon"></i>
-                            <h5>Selecionar arquivo de Pagamento</h5>
-                            <p class="text-muted small">Formatos: .xlsx, .xls</p>
-                            <input type="file" id="file-input" name="file" accept=".xlsx,.xls" style="display: none;" onchange="mostrarNomeArquivo()">
-                            <p id="file-name" class="mt-2 fw-bold text-success"></p>
-                        </div>
+                    <div class="d-grid">
+                        <button type="button" class="btn btn-success btn-lg fw-bold" onclick="enviarCiclo()">
+                            <i class="bi bi-cloud-upload-fill"></i> Iniciar Importação
+                        </button>
+                    </div>
+                </form>
 
-                        <div class="d-grid gap-2 mt-4">
-                            <button type="submit" class="btn btn-success btn-lg" id="btn-importar">
-                                <span id="btn-text"><i class="bi bi-upload"></i> Importar Ciclo</span>
-                                <div id="spinner" class="spinner-border spinner-border-sm d-none" role="status"></div>
-                            </button>
-                        </div>
-                    </form>
-
-                    <div id="result-area" class="mt-4"></div>
+                <div id="loadingArea" class="text-center mt-4" style="display: none;">
+                    <div class="spinner-border text-success" role="status"></div>
+                    <p class="mt-2 text-muted fw-bold">Processando dados financeiros... isso pode levar alguns minutos.</p>
                 </div>
+
+                <div id="resultArea" style="display: none;"></div>
+
             </div>
-        </main>
+        </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
-    <script src="{% static 'js/auth.js' %}?v=1.3"></script>
-    
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="{% static 'js/auth.js' %}"></script>
     <script>
-        const token = localStorage.getItem('accessToken');
-        if (!token) window.location.href = '/';
-        const decoded = jwt_decode(token);
-        if(document.getElementById('welcome-user')) document.getElementById('welcome-user').textContent = `Olá, ${decoded.username}`;
-        
-        document.getElementById('logoutButton').addEventListener('click', () => {
-            localStorage.removeItem('accessToken'); window.location.href = '/';
-        });
+        function logout() { localStorage.removeItem('accessToken'); window.location.href = '/'; }
 
-        function mostrarNomeArquivo() {
-            const fileInput = document.getElementById('file-input');
-            const fileNameDisplay = document.getElementById('file-name');
-            if (fileInput.files.length > 0) {
-                fileNameDisplay.textContent = fileInput.files[0].name;
-            } else {
-                fileNameDisplay.textContent = '';
-            }
-        }
+        async function enviarCiclo() {
+            const fileInput = document.getElementById('fileCiclo');
+            if(fileInput.files.length === 0) { alert('Selecione um arquivo.'); return; }
 
-        async function apiFetchLocal(url, options={}) {
-            const headers = options.headers || {};
-            if (token) headers['Authorization'] = `Bearer ${token}`;
-            const response = await fetch(url, { ...options, headers });
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.error || 'Erro na requisição');
-            return data;
-        }
-
-        document.getElementById('upload-form').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            const fileInput = document.getElementById('file-input');
-            const resultArea = document.getElementById('result-area');
-            const btn = document.getElementById('btn-importar');
-            const spinner = document.getElementById('spinner');
-            const btnText = document.getElementById('btn-text');
-
-            if (fileInput.files.length === 0) {
-                alert("Selecione um arquivo."); return;
-            }
+            // UI Loading
+            const loading = document.getElementById('loadingArea');
+            const resultDiv = document.getElementById('resultArea');
+            const btn = document.querySelector('button.btn-success');
+            
+            loading.style.display = 'block';
+            resultDiv.style.display = 'none';
+            resultDiv.innerHTML = '';
+            btn.disabled = true;
 
             const formData = new FormData();
             formData.append('file', fileInput.files[0]);
 
-            btn.disabled = true;
-            btnText.classList.add('d-none');
-            spinner.classList.remove('d-none');
-            resultArea.innerHTML = '';
-
+            const token = localStorage.getItem('accessToken');
+            
             try {
-                // Endpoint: /api/crm/import/ciclo-pagamento/
-                const data = await apiFetchLocal('/api/crm/import/ciclo-pagamento/', {
-                    method: 'POST',
-                    body: formData
+                // Endpoint para importação de Ciclo de Pagamento
+                const response = await axios.post('/api/crm/import/ciclo-pagamento/', formData, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'multipart/form-data'
+                    }
                 });
 
+                const data = response.data;
+                
+                // Monta HTML de sucesso com estatísticas
                 let html = `
-                    <div class="alert alert-success">
-                        <h4 class="alert-heading">Importação Finalizada!</h4>
-                        <ul class="mb-0">
-                            <li>Total de Linhas: <strong>${data.total}</strong></li>
-                            <li>Novos Registros: <strong>${data.criados}</strong></li>
-                            <li>Atualizados: <strong>${data.atualizados}</strong></li>
+                    <div class="result-box">
+                        <h5 class="fw-bold"><i class="bi bi-check-circle-fill"></i> Importação Finalizada!</h5>
+                        <hr>
+                        <ul class="mb-0 list-unstyled">
+                            <li>📊 Total de Linhas: <strong>${data.total || 0}</strong></li>
+                            <li>🆕 Novos Registros: <strong>${data.criados || 0}</strong></li>
+                            <li>🔄 Atualizados: <strong>${data.atualizados || 0}</strong></li>
                         </ul>
                     </div>
                 `;
-                if (data.erros && data.erros.length > 0) {
-                    html += `<div class="alert alert-warning mt-3">Erros: <ul>${data.erros.map(e => `<li>${e}</li>`).join('')}</ul></div>`;
-                }
-                resultArea.innerHTML = html;
 
+                if (data.erros && data.erros.length > 0) {
+                    html += `
+                        <div class="alert alert-warning mt-3">
+                            <strong>Avisos/Erros:</strong>
+                            <ul class="mb-0 small" style="max-height: 150px; overflow-y: auto;">
+                                ${data.erros.map(e => `<li>${e}</li>`).join('')}
+                            </ul>
+                        </div>
+                    `;
+                }
+
+                resultDiv.innerHTML = html;
+                resultDiv.style.display = 'block';
+                
             } catch (error) {
-                resultArea.innerHTML = `<div class="alert alert-danger">${error.message}</div>`;
+                console.error(error);
+                let msg = "Erro na importação.";
+                if (error.response && error.response.data && error.response.data.error) {
+                    msg = error.response.data.error;
+                } else if (error.message) {
+                    msg = error.message;
+                }
+                
+                resultDiv.innerHTML = `<div class="alert alert-danger mt-3"><i class="bi bi-exclamation-triangle-fill"></i> ${msg}</div>`;
+                resultDiv.style.display = 'block';
             } finally {
+                loading.style.display = 'none';
                 btn.disabled = false;
-                btnText.classList.remove('d-none');
-                spinner.classList.add('d-none');
-                fileInput.value = '';
-                document.getElementById('file-name').textContent = '';
             }
-        });
+        }
     </script>
 </body>
 </html>

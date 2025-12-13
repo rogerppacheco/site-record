@@ -1,6 +1,10 @@
 from django.contrib import admin
 from django.urls import path, include
 from django.views.generic import TemplateView
+from django.conf import settings
+from django.conf.urls.static import static
+
+# Importe a view do login
 from usuarios.views import LoginView
 # Importe a view do calendário
 from core.views import calendario_fiscal_view
@@ -38,15 +42,22 @@ urlpatterns = [
     path('esteira/', TemplateView.as_view(template_name='public/esteira.html'), name='esteira'),
     path('comissionamento/', TemplateView.as_view(template_name='public/comissionamento.html'), name='comissionamento'),
 
-    # Telas de Importação
+    # --- ROTA DA NOVA CENTRAL DE IMPORTAÇÕES (ESSENCIAL PARA CORRIGIR O 404) ---
+    path('importacoes/', TemplateView.as_view(template_name='public/importacoes.html'), name='central-importacoes'),
+
+    # Telas de Importação Específicas
     path('salvar-osab/', TemplateView.as_view(template_name='public/salvar_osab.html'), name='salvar-osab'),
     path('salvar-churn/', TemplateView.as_view(template_name='public/salvar_churn.html'), name='salvar-churn'),
     path('salvar-ciclo-pagamento/', TemplateView.as_view(template_name='public/salvar_ciclo_pagamento.html'), name='salvar-ciclo-pagamento'),
-    
-    # --- ROTA QUE CORRIGE O ERRO 404 ---
     path('importar-mapa/', TemplateView.as_view(template_name='public/importar_mapa.html'), name='importar-mapa'),
-    
+    path('importar-dfv/', TemplateView.as_view(template_name='public/importar_dfv.html'), name='page-importar-dfv'),
+
     # CALENDÁRIO
     path('calendario/', calendario_fiscal_view, name='calendario_fiscal_atual'),
     path('calendario/<int:ano>/<int:mes>/', calendario_fiscal_view, name='calendario_fiscal'),
 ]
+
+# Configuração para servir arquivos estáticos e media em DEBUG (Crucial para CSS/Imagens)
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

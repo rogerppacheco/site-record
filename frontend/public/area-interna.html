@@ -81,6 +81,7 @@
         .icon-rh { background: -webkit-linear-gradient(45deg, #36b9cc, #258391); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
         .icon-esteira { background: -webkit-linear-gradient(45deg, #e74a3b, #be2617); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
         .icon-config { background: -webkit-linear-gradient(45deg, #858796, #60616f); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .icon-import { background: -webkit-linear-gradient(45deg, #6f42c1, #563d7c); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
 
     </style>
 </head>
@@ -134,6 +135,11 @@
                 <i class="bi bi-gear-fill app-icon icon-config"></i>
                 <span class="app-title">Governança</span>
             </a>
+            
+            <a href="/importacoes/" class="app-card" id="card-importacoes">
+                <i class="bi bi-cloud-upload-fill app-icon icon-import"></i>
+                <span class="app-title">Central de Importações</span>
+            </a>
         </div>
     </main>
 
@@ -162,13 +168,13 @@
                 'Admin': 'all',
 
                 // Acesso Backoffice (Vendas, Informa, Esteira, Auditoria)
-                'BackOffice': ['card-vendas', 'card-informa', 'card-esteira', 'card-auditoria'],
+                'BackOffice': ['card-vendas', 'card-informa', 'card-esteira', 'card-auditoria', 'card-importacoes'],
 
                 // Acesso Supervisor (Vendas + Presença)
                 'Supervisor': ['card-vendas', 'card-presenca'],
 
                 // Acesso Vendedor (Vendas + Presença)
-                'Vendedor': ['card-vendas', 'card-presenca']
+                'Vendedor': ['card-vendas']
             };
 
             const cardsPermitidos = regras[userProfile] || regras['Vendedor']; // Fallback seguro

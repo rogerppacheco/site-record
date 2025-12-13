@@ -24,7 +24,7 @@ from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.utils.html import strip_tags
 from django.contrib.staticfiles import finders
-# CORREÇÃO 1: Importar IntegrityError para tratar duplicidade
+# CORREÇÃO CRÍTICA: Importar transaction e IntegrityError para o Webhook funcionar sem duplicidade
 from django.db import transaction, IntegrityError
 
 from rest_framework import generics, viewsets, status, permissions
@@ -36,20 +36,29 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.exceptions import PermissionDenied, NotFound
 from rest_framework.decorators import api_view, permission_classes, action 
 
-# --- IMPORTS EXTRAS ---
+# --- IMPORTS EXTRAS DO PROJETO ---
 from core.models import DiaFiscal 
 from .whatsapp_service import WhatsAppService 
-from .utils import verificar_viabilidade_por_cep, verificar_viabilidade_por_coordenadas, verificar_viabilidade_exata
 from xhtml2pdf import pisa 
-from .models import SessaoWhatsapp 
 from usuarios.permissions import CheckAPIPermission, VendaPermission
 
+# Funções de Mapa (Geometria e Busca)
+from .utils import (
+    verificar_viabilidade_por_cep, 
+    verificar_viabilidade_por_coordenadas, 
+    verificar_viabilidade_exata
+)
+
+# Modelos do App (Incluindo as novas tabelas DFV e SessaoWhatsapp)
 from .models import (
     Operadora, Plano, FormaPagamento, StatusCRM, MotivoPendencia,
     RegraComissao, Cliente, Venda, ImportacaoOsab, ImportacaoChurn,
     CicloPagamento, HistoricoAlteracaoVenda, PagamentoComissao,
-    Campanha, ComissaoOperadora, Comunicado, AreaVenda
+    Campanha, ComissaoOperadora, Comunicado, AreaVenda,
+    SessaoWhatsapp, DFV
 )
+
+# Serializers do App
 from .serializers import (
     OperadoraSerializer, PlanoSerializer, FormaPagamentoSerializer,
     StatusCRMSerializer, MotivoPendenciaSerializer, RegraComissaoSerializer,
@@ -1894,6 +1903,56 @@ class ImportarKMLView(APIView):
 
         except Exception as e:
             return Response({'error': f'Erro crítico KML: {str(e)}'}, status=500)
+        
+# --- NOVA VIEW: IMPORTAÇÃO DFV (CSV) ---
+class ImportarDFVView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, *args, **kwargs):
+        file_obj = request.FILES.get('file')
+        if not file_obj: return Response({'error': 'Arquivo CSV não enviado.'}, status=400)
+        
+        try:
+            # Lê o CSV (delimitador ; conforme seu arquivo)
+            df = pd.read_csv(file_obj, sep=';', dtype=str, encoding='utf-8') # Adicionado encoding utf-8 por precaução
+            df = df.replace({np.nan: None})
+            
+            # Normaliza nomes de colunas (remove espaços e poe maiusculo)
+            df.columns = [c.strip().upper() for c in df.columns]
+            
+            objs = []
+            for _, row in df.iterrows():
+                # Tratamento do CEP
+                cep_raw = str(row.get('CEP', '')).strip()
+                cep_limpo = "".join(filter(str.isdigit, cep_raw))
+                
+                # Tratamento da Fachada (Número)
+                fachada_raw = str(row.get('NUM_FACHADA', '')).strip()
+                
+                # Mapeamento exato com a base 'DDD 31 BELO HORIZONTE.csv'
+                objs.append(DFV(
+                    uf=row.get('UF'),
+                    municipio=row.get('MUNICIPIO'),
+                    logradouro=row.get('LOGRADOURO'),
+                    num_fachada=fachada_raw,
+                    complemento=row.get('COMPLEMENTO'),
+                    cep=cep_limpo,
+                    bairro=row.get('BAIRRO'),
+                    tipo_viabilidade=row.get('TIPO_VIABILIDADE'),
+                    tipo_rede=row.get('TIPO_REDE'),
+                    celula=row.get('CELULA')
+                ))
+            
+            # Opcional: Descomente para apagar a base antiga antes de importar a nova
+            # DFV.objects.all().delete()
+            
+            DFV.objects.bulk_create(objs, batch_size=1000)
+            
+            return Response({'status': 'sucesso', 'mensagem': f'{len(objs)} registros importados na DFV.'})
+            
+        except Exception as e:
+            return Response({'error': f"Erro ao processar CSV: {str(e)}"}, status=500)
 
 class WebhookWhatsAppView(APIView):
     permission_classes = [AllowAny]
