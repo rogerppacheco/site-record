@@ -169,11 +169,15 @@
             <a href="#" class="admin-nav-link" onclick="mostrarSecao(event, 'relatorios', this)">
                 <i class="bi bi-file-earmark-bar-graph"></i> Relatórios
             </a>
+            <a href="/painel-performance/" class="admin-nav-link">
+                <i class="bi bi-speedometer2"></i> Painel de Performance
+            </a>
 
             <div class="mt-auto pt-4 border-top">
                 <div class="nav-section-title mt-0">Acesso Rápido</div>
                 <a href="/presenca/" class="admin-nav-link"><i class="bi bi-clock-history"></i> Presença</a>
                 <a href="/crm-vendas/" class="admin-nav-link"><i class="bi bi-cart-plus"></i> Nova Venda</a>
+            </div>
         </nav>
 
         <main class="admin-content">
@@ -218,7 +222,7 @@
                                         <th>Nome</th>
                                         <th>E-mail</th>
                                         <th>Perfil</th>
-                                        <th>Líder</th>
+                                        <th>Canal</th> <th>Líder</th>
                                         <th class="text-end">Ações</th>
                                     </tr>
                                 </thead>
@@ -620,6 +624,17 @@
                                     </div>
                                     <div class="col-md-6"><label class="form-label fw-bold">Perfil de Acesso</label><select class="form-select" id="perfil_id" required></select></div>
                                     <div class="col-md-6"><label class="form-label fw-bold">Líder Imediato</label><select class="form-select" id="supervisor_id"><option value="">Nenhum</option></select></div>
+                                    
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold">Canal de Venda</label>
+                                        <select class="form-select" id="user_canal">
+                                            <option value="PAP">PAP</option>
+                                            <option value="DIGITAL">Digital</option>
+                                            <option value="RECEPTIVO">Receptivo</option>
+                                            <option value="PARCEIRO">Parceiro</option>
+                                        </select>
+                                    </div>
+
                                     <div class="col-12 mt-3 pt-3 border-top">
                                         <div class="form-check form-switch">
                                             <input class="form-check-input" type="checkbox" id="participa_controle_presenca">
@@ -764,11 +779,8 @@
         if (token) headers['Authorization'] = `Bearer ${token}`;
 
         try {
-            // CORREÇÃO CRÍTICA: Se não começar com /api, adiciona.
-            // Ex: '/presenca/motivos/' vira '/api/presenca/motivos/'
             let finalEndpoint = endpoint;
             if (!endpoint.startsWith('/api')) {
-                // Remove a barra inicial se houver para evitar //api//...
                 const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
                 finalEndpoint = `/api${cleanEndpoint}`;
             }
@@ -927,16 +939,17 @@
         const userListBody = document.getElementById('user-list-body'); userListBody.innerHTML = '';
         const isAtivos = status === 'ativos';
         const headerRow = document.getElementById('user-list-header');
-        headerRow.innerHTML = isAtivos ? `<th style="width: 40px;"><input type="checkbox" id="check-all" onclick="toggleTodos(this)"></th><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Líder</th><th class="text-end">Ações</th>` : `<th>Nome</th><th>E-mail</th><th>Perfil</th><th class="text-end">Ações</th>`;
-        if (lista.length === 0) { userListBody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Nenhum usuário encontrado.</td></tr>'; return; }
+        headerRow.innerHTML = isAtivos ? `<th style="width: 40px;"><input type="checkbox" id="check-all" onclick="toggleTodos(this)"></th><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Canal</th><th>Líder</th><th class="text-end">Ações</th>` : `<th>Nome</th><th>E-mail</th><th>Perfil</th><th>Canal</th><th class="text-end">Ações</th>`;
+        if (lista.length === 0) { userListBody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Nenhum usuário encontrado.</td></tr>'; return; }
         lista.forEach(user => {
             let perfilDisplay = '<span class="badge bg-secondary">Sem Perfil</span>';
             if (user.groups && user.groups.length > 0) perfilDisplay = `<span class="badge bg-success">${user.groups[0].name}</span>`;
             else if (user.perfil_nome) perfilDisplay = `<span class="badge bg-warning text-dark">${user.perfil_nome} (Legado)</span>`;
             const checkHtml = isAtivos ? `<td><input type="checkbox" class="user-check" value="${user.id}" onclick="atualizarContador()"></td>` : '';
             const liderHtml = isAtivos ? `<td>${user.supervisor_nome || '-'}</td>` : '';
+            const canalHtml = `<td>${user.canal || '-'}</td>`;
             const acoes = isAtivos ? `<button class="btn btn-xs btn-outline-warning me-1" onclick='abrirModalUsuario(${JSON.stringify(user)})' title="Editar"><i class="bi bi-pencil"></i></button><button class="btn btn-xs btn-outline-danger" onclick="inativarUsuario(${user.id})" title="Inativar"><i class="bi bi-trash"></i></button>` : `<button class="btn btn-xs btn-outline-success" onclick="reativarUsuario(${user.id})" title="Reativar"><i class="bi bi-check-circle"></i></button>`;
-            userListBody.innerHTML += `<tr>${checkHtml}<td>${user.nome_completo}</td><td>${user.email}</td><td>${perfilDisplay}</td>${liderHtml}<td class="text-end">${acoes}</td></tr>`;
+            userListBody.innerHTML += `<tr>${checkHtml}<td>${user.nome_completo}</td><td>${user.email}</td><td>${perfilDisplay}</td>${canalHtml}${liderHtml}<td class="text-end">${acoes}</td></tr>`;
         });
         atualizarContador();
     }
@@ -964,6 +977,7 @@
             if (user.groups && user.groups.length > 0) document.getElementById('perfil_id').value = user.groups[0].id;
             else if (user.perfil) document.getElementById('perfil_id').value = user.perfil;
             document.getElementById('supervisor_id').value = user.supervisor || '';
+            document.getElementById('user_canal').value = user.canal || 'PAP';
             document.getElementById('participa_controle_presenca').checked = user.participa_controle_presenca;
             ['valor_almoco', 'valor_passagem', 'chave_pix', 'nome_da_conta', 'meta_comissao', 'desconto_boleto', 'desconto_inclusao_viabilidade', 'desconto_instalacao_antecipada', 'adiantamento_cnpj', 'desconto_inss_fixo'].forEach(id => { document.getElementById(id).value = user[id] || ''; });
         }
@@ -995,6 +1009,7 @@
             tel_whatsapp: document.getElementById('tel_whatsapp').value,
             username: document.getElementById('usuario_login').value,
             supervisor: document.getElementById('supervisor_id').value || null,
+            canal: document.getElementById('user_canal').value, // CAMPO CANAL
             groups: document.getElementById('perfil_id').value ? [parseInt(document.getElementById('perfil_id').value)] : [],
             valor_almoco: document.getElementById('valor_almoco').value,
             valor_passagem: document.getElementById('valor_passagem').value,
@@ -1173,11 +1188,23 @@
         const tbody = document.getElementById('lista-regras-comissao');
         tbody.innerHTML = '';
         lista.forEach(r => {
-            tbody.innerHTML += `<tr><td>${r.consultor_nome||'TODOS'}</td><td>${r.plano_nome}</td><td>${r.tipo_venda}</td><td>${r.tipo_cliente}</td><td>${r.valor_base}</td><td>${r.valor_acelerado}</td><td><button class="btn btn-sm btn-danger" onclick="excluirRegra(${r.id})"><i class="bi bi-trash"></i></button></td></tr>`;
+            tbody.innerHTML += `<tr>
+                <td>${r.consultor_nome||'TODOS'}</td>
+                <td>${r.plano_nome}</td>
+                <td>${r.tipo_venda}</td>
+                <td>${r.tipo_cliente}</td>
+                <td>${r.valor_base}</td>
+                <td>${r.valor_acelerado}</td>
+                <td>
+                    <button class="btn btn-sm btn-warning me-1" onclick='editarRegra(${JSON.stringify(r)})'><i class="bi bi-pencil"></i></button>
+                    <button class="btn btn-sm btn-danger" onclick="excluirRegra(${r.id})"><i class="bi bi-trash"></i></button>
+                </td>
+            </tr>`;
         });
     }
     document.getElementById('form-regra-comissao').onsubmit = async(e) => {
         e.preventDefault();
+        const id = document.getElementById('regra_comissao_id').value;
         const body = {
             consultor: document.getElementById('regra_consultor_id').value || null,
             plano: document.getElementById('regra_plano_id').value,
@@ -1186,11 +1213,33 @@
             valor_base: document.getElementById('regra_valor_base').value,
             valor_acelerado: document.getElementById('regra_valor_acelerado').value
         };
-        await apiFetch('/crm/regras-comissao/', {method:'POST', body: JSON.stringify(body)});
+        
+        if (id) {
+            await apiFetch(`/crm/regras-comissao/${id}/`, {method:'PUT', body: JSON.stringify(body)});
+        } else {
+            await apiFetch('/crm/regras-comissao/', {method:'POST', body: JSON.stringify(body)});
+        }
+        
         carregarRegrasComissao();
         resetFormRegraComissao();
     };
-    function resetFormRegraComissao() { document.getElementById('form-regra-comissao').reset(); }
+
+    function resetFormRegraComissao() { 
+        document.getElementById('form-regra-comissao').reset(); 
+        document.getElementById('regra_comissao_id').value = '';
+    }
+
+    window.editarRegra = (r) => {
+        document.getElementById('regra_comissao_id').value = r.id;
+        document.getElementById('regra_consultor_id').value = r.consultor || "";
+        document.getElementById('regra_plano_id').value = r.plano;
+        document.getElementById('regra_tipo_venda').value = r.tipo_venda;
+        document.getElementById('regra_tipo_cliente').value = r.tipo_cliente;
+        document.getElementById('regra_valor_base').value = r.valor_base;
+        document.getElementById('regra_valor_acelerado').value = r.valor_acelerado;
+        document.getElementById('form-regra-comissao').scrollIntoView({ behavior: 'smooth' });
+    };
+
     window.excluirRegra = async(id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/regras-comissao/${id}/`, {method:'DELETE'}); carregarRegrasComissao(); } };
 
     // --- CAMPANHAS ---

@@ -460,3 +460,10 @@ class DFV(models.Model):
             models.Index(fields=['cep']),
             models.Index(fields=['cep', 'num_fachada']),
         ]
+class GrupoDisparo(models.Model):
+    nome = models.CharField(max_length=100, help_text="Ex: Grupo Gestão Comercial")
+    chat_id = models.CharField(max_length=100, help_text="ID do grupo (Ex: 12036304...g.us)")
+    ativo = models.BooleanField(default=True)
+
+    def __str__(self):
+        return self.nome

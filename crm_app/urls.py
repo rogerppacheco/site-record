@@ -1,9 +1,11 @@
 from django.urls import path, include
-from django.views.generic import TemplateView # <--- IMPORTANTE: Importar o TemplateView para renderizar o HTML
+from django.views.generic import TemplateView
 from rest_framework.routers import DefaultRouter
 
-# IMPORTAÇÃO CORRETA DAS VIEWS DE AUTH (DO USUARIOS)
+# IMPORTAÇÃO DAS VIEWS DE AUTH (DO APP USUARIOS)
 from usuarios.views import LoginView, DefinirNovaSenhaView
+from .views import GrupoDisparoViewSet, EnviarImagemPerformanceView
+from .views import listar_grupos_whatsapp_api # Importe a view nova
 
 from .views import (
     # ViewSets
@@ -35,12 +37,19 @@ from .views import (
     ImportacaoCicloPagamentoView,
     PerformanceVendasView,
     
-    # NOVAS VIEWS
+    # NOVAS VIEWS (Mapas, ZAP, Performance)
     api_verificar_whatsapp,
     enviar_comissao_whatsapp,
     ImportarKMLView,        
     ImportarDFVView,
-    WebhookWhatsAppView,    
+    WebhookWhatsAppView,  
+    
+    # Performance (API e Exportação)
+    PainelPerformanceView,
+    ExportarPerformanceExcelView,
+    
+    # View da Página HTML (Render)
+    page_painel_performance
 )
 
 router = DefaultRouter()
@@ -48,6 +57,7 @@ router.register(r'vendas', VendaViewSet, basename='venda')
 router.register(r'clientes', ClienteViewSet, basename='cliente')
 router.register(r'comissoes-operadora', ComissaoOperadoraViewSet, basename='comissao-operadora')
 router.register(r'comunicados', ComunicadoViewSet, basename='comunicados')
+router.register(r'grupos-disparo', GrupoDisparoViewSet, basename='grupos-disparo')
 
 urlpatterns = [
     path('', include(router.urls)),
@@ -105,10 +115,17 @@ urlpatterns = [
     path('importar-kml/', ImportarKMLView.as_view(), name='importar-kml'),
     path('importar-dfv/', ImportarDFVView.as_view(), name='importar-dfv'),
     path('webhook-whatsapp/', WebhookWhatsAppView.as_view(), name='webhook-whatsapp'),
+    path('verificar-zap/<str:telefone>/', api_verificar_whatsapp, name='verificar-zap'),
     
     # --- Performance ---
     path('relatorios/performance-vendas/', PerformanceVendasView.as_view(), name='performance-vendas'),
 
-    # --- WhatsApp Auxiliar ---
-    path('verificar-zap/<str:telefone>/', api_verificar_whatsapp, name='verificar-zap'),
+    # --- PAINEL DE PERFORMANCE (NOVO) ---
+    # Rota da API (JSON) para popular a tabela
+    path('performance-painel/', PainelPerformanceView.as_view(), name='api-performance-painel'),
+    
+    # Rota para baixar o Excel de Validação
+    path('performance-painel/exportar/', ExportarPerformanceExcelView.as_view(), name='exportar-performance-excel'),
+    path('performance-painel/enviar-whatsapp/', EnviarImagemPerformanceView.as_view(), name='enviar-performance-zap'),
+    path('integracao/listar-grupos/', listar_grupos_whatsapp_api, name='listar-grupos-zapi'),
 ]

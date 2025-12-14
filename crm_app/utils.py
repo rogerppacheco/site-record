@@ -6,8 +6,9 @@ logger = logging.getLogger(__name__)
 
 def verificar_viabilidade_por_coordenadas(lat, lon):
     """
-    Verifica se a coordenada cai dentro (ou muito perto) de algum polígono.
+    Verifica se a coordenada cai dentro (ou muito perto) de algum polígono cadastrado (AreaVenda).
     """
+    # Importação local para evitar Ciclo de Importação (Circular Import) com models.py
     from .models import AreaVenda 
     
     ponto_endereco = Point(lon, lat) 
@@ -27,7 +28,7 @@ def verificar_viabilidade_por_coordenadas(lat, lon):
             coords_str = area.coordenadas.strip()
             coords_list = []
             
-            # Parse KML (lon,lat)
+            # Parse KML (lon,lat) - O formato padrão KML é longitude,latitude
             for c in coords_str.split(' '):
                 parts = c.split(',')
                 if len(parts) >= 2:
@@ -53,7 +54,6 @@ def verificar_viabilidade_por_coordenadas(lat, lon):
             continue
 
     if area_encontrada:
-        # Se foi por proximidade, avisamos no log, mas pro usuário é sucesso
         return {
             'viabilidade': True,
             'celula': area_encontrada.celula,
@@ -77,7 +77,7 @@ def verificar_viabilidade_por_coordenadas(lat, lon):
 
 def verificar_viabilidade_por_cep(cep):
     """
-    Busca pelo CENTRO do CEP.
+    Busca pelo CENTRO do CEP (Fallback).
     """
     cep_limpo = "".join(filter(str.isdigit, str(cep)))
     # Usa postalcode + country para evitar ambiguidade
@@ -91,7 +91,7 @@ def verificar_viabilidade_por_cep(cep):
 
 def verificar_viabilidade_exata(cep, numero):
     """
-    Tenta busca exata. Se falhar, busca automaticamente pelo CEP.
+    Tenta busca exata (Rua + Número + CEP). Se falhar, busca automaticamente pelo CEP.
     """
     cep_limpo = "".join(filter(str.isdigit, str(cep)))
     
@@ -102,13 +102,16 @@ def verificar_viabilidade_exata(cep, numero):
     resultado = _executar_busca_nominatim(url, eh_exata=True)
     
     # --- FALLBACK AUTOMÁTICO ---
-    # Se a busca exata falhou (não achou o número), tenta só o CEP
-    if not resultado['viabilidade'] and resultado.get('erro_busca'):
+    # Se a busca exata falhou (não achou o número ou deu erro), tenta só o CEP
+    if not resultado['viabilidade']:
         return verificar_viabilidade_por_cep(cep_limpo)
         
     return resultado
 
 def _executar_busca_nominatim(url, eh_exata=False):
+    """
+    Função auxiliar interna para chamar a API do Nominatim e processar o JSON.
+    """
     headers = {'User-Agent': 'RecordPAP-CRM/1.0'}
     try:
         response = requests.get(url, headers=headers, timeout=5)
@@ -116,15 +119,16 @@ def _executar_busca_nominatim(url, eh_exata=False):
         try:
             data = response.json()
         except ValueError:
-            return {'viabilidade': False, 'msg': 'Erro técnico no mapa.'}
+            return {'viabilidade': False, 'msg': 'Erro técnico no mapa (JSON inválido).'}
         
-        # Se for erro da API (dicionário com erro)
+        # Se for erro da API (dicionário com chave error)
         if isinstance(data, dict) and ('error' in data or 'message' in data):
              return {'viabilidade': False, 'msg': 'Erro na comunicação com o mapa.'}
 
         # Se não achou nada (lista vazia)
         if not data or (isinstance(data, list) and len(data) == 0):
             if eh_exata:
+                # Retorna erro específico para acionar o fallback
                 return {'viabilidade': False, 'erro_busca': True, 'msg': 'Número não localizado.'}
             return {'viabilidade': False, 'msg': 'CEP não localizado no mapa.'}
         
@@ -135,9 +139,10 @@ def _executar_busca_nominatim(url, eh_exata=False):
         lon = float(item.get('lon', 0))
         
         if lat == 0 or lon == 0:
-             return {'viabilidade': False, 'msg': 'Coordenadas inválidas.'}
+             return {'viabilidade': False, 'msg': 'Coordenadas inválidas recebidas do mapa.'}
         
+        # Chama a função geométrica principal
         return verificar_viabilidade_por_coordenadas(lat, lon)
         
     except Exception as e:
-        return {'viabilidade': False, 'msg': f"Erro técnico: {str(e)}"}
+        return {'viabilidade': False, 'msg': f"Erro técnico ao consultar mapa: {str(e)}"}

@@ -6,8 +6,10 @@ from .models import (
     CicloPagamento, HistoricoAlteracaoVenda, Campanha,
     ComissaoOperadora, Comunicado 
 )
+from .models import GrupoDisparo # Importe o modelo
 from usuarios.models import Usuario
 from usuarios.serializers import UsuarioSerializer
+
 
 # --- SERIALIZERS BÁSICOS ---
 
@@ -334,3 +336,7 @@ class ComunicadoSerializer(serializers.ModelSerializer):
         model = Comunicado
         fields = '__all__'
         read_only_fields = ['criado_por', 'criado_em']
+class GrupoDisparoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = GrupoDisparo
+        fields = '__all__'

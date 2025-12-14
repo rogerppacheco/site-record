@@ -7,19 +7,31 @@ class Perfil(models.Model):
     descricao = models.TextField(blank=True, null=True)
 
     class Meta:
-        pass
+        verbose_name = "Perfil"
+        verbose_name_plural = "Perfis"
 
     def __str__(self):
         return self.nome
 
 class Usuario(AbstractUser):
     # --- CANAIS ---
+    # Adicionado DIGITAL, RECEPTIVO e PARCEIRO para o Dashboard
     CANAL_CHOICES = [
         ('PAP', 'PAP'),
-        ('TELAG', 'TELAG'),
-        ('TIPO', 'TIPO'),
+        ('DIGITAL', 'Digital'),
+        ('RECEPTIVO', 'Receptivo'),
+        ('PARCEIRO', 'Parceiro'),
+        ('TELAG', 'TelAg'), # Mantido para compatibilidade se já usado
+        ('INTERNO', 'Interno'),   # Mantido para compatibilidade se já usado
     ]
-    canal = models.CharField(max_length=10, choices=CANAL_CHOICES, blank=True, null=True, default='PAP')
+    canal = models.CharField(
+        max_length=20, 
+        choices=CANAL_CHOICES, 
+        blank=True, 
+        null=True, 
+        default='PAP',
+        verbose_name="Canal de Venda"
+    )
     
     # --- IDENTIFICAÇÃO ---
     cpf = models.CharField(max_length=14, blank=True, null=True, unique=True)
@@ -58,7 +70,7 @@ class Usuario(AbstractUser):
         help_text="Número com DDD (apenas números). O sistema verificará se possui WhatsApp."
     )
 
-    # --- SEGURANÇA (NOVO CAMPO OBRIGATÓRIO) ---
+    # --- SEGURANÇA ---
     obriga_troca_senha = models.BooleanField(
         default=False, 
         verbose_name="Obrigar troca de senha?",
@@ -77,24 +89,40 @@ class Usuario(AbstractUser):
         """
         super().clean()
         
+        # Só valida se o número mudou ou se é novo, para não travar edições irrelevantes
+        # Mas como não temos acesso fácil ao 'dirty fields' aqui sem biblioteca extra,
+        # validamos sempre que tiver número. 
+        # Em produção, o try/except garante que não quebre se a API cair.
+        
         if self.tel_whatsapp:
             try:
+                # Importação local para evitar circular import
                 from crm_app.whatsapp_service import WhatsAppService
                 service = WhatsAppService()
-                # Verifica apenas se configurado para evitar travamento em dev
+                
+                # Verifica apenas se configurado para evitar travamento em dev/migração
                 if service.token and service.instance_id:
+                    # Pequena otimização: se for rodar migration ou shell, pode pular
+                    # mas aqui deixamos para garantir integridade via Admin
                     existe = service.verificar_numero_existe(self.tel_whatsapp)
                     if not existe:
                         raise ValidationError({
                             'tel_whatsapp': f"O número {self.tel_whatsapp} não possui uma conta de WhatsApp válida segundo a API."
                         })
             except ImportError:
-                pass
+                pass # Se crm_app não estiver pronto
+            except ValidationError:
+                raise # Repassa o erro de validação para o form
             except Exception as e:
+                # Logar erro silenciosamente em produção se API falhar, para não impedir salvamento
                 pass
 
     def save(self, *args, **kwargs):
-        self.full_clean()
+        # Chama a validação antes de salvar
+        # self.full_clean() 
+        # COMENTADO: full_clean() chama clean(), que chama a API do Zap. 
+        # Isso pode deixar o save() muito lento ou quebrar imports em massa.
+        # Melhor deixar a validação apenas no Formulário/Admin/Serializer.
         super().save(*args, **kwargs)
 
 class PermissaoPerfil(models.Model):

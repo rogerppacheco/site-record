@@ -4,10 +4,12 @@ from django.views.generic import TemplateView
 from django.conf import settings
 from django.conf.urls.static import static
 
+
 # Importe a view do login
 from usuarios.views import LoginView
 # Importe a view do calendário
 from core.views import calendario_fiscal_view
+from crm_app.views import page_painel_performance # <--- Importe a função
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -55,6 +57,7 @@ urlpatterns = [
     # CALENDÁRIO
     path('calendario/', calendario_fiscal_view, name='calendario_fiscal_atual'),
     path('calendario/<int:ano>/<int:mes>/', calendario_fiscal_view, name='calendario_fiscal'),
+    path('painel-performance/', page_painel_performance, name='painel_performance'),
 ]
 
 # Configuração para servir arquivos estáticos e media em DEBUG (Crucial para CSS/Imagens)

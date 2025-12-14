@@ -13,6 +13,8 @@ import re
 import xml.etree.ElementTree as ET
 import unicodedata 
 
+# --- CORREÇÃO CRÍTICA: Importar transaction e IntegrityError ---
+from django.db import transaction, IntegrityError
 from django.db.models import Count, Q, Sum
 from django.utils import timezone
 from django.utils.timezone import now
@@ -21,13 +23,11 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.utils.decorators import method_decorator
 from django.http import JsonResponse, HttpResponse
 from django.template.loader import get_template
+from django.shortcuts import render  # <--- Adicionado para renderizar HTML
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.utils.html import strip_tags
 from django.contrib.staticfiles import finders
-
-# --- CORREÇÃO CRÍTICA: Importar transaction e IntegrityError ---
-from django.db import transaction, IntegrityError
 
 from rest_framework import generics, viewsets, status, permissions
 from rest_framework.response import Response
@@ -45,6 +45,8 @@ from xhtml2pdf import pisa
 from usuarios.permissions import CheckAPIPermission, VendaPermission
 import openpyxl 
 from openpyxl.styles import Font, PatternFill
+from .models import GrupoDisparo
+from .serializers import GrupoDisparoSerializer
 
 
 # Funções de Mapa (Geometria e Busca)
@@ -1520,7 +1522,7 @@ class ImportacaoOsabView(APIView):
             'GERENCIA': 'gerencia', 'NM_GC': 'gc',
         }
 
-        # Status básicos (Esteira)
+        # Status básicos (Regras complexas são tratadas no loop)
         STATUS_MAP = {
             'CONCLUÍDO': 'INSTALADA', 'CONCLUIDO': 'INSTALADA', 'EXECUTADO': 'INSTALADA',
             'PENDÊNCIA CLIENTE': 'PENDENCIADA', 'PENDENCIA CLIENTE': 'PENDENCIADA',
@@ -1540,7 +1542,7 @@ class ImportacaoOsabView(APIView):
         df.columns = [str(col).strip().upper() for col in df.columns]
         df = df.replace({np.nan: None, pd.NaT: None})
 
-        # --- CACHES (Agora carregamos Esteira E Tratamento) ---
+        # --- CACHES ---
         status_esteira_map = {s.nome.upper(): s for s in StatusCRM.objects.filter(tipo='Esteira')}
         status_tratamento_map = {s.nome.upper(): s for s in StatusCRM.objects.filter(tipo='Tratamento')} # <--- NOVO
         
@@ -1551,6 +1553,7 @@ class ImportacaoOsabView(APIView):
         motivo_pendencia_map = {}
         import re
         for m in MotivoPendencia.objects.all():
+            # Regex pega o primeiro grupo de números no início da string
             match = re.match(r'^(\d+)', m.nome.strip())
             if match:
                 codigo_full = match.group(1)
@@ -2285,3 +2288,342 @@ def enviar_comissao_whatsapp(request):
 
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# --- NOVA API DE PAINEL DE PERFORMANCE ---
+# crm_app/views.py (Substitua a classe PainelPerformanceView inteira)
+
+# Em crm_app/views.py
+
+class PainelPerformanceView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        User = get_user_model()
+        user = request.user
+        
+        # 1. Ajuste de Fuso Horário (Brasil)
+        agora_local = timezone.localtime(timezone.now())
+        hoje = agora_local.date()
+        
+        inicio_semana = hoje - timedelta(days=hoje.weekday())
+        dias_semana = [inicio_semana + timedelta(days=i) for i in range(6)]
+        inicio_mes = hoje.replace(day=1)
+
+        # 2. Base de Usuários
+        users = User.objects.filter(is_active=True).exclude(username='OSAB_IMPORT')
+
+        # 3. Permissões
+        grupos_gestao = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
+        if is_member(user, grupos_gestao):
+            pass 
+        elif is_member(user, ['Supervisor']):
+            users = users.filter(Q(supervisor=user) | Q(id=user.id))
+        else:
+            users = users.filter(id=user.id)
+
+        # 4. Filtro de Canal
+        filtro_canal = request.query_params.get('canal')
+        if filtro_canal:
+            users = users.filter(canal__iexact=filtro_canal)
+
+        # 5. FILTROS GERAIS
+        
+        # A. Venda deve ter O.S. preenchida (Base para tudo)
+        filtro_os_valida = Q(vendas__ativo=True) & ~Q(vendas__ordem_servico='') & Q(vendas__ordem_servico__isnull=False)
+
+        # B. Filtro de Cartão de Crédito
+        filtro_cc = (
+            Q(vendas__forma_pagamento__nome__icontains='CREDIT') | 
+            Q(vendas__forma_pagamento__nome__icontains='CRÉDIT') |
+            (
+                Q(vendas__forma_pagamento__nome__icontains='CARTA') & 
+                ~Q(vendas__forma_pagamento__nome__icontains='DEBIT') & 
+                ~Q(vendas__forma_pagamento__nome__icontains='DÉBIT')
+            )
+        )
+        
+        # C. Filtro Instalada
+        filtro_inst = Q(vendas__status_esteira__nome__iexact='INSTALADA')
+
+        # D. FILTRO DE EXCLUSÃO (NOVO) - Apenas para Hoje e Semana
+        # Exclui se o status de tratamento for "AGUARDANDO PAGAMENTO" ou "REPROVADO CARTÃO DE CRÉDITO"
+        filtro_limpo_hoje_semana = (
+            ~Q(vendas__status_tratamento__nome__iexact='AGUARDANDO PAGAMENTO') & 
+            ~Q(vendas__status_tratamento__nome__iexact='REPROVADO CARTÃO DE CRÉDITO')
+        )
+
+        # ---------------------------------------------------------
+        # A. DADOS DE HOJE (Com filtro de exclusão)
+        # ---------------------------------------------------------
+        qs_hoje = users.annotate(
+            vendas_total=Count('vendas', filter=filtro_os_valida & filtro_limpo_hoje_semana & Q(vendas__data_criacao__date=hoje)),
+            vendas_cc=Count('vendas', filter=filtro_os_valida & filtro_limpo_hoje_semana & Q(vendas__data_criacao__date=hoje) & filtro_cc)
+        ).values('username', 'canal', 'vendas_total', 'vendas_cc').order_by('-vendas_total')
+
+        lista_hoje = []
+        for u in qs_hoje:
+            total = u['vendas_total']
+            cc = u['vendas_cc']
+            pct = (cc / total * 100) if total > 0 else 0
+            
+            if total > 0: 
+                lista_hoje.append({
+                    'vendedor': u['username'],
+                    'canal': u['canal'],
+                    'total': total,
+                    'cc': cc,
+                    'pct_cc': round(pct, 2)
+                })
+
+        # ---------------------------------------------------------
+        # B. DADOS DA SEMANA (Com filtro de exclusão)
+        # ---------------------------------------------------------
+        # Aplicamos 'filtro_limpo_hoje_semana' em cada dia e no total da semana
+        qs_semana = users.annotate(
+            seg=Count('vendas', filter=filtro_os_valida & filtro_limpo_hoje_semana & Q(vendas__data_criacao__date=dias_semana[0])),
+            ter=Count('vendas', filter=filtro_os_valida & filtro_limpo_hoje_semana & Q(vendas__data_criacao__date=dias_semana[1])),
+            qua=Count('vendas', filter=filtro_os_valida & filtro_limpo_hoje_semana & Q(vendas__data_criacao__date=dias_semana[2])),
+            qui=Count('vendas', filter=filtro_os_valida & filtro_limpo_hoje_semana & Q(vendas__data_criacao__date=dias_semana[3])),
+            sex=Count('vendas', filter=filtro_os_valida & filtro_limpo_hoje_semana & Q(vendas__data_criacao__date=dias_semana[4])),
+            sab=Count('vendas', filter=filtro_os_valida & filtro_limpo_hoje_semana & Q(vendas__data_criacao__date=dias_semana[5])),
+            
+            total_semana=Count('vendas', filter=filtro_os_valida & filtro_limpo_hoje_semana & Q(vendas__data_criacao__date__gte=inicio_semana)),
+            total_cc=Count('vendas', filter=filtro_os_valida & filtro_limpo_hoje_semana & Q(vendas__data_criacao__date__gte=inicio_semana) & filtro_cc)
+        ).values('username', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'total_semana', 'total_cc').order_by('-total_semana')
+
+        lista_semana = []
+        for u in qs_semana:
+            total = u['total_semana']
+            pct = (u['total_cc'] / total * 100) if total > 0 else 0
+            
+            if total > 0:
+                lista_semana.append({
+                    'vendedor': u['username'],
+                    'dias': [u['seg'], u['ter'], u['qua'], u['qui'], u['sex'], u['sab']],
+                    'total': total,
+                    'cc': u['total_cc'],
+                    'pct_cc': round(pct, 2)
+                })
+
+        # ---------------------------------------------------------
+        # C. DADOS DO MÊS (SEM o filtro de exclusão, conforme solicitado)
+        # ---------------------------------------------------------
+        qs_mes = users.annotate(
+            total_vendas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date__gte=inicio_mes)),
+            
+            instaladas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date__gte=inicio_mes) & filtro_inst),
+            
+            total_cc=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date__gte=inicio_mes) & filtro_cc),
+            instaladas_cc=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date__gte=inicio_mes) & filtro_inst & filtro_cc),
+            
+            pendenciadas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date__gte=inicio_mes, vendas__status_esteira__nome__icontains='PENDEN')),
+            agendadas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date__gte=inicio_mes, vendas__status_esteira__nome__iexact='AGENDADO')),
+            canceladas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date__gte=inicio_mes, vendas__status_esteira__nome__icontains='CANCELAD'))
+        ).values(
+            'username', 'total_vendas', 'instaladas', 'total_cc', 'instaladas_cc', 'pendenciadas', 'agendadas', 'canceladas'
+        ).order_by('-total_vendas')
+
+        lista_mes = []
+        for u in qs_mes:
+            tot = u['total_vendas']
+            inst = u['instaladas']
+            
+            pct_cc_total = (u['total_cc'] / tot * 100) if tot > 0 else 0
+            pct_cc_inst = (u['instaladas_cc'] / inst * 100) if inst > 0 else 0
+            aproveitamento = (inst / tot * 100) if tot > 0 else 0
+
+            if tot > 0:
+                lista_mes.append({
+                    'vendedor': u['username'],
+                    'total': tot,
+                    'instaladas': inst,
+                    'cc_total': u['total_cc'],
+                    'cc_inst': u['instaladas_cc'],
+                    'pct_cc_total': round(pct_cc_total, 2),
+                    'pct_cc_inst': round(pct_cc_inst, 2),
+                    'aproveitamento': round(aproveitamento, 2),
+                    'pend': u['pendenciadas'],
+                    'agend': u['agendadas'],
+                    'canc': u['canceladas']
+                })
+
+        # Totais Gerais
+        total_hoje = sum(i['total'] for i in lista_hoje)
+        total_semana = sum(i['total'] for i in lista_semana)
+        total_mes = sum(i['total'] for i in lista_mes)
+
+        return Response({
+            "hoje": lista_hoje,
+            "semana": lista_semana,
+            "mes": lista_mes,
+            "totais": {
+                "hoje": total_hoje,
+                "semana": total_semana,
+                "mes": total_mes
+            }
+        })
+
+# --- CORREÇÃO APLICADA: VIEW DE PÁGINA NORMAL (SEM API_VIEW) ---
+def page_painel_performance(request):
+    return render(request, 'painel_performance.html')
+class ExportarPerformanceExcelView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        User = get_user_model()
+        user = request.user
+        
+        # 1. Definição de Datas (Mesma lógica da View principal)
+        agora_local = timezone.localtime(timezone.now())
+        hoje = agora_local.date()
+        inicio_semana = hoje - timedelta(days=hoje.weekday())
+        inicio_mes = hoje.replace(day=1)
+        
+        # 2. Base de Vendas (Filtragem por permissão)
+        vendas = Venda.objects.filter(ativo=True).select_related('vendedor', 'cliente', 'plano', 'forma_pagamento', 'status_esteira')
+        
+        grupos_gestao = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
+        if not is_member(user, grupos_gestao):
+            if is_member(user, ['Supervisor']):
+                liderados = list(user.liderados.values_list('id', flat=True)) + [user.id]
+                vendas = vendas.filter(vendedor_id__in=liderados)
+            else:
+                vendas = vendas.filter(vendedor=user)
+
+        # Filtro de Canal
+        filtro_canal = request.query_params.get('canal')
+        if filtro_canal:
+            vendas = vendas.filter(vendedor__canal__iexact=filtro_canal)
+
+        # 3. Preparar os 3 DataFrames
+        
+        # --- ABA 1: HOJE ---
+        vendas_hoje = vendas.filter(data_criacao__date=hoje)
+        dados_hoje = self._montar_dados(vendas_hoje)
+        
+        # --- ABA 2: SEMANA ---
+        vendas_semana = vendas.filter(data_criacao__date__gte=inicio_semana)
+        dados_semana = self._montar_dados(vendas_semana)
+        
+        # --- ABA 3: MÊS ---
+        vendas_mes = vendas.filter(data_criacao__date__gte=inicio_mes)
+        dados_mes = self._montar_dados(vendas_mes)
+
+        # 4. Gerar o Excel
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            pd.DataFrame(dados_hoje).to_excel(writer, sheet_name='Hoje', index=False)
+            pd.DataFrame(dados_semana).to_excel(writer, sheet_name='Semana Atual', index=False)
+            pd.DataFrame(dados_mes).to_excel(writer, sheet_name='Mês Atual', index=False)
+            
+        output.seek(0)
+        
+        # 5. Retornar Arquivo
+        response = HttpResponse(output, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        filename = f"Performance_Analitica_{hoje}.xlsx"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
+    def _montar_dados(self, queryset):
+        dados = []
+        for v in queryset:
+            # Converter para horário local para validação visual
+            dt_criacao_local = timezone.localtime(v.data_criacao).strftime('%d/%m/%Y %H:%M:%S') if v.data_criacao else '-'
+            
+            dados.append({
+                'ID Venda': v.id,
+                'Data Criação (Local)': dt_criacao_local,
+                'Vendedor': v.vendedor.username.upper() if v.vendedor else '-',
+                'Canal': v.vendedor.canal if v.vendedor else '-',
+                'Cliente': v.cliente.nome_razao_social if v.cliente else '-',
+                'CPF/CNPJ': v.cliente.cpf_cnpj if v.cliente else '-',
+                'Plano': v.plano.nome if v.plano else '-',
+                'Forma Pagamento': v.forma_pagamento.nome if v.forma_pagamento else '-',
+                'Status Esteira': v.status_esteira.nome if v.status_esteira else '-',
+                'Data Instalação': v.data_instalacao.strftime('%d/%m/%Y') if v.data_instalacao else '-',
+                'OS': v.ordem_servico or '-'
+            })
+        if not dados:
+            return [{'Status': 'Sem vendas neste período'}]
+        return dados
+    
+# 1. API para listar/criar grupos na tela
+class GrupoDisparoViewSet(viewsets.ModelViewSet):
+    queryset = GrupoDisparo.objects.filter(ativo=True)
+    serializer_class = GrupoDisparoSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+# 2. API que recebe a Imagem (Base64) e manda pro Z-API
+class EnviarImagemPerformanceView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        chat_id = request.data.get('chat_id')
+        imagem_b64 = request.data.get('imagem_b64') # String Base64 vinda do HTML2Canvas
+        titulo = request.data.get('titulo', 'Performance')
+
+        if not chat_id or not imagem_b64:
+            return Response({'error': 'Dados incompletos.'}, status=400)
+
+        # Remove o cabeçalho do base64 se vier (data:image/png;base64,...)
+        if "base64," in imagem_b64:
+            imagem_b64 = imagem_b64.split("base64,")[1]
+
+        try:
+            svc = WhatsAppService()
+            # Envia para a Z-API (presumindo que seu service tenha enviar_imagem_b64 ou similar)
+            # Se não tiver, vamos usar a enviar_mensagem_imagem genérica
+            
+            # Ajuste conforme seu whatsapp_service.py:
+            # Geralmente Z-API aceita o base64 direto no campo 'image'
+            payload = {
+                "phone": chat_id,
+                "image": imagem_b64,
+                "caption": f"📊 *{titulo}* \nGerado em: {timezone.localtime().strftime('%d/%m/%Y %H:%M')}"
+            }
+            # Aqui chamamos o método interno do seu serviço ou request direto
+            # Vou simular usando o seu svc existente:
+            resp = svc.enviar_imagem_base64_direto(chat_id, imagem_b64, payload['caption'])
+            
+            return Response({'status': 'sucesso', 'zapi_response': resp})
+
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
+        
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def listar_grupos_whatsapp_api(request):
+    """
+    Consulta a Z-API e retorna os grupos para seleção.
+    """
+    try:
+        svc = WhatsAppService()
+        grupos_zapi = svc.listar_grupos()
+        
+        # Filtra e formata para o front
+        lista_formatada = []
+        
+        # Garante que seja uma lista (algumas versoes retornam {response: [...]})
+        if isinstance(grupos_zapi, dict) and 'response' in grupos_zapi:
+            grupos_zapi = grupos_zapi['response']
+        
+        if isinstance(grupos_zapi, list):
+            for g in grupos_zapi:
+                if isinstance(g, dict):
+                    # Tenta capturar o ID de várias formas possíveis
+                    g_id = g.get('id') or g.get('chatId') or g.get('phone')
+                    
+                    # Tenta capturar o Nome
+                    g_name = g.get('name') or g.get('subject') or g.get('contactName') or 'Sem Nome'
+
+                    # Só adiciona se tiver ID válido
+                    if g_id:
+                        lista_formatada.append({
+                            'id': g_id,
+                            'name': g_name
+                        })
+        
+        return Response(lista_formatada)
+    except Exception as e:
+        logger.error(f"Erro view listar grupos: {e}")
+        return Response({'error': str(e)}, status=500)
