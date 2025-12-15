@@ -2241,7 +2241,7 @@ class WebhookWhatsAppView(APIView):
             return Response({'status': 'no_action'})
 
         except Exception as e:
-            # logger.error(f"Webhook Error: {e}", exc_info=True)
+            logger.error(f"Webhook Error: {e}", exc_info=True) # <-- REMOVA O #
             return Response({'status': 'error'}, status=500)
 
 @api_view(['GET'])
