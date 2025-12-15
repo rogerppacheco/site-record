@@ -144,6 +144,13 @@ class Venda(models.Model):
         verbose_name="Em Auditoria Por"
     )
 
+    # --- NOVOS CAMPOS PARA CONTROLE DE DESCONTOS (INSERIDOS CORRETAMENTE AQUI) ---
+    flag_adiant_cnpj = models.BooleanField(default=False, verbose_name="Adiant. CNPJ Processado")
+    flag_desc_boleto = models.BooleanField(default=False, verbose_name="Desc. Boleto Processado")
+    flag_desc_viabilidade = models.BooleanField(default=False, verbose_name="Desc. Viab. Processado")
+    flag_desc_antecipacao = models.BooleanField(default=False, verbose_name="Desc. Antecip. Processado")
+    # -----------------------------------------------------------------------------
+
     def __str__(self): return f"Venda #{self.id}"
     class Meta:
         db_table = 'crm_venda'
@@ -329,12 +336,44 @@ class HistoricoAlteracaoVenda(models.Model):
         return f"Alteração na Venda #{self.venda.id} por {usuario_str} em {self.data_alteracao.strftime('%d/%m/%Y %H:%M')}"
 
 class Campanha(models.Model):
+    TIPO_META_CHOICES = [
+        ('BRUTA', 'Vendas Brutas (OS Aberta)'),
+        ('LIQUIDA', 'Vendas Líquidas (Instaladas)'),
+    ]
+    
+    CANAL_CHOICES = [
+        ('TODOS', 'Todos os Canais'),
+        ('PAP', 'PAP'),
+        ('DIGITAL', 'Digital'),
+        ('RECEPTIVO', 'Receptivo'),
+        ('PARCEIRO', 'Parceiro'),
+    ]
+
     nome = models.CharField(max_length=100, unique=True)
+    
+    data_inicio = models.DateField(null=True, blank=True, verbose_name="Início")
+    data_fim = models.DateField(null=True, blank=True, verbose_name="Fim")
+    
+    meta_vendas = models.IntegerField(default=0, help_text="Quantidade alvo de vendas")
+    valor_premio = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, verbose_name="Prêmio em Dinheiro (R$)", help_text="Valor a ser pago se atingir a meta")
+    
+    tipo_meta = models.CharField(max_length=20, choices=TIPO_META_CHOICES, default='LIQUIDA', verbose_name="Tipo de Meta")
+    canal_alvo = models.CharField(max_length=20, choices=CANAL_CHOICES, default='TODOS', verbose_name="Canal Alvo")
+    
+    # Novos Relacionamentos ManyToMany
+    planos_elegiveis = models.ManyToManyField('Plano', blank=True, verbose_name="Planos Válidos", help_text="Se deixar vazio, vale para todos.")
+    formas_pagamento_elegiveis = models.ManyToManyField('FormaPagamento', blank=True, verbose_name="Pagamentos Válidos", help_text="Se deixar vazio, vale para todas.")
+    
+    descricao_premio = models.TextField(blank=True, null=True, verbose_name="Prêmio", help_text="Descrição da premiação")
+    regras = models.TextField(blank=True, null=True, verbose_name="Regras") 
+    
     ativo = models.BooleanField(default=True)
-    data_criacao = models.DateTimeField(auto_now_add=True)
+    data_criacao = models.DateTimeField(auto_now_add=True, null=True, blank=True)
 
     def __str__(self):
-        return self.nome
+        inicio = self.data_inicio.strftime('%d/%m') if self.data_inicio else '?'
+        fim = self.data_fim.strftime('%d/%m') if self.data_fim else '?'
+        return f"{self.nome} ({inicio} - {fim})"
 
     class Meta:
         verbose_name = "Campanha"
@@ -386,36 +425,25 @@ class Comunicado(models.Model):
         verbose_name_plural = "Comunicados"
         ordering = ['-data_programada', '-hora_programada']
 
-# --- NOVO MODELO: MAPA DE VIABILIDADE (KML) ---
 class AreaVenda(models.Model):
-    # Identificação
     nome_kml = models.CharField(max_length=255, help_text="Nome que estava no Placemark")
     celula = models.CharField(max_length=255, null=True, blank=True)
     uf = models.CharField(max_length=2, null=True, blank=True)
     municipio = models.CharField(max_length=100, null=True, blank=True)
     bairro = models.CharField(max_length=100, null=True, blank=True)
-    
-    # Dados Operacionais
     prioridade = models.IntegerField(default=0, null=True, blank=True)
     estacao = models.CharField(max_length=50, null=True, blank=True)
     aging = models.IntegerField(default=0, null=True, blank=True)
     cluster = models.CharField(max_length=50, null=True, blank=True)
     status_venda = models.CharField(max_length=100, null=True, blank=True)
-    
-    # Indicadores Numéricos
     hc = models.IntegerField(default=0, verbose_name="HC")
     hp = models.IntegerField(default=0, verbose_name="HP")
     hp_viavel = models.IntegerField(default=0, verbose_name="HP Viável")
     hp_viavel_total = models.IntegerField(default=0, verbose_name="HP Viável Total")
-    
     ocupacao = models.CharField(max_length=20, null=True, blank=True, help_text="Percentual texto")
     hc_esperado = models.FloatField(default=0.0)
     atingimento_meta = models.CharField(max_length=20, null=True, blank=True)
-    
-    # Geometria (Guardando como Texto para evitar complexidade de PostGIS agora)
-    # Ex: "-43.93,-19.79,0 -43.93,-19.79,0 ..."
     coordenadas = models.TextField(null=True, blank=True)
-
     data_importacao = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -424,12 +452,11 @@ class AreaVenda(models.Model):
     class Meta:
         verbose_name = "Área de Venda (KML)"
         verbose_name_plural = "Áreas de Venda (KML)"
-# --- Adicione no final de crm_app/models.py ---
 
 class SessaoWhatsapp(models.Model):
     telefone = models.CharField(max_length=20, unique=True)
-    etapa = models.CharField(max_length=50) # ex: 'AGUARDANDO_CEP', 'AGUARDANDO_NUMERO'
-    dados_temp = models.JSONField(default=dict) # Para guardar o CEP enquanto espera o número
+    etapa = models.CharField(max_length=50) 
+    dados_temp = models.JSONField(default=dict) 
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
@@ -443,11 +470,9 @@ class DFV(models.Model):
     complemento = models.CharField(max_length=255, null=True, blank=True)
     cep = models.CharField(max_length=10, null=True, blank=True)
     bairro = models.CharField(max_length=100, null=True, blank=True)
-    
     tipo_viabilidade = models.CharField(max_length=100, null=True, blank=True)
-    tipo_rede = models.CharField(max_length=50, null=True, blank=True) # Ex: GPON, Reuso
+    tipo_rede = models.CharField(max_length=50, null=True, blank=True) 
     celula = models.CharField(max_length=50, null=True, blank=True)
-    
     data_importacao = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -460,6 +485,7 @@ class DFV(models.Model):
             models.Index(fields=['cep']),
             models.Index(fields=['cep', 'num_fachada']),
         ]
+
 class GrupoDisparo(models.Model):
     nome = models.CharField(max_length=100, help_text="Ex: Grupo Gestão Comercial")
     chat_id = models.CharField(max_length=100, help_text="ID do grupo (Ex: 12036304...g.us)")
@@ -467,3 +493,33 @@ class GrupoDisparo(models.Model):
 
     def __str__(self):
         return self.nome
+
+class LancamentoFinanceiro(models.Model):
+    TIPOS_CHOICES = [
+        ('ADIANTAMENTO_CNPJ', 'Adiantamento CNPJ'),
+        ('ADIANTAMENTO_COMISSAO', 'Adiantamento de Comissão'),
+        ('DESCONTO', 'Desconto Avulso'),
+    ]
+
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='lancamentos_financeiros')
+    tipo = models.CharField(max_length=30, choices=TIPOS_CHOICES)
+    
+    data = models.DateField()
+    valor = models.DecimalField(max_digits=10, decimal_places=2)
+    
+    quantidade_vendas = models.IntegerField(default=0, blank=True, null=True)
+    descricao = models.CharField(max_length=255, verbose_name="Descrição / Observação")
+    
+    # --- NOVO CAMPO: Para guardar IDs das vendas e permitir reversão ---
+    metadados = models.JSONField(default=dict, blank=True, null=True, verbose_name="Dados de Controle") 
+    
+    criado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='lancamentos_criados')
+    data_criacao = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.get_tipo_display()} - {self.usuario} - R$ {self.valor}"
+
+    class Meta:
+        verbose_name = "Lançamento Financeiro"
+        verbose_name_plural = "Lançamentos Financeiros"
+        ordering = ['-data']

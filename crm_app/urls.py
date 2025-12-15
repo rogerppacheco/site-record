@@ -5,7 +5,7 @@ from rest_framework.routers import DefaultRouter
 # IMPORTAÇÃO DAS VIEWS DE AUTH (DO APP USUARIOS)
 from usuarios.views import LoginView, DefinirNovaSenhaView
 from .views import GrupoDisparoViewSet, EnviarImagemPerformanceView
-from .views import listar_grupos_whatsapp_api # Importe a view nova
+from .views import listar_grupos_whatsapp_api 
 
 from .views import (
     # ViewSets
@@ -13,6 +13,7 @@ from .views import (
     ClienteViewSet, 
     ComissaoOperadoraViewSet,
     ComunicadoViewSet,
+    LancamentoFinanceiroViewSet,
 
     # Views Genéricas (List/Detail)
     OperadoraListCreateView, OperadoraDetailView,
@@ -49,7 +50,16 @@ from .views import (
     ExportarPerformanceExcelView,
     
     # View da Página HTML (Render)
-    page_painel_performance
+    page_painel_performance,
+    
+    # Relatório Campanha
+    relatorio_resultado_campanha,
+
+    # --- NOVAS VIEWS DE CONFIRMAÇÃO E REVERSÃO DE DESCONTOS ---
+    PendenciasDescontoView,
+    ConfirmarDescontosEmMassaView,
+    HistoricoDescontosAutoView,   # <--- NOVO
+    ReverterDescontoMassaView     # <--- NOVO
 )
 
 router = DefaultRouter()
@@ -58,6 +68,7 @@ router.register(r'clientes', ClienteViewSet, basename='cliente')
 router.register(r'comissoes-operadora', ComissaoOperadoraViewSet, basename='comissao-operadora')
 router.register(r'comunicados', ComunicadoViewSet, basename='comunicados')
 router.register(r'grupos-disparo', GrupoDisparoViewSet, basename='grupos-disparo')
+router.register(r'lancamentos-financeiros', LancamentoFinanceiroViewSet, basename='lancamentos-financeiros')
 
 urlpatterns = [
     path('', include(router.urls)),
@@ -81,6 +92,8 @@ urlpatterns = [
 
     path('campanhas/', CampanhaListCreateView.as_view(), name='campanha-list'),
     path('campanhas/<int:pk>/', CampanhaDetailView.as_view(), name='campanha-detail'),
+    
+    path('campanhas/<int:campanha_id>/resultado/', relatorio_resultado_campanha, name='resultado-campanha'),
 
     path('status/', StatusCRMListCreateView.as_view(), name='status-list'),
     path('status/<int:pk>/', StatusCRMDetailView.as_view(), name='status-detail'),
@@ -104,14 +117,20 @@ urlpatterns = [
     path('enviar-extrato-email/', EnviarExtratoEmailView.as_view(), name='enviar-extrato-email'),
     path('comissionamento/whatsapp/', enviar_comissao_whatsapp, name='enviar-whatsapp-comissao'),
     
-    # --- Importações (Processamento e Telas Específicas) ---
+    # --- NOVAS ROTAS DE CONFIRMAÇÃO E REVERSÃO ---
+    path('comissionamento/pendencias-desconto/', PendenciasDescontoView.as_view(), name='pendencias-desconto'),
+    path('comissionamento/confirmar-descontos/', ConfirmarDescontosEmMassaView.as_view(), name='confirmar-descontos'),
+    path('comissionamento/historico-auto/', HistoricoDescontosAutoView.as_view(), name='historico-auto'),
+    path('comissionamento/reverter-auto/', ReverterDescontoMassaView.as_view(), name='reverter-auto'),
+
+    # --- Importações ---
     path('import/osab/', ImportacaoOsabView.as_view(), name='importacao-osab'),
     path('import/osab/<int:pk>/', ImportacaoOsabDetailView.as_view(), name='importacao-osab-detail'),
     path('import/churn/', ImportacaoChurnView.as_view(), name='importacao-churn'),
     path('import/churn/<int:pk>/', ImportacaoChurnDetailView.as_view(), name='importacao-churn-detail'),
     path('import/ciclo-pagamento/', ImportacaoCicloPagamentoView.as_view(), name='importacao-ciclo-pagamento'),
     
-    # --- NOVOS RECURSOS (MAPA E DFV) ---
+    # --- Mapas e ZAP ---
     path('importar-kml/', ImportarKMLView.as_view(), name='importar-kml'),
     path('importar-dfv/', ImportarDFVView.as_view(), name='importar-dfv'),
     path('webhook-whatsapp/', WebhookWhatsAppView.as_view(), name='webhook-whatsapp'),
@@ -119,12 +138,7 @@ urlpatterns = [
     
     # --- Performance ---
     path('relatorios/performance-vendas/', PerformanceVendasView.as_view(), name='performance-vendas'),
-
-    # --- PAINEL DE PERFORMANCE (NOVO) ---
-    # Rota da API (JSON) para popular a tabela
     path('performance-painel/', PainelPerformanceView.as_view(), name='api-performance-painel'),
-    
-    # Rota para baixar o Excel de Validação
     path('performance-painel/exportar/', ExportarPerformanceExcelView.as_view(), name='exportar-performance-excel'),
     path('performance-painel/enviar-whatsapp/', EnviarImagemPerformanceView.as_view(), name='enviar-performance-zap'),
     path('integracao/listar-grupos/', listar_grupos_whatsapp_api, name='listar-grupos-zapi'),

@@ -42,9 +42,9 @@
             padding: 1.5rem; 
             display: flex; 
             flex-direction: column; 
-            position: fixed;
+            position: fixed; 
             top: 80px; 
-            left: 0;
+            left: 0; 
             bottom: 0; 
             overflow-y: auto; 
             z-index: 900; 
@@ -268,6 +268,7 @@
                             <li class="nav-item"><button class="nav-link" onclick="openTab(event, 'recebimento_operadora_tab')">Recebimento Operadora</button></li>
                             <li class="nav-item"><button class="nav-link" onclick="openTab(event, 'config_mensal_tab')">Configurações do Mês</button></li>
                             <li class="nav-item"><button class="nav-link" onclick="openTab(event, 'campanhas_tab')">Campanhas</button></li>
+                            <li class="nav-item"><button class="nav-link" onclick="openTab(event, 'adiantamentos_descontos_tab')">Adiantamentos e Descontos</button></li>
                         </ul>
                     </div>
                     <div class="card-body">
@@ -366,24 +367,207 @@
                         </div>
 
                         <div id="campanhas_tab" class="tab-content" style="display:none;">
-                             <div class="bg-light p-4 rounded border mb-4">
-                                <h5 class="text-primary mb-3">Nova Campanha</h5>
+                            <div class="bg-light p-4 rounded border mb-4">
+                                <h5 class="text-primary mb-3"><i class="bi bi-cash-coin"></i> Nova Campanha (Financeira)</h5>
                                 <form id="form-campanha">
                                     <input type="hidden" id="campanha_id">
+                                    
                                     <div class="row g-3">
-                                        <div class="col-md-4"><label class="form-label fw-bold">Nome</label><input type="text" class="form-control" id="campanha_nome" required></div>
-                                        <div class="col-md-3"><label class="form-label fw-bold">Início</label><input type="date" class="form-control" id="campanha_data_inicio" required></div>
-                                        <div class="col-md-3"><label class="form-label fw-bold">Fim</label><input type="date" class="form-control" id="campanha_data_fim" required></div>
-                                        <div class="col-md-12"><label class="form-label fw-bold">Regras</label><input type="text" class="form-control" id="campanha_regras"></div>
-                                        <div class="col-md-3"><button type="submit" class="btn btn-primary w-100">Salvar Campanha</button></div>
-                                        <div class="col-md-2"><button type="button" class="btn btn-outline-secondary w-100" onclick="resetFormCampanha()">Cancelar</button></div>
+                                        <div class="col-md-6">
+                                            <label class="form-label fw-bold">Nome da Campanha</label>
+                                            <input type="text" class="form-control" id="campanha_nome" required placeholder="Ex: Arrancada Fibra 1GB">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-bold">Início</label>
+                                            <input type="date" class="form-control" id="campanha_data_inicio" required>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-bold">Fim</label>
+                                            <input type="date" class="form-control" id="campanha_data_fim" required>
+                                        </div>
+
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-bold text-primary">Meta (Qtd Vendas)</label>
+                                            <input type="number" class="form-control" id="campanha_meta_vendas" required min="1">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-bold text-success">Prêmio em Dinheiro (R$)</label>
+                                            <input type="number" class="form-control" id="campanha_valor_premio" required step="0.01" placeholder="0,00">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-bold">Critério (O que conta?)</label>
+                                            <select class="form-select" id="campanha_tipo_meta">
+                                                <option value="LIQUIDA" selected>Vendas Instaladas (Líquida)</option>
+                                                <option value="BRUTA">Vendas Abertas (Bruta)</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-bold">Status</label>
+                                            <select class="form-select" id="campanha_ativo">
+                                                <option value="true">Ativa</option>
+                                                <option value="false">Inativa</option>
+                                            </select>
+                                        </div>
+
+                                        <div class="col-12">
+                                            <div class="card p-3 border-warning bg-white">
+                                                <h6 class="text-warning fw-bold mb-3"><i class="bi bi-filter-circle"></i> Regras de Elegibilidade (Segure Ctrl para selecionar vários)</h6>
+                                                <div class="row g-3">
+                                                    <div class="col-md-4">
+                                                        <label class="form-label small fw-bold">1. Planos Válidos</label>
+                                                        <select class="form-select" id="campanha_planos" multiple style="height: 120px;"></select>
+                                                        <div class="form-text small">Deixe vazio para aceitar TODOS.</div>
+                                                    </div>
+                                                    <div class="col-md-4">
+                                                        <label class="form-label small fw-bold">2. Formas de Pagamento Válidas</label>
+                                                        <select class="form-select" id="campanha_pagamentos" multiple style="height: 120px;"></select>
+                                                        <div class="form-text small">Deixe vazio para aceitar TODAS.</div>
+                                                    </div>
+                                                    <div class="col-md-4">
+                                                        <label class="form-label small fw-bold">3. Canal Permitido</label>
+                                                        <select class="form-select" id="campanha_canal_alvo">
+                                                            <option value="TODOS">Todos os Canais</option>
+                                                            <option value="PAP">Apenas PAP</option>
+                                                            <option value="DIGITAL">Apenas Digital</option>
+                                                            <option value="RECEPTIVO">Apenas Receptivo</option>
+                                                            <option value="PARCEIRO">Apenas Parceiro</option>
+                                                        </select>
+                                                        <label class="form-label small fw-bold mt-2">Observações Extras</label>
+                                                        <input type="text" class="form-control form-control-sm" id="campanha_regras" placeholder="Opcional">
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="col-12 d-flex justify-content-end gap-2 pt-2">
+                                            <button type="button" class="btn btn-outline-secondary" onclick="resetFormCampanha()">Cancelar</button>
+                                            <button type="submit" class="btn btn-success px-4">Salvar Campanha</button>
+                                        </div>
                                     </div>
                                 </form>
                             </div>
-                            <div class="table-responsive">
-                                <table class="table table-hover align-middle mb-0"><thead class="table-light"><tr><th>Campanha</th><th>Período</th><th>Status</th><th>Ações</th></tr></thead><tbody id="lista-campanhas"></tbody></table>
+
+                            <div class="card border-0 shadow-sm">
+                                <div class="card-body p-0 table-responsive">
+                                    <table class="table table-hover align-middle mb-0">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>Nome</th>
+                                                <th>Período</th>
+                                                <th>Meta / Prêmio</th>
+                                                <th>Regras</th>
+                                                <th>Status</th>
+                                                <th class="text-end">Ações</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="lista-campanhas"></tbody>
+                                    </table>
+                                </div>
                             </div>
                         </div>
+
+                        <div id="adiantamentos_descontos_tab" class="tab-content" style="display:none;">
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <div class="card border-primary mb-3 shadow-sm">
+                                        <div class="card-header bg-primary text-white py-2">
+                                            <h6 class="mb-0"><i class="bi bi-cash-stack"></i> Novo Adiantamento</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <form id="form-adiantamento">
+                                                <div class="mb-2">
+                                                    <label class="form-label small fw-bold">Colaborador</label>
+                                                    <select id="ad_usuario" class="form-select form-select-sm" required></select>
+                                                </div>
+                                                <div class="mb-2">
+                                                    <label class="form-label small fw-bold">Tipo</label>
+                                                    <select id="ad_tipo" class="form-select form-select-sm" onchange="toggleCamposAdiantamento()">
+                                                        <option value="ADIANTAMENTO_CNPJ">Adiantamento CNPJ</option>
+                                                        <option value="ADIANTAMENTO_COMISSAO">Adiantamento de Comissão</option>
+                                                    </select>
+                                                </div>
+                                                <div class="row g-2 mb-2">
+                                                    <div class="col-6">
+                                                        <label class="form-label small fw-bold">Data</label>
+                                                        <input type="date" id="ad_data" class="form-control form-control-sm" required>
+                                                    </div>
+                                                    <div class="col-6">
+                                                        <label class="form-label small fw-bold">Valor (R$)</label>
+                                                        <input type="number" id="ad_valor" class="form-control form-control-sm" step="0.01" required>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div id="box-qtd-vendas" class="mb-2 bg-light p-2 rounded border">
+                                                    <label class="form-label small fw-bold text-primary">Qtd. Vendas Adiantadas</label>
+                                                    <input type="number" id="ad_qtd" class="form-control form-control-sm">
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <label class="form-label small fw-bold">Observação</label>
+                                                    <textarea id="ad_obs" class="form-control form-control-sm" rows="2"></textarea>
+                                                </div>
+                                                <button type="submit" class="btn btn-primary btn-sm w-100">Registrar Adiantamento</button>
+                                            </form>
+                                        </div>
+                                    </div>
+
+                                    <div class="card border-danger shadow-sm">
+                                        <div class="card-header bg-danger text-white py-2">
+                                            <h6 class="mb-0"><i class="bi bi-dash-circle"></i> Novo Desconto</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <form id="form-desconto">
+                                                <div class="mb-2">
+                                                    <label class="form-label small fw-bold">Colaborador</label>
+                                                    <select id="desc_usuario" class="form-select form-select-sm" required></select>
+                                                </div>
+                                                <div class="mb-2">
+                                                    <label class="form-label small fw-bold">Motivo do Desconto</label>
+                                                    <input type="text" id="desc_motivo" class="form-control form-control-sm" placeholder="Ex: Equipamento perdido" required>
+                                                </div>
+                                                <div class="row g-2 mb-3">
+                                                    <div class="col-6">
+                                                        <label class="form-label small fw-bold">Data</label>
+                                                        <input type="date" id="desc_data" class="form-control form-control-sm" required>
+                                                    </div>
+                                                    <div class="col-6">
+                                                        <label class="form-label small fw-bold">Valor (R$)</label>
+                                                        <input type="number" id="desc_valor" class="form-control form-control-sm" step="0.01" required>
+                                                    </div>
+                                                </div>
+                                                <button type="submit" class="btn btn-danger btn-sm w-100">Registrar Desconto</button>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="col-md-8">
+                                    <div class="card h-100 shadow-sm">
+                                        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                                            <h6 class="mb-0 fw-bold">Histórico de Lançamentos</h6>
+                                            <div class="input-group input-group-sm" style="width: 200px;">
+                                                <input type="month" id="filtro-mes-lancamentos" class="form-control" onchange="carregarLancamentosFinanceiros()">
+                                            </div>
+                                        </div>
+                                        <div class="card-body p-0 table-responsive">
+                                            <table class="table table-hover table-striped mb-0 small align-middle">
+                                                <thead class="table-light">
+                                                    <tr>
+                                                        <th>Data</th>
+                                                        <th>Colaborador</th>
+                                                        <th>Tipo / Descrição</th>
+                                                        <th class="text-end">Valor</th>
+                                                        <th class="text-end">Ações</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="lista-lancamentos-fin"></tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                     </div>
                 </div>
             </section>
@@ -503,71 +687,123 @@
             </section>
 
             <section id="relatorios-section" class="content-section">
-                <h3 class="mb-4">Relatórios Financeiros</h3>
+                <h3 class="mb-4">Relatórios Gerenciais</h3>
                 
-                <div class="card p-3 mb-4">
-                    <div class="row g-3 align-items-end">
-                        <div class="col-md-3">
-                            <label class="form-label fw-bold">Data Início</label>
-                            <input type="date" id="finDataInicio" class="form-control">
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label fw-bold">Data Fim</label>
-                            <input type="date" id="finDataFim" class="form-control">
-                        </div>
-                        <div class="col-md-3">
-                            <button class="btn btn-primary w-100" onclick="carregarRelatorioFinanceiro()">
-                                <i class="bi bi-search"></i> Pesquisar
-                            </button>
-                        </div>
-                        <div class="col-md-3">
-                            <button class="btn btn-success w-100" onclick="baixarExcelFinanceiro()">
-                                <i class="bi bi-file-earmark-excel"></i> Baixar Excel
-                            </button>
-                        </div>
+                <div class="card">
+                    <div class="card-header">
+                        <ul class="nav nav-tabs card-header-tabs" id="relatoriosTabs" role="tablist">
+                            <li class="nav-item">
+                                <button class="nav-link active" id="tab-rel-financeiro" data-bs-toggle="tab" data-bs-target="#content-rel-financeiro" type="button">
+                                    <i class="bi bi-cash-coin"></i> Financeiro (Presença)
+                                </button>
+                            </li>
+                            <li class="nav-item">
+                                <button class="nav-link" id="tab-rel-campanhas" data-bs-toggle="tab" data-bs-target="#content-rel-campanhas" type="button" onclick="carregarOpcoesCampanhasRelatorio()">
+                                    <i class="bi bi-trophy"></i> Resultado de Campanhas
+                                </button>
+                            </li>
+                        </ul>
                     </div>
-                </div>
+                    
+                    <div class="card-body">
+                        <div class="tab-content">
+                            
+                            <div class="tab-pane fade show active" id="content-rel-financeiro">
+                                <div class="card p-3 mb-4 bg-light border">
+                                    <div class="row g-3 align-items-end">
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-bold">Data Início</label>
+                                            <input type="date" id="finDataInicio" class="form-control">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-bold">Data Fim</label>
+                                            <input type="date" id="finDataFim" class="form-control">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <button class="btn btn-primary w-100" onclick="carregarRelatorioFinanceiro()">
+                                                <i class="bi bi-search"></i> Pesquisar
+                                            </button>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <button class="btn btn-success w-100" onclick="baixarExcelFinanceiro()">
+                                                <i class="bi bi-file-earmark-excel"></i> Baixar Excel
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
 
-                <div class="card mb-4" id="cardPrevisao" style="display:none;">
-                    <div class="card-header bg-info text-white">
-                        <h5 class="mb-0"><i class="bi bi-calendar-check"></i> Previsão (Cenário Ideal)</h5>
-                    </div>
-                    <div class="card-body p-0">
-                        <div class="table-responsive">
-                            <table class="table table-hover mb-0">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Nome</th>
-                                        <th>Dias Úteis</th>
-                                        <th>Valor Diário</th>
-                                        <th>Valor Total Previsto</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="tbodyPrevisao"></tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
+                                <div class="card mb-4" id="cardPrevisao" style="display:none;">
+                                    <div class="card-header bg-info text-white">
+                                        <h5 class="mb-0"><i class="bi bi-calendar-check"></i> Previsão (Cenário Ideal)</h5>
+                                    </div>
+                                    <div class="card-body p-0 table-responsive">
+                                        <table class="table table-hover mb-0">
+                                            <thead class="table-light"><tr><th>Nome</th><th>Dias Úteis</th><th>Valor Diário</th><th>Valor Total Previsto</th></tr></thead>
+                                            <tbody id="tbodyPrevisao"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
 
-                <div class="card mb-4" id="cardDescontos" style="display:none;">
-                    <div class="card-header bg-danger text-white">
-                        <h5 class="mb-0"><i class="bi bi-exclamation-triangle"></i> Descontos e Pagamento Final</h5>
-                    </div>
-                    <div class="card-body p-0">
-                        <div class="table-responsive">
-                            <table class="table table-hover mb-0">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Nome</th>
-                                        <th>Dias Úteis</th>
-                                        <th>Qtd Faltas</th>
-                                        <th>Valor Diário</th>
-                                        <th>Valor Desconto</th>
-                                        <th>Total a Receber</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="tbodyDescontos"></tbody>
-                            </table>
+                                <div class="card mb-4" id="cardDescontos" style="display:none;">
+                                    <div class="card-header bg-danger text-white">
+                                        <h5 class="mb-0"><i class="bi bi-exclamation-triangle"></i> Descontos e Pagamento Final</h5>
+                                    </div>
+                                    <div class="card-body p-0 table-responsive">
+                                        <table class="table table-hover mb-0">
+                                            <thead class="table-light"><tr><th>Nome</th><th>Dias Úteis</th><th>Qtd Faltas</th><th>Valor Diário</th><th>Valor Desconto</th><th>Total a Receber</th></tr></thead>
+                                            <tbody id="tbodyDescontos"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="tab-pane fade" id="content-rel-campanhas">
+                                <div class="row mb-4 align-items-end">
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold">Selecione a Campanha:</label>
+                                        <div class="input-group">
+                                            <select id="select-rel-campanha" class="form-select">
+                                                <option value="">Carregando...</option>
+                                            </select>
+                                            <button class="btn btn-primary" onclick="carregarResultadoCampanha()">
+                                                <i class="bi bi-search"></i> Ver Resultado
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div id="resultado-campanha-container" style="display:none;">
+                                    <div class="alert alert-info d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong id="campanha-titulo-resumo">Nome da Campanha</strong><br>
+                                            <span class="small" id="campanha-periodo-resumo">Período: 01/01 a 31/01</span> | 
+                                            <span class="badge bg-light text-dark border" id="campanha-tipo-resumo">Tipo</span>
+                                        </div>
+                                        <div class="text-end">
+                                            <h3 class="m-0 text-success fw-bold" id="campanha-total-premios">R$ 0,00</h3>
+                                            <small class="text-muted">Total em Prêmios</small>
+                                        </div>
+                                    </div>
+
+                                    <div class="table-responsive border rounded">
+                                        <table class="table table-hover align-middle mb-0">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th class="text-center" style="width: 50px;">#</th>
+                                                    <th>Vendedor</th>
+                                                    <th class="text-center">Vendas Válidas</th>
+                                                    <th class="text-center">Meta</th>
+                                                    <th>Progresso</th>
+                                                    <th class="text-end">Prêmio (R$)</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="tbody-resultado-campanha">
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+
                         </div>
                     </div>
                 </div>
@@ -751,6 +987,12 @@
     
     <script>
     const apiUrl = '';
+
+    // --- FUNÇÃO AUXILIAR DE FORMATAÇÃO (Obrigatória) ---
+    function fmtMoeda(valor) {
+        if (valor === null || valor === undefined || valor === '') return 'R$ 0,00';
+        return parseFloat(valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    }
     
     // --- UI HELPERS ---
     function openTab(evt, tabName) {
@@ -813,7 +1055,7 @@
     
     // Helper para o Relatório Financeiro (GET simples)
     async function fetchDados(url, options = {}) {
-        return apiFetch(url, options); // Reutiliza a lógica corrigida acima
+        return apiFetch(url, options); 
     }
 
     function logout() { localStorage.removeItem('accessToken'); window.location.href = '/'; }
@@ -933,25 +1175,72 @@
         carregarUsuarios(status);
     }
 
-    async function carregarUsuarios(status = 'ativos') { try { const usuarios = await apiFetch(`/usuarios/?is_active=${status === 'ativos'}`); todosUsuariosCache = usuarios; renderizarTabelaUsuarios(usuarios, status); } catch (e) { console.error(e); } }
+    // --- FUNÇÃO DEBUGADA ---
+    async function carregarUsuarios(status = 'ativos') { 
+        try { 
+            const endpoint = `/usuarios/?is_active=${status === 'ativos'}`;
+            const resposta = await apiFetch(endpoint); 
+            
+            let usuarios = [];
+            
+            if (Array.isArray(resposta)) {
+                usuarios = resposta;
+            } else if (resposta && resposta.results) {
+                usuarios = resposta.results; 
+            } 
+            
+            todosUsuariosCache = usuarios || []; 
+            renderizarTabelaUsuarios(todosUsuariosCache, status);
+            
+        } catch (e) { 
+            console.error("❌ ERRO NO CARREGAMENTO:", e);
+            const userListBody = document.getElementById('user-list-body');
+            if(userListBody) {
+                userListBody.innerHTML = `<tr><td colspan="7" class="text-center text-danger p-4"><strong>Erro ao carregar dados:</strong> <br> ${e.message}</td></tr>`;
+            }
+        }
+    }
 
     function renderizarTabelaUsuarios(lista, status) {
-        const userListBody = document.getElementById('user-list-body'); userListBody.innerHTML = '';
+        const userListBody = document.getElementById('user-list-body'); 
+        userListBody.innerHTML = '';
         const isAtivos = status === 'ativos';
         const headerRow = document.getElementById('user-list-header');
-        headerRow.innerHTML = isAtivos ? `<th style="width: 40px;"><input type="checkbox" id="check-all" onclick="toggleTodos(this)"></th><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Canal</th><th>Líder</th><th class="text-end">Ações</th>` : `<th>Nome</th><th>E-mail</th><th>Perfil</th><th>Canal</th><th class="text-end">Ações</th>`;
-        if (lista.length === 0) { userListBody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Nenhum usuário encontrado.</td></tr>'; return; }
+        
+        headerRow.innerHTML = isAtivos 
+            ? `<th style="width: 40px;"><input type="checkbox" id="check-all" onclick="toggleTodos(this)"></th><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Canal</th><th>Líder</th><th class="text-end">Ações</th>` 
+            : `<th>Nome</th><th>E-mail</th><th>Perfil</th><th>Canal</th><th class="text-end">Ações</th>`;
+        
+        if (!lista || lista.length === 0) { 
+            userListBody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Nenhum usuário encontrado.</td></tr>'; 
+            return; 
+        }
+
         lista.forEach(user => {
             let perfilDisplay = '<span class="badge bg-secondary">Sem Perfil</span>';
             if (user.groups && user.groups.length > 0) perfilDisplay = `<span class="badge bg-success">${user.groups[0].name}</span>`;
             else if (user.perfil_nome) perfilDisplay = `<span class="badge bg-warning text-dark">${user.perfil_nome} (Legado)</span>`;
+            
             const checkHtml = isAtivos ? `<td><input type="checkbox" class="user-check" value="${user.id}" onclick="atualizarContador()"></td>` : '';
             const liderHtml = isAtivos ? `<td>${user.supervisor_nome || '-'}</td>` : '';
             const canalHtml = `<td>${user.canal || '-'}</td>`;
-            const acoes = isAtivos ? `<button class="btn btn-xs btn-outline-warning me-1" onclick='abrirModalUsuario(${JSON.stringify(user)})' title="Editar"><i class="bi bi-pencil"></i></button><button class="btn btn-xs btn-outline-danger" onclick="inativarUsuario(${user.id})" title="Inativar"><i class="bi bi-trash"></i></button>` : `<button class="btn btn-xs btn-outline-success" onclick="reativarUsuario(${user.id})" title="Reativar"><i class="bi bi-check-circle"></i></button>`;
+            
+            const acoes = isAtivos 
+                ? `<button class="btn btn-xs btn-outline-warning me-1" onclick="editarUsuarioPeloId(${user.id})" title="Editar"><i class="bi bi-pencil"></i></button><button class="btn btn-xs btn-outline-danger" onclick="inativarUsuario(${user.id})" title="Inativar"><i class="bi bi-trash"></i></button>` 
+                : `<button class="btn btn-xs btn-outline-success" onclick="reativarUsuario(${user.id})" title="Reativar"><i class="bi bi-check-circle"></i></button>`;
+            
             userListBody.innerHTML += `<tr>${checkHtml}<td>${user.nome_completo}</td><td>${user.email}</td><td>${perfilDisplay}</td>${canalHtml}${liderHtml}<td class="text-end">${acoes}</td></tr>`;
         });
+        
         atualizarContador();
+    }
+
+    // Função auxiliar para buscar o usuário no cache pelo ID
+    function editarUsuarioPeloId(id) {
+        const user = todosUsuariosCache.find(u => u.id === id);
+        if (user) {
+            abrirModalUsuario(user);
+        }
     }
 
     document.getElementById('busca-usuario').addEventListener('input', (e) => { const termo = e.target.value.toLowerCase(); const filtrados = todosUsuariosCache.filter(u => u.nome_completo.toLowerCase().includes(termo) || u.email.toLowerCase().includes(termo) || u.username.toLowerCase().includes(termo)); const statusAtual = document.getElementById('lista-status-titulo').textContent === 'Ativos' ? 'ativos' : 'inativos'; renderizarTabelaUsuarios(filtrados, statusAtual); });
@@ -1031,7 +1320,7 @@
     async function reativarUsuario(id) { if(confirm('Reativar?')) { await apiFetch(`/usuarios/${id}/reativar/`, { method: 'PUT' }); mostrarListaUsuarios('inativos'); } }
 
     // ====================================================================
-    // 3. CADASTROS GERAIS CRM (FUNÇÕES QUE ESTAVAM FALTANDO)
+    // 3. CADASTROS GERAIS CRM
     // ====================================================================
     
     // --- OPERADORAS ---
@@ -1082,7 +1371,10 @@
         const tbody = document.getElementById('lista-planos');
         tbody.innerHTML = '';
         lista.forEach(p => {
-            tbody.innerHTML += `<tr><td>${p.nome}</td><td>${p.operadora_nome || '-'}</td><td>${p.valor}</td><td>${p.comissao}</td><td><button class="btn btn-sm btn-outline-warning" onclick='editarPlano(${JSON.stringify(p)})'><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="excluirPlano(${p.id})"><i class="bi bi-trash"></i></button></td></tr>`;
+            // CORREÇÃO: Tratamento para comissão indefinida
+            const comissao = p.comissao !== undefined ? fmtMoeda(p.comissao) : 'R$ 0,00';
+            
+            tbody.innerHTML += `<tr><td>${p.nome}</td><td>${p.operadora_nome || '-'}</td><td>${fmtMoeda(p.valor)}</td><td>${comissao}</td><td><button class="btn btn-sm btn-outline-warning" onclick='editarPlano(${JSON.stringify(p)})'><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="excluirPlano(${p.id})"><i class="bi bi-trash"></i></button></td></tr>`;
         });
     }
     document.getElementById('form-plano').onsubmit = async(e) => {
@@ -1242,101 +1534,256 @@
 
     window.excluirRegra = async(id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/regras-comissao/${id}/`, {method:'DELETE'}); carregarRegrasComissao(); } };
 
-    // --- CAMPANHAS ---
+    // ====================================================================
+    // GESTÃO DE CAMPANHAS
+    // ====================================================================
+    
+    // Carrega Planos e Pagamentos nos selects múltiplos
+    async function carregarDadosAuxiliaresCampanha() {
+        try {
+            const [planos, pagamentos] = await Promise.all([
+                apiFetch('/crm/planos/'),
+                apiFetch('/crm/formas-pagamento/')
+            ]);
+
+            const selPlanos = document.getElementById('campanha_planos');
+            const selPags = document.getElementById('campanha_pagamentos');
+
+            selPlanos.innerHTML = '';
+            selPags.innerHTML = '';
+
+            planos.filter(p => p.ativo).forEach(p => {
+                selPlanos.add(new Option(p.nome, p.id));
+            });
+
+            pagamentos.filter(fp => fp.ativo).forEach(fp => {
+                selPags.add(new Option(fp.nome, fp.id));
+            });
+
+        } catch (e) { console.error("Erro ao carregar auxiliares campanha", e); }
+    }
+
     async function carregarCampanhas() {
         const lista = await apiFetch('/crm/campanhas/');
         const tbody = document.getElementById('lista-campanhas');
         tbody.innerHTML = '';
+        
+        if(lista.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">Nenhuma campanha cadastrada.</td></tr>';
+            return;
+        }
+
         lista.forEach(c => {
-            tbody.innerHTML += `<tr><td>${c.nome}</td><td>${c.data_inicio} a ${c.data_fim}</td><td>${c.ativo?'Ativa':'Inativa'}</td><td><button class="btn btn-sm btn-danger" onclick="excluirCampanha(${c.id})"><i class="bi bi-trash"></i></button></td></tr>`;
+            const dInicio = c.data_inicio ? new Date(c.data_inicio).toLocaleDateString('pt-BR', {timeZone: 'UTC'}) : '?';
+            const dFim = c.data_fim ? new Date(c.data_fim).toLocaleDateString('pt-BR', {timeZone: 'UTC'}) : '?';
+            
+            const statusBadge = c.ativo 
+                ? '<span class="badge bg-success">Ativa</span>' 
+                : '<span class="badge bg-secondary">Encerrada</span>';
+                
+            const regrasResumo = `
+                <div style="font-size:0.75rem">
+                    Canal: <b>${c.canal_alvo}</b><br>
+                    Tipo: <b>${c.tipo_meta}</b>
+                </div>`;
+
+            tbody.innerHTML += `
+                <tr>
+                    <td class="fw-bold">${c.nome}</td>
+                    <td class="small">${dInicio} <br> ${dFim}</td>
+                    <td>
+                        <div class="fw-bold">Meta: ${c.meta_vendas}</div>
+                        <div class="text-success small">R$ ${parseFloat(c.valor_premio).toFixed(2)}</div>
+                    </td>
+                    <td>${regrasResumo}</td>
+                    <td>${statusBadge}</td>
+                    <td class="text-end">
+                        <button class="btn btn-sm btn-outline-primary me-1" onclick='editarCampanha(${JSON.stringify(c)})'><i class="bi bi-pencil"></i></button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="excluirCampanha(${c.id})"><i class="bi bi-trash"></i></button>
+                    </td>
+                </tr>`;
         });
     }
+
     document.getElementById('form-campanha').onsubmit = async(e) => {
         e.preventDefault();
+        
+        const getMultiValues = (id) => Array.from(document.getElementById(id).selectedOptions).map(opt => parseInt(opt.value));
+
+        const id = document.getElementById('campanha_id').value;
         const body = {
             nome: document.getElementById('campanha_nome').value,
             data_inicio: document.getElementById('campanha_data_inicio').value,
             data_fim: document.getElementById('campanha_data_fim').value,
+            meta_vendas: document.getElementById('campanha_meta_vendas').value,
+            valor_premio: document.getElementById('campanha_valor_premio').value,
+            tipo_meta: document.getElementById('campanha_tipo_meta').value,
+            canal_alvo: document.getElementById('campanha_canal_alvo').value,
             regras: document.getElementById('campanha_regras').value,
-            ativo: true
+            ativo: document.getElementById('campanha_ativo').value === 'true',
+            
+            planos_elegiveis: getMultiValues('campanha_planos'),
+            formas_pagamento_elegiveis: getMultiValues('campanha_pagamentos')
         };
-        await apiFetch('/crm/campanhas/', {method:'POST', body: JSON.stringify(body)});
-        document.getElementById('form-campanha').reset();
-        carregarCampanhas();
-    };
-    function resetFormCampanha() { document.getElementById('form-campanha').reset(); }
-    window.excluirCampanha = async(id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/campanhas/${id}/`, {method:'DELETE'}); carregarCampanhas(); } };
 
-    // ====================================================================
-    // 4. MOTIVOS E FERIADOS (PRESENÇA)
-    // ====================================================================
-    const listaMotivosUl = document.getElementById('lista-motivos');
-    const motivoModal = new bootstrap.Modal(document.getElementById('modal-edicao-motivo'));
-    
-    async function carregarMotivos() { 
-        // O apiFetch corrigido vai transformar '/presenca/motivos/' em '/api/presenca/motivos/'
-        const m = await apiFetch('/presenca/motivos/'); 
-        listaMotivosUl.innerHTML = ''; 
-        m.forEach(x => listaMotivosUl.innerHTML += `<li class="list-group-item d-flex justify-content-between align-items-center"><span>${x.motivo} <span class="badge ${x.gera_desconto?'bg-danger':'bg-success'}">${x.gera_desconto?'Desconta':'Não Desconta'}</span></span><div><button class="btn btn-warning btn-sm me-1" onclick='editarMotivo(${JSON.stringify(x)})'><i class="bi bi-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="excluirMotivo(${x.id})"><i class="bi bi-trash"></i></button></div></li>`); 
-    }
-    
-    document.getElementById('btn-salvar-motivo').onclick = async () => { 
-        await apiFetch('/presenca/motivos/', { method: 'POST', body: JSON.stringify({ motivo: document.getElementById('novo-motivo-nome').value, gera_desconto: document.getElementById('novo-motivo-desconto').checked }) }); 
-        carregarMotivos(); 
-        document.getElementById('novo-motivo-nome').value = ''; 
-    };
-    window.editarMotivo = (m) => { document.getElementById('motivo-id-input').value = m.id; document.getElementById('motivo-nome-input').value = m.motivo; document.getElementById('motivo-desconto-input').checked = m.gera_desconto; motivoModal.show(); };
-    document.getElementById('form-edicao-motivo').onsubmit = async (e) => { e.preventDefault(); const id = document.getElementById('motivo-id-input').value; await apiFetch(`/presenca/motivos/${id}/`, { method: 'PUT', body: JSON.stringify({ motivo: document.getElementById('motivo-nome-input').value, gera_desconto: document.getElementById('motivo-desconto-input').checked }) }); motivoModal.hide(); carregarMotivos(); };
-    window.excluirMotivo = async(id) => { if(confirm('Excluir?')) { await apiFetch(`/presenca/motivos/${id}/`, {method:'DELETE'}); carregarMotivos(); } };
-    
-    const listaFeriados = document.getElementById('lista-feriados'); 
-    async function carregarFeriados() { 
-        const f = await apiFetch('/presenca/dias-nao-uteis/'); 
-        listaFeriados.innerHTML = ''; 
-        f.forEach(x => listaFeriados.innerHTML += `<tr><td>${new Date(x.data).toLocaleDateString('pt-BR',{timeZone:'UTC'})}</td><td>${x.descricao}</td><td><button class="btn btn-danger btn-sm" onclick="excluirFeriado(${x.id})"><i class="bi bi-trash"></i></button></td></tr>`); 
-    }
-    document.getElementById('btn-salvar-feriado').onclick = async () => { await apiFetch('/presenca/dias-nao-uteis/', { method: 'POST', body: JSON.stringify({ data: document.getElementById('novo-feriado-data').value, descricao: document.getElementById('novo-feriado-descricao').value }) }); carregarFeriados(); document.getElementById('novo-feriado-data').value = ''; };
-    window.excluirFeriado = async(id) => { if(confirm('Excluir?')) { await apiFetch(`/presenca/dias-nao-uteis/${id}/`, {method:'DELETE'}); carregarFeriados(); } };
-    
-    // --- LÓGICA DE RELATÓRIOS FINANCEIROS ---
-    const fmtMoeda = (val) => parseFloat(val).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-    async function carregarRelatorioFinanceiro() {
-        const ini = document.getElementById('finDataInicio').value;
-        const fim = document.getElementById('finDataFim').value;
-        if (!ini || !fim) { alert("Por favor, selecione as datas."); return; }
-        const tbodyPrev = document.getElementById('tbodyPrevisao');
-        const tbodyDesc = document.getElementById('tbodyDescontos');
-        tbodyPrev.innerHTML = '<tr><td colspan="4" class="text-center">Carregando...</td></tr>';
-        tbodyDesc.innerHTML = '<tr><td colspan="6" class="text-center">Carregando...</td></tr>';
-        document.getElementById('cardPrevisao').style.display = 'block';
-        document.getElementById('cardDescontos').style.display = 'block';
         try {
-            const data = await fetchDados(`/presenca/relatorio-financeiro/?inicio=${ini}&fim=${fim}`);
-            tbodyPrev.innerHTML = ''; data.previsao.forEach(item => { tbodyPrev.innerHTML += `<tr><td>${item.nome}</td><td>${item.dias_uteis}</td><td>${fmtMoeda(item.valor_diario)}</td><td class="fw-bold text-primary">${fmtMoeda(item.total_receber)}</td></tr>`; });
-            tbodyDesc.innerHTML = ''; data.descontos.forEach(item => { 
-                let faltasHtml = item.qtd_faltas; 
-                if (item.qtd_faltas > 0) { const datasStr = encodeURIComponent(JSON.stringify(item.datas_faltas)); faltasHtml = `<a href="javascript:void(0)" class="text-danger fw-bold text-decoration-none" onclick="abrirModalFaltas('${item.nome}', '${datasStr}')">${item.qtd_faltas} <i class="bi bi-eye-fill"></i></a>`; }
-                tbodyDesc.innerHTML += `<tr><td>${item.nome}</td><td>${item.dias_uteis}</td><td>${faltasHtml}</td><td>${fmtMoeda(item.valor_diario)}</td><td class="text-danger">${fmtMoeda(item.valor_desconto)}</td><td class="fw-bold text-success">${fmtMoeda(item.total_receber)}</td></tr>`; 
+            if(id) await apiFetch(`/crm/campanhas/${id}/`, {method:'PUT', body: JSON.stringify(body)});
+            else await apiFetch('/crm/campanhas/', {method:'POST', body: JSON.stringify(body)});
+            
+            alert('Campanha salva com sucesso!');
+            resetFormCampanha();
+            carregarCampanhas();
+        } catch(e) {
+            alert('Erro ao salvar: ' + e.message);
+        }
+    };
+
+    window.editarCampanha = (c) => {
+        document.getElementById('campanha_id').value = c.id;
+        document.getElementById('campanha_nome').value = c.nome;
+        document.getElementById('campanha_data_inicio').value = c.data_inicio;
+        document.getElementById('campanha_data_fim').value = c.data_fim;
+        document.getElementById('campanha_meta_vendas').value = c.meta_vendas || 0;
+        document.getElementById('campanha_valor_premio').value = c.valor_premio || 0;
+        document.getElementById('campanha_tipo_meta').value = c.tipo_meta || 'LIQUIDA';
+        document.getElementById('campanha_canal_alvo').value = c.canal_alvo || 'TODOS';
+        document.getElementById('campanha_regras').value = c.regras || '';
+        document.getElementById('campanha_ativo').value = c.ativo ? 'true' : 'false';
+
+        const setMultiValues = (elementId, values) => {
+            const select = document.getElementById(elementId);
+            Array.from(select.options).forEach(opt => {
+                opt.selected = values.includes(parseInt(opt.value));
             });
-        } catch (error) { alert("Erro ao carregar relatório."); }
+        };
+
+        setMultiValues('campanha_planos', c.planos_elegiveis || []);
+        setMultiValues('campanha_pagamentos', c.formas_pagamento_elegiveis || []);
+        
+        document.getElementById('form-campanha').scrollIntoView({ behavior: 'smooth' });
+    };
+
+    window.resetFormCampanha = () => {
+        document.getElementById('form-campanha').reset();
+        document.getElementById('campanha_id').value = '';
+        
+        ['campanha_planos', 'campanha_pagamentos'].forEach(id => {
+            const sel = document.getElementById(id);
+            if(sel) Array.from(sel.options).forEach(opt => opt.selected = false);
+        });
+    };
+
+    window.excluirCampanha = async(id) => { 
+        if(confirm('Tem certeza que deseja excluir esta campanha? Os dados históricos podem ser perdidos.')) { 
+            try {
+                await apiFetch(`/crm/campanhas/${id}/`, {method:'DELETE'}); 
+                carregarCampanhas(); 
+            } catch(e) {
+                alert('Erro ao excluir: ' + e.message);
+            }
+        } 
+    };
+
+    // ====================================================================
+    // RELATÓRIOS: RESULTADO DE CAMPANHAS
+    // ====================================================================
+    
+    async function carregarOpcoesCampanhasRelatorio() {
+        const select = document.getElementById('select-rel-campanha');
+        if (select.options.length > 1) return;
+
+        select.innerHTML = '<option value="">Carregando...</option>';
+        
+        try {
+            const campanhas = await apiFetch('/crm/campanhas/');
+            select.innerHTML = '<option value="">Selecione uma campanha...</option>';
+            
+            if (campanhas.length === 0) {
+                select.innerHTML = '<option value="">Nenhuma campanha encontrada.</option>';
+                return;
+            }
+
+            campanhas.forEach(c => {
+                const status = c.ativo ? '[Ativa]' : '[Encerrada]';
+                select.add(new Option(`${status} ${c.nome}`, c.id));
+            });
+        } catch (e) {
+            select.innerHTML = '<option value="">Erro ao carregar</option>';
+            console.error(e);
+        }
     }
 
-    function abrirModalFaltas(nome, datasEncoded) { const datas = JSON.parse(decodeURIComponent(datasEncoded)); document.getElementById('modalNomeColab').innerText = nome; const lista = document.getElementById('listaFaltas'); lista.innerHTML = ''; if (datas.length === 0) lista.innerHTML = '<li class="list-group-item">Nenhuma falta.</li>'; else datas.forEach(d => lista.innerHTML += `<li class="list-group-item py-1 text-danger"><i class="bi bi-x-circle"></i> ${d}</li>`); new bootstrap.Modal(document.getElementById('modalFaltas')).show(); }
-    async function baixarExcelFinanceiro() { const ini = document.getElementById('finDataInicio').value; const fim = document.getElementById('finDataFim').value; if (!ini || !fim) return alert("Selecione o período."); try { const blob = await fetchDados(`/presenca/relatorio-financeiro/excel/?inicio=${ini}&fim=${fim}`, { isBlob: true }); const url = window.URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `Financeiro_${ini}_${fim}.xlsx`; document.body.appendChild(a); a.click(); a.remove(); } catch (err) { alert("Erro ao baixar Excel."); } }
+    async function carregarResultadoCampanha() {
+        const idCampanha = document.getElementById('select-rel-campanha').value;
+        if (!idCampanha) return alert("Por favor, selecione uma campanha.");
 
-    // --- NOVA LÓGICA: RECEBIMENTO OPERADORA (NOVO) ---
+        const container = document.getElementById('resultado-campanha-container');
+        const tbody = document.getElementById('tbody-resultado-campanha');
+        
+        container.style.display = 'none';
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4"><div class="spinner-border text-primary"></div><br>Calculando resultados...</td></tr>';
+        container.style.display = 'block';
+
+        try {
+            const dados = await apiFetch(`/crm/campanhas/${idCampanha}/resultado/`);
+            
+            document.getElementById('campanha-titulo-resumo').innerText = dados.campanha;
+            document.getElementById('campanha-periodo-resumo').innerText = `Período: ${dados.periodo}`;
+            document.getElementById('campanha-tipo-resumo').innerText = dados.tipo;
+
+            tbody.innerHTML = '';
+            let totalPremios = 0;
+
+            if (dados.ranking.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">Nenhuma venda contabilizada com os critérios desta campanha.</td></tr>';
+            } else {
+                dados.ranking.forEach(r => {
+                    totalPremios += parseFloat(r.premio_receber);
+                    
+                    const corBarra = r.atingiu_meta ? 'bg-success' : 'bg-warning';
+                    const iconeMeta = r.atingiu_meta ? '<i class="bi bi-check-circle-fill text-success"></i>' : '';
+                    const classePremio = r.atingiu_meta ? 'text-success fw-bold' : 'text-muted';
+
+                    tbody.innerHTML += `
+                        <tr>
+                            <td class="text-center fw-bold text-secondary">${r.ranking}º</td>
+                            <td class="fw-bold">${r.vendedor}</td>
+                            <td class="text-center fs-5">${r.vendas_validas}</td>
+                            <td class="text-center text-muted small">Meta: ${r.meta}</td>
+                            <td style="width: 30%;">
+                                <div class="d-flex align-items-center">
+                                    <div class="progress flex-grow-1" style="height: 10px;">
+                                        <div class="progress-bar ${corBarra}" role="progressbar" style="width: ${Math.min(r.percentual, 100)}%"></div>
+                                    </div>
+                                    <span class="ms-2 small fw-bold">${r.percentual}%</span>
+                                    <span class="ms-2">${iconeMeta}</span>
+                                </div>
+                            </td>
+                            <td class="text-end ${classePremio}">${parseFloat(r.premio_receber).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</td>
+                        </tr>
+                    `;
+                });
+            }
+            
+            document.getElementById('campanha-total-premios').innerText = totalPremios.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
+
+        } catch (e) {
+            alert("Erro ao carregar resultado: " + e.message);
+            container.style.display = 'none';
+        }
+    }
+    
+    // --- RECEBIMENTO OPERADORA ---
     async function carregarComissoesOperadora() {
         const tbody = document.getElementById('lista-comissoes-operadora');
         const selPlano = document.getElementById('co_plano_id');
         tbody.innerHTML = '<tr><td colspan="6" class="text-center">Carregando...</td></tr>';
         
         try {
-            // 1. Carregar Planos no Select
             const planos = await apiFetch('/crm/planos/');
             selPlano.innerHTML = '<option value="">Selecione um Plano...</option>';
             if(planos) planos.forEach(p => selPlano.add(new Option(p.nome, p.id)));
 
-            // 2. Carregar Lista
             const lista = await apiFetch('/crm/comissoes-operadora/');
             tbody.innerHTML = '';
             
@@ -1405,7 +1852,6 @@
         document.getElementById('co_valor_base').value = co.valor_base;
         document.getElementById('co_bonus').value = co.bonus_transicao;
         document.getElementById('co_data_fim').value = co.data_fim_bonus || '';
-        // Força aba aberta
         openTab({ preventDefault: () => {} }, 'recebimento_operadora_tab');
         document.querySelector("button[onclick*='recebimento_operadora_tab']").classList.add('active');
         document.querySelector("button[onclick*='regras_comissao_tab']").classList.remove('active');
@@ -1420,14 +1866,162 @@
             carregarComissoesOperadora();
         } catch(e) { alert('Erro ao excluir.'); }
     };
+    
+    // ====================================================================
+    // GESTÃO DE ADIANTAMENTOS E DESCONTOS
+    // ====================================================================
 
-    // --- VERIFICAÇÃO WHATSAPP ---
-    async function verificarWhatsAppRealTime(input) {
-        const telefone = input.value.replace(/\D/g, ''); const iconSpan = document.getElementById('icon-whatsapp-status'); const iconI = iconSpan.querySelector('i'); const msgDiv = document.getElementById('msg-whatsapp-status');
-        if (telefone.length < 10) { iconSpan.className = 'input-group-text bg-white text-muted'; iconI.className = 'bi bi-whatsapp'; msgDiv.textContent = 'Digite apenas números com DDD.'; return; }
-        iconI.className = 'spinner-border spinner-border-sm text-primary'; msgDiv.textContent = 'Verificando na Z-API...'; input.disabled = true;
-        try { const resultado = await apiFetch(`/crm/verificar-zap/${telefone}/`); if (resultado.possui_whatsapp) { iconSpan.className = 'input-group-text bg-success text-white'; iconI.className = 'bi bi-check-circle-fill'; msgDiv.innerHTML = '<span class="text-success fw-bold">Número validado!</span>'; input.classList.add('is-valid'); } else { iconSpan.className = 'input-group-text bg-danger text-white'; iconI.className = 'bi bi-x-circle-fill'; msgDiv.innerHTML = '<span class="text-danger fw-bold">Este número não possui WhatsApp!</span>'; input.classList.add('is-invalid'); } } catch (error) { console.error(error); iconSpan.className = 'input-group-text bg-warning text-dark'; iconI.className = 'bi bi-exclamation-triangle'; msgDiv.textContent = 'Não foi possível validar agora. (Mas pode salvar)'; } finally { input.disabled = false; }
+    async function carregarUsuariosSelectsFinanceiro() {
+        try {
+            // Busca apenas usuários ativos
+            const users = await apiFetch('/usuarios/?is_active=true');
+            const selAd = document.getElementById('ad_usuario');
+            const selDesc = document.getElementById('desc_usuario');
+            
+            selAd.innerHTML = '<option value="">Selecione...</option>';
+            selDesc.innerHTML = '<option value="">Selecione...</option>';
+            
+            users.forEach(u => {
+                // --- ALTERAÇÃO AQUI: Usando u.username (Login) ---
+                const opt = new Option(u.username, u.id);
+                selAd.add(opt.cloneNode(true));
+                selDesc.add(opt);
+            });
+        } catch (e) { console.error("Erro ao carregar selects:", e); }
     }
+
+    window.toggleCamposAdiantamento = () => {
+        const tipo = document.getElementById('ad_tipo').value;
+        const boxQtd = document.getElementById('box-qtd-vendas');
+        if (tipo === 'ADIANTAMENTO_CNPJ') {
+            boxQtd.style.display = 'block';
+        } else {
+            boxQtd.style.display = 'none';
+            document.getElementById('ad_qtd').value = '';
+        }
+    };
+
+    document.getElementById('form-adiantamento').onsubmit = async (e) => {
+        e.preventDefault();
+        const payload = {
+            usuario: document.getElementById('ad_usuario').value,
+            tipo: document.getElementById('ad_tipo').value,
+            data: document.getElementById('ad_data').value,
+            valor: document.getElementById('ad_valor').value,
+            quantidade_vendas: document.getElementById('ad_qtd').value || 0,
+            descricao: document.getElementById('ad_obs').value || 'Sem observação'
+        };
+        await salvarLancamento(payload, 'form-adiantamento');
+    };
+
+    document.getElementById('form-desconto').onsubmit = async (e) => {
+        e.preventDefault();
+        const payload = {
+            usuario: document.getElementById('desc_usuario').value,
+            tipo: 'DESCONTO',
+            data: document.getElementById('desc_data').value,
+            valor: document.getElementById('desc_valor').value,
+            descricao: document.getElementById('desc_motivo').value
+        };
+        await salvarLancamento(payload, 'form-desconto');
+    };
+
+    async function salvarLancamento(payload, formId) {
+        try {
+            await apiFetch('/crm/lancamentos-financeiros/', {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            });
+            alert('Lançamento registrado com sucesso!');
+            document.getElementById(formId).reset();
+            toggleCamposAdiantamento();
+            carregarLancamentosFinanceiros();
+        } catch (e) {
+            alert('Erro ao salvar: ' + e.message);
+        }
+    }
+
+    async function carregarLancamentosFinanceiros() {
+        let mes = document.getElementById('filtro-mes-lancamentos').value;
+        // Se não tiver mês selecionado, pega o atual
+        if (!mes) {
+            const hoje = new Date();
+            mes = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2, '0')}`;
+            document.getElementById('filtro-mes-lancamentos').value = mes;
+        }
+
+        const tbody = document.getElementById('lista-lancamentos-fin');
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center">Carregando...</td></tr>';
+
+        try {
+            const todos = await apiFetch('/crm/lancamentos-financeiros/');
+            // Filtra apenas os lançamentos que começam com o ano-mês selecionado
+            const filtrados = todos.filter(l => l.data && l.data.startsWith(mes));
+            tbody.innerHTML = '';
+
+            if (filtrados.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Nenhum lançamento neste mês.</td></tr>';
+                return;
+            }
+
+            filtrados.forEach(l => {
+                const dataFmt = new Date(l.data).toLocaleDateString('pt-BR', {timeZone:'UTC'});
+                let classeValor = l.tipo === 'DESCONTO' ? 'text-danger' : 'text-primary';
+                let detalhe = l.descricao || '';
+                
+                if(l.tipo === 'ADIANTAMENTO_CNPJ') detalhe = `(CNPJ - ${l.quantidade_vendas} vendas) ${l.descricao}`;
+                if(l.tipo === 'ADIANTAMENTO_COMISSAO') detalhe = `(Comissão) ${l.descricao}`;
+
+                // --- CORREÇÃO E MUDANÇA PARA LOGIN (USERNAME) ---
+                let nomeExibicao = 'Não identificado';
+
+                // 1. Tenta achar o usuário na lista carregada em memória (todosUsuariosCache)
+                if (l.usuario) {
+                    // Nota: todosUsuariosCache é preenchido pela função carregarUsuarios() ao abrir a página
+                    const u = todosUsuariosCache.find(user => user.id === l.usuario);
+                    
+                    if (u && u.username) {
+                        nomeExibicao = u.username; // Prioridade: Login do Cache
+                    } else if (l.usuario_nome) {
+                        // Se não achar no cache (ex: usuário inativo), usa o nome que veio do banco de dados
+                        // O backend envia 'usuario_nome' (que hoje é o nome completo), mas é melhor que "Não identificado"
+                        nomeExibicao = l.usuario_nome; 
+                    }
+                }
+                // -----------------------------------------------
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${dataFmt}</td>
+                        <td class="fw-bold">${nomeExibicao}</td>
+                        <td>
+                            <span class="badge bg-light text-dark border">${l.tipo.replace('_', ' ')}</span><br>
+                            <span class="small text-muted">${detalhe}</span>
+                        </td>
+                        <td class="text-end fw-bold ${classeValor}">
+                             R$ ${parseFloat(l.valor).toFixed(2)}
+                        </td>
+                        <td class="text-end">
+                            <button class="btn btn-xs btn-outline-danger" onclick="excluirLancamento(${l.id})"><i class="bi bi-trash"></i></button>
+                        </td>
+                    </tr>
+                `;
+            });
+
+        } catch (e) {
+            console.error(e);
+            tbody.innerHTML = '<tr><td colspan="5" class="text-danger text-center">Erro ao carregar histórico.</td></tr>';
+        }
+    }
+
+    window.excluirLancamento = async (id) => {
+        if(confirm('Tem certeza que deseja excluir este lançamento financeiro?')) {
+            try {
+                await apiFetch(`/crm/lancamentos-financeiros/${id}/`, { method: 'DELETE' });
+                carregarLancamentosFinanceiros();
+            } catch(e) { alert('Erro ao excluir.'); }
+        }
+    };
 
     // Inicialização
     document.addEventListener('DOMContentLoaded', () => {
@@ -1438,7 +2032,6 @@
         carregarMotivos();
         carregarFeriados();
         
-        // Chamada das funções que antes estavam faltando:
         carregarOperadoras();
         carregarPlanos();
         carregarFormasPagamento();
@@ -1446,13 +2039,211 @@
         carregarMotivosPendencia();
         carregarDadosParaRegrasComissao();
         carregarRegrasComissao();
+        
+        carregarDadosAuxiliaresCampanha();
         carregarCampanhas();
+        
         carregarComissoesOperadora(); 
         
+        carregarUsuariosSelectsFinanceiro();
+        carregarLancamentosFinanceiros();
+
         const primeiroLink = document.querySelector('.admin-nav-link');
         if(primeiroLink) mostrarSecao(null, 'usuarios', primeiroLink);
     });
-    </script>
 
+    async function carregarMotivos() {
+        const ul = document.getElementById('lista-motivos');
+        ul.innerHTML = '<div class="text-center p-2 text-muted">Carregando...</div>';
+        try {
+            const resposta = await apiFetch('/presenca/motivos/');
+            const lista = Array.isArray(resposta) ? resposta : (resposta.results || []);
+            ul.innerHTML = '';
+            if (lista.length === 0) {
+                ul.innerHTML = '<li class="list-group-item text-muted text-center">Nenhum motivo cadastrado.</li>';
+                return;
+            }
+            lista.forEach(m => {
+                const nomeMotivo = m.nome || m.motivo || m.descricao || "Sem Nome";
+                const badge = m.gera_desconto 
+                    ? '<span class="badge bg-danger">Gera Desconto</span>' 
+                    : '<span class="badge bg-success">Abona (Sem Desconto)</span>';
+                ul.innerHTML += `
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <span><strong>${nomeMotivo}</strong> &nbsp; ${badge}</span>
+                        <button class="btn btn-sm btn-outline-danger" onclick="excluirMotivo(${m.id})">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </li>`;
+            });
+        } catch (e) {
+            console.error("Erro ao carregar motivos:", e);
+            ul.innerHTML = '<li class="list-group-item text-danger text-center">Erro ao carregar motivos.</li>';
+        }
+    }
+
+    const btnSalvarMotivo = document.getElementById('btn-salvar-motivo');
+    if(btnSalvarMotivo) {
+        btnSalvarMotivo.onclick = async () => {
+            const nomeInput = document.getElementById('novo-motivo-nome');
+            const descInput = document.getElementById('novo-motivo-desconto');
+            if (!nomeInput.value) return alert('Digite o nome do motivo.');
+            try {
+                await apiFetch('/presenca/motivos/', {
+                    method: 'POST',
+                    body: JSON.stringify({ nome: nomeInput.value, gera_desconto: descInput.checked })
+                });
+                nomeInput.value = '';
+                carregarMotivos();
+            } catch (e) { alert('Erro ao salvar motivo: ' + e.message); }
+        };
+    }
+
+    window.excluirMotivo = async (id) => {
+        if(confirm('Tem certeza que deseja excluir este motivo?')) {
+            try { await apiFetch(`/presenca/motivos/${id}/`, { method: 'DELETE' }); carregarMotivos(); } catch(e){ alert('Erro ao excluir: ' + e.message); }
+        }
+    };
+
+    async function carregarFeriados() {
+        const tbody = document.getElementById('lista-feriados');
+        tbody.innerHTML = '<tr><td colspan="3" class="text-center">Carregando...</td></tr>';
+        try {
+            const lista = await apiFetch('/presenca/dias-nao-uteis/');
+            tbody.innerHTML = '';
+            if(lista.length === 0) {
+                 tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">Nenhum feriado cadastrado.</td></tr>';
+                 return;
+            }
+            lista.forEach(f => {
+                const dataFmt = f.data.split('-').reverse().join('/');
+                tbody.innerHTML += `<tr><td>${dataFmt}</td><td>${f.descricao || '-'}</td><td><button class="btn btn-sm btn-outline-danger" onclick="excluirFeriado(${f.id})"><i class="bi bi-trash"></i></button></td></tr>`;
+            });
+        } catch (e) { 
+            console.error(e); 
+            tbody.innerHTML = '<tr><td colspan="3" class="text-danger text-center">Erro ao carregar feriados.</td></tr>'; 
+        }
+    }
+
+    const btnSalvarFeriado = document.getElementById('btn-salvar-feriado');
+    if(btnSalvarFeriado) {
+        btnSalvarFeriado.onclick = async () => {
+            const dataInput = document.getElementById('novo-feriado-data');
+            const descInput = document.getElementById('novo-feriado-descricao');
+            if(!dataInput.value) return alert('Selecione a data.');
+            try {
+                await apiFetch('/presenca/dias-nao-uteis/', {
+                    method: 'POST',
+                    body: JSON.stringify({ data: dataInput.value, descricao: descInput.value })
+                });
+                dataInput.value = ''; descInput.value = '';
+                carregarFeriados();
+            } catch(e) { alert('Erro ao salvar: ' + e.message); }
+        };
+    }
+    window.excluirFeriado = async(id) => { if(confirm('Excluir esta data?')) { try { await apiFetch(`/presenca/dias-nao-uteis/${id}/`, { method: 'DELETE' }); carregarFeriados(); } catch(e){ alert('Erro ao excluir.'); } } };
+
+    async function carregarRelatorioFinanceiro() {
+        const elInicio = document.getElementById('finDataInicio');
+        const elFim = document.getElementById('finDataFim');
+
+        let ini = elInicio.value;
+        let fim = elFim.value;
+        
+        // CORREÇÃO 1: Definir datas padrão se estiverem vazias para evitar erro ao carregar a página
+        if (!ini || !fim) {
+            const hoje = new Date();
+            const primeiroDia = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+            const ultimoDia = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
+
+            if (!ini) ini = primeiroDia.toISOString().split('T')[0];
+            if (!fim) fim = ultimoDia.toISOString().split('T')[0];
+
+            // Atualiza visualmente os inputs
+            elInicio.value = ini;
+            elFim.value = fim;
+        }
+        
+        const tPrev = document.getElementById('tbodyPrevisao');
+        const tDesc = document.getElementById('tbodyDescontos');
+        const cardPrev = document.getElementById('cardPrevisao');
+        const cardDesc = document.getElementById('cardDescontos');
+        
+        tPrev.innerHTML = '<tr><td colspan="4" class="text-center">Calculando...</td></tr>';
+        tDesc.innerHTML = '<tr><td colspan="6" class="text-center">Calculando...</td></tr>';
+        
+        cardPrev.style.display = 'block';
+        cardDesc.style.display = 'block';
+
+        try {
+            // CORREÇÃO 2: Alterado de 'data_inicio'/'data_fim' para 'inicio'/'fim'
+            const url = `/presenca/relatorio-financeiro/?inicio=${ini}&fim=${fim}`;
+            const dados = await apiFetch(url);
+            
+            tPrev.innerHTML = '';
+            tDesc.innerHTML = '';
+            
+            if(dados.previsao && dados.previsao.length > 0) {
+                dados.previsao.forEach(p => {
+                    // Usa username se disponível, ou o nome
+                    const nomeExibicao = p.colaborador_username || p.nome || p.colaborador;
+                    
+                    tPrev.innerHTML += `
+                        <tr>
+                            <td>${nomeExibicao}</td>
+                            <td>${p.dias_uteis}</td>
+                            <td>R$ ${parseFloat(p.valor_diario).toFixed(2)}</td>
+                            <td class="fw-bold text-primary">R$ ${parseFloat(p.total_receber || p.total_previsto).toFixed(2)}</td>
+                        </tr>`;
+                });
+            } else {
+                tPrev.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Sem dados de previsão.</td></tr>';
+            }
+
+            if(dados.descontos && dados.descontos.length > 0) {
+                dados.descontos.forEach(d => {
+                    const corValor = d.total_receber < 0 ? 'text-danger' : 'text-success';
+                    const nomeExibicao = d.colaborador_username || d.nome || d.colaborador;
+
+                    tDesc.innerHTML += `
+                        <tr>
+                            <td>${nomeExibicao}</td>
+                            <td>${d.dias_uteis}</td>
+                            <td>${d.qtd_faltas}</td>
+                            <td>R$ ${parseFloat(d.valor_diario).toFixed(2)}</td>
+                            <td class="text-danger fw-bold">R$ ${parseFloat(d.valor_desconto).toFixed(2)}</td>
+                            <td class="fw-bold ${corValor}">R$ ${parseFloat(d.total_receber).toFixed(2)}</td>
+                        </tr>`;
+                });
+            } else {
+                tDesc.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Nenhum dado processado.</td></tr>';
+            }
+        } catch(e) { 
+            console.error(e); 
+            tPrev.innerHTML = '<tr><td colspan="4" class="text-danger text-center">Erro ao gerar relatório.</td></tr>';
+            tDesc.innerHTML = `<tr><td colspan="6" class="text-danger text-center">${e.message || 'Erro desconhecido'}</td></tr>`;
+        }
+    }
+
+    async function baixarExcelFinanceiro() {
+        const ini = document.getElementById('finDataInicio').value;
+        const fim = document.getElementById('finDataFim').value;
+        
+        if(!ini || !fim) return alert('Selecione o período.');
+        
+        try {
+            // CORREÇÃO 3: Alterado de 'data_inicio'/'data_fim' para 'inicio'/'fim' também aqui
+            const blob = await apiFetch(`/presenca/relatorio-financeiro/excel/?inicio=${ini}&fim=${fim}`, { isBlob: true });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Relatorio_Financeiro_${ini}_a_${fim}.xlsx`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        } catch(e) { alert('Erro ao baixar excel: ' + e.message); }
+    }
+
+    </script>
 </body>
 </html>

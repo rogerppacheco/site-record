@@ -38,6 +38,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.exceptions import PermissionDenied, NotFound
 from rest_framework.decorators import api_view, permission_classes, action
 
+
 # --- IMPORTS EXTRAS DO PROJETO ---
 from core.models import DiaFiscal
 from .whatsapp_service import WhatsAppService
@@ -47,6 +48,8 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill
 from .models import GrupoDisparo
 from .serializers import GrupoDisparoSerializer
+from .models import LancamentoFinanceiro
+from .serializers import LancamentoFinanceiroSerializer
 
 
 # Funções de Mapa (Geometria e Busca)
@@ -954,6 +957,8 @@ class ListaVendedoresView(APIView):
         vendedores = User.objects.filter(is_active=True).values('id', 'username').order_by('username')
         return Response(list(vendedores))
 
+# Em site-record/crm_app/views.py
+
 class ComissionamentoView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -966,6 +971,7 @@ class ComissionamentoView(APIView):
             ano = hoje.year
             mes = hoje.month
         
+        # Define o intervalo do mês
         data_inicio = datetime(ano, mes, 1)
         if mes == 12:
             data_fim = datetime(ano + 1, 1, 1)
@@ -977,7 +983,24 @@ class ComissionamentoView(APIView):
         relatorio = []
         todas_regras = list(RegraComissao.objects.select_related('plano', 'consultor').all())
         
+        # --- 1. BUSCAR ADIANTAMENTOS E DESCONTOS JÁ PROCESSADOS (Lançamentos Financeiros) ---
+        lancamentos_mes = LancamentoFinanceiro.objects.filter(
+            data__gte=data_inicio,
+            data__lt=data_fim
+        )
+        mapa_lancamentos = defaultdict(list)
+        for l in lancamentos_mes:
+            mapa_lancamentos[l.usuario_id].append(l)
+
+        # --- 2. BUSCAR CAMPANHAS VÁLIDAS NO MÊS ---
+        campanhas_mes = Campanha.objects.filter(
+            ativo=True,
+            data_fim__year=ano,
+            data_fim__month=mes
+        ).prefetch_related('planos_elegiveis', 'formas_pagamento_elegiveis')
+
         for consultor in consultores:
+            # Vendas do Mês (Instaladas)
             vendas = Venda.objects.filter(
                 vendedor=consultor,
                 ativo=True,
@@ -995,13 +1018,17 @@ class ComissionamentoView(APIView):
             
             stats_planos = defaultdict(lambda: {'qtd': 0, 'total': 0.0})
             stats_descontos = defaultdict(float)
+            stats_bonus = defaultdict(float)
             
+            # --- LOOP PRINCIPAL DE VENDAS ---
             for v in vendas:
+                # Dados para regra
                 doc = v.cliente.cpf_cnpj if v.cliente else ''
                 doc_limpo = ''.join(filter(str.isdigit, doc))
                 tipo_cliente = 'CNPJ' if len(doc_limpo) > 11 else 'CPF'
                 canal_vendedor = getattr(consultor, 'canal', 'PAP') or 'PAP'
                 
+                # Encontrar Regra de Comissão
                 regra = next((r for r in todas_regras if r.plano_id == v.plano_id and r.tipo_cliente == tipo_cliente and r.tipo_venda == canal_vendedor and r.consultor_id == consultor.id), None)
                 if not regra:
                     regra = next((r for r in todas_regras if r.plano_id == v.plano_id and r.tipo_cliente == tipo_cliente and r.tipo_venda == canal_vendedor and r.consultor is None), None)
@@ -1009,42 +1036,107 @@ class ComissionamentoView(APIView):
                 valor_item = float(regra.valor_acelerado if bateu_meta else regra.valor_base) if regra else 0.0
                 comissao_bruta += valor_item
 
+                # Estatísticas por Plano
                 key_plano = (v.plano.nome, valor_item)
                 stats_planos[key_plano]['qtd'] += 1
                 stats_planos[key_plano]['total'] += valor_item
 
+                # --- DESCONTOS AUTOMÁTICOS (PREVISTOS) ---
+                # Só calcula se a flag de processado for False.
+                # Se for True, o valor virá via LancamentoFinanceiro (no loop mais abaixo).
+
+                # 1. Boleto
                 if v.forma_pagamento and 'BOLETO' in v.forma_pagamento.nome.upper():
-                    val = float(consultor.desconto_boleto or 0)
-                    if val > 0: stats_descontos['Boleto'] += val
+                    if not v.flag_desc_boleto:
+                        val = float(consultor.desconto_boleto or 0)
+                        if val > 0: stats_descontos['Desc. Boleto (Previsto)'] += val
 
+                # 2. Inclusão/Viabilidade
                 if v.inclusao:
-                    val = float(consultor.desconto_inclusao_viabilidade or 0)
-                    if val > 0: stats_descontos['Inclusão/Viab.'] += val
+                    if not v.flag_desc_viabilidade:
+                        val = float(consultor.desconto_inclusao_viabilidade or 0)
+                        if val > 0: stats_descontos['Desc. Inclusão (Previsto)'] += val
 
+                # 3. Antecipação
                 if v.antecipou_instalacao:
-                    val = float(consultor.desconto_instalacao_antecipada or 0)
-                    if val > 0: stats_descontos['Antecipação'] += val
+                    if not v.flag_desc_antecipacao:
+                        val = float(consultor.desconto_instalacao_antecipada or 0)
+                        if val > 0: stats_descontos['Desc. Antecipação (Previsto)'] += val
 
+                # 4. Adiantamento CNPJ
                 if len(doc_limpo) > 11:
-                    val = float(consultor.adiantamento_cnpj or 0)
-                    if val > 0: stats_descontos['Adiant. CNPJ'] += val
+                    if not v.flag_adiant_cnpj:
+                        val = float(consultor.adiantamento_cnpj or 0)
+                        if val > 0: stats_descontos['Adiant. CNPJ (Previsto)'] += val
 
+            # --- DESCONTOS FIXOS (Perfil) ---
+            if consultor.desconto_inss_fixo and float(consultor.desconto_inss_fixo) > 0:
+                 stats_descontos['INSS / Encargos (Fixo)'] += float(consultor.desconto_inss_fixo)
+
+            # --- LANÇAMENTOS FINANCEIROS PROCESSADOS (Manuais ou Confirmados) ---
+            lancamentos = mapa_lancamentos.get(consultor.id, [])
+            for l in lancamentos:
+                # Formatação do nome para exibição
+                tipo_display = "Outro"
+                if l.tipo == 'ADIANTAMENTO_CNPJ': tipo_display = "Adiant. CNPJ"
+                elif l.tipo == 'ADIANTAMENTO_COMISSAO': tipo_display = "Adiantamento"
+                elif l.tipo == 'DESCONTO': tipo_display = "Desconto"
+                
+                descricao_item = l.descricao or ""
+                chave_exibicao = f"{tipo_display}: {descricao_item}" if descricao_item else tipo_display
+                
+                stats_descontos[chave_exibicao] += float(l.valor)
+
+            # --- 3. CÁLCULO DE CAMPANHAS (BÔNUS) ---
+            for camp in campanhas_mes:
+                q_camp = Q(vendedor=consultor, ativo=True)
+                
+                # Regras da Campanha
+                q_camp &= Q(data_criacao__date__gte=camp.data_inicio, data_criacao__date__lte=camp.data_fim)
+                
+                if camp.tipo_meta == 'LIQUIDA':
+                    q_camp &= Q(status_esteira__nome__iexact='INSTALADA')
+                
+                if camp.canal_alvo != 'TODOS':
+                    q_camp &= Q(vendedor__canal=camp.canal_alvo)
+                
+                planos_ids = [p.id for p in camp.planos_elegiveis.all()]
+                if planos_ids:
+                    q_camp &= Q(plano_id__in=planos_ids)
+                
+                pgto_ids = [fp.id for fp in camp.formas_pagamento_elegiveis.all()]
+                if pgto_ids:
+                    q_camp &= Q(forma_pagamento_id__in=pgto_ids)
+                
+                total_atingido = Venda.objects.filter(q_camp).count()
+                
+                if total_atingido >= camp.meta_vendas:
+                    stats_bonus[f"Prêmio: {camp.nome}"] += float(camp.valor_premio)
+            
+            # --- TOTAIS FINAIS ---
             total_descontos = sum(stats_descontos.values())
-            premiacao = 0.0 
-            bonus = 0.0
-            valor_liquido = (comissao_bruta + premiacao + bonus) - total_descontos
+            total_bonus = sum(stats_bonus.values())
+            
+            valor_liquido = (comissao_bruta + total_bonus) - total_descontos
 
+            # --- FORMATAÇÃO PARA O FRONTEND ---
+            
+            # 1. Planos
             lista_planos_detalhe = []
             for (nome_plano, unitario), dados in stats_planos.items():
                 lista_planos_detalhe.append({
-                    'plano': nome_plano,
-                    'unitario': unitario,
-                    'qtd': dados['qtd'],
-                    'total': dados['total']
+                    'plano': nome_plano, 'unitario': unitario,
+                    'qtd': dados['qtd'], 'total': dados['total']
                 })
             lista_planos_detalhe.sort(key=lambda x: x['total'], reverse=True)
 
+            # 2. Descontos (Ordenados por valor)
             lista_descontos_detalhe = [{'motivo': k, 'valor': v} for k, v in stats_descontos.items()]
+            lista_descontos_detalhe.sort(key=lambda x: x['valor'], reverse=True)
+
+            # 3. Bônus (Ordenados por valor)
+            lista_bonus_detalhe = [{'motivo': k, 'valor': v} for k, v in stats_bonus.items()]
+            lista_bonus_detalhe.sort(key=lambda x: x['valor'], reverse=True)
 
             relatorio.append({
                 'consultor_id': consultor.id,
@@ -1054,19 +1146,30 @@ class ComissionamentoView(APIView):
                 'atingimento_pct': round(atingimento, 1),
                 'comissao_bruta': comissao_bruta,
                 'total_descontos': total_descontos,
+                'total_bonus': total_bonus,
                 'valor_liquido': valor_liquido,
                 'detalhes_planos': lista_planos_detalhe,
-                'detalhes_descontos': lista_descontos_detalhe
+                'detalhes_descontos': lista_descontos_detalhe,
+                'detalhes_bonus': lista_bonus_detalhe
             })
 
+        # --- HISTÓRICO (Últimos 6 meses) ---
         historico = []
         for i in range(6):
             d = hoje - timedelta(days=30*i)
             mes_iter = d.month
             ano_iter = d.year
-            total_ciclo = CicloPagamento.objects.filter(ano=ano_iter, mes=str(mes_iter)).aggregate(Sum('valor_comissao_final'))['valor_comissao_final__sum'] or 0
-            fechamento = PagamentoComissao.objects.filter(referencia_ano=ano_iter, referencia_mes=mes_iter).first()
+            
+            total_ciclo = CicloPagamento.objects.filter(
+                ano=ano_iter, mes=str(mes_iter)
+            ).aggregate(Sum('valor_comissao_final'))['valor_comissao_final__sum'] or 0
+            
+            fechamento = PagamentoComissao.objects.filter(
+                referencia_ano=ano_iter, referencia_mes=mes_iter
+            ).first()
+            
             total_pago = fechamento.total_pago_consultores if fechamento else 0.0
+            
             historico.append({
                 'ano_mes': f"{mes_iter}/{ano_iter}",
                 'total_pago_equipe': total_pago,
@@ -2627,3 +2730,345 @@ def listar_grupos_whatsapp_api(request):
     except Exception as e:
         logger.error(f"Erro view listar grupos: {e}")
         return Response({'error': str(e)}, status=500)
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def relatorio_resultado_campanha(request, campanha_id):
+    try:
+        campanha = Campanha.objects.get(id=campanha_id)
+        
+        # 1. Filtro Básico: Vendas criadas dentro do período da campanha
+        filtros = Q(
+            data_criacao__date__gte=campanha.data_inicio,
+            data_criacao__date__lte=campanha.data_fim,
+            ativo=True
+        )
+
+        # 2. Filtro de Meta (Bruta ou Líquida/Instalada)
+        if campanha.tipo_meta == 'LIQUIDA':
+            # Considera apenas vendas que já têm data de instalação
+            filtros &= Q(data_instalacao__isnull=False)
+        
+        # 3. Filtro de Canal (se não for TODOS)
+        if campanha.canal_alvo != 'TODOS':
+            # Supondo que o canal esteja no modelo Venda ou no Vendedor
+            # Ajuste 'vendedor__canal' conforme seu modelo real de Usuario/Venda
+            filtros &= Q(vendedor__canal=campanha.canal_alvo)
+
+        # 4. Filtro de Planos Específicos (Many-to-Many)
+        planos_validos = campanha.planos_elegiveis.all()
+        if planos_validos.exists():
+            filtros &= Q(plano__in=planos_validos)
+
+        # 5. Filtro de Pagamentos Específicos (Many-to-Many)
+        pgtos_validos = campanha.formas_pagamento_elegiveis.all()
+        if pgtos_validos.exists():
+            filtros &= Q(forma_pagamento__in=pgtos_validos)
+
+        # --- PROCESSAMENTO DOS DADOS ---
+        # Agrupa por vendedor e conta
+        vendas = Venda.objects.filter(filtros).values(
+            'vendedor__id', 
+            'vendedor__first_name', 
+            'vendedor__last_name',
+            'vendedor__username'
+        ).annotate(total_vendas=Count('id')).order_by('-total_vendas')
+
+        resultado = []
+        ranking = 1
+
+        for v in vendas:
+            nome_vendedor = f"{v['vendedor__first_name']} {v['vendedor__last_name']}".strip() or v['vendedor__username']
+            qtd = v['total_vendas']
+            meta = campanha.meta_vendas
+            atingiu = qtd >= meta
+            
+            # Se atingiu a meta, ganha o prêmio (valor fixo configurado na campanha)
+            premio = campanha.valor_premio if atingiu else 0
+
+            resultado.append({
+                'ranking': ranking,
+                'vendedor': nome_vendedor,
+                'vendas_validas': qtd,
+                'meta': meta,
+                'percentual': round((qtd / meta) * 100, 1) if meta > 0 else 0,
+                'atingiu_meta': atingiu,
+                'premio_receber': premio
+            })
+            ranking += 1
+
+        return Response({
+            'campanha': campanha.nome,
+            'periodo': f"{campanha.data_inicio} a {campanha.data_fim}",
+            'tipo': campanha.get_tipo_meta_display(),
+            'ranking': resultado
+        })
+
+    except Campanha.DoesNotExist:
+        return Response({'error': 'Campanha não encontrada'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+    
+class LancamentoFinanceiroViewSet(viewsets.ModelViewSet):
+    queryset = LancamentoFinanceiro.objects.all()
+    serializer_class = LancamentoFinanceiroSerializer
+    permission_classes = [IsAuthenticated]
+
+    def perform_create(self, serializer):
+        # Salva automaticamente quem criou o registro (segurança/auditoria)
+        serializer.save(criado_por=self.request.user)
+# --- NOVAS VIEWS PARA CONFIRMAÇÃO DE DESCONTOS ---
+
+class PendenciasDescontoView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        # Lista todas as vendas instaladas que geram desconto mas ainda não foram processadas
+        vendas = Venda.objects.filter(
+            ativo=True,
+            status_esteira__nome__iexact='INSTALADA'
+        ).select_related('vendedor', 'forma_pagamento', 'cliente')
+
+        pendencias = []
+
+        for v in vendas:
+            consultor = v.vendedor
+            if not consultor: continue
+
+            doc = v.cliente.cpf_cnpj if v.cliente else ''
+            doc_limpo = ''.join(filter(str.isdigit, doc))
+            eh_cnpj = len(doc_limpo) > 11
+
+            # 1. Adiantamento CNPJ
+            if eh_cnpj and not v.flag_adiant_cnpj:
+                val = float(consultor.adiantamento_cnpj or 0)
+                if val > 0:
+                    pendencias.append(self._montar_obj(v, 'CNPJ', val, 'Adiantamento CNPJ'))
+
+            # 2. Boleto
+            if v.forma_pagamento and 'BOLETO' in v.forma_pagamento.nome.upper() and not v.flag_desc_boleto:
+                val = float(consultor.desconto_boleto or 0)
+                if val > 0:
+                    pendencias.append(self._montar_obj(v, 'BOLETO', val, 'Desconto Boleto'))
+
+            # 3. Viabilidade
+            if v.inclusao and not v.flag_desc_viabilidade:
+                val = float(consultor.desconto_inclusao_viabilidade or 0)
+                if val > 0:
+                    pendencias.append(self._montar_obj(v, 'VIABILIDADE', val, 'Desconto Viabilidade'))
+
+            # 4. Antecipação
+            if v.antecipou_instalacao and not v.flag_desc_antecipacao:
+                val = float(consultor.desconto_instalacao_antecipada or 0)
+                if val > 0:
+                    pendencias.append(self._montar_obj(v, 'ANTECIPACAO', val, 'Desconto Antecipação'))
+
+        return Response(pendencias)
+
+    def _montar_obj(self, venda, tipo_codigo, valor, titulo):
+        return {
+            'venda_id': venda.id,
+            'data_instalacao': venda.data_instalacao,
+            'cliente': venda.cliente.nome_razao_social,
+            'cliente_cpf': venda.cliente.cpf_cnpj,
+            'os': venda.ordem_servico or "",
+            'vendedor_id': venda.vendedor.id,
+            'vendedor_nome': venda.vendedor.username,
+            'tipo_codigo': tipo_codigo,
+            'titulo': titulo,
+            'valor': valor
+        }
+
+# --- VIEWS PARA CONFIRMAÇÃO E REVERSÃO DE DESCONTOS ---
+
+class PendenciasDescontoView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        vendas = Venda.objects.filter(
+            ativo=True,
+            status_esteira__nome__iexact='INSTALADA'
+        ).select_related('vendedor', 'forma_pagamento', 'cliente')
+
+        pendencias = []
+
+        for v in vendas:
+            consultor = v.vendedor
+            if not consultor: continue
+
+            doc = v.cliente.cpf_cnpj if v.cliente else ''
+            doc_limpo = ''.join(filter(str.isdigit, doc))
+            eh_cnpj = len(doc_limpo) > 11
+
+            if eh_cnpj and not v.flag_adiant_cnpj:
+                val = float(consultor.adiantamento_cnpj or 0)
+                if val > 0: pendencias.append(self._montar_obj(v, 'CNPJ', val, 'Adiantamento CNPJ'))
+
+            if v.forma_pagamento and 'BOLETO' in v.forma_pagamento.nome.upper() and not v.flag_desc_boleto:
+                val = float(consultor.desconto_boleto or 0)
+                if val > 0: pendencias.append(self._montar_obj(v, 'BOLETO', val, 'Desconto Boleto'))
+
+            if v.inclusao and not v.flag_desc_viabilidade:
+                val = float(consultor.desconto_inclusao_viabilidade or 0)
+                if val > 0: pendencias.append(self._montar_obj(v, 'VIABILIDADE', val, 'Desconto Viabilidade'))
+
+            if v.antecipou_instalacao and not v.flag_desc_antecipacao:
+                val = float(consultor.desconto_instalacao_antecipada or 0)
+                if val > 0: pendencias.append(self._montar_obj(v, 'ANTECIPACAO', val, 'Desconto Antecipação'))
+
+        return Response(pendencias)
+
+    def _montar_obj(self, venda, tipo_codigo, valor, titulo):
+        return {
+            'venda_id': venda.id,
+            'data_instalacao': venda.data_instalacao,
+            'cliente': venda.cliente.nome_razao_social,
+            'cliente_cpf': venda.cliente.cpf_cnpj,
+            'os': venda.ordem_servico or "",
+            'vendedor_id': venda.vendedor.id,
+            'vendedor_nome': venda.vendedor.username,
+            'tipo_codigo': tipo_codigo,
+            'titulo': titulo,
+            'valor': valor
+        }
+
+class ConfirmarDescontosEmMassaView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        data_lancamento = request.data.get('data')
+        itens = request.data.get('itens', []) 
+
+        if not data_lancamento or not itens:
+            return Response({'error': 'Dados inválidos.'}, status=400)
+
+        agrupado = defaultdict(lambda: {'total': 0.0, 'ids_vendas': [], 'tipos': set()})
+        updates_flags = {'CNPJ': [], 'BOLETO': [], 'VIABILIDADE': [], 'ANTECIPACAO': []}
+
+        for item in itens:
+            v_id = item['venda_id']
+            tipo = item['tipo_codigo']
+            valor = float(item['valor'])
+            vend_id = item['vendedor_id']
+
+            agrupado[vend_id]['total'] += valor
+            agrupado[vend_id]['ids_vendas'].append(v_id) # Guarda ID como int
+            agrupado[vend_id]['tipos'].add(tipo)
+            
+            if tipo in updates_flags: updates_flags[tipo].append(v_id)
+
+        try:
+            with transaction.atomic():
+                lancamentos_criados = []
+                for vend_id, dados in agrupado.items():
+                    tipos_lista = list(dados['tipos'])
+                    tipos_str = ", ".join(tipos_lista)
+                    qtd = len(dados['ids_vendas'])
+                    
+                    categ = 'ADIANTAMENTO_CNPJ' if 'CNPJ' in dados['tipos'] and len(dados['tipos']) == 1 else 'DESCONTO'
+                    
+                    # SALVA OS IDs NO JSON 'METADADOS' PARA PERMITIR REVERSÃO
+                    metadados = {
+                        "origem": "automatico",
+                        "ids_vendas": dados['ids_vendas'],
+                        "tipos_processados": tipos_lista
+                    }
+
+                    lancamentos_criados.append(LancamentoFinanceiro(
+                        usuario_id=vend_id,
+                        tipo=categ,
+                        data=data_lancamento,
+                        valor=dados['total'],
+                        quantidade_vendas=qtd,
+                        descricao=f"Processamento Auto: {tipos_str}",
+                        metadados=metadados,
+                        criado_por=request.user
+                    ))
+                
+                if lancamentos_criados:
+                    LancamentoFinanceiro.objects.bulk_create(lancamentos_criados)
+
+                if updates_flags['CNPJ']: Venda.objects.filter(id__in=updates_flags['CNPJ']).update(flag_adiant_cnpj=True)
+                if updates_flags['BOLETO']: Venda.objects.filter(id__in=updates_flags['BOLETO']).update(flag_desc_boleto=True)
+                if updates_flags['VIABILIDADE']: Venda.objects.filter(id__in=updates_flags['VIABILIDADE']).update(flag_desc_viabilidade=True)
+                if updates_flags['ANTECIPACAO']: Venda.objects.filter(id__in=updates_flags['ANTECIPACAO']).update(flag_desc_antecipacao=True)
+
+            return Response({'mensagem': f'{len(itens)} descontos processados com sucesso!'})
+
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
+
+class HistoricoDescontosAutoView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        # Lista lançamentos financeiros automáticos recentes
+        # Filtra onde metadados contém "origem": "automatico"
+        # SQLite não suporta filtro JSON nativo complexo em Django antigo, então filtramos na descrição ou trazemos tudo
+        lancamentos = LancamentoFinanceiro.objects.filter(
+            descricao__startswith="Processamento Auto"
+        ).select_related('usuario', 'criado_por').order_by('-data_criacao')[:50] # Últimos 50
+
+        data = []
+        for l in lancamentos:
+            data.append({
+                'id': l.id,
+                'data_lancamento': l.data,
+                'vendedor': l.usuario.username,
+                'tipo': l.tipo,
+                'descricao': l.descricao,
+                'valor': l.valor,
+                'criado_por': l.criado_por.username if l.criado_por else 'Sistema',
+                'criado_em': l.data_criacao
+            })
+        return Response(data)
+
+class ReverterDescontoMassaView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        lancamento_id = request.data.get('id')
+        if not lancamento_id:
+            return Response({'error': 'ID inválido.'}, status=400)
+
+        try:
+            lancamento = LancamentoFinanceiro.objects.get(id=lancamento_id)
+            
+            # Verifica se é um lançamento automático
+            if not lancamento.descricao.startswith("Processamento Auto"):
+                 return Response({'error': 'Apenas lançamentos automáticos podem ser revertidos por aqui.'}, status=400)
+
+            # --- CORREÇÃO PARA REGISTROS ANTIGOS ---
+            # Se não tiver metadados (registros criados durante os testes anteriores),
+            # permitimos excluir apenas o financeiro para limpar a tela.
+            if not lancamento.metadados:
+                lancamento.delete()
+                return Response({'mensagem': 'Registro antigo excluído do financeiro! Nota: As flags nas vendas NÃO foram revertidas (dados de vínculo ausentes).'})
+            # ---------------------------------------
+
+            meta = lancamento.metadados
+            ids_vendas = meta.get('ids_vendas', [])
+            tipos = meta.get('tipos_processados', [])
+
+            with transaction.atomic():
+                if ids_vendas:
+                    # Reverte as flags nas vendas originais
+                    vendas_afetadas = Venda.objects.filter(id__in=ids_vendas)
+                    updates = {}
+                    
+                    if 'CNPJ' in tipos: updates['flag_adiant_cnpj'] = False
+                    if 'BOLETO' in tipos: updates['flag_desc_boleto'] = False
+                    if 'VIABILIDADE' in tipos: updates['flag_desc_viabilidade'] = False
+                    if 'ANTECIPACAO' in tipos: updates['flag_desc_antecipacao'] = False
+                    
+                    if updates:
+                        vendas_afetadas.update(**updates)
+
+                # Apaga o lançamento financeiro
+                lancamento.delete()
+
+            return Response({'mensagem': 'Reversão concluída com sucesso! As vendas voltaram para a lista de pendências.'})
+
+        except LancamentoFinanceiro.DoesNotExist:
+            return Response({'error': 'Lançamento não encontrado.'}, status=404)
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)

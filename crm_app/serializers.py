@@ -4,7 +4,7 @@ from .models import (
     Operadora, Plano, FormaPagamento, StatusCRM, MotivoPendencia,
     RegraComissao, Cliente, Venda, ImportacaoOsab, ImportacaoChurn,
     CicloPagamento, HistoricoAlteracaoVenda, Campanha,
-    ComissaoOperadora, Comunicado 
+    ComissaoOperadora, Comunicado, LancamentoFinanceiro
 )
 from .models import GrupoDisparo # Importe o modelo
 from usuarios.models import Usuario
@@ -339,4 +339,11 @@ class ComunicadoSerializer(serializers.ModelSerializer):
 class GrupoDisparoSerializer(serializers.ModelSerializer):
     class Meta:
         model = GrupoDisparo
+        fields = '__all__'
+class LancamentoFinanceiroSerializer(serializers.ModelSerializer):
+    usuario_nome = serializers.ReadOnlyField(source='usuario.nome_completo')
+    criado_por_nome = serializers.ReadOnlyField(source='criado_por.username')
+
+    class Meta:
+        model = LancamentoFinanceiro
         fields = '__all__'
