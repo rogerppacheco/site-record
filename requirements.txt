@@ -86,8 +86,3 @@ mysqlclient==2.2.4
 gunicorn==21.2.0
 openpyxl==3.1.2
 pyxlsb==1.0.10
-libgeos-c1v5
-libgeos-dev
-gdal-bin
-libgdal-dev
-python3-gdal
