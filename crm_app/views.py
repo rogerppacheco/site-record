@@ -2162,8 +2162,13 @@ class WebhookWhatsAppView(APIView):
             if isinstance(data, list): data = data[0] if len(data) > 0 else {}
             if not isinstance(data, dict): return Response({'status': 'ignored'})
 
-            phone = data.get('phone') or data.get('sender')
-            if not phone: return Response({'status': 'ignored'})
+            raw_phone = data.get('phone') or data.get('sender')
+            if not raw_phone: return Response({'status': 'ignored'})
+
+            # --- CORREÇÃO DE ERRO 500 (Data too long) ---
+            # Limpa o ID do WhatsApp (remove @c.us, @g.us) e limita a 45 caracteres
+            phone = str(raw_phone).split('@')[0].strip()[:45]
+            # ---------------------------------------------
 
             # Extrair texto
             text = ""
@@ -2241,7 +2246,7 @@ class WebhookWhatsAppView(APIView):
             return Response({'status': 'no_action'})
 
         except Exception as e:
-            logger.error(f"Webhook Error: {e}", exc_info=True) # <-- REMOVA O #
+            logger.error(f"Webhook Error: {e}", exc_info=True)
             return Response({'status': 'error'}, status=500)
 
 @api_view(['GET'])
