@@ -454,7 +454,8 @@ class AreaVenda(models.Model):
         verbose_name_plural = "Áreas de Venda (KML)"
 
 class SessaoWhatsapp(models.Model):
-    telefone = models.CharField(max_length=20, unique=True)
+    # O PROBLEMA ESTÁ AQUI: max_length=20 é muito curto
+    telefone = models.CharField(max_length=100, unique=True) 
     etapa = models.CharField(max_length=50) 
     dados_temp = models.JSONField(default=dict) 
     updated_at = models.DateTimeField(auto_now=True)
