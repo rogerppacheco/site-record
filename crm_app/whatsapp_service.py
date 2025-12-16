@@ -256,3 +256,140 @@ class WhatsAppService:
         if fone_para_envio:
             return self.enviar_mensagem_texto(fone_para_envio, mensagem)
         return False, "Telefone não informado"
+# ---------------------------------------------------------
+    # NOVO MÉTODO: GERAR CARD DE CAMPANHA
+    # ---------------------------------------------------------
+    def gerar_card_campanha_b64(self, dados):
+        """
+        Gera um card visual limpo com barra de progresso e destaque financeiro.
+        """
+        if not Image: 
+            return None
+
+        try:
+            # 1. Configuração do Canvas (Quadrado HD)
+            W, H = 1080, 1080
+            cor_fundo = (255, 255, 255) # Branco total
+            cor_cabecalho = (10, 30, 60) # Azul Escuro Profissional
+            cor_texto_pri = (40, 40, 40)
+            cor_texto_sec = (100, 100, 100)
+            cor_verde = (0, 160, 80)
+            cor_laranja = (255, 120, 0)
+            cor_barra_fundo = (230, 230, 230)
+
+            img = Image.new('RGB', (W, H), color=cor_fundo)
+            d = ImageDraw.Draw(img)
+
+            # --- CARREGAMENTO DE FONTES (Tentativa robusta) ---
+            # Tenta caminhos comuns de Windows e Linux (Heroku)
+            font_paths = [
+                "arial.ttf", "Arial.ttf", 
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+                "DejaVuSans-Bold.ttf"
+            ]
+            
+            font_path_regular = None
+            font_path_bold = None
+
+            # Tenta achar uma fonte Bold
+            for path in font_paths:
+                try:
+                    ImageFont.truetype(path, 20) # Teste
+                    font_path_bold = path
+                    break
+                except: continue
+            
+            # Se não achou, usa padrão (mas avisa no log)
+            if not font_path_bold:
+                print("AVISO: Fontes TTF não encontradas. Usando default (feio).")
+                f_titulo = f_nome = f_num = f_label = f_premio = ImageFont.load_default()
+            else:
+                f_titulo = ImageFont.truetype(font_path_bold, 55)
+                f_nome = ImageFont.truetype(font_path_bold, 50)
+                f_num = ImageFont.truetype(font_path_bold, 160)
+                f_label = ImageFont.truetype(font_path_bold, 35)
+                f_destaque = ImageFont.truetype(font_path_bold, 45)
+                f_premio = ImageFont.truetype(font_path_bold, 80)
+
+            # =================== DESENHO ===================
+
+            # 1. CABEÇALHO (Topo Azul)
+            d.rectangle([(0, 0), (W, 180)], fill=cor_cabecalho)
+            campanha_nome = str(dados.get('campanha', 'Campanha')).upper()
+            d.text((W/2, 90), campanha_nome, fill="white", anchor="mm", font=f_titulo)
+
+            # 2. IDENTIFICAÇÃO (Nome do Vendedor)
+            nome_vendedor = str(dados.get('vendedor', '')).upper()
+            d.text((W/2, 260), f"CONSULTOR: {nome_vendedor}", fill=cor_texto_pri, anchor="mm", font=f_label)
+
+            # 3. SCORE PRINCIPAL (Número de Vendas)
+            vendas = int(dados.get('vendas', 0))
+            d.text((W/2, 380), str(vendas), fill=cor_cabecalho, anchor="mm", font=f_num)
+            d.text((W/2, 480), "VENDAS VÁLIDAS", fill=cor_texto_sec, anchor="mm", font=f_label)
+
+            # 4. ÁREA DE RESULTADO (Caixa Cinza Inferior)
+            # Define a área onde vai a lógica dinâmica
+            box_y_start = 550
+            box_y_end = 950
+            d.rounded_rectangle([(50, box_y_start), (W-50, box_y_end)], radius=30, fill=(245, 245, 245))
+
+            prox_meta = dados.get('prox_meta')
+            premio_atual = float(dados.get('premio_atual', 0))
+            prox_premio = float(dados.get('prox_premio', 0)) if dados.get('prox_premio') else 0
+
+            # --- CENÁRIO A: TEM PRÓXIMA META (FALTA POUCO) ---
+            if prox_meta:
+                falta = int(prox_meta) - vendas
+                # Barra de Progresso
+                pct = min(vendas / prox_meta, 1.0)
+                
+                bar_x1, bar_y1 = 100, 620
+                bar_x2, bar_y2 = W - 100, 660
+                
+                # Fundo da barra
+                d.rectangle([(bar_x1, bar_y1), (bar_x2, bar_y2)], fill=cor_barra_fundo)
+                # Preenchimento
+                fill_width = (bar_x2 - bar_x1) * pct
+                color_fill = cor_verde if pct > 0.8 else cor_laranja
+                d.rectangle([(bar_x1, bar_y1), (bar_x1 + fill_width, bar_y2)], fill=color_fill)
+                
+                # Texto da barra
+                d.text((W/2, 690), f"{int(pct*100)}% DA META DE {prox_meta}", fill=cor_texto_sec, anchor="mm", font=f_label)
+
+                # Incentivo Financeiro
+                d.text((W/2, 800), f"FALTAM {falta} VENDAS PARA GANHAR:", fill=cor_laranja, anchor="mm", font=f_destaque)
+                val_fmt = f"R$ {prox_premio:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                d.text((W/2, 880), val_fmt, fill=cor_verde, anchor="mm", font=f_premio)
+
+            # --- CENÁRIO B: BATEU O MÁXIMO (LENDÁRIO) ---
+            elif premio_atual > 0:
+                d.text((W/2, 650), "🏆 META MÁXIMA ATINGIDA!", fill=cor_verde, anchor="mm", font=f_titulo)
+                d.text((W/2, 750), "BÔNUS GARANTIDO:", fill=cor_texto_sec, anchor="mm", font=f_destaque)
+                
+                val_fmt = f"R$ {premio_atual:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                d.text((W/2, 850), val_fmt, fill=cor_verde, anchor="mm", font=f_premio)
+
+            # --- CENÁRIO C: INÍCIO (SEM PREMIO AINDA) ---
+            else:
+                # Se não tem prox_meta definida mas não tem prêmio, pega do dados['meta_atual'] ou uma meta padrão
+                alvo = dados.get('meta_atual') or "A PRIMEIRA META"
+                d.text((W/2, 650), "VAMOS ACELERAR!", fill=cor_cabecalho, anchor="mm", font=f_titulo)
+                d.text((W/2, 750), "O FOCO É BATER:", fill=cor_texto_sec, anchor="mm", font=f_destaque)
+                d.text((W/2, 830), f"{alvo} VENDAS", fill=cor_laranja, anchor="mm", font=f_titulo)
+
+            # 5. RODAPÉ
+            d.line([(0, 1000), (W, 1000)], fill=(220, 220, 220), width=2)
+            periodo = dados.get('periodo', '')
+            d.text((W/2, 1040), f"Período: {periodo} | Atualizado em {datetime.now().strftime('%H:%M')}", fill=cor_texto_sec, anchor="mm", font=ImageFont.load_default())
+
+            # Converter para Base64
+            buffered = io.BytesIO()
+            img.save(buffered, format="PNG")
+            img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+            
+            return f"data:image/png;base64,{img_str}"
+
+        except Exception as e:
+            print(f"Erro imagem Pillow: {e}")
+            return None

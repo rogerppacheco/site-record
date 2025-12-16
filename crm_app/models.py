@@ -379,6 +379,19 @@ class Campanha(models.Model):
         verbose_name = "Campanha"
         verbose_name_plural = "Campanhas"
 
+class RegraCampanha(models.Model):
+    campanha = models.ForeignKey(Campanha, on_delete=models.CASCADE, related_name='regras_meta')
+    meta = models.IntegerField(verbose_name="Meta (Qtd Vendas)")
+    valor_premio = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Prêmio (R$)")
+
+    def __str__(self):
+        return f"> {self.meta} vendas = R$ {self.valor_premio}"
+
+    class Meta:
+        verbose_name = "Faixa de Premiação"
+        verbose_name_plural = "Faixas de Premiação"
+        ordering = ['-meta']
+
 class ComissaoOperadora(models.Model):
     plano = models.OneToOneField(Plano, on_delete=models.CASCADE, related_name='comissao_operadora', verbose_name="Plano")
     valor_base = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, verbose_name="Valor Base")

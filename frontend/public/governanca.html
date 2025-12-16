@@ -106,6 +106,12 @@
         .btn-xs { padding: 0.25rem 0.5rem; font-size: 0.75rem; line-height: 1.5; border-radius: 0.2rem; }
 
         #iframe-calendario { width: 100%; height: 750px; border: none; display: block; }
+        
+        /* Estilos específicos para a nova tabela de faixas */
+        .input-meta, .input-premio {
+            border: 1px solid #ced4da !important;
+            padding: 0.2rem 0.5rem !important;
+        }
 
         @media (max-width: 992px) {
             .admin-sidebar { 
@@ -386,14 +392,42 @@
                                             <input type="date" class="form-control" id="campanha_data_fim" required>
                                         </div>
 
-                                        <div class="col-md-3">
+                                        <div class="col-12 mt-2">
+                                            <div class="card bg-white border p-3">
+                                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                                    <label class="form-label fw-bold text-primary mb-0"><i class="bi bi-list-ol"></i> Faixas de Premiação (Escalonamento)</label>
+                                                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="adicionarFaixaCampanha()">
+                                                        <i class="bi bi-plus-lg"></i> Adicionar Faixa
+                                                    </button>
+                                                </div>
+                                                
+                                                <div class="table-responsive" style="max-height: 200px; overflow-y: auto;">
+                                                    <table class="table table-sm table-bordered mb-0">
+                                                        <thead class="table-light small">
+                                                            <tr>
+                                                                <th style="width: 40%;">Meta (Qtd Vendas)</th>
+                                                                <th style="width: 40%;">Prêmio (R$)</th>
+                                                                <th style="width: 20%;">Ação</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody id="tbody-faixas-campanha">
+                                                            </tbody>
+                                                    </table>
+                                                </div>
+                                                <div class="form-text small text-muted mt-1">
+                                                    * O sistema pagará o prêmio da <strong>maior meta</strong> atingida pelo vendedor.
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3 d-none">
                                             <label class="form-label fw-bold text-primary">Meta (Qtd Vendas)</label>
-                                            <input type="number" class="form-control" id="campanha_meta_vendas" required min="1">
+                                            <input type="number" class="form-control" id="campanha_meta_vendas" min="1">
                                         </div>
-                                        <div class="col-md-3">
+                                        <div class="col-md-3 d-none">
                                             <label class="form-label fw-bold text-success">Prêmio em Dinheiro (R$)</label>
-                                            <input type="number" class="form-control" id="campanha_valor_premio" required step="0.01" placeholder="0,00">
+                                            <input type="number" class="form-control" id="campanha_valor_premio" step="0.01" placeholder="0,00">
                                         </div>
+                                        
                                         <div class="col-md-3">
                                             <label class="form-label fw-bold">Critério (O que conta?)</label>
                                             <select class="form-select" id="campanha_tipo_meta">
@@ -454,7 +488,7 @@
                                             <tr>
                                                 <th>Nome</th>
                                                 <th>Período</th>
-                                                <th>Meta / Prêmio</th>
+                                                <th>Faixas de Premiação</th>
                                                 <th>Regras</th>
                                                 <th>Status</th>
                                                 <th class="text-end">Ações</th>
@@ -493,7 +527,7 @@
                                                     </div>
                                                     <div class="col-6">
                                                         <label class="form-label small fw-bold">Valor (R$)</label>
-                                                        <input type="number" id="ad_valor" class="form-control form-control-sm" step="0.01" required>
+                                                        <input type="number" class="form-control form-control-sm" id="ad_valor" step="0.01" required>
                                                     </div>
                                                 </div>
                                                 
@@ -532,7 +566,7 @@
                                                     </div>
                                                     <div class="col-6">
                                                         <label class="form-label small fw-bold">Valor (R$)</label>
-                                                        <input type="number" id="desc_valor" class="form-control form-control-sm" step="0.01" required>
+                                                        <input type="number" class="form-control form-control-sm" id="desc_valor" step="0.01" required>
                                                     </div>
                                                 </div>
                                                 <button type="submit" class="btn btn-danger btn-sm w-100">Registrar Desconto</button>
@@ -762,8 +796,8 @@
                                     <div class="col-md-6">
                                         <label class="form-label fw-bold">Selecione a Campanha:</label>
                                         <div class="input-group">
-                                            <select id="select-rel-campanha" class="form-select">
-                                                <option value="">Carregando...</option>
+                                            <select class="form-select" id="select-rel-campanha" required>
+                                                <option value="">Carregando campanhas...</option>
                                             </select>
                                             <button class="btn btn-primary" onclick="carregarResultadoCampanha()">
                                                 <i class="bi bi-search"></i> Ver Resultado
@@ -773,7 +807,7 @@
                                 </div>
 
                                 <div id="resultado-campanha-container" style="display:none;">
-                                    <div class="alert alert-info d-flex justify-content-between align-items-center">
+                                    <div class="alert alert-info d-flex justify-content-between align-items-center mb-3">
                                         <div>
                                             <strong id="campanha-titulo-resumo">Nome da Campanha</strong><br>
                                             <span class="small" id="campanha-periodo-resumo">Período: 01/01 a 31/01</span> | 
@@ -785,11 +819,23 @@
                                         </div>
                                     </div>
 
+                                    <div class="d-flex justify-content-between align-items-center mb-2 p-2 bg-white rounded shadow-sm border">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="check-all-relatorio" onclick="toggleSelecaoRelatorio(this)">
+                                            <label class="form-check-label small fw-bold" for="check-all-relatorio">SELECIONAR TODOS</label>
+                                        </div>
+                                        <div>
+                                            <button class="btn btn-success btn-sm" onclick="enviarResultadoWhatsappSelecionados()">
+                                                <i class="bi bi-whatsapp"></i> Enviar Resultado para <span id="count-wpp">0</span> Vendedores
+                                            </button>
+                                        </div>
+                                    </div>
                                     <div class="table-responsive border rounded">
                                         <table class="table table-hover align-middle mb-0">
                                             <thead class="table-light">
                                                 <tr>
-                                                    <th class="text-center" style="width: 50px;">#</th>
+                                                    <th style="width: 40px;">#</th> 
+                                                    <th class="text-center" style="width: 50px;">Rank</th>
                                                     <th>Vendedor</th>
                                                     <th class="text-center">Vendas Válidas</th>
                                                     <th class="text-center">Meta</th>
@@ -1046,7 +1092,7 @@
             if (response.status === 401) { alert('Sessão expirada.'); logout(); throw new Error('Não autorizado'); }
             if (!response.ok) {
                 const errorData = responseData || await response.text();
-                throw new Error(errorData.detail || JSON.stringify(errorData).replace(/["{}[\]]/g, ' '));
+                throw new Error(errorData.detail || errorData.error || (typeof errorData === 'string' ? errorData : JSON.stringify(errorData).replace(/["{}[\]]/g, ' ')));
             }
             if (response.status === 204) return null;
             return responseData;
@@ -1535,8 +1581,30 @@
     window.excluirRegra = async(id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/regras-comissao/${id}/`, {method:'DELETE'}); carregarRegrasComissao(); } };
 
     // ====================================================================
-    // GESTÃO DE CAMPANHAS
+    // GESTÃO DE CAMPANHAS (ATUALIZADO COM FAIXAS)
     // ====================================================================
+    
+    // 1. Função para adicionar linha na tabela visual
+    function adicionarFaixaCampanha(meta = '', valor = '') {
+        const tbody = document.getElementById('tbody-faixas-campanha');
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>
+                <input type="number" class="form-control form-control-sm input-meta" 
+                       value="${meta}" placeholder="Ex: 15" required min="1">
+            </td>
+            <td>
+                <input type="number" class="form-control form-control-sm input-premio" 
+                       value="${valor}" placeholder="Ex: 150.00" required step="0.01">
+            </td>
+            <td class="text-center">
+                <button type="button" class="btn btn-xs btn-outline-danger" onclick="this.closest('tr').remove()">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    }
     
     // Carrega Planos e Pagamentos nos selects múltiplos
     async function carregarDadosAuxiliaresCampanha() {
@@ -1563,6 +1631,7 @@
         } catch (e) { console.error("Erro ao carregar auxiliares campanha", e); }
     }
 
+    // 2. Carregar Campanhas (Listagem)
     async function carregarCampanhas() {
         const lista = await apiFetch('/crm/campanhas/');
         const tbody = document.getElementById('lista-campanhas');
@@ -1580,8 +1649,23 @@
             const statusBadge = c.ativo 
                 ? '<span class="badge bg-success">Ativa</span>' 
                 : '<span class="badge bg-secondary">Encerrada</span>';
-                
-            const regrasResumo = `
+            
+            // Lógica para mostrar resumo das faixas (com ordenação para o resumo)
+            let resumoMetas = '';
+            // Usa 'regras_meta' se existir, que é o campo que o backend deve retornar agora
+            if (c.regras_meta && c.regras_meta.length > 0) {
+                // Ordena e lista todas as regras
+                const regrasOrd = c.regras_meta.sort((a,b) => b.meta - a.meta);
+                regrasOrd.forEach(r => {
+                    resumoMetas += `<div class="small">Meta <b>${r.meta}</b>: <span class="text-success">R$ ${parseFloat(r.valor_premio).toFixed(2)}</span></div>`;
+                });
+            } else {
+                // Mantém compatibilidade com meta única para campanhas antigas
+                resumoMetas = `<div class="fw-bold">Meta: ${c.meta_vendas}</div>
+                               <div class="text-success small">R$ ${parseFloat(c.valor_premio).toFixed(2)}</div>`;
+            }
+
+            const regrasTexto = `
                 <div style="font-size:0.75rem">
                     Canal: <b>${c.canal_alvo}</b><br>
                     Tipo: <b>${c.tipo_meta}</b>
@@ -1591,11 +1675,8 @@
                 <tr>
                     <td class="fw-bold">${c.nome}</td>
                     <td class="small">${dInicio} <br> ${dFim}</td>
-                    <td>
-                        <div class="fw-bold">Meta: ${c.meta_vendas}</div>
-                        <div class="text-success small">R$ ${parseFloat(c.valor_premio).toFixed(2)}</div>
-                    </td>
-                    <td>${regrasResumo}</td>
+                    <td>${resumoMetas}</td>
+                    <td>${regrasTexto}</td>
                     <td>${statusBadge}</td>
                     <td class="text-end">
                         <button class="btn btn-sm btn-outline-primary me-1" onclick='editarCampanha(${JSON.stringify(c)})'><i class="bi bi-pencil"></i></button>
@@ -1605,22 +1686,55 @@
         });
     }
 
+    // 3. Salvar Campanha (Form Submit)
     document.getElementById('form-campanha').onsubmit = async(e) => {
         e.preventDefault();
         
         const getMultiValues = (id) => Array.from(document.getElementById(id).selectedOptions).map(opt => parseInt(opt.value));
+        
+        // Coleta as faixas da tabela
+        const faixas = [];
+        let maxMeta = 0;
+        let maxPremio = 0;
+
+        document.querySelectorAll('#tbody-faixas-campanha tr').forEach(tr => {
+            const m_el = tr.querySelector('.input-meta');
+            const p_el = tr.querySelector('.input-premio');
+
+            const m = m_el ? parseInt(m_el.value) : null;
+            const p = p_el ? parseFloat(p_el.value) : null;
+            
+            if (m && p) {
+                if (m <= 0 || p < 0) {
+                    throw new Error("Meta deve ser maior que 0 e Prêmio não pode ser negativo.");
+                }
+                faixas.push({ meta: m, valor_premio: p });
+                if (m > maxMeta) maxMeta = m;
+                if (p > maxPremio) maxPremio = p;
+            }
+        });
+
+        if (faixas.length === 0) {
+            alert("Adicione pelo menos uma faixa de premiação (Meta e Valor).");
+            return;
+        }
 
         const id = document.getElementById('campanha_id').value;
         const body = {
             nome: document.getElementById('campanha_nome').value,
             data_inicio: document.getElementById('campanha_data_inicio').value,
             data_fim: document.getElementById('campanha_data_fim').value,
-            meta_vendas: document.getElementById('campanha_meta_vendas').value,
-            valor_premio: document.getElementById('campanha_valor_premio').value,
             tipo_meta: document.getElementById('campanha_tipo_meta').value,
             canal_alvo: document.getElementById('campanha_canal_alvo').value,
             regras: document.getElementById('campanha_regras').value,
             ativo: document.getElementById('campanha_ativo').value === 'true',
+            
+            // NOVO: Envia a lista de faixas para o backend (esperando que o backend as salve na tabela RegraCampanha)
+            regras_meta: faixas,
+            
+            // Campos de meta única (mandamos o valor máximo para compatibilidade e resumo na listagem)
+            meta_vendas: maxMeta, 
+            valor_premio: maxPremio,
             
             planos_elegiveis: getMultiValues('campanha_planos'),
             formas_pagamento_elegiveis: getMultiValues('campanha_pagamentos')
@@ -1638,41 +1752,58 @@
         }
     };
 
+    // 4. Editar Campanha (Preencher formulário e tabela)
     window.editarCampanha = (c) => {
         document.getElementById('campanha_id').value = c.id;
         document.getElementById('campanha_nome').value = c.nome;
         document.getElementById('campanha_data_inicio').value = c.data_inicio;
         document.getElementById('campanha_data_fim').value = c.data_fim;
-        document.getElementById('campanha_meta_vendas').value = c.meta_vendas || 0;
-        document.getElementById('campanha_valor_premio').value = c.valor_premio || 0;
         document.getElementById('campanha_tipo_meta').value = c.tipo_meta || 'LIQUIDA';
         document.getElementById('campanha_canal_alvo').value = c.canal_alvo || 'TODOS';
         document.getElementById('campanha_regras').value = c.regras || '';
         document.getElementById('campanha_ativo').value = c.ativo ? 'true' : 'false';
 
+        // Preenche Multiselects
         const setMultiValues = (elementId, values) => {
             const select = document.getElementById(elementId);
             Array.from(select.options).forEach(opt => {
                 opt.selected = values.includes(parseInt(opt.value));
             });
         };
-
         setMultiValues('campanha_planos', c.planos_elegiveis || []);
         setMultiValues('campanha_pagamentos', c.formas_pagamento_elegiveis || []);
+        
+        // Preenche Tabela de Faixas
+        const tbody = document.getElementById('tbody-faixas-campanha');
+        tbody.innerHTML = '';
+        
+        if (c.regras_meta && c.regras_meta.length > 0) {
+            // Se tiver regras escalonadas, carrega elas
+            c.regras_meta.forEach(r => adicionarFaixaCampanha(r.meta, r.valor_premio));
+        } else if (c.meta_vendas > 0 || c.valor_premio > 0) {
+            // Se for campanha antiga (legado), carrega a meta única (mantida para evitar perda de dados)
+            adicionarFaixaCampanha(c.meta_vendas, c.valor_premio);
+        } else {
+            // Se for nova vazia, adiciona uma linha em branco
+            adicionarFaixaCampanha();
+        }
         
         document.getElementById('form-campanha').scrollIntoView({ behavior: 'smooth' });
     };
 
+    // 5. Resetar Formulário
     window.resetFormCampanha = () => {
         document.getElementById('form-campanha').reset();
         document.getElementById('campanha_id').value = '';
+        document.getElementById('tbody-faixas-campanha').innerHTML = ''; // Limpa tabela
+        adicionarFaixaCampanha(); // Adiciona uma linha vazia (para começar)
         
         ['campanha_planos', 'campanha_pagamentos'].forEach(id => {
             const sel = document.getElementById(id);
             if(sel) Array.from(sel.options).forEach(opt => opt.selected = false);
         });
     };
-
+    
     window.excluirCampanha = async(id) => { 
         if(confirm('Tem certeza que deseja excluir esta campanha? Os dados históricos podem ser perdidos.')) { 
             try {
@@ -1685,7 +1816,7 @@
     };
 
     // ====================================================================
-    // RELATÓRIOS: RESULTADO DE CAMPANHAS
+    // RELATÓRIOS: RESULTADO DE CAMPANHAS (ATUALIZADO)
     // ====================================================================
     
     async function carregarOpcoesCampanhasRelatorio() {
@@ -1713,6 +1844,9 @@
         }
     }
 
+    // Cache para guardar a lista completa do resultado
+    let resultadoCampanhaCache = [];
+
     async function carregarResultadoCampanha() {
         const idCampanha = document.getElementById('select-rel-campanha').value;
         if (!idCampanha) return alert("Por favor, selecione uma campanha.");
@@ -1721,11 +1855,14 @@
         const tbody = document.getElementById('tbody-resultado-campanha');
         
         container.style.display = 'none';
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4"><div class="spinner-border text-primary"></div><br>Calculando resultados...</td></tr>';
+        // Colspan ajustado para 7 devido à nova coluna de checkbox
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4"><div class="spinner-border text-primary"></div><br>Calculando resultados...</td></tr>'; 
         container.style.display = 'block';
 
         try {
-            const dados = await apiFetch(`/crm/campanhas/${idCampanha}/resultado/`);
+            // Este endpoint agora retorna o resultado da campanha com o campo proxima_faixa e vendedor_id
+            const dados = await apiFetch(`/crm/campanhas/${idCampanha}/resultado/`); 
+            resultadoCampanhaCache = dados.ranking; // Salva o ranking no cache
             
             document.getElementById('campanha-titulo-resumo').innerText = dados.campanha;
             document.getElementById('campanha-periodo-resumo').innerText = `Período: ${dados.periodo}`;
@@ -1735,21 +1872,36 @@
             let totalPremios = 0;
 
             if (dados.ranking.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">Nenhuma venda contabilizada com os critérios desta campanha.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">Nenhuma venda contabilizada com os critérios desta campanha.</td></tr>';
             } else {
                 dados.ranking.forEach(r => {
-                    totalPremios += parseFloat(r.premio_receber);
+                    // Garante que o prêmio é um número para cálculo
+                    const premioReceber = parseFloat(r.premio_receber);
+                    totalPremios += premioReceber;
                     
-                    const corBarra = r.atingiu_meta ? 'bg-success' : 'bg-warning';
-                    const iconeMeta = r.atingiu_meta ? '<i class="bi bi-check-circle-fill text-success"></i>' : '';
-                    const classePremio = r.atingiu_meta ? 'text-success fw-bold' : 'text-muted';
+                    const corBarra = premioReceber > 0 ? 'bg-success' : 'bg-warning';
+                    const iconeMeta = premioReceber > 0 ? '<i class="bi bi-check-circle-fill text-success"></i>' : '';
+                    const classePremio = premioReceber > 0 ? 'text-success fw-bold' : 'text-muted';
+
+                    const metaExibida = r.meta_atingida_para_premio || r.meta; 
+                    const premioFormatado = premioReceber.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
+
+                    // Determina a mensagem de "próxima faixa"
+                    let msgProximaFaixa = '';
+                    if (r.proxima_faixa) {
+                        const valorProximaFaixa = parseFloat(r.proxima_faixa.valor_premio).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
+                        msgProximaFaixa = `<br><span class="small text-muted fst-italic">Próx: ${r.proxima_faixa.meta} vendas (${valorProximaFaixa})</span>`;
+                    } else if (premioReceber > 0) {
+                        msgProximaFaixa = '<br><span class="small text-muted fst-italic">Meta máxima atingida.</span>';
+                    }
 
                     tbody.innerHTML += `
                         <tr>
+                            <td><input type="checkbox" class="form-check-input check-vendedor-rel" value="${r.vendedor_id}" data-meta="${metaExibida}" data-premio="${premioReceber}"></td>
                             <td class="text-center fw-bold text-secondary">${r.ranking}º</td>
                             <td class="fw-bold">${r.vendedor}</td>
                             <td class="text-center fs-5">${r.vendas_validas}</td>
-                            <td class="text-center text-muted small">Meta: ${r.meta}</td>
+                            <td class="text-center text-muted small">Meta: ${metaExibida}</td>
                             <td style="width: 30%;">
                                 <div class="d-flex align-items-center">
                                     <div class="progress flex-grow-1" style="height: 10px;">
@@ -1758,492 +1910,576 @@
                                     <span class="ms-2 small fw-bold">${r.percentual}%</span>
                                     <span class="ms-2">${iconeMeta}</span>
                                 </div>
+                                <span style="font-size: 0.75rem;">${msgProximaFaixa}</span>
                             </td>
-                            <td class="text-end ${classePremio}">${parseFloat(r.premio_receber).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</td>
+                            <td class="text-end ${classePremio}">${premioFormatado}</td>
                         </tr>
                     `;
                 });
             }
             
             document.getElementById('campanha-total-premios').innerText = totalPremios.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
-
+            document.getElementById('check-all-relatorio').checked = false; // Desmarca ao recarregar
+            atualizarContadorWpp(); // Chama para inicializar o contador
         } catch (e) {
             alert("Erro ao carregar resultado: " + e.message);
             container.style.display = 'none';
         }
     }
+
+
+    // Função para selecionar/deselecionar todos
+    function toggleSelecaoRelatorio(source) {
+        document.querySelectorAll('.check-vendedor-rel').forEach(c => c.checked = source.checked);
+        atualizarContadorWpp();
+    }
+
+    // Adiciona listener para atualizar o contador quando um único checkbox é alterado
+    document.addEventListener('change', (e) => {
+        if (e.target.classList.contains('check-vendedor-rel')) {
+            atualizarContadorWpp();
+        }
+    });
+
+    // Função para atualizar o contador de vendedores selecionados
+    function atualizarContadorWpp() {
+        const count = document.querySelectorAll('.check-vendedor-rel:checked').length;
+        document.getElementById('count-wpp').innerText = count;
+        // Marca o "SELECIONAR TODOS" se todos estiverem marcados
+        const totalVendedores = resultadoCampanhaCache.length;
+        document.getElementById('check-all-relatorio').checked = (count > 0 && count === totalVendedores);
+    }
+
+    // Função para enviar os dados para o novo endpoint de WhatsApp
+    async function enviarResultadoWhatsappSelecionados() {
+        const checks = document.querySelectorAll('.check-vendedor-rel:checked');
+        if (checks.length === 0) {
+            alert("Selecione pelo menos um vendedor.");
+            return;
+        }
+
+        const campanhaSelect = document.getElementById('select-rel-campanha');
+        const campanhaId = campanhaSelect.value;
+        
+        // --- VERIFICAÇÃO DE ID DA CAMPANHA ---
+        if (!campanhaId || campanhaId === "") {
+            alert("Por favor, selecione uma Campanha válida no dropdown.");
+            return;
+        }
+        // ------------------------------------
+
+        const vendedorIds = Array.from(checks).map(c => parseInt(c.value));
+
+        if (!confirm(`Confirmar envio do resultado da Campanha para ${vendedorIds.length} vendedores via WhatsApp?`)) {
+            return;
+        }
+        
+        // Filtra dados detalhados para enviar apenas os selecionados
+        const dadosEnvio = resultadoCampanhaCache
+            .filter(r => vendedorIds.includes(r.vendedor_id))
+            .map(r => ({
+                vendedor_id: r.vendedor_id,
+                vendas_validas: r.vendas_validas,
+                premio_receber: String(r.premio_receber),
+                
+                // --- ADICIONE ESTA LINHA ---
+                meta_alcancada: r.meta_alcancada, // Manda o valor correto (ex: 20)
+                // ---------------------------
+                
+                meta_atingida: r.meta, // Mantém compatibilidade
+                proxima_faixa: r.proxima_faixa || null
+            }));
+
+        try {
+            alert("Iniciando envio... Isso pode levar alguns segundos.");
+            // NOVO ENDPOINT DE ENVIO DE RESULTADO
+            const res = await apiFetch(`/crm/campanhas/enviar-resultado-whatsapp/`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    campanha_id: parseInt(campanhaId),
+                    vendedores_dados: dadosEnvio
+                })
+            });
+
+            alert(res.mensagem);
+        } catch (e) {
+            alert("Erro ao enviar resultados: " + (e.message || e));
+        }
+    }
+
     
     // --- RECEBIMENTO OPERADORA ---
     async function carregarComissoesOperadora() {
-        const tbody = document.getElementById('lista-comissoes-operadora');
-        const selPlano = document.getElementById('co_plano_id');
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center">Carregando...</td></tr>';
-        
-        try {
-            const planos = await apiFetch('/crm/planos/');
-            selPlano.innerHTML = '<option value="">Selecione um Plano...</option>';
-            if(planos) planos.forEach(p => selPlano.add(new Option(p.nome, p.id)));
+        const tbody = document.getElementById('lista-comissoes-operadora');
+        const selPlano = document.getElementById('co_plano_id');
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center">Carregando...</td></tr>';
+        
+        try {
+            const planos = await apiFetch('/crm/planos/');
+            selPlano.innerHTML = '<option value="">Selecione um Plano...</option>';
+            if(planos) planos.forEach(p => selPlano.add(new Option(p.nome, p.id)));
 
-            const lista = await apiFetch('/crm/comissoes-operadora/');
-            tbody.innerHTML = '';
-            
-            if(lista.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Nenhum registro encontrado.</td></tr>';
-                return;
-            }
+            const lista = await apiFetch('/crm/comissoes-operadora/');
+            tbody.innerHTML = '';
+            
+            if(lista.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Nenhum registro encontrado.</td></tr>';
+                return;
+            }
 
-            lista.forEach(co => {
-                const total = parseFloat(co.valor_base || 0) + parseFloat(co.bonus_transicao || 0);
-                let dtFim = '-';
-                if (co.data_fim_bonus) {
-                    const d = new Date(co.data_fim_bonus);
-                    if (!isNaN(d.getTime())) {
-                         dtFim = d.toLocaleDateString('pt-BR', {timeZone: 'UTC'});
-                    }
-                }
-                
-                tbody.innerHTML += `
-                    <tr>
-                        <td class="fw-bold">${co.plano_nome || 'Plano ID ' + co.plano}</td>
-                        <td>${fmtMoeda(co.valor_base)}</td>
-                        <td class="text-success fw-bold">${fmtMoeda(co.bonus_transicao)}</td>
-                        <td>${dtFim}</td>
-                        <td class="fw-bold text-primary">${fmtMoeda(total)}</td>
-                        <td class="text-end">
-                            <button class="btn btn-warning btn-sm" onclick='editarComissaoOp(${JSON.stringify(co)})'><i class="bi bi-pencil"></i></button>
-                            <button class="btn btn-danger btn-sm" onclick="deletarComissaoOp(${co.id})"><i class="bi bi-trash"></i></button>
-                        </td>
-                    </tr>
-                `;
-            });
+            lista.forEach(co => {
+                const total = parseFloat(co.valor_base || 0) + parseFloat(co.bonus_transicao || 0);
+                let dtFim = '-';
+                if (co.data_fim_bonus) {
+                    const d = new Date(co.data_fim_bonus);
+                    if (!isNaN(d.getTime())) {
+                         dtFim = d.toLocaleDateString('pt-BR', {timeZone: 'UTC'});
+                    }
+                }
+                
+                tbody.innerHTML += `
+                    <tr>
+                        <td class="fw-bold">${co.plano_nome || 'Plano ID ' + co.plano}</td>
+                        <td>${fmtMoeda(co.valor_base)}</td>
+                        <td class="text-success fw-bold">${fmtMoeda(co.bonus_transicao)}</td>
+                        <td>${dtFim}</td>
+                        <td class="fw-bold text-primary">${fmtMoeda(total)}</td>
+                        <td class="text-end">
+                            <button class="btn btn-warning btn-sm" onclick='editarComissaoOp(${JSON.stringify(co)})'><i class="bi bi-pencil"></i></button>
+                            <button class="btn btn-danger btn-sm" onclick="deletarComissaoOp(${co.id})"><i class="bi bi-trash"></i></button>
+                        </td>
+                    </tr>
+                `;
+            });
 
-        } catch (error) {
-            console.error(error);
-            tbody.innerHTML = '<tr><td colspan="6" class="text-danger text-center">Erro ao carregar dados. Verifique se o módulo backend está ativo.</td></tr>';
-        }
-    }
+        } catch (error) {
+            console.error(error);
+            tbody.innerHTML = '<tr><td colspan="6" class="text-danger text-center">Erro ao carregar dados. Verifique se o módulo backend está ativo.</td></tr>';
+        }
+    }
 
-    document.getElementById('form-comissao-operadora').onsubmit = async (e) => {
-        e.preventDefault();
-        const id = document.getElementById('co_id').value;
-        const payload = {
-            plano: document.getElementById('co_plano_id').value,
-            valor_base: document.getElementById('co_valor_base').value,
-            bonus_transicao: document.getElementById('co_bonus').value,
-            data_fim_bonus: document.getElementById('co_data_fim').value || null
-        };
+    document.getElementById('form-comissao-operadora').onsubmit = async (e) => {
+        e.preventDefault();
+        const id = document.getElementById('co_id').value;
+        const payload = {
+            plano: document.getElementById('co_plano_id').value,
+            valor_base: document.getElementById('co_valor_base').value,
+            bonus_transicao: document.getElementById('co_bonus').value,
+            data_fim_bonus: document.getElementById('co_data_fim').value || null
+        };
 
-        try {
-            if(id) await apiFetch(`/crm/comissoes-operadora/${id}/`, { method: 'PUT', body: JSON.stringify(payload) });
-            else await apiFetch('/crm/comissoes-operadora/', { method: 'POST', body: JSON.stringify(payload) });
-            
-            document.getElementById('form-comissao-operadora').reset();
-            document.getElementById('co_id').value = '';
-            carregarComissoesOperadora();
-            alert('Salvo com sucesso!');
-        } catch(err) {
-            alert('Erro ao salvar: ' + (err.detail || err));
-        }
-    };
+        try {
+            if(id) await apiFetch(`/crm/comissoes-operadora/${id}/`, { method: 'PUT', body: JSON.stringify(payload) });
+            else await apiFetch('/crm/comissoes-operadora/', { method: 'POST', body: JSON.stringify(payload) });
+            
+            document.getElementById('form-comissao-operadora').reset();
+            document.getElementById('co_id').value = '';
+            carregarComissoesOperadora();
+            alert('Salvo com sucesso!');
+        } catch(err) {
+            alert('Erro ao salvar: ' + (err.detail || err));
+        }
+    };
 
-    window.editarComissaoOp = (co) => {
-        document.getElementById('co_id').value = co.id;
-        document.getElementById('co_plano_id').value = co.plano;
-        document.getElementById('co_valor_base').value = co.valor_base;
-        document.getElementById('co_bonus').value = co.bonus_transicao;
-        document.getElementById('co_data_fim').value = co.data_fim_bonus || '';
-        openTab({ preventDefault: () => {} }, 'recebimento_operadora_tab');
-        document.querySelector("button[onclick*='recebimento_operadora_tab']").classList.add('active');
-        document.querySelector("button[onclick*='regras_comissao_tab']").classList.remove('active');
-        document.getElementById('regras_comissao_tab').style.display = 'none';
-        document.getElementById('form-comissao-operadora').scrollIntoView({ behavior: 'smooth' });
-    };
+    window.editarComissaoOp = (co) => {
+        document.getElementById('co_id').value = co.id;
+        document.getElementById('co_plano_id').value = co.plano;
+        document.getElementById('co_valor_base').value = co.valor_base;
+        document.getElementById('co_bonus').value = co.bonus_transicao;
+        document.getElementById('co_data_fim').value = co.data_fim_bonus || '';
+        openTab({ preventDefault: () => {} }, 'recebimento_operadora_tab');
+        document.querySelector("button[onclick*='recebimento_operadora_tab']").classList.add('active');
+        document.querySelector("button[onclick*='regras_comissao_tab']").classList.remove('active');
+        document.getElementById('regras_comissao_tab').style.display = 'none';
+        document.getElementById('form-comissao-operadora').scrollIntoView({ behavior: 'smooth' });
+    };
 
-    window.deletarComissaoOp = async (id) => {
-        if(!confirm('Excluir este registro?')) return;
-        try {
-            await apiFetch(`/crm/comissoes-operadora/${id}/`, { method: 'DELETE' });
-            carregarComissoesOperadora();
-        } catch(e) { alert('Erro ao excluir.'); }
-    };
-    
-    // ====================================================================
-    // GESTÃO DE ADIANTAMENTOS E DESCONTOS
-    // ====================================================================
+    window.deletarComissaoOp = async (id) => {
+        if(!confirm('Excluir este registro?')) return;
+        try {
+            await apiFetch(`/crm/comissoes-operadora/${id}/`, { method: 'DELETE' });
+            carregarComissoesOperadora();
+        } catch(e) { alert('Erro ao excluir.'); }
+    };
+    
+    // ====================================================================
+    // GESTÃO DE ADIANTAMENTOS E DESCONTOS
+    // ====================================================================
 
-    async function carregarUsuariosSelectsFinanceiro() {
-        try {
-            // Busca apenas usuários ativos
-            const users = await apiFetch('/usuarios/?is_active=true');
-            const selAd = document.getElementById('ad_usuario');
-            const selDesc = document.getElementById('desc_usuario');
-            
-            selAd.innerHTML = '<option value="">Selecione...</option>';
-            selDesc.innerHTML = '<option value="">Selecione...</option>';
-            
-            users.forEach(u => {
-                // --- ALTERAÇÃO AQUI: Usando u.username (Login) ---
-                const opt = new Option(u.username, u.id);
-                selAd.add(opt.cloneNode(true));
-                selDesc.add(opt);
-            });
-        } catch (e) { console.error("Erro ao carregar selects:", e); }
-    }
+    async function carregarUsuariosSelectsFinanceiro() {
+        try {
+            // Busca apenas usuários ativos
+            const users = await apiFetch('/usuarios/?is_active=true');
+            const selAd = document.getElementById('ad_usuario');
+            const selDesc = document.getElementById('desc_usuario');
+            
+            selAd.innerHTML = '<option value="">Selecione...</option>';
+            selDesc.innerHTML = '<option value="">Selecione...</option>';
+            
+            users.forEach(u => {
+                // --- ALTERAÇÃO AQUI: Usando u.username (Login) ---
+                const opt = new Option(u.username, u.id);
+                selAd.add(opt.cloneNode(true));
+                selDesc.add(opt);
+            });
+        } catch (e) { console.error("Erro ao carregar selects:", e); }
+    }
 
-    window.toggleCamposAdiantamento = () => {
-        const tipo = document.getElementById('ad_tipo').value;
-        const boxQtd = document.getElementById('box-qtd-vendas');
-        if (tipo === 'ADIANTAMENTO_CNPJ') {
-            boxQtd.style.display = 'block';
-        } else {
-            boxQtd.style.display = 'none';
-            document.getElementById('ad_qtd').value = '';
-        }
-    };
+    window.toggleCamposAdiantamento = () => {
+        const tipo = document.getElementById('ad_tipo').value;
+        const boxQtd = document.getElementById('box-qtd-vendas');
+        if (tipo === 'ADIANTAMENTO_CNPJ') {
+            boxQtd.style.display = 'block';
+        } else {
+            boxQtd.style.display = 'none';
+            document.getElementById('ad_qtd').value = '';
+        }
+    };
 
-    document.getElementById('form-adiantamento').onsubmit = async (e) => {
-        e.preventDefault();
-        const payload = {
-            usuario: document.getElementById('ad_usuario').value,
-            tipo: document.getElementById('ad_tipo').value,
-            data: document.getElementById('ad_data').value,
-            valor: document.getElementById('ad_valor').value,
-            quantidade_vendas: document.getElementById('ad_qtd').value || 0,
-            descricao: document.getElementById('ad_obs').value || 'Sem observação'
-        };
-        await salvarLancamento(payload, 'form-adiantamento');
-    };
+    document.getElementById('form-adiantamento').onsubmit = async (e) => {
+        e.preventDefault();
+        const payload = {
+            usuario: document.getElementById('ad_usuario').value,
+            tipo: document.getElementById('ad_tipo').value,
+            data: document.getElementById('ad_data').value,
+            valor: document.getElementById('ad_valor').value,
+            quantidade_vendas: document.getElementById('ad_qtd').value || 0,
+            descricao: document.getElementById('ad_obs').value || 'Sem observação'
+        };
+        await salvarLancamento(payload, 'form-adiantamento');
+    };
 
-    document.getElementById('form-desconto').onsubmit = async (e) => {
-        e.preventDefault();
-        const payload = {
-            usuario: document.getElementById('desc_usuario').value,
-            tipo: 'DESCONTO',
-            data: document.getElementById('desc_data').value,
-            valor: document.getElementById('desc_valor').value,
-            descricao: document.getElementById('desc_motivo').value
-        };
-        await salvarLancamento(payload, 'form-desconto');
-    };
+    document.getElementById('form-desconto').onsubmit = async (e) => {
+        e.preventDefault();
+        const payload = {
+            usuario: document.getElementById('desc_usuario').value,
+            tipo: 'DESCONTO',
+            data: document.getElementById('desc_data').value,
+            valor: document.getElementById('desc_valor').value,
+            descricao: document.getElementById('desc_motivo').value
+        };
+        await salvarLancamento(payload, 'form-desconto');
+    };
 
-    async function salvarLancamento(payload, formId) {
-        try {
-            await apiFetch('/crm/lancamentos-financeiros/', {
-                method: 'POST',
-                body: JSON.stringify(payload)
-            });
-            alert('Lançamento registrado com sucesso!');
-            document.getElementById(formId).reset();
-            toggleCamposAdiantamento();
-            carregarLancamentosFinanceiros();
-        } catch (e) {
-            alert('Erro ao salvar: ' + e.message);
-        }
-    }
+    async function salvarLancamento(payload, formId) {
+        try {
+            await apiFetch('/crm/lancamentos-financeiros/', {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            });
+            alert('Lançamento registrado com sucesso!');
+            document.getElementById(formId).reset();
+            toggleCamposAdiantamento();
+            carregarLancamentosFinanceiros();
+        } catch (e) {
+            alert('Erro ao salvar: ' + e.message);
+        }
+    }
 
-    async function carregarLancamentosFinanceiros() {
-        let mes = document.getElementById('filtro-mes-lancamentos').value;
-        // Se não tiver mês selecionado, pega o atual
-        if (!mes) {
-            const hoje = new Date();
-            mes = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2, '0')}`;
-            document.getElementById('filtro-mes-lancamentos').value = mes;
-        }
+    async function carregarLancamentosFinanceiros() {
+        let mes = document.getElementById('filtro-mes-lancamentos').value;
+        // Se não tiver mês selecionado, pega o atual
+        if (!mes) {
+            const hoje = new Date();
+            mes = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2, '0')}`;
+            document.getElementById('filtro-mes-lancamentos').value = mes;
+        }
 
-        const tbody = document.getElementById('lista-lancamentos-fin');
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center">Carregando...</td></tr>';
+        const tbody = document.getElementById('lista-lancamentos-fin');
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center">Carregando...</td></tr>';
 
-        try {
-            const todos = await apiFetch('/crm/lancamentos-financeiros/');
-            // Filtra apenas os lançamentos que começam com o ano-mês selecionado
-            const filtrados = todos.filter(l => l.data && l.data.startsWith(mes));
-            tbody.innerHTML = '';
+        try {
+            const todos = await apiFetch('/crm/lancamentos-financeiros/');
+            // Filtra apenas os lançamentos que começam com o ano-mês selecionado
+            const filtrados = todos.filter(l => l.data && l.data.startsWith(mes));
+            tbody.innerHTML = '';
 
-            if (filtrados.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Nenhum lançamento neste mês.</td></tr>';
-                return;
-            }
+            if (filtrados.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Nenhum lançamento neste mês.</td></tr>';
+                return;
+            }
 
-            filtrados.forEach(l => {
-                const dataFmt = new Date(l.data).toLocaleDateString('pt-BR', {timeZone:'UTC'});
-                let classeValor = l.tipo === 'DESCONTO' ? 'text-danger' : 'text-primary';
-                let detalhe = l.descricao || '';
-                
-                if(l.tipo === 'ADIANTAMENTO_CNPJ') detalhe = `(CNPJ - ${l.quantidade_vendas} vendas) ${l.descricao}`;
-                if(l.tipo === 'ADIANTAMENTO_COMISSAO') detalhe = `(Comissão) ${l.descricao}`;
+            filtrados.forEach(l => {
+                const dataFmt = new Date(l.data).toLocaleDateString('pt-BR', {timeZone:'UTC'});
+                let classeValor = l.tipo === 'DESCONTO' ? 'text-danger' : 'text-primary';
+                let detalhe = l.descricao || '';
+                
+                if(l.tipo === 'ADIANTAMENTO_CNPJ') detalhe = `(CNPJ - ${l.quantidade_vendas} vendas) ${l.descricao}`;
+                if(l.tipo === 'ADIANTAMENTO_COMISSAO') detalhe = `(Comissão) ${l.descricao}`;
 
-                // --- CORREÇÃO E MUDANÇA PARA LOGIN (USERNAME) ---
-                let nomeExibicao = 'Não identificado';
+                // --- CORREÇÃO E MUDANÇA PARA LOGIN (USERNAME) ---
+                let nomeExibicao = 'Não identificado';
 
-                // 1. Tenta achar o usuário na lista carregada em memória (todosUsuariosCache)
-                if (l.usuario) {
-                    // Nota: todosUsuariosCache é preenchido pela função carregarUsuarios() ao abrir a página
-                    const u = todosUsuariosCache.find(user => user.id === l.usuario);
-                    
-                    if (u && u.username) {
-                        nomeExibicao = u.username; // Prioridade: Login do Cache
-                    } else if (l.usuario_nome) {
-                        // Se não achar no cache (ex: usuário inativo), usa o nome que veio do banco de dados
-                        // O backend envia 'usuario_nome' (que hoje é o nome completo), mas é melhor que "Não identificado"
-                        nomeExibicao = l.usuario_nome; 
-                    }
-                }
-                // -----------------------------------------------
+                // 1. Tenta achar o usuário na lista carregada em memória (todosUsuariosCache)
+                if (l.usuario) {
+                    // Nota: todosUsuariosCache é preenchido pela função carregarUsuarios() ao abrir a página
+                    const u = todosUsuariosCache.find(user => user.id === l.usuario);
+                    
+                    if (u && u.username) {
+                        nomeExibicao = u.username; // Prioridade: Login do Cache
+                    } else if (l.usuario_nome) {
+                        // Se não achar no cache (ex: usuário inativo), usa o nome que veio do banco de dados
+                        // O backend envia 'usuario_nome' (que hoje é o nome completo), mas é melhor que "Não identificado"
+                        nomeExibicao = l.usuario_nome; 
+                    }
+                }
+                // -----------------------------------------------
 
-                tbody.innerHTML += `
-                    <tr>
-                        <td>${dataFmt}</td>
-                        <td class="fw-bold">${nomeExibicao}</td>
-                        <td>
-                            <span class="badge bg-light text-dark border">${l.tipo.replace('_', ' ')}</span><br>
-                            <span class="small text-muted">${detalhe}</span>
-                        </td>
-                        <td class="text-end fw-bold ${classeValor}">
-                             R$ ${parseFloat(l.valor).toFixed(2)}
-                        </td>
-                        <td class="text-end">
-                            <button class="btn btn-xs btn-outline-danger" onclick="excluirLancamento(${l.id})"><i class="bi bi-trash"></i></button>
-                        </td>
-                    </tr>
-                `;
-            });
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${dataFmt}</td>
+                        <td class="fw-bold">${nomeExibicao}</td>
+                        <td>
+                            <span class="badge bg-light text-dark border">${l.tipo.replace('_', ' ')}</span><br>
+                            <span class="small text-muted">${detalhe}</span>
+                        </td>
+                        <td class="text-end fw-bold ${classeValor}">
+                             R$ ${parseFloat(l.valor).toFixed(2)}
+                        </td>
+                        <td class="text-end">
+                            <button class="btn btn-xs btn-outline-danger" onclick="excluirLancamento(${l.id})"><i class="bi bi-trash"></i></button>
+                        </td>
+                    </tr>
+                `;
+            });
 
-        } catch (e) {
-            console.error(e);
-            tbody.innerHTML = '<tr><td colspan="5" class="text-danger text-center">Erro ao carregar histórico.</td></tr>';
-        }
-    }
+        } catch (e) {
+            console.error(e);
+            tbody.innerHTML = '<tr><td colspan="5" class="text-danger text-center">Erro ao carregar histórico.</td></tr>';
+        }
+    }
 
-    window.excluirLancamento = async (id) => {
-        if(confirm('Tem certeza que deseja excluir este lançamento financeiro?')) {
-            try {
-                await apiFetch(`/crm/lancamentos-financeiros/${id}/`, { method: 'DELETE' });
-                carregarLancamentosFinanceiros();
-            } catch(e) { alert('Erro ao excluir.'); }
-        }
-    };
+    window.excluirLancamento = async (id) => {
+        if(confirm('Tem certeza que deseja excluir este lançamento financeiro?')) {
+            try {
+                await apiFetch(`/crm/lancamentos-financeiros/${id}/`, { method: 'DELETE' });
+                carregarLancamentosFinanceiros();
+            } catch(e) { alert('Erro ao excluir.'); }
+        }
+    };
 
-    // Inicialização
-    document.addEventListener('DOMContentLoaded', () => {
-        carregarDadosParaFormulario();
-        carregarPerfis();
-        carregarUsuarios('ativos'); 
+    // Inicialização
+    document.addEventListener('DOMContentLoaded', () => {
+        carregarDadosParaFormulario();
+        carregarPerfis();
+        carregarUsuarios('ativos'); 
 
-        carregarMotivos();
-        carregarFeriados();
-        
-        carregarOperadoras();
-        carregarPlanos();
-        carregarFormasPagamento();
-        carregarStatus();
-        carregarMotivosPendencia();
-        carregarDadosParaRegrasComissao();
-        carregarRegrasComissao();
-        
-        carregarDadosAuxiliaresCampanha();
-        carregarCampanhas();
-        
-        carregarComissoesOperadora(); 
-        
-        carregarUsuariosSelectsFinanceiro();
-        carregarLancamentosFinanceiros();
+        carregarMotivos();
+        carregarFeriados();
+        
+        carregarOperadoras();
+        carregarPlanos();
+        carregarFormasPagamento();
+        carregarStatus();
+        carregarMotivosPendencia();
+        carregarDadosParaRegrasComissao();
+        carregarRegrasComissao();
+        
+        carregarDadosAuxiliaresCampanha();
+        carregarCampanhas();
+        adicionarFaixaCampanha(); // Adiciona a primeira linha de faixa ao carregar
+        
+        carregarComissoesOperadora(); 
+        
+        carregarUsuariosSelectsFinanceiro();
+        carregarLancamentosFinanceiros();
 
-        const primeiroLink = document.querySelector('.admin-nav-link');
-        if(primeiroLink) mostrarSecao(null, 'usuarios', primeiroLink);
-    });
+        const primeiroLink = document.querySelector('.admin-nav-link');
+        if(primeiroLink) mostrarSecao(null, 'usuarios', primeiroLink);
+    });
 
-    async function carregarMotivos() {
-        const ul = document.getElementById('lista-motivos');
-        ul.innerHTML = '<div class="text-center p-2 text-muted">Carregando...</div>';
-        try {
-            const resposta = await apiFetch('/presenca/motivos/');
-            const lista = Array.isArray(resposta) ? resposta : (resposta.results || []);
-            ul.innerHTML = '';
-            if (lista.length === 0) {
-                ul.innerHTML = '<li class="list-group-item text-muted text-center">Nenhum motivo cadastrado.</li>';
-                return;
-            }
-            lista.forEach(m => {
-                const nomeMotivo = m.nome || m.motivo || m.descricao || "Sem Nome";
-                const badge = m.gera_desconto 
-                    ? '<span class="badge bg-danger">Gera Desconto</span>' 
-                    : '<span class="badge bg-success">Abona (Sem Desconto)</span>';
-                ul.innerHTML += `
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        <span><strong>${nomeMotivo}</strong> &nbsp; ${badge}</span>
-                        <button class="btn btn-sm btn-outline-danger" onclick="excluirMotivo(${m.id})">
-                            <i class="bi bi-trash"></i>
-                        </button>
-                    </li>`;
-            });
-        } catch (e) {
-            console.error("Erro ao carregar motivos:", e);
-            ul.innerHTML = '<li class="list-group-item text-danger text-center">Erro ao carregar motivos.</li>';
-        }
-    }
+    async function carregarMotivos() {
+        const ul = document.getElementById('lista-motivos');
+        ul.innerHTML = '<div class="text-center p-2 text-muted">Carregando...</div>';
+        try {
+            const resposta = await apiFetch('/presenca/motivos/');
+            const lista = Array.isArray(resposta) ? resposta : (resposta.results || []);
+            ul.innerHTML = '';
+            if (lista.length === 0) {
+                ul.innerHTML = '<li class="list-group-item text-muted text-center">Nenhum motivo cadastrado.</li>';
+                return;
+            }
+            lista.forEach(m => {
+                const nomeMotivo = m.nome || m.motivo || m.descricao || "Sem Nome";
+                const badge = m.gera_desconto 
+                    ? '<span class="badge bg-danger">Gera Desconto</span>' 
+                    : '<span class="badge bg-success">Abona (Sem Desconto)</span>';
+                ul.innerHTML += `
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <span><strong>${nomeMotivo}</strong> &nbsp; ${badge}</span>
+                        <button class="btn btn-sm btn-outline-danger" onclick="excluirMotivo(${m.id})">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </li>`;
+            });
+        } catch (e) {
+            console.error("Erro ao carregar motivos:", e);
+            ul.innerHTML = '<li class="list-group-item text-danger text-center">Erro ao carregar motivos.</li>';
+        }
+    }
 
-    const btnSalvarMotivo = document.getElementById('btn-salvar-motivo');
-    if(btnSalvarMotivo) {
-        btnSalvarMotivo.onclick = async () => {
-            const nomeInput = document.getElementById('novo-motivo-nome');
-            const descInput = document.getElementById('novo-motivo-desconto');
-            if (!nomeInput.value) return alert('Digite o nome do motivo.');
-            try {
-                await apiFetch('/presenca/motivos/', {
-                    method: 'POST',
-                    body: JSON.stringify({ nome: nomeInput.value, gera_desconto: descInput.checked })
-                });
-                nomeInput.value = '';
-                carregarMotivos();
-            } catch (e) { alert('Erro ao salvar motivo: ' + e.message); }
-        };
-    }
+    const btnSalvarMotivo = document.getElementById('btn-salvar-motivo');
+    if(btnSalvarMotivo) {
+        btnSalvarMotivo.onclick = async () => {
+            const nomeInput = document.getElementById('novo-motivo-nome');
+            const descInput = document.getElementById('novo-motivo-desconto');
+            if (!nomeInput.value) return alert('Digite o nome do motivo.');
+            try {
+                await apiFetch('/presenca/motivos/', {
+                    method: 'POST',
+                    body: JSON.stringify({ nome: nomeInput.value, gera_desconto: descInput.checked })
+                });
+                nomeInput.value = '';
+                carregarMotivos();
+            } catch (e) { alert('Erro ao salvar motivo: ' + e.message); }
+        };
+    }
 
-    window.excluirMotivo = async (id) => {
-        if(confirm('Tem certeza que deseja excluir este motivo?')) {
-            try { await apiFetch(`/presenca/motivos/${id}/`, { method: 'DELETE' }); carregarMotivos(); } catch(e){ alert('Erro ao excluir: ' + e.message); }
-        }
-    };
+    window.excluirMotivo = async (id) => {
+        if(confirm('Tem certeza que deseja excluir este motivo?')) {
+            try { await apiFetch(`/presenca/motivos/${id}/`, { method: 'DELETE' }); carregarMotivos(); } catch(e){ alert('Erro ao excluir: ' + e.message); }
+        }
+    };
 
-    async function carregarFeriados() {
-        const tbody = document.getElementById('lista-feriados');
-        tbody.innerHTML = '<tr><td colspan="3" class="text-center">Carregando...</td></tr>';
-        try {
-            const lista = await apiFetch('/presenca/dias-nao-uteis/');
-            tbody.innerHTML = '';
-            if(lista.length === 0) {
-                 tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">Nenhum feriado cadastrado.</td></tr>';
-                 return;
-            }
-            lista.forEach(f => {
-                const dataFmt = f.data.split('-').reverse().join('/');
-                tbody.innerHTML += `<tr><td>${dataFmt}</td><td>${f.descricao || '-'}</td><td><button class="btn btn-sm btn-outline-danger" onclick="excluirFeriado(${f.id})"><i class="bi bi-trash"></i></button></td></tr>`;
-            });
-        } catch (e) { 
-            console.error(e); 
-            tbody.innerHTML = '<tr><td colspan="3" class="text-danger text-center">Erro ao carregar feriados.</td></tr>'; 
-        }
-    }
+    async function carregarFeriados() {
+        const tbody = document.getElementById('lista-feriados');
+        tbody.innerHTML = '<tr><td colspan="3" class="text-center">Carregando...</td></tr>';
+        try {
+            const lista = await apiFetch('/presenca/dias-nao-uteis/');
+            tbody.innerHTML = '';
+            if(lista.length === 0) {
+                 tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">Nenhum feriado cadastrado.</td></tr>';
+                 return;
+            }
+            lista.forEach(f => {
+                const dataFmt = f.data.split('-').reverse().join('/');
+                tbody.innerHTML += `<tr><td>${dataFmt}</td><td>${f.descricao || '-'}</td><td><button class="btn btn-sm btn-outline-danger" onclick="excluirFeriado(${f.id})"><i class="bi bi-trash"></i></button></td></tr>`;
+            });
+        } catch (e) { 
+            console.error(e); 
+            tbody.innerHTML = '<tr><td colspan="3" class="text-danger text-center">Erro ao carregar feriados.</td></tr>'; 
+        }
+    }
 
-    const btnSalvarFeriado = document.getElementById('btn-salvar-feriado');
-    if(btnSalvarFeriado) {
-        btnSalvarFeriado.onclick = async () => {
-            const dataInput = document.getElementById('novo-feriado-data');
-            const descInput = document.getElementById('novo-feriado-descricao');
-            if(!dataInput.value) return alert('Selecione a data.');
-            try {
-                await apiFetch('/presenca/dias-nao-uteis/', {
-                    method: 'POST',
-                    body: JSON.stringify({ data: dataInput.value, descricao: descInput.value })
-                });
-                dataInput.value = ''; descInput.value = '';
-                carregarFeriados();
-            } catch(e) { alert('Erro ao salvar: ' + e.message); }
-        };
-    }
-    window.excluirFeriado = async(id) => { if(confirm('Excluir esta data?')) { try { await apiFetch(`/presenca/dias-nao-uteis/${id}/`, { method: 'DELETE' }); carregarFeriados(); } catch(e){ alert('Erro ao excluir.'); } } };
+    const btnSalvarFeriado = document.getElementById('btn-salvar-feriado');
+    if(btnSalvarFeriado) {
+        btnSalvarFeriado.onclick = async () => {
+            const dataInput = document.getElementById('novo-feriado-data');
+            const descInput = document.getElementById('novo-feriado-descricao');
+            if(!dataInput.value) return alert('Selecione a data.');
+            try {
+                await apiFetch('/presenca/dias-nao-uteis/', {
+                    method: 'POST',
+                    body: JSON.stringify({ data: dataInput.value, descricao: descInput.value })
+                });
+                dataInput.value = ''; descInput.value = '';
+                carregarFeriados();
+            } catch(e) { alert('Erro ao salvar: ' + e.message); }
+        };
+    }
+    window.excluirFeriado = async(id) => { if(confirm('Excluir esta data?')) { try { await apiFetch(`/presenca/dias-nao-uteis/${id}/`, { method: 'DELETE' }); carregarFeriados(); } catch(e){ alert('Erro ao excluir.'); } } };
 
-    async function carregarRelatorioFinanceiro() {
-        const elInicio = document.getElementById('finDataInicio');
-        const elFim = document.getElementById('finDataFim');
+    async function carregarRelatorioFinanceiro() {
+        const elInicio = document.getElementById('finDataInicio');
+        const elFim = document.getElementById('finDataFim');
 
-        let ini = elInicio.value;
-        let fim = elFim.value;
-        
-        // CORREÇÃO 1: Definir datas padrão se estiverem vazias para evitar erro ao carregar a página
-        if (!ini || !fim) {
-            const hoje = new Date();
-            const primeiroDia = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
-            const ultimoDia = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
+        let ini = elInicio.value;
+        let fim = elFim.value;
+        
+        // CORREÇÃO 1: Definir datas padrão se estiverem vazias para evitar erro ao carregar a página
+        if (!ini || !fim) {
+            const hoje = new Date();
+            const primeiroDia = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+            const ultimoDia = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
 
-            if (!ini) ini = primeiroDia.toISOString().split('T')[0];
-            if (!fim) fim = ultimoDia.toISOString().split('T')[0];
+            if (!ini) ini = primeiroDia.toISOString().split('T')[0];
+            if (!fim) fim = ultimoDia.toISOString().split('T')[0];
 
-            // Atualiza visualmente os inputs
-            elInicio.value = ini;
-            elFim.value = fim;
-        }
-        
-        const tPrev = document.getElementById('tbodyPrevisao');
-        const tDesc = document.getElementById('tbodyDescontos');
-        const cardPrev = document.getElementById('cardPrevisao');
-        const cardDesc = document.getElementById('cardDescontos');
-        
-        tPrev.innerHTML = '<tr><td colspan="4" class="text-center">Calculando...</td></tr>';
-        tDesc.innerHTML = '<tr><td colspan="6" class="text-center">Calculando...</td></tr>';
-        
-        cardPrev.style.display = 'block';
-        cardDesc.style.display = 'block';
+            // Atualiza visualmente os inputs
+            elInicio.value = ini;
+            elFim.value = fim;
+        }
+        
+        const tPrev = document.getElementById('tbodyPrevisao');
+        const tDesc = document.getElementById('tbodyDescontos');
+        const cardPrev = document.getElementById('cardPrevisao');
+        const cardDesc = document.getElementById('cardDescontos');
+        
+        tPrev.innerHTML = '<tr><td colspan="4" class="text-center">Calculando...</td></tr>';
+        tDesc.innerHTML = '<tr><td colspan="6" class="text-center">Calculando...</td></tr>';
+        
+        cardPrev.style.display = 'block';
+        cardDesc.style.display = 'block';
 
-        try {
-            // CORREÇÃO 2: Alterado de 'data_inicio'/'data_fim' para 'inicio'/'fim'
-            const url = `/presenca/relatorio-financeiro/?inicio=${ini}&fim=${fim}`;
-            const dados = await apiFetch(url);
-            
-            tPrev.innerHTML = '';
-            tDesc.innerHTML = '';
-            
-            if(dados.previsao && dados.previsao.length > 0) {
-                dados.previsao.forEach(p => {
-                    // Usa username se disponível, ou o nome
-                    const nomeExibicao = p.colaborador_username || p.nome || p.colaborador;
-                    
-                    tPrev.innerHTML += `
-                        <tr>
-                            <td>${nomeExibicao}</td>
-                            <td>${p.dias_uteis}</td>
-                            <td>R$ ${parseFloat(p.valor_diario).toFixed(2)}</td>
-                            <td class="fw-bold text-primary">R$ ${parseFloat(p.total_receber || p.total_previsto).toFixed(2)}</td>
-                        </tr>`;
-                });
-            } else {
-                tPrev.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Sem dados de previsão.</td></tr>';
-            }
+        try {
+            // CORREÇÃO 2: Alterado de 'data_inicio'/'data_fim' para 'inicio'/'fim'
+            const url = `/presenca/relatorio-financeiro/?inicio=${ini}&fim=${fim}`;
+            const dados = await apiFetch(url);
+            
+            tPrev.innerHTML = '';
+            tDesc.innerHTML = '';
+            
+            if(dados.previsao && dados.previsao.length > 0) {
+                dados.previsao.forEach(p => {
+                    // Usa username se disponível, ou o nome
+                    const nomeExibicao = p.colaborador_username || p.nome || p.colaborador;
+                    
+                    tPrev.innerHTML += `
+                        <tr>
+                            <td>${nomeExibicao}</td>
+                            <td>${p.dias_uteis}</td>
+                            <td>R$ ${parseFloat(p.valor_diario).toFixed(2)}</td>
+                            <td class="fw-bold text-primary">R$ ${parseFloat(p.total_receber || p.total_previsto).toFixed(2)}</td>
+                        </tr>`;
+                });
+            } else {
+                tPrev.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Sem dados de previsão.</td></tr>';
+            }
 
-            if(dados.descontos && dados.descontos.length > 0) {
-                dados.descontos.forEach(d => {
-                    const corValor = d.total_receber < 0 ? 'text-danger' : 'text-success';
-                    const nomeExibicao = d.colaborador_username || d.nome || d.colaborador;
+            if(dados.descontos && dados.descontos.length > 0) {
+                dados.descontos.forEach(d => {
+                    const corValor = d.total_receber < 0 ? 'text-danger' : 'text-success';
+                    const nomeExibicao = d.colaborador_username || d.nome || d.colaborador;
 
-                    tDesc.innerHTML += `
-                        <tr>
-                            <td>${nomeExibicao}</td>
-                            <td>${d.dias_uteis}</td>
-                            <td>${d.qtd_faltas}</td>
-                            <td>R$ ${parseFloat(d.valor_diario).toFixed(2)}</td>
-                            <td class="text-danger fw-bold">R$ ${parseFloat(d.valor_desconto).toFixed(2)}</td>
-                            <td class="fw-bold ${corValor}">R$ ${parseFloat(d.total_receber).toFixed(2)}</td>
-                        </tr>`;
-                });
-            } else {
-                tDesc.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Nenhum dado processado.</td></tr>';
-            }
-        } catch(e) { 
-            console.error(e); 
-            tPrev.innerHTML = '<tr><td colspan="4" class="text-danger text-center">Erro ao gerar relatório.</td></tr>';
-            tDesc.innerHTML = `<tr><td colspan="6" class="text-danger text-center">${e.message || 'Erro desconhecido'}</td></tr>`;
-        }
-    }
+                    tDesc.innerHTML += `
+                        <tr>
+                            <td>${nomeExibicao}</td>
+                            <td>${d.dias_uteis}</td>
+                            <td>${d.qtd_faltas}</td>
+                            <td>R$ ${parseFloat(d.valor_diario).toFixed(2)}</td>
+                            <td class="text-danger fw-bold">R$ ${parseFloat(d.valor_desconto).toFixed(2)}</td>
+                            <td class="fw-bold ${corValor}">R$ ${parseFloat(d.total_receber).toFixed(2)}</td>
+                        </tr>`;
+                });
+            } else {
+                tDesc.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Nenhum dado processado.</td></tr>';
+            }
+        } catch(e) { 
+            console.error(e); 
+            tPrev.innerHTML = '<tr><td colspan="4" class="text-danger text-center">Erro ao gerar relatório.</td></tr>';
+            tDesc.innerHTML = `<tr><td colspan="6" class="text-danger text-center">${e.message || 'Erro desconhecido'}</td></tr>`;
+        }
+    }
 
-    async function baixarExcelFinanceiro() {
-        const ini = document.getElementById('finDataInicio').value;
-        const fim = document.getElementById('finDataFim').value;
-        
-        if(!ini || !fim) return alert('Selecione o período.');
-        
-        try {
-            // CORREÇÃO 3: Alterado de 'data_inicio'/'data_fim' para 'inicio'/'fim' também aqui
-            const blob = await apiFetch(`/presenca/relatorio-financeiro/excel/?inicio=${ini}&fim=${fim}`, { isBlob: true });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `Relatorio_Financeiro_${ini}_a_${fim}.xlsx`;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-        } catch(e) { alert('Erro ao baixar excel: ' + e.message); }
-    }
+    async function baixarExcelFinanceiro() {
+        const ini = document.getElementById('finDataInicio').value;
+        const fim = document.getElementById('finDataFim').value;
+        
+        if(!ini || !fim) return alert('Selecione o período.');
+        
+        try {
+            // CORREÇÃO 3: Alterado de 'data_inicio'/'data_fim' para 'inicio'/'fim' também aqui
+            const blob = await apiFetch(`/presenca/relatorio-financeiro/excel/?inicio=${ini}&fim=${fim}`, { isBlob: true });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Relatorio_Financeiro_${ini}_a_${fim}.xlsx`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        } catch(e) { alert('Erro ao baixar excel: ' + e.message); }
+    }
 
-    </script>
+    </script>
 </body>
 </html>

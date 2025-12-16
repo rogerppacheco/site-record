@@ -2408,6 +2408,146 @@ def enviar_comissao_whatsapp(request):
 
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+# Em site-record/crm_app/views.py
+
+# Em site-record/crm_app/views.py
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def enviar_resultado_campanha_whatsapp(request):
+    try:
+        campanha_id = request.data.get('campanha_id')
+        vendedores_dados = request.data.get('vendedores_dados', [])
+        
+        if not campanha_id or not vendedores_dados:
+            return Response({"error": "Dados incompletos."}, status=400)
+
+        campanha = Campanha.objects.get(id=campanha_id)
+        User = get_user_model()
+        svc = WhatsAppService() 
+        
+        # 1. Carregar TODAS as regras da campanha ordenadas (Menor -> Maior)
+        # Exemplo: [Meta 20, Meta 40, Meta 60]
+        regras_ordenadas = list(campanha.regras_meta.all().order_by('meta'))
+        
+        # Define a meta máxima absoluta da campanha
+        meta_maxima_absoluta = regras_ordenadas[-1].meta if regras_ordenadas else campanha.meta_vendas
+
+        sucessos = 0
+        erros = []
+        periodo_str = f"{campanha.data_inicio.strftime('%d/%m')} até {campanha.data_fim.strftime('%d/%m')}"
+        
+        for item in vendedores_dados:
+            vendedor_id = item.get('vendedor_id')
+            try:
+                vendedor = User.objects.get(id=vendedor_id)
+                if not vendedor.tel_whatsapp:
+                    erros.append(f"{vendedor.username}: Sem Zap.")
+                    continue
+
+                vendas_validas = int(item.get('vendas_validas', 0))
+                
+                # --- LÓGICA DE RECALCULO DE FAIXAS (Backend Source of Truth) ---
+                meta_atual = 0
+                premio_atual = 0.0
+                proxima_meta_obj = None
+                
+                if regras_ordenadas:
+                    # Percorre a escada para descobrir onde o vendedor está
+                    for regra in regras_ordenadas:
+                        if vendas_validas >= regra.meta:
+                            # Bateu essa faixa, atualiza o status atual
+                            meta_atual = regra.meta
+                            premio_atual = float(regra.valor_premio)
+                        else:
+                            # Se as vendas são menores que esta regra, esta é a PRÓXIMA meta
+                            proxima_meta_obj = regra
+                            break # Encontramos o próximo degrau, paramos de procurar
+                else:
+                    # Fallback para campanhas legadas (sem faixas múltiplas)
+                    if vendas_validas >= campanha.meta_vendas:
+                        meta_atual = campanha.meta_vendas
+                        premio_atual = float(campanha.valor_premio)
+                    else:
+                        # Se não bateu a única meta, ela vira a próxima
+                        proxima_meta_obj = type('obj', (object,), {'meta': campanha.meta_vendas, 'valor_premio': campanha.valor_premio})
+
+                # Formatador de Moeda
+                def fmt_real(val): return f"R$ {float(val):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+                # --- CONSTRUÇÃO DO TEXTO INCENTIVADOR ---
+                primeiro_nome = vendedor.first_name.split()[0].title() if vendedor.first_name else "Campeão(a)"
+                
+                msg = f"🚀 *PERFORMANCE: {campanha.nome}*\n"
+                msg += f"🗓️ {periodo_str}\n\n"
+                msg += f"Olá, *{primeiro_nome}*! Aqui está sua parcial:\n\n"
+                msg += f"📊 *Vendas Válidas:* {vendas_validas}\n"
+
+                # CENÁRIO 1: ESTÁ NO MEIO DA JORNADA (Bateu uma, falta outra)
+                if premio_atual > 0 and proxima_meta_obj:
+                    faltam = int(proxima_meta_obj.meta) - vendas_validas
+                    diferenca_grana = float(proxima_meta_obj.valor_premio) - premio_atual
+                    
+                    msg += f"✅ *Meta Batida:* {meta_atual} vendas\n"
+                    msg += f"💰 *JÁ GARANTIDO:* {fmt_real(premio_atual)}\n\n"
+                    msg += f"🔥 *VOCÊ ESTÁ QUASE LÁ!*\n"
+                    msg += f"Faltam só *{faltam} vendas* para o próximo nível ({proxima_meta_obj.meta})!\n"
+                    msg += f"🚀 *Acelera!* Se bater essa meta, seu prêmio sobe para *{fmt_real(proxima_meta_obj.valor_premio)}*.\n"
+                    msg += f"(Isso é *{fmt_real(diferenca_grana)} a mais* no seu bolso! 💵)"
+
+                # CENÁRIO 2: LENDÁRIO (Bateu a última faixa disponível)
+                elif premio_atual > 0 and not proxima_meta_obj:
+                    msg += f"🏆 *LENDÁRIO! VOCÊ ZEROU A CAMPANHA!*\n"
+                    msg += f"✅ Atingiu o topo máximo de {meta_atual} vendas.\n"
+                    msg += f"💰 *PRÊMIO MÁXIMO:* {fmt_real(premio_atual)}\n\n"
+                    msg += f"⭐ Parabéns pela performance incrível! Você é referência."
+
+                # CENÁRIO 3: INICIANTE (Não bateu a primeira faixa ainda)
+                else:
+                    # A próxima meta é a primeira de todas
+                    meta_alvo = proxima_meta_obj.meta if proxima_meta_obj else meta_maxima_absoluta
+                    valor_alvo = proxima_meta_obj.valor_premio if proxima_meta_obj else 0.0
+                    faltam = int(meta_alvo) - vendas_validas
+                    
+                    msg += f"⚠️ *Status:* Em busca da primeira meta!\n"
+                    msg += f"🎯 *Alvo:* {meta_alvo} vendas\n"
+                    msg += f"⚡ *FALTAM APENAS {faltam} VENDAS!*\n\n"
+                    msg += f"💰 Bata essa meta e garanta *{fmt_real(valor_alvo)}*.\n"
+                    msg += f"💪 *É totalmente possível!* Foque nos clientes pendentes e vamos buscar esse resultado!"
+
+                msg += "\n\n_Atualizado em: " + timezone.localtime().strftime('%d/%m às %H:%M') + "_"
+
+                # --- GERAÇÃO DA IMAGEM ---
+                # Prepara os dados limpos para o gerador de imagem
+                dados_card = {
+                    'vendedor': primeiro_nome,
+                    'vendas': vendas_validas,
+                    'premio_atual': premio_atual,
+                    'meta_atual': meta_atual,
+                    'prox_meta': proxima_meta_obj.meta if proxima_meta_obj else None,
+                    'prox_premio': proxima_meta_obj.valor_premio if proxima_meta_obj else None,
+                    'campanha': campanha.nome
+                }
+                
+                img_b64 = svc.gerar_card_campanha_b64(dados_card)
+
+                # --- ENVIO ---
+                if img_b64:
+                    svc.enviar_imagem_b64(vendedor.tel_whatsapp, img_b64, caption=msg)
+                else:
+                    svc.enviar_mensagem_texto(vendedor.tel_whatsapp, msg)
+                
+                sucessos += 1
+                
+            except Exception as e:
+                erros.append(f"Erro ID {vendedor_id}: {e}")
+                logger.error(f"Erro envio campanha: {e}")
+
+        return Response({"mensagem": f"Enviados: {sucessos}. Erros: {len(erros)}", "erros": erros})
+
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
 
 # --- NOVA API DE PAINEL DE PERFORMANCE ---
 # crm_app/views.py (Substitua a classe PainelPerformanceView inteira)
@@ -2752,78 +2892,77 @@ def listar_grupos_whatsapp_api(request):
 def relatorio_resultado_campanha(request, campanha_id):
     try:
         campanha = Campanha.objects.get(id=campanha_id)
+        # Ordena faixas da MAIOR para a MENOR para achar a atingida mais fácil
+        faixas_premiacao = campanha.regras_meta.all().order_by('-meta') 
         
-        # 1. Filtro Básico: Vendas criadas dentro do período da campanha
         filtros = Q(
             data_criacao__date__gte=campanha.data_inicio,
             data_criacao__date__lte=campanha.data_fim,
             ativo=True
         )
-
-        # 2. Filtro de Meta (Bruta ou Líquida/Instalada)
         if campanha.tipo_meta == 'LIQUIDA':
-            # Considera apenas vendas que já têm data de instalação
-            filtros &= Q(data_instalacao__isnull=False)
-        
-        # 3. Filtro de Canal (se não for TODOS)
+            filtros &= Q(status_esteira__nome__iexact='INSTALADA')
         if campanha.canal_alvo != 'TODOS':
-            # Supondo que o canal esteja no modelo Venda ou no Vendedor
-            # Ajuste 'vendedor__canal' conforme seu modelo real de Usuario/Venda
             filtros &= Q(vendedor__canal=campanha.canal_alvo)
 
-        # 4. Filtro de Planos Específicos (Many-to-Many)
         planos_validos = campanha.planos_elegiveis.all()
-        if planos_validos.exists():
-            filtros &= Q(plano__in=planos_validos)
-
-        # 5. Filtro de Pagamentos Específicos (Many-to-Many)
+        if planos_validos.exists(): filtros &= Q(plano__in=planos_validos)
         pgtos_validos = campanha.formas_pagamento_elegiveis.all()
-        if pgtos_validos.exists():
-            filtros &= Q(forma_pagamento__in=pgtos_validos)
+        if pgtos_validos.exists(): filtros &= Q(forma_pagamento__in=pgtos_validos)
 
-        # --- PROCESSAMENTO DOS DADOS ---
-        # Agrupa por vendedor e conta
         vendas = Venda.objects.filter(filtros).values(
-            'vendedor__id', 
-            'vendedor__first_name', 
-            'vendedor__last_name',
-            'vendedor__username'
+            'vendedor__id', 'vendedor__first_name', 'vendedor__last_name', 'vendedor__username'
         ).annotate(total_vendas=Count('id')).order_by('-total_vendas')
 
         resultado = []
         ranking = 1
+        # Meta máxima apenas para desenhar a barra de progresso visual
+        meta_maxima_visual = campanha.meta_vendas if campanha.meta_vendas > 0 else 1
 
         for v in vendas:
             nome_vendedor = f"{v['vendedor__first_name']} {v['vendedor__last_name']}".strip() or v['vendedor__username']
             qtd = v['total_vendas']
-            meta = campanha.meta_vendas
-            atingiu = qtd >= meta
             
-            # Se atingiu a meta, ganha o prêmio (valor fixo configurado na campanha)
-            premio = campanha.valor_premio if atingiu else 0
+            premio_receber = 0.0
+            meta_alcancada = 0 # Nova variável para guardar a meta exata batida
+            
+            # 1. Lógica de Faixas (Escalonada)
+            if faixas_premiacao.exists():
+                for faixa in faixas_premiacao:
+                    if qtd >= faixa.meta:
+                        premio_receber = float(faixa.valor_premio)
+                        meta_alcancada = faixa.meta # Guarda ex: 20 (mesmo que a max seja 60)
+                        break 
+            # 2. Lógica Simples (Legado)
+            else:
+                if qtd >= campanha.meta_vendas:
+                    premio_receber = float(campanha.valor_premio)
+                    meta_alcancada = campanha.meta_vendas
 
+            percentual = round((qtd / meta_maxima_visual) * 100, 1)
+            
             resultado.append({
                 'ranking': ranking,
+                'vendedor_id': v['vendedor__id'], # Importante para o checkbox funcionar
                 'vendedor': nome_vendedor,
                 'vendas_validas': qtd,
-                'meta': meta,
-                'percentual': round((qtd / meta) * 100, 1) if meta > 0 else 0,
-                'atingiu_meta': atingiu,
-                'premio_receber': premio
+                'meta': meta_maxima_visual, # Para barra de progresso
+                'meta_alcancada': meta_alcancada, # NOVA CAMPO: Qual meta ele realmente bateu (ex: 20)
+                'percentual': percentual,
+                'atingiu_meta': premio_receber > 0,
+                'premio_receber': premio_receber
             })
             ranking += 1
 
         return Response({
             'campanha': campanha.nome,
-            'periodo': f"{campanha.data_inicio} a {campanha.data_fim}",
+            'periodo': f"{campanha.data_inicio.strftime('%d/%m/%Y')} a {campanha.data_fim.strftime('%d/%m/%Y')}",
             'tipo': campanha.get_tipo_meta_display(),
             'ranking': resultado
         })
 
-    except Campanha.DoesNotExist:
-        return Response({'error': 'Campanha não encontrada'}, status=404)
-    except Exception as e:
-        return Response({'error': str(e)}, status=500)
+    except Campanha.DoesNotExist: return Response({'error': 'Campanha não encontrada'}, status=404)
+    except Exception as e: return Response({'error': str(e)}, status=500)
     
 class LancamentoFinanceiroViewSet(viewsets.ModelViewSet):
     queryset = LancamentoFinanceiro.objects.all()

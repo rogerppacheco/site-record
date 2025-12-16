@@ -41,6 +41,7 @@ from .views import (
     # NOVAS VIEWS (Mapas, ZAP, Performance)
     api_verificar_whatsapp,
     enviar_comissao_whatsapp,
+    enviar_resultado_campanha_whatsapp, # <--- IMPORTAÇÃO ADICIONADA
     ImportarKMLView,        
     ImportarDFVView,
     WebhookWhatsAppView,  
@@ -58,8 +59,8 @@ from .views import (
     # --- NOVAS VIEWS DE CONFIRMAÇÃO E REVERSÃO DE DESCONTOS ---
     PendenciasDescontoView,
     ConfirmarDescontosEmMassaView,
-    HistoricoDescontosAutoView,   # <--- NOVO
-    ReverterDescontoMassaView     # <--- NOVO
+    HistoricoDescontosAutoView,    # <--- NOVO
+    ReverterDescontoMassaView      # <--- NOVO
 )
 
 router = DefaultRouter()
@@ -94,6 +95,7 @@ urlpatterns = [
     path('campanhas/<int:pk>/', CampanhaDetailView.as_view(), name='campanha-detail'),
     
     path('campanhas/<int:campanha_id>/resultado/', relatorio_resultado_campanha, name='resultado-campanha'),
+    path('campanhas/enviar-resultado-whatsapp/', enviar_resultado_campanha_whatsapp, name='enviar-resultado-campanha-whatsapp'), # <--- ROTA ADICIONADA
 
     path('status/', StatusCRMListCreateView.as_view(), name='status-list'),
     path('status/<int:pk>/', StatusCRMDetailView.as_view(), name='status-detail'),

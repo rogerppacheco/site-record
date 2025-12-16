@@ -1,14 +1,25 @@
 from rest_framework import serializers
+from django.db import transaction
 import re
 from .models import (
     Operadora, Plano, FormaPagamento, StatusCRM, MotivoPendencia,
     RegraComissao, Cliente, Venda, ImportacaoOsab, ImportacaoChurn,
     CicloPagamento, HistoricoAlteracaoVenda, Campanha,
-    ComissaoOperadora, Comunicado, LancamentoFinanceiro
+    ComissaoOperadora, Comunicado, LancamentoFinanceiro,
+    # Assumindo que RegraCampanha foi adicionada em .models conforme instruído
+    RegraCampanha 
 )
-from .models import GrupoDisparo # Importe o modelo
+from .models import GrupoDisparo 
 from usuarios.models import Usuario
 from usuarios.serializers import UsuarioSerializer
+
+
+# --- SERIALIZER PARA REGRAS DE CAMPANHA (FAIXAS) ---
+class RegraCampanhaSerializer(serializers.ModelSerializer):
+    """Serializer para as faixas de premiação dentro de uma Campanha."""
+    class Meta:
+        model = RegraCampanha
+        fields = ('id', 'meta', 'valor_premio')
 
 
 # --- SERIALIZERS BÁSICOS ---
@@ -29,10 +40,78 @@ class FormaPagamentoSerializer(serializers.ModelSerializer):
         model = FormaPagamento
         fields = ['id', 'nome', 'ativo', 'aplica_desconto']
 
+# --- CAMPANHA SERIALIZER (CORRIGIDO PARA SUPORTE ÀS FAIXAS) ---
 class CampanhaSerializer(serializers.ModelSerializer):
+    # Campo aninhado: indica que esperamos uma lista (many=True) de objetos RegraCampanha
+    regras_meta = RegraCampanhaSerializer(many=True, required=False) 
+    
+    # Campo M2M (Many to Many)
+    planos_elegiveis = serializers.PrimaryKeyRelatedField(many=True, queryset=Plano.objects.all(), required=False)
+    formas_pagamento_elegiveis = serializers.PrimaryKeyRelatedField(many=True, queryset=FormaPagamento.objects.all(), required=False)
+
     class Meta:
         model = Campanha
-        fields = '__all__'
+        fields = ('id', 'nome', 'data_inicio', 'data_fim', 
+                  'meta_vendas', 'valor_premio', 'tipo_meta', 
+                  'canal_alvo', 'planos_elegiveis', 'formas_pagamento_elegiveis', 
+                  'regras', 'ativo', 'data_criacao', 
+                  'regras_meta') # <-- Incluído o campo aninhado
+
+    def create(self, validated_data):
+        # 1. Pop a lista de faixas do dicionário principal
+        regras_data = validated_data.pop('regras_meta', [])
+        
+        # 2. Pop M2M fields para salvar depois
+        planos_data = validated_data.pop('planos_elegiveis', [])
+        pagamentos_data = validated_data.pop('formas_pagamento_elegiveis', [])
+        
+        # 3. Cria o objeto Campanha principal
+        with transaction.atomic():
+            campanha = Campanha.objects.create(**validated_data)
+            
+            # 4. Cria os objetos RegraCampanha (Faixas)
+            for regra_data in regras_data:
+                RegraCampanha.objects.create(campanha=campanha, **regra_data)
+                
+            # 5. Salva os relacionamentos M2M
+            campanha.planos_elegiveis.set(planos_data)
+            campanha.formas_pagamento_elegiveis.set(pagamentos_data)
+        
+        return campanha
+
+    def update(self, instance, validated_data):
+        # 1. Pop a lista de faixas para atualização
+        regras_data = validated_data.pop('regras_meta', None)
+        
+        # 2. Pop M2M fields
+        planos_data = validated_data.pop('planos_elegiveis', None)
+        pagamentos_data = validated_data.pop('formas_pagamento_elegiveis', None)
+
+        with transaction.atomic():
+            # 3. Atualiza Campanha principal (campos simples)
+            for key, value in validated_data.items():
+                setattr(instance, key, value)
+            
+            instance.save()
+            
+            # 4. Atualiza os relacionamentos M2M
+            if planos_data is not None:
+                instance.planos_elegiveis.set(planos_data)
+            if pagamentos_data is not None:
+                instance.formas_pagamento_elegiveis.set(pagamentos_data)
+
+            # 5. Atualiza/Substitui Faixas de Premiação
+            if regras_data is not None:
+                # Exclui todas as regras antigas desta campanha
+                instance.regras_meta.all().delete()
+                
+                # Cria as novas regras enviadas pelo frontend
+                for regra_data in regras_data:
+                    RegraCampanha.objects.create(campanha=instance, **regra_data)
+
+        return instance
+# --- FIM CAMPANHA SERIALIZER ---
+
 
 class StatusCRMSerializer(serializers.ModelSerializer):
     class Meta:
