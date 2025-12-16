@@ -6,6 +6,7 @@ from rest_framework.routers import DefaultRouter
 from usuarios.views import LoginView, DefinirNovaSenhaView
 from .views import GrupoDisparoViewSet, EnviarImagemPerformanceView
 from .views import listar_grupos_whatsapp_api 
+from .views import VerificarPermissaoGestaoView
 
 from .views import (
     # ViewSets
@@ -144,4 +145,5 @@ urlpatterns = [
     path('performance-painel/exportar/', ExportarPerformanceExcelView.as_view(), name='exportar-performance-excel'),
     path('performance-painel/enviar-whatsapp/', EnviarImagemPerformanceView.as_view(), name='enviar-performance-zap'),
     path('integracao/listar-grupos/', listar_grupos_whatsapp_api, name='listar-grupos-zapi'),
+    path('verificar-permissao-gestao/', VerificarPermissaoGestaoView.as_view(), name='verificar-permissao-gestao'),
 ]

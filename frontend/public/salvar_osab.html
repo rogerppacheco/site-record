@@ -81,6 +81,18 @@
                         <input class="form-control form-control-lg" type="file" id="fileOsab" accept=".xlsx,.xls,.xlsb" required>
                     </div>
 
+                    <div id="container-opcao-whatsapp" style="display: none; margin-bottom: 20px; padding: 15px; background-color: #f1f3f5; border-radius: 8px; border-left: 5px solid #198754;">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="checkEnviarWhatsapp" checked style="cursor: pointer;">
+                            <label class="form-check-label fw-bold text-success" for="checkEnviarWhatsapp" style="cursor: pointer;">
+                                <i class="bi bi-whatsapp"></i> Enviar notificações automáticas aos vendedores?
+                            </label>
+                        </div>
+                        <small class="text-muted d-block mt-1 ms-1">
+                            Se desmarcado, o sistema atualizará os status no CRM <strong>silenciosamente</strong>, sem enviar mensagens.
+                        </small>
+                    </div>
+
                     <div class="d-grid">
                         <button type="button" class="btn btn-warning btn-lg fw-bold" onclick="enviarOsab()">
                             <i class="bi bi-cloud-upload-fill"></i> Iniciar Importação
@@ -104,6 +116,33 @@
     <script>
         function logout() { localStorage.removeItem('accessToken'); window.location.href = '/'; }
 
+        // --- LÓGICA DE PERMISSÃO CORRIGIDA (VIA API) ---
+        document.addEventListener("DOMContentLoaded", async function() {
+            const token = localStorage.getItem('accessToken');
+            
+            if (token) {
+                try {
+                    // Consulta o backend para saber se o usuário pode ver a opção
+                    // Certifique-se de ter criado a rota e a view 'VerificarPermissaoGestaoView'
+                    const response = await axios.get('/api/crm/verificar-permissao-gestao/', {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+
+                    // Se a API retornar que é gestão, exibe o container
+                    if (response.data && response.data.eh_gestao === true) {
+                        const container = document.getElementById('container-opcao-whatsapp');
+                        if(container) {
+                            container.style.display = 'block';
+                            console.log("Modo Gestão Ativado: Opção de WhatsApp visível.");
+                        }
+                    }
+                } catch (e) {
+                    // Se der erro (ex: 403, 404), apenas ignora e mantém oculto (seguro)
+                    console.warn("Verificação de permissão falhou ou rota não existe. Checkbox permanecerá oculto.", e);
+                }
+            }
+        });
+
         async function enviarOsab() {
             const fileInput = document.getElementById('fileOsab');
             if(fileInput.files.length === 0) { alert('Selecione um arquivo.'); return; }
@@ -121,6 +160,16 @@
             const formData = new FormData();
             formData.append('file', fileInput.files[0]);
 
+            // --- LÓGICA DO CHECKBOX ---
+            const checkZap = document.getElementById('checkEnviarWhatsapp');
+            // Verifica se o elemento está visível no DOM
+            const isVisible = checkZap && checkZap.offsetParent !== null;
+            // Se estiver visível, usa o valor dele. Se estiver oculto (vendedor), assume TRUE por padrão.
+            const deveEnviar = isVisible ? checkZap.checked : true;
+            
+            formData.append('enviar_whatsapp', deveEnviar);
+            // --------------------------
+
             const token = localStorage.getItem('accessToken');
             
             try {
@@ -133,9 +182,7 @@
 
                 const data = response.data;
 
-                // ============================================================
-                // NOVA LÓGICA: Verifica se veio o Excel e força o download
-                // ============================================================
+                // Download Excel automático (Log)
                 if (data.arquivo_excel_b64) {
                     try {
                         const link = document.createElement('a');
@@ -146,12 +193,10 @@
                         document.body.removeChild(link);
                     } catch (e) {
                         console.error("Erro ao baixar excel:", e);
-                        alert("A importação ocorreu, mas houve um erro ao baixar o log automático.");
                     }
                 }
-                // ============================================================
                 
-                // Monta HTML de sucesso com estatísticas
+                // Monta HTML de sucesso
                 let html = `
                     <div class="result-box">
                         <h5 class="text-success fw-bold"><i class="bi bi-check-circle-fill"></i> Importação Concluída!</h5>
@@ -161,7 +206,7 @@
                             <li>🆕 Criados (Novas Vendas): <strong>${data.criados || 0}</strong></li>
                             <li>🔄 Atualizados (Status): <strong>${data.atualizados || 0}</strong></li>
                             <li>🔍 Encontrados na Base: <strong>${data.vendas_encontradas || 0}</strong></li>
-                            <li class="text-muted">⚠️ Status Não Mapeado: <strong>${data.status_nao_mapeado || 0}</strong></li>
+                            <li>📲 Mensagens Enviadas: <strong>${deveEnviar ? 'Sim (Background)' : 'Não (Silencioso)'}</strong></li>
                         </ul>
                         ${data.arquivo_excel_b64 ? '<div class="mt-3 text-primary"><small><i class="bi bi-download"></i> O download do log detalhado iniciou automaticamente.</small></div>' : ''}
                     </div>
@@ -195,8 +240,6 @@
             } finally {
                 loading.style.display = 'none';
                 btn.disabled = false;
-                // Limpa o input se quiser forçar novo upload
-                // fileInput.value = ''; 
             }
         }
     </script>

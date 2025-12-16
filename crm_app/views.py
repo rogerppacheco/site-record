@@ -11,7 +11,8 @@ import os
 import calendar
 import re
 import xml.etree.ElementTree as ET
-import unicodedata 
+import unicodedata
+import threading
 
 # --- CORREÇÃO CRÍTICA: Importar transaction e IntegrityError ---
 from django.db import transaction, IntegrityError
@@ -1574,6 +1575,9 @@ class EnviarExtratoEmailView(APIView):
             logger.error(f"Erro geral envio email: {e}")
             return Response({"error": str(e)}, status=500)
 
+# Adicione este import no topo do arquivo se não tiver
+import threading
+
 class ImportacaoOsabView(APIView):
     permission_classes = [CheckAPIPermission]
     resource_name = 'importacao_osab'
@@ -1588,24 +1592,88 @@ class ImportacaoOsabView(APIView):
         text = str(text).upper().strip()
         return ''.join(c for c in unicodedata.normalize('NFD', text) if unicodedata.category(c) != 'Mn')
 
+    # Método de envio em background
+    def _enviar_mensagens_background(self, lista_mensagens):
+        svc = WhatsAppService()
+        for telefone, texto in lista_mensagens:
+            try:
+                svc.enviar_mensagem_texto(telefone, texto)
+            except Exception as e:
+                print(f"Erro envio background thread: {e}")
+
     def post(self, request, *args, **kwargs):
         file_obj = request.FILES.get('file')
         if not file_obj: return Response({'error': 'Nenhum arquivo enviado.'}, status=400)
         
-        # --- FUNÇÃO DATA SEGURA ---
-        def safe_date_convert(val):
-            try:
-                if pd.isna(val) or val == "" or val is None: return None
-                if isinstance(val, (datetime, date, pd.Timestamp)):
-                    return val.date() if isinstance(val, (datetime, pd.Timestamp)) else val
-                if isinstance(val, (float, int)):
-                    if val < 100: return None 
-                    return (datetime(1899, 12, 30) + timedelta(days=float(val))).date()
-                if isinstance(val, str):
-                    val = val.strip()
-                    return pd.to_datetime(val, dayfirst=True, errors='coerce').date()
-            except: return None
-            return None
+        # --- LÓGICA DE PERMISSÃO DE ENVIO ---
+        opcao_front = str(request.data.get('enviar_whatsapp', 'true')).lower() == 'true'
+        usuario = request.user
+        
+        # Só Diretoria e Admin podem optar por NÃO enviar. Os demais são forçados a enviar.
+        pode_decidir = is_member(usuario, ['Diretoria', 'Admin'])
+        flag_enviar_whatsapp = opcao_front if pode_decidir else True
+        
+        if not flag_enviar_whatsapp:
+            print(f"--- Importação OSAB SILENCIOSA iniciada por: {usuario.username} ---")
+
+        # --- LEITURA DO ARQUIVO ---
+        try:
+            df = None
+            if file_obj.name.endswith('.xlsb'): df = pd.read_excel(file_obj, engine='pyxlsb')
+            elif file_obj.name.endswith(('.xlsx', '.xls')): df = pd.read_excel(file_obj)
+            else: return Response({'error': 'Formato inválido.'}, status=400)
+        except Exception as e: return Response({'error': f'Erro leitura arquivo: {str(e)}'}, status=400)
+        
+        # Otimização de dados
+        df.columns = [str(col).strip().upper() for col in df.columns]
+        
+        # Vetorização de Datas (Performance)
+        cols_data = ['DT_REF', 'DATA_ABERTURA', 'DATA_FECHAMENTO', 'DATA_AGENDAMENTO']
+        for col in cols_data:
+            if col in df.columns:
+                df[col] = pd.to_datetime(df[col], dayfirst=True, errors='coerce').dt.date
+        
+        df = df.replace({np.nan: None, pd.NaT: None})
+
+        # --- 1. PREPARAÇÃO (Caches e Filtros) ---
+        status_esteira_map = {s.nome.upper(): s for s in StatusCRM.objects.filter(tipo='Esteira')}
+        status_tratamento_map = {s.nome.upper(): s for s in StatusCRM.objects.filter(tipo='Tratamento')}
+        
+        mapa_pagamentos = {}
+        for fp in FormaPagamento.objects.filter(ativo=True):
+            mapa_pagamentos[self._normalize_text(fp.nome)] = fp
+        
+        motivo_pendencia_map = {}
+        for m in MotivoPendencia.objects.all():
+            match = re.match(r'^(\d+)', m.nome.strip())
+            if match: motivo_pendencia_map[match.group(1)] = m
+        
+        motivo_padrao_osab, _ = MotivoPendencia.objects.get_or_create(nome="VALIDAR OSAB", defaults={'tipo_pendencia': 'Operacional'})
+        motivo_sem_agenda, _ = MotivoPendencia.objects.get_or_create(nome="APROVISIONAMENTO S/ DATA", defaults={'tipo_pendencia': 'Sistêmica'})
+
+        # Filtro de Pedidos: Carrega só o necessário do banco
+        lista_pedidos_raw = df['PEDIDO'].dropna().astype(str).tolist() if 'PEDIDO' in df.columns else []
+        lista_pedidos_limpos = set(p.replace('.0', '').strip() for p in lista_pedidos_raw)
+
+        vendas_filtradas = Venda.objects.filter(
+            ativo=True, 
+            ordem_servico__in=lista_pedidos_limpos
+        ).select_related('vendedor', 'status_esteira', 'status_tratamento')
+        
+        vendas_map = {self._clean_key(v.ordem_servico): v for v in vendas_filtradas}
+        osab_bot = get_osab_bot_user()
+
+        osab_existentes = {
+            obj.documento: obj for obj in ImportacaoOsab.objects.filter(documento__in=lista_pedidos_limpos)
+        }
+
+        osab_criar = []
+        osab_atualizar = []
+        vendas_atualizar = []
+        historicos_criar = []
+        
+        # Fila de mensagens
+        fila_mensagens_whatsapp = [] 
 
         coluna_map = {
             'PRODUTO': 'produto', 'UF': 'uf', 'DT_REF': 'dt_ref', 'PEDIDO': 'documento',
@@ -1632,91 +1700,44 @@ class ImportacaoOsabView(APIView):
             'AGENDADO': 'AGENDADO', 'DRAFT': 'DRAFT', 
             'AGUARDANDO PAGAMENTO': 'AGUARDANDO PAGAMENTO'
         }
-
-        try:
-            df = None
-            if file_obj.name.endswith('.xlsb'): df = pd.read_excel(file_obj, engine='pyxlsb')
-            elif file_obj.name.endswith(('.xlsx', '.xls')): df = pd.read_excel(file_obj)
-            else: return Response({'error': 'Formato inválido.'}, status=400)
-        except Exception as e: return Response({'error': f'Erro leitura arquivo: {str(e)}'}, status=400)
-        
-        df.columns = [str(col).strip().upper() for col in df.columns]
-        df = df.replace({np.nan: None, pd.NaT: None})
-
-        # --- 1. PREPARAÇÃO DE DADOS EM CACHE (OTIMIZAÇÃO) ---
-        status_esteira_map = {s.nome.upper(): s for s in StatusCRM.objects.filter(tipo='Esteira')}
-        status_tratamento_map = {s.nome.upper(): s for s in StatusCRM.objects.filter(tipo='Tratamento')}
-        
-        mapa_pagamentos = {}
-        for fp in FormaPagamento.objects.filter(ativo=True):
-            mapa_pagamentos[self._normalize_text(fp.nome)] = fp
-        
-        motivo_pendencia_map = {}
-        for m in MotivoPendencia.objects.all():
-            match = re.match(r'^(\d+)', m.nome.strip())
-            if match:
-                motivo_pendencia_map[match.group(1)] = m
-        
-        motivo_padrao_osab, _ = MotivoPendencia.objects.get_or_create(nome="VALIDAR OSAB", defaults={'tipo_pendencia': 'Operacional'})
-        motivo_sem_agenda, _ = MotivoPendencia.objects.get_or_create(nome="APROVISIONAMENTO S/ DATA", defaults={'tipo_pendencia': 'Sistêmica'})
-
-        # Carrega vendas existentes em memória
-        vendas_com_os = Venda.objects.filter(ativo=True).exclude(ordem_servico__isnull=True).exclude(ordem_servico='')
-        vendas_map = {self._clean_key(v.ordem_servico): v for v in vendas_com_os}
-        osab_bot = get_osab_bot_user()
-        zap_service = WhatsAppService()
-
-        # Carrega registros da OSAB existentes para evitar update_or_create por linha
-        docs_excel = df['PEDIDO'].dropna().astype(str).apply(lambda x: x.replace('.0','').strip()).unique()
-        osab_existentes = {
-            obj.documento: obj for obj in ImportacaoOsab.objects.filter(documento__in=docs_excel)
-        }
-
-        # Listas para Bulk Operations
-        osab_criar = []
-        osab_atualizar = []
-        vendas_atualizar = []
-        historicos_criar = []
         
         report = {
             "status": "sucesso", "total_registros": len(df), "criados": 0, "atualizados": 0, 
             "vendas_encontradas": 0, "ja_corretos": 0, "erros": [], "logs_detalhados": [], "arquivo_excel_b64": None
         }
 
-        # --- 2. PROCESSAMENTO EM MEMÓRIA ---
-        for index, row in df.iterrows():
+        # --- 2. LOOP PRINCIPAL ---
+        records = df.to_dict('records')
+
+        for index, row in enumerate(records):
             log_item = {"linha": index + 2, "pedido": str(row.get('PEDIDO')), "status_osab": str(row.get('SITUACAO')), "resultado": "", "detalhe": ""}
             try:
-                # A. Preparar ImportacaoOsab (Sem salvar ainda)
-                colunas_validas = {k: v for k, v in coluna_map.items() if k in df.columns}
+                # A. ImportacaoOsab
                 dados_model = {}
-                for col_planilha, campo_model in colunas_validas.items():
+                for col_planilha, campo_model in coluna_map.items():
                     val = row.get(col_planilha)
                     if col_planilha == 'PEDIDO': val = self._clean_key(val)
-                    if campo_model in ['dt_ref', 'data_abertura', 'data_fechamento', 'data_agendamento']: val = safe_date_convert(val)
                     dados_model[campo_model] = val
                 
                 doc_chave = dados_model.get('documento')
                 if not doc_chave: 
                     log_item["resultado"] = "IGNORADO"; report["logs_detalhados"].append(log_item); continue
 
-                # Separa Criar vs Atualizar
                 if doc_chave in osab_existentes:
-                    obj_existente = osab_existentes[doc_chave]
-                    mudou_osab = False
-                    for key, val in dados_model.items():
-                        if getattr(obj_existente, key) != val:
-                            setattr(obj_existente, key, val)
-                            mudou_osab = True
-                    if mudou_osab:
-                        osab_atualizar.append(obj_existente)
+                    obj = osab_existentes[doc_chave]
+                    mudou = False
+                    for k, v in dados_model.items():
+                        if getattr(obj, k) != v:
+                            setattr(obj, k, v)
+                            mudou = True
+                    if mudou: osab_atualizar.append(obj)
                 else:
                     osab_criar.append(ImportacaoOsab(**dados_model))
 
-                # B. Lógica de Venda (CRM)
+                # B. Venda CRM
                 venda = vendas_map.get(doc_chave)
                 if not venda:
-                    log_item["resultado"] = "NAO_ENCONTRADO"; report["logs_detalhados"].append(log_item); continue
+                    log_item["resultado"] = "NAO_ENCONTRADO CRM"; report["logs_detalhados"].append(log_item); continue
                 
                 report["vendas_encontradas"] += 1
                 sit_osab_raw = str(row.get('SITUACAO', '')).strip().upper()
@@ -1729,9 +1750,9 @@ class ImportacaoOsabView(APIView):
                 
                 houve_alteracao = False
                 detalhes_hist = {}
-                motivos_ignorados = []
+                msg_whatsapp_desta_venda = None
 
-                # --- Regras de Negócio ---
+                # Regras de Status
                 is_fraude = "PAYMENT_NOT_AUTHORIZED" in sit_osab_raw
                 if not sit_osab_raw or is_fraude:
                     pgto_raw = self._normalize_text(row.get('MEIO_PAGAMENTO'))
@@ -1739,7 +1760,7 @@ class ImportacaoOsabView(APIView):
                         st_reprovado = status_tratamento_map.get("REPROVADO CARTÃO DE CRÉDITO")
                         if st_reprovado: target_status_tratamento = st_reprovado
                 elif sit_osab_raw == "EM APROVISIONAMENTO":
-                    dt_ag = safe_date_convert(row.get('DATA_AGENDAMENTO'))
+                    dt_ag = row.get('DATA_AGENDAMENTO') 
                     if dt_ag and dt_ag.year >= 2000:
                         target_status_esteira = status_esteira_map.get("AGENDADO")
                         target_data_agenda = dt_ag
@@ -1754,13 +1775,11 @@ class ImportacaoOsabView(APIView):
                         elif "REPROVADO" in sit_osab_raw: nome_est = "REPROVADO CARTÃO DE CRÉDITO"
                     if nome_est: target_status_esteira = status_esteira_map.get(nome_est)
 
-                # --- Aplicação das Regras (Em memória) ---
+                # Aplica Alterações
                 if target_status_tratamento and venda.status_tratamento != target_status_tratamento:
                     detalhes_hist['status_tratamento'] = f"De '{venda.status_tratamento}' para '{target_status_tratamento.nome}'"
                     venda.status_tratamento = target_status_tratamento
                     houve_alteracao = True
-
-                msg_whatsapp_fila = None 
 
                 if target_status_esteira:
                     if venda.status_esteira != target_status_esteira:
@@ -1771,33 +1790,30 @@ class ImportacaoOsabView(APIView):
                     
                     nome_est_upper = target_status_esteira.nome.upper()
 
-                    # Data Instalação
                     if 'INSTALADA' in nome_est_upper:
-                        nova_dt = safe_date_convert(row.get('DATA_FECHAMENTO'))
+                        nova_dt = row.get('DATA_FECHAMENTO')
                         if nova_dt and nova_dt.year >= 2000:
                             if not (venda.data_instalacao and venda.data_instalacao.year >= 2000) or venda.data_instalacao != nova_dt:
                                 detalhes_hist['data_instalacao'] = f"Nova: {nova_dt}"
                                 venda.data_instalacao = nova_dt
                                 houve_alteracao = True
-                        # Msg Inst
+                        # Msg Instalada
                         if houve_alteracao and venda.vendedor and venda.vendedor.tel_whatsapp:
                             dt_fmt = venda.data_instalacao.strftime('%d/%m') if venda.data_instalacao else "Hoje"
-                            msg_whatsapp_fila = f"✅ *VENDA INSTALADA (OSAB)*\n\n*Cliente:* {venda.cliente.nome_razao_social}\n*OS:* {venda.ordem_servico}\n*Data:* {dt_fmt}"
+                            msg_whatsapp_desta_venda = (venda.vendedor.tel_whatsapp, f"✅ *VENDA INSTALADA (OSAB)*\n\n*Cliente:* {venda.cliente.nome_razao_social}\n*OS:* {venda.ordem_servico}\n*Data:* {dt_fmt}")
 
-                    # Data Agendamento
                     elif 'AGENDADO' in nome_est_upper:
-                        nova_dt_ag = target_data_agenda or safe_date_convert(row.get('DATA_AGENDAMENTO'))
+                        nova_dt_ag = target_data_agenda or row.get('DATA_AGENDAMENTO')
                         if nova_dt_ag and nova_dt_ag.year >= 2000:
                             if not (venda.data_agendamento and venda.data_agendamento.year >= 2000) or venda.data_agendamento != nova_dt_ag:
                                 detalhes_hist['data_agendamento'] = f"Nova: {nova_dt_ag}"
                                 venda.data_agendamento = nova_dt_ag
                                 houve_alteracao = True
-                        # Msg Agend
+                        # Msg Agendada
                         if houve_alteracao and venda.vendedor and venda.vendedor.tel_whatsapp:
                             dt_fmt = venda.data_agendamento.strftime('%d/%m') if venda.data_agendamento else "S/D"
-                            msg_whatsapp_fila = f"📅 *VENDA AGENDADA (OSAB)*\n\n*Cliente:* {venda.cliente.nome_razao_social}\n*OS:* {venda.ordem_servico}\n*Data:* {dt_fmt}"
+                            msg_whatsapp_desta_venda = (venda.vendedor.tel_whatsapp, f"📅 *VENDA AGENDADA (OSAB)*\n\n*Cliente:* {venda.cliente.nome_razao_social}\n*OS:* {venda.ordem_servico}\n*Data:* {dt_fmt}")
 
-                    # Pendência
                     elif 'PENDEN' in nome_est_upper:
                         novo_motivo = target_motivo_pendencia
                         if not novo_motivo:
@@ -1808,10 +1824,9 @@ class ImportacaoOsabView(APIView):
                             detalhes_hist['motivo_pendencia'] = f"Novo: {novo_motivo.nome}"
                             venda.motivo_pendencia = novo_motivo
                             houve_alteracao = True
-                        
                         # Msg Pendencia
                         if houve_alteracao and venda.vendedor and venda.vendedor.tel_whatsapp:
-                            msg_whatsapp_fila = f"⚠️ *VENDA PENDENCIADA (OSAB)*\n\n*Cliente:* {venda.cliente.nome_razao_social}\n*OS:* {venda.ordem_servico}\n*Motivo:* {novo_motivo.nome}"
+                            msg_whatsapp_desta_venda = (venda.vendedor.tel_whatsapp, f"⚠️ *VENDA PENDENCIADA (OSAB)*\n\n*Cliente:* {venda.cliente.nome_razao_social}\n*OS:* {venda.ordem_servico}\n*Motivo:* {novo_motivo.nome}")
 
                 # Pagamento
                 pgto_osab_raw = row.get('MEIO_PAGAMENTO')
@@ -1821,22 +1836,21 @@ class ImportacaoOsabView(APIView):
                     if not novo_fp:
                         for k, v in mapa_pagamentos.items():
                             if pgto_norm in k or k in pgto_norm: novo_fp = v; break
-                    
                     if novo_fp and (not venda.forma_pagamento or venda.forma_pagamento.id != novo_fp.id):
                         detalhes_hist['forma_pagamento'] = f"Novo: {novo_fp.nome}"
                         venda.forma_pagamento = novo_fp
                         houve_alteracao = True
 
+                # Conclusão do Registro
                 if houve_alteracao:
                     log_item["resultado"] = "ATUALIZAR"
                     vendas_atualizar.append(venda)
                     historicos_criar.append(HistoricoAlteracaoVenda(venda=venda, usuario=osab_bot, alteracoes=detalhes_hist))
                     
-                    # Envio de Zap (Cuidado: Pode atrasar se forem muitos. Idealmente deveria ser Celery)
-                    if msg_whatsapp_fila:
-                        try:
-                            zap_service.enviar_mensagem_texto(venda.vendedor.tel_whatsapp, msg_whatsapp_fila)
-                        except: pass
+                    # --- SÓ ADICIONA PARA ENVIO SE A FLAG ESTIVER TRUE ---
+                    if msg_whatsapp_desta_venda and flag_enviar_whatsapp:
+                        fila_mensagens_whatsapp.append(msg_whatsapp_desta_venda)
+                    # -----------------------------------------------------
                 else:
                     log_item["resultado"] = "SEM_MUDANCA"
                     report["ja_corretos"] += 1
@@ -1847,28 +1861,27 @@ class ImportacaoOsabView(APIView):
                 log_item["resultado"] = "ERRO"
                 report["erros"].append(f"L{index}: {ex}")
 
-        # --- 3. PERSISTÊNCIA EM LOTE (BULK) - A PARTE RÁPIDA ---
+        # --- 3. PERSISTÊNCIA EM LOTE ---
         with transaction.atomic():
-            # A. Salvar OSAB (Milhares de registros em 2 queries)
-            if osab_criar:
-                ImportacaoOsab.objects.bulk_create(osab_criar, batch_size=2000)
-            
+            if osab_criar: ImportacaoOsab.objects.bulk_create(osab_criar, batch_size=2000)
             if osab_atualizar:
                 campos_osab = [f.name for f in ImportacaoOsab._meta.fields if f.name != 'id']
                 ImportacaoOsab.objects.bulk_update(osab_atualizar, campos_osab, batch_size=2000)
-
-            # B. Salvar Vendas
             if vendas_atualizar:
                 campos_venda = ['status_esteira', 'status_tratamento', 'data_instalacao', 'data_agendamento', 'forma_pagamento', 'motivo_pendencia']
                 Venda.objects.bulk_update(vendas_atualizar, campos_venda, batch_size=2000)
-            
-            # C. Salvar Histórico
             if historicos_criar:
                 HistoricoAlteracaoVenda.objects.bulk_create(historicos_criar, batch_size=2000)
 
         report["atualizados"] = len(vendas_atualizar)
+
+        # --- 4. DISPARO DE MENSAGENS (BACKGROUND THREAD) ---
+        if fila_mensagens_whatsapp:
+            t = threading.Thread(target=self._enviar_mensagens_background, args=(fila_mensagens_whatsapp,))
+            t.start()
+            print(f"Iniciado envio de {len(fila_mensagens_whatsapp)} mensagens em background.")
         
-        # Gerar Excel de Log (Opcional, se o arquivo for muito grande pode tirar para ganhar +1s)
+        # Gera Excel
         try:
             if report["logs_detalhados"]:
                 output = BytesIO()
@@ -3226,3 +3239,10 @@ class ReverterDescontoMassaView(APIView):
             return Response({'error': 'Lançamento não encontrado.'}, status=404)
         except Exception as e:
             return Response({'error': str(e)}, status=500)
+class VerificarPermissaoGestaoView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        # Reutiliza sua função is_member
+        eh_gestao = is_member(request.user, ['Diretoria', 'Admin'])
+        return Response({'eh_gestao': eh_gestao})
