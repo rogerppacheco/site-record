@@ -4,12 +4,11 @@ from django.views.generic import TemplateView
 from django.conf import settings
 from django.conf.urls.static import static
 
-
 # Importe a view do login
 from usuarios.views import LoginView
 # Importe a view do calendário
 from core.views import calendario_fiscal_view
-from crm_app.views import page_painel_performance # <--- Importe a função
+from crm_app.views import page_painel_performance
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -21,16 +20,11 @@ urlpatterns = [
 
     # APIS DO SISTEMA
     path('api/', include('djoser.urls')),
-    
-    # Rotas do app usuarios
     path('api/', include('usuarios.urls')), 
-
     path('api/presenca/', include('presenca.urls')),
     path('api/crm/', include('crm_app.urls')),
     path('api/osab/', include('osab.urls')),
     path('api/relatorios/', include('relatorios.urls')),
-    
-    # Se o app core tiver API
     path('api/core/', include('core.urls')), 
 
     # PÁGINAS FRONTEND
@@ -44,7 +38,7 @@ urlpatterns = [
     path('esteira/', TemplateView.as_view(template_name='public/esteira.html'), name='esteira'),
     path('comissionamento/', TemplateView.as_view(template_name='public/comissionamento.html'), name='comissionamento'),
 
-    # --- ROTA DA NOVA CENTRAL DE IMPORTAÇÕES (ESSENCIAL PARA CORRIGIR O 404) ---
+    # Central de Importações
     path('importacoes/', TemplateView.as_view(template_name='public/importacoes.html'), name='central-importacoes'),
 
     # Telas de Importação Específicas
@@ -54,13 +48,16 @@ urlpatterns = [
     path('importar-mapa/', TemplateView.as_view(template_name='public/importar_mapa.html'), name='importar-mapa'),
     path('importar-dfv/', TemplateView.as_view(template_name='public/importar_dfv.html'), name='page-importar-dfv'),
 
-    # CALENDÁRIO
+    # --- ADICIONE ESTA LINHA ---
+    path('importar-legado/', TemplateView.as_view(template_name='public/importar_legado.html'), name='importar-legado'),
+    # ---------------------------
+
+    # CALENDÁRIO & PAINEL
     path('calendario/', calendario_fiscal_view, name='calendario_fiscal_atual'),
     path('calendario/<int:ano>/<int:mes>/', calendario_fiscal_view, name='calendario_fiscal'),
     path('painel-performance/', page_painel_performance, name='painel_performance'),
 ]
 
-# Configuração para servir arquivos estáticos e media em DEBUG (Crucial para CSS/Imagens)
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
