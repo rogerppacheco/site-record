@@ -1586,7 +1586,6 @@ class ImportacaoOsabView(APIView):
     def _normalize_text(self, text):
         if not text: return ""
         text = str(text).upper().strip()
-        import unicodedata
         return ''.join(c for c in unicodedata.normalize('NFD', text) if unicodedata.category(c) != 'Mn')
 
     def post(self, request, *args, **kwargs):
@@ -1625,7 +1624,6 @@ class ImportacaoOsabView(APIView):
             'GERENCIA': 'gerencia', 'NM_GC': 'gc',
         }
 
-        # Status básicos (Regras complexas são tratadas no loop)
         STATUS_MAP = {
             'CONCLUÍDO': 'INSTALADA', 'CONCLUIDO': 'INSTALADA', 'EXECUTADO': 'INSTALADA',
             'PENDÊNCIA CLIENTE': 'PENDENCIADA', 'PENDENCIA CLIENTE': 'PENDENCIADA',
@@ -1645,7 +1643,7 @@ class ImportacaoOsabView(APIView):
         df.columns = [str(col).strip().upper() for col in df.columns]
         df = df.replace({np.nan: None, pd.NaT: None})
 
-        # --- CACHES ---
+        # --- 1. PREPARAÇÃO DE DADOS EM CACHE (OTIMIZAÇÃO) ---
         status_esteira_map = {s.nome.upper(): s for s in StatusCRM.objects.filter(tipo='Esteira')}
         status_tratamento_map = {s.nome.upper(): s for s in StatusCRM.objects.filter(tipo='Tratamento')}
         
@@ -1654,35 +1652,42 @@ class ImportacaoOsabView(APIView):
             mapa_pagamentos[self._normalize_text(fp.nome)] = fp
         
         motivo_pendencia_map = {}
-        import re
         for m in MotivoPendencia.objects.all():
             match = re.match(r'^(\d+)', m.nome.strip())
             if match:
-                codigo_full = match.group(1)
-                motivo_pendencia_map[codigo_full] = m
+                motivo_pendencia_map[match.group(1)] = m
         
         motivo_padrao_osab, _ = MotivoPendencia.objects.get_or_create(nome="VALIDAR OSAB", defaults={'tipo_pendencia': 'Operacional'})
         motivo_sem_agenda, _ = MotivoPendencia.objects.get_or_create(nome="APROVISIONAMENTO S/ DATA", defaults={'tipo_pendencia': 'Sistêmica'})
 
+        # Carrega vendas existentes em memória
         vendas_com_os = Venda.objects.filter(ativo=True).exclude(ordem_servico__isnull=True).exclude(ordem_servico='')
         vendas_map = {self._clean_key(v.ordem_servico): v for v in vendas_com_os}
         osab_bot = get_osab_bot_user()
-        
-        # Serviço de WhatsApp (Instanciado uma vez)
         zap_service = WhatsAppService()
 
+        # Carrega registros da OSAB existentes para evitar update_or_create por linha
+        docs_excel = df['PEDIDO'].dropna().astype(str).apply(lambda x: x.replace('.0','').strip()).unique()
+        osab_existentes = {
+            obj.documento: obj for obj in ImportacaoOsab.objects.filter(documento__in=docs_excel)
+        }
+
+        # Listas para Bulk Operations
+        osab_criar = []
+        osab_atualizar = []
+        vendas_atualizar = []
+        historicos_criar = []
+        
         report = {
             "status": "sucesso", "total_registros": len(df), "criados": 0, "atualizados": 0, 
             "vendas_encontradas": 0, "ja_corretos": 0, "erros": [], "logs_detalhados": [], "arquivo_excel_b64": None
         }
-        
-        vendas_para_atualizar_db = []
-        historicos_para_criar = []
 
+        # --- 2. PROCESSAMENTO EM MEMÓRIA ---
         for index, row in df.iterrows():
             log_item = {"linha": index + 2, "pedido": str(row.get('PEDIDO')), "status_osab": str(row.get('SITUACAO')), "resultado": "", "detalhe": ""}
             try:
-                # Salvar Bruto
+                # A. Preparar ImportacaoOsab (Sem salvar ainda)
                 colunas_validas = {k: v for k, v in coluna_map.items() if k in df.columns}
                 dados_model = {}
                 for col_planilha, campo_model in colunas_validas.items():
@@ -1692,21 +1697,31 @@ class ImportacaoOsabView(APIView):
                     dados_model[campo_model] = val
                 
                 doc_chave = dados_model.get('documento')
-                if doc_chave: ImportacaoOsab.objects.update_or_create(documento=doc_chave, defaults=dados_model)
-
-                # Processar Venda
                 if not doc_chave: 
-                    log_item["resultado"] = "IGNORADO"; log_item["detalhe"] = "Sem pedido"; report["logs_detalhados"].append(log_item); continue
+                    log_item["resultado"] = "IGNORADO"; report["logs_detalhados"].append(log_item); continue
 
+                # Separa Criar vs Atualizar
+                if doc_chave in osab_existentes:
+                    obj_existente = osab_existentes[doc_chave]
+                    mudou_osab = False
+                    for key, val in dados_model.items():
+                        if getattr(obj_existente, key) != val:
+                            setattr(obj_existente, key, val)
+                            mudou_osab = True
+                    if mudou_osab:
+                        osab_atualizar.append(obj_existente)
+                else:
+                    osab_criar.append(ImportacaoOsab(**dados_model))
+
+                # B. Lógica de Venda (CRM)
                 venda = vendas_map.get(doc_chave)
                 if not venda:
-                    log_item["resultado"] = "NAO_ENCONTRADO"; log_item["detalhe"] = "OS não existe no CRM"; report["logs_detalhados"].append(log_item); continue
+                    log_item["resultado"] = "NAO_ENCONTRADO"; report["logs_detalhados"].append(log_item); continue
                 
                 report["vendas_encontradas"] += 1
                 sit_osab_raw = str(row.get('SITUACAO', '')).strip().upper()
-                if sit_osab_raw == "NONE" or sit_osab_raw == "NAN": sit_osab_raw = ""
+                if sit_osab_raw in ["NONE", "NAN"]: sit_osab_raw = ""
 
-                # --- VARIÁVEIS DE CONTROLE ---
                 target_status_esteira = None
                 target_status_tratamento = None
                 target_data_agenda = None
@@ -1716,51 +1731,36 @@ class ImportacaoOsabView(APIView):
                 detalhes_hist = {}
                 motivos_ignorados = []
 
-                # --- 1. LÓGICA DE DECISÃO ---
-                
-                # CASO: Vazio ou Fraude (Regra do Cartão - TRATAMENTO)
+                # --- Regras de Negócio ---
                 is_fraude = "PAYMENT_NOT_AUTHORIZED" in sit_osab_raw
                 if not sit_osab_raw or is_fraude:
                     pgto_raw = self._normalize_text(row.get('MEIO_PAGAMENTO'))
                     if "CARTAO" in pgto_raw:
                         st_reprovado = status_tratamento_map.get("REPROVADO CARTÃO DE CRÉDITO")
                         if st_reprovado: target_status_tratamento = st_reprovado
-                        else: motivos_ignorados.append("Status 'REPROVADO CARTÃO DE CRÉDITO' não achado")
-                    else: pass
-
-                # CASO: Em Aprovisionamento (Esteira)
                 elif sit_osab_raw == "EM APROVISIONAMENTO":
-                    dt_ag_raw = row.get('DATA_AGENDAMENTO')
-                    dt_ag = safe_date_convert(dt_ag_raw)
+                    dt_ag = safe_date_convert(row.get('DATA_AGENDAMENTO'))
                     if dt_ag and dt_ag.year >= 2000:
                         target_status_esteira = status_esteira_map.get("AGENDADO")
                         target_data_agenda = dt_ag
                     else:
                         target_status_esteira = status_esteira_map.get("PENDENCIADA")
                         target_motivo_pendencia = motivo_sem_agenda
-
-                # DEMAIS CASOS (Esteira Padrão)
                 else:
                     nome_est = STATUS_MAP.get(sit_osab_raw)
                     if not nome_est:
                         if sit_osab_raw.startswith("DRAFT"): nome_est = "DRAFT"
                         elif "AGUARDANDO PAGAMENTO" in sit_osab_raw: nome_est = "AGUARDANDO PAGAMENTO"
                         elif "REPROVADO" in sit_osab_raw: nome_est = "REPROVADO CARTÃO DE CRÉDITO"
-                    
                     if nome_est: target_status_esteira = status_esteira_map.get(nome_est)
 
-                # --- APLICAÇÃO ---
+                # --- Aplicação das Regras (Em memória) ---
+                if target_status_tratamento and venda.status_tratamento != target_status_tratamento:
+                    detalhes_hist['status_tratamento'] = f"De '{venda.status_tratamento}' para '{target_status_tratamento.nome}'"
+                    venda.status_tratamento = target_status_tratamento
+                    houve_alteracao = True
 
-                # A. Atualizar Tratamento
-                if target_status_tratamento:
-                    if venda.status_tratamento != target_status_tratamento:
-                        detalhes_hist['status_tratamento'] = f"De '{venda.status_tratamento}' para '{target_status_tratamento.nome}'"
-                        venda.status_tratamento = target_status_tratamento
-                        houve_alteracao = True
-                    else: motivos_ignorados.append(f"Tratamento já é {target_status_tratamento.nome}")
-
-                # B. Atualizar Esteira
-                msg_whatsapp_fila = None # Armazena msg para enviar se houver alteração
+                msg_whatsapp_fila = None 
 
                 if target_status_esteira:
                     if venda.status_esteira != target_status_esteira:
@@ -1768,113 +1768,111 @@ class ImportacaoOsabView(APIView):
                         venda.status_esteira = target_status_esteira
                         houve_alteracao = True
                         if 'PENDEN' not in target_status_esteira.nome.upper(): venda.motivo_pendencia = None
-                    else:
-                        motivos_ignorados.append(f"Esteira já é {target_status_esteira.nome}")
-
+                    
                     nome_est_upper = target_status_esteira.nome.upper()
 
-                    # C. Datas
+                    # Data Instalação
                     if 'INSTALADA' in nome_est_upper:
-                        raw_dt = row.get('DATA_FECHAMENTO')
-                        nova_dt = safe_date_convert(raw_dt)
+                        nova_dt = safe_date_convert(row.get('DATA_FECHAMENTO'))
                         if nova_dt and nova_dt.year >= 2000:
-                            db_valido = (venda.data_instalacao and venda.data_instalacao.year >= 2000)
-                            if not db_valido or venda.data_instalacao != nova_dt:
-                                detalhes_hist['data_instalacao'] = f"De '{venda.data_instalacao}' para '{nova_dt}'"
+                            if not (venda.data_instalacao and venda.data_instalacao.year >= 2000) or venda.data_instalacao != nova_dt:
+                                detalhes_hist['data_instalacao'] = f"Nova: {nova_dt}"
                                 venda.data_instalacao = nova_dt
                                 houve_alteracao = True
-                        
-                        # Preparar msg instalada
+                        # Msg Inst
                         if houve_alteracao and venda.vendedor and venda.vendedor.tel_whatsapp:
                             dt_fmt = venda.data_instalacao.strftime('%d/%m') if venda.data_instalacao else "Hoje"
                             msg_whatsapp_fila = f"✅ *VENDA INSTALADA (OSAB)*\n\n*Cliente:* {venda.cliente.nome_razao_social}\n*OS:* {venda.ordem_servico}\n*Data:* {dt_fmt}"
 
+                    # Data Agendamento
                     elif 'AGENDADO' in nome_est_upper:
-                        nova_dt_ag = target_data_agenda
-                        if not nova_dt_ag: nova_dt_ag = safe_date_convert(row.get('DATA_AGENDAMENTO'))
-                        
+                        nova_dt_ag = target_data_agenda or safe_date_convert(row.get('DATA_AGENDAMENTO'))
                         if nova_dt_ag and nova_dt_ag.year >= 2000:
-                            db_ag_valido = (venda.data_agendamento and venda.data_agendamento.year >= 2000)
-                            if not db_ag_valido or venda.data_agendamento != nova_dt_ag:
-                                detalhes_hist['data_agendamento'] = f"De '{venda.data_agendamento}' para '{nova_dt_ag}'"
+                            if not (venda.data_agendamento and venda.data_agendamento.year >= 2000) or venda.data_agendamento != nova_dt_ag:
+                                detalhes_hist['data_agendamento'] = f"Nova: {nova_dt_ag}"
                                 venda.data_agendamento = nova_dt_ag
                                 houve_alteracao = True
-                        
-                        # Preparar msg agendada
+                        # Msg Agend
                         if houve_alteracao and venda.vendedor and venda.vendedor.tel_whatsapp:
                             dt_fmt = venda.data_agendamento.strftime('%d/%m') if venda.data_agendamento else "S/D"
                             msg_whatsapp_fila = f"📅 *VENDA AGENDADA (OSAB)*\n\n*Cliente:* {venda.cliente.nome_razao_social}\n*OS:* {venda.ordem_servico}\n*Data:* {dt_fmt}"
 
+                    # Pendência
                     elif 'PENDEN' in nome_est_upper:
                         novo_motivo = target_motivo_pendencia
                         if not novo_motivo:
                             cod_full = str(row.get('COD_PENDENCIA', '')).replace('.0', '').strip()
-                            novo_motivo = motivo_pendencia_map.get(cod_full)
-                            if not novo_motivo and len(cod_full) >= 2:
-                                 novo_motivo = motivo_pendencia_map.get(cod_full[:2])
-                            if not novo_motivo: novo_motivo = motivo_padrao_osab
+                            novo_motivo = motivo_pendencia_map.get(cod_full) or motivo_pendencia_map.get(cod_full[:2]) or motivo_padrao_osab
                         
                         if venda.motivo_pendencia_id != novo_motivo.id:
-                            detalhes_hist['motivo_pendencia'] = f"Atualizado para '{novo_motivo.nome}'"
+                            detalhes_hist['motivo_pendencia'] = f"Novo: {novo_motivo.nome}"
                             venda.motivo_pendencia = novo_motivo
                             houve_alteracao = True
                         
-                        # Preparar msg pendência
+                        # Msg Pendencia
                         if houve_alteracao and venda.vendedor and venda.vendedor.tel_whatsapp:
                             msg_whatsapp_fila = f"⚠️ *VENDA PENDENCIADA (OSAB)*\n\n*Cliente:* {venda.cliente.nome_razao_social}\n*OS:* {venda.ordem_servico}\n*Motivo:* {novo_motivo.nome}"
 
-                # E. Pagamento
+                # Pagamento
                 pgto_osab_raw = row.get('MEIO_PAGAMENTO')
                 if pgto_osab_raw:
                     pgto_norm = self._normalize_text(pgto_osab_raw)
-                    novo_fp = None
-                    if pgto_norm in mapa_pagamentos: novo_fp = mapa_pagamentos[pgto_norm]
-                    else:
+                    novo_fp = mapa_pagamentos.get(pgto_norm)
+                    if not novo_fp:
                         for k, v in mapa_pagamentos.items():
                             if pgto_norm in k or k in pgto_norm: novo_fp = v; break
                     
                     if novo_fp and (not venda.forma_pagamento or venda.forma_pagamento.id != novo_fp.id):
-                        detalhes_hist['forma_pagamento'] = f"De '{venda.forma_pagamento}' para '{novo_fp.nome}'"
+                        detalhes_hist['forma_pagamento'] = f"Novo: {novo_fp.nome}"
                         venda.forma_pagamento = novo_fp
                         houve_alteracao = True
 
-                # Commit e Envio de Zap
                 if houve_alteracao:
-                    log_item["resultado"] = "ATUALIZAR"; log_item["detalhe"] = " | ".join([f"{k}: {v}" for k,v in detalhes_hist.items()])
-                    vendas_para_atualizar_db.append(venda)
-                    historicos_para_criar.append(HistoricoAlteracaoVenda(venda=venda, usuario=osab_bot, alteracoes=detalhes_hist))
+                    log_item["resultado"] = "ATUALIZAR"
+                    vendas_atualizar.append(venda)
+                    historicos_criar.append(HistoricoAlteracaoVenda(venda=venda, usuario=osab_bot, alteracoes=detalhes_hist))
                     
-                    # --- NOVO: TENTA ENVIAR WHATSAPP SE GEROU MENSAGEM ---
+                    # Envio de Zap (Cuidado: Pode atrasar se forem muitos. Idealmente deveria ser Celery)
                     if msg_whatsapp_fila:
                         try:
                             zap_service.enviar_mensagem_texto(venda.vendedor.tel_whatsapp, msg_whatsapp_fila)
-                        except Exception as ezap:
-                            print(f"Erro envio zap OSAB: {ezap}") # Não quebra a importação
-                    # -----------------------------------------------------
+                        except: pass
                 else:
-                    if not target_status_esteira and not target_status_tratamento:
-                         log_item["resultado"] = "SEM_MUDANCA"; log_item["detalhe"] = f"Status '{sit_osab_raw}' não gerou ação."
-                    else:
-                        log_item["resultado"] = "JA_CORRETO"; log_item["detalhe"] = " | ".join(motivos_ignorados)
+                    log_item["resultado"] = "SEM_MUDANCA"
                     report["ja_corretos"] += 1
+                
                 report["logs_detalhados"].append(log_item)
 
             except Exception as ex:
-                log_item["resultado"] = "ERRO_CRITICO"; log_item["detalhe"] = str(ex)
-                report["logs_detalhados"].append(log_item); report['erros'].append(f"Linha {index}: {ex}")
+                log_item["resultado"] = "ERRO"
+                report["erros"].append(f"L{index}: {ex}")
 
-        if vendas_para_atualizar_db:
-            report["atualizados"] = len(vendas_para_atualizar_db)
-            campos = ['status_esteira', 'status_tratamento', 'data_instalacao', 'data_agendamento', 'forma_pagamento', 'motivo_pendencia']
-            Venda.objects.bulk_update(vendas_para_atualizar_db, campos)
-            if historicos_para_criar: HistoricoAlteracaoVenda.objects.bulk_create(historicos_para_criar)
+        # --- 3. PERSISTÊNCIA EM LOTE (BULK) - A PARTE RÁPIDA ---
+        with transaction.atomic():
+            # A. Salvar OSAB (Milhares de registros em 2 queries)
+            if osab_criar:
+                ImportacaoOsab.objects.bulk_create(osab_criar, batch_size=2000)
+            
+            if osab_atualizar:
+                campos_osab = [f.name for f in ImportacaoOsab._meta.fields if f.name != 'id']
+                ImportacaoOsab.objects.bulk_update(osab_atualizar, campos_osab, batch_size=2000)
 
-        # Gerar Excel
+            # B. Salvar Vendas
+            if vendas_atualizar:
+                campos_venda = ['status_esteira', 'status_tratamento', 'data_instalacao', 'data_agendamento', 'forma_pagamento', 'motivo_pendencia']
+                Venda.objects.bulk_update(vendas_atualizar, campos_venda, batch_size=2000)
+            
+            # C. Salvar Histórico
+            if historicos_criar:
+                HistoricoAlteracaoVenda.objects.bulk_create(historicos_criar, batch_size=2000)
+
+        report["atualizados"] = len(vendas_atualizar)
+        
+        # Gerar Excel de Log (Opcional, se o arquivo for muito grande pode tirar para ganhar +1s)
         try:
             if report["logs_detalhados"]:
-                df_logs = pd.DataFrame(report["logs_detalhados"])
                 output = BytesIO()
-                df_logs.to_excel(output, index=False, sheet_name='Log')
+                pd.DataFrame(report["logs_detalhados"]).to_excel(output, index=False)
                 report['arquivo_excel_b64'] = base64.b64encode(output.getvalue()).decode('utf-8')
         except: pass
 
