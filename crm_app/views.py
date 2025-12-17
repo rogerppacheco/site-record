@@ -1975,46 +1975,137 @@ class ImportacaoCicloPagamentoView(APIView):
 
 class PerformanceVendasView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+
     def get(self, request, *args, **kwargs):
         User = get_user_model()
         hoje = timezone.now().date()
         start_of_week = hoje - timedelta(days=hoje.weekday())
         start_of_month = hoje.replace(day=1)
+        
         current_user = self.request.user
-        if is_member(current_user, ['Diretoria', 'BackOffice', 'Admin']):
-            users_to_process = User.objects.filter(is_active=True).select_related('supervisor')
+
+        # --- 1. DEFINIR QUEM VAI APARECER NO PAINEL ---
+        # Filtra apenas usuários ativos e remove robôs/admins que não vendem
+        base_users = User.objects.filter(is_active=True).exclude(username__in=['OSAB_IMPORT', 'admin', 'root'])
+
+        if is_member(current_user, ['Diretoria', 'BackOffice', 'Admin', 'Auditoria', 'Qualidade']):
+            users_to_process = base_users.select_related('supervisor')
         elif is_member(current_user, ['Supervisor']):
-            users_to_process = User.objects.filter(Q(id=current_user.id) | Q(supervisor=current_user), is_active=True).select_related('supervisor')
+            # Supervisor vê a si mesmo e seus liderados
+            users_to_process = base_users.filter(Q(id=current_user.id) | Q(supervisor=current_user)).select_related('supervisor')
         else:
-            users_to_process = User.objects.filter(id=current_user.id, is_active=True).select_related('supervisor')
-        base_filters = (Q(ativo=True) & Q(status_tratamento__isnull=False) & (Q(status_esteira__isnull=True) | ~Q(status_esteira__nome__iexact='CANCELADA')))
-        vendas = Venda.objects.filter(base_filters).values('vendedor_id').annotate(total_dia=Count('id', filter=Q(data_pedido__date=hoje)), total_mes=Count('id', filter=Q(data_pedido__date__gte=start_of_month)), total_mes_instalado=Count('id', filter=Q(data_pedido__date__gte=start_of_month, status_esteira__nome__iexact='Instalada')), vendas_segunda=Count('id', filter=Q(data_pedido__date=start_of_week)), vendas_terca=Count('id', filter=Q(data_pedido__date=start_of_week + timedelta(days=1))), vendas_quarta=Count('id', filter=Q(data_pedido__date=start_of_week + timedelta(days=2))), vendas_quinta=Count('id', filter=Q(data_pedido__date=start_of_week + timedelta(days=3))), vendas_sexta=Count('id', filter=Q(data_pedido__date=start_of_week + timedelta(days=4))), vendas_sabado=Count('id', filter=Q(data_pedido__date=start_of_week + timedelta(days=5))))
+            # Vendedor vê apenas a si mesmo (ou sua equipe, dependendo da regra. Aqui deixei restrito)
+            users_to_process = base_users.filter(id=current_user.id).select_related('supervisor')
+
+        # --- 2. AGREGAR VENDAS ---
+        # Filtros: Vendas ativas, COM tratamento definido, SEM cancelamento na esteira
+        base_filters = (
+            Q(ativo=True) & 
+            Q(status_tratamento__isnull=False) & 
+            (Q(status_esteira__isnull=True) | ~Q(status_esteira__nome__iexact='CANCELADA'))
+        )
+
+        vendas = Venda.objects.filter(base_filters).values('vendedor_id').annotate(
+            total_dia=Count('id', filter=Q(data_pedido__date=hoje)),
+            total_mes=Count('id', filter=Q(data_pedido__date__gte=start_of_month)),
+            total_mes_instalado=Count('id', filter=Q(data_pedido__date__gte=start_of_month, status_esteira__nome__iexact='Instalada')),
+            # Semanal
+            vendas_segunda=Count('id', filter=Q(data_pedido__date=start_of_week)),
+            vendas_terca=Count('id', filter=Q(data_pedido__date=start_of_week + timedelta(days=1))),
+            vendas_quarta=Count('id', filter=Q(data_pedido__date=start_of_week + timedelta(days=2))),
+            vendas_quinta=Count('id', filter=Q(data_pedido__date=start_of_week + timedelta(days=3))),
+            vendas_sexta=Count('id', filter=Q(data_pedido__date=start_of_week + timedelta(days=4))),
+            vendas_sabado=Count('id', filter=Q(data_pedido__date=start_of_week + timedelta(days=5))),
+        )
+        
         vendas_por_vendedor = {v['vendedor_id']: v for v in vendas}
-        teams = defaultdict(lambda: {'supervisor_name': 'Sem Supervisor', 'members': [], 'totals': {'daily': 0, 'weekly_breakdown': {'seg': 0, 'ter': 0, 'qua': 0, 'qui': 0, 'sex': 0, 'sab': 0}, 'weekly_total': 0, 'monthly': {'total': 0, 'instalados': 0}}})
+
+        # --- 3. MONTAR ESTRUTURA DOS TIMES ---
+        teams = defaultdict(lambda: {
+            'supervisor_name': 'Sem Supervisor', 
+            'members': [], 
+            'totals': {
+                'daily': 0, 
+                'weekly_breakdown': {'seg':0,'ter':0,'qua':0,'qui':0,'sex':0,'sab':0},
+                'weekly_total': 0,
+                'monthly': {'total': 0, 'instalados': 0}
+            }
+        })
+
         for user in users_to_process:
             supervisor_id = user.supervisor.id if user.supervisor else 'none'
-            if supervisor_id != 'none' and user.supervisor: teams[supervisor_id]['supervisor_name'] = user.supervisor.username
+            
+            if supervisor_id != 'none' and user.supervisor:
+                teams[supervisor_id]['supervisor_name'] = user.supervisor.username
+            
+            # Pega dados de vendas (ou 0 se não tiver)
             v_data = vendas_por_vendedor.get(user.id, {})
-            weekly_total = sum([v_data.get('vendas_segunda', 0), v_data.get('vendas_terca', 0), v_data.get('vendas_quarta', 0), v_data.get('vendas_quinta', 0), v_data.get('vendas_sexta', 0), v_data.get('vendas_sabado', 0)])
+            
+            dia_atual = v_data.get('total_dia', 0)
+            weekly_total = sum([
+                v_data.get('vendas_segunda', 0), v_data.get('vendas_terca', 0),
+                v_data.get('vendas_quarta', 0), v_data.get('vendas_quinta', 0),
+                v_data.get('vendas_sexta', 0), v_data.get('vendas_sabado', 0)
+            ])
             total_mes = v_data.get('total_mes', 0)
             instalados_mes = v_data.get('total_mes_instalado', 0)
-            aproveitamento_str = f"{(instalados_mes / total_mes * 100):.1f}%" if total_mes > 0 else "0.0%"
-            teams[supervisor_id]['members'].append({'name': user.username, 'daily': v_data.get('total_dia', 0), 'weekly_breakdown': {'seg': v_data.get('vendas_segunda', 0), 'ter': v_data.get('vendas_terca', 0), 'qua': v_data.get('vendas_quarta', 0), 'qui': v_data.get('vendas_quinta', 0), 'sex': v_data.get('vendas_sexta', 0), 'sab': v_data.get('vendas_sabado', 0)}, 'weekly_total': weekly_total, 'monthly': {'total': total_mes, 'instalados': instalados_mes, 'aproveitamento': aproveitamento_str}})
+            
+            aproveitamento_str = f"{(instalados_mes / total_mes * 100):.0f}%" if total_mes > 0 else "-"
+
+            # Adiciona membro (MESMO SE TIVER 0 VENDAS)
+            teams[supervisor_id]['members'].append({
+                'name': user.username,
+                'full_name': f"{user.first_name} {user.last_name}".strip() or user.username,
+                'daily': dia_atual,
+                'weekly_breakdown': {
+                    'seg': v_data.get('vendas_segunda', 0),
+                    'ter': v_data.get('vendas_terca', 0),
+                    'qua': v_data.get('vendas_quarta', 0),
+                    'qui': v_data.get('vendas_quinta', 0),
+                    'sex': v_data.get('vendas_sexta', 0),
+                    'sab': v_data.get('vendas_sabado', 0)
+                },
+                'weekly_total': weekly_total,
+                'monthly': {
+                    'total': total_mes,
+                    'instalados': instalados_mes,
+                    'aproveitamento': aproveitamento_str
+                }
+            })
+
+        # --- 4. CALCULAR TOTAIS E ORDENAR ---
         final_result = []
+        
         for supervisor_id, team_data in teams.items():
             if not team_data['members']: continue
-            team_data['members'] = sorted(team_data['members'], key=itemgetter('name'))
+
+            # ORDENAÇÃO IMPORTANTE: Quem vendeu mais no dia fica em cima. Zeros em baixo.
+            # Se empate no dia, desempata pelo mensal.
+            team_data['members'] = sorted(
+                team_data['members'], 
+                key=lambda x: (x['daily'], x['monthly']['total']), 
+                reverse=True
+            )
+
+            # Somar totais do time
             for member in team_data['members']:
                 team_data['totals']['daily'] += member['daily']
-                for day, count in member['weekly_breakdown'].items(): team_data['totals']['weekly_breakdown'][day] += count
+                for day, count in member['weekly_breakdown'].items():
+                    team_data['totals']['weekly_breakdown'][day] += count
                 team_data['totals']['weekly_total'] += member['weekly_total']
                 team_data['totals']['monthly']['total'] += member['monthly']['total']
                 team_data['totals']['monthly']['instalados'] += member['monthly']['instalados']
-            total_geral = team_data['totals']['monthly']['total']
-            inst_geral = team_data['totals']['monthly']['instalados']
-            team_data['totals']['monthly']['aproveitamento'] = f"{(inst_geral / total_geral * 100):.1f}%" if total_geral > 0 else "0.0%"
+            
+            # Aproveitamento do Time
+            t_total = team_data['totals']['monthly']['total']
+            t_inst = team_data['totals']['monthly']['instalados']
+            team_data['totals']['monthly']['aproveitamento'] = f"{(t_inst / t_total * 100):.0f}%" if t_total > 0 else "-"
+
             final_result.append(team_data)
-        final_result = sorted(final_result, key=itemgetter('supervisor_name'))
+
+        # Ordena as equipes pelo total de vendas do dia (Equipe que mais vendeu aparece primeiro)
+        final_result = sorted(final_result, key=lambda x: x['totals']['daily'], reverse=True)
+        
         return Response(final_result)
 
 class ImportarKMLView(APIView):
@@ -2568,6 +2659,8 @@ def enviar_resultado_campanha_whatsapp(request):
 
 # Em crm_app/views.py
 
+# Em crm_app/views.py
+
 class PainelPerformanceView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -2575,18 +2668,17 @@ class PainelPerformanceView(APIView):
         User = get_user_model()
         user = request.user
         
-        # 1. Ajuste de Fuso Horário (Brasil)
+        # 1. Datas
         agora_local = timezone.localtime(timezone.now())
         hoje = agora_local.date()
-        
         inicio_semana = hoje - timedelta(days=hoje.weekday())
         dias_semana = [inicio_semana + timedelta(days=i) for i in range(6)]
         inicio_mes = hoje.replace(day=1)
 
-        # 2. Base de Usuários
-        users = User.objects.filter(is_active=True).exclude(username='OSAB_IMPORT')
+        # 2. Base de Usuários (TODOS OS ATIVOS, exceto bots)
+        users = User.objects.filter(is_active=True).exclude(username__in=['OSAB_IMPORT', 'admin', 'root'])
 
-        # 3. Permissões
+        # 3. Filtros de Permissão
         grupos_gestao = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
         if is_member(user, grupos_gestao):
             pass 
@@ -2595,131 +2687,106 @@ class PainelPerformanceView(APIView):
         else:
             users = users.filter(id=user.id)
 
-        # 4. Filtro de Canal
+        # 4. Filtro de Canal (Query Param)
         filtro_canal = request.query_params.get('canal')
         if filtro_canal:
             users = users.filter(canal__iexact=filtro_canal)
 
-        # 5. FILTROS GERAIS
-        
-        # A. Venda deve ter O.S. preenchida (Base para tudo)
+        # 5. Filtros de Venda
         filtro_os_valida = Q(vendas__ativo=True) & ~Q(vendas__ordem_servico='') & Q(vendas__ordem_servico__isnull=False)
-
-        # B. Filtro de Cartão de Crédito
+        
+        # Filtro CC (Cartão)
         filtro_cc = (
             Q(vendas__forma_pagamento__nome__icontains='CREDIT') | 
             Q(vendas__forma_pagamento__nome__icontains='CRÉDIT') |
-            (
-                Q(vendas__forma_pagamento__nome__icontains='CARTA') & 
-                ~Q(vendas__forma_pagamento__nome__icontains='DEBIT') & 
-                ~Q(vendas__forma_pagamento__nome__icontains='DÉBIT')
-            )
+            (Q(vendas__forma_pagamento__nome__icontains='CARTA') & ~Q(vendas__forma_pagamento__nome__icontains='DEBIT'))
         )
         
-        # C. Filtro Instalada
+        # Filtro Instalada
         filtro_inst = Q(vendas__status_esteira__nome__iexact='INSTALADA')
 
-        # D. FILTRO DE EXCLUSÃO (NOVO) - Apenas para Hoje e Semana
-        # Exclui se o status de tratamento for "AGUARDANDO PAGAMENTO" ou "REPROVADO CARTÃO DE CRÉDITO"
-        filtro_limpo_hoje_semana = (
-            ~Q(vendas__status_tratamento__nome__iexact='AGUARDANDO PAGAMENTO') & 
-            ~Q(vendas__status_tratamento__nome__iexact='REPROVADO CARTÃO DE CRÉDITO')
-        )
-
-        # ---------------------------------------------------------
-        # A. DADOS DE HOJE (Com filtro de exclusão)
-        # ---------------------------------------------------------
+        # --- A. DADOS DE HOJE ---
         qs_hoje = users.annotate(
-            vendas_total=Count('vendas', filter=filtro_os_valida & filtro_limpo_hoje_semana & Q(vendas__data_criacao__date=hoje)),
-            vendas_cc=Count('vendas', filter=filtro_os_valida & filtro_limpo_hoje_semana & Q(vendas__data_criacao__date=hoje) & filtro_cc)
-        ).values('username', 'canal', 'vendas_total', 'vendas_cc').order_by('-vendas_total')
+            vendas_total=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date=hoje)),
+            vendas_cc=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date=hoje) & filtro_cc)
+        ).values('username', 'first_name', 'last_name', 'canal', 'vendas_total', 'vendas_cc').order_by('-vendas_total', 'username')
 
         lista_hoje = []
         for u in qs_hoje:
             total = u['vendas_total']
             cc = u['vendas_cc']
             pct = (cc / total * 100) if total > 0 else 0
+            nome_display = f"{u['first_name']} {u['last_name']}".strip() or u['username']
             
-            if total > 0: 
-                lista_hoje.append({
-                    'vendedor': u['username'],
-                    'canal': u['canal'],
-                    'total': total,
-                    'cc': cc,
-                    'pct_cc': round(pct, 2)
-                })
+            lista_hoje.append({
+                'vendedor': nome_display.upper(),
+                'canal': u['canal'],
+                'total': total,
+                'cc': cc,
+                'pct_cc': round(pct, 2)
+            })
 
-        # ---------------------------------------------------------
-        # B. DADOS DA SEMANA (Com filtro de exclusão)
-        # ---------------------------------------------------------
-        # Aplicamos 'filtro_limpo_hoje_semana' em cada dia e no total da semana
+        # --- B. DADOS DA SEMANA ---
         qs_semana = users.annotate(
-            seg=Count('vendas', filter=filtro_os_valida & filtro_limpo_hoje_semana & Q(vendas__data_criacao__date=dias_semana[0])),
-            ter=Count('vendas', filter=filtro_os_valida & filtro_limpo_hoje_semana & Q(vendas__data_criacao__date=dias_semana[1])),
-            qua=Count('vendas', filter=filtro_os_valida & filtro_limpo_hoje_semana & Q(vendas__data_criacao__date=dias_semana[2])),
-            qui=Count('vendas', filter=filtro_os_valida & filtro_limpo_hoje_semana & Q(vendas__data_criacao__date=dias_semana[3])),
-            sex=Count('vendas', filter=filtro_os_valida & filtro_limpo_hoje_semana & Q(vendas__data_criacao__date=dias_semana[4])),
-            sab=Count('vendas', filter=filtro_os_valida & filtro_limpo_hoje_semana & Q(vendas__data_criacao__date=dias_semana[5])),
-            
-            total_semana=Count('vendas', filter=filtro_os_valida & filtro_limpo_hoje_semana & Q(vendas__data_criacao__date__gte=inicio_semana)),
-            total_cc=Count('vendas', filter=filtro_os_valida & filtro_limpo_hoje_semana & Q(vendas__data_criacao__date__gte=inicio_semana) & filtro_cc)
-        ).values('username', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'total_semana', 'total_cc').order_by('-total_semana')
+            seg=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date=dias_semana[0])),
+            ter=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date=dias_semana[1])),
+            qua=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date=dias_semana[2])),
+            qui=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date=dias_semana[3])),
+            sex=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date=dias_semana[4])),
+            sab=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date=dias_semana[5])),
+            total_semana=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date__gte=inicio_semana)),
+            total_cc=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date__gte=inicio_semana) & filtro_cc)
+        ).values('username', 'first_name', 'last_name', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'total_semana', 'total_cc').order_by('-total_semana', 'username')
 
         lista_semana = []
         for u in qs_semana:
             total = u['total_semana']
             pct = (u['total_cc'] / total * 100) if total > 0 else 0
-            
-            if total > 0:
-                lista_semana.append({
-                    'vendedor': u['username'],
-                    'dias': [u['seg'], u['ter'], u['qua'], u['qui'], u['sex'], u['sab']],
-                    'total': total,
-                    'cc': u['total_cc'],
-                    'pct_cc': round(pct, 2)
-                })
+            nome_display = f"{u['first_name']} {u['last_name']}".strip() or u['username']
 
-        # ---------------------------------------------------------
-        # C. DADOS DO MÊS (SEM o filtro de exclusão, conforme solicitado)
-        # ---------------------------------------------------------
+            lista_semana.append({
+                'vendedor': nome_display.upper(),
+                'dias': [u['seg'], u['ter'], u['qua'], u['qui'], u['sex'], u['sab']],
+                'total': total,
+                'cc': u['total_cc'],
+                'pct_cc': round(pct, 2)
+            })
+
+        # --- C. DADOS DO MÊS ---
         qs_mes = users.annotate(
             total_vendas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date__gte=inicio_mes)),
-            
             instaladas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date__gte=inicio_mes) & filtro_inst),
-            
             total_cc=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date__gte=inicio_mes) & filtro_cc),
             instaladas_cc=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date__gte=inicio_mes) & filtro_inst & filtro_cc),
-            
             pendenciadas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date__gte=inicio_mes, vendas__status_esteira__nome__icontains='PENDEN')),
             agendadas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date__gte=inicio_mes, vendas__status_esteira__nome__iexact='AGENDADO')),
             canceladas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date__gte=inicio_mes, vendas__status_esteira__nome__icontains='CANCELAD'))
         ).values(
-            'username', 'total_vendas', 'instaladas', 'total_cc', 'instaladas_cc', 'pendenciadas', 'agendadas', 'canceladas'
-        ).order_by('-total_vendas')
+            'username', 'first_name', 'last_name', 'total_vendas', 'instaladas', 'total_cc', 'instaladas_cc', 'pendenciadas', 'agendadas', 'canceladas'
+        ).order_by('-total_vendas', 'username')
 
         lista_mes = []
         for u in qs_mes:
             tot = u['total_vendas']
             inst = u['instaladas']
-            
             pct_cc_total = (u['total_cc'] / tot * 100) if tot > 0 else 0
             pct_cc_inst = (u['instaladas_cc'] / inst * 100) if inst > 0 else 0
             aproveitamento = (inst / tot * 100) if tot > 0 else 0
+            nome_display = f"{u['first_name']} {u['last_name']}".strip() or u['username']
 
-            if tot > 0:
-                lista_mes.append({
-                    'vendedor': u['username'],
-                    'total': tot,
-                    'instaladas': inst,
-                    'cc_total': u['total_cc'],
-                    'cc_inst': u['instaladas_cc'],
-                    'pct_cc_total': round(pct_cc_total, 2),
-                    'pct_cc_inst': round(pct_cc_inst, 2),
-                    'aproveitamento': round(aproveitamento, 2),
-                    'pend': u['pendenciadas'],
-                    'agend': u['agendadas'],
-                    'canc': u['canceladas']
-                })
+            lista_mes.append({
+                'vendedor': nome_display.upper(),
+                'total': tot,
+                'instaladas': inst,
+                'cc_total': u['total_cc'],
+                'cc_inst': u['instaladas_cc'],
+                'pct_cc_total': round(pct_cc_total, 2),
+                'pct_cc_inst': round(pct_cc_inst, 2),
+                'aproveitamento': round(aproveitamento, 2),
+                'pend': u['pendenciadas'],
+                'agend': u['agendadas'],
+                'canc': u['canceladas']
+            })
 
         # Totais Gerais
         total_hoje = sum(i['total'] for i in lista_hoje)
@@ -2901,6 +2968,8 @@ def listar_grupos_whatsapp_api(request):
     except Exception as e:
         logger.error(f"Erro view listar grupos: {e}")
         return Response({'error': str(e)}, status=500)
+    
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def relatorio_resultado_campanha(request, campanha_id):
@@ -2909,18 +2978,31 @@ def relatorio_resultado_campanha(request, campanha_id):
         # Ordena faixas da MAIOR para a MENOR para achar a atingida mais fácil
         faixas_premiacao = campanha.regras_meta.all().order_by('-meta') 
         
-        filtros = Q(
-            data_criacao__date__gte=campanha.data_inicio,
-            data_criacao__date__lte=campanha.data_fim,
-            ativo=True
-        )
+        # --- CORREÇÃO DE LÓGICA DE DATAS ---
         if campanha.tipo_meta == 'LIQUIDA':
-            filtros &= Q(status_esteira__nome__iexact='INSTALADA')
+            # REGRA NOVA: Se a meta é INSTALADA (Líquida), olhamos a Data de Instalação.
+            # Não importa se vendeu mês passado, se instalou dentro da campanha, conta.
+            filtros = Q(
+                data_instalacao__gte=campanha.data_inicio,
+                data_instalacao__lte=campanha.data_fim,
+                status_esteira__nome__iexact='INSTALADA',
+                ativo=True
+            )
+        else:
+            # REGRA PADRÃO: Se a meta é VENDA (Bruta), olhamos a Data de Criação.
+            filtros = Q(
+                data_criacao__date__gte=campanha.data_inicio,
+                data_criacao__date__lte=campanha.data_fim,
+                ativo=True
+            )
+        # -----------------------------------
+
         if campanha.canal_alvo != 'TODOS':
             filtros &= Q(vendedor__canal=campanha.canal_alvo)
 
         planos_validos = campanha.planos_elegiveis.all()
         if planos_validos.exists(): filtros &= Q(plano__in=planos_validos)
+        
         pgtos_validos = campanha.formas_pagamento_elegiveis.all()
         if pgtos_validos.exists(): filtros &= Q(forma_pagamento__in=pgtos_validos)
 
@@ -2938,14 +3020,14 @@ def relatorio_resultado_campanha(request, campanha_id):
             qtd = v['total_vendas']
             
             premio_receber = 0.0
-            meta_alcancada = 0 # Nova variável para guardar a meta exata batida
+            meta_alcancada = 0 
             
             # 1. Lógica de Faixas (Escalonada)
             if faixas_premiacao.exists():
                 for faixa in faixas_premiacao:
                     if qtd >= faixa.meta:
                         premio_receber = float(faixa.valor_premio)
-                        meta_alcancada = faixa.meta # Guarda ex: 20 (mesmo que a max seja 60)
+                        meta_alcancada = faixa.meta 
                         break 
             # 2. Lógica Simples (Legado)
             else:
@@ -2957,11 +3039,11 @@ def relatorio_resultado_campanha(request, campanha_id):
             
             resultado.append({
                 'ranking': ranking,
-                'vendedor_id': v['vendedor__id'], # Importante para o checkbox funcionar
+                'vendedor_id': v['vendedor__id'],
                 'vendedor': nome_vendedor,
                 'vendas_validas': qtd,
-                'meta': meta_maxima_visual, # Para barra de progresso
-                'meta_alcancada': meta_alcancada, # NOVA CAMPO: Qual meta ele realmente bateu (ex: 20)
+                'meta': meta_maxima_visual, 
+                'meta_alcancada': meta_alcancada, 
                 'percentual': percentual,
                 'atingiu_meta': premio_receber > 0,
                 'premio_receber': premio_receber

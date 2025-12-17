@@ -28,7 +28,7 @@
 
         <div class="card border-0 shadow-sm mb-5">
             <div class="card-header bg-white border-bottom-0 pt-4 px-4">
-                <h5 class="fw-bold text-primary">Novo Comunicado</h5>
+                <h5 class="fw-bold text-primary">Novo Comunicado (Envio Imediato)</h5>
             </div>
             <div class="card-body px-4 pb-4">
                 <form id="form-comunicado">
@@ -52,17 +52,10 @@
                             <textarea class="form-control" id="mensagem" rows="5" required placeholder="Digite a mensagem que será enviada..."></textarea>
                             <div class="form-text">Use *texto* para negrito e _texto_ para itálico.</div>
                         </div>
-                        <div class="col-md-4">
-                            <label class="form-label fw-bold">Data Envio</label>
-                            <input type="date" class="form-control" id="data_envio" required>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label fw-bold">Hora Envio</label>
-                            <input type="time" class="form-control" id="hora_envio" required>
-                        </div>
-                        <div class="col-md-4 d-flex align-items-end">
-                            <button type="submit" class="btn btn-warning w-100 fw-bold text-dark">
-                                <i class="bi bi-send-fill"></i> Agendar Envio
+                        
+                        <div class="col-12 d-flex justify-content-end mt-4">
+                            <button type="submit" class="btn btn-success btn-lg fw-bold text-white px-5">
+                                <i class="bi bi-send-fill me-2"></i> Enviar Agora
                             </button>
                         </div>
                     </div>
@@ -77,7 +70,7 @@
                     <tr>
                         <th>Título</th>
                         <th>Destino</th>
-                        <th>Agendado Para</th>
+                        <th>Data Envio</th>
                         <th>Status</th>
                         <th>Criado Por</th>
                     </tr>
@@ -122,14 +115,29 @@
 
         document.getElementById('form-comunicado').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const token = localStorage.getItem('accessToken');
             
+            if(!confirm("Tem certeza que deseja enviar esta mensagem agora para todos os destinatários selecionados?")) {
+                return;
+            }
+
+            const token = localStorage.getItem('accessToken');
+            const btn = e.target.querySelector('button[type="submit"]');
+            const originalText = btn.innerHTML;
+            
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Enviando...';
+
+            // Pega data e hora atual automaticamente
+            const agora = new Date();
+            const dataHoje = agora.toISOString().split('T')[0]; // YYYY-MM-DD
+            const horaAgora = agora.toTimeString().split(' ')[0].substring(0, 5); // HH:MM
+
             const payload = {
                 titulo: document.getElementById('titulo').value,
                 mensagem: document.getElementById('mensagem').value,
                 perfil_destino: document.getElementById('perfil').value,
-                data_programada: document.getElementById('data_envio').value,
-                hora_programada: document.getElementById('hora_envio').value
+                data_programada: dataHoje, // Define automaticamente HOJE
+                hora_programada: horaAgora // Define automaticamente AGORA
             };
 
             try {
@@ -140,17 +148,22 @@
                 });
                 
                 if(res.ok) {
-                    alert('Comunicado agendado com sucesso!');
+                    alert('Comunicado enviado com sucesso!');
                     document.getElementById('form-comunicado').reset();
                     carregarComunicados();
                 } else {
-                    alert('Erro ao agendar.');
+                    const err = await res.json();
+                    alert('Erro ao enviar: ' + (err.detail || 'Verifique os dados.'));
                 }
-            } catch(e) { alert('Erro de conexão.'); }
+            } catch(e) { 
+                alert('Erro de conexão.'); 
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
         });
 
         // Init
-        document.getElementById('data_envio').valueAsDate = new Date();
         carregarComunicados();
     </script>
 </body>

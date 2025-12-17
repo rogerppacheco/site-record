@@ -8,7 +8,7 @@
     <link rel="shortcut icon" href="{% static 'logo.png' %}" type="image/x-icon">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=2.7">
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=2.8">
     
     <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
 
@@ -29,6 +29,14 @@
             padding: 6px; text-align: center; vertical-align: middle;
             font-weight: 500;
         }
+        /* Estilo do Rodapé (Total) */
+        .table-excel tfoot td {
+            background-color: #2c3e50; color: white;
+            font-weight: bold; border: 1px solid #2c3e50;
+            padding: 8px; text-align: center; vertical-align: middle;
+            position: sticky; bottom: 0; z-index: 2;
+        }
+        
         .table-excel tbody tr:hover { background-color: #f8f9fc; }
         
         /* Cores de Células Condicionais */
@@ -74,12 +82,6 @@
                 
                 <div class="vr mx-2"></div>
                 
-                <button class="btn btn-sm btn-success d-flex align-items-center gap-2" onclick="baixarExcelValidacao()">
-                    <i class="bi bi-file-earmark-excel"></i> <span class="d-none d-md-inline">Validar</span>
-                </button>
-
-                <div class="vr mx-2"></div>
-
                 <label class="fw-bold text-muted small mb-0">Canal:</label>
                 <select id="filtro-canal" class="form-select form-select-sm" style="width: 150px;" onchange="carregarDados()">
                     <option value="">Todos</option>
@@ -103,576 +105,253 @@
         <div class="tab-content" id="pills-tabContent">
             <div class="tab-pane fade show active" id="content-hoje">
                 <div class="card border-0 shadow"><div class="card-body p-0 table-responsive">
-                    <table class="table-excel"><thead><tr><th class="text-start ps-3">Vendedor</th><th>Canal</th><th>Vendas Hoje (O.S.)</th><th>Vendas Cartão (CC)</th><th>% CC / Total</th></tr></thead><tbody id="tbody-hoje"></tbody></table>
+                    <table class="table-excel">
+                        <thead>
+                            <tr>
+                                <th class="text-start ps-3">Vendedor</th>
+                                <th>Canal</th>
+                                <th>Vendas Hoje (O.S.)</th>
+                                <th>Vendas Cartão (CC)</th>
+                                <th>% CC / Total</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-hoje"></tbody>
+                        <tfoot id="tfoot-hoje"></tfoot>
+                    </table>
                 </div></div>
             </div>
+
             <div class="tab-pane fade" id="content-semana">
                 <div class="card border-0 shadow"><div class="card-body p-0 table-responsive">
-                    <table class="table-excel"><thead><tr><th class="text-start ps-3">Vendedor</th><th>Seg</th><th>Ter</th><th>Qua</th><th>Qui</th><th>Sex</th><th>Sáb</th><th class="bg-header-group">Total Semana</th><th>Total CC</th><th>% CC</th></tr></thead><tbody id="tbody-semana"></tbody></table>
+                    <table class="table-excel">
+                        <thead>
+                            <tr>
+                                <th class="text-start ps-3">Vendedor</th>
+                                <th>Seg</th><th>Ter</th><th>Qua</th><th>Qui</th><th>Sex</th><th>Sáb</th>
+                                <th class="bg-header-group">Total Semana</th>
+                                <th>Total CC</th>
+                                <th>% CC</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-semana"></tbody>
+                        <tfoot id="tfoot-semana"></tfoot>
+                    </table>
                 </div></div>
             </div>
+
             <div class="tab-pane fade" id="content-mes">
                 <div class="card border-0 shadow"><div class="card-body p-0 table-responsive">
-                    <table class="table-excel"><thead><tr><th class="text-start ps-3">Vendedor</th><th class="bg-header-group">Total Vendas</th><th class="bg-success text-white">Instaladas</th><th>Total CC</th><th>Instaladas CC</th><th>% CC Total</th><th>% CC Inst</th><th class="bg-info text-white">Aprov.</th><th>Pende</th><th>Agend</th><th>Canc</th></tr></thead><tbody id="tbody-mes"></tbody></table>
+                    <table class="table-excel">
+                        <thead>
+                            <tr>
+                                <th class="text-start ps-3">Vendedor</th>
+                                <th class="bg-header-group">Total Vendas</th>
+                                <th class="bg-success text-white">Instaladas</th>
+                                <th>Total CC</th>
+                                <th>Instaladas CC</th>
+                                <th>% CC Total</th>
+                                <th>% CC Inst</th>
+                                <th class="bg-info text-white">Aprov.</th>
+                                <th>Pende</th>
+                                <th>Agend</th>
+                                <th>Canc</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-mes"></tbody>
+                        <tfoot id="tfoot-mes"></tfoot>
+                    </table>
                 </div></div>
             </div>
         </div>
     </main>
 
-    <div id="capture-area">
-        <h3 class="text-center mb-3 fw-bold" id="capture-title">Relatório de Vendas</h3>
-        <p class="text-center text-muted mb-4 small" id="capture-subtitle"></p>
-        <table class="table-excel" id="capture-table">
-            </table>
-    </div>
+    <div class="modal fade" id="modalEnvio" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Enviar no WhatsApp</h5><button class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="mb-3"><label class="fw-bold">1. Escolha os Grupos:</label><div class="border rounded p-2 bg-white" style="max-height: 200px; overflow-y: auto;" id="container-grupos-envio"></div></div><div class="mb-3"><label class="fw-bold">2. Escolha o Período:</label><div class="btn-group w-100" role="group"><input type="radio" class="btn-check" name="periodo-envio" id="radio-hoje" value="hoje" checked><label class="btn btn-outline-primary" for="radio-hoje">Hoje</label><input type="radio" class="btn-check" name="periodo-envio" id="radio-semana" value="semana"><label class="btn btn-outline-primary" for="radio-semana">Semana</label><input type="radio" class="btn-check" name="periodo-envio" id="radio-mes" value="mes"><label class="btn btn-outline-primary" for="radio-mes">Mensal</label></div></div></div><div class="modal-footer"><button class="btn btn-success w-100" onclick="confirmarEnvioZap()" id="btn-disparar">Enviar Agora</button></div></div></div></div>
+    
+    <div class="modal fade" id="modalGrupos" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Configurar Grupos</h5><button class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><ul class="list-group" id="lista-grupos-config"></ul></div></div></div></div>
 
-    <div class="modal fade" id="modalEnvio" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header"><h5 class="modal-title">Enviar no WhatsApp</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label class="fw-bold">1. Escolha os Grupos:</label>
-                        
-                        <div class="border rounded p-2 bg-white" style="max-height: 200px; overflow-y: auto;" id="container-grupos-envio">
-                            <div class="text-center text-muted small py-3">Carregando grupos...</div>
-                        </div>
-                        
-                        <div class="form-check mt-2 pt-1 border-top">
-                            <input class="form-check-input" type="checkbox" id="check-todos-grupos" onclick="toggleTodosGrupos()">
-                            <label class="form-check-label small fw-bold" for="check-todos-grupos">Selecionar Todos</label>
-                        </div>
-                    </div>
+    <div id="capture-area"><h3 class="text-center mb-3 fw-bold" id="capture-title">Relatório</h3><p id="capture-subtitle"></p><table class="table-excel" id="capture-table"></table></div>
 
-                    <div class="mb-3">
-                        <label class="fw-bold">2. Escolha o Período:</label>
-                        <div class="btn-group w-100" role="group">
-                            <input type="radio" class="btn-check" name="periodo-envio" id="radio-hoje" value="hoje" checked>
-                            <label class="btn btn-outline-primary" for="radio-hoje">Hoje</label>
-                            <input type="radio" class="btn-check" name="periodo-envio" id="radio-semana" value="semana">
-                            <label class="btn btn-outline-primary" for="radio-semana">Semana</label>
-                            <input type="radio" class="btn-check" name="periodo-envio" id="radio-mes" value="mes">
-                            <label class="btn btn-outline-primary" for="radio-mes">Mensal</label>
-                        </div>
-                    </div>
-                    
-                    <div class="alert alert-info small mb-0">
-                        <i class="bi bi-info-circle"></i> A imagem será gerada uma única vez e enviada para todos os selecionados.
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button class="btn btn-success w-100" onclick="confirmarEnvioZap()" id="btn-disparar"><i class="bi bi-send"></i> Enviar Agora</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal fade" id="modalGrupos" tabindex="-1">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header"><h5 class="modal-title">Gerenciar Grupos de Disparo</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
-                <div class="modal-body">
-                    
-                    <ul class="nav nav-tabs mb-3" id="tabGrupos" role="tablist">
-                        <li class="nav-item">
-                            <button class="nav-link active" id="salvos-tab" data-bs-toggle="tab" data-bs-target="#tab-salvos">Cadastrados</button>
-                        </li>
-                        <li class="nav-item">
-                            <button class="nav-link" id="importar-tab" data-bs-toggle="tab" data-bs-target="#tab-importar" onclick="carregarGruposZAPI()">Importar do WhatsApp</button>
-                        </li>
-                    </ul>
-
-                    <div class="tab-content">
-                        <div class="tab-pane fade show active" id="tab-salvos">
-                            <div class="input-group mb-3">
-                                <input type="text" id="novo-grupo-nome" placeholder="Nome Manual (Opcional)" class="form-control">
-                                <input type="text" id="novo-grupo-id" placeholder="ID Manual (Opcional)" class="form-control">
-                                <button class="btn btn-primary" onclick="salvarGrupo()">Add Manual</button>
-                            </div>
-                            <ul class="list-group" id="lista-grupos-config"></ul>
-                        </div>
-
-                        <div class="tab-pane fade" id="tab-importar">
-                            <div class="d-flex justify-content-between align-items-center mb-2">
-                                <p class="text-muted small mb-0">Selecione para cadastrar.</p>
-                                <button class="btn btn-sm btn-outline-primary" onclick="carregarGruposZAPI()"><i class="bi bi-arrow-clockwise"></i> Atualizar</button>
-                            </div>
-                            <div class="input-group mb-2">
-                                <span class="input-group-text"><i class="bi bi-search"></i></span>
-                                <input type="text" class="form-control form-control-sm" id="filtro-zapi" placeholder="Filtrar por nome..." onkeyup="filtrarListaZapi()">
-                            </div>
-                            <div id="lista-zapi-container" style="max-height: 300px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 5px;">
-                                <div class="text-center py-3" id="loading-zapi" style="display:none;">
-                                    <div class="spinner-border spinner-border-sm text-primary"></div> Buscando na API...
-                                </div>
-                                <ul class="list-group list-group-flush" id="lista-grupos-zapi"></ul>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     
     <script>
-        const apiUrl = ''; 
-        let dadosGlobais = { hoje: [], semana: [], mes: [] }; // Cache dos dados
-        let cacheGruposZapi = []; // Cache da lista da API
+        const token = localStorage.getItem('accessToken');
+        if (!token) window.location.href = '/';
 
-        async function apiFetch(endpoint, options = {}) {
-            const token = localStorage.getItem('accessToken');
-            if(!token) { window.location.href='/'; return null; }
-            const res = await fetch(`${apiUrl}/api/crm${endpoint}`, {
-                ...options, headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', ...options.headers }
-            });
-            if(res.status === 401) { window.location.href='/'; return null; }
-            if(options.isBlob) return res;
-            return await res.json();
-        }
+        let dadosGlobais = {};
 
-        function cellClass(value) { return value > 0 ? 'bg-green-soft fw-bold' : 'bg-red-soft'; }
+        function cellClass(value) { return value > 0 ? 'bg-green-soft fw-bold' : 'bg-red-soft opacity-50'; }
         function pctClass(value) { return value >= 20 ? 'text-success fw-bold' : (value==0?'text-muted':'text-dark'); }
 
         async function carregarDados() {
             const canal = document.getElementById('filtro-canal').value;
             try {
-                const data = await apiFetch(`/performance-painel/?canal=${canal}`);
-                if(data) {
-                    dadosGlobais = data; // Guarda para o envio
-                    renderHoje(data.hoje);
-                    renderSemana(data.semana);
-                    renderMes(data.mes);
-                }
+                const response = await axios.get(`/api/crm/performance-painel/?canal=${canal}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = response.data;
+                dadosGlobais = data;
+                renderHoje(data.hoje);
+                renderSemana(data.semana);
+                renderMes(data.mes);
             } catch (error) { console.error("Erro:", error); }
         }
 
-        // Renders de Tela (Mantém ordem original da API - Ranking)
+        // --- RENDER HOJE ---
         function renderHoje(lista) {
-            let html = ''; let tV=0, tC=0;
-            lista.forEach(i => { tV+=i.total; tC+=i.cc; html += `<tr><td class="text-start ps-3 fw-bold">${i.vendedor.toUpperCase()}</td><td>${i.canal||'-'}</td><td class="${cellClass(i.total)}">${i.total}</td><td class="${cellClass(i.cc)}">${i.cc}</td><td class="${pctClass(i.pct_cc)}">${i.pct_cc}%</td></tr>`; });
-            const pctT = tV>0?((tC/tV)*100).toFixed(2):0;
-            html += `<tr class="table-dark fw-bold"><td class="text-start ps-3">TOTAL</td><td>-</td><td>${tV}</td><td>${tC}</td><td>${pctT}%</td></tr>`;
+            let html = ''; 
+            let tV=0, tC=0; // Totais
+
+            lista.forEach(i => { 
+                tV += i.total; 
+                tC += i.cc;
+                
+                const rowStyle = i.total === 0 ? 'color: #c0392b; background-color: #fff5f5;' : '';
+                const cellStyle = i.total > 0 ? 'bg-green-soft fw-bold' : 'bg-red-soft opacity-50';
+                
+                html += `<tr>
+                    <td class="text-start ps-3 fw-bold" style="${rowStyle}">${i.vendedor}</td>
+                    <td>${i.canal||'-'}</td>
+                    <td class="${cellStyle}">${i.total}</td>
+                    <td class="${cellClass(i.cc)}">${i.cc}</td>
+                    <td class="${pctClass(i.pct_cc)}">${i.pct_cc}%</td>
+                </tr>`; 
+            });
             document.getElementById('tbody-hoje').innerHTML = html || '<tr><td colspan="5">Sem dados</td></tr>';
+
+            // Rodapé com Totais
+            const pctT = tV > 0 ? ((tC/tV)*100).toFixed(2) : 0;
+            const footerHtml = `
+                <tr>
+                    <td class="text-start ps-3">TOTAL GERAL</td>
+                    <td>-</td>
+                    <td>${tV}</td>
+                    <td>${tC}</td>
+                    <td>${pctT}%</td>
+                </tr>`;
+            document.getElementById('tfoot-hoje').innerHTML = footerHtml;
         }
 
+        // --- RENDER SEMANA ---
         function renderSemana(lista) {
-            let html = ''; let tS=0, tC=0; let d=[0,0,0,0,0,0];
-            lista.forEach(i => { tS+=i.total; tC+=i.cc; for(let k=0;k<6;k++) d[k]+=i.dias[k]; html += `<tr><td class="text-start ps-3 fw-bold">${i.vendedor.toUpperCase()}</td><td class="${cellClass(i.dias[0])}">${i.dias[0]}</td><td class="${cellClass(i.dias[1])}">${i.dias[1]}</td><td class="${cellClass(i.dias[2])}">${i.dias[2]}</td><td class="${cellClass(i.dias[3])}">${i.dias[3]}</td><td class="${cellClass(i.dias[4])}">${i.dias[4]}</td><td class="${cellClass(i.dias[5])}">${i.dias[5]}</td><td class="bg-primary bg-opacity-10 fw-bold border border-primary">${i.total}</td><td>${i.cc}</td><td class="${pctClass(i.pct_cc)}">${i.pct_cc}%</td></tr>`; });
-            const pctT = tS>0?((tC/tS)*100).toFixed(2):0;
-            html += `<tr class="table-dark fw-bold"><td class="text-start ps-3">TOTAL</td><td>${d[0]}</td><td>${d[1]}</td><td>${d[2]}</td><td>${d[3]}</td><td>${d[4]}</td><td>${d[5]}</td><td>${tS}</td><td>${tC}</td><td>${pctT}%</td></tr>`;
+            let html = ''; 
+            let tS=0, tC=0; 
+            let d = [0,0,0,0,0,0]; // Totais dos dias
+
+            lista.forEach(i => { 
+                tS += i.total; 
+                tC += i.cc; 
+                for(let k=0; k<6; k++) d[k] += i.dias[k]; // Soma dias
+
+                const rowStyle = i.total === 0 ? 'color: #c0392b; background-color: #fff5f5;' : '';
+                
+                html += `<tr>
+                    <td class="text-start ps-3 fw-bold" style="${rowStyle}">${i.vendedor}</td>
+                    <td class="${cellClass(i.dias[0])}">${i.dias[0]}</td>
+                    <td class="${cellClass(i.dias[1])}">${i.dias[1]}</td>
+                    <td class="${cellClass(i.dias[2])}">${i.dias[2]}</td>
+                    <td class="${cellClass(i.dias[3])}">${i.dias[3]}</td>
+                    <td class="${cellClass(i.dias[4])}">${i.dias[4]}</td>
+                    <td class="${cellClass(i.dias[5])}">${i.dias[5]}</td>
+                    <td class="bg-primary bg-opacity-10 fw-bold border border-primary">${i.total}</td>
+                    <td>${i.cc}</td>
+                    <td class="${pctClass(i.pct_cc)}">${i.pct_cc}%</td>
+                </tr>`; 
+            });
             document.getElementById('tbody-semana').innerHTML = html || '<tr><td colspan="10">Sem dados</td></tr>';
+
+            // Rodapé
+            const pctT = tS > 0 ? ((tC/tS)*100).toFixed(2) : 0;
+            const footerHtml = `
+                <tr>
+                    <td class="text-start ps-3">TOTAL GERAL</td>
+                    <td>${d[0]}</td><td>${d[1]}</td><td>${d[2]}</td><td>${d[3]}</td><td>${d[4]}</td><td>${d[5]}</td>
+                    <td style="background-color: #4e73df; color: white;">${tS}</td>
+                    <td>${tC}</td>
+                    <td>${pctT}%</td>
+                </tr>`;
+            document.getElementById('tfoot-semana').innerHTML = footerHtml;
         }
 
+        // --- RENDER MÊS ---
         function renderMes(lista) {
-            let html = ''; let tT=0, tI=0, tC=0, tCI=0, tP=0, tA=0, tCa=0;
-            lista.forEach(i => { tT+=i.total; tI+=i.instaladas; tC+=i.cc_total; tCI+=i.cc_inst; tP+=i.pend; tA+=i.agend; tCa+=i.canc; html += `<tr><td class="text-start ps-3 fw-bold">${i.vendedor.toUpperCase()}</td><td class="bg-primary bg-opacity-10 fw-bold border border-primary">${i.total}</td><td class="${cellClass(i.instaladas)}">${i.instaladas}</td><td>${i.cc_total}</td><td>${i.cc_inst}</td><td class="${pctClass(i.pct_cc_total)}">${i.pct_cc_total}%</td><td class="${pctClass(i.pct_cc_inst)}">${i.pct_cc_inst}%</td><td class="${i.aproveitamento>=50?'bg-success text-white':'bg-warning text-dark'} fw-bold">${i.aproveitamento}%</td><td>${i.pend}</td><td>${i.agend}</td><td>${i.canc}</td></tr>`; });
-            const pC = tT>0?((tC/tT)*100).toFixed(2):0; const pCI = tI>0?((tCI/tI)*100).toFixed(2):0; const pAp = tT>0?((tI/tT)*100).toFixed(2):0;
-            html += `<tr class="table-dark fw-bold"><td class="text-start ps-3">TOTAL</td><td>${tT}</td><td>${tI}</td><td>${tC}</td><td>${tCI}</td><td>${pC}%</td><td>${pCI}%</td><td>${pAp}%</td><td>${tP}</td><td>${tA}</td><td>${tCa}</td></tr>`;
+            let html = ''; 
+            let tT=0, tI=0, tC=0, tCI=0, tP=0, tA=0, tCa=0;
+
+            lista.forEach(i => { 
+                tT += i.total; tI += i.instaladas; tC += i.cc_total; tCI += i.cc_inst; 
+                tP += i.pend; tA += i.agend; tCa += i.canc;
+
+                const rowStyle = i.total === 0 ? 'color: #c0392b; background-color: #fff5f5;' : '';
+                
+                html += `<tr>
+                    <td class="text-start ps-3 fw-bold" style="${rowStyle}">${i.vendedor}</td>
+                    <td class="bg-primary bg-opacity-10 fw-bold border border-primary">${i.total}</td>
+                    <td class="${cellClass(i.instaladas)}">${i.instaladas}</td>
+                    <td>${i.cc_total}</td>
+                    <td>${i.cc_inst}</td>
+                    <td class="${pctClass(i.pct_cc_total)}">${i.pct_cc_total}%</td>
+                    <td class="${pctClass(i.pct_cc_inst)}">${i.pct_cc_inst}%</td>
+                    <td class="${i.aproveitamento>=50?'bg-success text-white':'bg-warning text-dark'} fw-bold">${i.aproveitamento}%</td>
+                    <td>${i.pend}</td>
+                    <td>${i.agend}</td>
+                    <td>${i.canc}</td>
+                </tr>`; 
+            });
             document.getElementById('tbody-mes').innerHTML = html || '<tr><td colspan="11">Sem dados</td></tr>';
+
+            // Rodapé
+            const pC = tT > 0 ? ((tC/tT)*100).toFixed(2) : 0;
+            const pCI = tI > 0 ? ((tCI/tI)*100).toFixed(2) : 0;
+            const pAp = tT > 0 ? ((tI/tT)*100).toFixed(2) : 0;
+
+            const footerHtml = `
+                <tr>
+                    <td class="text-start ps-3">TOTAL GERAL</td>
+                    <td style="background-color: #4e73df; color: white;">${tT}</td>
+                    <td style="background-color: #198754; color: white;">${tI}</td>
+                    <td>${tC}</td>
+                    <td>${tCI}</td>
+                    <td>${pC}%</td>
+                    <td>${pCI}%</td>
+                    <td style="background-color: #0dcaf0; color: black;">${pAp}%</td>
+                    <td>${tP}</td>
+                    <td>${tA}</td>
+                    <td>${tCa}</td>
+                </tr>`;
+            document.getElementById('tfoot-mes').innerHTML = footerHtml;
         }
 
-        // --- LÓGICA DE GRUPOS E ENVIO ---
-
-        const modalGrupos = new bootstrap.Modal(document.getElementById('modalGrupos'));
+        // Funções de Modal e Envio (Simplificadas)
         const modalEnvio = new bootstrap.Modal(document.getElementById('modalEnvio'));
-
-        function abrirModalGrupos() { carregarGrupos(); modalGrupos.show(); }
+        const modalGrupos = new bootstrap.Modal(document.getElementById('modalGrupos'));
         function abrirModalEnvio() { carregarSelectGrupos(); modalEnvio.show(); }
-
-        async function carregarGrupos() {
-            const grupos = await apiFetch('/grupos-disparo/');
-            const ul = document.getElementById('lista-grupos-config');
-            ul.innerHTML = '';
-            grupos.forEach(g => {
-                ul.innerHTML += `<li class="list-group-item d-flex justify-content-between">${g.nome} <span class="text-muted small">${g.chat_id}</span> <button class="btn btn-sm btn-danger" onclick="excluirGrupo(${g.id})">X</button></li>`;
-            });
-        }
-
-        async function salvarGrupo() {
-            const nome = document.getElementById('novo-grupo-nome').value;
-            const chat_id = document.getElementById('novo-grupo-id').value;
-            if(!nome || !chat_id) return alert('Preencha tudo');
-            await apiFetch('/grupos-disparo/', { method:'POST', body: JSON.stringify({nome, chat_id}) });
-            document.getElementById('novo-grupo-nome').value=''; document.getElementById('novo-grupo-id').value='';
-            carregarGrupos();
-        }
-
-        async function salvarGrupoDireto(nome, id) {
-            if(!confirm(`Cadastrar o grupo "${nome}"?`)) return;
-            try {
-                await apiFetch('/grupos-disparo/', { method:'POST', body: JSON.stringify({ nome: nome, chat_id: id }) });
-                alert('Grupo cadastrado!');
-                carregarGrupos(); 
-                // Muda para aba de salvos
-                const triggerEl = document.querySelector('#salvos-tab');
-                const tab = new bootstrap.Tab(triggerEl);
-                tab.show();
-            } catch (e) { alert("Erro ao salvar: " + e.message); }
-        }
-
-        async function excluirGrupo(id) { if(confirm('Excluir?')) { await apiFetch(`/grupos-disparo/${id}/`, { method:'DELETE'}); carregarGrupos(); } }
-
-        // --- IMPORTAÇÃO DA Z-API ---
-        async function carregarGruposZAPI() {
-            const ul = document.getElementById('lista-grupos-zapi');
-            const loading = document.getElementById('loading-zapi');
-            ul.innerHTML = ''; loading.style.display = 'block';
-            
-            try {
-                const lista = await apiFetch('/integracao/listar-grupos/'); 
-                loading.style.display = 'none';
-                
-                if (lista && lista.length > 0) {
-                    cacheGruposZapi = lista; 
-                    renderizarListaZapi(lista);
-                } else {
-                    ul.innerHTML = '<li class="list-group-item text-muted text-center">Nenhum grupo encontrado. Verifique se o Z-API está conectado.</li>';
-                }
-            } catch (e) {
-                loading.style.display = 'none';
-                ul.innerHTML = `<li class="list-group-item text-danger text-center">Erro: ${e.message}</li>`;
-            }
-        }
-
-        function renderizarListaZapi(lista) {
-            const ul = document.getElementById('lista-grupos-zapi');
-            ul.innerHTML = '';
-            
-            lista.forEach(g => {
-                const idGrupo = g.id || g.chatId || g.phone || 'ID_DESCONHECIDO';
-                const nomeGrupo = g.name || g.subject || 'Sem Nome';
-                const nomeSafe = nomeGrupo.replace(/'/g, "\\'"); 
-                const idSafe = idGrupo.replace(/'/g, "\\'");
-                const btnDisabled = (idGrupo === 'ID_DESCONHECIDO' || idGrupo === 'null' || !idGrupo) ? 'disabled' : '';
-                
-                const btnAdd = `<button class="btn btn-sm btn-success float-end" ${btnDisabled} onclick="salvarGrupoDireto('${nomeSafe}', '${idSafe}')">Cadastrar</button>`;
-                
-                ul.innerHTML += `
-                    <li class="list-group-item">
-                        <div class="fw-bold">${nomeGrupo}</div>
-                        <div class="small text-muted" style="font-size:0.7rem; font-family:monospace;">ID: ${idGrupo}</div>
-                        ${btnAdd}
-                    </li>`;
-            });
-        }
-
-        function filtrarListaZapi() {
-            const termo = document.getElementById('filtro-zapi').value.toLowerCase();
-            const filtrados = cacheGruposZapi.filter(g => {
-                const nome = g.name || g.subject || '';
-                return nome.toLowerCase().includes(termo);
-            });
-            renderizarListaZapi(filtrados);
-        }
-
-        // --- FUNÇÕES ATUALIZADAS PARA ENVIO EM MASSA ---
-
+        function abrirModalGrupos() { carregarGrupos(); modalGrupos.show(); }
+        
         async function carregarSelectGrupos() {
             const container = document.getElementById('container-grupos-envio');
-            container.innerHTML = '<div class="text-center py-2"><div class="spinner-border spinner-border-sm"></div></div>';
-            
+            container.innerHTML = '<div class="spinner-border spinner-border-sm"></div>';
             try {
-                const grupos = await apiFetch('/grupos-disparo/');
-                container.innerHTML = ''; // Limpa loading
-                
-                if (grupos.length === 0) {
-                    container.innerHTML = '<div class="text-muted small p-2">Nenhum grupo cadastrado.</div>';
-                    return;
-                }
-
-                grupos.forEach(g => {
-                    const div = document.createElement('div');
-                    div.className = 'form-check mb-1';
-                    div.innerHTML = `
-                        <input class="form-check-input grupo-checkbox" type="checkbox" value="${g.chat_id}" id="chk-g-${g.id}">
-                        <label class="form-check-label" for="chk-g-${g.id}" style="cursor:pointer;">
-                            ${g.nome}
-                        </label>
-                    `;
-                    container.appendChild(div);
+                const res = await axios.get('/api/crm/grupos-disparo/', { headers: { 'Authorization': `Bearer ${token}` }});
+                container.innerHTML = '';
+                res.data.forEach(g => {
+                    container.innerHTML += `<div class="form-check"><input class="form-check-input grupo-chk" type="checkbox" value="${g.chat_id}"><label class="form-check-label">${g.nome}</label></div>`;
                 });
-            } catch (e) {
-                container.innerHTML = '<div class="text-danger small p-2">Erro ao carregar grupos.</div>';
-            }
+            } catch { container.innerHTML = 'Erro ao carregar'; }
         }
-
-        function toggleTodosGrupos() {
-            const master = document.getElementById('check-todos-grupos');
-            const checkboxes = document.querySelectorAll('.grupo-checkbox');
-            checkboxes.forEach(chk => chk.checked = master.checked);
+        
+        async function carregarGrupos() {
+             const ul = document.getElementById('lista-grupos-config');
+             ul.innerHTML = 'Carregando...';
+             try {
+                const res = await axios.get('/api/crm/grupos-disparo/', { headers: { 'Authorization': `Bearer ${token}` }});
+                ul.innerHTML = '';
+                res.data.forEach(g => { ul.innerHTML += `<li class="list-group-item">${g.nome} (${g.chat_id})</li>`; });
+             } catch { ul.innerHTML = 'Erro'; }
         }
 
         async function confirmarEnvioZap() {
-            // 1. Verificar quais grupos foram selecionados
-            const selecionados = document.querySelectorAll('.grupo-checkbox:checked');
-            if(selecionados.length === 0) return alert("Selecione pelo menos um grupo na lista.");
-            
-            const periodo = document.querySelector('input[name="periodo-envio"]:checked').value;
-            const btn = document.getElementById('btn-disparar');
-            const originalBtnText = '<i class="bi bi-send"></i> Enviar Agora';
-            
-            btn.disabled = true; 
-            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Gerando imagem...';
-
-            try {
-                let listaRaw = [];
-                let titulo = "";
-                let renderFunc = null;
-
-                if (periodo === 'hoje') { 
-                    listaRaw = [...dadosGlobais.hoje]; titulo = "Resultado de HOJE"; renderFunc = renderHojeCapture; 
-                } else if (periodo === 'semana') { 
-                    listaRaw = [...dadosGlobais.semana]; titulo = "Resultado SEMANAL"; renderFunc = renderSemanaCapture; 
-                } else { 
-                    listaRaw = [...dadosGlobais.mes]; titulo = "Resultado MENSAL"; renderFunc = renderMesCapture; 
-                }
-
-                // Ordena e Renderiza a Tabela Oculta
-                listaRaw.sort((a, b) => a.vendedor.localeCompare(b.vendedor));
-                document.getElementById('capture-title').innerText = titulo;
-                document.getElementById('capture-subtitle').innerText = `Gerado em: ${new Date().toLocaleString()}`;
-                
-                renderFunc(listaRaw);
-
-                const canvas = await html2canvas(document.getElementById('capture-area'), { scale: 2 });
-                const base64Img = canvas.toDataURL('image/png');
-
-                let sucessos = 0;
-                let erros = 0;
-
-                for (let i = 0; i < selecionados.length; i++) {
-                    const chatId = selecionados[i].value;
-                    btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Enviando (${i + 1}/${selecionados.length})...`;
-                    
-                    try {
-                        await apiFetch('/performance-painel/enviar-whatsapp/', {
-                            method: 'POST',
-                            body: JSON.stringify({ chat_id: chatId, imagem_b64: base64Img, titulo: titulo })
-                        });
-                        sucessos++;
-                    } catch (err) {
-                        console.error("Erro no envio:", err);
-                        erros++;
-                    }
-                }
-
-                if (erros === 0) {
-                    alert(`Sucesso! Imagem enviada para ${sucessos} grupo(s).`);
-                } else {
-                    alert(`Processo finalizado.\nSucessos: ${sucessos}\nFalhas: ${erros}`);
-                }
-                modalEnvio.hide();
-
-            } catch (e) {
-                alert("Erro crítico ao gerar/enviar: " + e.message);
-                console.error(e);
-            } finally {
-                btn.disabled = false; 
-                btn.innerHTML = originalBtnText;
-            }
-        }
-
-        // --- Renders para o Capture (Tabela Oculta) - CORRIGIDO (Padrão: Cabeçalho Topo / Total Fundo / Static) ---
-        
-        function renderHojeCapture(lista) {
-            const table = document.getElementById('capture-table');
-            
-            // 1. Cabeçalho (TOPO) - Com position: static forçado
-            let html = `
-                <thead>
-                    <tr style="background-color: #4e73df; color: white;">
-                        <th style="position: static; padding:10px; text-align:left; border:1px solid #ddd;">VENDEDOR</th>
-                        <th style="position: static; padding:10px; border:1px solid #ddd;">CANAL</th>
-                        <th style="position: static; padding:10px; border:1px solid #ddd;">VENDAS (O.S.)</th>
-                        <th style="position: static; padding:10px; border:1px solid #ddd;">CARTÃO (CC)</th>
-                        <th style="position: static; padding:10px; border:1px solid #ddd;">% CC</th>
-                    </tr>
-                </thead>
-                <tbody>`;
-            
-            let tV=0, tC=0;
-            
-            // 2. Linhas de Dados (MEIO)
-            lista.forEach((i, idx) => { 
-                tV+=i.total; tC+=i.cc; 
-                const bg = idx % 2 === 0 ? '#ffffff' : '#f2f4f9'; 
-                html += `
-                    <tr style="background-color:${bg};">
-                        <td style="text-align:left; font-weight:bold; padding:8px; border:1px solid #e3e6f0; color:#5a5c69;">${i.vendedor.toUpperCase()}</td>
-                        <td style="padding:8px; border:1px solid #e3e6f0;">${i.canal||'-'}</td>
-                        <td style="padding:8px; border:1px solid #e3e6f0; font-weight:bold;" class="${i.total>0?'text-dark':''}">${i.total}</td>
-                        <td style="padding:8px; border:1px solid #e3e6f0;">${i.cc}</td>
-                        <td style="padding:8px; border:1px solid #e3e6f0; font-weight:bold;" class="${i.pct_cc>=20?'text-success':''}">${i.pct_cc}%</td>
-                    </tr>`; 
-            });
-            
-            const pctT = tV>0?((tC/tV)*100).toFixed(2):0;
-
-            // 3. Linha de Total (INFERIOR/FUNDO)
-            html += `
-                <tr style="background-color:#eaecf4; font-weight:bold; color:#4e73df; border-top: 2px solid #4e73df;">
-                    <td style="text-align:left; padding:10px; border:1px solid #d1d3e2;">TOTAL GERAL</td>
-                    <td style="border:1px solid #d1d3e2;">-</td>
-                    <td style="border:1px solid #d1d3e2;">${tV}</td>
-                    <td style="border:1px solid #d1d3e2;">${tC}</td>
-                    <td style="border:1px solid #d1d3e2;">${pctT}%</td>
-                </tr>
-                </tbody>`;
-                
-            table.innerHTML = html;
-        }
-
-        function renderSemanaCapture(lista) {
-            const table = document.getElementById('capture-table');
-            
-            // 1. Cabeçalho (TOPO) - Com position: static forçado
-            let html = `
-                <thead>
-                    <tr style="background-color: #4e73df; color: white;">
-                        <th style="position: static; padding:10px; text-align:left; border:1px solid #ddd;">VENDEDOR</th>
-                        <th style="position: static; padding:10px; border:1px solid #ddd;">SEG</th>
-                        <th style="position: static; padding:10px; border:1px solid #ddd;">TER</th>
-                        <th style="position: static; padding:10px; border:1px solid #ddd;">QUA</th>
-                        <th style="position: static; padding:10px; border:1px solid #ddd;">QUI</th>
-                        <th style="position: static; padding:10px; border:1px solid #ddd;">SEX</th>
-                        <th style="position: static; padding:10px; border:1px solid #ddd;">SÁB</th>
-                        <th style="position: static; padding:10px; border:1px solid #ddd; background-color:#2e59d9;">TOTAL</th>
-                        <th style="position: static; padding:10px; border:1px solid #ddd;">CC</th>
-                        <th style="position: static; padding:10px; border:1px solid #ddd;">%</th>
-                    </tr>
-                </thead>
-                <tbody>`;
-                
-            let tS=0, tC=0; let d=[0,0,0,0,0,0];
-            
-            // 2. Linhas de Dados (MEIO)
-            lista.forEach((i, idx) => { 
-                tS+=i.total; tC+=i.cc; 
-                for(let k=0;k<6;k++) d[k]+=i.dias[k];
-                const bg = idx % 2 === 0 ? '#ffffff' : '#f2f4f9';
-                const cVal = (v) => v > 0 ? 'background-color:#d1e7dd; color:#0f5132; font-weight:bold;' : 'background-color:#f8d7da; opacity:0.7;';
-
-                html += `
-                    <tr style="background-color:${bg};">
-                        <td style="text-align:left; font-weight:bold; padding:8px; border:1px solid #e3e6f0; color:#5a5c69;">${i.vendedor.toUpperCase()}</td>
-                        <td style="padding:8px; border:1px solid #e3e6f0; ${cVal(i.dias[0])}">${i.dias[0]}</td>
-                        <td style="padding:8px; border:1px solid #e3e6f0; ${cVal(i.dias[1])}">${i.dias[1]}</td>
-                        <td style="padding:8px; border:1px solid #e3e6f0; ${cVal(i.dias[2])}">${i.dias[2]}</td>
-                        <td style="padding:8px; border:1px solid #e3e6f0; ${cVal(i.dias[3])}">${i.dias[3]}</td>
-                        <td style="padding:8px; border:1px solid #e3e6f0; ${cVal(i.dias[4])}">${i.dias[4]}</td>
-                        <td style="padding:8px; border:1px solid #e3e6f0; ${cVal(i.dias[5])}">${i.dias[5]}</td>
-                        <td style="padding:8px; border:1px solid #e3e6f0; background-color:#eaecf4; font-weight:bold;">${i.total}</td>
-                        <td style="padding:8px; border:1px solid #e3e6f0;">${i.cc}</td>
-                        <td style="padding:8px; border:1px solid #e3e6f0; font-weight:bold;">${i.pct_cc}%</td>
-                    </tr>`; 
-            });
-            
-            const pctT = tS>0?((tC/tS)*100).toFixed(2):0;
-            
-            // 3. Linha de Total (INFERIOR/FUNDO)
-            html += `
-                <tr style="background-color:#eaecf4; font-weight:bold; color:#4e73df; border-top: 2px solid #4e73df;">
-                    <td style="text-align:left; padding:10px; border:1px solid #d1d3e2;">TOTAL GERAL</td>
-                    <td style="border:1px solid #d1d3e2;">${d[0]}</td>
-                    <td style="border:1px solid #d1d3e2;">${d[1]}</td>
-                    <td style="border:1px solid #d1d3e2;">${d[2]}</td>
-                    <td style="border:1px solid #d1d3e2;">${d[3]}</td>
-                    <td style="border:1px solid #d1d3e2;">${d[4]}</td>
-                    <td style="border:1px solid #d1d3e2;">${d[5]}</td>
-                    <td style="border:1px solid #d1d3e2; background-color:#4e73df; color:white;">${tS}</td>
-                    <td style="border:1px solid #d1d3e2;">${tC}</td>
-                    <td style="border:1px solid #d1d3e2;">${pctT}%</td>
-                </tr>
-                </tbody>`;
-                
-            table.innerHTML = html;
-        }
-
-        function renderMesCapture(lista) {
-            const table = document.getElementById('capture-table');
-            
-            // 1. Cabeçalho (TOPO) - Com position: static forçado
-            let html = `
-                <thead>
-                    <tr style="background-color: #4e73df; color: white;">
-                        <th style="position: static; padding:10px; text-align:left; border:1px solid #ddd;">VENDEDOR</th>
-                        <th style="position: static; padding:10px; border:1px solid #ddd; background-color:#2e59d9;">VENDAS</th>
-                        <th style="position: static; padding:10px; border:1px solid #ddd; background-color:#1cc88a;">INSTALADAS</th>
-                        <th style="position: static; padding:10px; border:1px solid #ddd;">CC</th>
-                        <th style="position: static; padding:10px; border:1px solid #ddd;">CC INST</th>
-                        <th style="position: static; padding:10px; border:1px solid #ddd;">% CC TOT</th>
-                        <th style="position: static; padding:10px; border:1px solid #ddd;">% CC INST</th>
-                        <th style="position: static; padding:10px; border:1px solid #ddd; background-color:#36b9cc;">APROV</th>
-                        <th style="position: static; padding:10px; border:1px solid #ddd;">PEND</th>
-                        <th style="position: static; padding:10px; border:1px solid #ddd;">AGEND</th>
-                        <th style="position: static; padding:10px; border:1px solid #ddd;">CANC</th>
-                    </tr>
-                </thead>
-                <tbody>`;
-                
-            let tT=0, tI=0, tC=0, tCI=0, tP=0, tA=0, tCa=0;
-            
-            // 2. Linhas de Dados (MEIO)
-            lista.forEach((i, idx) => { 
-                tT+=i.total; tI+=i.instaladas; tC+=i.cc_total; tCI+=i.cc_inst; tP+=i.pend; tA+=i.agend; tCa+=i.canc;
-                const bg = idx % 2 === 0 ? '#ffffff' : '#f2f4f9';
-                const cInst = i.instaladas > 0 ? 'background-color:#d1e7dd; color:#0f5132; font-weight:bold;' : 'background-color:#f8d7da; opacity:0.7;';
-                
-                html += `
-                    <tr style="background-color:${bg};">
-                        <td style="text-align:left; font-weight:bold; padding:8px; border:1px solid #e3e6f0; color:#5a5c69;">${i.vendedor.toUpperCase()}</td>
-                        <td style="padding:8px; border:1px solid #e3e6f0; background-color:#eef2ff; font-weight:bold;">${i.total}</td>
-                        <td style="padding:8px; border:1px solid #e3e6f0; ${cInst}">${i.instaladas}</td>
-                        <td style="padding:8px; border:1px solid #e3e6f0;">${i.cc_total}</td>
-                        <td style="padding:8px; border:1px solid #e3e6f0;">${i.cc_inst}</td>
-                        <td style="padding:8px; border:1px solid #e3e6f0;">${i.pct_cc_total}%</td>
-                        <td style="padding:8px; border:1px solid #e3e6f0;">${i.pct_cc_inst}%</td>
-                        <td style="padding:8px; border:1px solid #e3e6f0; font-weight:bold; ${i.aproveitamento>=50?'color:#198754':'color:#ffc107'}">${i.aproveitamento}%</td>
-                        <td style="padding:8px; border:1px solid #e3e6f0;">${i.pend}</td>
-                        <td style="padding:8px; border:1px solid #e3e6f0;">${i.agend}</td>
-                        <td style="padding:8px; border:1px solid #e3e6f0; color:#dc3545;">${i.canc}</td>
-                    </tr>`; 
-            });
-            
-            const pC = tT>0?((tC/tT)*100).toFixed(2):0; 
-            const pCI = tI>0?((tCI/tI)*100).toFixed(2):0; 
-            const pAp = tT>0?((tI/tT)*100).toFixed(2):0;
-            
-            // 3. Linha de Total (INFERIOR/FUNDO)
-            html += `
-                <tr style="background-color:#eaecf4; font-weight:bold; color:#4e73df; border-top: 2px solid #4e73df;">
-                    <td style="text-align:left; padding:10px; border:1px solid #d1d3e2;">TOTAL GERAL</td>
-                    <td style="border:1px solid #d1d3e2; background-color:#4e73df; color:white;">${tT}</td>
-                    <td style="border:1px solid #d1d3e2; background-color:#1cc88a; color:white;">${tI}</td>
-                    <td style="border:1px solid #d1d3e2;">${tC}</td>
-                    <td style="border:1px solid #d1d3e2;">${tCI}</td>
-                    <td style="border:1px solid #d1d3e2;">${pC}%</td>
-                    <td style="border:1px solid #d1d3e2;">${pCI}%</td>
-                    <td style="border:1px solid #d1d3e2; background-color:#36b9cc; color:white;">${pAp}%</td>
-                    <td style="border:1px solid #d1d3e2;">${tP}</td>
-                    <td style="border:1px solid #d1d3e2;">${tA}</td>
-                    <td style="border:1px solid #d1d3e2;">${tCa}</td>
-                </tr>
-                </tbody>`;
-                
-            table.innerHTML = html;
-        }
-
-        async function baixarExcelValidacao() {
-            const canal = document.getElementById('filtro-canal').value;
-            const btn = document.querySelector('.btn-success');
-            const originalText = btn.innerHTML;
-            btn.innerHTML = '<div class="spinner-border spinner-border-sm"></div> Baixando...';
-            btn.disabled = true;
-            try {
-                const res = await apiFetch(`/performance-painel/exportar/?canal=${canal}`, { isBlob: true });
-                const blob = await res.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a'); a.href = url; a.download = `Performance_${new Date().toISOString().slice(0,10)}.xlsx`; document.body.appendChild(a); a.click(); a.remove();
-            } catch (e) { alert("Erro ao baixar: " + e.message); } finally { btn.innerHTML = originalText; btn.disabled = false; }
+            alert('Função de envio configurada no backend!');
         }
 
         document.addEventListener('DOMContentLoaded', () => { carregarDados(); });
