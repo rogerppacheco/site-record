@@ -454,9 +454,15 @@ class VendaViewSet(viewsets.ModelViewSet):
                 if observacoes: venda.observacoes = observacoes
                 venda.auditor_atual = None
                 
-                if status_obj.nome.upper() == 'CADASTRADA' and not venda.status_esteira:
-                    st_agendado = StatusCRM.objects.filter(nome__iexact='AGENDADO', tipo='Esteira').first()
-                    if st_agendado: venda.status_esteira = st_agendado
+                # --- BLOCO CORRIGIDO ---
+                if status_obj.nome.upper() == 'CADASTRADA':
+                    # Esta linha e as abaixo devem estar alinhadas (identadas)
+                    venda.data_abertura = timezone.now()
+                    
+                    if not venda.status_esteira:
+                        st_agendado = StatusCRM.objects.filter(nome__iexact='AGENDADO', tipo='Esteira').first()
+                        if st_agendado: 
+                            venda.status_esteira = st_agendado
 
                 venda.save()
                 
@@ -666,6 +672,7 @@ class VendaViewSet(viewsets.ModelViewSet):
             ws.append([
                 v.id,
                 v.data_criacao.strftime('%d/%m/%Y') if v.data_criacao else '-',
+                v.data_abertura.strftime('%d/%m/%Y %H:%M') if v.data_abertura else '-', # Nova coluna
                 v.vendedor.username if v.vendedor else '-',
                 sup_nome,
                 v.cliente.nome_razao_social if v.cliente else '-',
@@ -1593,9 +1600,9 @@ class ImportacaoOsabView(APIView):
     def _normalize_text(self, text):
         if not text: return ""
         text = str(text).upper().strip()
+        import unicodedata
         return ''.join(c for c in unicodedata.normalize('NFD', text) if unicodedata.category(c) != 'Mn')
 
-    # Método de envio em background
     def _enviar_mensagens_background(self, lista_mensagens):
         svc = WhatsAppService()
         for telefone, texto in lista_mensagens:
@@ -1608,37 +1615,88 @@ class ImportacaoOsabView(APIView):
         file_obj = request.FILES.get('file')
         if not file_obj: return Response({'error': 'Nenhum arquivo enviado.'}, status=400)
         
-        # --- LÓGICA DE PERMISSÃO DE ENVIO ---
         opcao_front = str(request.data.get('enviar_whatsapp', 'true')).lower() == 'true'
         usuario = request.user
-        
-        # Só Diretoria e Admin podem optar por NÃO enviar. Os demais são forçados a enviar.
         pode_decidir = is_member(usuario, ['Diretoria', 'Admin'])
         flag_enviar_whatsapp = opcao_front if pode_decidir else True
         
         if not flag_enviar_whatsapp:
             print(f"--- Importação OSAB SILENCIOSA iniciada por: {usuario.username} ---")
 
-        # --- LEITURA DO ARQUIVO ---
         try:
             df = None
-            if file_obj.name.endswith('.xlsb'): df = pd.read_excel(file_obj, engine='pyxlsb')
-            elif file_obj.name.endswith(('.xlsx', '.xls')): df = pd.read_excel(file_obj)
-            else: return Response({'error': 'Formato inválido.'}, status=400)
+            if file_obj.name.endswith('.xlsb'): 
+                df = pd.read_excel(file_obj, engine='pyxlsb')
+            elif file_obj.name.endswith(('.xlsx', '.xls')): 
+                df = pd.read_excel(file_obj)
+            else: 
+                return Response({'error': 'Formato inválido.'}, status=400)
         except Exception as e: return Response({'error': f'Erro leitura arquivo: {str(e)}'}, status=400)
         
-        # Otimização de dados
-        df.columns = [str(col).strip().upper() for col in df.columns]
+        # 1. Normalização dos nomes das colunas
+        df.columns = [str(col).strip().upper().replace(' ', '_') for col in df.columns]
         
-        # Vetorização de Datas (Performance)
+        # ==============================================================================
+        # 2. PARSER DE DATA "INTELIGENTE" (Versão Corrigida para Conflito de Imports)
+        # ==============================================================================
+        def smart_date_parser(val):
+            # Importação local com alias para evitar conflito com 'from datetime import datetime'
+            import datetime as dt_sys 
+            import pandas as pd # Garantir pandas aqui também
+
+            # Se for nulo ou vazio
+            if val is None or pd.isna(val) or val == '':
+                return None
+            
+            # Caso A: O Pandas/Engine já leu como objeto de data (datetime)
+            # Verifica se é instância de datetime.datetime, datetime.date ou pd.Timestamp
+            if isinstance(val, (dt_sys.datetime, dt_sys.date, pd.Timestamp)):
+                return val.date() if hasattr(val, 'date') else val
+
+            # Caso B: É um número (Serial do Excel - ex: 45279.54)
+            if isinstance(val, (float, int)):
+                try:
+                    # Excel começa em 30/12/1899
+                    return (dt_sys.datetime(1899, 12, 30) + dt_sys.timedelta(days=float(val))).date()
+                except:
+                    return None
+
+            # Caso C: É Texto (String) - Onde mora o perigo "04/12/2025  13:00:00"
+            s_val = str(val).strip()
+            
+            # Tenta encontrar padrão DD/MM/AAAA via Regex (ignora o resto da string)
+            # Usa 're' que deve estar importado no topo ou aqui
+            import re 
+            match_br = re.search(r'(\d{1,2})/(\d{1,2})/(\d{4})', s_val)
+            if match_br:
+                d, m, y = match_br.groups()
+                try:
+                    return dt_sys.date(int(y), int(m), int(d))
+                except ValueError:
+                    pass # Data inválida matematicamente (ex: 30/02)
+
+            # Tenta encontrar padrão AAAA-MM-DD
+            match_iso = re.search(r'(\d{4})-(\d{1,2})-(\d{1,2})', s_val)
+            if match_iso:
+                y, m, d = match_iso.groups()
+                try:
+                    return dt_sys.date(int(y), int(m), int(d))
+                except ValueError:
+                    pass
+
+            return None
+        # ==============================================================================
+
+        # Aplica a função linha a linha nas colunas de data
         cols_data = ['DT_REF', 'DATA_ABERTURA', 'DATA_FECHAMENTO', 'DATA_AGENDAMENTO']
         for col in cols_data:
             if col in df.columns:
-                df[col] = pd.to_datetime(df[col], dayfirst=True, errors='coerce').dt.date
+                # O .apply é mais lento que vetorização, mas muito mais seguro para dados sujos
+                df[col] = df[col].apply(smart_date_parser)
         
         df = df.replace({np.nan: None, pd.NaT: None})
 
-        # --- 1. PREPARAÇÃO (Caches e Filtros) ---
+        # --- PREPARAÇÃO DO BANCO DE DADOS ---
         status_esteira_map = {s.nome.upper(): s for s in StatusCRM.objects.filter(tipo='Esteira')}
         status_tratamento_map = {s.nome.upper(): s for s in StatusCRM.objects.filter(tipo='Tratamento')}
         
@@ -1654,7 +1712,6 @@ class ImportacaoOsabView(APIView):
         motivo_padrao_osab, _ = MotivoPendencia.objects.get_or_create(nome="VALIDAR OSAB", defaults={'tipo_pendencia': 'Operacional'})
         motivo_sem_agenda, _ = MotivoPendencia.objects.get_or_create(nome="APROVISIONAMENTO S/ DATA", defaults={'tipo_pendencia': 'Sistêmica'})
 
-        # Filtro de Pedidos: Carrega só o necessário do banco
         lista_pedidos_raw = df['PEDIDO'].dropna().astype(str).tolist() if 'PEDIDO' in df.columns else []
         lista_pedidos_limpos = set(p.replace('.0', '').strip() for p in lista_pedidos_raw)
 
@@ -1670,12 +1727,7 @@ class ImportacaoOsabView(APIView):
             obj.documento: obj for obj in ImportacaoOsab.objects.filter(documento__in=lista_pedidos_limpos)
         }
 
-        osab_criar = []
-        osab_atualizar = []
-        vendas_atualizar = []
-        historicos_criar = []
-        
-        # Fila de mensagens
+        osab_criar, osab_atualizar, vendas_atualizar, historicos_criar = [], [], [], []
         fila_mensagens_whatsapp = [] 
 
         coluna_map = {
@@ -1709,7 +1761,7 @@ class ImportacaoOsabView(APIView):
             "vendas_encontradas": 0, "ja_corretos": 0, "erros": [], "logs_detalhados": [], "arquivo_excel_b64": None
         }
 
-        # --- 2. LOOP PRINCIPAL ---
+        # --- LOOP PRINCIPAL ---
         records = df.to_dict('records')
 
         for index, row in enumerate(records):
@@ -1755,21 +1807,36 @@ class ImportacaoOsabView(APIView):
                 detalhes_hist = {}
                 msg_whatsapp_desta_venda = None
 
-                # Regras de Status
+                # --- 1. DATA DE ABERTURA ---
+                # Como usamos o parser inteligente, aqui já é date ou None
+                nova_data_abertura = row.get('DATA_ABERTURA')
+                if nova_data_abertura:
+                    data_sistema = venda.data_abertura.date() if venda.data_abertura else None
+                    if data_sistema != nova_data_abertura:
+                        detalhes_hist['data_abertura'] = f"De '{data_sistema}' para '{nova_data_abertura}'"
+                        venda.data_abertura = nova_data_abertura
+                        houve_alteracao = True
+
+                # --- 2. STATUS ---
                 is_fraude = "PAYMENT_NOT_AUTHORIZED" in sit_osab_raw
                 if not sit_osab_raw or is_fraude:
                     pgto_raw = self._normalize_text(row.get('MEIO_PAGAMENTO'))
                     if "CARTAO" in pgto_raw:
                         st_reprovado = status_tratamento_map.get("REPROVADO CARTÃO DE CRÉDITO")
                         if st_reprovado: target_status_tratamento = st_reprovado
+                
                 elif sit_osab_raw == "EM APROVISIONAMENTO":
+                    # Aqui usamos a data já limpa pelo parser inteligente
                     dt_ag = row.get('DATA_AGENDAMENTO') 
+                    
+                    # Validação simples: se existe, o parser já garantiu que é uma data válida
                     if dt_ag and dt_ag.year >= 2000:
                         target_status_esteira = status_esteira_map.get("AGENDADO")
                         target_data_agenda = dt_ag
                     else:
                         target_status_esteira = status_esteira_map.get("PENDENCIADA")
                         target_motivo_pendencia = motivo_sem_agenda
+                
                 else:
                     nome_est = STATUS_MAP.get(sit_osab_raw)
                     if not nome_est:
@@ -1778,12 +1845,13 @@ class ImportacaoOsabView(APIView):
                         elif "REPROVADO" in sit_osab_raw: nome_est = "REPROVADO CARTÃO DE CRÉDITO"
                     if nome_est: target_status_esteira = status_esteira_map.get(nome_est)
 
-                # Aplica Alterações
+                # Aplica Alterações Status Tratamento
                 if target_status_tratamento and venda.status_tratamento != target_status_tratamento:
                     detalhes_hist['status_tratamento'] = f"De '{venda.status_tratamento}' para '{target_status_tratamento.nome}'"
                     venda.status_tratamento = target_status_tratamento
                     houve_alteracao = True
 
+                # Aplica Alterações Status Esteira
                 if target_status_esteira:
                     if venda.status_esteira != target_status_esteira:
                         detalhes_hist['status_esteira'] = f"De '{venda.status_esteira}' para '{target_status_esteira.nome}'"
@@ -1796,11 +1864,12 @@ class ImportacaoOsabView(APIView):
                     if 'INSTALADA' in nome_est_upper:
                         nova_dt = row.get('DATA_FECHAMENTO')
                         if nova_dt and nova_dt.year >= 2000:
-                            if not (venda.data_instalacao and venda.data_instalacao.year >= 2000) or venda.data_instalacao != nova_dt:
+                            data_inst_atual = venda.data_instalacao
+                            if not data_inst_atual or data_inst_atual != nova_dt:
                                 detalhes_hist['data_instalacao'] = f"Nova: {nova_dt}"
                                 venda.data_instalacao = nova_dt
                                 houve_alteracao = True
-                        # Msg Instalada
+                        
                         if houve_alteracao and venda.vendedor and venda.vendedor.tel_whatsapp:
                             dt_fmt = venda.data_instalacao.strftime('%d/%m') if venda.data_instalacao else "Hoje"
                             msg_whatsapp_desta_venda = (venda.vendedor.tel_whatsapp, f"✅ *VENDA INSTALADA (OSAB)*\n\n*Cliente:* {venda.cliente.nome_razao_social}\n*OS:* {venda.ordem_servico}\n*Data:* {dt_fmt}")
@@ -1808,11 +1877,12 @@ class ImportacaoOsabView(APIView):
                     elif 'AGENDADO' in nome_est_upper:
                         nova_dt_ag = target_data_agenda or row.get('DATA_AGENDAMENTO')
                         if nova_dt_ag and nova_dt_ag.year >= 2000:
-                            if not (venda.data_agendamento and venda.data_agendamento.year >= 2000) or venda.data_agendamento != nova_dt_ag:
+                            data_ag_atual = venda.data_agendamento
+                            if not data_ag_atual or data_ag_atual != nova_dt_ag:
                                 detalhes_hist['data_agendamento'] = f"Nova: {nova_dt_ag}"
                                 venda.data_agendamento = nova_dt_ag
                                 houve_alteracao = True
-                        # Msg Agendada
+                        
                         if houve_alteracao and venda.vendedor and venda.vendedor.tel_whatsapp:
                             dt_fmt = venda.data_agendamento.strftime('%d/%m') if venda.data_agendamento else "S/D"
                             msg_whatsapp_desta_venda = (venda.vendedor.tel_whatsapp, f"📅 *VENDA AGENDADA (OSAB)*\n\n*Cliente:* {venda.cliente.nome_razao_social}\n*OS:* {venda.ordem_servico}\n*Data:* {dt_fmt}")
@@ -1827,7 +1897,7 @@ class ImportacaoOsabView(APIView):
                             detalhes_hist['motivo_pendencia'] = f"Novo: {novo_motivo.nome}"
                             venda.motivo_pendencia = novo_motivo
                             houve_alteracao = True
-                        # Msg Pendencia
+                        
                         if houve_alteracao and venda.vendedor and venda.vendedor.tel_whatsapp:
                             msg_whatsapp_desta_venda = (venda.vendedor.tel_whatsapp, f"⚠️ *VENDA PENDENCIADA (OSAB)*\n\n*Cliente:* {venda.cliente.nome_razao_social}\n*OS:* {venda.ordem_servico}\n*Motivo:* {novo_motivo.nome}")
 
@@ -1844,16 +1914,13 @@ class ImportacaoOsabView(APIView):
                         venda.forma_pagamento = novo_fp
                         houve_alteracao = True
 
-                # Conclusão do Registro
+                # Conclusão
                 if houve_alteracao:
                     log_item["resultado"] = "ATUALIZAR"
                     vendas_atualizar.append(venda)
                     historicos_criar.append(HistoricoAlteracaoVenda(venda=venda, usuario=osab_bot, alteracoes=detalhes_hist))
-                    
-                    # --- SÓ ADICIONA PARA ENVIO SE A FLAG ESTIVER TRUE ---
                     if msg_whatsapp_desta_venda and flag_enviar_whatsapp:
                         fila_mensagens_whatsapp.append(msg_whatsapp_desta_venda)
-                    # -----------------------------------------------------
                 else:
                     log_item["resultado"] = "SEM_MUDANCA"
                     report["ja_corretos"] += 1
@@ -1864,29 +1931,32 @@ class ImportacaoOsabView(APIView):
                 log_item["resultado"] = "ERRO"
                 report["erros"].append(f"L{index}: {ex}")
 
-        # --- 3. PERSISTÊNCIA EM LOTE ---
+        # --- 3. PERSISTÊNCIA ---
         with transaction.atomic():
             if osab_criar: ImportacaoOsab.objects.bulk_create(osab_criar, batch_size=2000)
             if osab_atualizar:
                 campos_osab = [f.name for f in ImportacaoOsab._meta.fields if f.name != 'id']
                 ImportacaoOsab.objects.bulk_update(osab_atualizar, campos_osab, batch_size=2000)
             if vendas_atualizar:
-                campos_venda = ['status_esteira', 'status_tratamento', 'data_instalacao', 'data_agendamento', 'forma_pagamento', 'motivo_pendencia']
+                campos_venda = ['status_esteira', 'status_tratamento', 'data_instalacao', 'data_agendamento', 'forma_pagamento', 'motivo_pendencia', 'data_abertura']
                 Venda.objects.bulk_update(vendas_atualizar, campos_venda, batch_size=2000)
             if historicos_criar:
                 HistoricoAlteracaoVenda.objects.bulk_create(historicos_criar, batch_size=2000)
 
         report["atualizados"] = len(vendas_atualizar)
 
-        # --- 4. DISPARO DE MENSAGENS (BACKGROUND THREAD) ---
+        # --- 4. ENVIO WHATSAPP ---
         if fila_mensagens_whatsapp:
+            import threading
             t = threading.Thread(target=self._enviar_mensagens_background, args=(fila_mensagens_whatsapp,))
             t.start()
             print(f"Iniciado envio de {len(fila_mensagens_whatsapp)} mensagens em background.")
         
-        # Gera Excel
+        # Gera Excel de Log
         try:
             if report["logs_detalhados"]:
+                from io import BytesIO
+                import base64
                 output = BytesIO()
                 pd.DataFrame(report["logs_detalhados"]).to_excel(output, index=False)
                 report['arquivo_excel_b64'] = base64.b64encode(output.getvalue()).decode('utf-8')
@@ -2693,6 +2763,7 @@ class PainelPerformanceView(APIView):
             users = users.filter(canal__iexact=filtro_canal)
 
         # 5. Filtros de Venda
+        # IMPORTANTE: filtro_os_valida já garante que tem OS, mas agora filtramos pela DATA DE ABERTURA
         filtro_os_valida = Q(vendas__ativo=True) & ~Q(vendas__ordem_servico='') & Q(vendas__ordem_servico__isnull=False)
         
         # Filtro CC (Cartão)
@@ -2705,18 +2776,24 @@ class PainelPerformanceView(APIView):
         # Filtro Instalada
         filtro_inst = Q(vendas__status_esteira__nome__iexact='INSTALADA')
 
+        # ==============================================================================
+        # ALTERAÇÃO 1: Troca de data_criacao por data_abertura nos filtros
+        # ==============================================================================
+
         # --- A. DADOS DE HOJE ---
         qs_hoje = users.annotate(
-            vendas_total=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date=hoje)),
-            vendas_cc=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date=hoje) & filtro_cc)
-        ).values('username', 'first_name', 'last_name', 'canal', 'vendas_total', 'vendas_cc').order_by('-vendas_total', 'username')
+            vendas_total=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date=hoje)),
+            vendas_cc=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date=hoje) & filtro_cc)
+        ).values('username', 'canal', 'vendas_total', 'vendas_cc').order_by('-vendas_total', 'username')
 
         lista_hoje = []
         for u in qs_hoje:
             total = u['vendas_total']
             cc = u['vendas_cc']
             pct = (cc / total * 100) if total > 0 else 0
-            nome_display = f"{u['first_name']} {u['last_name']}".strip() or u['username']
+            
+            # ALTERAÇÃO 2: Usar apenas o Username (Login)
+            nome_display = u['username']
             
             lista_hoje.append({
                 'vendedor': nome_display.upper(),
@@ -2728,21 +2805,23 @@ class PainelPerformanceView(APIView):
 
         # --- B. DADOS DA SEMANA ---
         qs_semana = users.annotate(
-            seg=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date=dias_semana[0])),
-            ter=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date=dias_semana[1])),
-            qua=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date=dias_semana[2])),
-            qui=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date=dias_semana[3])),
-            sex=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date=dias_semana[4])),
-            sab=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date=dias_semana[5])),
-            total_semana=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date__gte=inicio_semana)),
-            total_cc=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date__gte=inicio_semana) & filtro_cc)
-        ).values('username', 'first_name', 'last_name', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'total_semana', 'total_cc').order_by('-total_semana', 'username')
+            seg=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date=dias_semana[0])),
+            ter=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date=dias_semana[1])),
+            qua=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date=dias_semana[2])),
+            qui=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date=dias_semana[3])),
+            sex=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date=dias_semana[4])),
+            sab=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date=dias_semana[5])),
+            total_semana=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_semana)),
+            total_cc=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_semana) & filtro_cc)
+        ).values('username', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'total_semana', 'total_cc').order_by('-total_semana', 'username')
 
         lista_semana = []
         for u in qs_semana:
             total = u['total_semana']
             pct = (u['total_cc'] / total * 100) if total > 0 else 0
-            nome_display = f"{u['first_name']} {u['last_name']}".strip() or u['username']
+            
+            # ALTERAÇÃO 2: Username
+            nome_display = u['username']
 
             lista_semana.append({
                 'vendedor': nome_display.upper(),
@@ -2754,15 +2833,19 @@ class PainelPerformanceView(APIView):
 
         # --- C. DADOS DO MÊS ---
         qs_mes = users.annotate(
-            total_vendas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date__gte=inicio_mes)),
-            instaladas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date__gte=inicio_mes) & filtro_inst),
-            total_cc=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date__gte=inicio_mes) & filtro_cc),
-            instaladas_cc=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date__gte=inicio_mes) & filtro_inst & filtro_cc),
-            pendenciadas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date__gte=inicio_mes, vendas__status_esteira__nome__icontains='PENDEN')),
-            agendadas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date__gte=inicio_mes, vendas__status_esteira__nome__iexact='AGENDADO')),
-            canceladas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_criacao__date__gte=inicio_mes, vendas__status_esteira__nome__icontains='CANCELAD'))
+            total_vendas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_mes)),
+            
+            # A regra de instaladas continua a mesma (Safra): Vendas que tiveram OS aberta neste mês e já instalaram
+            instaladas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_mes) & filtro_inst),
+            
+            total_cc=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_mes) & filtro_cc),
+            instaladas_cc=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_mes) & filtro_inst & filtro_cc),
+            
+            pendenciadas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_mes, vendas__status_esteira__nome__icontains='PENDEN')),
+            agendadas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_mes, vendas__status_esteira__nome__iexact='AGENDADO')),
+            canceladas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_mes, vendas__status_esteira__nome__icontains='CANCELAD'))
         ).values(
-            'username', 'first_name', 'last_name', 'total_vendas', 'instaladas', 'total_cc', 'instaladas_cc', 'pendenciadas', 'agendadas', 'canceladas'
+            'username', 'total_vendas', 'instaladas', 'total_cc', 'instaladas_cc', 'pendenciadas', 'agendadas', 'canceladas'
         ).order_by('-total_vendas', 'username')
 
         lista_mes = []
@@ -2772,7 +2855,9 @@ class PainelPerformanceView(APIView):
             pct_cc_total = (u['total_cc'] / tot * 100) if tot > 0 else 0
             pct_cc_inst = (u['instaladas_cc'] / inst * 100) if inst > 0 else 0
             aproveitamento = (inst / tot * 100) if tot > 0 else 0
-            nome_display = f"{u['first_name']} {u['last_name']}".strip() or u['username']
+            
+            # ALTERAÇÃO 2: Username
+            nome_display = u['username']
 
             lista_mes.append({
                 'vendedor': nome_display.upper(),

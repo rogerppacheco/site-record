@@ -6,7 +6,6 @@ from .models import (
     RegraComissao, Cliente, Venda, ImportacaoOsab, ImportacaoChurn,
     CicloPagamento, HistoricoAlteracaoVenda, Campanha,
     ComissaoOperadora, Comunicado, LancamentoFinanceiro,
-    # Assumindo que RegraCampanha foi adicionada em .models conforme instruído
     RegraCampanha 
 )
 from .models import GrupoDisparo 
@@ -40,7 +39,7 @@ class FormaPagamentoSerializer(serializers.ModelSerializer):
         model = FormaPagamento
         fields = ['id', 'nome', 'ativo', 'aplica_desconto']
 
-# --- CAMPANHA SERIALIZER (CORRIGIDO PARA SUPORTE ÀS FAIXAS) ---
+# --- CAMPANHA SERIALIZER ---
 class CampanhaSerializer(serializers.ModelSerializer):
     # Campo aninhado: indica que esperamos uma lista (many=True) de objetos RegraCampanha
     regras_meta = RegraCampanhaSerializer(many=True, required=False) 
@@ -55,7 +54,7 @@ class CampanhaSerializer(serializers.ModelSerializer):
                   'meta_vendas', 'valor_premio', 'tipo_meta', 
                   'canal_alvo', 'planos_elegiveis', 'formas_pagamento_elegiveis', 
                   'regras', 'ativo', 'data_criacao', 
-                  'regras_meta') # <-- Incluído o campo aninhado
+                  'regras_meta')
 
     def create(self, validated_data):
         # 1. Pop a lista de faixas do dicionário principal
@@ -205,11 +204,11 @@ class VendaSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'vendedor', 'vendedor_nome', 'vendedor_detalhes', 
             'cliente', 'cliente_id', 
-            'cliente_nome_razao_social', 'cliente_cpf_cnpj', 'cliente_email', # Restaurados
+            'cliente_nome_razao_social', 'cliente_cpf_cnpj', 'cliente_email',
             'plano', 'forma_pagamento', 'status_tratamento', 'status_esteira', 'status_comissionamento',
             'status_final', 'data_criacao', 'forma_entrada', 'cpf_representante_legal', 'nome_representante_legal',
             'nome_mae', 'data_nascimento', 'telefone1', 'telefone2', 'cep', 'logradouro', 'numero_residencia',
-            'complemento', 'bairro', 'cidade', 'estado', 'data_pedido', 'ordem_servico', 'data_agendamento',
+            'complemento', 'bairro', 'cidade', 'estado', 'data_abertura', 'ordem_servico', 'data_agendamento',
             'periodo_agendamento', 'data_instalacao', 'antecipou_instalacao', 'motivo_pendencia',
             'ponto_referencia', 'observacoes', 'historico_alteracoes', 'data_pagamento', 'valor_pago', 'alterado_por',
             'auditor_atual', 'auditor_atual_nome', 'auditor_atual_id'
@@ -245,13 +244,13 @@ class VendaDetailSerializer(serializers.ModelSerializer):
             'cliente_cpf_cnpj', 'cliente_nome_razao_social', 'cliente_email',
             'nome_mae', 'data_nascimento', 'telefone1', 'telefone2',
             'cep', 'logradouro', 'numero_residencia', 'complemento', 'bairro', 'cidade', 'estado',
-            'ponto_referencia', 'observacoes', 'ordem_servico', 'data_pedido',
+            'ponto_referencia', 'observacoes', 'ordem_servico', 'data_abertura',
             'data_agendamento', 'periodo_agendamento', 'data_instalacao', 'antecipou_instalacao',
             'data_pagamento', 'valor_pago', 'cpf_representante_legal', 'nome_representante_legal', 'forma_entrada'
         ]
 
 class VendaCreateSerializer(serializers.ModelSerializer):
-    # ALTERAÇÃO: Campos de Plano e Pagamento tornados opcionais para criação flexível
+    # Campos de Plano e Pagamento opcionais para criação flexível
     plano = serializers.PrimaryKeyRelatedField(queryset=Plano.objects.all(), required=False, allow_null=True)
     forma_pagamento = serializers.PrimaryKeyRelatedField(queryset=FormaPagamento.objects.all(), required=False, allow_null=True)
     
@@ -262,7 +261,7 @@ class VendaCreateSerializer(serializers.ModelSerializer):
     telefone1 = serializers.CharField(max_length=20, required=True)
     telefone2 = serializers.CharField(max_length=20, required=True)
     
-    # ALTERAÇÃO: Campos de endereço agora opcionais no Serializer
+    # Campos de endereço opcionais no Serializer
     cep = serializers.CharField(required=False, allow_blank=True)
     logradouro = serializers.CharField(required=False, allow_blank=True)
     numero_residencia = serializers.CharField(required=False, allow_blank=True)

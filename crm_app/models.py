@@ -122,6 +122,7 @@ class Venda(models.Model):
     observacoes = models.TextField(blank=True, null=True)
 
     ordem_servico = models.CharField(max_length=50, null=True, blank=True)
+    data_abertura = models.DateTimeField(null=True, blank=True, verbose_name="Data de Abertura da O.S")
     data_pedido = models.DateTimeField(null=True, blank=True)
     data_agendamento = models.DateField(null=True, blank=True)
     periodo_agendamento = models.CharField(max_length=10, choices=[('MANHA', 'Manhã'), ('TARDE', 'Tarde')], null=True, blank=True)

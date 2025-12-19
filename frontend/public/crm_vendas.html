@@ -707,8 +707,17 @@
             const clean = valor.replace(/\D/g, '');
             const area = document.getElementById('area-representante');
             const input = document.getElementById('input-cpf-rep');
-            if (clean.length > 11) { area.style.display = 'flex'; input.setAttribute('required', 'required'); }
-            else { area.style.display = 'none'; input.removeAttribute('required'); }
+            
+            // LÓGICA DE EXIBIÇÃO:
+            // O estilo 'display: flex' aqui se sobrepõe ao container pai ser ocultado
+            // caso o elemento esteja em um container visível, ou se for manipulado diretamente.
+            if (clean.length > 11) { 
+                area.style.display = 'flex'; 
+                input.setAttribute('required', 'required'); 
+            } else { 
+                area.style.display = 'none'; 
+                input.removeAttribute('required'); 
+            }
         }
 
         function abrirModalOrigem() {
@@ -929,7 +938,51 @@
             verificarRegraCNPJ(cliente.cpf_cnpj);
         }
 
-        async function buscarRepresentante(cpf) { try { const res = await apiFetch(`/crm/clientes/?search=${cpf}`); if(res && res.length > 0) { const rep = res.find(cli => cli.cpf_cnpj.replace(/\D/g, '') === cpf.replace(/\D/g, '')); if (rep) document.getElementById('input-nome-rep').value = rep.nome_razao_social; } } catch(e){} }
+        // ===============================================
+        // Lógica de Busca e Preenchimento de Representante
+        // ===============================================
+        async function buscarRepresentante(cpf) { 
+            const inputNome = document.getElementById('input-nome-rep');
+            
+            // 1. Feedback visual (Trava e mostra que está processando)
+            inputNome.value = "BUSCANDO...";
+            inputNome.readOnly = true;
+            inputNome.style.backgroundColor = "#e9ecef"; // Cinza
+
+            try { 
+                const res = await apiFetch(`/crm/clientes/?search=${cpf}`); 
+                let encontrado = false;
+
+                if(res && res.length > 0) { 
+                    // Busca exata para garantir segurança
+                    const rep = res.find(cli => cli.cpf_cnpj.replace(/\D/g, '') === cpf.replace(/\D/g, '')); 
+                    
+                    if (rep) {
+                        // Cenario 1: CPF Existe -> Preenche e Mantém Travado
+                        inputNome.value = rep.nome_razao_social;
+                        inputNome.readOnly = true;
+                        inputNome.style.backgroundColor = "#e9ecef";
+                        encontrado = true;
+                    } 
+                } 
+
+                if (!encontrado) {
+                    // Cenario 2: CPF Não Existe -> Limpa, Destrava e Foca
+                    inputNome.value = ""; 
+                    inputNome.readOnly = false; 
+                    inputNome.style.backgroundColor = "#ffffff"; 
+                    inputNome.focus(); 
+                }
+
+            } catch(e) {
+                // Em caso de erro, libera
+                console.error("Erro ao buscar representante:", e);
+                inputNome.value = "";
+                inputNome.readOnly = false;
+                inputNome.style.backgroundColor = "#ffffff";
+            } 
+        }
+
         async function carregarAuxiliares() { try { const [planos, formas, statusEst, statusTrat] = await Promise.all([apiFetch('/crm/planos/'), apiFetch('/crm/formas-pagamento/'), apiFetch('/crm/status/?tipo=Esteira'), apiFetch('/crm/status/?tipo=Tratamento')]); const selPlano = document.getElementById('select-plano'); selPlano.innerHTML = '<option value="">Selecione...</option>'; if(planos) planos.forEach(p => selPlano.innerHTML += `<option value="${p.id}">${p.nome} - R$${p.valor}</option>`); const selPag = document.getElementById('select-pagamento'); selPag.innerHTML = '<option value="">Selecione...</option>'; if(formas) formas.forEach(f => selPag.innerHTML += `<option value="${f.id}">${f.nome}</option>`); const selEst = document.getElementById('select-status-esteira'); selEst.innerHTML = '<option value="">Selecione...</option>'; if(statusEst) statusEst.forEach(s => selEst.innerHTML += `<option value="${s.id}">${s.nome}</option>`); const selTrat = document.getElementById('select-status-tratamento'); selTrat.innerHTML = '<option value="">Selecione...</option>'; if(statusTrat) statusTrat.forEach(s => selTrat.innerHTML += `<option value="${s.id}">${s.nome}</option>`); } catch(e) {} }
 
         async function editarVenda(id) {

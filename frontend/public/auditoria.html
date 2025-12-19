@@ -13,7 +13,6 @@
     <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
     
     <style>
-        /* Estilos Específicos da Auditoria (IDÊNTICOS AO SEU ARQUIVO ORIGINAL) */
         .script-section { background-color: #fff; border-left: 5px solid var(--cor-primaria, #0d6efd); padding: 25px; margin-bottom: 25px; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
         .script-title { color: var(--cor-primaria, #0d6efd); font-weight: 800; margin-bottom: 15px; text-transform: uppercase; font-size: 0.95rem; border-bottom: 1px solid #eee; padding-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
         .script-text { font-size: 1.15rem; line-height: 1.6; color: #212529; margin-bottom: 15px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
@@ -22,7 +21,6 @@
         .checklist-label { font-weight: 600; color: #664d03; }
         .form-control-script { border: 1px solid #ced4da; background-color: #f8f9fa; font-weight: 600; color: #495057; }
         .form-control-script:focus { background-color: #fff; border-color: var(--cor-primaria, #0d6efd); box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.15); }
-        .input-readonly-look { background-color: #e9ecef !important; border: none; }
         .btn-copy { border-top-left-radius: 0; border-bottom-left-radius: 0; border-color: #ced4da; color: #6c757d; }
         .btn-copy:hover { background-color: #e9ecef; color: #0d6efd; }
         .btn-auditar { background-color: #212529; color: white; border-radius: 50px; padding: 6px 16px; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 6px; border: none; transition: transform 0.2s, box-shadow 0.2s; text-decoration: none; }
@@ -125,7 +123,7 @@
                                         <p class="script-text mb-2">"Poderia, por gentileza, confirmar seu nome completo?"</p>
                                         <div class="input-group mb-3"><input type="text" class="form-control form-control-script uppercase-input" id="audit-cliente-nome"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cliente-nome')" title="Copiar"><i class="bi bi-clipboard" id="btn-icon-audit-cliente-nome"></i></button></div>
 
-                                        <p class="script-text mb-2">"Poderia me informar os <strong>três primeiros números</strong> do seu CPF?"</p>
+                                        <p class="script-text mb-2">"Poderia me informar o seu CPF?"</p>
                                         <div class="input-group mb-3"><input type="text" class="form-control form-control-script" id="audit-cliente-cpf" maxlength="18" onkeyup="mascaraCPF(this)"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cliente-cpf', true)" title="Copiar apenas números"><i class="bi bi-clipboard" id="btn-icon-audit-cliente-cpf"></i></button></div>
 
                                         <div class="row g-3">
@@ -134,6 +132,26 @@
                                             <div class="col-md-2"><label class="form-label small text-muted fw-bold">Idade</label><input type="text" class="form-control bg-white" id="audit-idade-calc" readonly></div>
                                         </div>
 
+                                        <div id="div-representante" style="display:none;" class="mt-3 pt-3 border-top bg-light p-3 rounded">
+                                            <h6 class="script-title mb-2 text-secondary">Representante Legal (CNPJ)</h6>
+                                            <p class="script-text mb-2 small text-muted">"Por favor, confirme os dados do representante legal."</p>
+                                            <div class="row g-3">
+                                                <div class="col-md-4">
+                                                    <label class="form-label small text-muted fw-bold">CPF Rep.</label>
+                                                    <div class="input-group">
+                                                        <input type="text" class="form-control form-control-script" id="audit-cpf-rep" onkeyup="mascaraCPF(this)">
+                                                        <button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cpf-rep', true)"><i class="bi bi-clipboard" id="btn-icon-audit-cpf-rep"></i></button>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-8">
+                                                    <label class="form-label small text-muted fw-bold">Nome Rep.</label>
+                                                    <div class="input-group">
+                                                        <input type="text" class="form-control form-control-script uppercase-input" id="audit-nome-rep">
+                                                        <button class="btn btn-copy" type="button" onclick="copiarCampo('audit-nome-rep')"><i class="bi bi-clipboard" id="btn-icon-audit-nome-rep"></i></button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
                                         <div class="checklist-box mt-4"><div class="form-check"><input class="form-check-input" type="checkbox" id="check-biometria"><label class="form-check-label checklist-label" for="check-biometria">Verifiquei se a Biometria está APROVADA (Prazo link 48h)</label></div></div>
                                         <div class="text-end mt-3"><button class="btn btn-primary" onclick="proximaAba('pills-contato-tab')">Próximo <i class="bi bi-arrow-right"></i></button></div>
                                     </div>
@@ -247,6 +265,7 @@
         let globalStatusOptions = [];
         let planosOptions = [];
         let formasPagamentoOptions = [];
+        let debounceRepTimer; // Variável para o timer de busca
 
         const modalAuditoria = new bootstrap.Modal(document.getElementById('modalAuditoria'));
         const modalReprovacao = new bootstrap.Modal(document.getElementById('modal-reprovacao'));
@@ -263,7 +282,15 @@
                 else { $('#div-campos-aguardando-pagamento').slideUp(); $('#repro-os').val(''); }
             });
 
-            // NOVO: Validação de CEP Automática na Auditoria
+            // Monitoramento do campo de CPF do Representante
+            $('#audit-cpf-rep').on('input', function() {
+                const val = $(this).val().replace(/\D/g, '');
+                clearTimeout(debounceRepTimer);
+                if(val.length >= 11) {
+                    debounceRepTimer = setTimeout(() => buscarRepresentante(val), 600);
+                }
+            });
+
             $('#audit-cep').on('blur', function() {
                 const cep = $(this).val().replace(/\D/g, '');
                 if (cep.length === 8) {
@@ -290,7 +317,6 @@
             iniciarMonitoramentoInatividade();
         });
 
-        // --- FUNÇÃO PARA ATUALIZAR SAUDAÇÃO AUTOMÁTICA ---
         function atualizarSaudacao() {
             const hora = new Date().getHours();
             let saudacao = "Bom dia";
@@ -299,7 +325,6 @@
             $('#script-saudacao').text(saudacao);
         }
 
-        // --- FUNÇÃO PARA COPIAR ---
         function copiarCampo(id, apenasNumeros = false) {
             let valor = document.getElementById(id).value;
             if(!valor) return;
@@ -340,7 +365,7 @@
         }
 
         function aplicarMascarasManuais() {
-            const els = ['audit-cliente-cpf', 'audit-tel1', 'audit-tel2', 'audit-cep'];
+            const els = ['audit-cliente-cpf', 'audit-tel1', 'audit-tel2', 'audit-cep', 'audit-cpf-rep'];
             els.forEach(id => {
                 const el = document.getElementById(id);
                 if(el && el.value) {
@@ -463,6 +488,21 @@
                 $('#audit-uf').val(v.estado || ''); $('#audit-ref').val(v.ponto_referencia || '');
                 if(v.plano) $('#audit-plano').val(v.plano.id || v.plano); if(v.forma_pagamento) $('#audit-pagamento').val(v.forma_pagamento.id || v.forma_pagamento);
                 $('#audit-data-agendamento').val(v.data_agendamento || ''); $('#audit-turno-agendamento').val(v.periodo_agendamento || ''); $('#script-obs-venda').val(v.observacoes || '');
+                
+                $('#repro-data').val(v.data_abertura ? v.data_abertura.split('T')[0] : '');
+
+                // Carrega campos do Representante e exibe se for CNPJ
+                $('#audit-cpf-rep').val(v.cpf_representante_legal || '');
+                $('#audit-nome-rep').val(v.nome_representante_legal || '');
+                
+                // Se for CNPJ (mais que 14 dígitos com máscara ou 11 sem) ou se já tiver rep preenchido
+                const cpfLimpo = cpfCli.replace(/\D/g, '');
+                if (cpfLimpo.length > 11 || v.cpf_representante_legal) {
+                    $('#div-representante').show();
+                } else {
+                    $('#div-representante').hide();
+                }
+
                 calcularIdadeAuto(); atualizarTextoPlano(); aplicarMascarasManuais(); 
                 atualizarSaudacao();
                 $('.form-check-input').prop('checked', false);
@@ -470,6 +510,42 @@
                 $('#pills-identidade-tab').addClass('active'); $('#pills-identidade').addClass('show active');
                 modalAuditoria.show();
             }).catch(e => { console.error(e); $('#loadingOverlay').hide(); alert('Erro ao abrir venda.'); });
+        }
+
+        // Função para buscar dados do Representante (Igual ao CRM Vendas)
+        async function buscarRepresentante(cpf) {
+            const inputNome = $('#audit-nome-rep');
+            const inputCpf = $('#audit-cpf-rep');
+            
+            // Feedback visual
+            inputNome.val("BUSCANDO...");
+            inputNome.prop('readonly', true).css('background-color', '#e9ecef');
+
+            try {
+                // Usa apiClient ao invés de fetch direto para garantir auth
+                const res = await apiClient.get(`${API_AUX}/clientes/?search=${cpf}`);
+                const data = res.data;
+                let encontrado = false;
+
+                if(data && data.length > 0) {
+                    const rep = data.find(cli => cli.cpf_cnpj.replace(/\D/g, '') === cpf.replace(/\D/g, ''));
+                    if (rep) {
+                        inputNome.val(rep.nome_razao_social);
+                        inputNome.prop('readonly', true).css('background-color', '#e9ecef');
+                        encontrado = true;
+                    }
+                }
+
+                if (!encontrado) {
+                    inputNome.val("");
+                    inputNome.prop('readonly', false).css('background-color', '#ffffff');
+                    inputNome.focus();
+                }
+            } catch(e) {
+                console.error("Erro rep:", e);
+                inputNome.val("");
+                inputNome.prop('readonly', false).css('background-color', '#ffffff');
+            }
         }
 
         function calcularIdadeAuto() {
@@ -485,11 +561,14 @@
                 nome_mae: $('#audit-nome-mae').val(), data_nascimento: $('#audit-data-nasc').val(), telefone1: $('#audit-tel1').val(), telefone2: $('#audit-tel2').val(),
                 cep: $('#audit-cep').val(), logradouro: $('#audit-logradouro').val(), numero: $('#audit-numero').val(), complemento: $('#audit-complemento').val(),
                 bairro: $('#audit-bairro').val(), cidade: $('#audit-cidade').val(), estado: $('#audit-uf').val(), referencia: $('#audit-ref').val(),
-                plano: $('#audit-plano').val(), forma_pagamento: $('#audit-pagamento').val(), data_agendamento: $('#audit-data-agendamento').val(), periodo_agendamento: $('#audit-turno-agendamento').val()
+                plano: $('#audit-plano').val(), forma_pagamento: $('#audit-pagamento').val(), data_agendamento: $('#audit-data-agendamento').val(), periodo_agendamento: $('#audit-turno-agendamento').val(),
+                observacoes: $('#script-obs-venda').val(),
+                // Novos campos incluídos na coleta
+                cpf_representante_legal: $('#audit-cpf-rep').val(),
+                nome_representante_legal: $('#audit-nome-rep').val()
             };
         }
         
-        // NOVO: Função para validar campos críticos antes de qualquer ação
         function validarAuditoriaCompleta() {
             const cep = $('#audit-cep').val();
             const logradouro = $('#audit-logradouro').val();
@@ -498,13 +577,8 @@
             const pagamento = $('#audit-pagamento').val();
 
             if (!cep || !logradouro || !numero || !plano || !pagamento) {
-                alert("Atenção: É obrigatório preencher e verificar os dados de Endereço (Aba 3) e Oferta/Pagamento (Aba 4) antes de prosseguir com qualquer ação.");
-                
-                if (!cep || !logradouro || !numero) {
-                    proximaAba('pills-endereco-tab');
-                } else {
-                    proximaAba('pills-oferta-tab');
-                }
+                alert("Atenção: É obrigatório preencher Endereço (Aba 3) e Oferta/Pagamento (Aba 4) antes de prosseguir.");
+                if (!cep || !logradouro || !numero) proximaAba('pills-endereco-tab'); else proximaAba('pills-oferta-tab');
                 return false;
             }
             return true;
@@ -519,14 +593,14 @@
         }
 
         function finalizarComoAuditada() { 
-            if(!validarAuditoriaCompleta()) return; // Validação adicionada aqui
+            if(!validarAuditoriaCompleta()) return;
             if(!validarChecklist()) return;
             if(!confirm("Aprovar venda como AUDITADA?")) return; 
             enviarFinalizacao('AUDITADA', $('#script-obs-venda').val(), coletarDadosAuditoria()); 
         }
 
         function prepararAgendamento() {
-            if(!validarAuditoriaCompleta()) return; // Validação adicionada aqui
+            if(!validarAuditoriaCompleta()) return;
             if(!validarChecklist()) return;
             const d = coletarDadosAuditoria();
             modalAuditoria.hide(); $('#agenda-os').val(vendaEmAuditoria.ordem_servico || '');
@@ -535,7 +609,6 @@
         }
 
         async function abrirModalReprovacao() {
-            if(!validarAuditoriaCompleta()) return; // Validação adicionada aqui
             const sel = $('#repro-status'); if (globalStatusOptions.length === 0) { try { const r = await apiClient.get(`${API_AUX}/status/?tipo=Tratamento`); globalStatusOptions = r.data; } catch(e){} }
             sel.empty().append('<option value="">Selecione...</option>');
             if (globalStatusOptions.length > 0) { globalStatusOptions.filter(s => !s.nome.toUpperCase().match(/AUDITADA|APROVAD|CADASTRAD/)).forEach(s => sel.append(`<option value="${s.id}">${s.nome}</option>`)); }
@@ -562,9 +635,11 @@
             $('#loadingOverlay').show();
             apiClient.get(`${API_AUX}/status/?tipo=Esteira`).then(res => {
                 const st = res.data.find(s => s.nome.toUpperCase() === 'AGENDADO'); if(!st) throw new Error("Status AGENDADO sumiu.");
+                // PATCH: Salva a O.S e Agendamento
                 return apiClient.patch(`${API_BASE}/${vendaEmAuditoria.id}/`, { ordem_servico: os, data_agendamento: dt, periodo_agendamento: tr, status_esteira: st.id });
             }).then(() => {
                 const d = coletarDadosAuditoria(); d.data_agendamento = dt; d.periodo_agendamento = tr;
+                // Finaliza: Isso vai disparar a DATA_ABERTURA no backend
                 return enviarFinalizacao('CADASTRADA', $('#script-obs-venda').val(), d, false, true);
             }).catch(e => { alert('Erro: ' + e.message); $('#loadingOverlay').hide(); });
         }
@@ -576,13 +651,61 @@
             .finally(() => { if(!abreZap) $('#loadingOverlay').hide(); });
         }
 
-        function fecharScriptSemSalvar() { 
-            if(!validarAuditoriaCompleta()) return; // Até para sair sem salvar exige verificação básica para forçar a auditoria correta, ou se preferir liberar a saída, remova esta linha. Assumi que sair sem salvar cancela a alocação, então talvez não deva validar.
-            // *CORREÇÃO*: Se o usuário quer apenas sair sem fazer nada, talvez não deva validar. Mas o pedido diz "O BO só pode conseguir clicar em qualquer botão...". Vou manter a validação até para sair, para garantir que ele pelo menos olhou os dados antes de desistir, ou você pode remover se achar muito restritivo.
-            // Para "Sair" especificamente, geralmente queremos liberar rápido. Vou remover a validação DO BOTÃO SAIR para não travar o sistema caso ele abra por engano.
+        // --- MELHORIA: SALVAR TUDO AO CLICAR EM SAIR ---
+        async function fecharScriptSemSalvar() { 
+    if(confirm("Deseja sair? O que você preencheu será salvo como rascunho.")) {
+        $('#loadingOverlay').show();
+        const d = coletarDadosAuditoria();
+        
+        // Criamos um objeto apenas com o que está preenchido para evitar erro 400
+        const rascunho = {
+            observacoes: d.observacoes || null,
+            nome_mae: d.nome_mae || null,
+            data_nascimento: d.data_nascimento || null,
+            telefone1: d.telefone1 || null,
+            telefone2: d.telefone2 || null,
+            cep: d.cep || null,
+            logradouro: d.logradouro || null,
+            numero_residencia: d.numero || null,
+            complemento: d.complemento || null,
+            bairro: d.bairro || null,
+            cidade: d.cidade || null,
+            estado: d.estado || null,
+            ponto_referencia: d.referencia || null,
+            plano: d.plano || null,
+            forma_pagamento: d.forma_pagamento || null,
+            data_agendamento: d.data_agendamento || null,
+            periodo_agendamento: d.periodo_agendamento || null,
+            cpf_representante_legal: d.cpf_representante_legal || null,
+            nome_representante_legal: d.nome_representante_legal || null
+        };
+
+        // Remove chaves que sejam strings vazias, transformando em null
+        Object.keys(rascunho).forEach(key => {
+            if (rascunho[key] === "") rascunho[key] = null;
+        });
+
+        try {
+            // 1. Tenta salvar o rascunho
+            await apiClient.patch(`${API_BASE}/${vendaEmAuditoria.id}/`, rascunho);
             
-            if(confirm("Sair sem salvar?")) { apiClient.post(`${API_BASE}/${vendaEmAuditoria.id}/liberar-auditoria/`, {}).finally(() => { modalAuditoria.hide(); carregarVendasPendentes(); }); } 
+            // 2. Libera a auditoria
+            await apiClient.post(`${API_BASE}/${vendaEmAuditoria.id}/liberar-auditoria/`, {});
+            
+            modalAuditoria.hide(); 
+            carregarVendasPendentes();
+        } catch (e) {
+            console.error("Erro ao salvar rascunho:", e.response ? e.response.data : e);
+            // Mesmo se der erro no rascunho (ex: CPF inválido), liberamos a venda
+            apiClient.post(`${API_BASE}/${vendaEmAuditoria.id}/liberar-auditoria/`, {}).finally(() => {
+                modalAuditoria.hide(); 
+                carregarVendasPendentes();
+            });
+        } finally {
+            $('#loadingOverlay').hide();
         }
+    } 
+}
         
         function cancelarAgendamento() { modalAgendamento.hide(); modalAuditoria.show(); }
         
@@ -590,7 +713,6 @@
             $('#loadingOverlay').hide();
             const planoTexto = $('#audit-plano option:selected').text();
             const dataAgendamento = d.data_agendamento ? d.data_agendamento.split('-').reverse().join('/') : '';
-            const auditorNome = jwt_decode(localStorage.getItem('accessToken')).username.toUpperCase();
             
             let txt = `APROVADO!✅✅\n`;
             txt += `PLANO ADQUIRIDO: ${planoTexto}\n`;
