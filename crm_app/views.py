@@ -2776,10 +2776,6 @@ class PainelPerformanceView(APIView):
         # Filtro Instalada
         filtro_inst = Q(vendas__status_esteira__nome__iexact='INSTALADA')
 
-        # ==============================================================================
-        # ALTERAÇÃO 1: Troca de data_criacao por data_abertura nos filtros
-        # ==============================================================================
-
         # --- A. DADOS DE HOJE ---
         qs_hoje = users.annotate(
             vendas_total=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date=hoje)),
@@ -2792,7 +2788,6 @@ class PainelPerformanceView(APIView):
             cc = u['vendas_cc']
             pct = (cc / total * 100) if total > 0 else 0
             
-            # ALTERAÇÃO 2: Usar apenas o Username (Login)
             nome_display = u['username']
             
             lista_hoje.append({
@@ -2802,6 +2797,100 @@ class PainelPerformanceView(APIView):
                 'cc': cc,
                 'pct_cc': round(pct, 2)
             })
+
+        # --- B. DADOS DA SEMANA ---
+        qs_semana = users.annotate(
+            seg=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date=dias_semana[0])),
+            ter=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date=dias_semana[1])),
+            qua=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date=dias_semana[2])),
+            qui=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date=dias_semana[3])),
+            sex=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date=dias_semana[4])),
+            sab=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date=dias_semana[5])),
+            total_semana=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_semana)),
+            total_cc=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_semana) & filtro_cc)
+        ).values('username', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'total_semana', 'total_cc').order_by('-total_semana', 'username')
+
+        lista_semana = []
+        for u in qs_semana:
+            total = u['total_semana']
+            pct = (u['total_cc'] / total * 100) if total > 0 else 0
+            nome_display = u['username']
+
+            lista_semana.append({
+                'vendedor': nome_display.upper(),
+                'dias': [u['seg'], u['ter'], u['qua'], u['qui'], u['sex'], u['sab']],
+                'total': total,
+                'cc': u['total_cc'],
+                'pct_cc': round(pct, 2)
+            })
+
+        # --- C. DADOS DO MÊS (CORRIGIDO) ---
+        # "total_vendas": Mantém data_abertura (Vendas Novas no mês)
+        # "instaladas": Muda para data_instalacao (Instalações no mês, independente de quando vendeu)
+        
+        qs_mes = users.annotate(
+            total_vendas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_mes)),
+            
+            # CORREÇÃO AQUI: Trocado data_abertura por data_instalacao
+            instaladas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_instalacao__gte=inicio_mes) & filtro_inst),
+            
+            total_cc=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_mes) & filtro_cc),
+            
+            # CORREÇÃO AQUI TAMBÉM: Instaladas com cartão (olha a data da instalação)
+            instaladas_cc=Count('vendas', filter=filtro_os_valida & Q(vendas__data_instalacao__gte=inicio_mes) & filtro_inst & filtro_cc),
+            
+            pendenciadas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_mes, vendas__status_esteira__nome__icontains='PENDEN')),
+            agendadas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_mes, vendas__status_esteira__nome__iexact='AGENDADO')),
+            canceladas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_mes, vendas__status_esteira__nome__icontains='CANCELAD'))
+        ).values(
+            'username', 'total_vendas', 'instaladas', 'total_cc', 'instaladas_cc', 'pendenciadas', 'agendadas', 'canceladas'
+        ).order_by('-total_vendas', 'username')
+
+        lista_mes = []
+        for u in qs_mes:
+            tot = u['total_vendas']
+            inst = u['instaladas']
+            
+            pct_cc_total = (u['total_cc'] / tot * 100) if tot > 0 else 0
+            
+            # Porcentagem sobre instaladas reais
+            pct_cc_inst = (u['instaladas_cc'] / inst * 100) if inst > 0 else 0
+            
+            # Aproveitamento: (Instaladas no Mês / Vendidas no Mês) 
+            # Nota: Isso pode passar de 100% se instalar vendas do mês passado, mas é o cálculo de "Conversão Operacional".
+            aproveitamento = (inst / tot * 100) if tot > 0 else 0
+            
+            nome_display = u['username']
+
+            lista_mes.append({
+                'vendedor': nome_display.upper(),
+                'total': tot,
+                'instaladas': inst,
+                'cc_total': u['total_cc'],
+                'cc_inst': u['instaladas_cc'],
+                'pct_cc_total': round(pct_cc_total, 2),
+                'pct_cc_inst': round(pct_cc_inst, 2),
+                'aproveitamento': round(aproveitamento, 2),
+                'pend': u['pendenciadas'],
+                'agend': u['agendadas'],
+                'canc': u['canceladas']
+            })
+
+        # Totais Gerais
+        total_hoje = sum(i['total'] for i in lista_hoje)
+        total_semana = sum(i['total'] for i in lista_semana)
+        total_mes = sum(i['total'] for i in lista_mes)
+
+        return Response({
+            "hoje": lista_hoje,
+            "semana": lista_semana,
+            "mes": lista_mes,
+            "totais": {
+                "hoje": total_hoje,
+                "semana": total_semana,
+                "mes": total_mes
+            }
+        })
 
         # --- B. DADOS DA SEMANA ---
         qs_semana = users.annotate(
