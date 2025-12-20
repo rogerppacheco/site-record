@@ -69,7 +69,8 @@ from .models import (
     RegraComissao, Cliente, Venda, ImportacaoOsab, ImportacaoChurn,
     CicloPagamento, HistoricoAlteracaoVenda, PagamentoComissao,
     Campanha, ComissaoOperadora, Comunicado, AreaVenda,
-    SessaoWhatsapp, DFV
+    SessaoWhatsapp, DFV, GrupoDisparo, LancamentoFinanceiro,
+    AgendamentoDisparo
 )
 
 # Serializers do App
@@ -3868,3 +3869,36 @@ class ImportacaoLegadoView(APIView):
             'total_erros': len(logs_erro),
             'erros': logs_erro
         })
+# Adicione ou certifique-se que esta classe existe
+class ConfigurarAutomacaoView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if not is_member(request.user, ['Diretoria', 'Admin']):
+            return Response({"error": "Sem permissão"}, status=403)
+
+        acao = request.data.get('acao')
+        
+        if acao == 'listar':
+            regras = AgendamentoDisparo.objects.all().values()
+            return Response(list(regras))
+            
+        elif acao == 'salvar':
+            d = request.data.get('dados')
+            defaults = {
+                'nome': d['nome'], 'tipo': d['tipo'], 
+                'canal_alvo': d['canal_alvo'], 
+                'destinatarios': d['destinatarios'], 
+                'ativo': d['ativo']
+            }
+            if d.get('id'):
+                AgendamentoDisparo.objects.filter(id=d['id']).update(**defaults)
+            else:
+                AgendamentoDisparo.objects.create(**defaults)
+            return Response({'ok': True})
+            
+        elif acao == 'excluir':
+            AgendamentoDisparo.objects.filter(id=request.data.get('id')).delete()
+            return Response({'ok': True})
+            
+        return Response({'error': 'Ação inválida'}, status=400)

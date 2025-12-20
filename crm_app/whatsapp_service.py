@@ -115,8 +115,33 @@ class WhatsAppService:
     # ---------------------------------------------------------
     # 3. ENVIAR IMAGEM (BASE64)
     # ---------------------------------------------------------
-    def enviar_imagem_b64(self, telefone, base64_data, caption=""):
-        return self.enviar_imagem_base64_direto(telefone, base64_data, caption)
+    def enviar_imagem_b64(self, telefone, img_b64, caption=""):
+        """
+        Envia imagem em Base64 com legenda (caption) via Z-API.
+        """
+        url = f"{self.base_url}/send-image"
+        
+        # Z-API exige o prefixo data:image/png;base64,
+        # Se não tiver, adicionamos.
+        if "base64," not in img_b64:
+            img_b64 = "data:image/png;base64," + img_b64
+
+        payload = {
+            "phone": telefone,
+            "image": img_b64,
+            "caption": caption  # <--- Este é o "Cabeçalho" da mensagem
+        }
+        
+        try:
+            response = requests.post(url, json=payload, headers=self._get_headers())
+            return response.json()
+        except Exception as e:
+            logger.error(f"Erro ao enviar imagem Z-API: {e}")
+            return None
+
+    # Alias para compatibilidade (caso a view chame com outro nome)
+    def enviar_imagem_base64_direto(self, telefone, img_b64, caption=""):
+        return self.enviar_imagem_b64(telefone, img_b64, caption)
 
     def enviar_imagem_base64_direto(self, telefone, base64_img, caption=""):
         url = f"{self.base_url}/send-image"
@@ -392,4 +417,107 @@ class WhatsAppService:
 
         except Exception as e:
             print(f"Erro imagem Pillow: {e}")
+            return None
+# ---------------------------------------------------------
+    # NOVO: GERAR IMAGEM DE PERFORMANCE (TABELA)
+    # ---------------------------------------------------------
+    def gerar_imagem_performance_b64(self, dados_relatorio):
+        """
+        Gera uma imagem com a tabela de performance do dia.
+        dados_relatorio: {
+            'titulo': 'PERFORMANCE PAP',
+            'data': '20/12/2025',
+            'lista': [{'nome': 'JOAO', 'total': 10, 'cc': 2, 'pct': '20%'}, ...],
+            'totais': {'total': 100, 'cc': 20, 'pct': '20%'}
+        }
+        """
+        if not Image: return None
+
+        try:
+            # 1. Configurações de Layout
+            lista = dados_relatorio.get('lista', [])
+            qtd_linhas = len(lista)
+            
+            # Altura dinâmica: Cabeçalho (250) + Linhas (60px cada) + Rodapé (150)
+            H_BASE = 250
+            H_LINHA = 60
+            H_RODAPE = 150
+            W = 1000
+            H = H_BASE + (qtd_linhas * H_LINHA) + H_RODAPE
+
+            # Cores
+            cor_fundo = (255, 255, 255)
+            cor_azul_escuro = (10, 30, 60)
+            cor_azul_claro = (235, 240, 255) # Para linhas alternadas
+            cor_texto = (50, 50, 50)
+            cor_verde = (0, 150, 70)
+            cor_destaque = (255, 100, 0)
+
+            img = Image.new('RGB', (W, H), color=cor_fundo)
+            d = ImageDraw.Draw(img)
+
+            # Fontes (Tenta carregar ou usa padrão)
+            try:
+                # Tenta usar as fontes que já funcionam no seu servidor/local
+                # Ajuste os caminhos se necessário, igual ao seu método anterior
+                f_titulo = ImageFont.truetype("arial.ttf", 60)
+                f_sub = ImageFont.truetype("arial.ttf", 35)
+                f_texto = ImageFont.truetype("arial.ttf", 30)
+                f_bold = ImageFont.truetype("arialbd.ttf", 30) # Arial Bold se tiver
+            except:
+                f_titulo = ImageFont.load_default()
+                f_sub = ImageFont.load_default()
+                f_texto = ImageFont.load_default()
+                f_bold = ImageFont.load_default()
+
+            # 2. Cabeçalho
+            d.rectangle([(0, 0), (W, 180)], fill=cor_azul_escuro)
+            d.text((W/2, 60), dados_relatorio['titulo'], fill="white", anchor="mm", font=f_titulo)
+            d.text((W/2, 130), f"📅 {dados_relatorio['data']}", fill="white", anchor="mm", font=f_sub)
+
+            # Cabeçalho da Tabela
+            y_start = 200
+            col_x = [50, 450, 700, 900] # Posições X das colunas: Nome, Total, CC, %
+            
+            d.text((col_x[0], y_start), "VENDEDOR", fill=cor_azul_escuro, anchor="lm", font=f_bold)
+            d.text((col_x[1], y_start), "TOTAL", fill=cor_azul_escuro, anchor="mm", font=f_bold)
+            d.text((col_x[2], y_start), "CARTÃO", fill=cor_azul_escuro, anchor="mm", font=f_bold)
+            d.text((col_x[3], y_start), "%", fill=cor_azul_escuro, anchor="mm", font=f_bold)
+            
+            d.line([(30, y_start + 25), (W-30, y_start + 25)], fill=(200,200,200), width=2)
+
+            # 3. Linhas da Tabela
+            y = y_start + 60
+            for i, item in enumerate(lista):
+                # Fundo alternado
+                if i % 2 == 0:
+                    d.rectangle([(30, y-30), (W-30, y+30)], fill=cor_azul_claro)
+
+                d.text((col_x[0], y), str(item['nome'])[:22], fill=cor_texto, anchor="lm", font=f_texto)
+                
+                # Destaque se vendeu
+                cor_num = cor_verde if item['total'] > 0 else (150,150,150)
+                d.text((col_x[1], y), str(item['total']), fill=cor_num, anchor="mm", font=f_bold)
+                d.text((col_x[2], y), str(item['cc']), fill=cor_texto, anchor="mm", font=f_texto)
+                d.text((col_x[3], y), item['pct'], fill=cor_texto, anchor="mm", font=f_texto)
+                
+                y += H_LINHA
+
+            # 4. Totais (Rodapé)
+            y_totais = H - 100
+            d.rectangle([(0, y_totais - 40), (W, H)], fill=cor_azul_escuro)
+            
+            totais = dados_relatorio.get('totais', {})
+            resumo = f"🏆 TOTAL: {totais['total']}   |   💳 CARTÃO: {totais['cc']} ({totais['pct']})"
+            d.text((W/2, y_totais + 20), resumo, fill="white", anchor="mm", font=f_sub)
+
+            # Converter para Base64
+            buffered = io.BytesIO()
+            img.save(buffered, format="PNG")
+            img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+            
+            return f"data:image/png;base64,{img_str}"
+
+        except Exception as e:
+            print(f"Erro ao gerar imagem performance: {e}")
             return None

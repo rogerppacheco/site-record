@@ -538,3 +538,26 @@ class LancamentoFinanceiro(models.Model):
         verbose_name = "Lançamento Financeiro"
         verbose_name_plural = "Lançamentos Financeiros"
         ordering = ['-data']
+        
+class AgendamentoDisparo(models.Model):
+    TIPOS = [
+        ('HORARIO', 'Diário (Hora em Hora 9h-19h)'),
+        ('SEMANAL', 'Semanal (Ter/Qui/Sáb 17h)'),
+    ]
+    CANAL_OPCOES = [
+        ('TODOS', 'Todos'),
+        ('PAP', 'PAP'),
+        ('DIGITAL', 'Digital'),
+        ('RECEPTIVO', 'Receptivo'),
+        ('PARCEIRO', 'Parceiro'),
+    ]
+
+    nome = models.CharField(max_length=100)
+    tipo = models.CharField(max_length=20, choices=TIPOS)
+    canal_alvo = models.CharField(max_length=20, choices=CANAL_OPCOES, default='TODOS')
+    destinatarios = models.TextField(help_text="IDs de grupos ou números separados por vírgula")
+    ativo = models.BooleanField(default=True)
+    ultimo_disparo = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.nome} - {self.get_canal_alvo_display()}"

@@ -4,11 +4,8 @@ from rest_framework.routers import DefaultRouter
 
 # IMPORTAÇÃO DAS VIEWS DE AUTH (DO APP USUARIOS)
 from usuarios.views import LoginView, DefinirNovaSenhaView
-from .views import GrupoDisparoViewSet, EnviarImagemPerformanceView
-from .views import listar_grupos_whatsapp_api 
-from .views import VerificarPermissaoGestaoView
-from .views import ImportacaoLegadoView
 
+# IMPORTAÇÕES ESPECÍFICAS DE VIEWS (SEM O PREFIXO 'views.')
 from .views import (
     # ViewSets
     VendaViewSet, 
@@ -16,6 +13,7 @@ from .views import (
     ComissaoOperadoraViewSet,
     ComunicadoViewSet,
     LancamentoFinanceiroViewSet,
+    GrupoDisparoViewSet,
 
     # Views Genéricas (List/Detail)
     OperadoraListCreateView, OperadoraDetailView,
@@ -39,18 +37,23 @@ from .views import (
     ImportacaoChurnView, ImportacaoChurnDetailView,
     ImportacaoCicloPagamentoView,
     PerformanceVendasView,
+    ImportacaoLegadoView,
     
     # NOVAS VIEWS (Mapas, ZAP, Performance)
     api_verificar_whatsapp,
     enviar_comissao_whatsapp,
-    enviar_resultado_campanha_whatsapp, # <--- IMPORTAÇÃO ADICIONADA
+    enviar_resultado_campanha_whatsapp,
     ImportarKMLView,        
     ImportarDFVView,
     WebhookWhatsAppView,  
+    listar_grupos_whatsapp_api,
+    VerificarPermissaoGestaoView,
     
     # Performance (API e Exportação)
     PainelPerformanceView,
     ExportarPerformanceExcelView,
+    EnviarImagemPerformanceView, # Já existia
+    ConfigurarAutomacaoView,     # <--- NOVA VIEW IMPORTADA AQUI
     
     # View da Página HTML (Render)
     page_painel_performance,
@@ -61,8 +64,8 @@ from .views import (
     # --- NOVAS VIEWS DE CONFIRMAÇÃO E REVERSÃO DE DESCONTOS ---
     PendenciasDescontoView,
     ConfirmarDescontosEmMassaView,
-    HistoricoDescontosAutoView,    # <--- NOVO
-    ReverterDescontoMassaView      # <--- NOVO
+    HistoricoDescontosAutoView,
+    ReverterDescontoMassaView
 )
 
 router = DefaultRouter()
@@ -97,7 +100,7 @@ urlpatterns = [
     path('campanhas/<int:pk>/', CampanhaDetailView.as_view(), name='campanha-detail'),
     
     path('campanhas/<int:campanha_id>/resultado/', relatorio_resultado_campanha, name='resultado-campanha'),
-    path('campanhas/enviar-resultado-whatsapp/', enviar_resultado_campanha_whatsapp, name='enviar-resultado-campanha-whatsapp'), # <--- ROTA ADICIONADA
+    path('campanhas/enviar-resultado-whatsapp/', enviar_resultado_campanha_whatsapp, name='enviar-resultado-campanha-whatsapp'),
 
     path('status/', StatusCRMListCreateView.as_view(), name='status-list'),
     path('status/<int:pk>/', StatusCRMDetailView.as_view(), name='status-detail'),
@@ -148,4 +151,9 @@ urlpatterns = [
     path('integracao/listar-grupos/', listar_grupos_whatsapp_api, name='listar-grupos-zapi'),
     path('verificar-permissao-gestao/', VerificarPermissaoGestaoView.as_view(), name='verificar-permissao-gestao'),
     path('import/legado/', ImportacaoLegadoView.as_view(), name='importacao-legado'),
+    
+    # --- NOVAS ROTAS (SEM 'views.') ---
+    path('grupos-disparo-api/', listar_grupos_whatsapp_api, name='listar_grupos_api'),
+    path('automacao-performance/', ConfigurarAutomacaoView.as_view(), name='automacao_performance'),
+    path('enviar-imagem-performance/', EnviarImagemPerformanceView.as_view(), name='enviar_imagem_performance'),
 ]
