@@ -50,6 +50,26 @@ def buscar_coordenadas_viacep(cep):
     
     return None
 
+def verificar_viabilidade_por_cep(cep):
+    """
+    Função de compatibilidade (Legado).
+    Algumas views antigas podem chamar essa função.
+    """
+    cep_limpo = limpar_texto(cep)
+    # Busca simples na DFV pelo CEP (qualquer número)
+    dfv = DFV.objects.filter(cep=cep_limpo).first()
+    
+    if dfv:
+        return {
+            'viavel': True,
+            'msg': f"CEP {cep} consta na base DFV com status: {dfv.tipo_viabilidade}"
+        }
+    else:
+        return {
+            'viavel': False,
+            'msg': f"CEP {cep} não localizado na base exata."
+        }
+
 def consultar_fachada_dfv(cep, numero):
     """
     Busca EXATA na base DFV (Fachada).
@@ -114,11 +134,6 @@ def consultar_viabilidade_kmz(cep):
     lng = coords_data['lng']
     endereco = coords_data['endereco_str']
 
-    # --- LÓGICA DE BUSCA NO KMZ ---
-    # Como o SQLite não tem GIS nativo potente, faremos uma busca por "PROXIMIDADE DE STRING" 
-    # ou se tivermos Lat/Lng salvas na AreaVenda, podemos tentar um match simples.
-    # Mas geralmente KMZ tem bairro/cidade. Vamos buscar se existe AreaVenda para o Bairro/Cidade do CEP.
-    
     # Busca por texto (Bairro/Cidade) nas Áreas importadas
     partes = endereco.split(',')
     bairro_cep = ""
@@ -129,9 +144,6 @@ def consultar_viabilidade_kmz(cep):
     print(f"📍 Coordenadas: {lat}, {lng} | Endereço: {endereco}")
 
     # Tenta achar uma Área de Venda que tenha esse bairro ou cidade
-    # Isso é um fallback pois calcular "Ponto dentro de Polígono" requer lib externa (Shapely)
-    # que pode ser difícil instalar no Heroku sem buildpacks extras.
-    
     area = AreaVenda.objects.filter(
         Q(bairro__icontains=bairro_cep) | 
         Q(nome_kml__icontains=bairro_cep)
@@ -156,8 +168,11 @@ def consultar_viabilidade_kmz(cep):
 def verificar_viabilidade_por_coordenadas(lat, lng):
     """
     Chamado quando o usuário manda a localização (Pino).
-    Tenta achar a área mais próxima ou dentro (simplificado).
     """
-    # Lógica simplificada: Retorna sucesso genérico ou busca por Bairro se conseguirmos reverse-geocode
-    # Aqui, para não complicar, vamos assumir que se mandou pino, mandamos para análise humana ou retornamos msg padrão
-    return {'msg': f"📍 Recebemos sua localização ({lat}, {lng}). \nEsta funcionalidade exata requer PostGIS. Consulte a base por CEP (Viabilidade) ou Endereço (Fachada)."}
+    return {'msg': f"📍 Recebemos sua localização ({lat}, {lng}). \nConsulte a base por CEP (Viabilidade) ou Endereço (Fachada)."}
+
+def verificar_viabilidade_exata(cep, numero):
+    """
+    Função de compatibilidade. Redireciona para a nova fachada.
+    """
+    return {'msg': consultar_fachada_dfv(cep, numero)}
