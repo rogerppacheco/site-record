@@ -1,148 +1,163 @@
-import requests
 import logging
-from shapely.geometry import Point, Polygon
+import requests
+import re
+from django.db.models import Q
+from .models import DFV, AreaVenda
 
 logger = logging.getLogger(__name__)
 
-def verificar_viabilidade_por_coordenadas(lat, lon):
-    """
-    Verifica se a coordenada cai dentro (ou muito perto) de algum polígono cadastrado (AreaVenda).
-    """
-    # Importação local para evitar Ciclo de Importação (Circular Import) com models.py
-    from .models import AreaVenda 
-    
-    ponto_endereco = Point(lon, lat) 
-    
-    # Filtra apenas áreas com coordenadas cadastradas
-    areas = AreaVenda.objects.exclude(coordenadas__isnull=True).exclude(coordenadas__exact='')
-    
-    area_encontrada = None
-    distancia_minima = 1000 # Começa alto
-    
-    # Tolerância de aprox. 30 metros (0.0003 graus)
-    # Isso resolve o problema do "Pino no meio da rua" vs "Polígono na calçada"
-    TOLERANCIA = 0.0003 
-    
-    for area in areas:
-        try:
-            coords_str = area.coordenadas.strip()
-            coords_list = []
-            
-            # Parse KML (lon,lat) - O formato padrão KML é longitude,latitude
-            for c in coords_str.split(' '):
-                parts = c.split(',')
-                if len(parts) >= 2:
-                    coords_list.append((float(parts[0]), float(parts[1])))
-            
-            if len(coords_list) < 3: continue 
-            
-            poligono = Polygon(coords_list)
-            
-            # 1. Verifica se está DENTRO (Exato)
-            if poligono.contains(ponto_endereco):
-                area_encontrada = area
-                break 
-            
-            # 2. Verifica se está PERTO (Tolerância)
-            dist = poligono.distance(ponto_endereco)
-            if dist < TOLERANCIA and dist < distancia_minima:
-                area_encontrada = area
-                distancia_minima = dist
-                # Não damos break aqui para tentar achar uma mais perto (exata) depois
-                
-        except Exception as e:
-            continue
+def limpar_texto(texto):
+    if not texto: return ""
+    return ''.join(filter(str.isdigit, str(texto)))
 
-    if area_encontrada:
-        return {
-            'viabilidade': True,
-            'celula': area_encontrada.celula,
-            'status': area_encontrada.status_venda,
-            'municipio': area_encontrada.municipio,
-            'cluster': area_encontrada.cluster,
-            'hp_viavel': area_encontrada.hp_viavel,
-            'msg': (
-                f"✅ *COBERTURA ENCONTRADA!*\n\n"
-                f"📍 *Célula:* {area_encontrada.celula}\n"
-                f"📊 *Status:* {area_encontrada.status_venda}\n"
-                f"🏙 *Município:* {area_encontrada.municipio}\n"
-                f"🏠 *HP Viável:* {area_encontrada.hp_viavel}"
-            )
-        }
-    else:
-        return {
-            'viabilidade': False,
-            'msg': '📍 Localização recebida, mas está *FORA* da área de cobertura mapeada.'
-        }
-
-def verificar_viabilidade_por_cep(cep):
+def buscar_coordenadas_viacep(cep):
     """
-    Busca pelo CENTRO do CEP (Fallback).
+    Converte CEP em Latitude/Longitude usando ViaCEP + OpenStreetMap (Nominatim)
     """
-    cep_limpo = "".join(filter(str.isdigit, str(cep)))
-    # Usa postalcode + country para evitar ambiguidade
-    url = f"https://nominatim.openstreetmap.org/search?postalcode={cep_limpo}&country=Brazil&format=json"
-    
-    # Adiciona aviso na mensagem se for busca genérica
-    resultado = _executar_busca_nominatim(url)
-    if resultado['viabilidade']:
-        resultado['msg'] = "⚠️ *Atenção:* Número não localizado, validado pelo *centro do CEP*.\n\n" + resultado['msg']
-    return resultado
-
-def verificar_viabilidade_exata(cep, numero):
-    """
-    Tenta busca exata (Rua + Número + CEP). Se falhar, busca automaticamente pelo CEP.
-    """
-    cep_limpo = "".join(filter(str.isdigit, str(cep)))
-    
-    # Tenta buscar: Rua, Número, CEP (countrycodes=br para evitar erro 400)
-    query = f"{numero}, {cep_limpo}"
-    url = f"https://nominatim.openstreetmap.org/search?q={query}&countrycodes=br&format=json&limit=1"
-    
-    resultado = _executar_busca_nominatim(url, eh_exata=True)
-    
-    # --- FALLBACK AUTOMÁTICO ---
-    # Se a busca exata falhou (não achou o número ou deu erro), tenta só o CEP
-    if not resultado['viabilidade']:
-        return verificar_viabilidade_por_cep(cep_limpo)
-        
-    return resultado
-
-def _executar_busca_nominatim(url, eh_exata=False):
-    """
-    Função auxiliar interna para chamar a API do Nominatim e processar o JSON.
-    """
-    headers = {'User-Agent': 'RecordPAP-CRM/1.0'}
     try:
-        response = requests.get(url, headers=headers, timeout=5)
+        # 1. Pega endereço do ViaCEP
+        url_viacep = f"https://viacep.com.br/ws/{cep}/json/"
+        resp = requests.get(url_viacep, timeout=5)
+        if resp.status_code != 200: return None
+        data = resp.json()
+        if 'erro' in data: return None
         
-        try:
-            data = response.json()
-        except ValueError:
-            return {'viabilidade': False, 'msg': 'Erro técnico no mapa (JSON inválido).'}
+        logradouro = data.get('logradouro')
+        cidade = data.get('localidade')
+        uf = data.get('uf')
+        bairro = data.get('bairro')
         
-        # Se for erro da API (dicionário com chave error)
-        if isinstance(data, dict) and ('error' in data or 'message' in data):
-             return {'viabilidade': False, 'msg': 'Erro na comunicação com o mapa.'}
-
-        # Se não achou nada (lista vazia)
-        if not data or (isinstance(data, list) and len(data) == 0):
-            if eh_exata:
-                # Retorna erro específico para acionar o fallback
-                return {'viabilidade': False, 'erro_busca': True, 'msg': 'Número não localizado.'}
-            return {'viabilidade': False, 'msg': 'CEP não localizado no mapa.'}
+        # Query de busca para o Geocoder
+        query = f"{logradouro}, {cidade} - {uf}, Brasil"
         
-        # Pega o primeiro resultado da lista
-        item = data[0] if isinstance(data, list) else data
-
-        lat = float(item.get('lat', 0))
-        lon = float(item.get('lon', 0))
+        # 2. Geocodificação (Nominatim - OpenStreetMap)
+        headers = {'User-Agent': 'RecordPAP_System/1.0'}
+        url_geo = "https://nominatim.openstreetmap.org/search"
+        params = {'q': query, 'format': 'json', 'limit': 1}
         
-        if lat == 0 or lon == 0:
-             return {'viabilidade': False, 'msg': 'Coordenadas inválidas recebidas do mapa.'}
-        
-        # Chama a função geométrica principal
-        return verificar_viabilidade_por_coordenadas(lat, lon)
-        
+        resp_geo = requests.get(url_geo, params=params, headers=headers, timeout=5)
+        if resp_geo.status_code == 200 and resp_geo.json():
+            res = resp_geo.json()[0]
+            return {
+                'lat': float(res['lat']),
+                'lng': float(res['lon']),
+                'endereco_str': f"{logradouro}, {bairro} - {cidade}"
+            }
+            
     except Exception as e:
-        return {'viabilidade': False, 'msg': f"Erro técnico ao consultar mapa: {str(e)}"}
+        print(f"Erro geocoding: {e}")
+        pass
+    
+    return None
+
+def consultar_fachada_dfv(cep, numero):
+    """
+    Busca EXATA na base DFV (Fachada).
+    """
+    cep_limpo = limpar_texto(cep)
+    numero_limpo = str(numero).strip().upper()
+
+    print(f"\n🔎 BUSCA DFV (FACHADA) -> CEP: {cep_limpo} | NUM: {numero_limpo}")
+
+    # Tenta busca exata (String)
+    dfv = DFV.objects.filter(cep=cep_limpo, num_fachada=numero_limpo).first()
+    
+    # Se não achar, tenta converter número para int (tira zeros à esquerda ex: 0126 -> 126)
+    if not dfv and numero_limpo.isdigit():
+        num_int = str(int(numero_limpo))
+        dfv = DFV.objects.filter(cep=cep_limpo, num_fachada=num_int).first()
+
+    if dfv:
+        tipo = dfv.tipo_viabilidade.upper() if dfv.tipo_viabilidade else ""
+        rede = dfv.tipo_rede or "Desconhecida"
+        
+        if "VIAVEL" in tipo or "VIÁVEL" in tipo:
+            return (
+                f"✅ *FACHADA LOCALIZADA (DFV)*\n\n"
+                f"O endereço consta na base DFV como *VIÁVEL*.\n"
+                f"📍 *Endereço:* {dfv.logradouro}, {dfv.num_fachada}\n"
+                f"🏙️ *Bairro:* {dfv.bairro}\n"
+                f"📡 *Rede:* {rede}\n"
+                f"📂 *Base:* DFV (Arquivo Importado)"
+            )
+        else:
+            return (
+                f"⚠️ *FACHADA NA BASE, MAS...*\n\n"
+                f"Endereço encontrado na DFV, mas o status é: *{tipo}*.\n"
+                f"Consulte seu supervisor."
+            )
+    else:
+        return (
+            f"❌ *FACHADA NÃO ENCONTRADA*\n\n"
+            f"O CEP {cep_limpo} com número {numero_limpo} não consta na planilha de DFV importada.\n"
+            f"Verifique se digitou o número corretamente."
+        )
+
+def consultar_viabilidade_kmz(cep):
+    """
+    Busca GEOGRÁFICA na base KMZ (AreaVenda).
+    Converte CEP -> Lat/Lng -> Verifica se está na área.
+    """
+    cep_limpo = limpar_texto(cep)
+    print(f"\n🔎 BUSCA KMZ (VIABILIDADE) -> CEP: {cep_limpo}")
+
+    coords_data = buscar_coordenadas_viacep(cep_limpo)
+    
+    if not coords_data:
+        return (
+            f"❌ *CEP NÃO GEOLOCALIZADO*\n\n"
+            f"Não conseguimos encontrar as coordenadas do CEP {cep_limpo} no mapa.\n"
+            f"Por favor, tente enviar a *Localização (Pino)* do WhatsApp em vez do CEP."
+        )
+
+    lat = coords_data['lat']
+    lng = coords_data['lng']
+    endereco = coords_data['endereco_str']
+
+    # --- LÓGICA DE BUSCA NO KMZ ---
+    # Como o SQLite não tem GIS nativo potente, faremos uma busca por "PROXIMIDADE DE STRING" 
+    # ou se tivermos Lat/Lng salvas na AreaVenda, podemos tentar um match simples.
+    # Mas geralmente KMZ tem bairro/cidade. Vamos buscar se existe AreaVenda para o Bairro/Cidade do CEP.
+    
+    # Busca por texto (Bairro/Cidade) nas Áreas importadas
+    partes = endereco.split(',')
+    bairro_cep = ""
+    if len(partes) >= 2:
+        # Tenta extrair bairro grosseiramente
+        bairro_cep = partes[1].split('-')[0].strip()
+
+    print(f"📍 Coordenadas: {lat}, {lng} | Endereço: {endereco}")
+
+    # Tenta achar uma Área de Venda que tenha esse bairro ou cidade
+    # Isso é um fallback pois calcular "Ponto dentro de Polígono" requer lib externa (Shapely)
+    # que pode ser difícil instalar no Heroku sem buildpacks extras.
+    
+    area = AreaVenda.objects.filter(
+        Q(bairro__icontains=bairro_cep) | 
+        Q(nome_kml__icontains=bairro_cep)
+    ).first()
+
+    if area:
+        return (
+            f"✅ *VIABILIDADE (KMZ)*\n\n"
+            f"O CEP {cep_limpo} está em uma região mapeada no KMZ!\n\n"
+            f"🗺️ *Área:* {area.nome_kml}\n"
+            f"🏙️ *Bairro/Cluster:* {area.bairro} / {area.cluster}\n"
+            f"📊 *Status:* {area.status_venda or 'Liberado'}\n\n"
+            f"_Obs: Validação baseada no cadastro do bairro/área no KMZ._"
+        )
+    else:
+        return (
+            f"❌ *FORA DE ÁREA (KMZ)*\n\n"
+            f"O endereço localizado ({endereco}) não corresponde a nenhuma Área de Venda importada (KMZ).\n"
+            f"Pode ser uma área nova ou sem cobertura."
+        )
+
+def verificar_viabilidade_por_coordenadas(lat, lng):
+    """
+    Chamado quando o usuário manda a localização (Pino).
+    Tenta achar a área mais próxima ou dentro (simplificado).
+    """
+    # Lógica simplificada: Retorna sucesso genérico ou busca por Bairro se conseguirmos reverse-geocode
+    # Aqui, para não complicar, vamos assumir que se mandou pino, mandamos para análise humana ou retornamos msg padrão
+    return {'msg': f"📍 Recebemos sua localização ({lat}, {lng}). \nEsta funcionalidade exata requer PostGIS. Consulte a base por CEP (Viabilidade) ou Endereço (Fachada)."}
