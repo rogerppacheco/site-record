@@ -1,4 +1,4 @@
-// static/js/auth.js - VERSÃO CORRIGIDA (SEGURANÇA + AUDITORIA)
+// static/js/auth.js - VERSÃO CORRIGIDA E OTIMIZADA
 
 const API_URL = '';
 
@@ -31,13 +31,59 @@ function logoutOnInactivity() {
 
 function resetInactivityTimer() {
     clearTimeout(inactivityTimer);
-    inactivityTimer = setTimeout(logoutOnInactivity, 15 * 60 * 1000);
+    // 30 minutos de inatividade total para logout
+    inactivityTimer = setTimeout(logoutOnInactivity, 30 * 60 * 1000); 
 }
 
+// --- AUTO REFRESH DO TOKEN (EVITA O ERRO AO CARREGAR VENDAS) ---
+function iniciarAutoRefresh() {
+    setInterval(async () => {
+        const token = localStorage.getItem('accessToken');
+        if (!token) return;
+
+        const decoded = jwt_decode(token);
+        if (!decoded || !decoded.exp) return;
+
+        const now = Date.now() / 1000;
+        const tempoRestante = decoded.exp - now;
+
+        // Se faltar menos de 5 minutos para expirar e o usuário tiver token de refresh
+        if (tempoRestante < 300 && tempoRestante > 0) {
+            console.log("Token próximo de expirar. Renovando...");
+            await refreshAccessToken();
+        }
+    }, 60 * 1000); // Verifica a cada 1 minuto
+}
+
+async function refreshAccessToken() {
+    const refresh = localStorage.getItem('refreshToken');
+    if (!refresh) return;
+
+    try {
+        const response = await fetch(`${API_URL}/api/token/refresh/`, { // Endpoint padrão SimpleJWT
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refresh: refresh })
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            localStorage.setItem('accessToken', data.access);
+            console.log("Token renovado com sucesso.");
+        } else {
+            console.warn("Falha ao renovar token. Sessão pode expirar.");
+        }
+    } catch (error) {
+        console.error("Erro no refresh token:", error);
+    }
+}
+
+// Ativa os listeners de atividade
 if (localStorage.getItem('accessToken')) {
     const events = ['load', 'mousemove', 'mousedown', 'keypress', 'touchmove', 'scroll'];
     events.forEach(event => document.addEventListener(event, resetInactivityTimer, true));
     resetInactivityTimer();
+    iniciarAutoRefresh(); // Inicia o monitoramento do token
 }
 
 // --- CLIENTE API COMPLETO (GET, POST, PATCH, DELETE) ---
@@ -50,6 +96,11 @@ const apiClient = {
             credentials: 'include'
         });
         if (!response.ok) {
+            // Se der 401 (Não autorizado), pode ser token expirado no meio da ação
+            if (response.status === 401) {
+                console.warn("Erro 401 detectado. Tentando renovar token...");
+                // Aqui poderia ter uma lógica de retry, mas o AutoRefresh deve prevenir isso.
+            }
             const errorData = await response.json().catch(() => ({}));
             throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
         }
@@ -143,6 +194,13 @@ function forcarModalTrocaSenha() {
 
 document.addEventListener('DOMContentLoaded', function() {
     
+    // --- RESTAURAR EMAIL SALVO ---
+    const savedEmail = localStorage.getItem('savedUserEmail');
+    if (savedEmail) {
+        const userInput = document.getElementById('username');
+        if (userInput) userInput.value = savedEmail;
+    }
+
     // --- VERIFICAÇÃO DE SEGURANÇA AO CARREGAR A PÁGINA ---
     if (localStorage.getItem('accessToken') && localStorage.getItem('trocaPendente') === 'true') {
         forcarModalTrocaSenha();
@@ -246,7 +304,12 @@ document.addEventListener('DOMContentLoaded', function() {
             } else {
                 loginModal.style.display = 'flex';
                 const userInput = document.getElementById('username');
-                if(userInput) userInput.focus();
+                if(userInput) {
+                    userInput.focus();
+                    // Se já tiver email salvo, preenche
+                    const saved = localStorage.getItem('savedUserEmail');
+                    if(saved) userInput.value = saved;
+                }
             }
         };
 
@@ -303,6 +366,9 @@ async function login(username, password) {
             localStorage.setItem('accessToken', accessToken);
             if(data.refresh) localStorage.setItem('refreshToken', data.refresh);
 
+            // --- SALVAR EMAIL (FIX) ---
+            localStorage.setItem('savedUserEmail', username);
+
             const decodedToken = jwt_decode(accessToken);
             if (decodedToken && decodedToken.perfil) {
                 localStorage.setItem('userProfile', decodedToken.perfil);
@@ -332,6 +398,7 @@ async function login(username, password) {
 }
 
 function logout() {
+    // NÃO REMOVER 'savedUserEmail'
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('userProfile');

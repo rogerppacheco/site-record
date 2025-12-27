@@ -340,6 +340,29 @@ class VendaViewSet(viewsets.ModelViewSet):
             except: pass
             
         return queryset
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        
+        if not serializer.is_valid():
+            # --- LOG DE ERRO NO TERMINAL ---
+            import json
+            print("\n" + "="*60)
+            print(f"!!! ERRO 400 AO SALVAR VENDA #{instance.id} !!!")
+            print(f"DADOS ENVIADOS: {json.dumps(request.data, indent=2, default=str)}")
+            print("-" * 30)
+            print(f"MOTIVO DO ERRO: {json.dumps(serializer.errors, indent=2, default=str)}")
+            print("="*60 + "\n")
+            # -------------------------------
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        self.perform_update(serializer)
+
+        if getattr(instance, '_prefetched_objects_cache', None):
+            instance._prefetched_objects_cache = {}
+
+        return Response(serializer.data)
 
     @action(detail=True, methods=['post'], url_path='reenviar-whatsapp-aprovacao', permission_classes=[permissions.IsAuthenticated])
     def reenviar_whatsapp_aprovacao(self, request, pk=None):

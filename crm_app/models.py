@@ -1,3 +1,5 @@
+# crm_app/models.py
+
 from django.db import models
 from usuarios.models import Usuario
 from django.conf import settings
@@ -100,6 +102,19 @@ class Venda(models.Model):
     status_comissionamento = models.ForeignKey(StatusCRM, on_delete=models.SET_NULL, null=True, blank=True, related_name='vendas_comissionamento', limit_choices_to={'tipo': 'Comissionamento'})
 
     data_criacao = models.DateTimeField(auto_now_add=True)
+    
+    # --- NOVOS CAMPOS PARA RASTREIO DE EDIÇÃO ---
+    editado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='vendas_editadas',
+        verbose_name="Última alteração por"
+    )
+    data_ultima_alteracao = models.DateTimeField(auto_now=True, verbose_name="Data da Última Alteração")
+    # --------------------------------------------
+
     forma_entrada = models.CharField(max_length=10, choices=[('APP', 'APP'), ('SEM_APP', 'SEM_APP')], default='APP')
     
     nome_mae = models.CharField(max_length=255, blank=True, null=True)
@@ -145,12 +160,12 @@ class Venda(models.Model):
         verbose_name="Em Auditoria Por"
     )
 
-    # --- NOVOS CAMPOS PARA CONTROLE DE DESCONTOS (INSERIDOS CORRETAMENTE AQUI) ---
+    # --- CAMPOS PARA CONTROLE DE DESCONTOS ---
     flag_adiant_cnpj = models.BooleanField(default=False, verbose_name="Adiant. CNPJ Processado")
     flag_desc_boleto = models.BooleanField(default=False, verbose_name="Desc. Boleto Processado")
     flag_desc_viabilidade = models.BooleanField(default=False, verbose_name="Desc. Viab. Processado")
     flag_desc_antecipacao = models.BooleanField(default=False, verbose_name="Desc. Antecip. Processado")
-    # -----------------------------------------------------------------------------
+    # ------------------------------------------
 
     def __str__(self): return f"Venda #{self.id}"
     class Meta:

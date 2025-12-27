@@ -183,6 +183,9 @@ class VendaSerializer(serializers.ModelSerializer):
     cliente_email = serializers.CharField(source='cliente.email', read_only=True)
     vendedor_nome = serializers.ReadOnlyField(source='vendedor.username')
     
+    # NOVOS CAMPOS PARA AUDITORIA
+    nome_editor = serializers.ReadOnlyField(source='editado_por.username')
+    
     # Campos de Escrita
     cliente_id = serializers.PrimaryKeyRelatedField(queryset=Cliente.objects.all(), source='cliente', write_only=False)
     
@@ -211,7 +214,8 @@ class VendaSerializer(serializers.ModelSerializer):
             'complemento', 'bairro', 'cidade', 'estado', 'data_abertura', 'ordem_servico', 'data_agendamento',
             'periodo_agendamento', 'data_instalacao', 'antecipou_instalacao', 'motivo_pendencia',
             'ponto_referencia', 'observacoes', 'historico_alteracoes', 'data_pagamento', 'valor_pago', 'alterado_por',
-            'auditor_atual', 'auditor_atual_nome', 'auditor_atual_id'
+            'auditor_atual', 'auditor_atual_nome', 'auditor_atual_id',
+            'nome_editor', 'data_ultima_alteracao'
         ]
 
     def get_auditor_atual_nome(self, obj):
@@ -293,19 +297,21 @@ class VendaCreateSerializer(serializers.ModelSerializer):
         return data
 
 class VendaUpdateSerializer(serializers.ModelSerializer):
-    cliente = serializers.DictField(required=False, write_only=True)
-
-    cliente_nome_razao_social = serializers.CharField(source='cliente.nome_razao_social', required=False)
-    cliente_cpf_cnpj = serializers.CharField(source='cliente.cpf_cnpj', required=False)
-    cliente_email = serializers.EmailField(source='cliente.email', required=False)
+    # Campos "Manuais" para evitar conflito de nesting e validação
+    cliente_nome_razao_social = serializers.CharField(required=False, allow_null=True, allow_blank=True, write_only=True)
+    cliente_cpf_cnpj = serializers.CharField(required=False, allow_null=True, allow_blank=True, write_only=True)
+    cliente_email = serializers.EmailField(required=False, allow_null=True, allow_blank=True, write_only=True)
 
     vendedor = serializers.PrimaryKeyRelatedField(queryset=Usuario.objects.all(), required=False)
-    plano = serializers.PrimaryKeyRelatedField(queryset=Plano.objects.all(), required=False)
-    forma_pagamento = serializers.PrimaryKeyRelatedField(queryset=FormaPagamento.objects.all(), required=False)
+    
+    # --- CORREÇÃO: allow_null=True em todos os campos que podem ser nulos no rascunho ---
+    plano = serializers.PrimaryKeyRelatedField(queryset=Plano.objects.all(), required=False, allow_null=True)
+    forma_pagamento = serializers.PrimaryKeyRelatedField(queryset=FormaPagamento.objects.all(), required=False, allow_null=True)
     status_tratamento = serializers.PrimaryKeyRelatedField(queryset=StatusCRM.objects.filter(tipo='Tratamento'), required=False, allow_null=True)
     status_esteira = serializers.PrimaryKeyRelatedField(queryset=StatusCRM.objects.filter(tipo='Esteira'), required=False, allow_null=True)
     status_comissionamento = serializers.PrimaryKeyRelatedField(queryset=StatusCRM.objects.filter(tipo='Comissionamento'), required=False, allow_null=True)
     motivo_pendencia = serializers.PrimaryKeyRelatedField(queryset=MotivoPendencia.objects.all(), required=False, allow_null=True)
+    # ------------------------------------------------------------------------------------
 
     class Meta:
         model = Venda
@@ -313,15 +319,11 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
         read_only_fields = ('data_criacao', 'forma_entrada')
 
     def validate(self, data):
+        # Converte para maiúsculo, exceto email e obs
         for key, value in data.items():
-            if isinstance(value, str) and key not in ['cliente', 'cliente_email', 'observacoes']:
+            if value is None: continue
+            if isinstance(value, str) and key not in ['cliente_email', 'observacoes']:
                 data[key] = value.upper()
-        
-        if 'cliente' in data and isinstance(data['cliente'], dict):
-            if 'nome_razao_social' in data['cliente']:
-                val = data['cliente']['nome_razao_social']
-                data['cliente']['nome_razao_social'] = val.upper() if isinstance(val, str) else str(val).upper()
-        
         return data
 
     def _get_field_repr(self, instance_value):
@@ -332,30 +334,31 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         user = request.user if request else None
 
-        cliente_data = validated_data.pop('cliente', {})
-        if cliente_data:
-            cliente_instance = instance.cliente
-            mudou = False
-            
-            novo_nome = cliente_data.get('nome_razao_social')
-            if novo_nome and novo_nome.strip() and novo_nome != cliente_instance.nome_razao_social:
-                cliente_instance.nome_razao_social = novo_nome.upper()
-                mudou = True
-            
-            novo_cpf = cliente_data.get('cpf_cnpj')
-            if novo_cpf and novo_cpf.strip() and novo_cpf != cliente_instance.cpf_cnpj:
-                cliente_instance.cpf_cnpj = novo_cpf
-                mudou = True
-                
-            novo_email = cliente_data.get('email')
-            if novo_email is not None and novo_email != cliente_instance.email:
-                if novo_email.strip() != "":
-                    cliente_instance.email = novo_email
-                    mudou = True
+        # 1. Atualização Manual dos Dados do Cliente
+        cliente_instance = instance.cliente
+        mudou_cliente = False
+        
+        # Pega os valores "write_only" validados
+        novo_nome = validated_data.pop('cliente_nome_razao_social', None)
+        novo_cpf = validated_data.pop('cliente_cpf_cnpj', None)
+        novo_email = validated_data.pop('cliente_email', None)
 
-            if mudou:
-                cliente_instance.save()
+        if novo_nome and novo_nome.strip() and novo_nome != cliente_instance.nome_razao_social:
+            cliente_instance.nome_razao_social = novo_nome.upper()
+            mudou_cliente = True
+        
+        if novo_cpf and novo_cpf.strip() and novo_cpf != cliente_instance.cpf_cnpj:
+            cliente_instance.cpf_cnpj = novo_cpf
+            mudou_cliente = True
+            
+        if novo_email is not None and novo_email != cliente_instance.email:
+            cliente_instance.email = novo_email
+            mudou_cliente = True
 
+        if mudou_cliente:
+            cliente_instance.save()
+
+        # 2. Histórico de Alterações
         alteracoes = {}
         campos_status = ['status_tratamento', 'status_esteira', 'status_comissionamento']
         for campo in campos_status:
@@ -365,6 +368,7 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
                 if novo != antigo:
                     alteracoes[campo] = {'de': self._get_field_repr(antigo) if antigo else "Nenhum", 'para': self._get_field_repr(novo)}
 
+        # 3. Automatização de Esteira
         novo_tratamento = validated_data.get('status_tratamento', instance.status_tratamento)
         if novo_tratamento and novo_tratamento.nome.lower() == 'cadastrada' and not instance.status_esteira:
             try:
@@ -380,6 +384,11 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
             except: pass
 
         updated_instance = super().update(instance, validated_data)
+
+        # 4. Atualiza auditor/editor
+        if user:
+            updated_instance.editado_por = user
+            updated_instance.save(update_fields=['editado_por'])
 
         if alteracoes and user:
             HistoricoAlteracaoVenda.objects.create(venda=updated_instance, usuario=user, alteracoes=alteracoes)
@@ -421,7 +430,4 @@ class GrupoDisparoSerializer(serializers.ModelSerializer):
 class LancamentoFinanceiroSerializer(serializers.ModelSerializer):
     usuario_nome = serializers.ReadOnlyField(source='usuario.nome_completo')
     criado_por_nome = serializers.ReadOnlyField(source='criado_por.username')
-
-    class Meta:
-        model = LancamentoFinanceiro
-        fields = '__all__'
+    class Meta: model = LancamentoFinanceiro; fields = '__all__'
