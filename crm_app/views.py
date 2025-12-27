@@ -2411,28 +2411,30 @@ class WebhookWhatsAppView(APIView):
     def post(self, request, *args, **kwargs):
         try:
             data = request.data
+            # --- Log para Debug (Ver no Terminal) ---
+            print("\n" + "="*40)
+            print(">>> WEBHOOK Z-API RECEBIDO:")
+            
             if isinstance(data, list): data = data[0] if len(data) > 0 else {}
-            if not isinstance(data, dict): return Response({'status': 'ignored'})
+            if not isinstance(data, dict): return Response({'status': 'ignored_format'})
 
             raw_phone = data.get('phone') or data.get('sender')
-            if not raw_phone: return Response({'status': 'ignored'})
+            if not raw_phone: return Response({'status': 'ignored_no_phone'})
 
-            # --- CORREÇÃO DE ERRO 500 (Data too long) ---
             # Limpa o ID do WhatsApp (remove @c.us, @g.us) e limita a 45 caracteres
             phone = str(raw_phone).split('@')[0].strip()[:45]
-            # ---------------------------------------------
 
-            # Extrair texto
             text = ""
             if 'text' in data and isinstance(data['text'], dict):
                 text = data['text'].get('message', '').strip()
             elif 'text' in data and isinstance(data['text'], str):
                 text = data['text'].strip()
+            
+            if not text: return Response({'status': 'ignored_no_text'})
 
             service = WhatsAppService()
 
             # 1. VERIFICAÇÃO POR LOCALIZAÇÃO (MAPA - CLIPE)
-            # Se mandar localização, ignora o fluxo de texto e responde na hora
             if 'location' in data or data.get('type') == 'location':
                 loc_data = data.get('location') or data
                 if loc_data and 'latitude' in loc_data:
@@ -2440,66 +2442,100 @@ class WebhookWhatsAppView(APIView):
                     lng = float(loc_data['longitude'])
                     res = verificar_viabilidade_por_coordenadas(lat, lng)
                     service.enviar_mensagem_texto(phone, res['msg'])
-                    # Limpa sessão se existir
                     try: SessaoWhatsapp.objects.filter(telefone=phone).delete()
                     except: pass
                     return Response({'status': 'loc_processed'})
 
-            # 2. FLUXO DE CONVERSA (TEXTO)
-            # Recupera ou cria sessão com proteção contra Race Condition
+            # 2. GESTÃO DE SESSÃO
             try:
                 sessao, created = SessaoWhatsapp.objects.get_or_create(
                     telefone=phone, 
-                    defaults={'etapa': 'MENU'}
+                    defaults={'etapa': 'MENU', 'dados_temp': {}}
                 )
             except IntegrityError:
-                # Se der erro de duplicidade (concorrencia), recupera a que foi criada no milissegundo anterior
                 sessao = SessaoWhatsapp.objects.get(telefone=phone)
 
-            msg_upper = text.upper()
+            msg_upper = text.upper().strip()
 
-            # GATILHO INICIAL: "VIABILIDADE"
-            if msg_upper == "VIABILIDADE":
-                sessao.etapa = 'AGUARDANDO_CEP'
-                sessao.dados_temp = {} # Limpa dados anteriores
+            # ---------------------------------------------------------
+            # 3. GATILHOS INICIAIS
+            # ---------------------------------------------------------
+            if "FACHADA" in msg_upper:
+                print(f">>> {phone} iniciou FACHADA")
+                sessao.etapa = 'FACHADA_AGUARDANDO_CEP'
+                sessao.dados_temp = {'tipo': 'FACHADA'}
                 sessao.save()
-                service.enviar_mensagem_texto(phone, "Olá! 🌍\nPor favor, digite o *CEP* do local (apenas números):")
-                return Response({'status': 'step_1_cep'})
+                service.enviar_mensagem_texto(phone, "🏢 *CONSULTA FACHADA (DFV)*\n\nPor favor, digite o *CEP* (somente números):")
+                return Response({'status': 'fachada_start'})
 
-            # ETAPA 1: RECEBEU O CEP -> PEDE NÚMERO
-            elif sessao.etapa == 'AGUARDANDO_CEP':
-                # Validação básica de CEP
+            elif "VIABILIDADE" in msg_upper:
+                print(f">>> {phone} iniciou VIABILIDADE")
+                sessao.etapa = 'VIABILIDADE_AGUARDANDO_CEP'
+                sessao.dados_temp = {'tipo': 'VIABILIDADE'}
+                sessao.save()
+                service.enviar_mensagem_texto(phone, "🗺️ *CONSULTA VIABILIDADE (KMZ)*\n\nPor favor, digite o *CEP*:")
+                return Response({'status': 'viabilidade_start'})
+
+            # ---------------------------------------------------------
+            # 4. FLUXO FACHADA (DFV)
+            # ---------------------------------------------------------
+            elif sessao.etapa == 'FACHADA_AGUARDANDO_CEP':
                 cep_limpo = "".join(filter(str.isdigit, text))
                 if len(cep_limpo) == 8:
-                    sessao.dados_temp = {'cep': cep_limpo}
-                    sessao.etapa = 'AGUARDANDO_NUMERO'
+                    sessao.dados_temp['cep'] = cep_limpo
+                    sessao.etapa = 'FACHADA_AGUARDANDO_NUMERO'
                     sessao.save()
-                    service.enviar_mensagem_texto(phone, "Certo! Agora digite o *NÚMERO* da fachada (ou 'SN' se não tiver):")
+                    service.enviar_mensagem_texto(phone, "Certo (Modo Fachada)! Agora digite o *NÚMERO* da casa/prédio:")
                 else:
-                    service.enviar_mensagem_texto(phone, "⚠️ CEP inválido. Por favor, digite um CEP com 8 dígitos:")
-                return Response({'status': 'step_2_num'})
+                    service.enviar_mensagem_texto(phone, "⚠️ CEP inválido. Digite 8 números:")
+                return Response({'status': 'fachada_cep_ok'})
 
-            # ETAPA 2: RECEBEU O NÚMERO -> PROCESSA TUDO
-            elif sessao.etapa == 'AGUARDANDO_NUMERO':
+            elif sessao.etapa == 'FACHADA_AGUARDANDO_NUMERO':
                 cep = sessao.dados_temp.get('cep')
                 numero = text
+                service.enviar_mensagem_texto(phone, "🔎 Buscando na base DFV...")
                 
-                service.enviar_mensagem_texto(phone, "🔎 Buscando no mapa, aguarde um instante...")
+                # Importa função específica do utils (evita loop de importação)
+                from .utils import consultar_fachada_dfv
+                resp_msg = consultar_fachada_dfv(cep, numero)
                 
-                # Chama a nova função exata
-                resultado = verificar_viabilidade_exata(cep, numero)
-                
-                service.enviar_mensagem_texto(phone, resultado['msg'])
-                
-                # Reseta o robô
-                sessao.delete()
-                return Response({'status': 'finished'})
+                service.enviar_mensagem_texto(phone, resp_msg)
+                sessao.delete() 
+                return Response({'status': 'fachada_end'})
 
+            # ---------------------------------------------------------
+            # 5. FLUXO VIABILIDADE (KMZ)
+            # ---------------------------------------------------------
+            elif sessao.etapa == 'VIABILIDADE_AGUARDANDO_CEP':
+                cep_limpo = "".join(filter(str.isdigit, text))
+                if len(cep_limpo) == 8:
+                    sessao.dados_temp['cep'] = cep_limpo
+                    sessao.etapa = 'VIABILIDADE_AGUARDANDO_NUMERO'
+                    sessao.save()
+                    service.enviar_mensagem_texto(phone, "Ok (Modo Mapa)! Agora digite o *NÚMERO* da fachada para localizarmos no mapa:")
+                else:
+                    service.enviar_mensagem_texto(phone, "⚠️ CEP inválido. Digite 8 números:")
+                return Response({'status': 'viabilidade_cep_ok'})
+
+            elif sessao.etapa == 'VIABILIDADE_AGUARDANDO_NUMERO':
+                cep = sessao.dados_temp.get('cep')
+                numero = text
+                service.enviar_mensagem_texto(phone, "🛰️ Geolocalizando e analisando mancha (KMZ)...")
+                
+                # Importa função específica do utils
+                from .utils import consultar_viabilidade_kmz
+                resp_msg = consultar_viabilidade_kmz(cep, numero)
+                
+                service.enviar_mensagem_texto(phone, resp_msg)
+                sessao.delete()
+                return Response({'status': 'viabilidade_end'})
+
+            # Caso não entenda
             return Response({'status': 'no_action'})
 
         except Exception as e:
             logger.error(f"Webhook Error: {e}", exc_info=True)
-            return Response({'status': 'error'}, status=500)
+            return Response({'status': 'error', 'detail': str(e)}, status=500)
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])

@@ -10,12 +10,12 @@ def limpar_texto(texto):
     if not texto: return ""
     return ''.join(filter(str.isdigit, str(texto)))
 
-def buscar_coordenadas_viacep(cep):
+def buscar_coordenadas_viacep_nominatim(cep, numero):
     """
-    Converte CEP em Latitude/Longitude usando ViaCEP + OpenStreetMap (Nominatim)
+    Busca Lat/Lng usando o CEP para achar a rua e o Número para precisão.
     """
     try:
-        # 1. Pega endereço do ViaCEP
+        # 1. Pega dados da Rua pelo ViaCEP
         url_viacep = f"https://viacep.com.br/ws/{cep}/json/"
         resp = requests.get(url_viacep, timeout=5)
         if resp.status_code != 200: return None
@@ -27,152 +27,154 @@ def buscar_coordenadas_viacep(cep):
         uf = data.get('uf')
         bairro = data.get('bairro')
         
-        # Query de busca para o Geocoder
-        query = f"{logradouro}, {cidade} - {uf}, Brasil"
+        # 2. Monta Query para OpenStreetMap (Nominatim)
+        # Ex: "Rua das Flores, 123, Belo Horizonte - MG, Brasil"
+        query = f"{logradouro}, {numero}, {cidade} - {uf}, Brasil"
         
-        # 2. Geocodificação (Nominatim - OpenStreetMap)
-        headers = {'User-Agent': 'RecordPAP_System/1.0'}
+        headers = {'User-Agent': 'RecordPAP_System/2.0'}
         url_geo = "https://nominatim.openstreetmap.org/search"
+        # O '1' no limit tenta pegar o mais preciso
         params = {'q': query, 'format': 'json', 'limit': 1}
         
         resp_geo = requests.get(url_geo, params=params, headers=headers, timeout=5)
+        
+        # Se não achar com número, tenta só com a rua (menos preciso, mas serve de fallback)
+        if not resp_geo.json():
+            query_fallback = f"{logradouro}, {cidade} - {uf}, Brasil"
+            params['q'] = query_fallback
+            resp_geo = requests.get(url_geo, params=params, headers=headers, timeout=5)
+
         if resp_geo.status_code == 200 and resp_geo.json():
             res = resp_geo.json()[0]
             return {
                 'lat': float(res['lat']),
                 'lng': float(res['lon']),
-                'endereco_str': f"{logradouro}, {bairro} - {cidade}"
+                'endereco_str': f"{logradouro}, {numero} - {bairro}",
+                'cidade': cidade,
+                'bairro': bairro
             }
             
     except Exception as e:
         print(f"Erro geocoding: {e}")
-        pass
     
     return None
 
-def verificar_viabilidade_por_cep(cep):
+def ponto_dentro_poligono(x, y, poligono):
     """
-    Função de compatibilidade (Legado).
-    Algumas views antigas podem chamar essa função.
+    Algoritmo Ray Casting para verificar se ponto (x,y) está dentro do polígono.
+    x = lng, y = lat
+    poligono = lista de tuplas [(lng, lat), (lng, lat)...]
     """
-    cep_limpo = limpar_texto(cep)
-    # Busca simples na DFV pelo CEP (qualquer número)
-    dfv = DFV.objects.filter(cep=cep_limpo).first()
+    n = len(poligono)
+    inside = False
+    p1x, p1y = poligono[0]
+    for i in range(n + 1):
+        p2x, p2y = poligono[i % n]
+        if y > min(p1y, p2y):
+            if y <= max(p1y, p2y):
+                if x <= max(p1x, p2x):
+                    if p1y != p2y:
+                        xinters = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
+                    if p1x == p2x or x <= xinters:
+                        inside = not inside
+        p1x, p1y = p2x, p2y
+    return inside
+
+def parse_kml_coordinates(coords_str):
+    """
+    Transforma string do KML "lon,lat,z lon,lat,z" em lista de tuplas [(lon, lat)]
+    """
+    pontos = []
+    if not coords_str: return []
     
-    if dfv:
-        return {
-            'viavel': True,
-            'msg': f"CEP {cep} consta na base DFV com status: {dfv.tipo_viabilidade}"
-        }
-    else:
-        return {
-            'viavel': False,
-            'msg': f"CEP {cep} não localizado na base exata."
-        }
+    # KML separa por espaço ou quebra de linha
+    items = coords_str.replace('\n', ' ').split(' ')
+    for item in items:
+        if not item: continue
+        parts = item.split(',')
+        if len(parts) >= 2:
+            try:
+                # KML é (Longitude, Latitude)
+                lon = float(parts[0])
+                lat = float(parts[1])
+                pontos.append((lon, lat))
+            except: pass
+    return pontos
+
+# --- FUNÇÕES DE CONSULTA ---
 
 def consultar_fachada_dfv(cep, numero):
-    """
-    Busca EXATA na base DFV (Fachada).
-    """
     cep_limpo = limpar_texto(cep)
     numero_limpo = str(numero).strip().upper()
-
     print(f"\n🔎 BUSCA DFV (FACHADA) -> CEP: {cep_limpo} | NUM: {numero_limpo}")
 
-    # Tenta busca exata (String)
     dfv = DFV.objects.filter(cep=cep_limpo, num_fachada=numero_limpo).first()
-    
-    # Se não achar, tenta converter número para int (tira zeros à esquerda ex: 0126 -> 126)
     if not dfv and numero_limpo.isdigit():
-        num_int = str(int(numero_limpo))
-        dfv = DFV.objects.filter(cep=cep_limpo, num_fachada=num_int).first()
+        dfv = DFV.objects.filter(cep=cep_limpo, num_fachada=str(int(numero_limpo))).first()
 
     if dfv:
         tipo = dfv.tipo_viabilidade.upper() if dfv.tipo_viabilidade else ""
-        rede = dfv.tipo_rede or "Desconhecida"
-        
-        if "VIAVEL" in tipo or "VIÁVEL" in tipo:
-            return (
-                f"✅ *FACHADA LOCALIZADA (DFV)*\n\n"
-                f"O endereço consta na base DFV como *VIÁVEL*.\n"
-                f"📍 *Endereço:* {dfv.logradouro}, {dfv.num_fachada}\n"
-                f"🏙️ *Bairro:* {dfv.bairro}\n"
-                f"📡 *Rede:* {rede}\n"
-                f"📂 *Base:* DFV (Arquivo Importado)"
-            )
-        else:
-            return (
-                f"⚠️ *FACHADA NA BASE, MAS...*\n\n"
-                f"Endereço encontrado na DFV, mas o status é: *{tipo}*.\n"
-                f"Consulte seu supervisor."
-            )
+        return f"✅ *FACHADA LOCALIZADA (DFV)*\nStatus: *{tipo}*\nEnd: {dfv.logradouro}, {dfv.num_fachada}"
     else:
-        return (
-            f"❌ *FACHADA NÃO ENCONTRADA*\n\n"
-            f"O CEP {cep_limpo} com número {numero_limpo} não consta na planilha de DFV importada.\n"
-            f"Verifique se digitou o número corretamente."
-        )
+        return f"❌ *FACHADA NÃO ENCONTRADA*\nO número {numero_limpo} no CEP {cep_limpo} não consta na base DFV."
 
-def consultar_viabilidade_kmz(cep):
+def consultar_viabilidade_kmz(cep, numero):
     """
-    Busca GEOGRÁFICA na base KMZ (AreaVenda).
-    Converte CEP -> Lat/Lng -> Verifica se está na área.
+    Lógica Completa: CEP+Num -> Lat/Lng -> Verifica Polígono
     """
     cep_limpo = limpar_texto(cep)
-    print(f"\n🔎 BUSCA KMZ (VIABILIDADE) -> CEP: {cep_limpo}")
+    print(f"\n🔎 BUSCA KMZ (GEO) -> CEP: {cep_limpo} | NUM: {numero}")
 
-    coords_data = buscar_coordenadas_viacep(cep_limpo)
+    # 1. Obter Coordenadas
+    geo_data = buscar_coordenadas_viacep_nominatim(cep_limpo, numero)
     
-    if not coords_data:
-        return (
-            f"❌ *CEP NÃO GEOLOCALIZADO*\n\n"
-            f"Não conseguimos encontrar as coordenadas do CEP {cep_limpo} no mapa.\n"
-            f"Por favor, tente enviar a *Localização (Pino)* do WhatsApp em vez do CEP."
-        )
+    if not geo_data:
+        return "❌ *ENDEREÇO NÃO LOCALIZADO*\nNão conseguimos converter esse CEP e número em coordenadas GPS. Tente enviar a localização (pino)."
 
-    lat = coords_data['lat']
-    lng = coords_data['lng']
-    endereco = coords_data['endereco_str']
+    cliente_lat = geo_data['lat']
+    cliente_lng = geo_data['lng']
+    print(f"📍 Cliente está em: {cliente_lat}, {cliente_lng}")
 
-    # Busca por texto (Bairro/Cidade) nas Áreas importadas
-    partes = endereco.split(',')
-    bairro_cep = ""
-    if len(partes) >= 2:
-        # Tenta extrair bairro grosseiramente
-        bairro_cep = partes[1].split('-')[0].strip()
+    # 2. Filtrar Áreas Prováveis (Pelo Bairro ou Cidade para não varrer tudo)
+    # Isso otimiza a busca. Pegamos areas que tenham o nome da cidade ou bairro.
+    areas_candidatas = AreaVenda.objects.filter(
+        Q(municipio__icontains=geo_data['cidade']) | 
+        Q(bairro__icontains=geo_data['bairro']) |
+        Q(nome_kml__icontains=geo_data['bairro'])
+    )
+    
+    # Se não achar por bairro/cidade, pega tudo (pode ser lento se tiver milhares)
+    if not areas_candidatas.exists():
+        print("⚠️ Bairro/Cidade não bateu com KMZ, verificando todas as áreas...")
+        areas_candidatas = AreaVenda.objects.all()
 
-    print(f"📍 Coordenadas: {lat}, {lng} | Endereço: {endereco}")
+    # 3. Teste Matemático (Ponto dentro do Polígono)
+    for area in areas_candidatas:
+        # Transforma texto do banco em lista de pontos
+        poligono = parse_kml_coordinates(area.coordenadas)
+        if not poligono: continue
+        
+        # Testa
+        if ponto_dentro_poligono(cliente_lng, cliente_lat, poligono):
+            return (
+                f"✅ *VIABILIDADE TÉCNICA (KMZ)*\n\n"
+                f"O endereço está DENTRO da área de cobertura!\n"
+                f"🗺️ *Área/Cluster:* {area.nome_kml}\n"
+                f"🏙️ *Bairro:* {area.bairro}\n"
+                f"📍 *Local:* {geo_data['endereco_str']}\n\n"
+                f"⚠️ _Sujeito a vistoria técnica local._"
+            )
 
-    # Tenta achar uma Área de Venda que tenha esse bairro ou cidade
-    area = AreaVenda.objects.filter(
-        Q(bairro__icontains=bairro_cep) | 
-        Q(nome_kml__icontains=bairro_cep)
-    ).first()
-
-    if area:
-        return (
-            f"✅ *VIABILIDADE (KMZ)*\n\n"
-            f"O CEP {cep_limpo} está em uma região mapeada no KMZ!\n\n"
-            f"🗺️ *Área:* {area.nome_kml}\n"
-            f"🏙️ *Bairro/Cluster:* {area.bairro} / {area.cluster}\n"
-            f"📊 *Status:* {area.status_venda or 'Liberado'}\n\n"
-            f"_Obs: Validação baseada no cadastro do bairro/área no KMZ._"
-        )
-    else:
-        return (
-            f"❌ *FORA DE ÁREA (KMZ)*\n\n"
-            f"O endereço localizado ({endereco}) não corresponde a nenhuma Área de Venda importada (KMZ).\n"
-            f"Pode ser uma área nova ou sem cobertura."
-        )
+    return (
+        f"❌ *FORA DA MANCHA (KMZ)*\n\n"
+        f"O endereço foi localizado no mapa, mas as coordenadas ({cliente_lat}, {cliente_lng}) caem FORA das áreas cadastradas no sistema.\n"
+        f"📍 *Local:* {geo_data['endereco_str']}"
+    )
 
 def verificar_viabilidade_por_coordenadas(lat, lng):
-    """
-    Chamado quando o usuário manda a localização (Pino).
-    """
-    return {'msg': f"📍 Recebemos sua localização ({lat}, {lng}). \nConsulte a base por CEP (Viabilidade) ou Endereço (Fachada)."}
+    # Fallback para o pino
+    return {'msg': f"📍 Recebido ({lat}, {lng}). Use a opção de CEP para validação precisa."}
 
-def verificar_viabilidade_exata(cep, numero):
-    """
-    Função de compatibilidade. Redireciona para a nova fachada.
-    """
-    return {'msg': consultar_fachada_dfv(cep, numero)}
+# Compatibilidade
+def verificar_viabilidade_por_cep(cep): return {'msg': 'Use a nova busca.'}
+def verificar_viabilidade_exata(cep, num): return {'msg': consultar_fachada_dfv(cep, num)}
