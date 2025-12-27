@@ -104,6 +104,10 @@ def parse_kml_coordinates(coords_str):
 # --- FUNÇÕES DE CONSULTA ---
 
 def consultar_fachada_dfv(cep, numero):
+    """
+    Busca EXATA na base DFV (Fachada). (Legado/Compatibilidade)
+    Essa função valida um número específico se necessário.
+    """
     cep_limpo = limpar_texto(cep)
     numero_limpo = str(numero).strip().upper()
     print(f"\n🔎 BUSCA DFV (FACHADA) -> CEP: {cep_limpo} | NUM: {numero_limpo}")
@@ -117,6 +121,58 @@ def consultar_fachada_dfv(cep, numero):
         return f"✅ *FACHADA LOCALIZADA (DFV)*\nStatus: *{tipo}*\nEnd: {dfv.logradouro}, {dfv.num_fachada}"
     else:
         return f"❌ *FACHADA NÃO ENCONTRADA*\nO número {numero_limpo} no CEP {cep_limpo} não consta na base DFV."
+
+def listar_fachadas_dfv(cep):
+    """
+    Busca TODAS as fachadas (números) disponíveis para um CEP na base DFV.
+    """
+    cep_limpo = limpar_texto(cep)
+    print(f"\n🔎 LISTAR FACHADAS DFV -> CEP: {cep_limpo}")
+
+    # Busca todos os registros com esse CEP que sejam VIÁVEIS
+    fachadas = DFV.objects.filter(
+        cep=cep_limpo
+    ).filter(
+        Q(tipo_viabilidade__icontains='VIAVEL') | Q(tipo_viabilidade__icontains='VIÁVEL')
+    ).values_list('num_fachada', 'logradouro', 'bairro', 'tipo_rede')
+
+    if not fachadas:
+        return (
+            f"❌ *NENHUMA FACHADA ENCONTRADA*\n\n"
+            f"Não encontramos nenhum número viável cadastrado na base DFV para o CEP {cep_limpo}.\n"
+            f"Tente a consulta de *Viabilidade (KMZ)* para ver se a região tem cobertura."
+        )
+
+    # Pega dados do logradouro do primeiro resultado para cabeçalho
+    exemplo = fachadas[0]
+    logradouro = exemplo[1] or "Rua Desconhecida"
+    bairro = exemplo[2] or "Bairro Desconhecido"
+    tecnologia = exemplo[3] or "-"
+
+    # Extrai e ordena os números
+    # Tenta ordenar numericamente, se falhar ordena como texto (ex: 10, 100, 2)
+    numeros = [f[0] for f in fachadas if f[0]]
+    try:
+        numeros.sort(key=lambda x: int(''.join(filter(str.isdigit, x))) if any(c.isdigit() for c in x) else 0)
+    except:
+        numeros.sort()
+
+    total = len(numeros)
+    lista_str = ", ".join(numeros)
+
+    # Se a lista for muito grande, corta para não travar o Zap
+    if len(lista_str) > 3000:
+        lista_str = lista_str[:3000] + "... (lista muito longa)"
+
+    return (
+        f"🏢 *RELATÓRIO DE FACHADAS (DFV)*\n\n"
+        f"📍 *Endereço:* {logradouro}\n"
+        f"🏙️ *Bairro:* {bairro}\n"
+        f"📡 *Tecnologia:* {tecnologia}\n"
+        f"✅ *Total Viáveis:* {total}\n\n"
+        f"🔢 *Números Disponíveis:*\n"
+        f"{lista_str}"
+    )
 
 def consultar_viabilidade_kmz(cep, numero):
     """
