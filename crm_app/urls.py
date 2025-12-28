@@ -52,8 +52,8 @@ from .views import (
     # Performance (API e Exportação)
     PainelPerformanceView,
     ExportarPerformanceExcelView,
-    EnviarImagemPerformanceView, # Já existia
-    ConfigurarAutomacaoView,     # <--- NOVA VIEW IMPORTADA AQUI
+    EnviarImagemPerformanceView, 
+    ConfigurarAutomacaoView,
     
     # View da Página HTML (Render)
     page_painel_performance,
@@ -65,7 +65,11 @@ from .views import (
     PendenciasDescontoView,
     ConfirmarDescontosEmMassaView,
     HistoricoDescontosAutoView,
-    ReverterDescontoMassaView
+    ReverterDescontoMassaView,
+
+    # --- CDOI (Record Vertical) ---
+    CdoiCreateView, # API para receber o POST
+    page_cdoi_novo  # Página HTML para exibir o formulário (PRECISA CRIAR NO VIEWS.PY)
 )
 
 router = DefaultRouter()
@@ -152,8 +156,12 @@ urlpatterns = [
     path('verificar-permissao-gestao/', VerificarPermissaoGestaoView.as_view(), name='verificar-permissao-gestao'),
     path('import/legado/', ImportacaoLegadoView.as_view(), name='importacao-legado'),
     
-    # --- NOVAS ROTAS (SEM 'views.') ---
+    # --- ROTAS EXTRAS ---
     path('grupos-disparo-api/', listar_grupos_whatsapp_api, name='listar_grupos_api'),
     path('automacao-performance/', ConfigurarAutomacaoView.as_view(), name='automacao_performance'),
     path('enviar-imagem-performance/', EnviarImagemPerformanceView.as_view(), name='enviar_imagem_performance'),
+    
+    # --- CDOI (Record Vertical) ---
+    # Rota API (Recebe o POST)
+    path('cdoi/novo/', CdoiCreateView.as_view(), name='cdoi_novo_api'),
 ]

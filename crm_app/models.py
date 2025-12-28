@@ -576,3 +576,49 @@ class AgendamentoDisparo(models.Model):
 
     def __str__(self):
         return f"{self.nome} - {self.get_canal_alvo_display()}"
+    
+# --- RECORD VERTICAL (CDOI) ---
+class CdoiSolicitacao(models.Model):
+    # Identificação
+    nome_condominio = models.CharField(max_length=255)
+    nome_sindico = models.CharField(max_length=255)
+    contato_sindico = models.CharField(max_length=50)
+    
+    # Endereço
+    cep = models.CharField(max_length=20)
+    logradouro = models.CharField(max_length=255)
+    numero = models.CharField(max_length=50)
+    bairro = models.CharField(max_length=100)
+    cidade = models.CharField(max_length=100)
+    uf = models.CharField(max_length=2)
+    latitude = models.CharField(max_length=50, blank=True, null=True)
+    longitude = models.CharField(max_length=50, blank=True, null=True)
+    
+    # Dados Técnicos
+    codigo_sap = models.CharField(max_length=50, default="1068561")
+    infraestrutura_tipo = models.CharField(max_length=50, choices=[('INTERNA', 'Interna'), ('FACHADA', 'Fachada')])
+    possui_shaft_dg = models.BooleanField(default=False, verbose_name="Possui Shaft/DG?")
+    
+    # Totais Calculados
+    total_blocos = models.IntegerField(default=0)
+    total_hps = models.IntegerField(default=0)
+    pre_venda_minima = models.IntegerField(default=0, help_text="10% do Total de HPs")
+    
+    # Links do OneDrive
+    link_carta_sindico = models.URLField(max_length=500, blank=True, null=True)
+    link_fotos_fachada = models.URLField(max_length=500, blank=True, null=True)
+    
+    # Controle
+    criado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    data_criacao = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=50, default="EM ANÁLISE")
+
+    def __str__(self):
+        return f"CDOI - {self.nome_condominio}"
+
+class CdoiBloco(models.Model):
+    solicitacao = models.ForeignKey(CdoiSolicitacao, on_delete=models.CASCADE, related_name='blocos')
+    nome_bloco = models.CharField(max_length=100)
+    andares = models.IntegerField()
+    unidades_por_andar = models.IntegerField()
+    total_hps_bloco = models.IntegerField()

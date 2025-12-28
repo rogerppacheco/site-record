@@ -15,6 +15,7 @@ import unicodedata
 import threading
 import requests
 
+
 # --- CORREÇÃO CRÍTICA: Importar transaction e IntegrityError ---
 from django.db import transaction, IntegrityError
 from django.db.models import Count, Q, Sum
@@ -30,6 +31,8 @@ from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.utils.html import strip_tags
 from django.contrib.staticfiles import finders
+from .models import CdoiSolicitacao, CdoiBloco
+from .onedrive_service import OneDriveUploader
 
 from rest_framework import generics, viewsets, status, permissions
 from rest_framework.response import Response
@@ -3970,3 +3973,81 @@ class ConfigurarAutomacaoView(APIView):
             return Response({'ok': True})
             
         return Response({'error': 'Ação inválida'}, status=400)
+class CdoiCreateView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get(self, request):
+        return render(request, 'cdoi_form.html')
+
+    def post(self, request):
+        try:
+            data = request.POST
+            files = request.FILES
+            
+            # 1. Upload OneDrive
+            uploader = OneDriveUploader()
+            # Cria nome da pasta: NomeCondominio_CEP
+            clean_name = str(data.get('nome_condominio', '')).replace('/', '-').strip()
+            folder_name = f"{clean_name}_{data.get('cep', '')}"
+            
+            link_carta = None
+            if 'arquivo_carta' in files:
+                f = files['arquivo_carta']
+                link_carta = uploader.upload_file(f, folder_name, f"CARTA_{f.name}")
+
+            link_fachada = None
+            if 'arquivo_fachada' in files:
+                f = files['arquivo_fachada']
+                link_fachada = uploader.upload_file(f, folder_name, f"FACHADA_{f.name}")
+
+            # 2. Criar Solicitação no Banco
+            cdoi = CdoiSolicitacao.objects.create(
+                nome_condominio=data.get('nome_condominio'),
+                nome_sindico=data.get('nome_sindico'),
+                contato_sindico=data.get('contato_sindico'),
+                cep=data.get('cep'),
+                logradouro=data.get('logradouro'),
+                numero=data.get('numero'),
+                bairro=data.get('bairro'),
+                cidade=data.get('cidade'),
+                uf=data.get('uf'),
+                latitude=data.get('latitude'),
+                longitude=data.get('longitude'),
+                infraestrutura_tipo=data.get('infraestrutura'),
+                possui_shaft_dg=(data.get('possui_shaft') == 'on'),
+                total_hps=data.get('total_hps_final') or 0,
+                pre_venda_minima=data.get('prevenda_final') or 0,
+                link_carta_sindico=link_carta,
+                link_fotos_fachada=link_fachada,
+                criado_por=request.user,
+                status="EM ANÁLISE"
+            )
+
+            # 3. Salvar Blocos (Vem como JSON do front)
+            blocos_json = data.get('dados_blocos_json')
+            if blocos_json:
+                blocos = json.loads(blocos_json)
+                for b in blocos:
+                    CdoiBloco.objects.create(
+                        solicitacao=cdoi,
+                        nome_bloco=b['nome'],
+                        andares=int(b['andares']),
+                        unidades_por_andar=int(b['aptos']),
+                        total_hps_bloco=int(b['total'])
+                    )
+
+            # Sucesso
+            return render(request, 'cdoi_form.html', {'sucesso': f'Solicitação enviada! ID: {cdoi.id}'})
+
+        except Exception as e:
+            # Erro
+            print(f"Erro CDOI: {e}")
+            return render(request, 'cdoi_form.html', {'erro': f"Erro ao processar: {str(e)}"})
+
+# --- AQUI ESTÁ A CORREÇÃO: A FUNÇÃO DEVE FICAR FORA DA CLASSE ---
+# Note que não tem espaço antes do 'def'
+
+def page_cdoi_novo(request):
+    """View simples para abrir a página no navegador"""
+    return render(request, 'cdoi_form.html')

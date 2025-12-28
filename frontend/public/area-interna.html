@@ -83,6 +83,8 @@
         .icon-config { background: -webkit-linear-gradient(45deg, #858796, #60616f); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
         .icon-import { background: -webkit-linear-gradient(45deg, #6f42c1, #563d7c); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
         .icon-performance { background: -webkit-linear-gradient(45deg, #11cdcd, #0a8a8a); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        /* Novo ícone para CDOI (Prédio) */
+        .icon-cdoi { background: -webkit-linear-gradient(45deg, #00c6ff, #0072ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
 
     </style>
 </head>
@@ -105,6 +107,11 @@
             <a href="/crm-vendas/" class="app-card" id="card-vendas">
                 <i class="bi bi-people-fill app-icon icon-vendas"></i>
                 <span class="app-title">Record Vendas</span>
+            </a>
+
+            <a href="{% url 'page_cdoi_novo' %}" class="app-card" id="card-cdoi">
+                <i class="bi bi-building app-icon icon-cdoi"></i>
+                <span class="app-title">Record Vertical</span>
             </a>
 
             <a href="/painel-performance/" class="app-card" id="card-performance">
@@ -173,14 +180,14 @@
                 'Diretoria': 'all',
                 'Admin': 'all',
 
-                // Acesso Backoffice (Vendas, Informa, Esteira, Auditoria, Performance, Importações)
-                'BackOffice': ['card-vendas', 'card-informa', 'card-esteira', 'card-auditoria', 'card-performance', 'card-importacoes'],
+                // Acesso Backoffice (Adicionado card-cdoi)
+                'BackOffice': ['card-vendas', 'card-informa', 'card-esteira', 'card-auditoria', 'card-performance', 'card-importacoes', 'card-cdoi'],
 
-                // Acesso Supervisor (Vendas + Presença + Performance)
-                'Supervisor': ['card-vendas', 'card-presenca', 'card-performance'],
+                // Acesso Supervisor (Adicionado card-cdoi)
+                'Supervisor': ['card-vendas', 'card-presenca', 'card-performance', 'card-cdoi'],
 
-                // Acesso Vendedor (Vendas + Performance)
-                'Vendedor': ['card-vendas']
+                // Acesso Vendedor (Adicionado card-cdoi)
+                'Vendedor': ['card-vendas', 'card-cdoi']
             };
 
             const cardsPermitidos = regras[userProfile] || regras['Vendedor']; // Fallback seguro

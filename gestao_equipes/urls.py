@@ -8,7 +8,8 @@ from django.conf.urls.static import static
 from usuarios.views import LoginView
 # Importe a view do calendário
 from core.views import calendario_fiscal_view
-from crm_app.views import page_painel_performance
+# Importe as views de páginas HTML (Painel e CDOI)
+from crm_app.views import page_painel_performance, page_cdoi_novo
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -18,7 +19,7 @@ urlpatterns = [
     path('api/auth/token/refresh/', include('djoser.urls.jwt')),
     path('login/', LoginView.as_view(), name='login_direct'),
 
-    # APIS DO SISTEMA
+    # APIS DO SISTEMA (Back-end)
     path('api/', include('djoser.urls')),
     path('api/', include('usuarios.urls')), 
     path('api/presenca/', include('presenca.urls')),
@@ -27,7 +28,7 @@ urlpatterns = [
     path('api/relatorios/', include('relatorios.urls')),
     path('api/core/', include('core.urls')), 
 
-    # PÁGINAS FRONTEND
+    # PÁGINAS FRONTEND (HTML para o usuário)
     path('', TemplateView.as_view(template_name='public/index.html'), name='home'),
     path('area-interna/', TemplateView.as_view(template_name='public/area-interna.html'), name='area-interna'),
     path('record-informa/', TemplateView.as_view(template_name='public/record_informa.html'), name='record-informa'),
@@ -47,15 +48,15 @@ urlpatterns = [
     path('salvar-ciclo-pagamento/', TemplateView.as_view(template_name='public/salvar_ciclo_pagamento.html'), name='salvar-ciclo-pagamento'),
     path('importar-mapa/', TemplateView.as_view(template_name='public/importar_mapa.html'), name='importar-mapa'),
     path('importar-dfv/', TemplateView.as_view(template_name='public/importar_dfv.html'), name='page-importar-dfv'),
-
-    # --- ADICIONE ESTA LINHA ---
     path('importar-legado/', TemplateView.as_view(template_name='public/importar_legado.html'), name='importar-legado'),
-    # ---------------------------
 
-    # CALENDÁRIO & PAINEL
+    # CALENDÁRIO & PAINEL DE PERFORMANCE
     path('calendario/', calendario_fiscal_view, name='calendario_fiscal_atual'),
     path('calendario/<int:ano>/<int:mes>/', calendario_fiscal_view, name='calendario_fiscal'),
     path('painel-performance/', page_painel_performance, name='painel_performance'),
+
+    # --- NOVO: RECORD VERTICAL (CDOI) ---
+    path('cdoi-novo/', page_cdoi_novo, name='page_cdoi_novo'),
 ]
 
 if settings.DEBUG:
