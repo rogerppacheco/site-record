@@ -3,6 +3,7 @@ import requests
 import re
 from django.db.models import Q
 from .models import DFV, AreaVenda
+from .models import Venda # Certifique-se que Venda está importado
 
 logger = logging.getLogger(__name__)
 
@@ -234,3 +235,60 @@ def verificar_viabilidade_por_coordenadas(lat, lng):
 # Compatibilidade
 def verificar_viabilidade_por_cep(cep): return {'msg': 'Use a nova busca.'}
 def verificar_viabilidade_exata(cep, num): return {'msg': consultar_fachada_dfv(cep, num)}
+def consultar_status_venda(tipo_busca, valor):
+    """
+    Busca a última venda baseada em CPF ou OS e retorna os status.
+    tipo_busca: 'CPF' ou 'OS'
+    """
+    valor_limpo = limpar_texto(valor) # Remove pontos e traços
+    print(f"\n🔎 BUSCA STATUS ({tipo_busca}) -> Valor: {valor_limpo}")
+
+    venda = None
+
+    if tipo_busca == 'CPF':
+        # Busca pela venda mais recente desse CPF (ordena por ID decrescente ou data)
+        # Nota: cliente__cpf_cnpj é o campo de busca no relacionamento
+        venda = Venda.objects.filter(
+            cliente__cpf_cnpj__icontains=valor_limpo, 
+            ativo=True
+        ).order_by('-data_criacao').first()
+
+    elif tipo_busca == 'OS':
+        # Busca exata pela OS
+        venda = Venda.objects.filter(
+            ordem_servico=valor_limpo, 
+            ativo=True
+        ).first()
+
+    if venda:
+        # Formata os dados para exibir
+        cliente_nome = venda.cliente.nome_razao_social.upper() if venda.cliente else "NÃO INFORMADO"
+        plano = venda.plano.nome if venda.plano else "-"
+        
+        st_tratamento = venda.status_tratamento.nome if venda.status_tratamento else "Sem Tratamento"
+        st_esteira = venda.status_esteira.nome if venda.status_esteira else "Não iniciada"
+        
+        # Detalhe extra se tiver pendência
+        extra_info = ""
+        if "PENDEN" in st_esteira.upper() and venda.motivo_pendencia:
+            extra_info = f"\n⚠️ *Motivo:* {venda.motivo_pendencia.nome}"
+        
+        if "AGENDADO" in st_esteira.upper() and venda.data_agendamento:
+             data_fmt = venda.data_agendamento.strftime('%d/%m/%Y')
+             extra_info = f"\n📅 *Data:* {data_fmt} ({venda.get_periodo_agendamento_display()})"
+
+        return (
+            f"📋 *STATUS DO PEDIDO*\n\n"
+            f"👤 *Cliente:* {cliente_nome}\n"
+            f"📦 *Plano:* {plano}\n"
+            f"🔢 *O.S:* {venda.ordem_servico or 'S/N'}\n\n"
+            f"🔧 *Status Esteira:* {st_esteira}"
+            f"{extra_info}\n"
+            f"📂 *Status Tratamento:* {st_tratamento}"
+        )
+    else:
+        return (
+            f"❌ *PEDIDO NÃO ENCONTRADO*\n\n"
+            f"Não localizei nenhuma venda ativa com o {tipo_busca}: *{valor}*.\n"
+            f"Verifique a digitação e tente novamente."
+        )

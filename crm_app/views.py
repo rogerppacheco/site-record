@@ -2442,49 +2442,82 @@ class WebhookWhatsAppView(APIView):
 
             msg_upper = text.upper().strip()
 
-            # ---------------------------------------------------------
-            # 1. GATILHO: FACHADA (Base DFV)
-            # ---------------------------------------------------------
+            # =========================================================
+            # GATILHOS INICIAIS (MENU PRINCIPAL)
+            # =========================================================
+            
+            # 1. GATILHO: FACHADA
             if "FACHADA" in msg_upper:
-                print(f">>> {phone} iniciou FACHADA")
                 sessao.etapa = 'FACHADA_AGUARDANDO_CEP'
-                sessao.dados_temp = {'tipo': 'FACHADA'}
                 sessao.save()
                 service.enviar_mensagem_texto(phone, "🏢 *CONSULTA MASSIVA (DFV)*\n\nEu vou listar todos os números viáveis de uma rua.\nPor favor, digite o *CEP* (somente números):")
                 return Response({'status': 'fachada_start'})
 
-            # ---------------------------------------------------------
-            # 2. GATILHO: VIABILIDADE (Base KMZ)
-            # ---------------------------------------------------------
+            # 2. GATILHO: VIABILIDADE
             elif "VIABILIDADE" in msg_upper:
-                print(f">>> {phone} iniciou VIABILIDADE")
                 sessao.etapa = 'VIABILIDADE_AGUARDANDO_CEP'
-                sessao.dados_temp = {'tipo': 'VIABILIDADE'}
                 sessao.save()
                 service.enviar_mensagem_texto(phone, "🗺️ *CONSULTA VIABILIDADE (KMZ)*\n\nIdentifiquei que você quer consultar a mancha.\nPor favor, digite o *CEP*:")
                 return Response({'status': 'viabilidade_start'})
 
-            # ---------------------------------------------------------
-            # 3. FLUXO FACHADA (DFV): Recebeu CEP -> LISTA TUDO E ACABA
-            # ---------------------------------------------------------
+            # 3. GATILHO: STATUS (NOVA FUNÇÃO)
+            elif "STATUS" in msg_upper:
+                sessao.etapa = 'STATUS_MENU_ESCOLHA'
+                sessao.dados_temp = {} # Limpa dados
+                sessao.save()
+                service.enviar_mensagem_texto(phone, "📋 *CONSULTA DE STATUS*\n\nComo deseja pesquisar o pedido?\n\n1️⃣ Por *CPF*\n2️⃣ Por *O.S* (Ordem de Serviço)\n\nDigite o número da opção (1 ou 2):")
+                return Response({'status': 'status_start'})
+
+            # =========================================================
+            # FLUXOS EM ANDAMENTO
+            # =========================================================
+
+            # --- FLUXO STATUS: ESCOLHA (1 ou 2) ---
+            elif sessao.etapa == 'STATUS_MENU_ESCOLHA':
+                if text == '1' or 'CPF' in msg_upper:
+                    sessao.etapa = 'STATUS_AGUARDANDO_DADO'
+                    sessao.dados_temp = {'tipo_busca': 'CPF'}
+                    sessao.save()
+                    service.enviar_mensagem_texto(phone, "Ok, digite o *CPF* do cliente (apenas números):")
+                elif text == '2' or 'OS' in msg_upper or 'ORDEM' in msg_upper:
+                    sessao.etapa = 'STATUS_AGUARDANDO_DADO'
+                    sessao.dados_temp = {'tipo_busca': 'OS'}
+                    sessao.save()
+                    service.enviar_mensagem_texto(phone, "Ok, digite o número da *O.S* (Ordem de Serviço):")
+                else:
+                    service.enviar_mensagem_texto(phone, "⚠️ Opção inválida. Digite *1* para CPF ou *2* para O.S:")
+                return Response({'status': 'status_choice'})
+
+            # --- FLUXO STATUS: EXECUÇÃO (Recebe o CPF ou OS) ---
+            elif sessao.etapa == 'STATUS_AGUARDANDO_DADO':
+                tipo = sessao.dados_temp.get('tipo_busca')
+                valor = text
+
+                service.enviar_mensagem_texto(phone, f"🔎 Buscando pedido por {tipo}...")
+                
+                # Importa a função nova do utils
+                from .utils import consultar_status_venda
+                resp_msg = consultar_status_venda(tipo, valor)
+                
+                service.enviar_mensagem_texto(phone, resp_msg)
+                sessao.delete() # Encerra
+                return Response({'status': 'status_end'})
+
+
+            # --- FLUXO FACHADA (Antigo) ---
             elif sessao.etapa == 'FACHADA_AGUARDANDO_CEP':
                 cep_limpo = "".join(filter(str.isdigit, text))
                 if len(cep_limpo) == 8:
                     service.enviar_mensagem_texto(phone, "🔎 Buscando todas as fachadas no DFV...")
-                    
                     from .utils import listar_fachadas_dfv
-                    # Chama a nova função que retorna a lista
                     resp_msg = listar_fachadas_dfv(cep_limpo)
-                    
                     service.enviar_mensagem_texto(phone, resp_msg)
-                    sessao.delete() # FIM DO FLUXO
+                    sessao.delete() 
                 else:
                     service.enviar_mensagem_texto(phone, "⚠️ CEP inválido. Digite 8 números:")
                 return Response({'status': 'fachada_end'})
 
-            # ---------------------------------------------------------
-            # 5. FLUXO VIABILIDADE (KMZ): Recebeu CEP -> PEDE NÚMERO
-            # ---------------------------------------------------------
+            # --- FLUXO VIABILIDADE (Antigo) ---
             elif sessao.etapa == 'VIABILIDADE_AGUARDANDO_CEP':
                 cep_limpo = "".join(filter(str.isdigit, text))
                 if len(cep_limpo) == 8:
@@ -2496,18 +2529,12 @@ class WebhookWhatsAppView(APIView):
                     service.enviar_mensagem_texto(phone, "⚠️ CEP inválido. Digite 8 números:")
                 return Response({'status': 'viabilidade_cep_ok'})
 
-            # ---------------------------------------------------------
-            # 6. FLUXO VIABILIDADE: Recebeu Número -> CALCULA GEOMETRIA
-            # ---------------------------------------------------------
             elif sessao.etapa == 'VIABILIDADE_AGUARDANDO_NUMERO':
                 cep = sessao.dados_temp.get('cep')
                 numero = text
-                
                 service.enviar_mensagem_texto(phone, "🛰️ Geolocalizando e analisando mancha (KMZ)...")
-                
                 from .utils import consultar_viabilidade_kmz
                 resp_msg = consultar_viabilidade_kmz(cep, numero)
-                
                 service.enviar_mensagem_texto(phone, resp_msg)
                 sessao.delete()
                 return Response({'status': 'viabilidade_end'})
