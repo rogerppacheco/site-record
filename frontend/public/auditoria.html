@@ -13,10 +13,11 @@
     <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
     
     <style>
-        .script-section { background-color: #fff; border-left: 5px solid var(--cor-primaria, #0d6efd); padding: 25px; margin-bottom: 25px; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-        .script-title { color: var(--cor-primaria, #0d6efd); font-weight: 800; margin-bottom: 15px; text-transform: uppercase; font-size: 0.95rem; border-bottom: 1px solid #eee; padding-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
-        .script-text { font-size: 1.15rem; line-height: 1.6; color: #212529; margin-bottom: 15px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        .checklist-box { background-color: #fff3cd; border: 1px solid #ffecb5; padding: 15px; border-radius: 6px; margin-bottom: 20px; }
+        /* Layout compacto sem rolagem visível */
+        .script-section { background-color: #fff; border-left: 3px solid var(--cor-primaria, #0d6efd); padding: 12px; margin-bottom: 12px; border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.06); }
+        .script-title { color: var(--cor-primaria, #0d6efd); font-weight: 800; margin-bottom: 8px; text-transform: uppercase; font-size: 0.85rem; border-bottom: 1px solid #eee; padding-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
+        .script-text { font-size: 0.95rem; line-height: 1.35; color: #212529; margin-bottom: 10px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .checklist-box { background-color: #fff3cd; border: 1px solid #ffecb5; padding: 10px; border-radius: 6px; margin-bottom: 10px; }
         .form-check-input:checked { background-color: #198754; border-color: #198754; }
         .checklist-label { font-weight: 600; color: #664d03; }
         .form-control-script { border: 1px solid #ced4da; background-color: #f8f9fa; font-weight: 600; color: #495057; }
@@ -31,6 +32,25 @@
         .auditor-badge { font-size: 0.75rem; background: #e9ecef; color: #495057; padding: 4px 10px; border-radius: 4px; border: 1px solid #dee2e6; display: inline-flex; align-items: center; gap: 5px; font-weight: 600; }
         .locked-row { opacity: 0.9; background-color: #fffbf0 !important; }
         .edit-info { font-size: 0.75rem; color: #6c757d; display: block; margin-top: 2px; }
+
+        /* Grids utilitários para reduzir altura */
+        .grid-auto-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+        .grid-auto-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; }
+
+        /* Ajustes gerais de layout no modal */
+        .modal-fullscreen .modal-content { display: flex; flex-direction: column; height: 100vh; }
+        .modal-fullscreen .modal-body { padding: 0; overflow: hidden; flex: 1 1 auto; display: flex; flex-direction: column; }
+        .flex-grow-1 { flex: 1 1 auto; padding: 12px; overflow: auto; }
+        .sticky-actions { position: sticky; bottom: 0; background: #f8f9fa; z-index: 1040; box-shadow: 0 -4px 12px rgba(0,0,0,0.08); }
+        .container.compact-container { max-width: 1200px; padding: 0; }
+        .tab-pane { padding: 0; }
+
+        /* Cards e linhas mais próximas */
+        .row.g-3 { row-gap: 10px; }
+        .script-text.mb-2 { margin-bottom: 6px !important; }
+        .script-title + .script-text { margin-bottom: 10px; }
+        .text-end.mt-4 { margin-top: 12px !important; }
+        .btn.btn-lg { padding: 10px 18px; }
     </style>
 </head>
 <body>
@@ -114,7 +134,7 @@
                     </div>
 
                     <div class="flex-grow-1 overflow-auto bg-light p-4">
-                        <div class="container" style="max-width: 900px;">
+                        <div class="container compact-container">
                             <div class="tab-content" id="pills-tabContent">
                                 
                                 <div class="tab-pane fade show active" id="pills-identidade" role="tabpanel">
@@ -129,30 +149,35 @@
 
                                     <div class="script-section">
                                         <div class="script-title">Dados Pessoais</div>
-                                        <p class="script-text mb-2">"Poderia, por gentileza, confirmar seu nome completo?"</p>
-                                        <div class="input-group mb-3"><input type="text" class="form-control form-control-script uppercase-input" id="audit-cliente-nome"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cliente-nome')" title="Copiar"><i class="bi bi-clipboard" id="btn-icon-audit-cliente-nome"></i></button></div>
+                                        <div class="grid-auto-3 mb-3">
+                                            <div>
+                                                <p class="script-text mb-2">"Poderia, por gentileza, confirmar seu nome completo?"</p>
+                                                <div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-cliente-nome"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cliente-nome')" title="Copiar"><i class="bi bi-clipboard" id="btn-icon-audit-cliente-nome"></i></button></div>
+                                            </div>
+                                            <div>
+                                                <p class="script-text mb-2">"Poderia me informar o seu CPF?"</p>
+                                                <div class="input-group"><input type="text" class="form-control form-control-script" id="audit-cliente-cpf" maxlength="18" onkeyup="mascaraCPF(this)"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cliente-cpf', true)" title="Copiar apenas números"><i class="bi bi-clipboard" id="btn-icon-audit-cliente-cpf"></i></button></div>
+                                            </div>
+                                        </div>
 
-                                        <p class="script-text mb-2">"Poderia me informar o seu CPF?"</p>
-                                        <div class="input-group mb-3"><input type="text" class="form-control form-control-script" id="audit-cliente-cpf" maxlength="18" onkeyup="mascaraCPF(this)"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cliente-cpf', true)" title="Copiar apenas números"><i class="bi bi-clipboard" id="btn-icon-audit-cliente-cpf"></i></button></div>
-
-                                        <div class="row g-3">
-                                            <div class="col-md-6"><label class="form-label small text-muted fw-bold">Nome da Mãe</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-nome-mae"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-nome-mae')"><i class="bi bi-clipboard" id="btn-icon-audit-nome-mae"></i></button></div></div>
-                                            <div class="col-md-4"><label class="form-label small text-muted fw-bold">Data Nasc.</label><input type="date" class="form-control form-control-script" id="audit-data-nasc" onchange="calcularIdadeAuto()"></div>
-                                            <div class="col-md-2"><label class="form-label small text-muted fw-bold">Idade</label><input type="text" class="form-control bg-white" id="audit-idade-calc" readonly></div>
+                                        <div class="grid-auto-3 mb-3">
+                                            <div><label class="form-label small text-muted fw-bold">Nome da Mãe</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-nome-mae"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-nome-mae')"><i class="bi bi-clipboard" id="btn-icon-audit-nome-mae"></i></button></div></div>
+                                            <div><label class="form-label small text-muted fw-bold">Data Nasc.</label><input type="date" class="form-control form-control-script" id="audit-data-nasc" onchange="calcularIdadeAuto()"></div>
+                                            <div><label class="form-label small text-muted fw-bold">Idade</label><input type="text" class="form-control bg-white" id="audit-idade-calc" readonly></div>
                                         </div>
 
                                         <div id="div-representante" style="display:none;" class="mt-3 pt-3 border-top bg-light p-3 rounded">
                                             <h6 class="script-title mb-2 text-secondary">Representante Legal (CNPJ)</h6>
                                             <p class="script-text mb-2 small text-muted">"Por favor, confirme os dados do representante legal."</p>
-                                            <div class="row g-3">
-                                                <div class="col-md-4">
+                                            <div class="grid-auto-3">
+                                                <div>
                                                     <label class="form-label small text-muted fw-bold">CPF Rep.</label>
                                                     <div class="input-group">
                                                         <input type="text" class="form-control form-control-script" id="audit-cpf-rep" onkeyup="mascaraCPF(this)">
                                                         <button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cpf-rep', true)"><i class="bi bi-clipboard" id="btn-icon-audit-cpf-rep"></i></button>
                                                     </div>
                                                 </div>
-                                                <div class="col-md-8">
+                                                <div>
                                                     <label class="form-label small text-muted fw-bold">Nome Rep.</label>
                                                     <div class="input-group">
                                                         <input type="text" class="form-control form-control-script uppercase-input" id="audit-nome-rep">
@@ -169,13 +194,19 @@
                                 <div class="tab-pane fade" id="pills-contato" role="tabpanel">
                                     <div class="script-section">
                                         <div class="script-title">Confirmação de Contato</div>
-                                        <p class="script-text mb-2">"Qual é o seu número de telefone no WhatsApp?"</p>
-                                        <div class="input-group mb-3" style="max-width: 400px;"><span class="input-group-text bg-success text-white"><i class="bi bi-whatsapp"></i></span><input type="text" class="form-control form-control-script fs-5" id="audit-tel1" maxlength="15" onkeyup="mascaraTelefone(this)"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-tel1', true)"><i class="bi bi-clipboard" id="btn-icon-audit-tel1"></i></button></div>
-                                        <div class="alert alert-info border-info my-4"><p class="mb-0 fst-italic fs-5">"Lembrando que é nesse número que você receberá a confirmação do pedido. Para confirmar a instalação, preciso que após receber a mensagem da Nio no seu WhatsApp você digite <strong>'SIM'</strong>. No WhatsApp da Nio, você poderá acompanhar a instalação em tempo real e até mesmo reagendar. Ficou claro?"</p></div>
-                                        <p class="script-text mb-2">"Poderia me informar um segundo telefone de contato?"</p>
-                                        <div class="input-group mb-3" style="max-width: 400px;"><input type="text" class="form-control form-control-script" id="audit-tel2" maxlength="15" onkeyup="mascaraTelefone(this)"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-tel2', true)"><i class="bi bi-clipboard" id="btn-icon-audit-tel2"></i></button></div>
+                                        <div class="grid-auto-2 mb-2">
+                                            <div>
+                                                <p class="script-text mb-2">"Qual é o seu número de telefone no WhatsApp?"</p>
+                                                <div class="input-group mb-2"><span class="input-group-text bg-success text-white"><i class="bi bi-whatsapp"></i></span><input type="text" class="form-control form-control-script" id="audit-tel1" maxlength="15" onkeyup="mascaraTelefone(this)"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-tel1', true)"><i class="bi bi-clipboard" id="btn-icon-audit-tel1"></i></button></div>
+                                            </div>
+                                            <div>
+                                                <p class="script-text mb-2">"Poderia me informar um segundo telefone de contato?"</p>
+                                                <div class="input-group mb-2"><input type="text" class="form-control form-control-script" id="audit-tel2" maxlength="15" onkeyup="mascaraTelefone(this)"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-tel2', true)"><i class="bi bi-clipboard" id="btn-icon-audit-tel2"></i></button></div>
+                                            </div>
+                                        </div>
+                                        <div class="alert alert-info border-info my-3 py-2"><p class="mb-0 fst-italic">"Lembrando que é nesse número que você receberá a confirmação do pedido. Para confirmar a instalação, preciso que após receber a mensagem da Nio no seu WhatsApp você digite <strong>'SIM'</strong>. No WhatsApp da Nio, você poderá acompanhar a instalação em tempo real e até mesmo reagendar."</p></div>
                                         <p class="script-text mb-2">"Qual é o seu endereço de e-mail?"</p>
-                                        <div class="input-group mb-3"><input type="email" class="form-control form-control-script uppercase-input" id="audit-email"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-email')"><i class="bi bi-clipboard" id="btn-icon-audit-email"></i></button></div>
+                                        <div class="input-group mb-2"><input type="email" class="form-control form-control-script uppercase-input" id="audit-email"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-email')"><i class="bi bi-clipboard" id="btn-icon-audit-email"></i></button></div>
                                         <div class="text-end mt-4"><button class="btn btn-primary" onclick="proximaAba('pills-endereco-tab')">Próximo <i class="bi bi-arrow-right"></i></button></div>
                                     </div>
                                 </div>
@@ -236,7 +267,7 @@
                         </div>
                     </div>
                     
-                    <div class="modal-footer bg-light justify-content-between flex-wrap shadow-lg" style="z-index: 1050;">
+                    <div class="modal-footer bg-light justify-content-between flex-wrap shadow-lg sticky-actions" style="z-index: 1050;">
                         <button type="button" class="btn btn-danger btn-lg fw-bold" onclick="abrirModalReprovacao()">
                             <i class="bi bi-x-circle-fill"></i> REPROVAR / PENDENCIAR
                         </button>
