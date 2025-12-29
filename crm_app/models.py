@@ -577,44 +577,46 @@ class AgendamentoDisparo(models.Model):
     def __str__(self):
         return f"{self.nome} - {self.get_canal_alvo_display()}"
     
-# --- RECORD VERTICAL (CDOI) ---
+# No arquivo site-record/crm_app/models.py
+
 class CdoiSolicitacao(models.Model):
-    # Identificação
+    STATUS_CHOICES = [
+        ('SEM_TRATAMENTO', 'Sem tratamento'),
+        ('EM_CADASTRO', 'Em cadastro'),
+        ('EM_PROJETO', 'Em Projeto'),
+        ('EM_EXECUCAO', 'Em Execução'),
+        ('CONCLUIDA', 'Concluída'),
+    ]
+
+    # ... (mantenha os campos existentes: nome_condominio, nome_sindico, etc.)
     nome_condominio = models.CharField(max_length=255)
     nome_sindico = models.CharField(max_length=255)
-    contato_sindico = models.CharField(max_length=50)
-    
-    # Endereço
-    cep = models.CharField(max_length=20)
+    contato_sindico = models.CharField(max_length=20)
+    cep = models.CharField(max_length=9)
     logradouro = models.CharField(max_length=255)
-    numero = models.CharField(max_length=50)
+    numero = models.CharField(max_length=20)
     bairro = models.CharField(max_length=100)
     cidade = models.CharField(max_length=100)
     uf = models.CharField(max_length=2)
     latitude = models.CharField(max_length=50, blank=True, null=True)
     longitude = models.CharField(max_length=50, blank=True, null=True)
-    
-    # Dados Técnicos
-    codigo_sap = models.CharField(max_length=50, default="1068561")
-    infraestrutura_tipo = models.CharField(max_length=50, choices=[('INTERNA', 'Interna'), ('FACHADA', 'Fachada')])
-    possui_shaft_dg = models.BooleanField(default=False, verbose_name="Possui Shaft/DG?")
-    
-    # Totais Calculados
-    total_blocos = models.IntegerField(default=0)
+    infraestrutura_tipo = models.CharField(max_length=50)
+    possui_shaft_dg = models.BooleanField(default=False)
     total_hps = models.IntegerField(default=0)
-    pre_venda_minima = models.IntegerField(default=0, help_text="10% do Total de HPs")
+    pre_venda_minima = models.IntegerField(default=0)
     
-    # Links do OneDrive
     link_carta_sindico = models.URLField(max_length=500, blank=True, null=True)
     link_fotos_fachada = models.URLField(max_length=500, blank=True, null=True)
-    
-    # Controle
-    criado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+
+    criado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     data_criacao = models.DateTimeField(auto_now_add=True)
-    status = models.CharField(max_length=50, default="EM ANÁLISE")
+    
+    # NOVOS CAMPOS / ATUALIZADOS
+    status = models.CharField(max_length=50, choices=STATUS_CHOICES, default='SEM_TRATAMENTO')
+    observacao = models.TextField(blank=True, null=True, verbose_name="Observação do Backoffice")
 
     def __str__(self):
-        return f"CDOI - {self.nome_condominio}"
+        return f"{self.nome_condominio} ({self.status})"
 
 class CdoiBloco(models.Model):
     solicitacao = models.ForeignKey(CdoiSolicitacao, on_delete=models.CASCADE, related_name='blocos')

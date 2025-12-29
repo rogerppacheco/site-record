@@ -31,6 +31,7 @@ from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.utils.html import strip_tags
 from django.contrib.staticfiles import finders
+from django.core.exceptions import ValidationError
 from .models import CdoiSolicitacao, CdoiBloco
 from .onedrive_service import OneDriveUploader
 
@@ -47,6 +48,7 @@ from openpyxl.utils import get_column_letter
 
 # --- IMPORTS EXTRAS DO PROJETO ---
 from core.models import DiaFiscal
+from core.validators import validar_cpf, validar_cnpj, validar_cpf_ou_cnpj
 from .whatsapp_service import WhatsAppService
 from xhtml2pdf import pisa
 from usuarios.permissions import CheckAPIPermission, VendaPermission
@@ -346,6 +348,21 @@ class VendaViewSet(viewsets.ModelViewSet):
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
+        
+        # Validar CPF/CNPJ antes de processar
+        if 'cliente_cpf_cnpj' in request.data:
+            try:
+                validar_cpf_ou_cnpj(request.data['cliente_cpf_cnpj'])
+            except ValidationError as e:
+                return Response({"cliente_cpf_cnpj": [str(e)]}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validar CPF do Representante Legal se fornecido
+        if 'cpf_representante_legal' in request.data and request.data['cpf_representante_legal']:
+            try:
+                validar_cpf(request.data['cpf_representante_legal'])
+            except ValidationError as e:
+                return Response({"cpf_representante_legal": [str(e)]}, status=status.HTTP_400_BAD_REQUEST)
+        
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         
         if not serializer.is_valid():
@@ -354,7 +371,7 @@ class VendaViewSet(viewsets.ModelViewSet):
             print("\n" + "="*60)
             print(f"!!! ERRO 400 AO SALVAR VENDA #{instance.id} !!!")
             print(f"DADOS ENVIADOS: {json.dumps(request.data, indent=2, default=str)}")
-            print("-" * 30)
+            print("-" * 10)
             print(f"MOTIVO DO ERRO: {json.dumps(serializer.errors, indent=2, default=str)}")
             print("="*60 + "\n")
             # -------------------------------
@@ -366,6 +383,27 @@ class VendaViewSet(viewsets.ModelViewSet):
             instance._prefetched_objects_cache = {}
 
         return Response(serializer.data)
+
+    def create(self, request, *args, **kwargs):
+        # Validar CPF/CNPJ antes de processar
+        if 'cliente_cpf_cnpj' in request.data:
+            try:
+                validar_cpf_ou_cnpj(request.data['cliente_cpf_cnpj'])
+            except ValidationError as e:
+                return Response({"cliente_cpf_cnpj": [str(e)]}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validar CPF do Representante Legal se fornecido
+        if 'cpf_representante_legal' in request.data and request.data['cpf_representante_legal']:
+            try:
+                validar_cpf(request.data['cpf_representante_legal'])
+            except ValidationError as e:
+                return Response({"cpf_representante_legal": [str(e)]}, status=status.HTTP_400_BAD_REQUEST)
+        
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exceptions=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     @action(detail=True, methods=['post'], url_path='reenviar-whatsapp-aprovacao', permission_classes=[permissions.IsAuthenticated])
     def reenviar_whatsapp_aprovacao(self, request, pk=None):
@@ -1247,7 +1285,7 @@ class ComissionamentoView(APIView):
         # --- HISTÓRICO (Últimos 6 meses) ---
         historico = []
         for i in range(6):
-            d = hoje - timedelta(days=30*i)
+            d = hoje - timedelta(days=10*i)
             mes_iter = d.month
             ano_iter = d.year
             
@@ -2547,30 +2585,40 @@ class WebhookWhatsAppView(APIView):
 
         except Exception as e:
             logger.error(f"Webhook Error: {e}", exc_info=True)
-            return Response({'status': 'error', 'detail': str(e)}, status=500)
+            return Response({'status': 'error', 'detail': str(e)}, status=500)  
+
+# No arquivo crm_app/views.py
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
-def api_verificar_whatsapp(request, telefone):
+def api_verificar_whatsapp(request, telefone=None):
     """
-    Verifica se um número possui WhatsApp válido usando a API externa (Z-API).
+    Verifica se um número possui WhatsApp válido.
+    Aceita o telefone via URL (rota antiga) ou Query Param (rota nova).
     """
     try:
-        svc = WhatsAppService()
-        # Chama a API de verdade
-        existe = svc.verificar_numero_existe(telefone)
+        # CORREÇÃO: O parâmetro 'telefone' agora é opcional na assinatura (telefone=None)
+        # Se não vier na URL, tenta pegar do Query Param ?numero=
+        if not telefone:
+            telefone = request.query_params.get('numero') or request.query_params.get('telefone')
         
-        # Retorna com múltiplas chaves para garantir compatibilidade com qualquer versão do seu HTML
+        if not telefone:
+            return Response({"error": "Número não informado."}, status=400)
+        
+        # Limpa o número para garantir apenas dígitos (remove parenteses, traços, etc)
+        telefone_limpo = re.sub(r'\D', '', str(telefone))
+        
+        svc = WhatsAppService()
+        existe = svc.verificar_numero_existe(telefone_limpo)
+        
         return Response({
-            "telefone": telefone,
-            "whatsapp_valido": existe,  # Usado em algumas versões
-            "possui_whatsapp": existe,  # Usado no seu crm_vendas.html atual
-            "exists": existe            # Padrão Z-API
+            "telefone": telefone_limpo,
+            "exists": existe,
+            "possui_whatsapp": existe 
         })
     except Exception as e:
-        # Se der erro interno, não trava a venda (retorna erro 500 mas o log registra)
         logger.error(f"Erro view verificar zap: {e}")
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({"error": str(e)}, status=500)
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
@@ -2708,8 +2756,6 @@ def enviar_comissao_whatsapp(request):
 
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
-# Em site-record/crm_app/views.py
 
 # Em site-record/crm_app/views.py
 
@@ -3977,18 +4023,18 @@ class CdoiCreateView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
 
-    def get(self, request):
-        return render(request, 'cdoi_form.html')
-
     def post(self, request):
         try:
             data = request.POST
             files = request.FILES
             
-            # 1. Upload OneDrive
+            nome_condominio = data.get('nome_condominio') or data.get('cliente')
+            if not nome_condominio:
+                 return Response({"error": "Nome do condomínio é obrigatório."}, status=400)
+
+            # Upload OneDrive (Mantido igual)
             uploader = OneDriveUploader()
-            # Cria nome da pasta: NomeCondominio_CEP
-            clean_name = str(data.get('nome_condominio', '')).replace('/', '-').strip()
+            clean_name = str(nome_condominio).replace('/', '-').strip()
             folder_name = f"{clean_name}_{data.get('cep', '')}"
             
             link_carta = None
@@ -4001,11 +4047,10 @@ class CdoiCreateView(APIView):
                 f = files['arquivo_fachada']
                 link_fachada = uploader.upload_file(f, folder_name, f"FACHADA_{f.name}")
 
-            # 2. Criar Solicitação no Banco
             cdoi = CdoiSolicitacao.objects.create(
-                nome_condominio=data.get('nome_condominio'),
+                nome_condominio=nome_condominio,
                 nome_sindico=data.get('nome_sindico'),
-                contato_sindico=data.get('contato_sindico'),
+                contato_sindico=data.get('contato'),
                 cep=data.get('cep'),
                 logradouro=data.get('logradouro'),
                 numero=data.get('numero'),
@@ -4021,29 +4066,248 @@ class CdoiCreateView(APIView):
                 link_carta_sindico=link_carta,
                 link_fotos_fachada=link_fachada,
                 criado_por=request.user,
-                status="EM ANÁLISE"
+                status="SEM_TRATAMENTO" # Status inicial novo
             )
 
-            # 3. Salvar Blocos (Vem como JSON do front)
+            # Salvar Blocos (Mantido igual)
             blocos_json = data.get('dados_blocos_json')
             if blocos_json:
-                blocos = json.loads(blocos_json)
-                for b in blocos:
-                    CdoiBloco.objects.create(
-                        solicitacao=cdoi,
-                        nome_bloco=b['nome'],
-                        andares=int(b['andares']),
-                        unidades_por_andar=int(b['aptos']),
-                        total_hps_bloco=int(b['total'])
-                    )
+                try:
+                    blocos = json.loads(blocos_json)
+                    for b in blocos:
+                        CdoiBloco.objects.create(
+                            solicitacao=cdoi,
+                            nome_bloco=b['nome'],
+                            andares=int(b['andares']),
+                            unidades_por_andar=int(b['aptos']),
+                            total_hps_bloco=int(b['total'])
+                        )
+                except Exception as e_blocos:
+                    print(f"Erro ao salvar blocos: {e_blocos}")
 
-            # Sucesso
-            return render(request, 'cdoi_form.html', {'sucesso': f'Solicitação enviada! ID: {cdoi.id}'})
+            # --- ITEM 4: WHATSAPP DESCOMENTADO ---
+            try:
+                if cdoi.contato_sindico:
+                     # Instancia o serviço (certifique-se que as credenciais no .env estão ok)
+                     svc = WhatsAppService()
+                     msg_text = f"Olá, sua solicitação de CDOI para *{cdoi.nome_condominio}* foi recebida com sucesso! ID: {cdoi.id}. Status: Sem Tratamento."
+                     # Removemos o # para ativar
+                     svc.enviar_mensagem_texto(cdoi.contato_sindico, msg_text)
+            except Exception as e_zap:
+                print(f"Erro ao enviar Zap CDOI: {e_zap}")
+
+            return Response({'mensagem': f'Solicitação enviada! ID: {cdoi.id}'}, status=200)
 
         except Exception as e:
-            # Erro
             print(f"Erro CDOI: {e}")
-            return render(request, 'cdoi_form.html', {'erro': f"Erro ao processar: {str(e)}"})
+            return Response({'error': f"Erro ao processar: {str(e)}"}, status=500)
+
+# --- 2. LISTAGEM (Meus Acionamentos) ---
+class CdoiListView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        # Perfis que veem tudo
+        grupos_gestao = ['Diretoria', 'Admin', 'BackOffice']
+        eh_gestao = is_member(user, grupos_gestao)
+
+        if eh_gestao:
+            queryset = CdoiSolicitacao.objects.all().order_by('-data_criacao')
+        else:
+            # Usuário comum vê apenas os seus
+            queryset = CdoiSolicitacao.objects.filter(criado_por=user).order_by('-data_criacao')
+
+        data = []
+        for item in queryset:
+            data.append({
+                'id': item.id,
+                'nome': item.nome_condominio,
+                'cidade': f"{item.cidade}-{item.uf}",
+                'status': item.get_status_display(),
+                'status_cod': item.status,
+                'observacao': item.observacao or "",
+                'data': item.data_criacao.strftime('%d/%m/%Y'),
+                'can_edit': eh_gestao # Flag para o frontend saber se libera edição
+            })
+        
+        return Response(data)
+
+# --- 3. EDIÇÃO DE STATUS (Apenas Gestão) ---
+class CdoiUpdateView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        user = request.user
+        if not is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
+            return Response({"error": "Acesso negado."}, status=403)
+
+        try:
+            cdoi = CdoiSolicitacao.objects.get(pk=pk)
+            blocos = [
+                {
+                    'nome': b.nome_bloco,
+                    'andares': b.andares,
+                    'aptos': b.unidades_por_andar,
+                    'total': b.total_hps_bloco,
+                }
+                for b in cdoi.blocos.all()
+            ]
+
+            data = {
+                'id': cdoi.id,
+                'nome_condominio': cdoi.nome_condominio,
+                'cep': cdoi.cep,
+                'numero': cdoi.numero,
+                'nome_sindico': cdoi.nome_sindico,
+                'contato': cdoi.contato_sindico,
+                'infraestrutura': cdoi.infraestrutura_tipo,
+                'possui_shaft': cdoi.possui_shaft_dg,
+                'latitude': cdoi.latitude or '',
+                'longitude': cdoi.longitude or '',
+                'blocos': blocos,
+            }
+            return Response(data)
+        except CdoiSolicitacao.DoesNotExist:
+            return Response({"error": "Solicitação não encontrada."}, status=404)
+
+    def patch(self, request, pk):
+        user = request.user
+        if not is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
+            return Response({"error": "Acesso negado."}, status=403)
+
+        try:
+            cdoi = CdoiSolicitacao.objects.get(pk=pk)
+            data = request.data
+
+            # Campos pontuais
+            if data.get('status'):
+                cdoi.status = data.get('status')
+            if 'observacao' in data:
+                cdoi.observacao = data.get('observacao')
+            if data.get('nome_condominio'):
+                cdoi.nome_condominio = data.get('nome_condominio')
+            if data.get('cep'):
+                cdoi.cep = data.get('cep')
+            if data.get('numero'):
+                cdoi.numero = data.get('numero')
+            if data.get('nome_sindico'):
+                cdoi.nome_sindico = data.get('nome_sindico')
+            if data.get('contato'):
+                cdoi.contato_sindico = data.get('contato')
+            if data.get('infraestrutura'):
+                cdoi.infraestrutura_tipo = data.get('infraestrutura')
+            if 'possui_shaft' in data:
+                val = data.get('possui_shaft')
+                if isinstance(val, str):
+                    cdoi.possui_shaft_dg = val.lower() in ['on', 'true', '1']
+                else:
+                    cdoi.possui_shaft_dg = bool(val)
+            if data.get('latitude'):
+                cdoi.latitude = data.get('latitude')
+            if data.get('longitude'):
+                cdoi.longitude = data.get('longitude')
+
+            # Atualiza blocos apenas se fornecido
+            blocos_json = data.get('dados_blocos_json') or data.get('input_blocos_json')
+            if blocos_json:
+                import json as _json
+                try:
+                    blocos = _json.loads(blocos_json)
+                    cdoi.blocos.all().delete()
+                    for b in blocos:
+                        CdoiBloco.objects.create(
+                            solicitacao=cdoi,
+                            nome_bloco=b.get('nome'),
+                            andares=int(b.get('andares') or 0),
+                            unidades_por_andar=int(b.get('aptos') or 0),
+                            total_hps_bloco=int(b.get('total') or 0)
+                        )
+                except Exception as e:
+                    return Response({"error": f"Erro ao atualizar blocos: {e}"}, status=400)
+            
+            cdoi.save()
+            return Response({"mensagem": "Atualizado com sucesso!"})
+        except CdoiSolicitacao.DoesNotExist:
+            return Response({"error": "Solicitação não encontrada."}, status=404)
+
+    def put(self, request, pk):
+        user = request.user
+        if not is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
+            return Response({"error": "Acesso negado."}, status=403)
+
+        try:
+            cdoi = CdoiSolicitacao.objects.get(pk=pk)
+            data = request.data
+
+            # Atualiza campos principais
+            cdoi.nome_condominio = data.get('nome_condominio', cdoi.nome_condominio)
+            cdoi.nome_sindico = data.get('nome_sindico', cdoi.nome_sindico)
+            cdoi.contato_sindico = data.get('contato', cdoi.contato_sindico)
+            cdoi.cep = data.get('cep', cdoi.cep)
+            cdoi.logradouro = data.get('logradouro', cdoi.logradouro)
+            cdoi.numero = data.get('numero', cdoi.numero)
+            cdoi.bairro = data.get('bairro', cdoi.bairro)
+            cdoi.cidade = data.get('cidade', cdoi.cidade)
+            cdoi.uf = data.get('uf', cdoi.uf)
+            cdoi.latitude = data.get('latitude', cdoi.latitude)
+            cdoi.longitude = data.get('longitude', cdoi.longitude)
+            cdoi.infraestrutura_tipo = data.get('infraestrutura', cdoi.infraestrutura_tipo)
+            # checkbox pode vir como 'on' ou 'true'
+            possui_shaft_val = data.get('possui_shaft', None)
+            if isinstance(possui_shaft_val, str):
+                cdoi.possui_shaft_dg = possui_shaft_val.lower() in ['on', 'true', '1']
+            elif isinstance(possui_shaft_val, bool):
+                cdoi.possui_shaft_dg = possui_shaft_val
+
+            # Totais
+            try:
+                cdoi.total_hps = int(data.get('total_hps_final') or data.get('input_total_hps') or cdoi.total_hps or 0)
+            except Exception:
+                pass
+            try:
+                cdoi.pre_venda_minima = int(data.get('prevenda_final') or data.get('input_prevenda') or cdoi.pre_venda_minima or 0)
+            except Exception:
+                pass
+
+            cdoi.save()
+
+            # Atualiza blocos se enviados
+            blocos_json = data.get('dados_blocos_json') or data.get('input_blocos_json')
+            if blocos_json:
+                try:
+                    import json as _json
+                    blocos = _json.loads(blocos_json)
+                    # Remove blocos existentes e recria
+                    cdoi.blocos.all().delete()
+                    for b in blocos:
+                        CdoiBloco.objects.create(
+                            solicitacao=cdoi,
+                            nome_bloco=b.get('nome'),
+                            andares=int(b.get('andares') or 0),
+                            unidades_por_andar=int(b.get('aptos') or 0),
+                            total_hps_bloco=int(b.get('total') or 0)
+                        )
+                except Exception as e:
+                    return Response({"error": f"Erro ao atualizar blocos: {e}"}, status=400)
+
+            return Response({"mensagem": "Solicitação atualizada com sucesso!"})
+        except CdoiSolicitacao.DoesNotExist:
+            return Response({"error": "Solicitação não encontrada."}, status=404)
+
+    def delete(self, request, pk):
+        user = request.user
+        if not is_member(user, ['Diretoria', 'Admin']):
+            return Response({"error": "Acesso negado."}, status=403)
+
+        try:
+            cdoi = CdoiSolicitacao.objects.get(pk=pk)
+            # Exclusão lógica: marca como CANCELADA
+            cdoi.status = 'CANCELADA'
+            cdoi.save()
+            return Response({"mensagem": "Solicitação marcada como cancelada."}, status=200)
+        except CdoiSolicitacao.DoesNotExist:
+            return Response({"error": "Solicitação não encontrada."}, status=404)
 
 # --- AQUI ESTÁ A CORREÇÃO: A FUNÇÃO DEVE FICAR FORA DA CLASSE ---
 # Note que não tem espaço antes do 'def'

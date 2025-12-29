@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CRM de Vendas - Record PAP</title>
+    <link rel="shortcut icon" href="{% static 'logo.png' %}" type="image/x-icon">
     
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
@@ -12,7 +13,7 @@
     <link href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css" rel="stylesheet">
     <link href="https://cdn.datatables.net/fixedheader/3.3.2/css/fixedHeader.bootstrap5.min.css" rel="stylesheet">
 
-    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=2.7">
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=5.0">
     
     <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
@@ -249,8 +250,9 @@
                         <div class="row g-3">
                             <div class="col-12 col-md-6 position-relative">
                                 <label>CPF/CNPJ <span class="text-danger">*</span></label>
-                                <input type="text" class="form-control" id="input-cpf" name="cliente_cpf_cnpj" required placeholder="Apenas números" autocomplete="off" onblur="verificarCpfOnBlur(this)" oninput="this.value = this.value.replace(/\D/g, '')">
-                                <div class="invalid-feedback">CPF Inválido. Verifique os números.</div>
+                                <input type="text" class="form-control" id="input-cpf" name="cliente_cpf_cnpj" required placeholder="Apenas números" autocomplete="off" onblur="validarCpfCnpjInput(this)" oninput="this.value = this.value.replace(/\D/g, '')">
+                                <div id="feedback-cpf" class="form-text mt-1" style="font-size: 0.85rem; min-height: 1.2em;"></div>
+                                <div class="invalid-feedback">CPF/CNPJ Inválido.</div>
                             </div>
                             <div class="col-12 col-md-6"><label>Nome Completo <span class="text-danger">*</span></label><input type="text" class="form-control" id="input-nome" name="cliente_nome_razao_social" required oninput="this.value = this.value.toUpperCase()"></div>
                             
@@ -268,7 +270,7 @@
                                 </div>
                             </div>
                         </div>
-                        <div id="area-representante" class="row g-3 mt-2" style="display: none; background-color: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #e9ecef;"><div class="col-12"><h6 class="text-secondary border-bottom pb-2 mb-0" style="font-size: 0.9rem;">Representante Legal (Obrigatório para CNPJ)</h6></div><div class="col-12 col-md-6"><label>CPF do Representante <span class="text-danger">*</span></label><input type="text" class="form-control" id="input-cpf-rep" name="cpf_representante_legal"></div><div class="col-12 col-md-6"><label>Nome do Representante</label><input type="text" class="form-control" id="input-nome-rep" name="nome_representante_legal" readonly style="background-color: #e9ecef;" oninput="this.value = this.value.toUpperCase()"></div></div>
+                        <div id="area-representante" class="row g-3 mt-2" style="display: none; background-color: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #e9ecef;"><div class="col-12"><h6 class="text-secondary border-bottom pb-2 mb-0" style="font-size: 0.9rem;">Representante Legal (Obrigatório para CNPJ)</h6></div><div class="col-12 col-md-6"><label>CPF do Representante <span class="text-danger">*</span></label><input type="text" class="form-control" id="input-cpf-rep" name="cpf_representante_legal" oninput="this.value = this.value.replace(/\D/g, '')" onblur="validarCpfInput(this)"><div id="feedback-cpf-rep" class="form-text mt-1" style="font-size: 0.85rem; min-height: 1.2em;"></div></div><div class="col-12 col-md-6"><label>Nome do Representante</label><input type="text" class="form-control" id="input-nome-rep" name="nome_representante_legal" readonly style="background-color: #e9ecef;" oninput="this.value = this.value.toUpperCase()"></div></div>
                         
                         <h6 class="text-primary border-bottom pb-2 mb-3 mt-4">Dados da Venda</h6>
                         <div class="row g-3">
@@ -302,8 +304,9 @@
     <script src="https://cdn.datatables.net/1.13.4/js/dataTables.bootstrap5.min.js"></script>
     <script src="https://cdn.datatables.net/fixedheader/3.3.2/js/dataTables.fixedHeader.min.js"></script>
 
-    <script src="{% static 'js/auth.js' %}?v=2.1"></script>
-    <script src="{% static 'js/menu.js' %}?v=2.1"></script>
+    <script src="{% static 'js/auth.js' %}?v=5.0"></script>
+    <script src="{% static 'js/menu.js' %}?v=5.0"></script>
+    <script src="{% static 'js/validators.js' %}"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     
     <script>
@@ -314,7 +317,7 @@
             if (token) headers['Authorization'] = `Bearer ${token}`;
             try {
                 const response = await fetch(`${apiUrl}/api${endpoint}`, { ...options, headers });
-                if (response.status === 401) { localStorage.removeItem('accessToken'); window.location.href = '/'; return null; }
+                if (response.status === 401) { logout(); return null; }
                 if (!response.ok) { const errorText = await response.text(); try { return Promise.reject(JSON.parse(errorText)); } catch(e) { throw new Error(errorText); } }
                 return response.status === 204 ? null : await response.json();
             } catch (e) { throw e; }
@@ -357,6 +360,7 @@
                 e.target.value = e.target.value.replace(/\D/g, ''); 
                 e.target.classList.remove('is-invalid'); 
             });
+            inputCpf.addEventListener('blur', validarCpfCnpjInput);
 
             document.getElementById('input-cpf-rep').addEventListener('input', function(e) { 
                 clearTimeout(debounceRepTimer); 
@@ -386,6 +390,48 @@
                 });
             });
         });
+
+        // ===== VALIDAÇÃO DE CPF/CNPJ =====
+        function validarCpfInput(input) {
+            const resultado = validarCPF(input.value);
+            const feedback = document.getElementById('feedback-cpf-rep');
+            
+            if (!input.value) {
+                input.classList.remove('is-valid', 'is-invalid');
+                feedback && (feedback.textContent = '');
+            } else if (resultado.valido) {
+                input.classList.add('is-valid');
+                input.classList.remove('is-invalid');
+                feedback && (feedback.textContent = 'CPF válido ✓', feedback.className = 'form-text text-success mt-1');
+            } else {
+                input.classList.add('is-invalid');
+                input.classList.remove('is-valid');
+                feedback && (feedback.textContent = resultado.erro, feedback.className = 'form-text text-danger mt-1');
+            }
+        }
+
+        function validarCpfCnpjInput(input) {
+            const resultado = validarCPFouCNPJ(input.value);
+            const feedback = document.getElementById('feedback-cpf');
+            
+            if (!input.value) {
+                input.classList.remove('is-valid', 'is-invalid');
+                feedback && (feedback.textContent = '');
+                return;
+            }
+            
+            if (resultado.valido) {
+                input.classList.add('is-valid');
+                input.classList.remove('is-invalid');
+                feedback && (feedback.textContent = `${resultado.tipo} válido ✓`, feedback.className = 'form-text text-success mt-1');
+                // Prosseguir com a busca de cliente
+                verificarCpfOnBlur(input);
+            } else {
+                input.classList.add('is-invalid');
+                input.classList.remove('is-valid');
+                feedback && (feedback.textContent = resultado.erro, feedback.className = 'form-text text-danger mt-1');
+            }
+        }
 
         async function verificarCpfOnBlur(input) {
             const cpf = input.value.replace(/\D/g, '');

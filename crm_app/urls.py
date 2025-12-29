@@ -5,7 +5,7 @@ from rest_framework.routers import DefaultRouter
 # IMPORTAÇÃO DAS VIEWS DE AUTH (DO APP USUARIOS)
 from usuarios.views import LoginView, DefinirNovaSenhaView
 
-# IMPORTAÇÕES ESPECÍFICAS DE VIEWS (SEM O PREFIXO 'views.')
+# IMPORTAÇÕES ESPECÍFICAS DE VIEWS
 from .views import (
     # ViewSets
     VendaViewSet, 
@@ -68,8 +68,10 @@ from .views import (
     ReverterDescontoMassaView,
 
     # --- CDOI (Record Vertical) ---
-    CdoiCreateView, # API para receber o POST
-    page_cdoi_novo  # Página HTML para exibir o formulário (PRECISA CRIAR NO VIEWS.PY)
+    CdoiCreateView,  # Criação
+    CdoiListView,    # Listagem (NOVO)
+    CdoiUpdateView,  # Edição/Status (NOVO)
+    page_cdoi_novo   # Página HTML
 )
 
 router = DefaultRouter()
@@ -145,7 +147,10 @@ urlpatterns = [
     path('importar-kml/', ImportarKMLView.as_view(), name='importar-kml'),
     path('importar-dfv/', ImportarDFVView.as_view(), name='importar-dfv'),
     path('webhook-whatsapp/', WebhookWhatsAppView.as_view(), name='webhook-whatsapp'),
-    path('verificar-zap/<str:telefone>/', api_verificar_whatsapp, name='verificar-zap'),
+    
+    # Validação WhatsApp (Duas rotas para compatibilidade)
+    path('verificar-zap/<str:telefone>/', api_verificar_whatsapp, name='verificar-zap-path'), # Rota antiga
+    path('whatsapp/verificar/', api_verificar_whatsapp, name='verificar-zap-query'),          # Rota nova do CDOI
     
     # --- Performance ---
     path('relatorios/performance-vendas/', PerformanceVendasView.as_view(), name='performance-vendas'),
@@ -162,6 +167,7 @@ urlpatterns = [
     path('enviar-imagem-performance/', EnviarImagemPerformanceView.as_view(), name='enviar_imagem_performance'),
     
     # --- CDOI (Record Vertical) ---
-    # Rota API (Recebe o POST)
-    path('cdoi/novo/', CdoiCreateView.as_view(), name='cdoi_novo_api'),
+    path('cdoi/novo/', CdoiCreateView.as_view(), name='api-cdoi-novo'),
+    path('cdoi/listar/', CdoiListView.as_view(), name='api-cdoi-listar'),
+    path('cdoi/editar/<int:pk>/', CdoiUpdateView.as_view(), name='api-cdoi-editar'),
 ]

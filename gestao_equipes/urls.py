@@ -3,13 +3,21 @@ from django.urls import path, include
 from django.views.generic import TemplateView
 from django.conf import settings
 from django.conf.urls.static import static
+from rest_framework.routers import DefaultRouter
 
-# Importe a view do login
+# --- IMPORTS DAS VIEWS NECESSÁRIAS ---
 from usuarios.views import LoginView
-# Importe a view do calendário
-from core.views import calendario_fiscal_view
-# Importe as views de páginas HTML (Painel e CDOI)
-from crm_app.views import page_painel_performance, page_cdoi_novo
+from core.views import calendario_fiscal_view, RegraAutomacaoViewSet
+from crm_app.views import (
+    page_painel_performance, 
+    page_cdoi_novo, 
+    listar_grupos_whatsapp_api  # Importando a função de grupos
+)
+
+# --- CONFIGURAÇÃO DO ROUTER PARA REGRAS DE AUTOMAÇÃO ---
+# Isso garante que a rota /api/regras-automacao/ exista na raiz da API
+router = DefaultRouter()
+router.register(r'regras-automacao', RegraAutomacaoViewSet, basename='regras-automacao')
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -18,6 +26,13 @@ urlpatterns = [
     path('api/auth/login/', LoginView.as_view(), name='token_obtain_pair'),
     path('api/auth/token/refresh/', include('djoser.urls.jwt')),
     path('login/', LoginView.as_view(), name='login_direct'),
+
+    # --- ROTAS DE CORREÇÃO (PARA O FRONTEND FUNCIONAR) ---
+    # 1. Registra as rotas do router (inclui /api/regras-automacao/)
+    path('api/', include(router.urls)),
+    
+    # 2. Rota específica para grupos do WhatsApp que estava dando 404
+    path('api/whatsapp/groups/', listar_grupos_whatsapp_api, name='whatsapp-groups-direct'),
 
     # APIS DO SISTEMA (Back-end)
     path('api/', include('djoser.urls')),

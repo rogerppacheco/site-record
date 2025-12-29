@@ -9,352 +9,507 @@
     
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-
+    
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=5.0">
     <style>
-        body { background-color: #f8f9fc; }
-        .card { border: none; border-radius: 10px; }
-        .card-header { border-top-left-radius: 10px; border-top-right-radius: 10px; }
-        .btn-success { background-color: #1cc88a; border-color: #1cc88a; }
-        .btn-success:hover { background-color: #17a673; border-color: #169b6b; }
-        .main-header { background: white; padding: 10px 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        .logo { height: 40px; }
-        .nav-button { background: none; border: none; color: #5a5c69; font-weight: 600; text-decoration: none; cursor: pointer; }
+        /* Estilos específicos para a página CDOI */
+        .card { 
+            border: none; 
+            border-radius: 12px; 
+            box-shadow: var(--sombra-suave); 
+        }
+        
+        .card-header { 
+            background-color: var(--cor-surface); 
+            border-bottom: 1px solid var(--cor-borda); 
+            padding: 1rem; 
+            font-weight: 600; 
+            color: var(--cor-primaria); 
+            border-radius: 12px 12px 0 0;
+        }
+        
+        .status-badge { 
+            font-size: 0.85rem; 
+            padding: 5px 10px; 
+            border-radius: 15px; 
+        }
+        
+        .status-SEM_TRATAMENTO { 
+            background-color: #e2e6ea; 
+            color: #5a5c69; 
+        }
+        
+        .status-EM_CADASTRO { 
+            background-color: #fff3cd; 
+            color: #856404; 
+        }
+        
+        .status-EM_PROJETO { 
+            background-color: #d1ecf1; 
+            color: #0c5460; 
+        }
+        
+        .status-EM_EXECUCAO { 
+            background-color: #cce5ff; 
+            color: #004085; 
+        }
+        
+        .status-CONCLUIDA { 
+            background-color: #d4edda; 
+            color: #155724; 
+        }
+        
+        .status-CANCELADA {
+            background-color: #f8d7da; /* vermelho claro */
+            color: #842029;
+        }
+        
+        .status-ARQUIVADA {
+            background-color: #e2e3e5; /* cinza claro */
+            color: #41464b;
+        }
+        
+        /* Personalização das abas */
+        .nav-tabs .nav-link {
+            color: var(--cor-texto-suave);
+            font-weight: 600;
+            border: none;
+            border-bottom: 3px solid transparent;
+        }
+        
+        .nav-tabs .nav-link.active {
+            color: var(--cor-primaria);
+            border-bottom: 3px solid var(--cor-primaria);
+            background: transparent;
+        }
+        
+        /* Ajustes para usar melhor o espaço da tela */
+        .system-container {
+            max-width: 1400px !important; /* Aumenta o limite para telas maiores */
+        }
+        
+        /* CORREÇÃO ESPECÍFICA PARA TABELA CDOI - Força comportamento desktop sempre */
+        #lista-content .table-responsive {
+            overflow-x: auto;
+        }
+        
+        #lista-content .table-responsive thead {
+            display: table-header-group !important;
+        }
+        
+        #lista-content .table-responsive tbody tr {
+            display: table-row !important;
+            margin-bottom: 0 !important;
+            background-color: transparent !important;
+            border: none !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+        }
+        
+        #lista-content .table-responsive tbody td {
+            display: table-cell !important;
+            border-bottom: 1px solid var(--cor-borda) !important;
+            padding: 1rem 0.75rem !important;
+            text-align: left !important;
+            justify-content: flex-start !important;
+            align-items: center !important;
+        }
+        
+        #lista-content .table-responsive tbody td::before {
+            display: none !important;
+            content: none !important;
+        }
+        
+        #lista-content .table-responsive tbody td:last-child {
+            border-bottom: 1px solid var(--cor-borda) !important;
+            text-align: right !important;
+        }
+
+        /* Extra: força tabela clássica também para .table dentro de #lista-content */
+        #lista-content .table thead { display: table-header-group !important; }
+        #lista-content .table tbody tr {
+            display: table-row !important;
+            margin-bottom: 0 !important;
+            background-color: transparent !important;
+            border: none !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+        }
+        #lista-content .table tbody td {
+            display: table-cell !important;
+            border-bottom: 1px solid var(--cor-borda) !important;
+            padding: 1rem 0.75rem !important;
+            text-align: left !important;
+            justify-content: flex-start !important;
+            align-items: center !important;
+        }
+        #lista-content .table tbody td::before { display: none !important; }
+        
+        /* Garante que a tabela não vire cards em desktop */
+        @media (min-width: 769px) {
+            .table-responsive {
+                font-size: 0.95rem;
+            }
+            
+            .table-responsive th,
+            .table-responsive td {
+                padding: 1rem 0.75rem;
+                vertical-align: middle;
+            }
+            
+            /* Força comportamento de tabela normal em desktop */
+            .table-responsive thead { display: table-header-group !important; }
+            .table-responsive tbody tr { display: table-row !important; }
+            .table-responsive tbody td { 
+                display: table-cell !important; 
+                border-bottom: 1px solid var(--cor-borda) !important;
+                padding: 1rem 0.75rem !important;
+            }
+            .table-responsive tbody td::before { display: none !important; }
+        }
+        
+        /* Melhora a aparência da tabela */
+        .table th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+            color: var(--cor-texto);
+            border-bottom: 2px solid var(--cor-borda);
+        }
+        
+        .table-hover tbody tr:hover {
+            background-color: rgba(13, 110, 253, 0.05);
+        }
     </style>
 </head>
 <body>
-
     <header class="main-header">
-        <a href="/area-interna/"><img src="{% static 'logo.png' %}" alt="Logo" class="logo"></a>
-        <a href="/area-interna/" class="nav-button"><i class="fas fa-arrow-left"></i> Voltar</a>
+        <div class="header-container">
+            <a href="/"><img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo"></a>
+            <button class="menu-toggle" id="menu-toggle"><div class="bar"></div><div class="bar"></div><div class="bar"></div></button>
+            <nav class="main-nav" id="main-nav">
+                <ul>
+                    <li><a href="/area-interna/">Voltar</a></li>
+                    <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
+                </ul>
+            </nav>
+        </div>
     </header>
 
-    <div class="container mt-4 mb-5">
-        <div class="card shadow-lg">
-            <div class="card-header bg-primary text-white d-flex align-items-center">
-                <i class="fas fa-building fa-2x me-3"></i>
-                <h3 class="mb-0">Record Vertical (CDOI)</h3>
+    <main class="area-interna-section">
+        <div class="system-container">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1 style="font-size: 1.8rem; margin: 0;"><i class="fa-solid fa-building text-primary"></i> Gestão CDOI</h1>
+                    <p class="text-muted mb-0">Solicitações e acionamentos para condomínios.</p>
+                </div>
             </div>
-            <div class="card-body">
-                
-                <div id="msg-area"></div>
 
-                <form id="formCDOI" onsubmit="enviarViaAjax(event)">
-                    
-                    <h5 class="text-secondary border-bottom pb-2 mb-3">1. Dados do Condomínio</h5>
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <label class="form-label">Nome do Condomínio</label>
-                            <input type="text" name="nome_condominio" class="form-control" required placeholder="Ex: Residencial Record">
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Nome do Síndico</label>
-                            <input type="text" name="nome_sindico" class="form-control" required>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Contato (Zap/Tel)</label>
-                            <input type="text" name="contato_sindico" class="form-control" required>
-                        </div>
-                    </div>
+            <ul class="nav nav-tabs mb-4" id="cdoiTabs" role="tablist">
+                <li class="nav-item"><button class="nav-link active" id="nova-tab" data-bs-toggle="tab" data-bs-target="#nova-content" type="button"><i class="bi bi-plus-circle"></i> <span id="tab-titulo">Nova Solicitação</span></button></li>
+                <li class="nav-item"><button class="nav-link" id="lista-tab" data-bs-toggle="tab" data-bs-target="#lista-content" type="button" onclick="carregarMeusAcionamentos()"><i class="bi bi-list-ul"></i> Meus Acionamentos</button></li>
+            </ul>
 
-                    <h5 class="text-secondary border-bottom pb-2 mt-4 mb-3">2. Localização</h5>
-                    <div class="row g-3">
-                        <div class="col-md-3">
-                            <label class="form-label">CEP</label>
-                            <div class="input-group">
-                                <input type="text" name="cep" id="cep" class="form-control" required placeholder="00000-000">
-                                <button class="btn btn-outline-secondary" type="button" onclick="buscarCep()"><i class="fas fa-search"></i></button>
+    <div class="tab-content">
+        <div class="tab-pane fade show active" id="nova-content">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between">
+                    <span>Dados do Condomínio</span>
+                    <button id="btn-cancelar-edicao" class="btn btn-sm btn-outline-danger d-none" onclick="cancelarEdicao()">Cancelar Edição</button>
+                </div>
+                <div class="card-body">
+                    <form id="form-cdoi">
+                        <input type="hidden" id="edit_mode_id" value=""> <div class="row g-3 mb-4">
+                            <div class="col-md-6"><label>Nome do Condomínio *</label><input type="text" name="nome_condominio" id="inp_nome" class="form-control" required></div>
+                            <div class="col-md-3"><label>CEP *</label><input type="text" name="cep" id="inp_cep" class="form-control" required onblur="buscarCep(this.value)"></div>
+                            <div class="col-md-3"><label>Cidade/UF</label><input type="text" id="cidade_uf" class="form-control bg-light" readonly><input type="hidden" name="cidade" id="cidade"><input type="hidden" name="uf" id="uf"></div>
+                            <div class="col-md-5"><label>Logradouro</label><input type="text" name="logradouro" id="logradouro" class="form-control bg-light" readonly></div>
+                            <div class="col-md-2"><label>Número *</label><input type="text" name="numero" id="inp_numero" class="form-control" required></div>
+                            <div class="col-md-5"><label>Bairro</label><input type="text" name="bairro" id="bairro" class="form-control bg-light" readonly></div>
+                            <div class="col-md-3"><label>Latitude</label><input type="text" name="latitude" id="inp_lat" class="form-control"></div>
+                            <div class="col-md-3"><label>Longitude</label><input type="text" name="longitude" id="inp_long" class="form-control"></div>
+                        </div>
+
+                        <h6 class="text-primary fw-bold mb-3 border-bottom pb-2">Contato e Síndico</h6>
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6"><label>Nome do Síndico *</label><input type="text" name="nome_sindico" id="inp_sindico" class="form-control" required></div>
+                            <div class="col-md-6">
+                                <label>Contato (WhatsApp) *</label>
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="bi bi-whatsapp"></i></span>
+                                    <input type="text" name="contato" id="inp_contato" class="form-control" required onblur="validarWhatsapp(this)">
+                                </div>
+                                <div id="zap-feedback" class="form-text"></div>
+                            </div>
+                            <div class="col-md-6 file-input-group"><label>Carta Síndico *</label><input type="file" name="arquivo_carta" class="form-control" accept=".pdf,.jpg" required></div>
+                            <div class="col-md-6 file-input-group"><label>Fotos Fachada *</label><input type="file" name="arquivo_fachada" class="form-control" accept="image/*" multiple required></div>
+                        </div>
+
+                        <h6 class="text-primary fw-bold mb-3 border-bottom pb-2">Dados Técnicos</h6>
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-4">
+                                <label>Infraestrutura</label>
+                                <select name="infraestrutura" id="inp_infra" class="form-select">
+                                    <option value="SUBTERRANEA">Subterrânea</option>
+                                    <option value="AEREA">Aérea (Poste)</option>
+                                    <option value="MISTA">Mista</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4 pt-4">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" name="possui_shaft" id="inp_shaft">
+                                    <label class="form-check-label fw-bold" for="inp_shaft">Possui Shaft / DG?</label>
+                                </div>
                             </div>
                         </div>
-                        <div class="col-md-7">
-                            <label class="form-label">Logradouro</label>
-                            <input type="text" name="logradouro" id="logradouro" class="form-control" required readonly>
+
+                        <div class="card bg-light border-0 mb-4">
+                            <div class="card-body">
+                                <h6 class="fw-bold">Estrutura de Blocos</h6>
+                                <div class="row g-2 align-items-end mb-2">
+                                    <div class="col-md-3"><input type="text" id="temp_bloco" class="form-control form-control-sm" placeholder="Nome Bloco"></div>
+                                    <div class="col-md-3"><input type="number" id="temp_andares" class="form-control form-control-sm" placeholder="Andares"></div>
+                                    <div class="col-md-3"><input type="number" id="temp_aptos" class="form-control form-control-sm" placeholder="Aptos/Andar"></div>
+                                    <div class="col-md-3"><button type="button" class="btn btn-secondary btn-sm w-100" onclick="addBloco()">Adicionar</button></div>
+                                </div>
+                                <table class="table table-sm mb-0 bg-white text-center rounded border">
+                                    <thead class="table-light"><tr><th>Bloco</th><th>Andares</th><th>Aptos/Andar</th><th>Total HPs</th><th>Ação</th></tr></thead>
+                                    <tbody id="lista-blocos"></tbody>
+                                    <tfoot class="table-light">
+                                        <tr><td colspan="3" class="text-end fw-bold">Total Geral:</td><td id="total-hps-geral" class="fw-bold">0</td><td></td></tr>
+                                        <tr><td colspan="3" class="text-end text-primary fw-bold">Pré-venda (10%):</td><td id="prevenda-calc" class="text-primary fw-bold">0</td><td></td></tr>
+                                    </tfoot>
+                                </table>
+                            </div>
                         </div>
-                        <div class="col-md-2">
-                            <label class="form-label">Número</label>
-                            <input type="text" name="numero" class="form-control" required>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Bairro</label>
-                            <input type="text" name="bairro" id="bairro" class="form-control" required readonly>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Cidade</label>
-                            <input type="text" name="cidade" id="cidade" class="form-control" required readonly>
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label">UF</label>
-                            <input type="text" name="uf" id="uf" class="form-control" required readonly>
-                        </div>
-                    </div>
-                    
-                    <div class="row g-3 mt-3 p-3 bg-light rounded border">
-                        <div class="col-md-12">
-                            <small class="text-muted"><i class="fas fa-satellite"></i> Clique abaixo para buscar as coordenadas automaticamente.</small>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Latitude</label>
-                            <input type="text" name="latitude" id="latitude" class="form-control" readonly>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Longitude</label>
-                            <input type="text" name="longitude" id="longitude" class="form-control" readonly>
-                        </div>
-                        <div class="col-md-4 d-flex align-items-end">
-                            <button type="button" class="btn btn-primary w-100" onclick="tentarGeo()">
-                                <i class="fas fa-map-marker-alt"></i> Localizar GPS
+
+                        <input type="hidden" name="total_hps_final" id="input_total_hps">
+                        <input type="hidden" name="prevenda_final" id="input_prevenda">
+                        <input type="hidden" name="dados_blocos_json" id="input_blocos_json">
+
+                        <div class="d-grid">
+                            <button type="button" id="btn-submit" class="btn btn-success btn-lg" onclick="enviarFormulario(this)">
+                                <i class="bi bi-send-fill"></i> Enviar Solicitação
                             </button>
                         </div>
-                    </div>
+                    </form>
+                </div>
+            </div>
+        </div>
 
-                    <h5 class="text-secondary border-bottom pb-2 mt-4 mb-3">3. Estrutura Técnica</h5>
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <label class="form-label">Tipo de Infraestrutura</label>
-                            <select name="infraestrutura" class="form-select">
-                                <option value="INTERNA">Interna</option>
-                                <option value="FACHADA">Pela Fachada</option>
-                            </select>
-                        </div>
-                        <div class="col-md-6 d-flex align-items-center mt-4">
-                            <div class="form-check form-switch fs-5">
-                                <input class="form-check-input" type="checkbox" name="possui_shaft" id="possuiShaft">
-                                <label class="form-check-label" for="possuiShaft">Possui Shaft ou Coluna em DG?</label>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="card mt-4 border-info">
-                        <div class="card-header bg-info text-white fw-bold">
-                            <i class="fas fa-calculator"></i> Calculadora de HPs
-                        </div>
-                        <div class="card-body">
-                            <div class="row mb-3 align-items-end">
-                                <div class="col-md-4">
-                                    <label class="form-label fw-bold">Quantos Blocos/Torres?</label>
-                                    <input type="number" id="qtd_blocos_input" class="form-control" min="1" max="20" value="1" onchange="gerarCamposBlocos()">
-                                </div>
-                                <div class="col-md-8 text-end text-muted">
-                                    <small>Preencha os andares e aptos para calcular o total.</small>
-                                </div>
-                            </div>
-                            
-                            <div id="container_blocos" class="bg-light p-2 rounded"></div>
-
-                            <hr>
-                            <div class="row text-center">
-                                <div class="col-md-6 border-end">
-                                    <h4 class="text-muted">Total HPs</h4>
-                                    <h2 class="text-primary fw-bold" id="display_total_hps">0</h2>
-                                    <input type="hidden" name="total_hps_final" id="total_hps_final">
-                                </div>
-                                <div class="col-md-6">
-                                    <h4 class="text-muted">Pré-Venda (10%)</h4>
-                                    <h2 class="text-success fw-bold" id="display_prevenda">0</h2>
-                                    <input type="hidden" name="prevenda_final" id="prevenda_final">
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <h5 class="text-secondary border-bottom pb-2 mt-4 mb-3">4. Documentação (Upload OneDrive)</h5>
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">Carta de Autorização (Síndico)</label>
-                            <input type="file" name="arquivo_carta" class="form-control" accept="image/*,.pdf" required>
-                            <div class="form-text">Foto assinada e carimbada.</div>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">Foto da Fachada</label>
-                            <input type="file" name="arquivo_fachada" class="form-control" accept="image/*,.pdf" required>
-                            <div class="form-text">Foto clara da entrada do prédio.</div>
-                        </div>
-                    </div>
-
-                    <input type="hidden" name="dados_blocos_json" id="dados_blocos_json">
-
-                    <div class="d-grid gap-2 mt-5">
-                        <button type="submit" class="btn btn-success btn-lg py-3">
-                            <i class="fas fa-paper-plane me-2"></i> ENVIAR SOLICITAÇÃO
-                        </button>
-                    </div>
-                </form>
+        <div class="tab-pane fade" id="lista-content">
+            <div class="card">
+                <div class="card-header bg-white d-flex justify-content-between">
+                    <h5 class="m-0 text-primary">Histórico</h5>
+                    <button class="btn btn-sm btn-outline-primary" onclick="carregarMeusAcionamentos()"><i class="bi bi-arrow-clockwise"></i> Atualizar</button>
+                </div>
+                <div class="card-body p-0 table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light"><tr><th>ID</th><th>Condomínio</th><th>Status</th><th>Ações</th></tr></thead>
+                        <tbody id="tbody-acionamentos"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
+</div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // --- 1. LÓGICA DE CÁLCULO DE BLOCOS ---
-        function gerarCamposBlocos() {
-            const qtd = document.getElementById('qtd_blocos_input').value;
-            const container = document.getElementById('container_blocos');
-            container.innerHTML = '';
+<div class="modal fade" id="modalStatus" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Atualizar Status</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><input type="hidden" id="st-id"><label>Novo Status</label><select id="st-val" class="form-select mb-2"><option value="SEM_TRATAMENTO">Sem tratamento</option><option value="EM_CADASTRO">Em cadastro</option><option value="EM_PROJETO">Em Projeto</option><option value="EM_EXECUCAO">Em Execução</option><option value="CONCLUIDA">Concluída</option><option value="CANCELADA">Cancelada</option><option value="ARQUIVADA">Arquivada</option></select><label>Obs</label><textarea id="st-obs" class="form-control"></textarea></div><div class="modal-footer"><button onclick="salvarStatus()" class="btn btn-primary">Salvar</button></div></div></div></div>
 
-            for (let i = 1; i <= qtd; i++) {
-                const html = `
-                    <div class="row g-2 align-items-end mb-2 border-bottom pb-2 bloco-row" id="bloco_${i}">
-                        <div class="col-md-4">
-                            <label class="small fw-bold">Nome Bloco ${i}</label>
-                            <input type="text" class="form-control form-control-sm nome-bloco" value="Bloco ${i}">
-                        </div>
-                        <div class="col-md-3">
-                            <label class="small">Andares</label>
-                            <input type="number" class="form-control form-control-sm andares" oninput="calcularTotal()" min="1" value="0">
-                        </div>
-                        <div class="col-md-3">
-                            <label class="small">Aptos/Andar</label>
-                            <input type="number" class="form-control form-control-sm aptos" oninput="calcularTotal()" min="1" value="0">
-                        </div>
-                        <div class="col-md-2 text-end">
-                            <span class="badge bg-secondary p-2 mt-3 w-100">HPs: <span class="total-bloco">0</span></span>
-                        </div>
-                    </div>
-                `;
-                container.insertAdjacentHTML('beforeend', html);
-            }
-            calcularTotal();
-        }
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{% static 'js/auth.js' %}?v=5.0"></script>
+<script src="{% static 'js/menu.js' %}?v=5.0"></script>
+<script>
+    let blocos = [];
 
-        function calcularTotal() {
-            let grandTotal = 0;
-            document.querySelectorAll('.bloco-row').forEach(row => {
-                const andares = row.querySelector('.andares').value || 0;
-                const aptos = row.querySelector('.aptos').value || 0;
-                const total = andares * aptos;
-                row.querySelector('.total-bloco').innerText = total;
-                grandTotal += total;
-            });
+    // --- BLOCOS E PRÉ-VENDA ---
+    function addBloco() {
+        const nome = document.getElementById('temp_bloco').value;
+        const andares = parseInt(document.getElementById('temp_andares').value) || 0;
+        const aptos = parseInt(document.getElementById('temp_aptos').value) || 0;
+        if(!nome || andares <= 0) return;
+        
+        blocos.push({ nome, andares, aptos, total: andares * aptos });
+        atualizarTabelaBlocos();
+        document.getElementById('temp_bloco').value = '';
+    }
 
-            document.getElementById('display_total_hps').innerText = grandTotal;
-            document.getElementById('total_hps_final').value = grandTotal;
-            
-            const prevenda = Math.ceil(grandTotal * 0.10);
-            document.getElementById('display_prevenda').innerText = prevenda;
-            document.getElementById('prevenda_final').value = prevenda;
-        }
+    function atualizarTabelaBlocos() {
+        const tbody = document.getElementById('lista-blocos'); tbody.innerHTML = '';
+        let total = 0;
+        blocos.forEach((b, i) => {
+            total += b.total;
+            tbody.innerHTML += `<tr><td>${b.nome}</td><td>${b.andares}</td><td>${b.aptos}</td><td>${b.total}</td><td><i class="bi bi-trash text-danger" onclick="blocos.splice(${i},1);atualizarTabelaBlocos()"></i></td></tr>`;
+        });
+        
+        // CÁLCULO DE PRÉ-VENDA (30%)
+        const prevenda = Math.ceil(total * 0.1);
+        
+        document.getElementById('total-hps-geral').innerText = total;
+        document.getElementById('prevenda-calc').innerText = prevenda;
+        document.getElementById('input_total_hps').value = total;
+        document.getElementById('input_prevenda').value = prevenda;
+        document.getElementById('input_blocos_json').value = JSON.stringify(blocos);
+    }
 
-        // --- 2. LÓGICA DE CEP E GEO ---
-        function buscarCep() {
-            const cep = document.getElementById('cep').value.replace(/\D/g, '');
-            if (cep.length === 8) {
-                fetch(`https://viacep.com.br/ws/${cep}/json/`)
-                    .then(res => res.json())
-                    .then(data => {
-                        if (!data.erro) {
-                            document.getElementById('logradouro').value = data.logradouro;
-                            document.getElementById('bairro').value = data.bairro;
-                            document.getElementById('cidade').value = data.localidade;
-                            document.getElementById('uf').value = data.uf;
-                            tentarGeo();
-                        } else { alert("CEP não encontrado!"); }
-                    })
-                    .catch(() => alert("Erro ao buscar CEP."));
-            }
-        }
-
-        function tentarGeo() {
-            const log = document.getElementById('logradouro').value;
-            const num = document.getElementsByName('numero')[0].value || '';
-            const cid = document.getElementById('cidade').value;
-            const uf = document.getElementById('uf').value;
-            
-            if(log && cid) {
-                const query = `${log}, ${num}, ${cid} - ${uf}, Brazil`;
-                fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=1`)
-                    .then(r => r.json())
-                    .then(d => {
-                        if(d.length > 0) {
-                            document.getElementById('latitude').value = d[0].lat;
-                            document.getElementById('longitude').value = d[0].lon;
-                        } else { alert("GPS não localizado. Tente colocar o número da rua."); }
-                    });
-            } else { alert("Preencha o endereço primeiro."); }
-        }
-
-        // --- 3. LÓGICA DE ENVIO AJAX (CRUCIAL) ---
-        async function enviarViaAjax(e) {
-            e.preventDefault(); 
-            
-            // Validação de HPs
-            const dadosBlocos = [];
-            let temZero = false;
-            document.querySelectorAll('.bloco-row').forEach(row => {
-                const total = parseInt(row.querySelector('.total-bloco').innerText);
-                if(total === 0) temZero = true;
-                dadosBlocos.push({
-                    nome: row.querySelector('.nome-bloco').value,
-                    andares: row.querySelector('.andares').value,
-                    aptos: row.querySelector('.aptos').value,
-                    total: total
-                });
-            });
-
-            if(temZero) {
-                alert("Atenção: Existem blocos com 0 HPs. Preencha os andares e apartamentos.");
-                return;
-            }
-            document.getElementById('dados_blocos_json').value = JSON.stringify(dadosBlocos);
-
-            // UI Loading
-            const btn = document.querySelector('button[type="submit"]');
-            const originalText = btn.innerHTML;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ENVIANDO PARA NUVEM...';
-            btn.disabled = true;
-
-            // Recuperar Token
+    // --- VALIDAÇÃO WHATSAPP ---
+    async function validarWhatsapp(input) {
+        const feedback = document.getElementById('zap-feedback');
+        const num = input.value.replace(/\D/g, '');
+        if (num.length < 10) return;
+        
+        feedback.innerText = "Verificando...";
+        try {
             const token = localStorage.getItem('accessToken');
-            if (!token) {
-                alert("Sessão expirada. Faça login novamente.");
-                window.location.href = '/';
-                return;
+            const res = await fetch(`/api/crm/whatsapp/verificar/?numero=${num}`, { headers: {'Authorization': `Bearer ${token}`} });
+            const data = await res.json();
+            if (data.exists) {
+                input.classList.add('is-valid'); input.classList.remove('is-invalid');
+                feedback.innerText = "WhatsApp Válido ✅"; feedback.className = "form-text text-success fw-bold";
+            } else {
+                input.classList.add('is-invalid'); input.classList.remove('is-valid');
+                feedback.innerText = "Sem WhatsApp ❌"; feedback.className = "form-text text-danger fw-bold";
             }
+        } catch(e) { feedback.innerText = "Erro ao validar."; }
+    }
 
-            // Preparar FormData
-            const form = document.getElementById('formCDOI');
-            const formData = new FormData(form);
+    // --- CRUD ---
+    async function carregarMeusAcionamentos() {
+        const tbody = document.getElementById('tbody-acionamentos');
+        tbody.innerHTML = '<tr><td colspan="4">Carregando...</td></tr>';
+        const res = await fetch('/api/crm/cdoi/listar/', { headers: {'Authorization': `Bearer ${localStorage.getItem('accessToken')}`} });
+        const lista = await res.json();
+        tbody.innerHTML = '';
+        lista.forEach(i => {
+            let btns = '';
+            btns += `<button class="btn btn-sm btn-outline-warning me-1" onclick='editarTudo(${i.id})'>✏️ Editar</button>`;
+            if (i.can_edit) btns += `<button class="btn btn-sm btn-outline-info me-1" onclick='modalStatus(${i.id}, "${i.status_cod}", "${i.observacao}")'>🔄 Status</button>`;
+            btns += `<button class="btn btn-sm btn-outline-danger" onclick='excluir(${i.id})'>🗑️</button>`;
+            
+            tbody.innerHTML += `<tr><td>#${i.id}</td><td>${i.nome}<br><small>${i.cidade}</small></td><td><span class="badge status-badge status-${i.status_cod}">${i.status}</span></td><td class="text-end">${btns}</td></tr>`;
+        });
+    }
 
-            try {
-                // Envia para a API (Rota Protegida)
-                const response = await fetch('/api/crm/cdoi/novo/', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${token}` 
-                    },
-                    body: formData
-                });
+    function editarTudo(item) {
+        const id = item; // Agora 'item' é apenas o ID
+        fetch(`/api/crm/cdoi/editar/${id}/`, { headers: {'Authorization': `Bearer ${localStorage.getItem('accessToken')}`} })
+            .then(res => {
+                if (!res.ok) throw new Error('Não foi possível carregar os dados para edição.');
+                return res.json();
+            })
+            .then(d => {
+                document.getElementById('edit_mode_id').value = d.id;
+                document.getElementById('tab-titulo').innerText = `Editando #${d.id}`;
+                document.getElementById('btn-submit').innerHTML = 'Salvar Alterações';
+                document.getElementById('btn-submit').classList.replace('btn-success', 'btn-warning');
+                document.getElementById('btn-cancelar-edicao').classList.remove('d-none');
+                
+                document.querySelectorAll('.file-input-group').forEach(el => el.style.display = 'none');
+                document.querySelectorAll('.file-input-group input').forEach(el => el.required = false);
 
-                if (response.ok) {
-                    // Sucesso
-                    const htmlSucesso = `
-                        <div class="alert alert-success text-center">
-                            <i class="fas fa-check-circle fa-4x mb-3"></i>
-                            <h4>Solicitação Enviada com Sucesso!</h4>
-                            <p>Documentos salvos no OneDrive e registro criado.</p>
-                            <a href="/area-interna/" class="btn btn-primary mt-3">Voltar ao Menu</a>
-                            <button onclick="location.reload()" class="btn btn-outline-success mt-3 ms-2">Novo Cadastro</button>
-                        </div>
-                    `;
-                    document.querySelector('.card-body').innerHTML = htmlSucesso;
-                    window.scrollTo(0, 0);
-                } else {
-                    const errData = await response.json();
-                    console.error("Erro API:", errData);
-                    alert("Erro ao enviar: " + (errData.detail || "Erro no servidor. Verifique os campos."));
-                    btn.innerHTML = originalText;
-                    btn.disabled = false;
-                }
+                document.getElementById('inp_nome').value = d.nome_condominio;
+                document.getElementById('inp_cep').value = d.cep;
+                document.getElementById('inp_numero').value = d.numero;
+                document.getElementById('inp_sindico').value = d.nome_sindico;
+                document.getElementById('inp_contato').value = d.contato;
+                document.getElementById('inp_infra').value = d.infraestrutura;
+                document.getElementById('inp_shaft').checked = d.possui_shaft;
+                document.getElementById('inp_lat').value = d.latitude || '';
+                document.getElementById('inp_long').value = d.longitude || '';
+                
+                buscarCep(d.cep);
 
-            } catch (error) {
-                alert("Erro de conexão: " + error.message);
-                btn.innerHTML = originalText;
-                btn.disabled = false;
+                blocos = d.blocos.map(b => ({ nome: b.nome, andares: b.andares, aptos: b.aptos, total: b.total }));
+                atualizarTabelaBlocos();
+                
+                new bootstrap.Tab(document.querySelector('#nova-tab')).show();
+            })
+            .catch(error => {
+                alert(error.message);
+                console.error("Erro ao editar:", error);
+            });
+    }
+
+    function cancelarEdicao() {
+        document.getElementById('form-cdoi').reset();
+        document.getElementById('edit_mode_id').value = '';
+        document.getElementById('tab-titulo').innerText = 'Nova Solicitação';
+        document.getElementById('btn-submit').innerHTML = '<i class="bi bi-send-fill"></i> Enviar Solicitação';
+        document.getElementById('btn-submit').classList.replace('btn-warning', 'btn-success');
+        document.getElementById('btn-cancelar-edicao').classList.add('d-none');
+        document.querySelectorAll('.file-input-group').forEach(el => el.style.display = 'block');
+        blocos = []; atualizarTabelaBlocos();
+    }
+
+    async function excluir(id) {
+        if(!confirm('Excluir solicitação?')) return;
+        try {
+            const res = await fetch(`/api/crm/cdoi/editar/${id}/`, { 
+                method: 'DELETE', 
+                headers: {'Authorization': `Bearer ${localStorage.getItem('accessToken')}`} 
+            });
+
+            if (res.ok) {
+                alert('Solicitação excluída com sucesso.');
+                carregarMeusAcionamentos();
+            } else {
+                const errorData = await res.json().catch(() => ({ detail: 'Erro desconhecido.' }));
+                const errorMessage = res.status === 403 ? 'Acesso negado. Você não tem permissão.' : (errorData.detail || 'Não foi possível excluir.');
+                alert(`Erro: ${errorMessage}`);
             }
+        } catch (error) {
+            alert('Ocorreu um erro de conexão ao tentar excluir.');
         }
+    }
 
-        // Inicializa
-        window.onload = gerarCamposBlocos;
-    </script>
+    async function enviarFormulario(btn) {
+        const form = document.getElementById('form-cdoi');
+        if(!form.checkValidity()) { form.reportValidity(); return; }
+        
+        const id = document.getElementById('edit_mode_id').value;
+        const isEdit = !!id;
+        
+        const formData = new FormData(form);
+        const dataJson = Object.fromEntries(formData.entries());
+        
+        const url = isEdit ? `/api/crm/cdoi/editar/${id}/` : '/api/crm/cdoi/novo/';
+        const method = isEdit ? 'PUT' : 'POST';
+        const headers = {'Authorization': `Bearer ${localStorage.getItem('accessToken')}`};
+        if(isEdit) headers['Content-Type'] = 'application/json';
+
+        try {
+            const res = await fetch(url, {
+                method: method,
+                headers: headers,
+                body: isEdit ? JSON.stringify(dataJson) : formData
+            });
+            if(res.ok) { alert('Salvo!'); cancelarEdicao(); if(isEdit) carregarMeusAcionamentos(); else window.location.reload(); }
+            else { alert('Erro ao salvar.'); }
+        } catch(e) { alert('Erro de conexão.'); }
+    }
+
+    // Modal Status
+    const mStatus = new bootstrap.Modal(document.getElementById('modalStatus'));
+    function modalStatus(id, st, obs) {
+        document.getElementById('st-id').value = id;
+        document.getElementById('st-val').value = st;
+        document.getElementById('st-obs').value = obs;
+        mStatus.show();
+    }
+    async function salvarStatus() {
+        const id = document.getElementById('st-id').value;
+        await fetch(`/api/crm/cdoi/editar/${id}/`, {
+            method: 'PATCH',
+            headers: {'Authorization': `Bearer ${localStorage.getItem('accessToken')}`, 'Content-Type': 'application/json'},
+            body: JSON.stringify({ status: document.getElementById('st-val').value, observacao: document.getElementById('st-obs').value })
+        });
+        mStatus.hide(); carregarMeusAcionamentos();
+    }
+    async function buscarCep(cep) { try { const r=await fetch(`https://viacep.com.br/ws/${cep.replace(/\D/g,'')}/json/`); const d=await r.json(); if(!d.erro){ document.getElementById('logradouro').value=d.logradouro; document.getElementById('bairro').value=d.bairro; document.getElementById('cidade_uf').value=`${d.localidade}-${d.uf}`; document.getElementById('cidade').value=d.localidade; document.getElementById('uf').value=d.uf; } } catch(e){} }
+</script>
+        </div>
+    </main>
 </body>
 </html>
