@@ -88,14 +88,89 @@
         .system-container {
             max-width: 1400px !important; /* Aumenta o limite para telas maiores */
         }
+
+        /* FORÇA MÁXIMA: Expande a aba Meus Acionamentos para 100% */
+        #lista-content {
+            width: 100vw;
+            position: relative;
+            left: 50%;
+            right: 50%;
+            margin-left: -50vw;
+            margin-right: -50vw;
+            padding: 20px;
+            background: white;
+        }
+
+        #lista-content .card {
+            width: 100%;
+            margin: 0 auto;
+        }
         
         /* CORREÇÃO ESPECÍFICA PARA TABELA CDOI - Força comportamento desktop sempre */
         #lista-content .table-responsive {
             overflow-x: auto;
+            width: 100%;
         }
         
         #lista-content .table-responsive thead {
             display: table-header-group !important;
+        }
+
+        #lista-content .table {
+            width: 100%;
+            min-width: 100%;
+            margin-bottom: 0;
+        }
+
+        #lista-content .table th,
+        #lista-content .table td {
+            padding: 12px 15px;
+            vertical-align: middle;
+        }
+
+        #lista-content .table th {
+            background-color: var(--cor-surface);
+            font-weight: 600;
+            color: var(--cor-primaria);
+            border-bottom: 2px solid var(--cor-borda);
+        }
+
+        #lista-content .table tbody tr {
+            border-bottom: 1px solid var(--cor-borda);
+            transition: background-color 0.2s;
+        }
+
+        #lista-content .table tbody tr:hover {
+            background-color: var(--cor-surface);
+        }
+
+        #lista-content .card {
+            width: 100%;
+        }
+
+        #lista-content .card-body {
+            padding: 0 !important;
+            overflow-x: visible;
+            overflow-y: visible;
+            display: block;
+            width: 100%;
+        }
+
+        #lista-content .card-body.table-responsive {
+            display: block;
+            width: 100%;
+            padding: 0 !important;
+        }
+
+        /* Garante expansão adequada em telas grandes */
+        @media (min-width: 1200px) {
+            #lista-content .table {
+                font-size: 0.95rem;
+            }
+
+            #lista-content .card-body {
+                overflow-x: visible;
+            }
         }
         
         #lista-content .table-responsive tbody tr {

@@ -253,6 +253,3 @@ window.formatarMoeda = formatarMoeda;
 window.formatarData = formatarData;
 window.formatarTelefone = formatarTelefone;
 window.apiRequest = apiRequest;
-    localStorage.removeItem('refreshToken');
-    window.location.href = '/';
-}

@@ -163,6 +163,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
     <script src="{% static 'js/auth.js' %}?v=5.0"></script>
+    <script src="{% static 'js/menu.js' %}?v=5.0"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const token = localStorage.getItem('accessToken');
@@ -210,6 +211,5 @@
 
         function logout() { localStorage.removeItem('accessToken'); window.location.href = '/'; }
     </script>
-    <script src="{% static 'js/menu.js' %}?v=5.0"></script>
 </body>
 </html>
