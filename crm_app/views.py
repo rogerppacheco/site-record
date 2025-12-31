@@ -666,10 +666,10 @@ class VendaViewSet(viewsets.ModelViewSet):
                         cliente_nome = venda_atualizada.cliente.nome_razao_social
                         os_num = venda_atualizada.ordem_servico or "Não informada"
                         status_label = venda_atualizada.status_esteira.nome
+                        obs = venda_atualizada.observacoes or "Sem observações"
 
                         if 'PENDEN' in novo_status_nome:
                             motivo = venda_atualizada.motivo_pendencia.nome if venda_atualizada.motivo_pendencia else "Não informado"
-                            obs = venda_atualizada.observacao_pendencia or venda_atualizada.observacoes or "Sem observações"
                             titulo = f"{prefixo}VENDA PENDENCIADA*" if prefixo else "⚠️ *VENDA PENDENCIADA*"
                             msg = (
                                 f"{titulo}\n\n"
@@ -683,7 +683,6 @@ class VendaViewSet(viewsets.ModelViewSet):
                         elif 'AGENDADO' in novo_status_nome:
                             data_ag = venda_atualizada.data_agendamento.strftime('%d/%m/%Y') if venda_atualizada.data_agendamento else "Não informada"
                             turno = venda_atualizada.get_periodo_agendamento_display() if venda_atualizada.periodo_agendamento else "Não informado"
-                            obs = venda_atualizada.observacao_agendamento or venda_atualizada.observacoes or "Sem observações"
                             titulo = f"{prefixo}VENDA AGENDADA*" if prefixo else "📅 *VENDA AGENDADA*"
                             msg = (
                                 f"{titulo}\n\n"
@@ -697,7 +696,6 @@ class VendaViewSet(viewsets.ModelViewSet):
 
                         elif 'INSTALADA' in novo_status_nome:
                             data_inst = venda_atualizada.data_instalacao.strftime('%d/%m/%Y') if venda_atualizada.data_instalacao else date.today().strftime('%d/%m/%Y')
-                            obs = venda_atualizada.observacao_instalacao or venda_atualizada.observacoes or "Sem observações"
                             titulo = f"{prefixo}VENDA INSTALADA*" if prefixo else "✅ *VENDA INSTALADA*"
                             msg = (
                                 f"{titulo}\n\n"
