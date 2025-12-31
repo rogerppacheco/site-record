@@ -89,6 +89,10 @@
                         <input type="text" id="filtro-busca" class="form-control" placeholder="Buscar CPF ou OS..." onkeyup="if(event.key === 'Enter') carregarVendas()">
                     </div>
 
+                    <button id="btn-toggle-wpp" class="btn btn-outline-success fw-bold shadow-sm" style="display: none;" onclick="toggleEnvioZap()">
+                        <i class="bi bi-whatsapp"></i> WPP ON
+                    </button>
+
                     <button onclick="carregarVendas()" class="btn btn-outline-primary fw-bold shadow-sm">
                         <i class="bi bi-arrow-clockwise"></i> Atualizar Lista
                     </button>
@@ -282,6 +286,9 @@
         const allowedProfiles = ['Diretoria', 'BackOffice', 'Supervisor', 'Admin'];
         if (!allowedProfiles.includes(userProfile)) { alert('Acesso negado.'); window.location.href = '/area-interna/'; }
 
+        const podeConfigurarZap = ['Diretoria', 'Admin'].includes(userProfile);
+        let envioWhatsappAtivo = true;
+
         let filtroAtual = 'TODOS';
         let tempVendaId = null;
         let tempStatusId = null;
@@ -294,7 +301,31 @@
             carregarVendas();
             carregarMotivosPendencia();
             document.querySelectorAll('input[type="text"], textarea').forEach(input => { input.addEventListener('input', function() { this.value = this.value.toUpperCase(); }); });
+
+            if (podeConfigurarZap) {
+                const btnZap = document.getElementById('btn-toggle-wpp');
+                if (btnZap) { btnZap.style.display = 'inline-flex'; atualizarBotaoZap(); }
+            }
         });
+
+        function toggleEnvioZap() {
+            envioWhatsappAtivo = !envioWhatsappAtivo;
+            atualizarBotaoZap();
+        }
+
+        function atualizarBotaoZap() {
+            const btn = document.getElementById('btn-toggle-wpp');
+            if (!btn) return;
+            btn.textContent = envioWhatsappAtivo ? 'WPP ON' : 'WPP OFF';
+            btn.classList.toggle('btn-outline-success', envioWhatsappAtivo);
+            btn.classList.toggle('btn-outline-secondary', !envioWhatsappAtivo);
+            btn.title = envioWhatsappAtivo ? 'Enviar WhatsApp ao alterar status' : 'Silenciar WhatsApp ao alterar status';
+            if (!btn.querySelector('i')) {
+                const icon = document.createElement('i');
+                icon.className = 'bi bi-whatsapp me-1';
+                btn.prepend(icon);
+            }
+        }
 
         async function carregarMotivosPendencia() {
             try {
@@ -636,7 +667,8 @@
         }
 
         async function salvarStatusNoBanco(id, payload) {
-            try { await apiFetch(`/crm/vendas/${id}/`, { method: 'PATCH', body: JSON.stringify(payload) }); carregarVendas(true); } 
+            const body = { ...payload, enviar_whatsapp: envioWhatsappAtivo };
+            try { await apiFetch(`/crm/vendas/${id}/`, { method: 'PATCH', body: JSON.stringify(body) }); carregarVendas(true); } 
             catch(e) { alert('Erro ao atualizar status: ' + e.message); carregarVendas(true); }
         }
         
@@ -688,7 +720,8 @@
                 telefone1: getVal('edit-telefone1'), telefone2: getVal('edit-telefone2'),
                 cep: getVal('edit-cep'), logradouro: getVal('edit-logradouro'), numero_residencia: getVal('edit-numero'),
                 complemento: getVal('edit-complemento'), bairro: getVal('edit-bairro'), cidade: getVal('edit-cidade'),
-                estado: getVal('edit-estado'), ponto_referencia: getVal('edit-referencia'), observacoes: getVal('edit-observacoes')
+                estado: getVal('edit-estado'), ponto_referencia: getVal('edit-referencia'), observacoes: getVal('edit-observacoes'),
+                enviar_whatsapp: envioWhatsappAtivo
             };
             const divInst = document.getElementById('campos-instalacao-modal');
             if (divInst && divInst.style.display !== 'none') {

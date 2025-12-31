@@ -649,8 +649,12 @@ class VendaViewSet(viewsets.ModelViewSet):
             (data_instalacao_antes != venda_atualizada.data_instalacao) or
             (motivo_pendencia_antes != venda_atualizada.motivo_pendencia)
         )
+
+        enviar_whatsapp = self.request.data.get('enviar_whatsapp', True)
+        if isinstance(enviar_whatsapp, str):
+            enviar_whatsapp = enviar_whatsapp.lower() not in ['false', '0', 'no', 'nao', 'off']
         
-        if venda_atualizada.status_esteira and (status_mudou or dados_mudaram):
+        if enviar_whatsapp and venda_atualizada.status_esteira and (status_mudou or dados_mudaram):
             novo_status_nome = venda_atualizada.status_esteira.nome.upper()
             
             if ('PENDEN' in novo_status_nome or 'AGENDADO' in novo_status_nome or 'INSTALADA' in novo_status_nome) and 'CANCEL' not in novo_status_nome:
