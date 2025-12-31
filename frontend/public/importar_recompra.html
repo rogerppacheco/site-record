@@ -468,14 +468,10 @@
 
         function showResult(success, message) {
             const resultContainer = document.getElementById('resultContainer');
-            resultContainer.innerHTML = `
-                <div class="card ${success ? 'border-success' : 'border-danger'} border-3 mt-4">
-                    <div class="card-body">
-                        ${message}
-                    </div>
-                </div>
-            `;
+            resultContainer.className = `result-message ${success ? 'success' : 'error'}`;
+            resultContainer.innerHTML = message;
             resultContainer.style.display = 'block';
+            document.getElementById('progressContainer').style.display = 'none';
         }
     </script>
 </body>
