@@ -75,7 +75,7 @@ from .models import (
     CicloPagamento, HistoricoAlteracaoVenda, PagamentoComissao,
     Campanha, ComissaoOperadora, Comunicado, AreaVenda,
     SessaoWhatsapp, DFV, GrupoDisparo, LancamentoFinanceiro,
-    AgendamentoDisparo, ImportacaoAgendamento
+    AgendamentoDisparo, ImportacaoAgendamento, ImportacaoRecompra
 )
 
 # Serializers do App
