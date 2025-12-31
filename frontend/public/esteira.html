@@ -209,6 +209,7 @@
                             <div class="col-md-6 mb-3"><label class="form-label fw-bold">Data *</label><input type="date" class="form-control" id="agenda-data" required></div>
                             <div class="col-md-6 mb-3"><label class="form-label fw-bold">Turno *</label><select class="form-select" id="agenda-turno" required><option value="">Selecione...</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select></div>
                         </div>
+                        <div class="mb-3"><label class="form-label">Observação da Venda</label><textarea class="form-control bg-light" id="agenda-observacao-venda" rows="2" readonly></textarea></div>
                     </form>
                 </div>
                 <div class="modal-footer"><button type="button" class="btn btn-secondary" onclick="cancelarAcaoStatus()">Cancelar</button><button type="button" class="btn btn-primary" onclick="salvarAgendamento()">Confirmar</button></div>
@@ -459,6 +460,7 @@
                     
                     document.getElementById('agenda-data').value = vendaData.data_agendamento || '';
                     document.getElementById('agenda-turno').value = vendaData.periodo_agendamento || '';
+                    document.getElementById('agenda-observacao-venda').value = vendaData.observacoes || 'Sem observações';
                     
                     modalAgendamento.show();
                 }
@@ -507,6 +509,19 @@
                 const campoOS = document.getElementById('agenda-os');
                 document.getElementById('agenda-data').value = '';
                 document.getElementById('agenda-turno').value = '';
+                
+                // Carregar observação da venda
+                try {
+                    const vendaData = await apiFetch(`/crm/vendas/${id}/`);
+                    document.getElementById('agenda-observacao-venda').value = vendaData.observacoes || 'Sem observações';
+                    
+                    if (statusAtual && String(statusAtual).toUpperCase() === statusTexto && vendaData.data_agendamento) {
+                        document.getElementById('agenda-data').value = vendaData.data_agendamento;
+                        document.getElementById('agenda-turno').value = vendaData.periodo_agendamento || '';
+                    }
+                } catch (e) {
+                    console.log('Erro ao carregar dados da venda');
+                }
 
                 if (osExistente && osExistente.trim() !== "-" && osExistente.trim() !== "") {
                     campoOS.value = osExistente; campoOS.readOnly = true; campoOS.classList.add('bg-light');
@@ -516,19 +531,6 @@
                     campoOS.value = ''; campoOS.readOnly = false; campoOS.classList.remove('bg-light');
                     document.getElementById('msg-agendamento-novo').style.display = 'inline';
                     document.getElementById('msg-agendamento-existente').style.display = 'none';
-                }
-                
-                // Se status já estava preenchido, carregar dados existentes
-                if (statusAtual && String(statusAtual).toUpperCase() === statusTexto) {
-                    try {
-                        const vendaData = await apiFetch(`/crm/vendas/${id}/`);
-                        if (vendaData && vendaData.data_agendamento) {
-                            document.getElementById('agenda-data').value = vendaData.data_agendamento;
-                            document.getElementById('agenda-turno').value = vendaData.periodo_agendamento || '';
-                        }
-                    } catch (e) {
-                        console.log('Dados existentes não encontrados');
-                    }
                 }
                 
                 modalAgendamento.show();
