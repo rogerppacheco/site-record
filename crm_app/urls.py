@@ -38,9 +38,11 @@ from .views import (
     ImportacaoCicloPagamentoView,
     PerformanceVendasView,
     ImportacaoLegadoView,
+    ImportacaoAgendamentoView,
     
     # NOVAS VIEWS (Mapas, ZAP, Performance)
     api_verificar_whatsapp,
+    api_verificar_email,
     enviar_comissao_whatsapp,
     enviar_resultado_campanha_whatsapp,
     ImportarKMLView,        
@@ -163,6 +165,9 @@ urlpatterns = [
     path('verificar-zap/<str:telefone>/', api_verificar_whatsapp, name='verificar-zap-path'), # Rota antiga
     path('whatsapp/verificar/', api_verificar_whatsapp, name='verificar-zap-query'),          # Rota nova do CDOI
     
+    # Validação E-mail
+    path('verificar-email/<str:email>/', api_verificar_email, name='verificar-email'),
+    
     # --- Performance ---
     path('relatorios/performance-vendas/', PerformanceVendasView.as_view(), name='performance-vendas'),
     path('performance-painel/', PainelPerformanceView.as_view(), name='api-performance-painel'),
@@ -171,6 +176,7 @@ urlpatterns = [
     path('integracao/listar-grupos/', listar_grupos_whatsapp_api, name='listar-grupos-zapi'),
     path('verificar-permissao-gestao/', VerificarPermissaoGestaoView.as_view(), name='verificar-permissao-gestao'),
     path('import/legado/', ImportacaoLegadoView.as_view(), name='importacao-legado'),
+    path('import/agendamento/', ImportacaoAgendamentoView.as_view(), name='importacao-agendamento'),
     
     # --- ROTAS EXTRAS ---
     path('grupos-disparo-api/', listar_grupos_whatsapp_api, name='listar_grupos_api'),

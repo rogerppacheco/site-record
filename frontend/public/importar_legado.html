@@ -10,28 +10,135 @@
     
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=13.1">
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=13.2">
 
     <style>
-        body { background-color: var(--cor-fundo); }
-        .main-content { margin-top: 100px; padding-bottom: 40px; }
-        .btn-header-voltar { color: #5a5c69; text-decoration: none; font-weight: 500; margin-right: 20px; }
+        body { background-color: #f8f9fc; }
         
-        .result-box {
-            background-color: #f8f9fa;
-            border: 1px solid #e9ecef;
-            border-radius: 8px;
+        .import-container {
+            max-width: 1200px;
+            margin: 40px auto;
             padding: 20px;
+        }
+
+        .upload-zone {
+            border: 3px dashed #6c757d;
+            border-radius: 15px;
+            padding: 60px 20px;
+            text-align: center;
+            background: white;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .upload-zone:hover {
+            border-color: #5a6268;
+            background: #f5f5f5;
+            transform: scale(1.02);
+        }
+
+        .upload-zone.dragging {
+            border-color: #6c757d;
+            background: #f0f0f0;
+        }
+
+        .upload-zone i {
+            font-size: 4rem;
+            color: #6c757d;
+            display: block;
+            margin-bottom: 20px;
+        }
+
+        .btn-upload {
+            font-size: 1.1rem;
+            padding: 12px 30px;
             margin-top: 20px;
+        }
+
+        .info-card {
+            background: white;
+            border-left: 4px solid #6c757d;
+            padding: 20px;
+            margin-bottom: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .spinner-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .spinner-content {
+            text-align: center;
+            color: white;
+        }
+
+        .spinner-border {
+            width: 4rem;
+            height: 4rem;
+        }
+
+        .progress-container {
+            display: none;
+            margin-top: 30px;
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            border: 2px solid #f0f0f0;
+        }
+
+        .progress-bar {
+            height: 30px;
+            font-weight: bold;
+            background: linear-gradient(90deg, #6c757d, #5c636a);
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            transition: width 0.3s ease;
+        }
+
+        .progress-text {
+            font-size: 0.95rem;
+            color: #555;
+            margin-top: 12px;
+            text-align: center;
+            font-weight: 500;
+            text-align: center;
+        }
+
+        .download-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .download-section p {
+            margin-bottom: 15px;
+            color: #666;
         }
     </style>
 </head>
 <body>
-
     <header class="main-header">
         <div class="header-container">
             <a href="/"><img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo"></a>
-            <button class="menu-toggle" id="menu-toggle"><div class="bar"></div><div class="bar"></div><div class="bar"></div></button>
+            <button class="menu-toggle" id="menu-toggle">
+                <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+            </button>
             <nav class="main-nav" id="main-nav">
                 <ul>
                     <li><a href="/importacoes/">Voltar</a></li>
@@ -41,150 +148,260 @@
         </div>
     </header>
 
-    <div class="container main-content" style="max-width: 800px;">
-        <div class="card shadow-sm border-0">
-            <div class="card-header bg-secondary text-white py-3">
-                <h4 class="mb-0 fw-bold"><i class="bi bi-archive-fill"></i> Importar Vendas Históricas (Legado)</h4>
+    <div class="import-container">
+        <div class="text-center mb-4">
+            <h2 class="fw-bold text-dark">Importar Vendas Históricas (Legado)</h2>
+            <p class="text-muted">Upload de base de vendas antigas para população do sistema</p>
+        </div>
+
+        <!-- Informações Importantes -->
+        <div class="info-card">
+            <h5 class="text-secondary mb-3"><i class="bi bi-info-circle"></i> Instruções</h5>
+            <ul class="mb-0">
+                <li>Esta ferramenta permite importar vendas histórias de sistemas antigos</li>
+                <li>O arquivo deve estar em formato <strong>Excel (.xlsx, .xls)</strong></li>
+                <li>Status será identificado automaticamente (Instalada, Pendente, Cancelada, Agendada)</li>
+                <li>CEP e Número bastam para completar endereço automaticamente</li>
+                <li>Sem envio de notificações automáticas ao vendedor nesta importação</li>
+            </ul>
+        </div>
+
+        <!-- Seção de Download do Modelo -->
+        <div class="download-section">
+            <strong class="d-block mb-3"><i class="bi bi-file-earmark-sheet"></i> Passo 1: Baixe o Modelo</strong>
+            <p>Clique no botão abaixo para baixar a planilha modelo com as colunas esperadas.</p>
+            <button type="button" class="btn btn-outline-secondary" onclick="baixarModelo()">
+                <i class="bi bi-download"></i> Baixar Planilha Modelo
+            </button>
+        </div>
+
+        <!-- Zona de Upload -->
+        <div class="upload-zone" id="uploadZone">
+            <input type="file" id="fileInput" accept=".xlsx,.xls" style="display: none;">
+            <i class="bi bi-cloud-arrow-up"></i>
+            <h4 class="text-dark">Arraste o arquivo aqui</h4>
+            <p class="text-muted">ou clique para selecionar</p>
+            <p class="text-muted mb-0"><small>Formatos aceitos: .xlsx, .xls</small></p>
+            <div id="fileInfo" class="mt-3" style="display: none;">
+                <div class="alert alert-info d-inline-block">
+                    <i class="bi bi-file-earmark-check"></i> <strong id="fileName"></strong> 
+                    <span class="ms-2">(<span id="fileSize"></span>)</span>
+                </div>
             </div>
-            <div class="card-body p-4">
+        </div>
 
-                <div class="alert alert-warning mb-4 shadow-sm border-0">
-                    <div class="d-flex">
-                        <div class="me-3">
-                            <i class="bi bi-info-circle-fill fs-4"></i>
-                        </div>
-                        <div>
-                            <strong>Ferramenta de Importação Completa</strong>
-                            <p class="mb-0 mt-1 small text-muted">
-                                Utilize esta ferramenta para popular o sistema com vendas antigas.
-                            </p>
-                            <ul class="mb-0 mt-2 small">
-                                <li><strong>Status Dinâmico:</strong> O sistema identificará se a venda é "Instalada", "Pendente", "Cancelada" ou "Agendada" pelo que estiver escrito na planilha.</li>
-                                <li><strong>Endereço Automático:</strong> Basta preencher o <strong>CEP</strong> e o <strong>Número</strong>. O sistema busca Logradouro, Bairro e Cidade automaticamente.</li>
-                                <li><strong>Dados do Cliente:</strong> Se preenchidos (Telefone, Data Nasc.), o cadastro do cliente será atualizado.</li>
-                                <li><strong>Sem Notificações:</strong> Não serão enviados alertas de WhatsApp para os vendedores nesta importação.</li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
+        <div class="text-center mt-4">
+            <button class="btn btn-secondary btn-upload" id="btnUpload" disabled>
+                <i class="bi bi-upload"></i> Processar Arquivo
+            </button>
+            <a href="/importacoes/" class="btn btn-outline-secondary btn-upload ms-2">
+                <i class="bi bi-arrow-left"></i> Cancelar
+            </a>
+        </div>
 
-                <div class="d-flex justify-content-between align-items-center mb-4 p-3 bg-light rounded border">
-                    <span class="text-muted small fw-bold">1. Baixe o modelo para preencher:</span>
-                    <button onclick="baixarModelo()" class="btn btn-outline-dark btn-sm">
-                        <i class="bi bi-download"></i> Baixar Planilha Modelo V2
-                    </button>
-                </div>
-
-                <form id="formImport">
-                    <div class="mb-4">
-                        <label for="fileInput" class="form-label fw-bold">2. Selecione o arquivo preenchido:</label>
-                        <input class="form-control form-control-lg" type="file" id="fileInput" accept=".xlsx,.xls" required>
-                    </div>
-
-                    <div class="d-grid">
-                        <button type="button" class="btn btn-secondary btn-lg fw-bold shadow-sm" onclick="enviarArquivo()">
-                            <i class="bi bi-cloud-upload-fill"></i> Processar Importação
-                        </button>
-                    </div>
-                </form>
-
-                <div id="loading" class="text-center mt-5" style="display:none;">
-                    <div class="spinner-border text-secondary" style="width: 3rem; height: 3rem;" role="status"></div>
-                    <p class="mt-3 text-muted fw-bold">Analisando dados e consultando CEPs...<br><small>Isso pode levar alguns instantes.</small></p>
-                </div>
-
-                <div id="resultado" class="mt-4" style="display:none;"></div>
-
+        <!-- Barra de Progresso -->
+        <div class="progress-container" id="progressContainer">
+            <div class="progress" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                <div class="progress-bar bg-secondary" id="progressBar" style="width: 0%"></div>
             </div>
+            <div class="progress-text">
+                <span id="progressPercent">0%</span> - <span id="progressMessage">Preparando...</span>
+            </div>
+        </div>
+
+        <!-- Resultados -->
+        <div id="resultadoImportacao" class="mt-4" style="display: none;"></div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="spinner-overlay" id="loadingOverlay">
+        <div class="spinner-content">
+            <div class="spinner-border text-light" role="status"></div>
+            <h4 class="mt-3">Processando arquivo...</h4>
+            <p>Analisando dados e validando endereços</p>
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     <script src="{% static 'js/auth.js' %}?v=7.0"></script>
+    <script src="{% static 'js/menu.js' %}?v=7.0"></script>
     <script>
-        function logout() { localStorage.removeItem('accessToken'); window.location.href = '/'; }
+        const uploadZone = document.getElementById('uploadZone');
+        const fileInput = document.getElementById('fileInput');
+        const btnUpload = document.getElementById('btnUpload');
+        const fileInfo = document.getElementById('fileInfo');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
+        const progressPercent = document.getElementById('progressPercent');
+        const progressMessage = document.getElementById('progressMessage');
+        let selectedFile = null;
         const token = localStorage.getItem('accessToken');
 
+        // Download do modelo
         async function baixarModelo() {
             try {
-                const response = await axios.get('/api/crm/import/legado/', {
-                    headers: { 'Authorization': `Bearer ${token}` },
-                    responseType: 'blob'
+                const response = await fetch('/api/crm/import/legado/', {
+                    headers: { 'Authorization': `Bearer ${token}` }
                 });
-                const url = window.URL.createObjectURL(new Blob([response.data]));
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
                 const link = document.createElement('a');
                 link.href = url;
-                link.setAttribute('download', 'modelo_legado_completo_v2.xlsx');
+                link.setAttribute('download', 'modelo_legado_v2.xlsx');
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
+                window.URL.revokeObjectURL(url);
             } catch (e) {
                 console.error(e);
-                alert('Erro ao baixar modelo. Verifique se você está logado e se o servidor está respondendo.');
+                alert('Erro ao baixar modelo. Verifique sua conexão.');
             }
         }
 
-        async function enviarArquivo() {
-            const fileInput = document.getElementById('fileInput');
-            if(fileInput.files.length === 0) return alert('Por favor, selecione um arquivo.');
+        // Eventos de drag & drop
+        uploadZone.addEventListener('click', () => fileInput.click());
+        uploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadZone.classList.add('dragging');
+        });
+        uploadZone.addEventListener('dragleave', () => {
+            uploadZone.classList.remove('dragging');
+        });
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.classList.remove('dragging');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) handleFileSelect(files[0]);
+        });
 
-            const loading = document.getElementById('loading');
-            const resDiv = document.getElementById('resultado');
-            const btn = document.querySelector('button.btn-secondary');
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) handleFileSelect(e.target.files[0]);
+        });
 
-            loading.style.display = 'block';
-            resDiv.style.display = 'none';
-            btn.disabled = true;
+        function handleFileSelect(file) {
+            const validExtensions = ['.xlsx', '.xls'];
+            const fileExtension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+            
+            if (!validExtensions.includes(fileExtension)) {
+                alert('Formato inválido! Use .xlsx ou .xls');
+                return;
+            }
+
+            selectedFile = file;
+            document.getElementById('fileName').textContent = file.name;
+            document.getElementById('fileSize').textContent = formatFileSize(file.size);
+            fileInfo.style.display = 'block';
+            btnUpload.disabled = false;
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+
+        function atualizarProgresso(percent, message) {
+            progressBar.style.width = percent + '%';
+            progressPercent.textContent = percent + '%';
+            progressMessage.textContent = message;
+        }
+
+        btnUpload.addEventListener('click', async () => {
+            if (!selectedFile) return;
 
             const formData = new FormData();
-            formData.append('file', fileInput.files[0]);
+            formData.append('file', selectedFile);
+
+            // Mostrar apenas a barra de progresso, não o overlay escuro
+            progressContainer.style.display = 'block';
+            atualizarProgresso(10, 'Iniciando upload...');
 
             try {
-                const res = await axios.post('/api/crm/import/legado/', formData, {
-                    headers: { 
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'multipart/form-data'
-                    }
+                atualizarProgresso(30, 'Enviando arquivo...');
+                
+                const response = await fetch('/api/crm/import/legado/', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    body: formData
                 });
 
+                atualizarProgresso(70, 'Validando e consultando CEPs...');
+                const data = await response.json();
+                atualizarProgresso(90, 'Finalizando...');
+
+                if (response.ok) {
+                    atualizarProgresso(100, 'Concluído!');
+                    setTimeout(() => {
+                        mostrarResultado('success', data);
+                        progressContainer.style.display = 'none';
+                    }, 500);
+                } else {
+                    mostrarResultado('error', data);
+                    progressContainer.style.display = 'none';
+                }
+            } catch (error) {
+                progressContainer.style.display = 'none';
+                mostrarResultado('error', { error: 'Erro ao conectar com servidor' });
+            }
+        });
+
+        function mostrarResultado(tipo, data) {
+            const resultado = document.getElementById('resultadoImportacao');
+            resultado.style.display = 'block';
+            
+            if (tipo === 'success') {
                 let html = `
-                    <div class="alert alert-success border-0 shadow-sm">
-                        <h5 class="alert-heading"><i class="bi bi-check-circle-fill"></i> Importação Finalizada!</h5>
-                        <p class="mb-0 fs-5">${res.data.mensagem}</p>
-                    </div>
+                    <div class="alert alert-success alert-dismissible fade show" role="alert">
+                        <h5 class="alert-heading"><i class="bi bi-check-circle"></i> Importação Concluída!</h5>
+                        <p class="mb-2"><strong>${data.mensagem}</strong></p>
                 `;
-                
-                if (res.data.erros && res.data.erros.length > 0) {
+
+                if (data.erros && data.erros.length > 0) {
                     html += `
-                        <div class="alert alert-warning border-0 shadow-sm mt-3">
-                            <strong class="d-block mb-2"><i class="bi bi-exclamation-triangle"></i> Atenção aos seguintes itens (${res.data.total_erros}):</strong>
-                            <div style="max-height: 250px; overflow-y: auto; font-size: 0.9em; background: #fff3cd; padding: 15px; border-radius: 5px; border: 1px solid #ffeeba;">
-                                ${res.data.erros.map(e => `<div class="mb-1 border-bottom border-warning pb-1">${e}</div>`).join('')}
+                        <hr>
+                        <div>
+                            <strong><i class="bi bi-exclamation-triangle"></i> Atenção (${data.total_erros} avisos):</strong>
+                            <div style="max-height: 250px; overflow-y: auto; font-size: 0.9em; background: #fff8f0; padding: 15px; border-radius: 5px; border: 1px solid #ffe0cc; margin-top: 10px;">
+                                ${data.erros.map(e => `<div class="mb-1 border-bottom border-warning pb-1" style="color: #856404;">${e}</div>`).join('')}
                             </div>
                         </div>
                     `;
                 }
-                resDiv.innerHTML = html;
-                resDiv.style.display = 'block';
 
-            } catch (error) {
-                console.error(error);
-                const msg = error.response?.data?.error || "Ocorreu um erro desconhecido ao processar o arquivo.";
-                resDiv.innerHTML = `
-                    <div class="alert alert-danger shadow-sm border-0">
-                        <h5 class="alert-heading"><i class="bi bi-x-circle-fill"></i> Erro Crítico</h5>
-                        <p>${msg}</p>
+                html += `
+                        <hr>
+                        <div class="d-flex gap-2 mt-3">
+                            <a href="/importacoes/" class="btn btn-secondary">
+                                <i class="bi bi-cloud-upload-fill"></i> Importar Outro
+                            </a>
+                            <a href="/area-interna/" class="btn btn-outline-secondary">
+                                <i class="bi bi-arrow-left"></i> Voltar
+                            </a>
+                        </div>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     </div>
                 `;
-                resDiv.style.display = 'block';
-            } finally {
-                loading.style.display = 'none';
-                btn.disabled = false;
-                fileInput.value = ''; // Limpa input para permitir novo upload
+                resultado.innerHTML = html;
+            } else {
+                resultado.innerHTML = `
+                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                        <h5 class="alert-heading"><i class="bi bi-x-circle"></i> Erro na Importação</h5>
+                        <p class="mb-0">${data.error || 'Erro desconhecido'}</p>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                `;
             }
+
+            resultado.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        function logout() {
+            localStorage.removeItem('accessToken');
+            window.location.href = '/';
         }
     </script>
-    <script src="{% static 'js/menu.js' %}?v=7.0"></script>
 </body>
 </html>
 

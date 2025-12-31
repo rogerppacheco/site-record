@@ -28,6 +28,7 @@ djangorestframework==3.16.0
 djangorestframework_simplejwt==5.5.1
 djoser==2.3.3
 dnspython==2.7.0
+email-validator==2.1.0
 et_xmlfile==2.0.0
 exchangelib==5.5.1
 Faker==38.2.0

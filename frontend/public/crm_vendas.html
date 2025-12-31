@@ -19,7 +19,8 @@
     <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
 
     <style>
-        input[type="text"], textarea { text-transform: uppercase; }
+        input[type="text"]:not(#input-email), textarea { text-transform: uppercase; }
+        #input-email { text-transform: none; }
         .filter-bar { background: #fff; padding: 15px; border-radius: 12px; border: 1px solid var(--cor-borda); display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
         .filter-item { flex: 1; min-width: 140px; }
         .status-badge { font-size: 0.75rem; padding: 4px 8px; border-radius: 12px; font-weight: 600; letter-spacing: 0.5px; display: inline-block; min-width: 80px; text-align: center; }
@@ -260,12 +261,17 @@
                                 <label>Data Nascimento</label>
                                 <input type="date" class="form-control date-paste-enabled" id="input-data-nascimento" name="data_nascimento">
                             </div>
-                            <div class="col-12 col-md-6" id="div-email"><label>Email <span class="text-danger">*</span></label><input type="email" class="form-control" id="input-email" name="cliente_email" required></div>
+                            <div class="col-12 col-md-6" id="div-email">
+                                <label>Email <span class="text-danger">*</span></label>
+                                <input type="email" class="form-control" id="input-email" name="cliente_email" 
+                                       required onblur="verificarEmail(this)">
+                                <div id="feedback-email" class="form-text mt-1" style="font-size: 0.8rem; min-height: 1.2em;"></div>
+                            </div>
                             
                             <div class="col-12 col-md-6">
                                 <div class="row g-2">
-                                    <div class="col-6"><label>Telefone 1 (WhatsApp) <span class="text-danger">*</span></label><input type="text" class="form-control" id="input-telefone" name="telefone1" required onblur="verificarWhatsApp(this)"><div id="feedback-whatsapp" class="form-text mt-1" style="font-size: 0.8rem; min-height: 1.2em;"></div></div>
-                                    <div class="col-6"><label>Telefone 2 <span class="text-danger">*</span></label><input type="text" class="form-control" id="input-telefone2" name="telefone2" required></div>
+                                    <div class="col-6"><label>Telefone 1 (WhatsApp) <span class="text-danger">*</span></label><input type="text" class="form-control" id="input-telefone" name="telefone1" required onblur="verificarWhatsApp(this)" oninput="validarTelefonesDiferentes()"><div id="feedback-whatsapp" class="form-text mt-1" style="font-size: 0.8rem; min-height: 1.2em;"></div></div>
+                                    <div class="col-6"><label>Telefone 2 <span class="text-danger">*</span></label><input type="text" class="form-control" id="input-telefone2" name="telefone2" required oninput="validarTelefonesDiferentes()"><div id="feedback-telefone2" class="form-text mt-1" style="font-size: 0.8rem; min-height: 1.2em;"></div></div>
                                 </div>
                             </div>
                         </div>
@@ -1090,6 +1096,13 @@
 
         async function salvarVenda(e) {
             e.preventDefault();
+            
+            // Validar que os telefones não sejam iguais
+            if (!validarTelefonesDiferentes()) {
+                alert("Atenção: O Telefone 2 não pode ser igual ao Telefone 1. Por favor, corrija antes de salvar.");
+                return;
+            }
+            
             const form = e.target;
             const formData = new FormData(form);
             const data = Object.fromEntries(formData.entries());
@@ -1128,6 +1141,80 @@
 
         async function excluirVenda(id) { if(!confirm('Tem certeza?')) return; try { await apiFetch(`/crm/vendas/${id}/`, { method: 'DELETE' }); carregarVendas(); } catch(e) { alert('Erro ao excluir.'); } }
         function logout() { localStorage.removeItem('accessToken'); window.location.href = '/'; }
+        
+        function validarTelefonesDiferentes() {
+            const telefone1Input = document.getElementById('input-telefone');
+            const telefone2Input = document.getElementById('input-telefone2');
+            const feedbackTel2 = document.getElementById('feedback-telefone2');
+            
+            if (!telefone1Input || !telefone2Input || !feedbackTel2) return;
+            
+            const tel1 = telefone1Input.value.replace(/\D/g, '');
+            const tel2 = telefone2Input.value.replace(/\D/g, '');
+            
+            // Só valida se ambos tiverem conteúdo
+            if (tel1.length >= 10 && tel2.length >= 10) {
+                if (tel1 === tel2) {
+                    telefone2Input.classList.add('is-invalid');
+                    telefone2Input.classList.remove('is-valid');
+                    feedbackTel2.innerHTML = '<span class="text-danger fw-bold small"><i class="bi bi-exclamation-triangle"></i> Telefone 2 não pode ser igual ao Telefone 1!</span>';
+                    return false;
+                } else {
+                    telefone2Input.classList.remove('is-invalid');
+                    telefone2Input.classList.add('is-valid');
+                    feedbackTel2.innerHTML = '<span class="text-success small"><i class="bi bi-check-circle"></i> Telefone válido</span>';
+                    return true;
+                }
+            } else {
+                // Limpa validação se não houver dados suficientes
+                telefone2Input.classList.remove('is-invalid', 'is-valid');
+                feedbackTel2.innerHTML = '';
+                return true;
+            }
+        }
+        
+        async function verificarEmail(input) {
+            const email = input.value.trim();
+            const feedbackDiv = document.getElementById('feedback-email');
+            
+            // Validação básica de formato
+            if (!email || email.length < 5 || !email.includes('@')) {
+                if (feedbackDiv) feedbackDiv.innerHTML = '';
+                input.classList.remove('is-valid', 'is-invalid');
+                return;
+            }
+            
+            // Mostra loading enquanto valida
+            if (feedbackDiv) {
+                feedbackDiv.innerHTML = '<span class="text-warning spinner-border spinner-border-sm"></span> <span class="text-warning small">Verificando e-mail...</span>';
+            }
+            
+            try {
+                const data = await apiFetch(`/crm/verificar-email/${encodeURIComponent(email)}/`, { method: 'GET' });
+                
+                if (data && data.valido) {
+                    input.classList.add('is-valid');
+                    input.classList.remove('is-invalid');
+                    if (feedbackDiv) {
+                        feedbackDiv.innerHTML = '<span class="text-success fw-bold small"><i class="bi bi-check-circle"></i> E-mail válido!</span>';
+                    }
+                } else {
+                    input.classList.add('is-invalid');
+                    input.classList.remove('is-valid');
+                    const mensagem = data?.mensagem || 'E-mail inválido';
+                    if (feedbackDiv) {
+                        feedbackDiv.innerHTML = `<span class="text-danger fw-bold small"><i class="bi bi-x-circle"></i> ${mensagem}</span>`;
+                    }
+                }
+            } catch (error) {
+                console.error('Erro ao verificar e-mail:', error);
+                // Em caso de erro de rede, não bloqueia o usuário
+                input.classList.remove('is-valid', 'is-invalid');
+                if (feedbackDiv) {
+                    feedbackDiv.innerHTML = '<span class="text-warning small">Não foi possível verificar (offline).</span>';
+                }
+            }
+        }
         
         async function verificarWhatsApp(input) {
             const telefone = input.value.replace(/\D/g, ''); 

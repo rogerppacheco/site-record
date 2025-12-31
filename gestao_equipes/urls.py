@@ -69,12 +69,13 @@ urlpatterns = [
     path('importacoes/', TemplateView.as_view(template_name='public/importacoes.html'), name='central-importacoes'),
 
     # Telas de Importação Específicas
-    path('salvar-osab/', TemplateView.as_view(template_name='public/salvar_osab.html'), name='salvar-osab'),
-    path('salvar-churn/', TemplateView.as_view(template_name='public/salvar_churn.html'), name='salvar-churn'),
-    path('salvar-ciclo-pagamento/', TemplateView.as_view(template_name='public/salvar_ciclo_pagamento.html'), name='salvar-ciclo-pagamento'),
+    path('importar-osab/', TemplateView.as_view(template_name='public/importar_osab.html'), name='importar-osab'),
+    path('importar-churn/', TemplateView.as_view(template_name='public/importar_churn.html'), name='importar-churn'),
+    path('importar-ciclo-pagamento/', TemplateView.as_view(template_name='public/importar_ciclo_pagamento.html'), name='importar-ciclo-pagamento'),
     path('importar-mapa/', TemplateView.as_view(template_name='public/importar_mapa.html'), name='importar-mapa'),
     path('importar-dfv/', TemplateView.as_view(template_name='public/importar_dfv.html'), name='page-importar-dfv'),
     path('importar-legado/', TemplateView.as_view(template_name='public/importar_legado.html'), name='importar-legado'),
+    path('importar-agendamento/', TemplateView.as_view(template_name='public/importar_agendamento.html'), name='importar-agendamento'),
 
     # CALENDÁRIO & PAINEL DE PERFORMANCE
     path('calendario/', calendario_fiscal_view, name='calendario_fiscal_atual'),

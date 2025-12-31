@@ -729,3 +729,48 @@ class FaturaM10(models.Model):
 
     def __str__(self):
         return f"Fatura {self.numero_fatura} - {self.contrato.numero_contrato} - {self.status}"
+
+class ImportacaoAgendamento(models.Model):
+    """Modelo para armazenar importaÃ§Ãµes de Agendamentos Futuros e Tarefas Fechadas"""
+    sg_uf = models.CharField(max_length=2, null=True, blank=True, verbose_name="UF")
+    nm_municipio = models.CharField(max_length=255, null=True, blank=True, verbose_name="MunicÃ­pio")
+    indicador = models.CharField(max_length=255, null=True, blank=True, verbose_name="Indicador")
+    cd_nrba = models.CharField(max_length=255, null=True, blank=True, verbose_name="CÃ³digo NRBA")
+    st_ba = models.CharField(max_length=255, null=True, blank=True, verbose_name="Status BA")
+    cd_encerramento = models.CharField(max_length=255, null=True, blank=True, verbose_name="CÃ³digo Encerramento")
+    desc_observacao = models.TextField(null=True, blank=True, verbose_name="ObservaÃ§Ã£o")
+    desc_macro_atividade = models.CharField(max_length=255, null=True, blank=True, verbose_name="Macro Atividade")
+    ds_atividade = models.CharField(max_length=255, null=True, blank=True, verbose_name="Atividade")
+    dt_abertura_ba = models.DateField(null=True, blank=True, verbose_name="Data Abertura BA")
+    dt_inicio_agendamento = models.DateTimeField(null=True, blank=True, verbose_name="InÃ­cio Agendamento")
+    dt_fim_agendamento = models.DateTimeField(null=True, blank=True, verbose_name="Fim Agendamento")
+    dt_inicio_execucao_real = models.DateTimeField(null=True, blank=True, verbose_name="InÃ­cio ExecuÃ§Ã£o Real")
+    dt_fim_execucao_real = models.DateTimeField(null=True, blank=True, verbose_name="Fim ExecuÃ§Ã£o Real")
+    nr_ordem = models.CharField(max_length=255, null=True, blank=True, verbose_name="NÃºmero Ordem")
+    nr_ordem_venda = models.CharField(max_length=255, null=True, blank=True, verbose_name="Ordem Venda")
+    dt_execucao_particao = models.DateField(null=True, blank=True, verbose_name="Data ExecuÃ§Ã£o PartiÃ§Ã£o")
+    anomes = models.CharField(max_length=6, null=True, blank=True, verbose_name="Ano/MÃªs")
+    cd_sap_original = models.CharField(max_length=255, null=True, blank=True, verbose_name="SAP Original")
+    cd_rede = models.CharField(max_length=255, null=True, blank=True, verbose_name="CÃ³digo Rede")
+    nm_pdv_rel = models.CharField(max_length=255, null=True, blank=True, verbose_name="Nome PDV")
+    rede = models.CharField(max_length=255, null=True, blank=True, verbose_name="Rede")
+    gp_canal = models.CharField(max_length=255, null=True, blank=True, verbose_name="Grupo Canal")
+    sg_gerencia = models.CharField(max_length=255, null=True, blank=True, verbose_name="Sigla GerÃªncia")
+    nm_gc = models.CharField(max_length=255, null=True, blank=True, verbose_name="Nome GC")
+    dt_agendamento = models.DateField(null=True, blank=True, verbose_name="Data Agendamento")
+    criado_em = models.DateTimeField(auto_now_add=True, verbose_name="Criado em")
+    atualizado_em = models.DateTimeField(auto_now=True, verbose_name="Atualizado em")
+
+    class Meta:
+        verbose_name = "ImportaÃ§Ã£o Agendamento"
+        verbose_name_plural = "ImportaÃ§Ãµes Agendamentos"
+        ordering = ["-dt_agendamento", "-criado_em"]
+        indexes = [
+            models.Index(fields=["cd_nrba"]),
+            models.Index(fields=["nr_ordem"]),
+            models.Index(fields=["dt_agendamento"]),
+            models.Index(fields=["anomes"]),
+        ]
+
+    def __str__(self):
+        return f"BA {self.cd_nrba} - {self.dt_agendamento or 'Sem data'}"

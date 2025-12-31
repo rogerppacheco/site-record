@@ -26,52 +26,55 @@
         
         .app-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 25px;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 16px;
             padding: 20px;
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
         }
 
         .app-card {
             background: white;
-            border-radius: 15px;
-            padding: 30px 20px;
+            border-radius: 10px;
+            padding: 20px 16px;
             text-align: center;
             text-decoration: none;
             color: #5a5c69;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            transition: all 0.3s ease;
             position: relative;
             overflow: hidden;
-            display: flex; /* Flex para garantir alinhamento */
+            display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            height: 180px;
+            height: 120px;
+            border: 1px solid #f0f0f0;
         }
 
         /* Oculta o card por padrão até o JS validar o perfil (evita piscar) */
         .app-card { display: none; }
 
         .app-card:hover {
-            transform: translateY(-8px);
-            box-shadow: 0 12px 20px rgba(0,0,0,0.1);
+            transform: translateY(-4px);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.12);
+            border-color: #e3e6f0;
         }
 
         .app-icon {
-            font-size: 3.5rem;
-            margin-bottom: 15px;
+            font-size: 2rem;
+            margin-bottom: 10px;
             background: -webkit-linear-gradient(45deg, #4e73df, #224abe);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
 
         .app-title {
-            font-weight: 700;
-            font-size: 1.1rem;
+            font-weight: 600;
+            font-size: 0.85rem;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.3px;
+            color: #2c3e50;
         }
 
         /* Gradientes Personalizados para Ícones */
@@ -111,6 +114,58 @@
 
     <main>
         <div class="app-grid">
+            <!-- A -->
+            <a href="/auditoria/" class="app-card" id="card-auditoria">
+                <i class="bi bi-headset app-icon icon-auditoria"></i>
+                <span class="app-title">Auditoria</span>
+            </a>
+
+            <!-- B -->
+            <a href="{% url 'page_bonus_m10' %}" class="app-card" id="card-bonus-m10">
+                <i class="bi bi-piggy-bank-fill app-icon icon-bonus"></i>
+                <span class="app-title">Bônus M-10</span>
+            </a>
+
+            <!-- C -->
+            <a href="/importacoes/" class="app-card" id="card-importacoes">
+                <i class="bi bi-cloud-upload-fill app-icon icon-import"></i>
+                <span class="app-title">Central de Importações</span>
+            </a>
+
+            <a href="/comissionamento/" class="app-card" id="card-comissao">
+                <i class="bi bi-cash-stack app-icon icon-auditoria"></i>
+                <span class="app-title">Comissão</span>
+            </a>
+
+            <!-- E -->
+            <a href="/esteira/" class="app-card" id="card-esteira">
+                <i class="bi bi-list-check app-icon icon-esteira"></i>
+                <span class="app-title">Esteira</span>
+            </a>
+
+            <!-- G -->
+            <a href="/governanca/" class="app-card" id="card-governanca">
+                <i class="bi bi-gear-fill app-icon icon-config"></i>
+                <span class="app-title">Governança</span>
+            </a>
+
+            <!-- P -->
+            <a href="/painel-performance/" class="app-card" id="card-performance">
+                <i class="bi bi-speedometer2 app-icon icon-performance"></i>
+                <span class="app-title">Performance</span>
+            </a>
+
+            <a href="/presenca/" class="app-card" id="card-presenca">
+                <i class="bi bi-calendar-check-fill app-icon icon-rh"></i>
+                <span class="app-title">Presença (RH)</span>
+            </a>
+
+            <!-- R -->
+            <a href="/record-informa/" class="app-card" id="card-informa">
+                <i class="bi bi-megaphone-fill app-icon icon-informa"></i>
+                <span class="app-title">Record Informa</span>
+            </a>
+
             <a href="/crm-vendas/" class="app-card" id="card-vendas">
                 <i class="bi bi-people-fill app-icon icon-vendas"></i>
                 <span class="app-title">Record Vendas</span>
@@ -119,51 +174,6 @@
             <a href="{% url 'page_cdoi_novo' %}" class="app-card" id="card-cdoi">
                 <i class="bi bi-building app-icon icon-cdoi"></i>
                 <span class="app-title">Record Vertical</span>
-            </a>
-
-            <a href="{% url 'page_bonus_m10' %}" class="app-card" id="card-bonus-m10">
-                <i class="bi bi-piggy-bank-fill app-icon icon-bonus"></i>
-                <span class="app-title">Bônus M-10</span>
-            </a>
-
-            <a href="/painel-performance/" class="app-card" id="card-performance">
-                <i class="bi bi-speedometer2 app-icon icon-performance"></i>
-                <span class="app-title">Performance</span>
-            </a>
-
-            <a href="/auditoria/" class="app-card" id="card-auditoria">
-                <i class="bi bi-headset app-icon icon-auditoria"></i>
-                <span class="app-title">Auditoria</span>
-            </a>
-
-            <a href="/record-informa/" class="app-card" id="card-informa">
-                <i class="bi bi-megaphone-fill app-icon icon-informa"></i>
-                <span class="app-title">Record Informa</span>
-            </a>
-
-            <a href="/esteira/" class="app-card" id="card-esteira">
-                <i class="bi bi-list-check app-icon icon-esteira"></i>
-                <span class="app-title">Esteira</span>
-            </a>
-
-            <a href="/presenca/" class="app-card" id="card-presenca">
-                <i class="bi bi-calendar-check-fill app-icon icon-rh"></i>
-                <span class="app-title">Presença (RH)</span>
-            </a>
-            
-             <a href="/comissionamento/" class="app-card" id="card-comissao">
-                <i class="bi bi-cash-stack app-icon icon-auditoria"></i>
-                <span class="app-title">Comissão</span>
-            </a>
-
-            <a href="/governanca/" class="app-card" id="card-governanca">
-                <i class="bi bi-gear-fill app-icon icon-config"></i>
-                <span class="app-title">Governança</span>
-            </a>
-            
-            <a href="/importacoes/" class="app-card" id="card-importacoes">
-                <i class="bi bi-cloud-upload-fill app-icon icon-import"></i>
-                <span class="app-title">Central de Importações</span>
             </a>
         </div>
     </main>

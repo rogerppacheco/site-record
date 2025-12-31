@@ -292,3 +292,83 @@ def consultar_status_venda(tipo_busca, valor):
             f"Não localizei nenhuma venda ativa com o {tipo_busca}: *{valor}*.\n"
             f"Verifique a digitação e tente novamente."
         )
+
+
+def consultar_previsao_agendamento(numero_pedido):
+    """
+    Busca a previsão de instalação na base de agendamentos futuros e tarefas fechadas.
+    Retorna a data/hora de início e fim da execução real.
+    """
+    from .models import ImportacaoAgendamento
+    from django.utils import timezone
+    
+    numero_limpo = str(numero_pedido).strip()
+    print(f"\n📅 BUSCA PREVISÃO -> Pedido: {numero_limpo}")
+    
+    # Busca pelo número da ordem (nr_ordem ou nr_ordem_venda)
+    agendamento = ImportacaoAgendamento.objects.filter(
+        nr_ordem__icontains=numero_limpo
+    ).first()
+    
+    if not agendamento:
+        # Tenta pela ordem de venda
+        agendamento = ImportacaoAgendamento.objects.filter(
+            nr_ordem_venda__icontains=numero_limpo
+        ).first()
+    
+    if agendamento:
+        # Formata as datas
+        dt_inicio = agendamento.dt_inicio_execucao_real
+        dt_fim = agendamento.dt_fim_execucao_real
+        
+        # Informações do agendamento
+        municipio = agendamento.nm_municipio or "Não informado"
+        uf = agendamento.sg_uf or ""
+        status_ba = agendamento.st_ba or "Em andamento"
+        atividade = agendamento.ds_atividade or "Instalação"
+        
+        # Monta a mensagem
+        if dt_inicio and dt_fim:
+            # Formata as datas
+            inicio_fmt = dt_inicio.strftime('%d/%m/%Y às %H:%M')
+            fim_fmt = dt_fim.strftime('%d/%m/%Y às %H:%M')
+            
+            return (
+                f"📅 *PREVISÃO DE INSTALAÇÃO*\n\n"
+                f"🔢 *Pedido:* {numero_limpo}\n"
+                f"📍 *Local:* {municipio}/{uf}\n"
+                f"🔧 *Atividade:* {atividade}\n"
+                f"📊 *Status:* {status_ba}\n\n"
+                f"⏰ *Previsão de Início:*\n{inicio_fmt}\n\n"
+                f"⏰ *Previsão de Término:*\n{fim_fmt}"
+            )
+        elif agendamento.dt_agendamento:
+            # Só tem data de agendamento
+            agend_fmt = agendamento.dt_agendamento.strftime('%d/%m/%Y')
+            return (
+                f"📅 *PREVISÃO DE INSTALAÇÃO*\n\n"
+                f"🔢 *Pedido:* {numero_limpo}\n"
+                f"📍 *Local:* {municipio}/{uf}\n"
+                f"🔧 *Atividade:* {atividade}\n"
+                f"📊 *Status:* {status_ba}\n\n"
+                f"⏰ *Data Agendada:* {agend_fmt}\n"
+                f"⚠️ *Horário de execução ainda não disponível*"
+            )
+        else:
+            return (
+                f"📅 *PREVISÃO DE INSTALAÇÃO*\n\n"
+                f"🔢 *Pedido:* {numero_limpo}\n"
+                f"📍 *Local:* {municipio}/{uf}\n"
+                f"📊 *Status:* {status_ba}\n\n"
+                f"⚠️ *Datas de execução ainda não disponíveis*\n"
+                f"O agendamento está registrado mas ainda sem previsão de horário."
+            )
+    else:
+        return (
+            f"❌ *PEDIDO NÃO ENCONTRADO*\n\n"
+            f"Não localizei o pedido *{numero_limpo}* na base de agendamentos.\n\n"
+            f"Verifique:\n"
+            f"• Se o número está correto\n"
+            f"• Se o pedido já foi agendado\n"
+            f"• Se foi importado na última base"
+        )

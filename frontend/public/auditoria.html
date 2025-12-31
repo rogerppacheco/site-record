@@ -206,7 +206,7 @@
                                         </div>
                                         <div class="alert alert-info border-info my-3 py-2"><p class="mb-0 fst-italic">"Lembrando que é nesse número que você receberá a confirmação do pedido. Para confirmar a instalação, preciso que após receber a mensagem da Nio no seu WhatsApp você digite <strong>'SIM'</strong>. No WhatsApp da Nio, você poderá acompanhar a instalação em tempo real e até mesmo reagendar."</p></div>
                                         <p class="script-text mb-2">"Qual é o seu endereço de e-mail?"</p>
-                                        <div class="input-group mb-2"><input type="email" class="form-control form-control-script uppercase-input" id="audit-email"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-email')"><i class="bi bi-clipboard" id="btn-icon-audit-email"></i></button></div>
+                                        <div class="input-group mb-2"><input type="email" class="form-control form-control-script lowercase-input" id="audit-email"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-email')"><i class="bi bi-clipboard" id="btn-icon-audit-email"></i></button></div>
                                         <div class="text-end mt-4"><button class="btn btn-primary" onclick="proximaAba('pills-endereco-tab')">Próximo <i class="bi bi-arrow-right"></i></button></div>
                                     </div>
                                 </div>
@@ -322,6 +322,7 @@
         $(document).ready(function() {
             if (!localStorage.getItem('accessToken')) { window.location.href = '/'; return; }
             $(document).on('input', '.uppercase-input', function() { this.value = this.value.toUpperCase(); });
+            $(document).on('input', '.lowercase-input', function() { this.value = this.value.toLowerCase(); });
             
             $('#repro-status').change(function() {
                 const text = $(this).find('option:selected').text().toUpperCase();

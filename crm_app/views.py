@@ -14,6 +14,7 @@ import xml.etree.ElementTree as ET
 import unicodedata
 import threading
 import requests
+from email_validator import validate_email, EmailNotValidError
 
 
 # --- CORREÇÃO CRÍTICA: Importar transaction e IntegrityError ---
@@ -74,7 +75,7 @@ from .models import (
     CicloPagamento, HistoricoAlteracaoVenda, PagamentoComissao,
     Campanha, ComissaoOperadora, Comunicado, AreaVenda,
     SessaoWhatsapp, DFV, GrupoDisparo, LancamentoFinanceiro,
-    AgendamentoDisparo
+    AgendamentoDisparo, ImportacaoAgendamento
 )
 
 # Serializers do App
@@ -2514,6 +2515,14 @@ class WebhookWhatsAppView(APIView):
                 service.enviar_mensagem_texto(phone, "📋 *CONSULTA DE STATUS*\n\nComo deseja pesquisar o pedido?\n\n1️⃣ Por *CPF*\n2️⃣ Por *O.S* (Ordem de Serviço)\n\nDigite o número da opção (1 ou 2):")
                 return Response({'status': 'status_start'})
 
+            # 4. GATILHO: PREVISÃO
+            elif "PREVISAO" in msg_upper or "PREVISÃO" in msg_upper:
+                sessao.etapa = 'PREVISAO_AGUARDANDO_PEDIDO'
+                sessao.dados_temp = {}
+                sessao.save()
+                service.enviar_mensagem_texto(phone, "📅 *CONSULTA DE PREVISÃO*\n\nPor favor, digite o *número do pedido* (Ordem de Serviço):")
+                return Response({'status': 'previsao_start'})
+
             # =========================================================
             # FLUXOS EM ANDAMENTO
             # =========================================================
@@ -2548,6 +2557,20 @@ class WebhookWhatsAppView(APIView):
                 service.enviar_mensagem_texto(phone, resp_msg)
                 sessao.delete() # Encerra
                 return Response({'status': 'status_end'})
+
+            # --- FLUXO PREVISÃO: EXECUÇÃO (Recebe o número do pedido) ---
+            elif sessao.etapa == 'PREVISAO_AGUARDANDO_PEDIDO':
+                numero_pedido = text.strip()
+                
+                service.enviar_mensagem_texto(phone, f"🔎 Buscando previsão para o pedido {numero_pedido}...")
+                
+                # Importa a função de busca
+                from .utils import consultar_previsao_agendamento
+                resp_msg = consultar_previsao_agendamento(numero_pedido)
+                
+                service.enviar_mensagem_texto(phone, resp_msg)
+                sessao.delete() # Encerra
+                return Response({'status': 'previsao_end'})
 
 
             # --- FLUXO FACHADA (Antigo) ---
@@ -2624,6 +2647,48 @@ def api_verificar_whatsapp(request, telefone=None):
     except Exception as e:
         logger.error(f"Erro view verificar zap: {e}")
         return Response({"error": str(e)}, status=500)
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def api_verificar_email(request, email=None):
+    """
+    Valida sintaxe e domínio de um e-mail.
+    Verifica:
+    - Sintaxe correta (RFC 5322)
+    - Domínio existe (DNS/MX records)
+    - Normalização do e-mail
+    """
+    try:
+        if not email:
+            return Response({"error": "E-mail não informado."}, status=400)
+        
+        # Valida o e-mail (sintaxe + DNS)
+        emailinfo = validate_email(email, check_deliverability=True)
+        
+        # E-mail normalizado (ascii, lowercase)
+        email_normalizado = emailinfo.normalized
+        
+        return Response({
+            "email": email,
+            "email_normalizado": email_normalizado,
+            "valido": True,
+            "dominio": emailinfo.domain,
+            "mensagem": "E-mail válido!"
+        })
+    except EmailNotValidError as e:
+        # E-mail inválido - retorna detalhes do erro
+        return Response({
+            "email": email,
+            "valido": False,
+            "mensagem": str(e)
+        }, status=200)  # 200 para não gerar erro no frontend
+    except Exception as e:
+        logger.error(f"Erro ao verificar e-mail: {e}")
+        return Response({
+            "email": email,
+            "valido": False,
+            "mensagem": "Não foi possível verificar o e-mail."
+        }, status=200)
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
@@ -4328,6 +4393,100 @@ class CdoiUpdateView(APIView):
 def page_cdoi_novo(request):
     """View simples para abrir a página no navegador"""
     return render(request, 'cdoi_form.html')
+
+
+# =============================================================================
+# IMPORTAÇÃO DE AGENDAMENTOS E TAREFAS
+# =============================================================================
+
+class ImportacaoAgendamentoView(APIView):
+    permission_classes = [CheckAPIPermission]
+    resource_name = 'importacao_agendamento'
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, *args, **kwargs):
+        file_obj = request.FILES.get('file')
+        if not file_obj:
+            return Response({'error': 'Nenhum arquivo enviado.'}, status=400)
+
+        try:
+            # Leitura do arquivo
+            if file_obj.name.endswith('.xlsb'):
+                df = pd.read_excel(file_obj, engine='pyxlsb')
+            elif file_obj.name.endswith(('.xlsx', '.xls')):
+                df = pd.read_excel(file_obj)
+            else:
+                return Response({'error': 'Formato inválido. Envie .xlsx, .xls ou .xlsb'}, status=400)
+        except Exception as e:
+            return Response({'error': f'Erro ao ler arquivo: {str(e)}'}, status=400)
+
+        # Normaliza nomes das colunas
+        df.columns = [str(col).strip().lower() for col in df.columns]
+
+        # Converte datas
+        campos_data = ['dt_abertura_ba', 'dt_execucao_particao', 'dt_agendamento']
+        campos_datetime = ['dt_inicio_agendamento', 'dt_fim_agendamento', 'dt_inicio_execucao_real', 'dt_fim_execucao_real']
+
+        for campo in campos_data:
+            if campo in df.columns:
+                df[campo] = pd.to_datetime(df[campo], errors='coerce')
+
+        for campo in campos_datetime:
+            if campo in df.columns:
+                df[campo] = pd.to_datetime(df[campo], errors='coerce')
+
+        # Processa linhas
+        registros_criados = 0
+        erros = []
+
+        for idx, row in df.iterrows():
+            try:
+                dados = {
+                    'sg_uf': str(row.get('sg_uf')) if pd.notna(row.get('sg_uf')) else None,
+                    'nm_municipio': str(row.get('nm_municipio')) if pd.notna(row.get('nm_municipio')) else None,
+                    'indicador': str(row.get('indicador')) if pd.notna(row.get('indicador')) else None,
+                    'cd_nrba': str(row.get('cd_nrba')) if pd.notna(row.get('cd_nrba')) else None,
+                    'st_ba': str(row.get('st_ba')) if pd.notna(row.get('st_ba')) else None,
+                    'cd_encerramento': str(row.get('cd_encerramento')) if pd.notna(row.get('cd_encerramento')) else None,
+                    'desc_observacao': str(row.get('desc_observacao')) if pd.notna(row.get('desc_observacao')) else None,
+                    'desc_macro_atividade': str(row.get('desc_macro_atividade')) if pd.notna(row.get('desc_macro_atividade')) else None,
+                    'ds_atividade': str(row.get('ds_atividade')) if pd.notna(row.get('ds_atividade')) else None,
+                    'nr_ordem': str(row.get('nr_ordem')) if pd.notna(row.get('nr_ordem')) else None,
+                    'nr_ordem_venda': str(row.get('nr_ordem_venda')) if pd.notna(row.get('nr_ordem_venda')) else None,
+                    'anomes': str(row.get('anomes')) if pd.notna(row.get('anomes')) else None,
+                    'cd_sap_original': str(row.get('cd_sap_original')) if pd.notna(row.get('cd_sap_original')) else None,
+                    'cd_rede': str(row.get('cd_rede')) if pd.notna(row.get('cd_rede')) else None,
+                    'nm_pdv_rel': str(row.get('nm_pdv_rel')) if pd.notna(row.get('nm_pdv_rel')) else None,
+                    'rede': str(row.get('rede')) if pd.notna(row.get('rede')) else None,
+                    'gp_canal': str(row.get('gp_canal')) if pd.notna(row.get('gp_canal')) else None,
+                    'sg_gerencia': str(row.get('sg_gerencia')) if pd.notna(row.get('sg_gerencia')) else None,
+                    'nm_gc': str(row.get('nm_gc')) if pd.notna(row.get('nm_gc')) else None,
+                }
+
+                # Campos de data
+                for campo in campos_data:
+                    if campo in df.columns and pd.notna(row[campo]):
+                        dados[campo] = row[campo].date() if isinstance(row[campo], pd.Timestamp) else None
+
+                # Campos de datetime
+                for campo in campos_datetime:
+                    if campo in df.columns and pd.notna(row[campo]):
+                        dados[campo] = row[campo].to_pydatetime() if isinstance(row[campo], pd.Timestamp) else None
+
+                # Cria registro
+                ImportacaoAgendamento.objects.create(**dados)
+                registros_criados += 1
+
+            except Exception as e:
+                erros.append(f"Linha {idx + 2}: {str(e)}")
+
+        return Response({
+            'success': True,
+            'message': f'Importação concluída! {registros_criados} registros criados.',
+            'registros_criados': registros_criados,
+            'total_linhas': len(df),
+            'erros': erros[:10] if erros else []  # Primeiros 10 erros
+        }, status=200)
 
 
 # =============================================================================
