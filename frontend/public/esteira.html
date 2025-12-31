@@ -374,13 +374,22 @@
                         overflow: hidden;
                     `;
 
-                    let selectStatus = `<select class="form-select form-select-sm status-select" data-os="${osAtual}" data-statusAtual="${v.status_esteira ? v.status_esteira.nome : ''}" onchange="atualizarStatus(${v.id}, this)">`;
+                    let selectStatus = `<select class="form-select form-select-sm status-select" data-venda-id="${v.id}" data-os="${osAtual}" data-statusAtual="${v.status_esteira ? v.status_esteira.nome : ''}" data-statusid="${v.status_esteira ? v.status_esteira.id : ''}" onchange="atualizarStatus(${v.id}, this)" onfocus="this.dataset.valorAnterior=this.value">`;
                     selectStatus += `<option value="">Selecione...</option>`;
                     statusLista.forEach(s => {
                         const selected = (v.status_esteira && v.status_esteira.id === s.id) ? 'selected' : '';
                         selectStatus += `<option value="${s.id}" ${selected}>${s.nome}</option>`;
                     });
                     selectStatus += `</select>`;
+                    
+                    // Botão de edição que aparece quando há dados para editar
+                    const temDadosEditaveis = (v.status_esteira && (
+                        v.status_esteira.nome.toUpperCase().includes('AGENDADO') ||
+                        v.status_esteira.nome.toUpperCase() === 'INSTALADA' ||
+                        v.status_esteira.nome.toUpperCase().includes('PENDEN') ||
+                        v.status_esteira.nome.toUpperCase().includes('CANCEL')
+                    ));
+                    const btnEditar = temDadosEditaveis ? `<button class="btn btn-sm btn-link text-primary p-0 ms-1" onclick="editarStatusExistente(${v.id}, '${v.status_esteira ? v.status_esteira.nome : ''}', '${v.status_esteira ? v.status_esteira.id : ''}')" title="Editar dados do status"><i class="bi bi-pencil-square"></i></button>` : '';
 
                     const alteradoPor = v.alterado_por || '-';
 
@@ -393,7 +402,7 @@
                             <td>${turno}</td>
                             <td><div class="fw-bold text-dark">${v.cliente.nome_razao_social}</div><div class="small text-muted">${v.cliente.cpf_cnpj}</div></td>
                             <td>${nomeVendedor}</td> <td>${v.plano?.nome || '-'}</td>
-                            <td>${selectStatus}</td>
+                            <td><div class="d-flex align-items-center">${selectStatus}${btnEditar}</div></td>
                             <td class="text-danger small fw-bold">${motivoPendencia}</td>
                             <td><small class="text-muted fw-bold">${alteradoPor}</small></td>
                             <td class="pe-4 text-end"><button class="btn btn-sm btn-outline-primary rounded-circle p-2" onclick="abrirEdicao(${v.id})"><i class="bi bi-pencil-fill"></i></button></td>
@@ -427,8 +436,69 @@
             carregarVendas();
         }
 
+        async function editarStatusExistente(id, statusNome, statusId) {
+            tempVendaId = id;
+            tempStatusId = statusId;
+            const statusTexto = statusNome.toUpperCase();
+            
+            // Buscar dados da venda
+            try {
+                const vendaData = await apiFetch(`/crm/vendas/${id}/`);
+                const osExistente = vendaData.ordem_servico || '-';
+                
+                if (statusTexto === 'CADASTRADA' || statusTexto.includes('AGENDADO')) {
+                    document.getElementById('form-agendamento').reset();
+                    document.getElementById('agenda-os').classList.remove('is-invalid');
+                    
+                    const campoOS = document.getElementById('agenda-os');
+                    if (osExistente && osExistente.trim() !== "-" && osExistente.trim() !== "") {
+                        campoOS.value = osExistente;
+                        campoOS.readOnly = true;
+                        campoOS.classList.add('bg-light');
+                        document.getElementById('msg-agendamento-novo').style.display = 'none';
+                        document.getElementById('msg-agendamento-existente').style.display = 'inline';
+                    }
+                    
+                    document.getElementById('agenda-data').value = vendaData.data_agendamento || '';
+                    document.getElementById('agenda-turno').value = vendaData.periodo_agendamento || '';
+                    document.getElementById('agenda-observacao').value = vendaData.observacao_agendamento || '';
+                    
+                    modalAgendamento.show();
+                }
+                else if (statusTexto === 'INSTALADA') {
+                    document.getElementById('form-instalacao').reset();
+                    document.getElementById('instalacao-data').value = vendaData.data_instalacao || '';
+                    document.getElementById('instalacao-antecipou').checked = vendaData.antecipou_instalacao || false;
+                    document.getElementById('instalacao-obs').value = vendaData.observacao_instalacao || '';
+                    
+                    modalInstalacao.show();
+                }
+                else if (statusTexto.includes('PENDEN') || statusTexto.includes('CANCEL')) {
+                    document.getElementById('form-pendencia').reset();
+                    const titulo = document.getElementById('titulo-modal-pendencia');
+                    if(titulo) titulo.innerHTML = statusTexto.includes('CANCEL') ? '<i class="bi bi-x-circle-fill"></i> Motivo do Cancelamento' : '<i class="bi bi-exclamation-triangle-fill"></i> Registrar Pendência';
+                    
+                    document.getElementById('pendencia-motivo').value = vendaData.motivo_pendencia || '';
+                    document.getElementById('pendencia-obs').value = vendaData.observacao_pendencia || '';
+                    
+                    modalPendencia.show();
+                }
+            } catch (e) {
+                alert('Erro ao carregar dados para edição: ' + e.message);
+            }
+        }
+
         async function atualizarStatus(id, selectElem) {
             const statusId = selectElem.value;
+            const valorAnterior = selectElem.dataset.valorAnterior;
+            
+            // Se selecionou o mesmo valor que já estava, chama a função de edição
+            if (statusId && statusId === valorAnterior) {
+                const statusTexto = selectElem.options[selectElem.selectedIndex].text;
+                editarStatusExistente(id, statusTexto, statusId);
+                return;
+            }
+            
             const statusTexto = selectElem.options[selectElem.selectedIndex].text.toUpperCase();
             const osExistente = selectElem.dataset.os;
             const statusAtual = selectElem.dataset.statusAtual;
