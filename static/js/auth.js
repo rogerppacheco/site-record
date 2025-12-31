@@ -419,3 +419,216 @@ function jwt_decode(token) {
         return null;
     }
 }
+
+// ===== MONITORAMENTO VISUAL DE TOKEN =====
+let tokenMonitorInterval;
+
+function iniciarMonitoramentoToken() {
+    const indicator = document.getElementById('token-indicator');
+    const timeDisplay = document.getElementById('token-time');
+    
+    if (!indicator || !timeDisplay) {
+        console.warn('Indicador de token não encontrado na página');
+        return;
+    }
+    
+    const icon = indicator.querySelector('i');
+    
+    // Elementos do modal (se existir)
+    const indicatorModal = document.getElementById('token-indicator-modal');
+    const timeDisplayModal = document.getElementById('token-time-modal');
+    const iconModal = indicatorModal ? indicatorModal.querySelector('i') : null;
+
+    function atualizarDisplay() {
+        const token = localStorage.getItem('accessToken');
+        if (!token) {
+            timeDisplay.textContent = 'Sem token';
+            indicator.style.background = '#ffebee';
+            icon.style.color = '#d32f2f';
+            icon.className = 'bi bi-shield-x';
+            if (indicatorModal) {
+                timeDisplayModal.textContent = 'Sem token';
+                indicatorModal.style.background = '#ffebee';
+                iconModal.style.color = '#d32f2f';
+                iconModal.className = 'bi bi-shield-x';
+            }
+            
+            // Logout automático se não tiver token
+            setTimeout(() => {
+                alert('Sessão expirada. Faça login novamente.');
+                logout();
+            }, 2000);
+            return;
+        }
+
+        try {
+            const payload = jwt_decode(token);
+            if (!payload || !payload.exp) {
+                throw new Error('Token inválido');
+            }
+            
+            const exp = payload.exp;
+            const now = Math.floor(Date.now() / 1000);
+            const tempoRestante = exp - now;
+
+            if (tempoRestante <= 0) {
+                timeDisplay.textContent = 'Expirado';
+                indicator.style.background = '#ffebee';
+                icon.style.color = '#d32f2f';
+                icon.className = 'bi bi-shield-x';
+                if (indicatorModal) {
+                    timeDisplayModal.textContent = 'Expirado';
+                    indicatorModal.style.background = '#ffebee';
+                    iconModal.style.color = '#d32f2f';
+                    iconModal.className = 'bi bi-shield-x';
+                }
+                
+                // Logout automático quando expirar
+                clearInterval(tokenMonitorInterval);
+                alert('Sua sessão expirou. Você será redirecionado para o login.');
+                logout();
+                return;
+            }
+
+            const minutos = Math.floor(tempoRestante / 60);
+            const segundos = tempoRestante % 60;
+            const tempoFormatado = `${minutos}:${segundos.toString().padStart(2, '0')}`;
+            timeDisplay.textContent = tempoFormatado;
+            if (indicatorModal) timeDisplayModal.textContent = tempoFormatado;
+
+            // Crítico quando faltar menos de 2 minutos
+            if (tempoRestante < 120) {
+                indicator.style.background = '#ffebee';
+                icon.style.color = '#d32f2f';
+                icon.className = 'bi bi-shield-exclamation';
+                indicator.title = 'ATENÇÃO: Token expirando! Clique para renovar AGORA';
+                if (indicatorModal) {
+                    indicatorModal.style.background = '#ffebee';
+                    iconModal.style.color = '#d32f2f';
+                    iconModal.className = 'bi bi-shield-exclamation';
+                    indicatorModal.title = 'ATENÇÃO: Token expirando! Clique para renovar AGORA';
+                }
+            } 
+            // Alerta visual quando faltar menos de 5 minutos
+            else if (tempoRestante < 300) {
+                indicator.style.background = '#fff3e0';
+                icon.style.color = '#f57c00';
+                icon.className = 'bi bi-shield-exclamation';
+                indicator.title = 'Token expirando em breve! Clique para renovar';
+                if (indicatorModal) {
+                    indicatorModal.style.background = '#fff3e0';
+                    iconModal.style.color = '#f57c00';
+                    iconModal.className = 'bi bi-shield-exclamation';
+                    indicatorModal.title = 'Token expirando em breve! Clique para renovar';
+                }
+            } 
+            else {
+                indicator.style.background = '#e8f5e9';
+                icon.style.color = '#4caf50';
+                icon.className = 'bi bi-shield-check';
+                indicator.title = 'Token válido. Clique para renovar manualmente';
+                if (indicatorModal) {
+                    indicatorModal.style.background = '#e8f5e9';
+                    iconModal.style.color = '#4caf50';
+                    iconModal.className = 'bi bi-shield-check';
+                    indicatorModal.title = 'Token válido. Clique para renovar manualmente';
+                }
+            }
+
+            // Auto-renovação quando faltar 3 minutos
+            if (tempoRestante === 180) {
+                console.log('Auto-renovando token (3 min restantes)...');
+                renovarTokenAutomatico();
+            }
+        } catch (e) {
+            console.error('Erro ao decodificar token:', e);
+            timeDisplay.textContent = 'Erro';
+            indicator.style.background = '#ffebee';
+            icon.style.color = '#d32f2f';
+            icon.className = 'bi bi-shield-x';
+            if (indicatorModal) {
+                timeDisplayModal.textContent = 'Erro';
+                indicatorModal.style.background = '#ffebee';
+                iconModal.style.color = '#d32f2f';
+                iconModal.className = 'bi bi-shield-x';
+            }
+        }
+    }
+
+    atualizarDisplay();
+    tokenMonitorInterval = setInterval(atualizarDisplay, 1000);
+}
+
+async function renovarTokenManual() {
+    const indicator = document.getElementById('token-indicator');
+    const timeDisplay = document.getElementById('token-time');
+    const indicatorModal = document.getElementById('token-indicator-modal');
+    const timeDisplayModal = document.getElementById('token-time-modal');
+    
+    if (!indicator || !timeDisplay) return;
+    
+    // Atualizar ambos os indicadores para "Renovando..."
+    timeDisplay.textContent = 'Renovando...';
+    indicator.style.opacity = '0.6';
+    if (indicatorModal && timeDisplayModal) {
+        timeDisplayModal.textContent = 'Renovando...';
+        indicatorModal.style.opacity = '0.6';
+    }
+
+    try {
+        await renovarTokenAPI();
+        timeDisplay.textContent = 'Renovado!';
+        if (timeDisplayModal) timeDisplayModal.textContent = 'Renovado!';
+        
+        setTimeout(() => {
+            indicator.style.opacity = '1';
+            if (indicatorModal) indicatorModal.style.opacity = '1';
+        }, 1000);
+    } catch (e) {
+        timeDisplay.textContent = 'Erro!';
+        if (timeDisplayModal) timeDisplayModal.textContent = 'Erro!';
+        alert('Erro ao renovar token. Faça login novamente.');
+        
+        setTimeout(() => {
+            indicator.style.opacity = '1';
+            if (indicatorModal) indicatorModal.style.opacity = '1';
+        }, 2000);
+    }
+}
+
+async function renovarTokenAutomatico() {
+    try {
+        await renovarTokenAPI();
+        console.log('Token renovado automaticamente');
+    } catch (e) {
+        console.error('Erro na renovação automática:', e);
+    }
+}
+
+async function renovarTokenAPI() {
+    const refresh = localStorage.getItem('refreshToken');
+    if (!refresh) throw new Error('Sem refresh token');
+
+    const response = await fetch('/api/auth/token/refresh/', {
+        method: 'POST',
+        headers: { 
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({ refresh: refresh })
+    });
+
+    if (!response.ok) {
+        throw new Error('Falha ao renovar token');
+    }
+
+    const data = await response.json();
+    localStorage.setItem('accessToken', data.access);
+    if (data.refresh) localStorage.setItem('refreshToken', data.refresh);
+}
+
+// Parar monitoramento ao sair da página
+window.addEventListener('beforeunload', () => {
+    if (tokenMonitorInterval) clearInterval(tokenMonitorInterval);
+});
+// ===== FIM MONITORAMENTO TOKEN =====

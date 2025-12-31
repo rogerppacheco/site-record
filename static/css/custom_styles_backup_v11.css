@@ -1,63 +1,33 @@
 /* ==========================================================================
-   1. VARIÁVEIS GERAIS & DESIGN SYSTEM - INSPIRADO NIO INTERNET
+   1. VARIÁVEIS GERAIS & DESIGN SYSTEM
    ========================================================================== */
 :root {
-    /* Paleta de Cores Moderna - Estilo NIO */
-    --cor-primaria: #0066FF;
-    --cor-primaria-hover: #004BD9;
-    --cor-primaria-light: #3385FF;
-    --cor-secundaria: #6B46FF;
-    --cor-secundaria-hover: #5534E0;
-    --cor-sucesso: #00D68F;
-    --cor-perigo: #FF3D71;
-    --cor-aviso: #FFAA00;
-    --cor-info: #00B8D9;
+    /* Paleta de Cores Moderna */
+    --cor-primaria: #0d6efd;
+    --cor-primaria-hover: #0b5ed7;
+    --cor-secundaria: #6c757d;
+    --cor-sucesso: #198754;
+    --cor-perigo: #dc3545;
+    --cor-aviso: #ffc107;
     
-    /* Cores de Fundo - Gradientes Suaves */
-    --cor-fundo: #F7F9FC;
-    --cor-fundo-escuro: #E8EDF5;
-    --cor-surface: #FFFFFF;
-    --cor-surface-hover: #F8FAFB;
-    --cor-texto: #1A2332;
-    --cor-texto-suave: #5B6B7D;
-    --cor-texto-claro: #8F9BB3;
-    --cor-texto-branco: #FFFFFF;
-    --cor-texto-branco-suave: rgba(255, 255, 255, 0.95);
-    --cor-borda: #E4E9F2;
-    --cor-borda-hover: #C5CEE0;
+    /* Cores de Fundo e Texto */
+    --cor-fundo: #f4f6f9;
+    --cor-surface: #ffffff;
+    --cor-texto: #212529;
+    --cor-texto-suave: #6c757d;
+    --cor-borda: #dee2e6;
     
-    /* Header - Glassmorphism */
-    --cor-header-bg: rgba(255, 255, 255, 0.95);
-    --cor-header-text: #1A2332;
-    --cor-header-shadow: 0 8px 32px rgba(31, 38, 135, 0.08);
+    /* Header */
+    --cor-header-bg: #ffffff;
+    --cor-header-text: #212529;
     
-    /* Gradientes Modernos */
-    --gradiente-primario: linear-gradient(135deg, #0066FF 0%, #00D4FF 100%);
-    --gradiente-secundario: linear-gradient(135deg, #6B46FF 0%, #A259FF 100%);
-    --gradiente-sucesso: linear-gradient(135deg, #00D68F 0%, #00E7A0 100%);
-    --gradiente-perigo: linear-gradient(135deg, #FF3D71 0%, #FF6B9D 100%);
-    
-    /* Efeitos Visuais Modernos */
-    --sombra-suave: 0 2px 8px rgba(31, 38, 135, 0.04);
-    --sombra-media: 0 8px 20px rgba(31, 38, 135, 0.08);
-    --sombra-alta: 0 16px 32px rgba(31, 38, 135, 0.12);
-    --sombra-elevada: 0 24px 48px rgba(31, 38, 135, 0.16);
-    --sombra-colorida: 0 8px 24px rgba(0, 102, 255, 0.2);
-    
-    /* Glassmorphism */
-    --glass-bg: rgba(255, 255, 255, 0.1);
-    --glass-border: rgba(255, 255, 255, 0.2);
-    --glass-shadow: 0 8px 32px rgba(31, 38, 135, 0.15);
-    
-    /* Transições Suaves */
+    /* Efeitos Visuais */
+    --sombra-suave: 0 2px 4px rgba(0,0,0,0.05);
+    --sombra-media: 0 4px 12px rgba(0, 0, 0, 0.08);
+    --sombra-alta: 0 8px 24px rgba(0, 0, 0, 0.12);
+    --sombra-elevada: 0 12px 32px rgba(0, 0, 0, 0.15);
     --transition-speed: 0.3s;
-    --transition-smooth: 0.4s;
-    --transition-cubic: cubic-bezier(0.4, 0, 0.2, 1);
-    --transition-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
-    
-    /* Cores de Contraste Melhorado */
-    --texto-luz: #1A2332;
-    --texto-luz-forte: #0F1419;
+    --transition-cubic: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 /* Reset Básico Seguro (Compatível com Bootstrap) */
@@ -94,12 +64,10 @@ ul {
 }
 
 /* ==========================================================================
-   2. CABEÇALHO E NAVEGAÇÃO - GLASSMORPHISM STYLE
+   2. CABEÇALHO E NAVEGAÇÃO PADRONIZADO
    ========================================================================== */
 .main-header {
-    background: var(--cor-header-bg);
-    -webkit-backdrop-filter: blur(20px);
-    backdrop-filter: blur(20px);
+    background-color: var(--cor-header-bg);
     padding: 0 1.5rem;
     position: fixed;
     top: 0; 
@@ -107,11 +75,10 @@ ul {
     width: 100%; 
     height: 80px;
     z-index: 1020; 
-    box-shadow: var(--cor-header-shadow);
+    box-shadow: var(--sombra-suave);
     display: flex; 
     align-items: center;
-    border-bottom: 1px solid var(--cor-borda);
-    transition: all var(--transition-smooth) var(--transition-cubic);
+    border-bottom: 1px solid rgba(0,0,0,0.05);
 }
 
 .header-container {
@@ -204,13 +171,12 @@ ul {
 }
 
 .logout-button { 
-    background: var(--gradiente-perigo) !important; 
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%) !important; 
     border: none !important;
-    box-shadow: 0 4px 15px rgba(255, 61, 113, 0.3) !important;
+    box-shadow: 0 4px 15px rgba(220, 53, 69, 0.25) !important;
     position: relative;
     overflow: hidden;
-    transition: all var(--transition-smooth) var(--transition-cubic) !important;
-    border-radius: 8px !important;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
 }
 
 .logout-button::before {
@@ -220,14 +186,14 @@ ul {
     left: -100%;
     width: 100%;
     height: 100%;
-    background: rgba(255, 255, 255, 0.2);
-    transition: left var(--transition-smooth) ease;
+    background: rgba(255, 255, 255, 0.15);
+    transition: left 0.4s ease;
 }
 
 .logout-button:hover {
-    box-shadow: 0 12px 28px rgba(255, 61, 113, 0.4) !important;
-    transform: translateY(-2px) scale(1.02);
-    filter: brightness(1.15);
+    background: linear-gradient(135deg, #c82333 0%, #a71d2a 100%) !important;
+    box-shadow: 0 8px 25px rgba(220, 53, 69, 0.4) !important;
+    transform: translateY(-2px);
 }
 
 .logout-button:hover::before {
@@ -437,80 +403,39 @@ ul {
 }
 
 /* ==========================================================================
-   5. COMPONENTES GERAIS - ESTILO MODERNO NIO
+   5. COMPONENTES GERAIS
    ========================================================================== */
 .area-interna-section {
-    padding: 2rem; 
-    min-height: calc(100vh - 160px);
+    padding: 2rem; min-height: calc(100vh - 160px);
 }
 
 .modal-content {
-    border-radius: 20px; 
+    border-radius: 16px; 
     border: none; 
     box-shadow: var(--sombra-elevada);
-    background: var(--cor-surface);
-    border: 1px solid var(--cor-borda);
+    background: #ffffff;
 }
 
 .modal-backdrop {
-    background: rgba(26, 35, 50, 0.5) !important;
-    -webkit-backdrop-filter: blur(8px);
-    backdrop-filter: blur(8px);
-}
-
-/* Cards Modernos com Glassmorphism */
-.card {
-    border: 1px solid var(--cor-borda);
-    border-radius: 16px;
-    box-shadow: var(--sombra-suave);
-    background: var(--cor-surface);
-    transition: all var(--transition-smooth) var(--transition-cubic);
-}
-
-.card:hover {
-    box-shadow: var(--sombra-media);
-    transform: translateY(-2px);
-    border-color: var(--cor-borda-hover);
-}
-
-.card-header {
-    background: linear-gradient(135deg, rgba(0, 102, 255, 0.05) 0%, rgba(107, 70, 255, 0.05) 100%);
-    border-bottom: 1px solid var(--cor-borda);
-    border-radius: 16px 16px 0 0 !important;
-    padding: 1.25rem 1.5rem;
-    font-weight: 600;
-    color: var(--cor-texto);
-}
-
-.card-body {
-    padding: 1.5rem;
-}
-
-.form-control, .form-select {
-    border: 1px solid var(--cor-borda);
-    border-radius: 10px;
-    padding: 0.75rem 1rem;
-    font-size: 0.95rem;
-    color: var(--cor-texto);
-    background: var(--cor-surface);
-    transition: all var(--transition-speed) var(--transition-cubic);
+    background: rgba(0, 0, 0, 0.4) !important;
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
 }
 
 .form-control:focus, .form-select:focus {
-    box-shadow: 0 0 0 4px rgba(0, 102, 255, 0.1);
+    box-shadow: 0 0 0 4px rgba(13, 110, 253, 0.15);
     border-color: var(--cor-primaria);
-    background: var(--cor-surface-hover);
-    outline: none;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 input:focus, textarea:focus, select:focus {
     border-color: var(--cor-primaria) !important;
-    box-shadow: 0 0 0 4px rgba(0, 102, 255, 0.1) !important;
+    box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.1) !important;
     outline: none !important;
 }
 
 textarea:focus {
-    box-shadow: 0 0 0 4px rgba(0, 102, 255, 0.12) !important;
+    box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.15) !important;
 }
 
 /* Botão de ação flutuante (opcional para mobile) */
@@ -637,75 +562,63 @@ textarea:focus {
 }
 
 .btn-primary, .btn.btn-primary {
-    background: var(--gradiente-primario);
+    background: linear-gradient(135deg, #0d6efd 0%, #0b5ed7 100%);
     color: white;
-    box-shadow: var(--sombra-colorida);
 }
 
 .btn-primary:hover, .btn.btn-primary:hover {
-    transform: translateY(-3px) scale(1.02);
-    box-shadow: 0 12px 28px rgba(0, 102, 255, 0.3);
-    filter: brightness(1.1);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(13, 110, 253, 0.25);
 }
 
 .btn-success, .btn.btn-success {
-    background: var(--gradiente-sucesso);
+    background: linear-gradient(135deg, #198754 0%, #157347 100%);
     color: white;
-    box-shadow: 0 4px 12px rgba(0, 214, 143, 0.2);
 }
 
 .btn-success:hover, .btn.btn-success:hover {
-    transform: translateY(-3px) scale(1.02);
-    box-shadow: 0 12px 28px rgba(0, 214, 143, 0.3);
-    filter: brightness(1.1);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(25, 135, 84, 0.25);
 }
 
 .btn-danger, .btn.btn-danger {
-    background: var(--gradiente-perigo);
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
     color: white;
-    box-shadow: 0 4px 12px rgba(255, 61, 113, 0.2);
 }
 
 .btn-danger:hover, .btn.btn-danger:hover {
-    transform: translateY(-3px) scale(1.02);
-    box-shadow: 0 12px 28px rgba(255, 61, 113, 0.3);
-    filter: brightness(1.1);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(220, 53, 69, 0.25);
 }
 
 .btn-warning, .btn.btn-warning {
-    background: linear-gradient(135deg, #FFAA00 0%, #FFD000 100%);
-    color: #1A2332;
-    box-shadow: 0 4px 12px rgba(255, 170, 0, 0.2);
-    font-weight: 600;
+    background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%);
+    color: #212529;
 }
 
 .btn-warning:hover, .btn.btn-warning:hover {
-    transform: translateY(-3px) scale(1.02);
-    box-shadow: 0 12px 28px rgba(255, 170, 0, 0.3);
-    filter: brightness(1.1);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(255, 193, 7, 0.25);
 }
 
 .btn-info, .btn.btn-info {
-    background: linear-gradient(135deg, #00B8D9 0%, #00E5FF 100%);
+    background: linear-gradient(135deg, #0dcaf0 0%, #17a2b8 100%);
     color: white;
-    box-shadow: 0 4px 12px rgba(0, 184, 217, 0.2);
 }
 
 .btn-info:hover, .btn.btn-info:hover {
-    transform: translateY(-3px) scale(1.02);
-    box-shadow: 0 12px 28px rgba(0, 184, 217, 0.3);
-    filter: brightness(1.1);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(13, 202, 240, 0.25);
 }
 
 .btn-confirmar {
-    background: var(--gradiente-primario);
+    background: linear-gradient(135deg, #0d6efd 0%, #0b5ed7 100%);
     color: white;
-    box-shadow: var(--sombra-colorida);
 }
 .btn-confirmar:hover { 
-    transform: translateY(-3px) scale(1.02);
-    box-shadow: 0 12px 28px rgba(0, 102, 255, 0.35);
-    filter: brightness(1.1);
+    background: linear-gradient(135deg, #0b5ed7 0%, #0a4fc4 100%);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(13, 110, 253, 0.25);
 }
 
 .btn-cancelar {
@@ -723,28 +636,23 @@ textarea:focus {
 /* ========================================================================== */
 /* BOTÕES DE AÇÃO PADRONIZADOS: EDITAR E EXCLUIR */
 /* ========================================================================== */
-/* v=13.1: REFORÇO DE SELETORES PARA GARANTIR APLICAÇÃO */
 
 /* Botão Editar - Estilo Padrão */
-.btn-editar, 
-.btn-action-edit,
-button.btn-action-edit,
-.btn.btn-action-edit,
-a.btn-action-edit {
-    background: var(--gradiente-primario) !important;
+.btn-editar, .btn-action-edit {
+    background: linear-gradient(135deg, #0d6efd 0%, #0b5ed7 100%) !important;
     color: white !important;
     border: none !important;
     font-weight: 600;
     font-size: 0.85rem;
     padding: 0.5rem 0.875rem !important;
-    border-radius: 8px;
-    transition: all var(--transition-smooth) var(--transition-cubic);
-    display: inline-flex !important;
+    border-radius: 6px;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    display: inline-flex;
     align-items: center;
     gap: 0.4rem;
     position: relative;
     overflow: hidden;
-    box-shadow: var(--sombra-colorida);
+    box-shadow: 0 4px 12px rgba(13, 110, 253, 0.2);
 }
 
 .btn-editar::before, .btn-action-edit::before {
@@ -754,37 +662,25 @@ a.btn-action-edit {
     left: -100%;
     width: 100%;
     height: 100%;
-    background: rgba(255, 255, 255, 0.2);
-    transition: left var(--transition-smooth) ease;
+    background: rgba(255, 255, 255, 0.15);
+    transition: left 0.4s ease;
     z-index: 0;
 }
 
-.btn-editar:hover, 
-.btn-action-edit:hover,
-button.btn-action-edit:hover,
-.btn.btn-action-edit:hover,
-a.btn-action-edit:hover {
-    transform: translateY(-2px) scale(1.02);
-    box-shadow: 0 12px 28px rgba(0, 102, 255, 0.35);
+.btn-editar:hover, .btn-action-edit:hover {
+    background: linear-gradient(135deg, #0b5ed7 0%, #0a4fc4 100%) !important;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(13, 110, 253, 0.3);
     color: white !important;
-    filter: brightness(1.15);
 }
 
-.btn-editar:hover::before, 
-.btn-action-edit:hover::before,
-button.btn-action-edit:hover::before,
-.btn.btn-action-edit:hover::before,
-a.btn-action-edit:hover::before {
+.btn-editar:hover::before, .btn-action-edit:hover::before {
     left: 100%;
 }
 
-.btn-editar:active, 
-.btn-action-edit:active,
-button.btn-action-edit:active,
-.btn.btn-action-edit:active,
-a.btn-action-edit:active {
-    transform: translateY(0) scale(0.98);
-    box-shadow: var(--sombra-colorida);
+.btn-editar:active, .btn-action-edit:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px rgba(13, 110, 253, 0.25);
 }
 
 .btn-editar i, .btn-action-edit i {
@@ -813,25 +709,21 @@ a.btn-action-edit:active {
 /* ========================================================================== */
 
 /* Botão Excluir - Estilo Padrão */
-.btn-excluir, 
-.btn-action-delete,
-button.btn-action-delete,
-.btn.btn-action-delete,
-a.btn-action-delete {
-    background: var(--gradiente-perigo) !important;
+.btn-excluir, .btn-action-delete {
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%) !important;
     color: white !important;
     border: none !important;
     font-weight: 600;
     font-size: 0.85rem;
     padding: 0.5rem 0.875rem !important;
-    border-radius: 8px;
-    transition: all var(--transition-smooth) var(--transition-cubic);
-    display: inline-flex !important;
+    border-radius: 6px;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    display: inline-flex;
     align-items: center;
     gap: 0.4rem;
     position: relative;
     overflow: hidden;
-    box-shadow: 0 4px 12px rgba(255, 61, 113, 0.2);
+    box-shadow: 0 4px 12px rgba(220, 53, 69, 0.2);
 }
 
 .btn-excluir::before, .btn-action-delete::before {
@@ -841,20 +733,16 @@ a.btn-action-delete {
     left: -100%;
     width: 100%;
     height: 100%;
-    background: rgba(255, 255, 255, 0.2);
-    transition: left var(--transition-smooth) ease;
+    background: rgba(255, 255, 255, 0.15);
+    transition: left 0.4s ease;
     z-index: 0;
 }
 
-.btn-excluir:hover, 
-.btn-action-delete:hover,
-button.btn-action-delete:hover,
-.btn.btn-action-delete:hover,
-a.btn-action-delete:hover {
-    transform: translateY(-2px) scale(1.02);
-    box-shadow: 0 12px 28px rgba(255, 61, 113, 0.35);
+.btn-excluir:hover, .btn-action-delete:hover {
+    background: linear-gradient(135deg, #c82333 0%, #a71d2a 100%) !important;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(220, 53, 69, 0.3);
     color: white !important;
-    filter: brightness(1.15);
 }
 
 .btn-excluir:hover::before, .btn-action-delete:hover::before {
@@ -862,8 +750,8 @@ a.btn-action-delete:hover {
 }
 
 .btn-excluir:active, .btn-action-delete:active {
-    transform: translateY(0) scale(0.98);
-    box-shadow: 0 4px 12px rgba(255, 61, 113, 0.2);
+    transform: translateY(0);
+    box-shadow: 0 2px 8px rgba(220, 53, 69, 0.25);
 }
 
 .btn-excluir i, .btn-action-delete i {
@@ -1287,275 +1175,6 @@ h6 {
 .elevation-3 { box-shadow: var(--sombra-alta); }
 .elevation-4 { box-shadow: var(--sombra-elevada); }
 
-/* ==========================================================================
-   GLASSMORPHISM COMPONENTS - ESTILO NIO INTERNET
-   ========================================================================== */
-
-/* Glass Card - Translúcido */
-.glass-card {
-    background: var(--glass-bg);
-    -webkit-backdrop-filter: blur(20px);
-    backdrop-filter: blur(20px);
-    border: 1px solid var(--glass-border);
-    border-radius: 20px;
-    box-shadow: var(--glass-shadow);
-    padding: 2rem;
-    transition: all var(--transition-smooth) var(--transition-cubic);
-}
-
-.glass-card:hover {
-    background: rgba(255, 255, 255, 0.15);
-    border-color: rgba(255, 255, 255, 0.3);
-    box-shadow: 0 12px 40px rgba(31, 38, 135, 0.2);
-    transform: translateY(-4px);
-}
-
-/* Glass Button - Translúcido */
-.glass-button {
-    background: rgba(255, 255, 255, 0.1);
-    -webkit-backdrop-filter: blur(10px);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 12px;
-    padding: 0.75rem 1.5rem;
-    color: white;
-    font-weight: 600;
-    transition: all var(--transition-smooth) var(--transition-cubic);
-    cursor: pointer;
-}
-
-.glass-button:hover {
-    background: rgba(255, 255, 255, 0.2);
-    border-color: rgba(255, 255, 255, 0.4);
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-}
-
-/* Glass Panel - Fundo Semi-transparente */
-.glass-panel {
-    background: rgba(255, 255, 255, 0.7);
-    -webkit-backdrop-filter: blur(15px);
-    backdrop-filter: blur(15px);
-    border: 1px solid rgba(255, 255, 255, 0.5);
-    border-radius: 16px;
-    padding: 1.5rem;
-    box-shadow: 0 8px 32px rgba(31, 38, 135, 0.1);
-}
-
-/* Badge Moderno com Gradiente */
-.badge-gradient-primary {
-    background: var(--gradiente-primario);
-    color: white;
-    padding: 0.5rem 1rem;
-    border-radius: 50px;
-    font-weight: 600;
-    font-size: 0.85rem;
-    box-shadow: 0 4px 12px rgba(0, 102, 255, 0.25);
-}
-
-.badge-gradient-success {
-    background: var(--gradiente-sucesso);
-    color: var(--cor-texto);
-    padding: 0.5rem 1rem;
-    border-radius: 50px;
-    font-weight: 600;
-    font-size: 0.85rem;
-    box-shadow: 0 4px 12px rgba(0, 214, 143, 0.25);
-}
-
-.badge-gradient-danger {
-    background: var(--gradiente-perigo);
-    color: white;
-    padding: 0.5rem 1rem;
-    border-radius: 50px;
-    font-weight: 600;
-    font-size: 0.85rem;
-    box-shadow: 0 4px 12px rgba(255, 61, 113, 0.25);
-}
-
-/* ==========================================================================
-   FEATURE BUBBLES - ÍCONES EM BALÕES (ESTILO NIO INTERNET)
-   ========================================================================== */
-
-/* Container de Feature Bubbles */
-.feature-bubbles {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-    gap: 2rem;
-    margin: 2rem 0;
-}
-
-/* Feature Bubble Individual */
-.feature-bubble {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    transition: all var(--transition-smooth) var(--transition-cubic);
-}
-
-/* Círculo do Ícone */
-.feature-bubble .icon-circle {
-    width: 100px;
-    height: 100px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 1rem;
-    font-size: 2.5rem;
-    transition: all var(--transition-smooth) var(--transition-cubic);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-    position: relative;
-    overflow: hidden;
-}
-
-/* Variações de Cores - Primário (Azul) */
-.feature-bubble.bubble-primary .icon-circle {
-    background: linear-gradient(135deg, #0066FF 0%, #00D4FF 100%);
-    color: white;
-}
-
-.feature-bubble.bubble-primary:hover .icon-circle {
-    box-shadow: 0 12px 32px rgba(0, 102, 255, 0.35);
-    transform: translateY(-4px) scale(1.05);
-}
-
-/* Variações de Cores - Sucesso (Verde) */
-.feature-bubble.bubble-success .icon-circle {
-    background: linear-gradient(135deg, #00D68F 0%, #00E7A0 100%);
-    color: white;
-}
-
-.feature-bubble.bubble-success:hover .icon-circle {
-    box-shadow: 0 12px 32px rgba(0, 214, 143, 0.35);
-    transform: translateY(-4px) scale(1.05);
-}
-
-/* Variações de Cores - Roxo */
-.feature-bubble.bubble-secondary .icon-circle {
-    background: linear-gradient(135deg, #6B46FF 0%, #A259FF 100%);
-    color: white;
-}
-
-.feature-bubble.bubble-secondary:hover .icon-circle {
-    box-shadow: 0 12px 32px rgba(107, 70, 255, 0.35);
-    transform: translateY(-4px) scale(1.05);
-}
-
-/* Variações de Cores - Perigo (Vermelho) */
-.feature-bubble.bubble-danger .icon-circle {
-    background: linear-gradient(135deg, #FF3D71 0%, #FF6B9D 100%);
-    color: white;
-}
-
-.feature-bubble.bubble-danger:hover .icon-circle {
-    box-shadow: 0 12px 32px rgba(255, 61, 113, 0.35);
-    transform: translateY(-4px) scale(1.05);
-}
-
-/* Variações de Cores - Info (Ciano) */
-.feature-bubble.bubble-info .icon-circle {
-    background: linear-gradient(135deg, #00B8D9 0%, #00E5FF 100%);
-    color: white;
-}
-
-.feature-bubble.bubble-info:hover .icon-circle {
-    box-shadow: 0 12px 32px rgba(0, 184, 217, 0.35);
-    transform: translateY(-4px) scale(1.05);
-}
-
-/* Rótulo do Bubble */
-.feature-bubble .bubble-label {
-    font-size: 0.95rem;
-    font-weight: 600;
-    color: var(--cor-texto);
-    margin-top: 0.5rem;
-    transition: color var(--transition-speed) ease;
-}
-
-/* Descrição (Opcional) */
-.feature-bubble .bubble-description {
-    font-size: 0.85rem;
-    color: var(--cor-texto-suave);
-    margin-top: 0.25rem;
-    max-width: 120px;
-}
-
-/* ==========================================================================
-   MELHORIAS DE CONTRASTE - TEXTO EM BACKGROUNDS ESCUROS
-   ========================================================================== */
-
-/* Texto em backgrounds azul/roxo/vermelho */
-.bg-primary, [style*="background: linear-gradient(135deg, #0066FF"],
-[style*="background: linear-gradient(135deg, #6B46FF"],
-[style*="background: linear-gradient(135deg, #FF3D71"] {
-    color: var(--cor-texto-branco) !important;
-}
-
-/* Cards com backgrounds escuros */
-.card-dark {
-    background: linear-gradient(135deg, #1a3a52 0%, #0f2438 100%);
-    color: var(--cor-texto-branco);
-    border: none;
-}
-
-.card-dark h1, .card-dark h2, .card-dark h3, .card-dark h4, .card-dark h5, .card-dark h6 {
-    color: var(--cor-texto-branco);
-    font-weight: 700;
-}
-
-.card-dark .card-title {
-    color: var(--cor-texto-branco);
-}
-
-.card-dark .card-text {
-    color: rgba(255, 255, 255, 0.9);
-}
-
-.card-dark .badge {
-    background: rgba(255, 255, 255, 0.2);
-    color: white;
-}
-
-/* Classe para texto com contraste melhorado */
-.text-contrast-high {
-    font-weight: 600;
-    letter-spacing: 0.5px;
-}
-
-/* Rótulos em backgrounds escuros */
-.label-on-dark {
-    color: rgba(255, 255, 255, 0.95);
-    font-weight: 600;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-}
-
-/* Divider Moderno com Gradiente */
-.divider-gradient {
-    height: 2px;
-    background: linear-gradient(90deg, transparent 0%, var(--cor-primaria) 50%, transparent 100%);
-    margin: 2rem 0;
-    border: none;
-}
-
-/* Text Gradient */
-.text-gradient-primary {
-    background: var(--gradiente-primario);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    font-weight: 700;
-}
-
-.text-gradient-secondary {
-    background: var(--gradiente-secundario);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    font-weight: 700;
-}
-
 /* Transições Suaves Globais */
 *:not(.spinner) {
     transition: background-color 0.2s ease, 
@@ -1568,124 +1187,4 @@ h6 {
     .list-item { flex-direction: column; text-align: center; gap: 15px; }
     .actions-group { width: 100%; justify-content: center; }
     .actions-group button { flex: 1; }
-}
-
-/* ==========================================================================
-   MELHORIA DE CONTRASTES E LEGIBILIDADE - v=13.2
-   ========================================================================== */
-
-/* Melhor contraste para labels em geral */
-.form-label {
-    color: var(--texto-luz-forte) !important;
-    font-weight: 700 !important;
-}
-
-/* Labels em headers coloridos - texto branco com boa legibilidade */
-.card-header.bg-primary .form-label,
-.card-header.bg-danger .form-label,
-.card-header.bg-success .form-label {
-    color: rgba(255, 255, 255, 0.98) !important;
-    font-weight: 700 !important;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-}
-
-/* Melhor contraste em card-body */
-.card-body .form-label.small.fw-bold {
-    color: var(--texto-luz) !important;
-    font-weight: 700 !important;
-}
-
-/* Dashboard cards com melhor contraste - cores menos escuras */
-.dash-card {
-    border-radius: 12px;
-    border: none;
-    color: white;
-    padding: 20px;
-    height: 100%;
-    position: relative;
-    overflow: hidden;
-    transition: transform 0.2s;
-    cursor: pointer;
-}
-
-.dash-card h3 {
-    font-size: 2.5rem;
-    font-weight: bold;
-    margin: 0;
-    color: white !important;
-    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
-}
-
-.dash-card p {
-    font-size: 0.9rem;
-    opacity: 0.96;
-    margin-bottom: 5px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: rgba(255, 255, 255, 0.95) !important;
-    font-weight: 600;
-}
-
-.dash-card .icon-bg {
-    position: absolute;
-    right: -10px;
-    bottom: -10px;
-    font-size: 5rem;
-    opacity: 0.15;
-    transform: rotate(-15deg);
-}
-
-/* Gradientes melhorados para melhor legibilidade */
-.bg-gradient-primary {
-    background: linear-gradient(45deg, #3b82f6, #1d4ed8) !important;
-}
-
-.bg-gradient-success {
-    background: linear-gradient(45deg, #10b981, #059669) !important;
-}
-
-.bg-gradient-info {
-    background: linear-gradient(45deg, #06b6d4, #0891b2) !important;
-}
-
-.bg-gradient-warning {
-    background: linear-gradient(45deg, #f59e0b, #d97706) !important;
-    color: #fff;
-}
-
-/* Inputs em cards com melhor visibilidade */
-.card-body .form-control,
-.card-body .form-select {
-    border: 1px solid #dee2e6;
-    background-color: #ffffff;
-    color: var(--cor-texto);
-}
-
-.card-body .form-control:focus,
-.card-body .form-select:focus {
-    border-color: var(--cor-primaria);
-    box-shadow: 0 0 0 0.2rem rgba(0, 102, 255, 0.15);
-}
-
-/* Texto em fundos escuros - garantir legibilidade */
-.text-contrast-high {
-    color: #ffffff !important;
-    font-weight: 600;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-}
-
-.label-on-dark {
-    color: rgba(255, 255, 255, 0.95) !important;
-    font-weight: 700;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-}
-
-/* Card com fundo escuro */
-.card-dark {
-    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.card-dark .card-body {
-    color: rgba(255, 255, 255, 0.95);
 }

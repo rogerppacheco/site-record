@@ -4,14 +4,25 @@ from django.views.generic import TemplateView
 from django.conf import settings
 from django.conf.urls.static import static
 from rest_framework.routers import DefaultRouter
+from rest_framework_simplejwt.views import TokenRefreshView
 
 # --- IMPORTS DAS VIEWS NECESSÁRIAS ---
 from usuarios.views import LoginView
 from core.views import calendario_fiscal_view, RegraAutomacaoViewSet
 from crm_app.views import (
     page_painel_performance, 
-    page_cdoi_novo, 
-    listar_grupos_whatsapp_api  # Importando a função de grupos
+    page_cdoi_novo,
+    page_bonus_m10,
+    listar_grupos_whatsapp_api,  # Importando a função de grupos
+    SafraM10ListView,
+    DashboardM10View,
+    DashboardFPDView,
+    ContratoM10DetailView,
+    PopularSafraM10View,
+    ImportarFPDView,
+    ImportarChurnView,
+    AtualizarFaturasView,
+    ExportarM10View,
 )
 
 # --- CONFIGURAÇÃO DO ROUTER PARA REGRAS DE AUTOMAÇÃO ---
@@ -24,7 +35,7 @@ urlpatterns = [
     
     # API AUTH
     path('api/auth/login/', LoginView.as_view(), name='token_obtain_pair'),
-    path('api/auth/token/refresh/', include('djoser.urls.jwt')),
+    path('api/auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('login/', LoginView.as_view(), name='login_direct'),
 
     # --- ROTAS DE CORREÇÃO (PARA O FRONTEND FUNCIONAR) ---
@@ -72,6 +83,21 @@ urlpatterns = [
 
     # --- NOVO: RECORD VERTICAL (CDOI) ---
     path('cdoi-novo/', page_cdoi_novo, name='page_cdoi_novo'),
+
+    # --- NOVO: BÔNUS M-10 & FPD ---
+    path('bonus-m10/', page_bonus_m10, name='page_bonus_m10'),
+    path('importar-fpd/', TemplateView.as_view(template_name='importar_fpd.html'), name='importar_fpd'),
+    
+    # API Bônus M-10
+    path('api/bonus-m10/safras/', SafraM10ListView.as_view(), name='api-bonus-m10-safras'),
+    path('api/bonus-m10/safras/criar/', PopularSafraM10View.as_view(), name='api-bonus-m10-safras-criar'),
+    path('api/bonus-m10/dashboard-m10/', DashboardM10View.as_view(), name='api-bonus-m10-dashboard'),
+    path('api/bonus-m10/dashboard-fpd/', DashboardFPDView.as_view(), name='api-bonus-m10-dashboard-fpd'),
+    path('api/bonus-m10/contratos/<int:pk>/', ContratoM10DetailView.as_view(), name='api-bonus-m10-contrato-detail'),
+    path('api/bonus-m10/importar-fpd/', ImportarFPDView.as_view(), name='api-bonus-m10-importar-fpd'),
+    path('api/bonus-m10/importar-churn/', ImportarChurnView.as_view(), name='api-bonus-m10-importar-churn'),
+    path('api/bonus-m10/faturas/atualizar/', AtualizarFaturasView.as_view(), name='api-bonus-m10-atualizar-faturas'),
+    path('api/bonus-m10/exportar/', ExportarM10View.as_view(), name='api-bonus-m10-exportar'),
 ]
 
 if settings.DEBUG:

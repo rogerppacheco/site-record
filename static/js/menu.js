@@ -106,6 +106,37 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // ===== ADICIONAR INDICADOR DE TOKEN NO HEADER =====
+    const sairButton = document.querySelector('.logout-button');
+    if (sairButton && token && window.location.pathname !== '/' && window.location.pathname !== '/login/') {
+        // Verifica se já existe um indicador
+        if (!document.getElementById('token-indicator')) {
+            const tokenIndicator = document.createElement('div');
+            tokenIndicator.id = 'token-indicator';
+            tokenIndicator.className = 'token-indicator';
+            tokenIndicator.style.cssText = 'display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 8px; background: #e8f5e9; cursor: pointer; margin-right: 12px;';
+            tokenIndicator.title = 'Token válido. Clique para renovar';
+            tokenIndicator.onclick = () => {
+                if (typeof renovarTokenManual === 'function') {
+                    renovarTokenManual();
+                }
+            };
+            
+            tokenIndicator.innerHTML = `
+                <i class="bi bi-shield-check" style="color: #4caf50;"></i>
+                <span id="token-time" style="font-size: 0.85rem; font-weight: 600; color: #2e7d32;">--:--</span>
+            `;
+            
+            // Inserir antes do botão Sair
+            sairButton.parentNode.insertBefore(tokenIndicator, sairButton);
+            
+            // Iniciar monitoramento
+            if (typeof iniciarMonitoramentoToken === 'function') {
+                iniciarMonitoramentoToken();
+            }
+        }
+    }
+
     // ===== INDICADOR DE LOADING GLOBAL =====
     function showGlobalLoading(message = 'Carregando...') {
         const existing = document.getElementById('global-loading');

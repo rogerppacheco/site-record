@@ -624,3 +624,108 @@ class CdoiBloco(models.Model):
     andares = models.IntegerField()
     unidades_por_andar = models.IntegerField()
     total_hps_bloco = models.IntegerField()
+
+
+# =============================================================================
+# BÔNUS M-10 & FPD
+# =============================================================================
+
+class SafraM10(models.Model):
+    """Agrupa contratos por safra (mês de instalação)"""
+    mes_referencia = models.DateField(help_text="Mês/Ano da safra (ex: 2025-07-01)")
+    total_instalados = models.IntegerField(default=0, help_text="Total de contratos instalados na safra")
+    total_ativos = models.IntegerField(default=0, help_text="Total ainda ativo")
+    total_elegivel_bonus = models.IntegerField(default=0, help_text="Elegíveis para bônus M-10")
+    valor_bonus_total = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Total a pagar (elegíveis × R$ 150)")
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Safra M-10"
+        verbose_name_plural = "Safras M-10"
+        ordering = ['-mes_referencia']
+
+    def __str__(self):
+        return f"Safra {self.mes_referencia.strftime('%m/%Y')} - {self.total_instalados} contratos"
+
+
+class ContratoM10(models.Model):
+    """Cada contrato individual da safra"""
+    STATUS_CHOICES = [
+        ('ATIVO', 'Ativo'),
+        ('CANCELADO', 'Cancelado'),
+        ('DOWNGRADE', 'Downgrade'),
+    ]
+
+    safra = models.ForeignKey(SafraM10, on_delete=models.CASCADE, related_name='contratos')
+    venda = models.ForeignKey('Venda', on_delete=models.SET_NULL, null=True, blank=True, related_name='bonus_m10')
+    numero_contrato = models.CharField(max_length=100, unique=True)
+    ordem_servico = models.CharField(max_length=100, null=True, blank=True, unique=True, help_text="O.S para crossover com FPD/Churn")
+    cliente_nome = models.CharField(max_length=255)
+    cpf_cliente = models.CharField(max_length=18, null=True, blank=True, help_text="CPF do cliente")
+    vendedor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    data_instalacao = models.DateField()
+    plano_original = models.CharField(max_length=100)
+    plano_atual = models.CharField(max_length=100)
+    valor_plano = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    status_contrato = models.CharField(max_length=20, choices=STATUS_CHOICES, default='ATIVO')
+    teve_downgrade = models.BooleanField(default=False, help_text="Marca manual se houve downgrade")
+    data_cancelamento = models.DateField(null=True, blank=True)
+    motivo_cancelamento = models.CharField(max_length=255, blank=True, null=True)
+    elegivel_bonus = models.BooleanField(default=False, help_text="10 faturas pagas + sem downgrade + ativo")
+    observacao = models.TextField(blank=True, null=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Contrato M-10"
+        verbose_name_plural = "Contratos M-10"
+        ordering = ['-data_instalacao']
+
+    def __str__(self):
+        return f"{self.numero_contrato} - {self.cliente_nome}"
+
+    def calcular_elegibilidade(self):
+        """Verifica se o contrato é elegível para bônus M-10"""
+        # Verifica se tem 10 faturas pagas
+        faturas_pagas = self.faturas.filter(status='PAGO').count()
+        
+        self.elegivel_bonus = (
+            faturas_pagas == 10 and
+            not self.teve_downgrade and
+            self.status_contrato == 'ATIVO'
+        )
+        self.save()
+        return self.elegivel_bonus
+
+
+class FaturaM10(models.Model):
+    """10 faturas de cada contrato"""
+    STATUS_CHOICES = [
+        ('PAGO', 'Pago'),
+        ('NAO_PAGO', 'Não Pago'),
+        ('AGUARDANDO', 'Aguardando Arrecadação'),
+        ('ATRASADO', 'Atrasado'),
+        ('OUTROS', 'Outros'),
+    ]
+
+    contrato = models.ForeignKey(ContratoM10, on_delete=models.CASCADE, related_name='faturas')
+    numero_fatura = models.IntegerField(help_text="1 a 10")
+    numero_fatura_operadora = models.CharField(max_length=100, blank=True, null=True, help_text="NR_FATURA da planilha")
+    valor = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    data_vencimento = models.DateField()
+    data_pagamento = models.DateField(null=True, blank=True)
+    dias_atraso = models.IntegerField(default=0)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='NAO_PAGO')
+    observacao = models.TextField(blank=True, null=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Fatura M-10"
+        verbose_name_plural = "Faturas M-10"
+        ordering = ['contrato', 'numero_fatura']
+        unique_together = ['contrato', 'numero_fatura']
+
+    def __str__(self):
+        return f"Fatura {self.numero_fatura} - {self.contrato.numero_contrato} - {self.status}"

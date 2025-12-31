@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=5.0">
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=13.1">
     <style>
         /* Estilos específicos para a página CDOI */
         .card { 
@@ -70,6 +70,50 @@
             color: #41464b;
         }
         
+        /* Tooltip de imagem ao passar o mouse */
+        .image-preview-icon {
+            cursor: pointer;
+            font-size: 1.5rem;
+            color: var(--cor-primaria);
+            position: relative;
+            display: inline-block;
+        }
+        
+        .image-preview-icon:hover {
+            transform: scale(1.1);
+            transition: transform 0.2s;
+        }
+        
+        .image-tooltip {
+            display: none;
+            position: absolute;
+            z-index: 1000;
+            left: 50%;
+            top: -210px;
+            transform: translateX(-50%);
+            background: white;
+            border: 3px solid var(--cor-primaria);
+            border-radius: 8px;
+            padding: 5px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        
+        .image-preview-icon:hover .image-tooltip {
+            display: block;
+        }
+        
+        .image-tooltip img {
+            width: 200px;
+            height: 200px;
+            object-fit: cover;
+            border-radius: 4px;
+        }
+        
+        .no-image-icon {
+            color: #ccc;
+            cursor: not-allowed;
+        }
+        
         /* Personalização das abas */
         .nav-tabs .nav-link {
             color: var(--cor-texto-suave);
@@ -86,29 +130,43 @@
         
         /* Ajustes para usar melhor o espaço da tela */
         .system-container {
-            max-width: 1400px !important; /* Aumenta o limite para telas maiores */
+            max-width: 1400px !important;
+            transition: max-width 0.3s ease;
         }
 
-        /* FORÇA MÁXIMA: Expande a aba Meus Acionamentos para 100% */
+        /* Quando a aba lista está ativa, expande ainda mais */
+        .tab-pane#lista-content.active ~ * .system-container,
+        body:has(#lista-content.active) .system-container {
+            max-width: 95% !important;
+        }
+
+        /* Aba Meus Acionamentos - Expansão correta */
         #lista-content {
-            width: 100vw;
-            position: relative;
-            left: 50%;
-            right: 50%;
-            margin-left: -50vw;
-            margin-right: -50vw;
-            padding: 20px;
-            background: white;
+            width: 100%;
+            padding: 0;
         }
 
         #lista-content .card {
             width: 100%;
-            margin: 0 auto;
+            margin: 0;
+            border-radius: 12px;
+        }
+        
+        /* Força largura mínima da tabela em telas grandes */
+        @media (min-width: 1200px) {
+            #lista-content .table {
+                min-width: auto;
+                font-size: 0.9rem;
+            }
+            
+            #lista-content .card {
+                box-shadow: var(--sombra-media);
+            }
         }
         
         /* CORREÇÃO ESPECÍFICA PARA TABELA CDOI - Força comportamento desktop sempre */
         #lista-content .table-responsive {
-            overflow-x: auto;
+            overflow-x: visible;
             width: 100%;
         }
         
@@ -118,13 +176,49 @@
 
         #lista-content .table {
             width: 100%;
-            min-width: 100%;
+            min-width: auto;
             margin-bottom: 0;
+            font-size: 0.9rem;
         }
 
         #lista-content .table th,
         #lista-content .table td {
-            padding: 12px 15px;
+            padding: 8px 10px;
+            vertical-align: middle;
+            white-space: nowrap;
+        }
+        
+        /* Colunas específicas podem quebrar linha e são mais largas */
+        #lista-content .table td:nth-child(2),
+        #lista-content .table td:nth-child(3) {
+            white-space: normal;
+            max-width: 200px;
+            min-width: 150px;
+        }
+        
+        /* Colunas de badges e ícones mais estreitas */
+        #lista-content .table th:nth-child(6),
+        #lista-content .table th:nth-child(7),
+        #lista-content .table th:nth-child(8),
+        #lista-content .table td:nth-child(6),
+        #lista-content .table td:nth-child(7),
+        #lista-content .table td:nth-child(8) {
+            width: 80px;
+            text-align: center;
+        }
+        
+        /* Coluna de telefone pode ser mais estreita */
+        #lista-content .table th:nth-child(5),
+        #lista-content .table td:nth-child(5) {
+            width: 120px;
+        }
+        
+        /* Coluna ID mais estreita */
+        #lista-content .table th:nth-child(1),
+        #lista-content .table td:nth-child(1) {
+            width: 50px;
+        }
+
             vertical-align: middle;
         }
 
@@ -160,6 +254,7 @@
             display: block;
             width: 100%;
             padding: 0 !important;
+            overflow: visible;
         }
 
         /* Garante expansão adequada em telas grandes */
@@ -169,7 +264,11 @@
             }
 
             #lista-content .card-body {
-                overflow-x: visible;
+                overflow-x: auto;
+            }
+            
+            .system-container {
+                max-width: 95% !important;
             }
         }
         
@@ -382,7 +481,7 @@
                 </div>
                 <div class="card-body p-0 table-responsive">
                     <table class="table table-hover align-middle mb-0">
-                        <thead class="table-light"><tr><th>ID</th><th>Condomínio</th><th>Status</th><th>Ações</th></tr></thead>
+                        <thead class="table-light"><tr><th>ID</th><th>Condomínio</th><th>Endereço</th><th>Síndico</th><th>Telefone</th><th>Total HPs</th><th>Pré-vendas</th><th>Foto</th><th>Status</th><th>Ações</th></tr></thead>
                         <tbody id="tbody-acionamentos"></tbody>
                     </table>
                 </div>
@@ -394,8 +493,8 @@
 <div class="modal fade" id="modalStatus" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Atualizar Status</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><input type="hidden" id="st-id"><label>Novo Status</label><select id="st-val" class="form-select mb-2"><option value="SEM_TRATAMENTO">Sem tratamento</option><option value="EM_CADASTRO">Em cadastro</option><option value="EM_PROJETO">Em Projeto</option><option value="EM_EXECUCAO">Em Execução</option><option value="CONCLUIDA">Concluída</option><option value="CANCELADA">Cancelada</option><option value="ARQUIVADA">Arquivada</option></select><label>Obs</label><textarea id="st-obs" class="form-control"></textarea></div><div class="modal-footer"><button onclick="salvarStatus()" class="btn btn-primary">Salvar</button></div></div></div></div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script src="{% static 'js/auth.js' %}?v=5.0"></script>
-<script src="{% static 'js/menu.js' %}?v=5.0"></script>
+<script src="{% static 'js/auth.js' %}?v=7.0"></script>
+<script src="{% static 'js/menu.js' %}?v=7.0"></script>
 <script>
     let blocos = [];
 
@@ -453,17 +552,49 @@
     // --- CRUD ---
     async function carregarMeusAcionamentos() {
         const tbody = document.getElementById('tbody-acionamentos');
-        tbody.innerHTML = '<tr><td colspan="4">Carregando...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10">Carregando...</td></tr>';
         const res = await fetch('/api/crm/cdoi/listar/', { headers: {'Authorization': `Bearer ${localStorage.getItem('accessToken')}`} });
         const lista = await res.json();
         tbody.innerHTML = '';
         lista.forEach(i => {
             let btns = '';
-            btns += `<button class="btn btn-sm btn-outline-warning me-1" onclick='editarTudo(${i.id})'>✏️ Editar</button>`;
+            btns += `<button class="btn btn-sm btn-editar me-1" onclick='editarTudo(${i.id})'>✏️ Editar</button>`;
             if (i.can_edit) btns += `<button class="btn btn-sm btn-outline-info me-1" onclick='modalStatus(${i.id}, "${i.status_cod}", "${i.observacao}")'>🔄 Status</button>`;
-            btns += `<button class="btn btn-sm btn-outline-danger" onclick='excluir(${i.id})'>🗑️</button>`;
+            btns += `<button class="btn btn-sm btn-excluir" onclick='excluir(${i.id})'>🗑️</button>`;
             
-            tbody.innerHTML += `<tr><td>#${i.id}</td><td>${i.nome}<br><small>${i.cidade}</small></td><td><span class="badge status-badge status-${i.status_cod}">${i.status}</span></td><td class="text-end">${btns}</td></tr>`;
+            const endereco = `${i.logradouro || ''}, ${i.numero || ''} - ${i.bairro || ''}`;
+            const telefone = i.contato || '-';
+            const sindico = i.nome_sindico || '-';
+            const totalHps = i.total_hps || 0;
+            const prevenda = i.prevenda || 0;
+            
+            // Coluna de imagem com preview e link
+            let imagemHtml = '';
+            if (i.link_fotos_fachada) {
+                imagemHtml = `
+                    <span class="image-preview-icon" onclick="window.open('${i.link_fotos_fachada}', '_blank')">
+                        <i class="bi bi-image"></i>
+                        <div class="image-tooltip">
+                            <img src="${i.link_fotos_fachada}" alt="Foto Fachada" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'200\' height=\'200\'%3E%3Crect fill=\'%23ddd\' width=\'200\' height=\'200\'/%3E%3Ctext x=\'50%25\' y=\'50%25\' dominant-baseline=\'middle\' text-anchor=\'middle\' font-family=\'sans-serif\' font-size=\'16\' fill=\'%23999\'%3ESem imagem%3C/text%3E%3C/svg%3E'">
+                        </div>
+                    </span>
+                `;
+            } else {
+                imagemHtml = '<i class="bi bi-image no-image-icon"></i>';
+            }
+            
+            tbody.innerHTML += `<tr>
+                <td>#${i.id}</td>
+                <td><strong>${i.nome}</strong><br><small class="text-muted">${i.cidade}</small></td>
+                <td><small>${endereco}</small></td>
+                <td>${sindico}</td>
+                <td>${telefone}</td>
+                <td class="text-center"><span class="badge bg-primary">${totalHps}</span></td>
+                <td class="text-center"><span class="badge bg-success">${prevenda}</span></td>
+                <td class="text-center">${imagemHtml}</td>
+                <td><span class="badge status-badge status-${i.status_cod}">${i.status}</span></td>
+                <td class="text-end">${btns}</td>
+            </tr>`;
         });
     }
 
@@ -583,8 +714,22 @@
         mStatus.hide(); carregarMeusAcionamentos();
     }
     async function buscarCep(cep) { try { const r=await fetch(`https://viacep.com.br/ws/${cep.replace(/\D/g,'')}/json/`); const d=await r.json(); if(!d.erro){ document.getElementById('logradouro').value=d.logradouro; document.getElementById('bairro').value=d.bairro; document.getElementById('cidade_uf').value=`${d.localidade}-${d.uf}`; document.getElementById('cidade').value=d.localidade; document.getElementById('uf').value=d.uf; } } catch(e){} }
+    
+    // Expande o container quando a aba Meus Acionamentos está ativa
+    document.getElementById('lista-tab').addEventListener('click', function() {
+        setTimeout(() => {
+            document.querySelector('.system-container').style.maxWidth = '95%';
+        }, 50);
+    });
+    
+    document.getElementById('nova-tab').addEventListener('click', function() {
+        setTimeout(() => {
+            document.querySelector('.system-container').style.maxWidth = '1400px';
+        }, 50);
+    });
 </script>
         </div>
     </main>
 </body>
 </html>
+

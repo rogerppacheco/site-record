@@ -71,7 +71,18 @@ from .views import (
     CdoiCreateView,  # Criação
     CdoiListView,    # Listagem (NOVO)
     CdoiUpdateView,  # Edição/Status (NOVO)
-    page_cdoi_novo   # Página HTML
+    page_cdoi_novo,  # Página HTML
+    
+    # --- BÔNUS M-10 & FPD ---
+    SafraM10ListView,
+    DashboardM10View,
+    DashboardFPDView,
+    ContratoM10DetailView,
+    ImportarFPDView,
+    ImportarChurnView,
+    AtualizarFaturasView,
+    ExportarM10View,
+    page_bonus_m10,
 )
 
 router = DefaultRouter()

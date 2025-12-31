@@ -53,12 +53,11 @@ from .whatsapp_service import WhatsAppService
 from xhtml2pdf import pisa
 from usuarios.permissions import CheckAPIPermission, VendaPermission
 import openpyxl 
-from openpyxl.styles import Font, PatternFill
+from openpyxl.styles import Font, PatternFill, Alignment
 from .models import GrupoDisparo
 from .serializers import GrupoDisparoSerializer
 from .models import LancamentoFinanceiro
 from .serializers import LancamentoFinanceiroSerializer
-from openpyxl.utils import get_column_letter
 
 
 # Funções de Mapa (Geometria e Busca)
@@ -2100,8 +2099,14 @@ class ImportacaoChurnView(APIView):
         if not file_obj: return Response({'error': 'Nenhum arquivo.'}, status=400)
         coluna_map = {'UF': 'uf', 'PRODUTO': 'produto', 'MATRICULA_VENDEDOR': 'matricula_vendedor', 'GV': 'gv', 'SAP_PRINCIPAL_FIM': 'sap_principal_fim', 'GESTAO': 'gestao', 'ST_REGIONAL': 'st_regional', 'GC': 'gc', 'NUMERO_PEDIDO': 'numero_pedido', 'DT_GROSS': 'dt_gross', 'ANOMES_GROSS': 'anomes_gross', 'DT_RETIRADA': 'dt_retirada', 'ANOMES_RETIRADA': 'anomes_retirada', 'GRUPO_UNIDADE': 'grupo_unidade', 'CODIGO_SAP': 'codigo_sap', 'MUNICIPIO': 'municipio', 'TIPO_RETIRADA': 'tipo_retirada', 'MOTIVO_RETIRADA': 'motivo_retirada', 'SUBMOTIVO_RETIRADA': 'submotivo_retirada', 'CLASSIFICACAO': 'classificacao', 'DESC_APELIDO': 'desc_apelido'}
         try:
-            df = pd.read_excel(file_obj) if file_obj.name.endswith(('.xlsx', '.xls')) else None
-            if df is None: return Response({'error': 'Formato inválido.'}, status=400)
+            if file_obj.name.endswith(('.xlsx', '.xls')):
+                df = pd.read_excel(file_obj)
+            elif file_obj.name.endswith('.xlsb'):
+                df = pd.read_excel(file_obj, engine='pyxlsb')
+            elif file_obj.name.endswith('.csv'):
+                df = pd.read_csv(file_obj)
+            else:
+                return Response({'error': 'Formato inválido. Use .xlsx, .xls, .xlsb ou .csv'}, status=400)
         except Exception as e: return Response({'error': str(e)}, status=400)
         df.columns = [str(col).strip().upper() for col in df.columns]
         for f in ['DT_GROSS', 'DT_RETIRADA']:
@@ -4124,10 +4129,18 @@ class CdoiListView(APIView):
                 'id': item.id,
                 'nome': item.nome_condominio,
                 'cidade': f"{item.cidade}-{item.uf}",
+                'logradouro': item.logradouro,
+                'numero': item.numero,
+                'bairro': item.bairro,
+                'nome_sindico': item.nome_sindico,
+                'contato': item.contato_sindico,
+                'total_hps': item.total_hps,
+                'prevenda': item.pre_venda_minima,
                 'status': item.get_status_display(),
                 'status_cod': item.status,
                 'observacao': item.observacao or "",
                 'data': item.data_criacao.strftime('%d/%m/%Y'),
+                'link_fotos_fachada': item.link_fotos_fachada or "",
                 'can_edit': eh_gestao # Flag para o frontend saber se libera edição
             })
         
@@ -4315,3 +4328,547 @@ class CdoiUpdateView(APIView):
 def page_cdoi_novo(request):
     """View simples para abrir a página no navegador"""
     return render(request, 'cdoi_form.html')
+
+
+# =============================================================================
+# BÔNUS M-10 & FPD - VIEWS
+# =============================================================================
+
+from django.db.models import Q, Count, Sum, Avg
+from django.http import HttpResponse
+import pandas as pd
+from datetime import datetime
+from .models import SafraM10, ContratoM10, FaturaM10
+
+
+def page_bonus_m10(request):
+    """View para renderizar a página HTML"""
+    return render(request, 'bonus_m10.html')
+
+
+class SafraM10ListView(APIView):
+    """Lista todas as safras disponíveis"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        safras = SafraM10.objects.all().order_by('-mes_referencia')
+        data = []
+        for s in safras:
+            data.append({
+                'id': s.id,
+                'mes_referencia': s.mes_referencia.isoformat(),
+                'mes_referencia_formatado': s.mes_referencia.strftime('%B/%Y'),
+                'total_instalados': s.total_instalados,
+                'total_ativos': s.total_ativos,
+                'total_elegivel_bonus': s.total_elegivel_bonus,
+                'valor_bonus_total': float(s.valor_bonus_total),
+            })
+        return Response(data)
+
+
+class DashboardM10View(APIView):
+    """Dashboard com estatísticas M-10"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        safra_id = request.GET.get('safra')
+        if not safra_id:
+            return Response({'error': 'Safra não informada'}, status=400)
+
+        try:
+            safra = SafraM10.objects.get(id=safra_id)
+        except SafraM10.DoesNotExist:
+            return Response({'error': 'Safra não encontrada'}, status=404)
+
+        # Filtros
+        queryset = ContratoM10.objects.filter(safra=safra)
+        
+        vendedor = request.GET.get('vendedor')
+        if vendedor:
+            queryset = queryset.filter(vendedor_id=vendedor)
+        
+        status = request.GET.get('status')
+        if status:
+            queryset = queryset.filter(status_contrato=status)
+        
+        elegivel = request.GET.get('elegivel')
+        if elegivel:
+            queryset = queryset.filter(elegivel_bonus=(elegivel == 'true'))
+
+        # Estatísticas
+        total = queryset.count()
+        ativos = queryset.filter(status_contrato='ATIVO').count()
+        elegiveis = queryset.filter(elegivel_bonus=True).count()
+        valor_total = elegiveis * 150  # R$ 150 por contrato elegível
+
+        taxa_permanencia = round((ativos / total * 100) if total > 0 else 0, 1)
+
+        # Paginação - Limita a 100 registros por página
+        page = int(request.GET.get('page', 1))
+        page_size = 100
+        start = (page - 1) * page_size
+        end = start + page_size
+
+        # Contratos para tabela (apenas dados essenciais)
+        contratos_data = []
+        for c in queryset.select_related('vendedor')[start:end]:
+            faturas_pagas = c.faturas.filter(status='PAGO').count()
+            contratos_data.append({
+                'id': c.id,
+                'numero_contrato': c.numero_contrato,
+                'cliente_nome': c.cliente_nome,
+                'vendedor_nome': c.vendedor.get_full_name() if c.vendedor else '-',
+                'data_instalacao': c.data_instalacao.strftime('%d/%m/%Y'),
+                'plano_atual': c.plano_atual,
+                'status': c.status_contrato,
+                'status_display': c.get_status_contrato_display(),
+                'faturas_pagas': faturas_pagas,
+                'elegivel': c.elegivel_bonus,
+            })
+
+        total_pages = (total + page_size - 1) // page_size
+
+        return Response({
+            'total': total,
+            'ativos': ativos,
+            'elegiveis': elegiveis,
+            'valor_total': valor_total,
+            'taxa_permanencia': taxa_permanencia,
+            'contratos': contratos_data,
+            'page': page,
+            'total_pages': total_pages,
+            'page_size': page_size,
+        })
+
+
+class DashboardFPDView(APIView):
+    """Dashboard com estatísticas FPD"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        mes_str = request.GET.get('mes')  # formato: 2025-07
+        
+        # Filtrar faturas número 1 (primeira fatura)
+        queryset = FaturaM10.objects.filter(numero_fatura=1)
+        
+        if mes_str:
+            ano, mes = mes_str.split('-')
+            queryset = queryset.filter(data_vencimento__year=ano, data_vencimento__month=mes)
+        
+        status_filtro = request.GET.get('status')
+        if status_filtro:
+            queryset = queryset.filter(status=status_filtro)
+        
+        vendedor = request.GET.get('vendedor')
+        if vendedor:
+            queryset = queryset.filter(contrato__vendedor_id=vendedor)
+
+        # Estatísticas
+        total_geradas = queryset.count()
+        total_pagas = queryset.filter(status='PAGO').count()
+        total_aberto = queryset.filter(status__in=['NAO_PAGO', 'AGUARDANDO']).count()
+        taxa_fpd = round((total_pagas / total_geradas * 100) if total_geradas > 0 else 0, 1)
+
+        # Faturas para tabela
+        faturas_data = []
+        for f in queryset.select_related('contrato', 'contrato__vendedor'):
+            faturas_data.append({
+                'id': f.id,
+                'contrato_id': f.contrato.id,
+                'numero_contrato': f.contrato.numero_contrato,
+                'cliente_nome': f.contrato.cliente_nome,
+                'vendedor_nome': f.contrato.vendedor.get_full_name() if f.contrato.vendedor else '-',
+                'data_vencimento': f.data_vencimento.strftime('%d/%m/%Y'),
+                'valor': float(f.valor),
+                'data_pagamento': f.data_pagamento.strftime('%d/%m/%Y') if f.data_pagamento else None,
+                'status': f.status,
+                'status_display': f.get_status_display(),
+            })
+
+        return Response({
+            'total_geradas': total_geradas,
+            'total_pagas': total_pagas,
+            'total_aberto': total_aberto,
+            'taxa_fpd': taxa_fpd,
+            'faturas': faturas_data,
+        })
+
+
+class PopularSafraM10View(APIView):
+    """Popula SafraM10 e ContratoM10 a partir da tabela Venda baseado em data_instalacao"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if not is_member(request.user, ['Admin', 'BackOffice', 'Diretoria']):
+            return Response({'error': 'Sem permissão'}, status=403)
+
+        mes_referencia = request.data.get('mes_referencia')  # Formato: '2025-07'
+        
+        if not mes_referencia:
+            return Response({'error': 'mes_referencia é obrigatório (formato: YYYY-MM)'}, status=400)
+
+        try:
+            # Converte para data (primeiro dia do mês)
+            ano, mes = mes_referencia.split('-')
+            data_inicio = datetime(int(ano), int(mes), 1).date()
+            # Próximo mês para o range
+            if mes == '12':
+                data_fim = datetime(int(ano) + 1, 1, 1).date()
+            else:
+                data_fim = datetime(int(ano), int(mes) + 1, 1).date()
+            
+            # Busca ou cria a Safra M-10
+            safra, safra_criada = SafraM10.objects.get_or_create(
+                mes_referencia=data_inicio,
+                defaults={
+                    'total_instalados': 0,
+                    'total_ativos': 0,
+                    'total_elegivel_bonus': 0,
+                    'valor_bonus_total': 0,
+                }
+            )
+
+            # Busca Vendas com data_instalacao no mês de referência
+            vendas = Venda.objects.filter(
+                data_instalacao__gte=data_inicio,
+                data_instalacao__lt=data_fim,
+                data_instalacao__isnull=False,
+                ativo=True
+            ).select_related('cliente', 'vendedor')
+
+            contratos_criados = 0
+            contratos_duplicados = 0
+
+            for venda in vendas:
+                # Usa ordem_servico como número de contrato único
+                numero_contrato = venda.ordem_servico or f"VENDA_{venda.id}"
+                
+                # Verifica se já existe contrato com este O.S
+                contrato_existe = ContratoM10.objects.filter(
+                    ordem_servico=venda.ordem_servico
+                ).exists() if venda.ordem_servico else False
+
+                if contrato_existe:
+                    contratos_duplicados += 1
+                    continue
+
+                # Cria novo ContratoM10
+                contrato = ContratoM10.objects.create(
+                    safra=safra,
+                    venda=venda,
+                    numero_contrato=numero_contrato,
+                    ordem_servico=venda.ordem_servico,
+                    cliente_nome=venda.cliente.nome_razao_social,
+                    cpf_cliente=venda.cliente.cpf_cnpj,
+                    vendedor=venda.vendedor,
+                    data_instalacao=venda.data_instalacao,
+                    plano_original=venda.plano.nome if venda.plano else 'N/D',
+                    plano_atual=venda.plano.nome if venda.plano else 'N/D',
+                    valor_plano=venda.plano.valor if venda.plano else 0,
+                    status_contrato='ATIVO',
+                    observacao=f"Importado de Venda #{venda.id}"
+                )
+                contratos_criados += 1
+
+            # Atualiza contagens na Safra
+            safra.total_instalados = safra.contratos.count()
+            safra.total_ativos = safra.contratos.filter(status_contrato='ATIVO').count()
+            safra.save()
+
+            return Response({
+                'message': f'Safra {mes_referencia} populada com sucesso!',
+                'safra_id': safra.id,
+                'contratos_criados': contratos_criados,
+                'contratos_duplicados': contratos_duplicados,
+                'total_contratos_safra': safra.total_instalados,
+            })
+
+        except ValueError as e:
+            return Response({'error': f'Formato de data inválido: {str(e)}'}, status=400)
+        except Exception as e:
+            return Response({'error': f'Erro ao popular safra: {str(e)}'}, status=500)
+
+
+class ContratoM10DetailView(APIView):
+    """Detalhes de um contrato com suas faturas"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        try:
+            contrato = ContratoM10.objects.get(pk=pk)
+            faturas = []
+            for f in contrato.faturas.all().order_by('numero_fatura'):
+                faturas.append({
+                    'id': f.id,
+                    'numero_fatura': f.numero_fatura,
+                    'numero_fatura_operadora': f.numero_fatura_operadora or '',
+                    'valor': float(f.valor),
+                    'data_vencimento': f.data_vencimento.isoformat(),
+                    'data_pagamento': f.data_pagamento.isoformat() if f.data_pagamento else '',
+                    'status': f.status,
+                })
+            
+            return Response({
+                'id': contrato.id,
+                'numero_contrato': contrato.numero_contrato,
+                'cliente_nome': contrato.cliente_nome,
+                'faturas': faturas,
+            })
+        except ContratoM10.DoesNotExist:
+            return Response({'error': 'Contrato não encontrado'}, status=404)
+
+
+class ImportarFPDView(APIView):
+    """Importa planilha FPD da operadora e faz crossover com ContratoM10 por O.S"""
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = (MultiPartParser, FormParser)
+    
+    def post(self, request):
+        if not is_member(request.user, ['Admin', 'BackOffice', 'Diretoria']):
+            return Response({'error': 'Sem permissão'}, status=403)
+
+        arquivo = request.FILES.get('file')
+        if not arquivo:
+            return Response({'error': 'Arquivo não enviado'}, status=400)
+
+        try:
+            # Lê arquivo Excel/CSV
+            if arquivo.name.endswith('.csv'):
+                df = pd.read_csv(arquivo)
+            elif arquivo.name.endswith('.xlsb'):
+                try:
+                    df = pd.read_excel(arquivo, engine='pyxlsb')
+                except Exception:
+                    return Response({
+                        'error': 'Formato .xlsb não suportado. Use .xlsx, .xls ou .csv'
+                    }, status=400)
+            else:
+                df = pd.read_excel(arquivo)
+
+            registros_atualizados = 0
+            registros_nao_encontrados = 0
+
+            for _, row in df.iterrows():
+                # Busca por O.S (NR_ORDEM na planilha)
+                nr_ordem = str(row.get('NR_ORDEM', '')).strip()
+                if not nr_ordem:
+                    continue
+
+                # Tenta encontrar contrato por ordem_servico
+                try:
+                    contrato = ContratoM10.objects.get(ordem_servico=nr_ordem)
+                    
+                    # Atualiza/cria primeira fatura (Safra FPD por mês de vencimento)
+                    dt_venc = row.get('DT_VENC_ORIG')
+                    dt_pgto = row.get('DT_PAGAMENTO')
+                    status_str = str(row.get('DS_STATUS_FATURA', 'NAO_PAGO')).upper()
+                    
+                    # Mapeia status
+                    status_map = {
+                        'PAGO': 'PAGO',
+                        'QUITADO': 'PAGO',
+                        'ABERTO': 'NAO_PAGO',
+                        'VENCIDO': 'ATRASADO',
+                        'AGUARDANDO': 'AGUARDANDO',
+                    }
+                    status = status_map.get(status_str, 'NAO_PAGO')
+
+                    # Se houver data de vencimento, define safra de FPD por mês de vencimento
+                    if pd.notna(dt_venc):
+                        dt_venc_obj = pd.to_datetime(dt_venc).date()
+                        safra_fpd_mes = dt_venc_obj.replace(day=1)
+                        safra_fpd, _ = SafraM10.objects.get_or_create(
+                            mes_referencia=safra_fpd_mes,
+                            defaults={'total_instalados': 0, 'total_ativos': 0}
+                        )
+                        # Se o contrato estava em safra M-10, pode estar em safra FPD agora
+                        # (Safra FPD é complementar)
+
+                    fatura, created_fatura = FaturaM10.objects.update_or_create(
+                        contrato=contrato,
+                        numero_fatura=1,
+                        defaults={
+                            'numero_fatura_operadora': str(row.get('NR_FATURA', '')),
+                            'valor': float(row.get('VL_FATURA', 0)) if pd.notna(row.get('VL_FATURA')) else 0,
+                            'data_vencimento': pd.to_datetime(dt_venc).date() if pd.notna(dt_venc) else datetime.now().date(),
+                            'data_pagamento': pd.to_datetime(dt_pgto).date() if pd.notna(dt_pgto) else None,
+                            'dias_atraso': int(row.get('NR_DIAS_ATRASO', 0)) if pd.notna(row.get('NR_DIAS_ATRASO')) else 0,
+                            'status': status,
+                        }
+                    )
+
+                    registros_atualizados += 1
+
+                except ContratoM10.DoesNotExist:
+                    registros_nao_encontrados += 1
+                    continue
+
+            return Response({
+                'message': f'Importação FPD concluída! {registros_atualizados} contratos atualizados, {registros_nao_encontrados} não encontrados.',
+                'atualizados': registros_atualizados,
+                'nao_encontrados': registros_nao_encontrados,
+            })
+
+        except Exception as e:
+            return Response({'error': f'Erro ao processar arquivo: {str(e)}'}, status=500)
+
+
+class ImportarChurnView(APIView):
+    """Importa base de churn (cancelamentos) e faz crossover com ContratoM10 por O.S"""
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = (MultiPartParser, FormParser)
+
+    def post(self, request):
+        if not is_member(request.user, ['Admin', 'BackOffice', 'Diretoria']):
+            return Response({'error': 'Sem permissão'}, status=403)
+
+        arquivo = request.FILES.get('file')
+        if not arquivo:
+            return Response({'error': 'Arquivo não enviado'}, status=400)
+
+        try:
+            if arquivo.name.endswith('.csv'):
+                df = pd.read_csv(arquivo)
+            elif arquivo.name.endswith('.xlsb'):
+                try:
+                    df = pd.read_excel(arquivo, engine='pyxlsb')
+                except Exception:
+                    return Response({
+                        'error': 'Formato .xlsb não suportado. Use .xlsx, .xls ou .csv'
+                    }, status=400)
+            else:
+                df = pd.read_excel(arquivo)
+
+            cancelados = 0
+            nao_encontrados = 0
+
+            for _, row in df.iterrows():
+                # Busca por O.S (NR_ORDEM na planilha de churn)
+                nr_ordem = str(row.get('NR_ORDEM', '')).strip()
+                if not nr_ordem:
+                    continue
+
+                try:
+                    # Tenta encontrar contrato por ordem_servico
+                    contrato = ContratoM10.objects.get(ordem_servico=nr_ordem)
+                    
+                    # Marca como cancelado se aplicável
+                    status_str = str(row.get('STATUS', '')).upper() if pd.notna(row.get('STATUS')) else ''
+                    
+                    if 'CANCELADO' in status_str or 'INATIVO' in status_str or 'CHURN' in status_str:
+                        contrato.status_contrato = 'CANCELADO'
+                        contrato.data_cancelamento = pd.to_datetime(row.get('DATA_CANCELAMENTO')).date() if pd.notna(row.get('DATA_CANCELAMENTO')) else datetime.now().date()
+                        contrato.motivo_cancelamento = str(row.get('MOTIVO', '')) or str(row.get('MOTIVO_CANCELAMENTO', ''))
+                        contrato.elegivel_bonus = False
+                        contrato.save()
+                        cancelados += 1
+                    
+                except ContratoM10.DoesNotExist:
+                    nao_encontrados += 1
+                    continue
+
+            return Response({
+                'message': f'Base churn processada! {cancelados} contratos marcados como cancelados, {nao_encontrados} não encontrados.',
+                'cancelados': cancelados,
+                'nao_encontrados': nao_encontrados,
+            })
+
+        except Exception as e:
+            return Response({'error': f'Erro ao processar arquivo: {str(e)}'}, status=500)
+
+
+class AtualizarFaturasView(APIView):
+    """Atualiza múltiplas faturas de uma vez"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if not is_member(request.user, ['Admin', 'BackOffice', 'Diretoria']):
+            return Response({'error': 'Sem permissão'}, status=403)
+
+        updates = request.data.get('updates', [])
+        
+        for update in updates:
+            fatura_id = update.get('id')
+            field = update.get('field')
+            value = update.get('value')
+
+            try:
+                fatura = FaturaM10.objects.get(id=fatura_id)
+                
+                if field == 'status':
+                    fatura.status = value
+                elif field == 'valor':
+                    fatura.valor = float(value) if value else 0
+                elif field == 'data_vencimento':
+                    fatura.data_vencimento = datetime.strptime(value, '%Y-%m-%d').date() if value else None
+                elif field == 'data_pagamento':
+                    fatura.data_pagamento = datetime.strptime(value, '%Y-%m-%d').date() if value else None
+                elif field == 'numero_fatura_operadora':
+                    fatura.numero_fatura_operadora = value
+
+                fatura.save()
+                
+                # Recalcula elegibilidade do contrato
+                fatura.contrato.calcular_elegibilidade()
+
+            except FaturaM10.DoesNotExist:
+                continue
+
+        return Response({'message': 'Faturas atualizadas com sucesso!'})
+
+
+class ExportarM10View(APIView):
+    """Exporta dados para Excel"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        # Cria workbook
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Bônus M-10"
+
+        # Cabeçalhos
+        headers = ['Contrato', 'Cliente', 'Vendedor', 'Instalação', 'Plano', 'Status', 'Faturas Pagas', 'Elegível', 'Bônus']
+        ws.append(headers)
+
+        # Estilo cabeçalho
+        for cell in ws[1]:
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+            cell.alignment = Alignment(horizontal="center")
+
+        # Dados
+        contratos = ContratoM10.objects.all().select_related('vendedor', 'safra')
+        for c in contratos:
+            faturas_pagas = c.faturas.filter(status='PAGO').count()
+            bonus = 150 if c.elegivel_bonus else 0
+            ws.append([
+                c.numero_contrato,
+                c.cliente_nome,
+                c.vendedor.get_full_name() if c.vendedor else '-',
+                c.data_instalacao.strftime('%d/%m/%Y'),
+                c.plano_atual,
+                c.get_status_contrato_display(),
+                f"{faturas_pagas}/10",
+                'Sim' if c.elegivel_bonus else 'Não',
+                f"R$ {bonus:.2f}",
+            ])
+
+        # Ajusta largura das colunas
+        for column in ws.columns:
+            max_length = 0
+            column_letter = column[0].column_letter
+            for cell in column:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(cell.value)
+                except:
+                    pass
+            adjusted_width = (max_length + 2)
+            ws.column_dimensions[column_letter].width = adjusted_width
+
+        # Retorna arquivo
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = f'attachment; filename=bonus_m10_{datetime.now().strftime("%Y%m%d")}.xlsx'
+        wb.save(response)
+        return response

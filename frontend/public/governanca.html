@@ -11,7 +11,7 @@
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=5.0">
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=13.1">
     
     <style>
         /* Layout de Administração */
@@ -272,8 +272,8 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
-    <script src="{% static 'js/auth.js' %}?v=5.0"></script>
-    <script src="{% static 'js/menu.js' %}?v=5.0"></script>
+    <script src="{% static 'js/auth.js' %}?v=7.0"></script>
+    <script src="{% static 'js/menu.js' %}?v=7.0"></script>
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     
     <script>
@@ -292,6 +292,11 @@
         const target = document.getElementById(tabName);
         if(target){ target.style.display = "block"; target.classList.add("active"); }
         evt.currentTarget.classList.add("active");
+        
+        // Carregar dados das abas
+        if(tabName === 'formasPagamento') carregarFormasPagamento();
+        if(tabName === 'status') carregarStatus();
+        if(tabName === 'pendencias') carregarMotivosPendencia();
     }
 
     function mostrarSecao(event, idSecao, menuItem) {
@@ -373,7 +378,7 @@
             grupos.forEach(grupo => {
                 const badges = grupo.permissions_details.map(p => `<span class="badge bg-info text-dark badge-perm">${formatarNomePermissao(p.name)}</span>`).join('');
                 selectMassa.add(new Option(grupo.name, grupo.id));
-                tbody.innerHTML += `<tr><td class="fw-bold text-primary">${grupo.name}</td><td>${badges || 'Sem permissões'}</td><td class="text-end"><button class="btn btn-xs btn-outline-primary me-1" onclick='editarPerfil(${JSON.stringify(grupo)})'><i class="bi bi-pencil"></i></button><button class="btn btn-xs btn-outline-danger" onclick="confirmarExclusaoPerfil(${grupo.id}, '${grupo.name}')"><i class="bi bi-trash"></i></button></td></tr>`;
+                tbody.innerHTML += `<tr><td class="fw-bold text-primary">${grupo.name}</td><td>${badges || 'Sem permissões'}</td><td class="text-end"><button class="btn btn-xs btn-editar me-1" onclick='editarPerfil(${JSON.stringify(grupo)})'><i class="bi bi-pencil"></i></button><button class="btn btn-xs btn-excluir" onclick="confirmarExclusaoPerfil(${grupo.id}, '${grupo.name}')"><i class="bi bi-trash"></i></button></td></tr>`;
             });
         } catch (e) { tbody.innerHTML = '<tr><td colspan="3">Erro ao carregar perfis.</td></tr>'; }
     }
@@ -450,7 +455,7 @@
         lista.forEach(user => {
             const perfil = user.groups?.[0]?.name || user.perfil_nome || 'Sem Perfil';
             const acoes = isAtivos 
-                ? `<button class="btn btn-xs btn-outline-warning me-1" onclick="editarUsuarioPeloId(${user.id})"><i class="bi bi-pencil"></i></button><button class="btn btn-xs btn-outline-danger" onclick="inativarUsuario(${user.id})"><i class="bi bi-trash"></i></button>` 
+                ? `<button class="btn btn-xs btn-editar me-1" onclick="editarUsuarioPeloId(${user.id})"><i class="bi bi-pencil"></i></button><button class="btn btn-xs btn-excluir" onclick="inativarUsuario(${user.id})"><i class="bi bi-trash"></i></button>` 
                 : `<button class="btn btn-xs btn-outline-success" onclick="reativarUsuario(${user.id})"><i class="bi bi-check-circle"></i></button>`;
             const check = isAtivos ? `<td><input type="checkbox" class="user-check" value="${user.id}"></td>` : '';
             userListBody.innerHTML += `<tr>${check}<td>${user.nome_completo}</td><td>${user.email}</td><td>${perfil}</td><td>${user.canal||'-'}</td><td>${user.supervisor_nome||'-'}</td><td class="text-end">${acoes}</td></tr>`;
@@ -540,7 +545,7 @@
         const tbody = document.getElementById('lista-operadoras'); tbody.innerHTML = '';
         const selPlanos = document.getElementById('plano_operadora_id'); selPlanos.innerHTML = '<option value="">Selecione...</option>';
         lista.forEach(o => {
-            tbody.innerHTML += `<tr><td>${o.nome}</td><td>${o.cnpj || '-'}</td><td>${o.ativo?'Ativo':'Inativo'}</td><td><button class="btn btn-sm btn-outline-warning" onclick='editarOperadora(${JSON.stringify(o)})'>✏️</button><button class="btn btn-sm btn-outline-danger" onclick="excluirOperadora(${o.id})">🗑️</button></td></tr>`;
+            tbody.innerHTML += `<tr><td>${o.nome}</td><td>${o.cnpj || '-'}</td><td>${o.ativo?'Ativo':'Inativo'}</td><td><button class="btn btn-sm btn-editar me-1" onclick='editarOperadora(${JSON.stringify(o)})'>✏️</button><button class="btn btn-sm btn-excluir" onclick="excluirOperadora(${o.id})">🗑️</button></td></tr>`;
             if(o.ativo) selPlanos.add(new Option(o.nome, o.id));
         });
     }
@@ -558,7 +563,7 @@
         const lista = await apiFetch('/crm/planos/');
         const tbody = document.getElementById('lista-planos'); tbody.innerHTML = '';
         lista.forEach(p => {
-            tbody.innerHTML += `<tr><td>${p.nome}</td><td>${p.operadora_nome || '-'}</td><td>${fmtMoeda(p.valor)}</td><td>${fmtMoeda(p.comissao)}</td><td><button class="btn btn-sm btn-outline-warning" onclick='editarPlano(${JSON.stringify(p)})'>✏️</button><button class="btn btn-sm btn-outline-danger" onclick="excluirPlano(${p.id})">🗑️</button></td></tr>`;
+            tbody.innerHTML += `<tr><td>${p.nome}</td><td>${p.operadora_nome || '-'}</td><td>${fmtMoeda(p.valor)}</td><td>${fmtMoeda(p.comissao)}</td><td><button class="btn btn-sm btn-editar me-1" onclick='editarPlano(${JSON.stringify(p)})'>✏️</button><button class="btn btn-sm btn-excluir" onclick="excluirPlano(${p.id})">🗑️</button></td></tr>`;
         });
     }
     document.getElementById('form-plano').onsubmit = async(e) => {
@@ -574,8 +579,15 @@
     async function carregarFormasPagamento() {
         const lista = await apiFetch('/crm/formas-pagamento/');
         const ul = document.getElementById('lista-formas-pagamento'); ul.innerHTML = '';
-        lista.forEach(f => ul.innerHTML += `<li class="list-group-item d-flex justify-content-between">${f.nome} <button class="btn btn-sm btn-danger" onclick="excluirFormaPagamento(${f.id})">🗑️</button></li>`);
+        lista.forEach(f => ul.innerHTML += `<li class="list-group-item d-flex justify-content-between align-items-center">${f.nome} <div class="d-flex gap-2"><button class="btn btn-sm btn-editar" onclick="editarFormaPagamento(${f.id}, '${f.nome}')"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-excluir" onclick="excluirFormaPagamento(${f.id})"><i class="bi bi-trash"></i></button></div></li>`);
     }
+    window.editarFormaPagamento = async(id, nome) => {
+        const novoNome = prompt('Novo nome:', nome);
+        if(novoNome && novoNome !== nome) {
+            await apiFetch(`/crm/formas-pagamento/${id}/`, {method:'PATCH', body:JSON.stringify({nome: novoNome})});
+            carregarFormasPagamento();
+        }
+    };
     document.getElementById('btn-salvar-forma-pagamento').onclick = async () => {
         const nome = document.getElementById('nova-forma-pagamento-nome').value;
         if(nome) await apiFetch('/crm/formas-pagamento/', {method:'POST', body:JSON.stringify({nome, ativo:true})});
@@ -583,28 +595,60 @@
     };
     window.excluirFormaPagamento = async(id)=>{ if(confirm('Excluir?')) { await apiFetch(`/crm/formas-pagamento/${id}/`, {method:'DELETE'}); carregarFormasPagamento(); } };
 
+    let listaStatusGlobal = [];
     async function carregarStatus() {
         const lista = await apiFetch('/crm/status/');
+        listaStatusGlobal = lista;
         const tbody = document.getElementById('lista-status'); tbody.innerHTML = '';
-        lista.forEach(s => tbody.innerHTML += `<tr><td>${s.nome}</td><td>${s.tipo}</td><td>${s.estado||'-'}</td><td><span class="badge" style="background:${s.cor};color:#000">${s.cor}</span></td><td><button class="btn btn-sm btn-danger" onclick="excluirStatus(${s.id})">🗑️</button></td></tr>`);
+        lista.forEach(s => tbody.innerHTML += `<tr><td>${s.nome}</td><td>${s.tipo}</td><td>${s.estado||'-'}</td><td><span class="badge" style="background:${s.cor};color:#000">${s.cor}</span></td><td class="text-end"><button class="btn btn-sm btn-editar me-1" onclick="editarStatus(${s.id})"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-excluir" onclick="excluirStatus(${s.id})"><i class="bi bi-trash"></i></button></td></tr>`);
     }
+    window.editarStatus = (id) => {
+        const s = listaStatusGlobal.find(item => item.id === id);
+        if(!s) return;
+        document.getElementById('status_id').value = s.id;
+        document.getElementById('status_nome').value = s.nome;
+        document.getElementById('status_tipo').value = s.tipo;
+        document.getElementById('status_estado').value = s.estado || '';
+        document.getElementById('status_cor').value = s.cor;
+        document.getElementById('status').scrollIntoView({behavior:'smooth'});
+    };
     document.getElementById('form-status').onsubmit = async(e) => {
         e.preventDefault();
+        const id = document.getElementById('status_id').value;
         const body = { nome: document.getElementById('status_nome').value, tipo: document.getElementById('status_tipo').value, estado: document.getElementById('status_estado').value, cor: document.getElementById('status_cor').value };
-        await apiFetch('/crm/status/', {method:'POST', body: JSON.stringify(body)});
+        if(id) {
+            await apiFetch(`/crm/status/${id}/`, {method:'PATCH', body: JSON.stringify(body)});
+        } else {
+            await apiFetch('/crm/status/', {method:'POST', body: JSON.stringify(body)});
+        }
         document.getElementById('form-status').reset(); carregarStatus();
     };
     window.excluirStatus = async(id)=>{ if(confirm('Excluir?')) { await apiFetch(`/crm/status/${id}/`, {method:'DELETE'}); carregarStatus(); } };
 
+    let listaPendenciasGlobal = [];
     async function carregarMotivosPendencia() {
         const lista = await apiFetch('/crm/motivos-pendencia/');
+        listaPendenciasGlobal = lista;
         const tbody = document.getElementById('lista-pendencias'); tbody.innerHTML = '';
-        lista.forEach(p => tbody.innerHTML += `<tr><td>${p.nome}</td><td>${p.tipo_pendencia}</td><td><button class="btn btn-sm btn-danger" onclick="excluirPendencia(${p.id})">🗑️</button></td></tr>`);
+        lista.forEach(p => tbody.innerHTML += `<tr><td>${p.nome}</td><td>${p.tipo_pendencia}</td><td class="text-end"><button class="btn btn-sm btn-editar me-1" onclick="editarPendencia(${p.id})"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-excluir" onclick="excluirPendencia(${p.id})"><i class="bi bi-trash"></i></button></td></tr>`);
     }
+    window.editarPendencia = (id) => {
+        const p = listaPendenciasGlobal.find(item => item.id === id);
+        if(!p) return;
+        document.getElementById('pendencia_id').value = p.id;
+        document.getElementById('pendencia_nome').value = p.nome;
+        document.getElementById('pendencia_tipo').value = p.tipo_pendencia;
+        document.getElementById('pendencias').scrollIntoView({behavior:'smooth'});
+    };
     document.getElementById('form-pendencia').onsubmit = async(e) => {
         e.preventDefault();
+        const id = document.getElementById('pendencia_id').value;
         const body = { nome: document.getElementById('pendencia_nome').value, tipo_pendencia: document.getElementById('pendencia_tipo').value };
-        await apiFetch('/crm/motivos-pendencia/', {method:'POST', body: JSON.stringify(body)});
+        if(id) {
+            await apiFetch(`/crm/motivos-pendencia/${id}/`, {method:'PATCH', body: JSON.stringify(body)});
+        } else {
+            await apiFetch('/crm/motivos-pendencia/', {method:'POST', body: JSON.stringify(body)});
+        }
         document.getElementById('form-pendencia').reset(); carregarMotivosPendencia();
     };
     window.excluirPendencia = async(id)=>{ if(confirm('Excluir?')) { await apiFetch(`/crm/motivos-pendencia/${id}/`, {method:'DELETE'}); carregarMotivosPendencia(); } };
@@ -678,7 +722,7 @@
             let resumoMetas = '';
             if (c.regras_meta && c.regras_meta.length) c.regras_meta.sort((a,b)=>b.meta-a.meta).forEach(r => resumoMetas += `<div class="small">Meta <b>${r.meta}</b>: <span class="text-success">${fmtMoeda(r.valor_premio)}</span></div>`);
             else resumoMetas = `<div class="fw-bold">Meta: ${c.meta_vendas}</div><div class="text-success small">${fmtMoeda(c.valor_premio)}</div>`;
-            tbody.innerHTML += `<tr><td class="fw-bold">${c.nome}</td><td class="small">${c.data_inicio} <br> ${c.data_fim}</td><td>${resumoMetas}</td><td>Canal: ${c.canal_alvo}</td><td>${c.ativo?'<span class="badge bg-success">Ativa</span>':'Encerrada'}</td><td class="text-end"><button class="btn btn-sm btn-outline-primary me-1" onclick='editarCampanha(${JSON.stringify(c)})'>✏️</button><button class="btn btn-sm btn-outline-danger" onclick="excluirCampanha(${c.id})">🗑️</button></td></tr>`;
+            tbody.innerHTML += `<tr><td class="fw-bold">${c.nome}</td><td class="small">${c.data_inicio} <br> ${c.data_fim}</td><td>${resumoMetas}</td><td>Canal: ${c.canal_alvo}</td><td>${c.ativo?'<span class="badge bg-success">Ativa</span>':'Encerrada'}</td><td class="text-end"><button class="btn btn-sm btn-editar me-1" onclick='editarCampanha(${JSON.stringify(c)})'>✏️</button><button class="btn btn-sm btn-excluir" onclick="excluirCampanha(${c.id})">🗑️</button></td></tr>`;
         });
     }
     document.getElementById('form-campanha').onsubmit = async(e) => {
@@ -803,7 +847,7 @@
             if(lista.length === 0) { tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Nenhuma regra ativa.</td></tr>'; return; }
             lista.forEach(r => {
                 const statusBadge = r.ativo ? '<span class="badge bg-success">Ativo</span>' : '<span class="badge bg-secondary">Inativo</span>';
-                tbody.innerHTML += `<tr><td><strong class="text-primary">${r.nome}</strong><br><small class="text-muted">${r.evento_gatilho}</small></td><td><span class="badge bg-light text-dark border">Grupos: ${r.destinos_grupos?r.destinos_grupos.length:0}</span> <span class="badge bg-light text-dark border">Nums: ${r.destinos_numeros?r.destinos_numeros.length:0}</span></td><td>${statusBadge}</td><td class="text-end"><button class="btn btn-sm btn-outline-primary" onclick='editarRegraAuto(${JSON.stringify(r)})'><i class="bi bi-pencil"></i></button> <button class="btn btn-sm btn-outline-danger" onclick="excluirRegraAuto(${r.id})"><i class="bi bi-trash"></i></button></td></tr>`;
+                tbody.innerHTML += `<tr><td><strong class="text-primary">${r.nome}</strong><br><small class="text-muted">${r.evento_gatilho}</small></td><td><span class="badge bg-light text-dark border">Grupos: ${r.destinos_grupos?r.destinos_grupos.length:0}</span> <span class="badge bg-light text-dark border">Nums: ${r.destinos_numeros?r.destinos_numeros.length:0}</span></td><td>${statusBadge}</td><td class="text-end"><button class="btn btn-sm btn-editar me-1" onclick='editarRegraAuto(${JSON.stringify(r)})'><i class="bi bi-pencil"></i></button> <button class="btn btn-sm btn-excluir" onclick="excluirRegraAuto(${r.id})"><i class="bi bi-trash"></i></button></td></tr>`;
             });
         } catch (e) { tbody.innerHTML = '<tr><td colspan="4" class="text-danger text-center">Erro ao carregar regras.</td></tr>'; }
     }
@@ -852,7 +896,7 @@
             const lista = Array.isArray(resposta) ? resposta : (resposta.results || []);
             ul.innerHTML = '';
             lista.forEach(m => {
-                ul.innerHTML += `<li class="list-group-item d-flex justify-content-between"><span><strong>${m.nome||m.motivo}</strong> ${m.gera_desconto?'(Desc)':'(Abona)'}</span><button class="btn btn-sm btn-outline-danger" onclick="excluirMotivo(${m.id})">🗑️</button></li>`;
+                ul.innerHTML += `<li class="list-group-item d-flex justify-content-between"><span><strong>${m.nome||m.motivo}</strong> ${m.gera_desconto?'(Desc)':'(Abona)'}</span><button class="btn btn-sm btn-excluir" onclick="excluirMotivo(${m.id})">🗑️</button></li>`;
             });
         } catch(e) { ul.innerHTML = 'Erro ao carregar.'; }
     }
@@ -989,3 +1033,4 @@
     </script>
 </body>
 </html>
+
