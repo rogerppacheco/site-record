@@ -209,6 +209,7 @@
                             <div class="col-md-6 mb-3"><label class="form-label fw-bold">Data *</label><input type="date" class="form-control" id="agenda-data" required></div>
                             <div class="col-md-6 mb-3"><label class="form-label fw-bold">Turno *</label><select class="form-select" id="agenda-turno" required><option value="">Selecione...</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select></div>
                         </div>
+                        <div class="mb-3"><label class="form-label">Observação Adicional</label><textarea class="form-control uppercase-input" id="agenda-observacao" rows="2" placeholder="Detalhes..."></textarea></div>
                     </form>
                 </div>
                 <div class="modal-footer"><button type="button" class="btn btn-secondary" onclick="cancelarAcaoStatus()">Cancelar</button><button type="button" class="btn btn-primary" onclick="salvarAgendamento()">Confirmar</button></div>
@@ -225,6 +226,7 @@
                     <form id="form-instalacao">
                         <div class="mb-3"><label class="form-label fw-bold">Data da Instalação *</label><input type="date" class="form-control" id="instalacao-data" required></div>
                         <div class="mb-3"><label class="form-label fw-bold">Houve Antecipação? *</label><select class="form-select" id="instalacao-antecipou" required><option value="false">Não</option><option value="true">Sim</option></select></div>
+                        <div class="mb-3"><label class="form-label">Observação Adicional</label><textarea class="form-control uppercase-input" id="instalacao-obs" rows="2" placeholder="Detalhes..."></textarea></div>
                     </form>
                 </div>
                 <div class="modal-footer"><button type="button" class="btn btn-secondary" onclick="cancelarAcaoStatus()">Cancelar</button><button type="button" class="btn btn-success" onclick="salvarInstalacao()">Confirmar Instalação</button></div>
@@ -372,7 +374,7 @@
                         overflow: hidden;
                     `;
 
-                    let selectStatus = `<select class="form-select form-select-sm status-select" data-os="${osAtual}" onchange="atualizarStatus(${v.id}, this)">`;
+                    let selectStatus = `<select class="form-select form-select-sm status-select" data-os="${osAtual}" data-statusAtual="${v.status_esteira ? v.status_esteira.nome : ''}" onchange="atualizarStatus(${v.id}, this)">`;
                     selectStatus += `<option value="">Selecione...</option>`;
                     statusLista.forEach(s => {
                         const selected = (v.status_esteira && v.status_esteira.id === s.id) ? 'selected' : '';
@@ -429,6 +431,7 @@
             const statusId = selectElem.value;
             const statusTexto = selectElem.options[selectElem.selectedIndex].text.toUpperCase();
             const osExistente = selectElem.dataset.os;
+            const statusAtual = selectElem.dataset.statusAtual;
             tempVendaId = id; tempStatusId = statusId;
 
             if (statusTexto === 'CADASTRADA' || statusTexto === 'AGENDADO') {
@@ -438,6 +441,7 @@
                 const campoOS = document.getElementById('agenda-os');
                 document.getElementById('agenda-data').value = '';
                 document.getElementById('agenda-turno').value = '';
+                document.getElementById('agenda-observacao').value = '';
 
                 if (osExistente && osExistente.trim() !== "-" && osExistente.trim() !== "") {
                     campoOS.value = osExistente; campoOS.readOnly = true; campoOS.classList.add('bg-light');
@@ -448,17 +452,65 @@
                     document.getElementById('msg-agendamento-novo').style.display = 'inline';
                     document.getElementById('msg-agendamento-existente').style.display = 'none';
                 }
+                
+                // Se status já estava preenchido, carregar dados existentes
+                if (statusAtual && String(statusAtual).toUpperCase() === statusTexto) {
+                    try {
+                        const vendaData = await apiFetch(`/crm/vendas/${id}/`);
+                        if (vendaData && vendaData.data_agendamento) {
+                            document.getElementById('agenda-data').value = vendaData.data_agendamento;
+                            document.getElementById('agenda-turno').value = vendaData.periodo_agendamento || '';
+                            document.getElementById('agenda-observacao').value = vendaData.observacao_agendamento || '';
+                        }
+                    } catch (e) {
+                        console.log('Dados existentes não encontrados');
+                    }
+                }
+                
                 modalAgendamento.show();
             } 
             else if (statusTexto === 'INSTALADA') {
                 document.getElementById('form-instalacao').reset();
                 document.getElementById('instalacao-data').valueAsDate = new Date();
+                document.getElementById('instalacao-antecipou').checked = false;
+                document.getElementById('instalacao-obs').value = '';
+                
+                // Se status já estava preenchido, carregar dados existentes
+                if (statusAtual && String(statusAtual).toUpperCase() === statusTexto) {
+                    try {
+                        const vendaData = await apiFetch(`/crm/vendas/${id}/`);
+                        if (vendaData && vendaData.data_instalacao) {
+                            document.getElementById('instalacao-data').value = vendaData.data_instalacao;
+                            document.getElementById('instalacao-antecipou').checked = vendaData.antecipou_instalacao || false;
+                            document.getElementById('instalacao-obs').value = vendaData.observacao_instalacao || '';
+                        }
+                    } catch (e) {
+                        console.log('Dados existentes não encontrados');
+                    }
+                }
+                
                 modalInstalacao.show();
             } 
             else if (statusTexto.includes('PENDEN') || statusTexto.includes('CANCEL')) {
                 document.getElementById('form-pendencia').reset();
                 const titulo = document.getElementById('titulo-modal-pendencia');
                 if(titulo) titulo.innerHTML = statusTexto.includes('CANCEL') ? '<i class="bi bi-x-circle-fill"></i> Motivo do Cancelamento' : '<i class="bi bi-exclamation-triangle-fill"></i> Registrar Pendência';
+                document.getElementById('pendencia-motivo').value = '';
+                document.getElementById('pendencia-obs').value = '';
+                
+                // Se status já estava preenchido, carregar dados existentes
+                if (statusAtual && String(statusAtual).toUpperCase() === statusTexto) {
+                    try {
+                        const vendaData = await apiFetch(`/crm/vendas/${id}/`);
+                        if (vendaData) {
+                            document.getElementById('pendencia-motivo').value = vendaData.motivo_pendencia || '';
+                            document.getElementById('pendencia-obs').value = vendaData.observacao_pendencia || '';
+                        }
+                    } catch (e) {
+                        console.log('Dados existentes não encontrados');
+                    }
+                }
+                
                 modalPendencia.show();
             } 
             else { salvarStatusNoBanco(id, { status_esteira: statusId }); }
@@ -476,12 +528,14 @@
                     if (res.some(v => v.id !== tempVendaId)) { document.getElementById('agenda-os').classList.add('is-invalid'); return; }
                 } catch (e) { alert("Erro ao validar O.S."); return; }
             }
-            await salvarStatusNoBanco(tempVendaId, { status_esteira: tempStatusId, ordem_servico: os, data_agendamento: data, periodo_agendamento: turno });
+            const observacao = getVal('agenda-observacao') || '';
+            await salvarStatusNoBanco(tempVendaId, { status_esteira: tempStatusId, ordem_servico: os, data_agendamento: data, periodo_agendamento: turno, observacao_agendamento: observacao });
             modalAgendamento.hide();
         }
 
         async function salvarInstalacao() {
-            await salvarStatusNoBanco(tempVendaId, { status_esteira: tempStatusId, data_instalacao: getVal('instalacao-data'), antecipou_instalacao: (getVal('instalacao-antecipou') === 'true') });
+            const observacao = getVal('instalacao-obs') || '';
+            await salvarStatusNoBanco(tempVendaId, { status_esteira: tempStatusId, data_instalacao: getVal('instalacao-data'), antecipou_instalacao: (getVal('instalacao-antecipou') === 'true'), observacao_instalacao: observacao });
             modalInstalacao.hide();
         }
 
