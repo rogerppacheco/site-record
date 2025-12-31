@@ -209,7 +209,7 @@
                             <div class="col-md-6 mb-3"><label class="form-label fw-bold">Data *</label><input type="date" class="form-control" id="agenda-data" required></div>
                             <div class="col-md-6 mb-3"><label class="form-label fw-bold">Turno *</label><select class="form-select" id="agenda-turno" required><option value="">Selecione...</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select></div>
                         </div>
-                        <div class="mb-3"><label class="form-label">Observação da Venda</label><textarea class="form-control bg-light" id="agenda-observacao-venda" rows="2" readonly></textarea></div>
+                        <div class="mb-3"><label class="form-label">Observação da Venda</label><textarea class="form-control uppercase-input" id="agenda-observacao-venda" rows="2" placeholder="Digite a observação..."></textarea></div>
                     </form>
                 </div>
                 <div class="modal-footer"><button type="button" class="btn btn-secondary" onclick="cancelarAcaoStatus()">Cancelar</button><button type="button" class="btn btn-primary" onclick="salvarAgendamento()">Confirmar</button></div>
@@ -584,6 +584,7 @@
             const os = getVal('agenda-os').trim();
             const data = getVal('agenda-data');
             const turno = getVal('agenda-turno');
+            const observacao = getVal('agenda-observacao-venda') || '';
             if (!os || !data || !turno) { alert("Preencha todos os campos."); return; }
             const campoOS = document.getElementById('agenda-os');
             if (!campoOS.readOnly) {
@@ -592,7 +593,7 @@
                     if (res.some(v => v.id !== tempVendaId)) { document.getElementById('agenda-os').classList.add('is-invalid'); return; }
                 } catch (e) { alert("Erro ao validar O.S."); return; }
             }
-            await salvarStatusNoBanco(tempVendaId, { status_esteira: tempStatusId, ordem_servico: os, data_agendamento: data, periodo_agendamento: turno });
+            await salvarStatusNoBanco(tempVendaId, { status_esteira: tempStatusId, ordem_servico: os, data_agendamento: data, periodo_agendamento: turno, observacoes: observacao });
             modalAgendamento.hide();
         }
 
