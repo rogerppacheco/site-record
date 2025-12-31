@@ -300,21 +300,20 @@ def consultar_previsao_agendamento(numero_pedido):
     Retorna a data/hora de início e fim da execução real.
     """
     from .models import ImportacaoAgendamento
-    from django.utils import timezone
+    from django.db.models import Q
     
     numero_limpo = str(numero_pedido).strip()
-    print(f"\n📅 BUSCA PREVISÃO -> Pedido: {numero_limpo}")
+    numero_sem_zero = numero_limpo.lstrip("0") or numero_limpo
+    print(f"\n📅 BUSCA PREVISÃO -> Pedido: {numero_limpo} | sem zero: {numero_sem_zero}")
     
-    # Busca pelo número da ordem (nr_ordem ou nr_ordem_venda)
-    agendamento = ImportacaoAgendamento.objects.filter(
-        nr_ordem__icontains=numero_limpo
-    ).first()
-    
-    if not agendamento:
-        # Tenta pela ordem de venda
-        agendamento = ImportacaoAgendamento.objects.filter(
-            nr_ordem_venda__icontains=numero_limpo
-        ).first()
+    # Busca combinando ordem e ordem de venda, considerando zeros à esquerda
+    filtros = Q(nr_ordem__icontains=numero_limpo) | Q(nr_ordem_venda__icontains=numero_limpo)
+    if numero_sem_zero != numero_limpo:
+        filtros |= Q(nr_ordem__icontains=numero_sem_zero) | Q(nr_ordem_venda__icontains=numero_sem_zero)
+        filtros |= Q(nr_ordem__iexact=numero_sem_zero) | Q(nr_ordem_venda__iexact=numero_sem_zero)
+    filtros |= Q(nr_ordem__iexact=numero_limpo) | Q(nr_ordem_venda__iexact=numero_limpo)
+
+    agendamento = ImportacaoAgendamento.objects.filter(filtros).first()
     
     if agendamento:
         # Formata as datas
