@@ -1,11 +1,16 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Importar Recompra - Record PAP</title>
+    <title>Importar Recompra</title>
+    <link rel="shortcut icon" href="{% static 'logo.png' %}" type="image/x-icon">
+    
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=13.2">
+
     <style>
         :root { --primary-color: #0066cc; }
         body { background-color: #f5f7fa; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
@@ -141,233 +146,358 @@
             border-color: #ffeaa7;
             color: #856404;
         }
+
+        .result-message.success {
+            background: #d4edda;
+            color: #155724;
+            border-left: 4px solid #1cc88a;
+        }
+
+        .result-message.error {
+            background: #ffeaea;
+            color: #e74a3b;
+            border-left: 4px solid #e74a3b;
+        }
+
+        .info-card {
+            background: white;
+            border-left: 4px solid #0066cc;
+            padding: 20px;
+            margin-bottom: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .required-columns {
+            background: #f8f9fc;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+
+        .column-tag {
+            display: inline-block;
+            background: #0066cc;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            margin: 5px;
+            font-family: monospace;
+        }
+
+        .import-container {
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 20px;
+        }
     </style>
 </head>
 <body>
-    <!-- Header -->
-    <div class="main-header">
-        <div class="container">
-            <div class="d-flex justify-content-between align-items-center">
-                <div class="d-flex align-items-center gap-3">
-                    <a href="/" class="text-white" style="text-decoration: none; font-size: 24px;">
-                        <i class="bi bi-arrow-left"></i>
-                    </a>
-                    <div>
-                        <h2 style="margin: 0; font-weight: 600;">Importar Recompra</h2>
-                        <small style="opacity: 0.9;">Arquivo de Recompra</small>
-                    </div>
-                </div>
-                <div class="d-flex gap-2">
-                    <button onclick="window.location.href='/area-interna/'" class="btn btn-light btn-sm" title="Voltar para área interna">
-                        <i class="bi bi-house"></i> Início
-                    </button>
-                    <button onclick="logout()" class="btn btn-outline-light btn-sm" title="Sair da aplicação">
-                        <i class="bi bi-box-arrow-right"></i> Sair
-                    </button>
-                </div>
-            </div>
+    <header class="main-header">
+        <div class="header-container">
+            <a href="/"><img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo"></a>
+            <button class="menu-toggle" id="menu-toggle">
+                <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+            </button>
+            <nav class="main-nav" id="main-nav">
+                <ul>
+                    <li><a href="/importacoes/">Voltar</a></li>
+                    <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
+                </ul>
+            </nav>
         </div>
-    </div>
+    </header>
 
-    <!-- Conteúdo -->
-    <div class="container mt-5 mb-5">
-        <div class="row">
-            <div class="col-lg-8 mx-auto">
-                <!-- Upload -->
-                <div class="card shadow-sm border-0 mb-4">
-                    <div class="card-body">
-                        <h5 class="card-title mb-4">
-                            <i class="bi bi-upload" style="color: var(--primary-color);"></i> Selecione o arquivo
-                        </h5>
-                        
-                        <div class="upload-box" id="uploadBox">
-                            <i class="bi bi-cloud-upload" style="font-size: 48px; color: var(--primary-color); margin-bottom: 10px;"></i>
-                            <p class="mt-3 mb-1"><strong>Clique ou arraste o arquivo aqui</strong></p>
-                            <small class="text-muted">Formatos aceitos: .xlsx, .xls, .xlsb</small>
-                        </div>
-                        
-                        <input type="file" id="fileInput" accept=".xlsx,.xls,.xlsb" style="display: none;">
-                        
-                        <!-- Arquivo selecionado -->
-                        <div id="fileSelected" style="display: none; margin-top: 15px;">
-                            <div class="file-item">
-                                <div class="d-flex align-items-center gap-3">
-                                    <i class="bi bi-file-earmark-excel" style="font-size: 32px; color: var(--primary-color);"></i>
-                                    <div>
-                                        <strong id="fileName"></strong>
-                                        <small class="text-muted d-block" id="fileSize"></small>
-                                    </div>
-                                </div>
-                                <button class="btn btn-sm btn-outline-danger" onclick="clearFile()" title="Remover arquivo">
-                                    <i class="bi bi-x"></i> Remover
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <!-- Progress -->
-                        <div class="progress-container" id="progressContainer">
-                            <small class="text-muted">Processando importação...</small>
-                            <div class="progress mt-2">
-                                <div class="progress-bar" id="progressBar" role="progressbar" style="width: 10%;"></div>
-                            </div>
-                        </div>
-                        
-                        <!-- Botão Importar -->
-                        <button id="importBtn" class="btn btn-primary w-100 mt-4" style="display: none;" onclick="iniciarImportacao()" title="Iniciar importação do arquivo">
-                            <i class="bi bi-arrow-up-circle"></i> Iniciar Importação
-                        </button>
-                    </div>
-                </div>
-                
-                <!-- Resultado -->
-                <div id="resultContainer"></div>
+    <div class="import-container">
+        <div class="text-center mb-4">
+            <h2 class="fw-bold text-dark"><i class="bi bi-arrow-repeat"></i> Importar Recompra</h2>
+            <p class="text-muted">Arquivo de Recompra</p>
+        </div>
+
+        <!-- Informações -->
+        <div class="info-card">
+            <h5 class="mb-3" style="color: #0066cc;"><i class="bi bi-info-circle"></i> Instruções de Importação</h5>
+            <ul class="mb-0">
+                <li><strong>Formato aceito:</strong> Excel (.xlsx, .xls, .xlsb)</li>
+                <li><strong>Colunas obrigatórias:</strong> nr_ordem, sg_uf, nm_municipio</li>
+                <li><strong>Colunas de data:</strong> dt_venda_particao, dt_encerramento, dt_inicio_ativo</li>
+            </ul>
+
+            <div class="required-columns">
+                <strong class="text-dark">Principais colunas da planilha:</strong><br>
+                <span class="column-tag">nr_ordem</span>
+                <span class="column-tag">sg_uf</span>
+                <span class="column-tag">nm_municipio</span>
+                <span class="column-tag">st_ordem</span>
+                <span class="column-tag">nm_seg</span>
+                <span class="column-tag">resultado</span>
+                <span class="column-tag">dt_venda_particao</span>
+                <span class="column-tag">nm_regional</span>
             </div>
         </div>
+
+        <!-- Upload Zone -->
+        <div class="upload-zone" id="uploadZone" style="border: 3px dashed #0066cc;" onclick="document.getElementById('fileInput').click()">
+            <i class="bi bi-cloud-upload" style="color: #0066cc;"></i>
+            <h3 style="color: #0066cc;">Arraste o arquivo aqui ou clique para selecionar</h3>
+            <p>Arquivos Excel: .xlsx, .xls, .xlsb</p>
+            <input type="file" id="fileInput" accept=".xlsx,.xls,.xlsb" style="display: none;" onchange="handleFileSelect(event)">
+        </div>
+
+        <!-- Arquivo Selecionado -->
+        <div id="fileInfo" style="display: none;" class="mt-3 p-3 bg-light rounded">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <i class="bi bi-file-earmark-excel text-primary fs-4"></i>
+                    <span id="fileName" class="ms-2 fw-bold"></span>
+                    <span id="fileSize" class="ms-2 text-muted"></span>
+                </div>
+                <button class="btn btn-sm btn-danger" onclick="clearFile()">
+                    <i class="bi bi-x"></i> Remover
+                </button>
+            </div>
+        </div>
+
+        <!-- Botão Enviar -->
+        <div class="text-center mt-4">
+            <button id="btnUpload" class="btn btn-primary btn-lg" onclick="uploadFile()" disabled>
+                <i class="bi bi-upload"></i> Iniciar Importação
+            </button>
+        </div>
+
+        <!-- Progress Bar -->
+        <div id="progressContainer" class="progress-container" style="display: none;">
+            <h5 class="text-center mb-3">Processando Importação...</h5>
+            <div class="progress">
+                <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" 
+                     role="progressbar" style="width: 0%; background-color: #0066cc;">0%</div>
+            </div>
+            <p id="progressMessage" class="progress-text">Aguarde...</p>
+        </div>
+
+        <!-- Resultado -->
+        <div id="resultContainer" style="display: none;"></div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        const uploadBox = document.getElementById('uploadBox');
-        const fileInput = document.getElementById('fileInput');
-        const fileSelected = document.getElementById('fileSelected');
-        const importBtn = document.getElementById('importBtn');
-        const progressContainer = document.getElementById('progressContainer');
-        const progressBar = document.getElementById('progressBar');
-        const resultContainer = document.getElementById('resultContainer');
-        
-        let arquivoSelecionado = null;
-        
-        // Event listeners
-        uploadBox.addEventListener('click', () => fileInput.click());
-        
-        uploadBox.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            uploadBox.style.backgroundColor = 'rgba(0, 102, 204, 0.1)';
-        });
-        
-        uploadBox.addEventListener('dragleave', () => {
-            uploadBox.style.backgroundColor = 'rgba(0, 102, 204, 0.02)';
-        });
-        
-        uploadBox.addEventListener('drop', (e) => {
-            e.preventDefault();
-            uploadBox.style.backgroundColor = 'rgba(0, 102, 204, 0.02)';
-            if (e.dataTransfer.files.length) {
-                fileInput.files = e.dataTransfer.files;
-                mostrarArquivo();
-            }
-        });
-        
-        fileInput.addEventListener('change', mostrarArquivo);
-        
-        function mostrarArquivo() {
-            const arquivo = fileInput.files[0];
-            if (arquivo) {
-                arquivoSelecionado = arquivo;
-                document.getElementById('fileName').textContent = arquivo.name;
-                document.getElementById('fileSize').textContent = (arquivo.size / 1024).toFixed(2) + ' KB';
-                uploadBox.style.display = 'none';
-                fileSelected.style.display = 'block';
-                importBtn.style.display = 'block';
-            }
+        // Função de logout
+        function logout() {
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('refreshToken');
+            window.location.href = '/';
+        }
+
+        // Menu Toggle
+        const menuToggle = document.getElementById('menu-toggle');
+        const mainNav = document.getElementById('main-nav');
+        if (menuToggle) {
+            menuToggle.addEventListener('click', () => mainNav.classList.toggle('active'));
         }
         
+        let selectedFile = null;
+
+        // Drag and Drop
+        const uploadZone = document.getElementById('uploadZone');
+
+        uploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadZone.classList.add('dragging');
+        });
+
+        uploadZone.addEventListener('dragleave', () => {
+            uploadZone.classList.remove('dragging');
+        });
+
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.classList.remove('dragging');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        });
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                handleFile(file);
+            }
+        }
+
+        function handleFile(file) {
+            // Valida extensão
+            const validExtensions = ['.xlsx', '.xls', '.xlsb'];
+            const fileExt = '.' + file.name.split('.').pop().toLowerCase();
+            
+            if (!validExtensions.includes(fileExt)) {
+                alert('Formato inválido! Envie apenas arquivos Excel (.xlsx, .xls, .xlsb)');
+                return;
+            }
+
+            selectedFile = file;
+            document.getElementById('fileName').textContent = file.name;
+            document.getElementById('fileSize').textContent = `(${(file.size / 1024 / 1024).toFixed(2)} MB)`;
+            document.getElementById('fileInfo').style.display = 'block';
+            document.getElementById('btnUpload').disabled = false;
+        }
+
         function clearFile() {
-            fileInput.value = '';
-            arquivoSelecionado = null;
-            uploadBox.style.display = 'block';
-            fileSelected.style.display = 'none';
-            importBtn.style.display = 'none';
-            resultContainer.innerHTML = '';
+            selectedFile = null;
+            document.getElementById('fileInput').value = '';
+            document.getElementById('fileInfo').style.display = 'none';
+            document.getElementById('btnUpload').disabled = true;
+            document.getElementById('progressContainer').style.display = 'none';
+            document.getElementById('resultContainer').style.display = 'none';
         }
-        
-        async function iniciarImportacao() {
-            if (!arquivoSelecionado) return;
-            
+
+        async function uploadFile() {
+            if (!selectedFile) return;
+
             const formData = new FormData();
-            formData.append('arquivo', arquivoSelecionado);
+            formData.append('arquivo', selectedFile);
+
+            // Mostra progress
+            document.getElementById('progressContainer').style.display = 'block';
+            document.getElementById('resultContainer').style.display = 'none';
+            document.getElementById('btnUpload').disabled = true;
+
+            // Simula progresso
+            updateProgress(10, 'Lendo arquivo...');
             
-            importBtn.disabled = true;
-            progressContainer.style.display = 'block';
-            resultContainer.innerHTML = '';
-            
-            const token = localStorage.getItem('access_token');
-            
+            setTimeout(() => updateProgress(30, 'Validando dados...'), 500);
+
             try {
-                let progress = 10;
-                const progressInterval = setInterval(() => {
-                    progress += Math.random() * 20;
-                    if (progress < 90) progressBar.style.width = progress + '%';
-                }, 300);
-                
+                setTimeout(() => updateProgress(70, 'Importando registros...'), 1000);
+
+                const token = localStorage.getItem('accessToken');
                 const response = await fetch('/api/crm/import/recompra/', {
                     method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}` },
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    },
                     body: formData
                 });
-                
-                clearInterval(progressInterval);
-                progressBar.style.width = '100%';
-                
+
                 const data = await response.json();
-                
-                if (data.success) {
-                    const sucessoPercent = ((data.registros_criados / data.total_linhas) * 100).toFixed(1);
-                    showResult(true, `
-                        <div class="stats-grid mb-4">
-                            <div class="stat-box">
-                                <div class="stat-number">${data.total_linhas}</div>
-                                <div class="stat-label">Total de Linhas</div>
+
+                updateProgress(90, 'Finalizando...');
+
+                setTimeout(() => {
+                    updateProgress(100, 'Concluído!');
+                    
+                    if (data.success) {
+                        const sucessoPercent = ((data.registros_criados / data.total_linhas) * 100).toFixed(1);
+                        const errosCount = data.total_linhas - data.registros_criados;
+                        
+                        showResult(true, `
+                            <div class="text-center mb-4">
+                                <i class="bi bi-check-circle-fill text-success" style="font-size: 4rem;"></i>
+                                <h4 class="mt-3 fw-bold">Importação Concluída com Sucesso!</h4>
                             </div>
-                            <div class="stat-box">
-                                <div class="stat-number">${data.registros_criados}</div>
-                                <div class="stat-label">Importados</div>
+                            
+                            <div class="stats-grid mb-4">
+                                <div class="stat-box">
+                                    <div class="stat-number">${data.total_linhas}</div>
+                                    <div class="stat-label">Total de Linhas</div>
+                                </div>
+                                <div class="stat-box" style="border-left-color: #1cc88a;">
+                                    <div class="stat-number" style="color: #1cc88a;">${data.registros_criados}</div>
+                                    <div class="stat-label">Importados</div>
+                                </div>
+                                <div class="stat-box" style="border-left-color: ${errosCount > 0 ? '#e74a3b' : '#1cc88a'};">
+                                    <div class="stat-number" style="color: ${errosCount > 0 ? '#e74a3b' : '#1cc88a'};">${errosCount}</div>
+                                    <div class="stat-label">Erros</div>
+                                </div>
+                                <div class="stat-box" style="border-left-color: #1cc88a;">
+                                    <div class="stat-number" style="color: #1cc88a;">${sucessoPercent}%</div>
+                                    <div class="stat-label">Taxa de Sucesso</div>
+                                </div>
                             </div>
-                            <div class="stat-box">
-                                <div class="stat-number">${data.total_linhas - data.registros_criados}</div>
-                                <div class="stat-label">Erros</div>
+
+                            <div class="alert alert-success border-success">
+                                <h6 class="fw-bold mb-2"><i class="bi bi-info-circle"></i> Resumo da Importação</h6>
+                                <ul class="mb-0 small">
+                                    <li><strong>${data.registros_criados}</strong> recompras foram importadas e estão disponíveis no sistema</li>
+                                    <li>Arquivo processado: <strong>${selectedFile ? selectedFile.name : 'N/A'}</strong></li>
+                                    <li>Data da importação: <strong>${new Date().toLocaleString('pt-BR')}</strong></li>
+                                    <li>Os dados podem ser consultados através do painel administrativo</li>
+                                </ul>
                             </div>
-                            <div class="stat-box">
-                                <div class="stat-number">${sucessoPercent}%</div>
-                                <div class="stat-label">Taxa de Sucesso</div>
+
+                            ${data.erros && data.erros.length > 0 ? `
+                                <div class="alert alert-warning border-warning mt-3">
+                                    <h6 class="fw-bold mb-2"><i class="bi bi-exclamation-triangle"></i> Erros Encontrados (${data.erros.length})</h6>
+                                    <p class="small mb-2">As seguintes linhas não foram importadas devido a erros:</p>
+                                    <div style="max-height: 200px; overflow-y: auto;">
+                                        <ul class="small mb-0">
+                                            ${data.erros.map(err => `<li>${err}</li>`).join('')}
+                                        </ul>
+                                    </div>
+                                </div>
+                            ` : `
+                                <div class="alert alert-info border-info mt-3">
+                                    <p class="mb-0 small"><i class="bi bi-check-all"></i> Todas as linhas foram processadas sem erros!</p>
+                                </div>
+                            `}
+
+                            <div class="text-center mt-4">
+                                <button class="btn btn-primary" onclick="location.reload()">
+                                    <i class="bi bi-arrow-clockwise"></i> Nova Importação
+                                </button>
+                                <a href="/importacoes/" class="btn btn-secondary ms-2">
+                                    <i class="bi bi-arrow-left"></i> Voltar
+                                </a>
                             </div>
-                        </div>
-                        <div class="success-box">
-                            <h6><i class="bi bi-check-circle"></i> Importação Concluída com Sucesso!</h6>
-                            <p class="mb-2"><strong>${data.registros_criados} recompras</strong> foram importadas e estão disponíveis no sistema</p>
-                            <small class="text-muted">
-                                <strong>Arquivo:</strong> ${data.arquivo}<br>
-                                <strong>Data da importação:</strong> ${data.data_importacao}
-                            </small>
-                        </div>
-                        ${data.erros.length ? `<div class="alert alert-warning mt-3"><strong>⚠️ Avisos:</strong><ul class="mb-0">${data.erros.slice(0, 5).map(e => '<li>' + e + '</li>').join('')}${data.erros.length > 5 ? '<li>... e mais ' + (data.erros.length - 5) + '</li>' : ''}</ul></div>` : ''}
-                    `);
-                } else {
-                    showResult(false, `<strong>❌ Erro na importação:</strong> ${data.error}`);
-                }
+                        `);
+                    } else {
+                        showResult(false, `
+                            <div class="text-center mb-4">
+                                <i class="bi bi-x-circle-fill text-danger" style="font-size: 4rem;"></i>
+                                <h4 class="mt-3 fw-bold">Erro na Importação</h4>
+                            </div>
+                            <div class="alert alert-danger">
+                                <h6 class="fw-bold"><i class="bi bi-exclamation-triangle"></i> Detalhes do Erro:</h6>
+                                <p class="mb-0">${data.error || 'Erro desconhecido. Verifique o formato do arquivo e tente novamente.'}</p>
+                            </div>
+                            <div class="text-center mt-4">
+                                <button class="btn btn-primary" onclick="location.reload()">
+                                    <i class="bi bi-arrow-clockwise"></i> Tentar Novamente
+                                </button>
+                            </div>
+                        `);
+                    }
+                }, 500);
+
             } catch (error) {
-                showResult(false, `<strong>❌ Erro:</strong> ${error.message}`);
-            } finally {
-                importBtn.disabled = false;
-                progressContainer.style.display = 'none';
-                progressBar.style.width = '0%';
+                console.error('Erro:', error);
+                updateProgress(0, '');
+                showResult(false, `
+                    <h5><i class="bi bi-x-circle"></i> Erro na Importação</h5>
+                    <p>${error.message || 'Erro ao conectar com o servidor'}</p>
+                `);
+                document.getElementById('btnUpload').disabled = false;
             }
         }
-        
-        function showResult(success, mensagem) {
+
+        function updateProgress(percent, message) {
+            const progressBar = document.getElementById('progressBar');
+            progressBar.style.width = percent + '%';
+            progressBar.textContent = percent + '%';
+            document.getElementById('progressMessage').textContent = message;
+        }
+
+        function showResult(success, message) {
+            const resultContainer = document.getElementById('resultContainer');
             resultContainer.innerHTML = `
-                <div class="card ${success ? 'border-success' : 'border-danger'} shadow-sm">
+                <div class="card ${success ? 'border-success' : 'border-danger'} border-3 mt-4">
                     <div class="card-body">
-                        ${mensagem}
+                        ${message}
                     </div>
                 </div>
             `;
-        }
-        
-        async function logout() {
-            localStorage.removeItem('access_token');
-            localStorage.removeItem('refresh_token');
-            window.location.href = '/';
+            resultContainer.style.display = 'block';
         }
     </script>
 </body>
