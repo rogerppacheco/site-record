@@ -96,9 +96,9 @@
             </div>
 
             <ul class="nav nav-tabs mb-3" id="abas-esteira">
-                <li class="nav-item"><a class="nav-link active" href="#" onclick="filtrarStatus('TODOS', this)">Todos</a></li>
-                <li class="nav-item"><a class="nav-link" href="#" onclick="filtrarStatus('AGENDADO', this)">Agendados</a></li>
-                <li class="nav-item"><a class="nav-link" href="#" onclick="filtrarStatus('PENDEN', this)">Pendentes</a></li>
+                <li class="nav-item"><a class="nav-link active" href="#" data-tab="TODOS" onclick="filtrarStatus('TODOS', this)">Todos</a></li>
+                <li class="nav-item"><a class="nav-link" href="#" data-tab="AGENDADO" onclick="filtrarStatus('AGENDADO', this)">Agendados</a></li>
+                <li class="nav-item"><a class="nav-link" href="#" data-tab="PENDEN" onclick="filtrarStatus('PENDEN', this)">Pendentes</a></li>
             </ul>
 
             <div class="card border-0 shadow-none" style="background: transparent;">
@@ -312,6 +312,29 @@
             return `${dia}/${mes}/${ano}`;
         }
 
+        function calcularContadores(vendasLista) {
+            const contagem = { todos: vendasLista.length, pendentes: 0, datas: {} };
+            vendasLista.forEach(v => {
+                const statusNome = (v.status_esteira && v.status_esteira.nome ? v.status_esteira.nome.toUpperCase() : '');
+                if (statusNome.includes('PENDEN')) contagem.pendentes += 1;
+                if (statusNome.includes('AGENDADO') && v.data_agendamento) {
+                    contagem.datas[v.data_agendamento] = (contagem.datas[v.data_agendamento] || 0) + 1;
+                }
+            });
+            return contagem;
+        }
+
+        function atualizarContadoresAbas(contagem) {
+            const todosTab = document.querySelector('#abas-esteira a[data-tab="TODOS"]');
+            const agendadosTab = document.querySelector('#abas-esteira a[data-tab="AGENDADO"]');
+            const pendentesTab = document.querySelector('#abas-esteira a[data-tab="PENDEN"]');
+
+            if (todosTab) todosTab.textContent = `Todos (${contagem.todos || 0})`;
+            const totalAgendados = Object.values(contagem.datas || {}).reduce((acc, val) => acc + val, 0);
+            if (agendadosTab) agendadosTab.textContent = `Agendados (${totalAgendados})`;
+            if (pendentesTab) pendentesTab.textContent = `Pendentes (${contagem.pendentes || 0})`;
+        }
+
         async function carregarVendas(silent = false) {
             const tbody = document.getElementById('tabela-esteira-body');
             const busca = document.getElementById('filtro-busca').value; // Captura a busca
@@ -338,14 +361,17 @@
                     return v.status_esteira.estado.toUpperCase() !== 'FECHADO';
                 });
 
-                gerarAbasDeData(vendas);
+                vendas = vendas.filter(v => !v.status_esteira || !v.status_esteira.nome.toUpperCase().includes('CANCEL'));
+
+                const contadores = calcularContadores(vendas);
+
+                gerarAbasDeData(vendas, contadores.datas);
+                atualizarContadoresAbas(contadores);
 
                 if(filtroAtual === 'TODOS') {} 
                 else if (filtroAtual === 'AGENDADO') vendas = vendas.filter(v => v.status_esteira && v.status_esteira.nome.toUpperCase().includes('AGENDADO'));
                 else if (filtroAtual === 'PENDEN') vendas = vendas.filter(v => v.status_esteira && v.status_esteira.nome.toUpperCase().includes('PENDEN'));
                 else vendas = vendas.filter(v => v.data_agendamento === filtroAtual);
-
-                vendas = vendas.filter(v => !v.status_esteira || !v.status_esteira.nome.toUpperCase().includes('CANCEL'));
 
                 if(vendas.length === 0) { tbody.innerHTML = '<tr><td colspan="11" class="text-center py-4 text-muted">Nenhuma venda encontrada nesta etapa.</td></tr>'; return; }
 
@@ -412,17 +438,18 @@
             } catch (e) { if(!silent) tbody.innerHTML = '<tr><td colspan="11" class="text-center text-danger">Erro ao carregar.</td></tr>'; }
         }
 
-        function gerarAbasDeData(todasVendas) {
+        function gerarAbasDeData(todasVendas, contagemDatas = {}) {
             const ul = document.getElementById('abas-esteira');
             while (ul.children.length > 3) { ul.removeChild(ul.lastChild); }
             const datasUnicas = new Set();
             todasVendas.forEach(v => { if (v.data_agendamento && v.status_esteira && v.status_esteira.nome.toUpperCase().includes('AGENDADO')) { datasUnicas.add(v.data_agendamento); } });
             Array.from(datasUnicas).sort().forEach(dataIso => {
                 const partes = dataIso.split('-');
-                const dataExibicao = `${partes[2]}/${partes[1]}`; 
+                const dataExibicao = `${partes[2]}/${partes[1]}`;
+                const contadorDia = contagemDatas[dataIso] || 0;
                 const li = document.createElement('li'); li.className = 'nav-item';
                 const a = document.createElement('a'); a.className = `nav-link data-tab ${filtroAtual === dataIso ? 'active' : ''}`;
-                a.href = '#'; a.textContent = dataExibicao; 
+                a.href = '#'; a.textContent = `${dataExibicao} (${contadorDia})`; 
                 a.onclick = (e) => { e.preventDefault(); filtrarStatus(dataIso, a); };
                 li.appendChild(a); ul.appendChild(li);
             });
