@@ -484,7 +484,7 @@
                     let nomeVendedor = v.vendedor_nome || (v.vendedor ? v.vendedor.username : 'N/A');
                     let produto = (v.plano && v.plano.nome) ? v.plano.nome : '-';
                     let statusNome = (v.status_tratamento && v.status_tratamento.nome) ? v.status_tratamento.nome : '-';
-                    let dataFormatada = v.data_criacao ? new Date(v.data_criacao).toLocaleDateString('pt-BR') : '-';
+                    let dataFormatada = v.data_criacao ? new Date(v.data_criacao).toLocaleString('pt-BR', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'}) : '-';
                     
                     // --- NOVA COLUNA: ÚLTIMA EDIÇÃO ---
                     let infoEdicao = '-';
