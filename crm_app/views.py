@@ -595,6 +595,12 @@ class VendaViewSet(viewsets.ModelViewSet):
         status_esteira_antes = venda_antes.status_esteira
         status_tratamento_antes = venda_antes.status_tratamento
         
+        # Capturar valores antes da atualização para detectar mudanças nos dados
+        data_agendamento_antes = venda_antes.data_agendamento
+        periodo_agendamento_antes = venda_antes.periodo_agendamento
+        data_instalacao_antes = venda_antes.data_instalacao
+        motivo_pendencia_antes = venda_antes.motivo_pendencia
+        
         novo_status = serializer.validated_data.get('status_esteira')
         extra_updates = {}
 
@@ -635,7 +641,16 @@ class VendaViewSet(viewsets.ModelViewSet):
                 logger.error(f"Erro ao salvar histórico: {e}")
 
         # --- 2. NOVA LÓGICA DE NOTIFICAÇÃO WHATSAPP (ESTEIRA) ---
-        if venda_atualizada.status_esteira and venda_atualizada.status_esteira != status_esteira_antes:
+        # Verifica se status mudou OU se dados importantes foram alterados
+        status_mudou = venda_atualizada.status_esteira and venda_atualizada.status_esteira != status_esteira_antes
+        dados_mudaram = (
+            (data_agendamento_antes != venda_atualizada.data_agendamento) or
+            (periodo_agendamento_antes != venda_atualizada.periodo_agendamento) or
+            (data_instalacao_antes != venda_atualizada.data_instalacao) or
+            (motivo_pendencia_antes != venda_atualizada.motivo_pendencia)
+        )
+        
+        if venda_atualizada.status_esteira and (status_mudou or dados_mudaram):
             novo_status_nome = venda_atualizada.status_esteira.nome.upper()
             
             if ('PENDEN' in novo_status_nome or 'AGENDADO' in novo_status_nome or 'INSTALADA' in novo_status_nome) and 'CANCEL' not in novo_status_nome:
@@ -645,6 +660,9 @@ class VendaViewSet(viewsets.ModelViewSet):
                         svc = WhatsAppService()
                         msg = ""
                         
+                        # Determina se é alteração de dados ou mudança de status
+                        prefixo = "🔄 *ATUALIZAÇÃO - " if (dados_mudaram and not status_mudou) else ""
+                        
                         cliente_nome = venda_atualizada.cliente.nome_razao_social
                         os_num = venda_atualizada.ordem_servico or "Não informada"
                         status_label = venda_atualizada.status_esteira.nome
@@ -652,8 +670,9 @@ class VendaViewSet(viewsets.ModelViewSet):
 
                         if 'PENDEN' in novo_status_nome:
                             motivo = venda_atualizada.motivo_pendencia.nome if venda_atualizada.motivo_pendencia else "Não informado"
+                            titulo = f"{prefixo}VENDA PENDENCIADA*" if prefixo else "⚠️ *VENDA PENDENCIADA*"
                             msg = (
-                                f"⚠️ *VENDA PENDENCIADA*\n\n"
+                                f"{titulo}\n\n"
                                 f"*Nome do cliente:* {cliente_nome}\n"
                                 f"*O.S:* {os_num}\n"
                                 f"*Status:* {status_label}\n"
@@ -664,8 +683,9 @@ class VendaViewSet(viewsets.ModelViewSet):
                         elif 'AGENDADO' in novo_status_nome:
                             data_ag = venda_atualizada.data_agendamento.strftime('%d/%m/%Y') if venda_atualizada.data_agendamento else "Não informada"
                             turno = venda_atualizada.get_periodo_agendamento_display() if venda_atualizada.periodo_agendamento else "Não informado"
+                            titulo = f"{prefixo}VENDA AGENDADA*" if prefixo else "📅 *VENDA AGENDADA*"
                             msg = (
-                                f"📅 *VENDA AGENDADA*\n\n"
+                                f"{titulo}\n\n"
                                 f"*Nome do cliente:* {cliente_nome}\n"
                                 f"*O.S:* {os_num}\n"
                                 f"*Status:* {status_label}\n"
@@ -676,8 +696,9 @@ class VendaViewSet(viewsets.ModelViewSet):
 
                         elif 'INSTALADA' in novo_status_nome:
                             data_inst = venda_atualizada.data_instalacao.strftime('%d/%m/%Y') if venda_atualizada.data_instalacao else date.today().strftime('%d/%m/%Y')
+                            titulo = f"{prefixo}VENDA INSTALADA*" if prefixo else "✅ *VENDA INSTALADA*"
                             msg = (
-                                f"✅ *VENDA INSTALADA*\n\n"
+                                f"{titulo}\n\n"
                                 f"*Nome do cliente:* {cliente_nome}\n"
                                 f"*O.S:* {os_num}\n"
                                 f"*Status:* {status_label}\n"
