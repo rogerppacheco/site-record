@@ -774,3 +774,66 @@ class ImportacaoAgendamento(models.Model):
 
     def __str__(self):
         return f"BA {self.cd_nrba} - {self.dt_agendamento or 'Sem data'}"
+
+class ImportacaoRecompra(models.Model):
+    """Modelo para importação de dados de Recompra"""
+    
+    # Identificadores
+    ds_anomes = models.CharField(max_length=50, null=True, blank=True, verbose_name="Ano/Mês")
+    nr_ordem = models.CharField(max_length=255, null=True, blank=True, db_index=True, verbose_name="Número Ordem")
+    
+    # Datas
+    dt_venda_particao = models.DateField(null=True, blank=True, verbose_name="Data Venda Partição")
+    dt_encerramento = models.DateField(null=True, blank=True, verbose_name="Data Encerramento")
+    dt_inicio_ativo = models.DateField(null=True, blank=True, verbose_name="Data Início Ativo")
+    
+    # Status e Segmento
+    st_ordem = models.CharField(max_length=255, null=True, blank=True, verbose_name="Status Ordem")
+    nm_seg = models.CharField(max_length=255, null=True, blank=True, verbose_name="Nome Segmento")
+    resultado = models.CharField(max_length=255, null=True, blank=True, verbose_name="Resultado")
+    
+    # Localização
+    sg_uf = models.CharField(max_length=2, null=True, blank=True, verbose_name="UF")
+    nm_municipio = models.CharField(max_length=255, null=True, blank=True, verbose_name="Município")
+    nm_bairro = models.CharField(max_length=255, null=True, blank=True, verbose_name="Bairro")
+    nr_cep = models.CharField(max_length=20, null=True, blank=True, verbose_name="CEP")
+    nr_cep_base = models.CharField(max_length=20, null=True, blank=True, verbose_name="CEP Base")
+    
+    # Complementos de Endereço
+    nr_complemento1_base = models.CharField(max_length=255, null=True, blank=True, verbose_name="Complemento 1")
+    nr_complemento2_base = models.CharField(max_length=255, null=True, blank=True, verbose_name="Complemento 2")
+    nr_complemento3_base = models.CharField(max_length=255, null=True, blank=True, verbose_name="Complemento 3")
+    
+    # SAP e Transações
+    cd_sap_pdv = models.CharField(max_length=255, null=True, blank=True, verbose_name="SAP PDV")
+    cd_tr_vdd = models.CharField(max_length=255, null=True, blank=True, verbose_name="Transação Vendedor")
+    
+    # Organização
+    nm_diretoria = models.CharField(max_length=255, null=True, blank=True, verbose_name="Diretoria")
+    nm_regional = models.CharField(max_length=255, null=True, blank=True, verbose_name="Regional")
+    cd_rede = models.CharField(max_length=255, null=True, blank=True, verbose_name="Código Rede")
+    gp_canal = models.CharField(max_length=255, null=True, blank=True, verbose_name="Grupo Canal")
+    nm_pdv_rel = models.CharField(max_length=255, null=True, blank=True, verbose_name="PDV Relacionado")
+    nm_gc = models.CharField(max_length=255, null=True, blank=True, verbose_name="Gerente de Conta")
+    
+    # Extras
+    GERENCIA = models.CharField(max_length=255, null=True, blank=True, verbose_name="Gerência")
+    REDE = models.CharField(max_length=255, null=True, blank=True, verbose_name="Rede")
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Criado em")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Atualizado em")
+    
+    class Meta:
+        verbose_name = "Importação Recompra"
+        verbose_name_plural = "Importações Recompra"
+        ordering = ["-dt_venda_particao", "-created_at"]
+        indexes = [
+            models.Index(fields=["nr_ordem"]),
+            models.Index(fields=["ds_anomes"]),
+            models.Index(fields=["dt_venda_particao"]),
+            models.Index(fields=["sg_uf"]),
+        ]
+    
+    def __str__(self):
+        return f"Recompra {self.nr_ordem} - {self.nm_municipio or 'Sem município'}"

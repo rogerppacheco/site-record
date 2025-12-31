@@ -4489,6 +4489,110 @@ class ImportacaoAgendamentoView(APIView):
         }, status=200)
 
 
+class ImportacaoRecompraView(APIView):
+    permission_classes = [CheckAPIPermission]
+    resource_name = 'importacao_recompra'
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, *args, **kwargs):
+        file_obj = request.FILES.get('arquivo')
+        if not file_obj:
+            return Response({'success': False, 'error': 'Arquivo não enviado'}, status=400)
+
+        try:
+            # Leitura do arquivo
+            if file_obj.name.endswith('.xlsb'):
+                df = pd.read_excel(file_obj, engine='pyxlsb')
+            elif file_obj.name.endswith(('.xlsx', '.xls')):
+                df = pd.read_excel(file_obj)
+            else:
+                return Response({'success': False, 'error': 'Formato inválido. Envie .xlsx, .xls ou .xlsb'}, status=400)
+        except Exception as e:
+            return Response({'success': False, 'error': f'Erro ao ler arquivo: {str(e)}'}, status=400)
+
+        # Normaliza nomes das colunas
+        df.columns = [str(col).strip() for col in df.columns]
+
+        # Converte datas
+        campos_data = ['dt_venda_particao', 'dt_encerramento', 'dt_inicio_ativo']
+
+        for campo in campos_data:
+            if campo in df.columns:
+                df[campo] = pd.to_datetime(df[campo], errors='coerce')
+
+        # Mapa de colunas esperadas
+        coluna_map = {
+            'ds_anomes': 'ds_anomes',
+            'dt_venda_particao': 'dt_venda_particao',
+            'dt_encerramento': 'dt_encerramento',
+            'nr_ordem': 'nr_ordem',
+            'st_ordem': 'st_ordem',
+            'nm_seg': 'nm_seg',
+            'sg_uf': 'sg_uf',
+            'cd_sap_pdv': 'cd_sap_pdv',
+            'cd_tr_vdd': 'cd_tr_vdd',
+            'nr_cep': 'nr_cep',
+            'nm_municipio': 'nm_municipio',
+            'nm_bairro': 'nm_bairro',
+            'resultado': 'resultado',
+            'dt_inicio_ativo': 'dt_inicio_ativo',
+            'nr_cep_base': 'nr_cep_base',
+            'nr_complemento1_base': 'nr_complemento1_base',
+            'nr_complemento2_base': 'nr_complemento2_base',
+            'nr_complemento3_base': 'nr_complemento3_base',
+            'nm_diretoria': 'nm_diretoria',
+            'nm_regional': 'nm_regional',
+            'cd_rede': 'cd_rede',
+            'gp_canal': 'gp_canal',
+            'nm_pdv_rel': 'nm_pdv_rel',
+            'GERENCIA': 'GERENCIA',
+            'nm_gc': 'nm_gc',
+            'REDE': 'REDE',
+        }
+
+        # Processa linhas
+        registros_criados = 0
+        erros = []
+
+        for idx, row in df.iterrows():
+            try:
+                dados = {}
+                for col_arquivo, col_model in coluna_map.items():
+                    if col_arquivo in df.columns:
+                        valor = row.get(col_arquivo)
+                        
+                        # Tratar valores vazios
+                        if pd.isna(valor) or valor == '':
+                            dados[col_model] = None
+                        else:
+                            # Converter datas
+                            if col_model in campos_data:
+                                try:
+                                    dados[col_model] = pd.to_datetime(valor).date()
+                                except:
+                                    dados[col_model] = None
+                            else:
+                                dados[col_model] = str(valor).strip()
+                    else:
+                        dados[col_model] = None
+
+                # Cria registro
+                ImportacaoRecompra.objects.create(**dados)
+                registros_criados += 1
+
+            except Exception as e:
+                erros.append(f"Linha {idx + 2}: {str(e)}")
+
+        return Response({
+            'success': True,
+            'registros_criados': registros_criados,
+            'total_linhas': len(df),
+            'erros': erros[:10] if erros else [],
+            'arquivo': file_obj.name,
+            'data_importacao': timezone.now().strftime('%d/%m/%Y, %H:%M:%S')
+        }, status=200)
+
+
 # =============================================================================
 # BÔNUS M-10 & FPD - VIEWS
 # =============================================================================

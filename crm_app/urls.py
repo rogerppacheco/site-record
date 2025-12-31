@@ -39,6 +39,7 @@ from .views import (
     PerformanceVendasView,
     ImportacaoLegadoView,
     ImportacaoAgendamentoView,
+    ImportacaoRecompraView,
     
     # NOVAS VIEWS (Mapas, ZAP, Performance)
     api_verificar_whatsapp,
@@ -177,6 +178,7 @@ urlpatterns = [
     path('verificar-permissao-gestao/', VerificarPermissaoGestaoView.as_view(), name='verificar-permissao-gestao'),
     path('import/legado/', ImportacaoLegadoView.as_view(), name='importacao-legado'),
     path('import/agendamento/', ImportacaoAgendamentoView.as_view(), name='importacao-agendamento'),
+    path('import/recompra/', ImportacaoRecompraView.as_view(), name='importacao-recompra'),
     
     # --- ROTAS EXTRAS ---
     path('grupos-disparo-api/', listar_grupos_whatsapp_api, name='listar_grupos_api'),

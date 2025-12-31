@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import SafraM10, ContratoM10, FaturaM10, ImportacaoAgendamento
+from .models import SafraM10, ContratoM10, FaturaM10, ImportacaoAgendamento, ImportacaoRecompra
 
 
 @admin.register(SafraM10)
@@ -33,3 +33,13 @@ class ImportacaoAgendamentoAdmin(admin.ModelAdmin):
     date_hierarchy = 'dt_agendamento'
     list_per_page = 50
     ordering = ['-dt_agendamento', '-criado_em']
+
+@admin.register(ImportacaoRecompra)
+class ImportacaoRecompraAdmin(admin.ModelAdmin):
+    list_display = ('nr_ordem', 'nm_municipio', 'sg_uf', 'st_ordem', 'dt_venda_particao', 'resultado', 'created_at')
+    list_filter = ('sg_uf', 'st_ordem', 'resultado', 'created_at', 'ds_anomes')
+    search_fields = ('nr_ordem', 'nm_municipio', 'nm_seg', 'nm_regional', 'nm_diretoria')
+    date_hierarchy = 'dt_venda_particao'
+    list_per_page = 50
+    ordering = ['-dt_venda_particao', '-created_at']
+    readonly_fields = ('created_at', 'updated_at')
