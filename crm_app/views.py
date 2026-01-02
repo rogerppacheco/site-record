@@ -19,7 +19,7 @@ from email_validator import validate_email, EmailNotValidError
 
 # --- CORREÇÃO CRÍTICA: Importar transaction e IntegrityError ---
 from django.db import transaction, IntegrityError
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, Q, Sum, F
 from django.utils import timezone
 from django.utils.timezone import now
 from django.contrib.auth import get_user_model, authenticate
@@ -36,10 +36,13 @@ from django.core.exceptions import ValidationError
 from .models import CdoiSolicitacao, CdoiBloco
 from .onedrive_service import OneDriveUploader
 
+# Importar mapeamento de status FPD
+from fpd_status_mapping import normalizar_status_fpd
+
 from rest_framework import generics, viewsets, status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.exceptions import PermissionDenied, NotFound
@@ -59,6 +62,7 @@ from .models import GrupoDisparo
 from .serializers import GrupoDisparoSerializer
 from .models import LancamentoFinanceiro
 from .serializers import LancamentoFinanceiroSerializer
+from .nio_api import consultar_dividas_nio
 
 
 # Funções de Mapa (Geometria e Busca)
@@ -85,7 +89,8 @@ from .serializers import (
     VendaSerializer, VendaCreateSerializer, ClienteSerializer,
     VendaUpdateSerializer, ImportacaoOsabSerializer, ImportacaoChurnSerializer,
     CicloPagamentoSerializer, VendaDetailSerializer,
-    CampanhaSerializer, ComissaoOperadoraSerializer, ComunicadoSerializer
+    CampanhaSerializer, ComissaoOperadoraSerializer, ComunicadoSerializer,
+    FaturaM10Serializer
 )
 
 logger = logging.getLogger(__name__)
@@ -3046,7 +3051,7 @@ class PainelPerformanceView(APIView):
         qs_hoje = users.annotate(
             vendas_total=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date=hoje)),
             vendas_cc=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date=hoje) & filtro_cc)
-        ).values('username', 'canal', 'vendas_total', 'vendas_cc').order_by('-vendas_total', 'username')
+        ).values('username', 'canal', 'vendas_total', 'vendas_cc').order_by('username')  # Ordem alfabética
 
         lista_hoje = []
         for u in qs_hoje:
@@ -3074,7 +3079,7 @@ class PainelPerformanceView(APIView):
             sab=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date=dias_semana[5])),
             total_semana=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_semana)),
             total_cc=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_semana) & filtro_cc)
-        ).values('username', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'total_semana', 'total_cc').order_by('-total_semana', 'username')
+        ).values('username', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'total_semana', 'total_cc').order_by('username')  # Ordem alfabética
 
         lista_semana = []
         for u in qs_semana:
@@ -3110,7 +3115,7 @@ class PainelPerformanceView(APIView):
             canceladas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_mes, vendas__status_esteira__nome__icontains='CANCELAD'))
         ).values(
             'username', 'total_vendas', 'instaladas', 'total_cc', 'instaladas_cc', 'pendenciadas', 'agendadas', 'canceladas'
-        ).order_by('-total_vendas', 'username')
+        ).order_by('username')  # Ordem alfab�tica
 
         lista_mes = []
         for u in qs_mes:
@@ -3168,7 +3173,7 @@ class PainelPerformanceView(APIView):
             sab=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date=dias_semana[5])),
             total_semana=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_semana)),
             total_cc=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_semana) & filtro_cc)
-        ).values('username', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'total_semana', 'total_cc').order_by('-total_semana', 'username')
+        ).values('username', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'total_semana', 'total_cc').order_by('username')  # Ordem alfab�tica
 
         lista_semana = []
         for u in qs_semana:
@@ -3201,7 +3206,7 @@ class PainelPerformanceView(APIView):
             canceladas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_mes, vendas__status_esteira__nome__icontains='CANCELAD'))
         ).values(
             'username', 'total_vendas', 'instaladas', 'total_cc', 'instaladas_cc', 'pendenciadas', 'agendadas', 'canceladas'
-        ).order_by('-total_vendas', 'username')
+        ).order_by('username')  # Ordem alfab�tica
 
         lista_mes = []
         for u in qs_mes:
@@ -4634,6 +4639,16 @@ def page_bonus_m10(request):
     return render(request, 'bonus_m10.html')
 
 
+def page_validacao_fpd(request):
+    """View para renderizar a página de validação de importações FPD"""
+    return render(request, 'validacao-fpd.html')
+
+
+def page_validacao_churn(request):
+    """View para renderizar a página de validação de importações CHURN"""
+    return render(request, 'validacao-churn.html')
+
+
 class SafraM10ListView(APIView):
     """Lista todas as safras disponíveis"""
     permission_classes = [permissions.IsAuthenticated]
@@ -4654,79 +4669,207 @@ class SafraM10ListView(APIView):
         return Response(data)
 
 
+def _map_status_fpd(status_raw: str) -> str:
+    """Mapeia status do FPD para rótulos amigáveis segundo mapeamento do usuário:
+    - Paga → Paga
+    - Paga_aguardando_repasse → Paga
+    - Aguardando_arrecadacao → Não Pago
+    - Ajustada → Paga
+    - Erro_nao_recobravel → Não Pago
+    """
+    if not status_raw:
+        return '-'
+    mapping = {
+        'paga': 'Paga',
+        'paga_aguardando_repasse': 'Paga',
+        'aguardando_arrecadacao': 'Não Pago',
+        'ajustada': 'Paga',
+        'erro_nao_recobravel': 'Não Pago',
+    }
+    key = status_raw.lower()
+    return mapping.get(key, status_raw.replace('_', ' '))
+
+
+class VendedoresM10View(APIView):
+    """Lista vendedores que têm contratos na M-10 (opcionalmente filtrado por safra)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        safra = request.GET.get('safra')
+        queryset = ContratoM10.objects.select_related('vendedor').filter(vendedor__isnull=False)
+        if safra:
+            # safra pode ser ID do SafraM10 ou string YYYY-MM
+            # Tenta primeiro como string diretamente
+            queryset = queryset.filter(safra=safra)
+
+        # Deduplica por vendedor_id para evitar repetição na lista
+        vistos = {}
+        for v in queryset.values('vendedor_id', 'vendedor__username', 'vendedor__first_name', 'vendedor__last_name'):
+            vid = v['vendedor_id']
+            if vid not in vistos and vid is not None:
+                nome = f"{v.get('vendedor__first_name', '')} {v.get('vendedor__last_name', '')}".strip()
+                vistos[vid] = {
+                    'id': vid,
+                    'username': v.get('vendedor__username') or '-',
+                    'nome': nome or v.get('vendedor__username') or '-',
+                }
+
+        data = sorted(vistos.values(), key=lambda x: (x['username'] or '').lower())
+        return Response(data)
+
+
 class DashboardM10View(APIView):
     """Dashboard com estatísticas M-10"""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        safra_id = request.GET.get('safra')
-        if not safra_id:
-            return Response({'error': 'Safra não informada'}, status=400)
-
         try:
-            safra = SafraM10.objects.get(id=safra_id)
-        except SafraM10.DoesNotExist:
-            return Response({'error': 'Safra não encontrada'}, status=404)
+            safra_id = request.GET.get('safra')
+            if not safra_id:
+                return Response({'error': 'Safra não informada'}, status=400)
 
-        # Filtros
-        queryset = ContratoM10.objects.filter(safra=safra)
-        
-        vendedor = request.GET.get('vendedor')
-        if vendedor:
-            queryset = queryset.filter(vendedor_id=vendedor)
-        
-        status = request.GET.get('status')
-        if status:
-            queryset = queryset.filter(status_contrato=status)
-        
-        elegivel = request.GET.get('elegivel')
-        if elegivel:
-            queryset = queryset.filter(elegivel_bonus=(elegivel == 'true'))
+            try:
+                safra = SafraM10.objects.get(id=safra_id)
+            except SafraM10.DoesNotExist:
+                return Response({'error': 'Safra não encontrada'}, status=404)
 
-        # Estatísticas
-        total = queryset.count()
-        ativos = queryset.filter(status_contrato='ATIVO').count()
-        elegiveis = queryset.filter(elegivel_bonus=True).count()
-        valor_total = elegiveis * 150  # R$ 150 por contrato elegível
+            # Converte safra_id para string YYYY-MM para filtro
+            safra_str = safra.mes_referencia.strftime('%Y-%m')
+            
+            # Filtros - agora safra é CharField YYYY-MM
+            queryset = ContratoM10.objects.filter(safra=safra_str).select_related('vendedor')
+            
+            vendedor = request.GET.get('vendedor')
+            if vendedor:
+                queryset = queryset.filter(vendedor_id=vendedor)
+            
+            status = request.GET.get('status')
+            if status:
+                queryset = queryset.filter(status_contrato=status)
+            
+            elegivel = request.GET.get('elegivel')
+            if elegivel:
+                queryset = queryset.filter(elegivel_bonus=(elegivel == 'true'))
 
-        taxa_permanencia = round((ativos / total * 100) if total > 0 else 0, 1)
+            busca = request.GET.get('q')
+            if busca:
+                busca_digits = re.sub(r'\D', '', busca)
+                filtros_busca = (
+                    Q(numero_contrato__icontains=busca)
+                    | Q(numero_contrato_definitivo__icontains=busca)
+                    | Q(cliente_nome__icontains=busca)
+                    | Q(ordem_servico__icontains=busca)
+                )
+                if busca_digits:
+                    filtros_busca |= Q(cpf_cliente__icontains=busca_digits)
+                queryset = queryset.filter(filtros_busca)
 
-        # Paginação - Limita a 100 registros por página
-        page = int(request.GET.get('page', 1))
-        page_size = 100
-        start = (page - 1) * page_size
-        end = start + page_size
+            # Anotações de faturas para calcular elegibilidade dinâmica
+            queryset = queryset.annotate(
+                total_faturas=Count('faturas', distinct=True),
+                faturas_pagas=Count('faturas', filter=Q(faturas__status='PAGO'), distinct=True),
+            )
 
-        # Contratos para tabela (apenas dados essenciais)
-        contratos_data = []
-        for c in queryset.select_related('vendedor')[start:end]:
-            faturas_pagas = c.faturas.filter(status='PAGO').count()
-            contratos_data.append({
-                'id': c.id,
-                'numero_contrato': c.numero_contrato,
-                'cliente_nome': c.cliente_nome,
-                'vendedor_nome': c.vendedor.get_full_name() if c.vendedor else '-',
-                'data_instalacao': c.data_instalacao.strftime('%d/%m/%Y'),
-                'plano_atual': c.plano_atual,
-                'status': c.status_contrato,
-                'status_display': c.get_status_contrato_display(),
-                'faturas_pagas': faturas_pagas,
-                'elegivel': c.elegivel_bonus,
+            # Aplica fallback: se não houver faturas cadastradas mas status FPD for Paga, conta como 1/1
+            contratos_list = list(queryset)
+            for c in contratos_list:
+                if c.total_faturas == 0 and c.status_fatura_fpd and str(c.status_fatura_fpd).lower().startswith('paga'):
+                    c.total_faturas = 1
+                    c.faturas_pagas = 1
+
+            # Mapa da fatura 1 por contrato (prioridade para exibir vencimento/status na lista)
+            ids_contratos = [c.id for c in contratos_list]
+            faturas1_map = {
+                f.contrato_id: f
+                for f in FaturaM10.objects.filter(contrato_id__in=ids_contratos, numero_fatura=1)
+            }
+            status_display_map = dict(FaturaM10.STATUS_CHOICES)
+
+            # Estatísticas
+            total = len(contratos_list)
+            ativos = len([c for c in contratos_list if c.status_contrato == 'ATIVO'])
+            elegiveis = len([
+                c for c in contratos_list
+                if c.status_contrato == 'ATIVO'
+                and not c.teve_downgrade
+                and (c.total_faturas or 0) > 0
+                and c.total_faturas == c.faturas_pagas
+            ])
+            valor_total = elegiveis * 150  # R$ 150 por contrato elegível
+
+            taxa_permanencia = round((ativos / total * 100) if total > 0 else 0, 1)
+
+            # Paginação - Limita a 100 registros por página
+            page = int(request.GET.get('page', 1))
+            page_size = 100
+            start = (page - 1) * page_size
+            end = start + page_size
+
+            # Contratos para tabela (apenas dados essenciais)
+            contratos_data = []
+            for c in contratos_list[start:end]:
+                is_elegivel = (
+                    c.status_contrato == 'ATIVO'
+                    and (c.total_faturas or 0) > 0
+                    and c.faturas_pagas == c.total_faturas
+                    and not c.teve_downgrade
+                )
+                data_instalacao_fmt = c.data_instalacao.strftime('%d/%m/%Y') if c.data_instalacao else '-'
+                f1 = faturas1_map.get(c.id)
+                venc_fatura1 = f1.data_vencimento.strftime('%d/%m/%Y') if f1 and f1.data_vencimento else None
+                pagto_fatura1 = f1.data_pagamento.strftime('%d/%m/%Y') if f1 and f1.data_pagamento else None
+                status_fatura1 = f1.status if f1 else None
+                status_fatura1_display = status_display_map.get(status_fatura1, '-') if status_fatura1 else None
+                # FPD permanece fallback se não houver fatura 1
+                venc_exib = venc_fatura1 or (c.data_vencimento_fpd.strftime('%d/%m/%Y') if c.data_vencimento_fpd else '-')
+                pagto_exib = pagto_fatura1 or (c.data_pagamento_fpd.strftime('%d/%m/%Y') if c.data_pagamento_fpd else '-')
+                # Sempre mostrar status da fatura 1 se existir, senão FPD
+                status_fpd_exib = status_fatura1 or (c.status_fatura_fpd or '-')
+                # Aplicar mapeamento em ambos os casos (fatura 1 ou FPD)
+                if status_fatura1_display:
+                    status_fpd_display = status_fatura1_display
+                else:
+                    status_fpd_display = _map_status_fpd(c.status_fatura_fpd)
+                contratos_data.append({
+                    'id': c.id,
+                    'numero_contrato': c.numero_contrato,
+                    'numero_contrato_definitivo': c.numero_contrato_definitivo or '-',
+                    'cliente_nome': c.cliente_nome,
+                    'cpf_cliente': c.cpf_cliente,
+                    'vendedor_nome': c.vendedor.username if c.vendedor else '-',
+                    'data_instalacao': data_instalacao_fmt,
+                    'plano_atual': c.plano_atual,
+                    'status': c.status_contrato,
+                    'status_display': c.get_status_contrato_display(),
+                    'faturas_pagas': c.faturas_pagas,
+                    'total_faturas': c.total_faturas,
+                    'elegivel': is_elegivel,
+                    # Dados de fatura 1 (prioritário) ou FPD como fallback
+                    'status_fatura_fpd': status_fpd_exib,
+                    'status_fatura_fpd_display': status_fpd_display,
+                    'data_vencimento_fpd': venc_exib,
+                    'data_pagamento_fpd': pagto_exib,
+                    'valor_fatura_fpd': float(c.valor_fatura_fpd) if c.valor_fatura_fpd else 0,
+                    'nr_dias_atraso_fpd': c.nr_dias_atraso_fpd or 0,
+                })
+
+            total_pages = (total + page_size - 1) // page_size
+
+            return Response({
+                'total': total,
+                'ativos': ativos,
+                'elegiveis': elegiveis,
+                'valor_total': valor_total,
+                'taxa_permanencia': taxa_permanencia,
+                'contratos': contratos_data,
+                'page': page,
+                'total_pages': total_pages,
+                'page_size': page_size,
             })
 
-        total_pages = (total + page_size - 1) // page_size
-
-        return Response({
-            'total': total,
-            'ativos': ativos,
-            'elegiveis': elegiveis,
-            'valor_total': valor_total,
-            'taxa_permanencia': taxa_permanencia,
-            'contratos': contratos_data,
-            'page': page,
-            'total_pages': total_pages,
-            'page_size': page_size,
-        })
+        except Exception as e:
+            logger.exception('Erro ao gerar dashboard M-10')
+            return Response({'error': 'Erro ao carregar dashboard M-10', 'detail': str(e)}, status=500)
 
 
 class DashboardFPDView(APIView):
@@ -4734,52 +4877,62 @@ class DashboardFPDView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        mes_str = request.GET.get('mes')  # formato: 2025-07
-        
-        # Filtrar faturas número 1 (primeira fatura)
-        queryset = FaturaM10.objects.filter(numero_fatura=1)
-        
-        if mes_str:
-            ano, mes = mes_str.split('-')
-            queryset = queryset.filter(data_vencimento__year=ano, data_vencimento__month=mes)
-        
-        status_filtro = request.GET.get('status')
-        if status_filtro:
-            queryset = queryset.filter(status=status_filtro)
-        
-        vendedor = request.GET.get('vendedor')
-        if vendedor:
-            queryset = queryset.filter(contrato__vendedor_id=vendedor)
+        try:
+            mes_str = request.GET.get('mes')  # formato: 2025-07
+            
+            # Filtrar faturas número 1 (primeira fatura)
+            queryset = FaturaM10.objects.filter(numero_fatura=1)
+            
+            if mes_str:
+                try:
+                    ano, mes = mes_str.split('-')
+                    queryset = queryset.filter(data_vencimento__year=ano, data_vencimento__month=mes)
+                except ValueError:
+                    return Response({'error': 'Parâmetro mes inválido. Use YYYY-MM.'}, status=400)
+            
+            status_filtro = request.GET.get('status')
+            if status_filtro:
+                queryset = queryset.filter(status=status_filtro)
+            
+            vendedor = request.GET.get('vendedor')
+            if vendedor:
+                queryset = queryset.filter(contrato__vendedor_id=vendedor)
 
-        # Estatísticas
-        total_geradas = queryset.count()
-        total_pagas = queryset.filter(status='PAGO').count()
-        total_aberto = queryset.filter(status__in=['NAO_PAGO', 'AGUARDANDO']).count()
-        taxa_fpd = round((total_pagas / total_geradas * 100) if total_geradas > 0 else 0, 1)
+            # Estatísticas
+            total_geradas = queryset.count()
+            total_pagas = queryset.filter(status='PAGO').count()
+            total_aberto = queryset.filter(status__in=['NAO_PAGO', 'AGUARDANDO']).count()
+            taxa_fpd = round((total_pagas / total_geradas * 100) if total_geradas > 0 else 0, 1)
 
-        # Faturas para tabela
-        faturas_data = []
-        for f in queryset.select_related('contrato', 'contrato__vendedor'):
-            faturas_data.append({
-                'id': f.id,
-                'contrato_id': f.contrato.id,
-                'numero_contrato': f.contrato.numero_contrato,
-                'cliente_nome': f.contrato.cliente_nome,
-                'vendedor_nome': f.contrato.vendedor.get_full_name() if f.contrato.vendedor else '-',
-                'data_vencimento': f.data_vencimento.strftime('%d/%m/%Y'),
-                'valor': float(f.valor),
-                'data_pagamento': f.data_pagamento.strftime('%d/%m/%Y') if f.data_pagamento else None,
-                'status': f.status,
-                'status_display': f.get_status_display(),
+            # Faturas para tabela
+            faturas_data = []
+            for f in queryset.select_related('contrato', 'contrato__vendedor'):
+                data_venc = f.data_vencimento.strftime('%d/%m/%Y') if f.data_vencimento else '-'
+                data_pag = f.data_pagamento.strftime('%d/%m/%Y') if f.data_pagamento else None
+                faturas_data.append({
+                    'id': f.id,
+                    'contrato_id': f.contrato.id,
+                    'numero_contrato': f.contrato.numero_contrato,
+                    'cliente_nome': f.contrato.cliente_nome,
+                    'vendedor_nome': f.contrato.vendedor.username if f.contrato.vendedor else '-',
+                    'data_vencimento': data_venc,
+                    'valor': float(f.valor) if f.valor is not None else 0,
+                    'data_pagamento': data_pag,
+                    'status': f.status,
+                    'status_display': f.get_status_display(),
+                })
+
+            return Response({
+                'total_geradas': total_geradas,
+                'total_pagas': total_pagas,
+                'total_aberto': total_aberto,
+                'taxa_fpd': taxa_fpd,
+                'faturas': faturas_data,
             })
 
-        return Response({
-            'total_geradas': total_geradas,
-            'total_pagas': total_pagas,
-            'total_aberto': total_aberto,
-            'taxa_fpd': taxa_fpd,
-            'faturas': faturas_data,
-        })
+        except Exception as e:
+            logger.exception('Erro ao gerar dashboard FPD')
+            return Response({'error': 'Erro ao carregar dashboard FPD', 'detail': str(e)}, status=500)
 
 
 class PopularSafraM10View(APIView):
@@ -4840,9 +4993,12 @@ class PopularSafraM10View(APIView):
                     contratos_duplicados += 1
                     continue
 
+                # Calcula safra como string YYYY-MM
+                safra_str = venda.data_instalacao.strftime('%Y-%m')
+
                 # Cria novo ContratoM10
                 contrato = ContratoM10.objects.create(
-                    safra=safra,
+                    safra=safra_str,
                     venda=venda,
                     numero_contrato=numero_contrato,
                     ordem_servico=venda.ordem_servico,
@@ -4858,9 +5014,12 @@ class PopularSafraM10View(APIView):
                 )
                 contratos_criados += 1
 
-            # Atualiza contagens na Safra
-            safra.total_instalados = safra.contratos.count()
-            safra.total_ativos = safra.contratos.filter(status_contrato='ATIVO').count()
+            # Conta total de contratos criados nesta safra (usando CharField safra)
+            total_contratos_safra = ContratoM10.objects.filter(safra=safra_str).count()
+            
+            # Atualiza contagens na Safra M10 (tabela histórica)
+            safra.total_instalados = total_contratos_safra
+            safra.total_ativos = ContratoM10.objects.filter(safra=safra_str, status_contrato='ATIVO').count()
             safra.save()
 
             return Response({
@@ -4868,7 +5027,7 @@ class PopularSafraM10View(APIView):
                 'safra_id': safra.id,
                 'contratos_criados': contratos_criados,
                 'contratos_duplicados': contratos_duplicados,
-                'total_contratos_safra': safra.total_instalados,
+                'total_contratos_safra': total_contratos_safra,
             })
 
         except ValueError as e:
@@ -4886,13 +5045,15 @@ class ContratoM10DetailView(APIView):
             contrato = ContratoM10.objects.get(pk=pk)
             faturas = []
             for f in contrato.faturas.all().order_by('numero_fatura'):
+                data_venc = f.data_vencimento.isoformat() if f.data_vencimento else None
+                data_pag = f.data_pagamento.isoformat() if f.data_pagamento else None
                 faturas.append({
                     'id': f.id,
                     'numero_fatura': f.numero_fatura,
                     'numero_fatura_operadora': f.numero_fatura_operadora or '',
-                    'valor': float(f.valor),
-                    'data_vencimento': f.data_vencimento.isoformat(),
-                    'data_pagamento': f.data_pagamento.isoformat() if f.data_pagamento else '',
+                    'valor': float(f.valor) if f.valor is not None else 0,
+                    'data_vencimento': data_venc,
+                    'data_pagamento': data_pag or '',
                     'status': f.status,
                 })
             
@@ -4900,10 +5061,18 @@ class ContratoM10DetailView(APIView):
                 'id': contrato.id,
                 'numero_contrato': contrato.numero_contrato,
                 'cliente_nome': contrato.cliente_nome,
+                'cpf_cliente': contrato.cpf_cliente,
+                'data_vencimento_fpd': contrato.data_vencimento_fpd.isoformat() if contrato.data_vencimento_fpd else None,
+                'data_pagamento_fpd': contrato.data_pagamento_fpd.isoformat() if contrato.data_pagamento_fpd else None,
+                'status_fatura_fpd': contrato.status_fatura_fpd or '',
+                'valor_fatura_fpd': float(contrato.valor_fatura_fpd) if contrato.valor_fatura_fpd else 0,
                 'faturas': faturas,
             })
         except ContratoM10.DoesNotExist:
             return Response({'error': 'Contrato não encontrado'}, status=404)
+        except Exception as e:
+            logger.exception('Erro ao recuperar contrato M-10')
+            return Response({'error': 'Erro ao carregar contrato', 'detail': str(e)}, status=500)
 
 
 class ImportarFPDView(APIView):
@@ -4919,85 +5088,305 @@ class ImportarFPDView(APIView):
         if not arquivo:
             return Response({'error': 'Arquivo não enviado'}, status=400)
 
+        from .models import ImportacaoFPD, LogImportacaoFPD
+        from django.utils import timezone
+        
+        # Criar log de importação
+        log = LogImportacaoFPD.objects.create(
+            nome_arquivo=arquivo.name,
+            tamanho_arquivo=arquivo.size,
+            usuario=request.user,
+            status='PROCESSANDO'
+        )
+        
+        inicio = timezone.now()
+        os_nao_encontradas = []
+        erros_detalhados = []
+
         try:
             # Lê arquivo Excel/CSV
+            # IMPORTANTE: Ler colunas numéricas como STRING para preservar leading zeros
+            dtype_spec = {
+                'ID_CONTRATO': str,      # Força leitura como texto
+                'NR_FATURA': str,        # Força leitura como texto  
+                'NR_ORDEM': str,         # Força leitura como texto
+            }
+            
             if arquivo.name.endswith('.csv'):
-                df = pd.read_csv(arquivo)
+                df = pd.read_csv(arquivo, dtype=dtype_spec)
             elif arquivo.name.endswith('.xlsb'):
                 try:
-                    df = pd.read_excel(arquivo, engine='pyxlsb')
-                except Exception:
+                    df = pd.read_excel(arquivo, engine='pyxlsb', dtype=dtype_spec)
+                except Exception as e:
+                    log.status = 'ERRO'
+                    log.mensagem_erro = f'Formato .xlsb não suportado: {str(e)}'
+                    log.finalizado_em = timezone.now()
+                    log.calcular_duracao()
+                    log.save()
                     return Response({
                         'error': 'Formato .xlsb não suportado. Use .xlsx, .xls ou .csv'
                     }, status=400)
             else:
-                df = pd.read_excel(arquivo)
+                df = pd.read_excel(arquivo, dtype=dtype_spec)
 
-            registros_atualizados = 0
+            # Normalizar nomes de colunas para minúsculas E remover espaços extras
+            df.columns = df.columns.str.lower().str.strip().str.replace(' ', '_')
+            
+            log.total_linhas = len(df)
+            log.save(update_fields=['total_linhas'])
             registros_nao_encontrados = 0
+            registros_importacoes_fpd = 0
+            registros_atualizados = 0  # Contador para registros atualizados
+            registros_pulados = 0  # Contador para linhas puladas
+            valor_total = 0
+            data_importacao_agora = timezone.now()
 
-            for _, row in df.iterrows():
-                # Busca por O.S (NR_ORDEM na planilha)
-                nr_ordem = str(row.get('NR_ORDEM', '')).strip()
-                if not nr_ordem:
-                    continue
-
-                # Tenta encontrar contrato por ordem_servico
+            for idx, row in df.iterrows():
                 try:
-                    contrato = ContratoM10.objects.get(ordem_servico=nr_ordem)
+                    # Busca por O.S (nr_ordem - com coluna normalizada para minúsculas)
+                    nr_ordem_raw = row.get('nr_ordem', '')
                     
-                    # Atualiza/cria primeira fatura (Safra FPD por mês de vencimento)
-                    dt_venc = row.get('DT_VENC_ORIG')
-                    dt_pgto = row.get('DT_PAGAMENTO')
-                    status_str = str(row.get('DS_STATUS_FATURA', 'NAO_PAGO')).upper()
+                    # Converter para string mas MANTER ZEROS à esquerda
+                    if pd.isna(nr_ordem_raw):
+                        registros_pulados += 1
+                        continue
                     
-                    # Mapeia status
-                    status_map = {
-                        'PAGO': 'PAGO',
-                        'QUITADO': 'PAGO',
-                        'ABERTO': 'NAO_PAGO',
-                        'VENCIDO': 'ATRASADO',
-                        'AGUARDANDO': 'AGUARDANDO',
-                    }
-                    status = status_map.get(status_str, 'NAO_PAGO')
+                    nr_ordem = str(nr_ordem_raw).strip()
+                    
+                    # Se for número, adicionar zero à esquerda para padronizar em 8 dígitos
+                    if nr_ordem.replace('.', '').replace('-', '').isdigit():
+                        # Remover ".0" se existir (vem do pandas quando lê números do Excel)
+                        nr_ordem = nr_ordem.split('.')[0]
+                        nr_ordem = nr_ordem.zfill(8)  # Preenche com zeros à esquerda até 8 dígitos
+                    
+                    if not nr_ordem or nr_ordem == 'nan':
+                        registros_pulados += 1
+                        continue
 
-                    # Se houver data de vencimento, define safra de FPD por mês de vencimento
-                    if pd.notna(dt_venc):
-                        dt_venc_obj = pd.to_datetime(dt_venc).date()
-                        safra_fpd_mes = dt_venc_obj.replace(day=1)
-                        safra_fpd, _ = SafraM10.objects.get_or_create(
-                            mes_referencia=safra_fpd_mes,
-                            defaults={'total_instalados': 0, 'total_ativos': 0}
+                    # Tenta encontrar contrato por ordem_servico
+                    try:
+                        contrato = ContratoM10.objects.get(ordem_servico=nr_ordem)
+                        
+                        # ID_CONTRATO e NR_FATURA já vêm como STRING do pandas (dtype=str)
+                        nr_contrato = str(row.get('id_contrato', '')).strip()
+                        if nr_contrato and nr_contrato != 'nan':
+                            contrato.numero_contrato_definitivo = nr_contrato
+                            contrato.save(update_fields=['numero_contrato_definitivo'])
+                        
+                        # Extrai dados FPD
+                        # Já vêm como STRING do pandas, preservando zeros
+                        id_contrato = str(row.get('id_contrato', '')).strip()
+                        dt_venc = row.get('dt_venc_orig')
+                        dt_pgto = row.get('dt_pagamento')
+                        status_str = str(row.get('ds_status_fatura', 'NAO_PAGO')).upper()
+                        nr_fatura = str(row.get('nr_fatura', '')).strip()
+                        vl_fatura = row.get('vl_fatura', 0)
+                        nr_dias_atraso = row.get('nr_dias_atraso', 0)
+                        
+                        # Normalizar status usando mapeamento padronizado
+                        status = normalizar_status_fpd(status_str)
+
+                        # Extrair e converter datas - Excel armazena como números serial
+                        dt_venc = row.get('dt_venc_orig')
+                        if pd.notna(dt_venc):
+                            # Se for número, converter de serial Excel
+                            if isinstance(dt_venc, (int, float)):
+                                dt_venc_date = (pd.Timestamp("1900-01-01") + pd.Timedelta(days=dt_venc - 2)).date()
+                            else:
+                                dt_venc_date = pd.to_datetime(dt_venc).date()
+                        else:
+                            dt_venc_date = timezone.now().date()
+
+                        dt_pgto = row.get('dt_pagamento')
+                        if pd.notna(dt_pgto):
+                            # Se for número, converter de serial Excel
+                            if isinstance(dt_pgto, (int, float)):
+                                dt_pgto_date = (pd.Timestamp("1900-01-01") + pd.Timedelta(days=dt_pgto - 2)).date()
+                            else:
+                                dt_pgto_date = pd.to_datetime(dt_pgto).date()
+                        else:
+                            dt_pgto_date = None
+
+                        # Se houver data de vencimento, define safra de FPD por mês de vencimento
+                        if dt_venc_date:
+                            safra_fpd_mes = dt_venc_date.replace(day=1)
+                            safra_fpd, _ = SafraM10.objects.get_or_create(
+                                mes_referencia=safra_fpd_mes,
+                                defaults={'total_instalados': 0, 'total_ativos': 0}
+                            )
+
+                        # Atualiza/cria primeira fatura com dados FPD
+                        vl_fatura_float = float(vl_fatura) if pd.notna(vl_fatura) else 0
+                        nr_dias_atraso_int = int(nr_dias_atraso) if pd.notna(nr_dias_atraso) else 0
+                        
+                        fatura, created_fatura = FaturaM10.objects.update_or_create(
+                            contrato=contrato,
+                            numero_fatura=1,
+                            defaults={
+                                'numero_fatura_operadora': nr_fatura,
+                                'valor': vl_fatura_float,
+                                'data_vencimento': dt_venc_date,
+                                'data_pagamento': dt_pgto_date,
+                                'dias_atraso': nr_dias_atraso_int,
+                                'status': status,
+                                # Novos campos FPD
+                                'id_contrato_fpd': id_contrato,
+                                'dt_pagamento_fpd': dt_pgto_date,
+                                'ds_status_fatura_fpd': status_str,
+                                'data_importacao_fpd': data_importacao_agora,
+                            }
                         )
-                        # Se o contrato estava em safra M-10, pode estar em safra FPD agora
-                        # (Safra FPD é complementar)
 
-                    fatura, created_fatura = FaturaM10.objects.update_or_create(
-                        contrato=contrato,
-                        numero_fatura=1,
-                        defaults={
-                            'numero_fatura_operadora': str(row.get('NR_FATURA', '')),
-                            'valor': float(row.get('VL_FATURA', 0)) if pd.notna(row.get('VL_FATURA')) else 0,
-                            'data_vencimento': pd.to_datetime(dt_venc).date() if pd.notna(dt_venc) else datetime.now().date(),
-                            'data_pagamento': pd.to_datetime(dt_pgto).date() if pd.notna(dt_pgto) else None,
-                            'dias_atraso': int(row.get('NR_DIAS_ATRASO', 0)) if pd.notna(row.get('NR_DIAS_ATRASO')) else 0,
-                            'status': status,
-                        }
-                    )
+                        # Cria/atualiza registro no histórico ImportacaoFPD
+                        # Verifica se já existe para contar criações vs atualizações
+                        ja_existia = ImportacaoFPD.objects.filter(
+                            nr_ordem=nr_ordem,
+                            nr_fatura=nr_fatura
+                        ).exists()
+                        
+                        importacao_fpd, criado = ImportacaoFPD.objects.update_or_create(
+                            nr_ordem=nr_ordem,
+                            nr_fatura=nr_fatura,
+                            defaults={
+                                'id_contrato': id_contrato,
+                                'dt_venc_orig': dt_venc_date,
+                                'dt_pagamento': dt_pgto_date,
+                                'nr_dias_atraso': nr_dias_atraso_int,
+                                'ds_status_fatura': status_str,
+                                'vl_fatura': vl_fatura_float,
+                                'contrato_m10': contrato,
+                            }
+                        )
+                        
+                        # Conta criações e atualizações separadamente
+                        if criado:
+                            registros_importacoes_fpd += 1
+                        else:
+                            registros_atualizados += 1
+                        
+                        valor_total += vl_fatura_float
 
-                    registros_atualizados += 1
+                    except ContratoM10.DoesNotExist:
+                        # Se não encontrou contrato M10, salva mesmo assim sem vínculo
+                        # O usuário pode fazer matching depois
+                        
+                        # Extrai dados FPD mesmo sem contrato
+                        # Já vêm como STRING do pandas, preservando zeros
+                        id_contrato = str(row.get('id_contrato', '')).strip()
+                        dt_venc = row.get('dt_venc_orig')
+                        dt_pgto = row.get('dt_pagamento')
+                        status_str = str(row.get('ds_status_fatura', 'NAO_PAGO')).upper()
+                        nr_fatura = str(row.get('nr_fatura', '')).strip()
+                        vl_fatura = row.get('vl_fatura', 0)
+                        nr_dias_atraso = row.get('nr_dias_atraso', 0)
+                        
+                        # Normalizar status usando mapeamento padronizado
+                        status = normalizar_status_fpd(status_str)
 
-                except ContratoM10.DoesNotExist:
-                    registros_nao_encontrados += 1
-                    continue
+                        # Extrair e converter datas - Excel armazena como números serial
+                        if pd.notna(dt_venc):
+                            # Se for número, converter de serial Excel
+                            if isinstance(dt_venc, (int, float)):
+                                dt_venc_date = (pd.Timestamp("1900-01-01") + pd.Timedelta(days=dt_venc - 2)).date()
+                            else:
+                                dt_venc_date = pd.to_datetime(dt_venc).date()
+                        else:
+                            dt_venc_date = timezone.now().date()
+
+                        if pd.notna(dt_pgto):
+                            # Se for número, converter de serial Excel
+                            if isinstance(dt_pgto, (int, float)):
+                                dt_pgto_date = (pd.Timestamp("1900-01-01") + pd.Timedelta(days=dt_pgto - 2)).date()
+                            else:
+                                dt_pgto_date = pd.to_datetime(dt_pgto).date()
+                        else:
+                            dt_pgto_date = None
+
+                        # Converte valores
+                        vl_fatura_float = float(vl_fatura) if pd.notna(vl_fatura) else 0
+                        nr_dias_atraso_int = int(nr_dias_atraso) if pd.notna(nr_dias_atraso) else 0
+                        
+                        # Salva ImportacaoFPD sem contrato_m10 (será NULL)
+                        # Verifica se já existe para contar criações vs atualizações
+                        importacao_fpd, criado_sem_contrato = ImportacaoFPD.objects.update_or_create(
+                            nr_ordem=nr_ordem,
+                            nr_fatura=nr_fatura,
+                            defaults={
+                                'id_contrato': id_contrato,
+                                'dt_venc_orig': dt_venc_date,
+                                'dt_pagamento': dt_pgto_date,
+                                'nr_dias_atraso': nr_dias_atraso_int,
+                                'ds_status_fatura': status_str,
+                                'vl_fatura': vl_fatura_float,
+                                'contrato_m10': None,  # Sem vínculo por enquanto
+                            }
+                        )
+                        
+                        # Conta separadamente
+                        if criado_sem_contrato:
+                            registros_importacoes_fpd += 1
+                        else:
+                            registros_nao_encontrados += 1
+                        
+                        valor_total += vl_fatura_float
+                        if len(os_nao_encontradas) < 20:
+                            os_nao_encontradas.append(f"{nr_ordem} (sem contrato)")
+                        continue
+                        
+                except Exception as e:
+                    erros_detalhados.append(f"Linha {idx+2}: {str(e)}")
+                    if len(erros_detalhados) <= 10:
+                        log.detalhes_json['erros'] = erros_detalhados
+
+            # Finalizar log
+            log.finalizado_em = timezone.now()
+            log.calcular_duracao()
+            # Total processadas = novos criados + atualizados + sem contrato criados/atualizados
+            log.total_processadas = registros_importacoes_fpd + registros_atualizados
+            log.total_erros = len(erros_detalhados)
+            log.total_contratos_nao_encontrados = registros_nao_encontrados
+            log.total_valor_importado = valor_total
+            log.exemplos_nao_encontrados = ', '.join(os_nao_encontradas[:10]) if os_nao_encontradas else None
+            
+            # Debug log
+            print(f"DEBUG Final: Pulados={registros_pulados} | Criados={registros_importacoes_fpd} | Atualizados={registros_atualizados} | Sem M10={registros_nao_encontrados}")
+            
+            if registros_pulados == log.total_linhas:
+                # TODAS as linhas foram puladas!
+                log.status = 'ERRO'
+                log.mensagem_erro = f'Todas as {registros_pulados} linhas foram puladas (NR_ORDEM vazio ou inválido). Verificar formato do arquivo.'
+            elif registros_nao_encontrados > 0 and registros_atualizados == 0:
+                # Todos os registros foram salvos sem contrato (sem vincular ao M10)
+                log.status = 'PARCIAL'
+                log.mensagem_erro = f'{registros_nao_encontrados} registros FPD importados sem vínculo M10 (O.S não encontrados na base ContratoM10). Você pode fazer matching depois.'
+            elif registros_nao_encontrados > 0:
+                # Alguns registros com contrato, alguns sem
+                log.status = 'PARCIAL'
+                log.mensagem_erro = f'{registros_atualizados} registros vinculados a contratos M10, {registros_nao_encontrados} importados sem vínculo (O.S não encontradas). Pode fazer matching depois.'
+            else:
+                log.status = 'SUCESSO'
+            
+            log.save()
 
             return Response({
-                'message': f'Importação FPD concluída! {registros_atualizados} contratos atualizados, {registros_nao_encontrados} não encontrados.',
-                'atualizados': registros_atualizados,
-                'nao_encontrados': registros_nao_encontrados,
+                'success': True,
+                'log_id': log.id,
+                'message': f'Importação FPD concluída! {registros_atualizados} vinculados ao M10, {registros_nao_encontrados} importados sem vínculo.',
+                'vinculados': registros_atualizados,
+                'sem_vinculo': registros_nao_encontrados,
+                'total_importados': registros_atualizados + registros_nao_encontrados,
+                'importacoes_fpd': registros_importacoes_fpd,
+                'valor_total': str(valor_total),
+                'exemplos_nao_encontrados': os_nao_encontradas[:5],
+                'status_log': log.status,
             })
 
         except Exception as e:
+            log.status = 'ERRO'
+            log.mensagem_erro = str(e)
+            log.finalizado_em = timezone.now()
+            log.calcular_duracao()
+            log.save()
             return Response({'error': f'Erro ao processar arquivo: {str(e)}'}, status=500)
 
 
@@ -5007,6 +5396,8 @@ class ImportarChurnView(APIView):
     parser_classes = (MultiPartParser, FormParser)
 
     def post(self, request):
+        from .models import ImportacaoChurn, ContratoM10, LogImportacaoChurn
+        
         if not is_member(request.user, ['Admin', 'BackOffice', 'Diretoria']):
             return Response({'error': 'Sem permissão'}, status=403)
 
@@ -5014,54 +5405,151 @@ class ImportarChurnView(APIView):
         if not arquivo:
             return Response({'error': 'Arquivo não enviado'}, status=400)
 
+        # Criar log de importação
+        log = LogImportacaoChurn.objects.create(
+            nome_arquivo=arquivo.name,
+            tamanho_arquivo=arquivo.size,
+            usuario=request.user,
+            status='PROCESSANDO'
+        )
+        inicio = datetime.now()
+
         try:
             if arquivo.name.endswith('.csv'):
-                df = pd.read_csv(arquivo)
+                df = pd.read_csv(arquivo, dtype={'NR_ORDEM': str})
             elif arquivo.name.endswith('.xlsb'):
                 try:
-                    df = pd.read_excel(arquivo, engine='pyxlsb')
+                    df = pd.read_excel(arquivo, engine='pyxlsb', dtype={'NR_ORDEM': str})
                 except Exception:
+                    log.status = 'ERRO'
+                    log.mensagem_erro = 'Formato .xlsb não suportado. Use .xlsx, .xls ou .csv'
+                    log.finalizado_em = datetime.now()
+                    log.save()
                     return Response({
                         'error': 'Formato .xlsb não suportado. Use .xlsx, .xls ou .csv'
                     }, status=400)
             else:
-                df = pd.read_excel(arquivo)
+                df = pd.read_excel(arquivo, dtype={'NR_ORDEM': str})
+
+            # Normalizar nomes das colunas
+            df.columns = df.columns.str.strip().str.upper()
+            
+            log.total_linhas = len(df)
+            log.save()
 
             cancelados = 0
+            salvos_churn = 0
+            reativados = 0
             nao_encontrados = 0
+            erros = 0
+            
+            # Coletar todas as O.S que aparecem no CHURN
+            ordens_no_churn = set()
 
             for _, row in df.iterrows():
-                # Busca por O.S (NR_ORDEM na planilha de churn)
-                nr_ordem = str(row.get('NR_ORDEM', '')).strip()
-                if not nr_ordem:
+                try:
+                    # Busca por O.S (NR_ORDEM na planilha de churn)
+                    nr_ordem_raw = row.get('NR_ORDEM', '')
+                    if pd.isna(nr_ordem_raw) or str(nr_ordem_raw).strip() == '':
+                        continue
+                    
+                    nr_ordem = str(nr_ordem_raw).strip().zfill(8)  # Padronizar com 8 dígitos
+                    ordens_no_churn.add(nr_ordem)
+
+                    # Salvar registro na ImportacaoChurn
+                    try:
+                        ImportacaoChurn.objects.update_or_create(
+                            numero_pedido=str(row.get('NUMERO_PEDIDO', '')) if pd.notna(row.get('NUMERO_PEDIDO')) else None,
+                            defaults={
+                                'nr_ordem': nr_ordem,
+                                'uf': str(row.get('UF', ''))[:2] if pd.notna(row.get('UF')) else None,
+                                'produto': str(row.get('PRODUTO', '')) if pd.notna(row.get('PRODUTO')) else None,
+                                'matricula_vendedor': str(row.get('MATRICULA_VENDEDOR', '')) if pd.notna(row.get('MATRICULA_VENDEDOR')) else None,
+                                'gv': str(row.get('GV', '')) if pd.notna(row.get('GV')) else None,
+                                'sap_principal_fim': str(row.get('SAP_PRINCIPAL_FIM', '')) if pd.notna(row.get('SAP_PRINCIPAL_FIM')) else None,
+                                'gestao': str(row.get('GESTAO', '')) if pd.notna(row.get('GESTAO')) else None,
+                                'st_regional': str(row.get('ST_REGIONAL', '')) if pd.notna(row.get('ST_REGIONAL')) else None,
+                                'gc': str(row.get('GC', '')) if pd.notna(row.get('GC')) else None,
+                                'dt_gross': pd.to_datetime(row.get('DT_GROSS')).date() if pd.notna(row.get('DT_GROSS')) else None,
+                                'anomes_gross': str(row.get('ANOMES_GROSS', '')) if pd.notna(row.get('ANOMES_GROSS')) else None,
+                                'dt_retirada': pd.to_datetime(row.get('DT_RETIRADA')).date() if pd.notna(row.get('DT_RETIRADA')) else None,
+                                'anomes_retirada': str(row.get('ANOMES_RETIRADA', '')) if pd.notna(row.get('ANOMES_RETIRADA')) else None,
+                                'grupo_unidade': str(row.get('GRUPO_UNIDADE', '')) if pd.notna(row.get('GRUPO_UNIDADE')) else None,
+                                'codigo_sap': str(row.get('CODIGO_SAP', '')) if pd.notna(row.get('CODIGO_SAP')) else None,
+                                'municipio': str(row.get('MUNICIPIO', '')) if pd.notna(row.get('MUNICIPIO')) else None,
+                                'tipo_retirada': str(row.get('TIPO_RETIRADA', '')) if pd.notna(row.get('TIPO_RETIRADA')) else None,
+                                'motivo_retirada': str(row.get('MOTIVO_RETIRADA', '')) if pd.notna(row.get('MOTIVO_RETIRADA')) else None,
+                                'submotivo_retirada': str(row.get('SUBMOTIVO_RETIRADA', '')) if pd.notna(row.get('SUBMOTIVO_RETIRADA')) else None,
+                                'classificacao': str(row.get('CLASSIFICACAO', '')) if pd.notna(row.get('CLASSIFICACAO')) else None,
+                                'desc_apelido': str(row.get('DESC_APELIDO', '')) if pd.notna(row.get('DESC_APELIDO')) else None,
+                            }
+                        )
+                        salvos_churn += 1
+                    except Exception as e:
+                        erros += 1
+                        print(f"Erro ao salvar ImportacaoChurn: {e}")
+
+                    # Atualizar status do contrato M10 para CANCELADO
+                    try:
+                        contrato = ContratoM10.objects.get(ordem_servico=nr_ordem)
+                        
+                        # Marca como cancelado (apareceu no CHURN)
+                        if contrato.status_contrato != 'CANCELADO':
+                            contrato.status_contrato = 'CANCELADO'
+                            contrato.data_cancelamento = pd.to_datetime(row.get('DT_RETIRADA')).date() if pd.notna(row.get('DT_RETIRADA')) else datetime.now().date()
+                            contrato.motivo_cancelamento = str(row.get('MOTIVO_RETIRADA', '')) if pd.notna(row.get('MOTIVO_RETIRADA')) else 'CHURN'
+                            contrato.elegivel_bonus = False
+                            contrato.save()
+                            cancelados += 1
+                        
+                    except ContratoM10.DoesNotExist:
+                        nao_encontrados += 1
+                
+                except Exception as e:
+                    erros += 1
                     continue
 
-                try:
-                    # Tenta encontrar contrato por ordem_servico
-                    contrato = ContratoM10.objects.get(ordem_servico=nr_ordem)
-                    
-                    # Marca como cancelado se aplicável
-                    status_str = str(row.get('STATUS', '')).upper() if pd.notna(row.get('STATUS')) else ''
-                    
-                    if 'CANCELADO' in status_str or 'INATIVO' in status_str or 'CHURN' in status_str:
-                        contrato.status_contrato = 'CANCELADO'
-                        contrato.data_cancelamento = pd.to_datetime(row.get('DATA_CANCELAMENTO')).date() if pd.notna(row.get('DATA_CANCELAMENTO')) else datetime.now().date()
-                        contrato.motivo_cancelamento = str(row.get('MOTIVO', '')) or str(row.get('MOTIVO_CANCELAMENTO', ''))
-                        contrato.elegivel_bonus = False
-                        contrato.save()
-                        cancelados += 1
-                    
-                except ContratoM10.DoesNotExist:
-                    nao_encontrados += 1
-                    continue
+            # IMPORTANTE: Marcar como ATIVO os contratos que NÃO aparecem no CHURN
+            contratos_ativos = ContratoM10.objects.exclude(ordem_servico__in=ordens_no_churn).exclude(status_contrato='ATIVO')
+            reativados = contratos_ativos.update(status_contrato='ATIVO', data_cancelamento=None)
+
+            # Atualizar log
+            fim = datetime.now()
+            log.finalizado_em = fim
+            log.duracao_segundos = int((fim - inicio).total_seconds())
+            log.total_processadas = salvos_churn
+            log.total_erros = erros
+            log.total_contratos_cancelados = cancelados
+            log.total_contratos_reativados = reativados
+            log.total_nao_encontrados = nao_encontrados
+            log.status = 'PARCIAL' if (cancelados > 0 and nao_encontrados > 0) else 'SUCESSO'
+            log.detalhes_json = {
+                'ordens_unicas': len(ordens_no_churn),
+                'cancelados': cancelados,
+                'reativados': reativados,
+                'nao_encontrados': nao_encontrados,
+            }
+            log.save()
 
             return Response({
-                'message': f'Base churn processada! {cancelados} contratos marcados como cancelados, {nao_encontrados} não encontrados.',
+                'message': f'Base CHURN processada! {cancelados} contratos cancelados, {reativados} contratos reativados, {salvos_churn} registros salvos.',
                 'cancelados': cancelados,
+                'reativados': reativados,
+                'salvos_churn': salvos_churn,
                 'nao_encontrados': nao_encontrados,
+                'log_id': log.id,
             })
 
         except Exception as e:
+            import traceback
+            traceback.print_exc()
+            
+            # Atualizar log com erro
+            log.status = 'ERRO'
+            log.mensagem_erro = str(e)
+            log.finalizado_em = datetime.now()
+            log.save()
+            
             return Response({'error': f'Erro ao processar arquivo: {str(e)}'}, status=500)
 
 
@@ -5116,7 +5604,7 @@ class ExportarM10View(APIView):
         ws.title = "Bônus M-10"
 
         # Cabeçalhos
-        headers = ['Contrato', 'Cliente', 'Vendedor', 'Instalação', 'Plano', 'Status', 'Faturas Pagas', 'Elegível', 'Bônus']
+        headers = ['O.S/PEDIDO', 'Nº Contrato', 'Cliente', 'Vendedor', 'Instalação', 'Plano', 'Status', 'Faturas Pagas', 'Elegível', 'Bônus']
         ws.append(headers)
 
         # Estilo cabeçalho
@@ -5126,19 +5614,37 @@ class ExportarM10View(APIView):
             cell.alignment = Alignment(horizontal="center")
 
         # Dados
-        contratos = ContratoM10.objects.all().select_related('vendedor', 'safra')
+        contratos = (
+            ContratoM10.objects.all()
+            .select_related('vendedor')
+            .annotate(
+                total_faturas=Count('faturas', distinct=True),
+                faturas_pagas=Count('faturas', filter=Q(faturas__status='PAGO'), distinct=True),
+            )
+        )
         for c in contratos:
-            faturas_pagas = c.faturas.filter(status='PAGO').count()
-            bonus = 150 if c.elegivel_bonus else 0
+            total_faturas = c.total_faturas
+            faturas_pagas = c.faturas_pagas
+            if total_faturas == 0 and c.status_fatura_fpd and str(c.status_fatura_fpd).lower().startswith('paga'):
+                total_faturas = 1
+                faturas_pagas = 1
+            elegivel = (
+                c.status_contrato == 'ATIVO'
+                and not c.teve_downgrade
+                and (total_faturas or 0) > 0
+                and faturas_pagas == total_faturas
+            )
+            bonus = 150 if elegivel else 0
             ws.append([
                 c.numero_contrato,
+                c.numero_contrato_definitivo or '-',
                 c.cliente_nome,
-                c.vendedor.get_full_name() if c.vendedor else '-',
+                c.vendedor.username if c.vendedor else '-',
                 c.data_instalacao.strftime('%d/%m/%Y'),
                 c.plano_atual,
                 c.get_status_contrato_display(),
-                f"{faturas_pagas}/10",
-                'Sim' if c.elegivel_bonus else 'Não',
+                f"{faturas_pagas}/{total_faturas}",
+                'Sim' if elegivel else 'Não',
                 f"R$ {bonus:.2f}",
             ])
 
@@ -5155,8 +5661,908 @@ class ExportarM10View(APIView):
             adjusted_width = (max_length + 2)
             ws.column_dimensions[column_letter].width = adjusted_width
 
+
         # Retorna arquivo
         response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         response['Content-Disposition'] = f'attachment; filename=bonus_m10_{datetime.now().strftime("%Y%m%d")}.xlsx'
         wb.save(response)
         return response
+
+
+class DadosFPDView(APIView):
+    """Retorna dados FPD de um contrato por O.S (Ordem de Serviço)"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request, *args, **kwargs):
+        """GET /api/bonus-m10/dados-fpd/?os=NR_ORDEM"""
+        nr_ordem = request.query_params.get('os')
+        if not nr_ordem:
+            return Response({'error': 'Parâmetro os (Ordem de Serviço) é obrigatório'}, status=400)
+        
+        try:
+            contrato = ContratoM10.objects.get(ordem_servico=nr_ordem)
+            
+            # Busca registros de importação FPD para esta O.S
+            from .models import ImportacaoFPD
+            dados_fpd = ImportacaoFPD.objects.filter(nr_ordem=nr_ordem).order_by('-importada_em')
+            
+            # Dados do contrato
+            resultado = {
+                'contrato': {
+                    'numero_contrato': contrato.numero_contrato,
+                    'numero_contrato_definitivo': contrato.numero_contrato_definitivo,
+                    'cliente_nome': contrato.cliente_nome,
+                    'cpf_cliente': contrato.cpf_cliente,
+                    'ordem_servico': contrato.ordem_servico,
+                    'vendedor': contrato.vendedor.get_full_name() if contrato.vendedor else None,
+                    'data_instalacao': contrato.data_instalacao.isoformat(),
+                    'status_contrato': contrato.get_status_contrato_display(),
+                },
+                'importacoes_fpd': []
+            }
+            
+            # Adiciona dados de cada importação FPD
+            for imp in dados_fpd:
+                resultado['importacoes_fpd'].append({
+                    'id_contrato': imp.id_contrato,
+                    'nr_fatura': imp.nr_fatura,
+                    'dt_venc_orig': imp.dt_venc_orig.isoformat(),
+                    'dt_pagamento': imp.dt_pagamento.isoformat() if imp.dt_pagamento else None,
+                    'ds_status_fatura': imp.ds_status_fatura,
+                    'vl_fatura': str(imp.vl_fatura),
+                    'nr_dias_atraso': imp.nr_dias_atraso,
+                    'importada_em': imp.importada_em.isoformat(),
+                })
+            
+            # Dados das faturas M10 vinculadas
+            resultado['faturas_m10'] = []
+            for fatura in contrato.faturas.all():
+                resultado['faturas_m10'].append({
+                    'numero_fatura': fatura.numero_fatura,
+                    'id_contrato_fpd': fatura.id_contrato_fpd,
+                    'dt_pagamento_fpd': fatura.dt_pagamento_fpd.isoformat() if fatura.dt_pagamento_fpd else None,
+                    'ds_status_fatura_fpd': fatura.ds_status_fatura_fpd,
+                    'status': fatura.status,
+                    'valor': str(fatura.valor),
+                    'data_vencimento': fatura.data_vencimento.isoformat(),
+                    'data_pagamento': fatura.data_pagamento.isoformat() if fatura.data_pagamento else None,
+                    'data_importacao_fpd': fatura.data_importacao_fpd.isoformat() if fatura.data_importacao_fpd else None,
+                })
+            
+            return Response(resultado)
+            
+        except ContratoM10.DoesNotExist:
+            return Response({'error': f'Contrato com O.S {nr_ordem} não encontrado'}, status=404)
+
+
+class BuscarOSFPDView(APIView):
+    """Busca por O.S específica na ImportacaoFPD"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request, *args, **kwargs):
+        """GET /api/bonus-m10/buscar-os-fpd/?os=07309961"""
+        nr_ordem = request.query_params.get('os', '').strip()
+        
+        if not nr_ordem:
+            return Response({'error': 'Parâmetro os é obrigatório'}, status=400)
+        
+        from .models import ImportacaoFPD
+        
+        # Buscar registros com a O.S
+        registros = ImportacaoFPD.objects.filter(nr_ordem__icontains=nr_ordem).order_by('-importada_em')
+        
+        dados = []
+        valor_total = 0
+        
+        for imp in registros:
+            valor_total += float(imp.vl_fatura or 0)
+            dados.append({
+                'id': imp.id,
+                'nr_ordem': imp.nr_ordem,
+                'nr_fatura': imp.nr_fatura,
+                'dt_venc_orig': imp.dt_venc_orig.isoformat(),
+                'dt_pagamento': imp.dt_pagamento.isoformat() if imp.dt_pagamento else None,
+                'ds_status_fatura': imp.ds_status_fatura,
+                'vl_fatura': str(imp.vl_fatura),
+                'nr_dias_atraso': imp.nr_dias_atraso,
+                'contrato_m10': f"{imp.contrato_m10.numero_contrato} - {imp.contrato_m10.cliente_nome}" if imp.contrato_m10 else None,
+                'importada_em': imp.importada_em.isoformat(),
+            })
+        
+        return Response({
+            'total': len(dados),
+            'valor_total': str(valor_total),
+            'os': nr_ordem,
+            'registros': dados,
+        })
+
+
+class ListarImportacoesFPDView(APIView):
+    """Lista todas as importações FPD com filtros"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request, *args, **kwargs):
+        """GET /api/bonus-m10/importacoes-fpd/?status=PAGO&mes=2025-01"""
+        from .models import ImportacaoFPD
+        
+        queryset = ImportacaoFPD.objects.all()
+        
+        # Filtro por status
+        status = request.query_params.get('status')
+        if status:
+            queryset = queryset.filter(ds_status_fatura__icontains=status)
+        
+        # Filtro por mês de vencimento
+        mes = request.query_params.get('mes')
+        if mes:
+            try:
+                data_inicio = datetime.strptime(mes, '%Y-%m')
+                data_fim = (data_inicio.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+                queryset = queryset.filter(dt_venc_orig__range=[data_inicio, data_fim])
+            except ValueError:
+                return Response({'error': 'Formato de mês inválido (use YYYY-MM)'}, status=400)
+        
+        # Estatísticas
+        total_faturas = queryset.count()
+        total_valor = queryset.aggregate(Sum('vl_fatura'))['vl_fatura__sum'] or 0
+        
+        # Paginação
+        page = int(request.query_params.get('page', 1))
+        limit = int(request.query_params.get('limit', 100))
+        start = (page - 1) * limit
+        end = start + limit
+        
+        dados = []
+        for imp in queryset.order_by('-importada_em')[start:end]:
+            dados.append({
+                'nr_ordem': imp.nr_ordem,
+                'id_contrato': imp.id_contrato,
+                'nr_fatura': imp.nr_fatura,
+                'dt_venc_orig': imp.dt_venc_orig.isoformat(),
+                'dt_pagamento': imp.dt_pagamento.isoformat() if imp.dt_pagamento else None,
+                'ds_status_fatura': imp.ds_status_fatura,
+                'vl_fatura': str(imp.vl_fatura),
+                'nr_dias_atraso': imp.nr_dias_atraso,
+                'contrato_m10': f"{imp.contrato_m10.numero_contrato} - {imp.contrato_m10.cliente_nome}" if imp.contrato_m10 else None,
+                'importada_em': imp.importada_em.isoformat(),
+            })
+        
+        return Response({
+            'total': total_faturas,
+            'total_valor': str(total_valor),
+            'pagina': page,
+            'limit': limit,
+            'dados': dados,
+        })
+
+
+class ListarLogsImportacaoFPDView(APIView):
+    """Lista logs de importação FPD para monitoramento e debug"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request, *args, **kwargs):
+        """GET /api/bonus-m10/logs-importacao-fpd/?status=ERRO&page=1"""
+        from .models import LogImportacaoFPD
+        from django.db.models import Sum, Count, Avg, Q
+        
+        queryset = LogImportacaoFPD.objects.select_related('usuario').all()
+        
+        # Filtros
+        status = request.query_params.get('status')
+        if status:
+            queryset = queryset.filter(status=status)
+        
+        usuario_id = request.query_params.get('usuario_id')
+        if usuario_id:
+            queryset = queryset.filter(usuario_id=usuario_id)
+        
+        data_inicio = request.query_params.get('data_inicio')
+        if data_inicio:
+            queryset = queryset.filter(iniciado_em__gte=data_inicio)
+        
+        data_fim = request.query_params.get('data_fim')
+        if data_fim:
+            queryset = queryset.filter(iniciado_em__lte=data_fim)
+        
+        # Paginação
+        page = int(request.query_params.get('page', 1))
+        limit = int(request.query_params.get('limit', 50))
+        start = (page - 1) * limit
+        end = start + limit
+        
+        total = queryset.count()
+        logs = queryset.order_by('-iniciado_em')[start:end]
+        
+        # Estatísticas gerais
+        try:
+            stats_geral = LogImportacaoFPD.objects.aggregate(
+                total_importacoes=Count('id'),
+                total_linhas_processadas=Sum('total_linhas'),
+                total_sucesso=Count('id', filter=Q(status='SUCESSO')),
+                total_erro=Count('id', filter=Q(status='ERRO')),
+                total_parcial=Count('id', filter=Q(status='PARCIAL')),
+                media_duracao=Avg('duracao_segundos'),
+                total_valor=Sum('total_valor_importado')
+            )
+            
+            total_importacoes = stats_geral['total_importacoes'] or 0
+            total_sucesso = stats_geral['total_sucesso'] or 0
+            
+            resultado = {
+                'total': total,
+                'page': page,
+                'limit': limit,
+                'total_pages': (total + limit - 1) // limit if limit > 0 else 1,
+                'estatisticas_gerais': {
+                    'total_importacoes': total_importacoes,
+                    'total_linhas_processadas': int(stats_geral['total_linhas_processadas'] or 0),
+                    'total_sucesso': total_sucesso,
+                    'total_erro': stats_geral['total_erro'] or 0,
+                    'total_parcial': stats_geral['total_parcial'] or 0,
+                    'media_duracao_segundos': float(stats_geral['media_duracao'] or 0),
+                    'total_valor_importado': str(stats_geral['total_valor'] or 0),
+                    'taxa_sucesso': round((total_sucesso / total_importacoes * 100) if total_importacoes > 0 else 0, 2)
+                },
+                'logs': []
+            }
+        except Exception as e:
+            # Em caso de erro, retornar estrutura vazia mas válida
+            resultado = {
+                'total': 0,
+                'page': page,
+                'limit': limit,
+                'total_pages': 1,
+                'estatisticas_gerais': {
+                    'total_importacoes': 0,
+                    'total_linhas_processadas': 0,
+                    'total_sucesso': 0,
+                    'total_erro': 0,
+                    'total_parcial': 0,
+                    'media_duracao_segundos': 0.0,
+                    'total_valor_importado': '0',
+                    'taxa_sucesso': 0.0
+                },
+                'logs': []
+            }
+        
+        for log in logs:
+            try:
+                log_data = {
+                    'id': log.id,
+                    'nome_arquivo': log.nome_arquivo or '',
+                    'tamanho_arquivo': log.tamanho_arquivo or 0,
+                    'usuario': {
+                        'id': log.usuario.id if log.usuario else None,
+                        'username': log.usuario.username if log.usuario else 'Sistema',
+                        'nome_completo': log.usuario.get_full_name() if log.usuario else 'Sistema',
+                    },
+                    'status': log.status or 'DESCONHECIDO',
+                    'iniciado_em': log.iniciado_em.isoformat() if log.iniciado_em else None,
+                    'finalizado_em': log.finalizado_em.isoformat() if log.finalizado_em else None,
+                    'duracao_segundos': log.duracao_segundos or 0,
+                    'total_linhas': log.total_linhas or 0,
+                    'total_processadas': log.total_processadas or 0,
+                    'total_erros': log.total_erros or 0,
+                    'total_contratos_nao_encontrados': log.total_contratos_nao_encontrados or 0,
+                    'total_valor_importado': str(log.total_valor_importado) if log.total_valor_importado else '0',
+                    'mensagem_erro': log.mensagem_erro or None,
+                    'exemplos_nao_encontrados': log.exemplos_nao_encontrados or None,
+                }
+                
+                # Adicionar detalhes completos se requisitado
+                if request.query_params.get('detalhes') == 'true':
+                    log_data['detalhes_json'] = log.detalhes_json
+                
+                resultado['logs'].append(log_data)
+            except Exception as e:
+                # Se houver erro ao processar um log específico, pular para o próximo
+                print(f"Erro ao processar log {log.id}: {str(e)}")
+                continue
+        
+        return Response(resultado)
+
+
+class ListarLogsImportacaoChurnView(APIView):
+    """Lista logs de importação CHURN para monitoramento e debug"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request, *args, **kwargs):
+        """GET /api/bonus-m10/logs-importacao-churn/?status=ERRO&page=1"""
+        from .models import LogImportacaoChurn
+        from django.db.models import Sum, Count, Avg, Q
+        
+        queryset = LogImportacaoChurn.objects.select_related('usuario').all()
+        
+        # Filtros
+        status = request.query_params.get('status')
+        if status:
+            queryset = queryset.filter(status=status)
+        
+        usuario_id = request.query_params.get('usuario_id')
+        if usuario_id:
+            queryset = queryset.filter(usuario_id=usuario_id)
+        
+        data_inicio = request.query_params.get('data_inicio')
+        if data_inicio:
+            queryset = queryset.filter(iniciado_em__gte=data_inicio)
+        
+        data_fim = request.query_params.get('data_fim')
+        if data_fim:
+            queryset = queryset.filter(iniciado_em__lte=data_fim)
+        
+        # Paginação
+        page = int(request.query_params.get('page', 1))
+        limit = int(request.query_params.get('limit', 50))
+        start = (page - 1) * limit
+        end = start + limit
+        
+        total = queryset.count()
+        logs = queryset.order_by('-iniciado_em')[start:end]
+        
+        # Estatísticas gerais
+        try:
+            stats_geral = LogImportacaoChurn.objects.aggregate(
+                total_importacoes=Count('id'),
+                total_linhas_processadas=Sum('total_linhas'),
+                total_sucesso=Count('id', filter=Q(status='SUCESSO')),
+                total_erro=Count('id', filter=Q(status='ERRO')),
+                total_parcial=Count('id', filter=Q(status='PARCIAL')),
+                media_duracao=Avg('duracao_segundos'),
+                total_cancelados=Sum('total_contratos_cancelados'),
+                total_reativados=Sum('total_contratos_reativados')
+            )
+            
+            total_importacoes = stats_geral['total_importacoes'] or 0
+            total_sucesso = stats_geral['total_sucesso'] or 0
+            
+            resultado = {
+                'total': total,
+                'page': page,
+                'limit': limit,
+                'total_pages': (total + limit - 1) // limit if limit > 0 else 1,
+                'estatisticas_gerais': {
+                    'total_importacoes': total_importacoes,
+                    'total_linhas_processadas': int(stats_geral['total_linhas_processadas'] or 0),
+                    'total_sucesso': total_sucesso,
+                    'total_erro': stats_geral['total_erro'] or 0,
+                    'total_parcial': stats_geral['total_parcial'] or 0,
+                    'media_duracao_segundos': float(stats_geral['media_duracao'] or 0),
+                    'total_cancelados': int(stats_geral['total_cancelados'] or 0),
+                    'total_reativados': int(stats_geral['total_reativados'] or 0),
+                    'taxa_sucesso': round((total_sucesso / total_importacoes * 100) if total_importacoes > 0 else 0, 2)
+                },
+                'logs': []
+            }
+        except Exception as e:
+            # Em caso de erro, retornar estrutura vazia mas válida
+            resultado = {
+                'total': 0,
+                'page': page,
+                'limit': limit,
+                'total_pages': 1,
+                'estatisticas_gerais': {
+                    'total_importacoes': 0,
+                    'total_linhas_processadas': 0,
+                    'total_sucesso': 0,
+                    'total_erro': 0,
+                    'total_parcial': 0,
+                    'media_duracao_segundos': 0.0,
+                    'total_cancelados': 0,
+                    'total_reativados': 0,
+                    'taxa_sucesso': 0.0
+                },
+                'logs': []
+            }
+        
+        for log in logs:
+            try:
+                log_data = {
+                    'id': log.id,
+                    'nome_arquivo': log.nome_arquivo or '',
+                    'tamanho_arquivo': log.tamanho_arquivo or 0,
+                    'usuario': {
+                        'id': log.usuario.id if log.usuario else None,
+                        'username': log.usuario.username if log.usuario else 'Sistema',
+                        'nome_completo': log.usuario.get_full_name() if log.usuario else 'Sistema',
+                    },
+                    'status': log.status or 'DESCONHECIDO',
+                    'iniciado_em': log.iniciado_em.isoformat() if log.iniciado_em else None,
+                    'finalizado_em': log.finalizado_em.isoformat() if log.finalizado_em else None,
+                    'duracao_segundos': log.duracao_segundos or 0,
+                    'total_linhas': log.total_linhas or 0,
+                    'total_processadas': log.total_processadas or 0,
+                    'total_erros': log.total_erros or 0,
+                    'total_contratos_cancelados': log.total_contratos_cancelados or 0,
+                    'total_contratos_reativados': log.total_contratos_reativados or 0,
+                    'total_nao_encontrados': log.total_nao_encontrados or 0,
+                    'mensagem_erro': log.mensagem_erro or None,
+                }
+                
+                # Adicionar detalhes completos se requisitado
+                if request.query_params.get('detalhes') == 'true':
+                    log_data['detalhes_json'] = log.detalhes_json
+                
+                resultado['logs'].append(log_data)
+            except Exception as e:
+                # Se houver erro ao processar um log específico, pular para o próximo
+                print(f"Erro ao processar log {log.id}: {str(e)}")
+                continue
+        
+        return Response(resultado)
+
+
+class FaturaM10ListView(generics.ListCreateAPIView):
+    """Lista e cria faturas de um contrato específico"""
+    serializer_class = FaturaM10Serializer
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = (MultiPartParser, FormParser, JSONParser)
+    
+    def create(self, request, *args, **kwargs):
+        """Override create para usar update_or_create e evitar erro de duplicação"""
+        contrato_id = request.data.get('contrato')
+        numero_fatura = request.data.get('numero_fatura')
+        
+        if not contrato_id or not numero_fatura:
+            return Response({'error': 'contrato e numero_fatura são obrigatórios'}, status=400)
+        
+        try:
+            contrato = ContratoM10.objects.get(id=contrato_id)
+        except ContratoM10.DoesNotExist:
+            return Response({'error': 'Contrato não encontrado'}, status=404)
+        
+        # Remove campos que não devem ser passados para update_or_create
+        dados_fatura = {k: v for k, v in request.data.items() if k not in ['contrato', 'numero_fatura']}
+        dados_fatura['contrato'] = contrato
+        
+        # Usa update_or_create para evitar duplicação
+        fatura, created = FaturaM10.objects.update_or_create(
+            contrato=contrato,
+            numero_fatura=numero_fatura,
+            defaults=dados_fatura
+        )
+        
+        serializer = self.get_serializer(fatura)
+        status_code = 201 if created else 200
+        return Response(serializer.data, status=status_code)
+
+    def _sincronizar_primeira_fatura_com_fpd(self, contrato_id: int):
+        """Garante que a fatura 1 reflita os dados importados do FPD (prioridade)."""
+        try:
+            contrato = ContratoM10.objects.get(id=contrato_id)
+        except ContratoM10.DoesNotExist:
+            return
+
+        tem_fpd = any([
+            contrato.data_vencimento_fpd,
+            contrato.status_fatura_fpd,
+            contrato.valor_fatura_fpd,
+            contrato.data_pagamento_fpd,
+        ])
+        if not tem_fpd:
+            return
+
+        status_fpd = (contrato.status_fatura_fpd or '').upper()
+        if 'PAGA' in status_fpd:
+            status_m10 = 'PAGO'
+        elif 'AGUARDANDO' in status_fpd:
+            status_m10 = 'AGUARDANDO'
+        elif 'ATRASAD' in status_fpd or 'VENCID' in status_fpd:
+            status_m10 = 'ATRASADO'
+        else:
+            status_m10 = 'NAO_PAGO'
+
+        defaults = {
+            'valor': contrato.valor_fatura_fpd or 0,
+            'data_vencimento': contrato.data_vencimento_fpd or date.today(),
+            'data_pagamento': contrato.data_pagamento_fpd,
+            'status': status_m10,
+        }
+        fatura, _ = FaturaM10.objects.get_or_create(
+            contrato=contrato,
+            numero_fatura=1,
+            defaults=defaults,
+        )
+
+        alterado = False
+        if contrato.valor_fatura_fpd and fatura.valor != contrato.valor_fatura_fpd:
+            fatura.valor = contrato.valor_fatura_fpd
+            alterado = True
+        if contrato.data_vencimento_fpd and fatura.data_vencimento != contrato.data_vencimento_fpd:
+            fatura.data_vencimento = contrato.data_vencimento_fpd
+            alterado = True
+        if contrato.data_pagamento_fpd and fatura.data_pagamento != contrato.data_pagamento_fpd:
+            fatura.data_pagamento = contrato.data_pagamento_fpd
+            alterado = True
+        if fatura.status != status_m10:
+            fatura.status = status_m10
+            alterado = True
+        if alterado:
+            fatura.save(update_fields=['valor', 'data_vencimento', 'data_pagamento', 'status', 'atualizado_em'])
+    
+    def get_queryset(self):
+        contrato_id = self.request.query_params.get('contrato_id')
+        if contrato_id:
+            self._sincronizar_primeira_fatura_com_fpd(contrato_id)
+            return FaturaM10.objects.filter(contrato_id=contrato_id).order_by('numero_fatura')
+        return FaturaM10.objects.none()
+    
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
+
+
+class FaturaM10DetailView(generics.RetrieveUpdateAPIView):
+    """Detalhes e atualização de uma fatura específica (suporta link ou upload de PDF)"""
+    queryset = FaturaM10.objects.all()
+    serializer_class = FaturaM10Serializer
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = (MultiPartParser, FormParser, JSONParser)
+    
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
+
+
+class BuscarFaturaNioView(APIView):
+    """Busca automática de fatura no site da Nio Internet"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request):
+        """
+        Busca fatura automaticamente e retorna os dados
+        
+        Body: {
+            "cpf": "12345678900",
+            "contrato_id": 123,
+            "numero_fatura": 1,
+            "salvar": false  # Se true, salva automaticamente
+        }
+        """
+        from datetime import date
+        
+        cpf = request.data.get('cpf')
+        contrato_id = request.data.get('contrato_id')
+        numero_fatura = request.data.get('numero_fatura')
+        salvar = request.data.get('salvar', False)
+        
+        if not cpf:
+            return Response({'error': 'CPF não informado'}, status=400)
+        
+        # Verificar se a fatura já está disponível
+        if contrato_id and numero_fatura:
+            try:
+                contrato = ContratoM10.objects.get(id=contrato_id)
+                fatura = FaturaM10.objects.filter(
+                    contrato=contrato,
+                    numero_fatura=numero_fatura
+                ).first()
+                
+                if fatura and fatura.data_disponibilidade:
+                    hoje = date.today()
+                    if fatura.data_disponibilidade > hoje:
+                        dias_faltam = (fatura.data_disponibilidade - hoje).days
+                        return Response({
+                            'error': f'Fatura ainda não disponível. Estará disponível em {dias_faltam} dia(s), a partir de {fatura.data_disponibilidade.strftime("%d/%m/%Y")}.',
+                            'data_disponibilidade': fatura.data_disponibilidade,
+                            'disponivel': False
+                        }, status=400)
+            except ContratoM10.DoesNotExist:
+                pass
+        
+        try:
+            from crm_app.services_nio import buscar_fatura_nio_por_cpf
+            
+            # Busca dados no site da Nio (com PDF se solicitado)
+            incluir_pdf = request.data.get('incluir_pdf', True)  # Por padrão busca o PDF
+            dados = buscar_fatura_nio_por_cpf(cpf, incluir_pdf=incluir_pdf)
+            
+            if not dados:
+                return Response({
+                    'error': 'Não foi possível buscar a fatura. Verifique o CPF ou tente novamente.'
+                }, status=404)
+            
+            # Se retornou indicação de CPF sem dívidas
+            if dados.get('sem_dividas'):
+                return Response({
+                    'success': True,
+                    'sem_dividas': True,
+                    'mensagem': dados.get('mensagem', 'CPF sem dívidas no momento.')
+                }, status=200)
+            
+            # Se não encontrou nenhum dado válido
+            if not any([dados.get('valor'), dados.get('codigo_pix'), dados.get('codigo_barras')]):
+                return Response({
+                    'error': 'Fatura encontrada mas sem dados disponíveis. Preencha manualmente.'
+                }, status=404)
+            
+            # Se deve salvar automaticamente
+            if salvar and contrato_id and numero_fatura:
+                try:
+                    contrato = ContratoM10.objects.get(id=contrato_id)
+                    fatura, created = FaturaM10.objects.get_or_create(
+                        contrato=contrato,
+                        numero_fatura=numero_fatura,
+                        defaults={
+                            'valor': dados['valor'] or 0,
+                            'data_vencimento': dados['data_vencimento'] or datetime.now().date(),
+                            'status': 'NAO_PAGO'
+                        }
+                    )
+                    
+                    # Atualiza campos
+                    if dados['valor']:
+                        fatura.valor = dados['valor']
+                    if dados['data_vencimento']:
+                        fatura.data_vencimento = dados['data_vencimento']
+                    if dados['codigo_pix']:
+                        fatura.codigo_pix = dados['codigo_pix']
+                    if dados['codigo_barras']:
+                        fatura.codigo_barras = dados['codigo_barras']
+                    if dados['pdf_url']:
+                        fatura.pdf_url = dados['pdf_url']
+                    
+                    fatura.save()
+                    
+                    return Response({
+                        'success': True,
+                        'message': '✅ Fatura preenchida automaticamente!',
+                        'dados': {
+                            'valor': float(fatura.valor),
+                            'data_vencimento': fatura.data_vencimento.strftime('%Y-%m-%d'),
+                            'codigo_pix': fatura.codigo_pix,
+                            'codigo_barras': fatura.codigo_barras,
+                            'tem_pdf': bool(fatura.pdf_url or fatura.arquivo_pdf),
+                            'pdf_url': fatura.pdf_url,
+                        }
+                    })
+                    
+                except ContratoM10.DoesNotExist:
+                    return Response({'error': 'Contrato não encontrado'}, status=404)
+                except Exception as e:
+                    return Response({'error': f'Erro ao salvar: {str(e)}'}, status=500)
+            
+            # Retorna apenas os dados sem salvar
+            return Response({
+                'success': True,
+                'dados': dados
+            })
+            
+        except ImportError:
+            return Response({
+                'error': 'Selenium não instalado. Execute: pip install selenium'
+            }, status=500)
+        except Exception as e:
+            return Response({
+                'error': f'Erro ao buscar fatura: {str(e)}'
+            }, status=500)
+
+
+class BuscarFaturasSafraView(APIView):
+    """Busca automática de todas as faturas disponíveis de uma safra"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request):
+        """
+        Busca faturas de todos os contratos de uma safra
+        
+        Body: {
+            "safra": "2025-12",  # Opcional: formato YYYY-MM
+            "safra_id": 1,       # Ou ID da safra
+            "numero_fatura": 1   # Opcional: buscar apenas esta fatura
+        }
+        """
+        from datetime import date, timedelta
+        from crm_app.services_nio import buscar_todas_faturas_nio_por_cpf
+        
+        safra_str = request.data.get('safra')
+        safra_id = request.data.get('safra_id')
+        numero_fatura_filtro = request.data.get('numero_fatura')
+        
+        if not safra_str and not safra_id:
+            return Response({'error': 'Informe a safra (YYYY-MM) ou safra_id'}, status=400)
+        
+        try:
+            # Buscar contratos da safra
+            if safra_id:
+                try:
+                    safra = SafraM10.objects.get(id=safra_id)
+                    safra_str = safra.mes_referencia.strftime('%Y-%m')
+                except SafraM10.DoesNotExist:
+                    return Response({'error': 'Safra não encontrada'}, status=404)
+            
+            if not safra_str:
+                return Response({'error': 'Safra inválida'}, status=400)
+            
+            # Filtrar por safra (CharField YYYY-MM)
+            contratos = ContratoM10.objects.filter(
+                safra=safra_str,
+                status_contrato='ATIVO'
+            )
+            
+            if not contratos.exists():
+                return Response({'error': 'Nenhum contrato encontrado para esta safra'}, status=404)
+            
+            hoje = date.today()
+            resultados = {
+                'total_contratos': contratos.count(),
+                'processados': 0,
+                'sucesso': 0,
+                'erros': 0,
+                'nao_disponiveis': 0,
+                'sem_cpf': 0,
+                'detalhes': []
+            }
+            
+            for contrato in contratos:
+                if not contrato.cpf_cliente:
+                    resultados['sem_cpf'] += 1
+                    resultados['detalhes'].append({
+                        'contrato': contrato.numero_contrato,
+                        'status': 'sem_cpf',
+                        'mensagem': 'CPF não cadastrado'
+                    })
+                    continue
+                
+                # Busca faturas disponíveis
+                from django.db.models import Q
+                
+                if numero_fatura_filtro:
+                    # Busca apenas a fatura especificada
+                    fatura = FaturaM10.objects.filter(
+                        contrato=contrato,
+                        numero_fatura=numero_fatura_filtro
+                    ).first()
+                    faturas_disponiveis = [fatura] if fatura else []
+                else:
+                    # Busca apenas faturas não pagas E que já estão disponíveis
+                    faturas_disponiveis = FaturaM10.objects.filter(
+                        contrato=contrato,
+                        status__in=['NAO_PAGO', 'ATRASADO', 'AGUARDANDO']
+                    ).filter(
+                        Q(data_disponibilidade__isnull=True) | Q(data_disponibilidade__lte=hoje)
+                    ).order_by('numero_fatura')
+                
+                if not faturas_disponiveis:
+                    continue
+                
+                # Busca TODAS as faturas disponíveis no Nio para fazer matching por vencimento
+                # incluir_pdf=True força uso do Playwright para capturar o link do PDF
+                try:
+                    faturas_nio = buscar_todas_faturas_nio_por_cpf(contrato.cpf_cliente, incluir_pdf=True)
+                    
+                    if not faturas_nio:
+                        resultados['detalhes'].append({
+                            'contrato': contrato.numero_contrato,
+                            'status': 'sem_dividas_nio',
+                            'mensagem': 'CPF sem dívidas no Nio no momento'
+                        })
+                        continue
+                    
+                    # Faz matching por data de vencimento (com tolerância de ±3 dias)
+                    for fatura in faturas_disponiveis:
+                        resultados['processados'] += 1
+                        match_encontrado = False
+                        
+                        for fatura_nio in faturas_nio:
+                            if not fatura_nio.get('data_vencimento'):
+                                continue
+                            
+                            # Compara datas com tolerância de 3 dias
+                            diff_dias = abs((fatura.data_vencimento - fatura_nio['data_vencimento']).days)
+                            
+                            if diff_dias <= 3:  # Match encontrado!
+                                match_encontrado = True
+                                
+                                # Atualiza a fatura com os dados do Nio
+                                alteracoes = []
+                                if fatura_nio.get('valor') and fatura.valor != fatura_nio['valor']:
+                                    fatura.valor = fatura_nio['valor']
+                                    alteracoes.append('valor')
+                                
+                                if fatura_nio.get('data_vencimento') and fatura.data_vencimento != fatura_nio['data_vencimento']:
+                                    fatura.data_vencimento = fatura_nio['data_vencimento']
+                                    alteracoes.append('vencimento')
+                                
+                                if fatura_nio.get('codigo_pix') and fatura.codigo_pix != fatura_nio['codigo_pix']:
+                                    fatura.codigo_pix = fatura_nio['codigo_pix']
+                                    alteracoes.append('pix')
+                                
+                                if fatura_nio.get('codigo_barras') and fatura.codigo_barras != fatura_nio['codigo_barras']:
+                                    fatura.codigo_barras = fatura_nio['codigo_barras']
+                                    alteracoes.append('barcode')
+                                
+                                if fatura_nio.get('pdf_url') and fatura.pdf_url != fatura_nio['pdf_url']:
+                                    fatura.pdf_url = fatura_nio['pdf_url']
+                                    alteracoes.append('pdf_url')
+                                
+                                if alteracoes:
+                                    fatura.save()
+                                    resultados['sucesso'] += 1
+                                    resultados['detalhes'].append({
+                                        'contrato': contrato.numero_contrato,
+                                        'fatura': fatura.numero_fatura,
+                                        'status': 'atualizado',
+                                        'mensagem': f'Match por vencimento (diff: {diff_dias} dia(s))',
+                                        'alteracoes': alteracoes,
+                                        'vencimento_crm': fatura.data_vencimento.strftime('%d/%m/%Y'),
+                                        'vencimento_nio': fatura_nio['data_vencimento'].strftime('%d/%m/%Y')
+                                    })
+                                else:
+                                    resultados['detalhes'].append({
+                                        'contrato': contrato.numero_contrato,
+                                        'fatura': fatura.numero_fatura,
+                                        'status': 'sem_alteracao',
+                                        'mensagem': 'Match encontrado mas dados já estão atualizados'
+                                    })
+                                
+                                # Remove fatura_nio da lista para não fazer match duplicado
+                                faturas_nio.remove(fatura_nio)
+                                break
+                        
+                        if not match_encontrado:
+                            resultados['detalhes'].append({
+                                'contrato': contrato.numero_contrato,
+                                'fatura': fatura.numero_fatura,
+                                'status': 'sem_match',
+                                'mensagem': f'Fatura vencimento {fatura.data_vencimento.strftime("%d/%m/%Y")} não encontrada no Nio',
+                                'vencimento_crm': fatura.data_vencimento.strftime('%d/%m/%Y')
+                            })
+                    
+                except Exception as e:
+                    resultados['erros'] += 1
+                    resultados['detalhes'].append({
+                        'contrato': contrato.numero_contrato,
+                        'status': 'erro',
+                        'mensagem': str(e)
+                    })
+            
+            return Response({
+                'success': True,
+                'resumo': resultados
+            })
+            
+        except Exception as e:
+            return Response({
+                'error': f'Erro ao processar safra: {str(e)}'
+            }, status=500)
+
+
+class NioDividasView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        cpf = (request.query_params.get("cpf") or "").strip()
+        offset = int(request.query_params.get("offset", 0))
+        limit = int(request.query_params.get("limit", 10))
+
+        if not cpf:
+            return Response({"detail": "CPF/CNPJ não informado"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Valida CPF/CNPJ mas trata exceção de validação
+        try:
+            validar_cpf_ou_cnpj(cpf)
+        except ValidationError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            result = consultar_dividas_nio(
+                cpf=cpf,
+                offset=offset,
+                limit=limit,
+                storage_state=getattr(settings, "NIO_STORAGE_STATE", None),
+                headless=True,
+            )
+        except Exception as exc:
+            logger.exception("Erro ao consultar dívidas Nio")
+            return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+
+        return Response({
+            "invoices": result.get("invoices", []),
+            "meta": {
+                "api_base": result.get("api_base"),
+                "session_id": result.get("session_id"),
+                "count": len(result.get("invoices", [])),
+            },
+        })

@@ -11,7 +11,8 @@ def processar_envio_performance():
     """Lógica principal chamada pelo Scheduler"""
     agora = timezone.localtime(timezone.now())
     hora = agora.hour
-    dia_sem = agora.weekday() # 0=Seg, 1=Ter...
+    minuto = agora.minute
+    dia_sem = agora.weekday() # 0=Seg, 1=Ter, 2=Qua, 3=Qui, 4=Sex, 5=Sáb, 6=Dom
     
     regras = AgendamentoDisparo.objects.filter(ativo=True)
     svc = WhatsAppService()
@@ -21,10 +22,20 @@ def processar_envio_performance():
         enviar = False
         
         # --- VERIFICAÇÃO DE HORÁRIO ---
-        if regra.tipo == 'HORARIO': # Diário 9h-19h
-            if 9 <= hora <= 19:
-                if not regra.ultimo_disparo or regra.ultimo_disparo.hour != hora or regra.ultimo_disparo.date() != agora.date():
-                    enviar = True
+        if regra.tipo == 'HORARIO': # Hora a hora conforme dia da semana
+            # Segunda a Sexta: 8h30 até 17h (verifica se já passou dos 30min da hora 8)
+            if dia_sem in [0, 1, 2, 3, 4]:  # Seg-Sex
+                if (hora == 8 and minuto >= 30) or (9 <= hora <= 16) or (hora == 17 and minuto == 0):
+                    if not regra.ultimo_disparo or regra.ultimo_disparo.hour != hora or regra.ultimo_disparo.date() != agora.date():
+                        enviar = True
+            
+            # Sábado: 9h até 12h
+            elif dia_sem == 5:  # Sábado
+                if 9 <= hora <= 12:
+                    if not regra.ultimo_disparo or regra.ultimo_disparo.hour != hora or regra.ultimo_disparo.date() != agora.date():
+                        enviar = True
+            
+            # Domingo: Não enviar (dia_sem == 6)
         
         elif regra.tipo == 'SEMANAL': # Ter/Qui/Sáb às 17h
             if dia_sem in [1, 3, 5] and hora == 17:
@@ -44,7 +55,7 @@ def processar_envio_performance():
                 qs = users.annotate(
                     total=Count('vendas', filter=filtro),
                     cc=Count('vendas', filter=filtro & (Q(vendas__forma_pagamento__nome__icontains='CREDIT') | Q(vendas__forma_pagamento__nome__icontains='CARTA')))
-                ).filter(total__gt=0).order_by('-total')
+                ).filter(total__gt=0).order_by('username')  # Ordem alfabética
 
                 if not qs.exists():
                     print(f"Sem vendas para regra {regra.nome}")
