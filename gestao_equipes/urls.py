@@ -13,16 +13,28 @@ from crm_app.views import (
     page_painel_performance, 
     page_cdoi_novo,
     page_bonus_m10,
+    page_validacao_fpd,
+    page_validacao_churn,
     listar_grupos_whatsapp_api,  # Importando a função de grupos
     SafraM10ListView,
     DashboardM10View,
     DashboardFPDView,
     ContratoM10DetailView,
+    VendedoresM10View,
     PopularSafraM10View,
     ImportarFPDView,
     ImportarChurnView,
     AtualizarFaturasView,
     ExportarM10View,
+    DadosFPDView,
+    ListarImportacoesFPDView,
+    BuscarOSFPDView,
+    ListarLogsImportacaoFPDView,
+    ListarLogsImportacaoChurnView,
+    FaturaM10ListView,
+    FaturaM10DetailView,
+    BuscarFaturaNioView,
+    BuscarFaturasSafraView,
 )
 
 # --- CONFIGURAÇÃO DO ROUTER PARA REGRAS DE AUTOMAÇÃO ---
@@ -89,17 +101,31 @@ urlpatterns = [
     # --- NOVO: BÔNUS M-10 & FPD ---
     path('bonus-m10/', page_bonus_m10, name='page_bonus_m10'),
     path('importar-fpd/', TemplateView.as_view(template_name='importar_fpd.html'), name='importar_fpd'),
+    path('validacao-fpd/', page_validacao_fpd, name='page_validacao_fpd'),
+    path('validacao-churn/', page_validacao_churn, name='page_validacao_churn'),
     
     # API Bônus M-10
     path('api/bonus-m10/safras/', SafraM10ListView.as_view(), name='api-bonus-m10-safras'),
     path('api/bonus-m10/safras/criar/', PopularSafraM10View.as_view(), name='api-bonus-m10-safras-criar'),
     path('api/bonus-m10/dashboard-m10/', DashboardM10View.as_view(), name='api-bonus-m10-dashboard'),
+    path('api/bonus-m10/vendedores/', VendedoresM10View.as_view(), name='api-bonus-m10-vendedores'),
     path('api/bonus-m10/dashboard-fpd/', DashboardFPDView.as_view(), name='api-bonus-m10-dashboard-fpd'),
     path('api/bonus-m10/contratos/<int:pk>/', ContratoM10DetailView.as_view(), name='api-bonus-m10-contrato-detail'),
     path('api/bonus-m10/importar-fpd/', ImportarFPDView.as_view(), name='api-bonus-m10-importar-fpd'),
     path('api/bonus-m10/importar-churn/', ImportarChurnView.as_view(), name='api-bonus-m10-importar-churn'),
     path('api/bonus-m10/faturas/atualizar/', AtualizarFaturasView.as_view(), name='api-bonus-m10-atualizar-faturas'),
     path('api/bonus-m10/exportar/', ExportarM10View.as_view(), name='api-bonus-m10-exportar'),
+    path('api/bonus-m10/dados-fpd/', DadosFPDView.as_view(), name='api-bonus-m10-dados-fpd'),
+    path('api/bonus-m10/importacoes-fpd/', ListarImportacoesFPDView.as_view(), name='api-bonus-m10-importacoes-fpd'),
+    path('api/bonus-m10/buscar-os-fpd/', BuscarOSFPDView.as_view(), name='api-bonus-m10-buscar-os-fpd'),
+    path('api/bonus-m10/logs-importacao-fpd/', ListarLogsImportacaoFPDView.as_view(), name='api-bonus-m10-logs-importacao-fpd'),
+    path('api/bonus-m10/logs-importacao-churn/', ListarLogsImportacaoChurnView.as_view(), name='api-bonus-m10-logs-importacao-churn'),
+    
+    # API Faturas M-10 (Novos endpoints)
+    path('api/bonus-m10/faturas/', FaturaM10ListView.as_view(), name='api-faturas-m10-list'),
+    path('api/bonus-m10/faturas/<int:pk>/', FaturaM10DetailView.as_view(), name='api-faturas-m10-detail'),
+    path('api/bonus-m10/buscar-fatura-nio/', BuscarFaturaNioView.as_view(), name='api-buscar-fatura-nio'),
+    path('api/bonus-m10/buscar-faturas-safra/', BuscarFaturasSafraView.as_view(), name='api-buscar-faturas-safra'),
 ]
 
 if settings.DEBUG:

@@ -37,10 +37,7 @@ from .models import CdoiSolicitacao, CdoiBloco
 from .onedrive_service import OneDriveUploader
 
 # Importar mapeamento de status FPD
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from fpd_status_mapping import normalizar_status_fpd
+from .fpd_status_mapping import normalizar_status_fpd
 
 from rest_framework import generics, viewsets, status, permissions
 from rest_framework.response import Response
