@@ -33,6 +33,20 @@ class Usuario(AbstractUser):
         verbose_name="Canal de Venda"
     )
     
+    # --- CLUSTER ---
+    CLUSTER_CHOICES = [
+        ('CLUSTER_1', 'CLUSTER 1'),
+        ('CLUSTER_2', 'CLUSTER 2'),
+        ('CLUSTER_3', 'CLUSTER 3'),
+    ]
+    cluster = models.CharField(
+        max_length=20,
+        choices=CLUSTER_CHOICES,
+        blank=True,
+        null=True,
+        verbose_name="Cluster"
+    )
+    
     # --- IDENTIFICAÇÃO ---
     cpf = models.CharField(max_length=14, blank=True, null=True, unique=True)
     

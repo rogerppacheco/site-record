@@ -265,7 +265,150 @@
         </main>
     </div>
 
-    <div class="modal fade" id="userModal" tabindex="-1"><div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable"><div class="modal-content"><div class="modal-header"><h5 class="modal-title fw-bold" id="userModalTitle">Novo Usuário</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body p-0"><ul class="nav nav-tabs nav-fill" id="userModalTabs" role="tablist"><li class="nav-item"><button class="nav-link active fw-bold" id="dados-tab" data-bs-toggle="tab" data-bs-target="#dados-content" type="button">Dados Pessoais</button></li><li class="nav-item"><button class="nav-link fw-bold" id="financeiro-tab" data-bs-toggle="tab" data-bs-target="#financeiro-content" type="button">Financeiro</button></li></ul><form id="user-form"><input type="hidden" id="user_id"><div class="tab-content p-4"><div class="tab-pane fade show active" id="dados-content"><div class="row g-3"><div class="col-12"><label class="form-label fw-bold">Nome Completo</label><input type="text" class="form-control" id="nome_completo" required></div><div class="col-md-6"><label class="form-label fw-bold">CPF</label><input type="text" class="form-control" id="cpf"></div><div class="col-md-6"><label class="form-label fw-bold">E-mail</label><input type="email" class="form-control" id="email" required></div><div class="col-md-6"><label class="form-label fw-bold">WhatsApp</label><input type="text" class="form-control" id="tel_whatsapp"></div><div class="col-md-6"><label class="form-label fw-bold">Username</label><input type="text" class="form-control" id="usuario_login" required></div><div class="col-md-6"><label class="form-label fw-bold">Senha</label><input type="password" class="form-control" id="senha" placeholder="Deixe vazio se não for alterar"></div><div class="col-md-6"><label class="form-label fw-bold">Perfil</label><select class="form-select" id="perfil_id" required></select></div><div class="col-md-6"><label class="form-label fw-bold">Líder</label><select class="form-select" id="supervisor_id"><option value="">Nenhum</option></select></div><div class="col-md-6"><label class="form-label fw-bold">Canal</label><select class="form-select" id="user_canal"><option value="PAP">PAP</option><option value="DIGITAL">Digital</option><option value="RECEPTIVO">Receptivo</option><option value="PARCEIRO">Parceiro</option></select></div><div class="col-12 mt-3 pt-3 border-top"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="participa_controle_presenca"><label class="form-check-label fw-bold" for="participa_controle_presenca">Participa Controle Presença?</label></div></div></div></div><div class="tab-pane fade" id="financeiro-content"><div class="row g-3"><div class="col-md-6"><label class="form-label small fw-bold">Meta</label><input type="number" class="form-control" id="meta_comissao"></div><div class="col-md-6"><label class="form-label small fw-bold">Chave PIX</label><input type="text" class="form-control" id="chave_pix"></div><div class="col-md-6"><label class="form-label small fw-bold">Titular</label><input type="text" class="form-control" id="nome_da_conta"></div><div class="col-md-3"><label class="form-label small">Almoço</label><input type="number" class="form-control" id="valor_almoco" step="0.01"></div><div class="col-md-3"><label class="form-label small">Passagem</label><input type="number" class="form-control" id="valor_passagem" step="0.01"></div><div class="col-12"><hr class="text-muted"><h6 class="text-secondary small text-uppercase fw-bold">Descontos</h6></div><div class="col-md-4"><label class="form-label small">Desc. Boleto</label><input type="number" class="form-control" id="desconto_boleto" step="0.01"></div><div class="col-md-4"><label class="form-label small">Desc. Viab.</label><input type="number" class="form-control" id="desconto_inclusao_viabilidade" step="0.01"></div><div class="col-md-4"><label class="form-label small">Desc. Antecip.</label><input type="number" class="form-control" id="desconto_instalacao_antecipada" step="0.01"></div><div class="col-md-6"><label class="form-label small">Adiant. CNPJ</label><input type="number" class="form-control" id="adiantamento_cnpj" step="0.01"></div><div class="col-md-6"><label class="form-label small">Desc. INSS</label><input type="number" class="form-control" id="desconto_inss_fixo" step="0.01"></div></div></div></div><div class="modal-footer bg-light"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button type="submit" class="btn btn-primary px-4">Salvar</button></div></form></div></div></div></div>
+    <div class="modal fade" id="userModal" tabindex="-1">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable" style="max-width: 90%;">
+            <div class="modal-content">
+                <div class="modal-header bg-light border-bottom">
+                    <h5 class="modal-title fw-bold" id="userModalTitle">Novo Usuário</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <ul class="nav nav-tabs nav-fill" id="userModalTabs" role="tablist">
+                        <li class="nav-item">
+                            <button class="nav-link active fw-bold" id="dados-tab" data-bs-toggle="tab" data-bs-target="#dados-content" type="button">Dados Pessoais</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link fw-bold" id="financeiro-tab" data-bs-toggle="tab" data-bs-target="#financeiro-content" type="button">Financeiro</button>
+                        </li>
+                    </ul>
+                    <form id="user-form">
+                        <input type="hidden" id="user_id">
+                        <div class="tab-content p-4">
+                            <!-- TAB: DADOS PESSOAIS -->
+                            <div class="tab-pane fade show active" id="dados-content">
+                                <div class="row g-3">
+                                    <div class="col-12">
+                                        <label class="form-label fw-bold">Nome Completo</label>
+                                        <input type="text" class="form-control" id="nome_completo" required>
+                                    </div>
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label fw-bold">CPF</label>
+                                        <input type="text" class="form-control" id="cpf">
+                                    </div>
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label fw-bold">E-mail</label>
+                                        <input type="email" class="form-control" id="email" required>
+                                    </div>
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label fw-bold">WhatsApp</label>
+                                        <input type="text" class="form-control" id="tel_whatsapp">
+                                    </div>
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label fw-bold">Username</label>
+                                        <input type="text" class="form-control" id="usuario_login" required>
+                                    </div>
+                                    <div class="col-lg-2 col-md-4">
+                                        <label class="form-label fw-bold">Senha</label>
+                                        <input type="password" class="form-control" id="senha" placeholder="Deixe vazio se não alterar">
+                                    </div>
+                                    <div class="col-lg-2 col-md-4">
+                                        <label class="form-label fw-bold">Perfil</label>
+                                        <select class="form-select" id="perfil_id" required></select>
+                                    </div>
+                                    <div class="col-lg-2 col-md-4">
+                                        <label class="form-label fw-bold">Líder</label>
+                                        <select class="form-select" id="supervisor_id">
+                                            <option value="">Nenhum</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-lg-2 col-md-4">
+                                        <label class="form-label fw-bold">Canal</label>
+                                        <select class="form-select" id="user_canal">
+                                            <option value="PAP">PAP</option>
+                                            <option value="DIGITAL">Digital</option>
+                                            <option value="RECEPTIVO">Receptivo</option>
+                                            <option value="PARCEIRO">Parceiro</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-lg-2 col-md-4">
+                                        <label class="form-label fw-bold">Cluster</label>
+                                        <select class="form-select" id="user_cluster">
+                                            <option value="">Nenhum</option>
+                                            <option value="CLUSTER_1">CLUSTER 1</option>
+                                            <option value="CLUSTER_2">CLUSTER 2</option>
+                                            <option value="CLUSTER_3">CLUSTER 3</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-12 mt-3 pt-3 border-top">
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="participa_controle_presenca">
+                                            <label class="form-check-label fw-bold" for="participa_controle_presenca">Participa Controle Presença?</label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- TAB: FINANCEIRO -->
+                            <div class="tab-pane fade" id="financeiro-content">
+                                <div class="row g-3">
+                                    <div class="col-lg-3 col-md-4">
+                                        <label class="form-label small fw-bold">Meta</label>
+                                        <input type="number" class="form-control" id="meta_comissao">
+                                    </div>
+                                    <div class="col-lg-3 col-md-4">
+                                        <label class="form-label small fw-bold">Chave PIX</label>
+                                        <input type="text" class="form-control" id="chave_pix">
+                                    </div>
+                                    <div class="col-lg-3 col-md-4">
+                                        <label class="form-label small fw-bold">Titular</label>
+                                        <input type="text" class="form-control" id="nome_da_conta">
+                                    </div>
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label small fw-bold">Almoço</label>
+                                        <input type="number" class="form-control" id="valor_almoco" step="0.01">
+                                    </div>
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label small fw-bold">Passagem</label>
+                                        <input type="number" class="form-control" id="valor_passagem" step="0.01">
+                                    </div>
+
+                                    <div class="col-12">
+                                        <hr class="text-muted">
+                                        <h6 class="text-secondary small text-uppercase fw-bold">Descontos</h6>
+                                    </div>
+
+                                    <div class="col-lg-2 col-md-4">
+                                        <label class="form-label small">Desc. Boleto</label>
+                                        <input type="number" class="form-control" id="desconto_boleto" step="0.01">
+                                    </div>
+                                    <div class="col-lg-2 col-md-4">
+                                        <label class="form-label small">Desc. Viab.</label>
+                                        <input type="number" class="form-control" id="desconto_inclusao_viabilidade" step="0.01">
+                                    </div>
+                                    <div class="col-lg-2 col-md-4">
+                                        <label class="form-label small">Desc. Antecip.</label>
+                                        <input type="number" class="form-control" id="desconto_instalacao_antecipada" step="0.01">
+                                    </div>
+                                    <div class="col-lg-2 col-md-4">
+                                        <label class="form-label small">Adiant. CNPJ</label>
+                                        <input type="number" class="form-control" id="adiantamento_cnpj" step="0.01">
+                                    </div>
+                                    <div class="col-lg-2 col-md-4">
+                                        <label class="form-label small">Desc. INSS</label>
+                                        <input type="number" class="form-control" id="desconto_inss_fixo" step="0.01">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" form="user-form" class="btn btn-primary px-4">Salvar</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <div class="modal fade" id="perfilModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="modal-perfil-titulo">Perfil</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="perfilForm"><input type="hidden" id="modal_perfil_id"><div class="mb-3"><label class="form-label fw-bold">Nome</label><input type="text" class="form-control" id="modal_perfil_nome" required></div><div class="mb-3"><label class="form-label fw-bold text-primary">Permissões</label><input type="text" id="filtro-permissoes" class="form-control form-control-sm mb-2" placeholder="Buscar..."><div id="lista-permissoes" class="perm-list"></div></div></form></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button type="button" class="btn btn-primary" onclick="salvarPerfil()">Salvar</button></div></div></div></div>
     <div class="modal fade" id="excluirPerfilModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Confirmar Exclusão</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>Excluir o perfil "<strong id="nome-perfil-excluir"></strong>"?</p><input type="hidden" id="id-perfil-excluir"></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button type="button" class="btn btn-danger" id="btn-confirmar-exclusao-perfil">Excluir</button></div></div></div></div>
@@ -428,6 +571,9 @@
     function mostrarListaUsuarios(status, btn) {
         document.getElementById('lista-status-titulo').textContent = status === 'ativos' ? 'Ativos' : 'Inativos';
         if(btn) { btn.parentElement.querySelectorAll('.btn').forEach(b => b.classList.remove('active', 'btn-outline-primary')); btn.classList.add('active', 'btn-outline-primary'); }
+        // Limpar campo de busca ao trocar de aba
+        const campoBusca = document.getElementById('busca-usuario');
+        if (campoBusca) campoBusca.value = '';
         carregarUsuarios(status);
     }
 
@@ -462,6 +608,32 @@
         });
     }
 
+    function filtrarUsuarios() {
+        const termoBusca = document.getElementById('busca-usuario').value.toLowerCase().trim();
+        const statusAtual = document.getElementById('lista-status-titulo').textContent.includes('Ativos') ? 'ativos' : 'inativos';
+        
+        if (!termoBusca) {
+            renderizarTabelaUsuarios(todosUsuariosCache, statusAtual);
+            return;
+        }
+        
+        const usuariosFiltrados = todosUsuariosCache.filter(user => {
+            const nome = (user.nome_completo || '').toLowerCase();
+            const email = (user.email || '').toLowerCase();
+            const perfil = (user.groups?.[0]?.name || user.perfil_nome || '').toLowerCase();
+            const canal = (user.canal || '').toLowerCase();
+            const supervisor = (user.supervisor_nome || '').toLowerCase();
+            
+            return nome.includes(termoBusca) || 
+                   email.includes(termoBusca) || 
+                   perfil.includes(termoBusca) ||
+                   canal.includes(termoBusca) ||
+                   supervisor.includes(termoBusca);
+        });
+        
+        renderizarTabelaUsuarios(usuariosFiltrados, statusAtual);
+    }
+
     function editarUsuarioPeloId(id) { const user = todosUsuariosCache.find(u => u.id === id); if (user) abrirModalUsuario(user); }
     window.toggleTodos = (s) => document.querySelectorAll('.user-check').forEach(c => c.checked = s.checked);
     window.aplicarMudancaPerfilEmMassa = async () => { 
@@ -486,6 +658,7 @@
             if (user.groups && user.groups.length > 0) document.getElementById('perfil_id').value = user.groups[0].id;
             document.getElementById('supervisor_id').value = user.supervisor || '';
             document.getElementById('user_canal').value = user.canal || 'PAP';
+            document.getElementById('user_cluster').value = user.cluster || '';
             document.getElementById('participa_controle_presenca').checked = user.participa_controle_presenca;
             ['valor_almoco', 'valor_passagem', 'chave_pix', 'nome_da_conta', 'meta_comissao', 'desconto_boleto', 'desconto_inclusao_viabilidade', 'desconto_instalacao_antecipada', 'adiantamento_cnpj', 'desconto_inss_fixo'].forEach(id => { document.getElementById(id).value = user[id] || ''; });
         }
@@ -516,6 +689,7 @@
             username: document.getElementById('usuario_login').value,
             supervisor: document.getElementById('supervisor_id').value || null,
             canal: document.getElementById('user_canal').value,
+            cluster: document.getElementById('user_cluster').value || null,
             groups: document.getElementById('perfil_id').value ? [parseInt(document.getElementById('perfil_id').value)] : [],
             valor_almoco: document.getElementById('valor_almoco').value,
             valor_passagem: document.getElementById('valor_passagem').value,
@@ -1026,6 +1200,13 @@
         // --- NOVAS FUNÇÕES DA ABA AUTOMAÇÃO (SUBSTITUÍRAM AS ANTIGAS) ---
         carregarRegrasAutomacao();
         carregarGruposExternos();
+
+        // Adicionar event listener para busca de usuários
+        const campoBuscaUsuario = document.getElementById('busca-usuario');
+        if (campoBuscaUsuario) {
+            campoBuscaUsuario.addEventListener('input', filtrarUsuarios);
+            campoBuscaUsuario.addEventListener('keyup', filtrarUsuarios);
+        }
 
         const link = document.querySelector('.admin-nav-link');
         if(link) mostrarSecao(null, 'usuarios', link);

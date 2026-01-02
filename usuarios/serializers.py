@@ -82,6 +82,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
             'desconto_instalacao_antecipada', 'adiantamento_cnpj', 'desconto_inss_fixo',
             'is_active', 'is_staff',
             'canal',
+            'cluster',
             'participa_controle_presenca',
             'tel_whatsapp',
             'obriga_troca_senha' # <--- ADICIONADO PARA O FRONTEND VER
@@ -145,6 +146,26 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         return token
 
     def validate(self, attrs):
+        # Permitir login com username OU email
+        username_input = attrs.get('username', '')
+        password = attrs.get('password', '')
+        
+        # Tentar primeiro com o valor fornecido (username ou email)
+        self.user = None
+        try:
+            # Tenta com username primeiro (case-insensitive)
+            self.user = User.objects.get(username__iexact=username_input)
+        except User.DoesNotExist:
+            try:
+                # Se não encontrar, tenta com email (case-insensitive)
+                self.user = User.objects.get(email__iexact=username_input)
+            except User.DoesNotExist:
+                pass
+        
+        # Se encontrou usuário, atualizar attrs para autenticação
+        if self.user:
+            attrs['username'] = self.user.username
+        
         data = super().validate(attrs)
 
         if not self.user.is_active:

@@ -6,7 +6,7 @@ from .models import (
     RegraComissao, Cliente, Venda, ImportacaoOsab, ImportacaoChurn,
     CicloPagamento, HistoricoAlteracaoVenda, Campanha,
     ComissaoOperadora, Comunicado, LancamentoFinanceiro,
-    RegraCampanha 
+    RegraCampanha, FaturaM10
 )
 from .models import GrupoDisparo 
 from usuarios.models import Usuario
@@ -316,7 +316,7 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Venda
         fields = '__all__'
-        read_only_fields = ('data_criacao', 'forma_entrada')
+        read_only_fields = ('data_criacao', 'forma_entrada', 'cliente')
 
     def validate(self, data):
         # Converte para maiúsculo, exceto email e obs
@@ -431,3 +431,28 @@ class LancamentoFinanceiroSerializer(serializers.ModelSerializer):
     usuario_nome = serializers.ReadOnlyField(source='usuario.nome_completo')
     criado_por_nome = serializers.ReadOnlyField(source='criado_por.username')
     class Meta: model = LancamentoFinanceiro; fields = '__all__'
+
+class FaturaM10Serializer(serializers.ModelSerializer):
+    """Serializer para as faturas do Bônus M-10"""
+    arquivo_pdf_url = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = FaturaM10
+        fields = [
+            'id', 'contrato', 'numero_fatura', 'numero_fatura_operadora',
+            'valor', 'data_vencimento', 'data_pagamento', 'dias_atraso',
+            'status', 'codigo_pix', 'codigo_barras', 'pdf_url', 'arquivo_pdf',
+            'arquivo_pdf_url', 'observacao', 'criado_em', 'atualizado_em'
+        ]
+        read_only_fields = ['criado_em', 'atualizado_em']
+    
+    def get_arquivo_pdf_url(self, obj):
+        """Retorna a URL completa do PDF se existir"""
+        if obj.pdf_url:
+            return obj.pdf_url
+        if obj.arquivo_pdf:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.arquivo_pdf.url)
+            return obj.arquivo_pdf.url
+        return None
