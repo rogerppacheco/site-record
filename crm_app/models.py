@@ -3,6 +3,8 @@
 from django.db import models
 from usuarios.models import Usuario
 from django.conf import settings
+from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
 
 class Operadora(models.Model):
     nome = models.CharField(max_length=100, unique=True)
@@ -657,14 +659,23 @@ class ContratoM10(models.Model):
         ('DOWNGRADE', 'Downgrade'),
     ]
 
-    safra = models.ForeignKey(SafraM10, on_delete=models.CASCADE, related_name='contratos')
     venda = models.ForeignKey('Venda', on_delete=models.SET_NULL, null=True, blank=True, related_name='bonus_m10')
     numero_contrato = models.CharField(max_length=100, unique=True)
+    numero_contrato_definitivo = models.CharField(max_length=100, null=True, blank=True, help_text="Preenchido automaticamente do FPD")
     ordem_servico = models.CharField(max_length=100, null=True, blank=True, unique=True, help_text="O.S para crossover com FPD/Churn")
+    
+    # Dados preenchidos automaticamente do FPD
+    data_vencimento_fpd = models.DateField(null=True, blank=True, help_text="Data de vencimento da última fatura FPD")
+    data_pagamento_fpd = models.DateField(null=True, blank=True, help_text="Data de pagamento da última fatura FPD")
+    status_fatura_fpd = models.CharField(max_length=50, null=True, blank=True, help_text="Status da última fatura FPD (PAGO, ABERTO, etc)")
+    valor_fatura_fpd = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text="Valor da última fatura FPD")
+    nr_dias_atraso_fpd = models.IntegerField(null=True, blank=True, help_text="Dias em atraso da última fatura FPD")
+    
     cliente_nome = models.CharField(max_length=255)
     cpf_cliente = models.CharField(max_length=18, null=True, blank=True, help_text="CPF do cliente")
     vendedor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     data_instalacao = models.DateField()
+    safra = models.CharField(max_length=7, null=True, blank=True, help_text="Mês/Ano da instalação (YYYY-MM)")
     plano_original = models.CharField(max_length=100)
     plano_atual = models.CharField(max_length=100)
     valor_plano = models.DecimalField(max_digits=10, decimal_places=2, default=0)
@@ -673,6 +684,7 @@ class ContratoM10(models.Model):
     data_cancelamento = models.DateField(null=True, blank=True)
     motivo_cancelamento = models.CharField(max_length=255, blank=True, null=True)
     elegivel_bonus = models.BooleanField(default=False, help_text="10 faturas pagas + sem downgrade + ativo")
+    data_ultima_sincronizacao_fpd = models.DateTimeField(null=True, blank=True, help_text="Última sincronização com FPD")
     observacao = models.TextField(blank=True, null=True)
     criado_em = models.DateTimeField(auto_now_add=True)
     atualizado_em = models.DateTimeField(auto_now=True)
@@ -685,17 +697,94 @@ class ContratoM10(models.Model):
     def __str__(self):
         return f"{self.numero_contrato} - {self.cliente_nome}"
 
-    def calcular_elegibilidade(self):
-        """Verifica se o contrato é elegível para bônus M-10"""
-        # Verifica se tem 10 faturas pagas
-        faturas_pagas = self.faturas.filter(status='PAGO').count()
+    def save(self, *args, **kwargs):
+        """Calcula safra automaticamente"""
+        if self.data_instalacao:
+            self.safra = self.data_instalacao.strftime('%Y-%m')
         
+        super().save(*args, **kwargs)
+    
+    def calcular_vencimento_fatura_1(self):
+        """Calcula o vencimento da primeira fatura segundo a regra:
+        - Dias 1-28: data_instalacao + 25 dias
+        - Dias 29-31: dia 26 do mês seguinte
+        """
+        dia_instalacao = self.data_instalacao.day
+        
+        if dia_instalacao <= 28:
+            return self.data_instalacao + timedelta(days=25)
+        else:
+            # Dias 29, 30, 31: vencimento no dia 26 do mês seguinte
+            mes_seguinte = self.data_instalacao + relativedelta(months=1)
+            return mes_seguinte.replace(day=26)
+    
+    def calcular_data_disponibilidade(self, numero_fatura):
+        """Calcula quando a fatura estará disponível no Nio (3-5 dias após instalação)
+        Para simplificar, usamos 3 dias como mínimo
+        """
+        if numero_fatura == 1:
+            return self.data_instalacao + timedelta(days=3)
+        else:
+            # Faturas subsequentes ficam disponíveis 3 dias antes do vencimento
+            vencimento = self.calcular_vencimento_fatura_n(numero_fatura)
+            return vencimento - timedelta(days=3)
+    
+    def calcular_vencimento_fatura_n(self, numero_fatura):
+        """Calcula o vencimento da fatura N (1 a 10)
+        Fatura 1: conforme regra especial
+        Faturas 2-10: mesmo dia da fatura 1, mas nos meses subsequentes
+        """
+        if numero_fatura == 1:
+            return self.calcular_vencimento_fatura_1()
+        else:
+            vencimento_fatura_1 = self.calcular_vencimento_fatura_1()
+            return vencimento_fatura_1 + relativedelta(months=numero_fatura - 1)
+    
+    def criar_ou_atualizar_faturas(self):
+        """Cria ou atualiza as 10 faturas com as datas de vencimento calculadas"""
+        for i in range(1, 11):
+            data_vencimento = self.calcular_vencimento_fatura_n(i)
+            data_disponibilidade = self.calcular_data_disponibilidade(i)
+            
+            fatura, created = FaturaM10.objects.get_or_create(
+                contrato=self,
+                numero_fatura=i,
+                defaults={
+                    'data_vencimento': data_vencimento,
+                    'data_disponibilidade': data_disponibilidade,
+                    'valor': self.valor_plano,
+                }
+            )
+            
+            # Se já existe, atualiza apenas as datas
+            if not created:
+                fatura.data_vencimento = data_vencimento
+                fatura.data_disponibilidade = data_disponibilidade
+                fatura.save(update_fields=['data_vencimento', 'data_disponibilidade', 'atualizado_em'])
+
+    def calcular_elegibilidade(self):
+        """Verifica se o contrato é elegível para bônus M-10.
+
+        Nova regra: basta que todas as faturas cadastradas estejam pagas
+        (qualquer quantidade) e o contrato esteja ativo. Mantemos o bloqueio
+        para contratos com downgrade.
+        """
+        total_faturas = self.faturas.count()
+        faturas_pagas = self.faturas.filter(status='PAGO').count()
+
+        # Se não existem faturas cadastradas, mas o status FPD está pago,
+        # consideramos como 1/1 para fins de elegibilidade.
+        if total_faturas == 0 and self.status_fatura_fpd and str(self.status_fatura_fpd).lower().startswith('paga'):
+            total_faturas = 1
+            faturas_pagas = 1
+
         self.elegivel_bonus = (
-            faturas_pagas == 10 and
+            total_faturas > 0 and
+            faturas_pagas == total_faturas and
             not self.teve_downgrade and
             self.status_contrato == 'ATIVO'
         )
-        self.save()
+        self.save(update_fields=['elegivel_bonus', 'atualizado_em'])
         return self.elegivel_bonus
 
 
@@ -708,16 +797,44 @@ class FaturaM10(models.Model):
         ('ATRASADO', 'Atrasado'),
         ('OUTROS', 'Outros'),
     ]
+    
+    ORIGEM_BUSCA_CHOICES = [
+        ('MANUAL', 'Busca Manual'),
+        ('AUTOMATICA', 'Busca Automática (Agendada)'),
+        ('SAFRA', 'Busca por Safra'),
+        ('INDIVIDUAL', 'Busca Individual'),
+    ]
+    
+    STATUS_BUSCA_CHOICES = [
+        ('PENDENTE', 'Pendente'),
+        ('SUCESSO', 'Sucesso'),
+        ('ERRO', 'Erro'),
+        ('PARCIAL', 'Parcial'),
+    ]
 
     contrato = models.ForeignKey(ContratoM10, on_delete=models.CASCADE, related_name='faturas')
     numero_fatura = models.IntegerField(help_text="1 a 10")
     numero_fatura_operadora = models.CharField(max_length=100, blank=True, null=True, help_text="NR_FATURA da planilha")
     valor = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     data_vencimento = models.DateField()
+    data_disponibilidade = models.DateField(null=True, blank=True, help_text="Data em que a fatura estará disponível no Nio")
     data_pagamento = models.DateField(null=True, blank=True)
     dias_atraso = models.IntegerField(default=0)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='NAO_PAGO')
+    codigo_pix = models.TextField(blank=True, null=True, help_text="Código PIX Copia e Cola")
+    codigo_barras = models.CharField(max_length=100, blank=True, null=True, help_text="Código de barras da fatura")
+    pdf_url = models.URLField(max_length=500, blank=True, null=True, help_text="Link público do PDF da fatura")
+    arquivo_pdf = models.FileField(upload_to='faturas_m10/%Y/%m/', blank=True, null=True, help_text="PDF da fatura")
     observacao = models.TextField(blank=True, null=True)
+    
+    # Campos de rastreamento de busca
+    origem_busca = models.CharField(max_length=20, choices=ORIGEM_BUSCA_CHOICES, blank=True, null=True, help_text="Origem da última busca")
+    status_busca = models.CharField(max_length=20, choices=STATUS_BUSCA_CHOICES, default='PENDENTE', help_text="Status da última busca")
+    ultima_busca_em = models.DateTimeField(blank=True, null=True, help_text="Data/hora da última tentativa de busca")
+    tempo_busca_segundos = models.DecimalField(max_digits=8, decimal_places=3, blank=True, null=True, help_text="Tempo de execução da busca em segundos")
+    tentativas_busca = models.IntegerField(default=0, help_text="Número de tentativas de busca")
+    erro_busca = models.TextField(blank=True, null=True, help_text="Mensagem de erro da última busca")
+    
     criado_em = models.DateTimeField(auto_now_add=True)
     atualizado_em = models.DateTimeField(auto_now=True)
 
@@ -729,6 +846,59 @@ class FaturaM10(models.Model):
 
     def __str__(self):
         return f"Fatura {self.numero_fatura} - {self.contrato.numero_contrato} - {self.status}"
+
+
+class HistoricoBuscaFatura(models.Model):
+    """Histórico detalhado de execuções de busca de faturas"""
+    TIPO_BUSCA_CHOICES = [
+        ('AUTOMATICA', 'Busca Automática (Agendada)'),
+        ('SAFRA', 'Busca por Safra'),
+        ('INDIVIDUAL', 'Busca Individual'),
+        ('RETRY', 'Retry de Erro'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('EM_ANDAMENTO', 'Em Andamento'),
+        ('CONCLUIDA', 'Concluída'),
+        ('ERRO', 'Erro'),
+        ('CANCELADA', 'Cancelada'),
+    ]
+    
+    tipo_busca = models.CharField(max_length=20, choices=TIPO_BUSCA_CHOICES, help_text="Tipo de execução")
+    safra = models.CharField(max_length=7, blank=True, null=True, help_text="Safra processada (formato YYYY-MM)")
+    usuario = models.ForeignKey('usuarios.Usuario', on_delete=models.SET_NULL, null=True, blank=True, help_text="Usuário que iniciou")
+    
+    # Métricas de execução
+    inicio_em = models.DateTimeField(auto_now_add=True)
+    termino_em = models.DateTimeField(blank=True, null=True)
+    duracao_segundos = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    
+    # Estatísticas
+    total_contratos = models.IntegerField(default=0)
+    total_faturas = models.IntegerField(default=0)
+    faturas_sucesso = models.IntegerField(default=0)
+    faturas_erro = models.IntegerField(default=0)
+    faturas_nao_disponiveis = models.IntegerField(default=0)
+    faturas_retry = models.IntegerField(default=0)
+    
+    # Performance
+    tempo_medio_fatura = models.DecimalField(max_digits=8, decimal_places=3, blank=True, null=True, help_text="Tempo médio por fatura (segundos)")
+    tempo_min_fatura = models.DecimalField(max_digits=8, decimal_places=3, blank=True, null=True)
+    tempo_max_fatura = models.DecimalField(max_digits=8, decimal_places=3, blank=True, null=True)
+    
+    # Status e logs
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='EM_ANDAMENTO')
+    mensagem = models.TextField(blank=True, null=True, help_text="Mensagem final ou erro")
+    logs = models.JSONField(blank=True, null=True, help_text="Logs detalhados da execução")
+    
+    class Meta:
+        verbose_name = "Histórico de Busca de Fatura"
+        verbose_name_plural = "Histórico de Buscas de Faturas"
+        ordering = ['-inicio_em']
+    
+    def __str__(self):
+        return f"{self.get_tipo_busca_display()} - {self.inicio_em.strftime('%d/%m/%Y %H:%M')}"
+
 
 class ImportacaoAgendamento(models.Model):
     """Modelo para armazenar importaÃ§Ãµes de Agendamentos Futuros e Tarefas Fechadas"""
@@ -837,3 +1007,169 @@ class ImportacaoRecompra(models.Model):
     
     def __str__(self):
         return f"Recompra {self.nr_ordem} - {self.nm_municipio or 'Sem município'}"
+
+
+class ImportacaoFPD(models.Model):
+    """Modelo para importação de dados FPD (Faturas Pagas/Detalhadas)"""
+    
+    # Chaves de matching
+    nr_ordem = models.CharField(max_length=100, db_index=True, help_text="Número de Ordem (O.S)")
+    numero_os = models.CharField(max_length=100, null=True, blank=True, db_index=True, help_text="Alternativa NR_OS")
+    id_contrato = models.CharField(max_length=100, help_text="ID_CONTRATO do arquivo FPD")
+    
+    # Dados da fatura
+    nr_fatura = models.CharField(max_length=100, help_text="NR_FATURA do arquivo FPD")
+    dt_venc_orig = models.DateField(help_text="Data de vencimento original")
+    dt_pagamento = models.DateField(null=True, blank=True, help_text="Data de pagamento")
+    nr_dias_atraso = models.IntegerField(default=0, help_text="Número de dias em atraso")
+    ds_status_fatura = models.CharField(max_length=50, help_text="Status da fatura (PAGO, ABERTO, VENCIDO, etc)")
+    vl_fatura = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Valor da fatura")
+    
+    # Vínculo com ContratoM10
+    contrato_m10 = models.ForeignKey(
+        ContratoM10, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='importacoes_fpd'
+    )
+    
+    # Timestamps
+    importada_em = models.DateTimeField(auto_now_add=True, help_text="Data da importação")
+    atualizada_em = models.DateTimeField(auto_now=True, help_text="Data da última atualização")
+    
+    class Meta:
+        verbose_name = "Importação FPD"
+        verbose_name_plural = "Importações FPD"
+        ordering = ["-importada_em"]
+        indexes = [
+            models.Index(fields=["nr_ordem"]),
+            models.Index(fields=["id_contrato"]),
+            models.Index(fields=["ds_status_fatura"]),
+        ]
+    
+    def __str__(self):
+        return f"FPD {self.nr_ordem} - Fatura {self.nr_fatura}"
+
+
+class LogImportacaoFPD(models.Model):
+    """Log de importações FPD"""
+    
+    STATUS_CHOICES = [
+        ('SUCESSO', 'Sucesso'),
+        ('ERRO', 'Erro'),
+        ('PARCIAL', 'Parcial'),
+    ]
+    
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    nome_arquivo = models.CharField(max_length=255)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES)
+    total_linhas = models.IntegerField(default=0)
+    sucesso = models.IntegerField(default=0)
+    erros = models.IntegerField(default=0)
+    mensagem = models.TextField(blank=True, null=True)
+    data_importacao = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = "Log Importação FPD"
+        verbose_name_plural = "Logs Importação FPD"
+        ordering = ["-data_importacao"]
+    
+    def __str__(self):
+        return f"Log FPD {self.nome_arquivo} - {self.status}"
+
+
+class ImportacaoChurn(models.Model):
+    """Modelo para importação de dados de CHURN da operadora"""
+    
+    # Localização
+    uf = models.CharField(max_length=2, null=True, blank=True)
+    produto = models.CharField(max_length=255, null=True, blank=True)
+    
+    # Vendedor
+    matricula_vendedor = models.CharField(max_length=50, null=True, blank=True, verbose_name="Matrícula do Vendedor")
+    
+    # Gestão
+    gv = models.CharField(max_length=255, null=True, blank=True)
+    sap_principal_fim = models.CharField(max_length=255, null=True, blank=True)
+    gestao = models.CharField(max_length=255, null=True, blank=True)
+    st_regional = models.CharField(max_length=255, null=True, blank=True)
+    gc = models.CharField(max_length=255, null=True, blank=True)
+    
+    # Identificação
+    numero_pedido = models.CharField(max_length=50, null=True, blank=True, unique=True, verbose_name="Número do Pedido")
+    nr_ordem = models.CharField(max_length=100, null=True, blank=True, db_index=True, verbose_name="Número de Ordem")
+    
+    # Datas
+    dt_gross = models.DateField(null=True, blank=True, verbose_name="Data Gross")
+    anomes_gross = models.CharField(max_length=6, null=True, blank=True, verbose_name="Ano/Mês Gross")
+    dt_retirada = models.DateField(null=True, blank=True, verbose_name="Data Retirada")
+    anomes_retirada = models.CharField(max_length=6, null=True, blank=True, verbose_name="Ano/Mês Retirada")
+    
+    # Outros
+    grupo_unidade = models.CharField(max_length=255, null=True, blank=True)
+    codigo_sap = models.CharField(max_length=50, null=True, blank=True)
+    municipio = models.CharField(max_length=255, null=True, blank=True)
+    tipo_retirada = models.CharField(max_length=255, null=True, blank=True)
+    motivo_retirada = models.CharField(max_length=255, null=True, blank=True)
+    submotivo_retirada = models.CharField(max_length=255, null=True, blank=True)
+    classificacao = models.CharField(max_length=255, null=True, blank=True)
+    desc_apelido = models.CharField(max_length=255, null=True, blank=True)
+    
+    class Meta:
+        verbose_name = "Importação Churn"
+        verbose_name_plural = "Importações Churn"
+        db_table = "crm_importacao_churn"
+    
+    def __str__(self):
+        return f"Churn {self.numero_pedido} - {self.dt_retirada or 'Sem data'}"
+
+
+class LogImportacaoChurn(models.Model):
+    """Log de importações CHURN"""
+    
+    STATUS_CHOICES = [
+        ('PROCESSANDO', 'Processando'),
+        ('SUCESSO', 'Sucesso'),
+        ('ERRO', 'Erro'),
+        ('PARCIAL', 'Sucesso Parcial'),
+    ]
+    
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        related_name='logs_importacao_churn'
+    )
+    nome_arquivo = models.CharField(max_length=255, help_text="Nome do arquivo importado")
+    tamanho_arquivo = models.IntegerField(help_text="Tamanho do arquivo em bytes")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PROCESSANDO')
+    
+    # Timestamps
+    iniciado_em = models.DateTimeField(auto_now_add=True)
+    finalizado_em = models.DateTimeField(null=True, blank=True)
+    duracao_segundos = models.IntegerField(null=True, blank=True, help_text="Duração em segundos")
+    
+    # Estatísticas
+    total_linhas = models.IntegerField(default=0, help_text="Total de linhas no arquivo")
+    total_processadas = models.IntegerField(default=0, help_text="Linhas processadas com sucesso")
+    total_erros = models.IntegerField(default=0, help_text="Linhas com erro")
+    total_contratos_cancelados = models.IntegerField(default=0, help_text="Contratos M10 cancelados")
+    total_contratos_reativados = models.IntegerField(default=0, help_text="Contratos M10 reativados")
+    total_nao_encontrados = models.IntegerField(default=0, help_text="O.S não encontradas no M10")
+    
+    # Detalhes
+    mensagem_erro = models.TextField(null=True, blank=True, help_text="Mensagem de erro se houver")
+    detalhes_json = models.JSONField(default=dict, blank=True, help_text="Detalhes adicionais em JSON")
+    
+    class Meta:
+        verbose_name = "Log Importação CHURN"
+        verbose_name_plural = "Logs Importações CHURN"
+        ordering = ["-iniciado_em"]
+        indexes = [
+            models.Index(fields=["-iniciado_em"]),
+            models.Index(fields=["status"]),
+        ]
+    
+    def __str__(self):
+        return f"Log CHURN {self.nome_arquivo} - {self.get_status_display()}"

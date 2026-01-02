@@ -329,7 +329,7 @@
                 const token = localStorage.getItem('accessToken');
                 atualizarProgresso(30, 'Enviando arquivo...');
                 
-                const response = await fetch('/api/crm/import/churn/', {
+                const response = await fetch('/api/bonus-m10/importar-churn/', {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${token}` },
                     body: formData

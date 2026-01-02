@@ -1,6 +1,6 @@
 from django.db.models.signals import pre_save, post_save
 from django.dispatch import receiver
-from .models import Venda
+from .models import Venda, ContratoM10
 from .whatsapp_service import WhatsAppService
 import logging
 
@@ -72,3 +72,17 @@ def disparar_whatsapp_cadastrada(sender, instance, created, **kwargs):
             
         except Exception as e:
             logger.error(f"Erro ao enviar WhatsApp na venda #{instance.id}: {e}")
+
+
+# Signal para criar/atualizar faturas automaticamente ao salvar contrato M-10
+@receiver(post_save, sender=ContratoM10)
+def criar_faturas_automatico(sender, instance, created, **kwargs):
+    """
+    Após salvar um ContratoM10, cria ou atualiza as 10 faturas com datas de vencimento calculadas
+    """
+    try:
+        if instance.data_instalacao:
+            instance.criar_ou_atualizar_faturas()
+            logger.info(f"✅ Faturas criadas/atualizadas para contrato {instance.numero_contrato}")
+    except Exception as e:
+        logger.error(f"❌ Erro ao criar/atualizar faturas para {instance.numero_contrato}: {e}")

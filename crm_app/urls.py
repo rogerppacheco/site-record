@@ -86,7 +86,11 @@ from .views import (
     AtualizarFaturasView,
     ExportarM10View,
     page_bonus_m10,
+    NioDividasView,
 )
+
+# Importar módulo de views de análise de buscas
+from . import views_analise_busca
 
 router = DefaultRouter()
 router.register(r'vendas', VendaViewSet, basename='venda')
@@ -189,4 +193,11 @@ urlpatterns = [
     path('cdoi/novo/', CdoiCreateView.as_view(), name='api-cdoi-novo'),
     path('cdoi/listar/', CdoiListView.as_view(), name='api-cdoi-listar'),
     path('cdoi/editar/<int:pk>/', CdoiUpdateView.as_view(), name='api-cdoi-editar'),
+
+    # --- Integração Nio (dívidas/PIX/barras) ---
+    path('nio/dividas/', NioDividasView.as_view(), name='nio-dividas'),
+    
+    # --- Análise de Buscas de Faturas ---
+    path('analise-buscas/', views_analise_busca.AnaliseBuscasView.as_view(), name='analise-buscas'),
+    path('analise-buscas/metricas-tempo-real/', views_analise_busca.MetricasTempoRealView.as_view(), name='metricas-tempo-real'),
 ]

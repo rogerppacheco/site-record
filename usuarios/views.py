@@ -41,6 +41,12 @@ class UsuarioViewSet(viewsets.ModelViewSet):
         if is_active is not None:
             queryset = queryset.filter(is_active=(is_active.lower() == 'true'))
         return queryset.order_by('first_name', 'last_name')
+    
+    @action(detail=False, methods=['get'], url_path='me')
+    def me(self, request):
+        """Retorna os dados do usuário autenticado"""
+        serializer = self.get_serializer(request.user)
+        return Response(serializer.data)
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
