@@ -34,6 +34,15 @@ def criar_contrato_m10_automatico(sender, instance, created, **kwargs):
     if not instance.ativo or not instance.data_instalacao or not instance.ordem_servico:
         return
     
+    # Verifica se já existe um contrato com esta OS (para evitar UNIQUE constraint)
+    contrato_existente = ContratoM10.objects.filter(ordem_servico=instance.ordem_servico).first()
+    if contrato_existente:
+        # Atualiza o contrato existente se necessário
+        contrato_existente.venda = instance
+        contrato_existente.cliente_nome = instance.cliente.nome_razao_social if instance.cliente else ''
+        contrato_existente.save()
+        return
+    
     # Encontrar ou criar a SafraM10 do mês da instalação
     mes_referencia = instance.data_instalacao.replace(day=1)
     
@@ -47,30 +56,30 @@ def criar_contrato_m10_automatico(sender, instance, created, **kwargs):
         }
     )
     
-    # Encontrar ou criar o ContratoM10
+    # Criar o ContratoM10
     numero_contrato = f"{instance.id}-{instance.ordem_servico}"
     
-    contrato_m10, created_contrato = ContratoM10.objects.get_or_create(
-        numero_contrato=numero_contrato,
-        defaults={
-            'safra': safra_m10,
-            'venda': instance,
-            'ordem_servico': instance.ordem_servico,
-            'cliente_nome': instance.cliente.nome_razao_social if instance.cliente else '',
-            'cpf_cliente': instance.cliente.cpf_cnpj if instance.cliente else '',
-            'vendedor': instance.vendedor,
-            'data_instalacao': instance.data_instalacao,
-            'plano_original': instance.plano.nome if instance.plano else 'N/A',
-            'plano_atual': instance.plano.nome if instance.plano else 'N/A',
-            'valor_plano': instance.plano.valor if instance.plano and hasattr(instance.plano, 'valor') else 0,
-            'status_contrato': 'ATIVO',
-            'elegivel_bonus': False,
-        }
-    )
-    
-    # Se é criação, tenta sincronizar com FPD
-    if created_contrato:
+    try:
+        contrato_m10 = ContratoM10.objects.create(
+            numero_contrato=numero_contrato,
+            safra=safra_m10,
+            venda=instance,
+            ordem_servico=instance.ordem_servico,
+            cliente_nome=instance.cliente.nome_razao_social if instance.cliente else '',
+            cpf_cliente=instance.cliente.cpf_cnpj if instance.cliente else '',
+            vendedor=instance.vendedor,
+            data_instalacao=instance.data_instalacao,
+            plano_original=instance.plano.nome if instance.plano else 'N/A',
+            plano_atual=instance.plano.nome if instance.plano else 'N/A',
+            valor_plano=instance.plano.valor if instance.plano and hasattr(instance.plano, 'valor') else 0,
+            status_contrato='ATIVO',
+            elegivel_bonus=False,
+        )
+        
+        # Se foi criado, tenta sincronizar com FPD
         sincronizar_com_fpd(contrato_m10, instance.ordem_servico)
+    except Exception as e:
+        print(f"❌ Erro ao criar ContratoM10 para Venda {instance.id}: {e}")
 
 
 # ============================================================================
