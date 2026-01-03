@@ -5229,7 +5229,7 @@ class ImportarFPDView(APIView):
                             vl_fatura_float = float(vl_fatura) if pd.notna(vl_fatura) else 0
                             nr_dias_atraso_int = int(nr_dias_atraso) if pd.notna(nr_dias_atraso) else 0
                         
-                        # Verificar se fatura já existe
+                            # Verificar se fatura já existe
                             fatura_existente = FaturaM10.objects.filter(
                                 contrato=contrato,
                                 numero_fatura=1
@@ -5368,11 +5368,11 @@ class ImportarFPDView(APIView):
                             if len(os_nao_encontradas) < 20:
                                 os_nao_encontradas.append(f"{nr_ordem} (sem contrato)")
                             continue
-                        
-                except Exception as e:
-                    erros_detalhados.append(f"Linha {idx+2}: {str(e)}")
-                    if len(erros_detalhados) <= 10:
-                        log.detalhes_json['erros'] = erros_detalhados
+                    
+                    except Exception as e:
+                        erros_detalhados.append(f"Linha {idx+2}: {str(e)}")
+                        if len(erros_detalhados) <= 10:
+                            log.detalhes_json['erros'] = erros_detalhados
                 
                 # Executar bulk operations (reduz milhares de queries para dezenas)
                 if faturas_para_criar:
