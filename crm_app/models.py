@@ -1061,6 +1061,7 @@ class LogImportacaoFPD(models.Model):
     """Log de importações FPD"""
     
     STATUS_CHOICES = [
+        ('PROCESSANDO', 'Processando'),
         ('SUCESSO', 'Sucesso'),
         ('ERRO', 'Erro'),
         ('PARCIAL', 'Parcial'),
@@ -1069,10 +1070,20 @@ class LogImportacaoFPD(models.Model):
     usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     nome_arquivo = models.CharField(max_length=255)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES)
+    tamanho_arquivo = models.IntegerField(default=0, null=True, blank=True)
+    iniciado_em = models.DateTimeField(auto_now_add=True)
+    finalizado_em = models.DateTimeField(blank=True, null=True)
+    duracao_segundos = models.IntegerField(blank=True, null=True)
     total_linhas = models.IntegerField(default=0)
+    total_processadas = models.IntegerField(default=0)
     sucesso = models.IntegerField(default=0)
     erros = models.IntegerField(default=0)
+    total_contratos_nao_encontrados = models.IntegerField(default=0)
+    total_valor_importado = models.DecimalField(max_digits=15, decimal_places=2, default=0)
     mensagem = models.TextField(blank=True, null=True)
+    mensagem_erro = models.TextField(blank=True, null=True)
+    detalhes_json = models.JSONField(default=dict, blank=True, null=True)
+    exemplos_nao_encontrados = models.TextField(blank=True, null=True)
     data_importacao = models.DateTimeField(auto_now_add=True)
     
     class Meta:
