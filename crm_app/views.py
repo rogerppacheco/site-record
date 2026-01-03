@@ -3920,248 +3920,316 @@ class ImportacaoLegadoView(APIView):
         response['Content-Disposition'] = 'attachment; filename="modelo_legado_v4.xlsx"'
         return response
 
-    # --- 2. IMPORTAÇÃO E PROCESSAMENTO (POST) ---
+    # --- 2. IMPORTAÇÃO E PROCESSAMENTO (POST) - ASYNC ---
     def post(self, request):
+        """
+        Recebe arquivo Excel e inicia processamento assíncrono.
+        Retorna imediatamente com log_id para acompanhamento.
+        """
         file_obj = request.FILES.get('file')
-        if not file_obj: return Response({'error': 'Nenhum arquivo enviado.'}, status=400)
+        if not file_obj:
+            return Response({'error': 'Arquivo não enviado'}, status=400)
 
+        # 1. Criar log inicial
+        log = LogImportacaoLegado.objects.create(
+            usuario=request.user,
+            nome_arquivo=file_obj.name,
+            status='PROCESSANDO'
+        )
+
+        # 2. Ler arquivo para memória
         try:
-            # --- CORREÇÃO PRINCIPAL: dtype=str ---
-            # Lê todas as colunas como TEXTO para preservar zeros (OS, CPF, CEP)
-            df = pd.read_excel(file_obj, dtype=str)
+            file_content = file_obj.read()
+            file_name = file_obj.name
         except Exception as e:
-            return Response({'error': f'Erro ao ler Excel: {str(e)}'}, status=400)
+            log.status = 'ERRO'
+            log.mensagem_erro = f'Erro ao ler arquivo: {str(e)}'
+            log.finalizado_em = timezone.now()
+            log.save()
+            return Response({'error': f'Erro ao ler arquivo: {str(e)}'}, status=400)
 
-        # Normaliza nomes das colunas
-        df.columns = [str(c).strip().upper() for c in df.columns]
-        
-        # Limpeza de valores vazios/nulos que vêm como string "nan"
-        df = df.replace({np.nan: None, 'nan': None, 'NaN': None, 'None': None})
+        # 3. Iniciar thread de processamento
+        thread = threading.Thread(
+            target=self._processar_legado_interno,
+            args=(log.id, file_content, file_name)
+        )
+        thread.daemon = True
+        thread.start()
 
-        # --- CACHES PARA PERFORMANCE ---
-        users_map = {u.username.upper(): u for u in get_user_model().objects.all()}
-        for u in get_user_model().objects.all():
-            if u.email: users_map[u.email.upper()] = u
-
-        planos_map = {p.nome.upper(): p for p in Plano.objects.all()}
-        pgto_map = {fp.nome.upper(): fp for fp in FormaPagamento.objects.all()}
-        
-        status_esteira_map = {s.nome.upper(): s for s in StatusCRM.objects.filter(tipo='Esteira')}
-        status_tratamento_map = {s.nome.upper(): s for s in StatusCRM.objects.filter(tipo='Tratamento')}
-        
-        motivo_map = {}
-        for m in MotivoPendencia.objects.all():
-            motivo_map[m.nome.upper().strip()] = m
-            parts = m.nome.split('-')
-            if len(parts) > 1: motivo_map[parts[0].strip()] = m
-
-        cache_viacep = {}
-        vendas_para_criar = []
-        logs_erro = []
-        sucessos = 0
-
-        # --- FUNÇÕES AUXILIARES ---
-        def parse_dt(val):
-            if not val: return None
-            # Como tudo é string agora, pd.to_datetime lida bem
-            try: return pd.to_datetime(val, dayfirst=True, errors='coerce').date()
-            except: return None
-
-        def parse_periodo(val):
-            if not val: return None
-            v = str(val).upper()
-            if 'MANH' in v: return 'MANHA'
-            if 'TARDE' in v: return 'TARDE'
-            if 'NOITE' in v: return 'NOITE'
-            return None
-        
-        def consultar_cep_otimizado(cep_input):
-            if not cep_input: return {}
-            cep_limpo = str(cep_input).replace('-', '').replace('.', '').strip()
-            if len(cep_limpo) != 8: return {}
-            
-            if cep_limpo in cache_viacep: return cache_viacep[cep_limpo]
-            
-            try:
-                resp = requests.get(f"https://viacep.com.br/ws/{cep_limpo}/json/", timeout=2)
-                if resp.status_code == 200:
-                    dados = resp.json()
-                    if 'erro' not in dados:
-                        res = {
-                            'logradouro': dados.get('logradouro', '').upper(),
-                            'bairro': dados.get('bairro', '').upper(),
-                            'cidade': dados.get('localidade', '').upper(),
-                            'uf': dados.get('uf', '').upper()
-                        }
-                        cache_viacep[cep_limpo] = res
-                        return res
-            except: pass
-            
-            cache_viacep[cep_limpo] = {}
-            return {}
-
-        # --- LOOP DE PROCESSAMENTO ---
-        for index, row in df.iterrows():
-            linha = index + 2
-            try:
-                # 1. CLIENTE & CPF
-                cpf_raw = str(row.get('CPF_CNPJ_CLIENTE', ''))
-                cpf_limpo = ''.join(filter(str.isdigit, cpf_raw))
-                
-                if cpf_limpo and len(cpf_limpo) < 11:
-                    cpf_limpo = cpf_limpo.zfill(11)
-                
-                if not cpf_limpo or len(cpf_limpo) < 11:
-                    logs_erro.append(f"Linha {linha}: CPF inválido ou vazio ({cpf_raw}).")
-                    continue
-
-                nome_cli = str(row.get('NOME_CLIENTE', 'Cliente Importado')).upper()
-                
-                cliente, _ = Cliente.objects.get_or_create(
-                    cpf_cnpj=cpf_limpo, defaults={'nome_razao_social': nome_cli}
-                )
-                
-                mudou_cliente = False
-                if row.get('TELEFONE_1'): 
-                    cliente.telefone1 = str(row.get('TELEFONE_1'))
-                    mudou_cliente = True
-                if row.get('TELEFONE_2'): 
-                    cliente.telefone2 = str(row.get('TELEFONE_2'))
-                    mudou_cliente = True
-                if row.get('EMAIL_CLIENTE'): 
-                    cliente.email = str(row.get('EMAIL_CLIENTE'))
-                    mudou_cliente = True
-                if row.get('DATA_NASCIMENTO'): 
-                    cliente.data_nascimento = parse_dt(row.get('DATA_NASCIMENTO'))
-                    mudou_cliente = True
-                if row.get('NOME_MAE'): 
-                    cliente.nome_mae = str(row.get('NOME_MAE')).upper()
-                    mudou_cliente = True
-                
-                if mudou_cliente:
-                    cliente.save()
-
-                # 2. VENDEDOR
-                login_vend = str(row.get('LOGIN_VENDEDOR', '')).upper().strip()
-                vendedor = users_map.get(login_vend)
-
-                # 3. PLANO & PAGAMENTO
-                nome_plano = str(row.get('NOME_PLANO', '')).upper().strip()
-                plano = planos_map.get(nome_plano)
-                
-                nome_pgto = str(row.get('FORMA_PAGAMENTO', '')).upper().strip()
-                pgto = pgto_map.get(nome_pgto)
-
-                # 4. STATUS
-                nome_est = str(row.get('STATUS_ESTEIRA', '')).upper().strip()
-                status_esteira = status_esteira_map.get(nome_est)
-                
-                if not status_esteira and nome_est:
-                    if 'INSTAL' in nome_est or 'CONCLU' in nome_est: 
-                        status_esteira = status_esteira_map.get('INSTALADA')
-                    elif 'PENDEN' in nome_est: 
-                        status_esteira = status_esteira_map.get('PENDENCIADA')
-                    elif 'AGEND' in nome_est: 
-                        status_esteira = status_esteira_map.get('AGENDADO')
-                    elif 'CANCEL' in nome_est: 
-                        status_esteira = status_esteira_map.get('CANCELADA')
-
-                motivo_pend = None
-                if row.get('MOTIVO_PENDENCIA'):
-                    motivo_pend = motivo_map.get(str(row.get('MOTIVO_PENDENCIA')).upper().strip())
-
-                status_tratamento = status_tratamento_map.get(str(row.get('STATUS_TRATAMENTO', '')).upper().strip())
-                if not status_tratamento:
-                    if status_esteira and status_esteira.nome.upper() in ['INSTALADA', 'CANCELADA']:
-                        status_tratamento = status_tratamento_map.get('FECHADO')
-                    else:
-                        status_tratamento = status_tratamento_map.get('SEM TRATAMENTO')
-
-                # 5. DATAS
-                dt_venda = parse_dt(row.get('DATA_VENDA'))
-                if not dt_venda: dt_venda = timezone.now().date()
-
-                dt_inst = parse_dt(row.get('DATA_INSTALACAO'))
-                dt_agend = parse_dt(row.get('DATA_AGENDAMENTO'))
-
-                if status_esteira and status_esteira.nome.upper() == 'INSTALADA' and not dt_inst:
-                    dt_inst = dt_venda
-
-                # 6. ENDEREÇO
-                cep_raw = str(row.get('CEP', '')).replace('-', '').replace('.', '').strip()
-                cep_final = cep_raw[:9]
-                
-                logradouro = str(row.get('LOGRADOURO', '')).upper()
-                bairro = str(row.get('BAIRRO', '')).upper()
-                cidade = str(row.get('CIDADE', '')).upper()
-                uf = str(row.get('UF', '')).upper()
-                
-                if cep_final and (not logradouro or not bairro):
-                    dados_api = consultar_cep_otimizado(cep_final)
-                    if dados_api:
-                        logradouro = dados_api.get('logradouro', '')
-                        bairro = dados_api.get('bairro', '')
-                        cidade = dados_api.get('cidade', '')
-                        uf = dados_api.get('uf', '')
-
-                # 7. O.S. (Preservando Zero à Esquerda)
-                os_raw = str(row.get('OS', '')).strip()
-                # Remove .0 se por acaso o Excel mandou "0123.0"
-                if os_raw.endswith('.0'): os_raw = os_raw[:-2]
-
-                # --- INSTANCIAÇÃO ---
-                venda = Venda(
-                    cliente=cliente,
-                    vendedor=vendedor,
-                    plano=plano,
-                    forma_pagamento=pgto,
-                    
-                    status_esteira=status_esteira,
-                    status_tratamento=status_tratamento,
-                    motivo_pendencia=motivo_pend,
-                    
-                    data_pedido=dt_venda,
-                    data_instalacao=dt_inst,
-                    data_agendamento=dt_agend,
-                    periodo_agendamento=parse_periodo(row.get('PERIODO_AGENDAMENTO')),
-                    
-                    # DATA DE CRIAÇÃO = DATA DA VENDA (Para relatório retroativo funcionar)
-                    data_criacao=dt_venda, 
-                    
-                    # Endereço
-                    cep=cep_final,
-                    logradouro=logradouro[:255],
-                    numero_residencia=str(row.get('NUMERO', ''))[:20],
-                    complemento=str(row.get('COMPLEMENTO', '')).upper()[:100],
-                    bairro=bairro[:100],
-                    cidade=cidade[:100],
-                    estado=uf[:2],
-                    ponto_referencia=str(row.get('PONTO_REFERENCIA', '')).upper()[:255],
-
-                    # O.S. Preservada
-                    ordem_servico=os_raw,
-                    
-                    # SEM campo VALOR (Vem do plano)
-                    observacoes=str(row.get('OBSERVACOES', 'Importação Legado'))[:500],
-                    ativo=True
-                )
-                
-                vendas_para_criar.append(venda)
-                sucessos += 1
-
-            except Exception as e:
-                logs_erro.append(f"Linha {linha}: {str(e)}")
-
-        # --- GRAVAÇÃO EM LOTE ---
-        if vendas_para_criar:
-            with transaction.atomic():
-                Venda.objects.bulk_create(vendas_para_criar, batch_size=1000)
-
+        # 4. Retornar imediatamente
         return Response({
-            'mensagem': f'Importação concluída! {sucessos} vendas processadas.',
-            'total_erros': len(logs_erro),
-            'erros': logs_erro
-        })
+            'message': 'Processamento iniciado! Acompanhe o progresso na aba Histórico.',
+            'log_id': log.id
+        }, status=200)
+
+    def _processar_legado_interno(self, log_id, file_content, file_name):
+        """Processa importação em background"""
+        try:
+            log = LogImportacaoLegado.objects.get(id=log_id)
+            
+            # Ler Excel em memória com dtype=str para preservar zeros
+            try:
+                df = pd.read_excel(io.BytesIO(file_content), dtype=str)
+            except Exception as e:
+                log.status = 'ERRO'
+                log.mensagem_erro = f'Erro ao ler Excel: {str(e)}'
+                log.finalizado_em = timezone.now()
+                log.save()
+                return
+
+            # Normaliza colunas
+            df.columns = [str(c).strip().upper() for c in df.columns]
+            df = df.replace({np.nan: None, 'nan': None, 'NaN': None, 'None': None})
+            
+            log.total_linhas = len(df)
+            log.save()
+            
+            # --- CACHES PARA PERFORMANCE ---
+            users_map = {u.username.upper(): u for u in get_user_model().objects.all()}
+            for u in get_user_model().objects.all():
+                if u.email: users_map[u.email.upper()] = u
+
+            planos_map = {p.nome.upper(): p for p in Plano.objects.all()}
+            pgto_map = {fp.nome.upper(): fp for fp in FormaPagamento.objects.all()}
+            
+            status_esteira_map = {s.nome.upper(): s for s in StatusCRM.objects.filter(tipo='Esteira')}
+            status_tratamento_map = {s.nome.upper(): s for s in StatusCRM.objects.filter(tipo='Tratamento')}
+            
+            motivo_map = {}
+            for m in MotivoPendencia.objects.all():
+                motivo_map[m.nome.upper().strip()] = m
+                parts = m.nome.split('-')
+                if len(parts) > 1: motivo_map[parts[0].strip()] = m
+
+            cache_viacep = {}
+            vendas_para_criar = []
+            logs_erro = []
+            vendas_criadas = 0
+            clientes_criados = 0
+
+            # --- FUNÇÕES AUXILIARES ---
+            def parse_dt(val):
+                if not val: return None
+                try: return pd.to_datetime(val, dayfirst=True, errors='coerce').date()
+                except: return None
+
+            def parse_periodo(val):
+                if not val: return None
+                v = str(val).upper()
+                if 'MANH' in v: return 'MANHA'
+                if 'TARDE' in v: return 'TARDE'
+                if 'NOITE' in v: return 'NOITE'
+                return None
+            
+            def consultar_cep_otimizado(cep_input):
+                if not cep_input: return {}
+                cep_limpo = str(cep_input).replace('-', '').replace('.', '').strip()
+                if len(cep_limpo) != 8: return {}
+                
+                if cep_limpo in cache_viacep: return cache_viacep[cep_limpo]
+                
+                try:
+                    resp = requests.get(f"https://viacep.com.br/ws/{cep_limpo}/json/", timeout=2)
+                    if resp.status_code == 200:
+                        dados = resp.json()
+                        if 'erro' not in dados:
+                            res = {
+                                'logradouro': dados.get('logradouro', '').upper(),
+                                'bairro': dados.get('bairro', '').upper(),
+                                'cidade': dados.get('localidade', '').upper(),
+                                'uf': dados.get('uf', '').upper()
+                            }
+                            cache_viacep[cep_limpo] = res
+                            return res
+                except: pass
+                
+                cache_viacep[cep_limpo] = {}
+                return {}
+
+            # --- LOOP DE PROCESSAMENTO ---
+            for index, row in df.iterrows():
+                linha = index + 2
+                try:
+                    # 1. CLIENTE & CPF
+                    cpf_raw = str(row.get('CPF_CNPJ_CLIENTE', ''))
+                    cpf_limpo = ''.join(filter(str.isdigit, cpf_raw))
+                    
+                    if cpf_limpo and len(cpf_limpo) < 11:
+                        cpf_limpo = cpf_limpo.zfill(11)
+                    
+                    if not cpf_limpo or len(cpf_limpo) < 11:
+                        logs_erro.append(f"Linha {linha}: CPF inválido ou vazio ({cpf_raw}).")
+                        continue
+
+                    nome_cli = str(row.get('NOME_CLIENTE', 'Cliente Importado')).upper()
+                    
+                    cliente, criou_cliente = Cliente.objects.get_or_create(
+                        cpf_cnpj=cpf_limpo, defaults={'nome_razao_social': nome_cli}
+                    )
+                    if criou_cliente:
+                        clientes_criados += 1
+                    
+                    mudou_cliente = False
+                    if row.get('TELEFONE_1'): 
+                        cliente.telefone1 = str(row.get('TELEFONE_1'))
+                        mudou_cliente = True
+                    if row.get('TELEFONE_2'): 
+                        cliente.telefone2 = str(row.get('TELEFONE_2'))
+                        mudou_cliente = True
+                    if row.get('EMAIL_CLIENTE'): 
+                        cliente.email = str(row.get('EMAIL_CLIENTE'))
+                        mudou_cliente = True
+                    if row.get('DATA_NASCIMENTO'): 
+                        cliente.data_nascimento = parse_dt(row.get('DATA_NASCIMENTO'))
+                        mudou_cliente = True
+                    if row.get('NOME_MAE'): 
+                        cliente.nome_mae = str(row.get('NOME_MAE')).upper()
+                        mudou_cliente = True
+                    
+                    if mudou_cliente:
+                        cliente.save()
+
+                    # 2. VENDEDOR
+                    login_vend = str(row.get('LOGIN_VENDEDOR', '')).upper().strip()
+                    vendedor = users_map.get(login_vend)
+
+                    # 3. PLANO & PAGAMENTO
+                    nome_plano = str(row.get('NOME_PLANO', '')).upper().strip()
+                    plano = planos_map.get(nome_plano)
+                    
+                    nome_pgto = str(row.get('FORMA_PAGAMENTO', '')).upper().strip()
+                    pgto = pgto_map.get(nome_pgto)
+
+                    # 4. STATUS
+                    nome_est = str(row.get('STATUS_ESTEIRA', '')).upper().strip()
+                    status_esteira = status_esteira_map.get(nome_est)
+                    
+                    if not status_esteira and nome_est:
+                        if 'INSTAL' in nome_est or 'CONCLU' in nome_est: 
+                            status_esteira = status_esteira_map.get('INSTALADA')
+                        elif 'PENDEN' in nome_est: 
+                            status_esteira = status_esteira_map.get('PENDENCIADA')
+                        elif 'AGEND' in nome_est: 
+                            status_esteira = status_esteira_map.get('AGENDADO')
+                        elif 'CANCEL' in nome_est: 
+                            status_esteira = status_esteira_map.get('CANCELADA')
+
+                    motivo_pend = None
+                    if row.get('MOTIVO_PENDENCIA'):
+                        motivo_pend = motivo_map.get(str(row.get('MOTIVO_PENDENCIA')).upper().strip())
+
+                    status_tratamento = status_tratamento_map.get(str(row.get('STATUS_TRATAMENTO', '')).upper().strip())
+                    if not status_tratamento:
+                        if status_esteira and status_esteira.nome.upper() in ['INSTALADA', 'CANCELADA']:
+                            status_tratamento = status_tratamento_map.get('FECHADO')
+                        else:
+                            status_tratamento = status_tratamento_map.get('SEM TRATAMENTO')
+
+                    # 5. DATAS
+                    dt_venda = parse_dt(row.get('DATA_VENDA'))
+                    if not dt_venda: dt_venda = timezone.now().date()
+
+                    dt_inst = parse_dt(row.get('DATA_INSTALACAO'))
+                    dt_agend = parse_dt(row.get('DATA_AGENDAMENTO'))
+
+                    if status_esteira and status_esteira.nome.upper() == 'INSTALADA' and not dt_inst:
+                        dt_inst = dt_venda
+
+                    # 6. ENDEREÇO
+                    cep_raw = str(row.get('CEP', '')).replace('-', '').replace('.', '').strip()
+                    cep_final = cep_raw[:9]
+                    
+                    logradouro = str(row.get('LOGRADOURO', '')).upper()
+                    bairro = str(row.get('BAIRRO', '')).upper()
+                    cidade = str(row.get('CIDADE', '')).upper()
+                    uf = str(row.get('UF', '')).upper()
+                    
+                    if cep_final and (not logradouro or not bairro):
+                        dados_api = consultar_cep_otimizado(cep_final)
+                        if dados_api:
+                            logradouro = dados_api.get('logradouro', '')
+                            bairro = dados_api.get('bairro', '')
+                            cidade = dados_api.get('cidade', '')
+                            uf = dados_api.get('uf', '')
+
+                    # 7. O.S. (Preservando Zero à Esquerda)
+                    os_raw = str(row.get('OS', '')).strip()
+                    if os_raw.endswith('.0'): os_raw = os_raw[:-2]
+
+                    # --- INSTANCIAÇÃO ---
+                    venda = Venda(
+                        cliente=cliente,
+                        vendedor=vendedor,
+                        plano=plano,
+                        forma_pagamento=pgto,
+                        
+                        status_esteira=status_esteira,
+                        status_tratamento=status_tratamento,
+                        motivo_pendencia=motivo_pend,
+                        
+                        data_pedido=dt_venda,
+                        data_instalacao=dt_inst,
+                        data_agendamento=dt_agend,
+                        periodo_agendamento=parse_periodo(row.get('PERIODO_AGENDAMENTO')),
+                        
+                        data_criacao=dt_venda, 
+                        
+                        cep=cep_final,
+                        logradouro=logradouro[:255],
+                        numero_residencia=str(row.get('NUMERO', ''))[:20],
+                        complemento=str(row.get('COMPLEMENTO', '')).upper()[:100],
+                        bairro=bairro[:100],
+                        cidade=cidade[:100],
+                        estado=uf[:2],
+                        ponto_referencia=str(row.get('PONTO_REFERENCIA', '')).upper()[:255],
+
+                        ordem_servico=os_raw,
+                        observacoes=str(row.get('OBSERVACOES', 'Importação Legado'))[:500],
+                        ativo=True
+                    )
+                    
+                    vendas_para_criar.append(venda)
+                    vendas_criadas += 1
+
+                except Exception as e:
+                    logs_erro.append(f"Linha {linha}: {str(e)}")
+
+            # --- GRAVAÇÃO EM LOTE ---
+            if vendas_para_criar:
+                with transaction.atomic():
+                    Venda.objects.bulk_create(vendas_para_criar, batch_size=1000)
+
+            # Atualizar log
+            log.total_processadas = vendas_criadas
+            log.vendas_criadas = vendas_criadas
+            log.clientes_criados = clientes_criados
+            log.erros_count = len(logs_erro)
+            log.finalizado_em = timezone.now()
+            
+            if logs_erro:
+                log.status = 'PARCIAL' if vendas_criadas > 0 else 'ERRO'
+                log.mensagem_erro = '\n'.join(logs_erro[:50])
+                log.mensagem = f'{vendas_criadas} vendas importadas, {len(logs_erro)} erros'
+            else:
+                log.status = 'SUCESSO'
+                log.mensagem = f'{vendas_criadas} vendas importadas com sucesso!'
+            
+            log.detalhes_json = {
+                'clientes_criados': clientes_criados,
+                'vendas_criadas': vendas_criadas,
+                'erros': logs_erro[:100]
+            }
+            log.save()
+
+        except Exception as e:
+            try:
+                log = LogImportacaoLegado.objects.get(id=log_id)
+                log.status = 'ERRO'
+                log.mensagem_erro = str(e)
+                log.finalizado_em = timezone.now()
+                log.save()
+            except:
+                pass
 # Adicione ou certifique-se que esta classe existe
 class ConfigurarAutomacaoView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -4511,88 +4579,166 @@ class ImportacaoAgendamentoView(APIView):
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request, *args, **kwargs):
+        """
+        Recebe arquivo Excel/XLSB e inicia processamento assíncrono.
+        Retorna imediatamente com log_id para acompanhamento.
+        """
         file_obj = request.FILES.get('file')
         if not file_obj:
             return Response({'error': 'Nenhum arquivo enviado.'}, status=400)
 
+        # 1. Criar log inicial
+        log = LogImportacaoAgendamento.objects.create(
+            usuario=request.user,
+            nome_arquivo=file_obj.name,
+            status='PROCESSANDO'
+        )
+
+        # 2. Ler arquivo para memória
         try:
-            # Leitura do arquivo
-            if file_obj.name.endswith('.xlsb'):
-                df = pd.read_excel(file_obj, engine='pyxlsb')
-            elif file_obj.name.endswith(('.xlsx', '.xls')):
-                df = pd.read_excel(file_obj)
-            else:
-                return Response({'error': 'Formato inválido. Envie .xlsx, .xls ou .xlsb'}, status=400)
+            file_content = file_obj.read()
+            file_name = file_obj.name
         except Exception as e:
+            log.status = 'ERRO'
+            log.mensagem_erro = f'Erro ao ler arquivo: {str(e)}'
+            log.finalizado_em = timezone.now()
+            log.save()
             return Response({'error': f'Erro ao ler arquivo: {str(e)}'}, status=400)
 
-        # Normaliza nomes das colunas
-        df.columns = [str(col).strip().lower() for col in df.columns]
+        # 3. Iniciar thread de processamento
+        thread = threading.Thread(
+            target=self._processar_agendamento_interno,
+            args=(log.id, file_content, file_name)
+        )
+        thread.daemon = True
+        thread.start()
 
-        # Converte datas
-        campos_data = ['dt_abertura_ba', 'dt_execucao_particao', 'dt_agendamento']
-        campos_datetime = ['dt_inicio_agendamento', 'dt_fim_agendamento', 'dt_inicio_execucao_real', 'dt_fim_execucao_real']
-
-        for campo in campos_data:
-            if campo in df.columns:
-                df[campo] = pd.to_datetime(df[campo], errors='coerce')
-
-        for campo in campos_datetime:
-            if campo in df.columns:
-                df[campo] = pd.to_datetime(df[campo], errors='coerce')
-
-        # Processa linhas
-        registros_criados = 0
-        erros = []
-
-        for idx, row in df.iterrows():
-            try:
-                dados = {
-                    'sg_uf': str(row.get('sg_uf')) if pd.notna(row.get('sg_uf')) else None,
-                    'nm_municipio': str(row.get('nm_municipio')) if pd.notna(row.get('nm_municipio')) else None,
-                    'indicador': str(row.get('indicador')) if pd.notna(row.get('indicador')) else None,
-                    'cd_nrba': str(row.get('cd_nrba')) if pd.notna(row.get('cd_nrba')) else None,
-                    'st_ba': str(row.get('st_ba')) if pd.notna(row.get('st_ba')) else None,
-                    'cd_encerramento': str(row.get('cd_encerramento')) if pd.notna(row.get('cd_encerramento')) else None,
-                    'desc_observacao': str(row.get('desc_observacao')) if pd.notna(row.get('desc_observacao')) else None,
-                    'desc_macro_atividade': str(row.get('desc_macro_atividade')) if pd.notna(row.get('desc_macro_atividade')) else None,
-                    'ds_atividade': str(row.get('ds_atividade')) if pd.notna(row.get('ds_atividade')) else None,
-                    'nr_ordem': str(row.get('nr_ordem')) if pd.notna(row.get('nr_ordem')) else None,
-                    'nr_ordem_venda': str(row.get('nr_ordem_venda')) if pd.notna(row.get('nr_ordem_venda')) else None,
-                    'anomes': str(row.get('anomes')) if pd.notna(row.get('anomes')) else None,
-                    'cd_sap_original': str(row.get('cd_sap_original')) if pd.notna(row.get('cd_sap_original')) else None,
-                    'cd_rede': str(row.get('cd_rede')) if pd.notna(row.get('cd_rede')) else None,
-                    'nm_pdv_rel': str(row.get('nm_pdv_rel')) if pd.notna(row.get('nm_pdv_rel')) else None,
-                    'rede': str(row.get('rede')) if pd.notna(row.get('rede')) else None,
-                    'gp_canal': str(row.get('gp_canal')) if pd.notna(row.get('gp_canal')) else None,
-                    'sg_gerencia': str(row.get('sg_gerencia')) if pd.notna(row.get('sg_gerencia')) else None,
-                    'nm_gc': str(row.get('nm_gc')) if pd.notna(row.get('nm_gc')) else None,
-                }
-
-                # Campos de data
-                for campo in campos_data:
-                    if campo in df.columns and pd.notna(row[campo]):
-                        dados[campo] = row[campo].date() if isinstance(row[campo], pd.Timestamp) else None
-
-                # Campos de datetime
-                for campo in campos_datetime:
-                    if campo in df.columns and pd.notna(row[campo]):
-                        dados[campo] = row[campo].to_pydatetime() if isinstance(row[campo], pd.Timestamp) else None
-
-                # Cria registro
-                ImportacaoAgendamento.objects.create(**dados)
-                registros_criados += 1
-
-            except Exception as e:
-                erros.append(f"Linha {idx + 2}: {str(e)}")
-
+        # 4. Retornar imediatamente
         return Response({
-            'success': True,
-            'message': f'Importação concluída! {registros_criados} registros criados.',
-            'registros_criados': registros_criados,
-            'total_linhas': len(df),
-            'erros': erros[:10] if erros else []  # Primeiros 10 erros
+            'message': 'Processamento iniciado! Acompanhe o progresso na aba Histórico.',
+            'log_id': log.id
         }, status=200)
+
+    def _processar_agendamento_interno(self, log_id, file_content, file_name):
+        """Processa importação em background"""
+        try:
+            log = LogImportacaoAgendamento.objects.get(id=log_id)
+            
+            # Ler Excel/XLSB em memória
+            try:
+                if file_name.endswith('.xlsb'):
+                    df = pd.read_excel(io.BytesIO(file_content), engine='pyxlsb')
+                elif file_name.endswith(('.xlsx', '.xls')):
+                    df = pd.read_excel(io.BytesIO(file_content))
+                else:
+                    log.status = 'ERRO'
+                    log.mensagem_erro = 'Formato inválido. Envie .xlsx, .xls ou .xlsb'
+                    log.finalizado_em = timezone.now()
+                    log.save()
+                    return
+            except Exception as e:
+                log.status = 'ERRO'
+                log.mensagem_erro = f'Erro ao ler arquivo: {str(e)}'
+                log.finalizado_em = timezone.now()
+                log.save()
+                return
+
+            # Normaliza nomes das colunas
+            df.columns = [str(col).strip().lower() for col in df.columns]
+
+            log.total_linhas = len(df)
+            log.save()
+
+            # Converte datas
+            campos_data = ['dt_abertura_ba', 'dt_execucao_particao', 'dt_agendamento']
+            campos_datetime = ['dt_inicio_agendamento', 'dt_fim_agendamento', 'dt_inicio_execucao_real', 'dt_fim_execucao_real']
+
+            for campo in campos_data:
+                if campo in df.columns:
+                    df[campo] = pd.to_datetime(df[campo], errors='coerce')
+
+            for campo in campos_datetime:
+                if campo in df.columns:
+                    df[campo] = pd.to_datetime(df[campo], errors='coerce')
+
+            # Processa linhas
+            registros_criados = 0
+            registros_atualizados = 0
+            nao_encontrados = 0
+            erros = []
+
+            for idx, row in df.iterrows():
+                try:
+                    dados = {
+                        'sg_uf': str(row.get('sg_uf')) if pd.notna(row.get('sg_uf')) else None,
+                        'nm_municipio': str(row.get('nm_municipio')) if pd.notna(row.get('nm_municipio')) else None,
+                        'indicador': str(row.get('indicador')) if pd.notna(row.get('indicador')) else None,
+                        'cd_nrba': str(row.get('cd_nrba')) if pd.notna(row.get('cd_nrba')) else None,
+                        'st_ba': str(row.get('st_ba')) if pd.notna(row.get('st_ba')) else None,
+                        'cd_encerramento': str(row.get('cd_encerramento')) if pd.notna(row.get('cd_encerramento')) else None,
+                        'desc_observacao': str(row.get('desc_observacao')) if pd.notna(row.get('desc_observacao')) else None,
+                        'desc_macro_atividade': str(row.get('desc_macro_atividade')) if pd.notna(row.get('desc_macro_atividade')) else None,
+                        'ds_atividade': str(row.get('ds_atividade')) if pd.notna(row.get('ds_atividade')) else None,
+                        'nr_ordem': str(row.get('nr_ordem')) if pd.notna(row.get('nr_ordem')) else None,
+                        'nr_ordem_venda': str(row.get('nr_ordem_venda')) if pd.notna(row.get('nr_ordem_venda')) else None,
+                        'anomes': str(row.get('anomes')) if pd.notna(row.get('anomes')) else None,
+                        'cd_sap_original': str(row.get('cd_sap_original')) if pd.notna(row.get('cd_sap_original')) else None,
+                        'cd_rede': str(row.get('cd_rede')) if pd.notna(row.get('cd_rede')) else None,
+                        'nm_pdv_rel': str(row.get('nm_pdv_rel')) if pd.notna(row.get('nm_pdv_rel')) else None,
+                        'rede': str(row.get('rede')) if pd.notna(row.get('rede')) else None,
+                        'gp_canal': str(row.get('gp_canal')) if pd.notna(row.get('gp_canal')) else None,
+                        'sg_gerencia': str(row.get('sg_gerencia')) if pd.notna(row.get('sg_gerencia')) else None,
+                        'nm_gc': str(row.get('nm_gc')) if pd.notna(row.get('nm_gc')) else None,
+                    }
+
+                    # Campos de data
+                    for campo in campos_data:
+                        if campo in df.columns and pd.notna(row[campo]):
+                            dados[campo] = row[campo].date() if isinstance(row[campo], pd.Timestamp) else None
+
+                    # Campos de datetime
+                    for campo in campos_datetime:
+                        if campo in df.columns and pd.notna(row[campo]):
+                            dados[campo] = row[campo].to_pydatetime() if isinstance(row[campo], pd.Timestamp) else None
+
+                    # Cria registro
+                    ImportacaoAgendamento.objects.create(**dados)
+                    registros_criados += 1
+
+                except Exception as e:
+                    erros.append(f"Linha {idx + 2}: {str(e)}")
+
+            # Atualizar log
+            log.total_processadas = registros_criados
+            log.agendamentos_criados = registros_criados
+            log.agendamentos_atualizados = registros_atualizados
+            log.nao_encontrados = nao_encontrados
+            log.erros_count = len(erros)
+            log.finalizado_em = timezone.now()
+            
+            if erros:
+                log.status = 'PARCIAL' if registros_criados > 0 else 'ERRO'
+                log.mensagem_erro = '\n'.join(erros[:50])
+                log.mensagem = f'{registros_criados} registros importados, {len(erros)} erros'
+            else:
+                log.status = 'SUCESSO'
+                log.mensagem = f'{registros_criados} agendamentos importados com sucesso!'
+            
+            log.detalhes_json = {
+                'registros_criados': registros_criados,
+                'erros': erros[:100]
+            }
+            log.save()
+
+        except Exception as e:
+            try:
+                log = LogImportacaoAgendamento.objects.get(id=log_id)
+                log.status = 'ERRO'
+                log.mensagem_erro = str(e)
+                log.finalizado_em = timezone.now()
+                log.save()
+            except:
+                pass
 
 
 class ImportacaoRecompraView(APIView):
@@ -5623,6 +5769,86 @@ class LogsImportacaoOSABView(APIView):
                 'mensagem_erro': log.mensagem_erro,
                 'usuario_nome': log.usuario.get_full_name() if log.usuario else 'Sistema',
                 'enviar_whatsapp': log.enviar_whatsapp,
+            })
+        
+        return Response({
+            'success': True,
+            'logs': logs_data
+        })
+
+
+class LogsImportacaoLegadoView(APIView):
+    """Lista logs de importações Legado"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        from .models import LogImportacaoLegado
+        
+        # Buscar últimos 20 logs
+        if is_member(request.user, ['Admin', 'Diretoria']):
+            logs = LogImportacaoLegado.objects.all().order_by('-iniciado_em')[:20]
+        else:
+            logs = LogImportacaoLegado.objects.filter(usuario=request.user).order_by('-iniciado_em')[:20]
+        
+        logs_data = []
+        for log in logs:
+            logs_data.append({
+                'id': log.id,
+                'nome_arquivo': log.nome_arquivo,
+                'status': log.status,
+                'status_display': log.get_status_display(),
+                'iniciado_em': log.iniciado_em.strftime('%d/%m/%Y %H:%M:%S') if log.iniciado_em else None,
+                'finalizado_em': log.finalizado_em.strftime('%d/%m/%Y %H:%M:%S') if log.finalizado_em else None,
+                'duracao_segundos': log.duracao_segundos,
+                'total_linhas': log.total_linhas,
+                'total_processadas': log.total_processadas,
+                'vendas_criadas': log.vendas_criadas,
+                'vendas_atualizadas': log.vendas_atualizadas,
+                'clientes_criados': log.clientes_criados,
+                'erros_count': log.erros_count,
+                'mensagem': log.mensagem,
+                'mensagem_erro': log.mensagem_erro,
+                'usuario_nome': log.usuario.get_full_name() if log.usuario else 'Sistema',
+            })
+        
+        return Response({
+            'success': True,
+            'logs': logs_data
+        })
+
+
+class LogsImportacaoAgendamentoView(APIView):
+    """Lista logs de importações Agendamento"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        from .models import LogImportacaoAgendamento
+        
+        # Buscar últimos 20 logs
+        if is_member(request.user, ['Admin', 'Diretoria']):
+            logs = LogImportacaoAgendamento.objects.all().order_by('-iniciado_em')[:20]
+        else:
+            logs = LogImportacaoAgendamento.objects.filter(usuario=request.user).order_by('-iniciado_em')[:20]
+        
+        logs_data = []
+        for log in logs:
+            logs_data.append({
+                'id': log.id,
+                'nome_arquivo': log.nome_arquivo,
+                'status': log.status,
+                'status_display': log.get_status_display(),
+                'iniciado_em': log.iniciado_em.strftime('%d/%m/%Y %H:%M:%S') if log.iniciado_em else None,
+                'finalizado_em': log.finalizado_em.strftime('%d/%m/%Y %H:%M:%S') if log.finalizado_em else None,
+                'duracao_segundos': log.duracao_segundos,
+                'total_linhas': log.total_linhas,
+                'total_processadas': log.total_processadas,
+                'agendamentos_criados': log.agendamentos_criados,
+                'agendamentos_atualizados': log.agendamentos_atualizados,
+                'nao_encontrados': log.nao_encontrados,
+                'erros_count': log.erros_count,
+                'mensagem': log.mensagem,
+                'mensagem_erro': log.mensagem_erro,
+                'usuario_nome': log.usuario.get_full_name() if log.usuario else 'Sistema',
             })
         
         return Response({

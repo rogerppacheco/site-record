@@ -1170,6 +1170,98 @@ class LogImportacaoOSAB(models.Model):
         return f"{self.nome_arquivo} - {self.status} ({self.iniciado_em.strftime('%d/%m/%Y %H:%M')})"
 
 
+class LogImportacaoLegado(models.Model):
+    """Log de importações de Vendas Legado (Históricas)"""
+    
+    STATUS_CHOICES = [
+        ('PROCESSANDO', 'Processando'),
+        ('SUCESSO', 'Sucesso'),
+        ('ERRO', 'Erro'),
+        ('PARCIAL', 'Parcial'),
+    ]
+    
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    nome_arquivo = models.CharField(max_length=255)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES)
+    tamanho_arquivo = models.IntegerField(default=0, null=True, blank=True)
+    iniciado_em = models.DateTimeField(auto_now_add=True)
+    finalizado_em = models.DateTimeField(blank=True, null=True)
+    duracao_segundos = models.IntegerField(blank=True, null=True)
+    
+    # Métricas específicas Legado
+    total_linhas = models.IntegerField(default=0)
+    total_processadas = models.IntegerField(default=0)
+    vendas_criadas = models.IntegerField(default=0)
+    vendas_atualizadas = models.IntegerField(default=0)
+    clientes_criados = models.IntegerField(default=0)
+    erros_count = models.IntegerField(default=0)
+    
+    mensagem = models.TextField(blank=True, null=True)
+    mensagem_erro = models.TextField(blank=True, null=True)
+    detalhes_json = models.JSONField(default=dict, blank=True, null=True)
+    
+    class Meta:
+        verbose_name = "Log Importação Legado"
+        verbose_name_plural = "Logs Importação Legado"
+        ordering = ['-iniciado_em']
+    
+    def calcular_duracao(self):
+        """Calcula duração em segundos se finalizado"""
+        if self.finalizado_em and self.iniciado_em:
+            delta = self.finalizado_em - self.iniciado_em
+            self.duracao_segundos = int(delta.total_seconds())
+            self.save(update_fields=['duracao_segundos'])
+    
+    def __str__(self):
+        return f"{self.nome_arquivo} - {self.status} ({self.iniciado_em.strftime('%d/%m/%Y %H:%M')})"
+
+
+class LogImportacaoAgendamento(models.Model):
+    """Log de importações de Agendamentos"""
+    
+    STATUS_CHOICES = [
+        ('PROCESSANDO', 'Processando'),
+        ('SUCESSO', 'Sucesso'),
+        ('ERRO', 'Erro'),
+        ('PARCIAL', 'Parcial'),
+    ]
+    
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    nome_arquivo = models.CharField(max_length=255)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES)
+    tamanho_arquivo = models.IntegerField(default=0, null=True, blank=True)
+    iniciado_em = models.DateTimeField(auto_now_add=True)
+    finalizado_em = models.DateTimeField(blank=True, null=True)
+    duracao_segundos = models.IntegerField(blank=True, null=True)
+    
+    # Métricas específicas Agendamento
+    total_linhas = models.IntegerField(default=0)
+    total_processadas = models.IntegerField(default=0)
+    agendamentos_criados = models.IntegerField(default=0)
+    agendamentos_atualizados = models.IntegerField(default=0)
+    nao_encontrados = models.IntegerField(default=0)
+    erros_count = models.IntegerField(default=0)
+    
+    mensagem = models.TextField(blank=True, null=True)
+    mensagem_erro = models.TextField(blank=True, null=True)
+    detalhes_json = models.JSONField(default=dict, blank=True, null=True)
+    
+    class Meta:
+        verbose_name = "Log Importação Agendamento"
+        verbose_name_plural = "Logs Importação Agendamento"
+        ordering = ['-iniciado_em']
+    
+    def calcular_duracao(self):
+        """Calcula duração em segundos se finalizado"""
+        if self.finalizado_em and self.iniciado_em:
+            delta = self.finalizado_em - self.iniciado_em
+            self.duracao_segundos = int(delta.total_seconds())
+            self.save(update_fields=['duracao_segundos'])
+    
+    def __str__(self):
+        return f"{self.nome_arquivo} - {self.status} ({self.iniciado_em.strftime('%d/%m/%Y %H:%M')})"
+
+
 class ImportacaoChurn(models.Model):
     """Modelo para importação de dados de CHURN da operadora"""
     

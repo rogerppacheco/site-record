@@ -40,6 +40,10 @@ from .views import (
     ImportacaoLegadoView,
     ImportacaoAgendamentoView,
     ImportacaoRecompraView,
+    LogsImportacaoLegadoView,
+    LogsImportacaoAgendamentoView,
+    LogsImportacaoFPDView,
+    LogsImportacaoOSABView,
     
     # NOVAS VIEWS (Mapas, ZAP, Performance)
     api_verificar_whatsapp,
@@ -183,6 +187,12 @@ urlpatterns = [
     path('import/legado/', ImportacaoLegadoView.as_view(), name='importacao-legado'),
     path('import/agendamento/', ImportacaoAgendamentoView.as_view(), name='importacao-agendamento'),
     path('import/recompra/', ImportacaoRecompraView.as_view(), name='importacao-recompra'),
+    
+    # --- Logs de Importações ---
+    path('logs-legado/', LogsImportacaoLegadoView.as_view(), name='logs-legado'),
+    path('logs-agendamento/', LogsImportacaoAgendamentoView.as_view(), name='logs-agendamento'),
+    path('logs-fpd/', LogsImportacaoFPDView.as_view(), name='logs-fpd'),
+    path('logs-osab/', LogsImportacaoOSABView.as_view(), name='logs-osab'),
     
     # --- ROTAS EXTRAS ---
     path('grupos-disparo-api/', listar_grupos_whatsapp_api, name='listar_grupos_api'),
