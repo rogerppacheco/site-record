@@ -1,0 +1,20 @@
+[
+{
+  "model": "crm_app.cliente",
+  "pk": 748,
+  "fields": {
+    "nome_razao_social": "SIMOES DE SOUSA VIRGILIO",
+    "cpf_cnpj": "76238679468",
+    "email": "lucianasilva2009@gmail.com"
+  }
+},
+{
+  "model": "crm_app.cliente",
+  "pk": 749,
+  "fields": {
+    "nome_razao_social": "RAYANE DA SILVA SANTOS",
+    "cpf_cnpj": "15589767601",
+    "email": "rayanesilva190001@gmail.com"
+  }
+}
+]
