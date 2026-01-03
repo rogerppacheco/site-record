@@ -291,6 +291,16 @@
 
         <!-- Resultado -->
         <div id="resultContainer" style="display: none;"></div>
+
+        <!-- Histórico de Importações -->
+        <div class="mt-5">
+            <h4 class="fw-bold text-dark mb-3">
+                <i class="bi bi-clock-history"></i> Histórico de Importações Agendamento
+            </h4>
+            <div id="historicoImportacoes" class="table-responsive">
+                <p class="text-center text-muted">Carregando histórico...</p>
+            </div>
+        </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
@@ -483,6 +493,9 @@
 
                     // Não limpa o arquivo para manter o contexto
                     // clearFile(); - REMOVIDO
+                    
+                    // Atualiza histórico após upload
+                    setTimeout(() => carregarHistoricoImportacoes(), 1000);
                 }, 500);
 
             } catch (error) {
@@ -510,6 +523,135 @@
             resultContainer.style.display = 'block';
             document.getElementById('progressContainer').style.display = 'none';
         }
+
+        // Carregar histórico de importações
+        let autoRefreshInterval = null;
+
+        async function carregarHistoricoImportacoes() {
+            try {
+                const token = localStorage.getItem('accessToken');
+                const response = await fetch('/api/crm/logs-agendamento/', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Erro ao carregar histórico');
+                }
+
+                const data = await response.json();
+                
+                if (data.success && data.logs && data.logs.length > 0) {
+                    exibirHistorico(data.logs);
+                    
+                    // Se houver importações PROCESSANDO, continuar auto-refresh
+                    const temProcessando = data.logs.some(log => log.status === 'PROCESSANDO');
+                    if (temProcessando && !autoRefreshInterval) {
+                        iniciarAutoRefresh();
+                    } else if (!temProcessando && autoRefreshInterval) {
+                        pararAutoRefresh();
+                    }
+                } else {
+                    document.getElementById('historicoImportacoes').innerHTML = `
+                        <p class="text-center text-muted">Nenhuma importação encontrada</p>
+                    `;
+                }
+            } catch (error) {
+                console.error('Erro ao carregar histórico:', error);
+                document.getElementById('historicoImportacoes').innerHTML = `
+                    <p class="text-center text-danger">Erro ao carregar histórico</p>
+                `;
+            }
+        }
+
+        function exibirHistorico(logs) {
+            const container = document.getElementById('historicoImportacoes');
+            
+            let html = `
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Arquivo</th>
+                            <th>Status</th>
+                            <th>Iniciado</th>
+                            <th>Duração</th>
+                            <th>Métricas</th>
+                            <th>Usuário</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            logs.forEach(log => {
+                const statusBadge = getStatusBadge(log.status, log.status_display);
+                const duracao = log.duracao_segundos 
+                    ? `${log.duracao_segundos}s` 
+                    : (log.status === 'PROCESSANDO' ? '<i class="spinner-border spinner-border-sm"></i>' : '-');
+                const iniciado = log.iniciado_em ? new Date(log.iniciado_em).toLocaleString('pt-BR') : '-';
+                const usuario = log.usuario || '-';
+                
+                // Métricas específicas do Agendamento
+                let metricas = [];
+                if (log.agendamentos_criados > 0) metricas.push(`<span class="badge bg-success">${log.agendamentos_criados} criados</span>`);
+                if (log.agendamentos_atualizados > 0) metricas.push(`<span class="badge bg-info">${log.agendamentos_atualizados} atualizados</span>`);
+                if (log.nao_encontrados > 0) metricas.push(`<span class="badge bg-warning">${log.nao_encontrados} não encontrados</span>`);
+                if (log.erros_count > 0) metricas.push(`<span class="badge bg-danger">${log.erros_count} erros</span>`);
+                
+                html += `
+                    <tr>
+                        <td><small>${log.nome_arquivo || '-'}</small></td>
+                        <td>${statusBadge}</td>
+                        <td><small>${iniciado}</small></td>
+                        <td>${duracao}</td>
+                        <td>${metricas.join(' ')}</td>
+                        <td><small>${usuario}</small></td>
+                    </tr>
+                `;
+            });
+
+            html += `
+                    </tbody>
+                </table>
+            `;
+
+            container.innerHTML = html;
+        }
+
+        function getStatusBadge(status, display) {
+            const badges = {
+                'PROCESSANDO': '<span class="badge bg-info"><i class="spinner-border spinner-border-sm me-1"></i> Processando</span>',
+                'SUCESSO': '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i> Sucesso</span>',
+                'ERRO': '<span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i> Erro</span>',
+                'PARCIAL': '<span class="badge bg-warning"><i class="bi bi-exclamation-triangle me-1"></i> Parcial</span>'
+            };
+            return badges[status] || `<span class="badge bg-secondary">${display}</span>`;
+        }
+
+        function iniciarAutoRefresh() {
+            if (autoRefreshInterval) return;
+            
+            autoRefreshInterval = setInterval(() => {
+                carregarHistoricoImportacoes();
+            }, 3000); // Atualiza a cada 3 segundos
+            
+            console.log('Auto-refresh iniciado');
+        }
+
+        function pararAutoRefresh() {
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+                console.log('Auto-refresh parado');
+            }
+        }
+
+        // Carregar histórico ao abrir a página
+        window.addEventListener('DOMContentLoaded', () => {
+            carregarHistoricoImportacoes();
+        });
     </script>
 </body>
 </html>
