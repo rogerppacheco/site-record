@@ -240,6 +240,16 @@
                 <span id="progressMessage">Preparando...</span>
             </div>
         </div>
+
+        <!-- Histórico de Importações -->
+        <div class="mt-5">
+            <h4 class="fw-bold text-dark mb-3">
+                <i class="bi bi-clock-history"></i> Histórico de Importações FPD
+            </h4>
+            <div id="historicoImportacoes" class="table-responsive">
+                <p class="text-center text-muted">Carregando histórico...</p>
+            </div>
+        </div>
     </div>
 
     <!-- Loading Overlay -->
@@ -365,6 +375,15 @@
                 return true;
             }
         }
+
+        // Inicializar página
+        (async function inicializar() {
+            const temPermissao = await verificarPermissao();
+            if (temPermissao) {
+                // Carregar histórico ao abrir a página
+                carregarHistoricoImportacoes();
+            }
+        })();
 
         const uploadZone = document.getElementById('uploadZone');
         const fileInput = document.getElementById('fileInput');
@@ -495,6 +514,10 @@
                 } else {
                     mostrarResultado('error', data);
                 }
+
+                // Atualiza histórico após upload
+                setTimeout(() => carregarHistoricoImportacoes(), 1000);
+                
             } catch (error) {
                 clearInterval(progressInterval);
                 loadingOverlay.style.display = 'none';
@@ -557,6 +580,129 @@
             }
 
             resultado.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        // Carregar histórico de importações
+        let autoRefreshInterval = null;
+
+        async function carregarHistoricoImportacoes() {
+            try {
+                const token = await ensureTokenValido();
+                if (!token) return;
+
+                const response = await fetch('/api/bonus-m10/logs-fpd/', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Erro ao carregar histórico');
+                }
+
+                const data = await response.json();
+                
+                if (data.success && data.logs && data.logs.length > 0) {
+                    exibirHistorico(data.logs);
+                    
+                    // Se houver importações PROCESSANDO, continuar auto-refresh
+                    const temProcessando = data.logs.some(log => log.status === 'PROCESSANDO');
+                    if (temProcessando && !autoRefreshInterval) {
+                        iniciarAutoRefresh();
+                    } else if (!temProcessando && autoRefreshInterval) {
+                        pararAutoRefresh();
+                    }
+                } else {
+                    document.getElementById('historicoImportacoes').innerHTML = `
+                        <p class="text-center text-muted">Nenhuma importação encontrada</p>
+                    `;
+                }
+            } catch (error) {
+                console.error('Erro ao carregar histórico:', error);
+                document.getElementById('historicoImportacoes').innerHTML = `
+                    <p class="text-center text-danger">Erro ao carregar histórico</p>
+                `;
+            }
+        }
+
+        function exibirHistorico(logs) {
+            const container = document.getElementById('historicoImportacoes');
+            
+            let html = `
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Arquivo</th>
+                            <th>Status</th>
+                            <th>Iniciado</th>
+                            <th>Duração</th>
+                            <th>Processadas</th>
+                            <th>Detalhes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            logs.forEach(log => {
+                const statusBadge = getStatusBadge(log.status, log.status_display);
+                const duracao = log.duracao_segundos 
+                    ? `${log.duracao_segundos}s` 
+                    : (log.status === 'PROCESSANDO' ? '<i class="spinner-border spinner-border-sm"></i>' : '-');
+                const iniciado = log.iniciado_em ? new Date(log.iniciado_em).toLocaleString('pt-BR') : '-';
+                const processadas = log.total_processadas || 0;
+                
+                html += `
+                    <tr>
+                        <td><small>${log.nome_arquivo}</small></td>
+                        <td>${statusBadge}</td>
+                        <td><small>${iniciado}</small></td>
+                        <td>${duracao}</td>
+                        <td>${processadas}</td>
+                        <td>
+                            ${log.mensagem_erro ? `<small class="text-danger">${log.mensagem_erro}</small>` : ''}
+                            ${log.novos_inseridos > 0 ? `<span class="badge bg-success">${log.novos_inseridos} novos</span> ` : ''}
+                            ${log.atualizados > 0 ? `<span class="badge bg-info">${log.atualizados} atualizados</span>` : ''}
+                        </td>
+                    </tr>
+                `;
+            });
+
+            html += `
+                    </tbody>
+                </table>
+            `;
+
+            container.innerHTML = html;
+        }
+
+        function getStatusBadge(status, display) {
+            const badges = {
+                'PROCESSANDO': '<span class="badge bg-primary"><i class="spinner-border spinner-border-sm me-1"></i> Processando</span>',
+                'SUCESSO': '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i> Sucesso</span>',
+                'ERRO': '<span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i> Erro</span>',
+                'PARCIAL': '<span class="badge bg-warning"><i class="bi bi-exclamation-triangle me-1"></i> Parcial</span>'
+            };
+            return badges[status] || `<span class="badge bg-secondary">${display}</span>`;
+        }
+
+        function iniciarAutoRefresh() {
+            if (autoRefreshInterval) return;
+            
+            autoRefreshInterval = setInterval(() => {
+                carregarHistoricoImportacoes();
+            }, 5000); // Atualiza a cada 5 segundos
+            
+            console.log('Auto-refresh iniciado');
+        }
+
+        function pararAutoRefresh() {
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+                console.log('Auto-refresh parado');
+            }
         }
 
         function logout() {

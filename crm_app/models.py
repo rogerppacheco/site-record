@@ -1093,6 +1093,12 @@ class LogImportacaoFPD(models.Model):
     
     def __str__(self):
         return f"Log FPD {self.nome_arquivo} - {self.status}"
+    
+    def calcular_duracao(self):
+        """Calcula duração em segundos entre início e fim"""
+        if self.iniciado_em and self.finalizado_em:
+            delta = self.finalizado_em - self.iniciado_em
+            self.duracao_segundos = int(delta.total_seconds())
 
     # Compatível com chamadas existentes nos views: calcula a duração usando data_importacao
     # e um possível atributo finalizado_em (quando presente). Ignora silenciosamente se

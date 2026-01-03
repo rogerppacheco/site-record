@@ -5475,6 +5475,44 @@ class ImportarFPDView(APIView):
             log.save()
 
 
+class LogsImportacaoFPDView(APIView):
+    """Lista logs de importações FPD"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        from .models import LogImportacaoFPD
+        
+        # Buscar últimos 20 logs do usuário (se não for admin, só seus próprios)
+        if is_member(request.user, ['Admin', 'Diretoria']):
+            logs = LogImportacaoFPD.objects.all().order_by('-iniciado_em')[:20]
+        else:
+            logs = LogImportacaoFPD.objects.filter(usuario=request.user).order_by('-iniciado_em')[:20]
+        
+        logs_data = []
+        for log in logs:
+            logs_data.append({
+                'id': log.id,
+                'nome_arquivo': log.nome_arquivo,
+                'status': log.status,
+                'status_display': log.get_status_display(),
+                'iniciado_em': log.iniciado_em.strftime('%d/%m/%Y %H:%M:%S') if log.iniciado_em else None,
+                'finalizado_em': log.finalizado_em.strftime('%d/%m/%Y %H:%M:%S') if log.finalizado_em else None,
+                'duracao_segundos': log.duracao_segundos,
+                'total_linhas': log.total_linhas,
+                'total_processadas': log.total_processadas,
+                'total_contratos_nao_encontrados': log.total_contratos_nao_encontrados,
+                'total_valor_importado': str(log.total_valor_importado) if log.total_valor_importado else '0.00',
+                'mensagem_erro': log.mensagem_erro,
+                'usuario_nome': log.usuario.get_full_name() if log.usuario else 'Sistema',
+                'exemplos_nao_encontrados': log.exemplos_nao_encontrados,
+            })
+        
+        return Response({
+            'success': True,
+            'logs': logs_data
+        })
+
+
 class ImportarChurnView(APIView):
     """Importa base de churn (cancelamentos) e faz crossover com ContratoM10 por O.S"""
     permission_classes = [permissions.IsAuthenticated]
