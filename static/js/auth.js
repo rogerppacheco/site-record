@@ -57,10 +57,13 @@ function iniciarAutoRefresh() {
 
 async function refreshAccessToken() {
     const refresh = localStorage.getItem('refreshToken');
-    if (!refresh) return;
+    if (!refresh) {
+        console.warn("Refresh token não encontrado");
+        return false;
+    }
 
     try {
-        const response = await fetch(`${API_URL}/api/auth/token/refresh/`, { // Endpoint correto no backend
+        const response = await fetch(`${API_URL}/api/auth/token/refresh/`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ refresh: refresh })
@@ -70,11 +73,22 @@ async function refreshAccessToken() {
             const data = await response.json();
             localStorage.setItem('accessToken', data.access);
             console.log("Token renovado com sucesso.");
+            return true;
         } else {
-            console.warn("Falha ao renovar token. Sessão pode expirar.");
+            // Token de refresh expirado ou inválido - fazer logout
+            console.error("Refresh token expirado ou inválido (401). Fazendo logout...");
+            if (response.status === 401) {
+                // Limpar storage e redirecionar para login
+                localStorage.removeItem('accessToken');
+                localStorage.removeItem('refreshToken');
+                localStorage.removeItem('userProfile');
+                // Não redireciona aqui - deixa a página fazer
+            }
+            return false;
         }
     } catch (error) {
         console.error("Erro no refresh token:", error);
+        return false;
     }
 }
 

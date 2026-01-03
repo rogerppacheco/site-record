@@ -258,7 +258,8 @@
         async function ensureTokenValido() {
             const accessToken = localStorage.getItem('accessToken');
             if (!accessToken) {
-                window.location.href = '/login/';
+                alert('Sua sessão expirou. Por favor, faça login novamente.');
+                window.location.href = '/';
                 return null;
             }
 
@@ -266,21 +267,39 @@
             const agora = Date.now() / 1000;
 
             if (!payload || !payload.exp) {
+                alert('Token inválido. Por favor, faça login novamente.');
                 logout();
                 return null;
             }
 
             const tempoRestante = payload.exp - agora;
 
-            // Token expirado ou prestes a expirar? Tenta renovar.
-            if (tempoRestante <= 0 || tempoRestante < 600) {
-                await refreshAccessToken();
-                const novoToken = localStorage.getItem('accessToken');
-                if (!novoToken) {
-                    window.location.href = '/login/';
+            // Token expirado? Tenta renovar.
+            if (tempoRestante <= 0) {
+                console.log("Token expirado. Tentando renovar...");
+                const renovado = await refreshAccessToken();
+                if (!renovado) {
+                    alert('Sua sessão expirou. Por favor, faça login novamente.');
+                    window.location.href = '/';
                     return null;
                 }
-                return novoToken;
+                return localStorage.getItem('accessToken');
+            }
+            
+            // Token expirando em breve (menos de 10 minutos)? Tenta renovar mas continua se falhar.
+            if (tempoRestante < 600) {
+                console.log("Token próximo de expirar. Tentando renovar...");
+                const renovado = await refreshAccessToken();
+                // Se falhou a renovação mas o token ainda é válido, continua
+                if (!renovado && tempoRestante > 60) {
+                    console.warn("Falha ao renovar token, mas token atual ainda é válido.");
+                    return accessToken;
+                } else if (!renovado) {
+                    alert('Sua sessão expirou. Por favor, faça login novamente.');
+                    window.location.href = '/';
+                    return null;
+                }
+                return localStorage.getItem('accessToken');
             }
 
             return accessToken;
