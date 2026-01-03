@@ -254,13 +254,42 @@
     <script src="{% static 'js/auth.js' %}?v=7.0"></script>
     <script src="{% static 'js/menu.js' %}?v=7.0"></script>
     <script>
+        // Garante token válido antes de chamadas protegidas
+        async function ensureTokenValido() {
+            const accessToken = localStorage.getItem('accessToken');
+            if (!accessToken) {
+                window.location.href = '/login/';
+                return null;
+            }
+
+            const payload = jwt_decode(accessToken);
+            const agora = Date.now() / 1000;
+
+            if (!payload || !payload.exp) {
+                logout();
+                return null;
+            }
+
+            const tempoRestante = payload.exp - agora;
+
+            // Token expirado ou prestes a expirar? Tenta renovar.
+            if (tempoRestante <= 0 || tempoRestante < 600) {
+                await refreshAccessToken();
+                const novoToken = localStorage.getItem('accessToken');
+                if (!novoToken) {
+                    window.location.href = '/login/';
+                    return null;
+                }
+                return novoToken;
+            }
+
+            return accessToken;
+        }
+
         // Verificar permissão (apenas Diretoria pode importar FPD)
         async function verificarPermissao() {
-            const token = localStorage.getItem('accessToken');
-            if (!token) {
-                window.location.href = '/login/';
-                return false;
-            }
+            const token = await ensureTokenValido();
+            if (!token) return false;
             
             try {
                 const res = await fetch('/api/usuarios/me/', { headers: {'Authorization': `Bearer ${token}`} });
@@ -404,12 +433,31 @@
             }, 300);
 
             try {
-                const token = localStorage.getItem('accessToken');
-                const response = await fetch('/api/bonus-m10/importar-fpd/', {
+                let token = await ensureTokenValido();
+                if (!token) {
+                    mostrarResultado('error', { erro: 'Sessão expirada. Faça login novamente.' });
+                    clearInterval(progressInterval);
+                    loadingOverlay.style.display = 'none';
+                    return;
+                }
+
+                const fazerUpload = async (authToken) => fetch('/api/bonus-m10/importar-fpd/', {
                     method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}` },
+                    headers: { 'Authorization': `Bearer ${authToken}` },
                     body: formData
                 });
+
+                let response = await fazerUpload(token);
+
+                // Tenta uma renovação rápida se o token estiver vencido
+                if (response.status === 401) {
+                    await refreshAccessToken();
+                    const novoToken = localStorage.getItem('accessToken');
+                    if (novoToken && novoToken !== token) {
+                        token = novoToken;
+                        response = await fazerUpload(token);
+                    }
+                }
 
                 const data = await response.json();
                 clearInterval(progressInterval);
