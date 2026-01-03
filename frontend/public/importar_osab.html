@@ -260,6 +260,16 @@
 
         <!-- Resultados -->
         <div id="resultadoImportacao" class="mt-4" style="display: none;"></div>
+
+        <!-- Histórico de Importações -->
+        <div class="mt-5">
+            <h4 class="fw-bold text-dark mb-3">
+                <i class="bi bi-clock-history"></i> Histórico de Importações OSAB
+            </h4>
+            <div id="historicoImportacoes" class="table-responsive">
+                <p class="text-center text-muted">Carregando histórico...</p>
+            </div>
+        </div>
     </div>
 
     <!-- Loading Overlay -->
@@ -403,6 +413,9 @@
                     setTimeout(() => {
                         mostrarResultado('success', data, deveEnviar);
                         progressContainer.style.display = 'none';
+                        
+                        // Atualizar histórico após upload
+                        setTimeout(() => carregarHistoricoImportacoes(), 1000);
                     }, 500);
                 } else {
                     mostrarResultado('error', data);
@@ -466,6 +479,139 @@
 
             resultado.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
+
+        // Carregar histórico de importações OSAB
+        let autoRefreshInterval = null;
+
+        async function carregarHistoricoImportacoes() {
+            const accessToken = localStorage.getItem('accessToken');
+            if (!accessToken) return;
+
+            try {
+                const response = await fetch('/api/bonus-m10/logs-osab/', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Erro ao carregar histórico');
+                }
+
+                const data = await response.json();
+                
+                if (data.success && data.logs && data.logs.length > 0) {
+                    exibirHistorico(data.logs);
+                    
+                    // Se houver importações PROCESSANDO, continuar auto-refresh
+                    const temProcessando = data.logs.some(log => log.status === 'PROCESSANDO');
+                    if (temProcessando && !autoRefreshInterval) {
+                        iniciarAutoRefresh();
+                    } else if (!temProcessando && autoRefreshInterval) {
+                        pararAutoRefresh();
+                    }
+                } else {
+                    document.getElementById('historicoImportacoes').innerHTML = `
+                        <p class="text-center text-muted">Nenhuma importação encontrada</p>
+                    `;
+                }
+            } catch (error) {
+                console.error('Erro ao carregar histórico:', error);
+                document.getElementById('historicoImportacoes').innerHTML = `
+                    <p class="text-center text-danger">Erro ao carregar histórico</p>
+                `;
+            }
+        }
+
+        function exibirHistorico(logs) {
+            const container = document.getElementById('historicoImportacoes');
+            
+            let html = `
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Arquivo</th>
+                            <th>Status</th>
+                            <th>Iniciado</th>
+                            <th>Duração</th>
+                            <th>Vendas</th>
+                            <th>Atualizadas</th>
+                            <th>Detalhes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            logs.forEach(log => {
+                const statusBadge = getStatusBadge(log.status, log.status_display);
+                const duracao = log.duracao_segundos 
+                    ? `${log.duracao_segundos}s` 
+                    : (log.status === 'PROCESSANDO' ? '<i class="spinner-border spinner-border-sm"></i>' : '-');
+                const iniciado = log.iniciado_em ? log.iniciado_em : '-';
+                const vendas = log.vendas_encontradas || 0;
+                const atualizadas = log.atualizados || 0;
+                const whatsapp = log.enviar_whatsapp ? '<i class="bi bi-whatsapp text-success" title="WhatsApp ativado"></i>' : '';
+                
+                html += `
+                    <tr>
+                        <td><small>${log.nome_arquivo}</small></td>
+                        <td>${statusBadge}</td>
+                        <td><small>${iniciado}</small></td>
+                        <td>${duracao}</td>
+                        <td>${vendas}</td>
+                        <td>${atualizadas}</td>
+                        <td>
+                            ${log.mensagem_erro ? `<small class="text-danger">${log.mensagem_erro}</small>` : ''}
+                            ${log.atualizados > 0 ? `<span class="badge bg-info">${log.atualizados} atualizados</span> ` : ''}
+                            ${log.ja_corretos > 0 ? `<span class="badge bg-secondary">${log.ja_corretos} já corretos</span>` : ''}
+                            ${whatsapp}
+                        </td>
+                    </tr>
+                `;
+            });
+
+            html += `
+                    </tbody>
+                </table>
+            `;
+
+            container.innerHTML = html;
+        }
+
+        function getStatusBadge(status, display) {
+            const badges = {
+                'PROCESSANDO': '<span class="badge bg-primary"><i class="spinner-border spinner-border-sm me-1"></i> Processando</span>',
+                'SUCESSO': '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i> Sucesso</span>',
+                'ERRO': '<span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i> Erro</span>',
+                'PARCIAL': '<span class="badge bg-warning"><i class="bi bi-exclamation-triangle me-1"></i> Parcial</span>'
+            };
+            return badges[status] || `<span class="badge bg-secondary">${display}</span>`;
+        }
+
+        function iniciarAutoRefresh() {
+            if (autoRefreshInterval) return;
+            
+            autoRefreshInterval = setInterval(() => {
+                carregarHistoricoImportacoes();
+            }, 5000); // Atualiza a cada 5 segundos
+            
+            console.log('Auto-refresh OSAB iniciado');
+        }
+
+        function pararAutoRefresh() {
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+                console.log('Auto-refresh OSAB parado');
+            }
+        }
+
+        // Carregar histórico ao carregar a página
+        document.addEventListener('DOMContentLoaded', function() {
+            carregarHistoricoImportacoes();
+        });
 
         function logout() {
             localStorage.removeItem('accessToken');
