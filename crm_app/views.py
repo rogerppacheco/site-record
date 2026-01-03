@@ -5175,7 +5175,7 @@ class ImportarFPDView(APIView):
 
                         # Tenta encontrar contrato por ordem_servico (lookup em memória)
                         contrato = contratos_dict.get(nr_ordem)
-                            if contrato:
+                        if contrato:
                             
                             # ID_CONTRATO e NR_FATURA já vêm como STRING do pandas (dtype=str)
                             nr_contrato = str(row.get('id_contrato', '')).strip()
