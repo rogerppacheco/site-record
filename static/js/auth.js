@@ -60,7 +60,7 @@ async function refreshAccessToken() {
     if (!refresh) return;
 
     try {
-        const response = await fetch(`${API_URL}/api/token/refresh/`, { // Endpoint padrão SimpleJWT
+        const response = await fetch(`${API_URL}/api/auth/token/refresh/`, { // Endpoint correto no backend
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ refresh: refresh })
