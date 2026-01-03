@@ -821,6 +821,11 @@ class FaturaM10(models.Model):
     data_pagamento = models.DateField(null=True, blank=True)
     dias_atraso = models.IntegerField(default=0)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='NAO_PAGO')
+    # Campos mapeados diretamente do arquivo FPD
+    id_contrato_fpd = models.CharField(max_length=100, blank=True, null=True, help_text="ID_CONTRATO do arquivo FPD")
+    dt_pagamento_fpd = models.DateField(blank=True, null=True, help_text="DT_PAGAMENTO do arquivo FPD")
+    ds_status_fatura_fpd = models.CharField(max_length=50, blank=True, null=True, help_text="DS_STATUS_FATURA do arquivo FPD")
+    data_importacao_fpd = models.DateTimeField(blank=True, null=True, help_text="Data da última importação FPD")
     codigo_pix = models.TextField(blank=True, null=True, help_text="Código PIX Copia e Cola")
     codigo_barras = models.CharField(max_length=100, blank=True, null=True, help_text="Código de barras da fatura")
     pdf_url = models.URLField(max_length=500, blank=True, null=True, help_text="Link público do PDF da fatura")
