@@ -5467,6 +5467,7 @@ class ImportarChurnView(APIView):
         # Criar log de importação
         log = LogImportacaoChurn.objects.create(
             nome_arquivo=arquivo.name,
+            tamanho_arquivo=getattr(arquivo, 'size', 0) or 0,
             usuario=request.user,
             status='PROCESSANDO'
         )

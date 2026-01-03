@@ -1078,6 +1078,25 @@ class LogImportacaoFPD(models.Model):
     def __str__(self):
         return f"Log FPD {self.nome_arquivo} - {self.status}"
 
+    # Compatível com chamadas existentes nos views: calcula a duração usando data_importacao
+    # e um possível atributo finalizado_em (quando presente). Ignora silenciosamente se
+    # os campos extras não existirem na base.
+    def calcular_duracao(self):
+        inicio = getattr(self, 'data_importacao', None) or getattr(self, 'iniciado_em', None)
+        fim = getattr(self, 'finalizado_em', None)
+        if not fim:
+            try:
+                from django.utils import timezone
+                fim = timezone.now()
+            except Exception:
+                return None
+        if not inicio or not fim:
+            return None
+        duracao = int((fim - inicio).total_seconds()) if hasattr(fim, '__sub__') else None
+        if duracao is not None and hasattr(self, 'duracao_segundos'):
+            self.duracao_segundos = duracao
+        return duracao
+
 
 class ImportacaoChurn(models.Model):
     """Modelo para importação de dados de CHURN da operadora"""
