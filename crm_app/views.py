@@ -5144,6 +5144,9 @@ class ImportarFPDView(APIView):
             # Otimização: pre-carregar contratos em memória para evitar N queries
             contratos_dict = {c.ordem_servico: c for c in ContratoM10.objects.all()}
             
+            # Otimização: pre-carregar ImportacaoFPD em memória também
+            importacoes_dict = {(imp.nr_ordem, imp.nr_fatura): imp for imp in ImportacaoFPD.objects.all()}
+            
             # Listas para bulk operations (reduz queries drasticamente)
             faturas_para_criar = []
             faturas_para_atualizar = []
@@ -5229,11 +5232,12 @@ class ImportarFPDView(APIView):
                             vl_fatura_float = float(vl_fatura) if pd.notna(vl_fatura) else 0
                             nr_dias_atraso_int = int(nr_dias_atraso) if pd.notna(nr_dias_atraso) else 0
                         
-                            # Verificar se fatura já existe
-                            fatura_existente = FaturaM10.objects.filter(
-                                contrato=contrato,
-                                numero_fatura=1
-                            ).first()
+                            # Verificar se fatura já existe (lookup em memória via contrato)
+                            fatura_existente = None
+                            for f in contrato.faturas.all():
+                                if f.numero_fatura == 1:
+                                    fatura_existente = f
+                                    break
                             
                             if fatura_existente:
                                 fatura_existente.numero_fatura_operadora = nr_fatura
@@ -5264,10 +5268,8 @@ class ImportarFPDView(APIView):
                                 ))
 
                             # Preparar ImportacaoFPD para bulk
-                            importacao_existente = ImportacaoFPD.objects.filter(
-                                nr_ordem=nr_ordem,
-                                nr_fatura=nr_fatura
-                            ).first()
+                            chave = (nr_ordem, nr_fatura)
+                            importacao_existente = importacoes_dict.get(chave)
                             
                             if importacao_existente:
                                 importacao_existente.id_contrato = id_contrato
@@ -5335,10 +5337,8 @@ class ImportarFPDView(APIView):
                             nr_dias_atraso_int = int(nr_dias_atraso) if pd.notna(nr_dias_atraso) else 0
                         
                             # Preparar ImportacaoFPD sem contrato para bulk
-                            importacao_sem_contrato = ImportacaoFPD.objects.filter(
-                                nr_ordem=nr_ordem,
-                                nr_fatura=nr_fatura
-                            ).first()
+                            chave = (nr_ordem, nr_fatura)
+                            importacao_sem_contrato = importacoes_dict.get(chave)
                             
                             if importacao_sem_contrato:
                                 importacao_sem_contrato.id_contrato = id_contrato
