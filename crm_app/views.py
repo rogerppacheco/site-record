@@ -5152,9 +5152,9 @@ class ImportarFPDView(APIView):
 
             with transaction.atomic():  # Garantir atomicidade
                 for idx, row in df.iterrows():
-                try:
-                    # Busca por O.S (nr_ordem - com coluna normalizada para minúsculas)
-                    nr_ordem_raw = row.get('nr_ordem', '')
+                    try:
+                        # Busca por O.S (nr_ordem - com coluna normalizada para minúsculas)
+                        nr_ordem_raw = row.get('nr_ordem', '')
                     
                     # Converter para string mas MANTER ZEROS à esquerda
                     if pd.isna(nr_ordem_raw):
