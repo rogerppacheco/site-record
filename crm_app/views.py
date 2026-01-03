@@ -5155,220 +5155,219 @@ class ImportarFPDView(APIView):
                     try:
                         # Busca por O.S (nr_ordem - com coluna normalizada para minúsculas)
                         nr_ordem_raw = row.get('nr_ordem', '')
-                    
-                    # Converter para string mas MANTER ZEROS à esquerda
-                    if pd.isna(nr_ordem_raw):
-                        registros_pulados += 1
-                        continue
-                    
-                    nr_ordem = str(nr_ordem_raw).strip()
-                    
-                    # Se for número, adicionar zero à esquerda para padronizar em 8 dígitos
-                    if nr_ordem.replace('.', '').replace('-', '').isdigit():
-                        # Remover ".0" se existir (vem do pandas quando lê números do Excel)
-                        nr_ordem = nr_ordem.split('.')[0]
-                        nr_ordem = nr_ordem.zfill(8)  # Preenche com zeros à esquerda até 8 dígitos
-                    
-                    if not nr_ordem or nr_ordem == 'nan':
-                        registros_pulados += 1
-                        continue
+                        
+                        # Converter para string mas MANTER ZEROS à esquerda
+                        if pd.isna(nr_ordem_raw):
+                            registros_pulados += 1
+                            continue
+                        
+                        nr_ordem = str(nr_ordem_raw).strip()
+                        
+                        # Se for número, adicionar zero à esquerda para padronizar em 8 dígitos
+                        if nr_ordem.replace('.', '').replace('-', '').isdigit():
+                            # Remover ".0" se existir (vem do pandas quando lê números do Excel)
+                            nr_ordem = nr_ordem.split('.')[0]
+                            nr_ordem = nr_ordem.zfill(8)  # Preenche com zeros à esquerda até 8 dígitos
+                        
+                        if not nr_ordem or nr_ordem == 'nan':
+                            registros_pulados += 1
+                            continue
 
-                    # Tenta encontrar contrato por ordem_servico (lookup em memória)
-                    contrato = contratos_dict.get(nr_ordem)
-                    if contrato:
-                        
-                        # ID_CONTRATO e NR_FATURA já vêm como STRING do pandas (dtype=str)
-                        nr_contrato = str(row.get('id_contrato', '')).strip()
-                        if nr_contrato and nr_contrato != 'nan':
-                            contrato.numero_contrato_definitivo = nr_contrato
-                            # Save será feito em bulk ao final
-                        
-                        # Extrai dados FPD
-                        # Já vêm como STRING do pandas, preservando zeros
-                        id_contrato = str(row.get('id_contrato', '')).strip()
-                        dt_venc = row.get('dt_venc_orig')
-                        dt_pgto = row.get('dt_pagamento')
-                        status_str = str(row.get('ds_status_fatura', 'NAO_PAGO')).upper()
-                        nr_fatura = str(row.get('nr_fatura', '')).strip()
-                        vl_fatura = row.get('vl_fatura', 0)
-                        nr_dias_atraso = row.get('nr_dias_atraso', 0)
-                        
-                        # Normalizar status usando mapeamento padronizado
-                        status = normalizar_status_fpd(status_str)
+                        # Tenta encontrar contrato por ordem_servico (lookup em memória)
+                        contrato = contratos_dict.get(nr_ordem)
+                            if contrato:
+                            
+                            # ID_CONTRATO e NR_FATURA já vêm como STRING do pandas (dtype=str)
+                            nr_contrato = str(row.get('id_contrato', '')).strip()
+                            if nr_contrato and nr_contrato != 'nan':
+                                contrato.numero_contrato_definitivo = nr_contrato
+                                # Save será feito em bulk ao final
+                            
+                            # Extrai dados FPD
+                            # Já vêm como STRING do pandas, preservando zeros
+                            id_contrato = str(row.get('id_contrato', '')).strip()
+                            dt_venc = row.get('dt_venc_orig')
+                            dt_pgto = row.get('dt_pagamento')
+                            status_str = str(row.get('ds_status_fatura', 'NAO_PAGO')).upper()
+                            nr_fatura = str(row.get('nr_fatura', '')).strip()
+                            vl_fatura = row.get('vl_fatura', 0)
+                            nr_dias_atraso = row.get('nr_dias_atraso', 0)
+                            
+                            # Normalizar status usando mapeamento padronizado
+                            status = normalizar_status_fpd(status_str)
 
-                        # Extrair e converter datas - Excel armazena como números serial
-                        dt_venc = row.get('dt_venc_orig')
-                        if pd.notna(dt_venc):
-                            # Se for número, converter de serial Excel
-                            if isinstance(dt_venc, (int, float)):
-                                dt_venc_date = (pd.Timestamp("1900-01-01") + pd.Timedelta(days=dt_venc - 2)).date()
+                            # Extrair e converter datas - Excel armazena como números serial
+                            dt_venc = row.get('dt_venc_orig')
+                            if pd.notna(dt_venc):
+                                # Se for número, converter de serial Excel
+                                if isinstance(dt_venc, (int, float)):
+                                    dt_venc_date = (pd.Timestamp("1900-01-01") + pd.Timedelta(days=dt_venc - 2)).date()
+                                else:
+                                    dt_venc_date = pd.to_datetime(dt_venc).date()
                             else:
-                                dt_venc_date = pd.to_datetime(dt_venc).date()
-                        else:
-                            dt_venc_date = timezone.now().date()
+                                dt_venc_date = timezone.now().date()
 
-                        dt_pgto = row.get('dt_pagamento')
-                        if pd.notna(dt_pgto):
-                            # Se for número, converter de serial Excel
-                            if isinstance(dt_pgto, (int, float)):
-                                dt_pgto_date = (pd.Timestamp("1900-01-01") + pd.Timedelta(days=dt_pgto - 2)).date()
+                            dt_pgto = row.get('dt_pagamento')
+                            if pd.notna(dt_pgto):
+                                # Se for número, converter de serial Excel
+                                if isinstance(dt_pgto, (int, float)):
+                                    dt_pgto_date = (pd.Timestamp("1900-01-01") + pd.Timedelta(days=dt_pgto - 2)).date()
+                                else:
+                                    dt_pgto_date = pd.to_datetime(dt_pgto).date()
                             else:
-                                dt_pgto_date = pd.to_datetime(dt_pgto).date()
-                        else:
-                            dt_pgto_date = None
+                                dt_pgto_date = None
 
-                        # Se houver data de vencimento, define safra de FPD por mês de vencimento
-                        if dt_venc_date:
-                            safra_fpd_mes = dt_venc_date.replace(day=1)
-                            safra_fpd, _ = SafraM10.objects.get_or_create(
-                                mes_referencia=safra_fpd_mes,
-                                defaults={'total_instalados': 0, 'total_ativos': 0}
-                            )
+                            # Se houver data de vencimento, define safra de FPD por mês de vencimento
+                            if dt_venc_date:
+                                safra_fpd_mes = dt_venc_date.replace(day=1)
+                                safra_fpd, _ = SafraM10.objects.get_or_create(
+                                    mes_referencia=safra_fpd_mes,
+                                    defaults={'total_instalados': 0, 'total_ativos': 0}
+                                )
 
-                        # Preparar fatura para bulk update/create
-                        vl_fatura_float = float(vl_fatura) if pd.notna(vl_fatura) else 0
-                        nr_dias_atraso_int = int(nr_dias_atraso) if pd.notna(nr_dias_atraso) else 0
+                            # Preparar fatura para bulk update/create
+                            vl_fatura_float = float(vl_fatura) if pd.notna(vl_fatura) else 0
+                            nr_dias_atraso_int = int(nr_dias_atraso) if pd.notna(nr_dias_atraso) else 0
                         
                         # Verificar se fatura já existe
-                        fatura_existente = FaturaM10.objects.filter(
-                            contrato=contrato,
-                            numero_fatura=1
-                        ).first()
-                        
-                        if fatura_existente:
-                            fatura_existente.numero_fatura_operadora = nr_fatura
-                            fatura_existente.valor = vl_fatura_float
-                            fatura_existente.data_vencimento = dt_venc_date
-                            fatura_existente.data_pagamento = dt_pgto_date
-                            fatura_existente.dias_atraso = nr_dias_atraso_int
-                            fatura_existente.status = status
-                            fatura_existente.id_contrato_fpd = id_contrato
-                            fatura_existente.dt_pagamento_fpd = dt_pgto_date
-                            fatura_existente.ds_status_fatura_fpd = status_str
-                            fatura_existente.data_importacao_fpd = data_importacao_agora
-                            faturas_para_atualizar.append(fatura_existente)
-                        else:
-                            faturas_para_criar.append(FaturaM10(
+                            fatura_existente = FaturaM10.objects.filter(
                                 contrato=contrato,
-                                numero_fatura=1,
-                                numero_fatura_operadora=nr_fatura,
-                                valor=vl_fatura_float,
-                                data_vencimento=dt_venc_date,
-                                data_pagamento=dt_pgto_date,
-                                dias_atraso=nr_dias_atraso_int,
-                                status=status,
-                                id_contrato_fpd=id_contrato,
-                                dt_pagamento_fpd=dt_pgto_date,
-                                ds_status_fatura_fpd=status_str,
-                                data_importacao_fpd=data_importacao_agora
-                            ))
-
-                        # Preparar ImportacaoFPD para bulk
-                        importacao_existente = ImportacaoFPD.objects.filter(
-                            nr_ordem=nr_ordem,
-                            nr_fatura=nr_fatura
-                        ).first()
-                        
-                        if importacao_existente:
-                            importacao_existente.id_contrato = id_contrato
-                            importacao_existente.dt_venc_orig = dt_venc_date
-                            importacao_existente.dt_pagamento = dt_pgto_date
-                            importacao_existente.nr_dias_atraso = nr_dias_atraso_int
-                            importacao_existente.ds_status_fatura = status_str
-                            importacao_existente.vl_fatura = vl_fatura_float
-                            importacao_existente.contrato_m10 = contrato
-                            importacoes_para_atualizar.append(importacao_existente)
-                            registros_atualizados += 1
-                        else:
-                            importacoes_para_criar.append(ImportacaoFPD(
-                                nr_ordem=nr_ordem,
-                                nr_fatura=nr_fatura,
-                                id_contrato=id_contrato,
-                                dt_venc_orig=dt_venc_date,
-                                dt_pagamento=dt_pgto_date,
-                                nr_dias_atraso=nr_dias_atraso_int,
-                                ds_status_fatura=status_str,
-                                vl_fatura=vl_fatura_float,
-                                contrato_m10=contrato
-                            ))
-                            registros_importacoes_fpd += 1
-                        
-                        valor_total += vl_fatura_float
-
-                    else:  # Contrato não encontrado
-                        # Se não encontrou contrato M10, salva mesmo assim sem vínculo
-                        # O usuário pode fazer matching depois
-                        
-                        # Extrai dados FPD mesmo sem contrato
-                        # Já vêm como STRING do pandas, preservando zeros
-                        id_contrato = str(row.get('id_contrato', '')).strip()
-                        dt_venc = row.get('dt_venc_orig')
-                        dt_pgto = row.get('dt_pagamento')
-                        status_str = str(row.get('ds_status_fatura', 'NAO_PAGO')).upper()
-                        nr_fatura = str(row.get('nr_fatura', '')).strip()
-                        vl_fatura = row.get('vl_fatura', 0)
-                        nr_dias_atraso = row.get('nr_dias_atraso', 0)
-                        
-                        # Normalizar status usando mapeamento padronizado
-                        status = normalizar_status_fpd(status_str)
-
-                        # Extrair e converter datas - Excel armazena como números serial
-                        if pd.notna(dt_venc):
-                            # Se for número, converter de serial Excel
-                            if isinstance(dt_venc, (int, float)):
-                                dt_venc_date = (pd.Timestamp("1900-01-01") + pd.Timedelta(days=dt_venc - 2)).date()
+                                numero_fatura=1
+                            ).first()
+                            
+                            if fatura_existente:
+                                fatura_existente.numero_fatura_operadora = nr_fatura
+                                fatura_existente.valor = vl_fatura_float
+                                fatura_existente.data_vencimento = dt_venc_date
+                                fatura_existente.data_pagamento = dt_pgto_date
+                                fatura_existente.dias_atraso = nr_dias_atraso_int
+                                fatura_existente.status = status
+                                fatura_existente.id_contrato_fpd = id_contrato
+                                fatura_existente.dt_pagamento_fpd = dt_pgto_date
+                                fatura_existente.ds_status_fatura_fpd = status_str
+                                fatura_existente.data_importacao_fpd = data_importacao_agora
+                                faturas_para_atualizar.append(fatura_existente)
                             else:
-                                dt_venc_date = pd.to_datetime(dt_venc).date()
-                        else:
-                            dt_venc_date = timezone.now().date()
+                                faturas_para_criar.append(FaturaM10(
+                                    contrato=contrato,
+                                    numero_fatura=1,
+                                    numero_fatura_operadora=nr_fatura,
+                                    valor=vl_fatura_float,
+                                    data_vencimento=dt_venc_date,
+                                    data_pagamento=dt_pgto_date,
+                                    dias_atraso=nr_dias_atraso_int,
+                                    status=status,
+                                    id_contrato_fpd=id_contrato,
+                                    dt_pagamento_fpd=dt_pgto_date,
+                                    ds_status_fatura_fpd=status_str,
+                                    data_importacao_fpd=data_importacao_agora
+                                ))
 
-                        if pd.notna(dt_pgto):
-                            # Se for número, converter de serial Excel
-                            if isinstance(dt_pgto, (int, float)):
-                                dt_pgto_date = (pd.Timestamp("1900-01-01") + pd.Timedelta(days=dt_pgto - 2)).date()
-                            else:
-                                dt_pgto_date = pd.to_datetime(dt_pgto).date()
-                        else:
-                            dt_pgto_date = None
-
-                        # Converte valores
-                        vl_fatura_float = float(vl_fatura) if pd.notna(vl_fatura) else 0
-                        nr_dias_atraso_int = int(nr_dias_atraso) if pd.notna(nr_dias_atraso) else 0
-                        
-                        # Preparar ImportacaoFPD sem contrato para bulk
-                        importacao_sem_contrato = ImportacaoFPD.objects.filter(
-                            nr_ordem=nr_ordem,
-                            nr_fatura=nr_fatura
-                        ).first()
-                        
-                        if importacao_sem_contrato:
-                            importacao_sem_contrato.id_contrato = id_contrato
-                            importacao_sem_contrato.dt_venc_orig = dt_venc_date
-                            importacao_sem_contrato.dt_pagamento = dt_pgto_date
-                            importacao_sem_contrato.nr_dias_atraso = nr_dias_atraso_int
-                            importacao_sem_contrato.ds_status_fatura = status_str
-                            importacao_sem_contrato.vl_fatura = vl_fatura_float
-                            importacao_sem_contrato.contrato_m10 = None
-                            importacoes_para_atualizar.append(importacao_sem_contrato)
-                            registros_nao_encontrados += 1
-                        else:
-                            importacoes_para_criar.append(ImportacaoFPD(
+                            # Preparar ImportacaoFPD para bulk
+                            importacao_existente = ImportacaoFPD.objects.filter(
                                 nr_ordem=nr_ordem,
-                                nr_fatura=nr_fatura,
-                                id_contrato=id_contrato,
-                                dt_venc_orig=dt_venc_date,
-                                dt_pagamento=dt_pgto_date,
-                                nr_dias_atraso=nr_dias_atraso_int,
-                                ds_status_fatura=status_str,
-                                vl_fatura=vl_fatura_float,
-                                contrato_m10=None
-                            ))
-                            registros_importacoes_fpd += 1
+                                nr_fatura=nr_fatura
+                            ).first()
+                            
+                            if importacao_existente:
+                                importacao_existente.id_contrato = id_contrato
+                                importacao_existente.dt_venc_orig = dt_venc_date
+                                importacao_existente.dt_pagamento = dt_pgto_date
+                                importacao_existente.nr_dias_atraso = nr_dias_atraso_int
+                                importacao_existente.ds_status_fatura = status_str
+                                importacao_existente.vl_fatura = vl_fatura_float
+                                importacao_existente.contrato_m10 = contrato
+                                importacoes_para_atualizar.append(importacao_existente)
+                                registros_atualizados += 1
+                            else:
+                                importacoes_para_criar.append(ImportacaoFPD(
+                                    nr_ordem=nr_ordem,
+                                    nr_fatura=nr_fatura,
+                                    id_contrato=id_contrato,
+                                    dt_venc_orig=dt_venc_date,
+                                    dt_pagamento=dt_pgto_date,
+                                    nr_dias_atraso=nr_dias_atraso_int,
+                                    ds_status_fatura=status_str,
+                                    vl_fatura=vl_fatura_float,
+                                    contrato_m10=contrato
+                                ))
+                                registros_importacoes_fpd += 1
+                            
+                            valor_total += vl_fatura_float
+                        else:  # Contrato não encontrado
+                            # Se não encontrou contrato M10, salva mesmo assim sem vínculo
+                            # O usuário pode fazer matching depois
+                            
+                            # Extrai dados FPD mesmo sem contrato
+                            # Já vêm como STRING do pandas, preservando zeros
+                            id_contrato = str(row.get('id_contrato', '')).strip()
+                            dt_venc = row.get('dt_venc_orig')
+                            dt_pgto = row.get('dt_pagamento')
+                            status_str = str(row.get('ds_status_fatura', 'NAO_PAGO')).upper()
+                            nr_fatura = str(row.get('nr_fatura', '')).strip()
+                            vl_fatura = row.get('vl_fatura', 0)
+                            nr_dias_atraso = row.get('nr_dias_atraso', 0)
+                            
+                            # Normalizar status usando mapeamento padronizado
+                            status = normalizar_status_fpd(status_str)
+
+                            # Extrair e converter datas - Excel armazena como números serial
+                            if pd.notna(dt_venc):
+                                # Se for número, converter de serial Excel
+                                if isinstance(dt_venc, (int, float)):
+                                    dt_venc_date = (pd.Timestamp("1900-01-01") + pd.Timedelta(days=dt_venc - 2)).date()
+                                else:
+                                    dt_venc_date = pd.to_datetime(dt_venc).date()
+                            else:
+                                dt_venc_date = timezone.now().date()
+
+                            if pd.notna(dt_pgto):
+                                # Se for número, converter de serial Excel
+                                if isinstance(dt_pgto, (int, float)):
+                                    dt_pgto_date = (pd.Timestamp("1900-01-01") + pd.Timedelta(days=dt_pgto - 2)).date()
+                                else:
+                                    dt_pgto_date = pd.to_datetime(dt_pgto).date()
+                            else:
+                                dt_pgto_date = None
+
+                            # Converte valores
+                            vl_fatura_float = float(vl_fatura) if pd.notna(vl_fatura) else 0
+                            nr_dias_atraso_int = int(nr_dias_atraso) if pd.notna(nr_dias_atraso) else 0
                         
-                        valor_total += vl_fatura_float
-                        if len(os_nao_encontradas) < 20:
-                            os_nao_encontradas.append(f"{nr_ordem} (sem contrato)")
-                        continue
+                            # Preparar ImportacaoFPD sem contrato para bulk
+                            importacao_sem_contrato = ImportacaoFPD.objects.filter(
+                                nr_ordem=nr_ordem,
+                                nr_fatura=nr_fatura
+                            ).first()
+                            
+                            if importacao_sem_contrato:
+                                importacao_sem_contrato.id_contrato = id_contrato
+                                importacao_sem_contrato.dt_venc_orig = dt_venc_date
+                                importacao_sem_contrato.dt_pagamento = dt_pgto_date
+                                importacao_sem_contrato.nr_dias_atraso = nr_dias_atraso_int
+                                importacao_sem_contrato.ds_status_fatura = status_str
+                                importacao_sem_contrato.vl_fatura = vl_fatura_float
+                                importacao_sem_contrato.contrato_m10 = None
+                                importacoes_para_atualizar.append(importacao_sem_contrato)
+                                registros_nao_encontrados += 1
+                            else:
+                                importacoes_para_criar.append(ImportacaoFPD(
+                                    nr_ordem=nr_ordem,
+                                    nr_fatura=nr_fatura,
+                                    id_contrato=id_contrato,
+                                    dt_venc_orig=dt_venc_date,
+                                    dt_pagamento=dt_pgto_date,
+                                    nr_dias_atraso=nr_dias_atraso_int,
+                                    ds_status_fatura=status_str,
+                                    vl_fatura=vl_fatura_float,
+                                    contrato_m10=None
+                                ))
+                                registros_importacoes_fpd += 1
+                            
+                            valor_total += vl_fatura_float
+                            if len(os_nao_encontradas) < 20:
+                                os_nao_encontradas.append(f"{nr_ordem} (sem contrato)")
+                            continue
                         
                 except Exception as e:
                     erros_detalhados.append(f"Linha {idx+2}: {str(e)}")
