@@ -5099,11 +5099,51 @@ class ImportarFPDView(APIView):
             status='PROCESSANDO'
         )
         
+        # Ler arquivo em memória para passar para thread
+        arquivo_bytes = arquivo.read()
+        arquivo_nome = arquivo.name
+        user_id = request.user.id
+        
+        # Iniciar processamento em thread background
+        def processar_fpd_async():
+            self._processar_fpd_interno(log.id, arquivo_bytes, arquivo_nome, user_id)
+        
+        thread = threading.Thread(target=processar_fpd_async, daemon=True)
+        thread.start()
+        
+        # Retornar imediatamente ao cliente
+        return Response({
+            'success': True,
+            'log_id': log.id,
+            'message': 'Importação FPD iniciada! O processamento continuará em segundo plano. Atualize a página em alguns minutos para ver o resultado.',
+            'status': 'PROCESSANDO',
+            'background': True
+        })
+    
+    def _processar_fpd_interno(self, log_id, arquivo_bytes, arquivo_nome, user_id):
+        """Processa FPD em background thread"""
+        from .models import ImportacaoFPD, LogImportacaoFPD
+        from django.utils import timezone
+        from django.db import transaction
+        from io import BytesIO
+        
+        # Recuperar log e usuário
+        log = LogImportacaoFPD.objects.get(id=log_id)
+        User = get_user_model()
+        usuario = User.objects.get(id=user_id)
+        # Recuperar log e usuário
+        log = LogImportacaoFPD.objects.get(id=log_id)
+        User = get_user_model()
+        usuario = User.objects.get(id=user_id)
+        
         inicio = timezone.now()
         os_nao_encontradas = []
         erros_detalhados = []
 
         try:
+            # Criar objeto BytesIO do arquivo
+            arquivo_io = BytesIO(arquivo_bytes)
+            
             # Lê arquivo Excel/CSV
             # IMPORTANTE: Ler colunas numéricas como STRING para preservar leading zeros
             dtype_spec = {
@@ -5112,22 +5152,20 @@ class ImportarFPDView(APIView):
                 'NR_ORDEM': str,         # Força leitura como texto
             }
             
-            if arquivo.name.endswith('.csv'):
-                df = pd.read_csv(arquivo, dtype=dtype_spec)
-            elif arquivo.name.endswith('.xlsb'):
+            if arquivo_nome.endswith('.csv'):
+                df = pd.read_csv(arquivo_io, dtype=dtype_spec)
+            elif arquivo_nome.endswith('.xlsb'):
                 try:
-                    df = pd.read_excel(arquivo, engine='pyxlsb', dtype=dtype_spec)
+                    df = pd.read_excel(arquivo_io, engine='pyxlsb', dtype=dtype_spec)
                 except Exception as e:
                     log.status = 'ERRO'
                     log.mensagem_erro = f'Formato .xlsb não suportado: {str(e)}'
                     log.finalizado_em = timezone.now()
                     log.calcular_duracao()
                     log.save()
-                    return Response({
-                        'error': 'Formato .xlsb não suportado. Use .xlsx, .xls ou .csv'
-                    }, status=400)
+                    return
             else:
-                df = pd.read_excel(arquivo, dtype=dtype_spec)
+                df = pd.read_excel(arquivo_io, dtype=dtype_spec)
 
             # Normalizar nomes de colunas para minúsculas E remover espaços extras
             df.columns = df.columns.str.lower().str.strip().str.replace(' ', '_')
@@ -5427,26 +5465,14 @@ class ImportarFPDView(APIView):
             
             log.save()
 
-            return Response({
-                'success': True,
-                'log_id': log.id,
-                'message': f'Importação FPD concluída! {registros_atualizados} vinculados ao M10, {registros_nao_encontrados} importados sem vínculo.',
-                'vinculados': registros_atualizados,
-                'sem_vinculo': registros_nao_encontrados,
-                'total_importados': registros_atualizados + registros_nao_encontrados,
-                'importacoes_fpd': registros_importacoes_fpd,
-                'valor_total': str(valor_total),
-                'exemplos_nao_encontrados': os_nao_encontradas[:5],
-                'status_log': log.status,
-            })
-
+            # FIM DO PROCESSAMENTO - retorno já foi enviado antes via HTTP
+            
         except Exception as e:
             log.status = 'ERRO'
             log.mensagem_erro = str(e)
             log.finalizado_em = timezone.now()
             log.calcular_duracao()
             log.save()
-            return Response({'error': f'Erro ao processar arquivo: {str(e)}'}, status=500)
 
 
 class ImportarChurnView(APIView):

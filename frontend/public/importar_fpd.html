@@ -464,7 +464,15 @@
                 loadingOverlay.style.display = 'none';
 
                 if (response.ok) {
-                    mostrarResultado('success', data);
+                    // Verifica se é processamento em background
+                    if (data.background && data.status === 'PROCESSANDO') {
+                        mostrarResultado('info', {
+                            message: data.message || 'Importação iniciada! O processamento está rodando em segundo plano.',
+                            detalhes: 'A importação pode levar alguns minutos. Volte a esta página em breve para verificar o resultado final no painel M-10.'
+                        });
+                    } else {
+                        mostrarResultado('success', data);
+                    }
                 } else {
                     mostrarResultado('error', data);
                 }
@@ -484,9 +492,9 @@
                     <div class="alert alert-success alert-dismissible fade show" role="alert">
                         <h5 class="alert-heading"><i class="bi bi-check-circle"></i> Importação Concluída!</h5>
                         <p class="mb-0">
-                            <strong>${data.criados || 0}</strong> contratos criados |
-                            <strong>${data.atualizados || 0}</strong> atualizados |
-                            <strong>${data.faturas || 0}</strong> faturas processadas
+                            <strong>${data.criados || data.vinculados || 0}</strong> contratos vinculados |
+                            <strong>${data.atualizados || data.sem_vinculo || 0}</strong> sem vínculo |
+                            <strong>${data.faturas || data.total_importados || 0}</strong> registros processados
                         </p>
                         <hr>
                         <div class="d-flex gap-2 mt-3">
@@ -500,11 +508,29 @@
                         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     </div>
                 `;
+            } else if (tipo === 'info') {
+                resultado.innerHTML = `
+                    <div class="alert alert-info alert-dismissible fade show" role="alert">
+                        <h5 class="alert-heading"><i class="bi bi-clock-history"></i> Processamento em Andamento</h5>
+                        <p class="mb-0">${data.message || 'Importação iniciada com sucesso!'}</p>
+                        ${data.detalhes ? `<hr><p class="mb-0"><small>${data.detalhes}</small></p>` : ''}
+                        <hr>
+                        <div class="d-flex gap-2 mt-3">
+                            <a href="/bonus-m10/" class="btn btn-info">
+                                <i class="bi bi-bar-chart-fill"></i> Ir para Painel M-10
+                            </a>
+                            <button class="btn btn-outline-primary" onclick="location.reload()">
+                                <i class="bi bi-arrow-clockwise"></i> Atualizar Página
+                            </button>
+                        </div>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                `;
             } else {
                 resultado.innerHTML = `
                     <div class="alert alert-danger alert-dismissible fade show" role="alert">
                         <h5 class="alert-heading"><i class="bi bi-x-circle"></i> Erro na Importação</h5>
-                        <p class="mb-0">${data.erro || 'Erro desconhecido'}</p>
+                        <p class="mb-0">${data.erro || data.error || 'Erro desconhecido'}</p>
                         ${data.detalhes ? `<hr><small>${data.detalhes}</small>` : ''}
                         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     </div>
