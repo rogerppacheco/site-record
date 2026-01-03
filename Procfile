@@ -1,1 +1,1 @@
-web: gunicorn gestao_equipes.wsgi
+web: gunicorn gestao_equipes.wsgi --timeout 120 --max-requests 50 --max-requests-jitter 10
