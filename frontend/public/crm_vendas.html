@@ -576,10 +576,10 @@
         }
 
         // =========================================================================
-        // FUNÇÃO OTIMIZADA COM CONTADORES
+        // FUNÇÃO CARREGAR VENDAS (CORRIGIDA: Lógica de Status Fechado)
         // =========================================================================
-        async function carregarVendas() {
-            // Destruição segura
+        async function carregarVendas(silent = false) {
+            // Destruição segura do DataTable
             if ($.fn.DataTable.isDataTable('#tabela-vendas')) {
                 $('#tabela-vendas').DataTable().destroy();
             }
@@ -588,7 +588,7 @@
             tbody.innerHTML = '<tr><td colspan="11" class="text-center">Carregando...</td></tr>';
             $('#tabela-vendas thead tr.filters').remove();
 
-            // Parâmetros (SEM STATUS para trazer tudo)
+            // Parâmetros
             const inicio = document.getElementById('filtro-inicio').value;
             const fim = document.getElementById('filtro-fim').value;
             const vendedor = document.getElementById('filtro-vendedor').value;
@@ -599,82 +599,156 @@
             if(inicio) url += `&data_inicio=${inicio}`;
             if(fim) url += `&data_fim=${fim}`;
             if(busca) url += `&search=${busca}`; 
-            // REMOVIDO STATUS DA API PARA CARREGAR TUDO E FILTRAR NO CLIENTE
             if(viewAtual === 'geral' && vendedor) url += `&consultor_id=${vendedor}`;
 
             try {
-                let vendas = await apiFetch(url);
-                tbody.innerHTML = '';
+                // Carrega Vendas e Listas de Status
+                const [vendasRes, statusEsteiraRes, statusTratRes] = await Promise.all([
+                    apiFetch(url),
+                    apiFetch('/crm/status/?tipo=Esteira&page_size=1000'),
+                    apiFetch('/crm/status/?tipo=Tratamento&page_size=1000')
+                ]);
 
-                // Suporte a resposta paginada (DRF): vendas.results ou vendas
-                if (vendas && Array.isArray(vendas.results)) {
-                    vendas = vendas.results;
+                let vendas = [];
+                if (vendasRes) {
+                    vendas = Array.isArray(vendasRes) ? vendasRes : (vendasRes.results || []);
                 }
+
+                const listaStatusEsteira = Array.isArray(statusEsteiraRes) ? statusEsteiraRes : (statusEsteiraRes?.results || []);
+                const listaStatusTrat = Array.isArray(statusTratRes) ? statusTratRes : (statusTratRes?.results || []);
 
                 // === CÁLCULO DE CONTADORES ===
                 let counts = { total: 0, pendente: 0, agendado: 0, instalada: 0, cancelado: 0 };
-                if (vendas && vendas.length > 0) {
+                if (vendas.length > 0) {
                     counts.total = vendas.length;
                     vendas.forEach(v => {
-                        // Tenta pegar o nome do status do objeto ou string
-            			let stName = v.status_esteira ? v.status_esteira.nome : (v.status_esteira_nome || '');
-            			stName = (stName || '').toString().toUpperCase();
+                        let stNome = v.status_esteira_nome || '';
+                        if (!stNome && v.status_esteira) {
+                             const s = listaStatusEsteira.find(x => x.id == v.status_esteira || x.id == v.status_esteira.id);
+                             if(s) stNome = s.nome;
+                        }
+                        const stUpper = String(stNome).toUpperCase();
 
-                        if (stName.includes('INSTALADA')) counts.instalada++;
-                        else if (stName.includes('CANCELAD')) counts.cancelado++;
-                        else if (stName.includes('AGENDADO')) counts.agendado++;
-                        else if (stName.includes('PENDEN') || stName.includes('PENDÊN')) counts.pendente++;
+                        if (stUpper.includes('INSTALADA')) counts.instalada++;
+                        else if (stUpper.includes('CANCELAD')) counts.cancelado++;
+                        else if (stUpper.includes('AGENDADO')) counts.agendado++;
+                        else if (stUpper.includes('PENDEN') || stUpper.includes('PENDÊN')) counts.pendente++;
                     });
                 }
 
-                // Atualiza Badges na UI
+                // Atualiza Badges
                 document.getElementById('count-todos').textContent = `${counts.total}`;
                 document.getElementById('count-pendentes').textContent = `${counts.pendente}`;
                 document.getElementById('count-agendados').textContent = `${counts.agendado}`;
                 document.getElementById('count-instalados').textContent = `${counts.instalada}`;
                 document.getElementById('count-cancelados').textContent = `${counts.cancelado}`;
-                // ==============================
 
-                if (!vendas || vendas.length === 0) {
+                if (vendas.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted">Nenhuma venda encontrada.</td></tr>';
                     return;
                 }
 
                 const dadosFormatados = vendas.map(v => {
-                    // Badge Status Esteira
-                    let badgeClass = 'bg-secondary text-white';
-                    const statusNome = v.status_esteira ? v.status_esteira.nome : (v.status_esteira_nome || 'Aguardando');
-                    if (statusNome === 'INSTALADA' || statusNome === 'Instalada') badgeClass = 'bg-success text-white';
-                    else if (statusNome.toUpperCase().includes('CANCELADA')) badgeClass = 'bg-danger text-white';
-                    else if (statusNome.toUpperCase().includes('AGENDADO')) badgeClass = 'bg-info text-dark';
-                    else if (statusNome.toUpperCase().includes('PENDÊNCIA')) badgeClass = 'bg-warning text-dark';
-                    const badgeEsteira = `<span class="status-badge ${badgeClass}">${statusNome}</span>`;
-
-                    // Badge Status Tratamento
+                    // --- 1. RESOLUÇÃO STATUS TRATAMENTO E ESTADO (CRÍTICO) ---
                     let statusTratamentoNome = '-';
-                    let badgeTratamentoClass = 'bg-light text-muted border';
-                    if (v.status_tratamento) statusTratamentoNome = (typeof v.status_tratamento === 'object') ? v.status_tratamento.nome : (v.status_tratamento_nome || v.status_tratamento);
-                    else if (v.status_comissionamento) statusTratamentoNome = v.status_comissionamento;
+                    let statusTratamentoEstado = ''; // Vazio, Aberto ou Fechado
                     
-                    const stUpper = String(statusTratamentoNome).toUpperCase();
-                    if (stUpper.includes('APROVAD') || stUpper.includes('OK')) badgeTratamentoClass = 'bg-success text-white';
-                    else if (stUpper.includes('REPROVAD')) badgeTratamentoClass = 'bg-danger text-white';
-                    else if (stUpper.includes('PENDENTE')) badgeTratamentoClass = 'bg-warning text-dark';
-                    else if (stUpper.includes('AUDITADA')) badgeTratamentoClass = 'bg-primary text-white';
+                    // Tenta encontrar o objeto na lista completa para pegar o .estado
+                    let objTrat = null;
+
+                    // Busca por ID
+                    if (v.status_tratamento) {
+                        const idBusca = (typeof v.status_tratamento === 'object') ? v.status_tratamento.id : v.status_tratamento;
+                        objTrat = listaStatusTrat.find(s => s.id == idBusca);
+                    }
+                    
+                    // Se não achou por ID, tenta pelo Nome (caso o backend mande o nome)
+                    if (!objTrat && v.status_tratamento_nome) {
+                        objTrat = listaStatusTrat.find(s => s.nome.toUpperCase() === v.status_tratamento_nome.toUpperCase());
+                    }
+
+                    if (objTrat) {
+                        statusTratamentoNome = objTrat.nome;
+                        statusTratamentoEstado = objTrat.estado || ''; 
+                    } else {
+                        // Fallback se não achar na lista
+                        statusTratamentoNome = v.status_tratamento_nome || v.status_tratamento || v.status_comissionamento || '-';
+                    }
+
+                    // --- 2. RESOLUÇÃO STATUS ESTEIRA ---
+                    let statusNome = 'Aguardando';
+                    let badgeClass = 'bg-secondary text-white';
+                    
+                    // Tenta achar o nome da esteira
+                    if (v.status_esteira_nome) {
+                        statusNome = v.status_esteira_nome;
+                    } else if (v.status_esteira) {
+                        const idBusca = (typeof v.status_esteira === 'object') ? v.status_esteira.id : v.status_esteira;
+                        const sEncontrado = listaStatusEsteira.find(s => s.id == idBusca);
+                        if (sEncontrado) statusNome = sEncontrado.nome;
+                    }
+
+                    // --- 3. REGRA DE NEGÓCIO DA AUDITORIA (CORRIGIDA) ---
+                    const stTratUpper = String(statusTratamentoNome).toUpperCase();
+                    const estadoTratUpper = String(statusTratamentoEstado).toUpperCase();
+
+                    if (statusNome === 'Aguardando') {
+                        // REGRA MESTRA: Se o tratamento está FECHADO (Duplicidade, Cancelado, Reprovado Final), a esteira morre.
+                        if (estadoTratUpper === 'FECHADO') {
+                            statusNome = '-';
+                            badgeClass = 'bg-light text-muted border';
+                        } 
+                        // REGRA SECUNDÁRIA: Se Reprovado mas Aberto -> Pendência
+                        else if (stTratUpper.includes('REPROVAD')) {
+                            statusNome = 'Pendência Auditoria';
+                            badgeClass = 'bg-danger text-white';
+                        } 
+                        // REGRA TERCIÁRIA: Pendente
+                        else if (stTratUpper.includes('PENDENTE')) {
+                            statusNome = 'Em Análise';
+                            badgeClass = 'bg-warning text-dark';
+                        }
+                    }
+
+                    // --- 4. CORES DA ESTEIRA ---
+                    const statusNomeStr = String(statusNome);
+                    const stEsteiraUpper = statusNomeStr.toUpperCase();
+                    
+                    // Só aplica cores padrão se não foi alterado pela regra de auditoria (exceto se virou "-")
+                    if (statusNome !== '-' && statusNome !== 'Pendência Auditoria' && statusNome !== 'Em Análise') { 
+                        if (stEsteiraUpper === 'INSTALADA') badgeClass = 'bg-success text-white';
+                        else if (stEsteiraUpper.includes('CANCELADA')) badgeClass = 'bg-danger text-white';
+                        else if (stEsteiraUpper.includes('AGENDADO')) badgeClass = 'bg-info text-dark';
+                        else if (stEsteiraUpper.includes('PENDÊNCIA') || stEsteiraUpper.includes('PENDENCIA')) badgeClass = 'bg-warning text-dark';
+                    }
+                    
+                    const badgeEsteira = `<span class="status-badge ${badgeClass}">${statusNomeStr}</span>`;
+
+                    // Cores Tratamento
+                    let badgeTratamentoClass = 'bg-light text-muted border';
+                    if (stTratUpper.includes('APROVAD') || stTratUpper.includes('OK')) badgeTratamentoClass = 'bg-success text-white';
+                    else if (stTratUpper.includes('REPROVAD') || stTratUpper.includes('DUPLICIDADE')) badgeTratamentoClass = 'bg-danger text-white';
+                    else if (stTratUpper.includes('PENDENTE')) badgeTratamentoClass = 'bg-warning text-dark';
+                    else if (stTratUpper.includes('AUDITADA')) badgeTratamentoClass = 'bg-primary text-white';
                     const badgeTratamento = `<span class="status-badge ${badgeTratamentoClass}">${statusTratamentoNome}</span>`;
 
+                    // Demais dados
                     const dataFormatada = v.data_criacao ? new Date(v.data_criacao).toLocaleDateString('pt-BR') : '-';
                     const clienteNome = v.cliente ? (v.cliente.nome_razao_social || v.cliente.nome || v.cliente_nome) : (v.cliente_nome_razao_social || 'N/A');
                     const clienteDisplay = `<div class="fw-bold">${clienteNome}</div><div class="small text-muted">${v.cliente_cpf_cnpj || ''}</div>`;
                     
                     let nomeVendedor = 'N/A';
                     if (v.vendedor_nome) nomeVendedor = v.vendedor_nome;
-                    else if (v.vendedor && v.vendedor.username) nomeVendedor = v.vendedor.username;
-                    else if (v.vendedor && v.vendedor.first_name) nomeVendedor = v.vendedor.first_name;
-                    else if (typeof v.vendedor === 'string') nomeVendedor = v.vendedor;
+                    else if (v.vendedor) nomeVendedor = (v.vendedor.username || v.vendedor.first_name || v.vendedor);
 
-                    const planoNome = v.plano ? (v.plano.nome) : (v.plano_nome || 'N/A');
-                    const motivoPendencia = v.motivo_pendencia ? (v.motivo_pendencia.nome || v.motivo_pendencia) : '-';
+                    const planoNome = v.plano ? (v.plano.nome || v.plano_nome) : (v.plano_nome || 'N/A');
+                    
+                    let motivoPendencia = '-';
+                    if (v.motivo_pendencia_nome) motivoPendencia = v.motivo_pendencia_nome;
+                    else if (v.motivo_pendencia) {
+                         motivoPendencia = (typeof v.motivo_pendencia === 'object') ? v.motivo_pendencia.nome : v.motivo_pendencia;
+                    }
+
                     const osDisplay = v.ordem_servico ? `<span class="fw-bold text-dark">#${v.ordem_servico}</span>` : '<span class="text-muted">-</span>';
                     
                     let agendamentoDisplay = '<span class="text-muted">-</span>';
@@ -707,7 +781,6 @@
 
                 iniciarDataTable(dadosFormatados);
 
-                // Se houver um filtro de aba ativo, aplica imediatamente
                 if(statusEsteiraAtual) {
                     const table = $('#tabela-vendas').DataTable();
                     table.column(8).search(statusEsteiraAtual, true, false).draw();
@@ -1255,4 +1328,3 @@
     </script>
 </body>
 </html>
-
