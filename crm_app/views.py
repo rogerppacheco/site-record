@@ -248,9 +248,6 @@ class VendaViewSet(viewsets.ModelViewSet):
             'vendedor', 'cliente', 'plano', 'forma_pagamento',
             'status_tratamento', 'status_esteira', 'status_comissionamento',
             'motivo_pendencia', 'auditor_atual'
-        ).defer(
-            # Defer campos grandes que raramente são usados na listagem
-            'observacoes', 'complemento', 'ponto_referencia'
         ).prefetch_related('historico_alteracoes__usuario').order_by('-data_criacao')
         
         user = self.request.user
