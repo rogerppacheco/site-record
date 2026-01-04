@@ -405,7 +405,14 @@
                 });
 
                 atualizarProgresso(70, 'Processando em segundo plano...');
-                const data = await response.json();
+                
+                // Verificar se a resposta é JSON válido
+                let data;
+                try {
+                    data = await response.json();
+                } catch (parseError) {
+                    throw new Error('Servidor retornou resposta inválida. Tente novamente ou contate o administrador.');
+                }
 
                 if (response.ok) {
                     atualizarProgresso(100, 'Importação iniciada!');
