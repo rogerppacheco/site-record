@@ -1112,17 +1112,79 @@
             } 
         }
 
-        async function carregarAuxiliares() { try { const [planos, formas, statusEst, statusTrat] = await Promise.all([apiFetch('/crm/planos/'), apiFetch('/crm/formas-pagamento/'), apiFetch('/crm/status/?tipo=Esteira'), apiFetch('/crm/status/?tipo=Tratamento')]); const selPlano = document.getElementById('select-plano'); selPlano.innerHTML = '<option value="">Selecione...</option>'; if(planos) planos.forEach(p => selPlano.innerHTML += `<option value="${p.id}">${p.nome} - R$${p.valor}</option>`); const selPag = document.getElementById('select-pagamento'); selPag.innerHTML = '<option value="">Selecione...</option>'; if(formas) formas.forEach(f => selPag.innerHTML += `<option value="${f.id}">${f.nome}</option>`); const selEst = document.getElementById('select-status-esteira'); selEst.innerHTML = '<option value="">Selecione...</option>'; if(statusEst) statusEst.forEach(s => selEst.innerHTML += `<option value="${s.id}">${s.nome}</option>`); const selTrat = document.getElementById('select-status-tratamento'); selTrat.innerHTML = '<option value="">Selecione...</option>'; if(statusTrat) statusTrat.forEach(s => selTrat.innerHTML += `<option value="${s.id}">${s.nome}</option>`); } catch(e) {} }
+        async function carregarAuxiliares() {
+            console.log('[DEBUG carregarAuxiliares] Iniciando carregamento dos selects...');
+            try {
+                const [planos, formas, statusEst, statusTrat] = await Promise.all([
+                    apiFetch('/crm/planos/?page_size=1000'),
+                    apiFetch('/crm/formas-pagamento/?page_size=1000'),
+                    apiFetch('/crm/status/?tipo=Esteira&page_size=1000'),
+                    apiFetch('/crm/status/?tipo=Tratamento&page_size=1000')
+                ]);
+                console.log('[DEBUG carregarAuxiliares] Planos:', planos);
+                console.log('[DEBUG carregarAuxiliares] Formas de Pagamento:', formas);
+                console.log('[DEBUG carregarAuxiliares] Status Esteira:', statusEst);
+                console.log('[DEBUG carregarAuxiliares] Status Tratamento:', statusTrat);
+
+                const planosArr = planos?.results || planos;
+                const formasArr = formas?.results || formas;
+                const statusEstArr = statusEst?.results || statusEst;
+                const statusTratArr = statusTrat?.results || statusTrat;
+
+                const selPlano = document.getElementById('select-plano');
+                selPlano.innerHTML = '<option value="">Selecione...</option>';
+                if(planosArr && Array.isArray(planosArr)) planosArr.forEach(p => selPlano.innerHTML += `<option value="${p.id}">${p.nome} - R$${p.valor}</option>`);
+                console.log('[DEBUG carregarAuxiliares] select-plano options:', selPlano.innerHTML);
+
+                const selPag = document.getElementById('select-pagamento');
+                selPag.innerHTML = '<option value="">Selecione...</option>';
+                if(formasArr && Array.isArray(formasArr)) formasArr.forEach(f => selPag.innerHTML += `<option value="${f.id}">${f.nome}</option>`);
+                console.log('[DEBUG carregarAuxiliares] select-pagamento options:', selPag.innerHTML);
+
+                const selEst = document.getElementById('select-status-esteira');
+                selEst.innerHTML = '<option value="">Selecione...</option>';
+                if(statusEstArr && Array.isArray(statusEstArr)) statusEstArr.forEach(s => selEst.innerHTML += `<option value="${s.id}">${s.nome}</option>`);
+                console.log('[DEBUG carregarAuxiliares] select-status-esteira options:', selEst.innerHTML);
+
+                const selTrat = document.getElementById('select-status-tratamento');
+                selTrat.innerHTML = '<option value="">Selecione...</option>';
+                if(statusTratArr && Array.isArray(statusTratArr)) statusTratArr.forEach(s => selTrat.innerHTML += `<option value="${s.id}">${s.nome}</option>`);
+                console.log('[DEBUG carregarAuxiliares] select-status-tratamento options:', selTrat.innerHTML);
+            } catch(e) {
+                console.error('[ERRO carregarAuxiliares]', e);
+            }
+        }
 
         async function editarVenda(id) {
             try {
+                await carregarAuxiliares();
                 const venda = await apiFetch(`/crm/vendas/${id}/`);
+                console.log('[DEBUG editarVenda] venda:', venda);
                 document.getElementById('titulo-modal-venda').textContent = `Editar Venda #${id}`;
                 document.getElementById('id-venda-edicao').value = id;
-                document.getElementById('input-forma-entrada').value = venda.forma_entrada || '';
-                
-                selecionarOrigem('SEM_APP'); 
-                
+                document.getElementById('input-forma-entrada').value = venda.forma_entrada || 'SEM_APP';
+
+
+                // Exibe todos os campos apenas dentro do modal de edição, sem afetar abas globais
+                const modal = document.getElementById('modal-nova-venda');
+                if (modal) {
+                    const dadosVenda = modal.querySelector('form h6:nth-of-type(2)').nextElementSibling;
+                    const endereco = modal.querySelector('form h6:nth-of-type(3)').nextElementSibling;
+                    const h6Dados = modal.querySelector('form h6:nth-of-type(2)');
+                    const h6Endereco = modal.querySelector('form h6:nth-of-type(3)');
+                    if (dadosVenda) dadosVenda.style.display = 'flex';
+                    if (endereco) endereco.style.display = 'flex';
+                    if (h6Dados) h6Dados.style.display = 'block';
+                    if (h6Endereco) h6Endereco.style.display = 'block';
+                    const divNomeMae = modal.querySelector('#div-nome-mae');
+                    const divDataNasc = modal.querySelector('#div-data-nascimento');
+                    const divEmail = modal.querySelector('#div-email');
+                    if(divNomeMae) divNomeMae.style.display = 'block';
+                    if(divDataNasc) divDataNasc.style.display = 'block';
+                    if(divEmail) divEmail.style.display = 'block';
+                }
+
+                // Preenche campos
                 document.getElementById('input-cpf').value = venda.cliente_cpf_cnpj || '';
                 document.getElementById('input-nome').value = venda.cliente_nome_razao_social || '';
                 document.getElementById('input-email').value = venda.cliente_email || '';
@@ -1133,11 +1195,32 @@
                 verificarRegraCNPJ(venda.cliente_cpf_cnpj);
                 document.getElementById('input-cpf-rep').value = venda.cpf_representante_legal || '';
                 document.getElementById('input-nome-rep').value = venda.nome_representante_legal || '';
-                
-                document.getElementById('select-plano').value = venda.plano?.id || venda.plano || '';
-                document.getElementById('select-pagamento').value = venda.forma_pagamento?.id || venda.forma_pagamento || '';
-                
-                document.getElementById('input-observacoes').value = venda.observacoes || '';
+
+
+                // Preenche selects somente após as opções estarem disponíveis
+                function preencherSelectQuandoPronto(selectId, valor) {
+                    const tentativasMax = 20;
+                    let tentativas = 0;
+                    function tentar() {
+                        const select = document.getElementById(selectId);
+                        if (select && select.options.length > 1) {
+                            select.value = valor || '';
+                        } else if (tentativas < tentativasMax) {
+                            tentativas++;
+                            setTimeout(tentar, 50);
+                        }
+                    }
+                    tentar();
+                }
+                preencherSelectQuandoPronto('select-plano', venda.plano?.id || venda.plano || '');
+                preencherSelectQuandoPronto('select-pagamento', venda.forma_pagamento?.id || venda.forma_pagamento || '');
+                preencherSelectQuandoPronto('select-status-esteira', venda.status_esteira?.id || venda.status_esteira || '');
+                preencherSelectQuandoPronto('select-status-tratamento', venda.status_tratamento?.id || venda.status_tratamento || '');
+                preencherSelectQuandoPronto('select-vendedor-modal', venda.vendedor?.id || venda.vendedor || '');
+
+                let obs = venda.observacoes;
+                if (obs === undefined || obs === null || obs === 'NONE' || obs === 'None') obs = '';
+                document.getElementById('input-observacoes').value = obs;
                 document.getElementById('nova-cep').value = venda.cep || '';
                 document.getElementById('nova-logradouro').value = venda.logradouro || '';
                 document.getElementById('nova-numero').value = venda.numero_residencia || '';
@@ -1147,20 +1230,23 @@
                 document.getElementById('nova-estado').value = venda.estado || '';
                 document.getElementById('nova-referencia').value = venda.ponto_referencia || '';
 
+                // Remove d-none dos containers de status/vendedor se perfil permitir
                 const areaStatus = document.getElementById('container-status-esteira');
                 const areaVendedor = document.getElementById('container-vendedor-modal');
                 const areaTrat = document.getElementById('container-status-gestao');
-
                 if(['Admin', 'Diretoria', 'BackOffice'].includes(userProfile)) {
                     areaStatus.classList.remove('d-none');
                     areaVendedor.classList.remove('d-none'); 
                     areaTrat.classList.remove('d-none');
-                    document.getElementById('select-status-esteira').value = venda.status_esteira || '';
-                    document.getElementById('select-status-tratamento').value = venda.status_tratamento || '';
-                    document.getElementById('select-vendedor-modal').value = venda.vendedor || ''; 
                 } else {
                     areaStatus.classList.add('d-none'); areaVendedor.classList.add('d-none'); areaTrat.classList.add('d-none');
                 }
+
+                // Adiciona debug simples nos selects
+                document.getElementById('select-plano').addEventListener('click', function() { console.log('[DEBUG SELECT] Plano:', this.value); });
+                document.getElementById('select-pagamento').addEventListener('click', function() { console.log('[DEBUG SELECT] Forma de Pagamento:', this.value); });
+                document.getElementById('select-status-esteira').addEventListener('click', function() { console.log('[DEBUG SELECT] Status Esteira:', this.value); });
+                document.getElementById('select-status-tratamento').addEventListener('click', function() { console.log('[DEBUG SELECT] Status Tratamento:', this.value); });
                 
                 document.getElementById('feedback-whatsapp').innerHTML = '';
                 document.getElementById('input-telefone').classList.remove('is-valid', 'is-invalid');
@@ -1168,6 +1254,18 @@
                 
                 alternarBloqueioCampos(false); 
                 
+                // Garante que todos os campos obrigatórios fiquem visíveis ao editar
+                document.querySelector('form h6:nth-of-type(2)').nextElementSibling.style.display = 'flex'; // Dados da Venda
+                document.querySelector('form h6:nth-of-type(3)').nextElementSibling.style.display = 'flex'; // Endereço
+                document.querySelector('form h6:nth-of-type(2)').style.display = 'block';
+                document.querySelector('form h6:nth-of-type(3)').style.display = 'block';
+                // Campos opcionais
+                const divNomeMae = document.getElementById('div-nome-mae');
+                const divDataNasc = document.getElementById('div-data-nascimento');
+                const divEmail = document.getElementById('div-email');
+                if(divNomeMae) divNomeMae.style.display = 'block';
+                if(divDataNasc) divDataNasc.style.display = 'block';
+                if(divEmail) divEmail.style.display = 'block';
                 modalNovaVenda.show();
             } catch (e) { console.error(e); alert("Erro ao carregar dados para edição."); }
         }
