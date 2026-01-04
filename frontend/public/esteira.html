@@ -266,10 +266,14 @@
         function getVal(id) { const el = document.getElementById(id); if (!el) return null; return el.value === "" ? null : el.value; }
         function setVal(id, valor) { const el = document.getElementById(id); if (el) el.value = (valor !== null && valor !== undefined) ? valor : ''; }
 
+
         async function apiFetch(endpoint, options = {}) {
-            const headers = { 'Content-Type': 'application/json', ...options.headers };
             const token = localStorage.getItem('accessToken');
-            if (token) headers['Authorization'] = `Bearer ${token}`;
+            const headers = {
+                'Content-Type': 'application/json',
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+            };
+
             try {
                 const response = await fetch(`${apiUrl}/api${endpoint}`, { ...options, headers });
                 if (response.status === 401) { logout(); return null; }
@@ -730,6 +734,7 @@
             }
             try { await apiFetch(`/crm/vendas/${id}/`, { method: 'PATCH', body: JSON.stringify(body) }); modalEditar.hide(); carregarVendas(true); alert('Salvo!'); } catch(e){ alert('Erro ao salvar.'); }
         }
+
 
         function logout() { localStorage.removeItem('accessToken'); window.location.href = '/'; }
     </script>

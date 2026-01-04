@@ -267,35 +267,6 @@ class ImportacaoOsab(models.Model):
         verbose_name = "Importação OSAB"
         verbose_name_plural = "Importações OSAB"
 
-class ImportacaoChurn(models.Model):
-    uf = models.CharField(max_length=2, null=True, blank=True)
-    produto = models.CharField(max_length=255, null=True, blank=True)
-    matricula_vendedor = models.CharField(max_length=50, null=True, blank=True, verbose_name="Matrícula do Vendedor")
-    gv = models.CharField(max_length=255, null=True, blank=True)
-    sap_principal_fim = models.CharField(max_length=255, null=True, blank=True)
-    gestao = models.CharField(max_length=255, null=True, blank=True)
-    st_regional = models.CharField(max_length=255, null=True, blank=True)
-    gc = models.CharField(max_length=255, null=True, blank=True)
-    numero_pedido = models.CharField(max_length=50, null=True, blank=True, unique=True, verbose_name="Número do Pedido")
-    dt_gross = models.DateField(null=True, blank=True, verbose_name="Data Gross")
-    anomes_gross = models.CharField(max_length=6, null=True, blank=True, verbose_name="Ano/Mês Gross")
-    dt_retirada = models.DateField(null=True, blank=True, verbose_name="Data Retirada")
-    anomes_retirada = models.CharField(max_length=6, null=True, blank=True, verbose_name="Ano/Mês Retirada")
-    grupo_unidade = models.CharField(max_length=255, null=True, blank=True)
-    codigo_sap = models.CharField(max_length=50, null=True, blank=True)
-    municipio = models.CharField(max_length=255, null=True, blank=True)
-    tipo_retirada = models.CharField(max_length=255, null=True, blank=True)
-    motivo_retirada = models.CharField(max_length=255, null=True, blank=True)
-    submotivo_retirada = models.CharField(max_length=255, null=True, blank=True)
-    classificacao = models.CharField(max_length=255, null=True, blank=True)
-    desc_apelido = models.CharField(max_length=255, null=True, blank=True)
-
-    def __str__(self):
-        return f"Importação Churn - Pedido {self.numero_pedido}"
-    class Meta:
-        db_table = 'crm_importacao_churn'
-        verbose_name = "Importação Churn"
-        verbose_name_plural = "Importações Churn"
 
 class CicloPagamento(models.Model):
     ano = models.IntegerField(null=True, blank=True)
