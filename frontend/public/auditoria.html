@@ -428,12 +428,19 @@
                 const [statusRes, planosRes, pagRes] = await Promise.all([
                     apiClient.get(`${API_AUX}/status/?tipo=Tratamento`), apiClient.get(`${API_AUX}/planos/`), apiClient.get(`${API_AUX}/formas-pagamento/`)
                 ]);
-                globalStatusOptions = statusRes.data; planosOptions = planosRes.data; formasPagamentoOptions = pagRes.data;
-                const selPlano = $('#audit-plano'); const selPag = $('#audit-pagamento');
-                selPlano.empty().append('<option value="">Selecione...</option>'); selPag.empty().append('<option value="">Selecione...</option>');
+                globalStatusOptions = statusRes.data;
+                // Garante que planosOptions seja sempre array
+                planosOptions = Array.isArray(planosRes.data) ? planosRes.data : (Array.isArray(planosRes.data.results) ? planosRes.data.results : []);
+                formasPagamentoOptions = Array.isArray(pagRes.data) ? pagRes.data : (Array.isArray(pagRes.data.results) ? pagRes.data.results : []);
+                const selPlano = $('#audit-plano');
+                const selPag = $('#audit-pagamento');
+                selPlano.empty().append('<option value="">Selecione...</option>');
+                selPag.empty().append('<option value="">Selecione...</option>');
                 planosOptions.forEach(p => selPlano.append(`<option value="${p.id}">${p.nome}</option>`));
                 formasPagamentoOptions.forEach(f => selPag.append(`<option value="${f.id}">${f.nome}</option>`));
-            } catch(e) { console.error("Erro auxiliares", e); }
+            } catch(e) {
+                console.error("Erro auxiliares", e);
+            }
         }
 
         function atualizarTextoPlano() {
