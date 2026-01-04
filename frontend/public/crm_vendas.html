@@ -603,8 +603,13 @@
             if(viewAtual === 'geral' && vendedor) url += `&consultor_id=${vendedor}`;
 
             try {
-                const vendas = await apiFetch(url);
+                let vendas = await apiFetch(url);
                 tbody.innerHTML = '';
+
+                // Suporte a resposta paginada (DRF): vendas.results ou vendas
+                if (vendas && Array.isArray(vendas.results)) {
+                    vendas = vendas.results;
+                }
 
                 // === CÁLCULO DE CONTADORES ===
                 let counts = { total: 0, pendente: 0, agendado: 0, instalada: 0, cancelado: 0 };
@@ -621,7 +626,7 @@
                         else if (stName.includes('PENDEN') || stName.includes('PENDÊN')) counts.pendente++;
                     });
                 }
-                
+
                 // Atualiza Badges na UI
                 document.getElementById('count-todos').textContent = `${counts.total}`;
                 document.getElementById('count-pendentes').textContent = `${counts.pendente}`;

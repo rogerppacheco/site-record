@@ -173,22 +173,69 @@ class HistoricoAlteracaoVendaSerializer(serializers.ModelSerializer):
 # --- SERIALIZERS DE VENDA ---
 
 class VendaSerializer(serializers.ModelSerializer):
-    # Campos aninhados (Objetos)
-    cliente = ClienteSerializer(read_only=True)
-    vendedor_detalhes = UsuarioSerializer(source='vendedor', read_only=True)
-    
+    """
+    Serializer otimizado para LISTAGEM (evita N+1 queries)
+    Carrega APENAS campos achatados, sem serializers aninhados complexos
+    """
     # Campos Achatados (Legacy Support para outras telas)
     cliente_nome_razao_social = serializers.CharField(source='cliente.nome_razao_social', read_only=True)
     cliente_cpf_cnpj = serializers.CharField(source='cliente.cpf_cnpj', read_only=True)
     cliente_email = serializers.CharField(source='cliente.email', read_only=True)
     vendedor_nome = serializers.ReadOnlyField(source='vendedor.username')
     
-    # NOVOS CAMPOS PARA AUDITORIA
-    nome_editor = serializers.ReadOnlyField(source='editado_por.username')
+    # Status como SimpleFields (sem serializers aninhados)
+    status_tratamento_nome = serializers.CharField(source='status_tratamento.nome', read_only=True)
+    status_esteira_nome = serializers.CharField(source='status_esteira.nome', read_only=True)
+    status_comissionamento_nome = serializers.CharField(source='status_comissionamento.nome', read_only=True)
+    
+    plano_nome = serializers.CharField(source='plano.nome', read_only=True)
+    forma_pagamento_nome = serializers.CharField(source='forma_pagamento.nome', read_only=True)
+    motivo_pendencia_nome = serializers.CharField(source='motivo_pendencia.nome', read_only=True, allow_null=True)
+    
+    # Auditoria
+    nome_editor = serializers.SerializerMethodField()
+    auditor_atual_nome = serializers.SerializerMethodField()
+    auditor_atual_id = serializers.SerializerMethodField()
     
     # Campos de Escrita
     cliente_id = serializers.PrimaryKeyRelatedField(queryset=Cliente.objects.all(), source='cliente', write_only=False)
+
+    class Meta:
+        model = Venda
+        fields = [
+            'id', 'vendedor', 'vendedor_nome', 'cliente_id',
+            'cliente_nome_razao_social', 'cliente_cpf_cnpj', 'cliente_email',
+            'plano_nome', 'forma_pagamento_nome',
+            'status_tratamento', 'status_tratamento_nome',
+            'status_esteira', 'status_esteira_nome',
+            'status_comissionamento', 'status_comissionamento_nome',
+            'motivo_pendencia', 'motivo_pendencia_nome',
+            'data_criacao', 'forma_entrada', 'cpf_representante_legal', 'nome_representante_legal',
+            'nome_mae', 'data_nascimento', 'telefone1', 'telefone2', 'cep', 'logradouro', 'numero_residencia',
+            'complemento', 'bairro', 'cidade', 'estado', 'data_abertura', 'ordem_servico', 'data_agendamento',
+            'periodo_agendamento', 'data_instalacao', 'antecipou_instalacao',
+            'ponto_referencia', 'observacoes', 'data_pagamento', 'valor_pago',
+            'auditor_atual', 'auditor_atual_nome', 'auditor_atual_id',
+            'nome_editor', 'data_ultima_alteracao'
+        ]
+
+    def get_auditor_atual_nome(self, obj):
+        return obj.auditor_atual.get_full_name() or obj.auditor_atual.username if obj.auditor_atual else None
     
+    def get_auditor_atual_id(self, obj):
+        return obj.auditor_atual.id if obj.auditor_atual else None
+    
+    def get_nome_editor(self, obj):
+        return obj.editado_por.username if obj.editado_por else None
+
+class VendaDetailSerializer(serializers.ModelSerializer):
+    """
+    Serializer COMPLETO para visualizar detalhes (retrieve/PUT)
+    Carrega serializers aninhados completos
+    """
+    # Objetos completos (apenas em detail view, não em list)
+    cliente = ClienteSerializer(read_only=True)
+    vendedor_detalhes = UsuarioSerializer(source='vendedor', read_only=True)
     plano = PlanoSerializer(read_only=True)
     forma_pagamento = FormaPagamentoSerializer(read_only=True)
     status_tratamento = StatusCRMSerializer(read_only=True)
@@ -196,61 +243,27 @@ class VendaSerializer(serializers.ModelSerializer):
     status_comissionamento = StatusCRMSerializer(read_only=True)
     motivo_pendencia = MotivoPendenciaSerializer(read_only=True)
     
-    status_final = serializers.SerializerMethodField()
-    historico_alteracoes = HistoricoAlteracaoVendaSerializer(many=True, read_only=True)
-    alterado_por = serializers.SerializerMethodField()
-    auditor_atual_nome = serializers.SerializerMethodField()
-    auditor_atual_id = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Venda
-        fields = [
-            'id', 'vendedor', 'vendedor_nome', 'vendedor_detalhes', 
-            'cliente', 'cliente_id', 
-            'cliente_nome_razao_social', 'cliente_cpf_cnpj', 'cliente_email',
-            'plano', 'forma_pagamento', 'status_tratamento', 'status_esteira', 'status_comissionamento',
-            'status_final', 'data_criacao', 'forma_entrada', 'cpf_representante_legal', 'nome_representante_legal',
-            'nome_mae', 'data_nascimento', 'telefone1', 'telefone2', 'cep', 'logradouro', 'numero_residencia',
-            'complemento', 'bairro', 'cidade', 'estado', 'data_abertura', 'ordem_servico', 'data_agendamento',
-            'periodo_agendamento', 'data_instalacao', 'antecipou_instalacao', 'motivo_pendencia',
-            'ponto_referencia', 'observacoes', 'historico_alteracoes', 'data_pagamento', 'valor_pago', 'alterado_por',
-            'auditor_atual', 'auditor_atual_nome', 'auditor_atual_id',
-            'nome_editor', 'data_ultima_alteracao'
-        ]
-
-    def get_auditor_atual_nome(self, obj):
-        return obj.auditor_atual.get_full_name() or obj.auditor_atual.username if obj.auditor_atual else None
-    def get_auditor_atual_id(self, obj):
-        return obj.auditor_atual.id if obj.auditor_atual else None
-    def get_status_final(self, obj):
-        if obj.status_comissionamento: return obj.status_comissionamento.nome
-        if obj.status_esteira: return obj.status_esteira.nome
-        if obj.status_tratamento: return obj.status_tratamento.nome
-        return "N/A"
-    def get_alterado_por(self, obj):
-        h = obj.historico_alteracoes.order_by('-data_alteracao').first()
-        return h.usuario.username if h and h.usuario else (obj.vendedor.username if obj.vendedor else "Sistema")
-
-class VendaDetailSerializer(serializers.ModelSerializer):
-    # Objeto completo para garantir edição
-    cliente = ClienteSerializer(read_only=True)
-    
-    # Campos achatados para compatibilidade
+    # Campos Achatados para compatibilidade
     cliente_cpf_cnpj = serializers.CharField(source='cliente.cpf_cnpj', read_only=True)
     cliente_nome_razao_social = serializers.CharField(source='cliente.nome_razao_social')
     cliente_email = serializers.CharField(source='cliente.email', read_only=True)
+    
+    # Histórico (apenas em detail, NÃO em list)
+    historico_alteracoes = HistoricoAlteracaoVendaSerializer(many=True, read_only=True)
 
     class Meta:
         model = Venda
         fields = [
-            'id', 'vendedor', 'cliente', 'plano', 'forma_pagamento',
-            'status_tratamento', 'status_esteira', 'status_comissionamento', 'motivo_pendencia',
+            'id', 'vendedor', 'vendedor_detalhes', 'cliente', 
             'cliente_cpf_cnpj', 'cliente_nome_razao_social', 'cliente_email',
+            'plano', 'forma_pagamento', 'status_tratamento', 'status_esteira', 
+            'status_comissionamento', 'motivo_pendencia',
             'nome_mae', 'data_nascimento', 'telefone1', 'telefone2',
             'cep', 'logradouro', 'numero_residencia', 'complemento', 'bairro', 'cidade', 'estado',
             'ponto_referencia', 'observacoes', 'ordem_servico', 'data_abertura',
             'data_agendamento', 'periodo_agendamento', 'data_instalacao', 'antecipou_instalacao',
-            'data_pagamento', 'valor_pago', 'cpf_representante_legal', 'nome_representante_legal', 'forma_entrada'
+            'data_pagamento', 'valor_pago', 'cpf_representante_legal', 'nome_representante_legal', 
+            'forma_entrada', 'historico_alteracoes', 'data_criacao', 'data_ultima_alteracao'
         ]
 
 class VendaCreateSerializer(serializers.ModelSerializer):
