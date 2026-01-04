@@ -70,6 +70,8 @@ def drop_indexes_postgresql(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
+    # CRÍTICO: Desabilitar transação atômica para CREATE INDEX CONCURRENTLY
+    atomic = False
 
     dependencies = [
         ('crm_app', '0065_alter_importacaoosab_documento_and_more'),
