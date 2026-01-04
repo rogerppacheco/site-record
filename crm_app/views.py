@@ -1759,6 +1759,21 @@ class ImportacaoOsabView(APIView):
             except Exception as e:
                 print(f"Erro envio background thread: {e}")
 
+    def _sincronizar_seq_historico(self):
+        """Garante que a sequence do histórico não esteja atrasada (evita PK duplicada)."""
+        try:
+            from django.db import connection
+            from django.db.models import Max
+
+            max_id = HistoricoAlteracaoVenda.objects.aggregate(max_id=Max('id')).get('max_id') or 0
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT setval(pg_get_serial_sequence(%s, 'id'), %s, true);",
+                    ['crm_historico_alteracao_venda', max_id]
+                )
+        except Exception as e:
+            print(f"Aviso: não foi possível sincronizar sequence do histórico: {e}")
+
     def post(self, request, *args, **kwargs):
         file_obj = request.FILES.get('file')
         if not file_obj: return Response({'error': 'Nenhum arquivo enviado.'}, status=400)
@@ -2143,6 +2158,7 @@ class ImportacaoOsabView(APIView):
                     campos_venda = ['status_esteira', 'status_tratamento', 'data_instalacao', 'data_agendamento', 'forma_pagamento', 'motivo_pendencia', 'data_abertura']
                     Venda.objects.bulk_update(vendas_atualizar, campos_venda, batch_size=2000)
                 if historicos_criar:
+                    self._sincronizar_seq_historico()
                     HistoricoAlteracaoVenda.objects.bulk_create(historicos_criar, batch_size=2000)
 
             report["atualizados"] = len(vendas_atualizar)
@@ -2520,7 +2536,12 @@ class ImportarDFVView(APIView):
         
         try:
             # Lê o CSV (delimitador ; conforme seu arquivo)
-            df = pd.read_csv(file_obj, sep=';', dtype=str, encoding='utf-8') 
+            try:
+                df = pd.read_csv(file_obj, sep=';', dtype=str, encoding='utf-8')
+            except UnicodeDecodeError:
+                file_obj.seek(0)
+                df = pd.read_csv(file_obj, sep=';', dtype=str, encoding='latin-1')
+
             df = df.replace({np.nan: None})
             
             # Normaliza nomes de colunas (remove espaços e poe maiusculo)
