@@ -2536,37 +2536,42 @@ class ImportarDFVView(APIView):
         if not file_obj:
             return Response({'error': 'Arquivo CSV não enviado.'}, status=400)
         
-        from .models import LogImportacaoDFV
-        from django.utils import timezone
-        import threading
-        
-        # Criar log de importação
-        log = LogImportacaoDFV.objects.create(
-            nome_arquivo=file_obj.name,
-            usuario=request.user,
-            status='PROCESSANDO'
-        )
-        
-        # Ler arquivo em memória para passar para thread
-        arquivo_bytes = file_obj.read()
-        arquivo_nome = file_obj.name
-        user_id = request.user.id
-        
-        # Iniciar processamento em thread background
-        def processar_dfv_async():
-            self._processar_dfv_interno(log.id, arquivo_bytes, arquivo_nome, user_id)
-        
-        thread = threading.Thread(target=processar_dfv_async, daemon=True)
-        thread.start()
-        
-        # Retornar imediatamente ao cliente
-        return Response({
-            'success': True,
-            'log_id': log.id,
-            'message': 'Importação DFV iniciada! O processamento continuará em segundo plano.',
-            'status': 'PROCESSANDO',
-            'background': True
-        })
+        try:
+            from .models import LogImportacaoDFV
+            from django.utils import timezone
+            import threading
+            
+            # Criar log de importação
+            log = LogImportacaoDFV.objects.create(
+                nome_arquivo=file_obj.name,
+                usuario=request.user,
+                status='PROCESSANDO'
+            )
+            
+            # Ler arquivo em memória para passar para thread
+            arquivo_bytes = file_obj.read()
+            arquivo_nome = file_obj.name
+            user_id = request.user.id
+            
+            # Iniciar processamento em thread background
+            def processar_dfv_async():
+                self._processar_dfv_interno(log.id, arquivo_bytes, arquivo_nome, user_id)
+            
+            thread = threading.Thread(target=processar_dfv_async, daemon=True)
+            thread.start()
+            
+            # Retornar imediatamente ao cliente
+            return Response({
+                'success': True,
+                'log_id': log.id,
+                'message': 'Importação DFV iniciada! O processamento continuará em segundo plano.',
+                'status': 'PROCESSANDO',
+                'background': True
+            })
+        except Exception as e:
+            return Response({
+                'error': f'Erro ao iniciar importação: {str(e)}'
+            }, status=500)
     
     def _processar_dfv_interno(self, log_id, arquivo_bytes, arquivo_nome, user_id):
         """Processa DFV em background thread"""
