@@ -92,18 +92,18 @@ class Cliente(models.Model):
 
 class Venda(models.Model):
     ativo = models.BooleanField(default=True, verbose_name="Venda Ativa")
-    vendedor = models.ForeignKey(Usuario, on_delete=models.SET_NULL, null=True, related_name='vendas')
+    vendedor = models.ForeignKey(Usuario, on_delete=models.SET_NULL, null=True, related_name='vendas', db_index=True)
     cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name='vendas')
     
     plano = models.ForeignKey(Plano, on_delete=models.PROTECT, null=True, blank=True)
     forma_pagamento = models.ForeignKey(FormaPagamento, on_delete=models.PROTECT, null=True, blank=True)
 
-    status_tratamento = models.ForeignKey(StatusCRM, on_delete=models.SET_NULL, null=True, blank=True, related_name='vendas_tratamento', limit_choices_to={'tipo': 'Tratamento'})
-    status_esteira = models.ForeignKey(StatusCRM, on_delete=models.SET_NULL, null=True, blank=True, related_name='vendas_esteira', limit_choices_to={'tipo': 'Esteira'})
+    status_tratamento = models.ForeignKey(StatusCRM, on_delete=models.SET_NULL, null=True, blank=True, related_name='vendas_tratamento', limit_choices_to={'tipo': 'Tratamento'}, db_index=True)
+    status_esteira = models.ForeignKey(StatusCRM, on_delete=models.SET_NULL, null=True, blank=True, related_name='vendas_esteira', limit_choices_to={'tipo': 'Esteira'}, db_index=True)
     
-    status_comissionamento = models.ForeignKey(StatusCRM, on_delete=models.SET_NULL, null=True, blank=True, related_name='vendas_comissionamento', limit_choices_to={'tipo': 'Comissionamento'})
+    status_comissionamento = models.ForeignKey(StatusCRM, on_delete=models.SET_NULL, null=True, blank=True, related_name='vendas_comissionamento', limit_choices_to={'tipo': 'Comissionamento'}, db_index=True)
 
-    data_criacao = models.DateTimeField(auto_now_add=True)
+    data_criacao = models.DateTimeField(auto_now_add=True, db_index=True)
     
     # --- NOVOS CAMPOS PARA RASTREIO DE EDIÇÃO ---
     editado_por = models.ForeignKey(
@@ -138,14 +138,14 @@ class Venda(models.Model):
     
     observacoes = models.TextField(blank=True, null=True)
 
-    ordem_servico = models.CharField(max_length=50, null=True, blank=True)
+    ordem_servico = models.CharField(max_length=50, null=True, blank=True, db_index=True)
     data_abertura = models.DateTimeField(null=True, blank=True, verbose_name="Data de Abertura da O.S")
     data_pedido = models.DateTimeField(null=True, blank=True)
     data_agendamento = models.DateField(null=True, blank=True)
     periodo_agendamento = models.CharField(max_length=10, choices=[('MANHA', 'Manhã'), ('TARDE', 'Tarde')], null=True, blank=True)
-    data_instalacao = models.DateField(null=True, blank=True)
+    data_instalacao = models.DateField(null=True, blank=True, db_index=True)
     antecipou_instalacao = models.BooleanField(default=False)
-    motivo_pendencia = models.ForeignKey(MotivoPendencia, on_delete=models.SET_NULL, null=True, blank=True, related_name='vendas_pendentes')
+    motivo_pendencia = models.ForeignKey(MotivoPendencia, on_delete=models.SET_NULL, null=True, blank=True, related_name='vendas_pendentes', db_index=True)
 
     inclusao = models.BooleanField(default=False, verbose_name="Inclusão/Viabilidade")
     data_pagamento_comissao = models.DateField(null=True, blank=True, verbose_name="Data Pagamento Comissão")
@@ -159,7 +159,8 @@ class Venda(models.Model):
         null=True, 
         blank=True, 
         related_name='vendas_em_auditoria',
-        verbose_name="Em Auditoria Por"
+        verbose_name="Em Auditoria Por",
+        db_index=True
     )
 
     # --- CAMPOS PARA CONTROLE DE DESCONTOS ---
@@ -199,7 +200,7 @@ class ImportacaoOsab(models.Model):
     filial = models.CharField(max_length=255, null=True, blank=True)
     uf = models.CharField(max_length=2, null=True, blank=True)
     dt_ref = models.DateField(null=True, blank=True)
-    documento = models.CharField(max_length=255, null=True, blank=True) 
+    documento = models.CharField(max_length=255, null=True, blank=True, db_index=True) 
     segmento = models.CharField(max_length=255, null=True, blank=True)
     localidade = models.CharField(max_length=255, null=True, blank=True)
     estacao = models.CharField(max_length=255, null=True, blank=True)
