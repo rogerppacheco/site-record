@@ -5200,7 +5200,7 @@ class DashboardM10View(APIView):
 
             # Paginação - Limita a 100 registros por página
             page = int(request.GET.get('page', 1))
-            page_size = 100
+            page_size = int(request.GET.get('page_size', 100))
             start = (page - 1) * page_size
             end = start + page_size
 
