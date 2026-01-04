@@ -293,7 +293,7 @@
                     let html = '';
                     data.logs.forEach(log => {
                         const statusBadge = getBadgeStatus(log.status);
-                        const dataFormatada = log.iniciado_em ? new Date(log.iniciado_em.replace(' ', 'T')).toLocaleString('pt-BR') : '-';
+                        const dataFormatada = log.iniciado_em || '-';
                         const duracao = log.duracao_segundos ? `${log.duracao_segundos}s` : '-';
                         
                         html += `
