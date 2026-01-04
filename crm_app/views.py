@@ -4719,8 +4719,11 @@ class ImportacaoAgendamentoView(APIView):
 
         # 4. Retornar imediatamente
         return Response({
-            'message': 'Processamento iniciado! Acompanhe o progresso na aba Histórico.',
-            'log_id': log.id
+            'success': True,
+            'status': 'PROCESSANDO',
+            'background': True,
+            'log_id': log.id,
+            'message': 'Processamento iniciado! Acompanhe o progresso na aba Histórico.'
         }, status=200)
 
     def _processar_agendamento_interno(self, log_id, file_content, file_name):

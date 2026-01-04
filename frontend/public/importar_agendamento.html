@@ -402,13 +402,40 @@
                     body: formData
                 });
 
-                const data = await response.json();
+                let data;
+                try {
+                    data = await response.json();
+                } catch (parseErr) {
+                    throw new Error('Não foi possível ler a resposta do servidor');
+                }
+
+                if (!response.ok) {
+                    throw new Error(data?.error || 'Erro ao importar arquivo');
+                }
 
                 updateProgress(90, 'Finalizando...');
 
                 setTimeout(() => {
                     updateProgress(100, 'Concluído!');
-                    
+
+                    // Fluxo assíncrono: apenas inicia processamento e mostra o log
+                    if (data.background || data.log_id) {
+                        showResult(true, `
+                            <div class="text-center mb-3">
+                                <i class="bi bi-check-circle-fill text-success" style="font-size: 3rem;"></i>
+                                <h5 class="mt-2 fw-bold">Processamento iniciado</h5>
+                                <p class="mb-1">Acompanhe o andamento no histórico abaixo.</p>
+                                <p class="mb-0"><small>Log ID: <strong>${data.log_id || '-'}</strong></small></p>
+                            </div>
+                        `);
+
+                        // Força refresh do histórico e liga auto-refresh enquanto houver PROCESSANDO
+                        carregarHistoricoImportacoes();
+                        iniciarAutoRefresh();
+                        document.getElementById('btnUpload').disabled = false;
+                        return;
+                    }
+
                     if (data.success) {
                         const sucessoPercent = ((data.registros_criados / data.total_linhas) * 100).toFixed(1);
                         const errosCount = data.total_linhas - data.registros_criados;
