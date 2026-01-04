@@ -1,3 +1,4 @@
+
 from rest_framework import serializers
 from django.db import transaction
 import re
@@ -6,9 +7,8 @@ from .models import (
     RegraComissao, Cliente, Venda, ImportacaoOsab, ImportacaoChurn,
     CicloPagamento, HistoricoAlteracaoVenda, Campanha,
     ComissaoOperadora, Comunicado, LancamentoFinanceiro,
-    RegraCampanha, FaturaM10
+    RegraCampanha, FaturaM10, GrupoDisparo
 )
-from .models import GrupoDisparo 
 from usuarios.models import Usuario
 from usuarios.serializers import UsuarioSerializer
 
@@ -27,6 +27,7 @@ class OperadoraSerializer(serializers.ModelSerializer):
     class Meta:
         model = Operadora
         fields = '__all__'
+
 
 class PlanoSerializer(serializers.ModelSerializer):
     operadora_nome = serializers.CharField(source='operadora.nome', read_only=True)

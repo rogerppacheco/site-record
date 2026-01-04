@@ -1,0 +1,2882 @@
+[
+{
+  "model": "crm_app.regracomissao",
+  "pk": 1,
+  "fields": {
+    "consultor": 34,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "150.00",
+    "valor_acelerado": "180.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 2,
+  "fields": {
+    "consultor": 34,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "190.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 3,
+  "fields": {
+    "consultor": 34,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "240.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 4,
+  "fields": {
+    "consultor": 34,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 5,
+  "fields": {
+    "consultor": 34,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 6,
+  "fields": {
+    "consultor": 34,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 7,
+  "fields": {
+    "consultor": 6,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "150.00",
+    "valor_acelerado": "200.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 8,
+  "fields": {
+    "consultor": 6,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "190.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 9,
+  "fields": {
+    "consultor": 6,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "240.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 10,
+  "fields": {
+    "consultor": 6,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 11,
+  "fields": {
+    "consultor": 6,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 12,
+  "fields": {
+    "consultor": 6,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 13,
+  "fields": {
+    "consultor": 22,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "150.00",
+    "valor_acelerado": "180.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 14,
+  "fields": {
+    "consultor": 22,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "190.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 15,
+  "fields": {
+    "consultor": 22,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "240.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 16,
+  "fields": {
+    "consultor": 22,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 17,
+  "fields": {
+    "consultor": 22,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 18,
+  "fields": {
+    "consultor": 22,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 19,
+  "fields": {
+    "consultor": 20,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "150.00",
+    "valor_acelerado": "180.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 20,
+  "fields": {
+    "consultor": 20,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "190.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 21,
+  "fields": {
+    "consultor": 20,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "240.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 22,
+  "fields": {
+    "consultor": 20,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 23,
+  "fields": {
+    "consultor": 20,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 24,
+  "fields": {
+    "consultor": 20,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 25,
+  "fields": {
+    "consultor": 38,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "150.00",
+    "valor_acelerado": "180.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 26,
+  "fields": {
+    "consultor": 38,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "190.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 28,
+  "fields": {
+    "consultor": 38,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "240.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 29,
+  "fields": {
+    "consultor": 38,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 30,
+  "fields": {
+    "consultor": 38,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 31,
+  "fields": {
+    "consultor": 38,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 32,
+  "fields": {
+    "consultor": 18,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "150.00",
+    "valor_acelerado": "180.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 33,
+  "fields": {
+    "consultor": 18,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "190.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 34,
+  "fields": {
+    "consultor": 18,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "240.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 35,
+  "fields": {
+    "consultor": 18,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 36,
+  "fields": {
+    "consultor": 18,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 37,
+  "fields": {
+    "consultor": 18,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 38,
+  "fields": {
+    "consultor": 25,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "150.00",
+    "valor_acelerado": "180.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 39,
+  "fields": {
+    "consultor": 25,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "190.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 40,
+  "fields": {
+    "consultor": 25,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "240.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 41,
+  "fields": {
+    "consultor": 25,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 42,
+  "fields": {
+    "consultor": 25,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 43,
+  "fields": {
+    "consultor": 25,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 44,
+  "fields": {
+    "consultor": 16,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "150.00",
+    "valor_acelerado": "180.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 45,
+  "fields": {
+    "consultor": 16,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "190.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 46,
+  "fields": {
+    "consultor": 16,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "240.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 47,
+  "fields": {
+    "consultor": 16,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 48,
+  "fields": {
+    "consultor": 16,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 49,
+  "fields": {
+    "consultor": 16,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 50,
+  "fields": {
+    "consultor": 5,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "200.00",
+    "valor_acelerado": "200.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 51,
+  "fields": {
+    "consultor": 5,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 52,
+  "fields": {
+    "consultor": 5,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 53,
+  "fields": {
+    "consultor": 5,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 54,
+  "fields": {
+    "consultor": 5,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 55,
+  "fields": {
+    "consultor": 5,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 56,
+  "fields": {
+    "consultor": 33,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "150.00",
+    "valor_acelerado": "180.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 57,
+  "fields": {
+    "consultor": 33,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "190.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 58,
+  "fields": {
+    "consultor": 33,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "240.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 59,
+  "fields": {
+    "consultor": 33,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 60,
+  "fields": {
+    "consultor": 33,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 61,
+  "fields": {
+    "consultor": 33,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 62,
+  "fields": {
+    "consultor": 7,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "200.00",
+    "valor_acelerado": "200.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 63,
+  "fields": {
+    "consultor": 7,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 64,
+  "fields": {
+    "consultor": 7,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 65,
+  "fields": {
+    "consultor": 7,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 66,
+  "fields": {
+    "consultor": 7,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 67,
+  "fields": {
+    "consultor": 7,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 68,
+  "fields": {
+    "consultor": 32,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "150.00",
+    "valor_acelerado": "180.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 69,
+  "fields": {
+    "consultor": 32,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "190.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 70,
+  "fields": {
+    "consultor": 32,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "240.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 71,
+  "fields": {
+    "consultor": 10,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "150.00",
+    "valor_acelerado": "180.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 72,
+  "fields": {
+    "consultor": 10,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "190.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 73,
+  "fields": {
+    "consultor": 10,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "240.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 74,
+  "fields": {
+    "consultor": 10,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 75,
+  "fields": {
+    "consultor": 10,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 76,
+  "fields": {
+    "consultor": 10,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 77,
+  "fields": {
+    "consultor": 39,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "150.00",
+    "valor_acelerado": "180.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 78,
+  "fields": {
+    "consultor": 39,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "190.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 79,
+  "fields": {
+    "consultor": 39,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "240.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 80,
+  "fields": {
+    "consultor": 39,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 81,
+  "fields": {
+    "consultor": 39,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 82,
+  "fields": {
+    "consultor": 39,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 83,
+  "fields": {
+    "consultor": 9,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "150.00",
+    "valor_acelerado": "180.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 84,
+  "fields": {
+    "consultor": 9,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "190.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 85,
+  "fields": {
+    "consultor": 9,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "240.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 86,
+  "fields": {
+    "consultor": 9,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 87,
+  "fields": {
+    "consultor": 9,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 88,
+  "fields": {
+    "consultor": 9,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 89,
+  "fields": {
+    "consultor": 13,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "150.00",
+    "valor_acelerado": "180.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 90,
+  "fields": {
+    "consultor": 13,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "190.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 91,
+  "fields": {
+    "consultor": 13,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "240.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 92,
+  "fields": {
+    "consultor": 13,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 93,
+  "fields": {
+    "consultor": 13,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 94,
+  "fields": {
+    "consultor": 13,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 95,
+  "fields": {
+    "consultor": 19,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "200.00",
+    "valor_acelerado": "200.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 96,
+  "fields": {
+    "consultor": 19,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 97,
+  "fields": {
+    "consultor": 19,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 98,
+  "fields": {
+    "consultor": 19,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 99,
+  "fields": {
+    "consultor": 19,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 100,
+  "fields": {
+    "consultor": 19,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 101,
+  "fields": {
+    "consultor": 27,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "150.00",
+    "valor_acelerado": "180.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 102,
+  "fields": {
+    "consultor": 27,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "190.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 103,
+  "fields": {
+    "consultor": 27,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "240.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 104,
+  "fields": {
+    "consultor": 27,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 105,
+  "fields": {
+    "consultor": 27,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 106,
+  "fields": {
+    "consultor": 27,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 107,
+  "fields": {
+    "consultor": 14,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "150.00",
+    "valor_acelerado": "180.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 108,
+  "fields": {
+    "consultor": 14,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "190.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 109,
+  "fields": {
+    "consultor": 14,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "240.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 110,
+  "fields": {
+    "consultor": 14,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 111,
+  "fields": {
+    "consultor": 14,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 112,
+  "fields": {
+    "consultor": 14,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 113,
+  "fields": {
+    "consultor": 28,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "150.00",
+    "valor_acelerado": "180.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 114,
+  "fields": {
+    "consultor": 28,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "190.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 115,
+  "fields": {
+    "consultor": 28,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "240.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 116,
+  "fields": {
+    "consultor": 28,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 117,
+  "fields": {
+    "consultor": 28,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 118,
+  "fields": {
+    "consultor": 28,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 119,
+  "fields": {
+    "consultor": 36,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "150.00",
+    "valor_acelerado": "180.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 120,
+  "fields": {
+    "consultor": 36,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "190.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 121,
+  "fields": {
+    "consultor": 36,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "240.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 122,
+  "fields": {
+    "consultor": 36,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 123,
+  "fields": {
+    "consultor": 36,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 124,
+  "fields": {
+    "consultor": 36,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 125,
+  "fields": {
+    "consultor": 24,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "150.00",
+    "valor_acelerado": "180.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 126,
+  "fields": {
+    "consultor": 24,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "190.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 127,
+  "fields": {
+    "consultor": 24,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "240.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 128,
+  "fields": {
+    "consultor": 24,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 129,
+  "fields": {
+    "consultor": 24,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 130,
+  "fields": {
+    "consultor": 24,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 131,
+  "fields": {
+    "consultor": 21,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "200.00",
+    "valor_acelerado": "200.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 132,
+  "fields": {
+    "consultor": 21,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 133,
+  "fields": {
+    "consultor": 21,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 134,
+  "fields": {
+    "consultor": 21,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 135,
+  "fields": {
+    "consultor": 21,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 136,
+  "fields": {
+    "consultor": 21,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 137,
+  "fields": {
+    "consultor": 12,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "200.00",
+    "valor_acelerado": "200.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 138,
+  "fields": {
+    "consultor": 12,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 139,
+  "fields": {
+    "consultor": 12,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 140,
+  "fields": {
+    "consultor": 12,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 141,
+  "fields": {
+    "consultor": 12,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 142,
+  "fields": {
+    "consultor": 12,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 143,
+  "fields": {
+    "consultor": 56,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "200.00",
+    "valor_acelerado": "200.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 144,
+  "fields": {
+    "consultor": 56,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 145,
+  "fields": {
+    "consultor": 56,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 146,
+  "fields": {
+    "consultor": 58,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "180.00",
+    "valor_acelerado": "180.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 147,
+  "fields": {
+    "consultor": 58,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "200.00",
+    "valor_acelerado": "200.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 148,
+  "fields": {
+    "consultor": 58,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 149,
+  "fields": {
+    "consultor": 53,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "200.00",
+    "valor_acelerado": "200.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 150,
+  "fields": {
+    "consultor": 53,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 151,
+  "fields": {
+    "consultor": 53,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 152,
+  "fields": {
+    "consultor": 46,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "150.00",
+    "valor_acelerado": "180.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 153,
+  "fields": {
+    "consultor": 46,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "190.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 154,
+  "fields": {
+    "consultor": 46,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "240.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 155,
+  "fields": {
+    "consultor": 46,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 156,
+  "fields": {
+    "consultor": 46,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 157,
+  "fields": {
+    "consultor": 46,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 158,
+  "fields": {
+    "consultor": 49,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "200.00",
+    "valor_acelerado": "200.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 159,
+  "fields": {
+    "consultor": 49,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 160,
+  "fields": {
+    "consultor": 49,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 161,
+  "fields": {
+    "consultor": 49,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "200.00",
+    "valor_acelerado": "200.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 162,
+  "fields": {
+    "consultor": 49,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "220.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 163,
+  "fields": {
+    "consultor": 49,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 164,
+  "fields": {
+    "consultor": 50,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "100.00",
+    "valor_acelerado": "100.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 165,
+  "fields": {
+    "consultor": 50,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "120.00",
+    "valor_acelerado": "120.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 166,
+  "fields": {
+    "consultor": 50,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "150.00",
+    "valor_acelerado": "150.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 167,
+  "fields": {
+    "consultor": 50,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "150.00",
+    "valor_acelerado": "150.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 168,
+  "fields": {
+    "consultor": 50,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "150.00",
+    "valor_acelerado": "150.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 169,
+  "fields": {
+    "consultor": 50,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "150.00",
+    "valor_acelerado": "150.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 170,
+  "fields": {
+    "consultor": 43,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "150.00",
+    "valor_acelerado": "180.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 171,
+  "fields": {
+    "consultor": 43,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "190.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 172,
+  "fields": {
+    "consultor": 43,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "240.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 173,
+  "fields": {
+    "consultor": 43,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 174,
+  "fields": {
+    "consultor": 43,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 175,
+  "fields": {
+    "consultor": 43,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 176,
+  "fields": {
+    "consultor": 57,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "170.00",
+    "valor_acelerado": "170.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 177,
+  "fields": {
+    "consultor": 57,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "190.00",
+    "valor_acelerado": "190.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 178,
+  "fields": {
+    "consultor": 57,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 179,
+  "fields": {
+    "consultor": 57,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 180,
+  "fields": {
+    "consultor": 57,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 181,
+  "fields": {
+    "consultor": 57,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 182,
+  "fields": {
+    "consultor": 51,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "200.00",
+    "valor_acelerado": "200.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 183,
+  "fields": {
+    "consultor": 51,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 184,
+  "fields": {
+    "consultor": 51,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 185,
+  "fields": {
+    "consultor": 51,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 186,
+  "fields": {
+    "consultor": 51,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 187,
+  "fields": {
+    "consultor": 51,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 188,
+  "fields": {
+    "consultor": 55,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "200.00",
+    "valor_acelerado": "200.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 189,
+  "fields": {
+    "consultor": 55,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 190,
+  "fields": {
+    "consultor": 55,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 191,
+  "fields": {
+    "consultor": 55,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "200.00",
+    "valor_acelerado": "200.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 192,
+  "fields": {
+    "consultor": 55,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "220.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 193,
+  "fields": {
+    "consultor": 55,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 194,
+  "fields": {
+    "consultor": 59,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "180.00",
+    "valor_acelerado": "180.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 195,
+  "fields": {
+    "consultor": 59,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 196,
+  "fields": {
+    "consultor": 59,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "240.00",
+    "valor_acelerado": "240.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 197,
+  "fields": {
+    "consultor": 59,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 198,
+  "fields": {
+    "consultor": 59,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 199,
+  "fields": {
+    "consultor": 59,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 200,
+  "fields": {
+    "consultor": 54,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "200.00",
+    "valor_acelerado": "200.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 201,
+  "fields": {
+    "consultor": 54,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 202,
+  "fields": {
+    "consultor": 54,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 203,
+  "fields": {
+    "consultor": 54,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "200.00",
+    "valor_acelerado": "200.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 204,
+  "fields": {
+    "consultor": 54,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "220.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 205,
+  "fields": {
+    "consultor": 54,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 206,
+  "fields": {
+    "consultor": 52,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "200.00",
+    "valor_acelerado": "200.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 207,
+  "fields": {
+    "consultor": 52,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 208,
+  "fields": {
+    "consultor": 52,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 209,
+  "fields": {
+    "consultor": 52,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 210,
+  "fields": {
+    "consultor": 52,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 211,
+  "fields": {
+    "consultor": 52,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 212,
+  "fields": {
+    "consultor": 32,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 213,
+  "fields": {
+    "consultor": 32,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 214,
+  "fields": {
+    "consultor": 32,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 215,
+  "fields": {
+    "consultor": 53,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "200.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 216,
+  "fields": {
+    "consultor": 53,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 218,
+  "fields": {
+    "consultor": 60,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "170.00",
+    "valor_acelerado": "180.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 219,
+  "fields": {
+    "consultor": 60,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "190.00",
+    "valor_acelerado": "200.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 220,
+  "fields": {
+    "consultor": 60,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "210.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 221,
+  "fields": {
+    "consultor": 60,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 222,
+  "fields": {
+    "consultor": 60,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 223,
+  "fields": {
+    "consultor": 60,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 225,
+  "fields": {
+    "consultor": 53,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 226,
+  "fields": {
+    "consultor": 56,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 227,
+  "fields": {
+    "consultor": 56,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 228,
+  "fields": {
+    "consultor": 56,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 229,
+  "fields": {
+    "consultor": 58,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "200.00",
+    "valor_acelerado": "200.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 230,
+  "fields": {
+    "consultor": 58,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "220.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 231,
+  "fields": {
+    "consultor": 58,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 232,
+  "fields": {
+    "consultor": 61,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "200.00",
+    "valor_acelerado": "200.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 233,
+  "fields": {
+    "consultor": 61,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 234,
+  "fields": {
+    "consultor": 61,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 235,
+  "fields": {
+    "consultor": 61,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 236,
+  "fields": {
+    "consultor": 61,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 237,
+  "fields": {
+    "consultor": 61,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 238,
+  "fields": {
+    "consultor": 62,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "200.00",
+    "valor_acelerado": "200.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 239,
+  "fields": {
+    "consultor": 62,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "220.00",
+    "valor_acelerado": "220.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 240,
+  "fields": {
+    "consultor": 62,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CPF",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 241,
+  "fields": {
+    "consultor": 62,
+    "plano": 1,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "250.00",
+    "valor_acelerado": "250.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 242,
+  "fields": {
+    "consultor": 62,
+    "plano": 2,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "280.00",
+    "valor_acelerado": "280.00"
+  }
+},
+{
+  "model": "crm_app.regracomissao",
+  "pk": 243,
+  "fields": {
+    "consultor": 62,
+    "plano": 3,
+    "tipo_venda": "PAP",
+    "tipo_cliente": "CNPJ",
+    "valor_base": "300.00",
+    "valor_acelerado": "300.00"
+  }
+}
+]
