@@ -2458,8 +2458,16 @@ class ImportarKMLView(APIView):
                 match = regex_cache[chave].search(texto)
                 return match.group(1).strip() if match else None
 
-            # Limpar tabela antes? Opcional. Se quiser limpar, descomente:
-            # AreaVenda.objects.all().delete()
+            # Limpa tabela para evitar PK duplicada em reimportações
+            AreaVenda.objects.all().delete()
+            try:
+                from django.db import connection
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT setval(pg_get_serial_sequence('crm_app_areavenda', 'id'), COALESCE((SELECT MAX(id) FROM crm_app_areavenda), 1), false)"
+                    )
+            except Exception:
+                pass  # Se não for Postgres ou falhar, segue com sequence atual
 
             for pm in placemarks:
                 try:
