@@ -262,10 +262,9 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     
     <script>
-        const apiUrl = '';
+        const apiUrl = ''; 
         function getVal(id) { const el = document.getElementById(id); if (!el) return null; return el.value === "" ? null : el.value; }
         function setVal(id, valor) { const el = document.getElementById(id); if (el) el.value = (valor !== null && valor !== undefined) ? valor : ''; }
-
 
         async function apiFetch(endpoint, options = {}) {
             const token = localStorage.getItem('accessToken');
@@ -333,12 +332,13 @@
 
         async function carregarMotivosPendencia() {
             try {
-                const res = await apiFetch('/crm/motivos-pendencia/');
+                // Forçamos trazer todos os motivos
+                const res = await apiFetch('/crm/motivos-pendencia/?page_size=1000');
                 const lista = Array.isArray(res) ? res : (res.results || []);
                 const select = document.getElementById('pendencia-motivo');
                 select.innerHTML = '<option value="">Selecione o motivo...</option>';
                 lista.forEach(m => { select.innerHTML += `<option value="${m.id}">${m.nome}</option>`; });
-            } catch (e) { console.error("Erro ao carregar motivos:", e); }
+            } catch (e) { /* erro ao carregar motivos, já tratado */ }
         }
 
         function formatarDataSemFuso(dataIso) {
@@ -350,7 +350,9 @@
         function calcularContadores(vendasLista) {
             const contagem = { todos: vendasLista.length, pendentes: 0, datas: {} };
             vendasLista.forEach(v => {
-                const statusNome = (v.status_esteira && v.status_esteira.nome ? v.status_esteira.nome.toUpperCase() : '');
+                const statusObj = v.status_esteira_obj; 
+                const statusNome = (statusObj && statusObj.nome) ? String(statusObj.nome).toUpperCase() : '';
+                
                 if (statusNome.includes('PENDEN')) contagem.pendentes += 1;
                 if (statusNome.includes('AGENDADO') && v.data_agendamento) {
                     contagem.datas[v.data_agendamento] = (contagem.datas[v.data_agendamento] || 0) + 1;
@@ -372,86 +374,148 @@
 
         async function carregarVendas(silent = false) {
             const tbody = document.getElementById('tabela-esteira-body');
-            const busca = document.getElementById('filtro-busca').value; // Captura a busca
+            const busca = document.getElementById('filtro-busca').value;
             
             if (!silent) { tbody.innerHTML = '<tr><td colspan="11" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>'; }
             
             try {
                 const timestamp = new Date().getTime();
-                
-                // --- MONTAGEM DA URL COM BUSCA ---
                 let url = `/crm/vendas/?flow=esteira&_t=${timestamp}`;
-                if(busca) url += `&search=${busca}`; // Adiciona o parâmetro de busca
+                if(busca) url += `&search=${busca}`;
 
-                const [vendasRes, statusRes] = await Promise.all([
+                // --- Carregamos Listas Auxiliares ---
+                // ...
+                const [vendasRes, statusRes, motivosRes, usuariosRes] = await Promise.all([
                     apiFetch(url),
-                    apiFetch('/crm/status/?tipo=Esteira')
+                    apiFetch('/crm/status/?tipo=Esteira'),
+                    apiFetch('/crm/motivos-pendencia/?page_size=1000'), 
+                    // CORRIGIDO: Removido '/api' inicial
+                    apiFetch('/usuarios/?page_size=1000&is_active=true') 
                 ]);
                 
-                let vendas = Array.isArray(vendasRes) ? vendasRes : (vendasRes.results || []);
-                const statusLista = Array.isArray(statusRes) ? statusRes : (statusRes.results || []);
+                let vendas = Array.isArray(vendasRes) ? vendasRes : (vendasRes && vendasRes.results ? vendasRes.results : []);
+                const statusLista = Array.isArray(statusRes) ? statusRes : (statusRes && statusRes.results ? statusRes.results : []);
+                const motivosLista = Array.isArray(motivosRes) ? motivosRes : (motivosRes && motivosRes.results ? motivosRes.results : []);
+                const usuariosLista = Array.isArray(usuariosRes) ? usuariosRes : (usuariosRes && usuariosRes.results ? usuariosRes.results : []);
 
-                vendas = vendas.filter(v => {
-                    if (!v.status_esteira || !v.status_esteira.estado) return true; 
-                    return v.status_esteira.estado.toUpperCase() !== 'FECHADO';
+                // DEBUG:
+                // ...
+
+                // --- 1. LOOKUP DE STATUS (ID -> Objeto) ---
+                vendas = vendas.map(v => {
+                    const vStatusId = String(v.status_esteira || '');
+                    let sEncontrado = null;
+                    if (v.status_esteira_nome) {
+                        // Se o backend mandou o nome, cria o objeto usando ele (Mais rápido e confiável)
+                        sEncontrado = statusLista.find(s => s.id === v.status_esteira) || { nome: v.status_esteira_nome, cor: 'transparent', id: v.status_esteira };
+                    } else if (v.status_esteira) {
+                        // Fallback: Procura pelo ID
+                        sEncontrado = statusLista.find(s => String(s.id) === vStatusId);
+                    }
+
+                    if (sEncontrado) {
+                        v.status_esteira_obj = sEncontrado;
+                    } else if (v.status_esteira && typeof v.status_esteira === 'object') {
+                        v.status_esteira_obj = v.status_esteira;
+                    } else {
+                        v.status_esteira_obj = { nome: '-', cor: 'transparent', id: v.status_esteira };
+                    }
+                    return v;
                 });
 
-                vendas = vendas.filter(v => !v.status_esteira || !v.status_esteira.nome.toUpperCase().includes('CANCEL'));
+                // Filtros de Segurança
+                vendas = vendas.filter(v => {
+                    const status = v.status_esteira_obj;
+                    if (!status || !status.id) return true; 
+                    if (status.estado && String(status.estado).toUpperCase() === 'FECHADO') return false;
+                    if (status.nome && String(status.nome).toUpperCase().includes('CANCEL')) return false;
+                    return true;
+                });
 
                 const contadores = calcularContadores(vendas);
-
                 gerarAbasDeData(vendas, contadores.datas);
                 atualizarContadoresAbas(contadores);
 
+                // Filtragem por Aba
                 if(filtroAtual === 'TODOS') {} 
-                else if (filtroAtual === 'AGENDADO') vendas = vendas.filter(v => v.status_esteira && v.status_esteira.nome.toUpperCase().includes('AGENDADO'));
-                else if (filtroAtual === 'PENDEN') vendas = vendas.filter(v => v.status_esteira && v.status_esteira.nome.toUpperCase().includes('PENDEN'));
-                else vendas = vendas.filter(v => v.data_agendamento === filtroAtual);
+                else if (filtroAtual === 'AGENDADO') {
+                    vendas = vendas.filter(v => v.status_esteira_obj.nome && String(v.status_esteira_obj.nome).toUpperCase().includes('AGENDADO'));
+                }
+                else if (filtroAtual === 'PENDEN') {
+                    vendas = vendas.filter(v => v.status_esteira_obj.nome && String(v.status_esteira_obj.nome).toUpperCase().includes('PENDEN'));
+                }
+                else {
+                    vendas = vendas.filter(v => v.data_agendamento === filtroAtual);
+                }
 
                 if(vendas.length === 0) { tbody.innerHTML = '<tr><td colspan="11" class="text-center py-4 text-muted">Nenhuma venda encontrada nesta etapa.</td></tr>'; return; }
 
+                // Função auxiliar para achar nome de usuário pelo ID
+                const getNomeUsuario = (userId) => {
+                    if (!userId) return null;
+                    if (typeof userId === 'object') return userId.username || userId.first_name || 'Obj s/ nome';
+                    const u = usuariosLista.find(user => String(user.id) === String(userId));
+                    return u ? (u.first_name || u.username) : userId;
+                };
+
                 let htmlContent = '';
-                vendas.forEach(v => {
-                    const dataFmt = new Date(v.data_criacao).toLocaleDateString('pt-BR');
+                vendas.forEach((v) => {
+                    const dataFmt = v.data_criacao ? new Date(v.data_criacao).toLocaleDateString('pt-BR') : '-';
                     const osAtual = v.ordem_servico || '-';
                     const dataAgendada = formatarDataSemFuso(v.data_agendamento); 
                     const turno = v.periodo_agendamento || '-';
-                    const motivoPendencia = v.motivo_pendencia ? (v.motivo_pendencia.nome || v.motivo_pendencia) : '-';
+                    
+                    const statusObj = v.status_esteira_obj;
+                    const nomeStatus = statusObj.nome || '-';
+                    const corFundo = statusObj.cor || 'transparent';
+                    const statusId = statusObj.id || '';
 
-                    let nomeVendedor = 'N/A';
-                    if (v.vendedor_nome) nomeVendedor = v.vendedor_nome;
-                    else if (v.vendedor && v.vendedor.username) nomeVendedor = v.vendedor.username;
-                    else if (v.vendedor && v.vendedor.first_name) nomeVendedor = v.vendedor.first_name;
-                    else if (typeof v.vendedor === 'string') nomeVendedor = v.vendedor;
+                    // --- 2. TRATAMENTO DE MOTIVO PENDÊNCIA (PRIORIZA O NOME DO BACKEND) ---
+                    let motivoPendencia = '-';
+                    if (v.motivo_pendencia_nome) {
+                        motivoPendencia = v.motivo_pendencia_nome; // Já vem pronto do backend
+                    } else if (v.motivo_pendencia) {
+                        if (typeof v.motivo_pendencia === 'object' && v.motivo_pendencia.nome) {
+                            motivoPendencia = v.motivo_pendencia.nome;
+                        } else {
+                            const mEncontrado = motivosLista.find(m => String(m.id) === String(v.motivo_pendencia));
+                            motivoPendencia = mEncontrado ? mEncontrado.nome : `(Cód: ${v.motivo_pendencia})`;
+                        }
+                    }
 
-                    const corFundo = (v.status_esteira && v.status_esteira.cor) ? v.status_esteira.cor : 'transparent';
-                    const rowStyle = `
-                        background: #fff; 
-                        border: 1px solid rgba(0,0,0,0.1); 
-                        box-shadow: -4px 4px 0px ${corFundo}, 0 8px 20px rgba(0,0,0,0.08); 
-                        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-                        border-radius: 10px;
-                        overflow: hidden;
-                    `;
+                    // --- 3. TRATAMENTO RESP. ALTERAÇÃO (PRIORIZA nome_editor) ---
+                    let alteradoPor = v.nome_editor || '-';
+                    if (alteradoPor === '-') {
+                         let rawUser = v.alterado_por || v.responsavel_alteracao || v.usuario_alteracao;
+                         if (rawUser) alteradoPor = getNomeUsuario(rawUser) || rawUser;
+                    }
 
-                    let selectStatus = `<select class="form-select form-select-sm status-select" data-venda-id="${v.id}" data-os="${osAtual}" data-statusAtual="${v.status_esteira ? v.status_esteira.nome : ''}" data-statusid="${v.status_esteira ? v.status_esteira.id : ''}" onchange="atualizarStatus(${v.id}, this)" onfocus="this.dataset.valorAnterior=this.value">`;
+                    // Vendedor
+                    let nomeVendedor = v.vendedor_nome || getNomeUsuario(v.vendedor) || 'N/A';
+                    
+                    // Plano
+                    let nomePlano = v.plano_nome || '-';
+                    if (nomePlano === '-' && v.plano && v.plano.nome) nomePlano = v.plano.nome;
+
+                    const nomeCliente = v.cliente_nome_razao_social || (v.cliente ? v.cliente.nome_razao_social : '-') || '-';
+                    const docCliente = v.cliente_cpf_cnpj || (v.cliente ? v.cliente.cpf_cnpj : '') || '';
+
+                    const rowStyle = `background: #fff; border: 1px solid rgba(0,0,0,0.1); box-shadow: -4px 4px 0px ${corFundo}, 0 8px 20px rgba(0,0,0,0.08); transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); border-radius: 10px; overflow: hidden;`;
+
+                    let selectStatus = `<select class="form-select form-select-sm status-select" data-venda-id="${v.id}" data-os="${osAtual}" data-statusAtual="${nomeStatus}" data-statusid="${statusId}" onchange="atualizarStatus(${v.id}, this)" onfocus="this.dataset.valorAnterior=this.value">`;
                     selectStatus += `<option value="">Selecione...</option>`;
                     statusLista.forEach(s => {
-                        const selected = (v.status_esteira && v.status_esteira.id === s.id) ? 'selected' : '';
+                        const selected = (String(statusId) === String(s.id)) ? 'selected' : '';
                         selectStatus += `<option value="${s.id}" ${selected}>${s.nome}</option>`;
                     });
                     selectStatus += `</select>`;
                     
-                    // Botão de edição que aparece quando há dados para editar
-                    const temDadosEditaveis = (v.status_esteira && (
-                        v.status_esteira.nome.toUpperCase().includes('AGENDADO') ||
-                        v.status_esteira.nome.toUpperCase() === 'INSTALADA' ||
-                        v.status_esteira.nome.toUpperCase().includes('PENDEN') ||
-                        v.status_esteira.nome.toUpperCase().includes('CANCEL')
-                    ));
-                    const btnEditar = temDadosEditaveis ? `<button class="btn btn-sm btn-link text-primary p-0 ms-1" onclick="editarStatusExistente(${v.id}, '${v.status_esteira ? v.status_esteira.nome : ''}', '${v.status_esteira ? v.status_esteira.id : ''}')" title="Editar dados do status"><i class="bi bi-pencil-square"></i></button>` : '';
-
-                    const alteradoPor = v.alterado_por || '-';
+                    let temDadosEditaveis = false;
+                    if (nomeStatus && nomeStatus !== '-') {
+                        const sUpper = String(nomeStatus).toUpperCase();
+                        temDadosEditaveis = (sUpper.includes('AGENDADO') || sUpper === 'INSTALADA' || sUpper.includes('PENDEN') || sUpper.includes('CANCEL'));
+                    }
+                    const btnEditar = temDadosEditaveis ? `<button class="btn btn-sm btn-link text-primary p-0 ms-1" onclick="editarStatusExistente(${v.id}, '${nomeStatus}', '${statusId}')" title="Editar dados" aria-label="Editar dados da venda #${v.id}"><i class="bi bi-pencil-square"></i></button>` : '';
 
                     htmlContent += `
                         <tr style="${rowStyle}" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='translateY(0)'">
@@ -460,24 +524,32 @@
                             <td>${osAtual}</td>
                             <td>${dataAgendada}</td>
                             <td>${turno}</td>
-                            <td><div class="fw-bold text-dark">${v.cliente.nome_razao_social}</div><div class="small text-muted">${v.cliente.cpf_cnpj}</div></td>
-                            <td>${nomeVendedor}</td> <td>${v.plano?.nome || '-'}</td>
+                            <td><div class="fw-bold text-dark">${nomeCliente}</div><div class="small text-muted">${docCliente}</div></td>
+                            <td>${nomeVendedor}</td> 
+                            <td>${nomePlano}</td>
                             <td><div class="d-flex align-items-center">${selectStatus}${btnEditar}</div></td>
                             <td class="text-danger small fw-bold">${motivoPendencia}</td>
                             <td><small class="text-muted fw-bold">${alteradoPor}</small></td>
-                            <td class="pe-4 text-end"><button class="btn btn-sm btn-outline-primary rounded-circle p-2" onclick="abrirEdicao(${v.id})"><i class="bi bi-pencil-fill"></i></button></td>
+                            <td class="pe-4 text-end"><button class="btn btn-sm btn-outline-primary rounded-circle p-2" onclick="abrirEdicao(${v.id})" aria-label="Editar venda #${v.id}"><i class="bi bi-pencil-fill"></i></button></td>
                         </tr>
                     `;
                 });
                 tbody.innerHTML = htmlContent;
-            } catch (e) { if(!silent) tbody.innerHTML = '<tr><td colspan="11" class="text-center text-danger">Erro ao carregar.</td></tr>'; }
+            } catch (e) { 
+                if(!silent) tbody.innerHTML = '<tr><td colspan="11" class="text-center text-danger">Erro ao carregar.<br><small>'+(e.message || e)+'</small></td></tr>'; 
+                // ...
+            }
         }
 
         function gerarAbasDeData(todasVendas, contagemDatas = {}) {
             const ul = document.getElementById('abas-esteira');
             while (ul.children.length > 3) { ul.removeChild(ul.lastChild); }
             const datasUnicas = new Set();
-            todasVendas.forEach(v => { if (v.data_agendamento && v.status_esteira && v.status_esteira.nome.toUpperCase().includes('AGENDADO')) { datasUnicas.add(v.data_agendamento); } });
+            todasVendas.forEach(v => {
+                if (v.data_agendamento && v.status_esteira_obj && v.status_esteira_obj.nome && String(v.status_esteira_obj.nome).toUpperCase().includes('AGENDADO')) {
+                    datasUnicas.add(v.data_agendamento);
+                }
+            });
             Array.from(datasUnicas).sort().forEach(dataIso => {
                 const partes = dataIso.split('-');
                 const dataExibicao = `${partes[2]}/${partes[1]}`;
@@ -493,58 +565,56 @@
         function filtrarStatus(status, element) {
             filtroAtual = status;
             document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
-            element.classList.add('active');
+            if(element) element.classList.add('active');
             carregarVendas();
         }
 
         async function editarStatusExistente(id, statusNome, statusId) {
             tempVendaId = id;
             tempStatusId = statusId;
-            const statusTexto = statusNome.toUpperCase();
+            const statusTexto = statusNome ? statusNome.toUpperCase() : '';
             
-            // Buscar dados da venda
             try {
                 const vendaData = await apiFetch(`/crm/vendas/${id}/`);
-                const osExistente = vendaData.ordem_servico || '-';
                 
-                if (statusTexto === 'CADASTRADA' || statusTexto.includes('AGENDADO')) {
-                    document.getElementById('form-agendamento').reset();
-                    document.getElementById('agenda-os').classList.remove('is-invalid');
+                if (statusTexto.includes('AGENDADO') || statusTexto === 'CADASTRADA') {
+                    setVal('agenda-os', vendaData.ordem_servico);
+                    setVal('agenda-data', vendaData.data_agendamento);
+                    setVal('agenda-turno', vendaData.periodo_agendamento);
+                    setVal('agenda-observacao-venda', vendaData.observacoes);
                     
                     const campoOS = document.getElementById('agenda-os');
-                    if (osExistente && osExistente.trim() !== "-" && osExistente.trim() !== "") {
-                        campoOS.value = osExistente;
+                    if (vendaData.ordem_servico) {
                         campoOS.readOnly = true;
                         campoOS.classList.add('bg-light');
                         document.getElementById('msg-agendamento-novo').style.display = 'none';
                         document.getElementById('msg-agendamento-existente').style.display = 'inline';
+                    } else {
+                        campoOS.readOnly = false;
+                        campoOS.classList.remove('bg-light');
+                        document.getElementById('msg-agendamento-novo').style.display = 'inline';
+                        document.getElementById('msg-agendamento-existente').style.display = 'none';
                     }
-                    
-                    document.getElementById('agenda-data').value = vendaData.data_agendamento || '';
-                    document.getElementById('agenda-turno').value = vendaData.periodo_agendamento || '';
-                    document.getElementById('agenda-observacao-venda').value = vendaData.observacoes || 'Sem observações';
-                    
                     modalAgendamento.show();
-                }
-                else if (statusTexto === 'INSTALADA') {
-                    document.getElementById('form-instalacao').reset();
-                    document.getElementById('instalacao-data').value = vendaData.data_instalacao || '';
-                    document.getElementById('instalacao-antecipou').checked = vendaData.antecipou_instalacao || false;
-                    
+
+                } else if (statusTexto === 'INSTALADA') {
+                    setVal('instalacao-data', vendaData.data_instalacao);
+                    document.getElementById('instalacao-antecipou').value = vendaData.antecipou_instalacao ? 'true' : 'false';
                     modalInstalacao.show();
-                }
-                else if (statusTexto.includes('PENDEN') || statusTexto.includes('CANCEL')) {
-                    document.getElementById('form-pendencia').reset();
+
+                } else if (statusTexto.includes('PENDEN') || statusTexto.includes('CANCEL')) {
+                    setVal('pendencia-motivo', vendaData.motivo_pendencia);
+                    setVal('pendencia-obs', vendaData.observacoes);
+                    
                     const titulo = document.getElementById('titulo-modal-pendencia');
                     if(titulo) titulo.innerHTML = statusTexto.includes('CANCEL') ? '<i class="bi bi-x-circle-fill"></i> Motivo do Cancelamento' : '<i class="bi bi-exclamation-triangle-fill"></i> Registrar Pendência';
                     
-                    document.getElementById('pendencia-motivo').value = vendaData.motivo_pendencia || '';
-                    document.getElementById('pendencia-obs').value = vendaData.observacoes || '';
-                    
                     modalPendencia.show();
+                } else {
+                    abrirEdicao(id);
                 }
             } catch (e) {
-                alert('Erro ao carregar dados para edição: ' + e.message);
+                alert('Erro ao carregar dados para edição: ' + (e.message || e));
             }
         }
 
@@ -552,7 +622,6 @@
             const statusId = selectElem.value;
             const valorAnterior = selectElem.dataset.valorAnterior;
             
-            // Se selecionou o mesmo valor que já estava, chama a função de edição
             if (statusId && statusId === valorAnterior) {
                 const statusTexto = selectElem.options[selectElem.selectedIndex].text;
                 editarStatusExistente(id, statusTexto, statusId);
@@ -564,7 +633,7 @@
             const statusAtual = selectElem.dataset.statusAtual;
             tempVendaId = id; tempStatusId = statusId;
 
-            if (statusTexto === 'CADASTRADA' || statusTexto === 'AGENDADO') {
+            if (statusTexto === 'CADASTRADA' || statusTexto.includes('AGENDADO')) {
                 document.getElementById('form-agendamento').reset();
                 document.getElementById('agenda-os').classList.remove('is-invalid');
                 
@@ -572,18 +641,14 @@
                 document.getElementById('agenda-data').value = '';
                 document.getElementById('agenda-turno').value = '';
                 
-                // Carregar observação da venda
                 try {
                     const vendaData = await apiFetch(`/crm/vendas/${id}/`);
-                    document.getElementById('agenda-observacao-venda').value = vendaData.observacoes || 'Sem observações';
-                    
+                    document.getElementById('agenda-observacao-venda').value = vendaData.observacoes || '';
                     if (statusAtual && String(statusAtual).toUpperCase() === statusTexto && vendaData.data_agendamento) {
                         document.getElementById('agenda-data').value = vendaData.data_agendamento;
                         document.getElementById('agenda-turno').value = vendaData.periodo_agendamento || '';
                     }
-                } catch (e) {
-                    console.log('Erro ao carregar dados da venda');
-                }
+                } catch (e) { /* erro ao carregar dados da venda */ }
 
                 if (osExistente && osExistente.trim() !== "-" && osExistente.trim() !== "") {
                     campoOS.value = osExistente; campoOS.readOnly = true; campoOS.classList.add('bg-light');
@@ -594,7 +659,6 @@
                     document.getElementById('msg-agendamento-novo').style.display = 'inline';
                     document.getElementById('msg-agendamento-existente').style.display = 'none';
                 }
-                
                 modalAgendamento.show();
             } 
             else if (statusTexto === 'INSTALADA') {
@@ -602,7 +666,6 @@
                 document.getElementById('instalacao-data').valueAsDate = new Date();
                 document.getElementById('instalacao-antecipou').checked = false;
                 
-                // Se status já estava preenchido, carregar dados existentes
                 if (statusAtual && String(statusAtual).toUpperCase() === statusTexto) {
                     try {
                         const vendaData = await apiFetch(`/crm/vendas/${id}/`);
@@ -610,11 +673,8 @@
                             document.getElementById('instalacao-data').value = vendaData.data_instalacao;
                             document.getElementById('instalacao-antecipou').checked = vendaData.antecipou_instalacao || false;
                         }
-                    } catch (e) {
-                        console.log('Dados existentes não encontrados');
-                    }
+                    } catch (e) { /* dados existentes não encontrados */ }
                 }
-                
                 modalInstalacao.show();
             } 
             else if (statusTexto.includes('PENDEN') || statusTexto.includes('CANCEL')) {
@@ -624,7 +684,6 @@
                 document.getElementById('pendencia-motivo').value = '';
                 document.getElementById('pendencia-obs').value = '';
                 
-                // Se status já estava preenchido, carregar dados existentes
                 if (statusAtual && String(statusAtual).toUpperCase() === statusTexto) {
                     try {
                         const vendaData = await apiFetch(`/crm/vendas/${id}/`);
@@ -632,11 +691,8 @@
                             document.getElementById('pendencia-motivo').value = vendaData.motivo_pendencia || '';
                             document.getElementById('pendencia-obs').value = vendaData.observacao_pendencia || '';
                         }
-                    } catch (e) {
-                        console.log('Dados existentes não encontrados');
-                    }
+                    } catch (e) { /* dados existentes não encontrados */ }
                 }
-                
                 modalPendencia.show();
             } 
             else { salvarStatusNoBanco(id, { status_esteira: statusId }); }
@@ -652,7 +708,8 @@
             if (!campoOS.readOnly) {
                 try {
                     const res = await apiFetch(`/crm/vendas/?ordem_servico=${os}`);
-                    if (res.some(v => v.id !== tempVendaId)) { document.getElementById('agenda-os').classList.add('is-invalid'); return; }
+                    const lista = Array.isArray(res) ? res : (res.results || []);
+                    if (lista.some(v => v.id !== tempVendaId)) { document.getElementById('agenda-os').classList.add('is-invalid'); return; }
                 } catch (e) { alert("Erro ao validar O.S."); return; }
             }
             await salvarStatusNoBanco(tempVendaId, { status_esteira: tempStatusId, ordem_servico: os, data_agendamento: data, periodo_agendamento: turno, observacoes: observacao });
@@ -707,7 +764,7 @@
                     }
                 }
                 modalEditar.show();
-            } catch(e) { console.error(e); alert('Erro ao abrir edição.'); }
+            } catch(e) { alert('Erro ao abrir edição.'); }
         }
 
         function verificarStatusInstaladaModal(select) {
@@ -735,9 +792,7 @@
             try { await apiFetch(`/crm/vendas/${id}/`, { method: 'PATCH', body: JSON.stringify(body) }); modalEditar.hide(); carregarVendas(true); alert('Salvo!'); } catch(e){ alert('Erro ao salvar.'); }
         }
 
-
         function logout() { localStorage.removeItem('accessToken'); window.location.href = '/'; }
     </script>
 </body>
 </html>
-
