@@ -617,8 +617,8 @@
                     counts.total = vendas.length;
                     vendas.forEach(v => {
                         // Tenta pegar o nome do status do objeto ou string
-                        let stName = v.status_esteira ? v.status_esteira.nome : (v.status_esteira_nome || '');
-                        stName = stName.toUpperCase();
+            			let stName = v.status_esteira ? v.status_esteira.nome : (v.status_esteira_nome || '');
+            			stName = (stName || '').toString().toUpperCase();
 
                         if (stName.includes('INSTALADA')) counts.instalada++;
                         else if (stName.includes('CANCELAD')) counts.cancelado++;
