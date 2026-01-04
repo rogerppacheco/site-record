@@ -6,25 +6,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Governança - Record PAP</title>
     <link rel="shortcut icon" href="{% static 'logo.png' %}" type="image/x-icon">
-    
     <link rel="icon" type="image/png" href="{% static 'logo.png' %}">
-
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=13.1">
-    
     <style>
         /* Layout de Administração */
         body { overflow-x: hidden; background-color: var(--cor-fundo); }
-        
         /* Header Fixo no Topo */
         .main-header {
             position: fixed; top: 0; left: 0; width: 100%; z-index: 1000;
             background-color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.05); height: 80px;
         }
-
         .admin-wrapper { display: flex; min-height: 100vh; padding-top: 80px; }
-        
         /* Sidebar Melhorada */
         .admin-sidebar {
             width: 280px; background: #fff; border-right: 1px solid var(--cor-borda);
@@ -32,11 +26,9 @@
             position: fixed; top: 80px; left: 0; bottom: 0; 
             overflow-y: auto; z-index: 900; box-shadow: 2px 0 5px rgba(0,0,0,0.02);
         }
-
         .admin-sidebar::-webkit-scrollbar { width: 6px; }
         .admin-sidebar::-webkit-scrollbar-track { background: #f1f1f1; }
         .admin-sidebar::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
-
         .admin-content {
             flex: 1; margin-left: 280px; padding: 2rem; max-width: 1600px; width: calc(100% - 280px); 
         }
@@ -513,15 +505,16 @@
         const tbody = document.getElementById('perfis-tabela-corpo');
         tbody.innerHTML = '<tr><td colspan="3" class="text-center py-3">Carregando...</td></tr>';
         try {
-            const grupos = await apiFetch(API_GRUPOS);
+            const res = await apiFetch(API_GRUPOS);
+            const grupos = Array.isArray(res) ? res : (res?.results || []);
             tbody.innerHTML = '';
             const selectMassa = document.getElementById('novo-perfil-massa');
             selectMassa.innerHTML = '<option value="">Alterar Perfil para...</option>';
             if(grupos.length === 0) { tbody.innerHTML = '<tr><td colspan="3">Nenhum perfil.</td></tr>'; return; }
             grupos.forEach(grupo => {
-                const badges = grupo.permissions_details.map(p => `<span class="badge bg-info text-dark badge-perm">${formatarNomePermissao(p.name)}</span>`).join('');
+                const badges = grupo.permissions_details.map(p => `<span class=\"badge bg-info text-dark badge-perm\">${formatarNomePermissao(p.name)}</span>`).join('');
                 selectMassa.add(new Option(grupo.name, grupo.id));
-                tbody.innerHTML += `<tr><td class="fw-bold text-primary">${grupo.name}</td><td>${badges || 'Sem permissões'}</td><td class="text-end"><button class="btn btn-xs btn-editar me-1" onclick='editarPerfil(${JSON.stringify(grupo)})'><i class="bi bi-pencil"></i></button><button class="btn btn-xs btn-excluir" onclick="confirmarExclusaoPerfil(${grupo.id}, '${grupo.name}')"><i class="bi bi-trash"></i></button></td></tr>`;
+                tbody.innerHTML += `<tr><td class=\"fw-bold text-primary\">${grupo.name}</td><td>${badges || 'Sem permissões'}</td><td class=\"text-end\"><button class=\"btn btn-xs btn-editar me-1\" onclick='editarPerfil(${JSON.stringify(grupo)})'><i class=\"bi bi-pencil\"></i></button><button class=\"btn btn-xs btn-excluir\" onclick=\"confirmarExclusaoPerfil(${grupo.id}, '${grupo.name}')\"><i class=\"bi bi-trash\"></i></button></td></tr>`;
             });
         } catch (e) { tbody.innerHTML = '<tr><td colspan="3">Erro ao carregar perfis.</td></tr>'; }
     }
@@ -579,8 +572,12 @@
 
     async function carregarUsuarios(status = 'ativos') { 
         try { 
-            const resposta = await apiFetch(`/usuarios/?is_active=${status === 'ativos'}`); 
-            todosUsuariosCache = Array.isArray(resposta) ? resposta : (resposta.results || []);
+            const res = await apiFetch(`/usuarios/?is_active=${status === 'ativos'}`); 
+            const dados = Array.isArray(res) ? res : (res?.results || []);
+            if (dados.length === 0) {
+                console.warn('Nenhum dado encontrado para /usuarios/?is_active=' + (status === 'ativos'));
+            }
+            todosUsuariosCache = dados;
             renderizarTabelaUsuarios(todosUsuariosCache, status);
         } catch (e) { 
             document.getElementById('user-list-body').innerHTML = `<tr><td colspan="7">Erro: ${e.message}</td></tr>`;
@@ -715,7 +712,8 @@
 
     // --- CADASTROS GERAIS ---
     async function carregarOperadoras() {
-        const lista = await apiFetch('/crm/operadoras/');
+        const res = await apiFetch('/crm/operadoras/');
+        const lista = Array.isArray(res) ? res : (res?.results || []);
         const tbody = document.getElementById('lista-operadoras'); tbody.innerHTML = '';
         const selPlanos = document.getElementById('plano_operadora_id'); selPlanos.innerHTML = '<option value="">Selecione...</option>';
         lista.forEach(o => {
@@ -734,7 +732,8 @@
     window.excluirOperadora = async (id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/operadoras/${id}/`, {method:'DELETE'}); carregarOperadoras(); } };
 
     async function carregarPlanos() {
-        const lista = await apiFetch('/crm/planos/');
+        const res = await apiFetch('/crm/planos/');
+        const lista = Array.isArray(res) ? res : (res?.results || []);
         const tbody = document.getElementById('lista-planos'); tbody.innerHTML = '';
         lista.forEach(p => {
             tbody.innerHTML += `<tr><td>${p.nome}</td><td>${p.operadora_nome || '-'}</td><td>${fmtMoeda(p.valor)}</td><td>${fmtMoeda(p.comissao)}</td><td><button class="btn btn-sm btn-editar me-1" onclick='editarPlano(${JSON.stringify(p)})'>✏️</button><button class="btn btn-sm btn-excluir" onclick="excluirPlano(${p.id})">🗑️</button></td></tr>`;
@@ -751,7 +750,8 @@
     window.excluirPlano = async (id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/planos/${id}/`, {method:'DELETE'}); carregarPlanos(); } };
 
     async function carregarFormasPagamento() {
-        const lista = await apiFetch('/crm/formas-pagamento/');
+        const res = await apiFetch('/crm/formas-pagamento/');
+        const lista = Array.isArray(res) ? res : (res?.results || []);
         const ul = document.getElementById('lista-formas-pagamento'); ul.innerHTML = '';
         lista.forEach(f => ul.innerHTML += `<li class="list-group-item d-flex justify-content-between align-items-center">${f.nome} <div class="d-flex gap-2"><button class="btn btn-sm btn-editar" onclick="editarFormaPagamento(${f.id}, '${f.nome}')"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-excluir" onclick="excluirFormaPagamento(${f.id})"><i class="bi bi-trash"></i></button></div></li>`);
     }
@@ -771,7 +771,8 @@
 
     let listaStatusGlobal = [];
     async function carregarStatus() {
-        const lista = await apiFetch('/crm/status/');
+        const res = await apiFetch('/crm/status/');
+        const lista = Array.isArray(res) ? res : (res?.results || []);
         listaStatusGlobal = lista;
         const tbody = document.getElementById('lista-status'); tbody.innerHTML = '';
         lista.forEach(s => tbody.innerHTML += `<tr><td>${s.nome}</td><td>${s.tipo}</td><td>${s.estado||'-'}</td><td><span class="badge" style="background:${s.cor};color:#000">${s.cor}</span></td><td class="text-end"><button class="btn btn-sm btn-editar me-1" onclick="editarStatus(${s.id})"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-excluir" onclick="excluirStatus(${s.id})"><i class="bi bi-trash"></i></button></td></tr>`);
@@ -801,7 +802,8 @@
 
     let listaPendenciasGlobal = [];
     async function carregarMotivosPendencia() {
-        const lista = await apiFetch('/crm/motivos-pendencia/');
+        const res = await apiFetch('/crm/motivos-pendencia/');
+        const lista = Array.isArray(res) ? res : (res?.results || []);
         listaPendenciasGlobal = lista;
         const tbody = document.getElementById('lista-pendencias'); tbody.innerHTML = '';
         lista.forEach(p => tbody.innerHTML += `<tr><td>${p.nome}</td><td>${p.tipo_pendencia}</td><td class="text-end"><button class="btn btn-sm btn-editar me-1" onclick="editarPendencia(${p.id})"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-excluir" onclick="excluirPendencia(${p.id})"><i class="bi bi-trash"></i></button></td></tr>`);
@@ -828,7 +830,10 @@
     window.excluirPendencia = async(id)=>{ if(confirm('Excluir?')) { await apiFetch(`/crm/motivos-pendencia/${id}/`, {method:'DELETE'}); carregarMotivosPendencia(); } };
 
     async function carregarRegrasComissao() {
-        const [regras, planos, users] = await Promise.all([apiFetch('/crm/regras-comissao/'), apiFetch('/crm/planos/'), apiFetch('/usuarios/?is_active=true')]);
+        const [resRegras, resPlanos, resUsers] = await Promise.all([apiFetch('/crm/regras-comissao/'), apiFetch('/crm/planos/'), apiFetch('/usuarios/?is_active=true')]);
+        const regras = Array.isArray(resRegras) ? resRegras : (resRegras?.results || []);
+        const planos = Array.isArray(resPlanos) ? resPlanos : (resPlanos?.results || []);
+        const users = Array.isArray(resUsers) ? resUsers : (resUsers?.results || []);
         const selPlanos = document.getElementById('regra_plano_id'); selPlanos.innerHTML = '<option value="">Selecione...</option>';
         const selUsers = document.getElementById('regra_consultor_id'); selUsers.innerHTML = '<option value="">Todos</option>';
         planos.forEach(p => selPlanos.add(new Option(p.nome, p.id)));
@@ -882,7 +887,9 @@
         tbody.insertAdjacentHTML('beforeend', `<tr><td><input type="number" class="form-control form-control-sm input-meta" value="${meta}" placeholder="Ex: 15" required min="1"></td><td><input type="number" class="form-control form-control-sm input-premio" value="${valor}" placeholder="Ex: 150.00" required step="0.01"></td><td class="text-center"><button type="button" class="btn btn-xs btn-outline-danger" onclick="this.closest('tr').remove()"><i class="bi bi-trash"></i></button></td></tr>`);
     }
     async function carregarDadosAuxiliaresCampanha() {
-        const [planos, pagamentos] = await Promise.all([apiFetch('/crm/planos/'), apiFetch('/crm/formas-pagamento/')]);
+        const [resPlanos, resPagamentos] = await Promise.all([apiFetch('/crm/planos/'), apiFetch('/crm/formas-pagamento/')]);
+        const planos = Array.isArray(resPlanos) ? resPlanos : (resPlanos?.results || []);
+        const pagamentos = Array.isArray(resPagamentos) ? resPagamentos : (resPagamentos?.results || []);
         const selPlanos = document.getElementById('campanha_planos'), selPags = document.getElementById('campanha_pagamentos');
         selPlanos.innerHTML = ''; selPags.innerHTML = '';
         planos.filter(p=>p.ativo).forEach(p => selPlanos.add(new Option(p.nome, p.id)));
@@ -944,10 +951,12 @@
 
     // --- COMISSÃO OPERADORA ---
     async function carregarComissoesOperadora() {
-        const lista = await apiFetch('/crm/comissoes-operadora/');
+        const res = await apiFetch('/crm/comissoes-operadora/');
+        const lista = Array.isArray(res) ? res : (res?.results || []);
         const tbody = document.getElementById('lista-comissoes-operadora'); tbody.innerHTML = '';
         const selPlano = document.getElementById('co_plano_id'); selPlano.innerHTML = '<option value="">Selecione...</option>';
-        const planos = await apiFetch('/crm/planos/');
+        const resPlanos = await apiFetch('/crm/planos/');
+        const planos = Array.isArray(resPlanos) ? resPlanos : (resPlanos?.results || []);
         planos.forEach(p => selPlano.add(new Option(p.nome, p.id)));
         lista.forEach(co => {
             const total = parseFloat(co.valor_base || 0) + parseFloat(co.bonus_transicao || 0);
@@ -965,7 +974,9 @@
 
     // --- ADIANTAMENTOS E DESCONTOS ---
     async function carregarUsuariosSelectsFinanceiro() {
-        const users = await apiFetch('/usuarios/?is_active=true');
+        const res = await apiFetch('/usuarios/?is_active=true');
+        const users = Array.isArray(res) ? res : (res?.results || []);
+        if (!users) return;
         const selAd = document.getElementById('ad_usuario'), selDesc = document.getElementById('desc_usuario');
         selAd.innerHTML = '<option value="">Selecione...</option>'; selDesc.innerHTML = '<option value="">Selecione...</option>';
         users.forEach(u => { const opt = new Option(u.username, u.id); selAd.add(opt.cloneNode(true)); selDesc.add(opt); });
@@ -984,7 +995,8 @@
     async function carregarLancamentosFinanceiros() {
         let mes = document.getElementById('filtro-mes-lancamentos').value;
         if (!mes) { const h = new Date(); mes = `${h.getFullYear()}-${String(h.getMonth()+1).padStart(2, '0')}`; document.getElementById('filtro-mes-lancamentos').value = mes; }
-        const lista = await apiFetch('/crm/lancamentos-financeiros/');
+        const res = await apiFetch('/crm/lancamentos-financeiros/');
+        const lista = Array.isArray(res) ? res : (res?.results || []);
         const tbody = document.getElementById('lista-lancamentos-fin'); tbody.innerHTML = '';
         lista.filter(l => l.data && l.data.startsWith(mes)).forEach(l => {
             tbody.innerHTML += `<tr><td>${new Date(l.data).toLocaleDateString('pt-BR',{timeZone:'UTC'})}</td><td>${l.usuario_nome || 'N/A'}</td><td>${l.tipo} - ${l.descricao}</td><td class="text-end fw-bold ${l.tipo==='DESCONTO'?'text-danger':'text-primary'}">${fmtMoeda(l.valor)}</td><td class="text-end"><button class="btn btn-xs btn-outline-danger" onclick="excluirLancamento(${l.id})">🗑️</button></td></tr>`;
@@ -999,7 +1011,8 @@
         const select = document.getElementById('regra_grupos');
         select.innerHTML = '<option disabled>Buscando na API...</option>';
         try {
-            const grupos = await apiFetch('/whatsapp/groups/'); // Tenta buscar na API real
+            const res = await apiFetch('/whatsapp/groups/');
+            const grupos = Array.isArray(res) ? res : (res?.results || []);
             select.innerHTML = '';
             if (grupos && grupos.length > 0) {
                 grupos.forEach(g => { select.add(new Option(g.name || g.subject, g.id || g.jid)); });
@@ -1088,7 +1101,8 @@
     window.excluirMotivo = async(id) => { if(confirm('Excluir?')) { await apiFetch(`/presenca/motivos/${id}/`, {method:'DELETE'}); carregarMotivos(); } };
 
     async function carregarFeriados() {
-        const lista = await apiFetch('/presenca/dias-nao-uteis/');
+        const res = await apiFetch('/presenca/dias-nao-uteis/');
+        const lista = Array.isArray(res) ? res : (res?.results || []);
         const tbody = document.getElementById('lista-feriados'); tbody.innerHTML = '';
         lista.forEach(f => tbody.innerHTML += `<tr><td>${f.data.split('-').reverse().join('/')}</td><td>${f.descricao||'-'}</td><td><button class="btn btn-sm btn-danger" onclick="excluirFeriado(${f.id})">🗑️</button></td></tr>`);
     }
