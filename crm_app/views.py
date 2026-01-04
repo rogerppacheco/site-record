@@ -247,8 +247,14 @@ class VendaViewSet(viewsets.ModelViewSet):
         queryset = Venda.objects.filter(ativo=True).select_related(
             'vendedor', 'cliente', 'plano', 'forma_pagamento',
             'status_tratamento', 'status_esteira', 'status_comissionamento',
-            'motivo_pendencia', 'auditor_atual'
-        ).prefetch_related('historico_alteracoes__usuario').order_by('-data_criacao')
+            'motivo_pendencia', 'auditor_atual', 'editado_por'
+        )
+        
+        # ✅ OTIMIZAÇÃO: Carrega histórico APENAS quando recuperando detalhes (retrieve)
+        if self.action == 'retrieve':
+            queryset = queryset.prefetch_related('historico_alteracoes__usuario')
+        
+        queryset = queryset.order_by('-data_criacao')
         
         user = self.request.user
         view_type = self.request.query_params.get('view')

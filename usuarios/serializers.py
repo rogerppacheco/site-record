@@ -150,42 +150,58 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         username_input = attrs.get('username', '')
         password = attrs.get('password', '')
         
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"[LOGIN] Input: username_input='{username_input}', password_len={len(password) if password else 0}")
+        
         # Tentar primeiro com o valor fornecido (username ou email)
         self.user = None
         try:
             # Tenta com username primeiro (case-insensitive)
             self.user = User.objects.get(username__iexact=username_input)
+            logger.warning(f"[LOGIN] Found user by username: {self.user.username}")
         except User.DoesNotExist:
+            logger.warning(f"[LOGIN] User not found by username, trying email...")
             try:
                 # Se não encontrar, tenta com email (case-insensitive)
                 self.user = User.objects.get(email__iexact=username_input)
+                logger.warning(f"[LOGIN] Found user by email: {self.user.username}")
             except User.DoesNotExist:
+                logger.warning(f"[LOGIN] User not found by email either")
                 pass
         
         # Se encontrou usuário, atualizar attrs para autenticação
         if self.user:
             attrs['username'] = self.user.username
+            logger.warning(f"[LOGIN] Updated attrs username to: {attrs['username']}")
         
-        data = super().validate(attrs)
+        try:
+            logger.warning(f"[LOGIN] Calling super().validate()...")
+            data = super().validate(attrs)
+            logger.warning(f"[LOGIN] super().validate() succeeded")
+        except Exception as e:
+            logger.warning(f"[LOGIN] super().validate() failed: {type(e).__name__}: {str(e)}")
+            raise
 
-        if not self.user.is_active:
+        if self.user and not self.user.is_active:
             raise serializers.ValidationError("Este usuário está inativo e não pode fazer login.")
 
         data['token'] = data.pop('access')
 
         user_profile = None
-        if hasattr(self.user, 'perfil') and self.user.perfil is not None:
+        if self.user and hasattr(self.user, 'perfil') and self.user.perfil is not None:
             user_profile = self.user.perfil.nome
 
         # --- RETORNA A FLAG PARA O JAVASCRIPT ---
-        data['obriga_troca_senha'] = self.user.obriga_troca_senha 
+        if self.user:
+            data['obriga_troca_senha'] = self.user.obriga_troca_senha 
 
-        data['user'] = {
-            'id': self.user.id,
-            'username': self.user.username,
-            'perfil': user_profile,
-            'groups': [g.name for g in self.user.groups.all()],
-            'obriga_troca_senha': self.user.obriga_troca_senha
-        }
-
+            data['user'] = {
+                'id': self.user.id,
+                'username': self.user.username,
+                'perfil': user_profile,
+                'groups': [g.name for g in self.user.groups.all()],
+                'obriga_troca_senha': self.user.obriga_troca_senha
+            }
+        
         return data

@@ -29,7 +29,7 @@ def start_scheduler():
     Inicia o agendador de tarefas
     Executa 1x por dia às 00:05 (meia-noite e cinco)
     """
-    logger.info("⚙️  Agendador configurado para executar diariamente às 00:05")
+    logger.info("[OK] Agendador configurado para executar diariamente às 00:05")
     
     scheduler = BackgroundScheduler()
     
@@ -44,11 +44,11 @@ def start_scheduler():
     )
     
     scheduler.start()
-    logger.info("✅ Agendador iniciado com sucesso!")
+    logger.info("[OK] Agendador iniciado com sucesso!")
     
     # Log dos jobs agendados
     jobs = scheduler.get_jobs()
-    logger.info(f"📋 {len(jobs)} tarefa(s) agendada(s):")
+    logger.info(f"[INFO] {len(jobs)} tarefa(s) agendada(s):")
     for job in jobs:
         logger.info(f"  - {job.name}: {job.trigger}")
     
