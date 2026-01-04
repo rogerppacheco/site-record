@@ -4057,8 +4057,12 @@ class ImportacaoLegadoView(APIView):
         thread.start()
 
         # 4. Retornar imediatamente
+        # Mantém padrão dos outros imports: retorna sucesso imediato + log_id
         return Response({
+            'success': True,
             'message': 'Processamento iniciado! Acompanhe o progresso na aba Histórico.',
+            'status': 'PROCESSANDO',
+            'background': True,
             'log_id': log.id
         }, status=200)
 
