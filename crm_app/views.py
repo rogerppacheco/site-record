@@ -2527,57 +2527,130 @@ class ImportarKMLView(APIView):
         
 # --- NOVA VIEW: IMPORTAÇÃO DFV (CSV) ---
 class ImportarDFVView(APIView):
+    """Importa arquivo DFV (Dados do Faturamento de Vendas) em background"""
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request, *args, **kwargs):
         file_obj = request.FILES.get('file')
-        if not file_obj: return Response({'error': 'Arquivo CSV não enviado.'}, status=400)
+        if not file_obj:
+            return Response({'error': 'Arquivo CSV não enviado.'}, status=400)
+        
+        from .models import LogImportacaoDFV
+        from django.utils import timezone
+        import threading
+        
+        # Criar log de importação
+        log = LogImportacaoDFV.objects.create(
+            nome_arquivo=file_obj.name,
+            usuario=request.user,
+            status='PROCESSANDO'
+        )
+        
+        # Ler arquivo em memória para passar para thread
+        arquivo_bytes = file_obj.read()
+        arquivo_nome = file_obj.name
+        user_id = request.user.id
+        
+        # Iniciar processamento em thread background
+        def processar_dfv_async():
+            self._processar_dfv_interno(log.id, arquivo_bytes, arquivo_nome, user_id)
+        
+        thread = threading.Thread(target=processar_dfv_async, daemon=True)
+        thread.start()
+        
+        # Retornar imediatamente ao cliente
+        return Response({
+            'success': True,
+            'log_id': log.id,
+            'message': 'Importação DFV iniciada! O processamento continuará em segundo plano.',
+            'status': 'PROCESSANDO',
+            'background': True
+        })
+    
+    def _processar_dfv_interno(self, log_id, arquivo_bytes, arquivo_nome, user_id):
+        """Processa DFV em background thread"""
+        from .models import LogImportacaoDFV
+        from django.utils import timezone
+        from django.db import transaction
+        from io import BytesIO
+        
+        log = LogImportacaoDFV.objects.get(id=log_id)
+        User = get_user_model()
+        usuario = User.objects.get(id=user_id)
+        
+        inicio = timezone.now()
         
         try:
-            # Lê o CSV (delimitador ; conforme seu arquivo)
+            # Criar objeto BytesIO do arquivo
+            arquivo_io = BytesIO(arquivo_bytes)
+            
+            # Tenta ler com UTF-8, caso contrário usa Latin-1
             try:
-                df = pd.read_csv(file_obj, sep=';', dtype=str, encoding='utf-8')
+                df = pd.read_csv(arquivo_io, sep=';', dtype=str, encoding='utf-8')
             except UnicodeDecodeError:
-                file_obj.seek(0)
-                df = pd.read_csv(file_obj, sep=';', dtype=str, encoding='latin-1')
-
+                arquivo_io.seek(0)
+                df = pd.read_csv(arquivo_io, sep=';', dtype=str, encoding='latin-1')
+            
             df = df.replace({np.nan: None})
             
-            # Normaliza nomes de colunas (remove espaços e poe maiusculo)
+            # Normaliza nomes de colunas (remove espaços e maiúsculo)
             df.columns = [c.strip().upper() for c in df.columns]
             
+            log.total_registros = len(df)
+            log.save(update_fields=['total_registros'])
+            
             objs = []
-            for _, row in df.iterrows():
-                # Tratamento do CEP
-                cep_raw = str(row.get('CEP', '')).strip()
-                cep_limpo = "".join(filter(str.isdigit, cep_raw))
+            erros_count = 0
+            sucesso_count = 0
+            valor_total = 0
+            
+            with transaction.atomic():
+                for idx, row in df.iterrows():
+                    try:
+                        # Tratamento do CEP
+                        cep_raw = str(row.get('CEP', '')).strip()
+                        cep_limpo = "".join(filter(str.isdigit, cep_raw))
+                        
+                        # Tratamento da Fachada (Número)
+                        fachada_raw = str(row.get('NUM_FACHADA', '')).strip()
+                        
+                        objs.append(DFV(
+                            uf=row.get('UF'),
+                            municipio=row.get('MUNICIPIO'),
+                            logradouro=row.get('LOGRADOURO'),
+                            num_fachada=fachada_raw,
+                            complemento=row.get('COMPLEMENTO'),
+                            cep=cep_limpo,
+                            bairro=row.get('BAIRRO'),
+                            tipo_viabilidade=row.get('TIPO_VIABILIDADE'),
+                            tipo_rede=row.get('TIPO_REDE'),
+                            celula=row.get('CELULA')
+                        ))
+                        sucesso_count += 1
+                    except Exception as e:
+                        erros_count += 1
                 
-                # Tratamento da Fachada (Número)
-                fachada_raw = str(row.get('NUM_FACHADA', '')).strip()
-                
-                objs.append(DFV(
-                    uf=row.get('UF'),
-                    municipio=row.get('MUNICIPIO'),
-                    logradouro=row.get('LOGRADOURO'),
-                    num_fachada=fachada_raw,
-                    complemento=row.get('COMPLEMENTO'),
-                    cep=cep_limpo,
-                    bairro=row.get('BAIRRO'),
-                    tipo_viabilidade=row.get('TIPO_VIABILIDADE'),
-                    tipo_rede=row.get('TIPO_REDE'),
-                    celula=row.get('CELULA')
-                ))
+                # Bulk create dos registros
+                DFV.objects.bulk_create(objs, batch_size=1000)
             
-            # Opcional: Descomente para apagar a base antiga antes de importar a nova
-            # DFV.objects.all().delete()
-            
-            DFV.objects.bulk_create(objs, batch_size=1000)
-            
-            return Response({'status': 'sucesso', 'mensagem': f'{len(objs)} registros importados na DFV.'})
+            # Atualizar log com sucesso
+            log.status = 'SUCESSO'
+            log.total_processadas = sucesso_count
+            log.sucesso = sucesso_count
+            log.erros = erros_count
+            log.total_valor_importado = valor_total
+            log.finalizado_em = timezone.now()
+            log.calcular_duracao()
+            log.mensagem = f'{sucesso_count} registros importados com sucesso na DFV.'
+            log.save()
             
         except Exception as e:
-            return Response({'error': f"Erro ao processar CSV: {str(e)}"}, status=500)
+            log.status = 'ERRO'
+            log.mensagem_erro = str(e)
+            log.finalizado_em = timezone.now()
+            log.calcular_duracao()
+            log.save()
 
 class WebhookWhatsAppView(APIView):
     permission_classes = [AllowAny]
@@ -5790,6 +5863,44 @@ class LogsImportacaoOSABView(APIView):
                 'mensagem_erro': log.mensagem_erro,
                 'usuario_nome': log.usuario.get_full_name() if log.usuario else 'Sistema',
                 'enviar_whatsapp': log.enviar_whatsapp,
+            })
+        
+        return Response({
+            'success': True,
+            'logs': logs_data
+        })
+
+
+class LogsImportacaoDFVView(APIView):
+    """Lista logs de importações DFV"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        from .models import LogImportacaoDFV
+        
+        # Buscar últimos 20 logs
+        if is_member(request.user, ['Admin', 'Diretoria']):
+            logs = LogImportacaoDFV.objects.all().order_by('-iniciado_em')[:20]
+        else:
+            logs = LogImportacaoDFV.objects.filter(usuario=request.user).order_by('-iniciado_em')[:20]
+        
+        logs_data = []
+        for log in logs:
+            logs_data.append({
+                'id': log.id,
+                'nome_arquivo': log.nome_arquivo,
+                'status': log.status,
+                'iniciado_em': log.iniciado_em.strftime('%d/%m/%Y %H:%M:%S') if log.iniciado_em else None,
+                'finalizado_em': log.finalizado_em.strftime('%d/%m/%Y %H:%M:%S') if log.finalizado_em else None,
+                'duracao_segundos': log.duracao_segundos,
+                'total_registros': log.total_registros,
+                'total_processadas': log.total_processadas,
+                'sucesso': log.sucesso,
+                'erros': log.erros,
+                'total_valor_importado': str(log.total_valor_importado) if log.total_valor_importado else '0.00',
+                'mensagem': log.mensagem,
+                'mensagem_erro': log.mensagem_erro,
+                'usuario_nome': log.usuario.get_full_name() if log.usuario else 'Sistema',
             })
         
         return Response({

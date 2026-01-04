@@ -215,6 +215,32 @@
 
         <!-- Resultados -->
         <div id="resultadoImportacao" class="mt-4" style="display: none;"></div>
+
+        <!-- Histórico de Importações -->
+        <div class="mt-5">
+            <h4 class="mb-3 text-dark fw-bold">
+                <i class="bi bi-hourglass-split"></i> Histórico de Importações
+            </h4>
+            <div class="table-responsive bg-white rounded shadow-sm">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Arquivo</th>
+                            <th>Status</th>
+                            <th>Data/Hora</th>
+                            <th>Duração</th>
+                            <th>Registros</th>
+                            <th>Sucesso</th>
+                            <th>Erros</th>
+                            <th>Usuário</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historicoDFV">
+                        <tr><td colspan="8" class="text-center text-muted py-4">Carregando histórico...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
 
     <!-- Loading Overlay -->
@@ -239,6 +265,74 @@
         const progressPercent = document.getElementById('progressPercent');
         const progressMessage = document.getElementById('progressMessage');
         let selectedFile = null;
+        let refreshIntervalId = null;
+
+        // Carregar histórico ao iniciar
+        document.addEventListener('DOMContentLoaded', () => {
+            carregarHistoricoDFV();
+            // Auto-refresh a cada 3 segundos
+            refreshIntervalId = setInterval(carregarHistoricoDFV, 3000);
+        });
+
+        async function carregarHistoricoDFV() {
+            try {
+                const token = localStorage.getItem('accessToken');
+                const response = await fetch('/api/crm/logs-dfv/', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                
+                if (data.success && data.logs) {
+                    const historico = document.getElementById('historicoDFV');
+                    
+                    if (data.logs.length === 0) {
+                        historico.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">Nenhuma importação realizada</td></tr>';
+                        return;
+                    }
+                    
+                    let html = '';
+                    data.logs.forEach(log => {
+                        const statusBadge = getBadgeStatus(log.status);
+                        const dataFormatada = log.iniciado_em ? new Date(log.iniciado_em.replace(' ', 'T')).toLocaleString('pt-BR') : '-';
+                        const duracao = log.duracao_segundos ? `${log.duracao_segundos}s` : '-';
+                        
+                        html += `
+                            <tr>
+                                <td><strong>${log.nome_arquivo}</strong></td>
+                                <td>${statusBadge}</td>
+                                <td>${dataFormatada}</td>
+                                <td>${duracao}</td>
+                                <td>${log.total_registros || 0}</td>
+                                <td><span class="badge bg-success">${log.sucesso || 0}</span></td>
+                                <td><span class="badge bg-danger">${log.erros || 0}</span></td>
+                                <td>${log.usuario_nome || 'Sistema'}</td>
+                            </tr>
+                        `;
+                    });
+                    
+                    historico.innerHTML = html;
+                    
+                    // Parar auto-refresh se não há importação PROCESSANDO
+                    const temProcessando = data.logs.some(log => log.status === 'PROCESSANDO');
+                    if (!temProcessando && refreshIntervalId) {
+                        clearInterval(refreshIntervalId);
+                        refreshIntervalId = null;
+                    }
+                }
+            } catch (error) {
+                console.error('Erro ao carregar histórico:', error);
+            }
+        }
+
+        function getBadgeStatus(status) {
+            const badges = {
+                'PROCESSANDO': '<span class="badge bg-info"><i class="bi bi-hourglass-split"></i> Processando</span>',
+                'SUCESSO': '<span class="badge bg-success"><i class="bi bi-check-circle"></i> Sucesso</span>',
+                'ERRO': '<span class="badge bg-danger"><i class="bi bi-x-circle"></i> Erro</span>',
+                'PARCIAL': '<span class="badge bg-warning"><i class="bi bi-exclamation-triangle"></i> Parcial</span>'
+            };
+            return badges[status] || `<span class="badge bg-secondary">${status}</span>`;
+        }
 
         // Eventos de drag & drop
         uploadZone.addEventListener('click', () => fileInput.click());
@@ -296,7 +390,7 @@
             const formData = new FormData();
             formData.append('file', selectedFile);
 
-            // Mostrar apenas a barra de progresso, não o overlay escuro
+            // Mostrar apenas a barra de progresso
             progressContainer.style.display = 'block';
             atualizarProgresso(10, 'Iniciando upload...');
 
@@ -310,61 +404,56 @@
                     body: formData
                 });
 
-                atualizarProgresso(70, 'Processando endereços...');
+                atualizarProgresso(70, 'Processando em segundo plano...');
                 const data = await response.json();
-                atualizarProgresso(90, 'Finalizando...');
 
                 if (response.ok) {
-                    atualizarProgresso(100, 'Concluído!');
+                    atualizarProgresso(100, 'Importação iniciada!');
                     setTimeout(() => {
-                        mostrarResultado('success', data);
+                        document.getElementById('resultadoImportacao').innerHTML = `
+                            <div class="alert alert-info alert-dismissible fade show" role="alert">
+                                <h5><i class="bi bi-hourglass-split"></i> Importação em Processamento</h5>
+                                <p class="mb-0">O arquivo está sendo importado em segundo plano. Atualize a página em alguns minutos para ver o resultado no histórico.</p>
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            </div>
+                        `;
+                        document.getElementById('resultadoImportacao').style.display = 'block';
                         progressContainer.style.display = 'none';
+                        
+                        // Limpar arquivo selecionado
+                        selectedFile = null;
+                        fileInfo.style.display = 'none';
+                        btnUpload.disabled = true;
+                        fileInput.value = '';
+                        
+                        // Reiniciar auto-refresh do histórico
+                        if (refreshIntervalId) clearInterval(refreshIntervalId);
+                        refreshIntervalId = setInterval(carregarHistoricoDFV, 3000);
+                        carregarHistoricoDFV();
                     }, 500);
                 } else {
-                    mostrarResultado('error', data);
+                    document.getElementById('resultadoImportacao').innerHTML = `
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            <h5><i class="bi bi-x-circle"></i> Erro na Importação</h5>
+                            <p class="mb-0">${data.error || 'Erro desconhecido'}</p>
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    `;
+                    document.getElementById('resultadoImportacao').style.display = 'block';
                     progressContainer.style.display = 'none';
                 }
             } catch (error) {
+                document.getElementById('resultadoImportacao').innerHTML = `
+                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                        <h5><i class="bi bi-x-circle"></i> Erro ao conectar</h5>
+                        <p class="mb-0">Erro: ${error.message}</p>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                `;
+                document.getElementById('resultadoImportacao').style.display = 'block';
                 progressContainer.style.display = 'none';
-                progressContainer.style.display = 'none';
-                mostrarResultado('error', { error: 'Erro ao conectar com servidor' });
             }
         });
-
-        function mostrarResultado(tipo, data) {
-            const resultado = document.getElementById('resultadoImportacao');
-            resultado.style.display = 'block';
-            
-            if (tipo === 'success') {
-                resultado.innerHTML = `
-                    <div class="alert alert-success alert-dismissible fade show" role="alert">
-                        <h5 class="alert-heading"><i class="bi bi-check-circle"></i> Importação Concluída com Sucesso!</h5>
-                        <p class="mb-2"><strong>${data.mensagem || 'Arquivo processado com sucesso'}</strong></p>
-                        <hr>
-                        <div class="d-flex gap-2 mt-3">
-                            <a href="/importacoes/" class="btn btn-success">
-                                <i class="bi bi-cloud-upload-fill"></i> Importar Outro
-                            </a>
-                            <a href="/area-interna/" class="btn btn-outline-secondary">
-                                <i class="bi bi-arrow-left"></i> Voltar
-                            </a>
-                        </div>
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                    </div>
-                `;
-            } else {
-                resultado.innerHTML = `
-                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                        <h5 class="alert-heading"><i class="bi bi-x-circle"></i> Erro na Importação</h5>
-                        <p class="mb-0">${data.error || 'Erro desconhecido'}</p>
-                        ${data.detalhes ? `<hr><small>${data.detalhes}</small>` : ''}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                    </div>
-                `;
-            }
-
-            resultado.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
 
         function logout() {
             localStorage.removeItem('accessToken');
