@@ -248,6 +248,9 @@ class VendaViewSet(viewsets.ModelViewSet):
             'vendedor', 'cliente', 'plano', 'forma_pagamento',
             'status_tratamento', 'status_esteira', 'status_comissionamento',
             'motivo_pendencia', 'auditor_atual'
+        ).defer(
+            # Defer campos grandes que raramente são usados na listagem
+            'observacoes', 'complemento', 'ponto_referencia'
         ).prefetch_related('historico_alteracoes__usuario').order_by('-data_criacao')
         
         user = self.request.user
@@ -2237,18 +2240,45 @@ class ImportacaoChurnView(APIView):
             if f in df.columns: df[f] = pd.to_datetime(df[f], errors='coerce')
         df = df.replace({np.nan: None, pd.NaT: None})
         df.rename(columns=coluna_map, inplace=True)
+        
+        # Bulk operations optimization
         criados, atualizados, erros = 0, 0, []
-        fields = {f.name for f in ImportacaoChurn._meta.get_fields()}
+        fields = {f.name for f in ImportacaoChurn._meta.get_fields() if f.name != 'id'}
+        
+        # Separar registros para criar e atualizar
+        pedidos_df = [row.get('numero_pedido') for _, row in df.iterrows() if row.get('numero_pedido')]
+        existentes = {obj.numero_pedido: obj for obj in ImportacaoChurn.objects.filter(numero_pedido__in=pedidos_df)}
+        
+        to_create = []
+        to_update = []
+        
         for idx, row in df.iterrows():
             data = row.to_dict()
             pedido = data.get('numero_pedido')
             if not pedido: continue
-            defaults = {k: v for k, v in data.items() if k in fields}
+            
+            filtered_data = {k: v for k, v in data.items() if k in fields}
+            
             try:
-                obj, created = ImportacaoChurn.objects.update_or_create(numero_pedido=pedido, defaults=defaults)
-                if created: criados += 1
-                else: atualizados += 1
-            except Exception as e: erros.append(f"Linha {idx+2}: {e}")
+                if pedido in existentes:
+                    obj = existentes[pedido]
+                    for k, v in filtered_data.items():
+                        setattr(obj, k, v)
+                    to_update.append(obj)
+                else:
+                    to_create.append(ImportacaoChurn(**filtered_data))
+            except Exception as e:
+                erros.append(f"Linha {idx+2}: {e}")
+        
+        # Executar bulk operations
+        with transaction.atomic():
+            if to_create:
+                ImportacaoChurn.objects.bulk_create(to_create, batch_size=1000)
+                criados = len(to_create)
+            if to_update:
+                ImportacaoChurn.objects.bulk_update(to_update, list(fields), batch_size=1000)
+                atualizados = len(to_update)
+        
         return Response({'status': 'sucesso', 'total_registros': len(df), 'criados': criados, 'atualizados': atualizados, 'erros': erros}, status=200)
 
 class ImportacaoChurnDetailView(generics.RetrieveUpdateAPIView):
@@ -2276,18 +2306,47 @@ class ImportacaoCicloPagamentoView(APIView):
                 df[f] = df[f].astype(str).str.replace('R$', '', regex=False).str.replace('.', '', regex=False).str.replace(',', '.', regex=False)
                 df[f] = pd.to_numeric(df[f], errors='coerce')
         df = df.replace({np.nan: None, pd.NaT: None})
+        
+        # Bulk operations optimization
         criados, atualizados, erros = 0, 0, []
-        fields = {f.name for f in CicloPagamento._meta.get_fields()}
+        fields = {f.name for f in CicloPagamento._meta.get_fields() if f.name != 'contrato'}
+        
+        # Separar registros para criar e atualizar
+        contratos_df = [row.get('contrato') for _, row in df.iterrows() if row.get('contrato')]
+        existentes = {obj.contrato: obj for obj in CicloPagamento.objects.filter(contrato__in=contratos_df)}
+        
+        to_create = []
+        to_update = []
+        
         for idx, row in df.iterrows():
             data = row.to_dict()
             contrato = data.get('contrato')
             if not contrato: continue
-            defaults = {k: v for k, v in data.items() if k in fields}
+            
+            filtered_data = {k: v for k, v in data.items() if k in fields or k == 'contrato'}
+            
             try:
-                obj, created = CicloPagamento.objects.update_or_create(contrato=contrato, defaults=defaults)
-                if created: criados += 1
-                else: atualizados += 1
-            except Exception as e: erros.append(f"Linha {idx+2}: {e}")
+                if contrato in existentes:
+                    obj = existentes[contrato]
+                    for k, v in filtered_data.items():
+                        if k != 'contrato':
+                            setattr(obj, k, v)
+                    to_update.append(obj)
+                else:
+                    to_create.append(CicloPagamento(**filtered_data))
+            except Exception as e:
+                erros.append(f"Linha {idx+2}: {e}")
+        
+        # Executar bulk operations
+        with transaction.atomic():
+            if to_create:
+                CicloPagamento.objects.bulk_create(to_create, batch_size=1000, ignore_conflicts=True)
+                criados = len(to_create)
+            if to_update:
+                CicloPagamento.objects.bulk_update(to_update, list(fields), batch_size=1000)
+                atualizados = len(to_update)
+        
+        return Response({'total': len(df), 'criados': criados, 'atualizados': atualizados, 'erros': erros}, status=200)
         return Response({'total': len(df), 'criados': criados, 'atualizados': atualizados, 'erros': erros}, status=200)
 
 class PerformanceVendasView(APIView):
