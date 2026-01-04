@@ -44,6 +44,7 @@ from .views import (
     LogsImportacaoAgendamentoView,
     LogsImportacaoFPDView,
     LogsImportacaoOSABView,
+    LogsImportacaoDFVView,
     
     # NOVAS VIEWS (Mapas, ZAP, Performance)
     api_verificar_whatsapp,
@@ -193,6 +194,7 @@ urlpatterns = [
     path('logs-agendamento/', LogsImportacaoAgendamentoView.as_view(), name='logs-agendamento'),
     path('logs-fpd/', LogsImportacaoFPDView.as_view(), name='logs-fpd'),
     path('logs-osab/', LogsImportacaoOSABView.as_view(), name='logs-osab'),
+    path('logs-dfv/', LogsImportacaoDFVView.as_view(), name='logs-dfv'),
     
     # --- ROTAS EXTRAS ---
     path('grupos-disparo-api/', listar_grupos_whatsapp_api, name='listar_grupos_api'),

@@ -434,44 +434,28 @@
             
             if (tipo === 'success') {
                 resultado.innerHTML = `
-                    <div class="alert alert-success alert-dismissible fade show" role="alert">
-                        <h5 class="alert-heading"><i class="bi bi-check-circle"></i> Importação Concluída com Sucesso!</h5>
-                        <div class="stats-grid">
-                            <div class="stat-box">
-                                <div class="stat-number">${data.total_registros || 0}</div>
-                                <div class="stat-label">Total Processado</div>
-                            </div>
-                            <div class="stat-box">
-                                <div class="stat-number">${data.criados || 0}</div>
-                                <div class="stat-label">Novos Registros</div>
-                            </div>
-                            <div class="stat-box">
-                                <div class="stat-number">${data.atualizados || 0}</div>
-                                <div class="stat-label">Atualizados</div>
-                            </div>
-                            <div class="stat-box">
-                                <div class="stat-number">${enviouWhatsapp ? '✓' : '—'}</div>
-                                <div class="stat-label">WhatsApp</div>
-                            </div>
-                        </div>
-                        <hr>
-                        <div class="d-flex gap-2 mt-3">
-                            <a href="/importacoes/" class="btn btn-success">
-                                <i class="bi bi-cloud-upload-fill"></i> Importar Outro
-                            </a>
-                            <a href="/area-interna/" class="btn btn-outline-secondary">
-                                <i class="bi bi-arrow-left"></i> Voltar
-                            </a>
-                        </div>
+                    <div class="alert alert-info alert-dismissible fade show" role="alert">
+                        <h5><i class="bi bi-hourglass-split"></i> Importação em Processamento</h5>
+                        <p class="mb-0">O arquivo está sendo importado em segundo plano. Atualize a página em alguns minutos para ver o resultado no histórico.</p>
                         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     </div>
                 `;
+                
+                // Limpar arquivo selecionado
+                selectedFile = null;
+                fileInfo.style.display = 'none';
+                btnUpload.disabled = true;
+                fileInput.value = '';
+                
+                // Reiniciar auto-refresh do histórico
+                if (refreshIntervalId) clearInterval(refreshIntervalId);
+                refreshIntervalId = setInterval(carregarHistoricoOSAB, 3000);
+                carregarHistoricoOSAB();
             } else {
                 resultado.innerHTML = `
                     <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                        <h5 class="alert-heading"><i class="bi bi-x-circle"></i> Erro na Importação</h5>
+                        <h5><i class="bi bi-x-circle"></i> Erro na Importação</h5>
                         <p class="mb-0">${data.error || 'Erro desconhecido'}</p>
-                        ${data.detalhes ? `<hr><small>${data.detalhes}</small>` : ''}
                         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     </div>
                 `;
