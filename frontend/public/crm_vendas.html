@@ -398,9 +398,9 @@
 
         // ===== VALIDAÇÃO DE CPF/CNPJ =====
         function validarCpfInput(input) {
+            if (!input || !input.classList) return;
             const resultado = validarCPF(input.value);
             const feedback = document.getElementById('feedback-cpf-rep');
-            
             if (!input.value) {
                 input.classList.remove('is-valid', 'is-invalid');
                 feedback && (feedback.textContent = '');
@@ -416,15 +416,14 @@
         }
 
         function validarCpfCnpjInput(input) {
+            if (!input || !input.classList) return;
             const resultado = validarCPFouCNPJ(input.value);
             const feedback = document.getElementById('feedback-cpf');
-            
             if (!input.value) {
                 input.classList.remove('is-valid', 'is-invalid');
                 feedback && (feedback.textContent = '');
                 return;
             }
-            
             if (resultado.valido) {
                 input.classList.add('is-valid');
                 input.classList.remove('is-invalid');
@@ -465,7 +464,12 @@
                 input.classList.add('input-loading'); 
                 try {
                     const res = await apiFetch(`/crm/clientes/?search=${cpf}`);
-                    const cliente = res.find(c => c.cpf_cnpj.replace(/\D/g, '') === cpf);
+                    let cliente = null;
+                    if (Array.isArray(res)) {
+                        cliente = res.find(c => c.cpf_cnpj && c.cpf_cnpj.replace(/\D/g, '') === cpf);
+                    } else if (res && Array.isArray(res.results)) {
+                        cliente = res.results.find(c => c.cpf_cnpj && c.cpf_cnpj.replace(/\D/g, '') === cpf);
+                    }
                     if (cliente) {
                         preencherFormularioCliente(cliente, true); 
                         if (cliente.vendas_count > 0) { abrirModalAvisoCliente(cliente); }

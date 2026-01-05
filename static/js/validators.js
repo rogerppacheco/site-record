@@ -7,6 +7,9 @@
  */
 function validarCPF(cpf) {
     // Remove caracteres não numéricos
+    if (!cpf) {
+        return { valido: false, limpo: '', erro: 'CPF vazio ou indefinido.' };
+    }
     const cpfLimpo = cpf.replace(/\D/g, '');
     
     // Verifica comprimento
@@ -53,6 +56,9 @@ function validarCPF(cpf) {
  */
 function validarCNPJ(cnpj) {
     // Remove caracteres não numéricos
+    if (!cnpj) {
+        return { valido: false, limpo: '', erro: 'CNPJ vazio ou indefinido.' };
+    }
     const cnpjLimpo = cnpj.replace(/\D/g, '');
     
     // Verifica comprimento
@@ -100,6 +106,14 @@ function validarCNPJ(cnpj) {
  * @returns {object} { valido: boolean, limpo: string, tipo: string, erro: string }
  */
 function validarCPFouCNPJ(documento) {
+    if (!documento) {
+        return {
+            valido: false,
+            limpo: '',
+            tipo: '',
+            erro: 'Documento vazio ou indefinido.'
+        };
+    }
     const doc = documento.replace(/\D/g, '');
     
     if (doc.length === 11) {
@@ -122,6 +136,7 @@ function validarCPFouCNPJ(documento) {
  * Formata CPF: 000.000.000-00
  */
 function formatarCPF(cpf) {
+    if (!cpf) return '';
     const limpo = cpf.replace(/\D/g, '');
     if (limpo.length !== 11) return cpf;
     return limpo.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
@@ -131,6 +146,7 @@ function formatarCPF(cpf) {
  * Formata CNPJ: 00.000.000/0000-00
  */
 function formatarCNPJ(cnpj) {
+    if (!cnpj) return '';
     const limpo = cnpj.replace(/\D/g, '');
     if (limpo.length !== 14) return cnpj;
     return limpo.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
@@ -146,9 +162,10 @@ function aplicarValidadorCPFEmTempo(selectorInput, selectorFeedback) {
     if (!input) return;
     
     input.addEventListener('blur', function() {
-        const resultado = validarCPF(this.value);
+        const valor = typeof this.value === 'string' ? this.value : '';
+        const resultado = validarCPF(valor);
         
-        if (!this.value) {
+        if (!valor) {
             input.classList.remove('is-valid', 'is-invalid');
             feedback?.classList.remove('text-success', 'text-danger');
             feedback && (feedback.textContent = '');
@@ -178,9 +195,10 @@ function aplicarValidadorCNPJEmTempo(selectorInput, selectorFeedback) {
     if (!input) return;
     
     input.addEventListener('blur', function() {
-        const resultado = validarCNPJ(this.value);
+        const valor = typeof this.value === 'string' ? this.value : '';
+        const resultado = validarCNPJ(valor);
         
-        if (!this.value) {
+        if (!valor) {
             input.classList.remove('is-valid', 'is-invalid');
             feedback?.classList.remove('text-success', 'text-danger');
             feedback && (feedback.textContent = '');

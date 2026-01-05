@@ -397,24 +397,28 @@ class VendaViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     def create(self, request, *args, **kwargs):
+        print("[CRM DEBUG] Dados recebidos no POST /crm/vendas/:", dict(request.data))
         # Validar CPF/CNPJ antes de processar
         if 'cliente_cpf_cnpj' in request.data:
             try:
                 validar_cpf_ou_cnpj(request.data['cliente_cpf_cnpj'])
             except ValidationError as e:
+                print("[CRM DEBUG] Erro de validação CPF/CNPJ:", e)
                 return Response({"cliente_cpf_cnpj": [str(e)]}, status=status.HTTP_400_BAD_REQUEST)
-        
         # Validar CPF do Representante Legal se fornecido
         if 'cpf_representante_legal' in request.data and request.data['cpf_representante_legal']:
             try:
                 validar_cpf(request.data['cpf_representante_legal'])
             except ValidationError as e:
+                print("[CRM DEBUG] Erro de validação CPF Rep. Legal:", e)
                 return Response({"cpf_representante_legal": [str(e)]}, status=status.HTTP_400_BAD_REQUEST)
-        
         serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            print("[CRM DEBUG] Erros de validação do serializer:", serializer.errors)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         self.perform_create(serializer)
         headers = self.get_success_headers(serializer.data)
+        print("[CRM DEBUG] Venda criada com sucesso! Dados:", serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     @action(detail=True, methods=['post'], url_path='reenviar-whatsapp-aprovacao', permission_classes=[permissions.IsAuthenticated])
