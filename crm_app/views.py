@@ -749,6 +749,9 @@ class VendaViewSet(viewsets.ModelViewSet):
     # --- NOVA AÇÃO: EXPORTAR EXCEL ---
     @action(detail=False, methods=['get'], url_path='exportar-excel')
     def exportar_excel(self, request):
+            import time
+            start_time = time.time()
+            print(f"[EXPORTAR_EXCEL] Início: {start_time}")
         import pandas as pd
         from django.http import HttpResponse
         from io import BytesIO
@@ -819,6 +822,8 @@ class VendaViewSet(viewsets.ModelViewSet):
         filename = f"Base_Vendas_Completa_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
         response = HttpResponse(output.getvalue(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        end_time = time.time()
+        print(f"[EXPORTAR_EXCEL] Fim: {end_time} | Duração: {end_time - start_time:.2f} segundos")
         return response
 
 class VendasStatusCountView(APIView):
