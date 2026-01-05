@@ -749,20 +749,16 @@ class VendaViewSet(viewsets.ModelViewSet):
     # --- NOVA AÇÃO: EXPORTAR EXCEL ---
     @action(detail=False, methods=['get'], url_path='exportar-excel')
     def exportar_excel(self, request):
+        import csv
+        from django.utils.encoding import smart_str
+        from django.http import StreamingHttpResponse
+
         user = request.user
-        # Apenas Diretoria, Admin e BackOffice podem exportar
         if not is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
             return Response({"detail": "Acesso negado."}, status=status.HTTP_403_FORBIDDEN)
 
-        # Pega todos os dados (sem paginação) aplicando os filtros atuais da tela
         vendas = self.filter_queryset(self.get_queryset())
-        
-        # Criação do Workbook
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "Base Completa"
 
-        # 1. Definição dos Cabeçalhos (Colunas)
         headers = [
             'ID', 'Data Criação', 'Data Abertura (OS)', 'Vendedor', 'Supervisor', 'Canal',
             'Cliente', 'CPF/CNPJ', 'Telefone 1', 'Telefone 2', 'Email',
@@ -772,77 +768,64 @@ class VendaViewSet(viewsets.ModelViewSet):
             'Motivo Pendência', 'Observações',
             'CEP', 'Logradouro', 'Número', 'Complemento', 'Bairro', 'Cidade', 'UF', 'Ponto Ref.'
         ]
-        ws.append(headers)
-        
-        # 2. Estilização do Cabeçalho (Fundo Azul, Fonte Branca e Negrito)
-        for cell in ws[1]:
-            cell.font = Font(bold=True, color="FFFFFF")
-            cell.fill = PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
 
-        # 3. Preenchimento das Linhas
-        for v in vendas:
-            # Tratamento de campos nulos para evitar erro
-            sup_nome = v.vendedor.supervisor.username if v.vendedor and v.vendedor.supervisor else '-'
-            canal_venda = getattr(v.vendedor, 'canal', '-') if v.vendedor else '-'
-            
-            # Formatação de Datas
-            dt_criacao = v.data_criacao.strftime('%d/%m/%Y %H:%M') if v.data_criacao else '-'
-            dt_abertura = v.data_abertura.strftime('%d/%m/%Y %H:%M') if v.data_abertura else '-'
-            dt_agendamento = v.data_agendamento.strftime('%d/%m/%Y') if v.data_agendamento else '-'
-            dt_instalacao = v.data_instalacao.strftime('%d/%m/%Y') if v.data_instalacao else '-'
-            
-            ws.append([
-                v.id,
-                dt_criacao,
-                dt_abertura,
-                v.vendedor.username if v.vendedor else '-',
-                sup_nome,
-                canal_venda,
-                v.cliente.nome_razao_social if v.cliente else '-',
-                v.cliente.cpf_cnpj if v.cliente else '-',
-                v.telefone1 or '-',
-                v.telefone2 or '-',
-                v.cliente.email if v.cliente else '-',
-                v.plano.nome if v.plano else '-',
-                v.plano.valor if v.plano else 0.00,
-                v.forma_pagamento.nome if v.forma_pagamento else '-',
-                v.status_esteira.nome if v.status_esteira else '-',
-                v.status_tratamento.nome if v.status_tratamento else '-',
-                v.status_comissionamento.nome if v.status_comissionamento else '-',
-                v.ordem_servico or '-',
-                dt_agendamento,
-                v.get_periodo_agendamento_display() or '-',
-                dt_instalacao,
-                v.motivo_pendencia.nome if v.motivo_pendencia else '-',
-                v.observacoes or '-',
-                v.cep or '-',
-                v.logradouro or '-',
-                v.numero_residencia or '-',
-                v.complemento or '-',
-                v.bairro or '-',
-                v.cidade or '-',
-                v.estado or '-',
-                v.ponto_referencia or '-'
-            ])
+        def row_generator():
+            yield headers
+            for v in vendas.iterator():
+                sup_nome = v.vendedor.supervisor.username if v.vendedor and v.vendedor.supervisor else '-'
+                canal_venda = getattr(v.vendedor, 'canal', '-') if v.vendedor else '-'
+                dt_criacao = v.data_criacao.strftime('%d/%m/%Y %H:%M') if v.data_criacao else '-'
+                dt_abertura = v.data_abertura.strftime('%d/%m/%Y %H:%M') if v.data_abertura else '-'
+                dt_agendamento = v.data_agendamento.strftime('%d/%m/%Y') if v.data_agendamento else '-'
+                dt_instalacao = v.data_instalacao.strftime('%d/%m/%Y') if v.data_instalacao else '-'
+                yield [
+                    v.id,
+                    dt_criacao,
+                    dt_abertura,
+                    v.vendedor.username if v.vendedor else '-',
+                    sup_nome,
+                    canal_venda,
+                    v.cliente.nome_razao_social if v.cliente else '-',
+                    v.cliente.cpf_cnpj if v.cliente else '-',
+                    v.telefone1 or '-',
+                    v.telefone2 or '-',
+                    v.cliente.email if v.cliente else '-',
+                    v.plano.nome if v.plano else '-',
+                    v.plano.valor if v.plano else 0.00,
+                    v.forma_pagamento.nome if v.forma_pagamento else '-',
+                    v.status_esteira.nome if v.status_esteira else '-',
+                    v.status_tratamento.nome if v.status_tratamento else '-',
+                    v.status_comissionamento.nome if v.status_comissionamento else '-',
+                    v.ordem_servico or '-',
+                    dt_agendamento,
+                    v.get_periodo_agendamento_display() or '-',
+                    dt_instalacao,
+                    v.motivo_pendencia.nome if v.motivo_pendencia else '-',
+                    v.observacoes or '-',
+                    v.cep or '-',
+                    v.logradouro or '-',
+                    v.numero_residencia or '-',
+                    v.complemento or '-',
+                    v.bairro or '-',
+                    v.cidade or '-',
+                    v.estado or '-',
+                    v.ponto_referencia or '-'
+                ]
 
-        # Ajuste automático de largura das colunas
-        for col in ws.columns:
-            max_length = 0
-            column = col[0].column_letter 
-            for cell in col:
-                try:
-                    if len(str(cell.value)) > max_length:
-                        max_length = len(str(cell.value))
-                except:
-                    pass
-            adjusted_width = (max_length + 2)
-            if adjusted_width > 50: adjusted_width = 50
-            ws.column_dimensions[column].width = adjusted_width
+        class Echo:
+            def write(self, value):
+                return value
 
-        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        filename = f"Base_Vendas_Completa_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+        pseudo_buffer = Echo()
+        writer = csv.writer(pseudo_buffer, delimiter=';', quoting=csv.QUOTE_MINIMAL)
+
+        def csv_rows():
+            for row in row_generator():
+                yield writer.writerow([smart_str(s) for s in row])
+
+        response = StreamingHttpResponse(csv_rows(), content_type='text/csv')
+        filename = f"Base_Vendas_Completa_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
-        wb.save(response)
         return response
 
 class VendasStatusCountView(APIView):
