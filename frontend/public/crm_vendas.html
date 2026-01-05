@@ -602,17 +602,36 @@
             if(viewAtual === 'geral' && vendedor) url += `&consultor_id=${vendedor}`;
 
             try {
-                // Carrega Vendas e Listas de Status
-                const [vendasRes, statusEsteiraRes, statusTratRes] = await Promise.all([
-                    apiFetch(url),
+                // Busca todas as páginas de vendas automaticamente
+                let vendas = [];
+                let nextUrl = url + '&page_size=1000';
+                let primeiraResposta = null;
+                while (nextUrl) {
+                    const res = await apiFetch(nextUrl);
+                    if (!primeiraResposta) primeiraResposta = res;
+                    if (res && res.results) {
+                        vendas = vendas.concat(res.results);
+                        // Extrai apenas o endpoint relativo para próxima página
+                        if (res.next) {
+                            const next = res.next;
+                            const idx = next.indexOf('/api/');
+                            nextUrl = idx !== -1 ? next.substring(idx + 4) : null;
+                        } else {
+                            nextUrl = null;
+                        }
+                    } else if (Array.isArray(res)) {
+                        vendas = vendas.concat(res);
+                        nextUrl = null;
+                    } else {
+                        nextUrl = null;
+                    }
+                }
+
+                // Carrega listas de status
+                const [statusEsteiraRes, statusTratRes] = await Promise.all([
                     apiFetch('/crm/status/?tipo=Esteira&page_size=1000'),
                     apiFetch('/crm/status/?tipo=Tratamento&page_size=1000')
                 ]);
-
-                let vendas = [];
-                if (vendasRes) {
-                    vendas = Array.isArray(vendasRes) ? vendasRes : (vendasRes.results || []);
-                }
 
                 const listaStatusEsteira = Array.isArray(statusEsteiraRes) ? statusEsteiraRes : (statusEsteiraRes?.results || []);
                 const listaStatusTrat = Array.isArray(statusTratRes) ? statusTratRes : (statusTratRes?.results || []);
