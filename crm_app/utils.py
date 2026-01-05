@@ -135,7 +135,7 @@ def listar_fachadas_dfv(cep):
         cep=cep_limpo
     ).filter(
         Q(tipo_viabilidade__icontains='VIAVEL') | Q(tipo_viabilidade__icontains='VIÁVEL')
-    ).values_list('num_fachada', 'logradouro', 'bairro', 'tipo_rede')
+    ).values_list('num_fachada', 'complemento', 'logradouro', 'bairro', 'tipo_rede')
 
     if not fachadas:
         return (
@@ -146,15 +146,22 @@ def listar_fachadas_dfv(cep):
 
     # Pega dados do logradouro do primeiro resultado para cabeçalho
     exemplo = fachadas[0]
-    logradouro = exemplo[1] or "Rua Desconhecida"
-    bairro = exemplo[2] or "Bairro Desconhecido"
-    tecnologia = exemplo[3] or "-"
+    logradouro = exemplo[2] or "Rua Desconhecida"
+    bairro = exemplo[3] or "Bairro Desconhecido"
+    tecnologia = exemplo[4] or "-"
 
-    # Extrai e ordena os números
-    # Tenta ordenar numericamente, se falhar ordena como texto (ex: 10, 100, 2)
-    numeros = [f[0] for f in fachadas if f[0]]
+    # Monta lista de números + complemento
+    def num_compl(num, compl):
+        num = (num or '').strip()
+        compl = (compl or '').strip()
+        if compl:
+            return f"{num} ({compl})"
+        return num
+
+    numeros = [num_compl(f[0], f[1]) for f in fachadas if f[0]]
     try:
-        numeros.sort(key=lambda x: int(''.join(filter(str.isdigit, x))) if any(c.isdigit() for c in x) else 0)
+        # Ordena pelo número (ignorando complemento)
+        numeros.sort(key=lambda x: int(''.join(filter(str.isdigit, x.split(' ')[0]))) if any(c.isdigit() for c in x.split(' ')[0]) else 0)
     except:
         numeros.sort()
 
@@ -171,7 +178,7 @@ def listar_fachadas_dfv(cep):
         f"🏙️ *Bairro:* {bairro}\n"
         f"📡 *Tecnologia:* {tecnologia}\n"
         f"✅ *Total Viáveis:* {total}\n\n"
-        f"🔢 *Números Disponíveis:*\n"
+        f"🔢 *Números Disponíveis (com complemento):*\n"
         f"{lista_str}"
     )
 
