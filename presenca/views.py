@@ -92,10 +92,19 @@ class MinhaEquipeListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
     def get_queryset(self):
         user = self.request.user
-        return user.liderados.filter(is_active=True).order_by('first_name')
+        qs = getattr(user, 'liderados', None)
+        if qs is not None:
+            result = qs.filter(is_active=True).order_by('first_name')
+        else:
+            result = Usuario.objects.none()
+        print(f"[DEBUG MinhaEquipeListView] queryset type: {type(result)}, count: {result.count()}")
+        return result
 
 class TodosUsuariosListView(generics.ListAPIView):
-    queryset = Usuario.objects.filter(is_active=True, participa_controle_presenca=True).order_by('first_name')
+    def get_queryset(self):
+        qs = Usuario.objects.filter(is_active=True, participa_controle_presenca=True).order_by('first_name')
+        print(f"[DEBUG TodosUsuariosListView] queryset type: {type(qs)}, count: {qs.count()}")
+        return qs
     serializer_class = UsuarioSerializer
     permission_classes = [IsAuthenticated]
 

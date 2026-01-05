@@ -81,13 +81,9 @@
                     <h1 style="font-size: 1.8rem; margin: 0;">Auditoria de Vendas</h1>
                     <p class="text-muted mb-0">Validação de dados e qualidade (Script Oficial).</p>
                 </div>
-                <div class="d-flex gap-2">
-                    <input type="text" id="filtro-busca-auditoria" class="form-control" placeholder="Buscar por nome, CPF ou OS..." style="max-width: 260px;">
-                    <button class="btn btn-outline-primary fw-bold shadow-sm" onclick="buscarAuditorias()" aria-label="Buscar auditorias"><i class="bi bi-search"></i></button>
-                    <button class="btn btn-outline-primary fw-bold shadow-sm" onclick="carregarVendasPendentes()">
-                        <i class="bi bi-arrow-clockwise"></i> Atualizar Lista
-                    </button>
-                </div>
+                <button class="btn btn-outline-primary fw-bold shadow-sm" onclick="carregarVendasPendentes()">
+                    <i class="bi bi-arrow-clockwise"></i> Atualizar Lista
+                </button>
             </div>
 
             <div class="card border-0 shadow-none" style="background: transparent;">
@@ -114,19 +110,6 @@
     </main>
 
     <div class="modal fade" id="modalAuditoria" tabindex="-1" data-bs-backdrop="static">
-            <script>
-            // Garantir foco correto no modal após abertura (acessibilidade)
-            document.addEventListener('DOMContentLoaded', function() {
-                var modalEl = document.getElementById('modalAuditoria');
-                if (modalEl) {
-                    modalEl.addEventListener('shown.bs.modal', function () {
-                        // Foca no primeiro campo relevante do modal
-                        var campoFoco = document.getElementById('audit-cliente-nome');
-                        if (campoFoco) campoFoco.focus();
-                    });
-                }
-            });
-            </script>
         <div class="modal-dialog modal-fullscreen">
             <div class="modal-content">
                 <div class="modal-header bg-primary text-white py-2">
@@ -169,16 +152,16 @@
                                         <div class="grid-auto-3 mb-3">
                                             <div>
                                                 <p class="script-text mb-2">"Poderia, por gentileza, confirmar seu nome completo?"</p>
-                                                <div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-cliente-nome"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cliente-nome')" title="Copiar" aria-label="Copiar nome do cliente"><i class="bi bi-clipboard" id="btn-icon-audit-cliente-nome"></i></button></div>
+                                                <div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-cliente-nome"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cliente-nome')" title="Copiar"><i class="bi bi-clipboard" id="btn-icon-audit-cliente-nome"></i></button></div>
                                             </div>
                                             <div>
                                                 <p class="script-text mb-2">"Poderia me informar o seu CPF?"</p>
-                                                <div class="input-group"><input type="text" class="form-control form-control-script" id="audit-cliente-cpf" maxlength="18" onkeyup="mascaraCPF(this)"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cliente-cpf', true)" title="Copiar apenas números" aria-label="Copiar CPF do cliente"><i class="bi bi-clipboard" id="btn-icon-audit-cliente-cpf"></i></button></div>
+                                                <div class="input-group"><input type="text" class="form-control form-control-script" id="audit-cliente-cpf" maxlength="18" onkeyup="mascaraCPF(this)"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cliente-cpf', true)" title="Copiar apenas números"><i class="bi bi-clipboard" id="btn-icon-audit-cliente-cpf"></i></button></div>
                                             </div>
                                         </div>
 
                                         <div class="grid-auto-3 mb-3">
-                                            <div><label class="form-label small text-muted fw-bold">Nome da Mãe</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-nome-mae"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-nome-mae')" aria-label="Copiar nome da mãe"><i class="bi bi-clipboard" id="btn-icon-audit-nome-mae"></i></button></div></div>
+                                            <div><label class="form-label small text-muted fw-bold">Nome da Mãe</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-nome-mae"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-nome-mae')"><i class="bi bi-clipboard" id="btn-icon-audit-nome-mae"></i></button></div></div>
                                             <div><label class="form-label small text-muted fw-bold">Data Nasc.</label><input type="date" class="form-control form-control-script" id="audit-data-nasc" onchange="calcularIdadeAuto()"></div>
                                             <div><label class="form-label small text-muted fw-bold">Idade</label><input type="text" class="form-control bg-white" id="audit-idade-calc" readonly></div>
                                         </div>
@@ -191,14 +174,14 @@
                                                     <label class="form-label small text-muted fw-bold">CPF Rep.</label>
                                                     <div class="input-group">
                                                         <input type="text" class="form-control form-control-script" id="audit-cpf-rep" onkeyup="mascaraCPF(this)">
-                                                        <button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cpf-rep', true)" aria-label="Copiar CPF do representante"><i class="bi bi-clipboard" id="btn-icon-audit-cpf-rep"></i></button>
+                                                        <button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cpf-rep', true)"><i class="bi bi-clipboard" id="btn-icon-audit-cpf-rep"></i></button>
                                                     </div>
                                                 </div>
                                                 <div>
                                                     <label class="form-label small text-muted fw-bold">Nome Rep.</label>
                                                     <div class="input-group">
                                                         <input type="text" class="form-control form-control-script uppercase-input" id="audit-nome-rep">
-                                                        <button class="btn btn-copy" type="button" onclick="copiarCampo('audit-nome-rep')" aria-label="Copiar nome do representante"><i class="bi bi-clipboard" id="btn-icon-audit-nome-rep"></i></button>
+                                                        <button class="btn btn-copy" type="button" onclick="copiarCampo('audit-nome-rep')"><i class="bi bi-clipboard" id="btn-icon-audit-nome-rep"></i></button>
                                                     </div>
                                                 </div>
                                             </div>
@@ -214,16 +197,16 @@
                                         <div class="grid-auto-2 mb-2">
                                             <div>
                                                 <p class="script-text mb-2">"Qual é o seu número de telefone no WhatsApp?"</p>
-                                                <div class="input-group mb-2"><span class="input-group-text bg-success text-white"><i class="bi bi-whatsapp"></i></span><input type="text" class="form-control form-control-script" id="audit-tel1" maxlength="15" onkeyup="mascaraTelefone(this)"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-tel1', true)" aria-label="Copiar telefone 1"><i class="bi bi-clipboard" id="btn-icon-audit-tel1"></i></button></div>
+                                                <div class="input-group mb-2"><span class="input-group-text bg-success text-white"><i class="bi bi-whatsapp"></i></span><input type="text" class="form-control form-control-script" id="audit-tel1" maxlength="15" onkeyup="mascaraTelefone(this)"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-tel1', true)"><i class="bi bi-clipboard" id="btn-icon-audit-tel1"></i></button></div>
                                             </div>
                                             <div>
                                                 <p class="script-text mb-2">"Poderia me informar um segundo telefone de contato?"</p>
-                                                <div class="input-group mb-2"><input type="text" class="form-control form-control-script" id="audit-tel2" maxlength="15" onkeyup="mascaraTelefone(this)"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-tel2', true)" aria-label="Copiar telefone 2"><i class="bi bi-clipboard" id="btn-icon-audit-tel2"></i></button></div>
+                                                <div class="input-group mb-2"><input type="text" class="form-control form-control-script" id="audit-tel2" maxlength="15" onkeyup="mascaraTelefone(this)"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-tel2', true)"><i class="bi bi-clipboard" id="btn-icon-audit-tel2"></i></button></div>
                                             </div>
                                         </div>
                                         <div class="alert alert-info border-info my-3 py-2"><p class="mb-0 fst-italic">"Lembrando que é nesse número que você receberá a confirmação do pedido. Para confirmar a instalação, preciso que após receber a mensagem da Nio no seu WhatsApp você digite <strong>'SIM'</strong>. No WhatsApp da Nio, você poderá acompanhar a instalação em tempo real e até mesmo reagendar."</p></div>
                                         <p class="script-text mb-2">"Qual é o seu endereço de e-mail?"</p>
-                                        <div class="input-group mb-2"><input type="email" class="form-control form-control-script lowercase-input" id="audit-email"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-email')" aria-label="Copiar e-mail"><i class="bi bi-clipboard" id="btn-icon-audit-email"></i></button></div>
+                                        <div class="input-group mb-2"><input type="email" class="form-control form-control-script lowercase-input" id="audit-email"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-email')"><i class="bi bi-clipboard" id="btn-icon-audit-email"></i></button></div>
                                         <div class="text-end mt-4"><button class="btn btn-primary" onclick="proximaAba('pills-endereco-tab')">Próximo <i class="bi bi-arrow-right"></i></button></div>
                                     </div>
                                 </div>
@@ -234,24 +217,16 @@
                                         <div class="checklist-box mb-3"><div class="form-check mb-2"><input class="form-check-input" type="checkbox" id="check-fibra"><label class="form-check-label checklist-label" for="check-fibra">Questionei se o endereço já possui Fibra instalada?</label></div><div class="form-check"><input class="form-check-input" type="checkbox" id="check-viabilidade"><label class="form-check-label checklist-label" for="check-viabilidade">Validei a viabilidade no sistema (DFV/Site/Portal)?</label></div></div>
                                         <p class="script-text mb-3">"Agora, vamos confirmar o seu endereço de instalação. Poderia confirmar: Nome da Rua, Número e CEP?"</p>
                                         <div class="row g-3">
-                                            <div class="col-md-3"><label class="form-label small text-muted fw-bold">CEP</label><div class="input-group"><input type="text" class="form-control form-control-script" id="audit-cep" maxlength="9" onkeyup="mascaraCEP(this)"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cep', true)" aria-label="Copiar CEP"><i class="bi bi-clipboard" id="btn-icon-audit-cep"></i></button></div></div>
-                                            <div class="col-md-7"><label class="form-label small text-muted fw-bold">Logradouro</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-logradouro"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-logradouro')" aria-label="Copiar logradouro"><i class="bi bi-clipboard" id="btn-icon-audit-logradouro"></i></button></div></div>
-                                            <div class="col-md-2"><label class="form-label small text-muted fw-bold">Número</label><div class="input-group"><input type="text" class="form-control form-control-script" id="audit-numero"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-numero')" aria-label="Copiar número"><i class="bi bi-clipboard" id="btn-icon-audit-numero"></i></button></div></div>
-                                            <div class="col-md-4"><label class="form-label small text-muted fw-bold">Bairro</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-bairro"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-bairro')" aria-label="Copiar bairro"><i class="bi bi-clipboard" id="btn-icon-audit-bairro"></i></button></div></div>
-                                            <div class="col-md-4"><label class="form-label small text-muted fw-bold">Cidade</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-cidade"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cidade')" aria-label="Copiar cidade"><i class="bi bi-clipboard" id="btn-icon-audit-cidade"></i></button></div></div>
-                                            <div class="col-md-4"><label class="form-label small text-muted fw-bold">Complemento</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-complemento"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-complemento')" aria-label="Copiar complemento"><i class="bi bi-clipboard" id="btn-icon-audit-complemento"></i></button></div></div>
-                                            <div class="col-md-2"><label class="form-label small text-muted fw-bold">UF</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-uf" maxlength="2" style="text-transform:uppercase"></div></div>
-                                            <div class="col-12"><label class="form-label small text-muted fw-bold">Ponto de Referência</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-ref"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-ref')" aria-label="Copiar ponto de referência"><i class="bi bi-clipboard" id="btn-icon-audit-ref"></i></button></div></div>
+                                            <div class="col-md-3"><label class="form-label small text-muted fw-bold">CEP</label><div class="input-group"><input type="text" class="form-control form-control-script" id="audit-cep" maxlength="9" onkeyup="mascaraCEP(this)"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cep', true)"><i class="bi bi-clipboard" id="btn-icon-audit-cep"></i></button></div></div>
+                                            <div class="col-md-7"><label class="form-label small text-muted fw-bold">Logradouro</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-logradouro"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-logradouro')"><i class="bi bi-clipboard" id="btn-icon-audit-logradouro"></i></button></div></div>
+                                            <div class="col-md-2"><label class="form-label small text-muted fw-bold">Número</label><div class="input-group"><input type="text" class="form-control form-control-script" id="audit-numero"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-numero')"><i class="bi bi-clipboard" id="btn-icon-audit-numero"></i></button></div></div>
+                                            <div class="col-md-4"><label class="form-label small text-muted fw-bold">Bairro</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-bairro"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-bairro')"><i class="bi bi-clipboard" id="btn-icon-audit-bairro"></i></button></div></div>
+                                            <div class="col-md-4"><label class="form-label small text-muted fw-bold">Cidade</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-cidade"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cidade')"><i class="bi bi-clipboard" id="btn-icon-audit-cidade"></i></button></div></div>
+                                            <div class="col-md-4"><label class="form-label small text-muted fw-bold">Complemento</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-complemento"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-complemento')"><i class="bi bi-clipboard" id="btn-icon-audit-complemento"></i></button></div></div>
+                                            <div class="col-12"><label class="form-label small text-muted fw-bold">Ponto de Referência</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-ref"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-ref')"><i class="bi bi-clipboard" id="btn-icon-audit-ref"></i></button></div></div>
+                                            <input type="hidden" id="audit-uf">
                                         </div>
                                         <p class="script-text mt-3 text-success">"Ok, endereço confirmado."</p>
-                                        <div class="row g-3 align-items-end mb-2">
-                                            <div class="col-md-10"></div>
-                                            <div class="col-md-2 text-end">
-                                                <button class="btn btn-outline-secondary btn-copy w-100" type="button" onclick="copiarEnderecoCompleto()" aria-label="Copiar endereço completo">
-                                                    <i class="bi bi-clipboard"></i> Copiar Endereço Completo
-                                                </button>
-                                            </div>
-                                        </div>
                                         <div class="text-end mt-4"><button class="btn btn-primary" onclick="proximaAba('pills-oferta-tab')">Próximo <i class="bi bi-arrow-right"></i></button></div>
                                     </div>
                                 </div>
@@ -344,6 +319,29 @@
         const modalAprovacao = new bootstrap.Modal(document.getElementById('modal-aprovacao'));
         const modalAgendamento = new bootstrap.Modal(document.getElementById('modal-agendamento'));
 
+        // =========================================================================
+        // FUNÇÃO FETCH PADRONIZADA (SUBSTITUI API CLIENT EXTERNO)
+        // =========================================================================
+        async function apiFetch(endpoint, options = {}) {
+            const token = localStorage.getItem('accessToken');
+            const headers = {
+                'Content-Type': 'application/json',
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+            };
+            const config = { ...options, headers };
+            
+            try {
+                const response = await fetch(endpoint, config);
+                if (response.status === 401) { logout(); return null; }
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(errorText || response.statusText);
+                }
+                if (response.status === 204) return null;
+                return await response.json();
+            } catch (e) { throw e; }
+        }
+
         $(document).ready(function() {
             if (!localStorage.getItem('accessToken')) { window.location.href = '/'; return; }
             $(document).on('input', '.uppercase-input', function() { this.value = this.value.toUpperCase(); });
@@ -389,6 +387,9 @@
             carregarAuxiliares().then(() => carregarVendasPendentes());
         });
 
+        // =========================================================================
+        // FUNÇÕES AUXILIARES DE LÓGICA
+        // =========================================================================
         function atualizarSaudacao() {
             const hora = new Date().getHours();
             let saudacao = "Bom dia";
@@ -448,18 +449,22 @@
             });
         }
 
+        // =========================================================================
+        // CARREGAMENTO DE DADOS (COM API FETCH + PAGINAÇÃO)
+        // =========================================================================
         async function carregarAuxiliares() {
             try {
-                // CORREÇÃO: Adicionado ?page_size=1000 para garantir carregamento total
+                // MUDANÇA: Usando apiFetch e page_size=1000
                 const [statusRes, planosRes, pagRes] = await Promise.all([
-                    apiClient.get(`${API_AUX}/status/?tipo=Tratamento&page_size=1000`),
-                    apiClient.get(`${API_AUX}/planos/?page_size=1000`),
-                    apiClient.get(`${API_AUX}/formas-pagamento/?page_size=1000`)
+                    apiFetch(`${API_AUX}/status/?tipo=Tratamento&page_size=1000`),
+                    apiFetch(`${API_AUX}/planos/?page_size=1000`),
+                    apiFetch(`${API_AUX}/formas-pagamento/?page_size=1000`)
                 ]);
-                // Normalização para arrays
-                globalStatusOptions = Array.isArray(statusRes.data) ? statusRes.data : (statusRes.data?.results || []);
-                planosOptions = Array.isArray(planosRes.data) ? planosRes.data : (planosRes.data?.results || []);
-                formasPagamentoOptions = Array.isArray(pagRes.data) ? pagRes.data : (pagRes.data?.results || []);
+                
+                // Normalização: Array direto ou objeto paginado
+                globalStatusOptions = Array.isArray(statusRes) ? statusRes : (statusRes.results || []);
+                planosOptions = Array.isArray(planosRes) ? planosRes : (planosRes.results || []);
+                formasPagamentoOptions = Array.isArray(pagRes) ? pagRes : (pagRes.results || []);
                 
                 const selPlano = $('#audit-plano');
                 const selPag = $('#audit-pagamento');
@@ -469,7 +474,7 @@
                 planosOptions.forEach(p => selPlano.append(`<option value="${p.id}">${p.nome}</option>`));
                 formasPagamentoOptions.forEach(f => selPag.append(`<option value="${f.id}">${f.nome}</option>`));
             } catch(e) {
-                // erro ao carregar auxiliares, já tratado
+                console.error("Erro auxiliares", e);
             }
         }
 
@@ -507,70 +512,50 @@
             else if (nomePagamento.includes('BOLETO')) $('#script-pagamento-boleto').show();
         }
 
+        // =========================================================================
+        // LISTAGEM DE VENDAS (COM API FETCH E LOOKUP)
+        // =========================================================================
         function carregarVendasPendentes() {
             $('#loadingOverlay').show();
-            // Adicionado page_size na listagem principal também para garantir
-            apiClient.get(`${API_BASE}/pendentes_auditoria/?page_size=100`)
-            .then(response => {
+            apiFetch(`${API_BASE}/pendentes_auditoria/?page_size=100`)
+            .then(data => {
                 const tbody = $('#listaVendasBody'); tbody.empty();
-                // Normalização para array
-                const lista = Array.isArray(response.data) ? response.data : (response.data?.results || []);
+                // Normalização
+                const lista = Array.isArray(data) ? data : (data.results || []);
                 
                 if (!lista || lista.length === 0) { tbody.append('<tr><td colspan="9" class="text-center text-muted py-4">Nenhuma venda pendente.</td></tr>'); return; }
                 
                 lista.forEach(v => {
                     let nomeCliente = 'N/A'; let cpfCliente = '-';
-                    if (v.cliente && typeof v.cliente === 'object') {
-                        nomeCliente = v.cliente.nome_razao_social || 'N/A';
-                        cpfCliente = v.cliente.cpf_cnpj || '-';
-                    } else {
-                        nomeCliente = v.cliente_nome_razao_social || 'N/A';
-                        cpfCliente = v.cliente_cpf_cnpj || '-';
-                    }
-                    // Remove formatação de CPF/CNPJ (pontos, traços, barras)
-                    if (typeof cpfCliente === 'string') {
-                        cpfCliente = cpfCliente.replace(/[\.\-\/]/g, '');
-                    }
+                    if (v.cliente && typeof v.cliente === 'object') { nomeCliente = v.cliente.nome_razao_social || 'N/A'; cpfCliente = v.cliente.cpf_cnpj || '-'; } 
+                    else { nomeCliente = v.cliente_nome_razao_social || 'N/A'; cpfCliente = v.cliente_cpf_cnpj || '-'; }
                     
                     let nomeVendedor = v.vendedor_nome || (v.vendedor ? (v.vendedor.username || v.vendedor) : 'N/A');
                     
-                    // --- CORREÇÃO PRODUTO (LOOKUP) ---
+                    // LOOKUP PRODUTO
                     let produto = '-';
-                    if (v.plano_nome) {
-                        produto = v.plano_nome;
-                    } else if (v.plano) {
-                        if (typeof v.plano === 'object') {
-                            produto = v.plano.nome || '-';
-                        } else if (typeof v.plano === 'string') {
-                            produto = v.plano;
-                        } else {
-                            // É número/ID? Procura na lista
+                    if (v.plano_nome) { produto = v.plano_nome; }
+                    else if (v.plano) {
+                        if (typeof v.plano === 'object') { produto = v.plano.nome || '-'; }
+                        else {
                             const pEncontrado = planosOptions.find(p => String(p.id) === String(v.plano));
-                            if (pEncontrado) produto = pEncontrado.nome;
-                            else produto = `(ID: ${v.plano})`;
+                            produto = pEncontrado ? pEncontrado.nome : `(ID: ${v.plano})`;
                         }
                     }
 
-                    // --- CORREÇÃO STATUS TRATAMENTO (LOOKUP) ---
+                    // LOOKUP STATUS TRATAMENTO
                     let statusNome = '-';
-                    if (v.status_tratamento_nome) {
-                        statusNome = v.status_tratamento_nome;
-                    } else if (v.status_tratamento) {
-                        if (typeof v.status_tratamento === 'object') {
-                            statusNome = v.status_tratamento.nome || '-';
-                        } else if (typeof v.status_tratamento === 'string') {
-                            statusNome = v.status_tratamento;
-                        } else {
-                            // É número/ID? Procura na lista
+                    if (v.status_tratamento_nome) { statusNome = v.status_tratamento_nome; }
+                    else if (v.status_tratamento) {
+                        if (typeof v.status_tratamento === 'object') { statusNome = v.status_tratamento.nome || '-'; }
+                        else {
                             const sEncontrado = globalStatusOptions.find(s => String(s.id) === String(v.status_tratamento));
-                            if (sEncontrado) statusNome = sEncontrado.nome;
-                            else statusNome = `(ID: ${v.status_tratamento})`;
+                            statusNome = sEncontrado ? sEncontrado.nome : `(ID: ${v.status_tratamento})`;
                         }
                     }
 
                     let dataFormatada = v.data_criacao ? new Date(v.data_criacao).toLocaleString('pt-BR', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'}) : '-';
                     
-                    // Última Edição
                     let infoEdicao = '-';
                     if (v.nome_editor) {
                         let dataEdicao = v.data_ultima_alteracao ? new Date(v.data_ultima_alteracao).toLocaleString('pt-BR', {day: '2-digit', month: '2-digit', hour: '2-digit', minute:'2-digit'}) : '';
@@ -597,19 +582,39 @@
                     tbody.append(`<tr class="${classeLinha}"><td class="fw-bold text-primary">#${v.id}</td><td>${dataFormatada}</td><td><div class="fw-bold text-dark">${nomeCliente}</div><div class="small text-muted" style="font-size: 0.8rem;">${cpfCliente}</div></td><td>${nomeVendedor}</td><td>${produto}</td><td><span class="badge bg-warning text-dark">${statusNome}</span></td><td>${infoEdicao}</td><td>${auditorInfo}</td><td class="text-end">${btnHtml}</td></tr>`);
                 });
             })
-            .catch(e => { alert('Erro ao carregar vendas.'); })
+            .catch(e => { console.error(e); alert('Erro ao carregar vendas.'); })
             .finally(() => $('#loadingOverlay').hide());
         }
 
+        // =========================================================================
+        // FUNÇÕES DE AÇÃO (USANDO API FETCH)
+        // =========================================================================
         function tentarAuditoria(id) { if(!confirm(`Iniciar auditoria da Venda #${id}?`)) return; alocarVenda(id); }
         function retomarAuditoria(id) { carregarDadosNoScript(id); }
-        function alocarVenda(id) { $('#loadingOverlay').show(); apiClient.post(`${API_BASE}/${id}/alocar-auditoria/`, {}).then(() => carregarDadosNoScript(id)).catch(err => { $('#loadingOverlay').hide(); alert(err.response && err.response.status === 409 ? 'Venda já alocada.' : 'Erro ao alocar.'); carregarVendasPendentes(); }); }
-        function forcarLiberacao(id) { if(!confirm("Forçar desbloqueio?")) return; $('#loadingOverlay').show(); apiClient.post(`${API_BASE}/${id}/liberar-auditoria/`, {}).then(() => { alert("Liberada."); carregarVendasPendentes(); }).catch(() => { $('#loadingOverlay').hide(); alert("Sem permissão."); }); }
+        
+        function alocarVenda(id) { 
+            $('#loadingOverlay').show(); 
+            apiFetch(`${API_BASE}/${id}/alocar-auditoria/`, { method: 'POST' })
+            .then(() => carregarDadosNoScript(id))
+            .catch(err => { 
+                $('#loadingOverlay').hide(); 
+                alert('Erro ao alocar venda (talvez já esteja em uso).'); 
+                carregarVendasPendentes(); 
+            }); 
+        }
+        
+        function forcarLiberacao(id) { 
+            if(!confirm("Forçar desbloqueio?")) return; 
+            $('#loadingOverlay').show(); 
+            apiFetch(`${API_BASE}/${id}/liberar-auditoria/`, { method: 'POST' })
+            .then(() => { alert("Liberada."); carregarVendasPendentes(); })
+            .catch(() => { $('#loadingOverlay').hide(); alert("Sem permissão."); }); 
+        }
 
         function carregarDadosNoScript(id) {
-            apiClient.get(`${API_BASE}/${id}/`).then(res => {
-                // Normalização para objeto de venda (caso venha paginado)
-                let v = Array.isArray(res.data) ? (res.data[0] || {}) : (res.data?.results ? res.data.results[0] : res.data);
+            apiFetch(`${API_BASE}/${id}/`).then(res => {
+                // Normalização para objeto de venda
+                let v = Array.isArray(res) ? (res[0] || {}) : (res.results ? res.results[0] : res);
                 vendaEmAuditoria = v;
                 $('#loadingOverlay').hide(); $('#auditoria_id_venda').val(v.id); $('#script-id-venda').text(v.id); $('#script-vendedor-nome').text(v.vendedor_nome || 'N/A');
                 try { $('#script-user-logado').text(jwt_decode(localStorage.getItem('accessToken')).username || 'Consultor'); } catch(e) {}
@@ -631,7 +636,6 @@
                 $('#audit-cpf-rep').val(v.cpf_representante_legal || '');
                 $('#audit-nome-rep').val(v.nome_representante_legal || '');
                 
-                // Se for CNPJ (mais que 14 dígitos com máscara ou 11 sem) ou se já tiver rep preenchido
                 const cpfLimpo = cpfCli.replace(/\D/g, '');
                 if (cpfLimpo.length > 11 || v.cpf_representante_legal) {
                     $('#div-representante').show();
@@ -645,22 +649,16 @@
                 $('.nav-link').removeClass('active'); $('.tab-pane').removeClass('show active');
                 $('#pills-identidade-tab').addClass('active'); $('#pills-identidade').addClass('show active');
                 modalAuditoria.show();
-            }).catch(e => { $('#loadingOverlay').hide(); alert('Erro ao abrir venda.'); });
+            }).catch(e => { console.error(e); $('#loadingOverlay').hide(); alert('Erro ao abrir venda.'); });
         }
 
-        // Função para buscar dados do Representante (Igual ao CRM Vendas)
         async function buscarRepresentante(cpf) {
             const inputNome = $('#audit-nome-rep');
-            const inputCpf = $('#audit-cpf-rep');
-            
-            // Feedback visual
             inputNome.val("BUSCANDO...");
             inputNome.prop('readonly', true).css('background-color', '#e9ecef');
 
             try {
-                // Usa apiClient ao invés de fetch direto para garantir auth
-                const res = await apiClient.get(`${API_AUX}/clientes/?search=${cpf}`);
-                const data = res.data;
+                const data = await apiFetch(`${API_AUX}/clientes/?search=${cpf}`);
                 let encontrado = false;
 
                 if(data && data.length > 0) {
@@ -678,6 +676,7 @@
                     inputNome.focus();
                 }
             } catch(e) {
+                console.error("Erro rep:", e);
                 inputNome.val("");
                 inputNome.prop('readonly', false).css('background-color', '#ffffff');
             }
@@ -746,7 +745,7 @@
         }
 
         async function abrirModalReprovacao() {
-            const sel = $('#repro-status'); if (globalStatusOptions.length === 0) { try { const r = await apiClient.get(`${API_AUX}/status/?tipo=Tratamento`); globalStatusOptions = r.data; } catch(e){} }
+            const sel = $('#repro-status'); if (globalStatusOptions.length === 0) { try { const r = await apiFetch(`${API_AUX}/status/?tipo=Tratamento`); globalStatusOptions = r || []; } catch(e){} }
             sel.empty().append('<option value="">Selecione...</option>');
             if (globalStatusOptions.length > 0) { globalStatusOptions.filter(s => {
                 const nome = s.nome.toUpperCase();
@@ -763,7 +762,7 @@
                 const os = $('#repro-os').val(), dt = $('#repro-data').val(), tr = $('#repro-turno').val();
                 if (!os || !dt || !tr) { alert('O.S, Data e Turno obrigatórios.'); return; }
                 $('#loadingOverlay').show();
-                apiClient.patch(`${API_BASE}/${vendaEmAuditoria.id}/`, { ordem_servico: os, data_agendamento: dt, periodo_agendamento: tr })
+                apiFetch(`${API_BASE}/${vendaEmAuditoria.id}/`, { method: 'PATCH', body: JSON.stringify({ ordem_servico: os, data_agendamento: dt, periodo_agendamento: tr }) })
                 .then(() => { const d = coletarDadosAuditoria(); d.data_agendamento = dt; d.periodo_agendamento = tr; return enviarFinalizacao(stId, obs, d, true); })
                 .catch(e => { alert('Erro: ' + e.message); $('#loadingOverlay').hide(); });
             } else { $('#loadingOverlay').show(); enviarFinalizacao(stId, obs, coletarDadosAuditoria(), true); }
@@ -774,9 +773,10 @@
             const obs = $('#agenda-obs').val();
             if(!os || !dt || !tr) { alert('Preencha tudo.'); return; }
             $('#loadingOverlay').show();
-            apiClient.get(`${API_AUX}/status/?tipo=Esteira`).then(res => {
-                const st = res.data.find(s => s.nome.toUpperCase() === 'AGENDADO'); if(!st) throw new Error("Status AGENDADO sumiu.");
-                return apiClient.patch(`${API_BASE}/${vendaEmAuditoria.id}/`, { ordem_servico: os, data_agendamento: dt, periodo_agendamento: tr, status_esteira: st.id });
+            apiFetch(`${API_AUX}/status/?tipo=Esteira`).then(res => {
+                const lista = Array.isArray(res) ? res : (res.results || []);
+                const st = lista.find(s => s.nome.toUpperCase() === 'AGENDADO'); if(!st) throw new Error("Status AGENDADO sumiu.");
+                return apiFetch(`${API_BASE}/${vendaEmAuditoria.id}/`, { method: 'PATCH', body: JSON.stringify({ ordem_servico: os, data_agendamento: dt, periodo_agendamento: tr, status_esteira: st.id }) });
             }).then(() => {
                 const d = coletarDadosAuditoria(); 
                 d.data_agendamento = dt; 
@@ -787,9 +787,9 @@
         }
 
         function enviarFinalizacao(st, obs, dados, fechaRep=false, abreZap=false) {
-            return apiClient.post(`${API_BASE}/${vendaEmAuditoria.id}/finalizar_auditoria/`, { status: st, observacoes: obs, dados_atualizados: dados })
+            return apiFetch(`${API_BASE}/${vendaEmAuditoria.id}/finalizar_auditoria/`, { method: 'POST', body: JSON.stringify({ status: st, observacoes: obs, dados_atualizados: dados }) })
             .then(() => { alert('Salvo!'); if(fechaRep) modalReprovacao.hide(); modalAgendamento.hide(); modalAuditoria.hide(); if(abreZap) gerarAprovacaoMsg(dados); else carregarVendasPendentes(); })
-            .catch(e => { alert('Erro ao finalizar.'); })
+            .catch(e => { console.error(e); alert('Erro ao finalizar.'); })
             .finally(() => { if(!abreZap) $('#loadingOverlay').hide(); });
         }
 
@@ -797,7 +797,6 @@
             if(confirm("Deseja sair? O que você preencheu será salvo como rascunho.")) {
                 $('#loadingOverlay').show();
                 const d = coletarDadosAuditoria();
-                
                 const rascunho = {
                     cliente_email: d.cliente_email || null,
                     cliente_nome_razao_social: d.cliente_nome || null,
@@ -822,16 +821,16 @@
                     cpf_representante_legal: d.cpf_representante_legal || null,
                     nome_representante_legal: d.nome_representante_legal || null
                 };
-
                 Object.keys(rascunho).forEach(key => { if (rascunho[key] === "") rascunho[key] = null; });
 
                 try {
-                    await apiClient.patch(`${API_BASE}/${vendaEmAuditoria.id}/`, rascunho);
-                    await apiClient.post(`${API_BASE}/${vendaEmAuditoria.id}/liberar-auditoria/`, {});
+                    await apiFetch(`${API_BASE}/${vendaEmAuditoria.id}/`, { method: 'PATCH', body: JSON.stringify(rascunho) });
+                    await apiFetch(`${API_BASE}/${vendaEmAuditoria.id}/liberar-auditoria/`, { method: 'POST' });
                     modalAuditoria.hide(); 
                     carregarVendasPendentes();
                 } catch (e) {
-                    apiClient.post(`${API_BASE}/${vendaEmAuditoria.id}/liberar-auditoria/`, {}).finally(() => {
+                    console.error("Erro ao salvar rascunho:", e);
+                    apiFetch(`${API_BASE}/${vendaEmAuditoria.id}/liberar-auditoria/`, { method: 'POST' }).finally(() => {
                         modalAuditoria.hide(); 
                         carregarVendasPendentes();
                     });
@@ -866,7 +865,7 @@
             txt += `⚠FATURA, SEGUNDA VIA OU DÚVIDAS\n`;
             txt += `https://www.niointernet.com.br/\n`;
             txt += `\nLembrete importante: Peça seu cliente para salvar o telefone 21 4040-1810 na sua agenda, isso evita pendências indevidas.\n`;
-                       txt += `Para que sua instalação seja concluída favor salvar esse contato, Técnico Nio 21 4040-1810, para receber informações da Visita.`;
+            txt += `Para que sua instalação seja concluída favor salvar esse contato, Técnico Nio 21 4040-1810, para receber informações da Visita.`;
 
             $('#aprovacao-mensagem').val(txt); 
             modalAprovacao.show();
@@ -875,26 +874,6 @@
 
         function copiarMensagem() { const t = document.getElementById("aprovacao-mensagem"); t.select(); navigator.clipboard.writeText(t.value).then(() => alert("Copiado!")); }
         function logout() { localStorage.removeItem('accessToken'); window.location.href = '/'; }
-        function copiarEnderecoCompleto() {
-            // Pega os valores dos campos de endereço
-            const logradouro = document.getElementById('audit-logradouro').value || '';
-            const numero = document.getElementById('audit-numero').value || '';
-            const complemento = document.getElementById('audit-complemento').value || '';
-            const bairro = document.getElementById('audit-bairro').value || '';
-            const cidade = document.getElementById('audit-cidade').value || '';
-            const uf = document.getElementById('audit-uf').value || '';
-            const cep = document.getElementById('audit-cep').value || '';
-            const referencia = document.getElementById('audit-ref').value || '';
-            let endereco = `${logradouro}, ${numero}`;
-            if (complemento) endereco += `, ${complemento}`;
-            endereco += ` - ${bairro}, ${cidade}`;
-            if (uf) endereco += `/${uf}`;
-            endereco += ` - ${cep}`;
-            if (referencia) endereco += `. Ref: ${referencia}`;
-            navigator.clipboard.writeText(endereco).then(() => {
-                alert('Endereço completo copiado!');
-            });
-        }
     </script>
 </body>
 </html>
