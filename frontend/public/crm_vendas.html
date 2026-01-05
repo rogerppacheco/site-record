@@ -1132,7 +1132,7 @@
         }
 
         async function carregarAuxiliares() {
-            console.log('[DEBUG carregarAuxiliares] Iniciando carregamento dos selects...');
+            // debug removido
             try {
                 const [planos, formas, statusEst, statusTrat] = await Promise.all([
                     apiFetch('/crm/planos/?page_size=1000'),
@@ -1140,10 +1140,7 @@
                     apiFetch('/crm/status/?tipo=Esteira&page_size=1000'),
                     apiFetch('/crm/status/?tipo=Tratamento&page_size=1000')
                 ]);
-                console.log('[DEBUG carregarAuxiliares] Planos:', planos);
-                console.log('[DEBUG carregarAuxiliares] Formas de Pagamento:', formas);
-                console.log('[DEBUG carregarAuxiliares] Status Esteira:', statusEst);
-                console.log('[DEBUG carregarAuxiliares] Status Tratamento:', statusTrat);
+                // debug removido
 
                 const planosArr = planos?.results || planos;
                 const formasArr = formas?.results || formas;
@@ -1153,22 +1150,22 @@
                 const selPlano = document.getElementById('select-plano');
                 selPlano.innerHTML = '<option value="">Selecione...</option>';
                 if(planosArr && Array.isArray(planosArr)) planosArr.forEach(p => selPlano.innerHTML += `<option value="${p.id}">${p.nome} - R$${p.valor}</option>`);
-                console.log('[DEBUG carregarAuxiliares] select-plano options:', selPlano.innerHTML);
+                // debug removido
 
                 const selPag = document.getElementById('select-pagamento');
                 selPag.innerHTML = '<option value="">Selecione...</option>';
                 if(formasArr && Array.isArray(formasArr)) formasArr.forEach(f => selPag.innerHTML += `<option value="${f.id}">${f.nome}</option>`);
-                console.log('[DEBUG carregarAuxiliares] select-pagamento options:', selPag.innerHTML);
+                // debug removido
 
                 const selEst = document.getElementById('select-status-esteira');
                 selEst.innerHTML = '<option value="">Selecione...</option>';
                 if(statusEstArr && Array.isArray(statusEstArr)) statusEstArr.forEach(s => selEst.innerHTML += `<option value="${s.id}">${s.nome}</option>`);
-                console.log('[DEBUG carregarAuxiliares] select-status-esteira options:', selEst.innerHTML);
+                // debug removido
 
                 const selTrat = document.getElementById('select-status-tratamento');
                 selTrat.innerHTML = '<option value="">Selecione...</option>';
                 if(statusTratArr && Array.isArray(statusTratArr)) statusTratArr.forEach(s => selTrat.innerHTML += `<option value="${s.id}">${s.nome}</option>`);
-                console.log('[DEBUG carregarAuxiliares] select-status-tratamento options:', selTrat.innerHTML);
+                // debug removido
             } catch(e) {
                 console.error('[ERRO carregarAuxiliares]', e);
             }
@@ -1178,7 +1175,7 @@
             try {
                 await carregarAuxiliares();
                 const venda = await apiFetch(`/crm/vendas/${id}/`);
-                console.log('[DEBUG editarVenda] venda:', venda);
+                // debug removido
                 document.getElementById('titulo-modal-venda').textContent = `Editar Venda #${id}`;
                 document.getElementById('id-venda-edicao').value = id;
                 document.getElementById('input-forma-entrada').value = venda.forma_entrada || 'SEM_APP';
@@ -1262,10 +1259,7 @@
                 }
 
                 // Adiciona debug simples nos selects
-                document.getElementById('select-plano').addEventListener('click', function() { console.log('[DEBUG SELECT] Plano:', this.value); });
-                document.getElementById('select-pagamento').addEventListener('click', function() { console.log('[DEBUG SELECT] Forma de Pagamento:', this.value); });
-                document.getElementById('select-status-esteira').addEventListener('click', function() { console.log('[DEBUG SELECT] Status Esteira:', this.value); });
-                document.getElementById('select-status-tratamento').addEventListener('click', function() { console.log('[DEBUG SELECT] Status Tratamento:', this.value); });
+                // debug dos selects removido
                 
                 document.getElementById('feedback-whatsapp').innerHTML = '';
                 document.getElementById('input-telefone').classList.remove('is-valid', 'is-invalid');
