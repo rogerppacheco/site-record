@@ -289,8 +289,15 @@
                 const equipe = equipeRes.data;
                 const presencasDoDia = presencasRes.data;
 
-                if(equipe) renderizarCards(equipe, presencasDoDia || []);
-                else grid.innerHTML = '<div class="col-12 text-center text-danger py-4">Erro ao carregar equipe.</div>';
+                if(Array.isArray(equipe)) {
+                    renderizarCards(equipe, presencasDoDia || []);
+                } else if (equipe && Array.isArray(equipe.results)) {
+                    renderizarCards(equipe.results, presencasDoDia || []);
+                } else if (equipe && equipe.detail) {
+                    grid.innerHTML = `<div class="col-12 text-center text-danger py-4">Erro ao carregar equipe: ${equipe.detail}</div>`;
+                } else {
+                    grid.innerHTML = '<div class="col-12 text-center text-danger py-4">Erro ao carregar equipe (resposta inesperada).</div>';
+                }
 
             } catch(e) {
                 console.error(e);
@@ -301,10 +308,12 @@
         function renderizarCards(lista, presencasDoDia) {
             const grid = document.getElementById('grid-colaboradores');
             grid.innerHTML = '';
-            
-            const presencasMap = presencasDoDia.reduce((map, p) => { map[p.colaborador] = p; return map; }, {});
 
-            if (lista.length === 0) {
+            const presencasMap = Array.isArray(presencasDoDia)
+                ? presencasDoDia.reduce((map, p) => { map[p.colaborador] = p; return map; }, {})
+                : {};
+
+            if (!Array.isArray(lista) || lista.length === 0) {
                 grid.innerHTML = '<div class="col-12 text-center text-muted py-5">Nenhum colaborador encontrado.</div>';
                 return;
             }
