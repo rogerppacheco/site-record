@@ -749,12 +749,12 @@ class VendaViewSet(viewsets.ModelViewSet):
     # --- NOVA AÇÃO: EXPORTAR EXCEL ---
     @action(detail=False, methods=['get'], url_path='exportar-excel')
     def exportar_excel(self, request):
-            import time
-            start_time = time.time()
-            print(f"[EXPORTAR_EXCEL] Início: {start_time}")
+        import time
         import pandas as pd
         from django.http import HttpResponse
         from io import BytesIO
+        start_time = time.time()
+        print(f"[EXPORTAR_EXCEL] Início: {start_time}")
 
         user = request.user
         if not is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
