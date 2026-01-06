@@ -13,6 +13,9 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     
     <style>
+            .system-container-full { max-width: 100% !important; }
+            .titulo-bonus-m10 { font-size: 1.8rem; margin: 0; }
+            .table-responsive-400 { max-height: 400px; overflow-y: auto; }
         .stat-card {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
@@ -81,7 +84,7 @@
     <header class="main-header">
         <div class="header-container">
             <a href="/"><img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo"></a>
-            <button class="menu-toggle" id="menu-toggle"><div class="bar"></div><div class="bar"></div><div class="bar"></div></button>
+            <button class="menu-toggle" id="menu-toggle" title="Abrir menu"><div class="bar"></div><div class="bar"></div><div class="bar"></div></button>
             <nav class="main-nav" id="main-nav">
                 <ul>
                     <li><a href="/area-interna/">Voltar</a></li>
@@ -92,10 +95,10 @@
     </header>
 
     <main class="area-interna-section">
-        <div class="system-container" style="max-width: 100% !important;">
+        <div class="system-container system-container-full">
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <div>
-                    <h1 style="font-size: 1.8rem; margin: 0;"><i class="bi bi-piggy-bank-fill text-success"></i> Bônus M-10 & FPD</h1>
+                    <h1 class="titulo-bonus-m10"><i class="bi bi-piggy-bank-fill text-success"></i> Bônus M-10 & FPD</h1>
                     <p class="text-muted mb-0">Controle de pagamentos e elegibilidade para bônus</p>
                 </div>
                 <div>
@@ -148,19 +151,19 @@
                             <div class="row g-3">
                                 <div class="col-md-3">
                                     <label class="form-label fw-bold">Safra (Mês/Ano)</label>
-                                    <select id="filtro-safra" class="form-select" onchange="onSafraChange()">
+                                    <select id="filtro-safra" class="form-select" onchange="onSafraChange()" title="Selecione a safra">
                                         <option value="">Selecione...</option>
                                     </select>
                                 </div>
                                 <div class="col-md-3">
                                     <label class="form-label fw-bold">Vendedor</label>
-                                    <select id="filtro-vendedor-m10" class="form-select" onchange="carregarDadosM10()">
+                                    <select id="filtro-vendedor-m10" class="form-select" onchange="carregarDadosM10()" title="Selecione o vendedor">
                                         <option value="">Todos</option>
                                     </select>
                                 </div>
                                 <div class="col-md-3">
                                     <label class="form-label fw-bold">Status</label>
-                                    <select id="filtro-status-m10" class="form-select" onchange="carregarDadosM10()">
+                                    <select id="filtro-status-m10" class="form-select" onchange="carregarDadosM10()" title="Selecione o status">
                                         <option value="">Todos</option>
                                         <option value="ATIVO">Ativo</option>
                                         <option value="CANCELADO">Cancelado</option>
@@ -169,7 +172,7 @@
                                 </div>
                                 <div class="col-md-3">
                                     <label class="form-label fw-bold">Elegibilidade</label>
-                                    <select id="filtro-elegivel" class="form-select" onchange="carregarDadosM10()">
+                                    <select id="filtro-elegivel" class="form-select" onchange="carregarDadosM10()" title="Selecione a elegibilidade">
                                         <option value="">Todos</option>
                                         <option value="true">Elegíveis</option>
                                         <option value="false">Não Elegíveis</option>
@@ -179,7 +182,7 @@
                                     <label class="form-label fw-bold">Busca rápida</label>
                                     <div class="input-group">
                                         <input id="filtro-busca-m10" type="text" class="form-control" placeholder="CPF, contrato, cliente ou O.S" onkeypress="if(event.key==='Enter'){carregarDadosM10();}">
-                                        <button class="btn btn-outline-primary" type="button" onclick="carregarDadosM10()"><i class="bi bi-search"></i></button>
+                                        <button class="btn btn-outline-primary" type="button" onclick="carregarDadosM10()" title="Buscar"><i class="bi bi-search"></i></button>
                                     </div>
                                 </div>
                                 <div class="col-lg-3 col-md-6">
@@ -268,7 +271,7 @@
                             <div class="row g-3">
                                 <div class="col-md-3">
                                     <label class="form-label fw-bold">Período</label>
-                                    <select id="filtro-periodo-analise" class="form-select" onchange="carregarAnalise()">
+                                    <select id="filtro-periodo-analise" class="form-select" onchange="carregarAnalise()" title="Selecione o período">
                                         <option value="7">Últimos 7 dias</option>
                                         <option value="30" selected>Últimos 30 dias</option>
                                         <option value="60">Últimos 60 dias</option>
@@ -277,7 +280,7 @@
                                 </div>
                                 <div class="col-md-3">
                                     <label class="form-label fw-bold">Tipo de Busca</label>
-                                    <select id="filtro-tipo-busca" class="form-select" onchange="carregarAnalise()">
+                                    <select id="filtro-tipo-busca" class="form-select" onchange="carregarAnalise()" title="Selecione o tipo de busca">
                                         <option value="">Todos</option>
                                         <option value="AUTOMATICA">Automática (Agendada)</option>
                                         <option value="SAFRA">Por Safra</option>
@@ -287,7 +290,7 @@
                                 </div>
                                 <div class="col-md-3">
                                     <label class="form-label fw-bold">Safra</label>
-                                    <select id="filtro-safra-analise" class="form-select" onchange="carregarAnalise()">
+                                    <select id="filtro-safra-analise" class="form-select" onchange="carregarAnalise()" title="Selecione a safra">
                                         <option value="">Todas</option>
                                     </select>
                                 </div>
@@ -450,11 +453,11 @@
                             <div class="row g-3">
                                 <div class="col-md-4">
                                     <label class="form-label fw-bold">Mês de Vencimento</label>
-                                    <input type="month" id="filtro-mes-fpd" class="form-control" onchange="carregarDadosFPD()">
+                                    <input type="month" id="filtro-mes-fpd" class="form-control" onchange="carregarDadosFPD()" placeholder="Selecione o mês" title="Selecione o mês">
                                 </div>
                                 <div class="col-md-4">
                                     <label class="form-label fw-bold">Status</label>
-                                    <select id="filtro-status-fpd" class="form-select" onchange="carregarDadosFPD()">
+                                    <select id="filtro-status-fpd" class="form-select" onchange="carregarDadosFPD()" title="Selecione o status FPD">
                                         <option value="">Todos</option>
                                         <option value="PAGO">Pago</option>
                                         <option value="NAO_PAGO">Não Pago</option>
@@ -464,7 +467,7 @@
                                 </div>
                                 <div class="col-md-4">
                                     <label class="form-label fw-bold">Vendedor</label>
-                                    <select id="filtro-vendedor-fpd" class="form-select" onchange="carregarDadosFPD()">
+                                    <select id="filtro-vendedor-fpd" class="form-select" onchange="carregarDadosFPD()" title="Selecione o vendedor FPD">
                                         <option value="">Todos</option>
                                     </select>
                                 </div>
@@ -508,7 +511,7 @@
                         <h5 class="modal-title mb-1"><i class="bi bi-receipt"></i> Gerenciar 10 Faturas - <span id="modal-contrato-nome"></span></h5>
                         <small class="text-muted"><strong>Cliente:</strong> <span id="modal-cliente-nome"></span> | <strong>CPF:</strong> <span id="modal-cliente-cpf"></span></small>
                     </div>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" title="Fechar"></button>
                 </div>
                 <div class="modal-body">
                     <input type="hidden" id="modal-contrato-id">
@@ -683,7 +686,8 @@
                 const contrato = await resContrato.json();
                 window.contratoAtual = contrato;
                 const resFaturas = await fetch(`/api/bonus-m10/faturas/?contrato_id=${contratoId}`, { headers: { Authorization: `Bearer ${token}` } });
-                const faturasDetalhadas = await resFaturas.json();
+                const responseData = await resFaturas.json();
+                const faturasDetalhadas = Array.isArray(responseData) ? responseData : responseData.results || [];
                 document.getElementById('modal-contrato-id').value = contratoId;
                 document.getElementById('modal-contrato-nome').textContent = contrato.numero_contrato;
                 document.getElementById('modal-cliente-nome').textContent = contrato.cliente_nome || '-';
@@ -795,14 +799,14 @@
                 btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Salvando...';
             }
             try {
-                const valor = parseFloat(document.getElementById(`valor-${indice}`).value);
+                const valor = parseFloat(document.getElementById(`valor-${indice}`).value.replace(',', '.'));
                 const vencimento = document.getElementById(`vencimento-${indice}`).value;
                 const pagamento = document.getElementById(`pagamento-${indice}`).value;
                 const status = document.getElementById(`status-${indice}`).value;
                 const codigoPix = document.getElementById(`pix-${indice}`).value;
                 const codigoBarras = document.getElementById(`barras-${indice}`).value;
                 const pdfUrl = document.getElementById(`pdf-url-${indice}`).value.trim();
-                if (!valor || valor <= 0) throw new Error('O valor da fatura deve ser maior que zero!');
+                if (valor < 0 || !Number.isFinite(valor)) throw new Error('O valor da fatura não pode ser negativo ou inválido.');
                 if (!vencimento) throw new Error('A data de vencimento é obrigatória!');
                 const payload = {
                     contrato: contratoId,

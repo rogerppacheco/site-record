@@ -21,6 +21,7 @@
         .form-check-input:checked { background-color: #198754; border-color: #198754; }
         .checklist-label { font-weight: 600; color: #664d03; }
         .form-control-script { border: 1px solid #ced4da; background-color: #f8f9fa; font-weight: 600; color: #495057; }
+            .form-control-script { border: 1px solid #ced4da; background-color: #f8f9fa; font-weight: 600; color: #495057; height: 32px; font-size: 0.95rem; padding: 4px 10px; }
         .form-control-script:focus { background-color: #fff; border-color: var(--cor-primaria, #0d6efd); box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.15); }
         .btn-copy { border-top-left-radius: 0; border-bottom-left-radius: 0; border-color: #ced4da; color: #6c757d; }
         .btn-copy:hover { background-color: #e9ecef; color: #0d6efd; }
@@ -217,16 +218,21 @@
                                         <div class="checklist-box mb-3"><div class="form-check mb-2"><input class="form-check-input" type="checkbox" id="check-fibra"><label class="form-check-label checklist-label" for="check-fibra">Questionei se o endereço já possui Fibra instalada?</label></div><div class="form-check"><input class="form-check-input" type="checkbox" id="check-viabilidade"><label class="form-check-label checklist-label" for="check-viabilidade">Validei a viabilidade no sistema (DFV/Site/Portal)?</label></div></div>
                                         <p class="script-text mb-3">"Agora, vamos confirmar o seu endereço de instalação. Poderia confirmar: Nome da Rua, Número e CEP?"</p>
                                         <div class="row g-3">
-                                            <div class="col-md-3"><label class="form-label small text-muted fw-bold">CEP</label><div class="input-group"><input type="text" class="form-control form-control-script" id="audit-cep" maxlength="9" onkeyup="mascaraCEP(this)"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cep', true)"><i class="bi bi-clipboard" id="btn-icon-audit-cep"></i></button></div></div>
-                                            <div class="col-md-7"><label class="form-label small text-muted fw-bold">Logradouro</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-logradouro"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-logradouro')"><i class="bi bi-clipboard" id="btn-icon-audit-logradouro"></i></button></div></div>
+                                            <div class="col-md-2"><label class="form-label small text-muted fw-bold">CEP</label><div class="input-group"><input type="text" class="form-control form-control-script" id="audit-cep" maxlength="9" onkeyup="mascaraCEP(this)"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cep', true)"><i class="bi bi-clipboard" id="btn-icon-audit-cep"></i></button></div></div>
+                                            <div class="col-md-4"><label class="form-label small text-muted fw-bold">Logradouro</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-logradouro"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-logradouro')"><i class="bi bi-clipboard" id="btn-icon-audit-logradouro"></i></button></div></div>
                                             <div class="col-md-2"><label class="form-label small text-muted fw-bold">Número</label><div class="input-group"><input type="text" class="form-control form-control-script" id="audit-numero"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-numero')"><i class="bi bi-clipboard" id="btn-icon-audit-numero"></i></button></div></div>
-                                            <div class="col-md-4"><label class="form-label small text-muted fw-bold">Bairro</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-bairro"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-bairro')"><i class="bi bi-clipboard" id="btn-icon-audit-bairro"></i></button></div></div>
-                                            <div class="col-md-4"><label class="form-label small text-muted fw-bold">Cidade</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-cidade"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cidade')"><i class="bi bi-clipboard" id="btn-icon-audit-cidade"></i></button></div></div>
-                                            <div class="col-md-4"><label class="form-label small text-muted fw-bold">Complemento</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-complemento"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-complemento')"><i class="bi bi-clipboard" id="btn-icon-audit-complemento"></i></button></div></div>
-                                            <div class="col-12"><label class="form-label small text-muted fw-bold">Ponto de Referência</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-ref"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-ref')"><i class="bi bi-clipboard" id="btn-icon-audit-ref"></i></button></div></div>
-                                            <input type="hidden" id="audit-uf">
+                                            <div class="col-md-2"><label class="form-label small text-muted fw-bold">Complemento</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-complemento"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-complemento')"><i class="bi bi-clipboard" id="btn-icon-audit-complemento"></i></button></div></div>
+                                            <div class="col-md-3"><label class="form-label small text-muted fw-bold">Bairro</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-bairro"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-bairro')"><i class="bi bi-clipboard" id="btn-icon-audit-bairro"></i></button></div></div>
+                                            <div class="col-md-3"><label class="form-label small text-muted fw-bold">Cidade</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-cidade"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cidade')"><i class="bi bi-clipboard" id="btn-icon-audit-cidade"></i></button></div></div>
+                                            <div class="col-md-2"><label class="form-label small text-muted fw-bold">UF</label><div class="input-group"><select class="form-select form-control-script" id="audit-uf"><option value="">Selecione</option><option value="AC">AC</option><option value="AL">AL</option><option value="AP">AP</option><option value="AM">AM</option><option value="BA">BA</option><option value="CE">CE</option><option value="DF">DF</option><option value="ES">ES</option><option value="GO">GO</option><option value="MA">MA</option><option value="MT">MT</option><option value="MS">MS</option><option value="MG">MG</option><option value="PA">PA</option><option value="PB">PB</option><option value="PR">PR</option><option value="PE">PE</option><option value="PI">PI</option><option value="RJ">RJ</option><option value="RN">RN</option><option value="RS">RS</option><option value="RO">RO</option><option value="RR">RR</option><option value="SC">SC</option><option value="SP">SP</option><option value="SE">SE</option><option value="TO">TO</option></select><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-uf')"><i class="bi bi-clipboard" id="btn-icon-audit-uf"></i></button></div></div>
+                                            <div class="col-md-4"><label class="form-label small text-muted fw-bold">Ponto de Referência</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-ref"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-ref')"><i class="bi bi-clipboard" id="btn-icon-audit-ref"></i></button></div></div>
                                         </div>
                                         <p class="script-text mt-3 text-success">"Ok, endereço confirmado."</p>
+                                        <div class="text-end mt-2">
+                                            <button class="btn btn-outline-secondary" type="button" onclick="copiarEnderecoCompleto()">
+                                                <i class="bi bi-clipboard-check"></i> Copiar Endereço Completo
+                                            </button>
+                                        </div>
                                         <div class="text-end mt-4"><button class="btn btn-primary" onclick="proximaAba('pills-oferta-tab')">Próximo <i class="bi bi-arrow-right"></i></button></div>
                                     </div>
                                 </div>
@@ -874,6 +880,26 @@
 
         function copiarMensagem() { const t = document.getElementById("aprovacao-mensagem"); t.select(); navigator.clipboard.writeText(t.value).then(() => alert("Copiado!")); }
         function logout() { localStorage.removeItem('accessToken'); window.location.href = '/'; }
+    function copiarEnderecoCompleto() {
+        function toTitleCase(str) {
+            return str.toLowerCase().replace(/\b\w+/g, function(txt){
+                return txt.charAt(0).toUpperCase() + txt.substr(1);
+            });
+        }
+        var cep = document.getElementById('audit-cep').value;
+        var logradouro = toTitleCase(document.getElementById('audit-logradouro').value);
+        var numero = document.getElementById('audit-numero').value;
+        var complemento = toTitleCase(document.getElementById('audit-complemento').value);
+        var bairro = toTitleCase(document.getElementById('audit-bairro').value);
+        var cidade = toTitleCase(document.getElementById('audit-cidade').value);
+        var uf = document.getElementById('audit-uf').value.toUpperCase();
+        var ref = toTitleCase(document.getElementById('audit-ref').value);
+        var enderecoCompleto = `${logradouro}, ${numero}`;
+        if (complemento) enderecoCompleto += `, ${complemento}`;
+        enderecoCompleto += `, ${bairro}, ${cidade} - ${uf}, ${cep}`;
+        if (ref) enderecoCompleto += `, ${ref}`;
+        navigator.clipboard.writeText(enderecoCompleto);
+    }
     </script>
 </body>
 </html>
