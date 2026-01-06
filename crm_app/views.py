@@ -1,3 +1,19 @@
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated, AllowAny
+# --- NOVO ENDPOINT: Buscar Fatura NIO para Bonus M-10 ---
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def buscar_fatura_nio_bonus_m10(request):
+    cpf = request.data.get("cpf")
+    if not cpf:
+        return Response({"error": "CPF não informado."}, status=400)
+    try:
+        # Aqui você pode validar o CPF e chamar a função de consulta real
+        # Exemplo: resultado = consultar_dividas_nio(cpf=cpf)
+        # Para teste, retorna erro padrão se não encontrar
+        return Response({"success": False, "message": "Não foi possível buscar a fatura. Verifique o CPF ou tente novamente."}, status=404)
+    except Exception as e:
+        return Response({"success": False, "message": str(e)}, status=500)
 import logging
 import pandas as pd
 import numpy as np
