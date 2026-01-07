@@ -29,7 +29,7 @@ class WhatsAppService:
         self.base_url = f"https://api.z-api.io/instances/{self.instance_id}/token/{self.token}"
 
         # DEBUG: Mostra no terminal o que foi carregado (oculta parte da senha)
-        print(f"--- DEBUG Z-API (CORRIGIDO) ---")
+        print(f"--- DEBUG Z-API (CORRIGIDO V2) ---")
         print(f"Instancia: {self.instance_id}")
         if self.client_token:
             print(f"ClientToken Carregado: {self.client_token[:5]}...{self.client_token[-3:]}")
