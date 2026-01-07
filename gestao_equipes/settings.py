@@ -17,6 +17,7 @@ ALLOWED_HOSTS = [
     'www.recordpap.com.br', 
     'recordpap.com.br',   
     '.herokuapp.com',
+    'site-record-production.up.railway.app',
 ]
 
 INSTALLED_APPS = [
