@@ -1,7 +1,7 @@
 import requests
 import logging
-from decouple import config
-import os
+# from decouple import config  <-- REMOVIDO PARA CORRIGIR O ERRO
+import os  # <-- ADICIONADO PARA CORREÇÃO
 import base64
 import io
 from datetime import datetime
@@ -18,19 +18,27 @@ logger = logging.getLogger(__name__)
 
 class WhatsAppService:
     def __init__(self):
-        # Carrega credenciais do arquivo .env ou settings
-        self.instance_id = config('ZAPI_INSTANCE_ID', default='')
-        self.token = config('ZAPI_TOKEN', default='')
-        self.client_token = config('ZAPI_CLIENT_TOKEN', default='')
+        # --- CORREÇÃO DO ERRO DE INSTANCE NOT FOUND ---
+        # Substituimos o 'config' pelo 'os.environ.get' para garantir que ele pegue
+        # as variáveis reais do servidor Railway e não de arquivos .env antigos.
+        self.instance_id = os.environ.get('ZAPI_INSTANCE_ID', '')
+        self.token = os.environ.get('ZAPI_TOKEN', '')
+        self.client_token = os.environ.get('ZAPI_CLIENT_TOKEN', '')
         
         # URL Base da API
         self.base_url = f"https://api.z-api.io/instances/{self.instance_id}/token/{self.token}"
 
         # DEBUG: Mostra no terminal o que foi carregado (oculta parte da senha)
-        print(f"--- DEBUG Z-API ---")
+        print(f"--- DEBUG Z-API (CORRIGIDO) ---")
         print(f"Instancia: {self.instance_id}")
-        print(f"ClientToken Carregado: {self.client_token[:5]}...{self.client_token[-3:] if self.client_token else 'VAZIO'}")
+        if self.client_token:
+            print(f"ClientToken Carregado: {self.client_token[:5]}...{self.client_token[-3:]}")
+        else:
+            print("ClientToken Carregado: VAZIO")
         print(f"-------------------")
+        
+        if not self.instance_id or not self.token:
+            logger.error("Z-API CRITICO: Credenciais não encontradas nas variáveis de ambiente!")
 
     def _get_headers(self):
         headers = {
@@ -47,14 +55,9 @@ class WhatsAppService:
         """
         # LOG DETALHADO PARA DEBUG
         logger.warning(f"[Z-API DEBUG] URL: {url}")
-        logger.warning(f"[Z-API DEBUG] Instance ID: [{self.instance_id}]")
-        logger.warning(f"[Z-API DEBUG] Token: [{self.token[:5]}...{self.token[-3:] if self.token else ''}]")
-        logger.warning(f"[Z-API DEBUG] Client-Token: [{self.client_token[:5]}...{self.client_token[-3:] if self.client_token else ''}]")
-        logger.warning(f"[Z-API DEBUG] Headers: {self._get_headers()}")
-        import os
-        logger.warning(f"[Z-API DEBUG] Todos os envs: {dict(os.environ)}")
-        if payload:
-            logger.warning(f"[Z-API DEBUG] Payload: {payload}")
+        # logger.warning(f"[Z-API DEBUG] Instance ID: [{self.instance_id}]") # Ocultado para segurança nos logs
+        # logger.warning(f"[Z-API DEBUG] Headers: {self._get_headers()}")
+
         try:
             if method == 'GET':
                 response = requests.get(url, headers=self._get_headers(), timeout=15)
@@ -153,42 +156,6 @@ class WhatsAppService:
     def enviar_imagem_base64_direto(self, telefone, img_b64, caption=""):
         return self.enviar_imagem_b64(telefone, img_b64, caption)
 
-    def enviar_imagem_base64_direto(self, telefone, base64_img, caption=""):
-        url = f"{self.base_url}/send-image"
-        
-        # Remove espaços em branco do telefone/ID
-        telefone_limpo = str(telefone).strip()
-        
-        # Garante que o base64 esteja limpo (sem prefixo para a Z-API em alguns casos, 
-        # mas a documentação padrão pede com prefixo. Vamos manter COM prefixo pois é o padrão).
-        image_data = base64_img
-        if not image_data.startswith('data:image'):
-            image_data = f"data:image/png;base64,{base64_img}"
-
-        payload = {
-            "phone": telefone_limpo,
-            "image": image_data,
-            "caption": caption
-        }
-        
-        print(f"--- Z-API ENVIANDO IMAGEM ---")
-        print(f"Destino: {telefone_limpo}")
-        print(f"Tamanho Imagem: {len(image_data)} chars")
-        
-        resp = self._send_request(url, payload)
-        
-        print(f"Z-API Resposta: {resp}")
-        
-        # Verifica se houve erro na resposta da API (ex: messageId ausente)
-        if resp and isinstance(resp, dict):
-            if 'messageId' in resp or 'id' in resp:
-                return True
-            if 'error' in resp:
-                logger.error(f"Z-API Erro Lógico: {resp}")
-                return False
-                
-        return resp is not None
-
     # ---------------------------------------------------------
     # 4. ENVIAR PDF (BASE64)
     # ---------------------------------------------------------
@@ -232,9 +199,6 @@ class WhatsAppService:
     
     def _gerar_imagem_resumo_bytes(self, dados):
         if not Image: return None
-        # ... Lógica do Pillow mantida se necessária para card de comissão ...
-        # (Se quiser economizar espaço e não usar card de comissão, pode remover essa função)
-        # Vou manter simplificada para não quebrar imports
         return None 
 
     def enviar_resumo_comissao(self, telefone, dados_comissao):
@@ -291,7 +255,8 @@ class WhatsAppService:
         if fone_para_envio:
             return self.enviar_mensagem_texto(fone_para_envio, mensagem)
         return False, "Telefone não informado"
-# ---------------------------------------------------------
+
+    # ---------------------------------------------------------
     # NOVO MÉTODO: GERAR CARD DE CAMPANHA
     # ---------------------------------------------------------
     def gerar_card_campanha_b64(self, dados):
@@ -316,7 +281,6 @@ class WhatsAppService:
             d = ImageDraw.Draw(img)
 
             # --- CARREGAMENTO DE FONTES (Tentativa robusta) ---
-            # Tenta caminhos comuns de Windows e Linux (Heroku)
             font_paths = [
                 "arial.ttf", "Arial.ttf", 
                 "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -324,20 +288,16 @@ class WhatsAppService:
                 "DejaVuSans-Bold.ttf"
             ]
             
-            font_path_regular = None
             font_path_bold = None
-
-            # Tenta achar uma fonte Bold
             for path in font_paths:
                 try:
-                    ImageFont.truetype(path, 20) # Teste
+                    ImageFont.truetype(path, 20)
                     font_path_bold = path
                     break
                 except: continue
             
-            # Se não achou, usa padrão (mas avisa no log)
             if not font_path_bold:
-                print("AVISO: Fontes TTF não encontradas. Usando default (feio).")
+                # print("AVISO: Fontes TTF não encontradas. Usando default (feio).")
                 f_titulo = f_nome = f_num = f_label = f_premio = ImageFont.load_default()
             else:
                 f_titulo = ImageFont.truetype(font_path_bold, 55)
@@ -364,7 +324,6 @@ class WhatsAppService:
             d.text((W/2, 480), "VENDAS VÁLIDAS", fill=cor_texto_sec, anchor="mm", font=f_label)
 
             # 4. ÁREA DE RESULTADO (Caixa Cinza Inferior)
-            # Define a área onde vai a lógica dinâmica
             box_y_start = 550
             box_y_end = 950
             d.rounded_rectangle([(50, box_y_start), (W-50, box_y_end)], radius=30, fill=(245, 245, 245))
@@ -376,23 +335,17 @@ class WhatsAppService:
             # --- CENÁRIO A: TEM PRÓXIMA META (FALTA POUCO) ---
             if prox_meta:
                 falta = int(prox_meta) - vendas
-                # Barra de Progresso
                 pct = min(vendas / prox_meta, 1.0)
                 
                 bar_x1, bar_y1 = 100, 620
                 bar_x2, bar_y2 = W - 100, 660
                 
-                # Fundo da barra
                 d.rectangle([(bar_x1, bar_y1), (bar_x2, bar_y2)], fill=cor_barra_fundo)
-                # Preenchimento
                 fill_width = (bar_x2 - bar_x1) * pct
                 color_fill = cor_verde if pct > 0.8 else cor_laranja
                 d.rectangle([(bar_x1, bar_y1), (bar_x1 + fill_width, bar_y2)], fill=color_fill)
                 
-                # Texto da barra
                 d.text((W/2, 690), f"{int(pct*100)}% DA META DE {prox_meta}", fill=cor_texto_sec, anchor="mm", font=f_label)
-
-                # Incentivo Financeiro
                 d.text((W/2, 800), f"FALTAM {falta} VENDAS PARA GANHAR:", fill=cor_laranja, anchor="mm", font=f_destaque)
                 val_fmt = f"R$ {prox_premio:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
                 d.text((W/2, 880), val_fmt, fill=cor_verde, anchor="mm", font=f_premio)
@@ -401,13 +354,11 @@ class WhatsAppService:
             elif premio_atual > 0:
                 d.text((W/2, 650), "🏆 META MÁXIMA ATINGIDA!", fill=cor_verde, anchor="mm", font=f_titulo)
                 d.text((W/2, 750), "BÔNUS GARANTIDO:", fill=cor_texto_sec, anchor="mm", font=f_destaque)
-                
                 val_fmt = f"R$ {premio_atual:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
                 d.text((W/2, 850), val_fmt, fill=cor_verde, anchor="mm", font=f_premio)
 
             # --- CENÁRIO C: INÍCIO (SEM PREMIO AINDA) ---
             else:
-                # Se não tem prox_meta definida mas não tem prêmio, pega do dados['meta_atual'] ou uma meta padrão
                 alvo = dados.get('meta_atual') or "A PRIMEIRA META"
                 d.text((W/2, 650), "VAMOS ACELERAR!", fill=cor_cabecalho, anchor="mm", font=f_titulo)
                 d.text((W/2, 750), "O FOCO É BATER:", fill=cor_texto_sec, anchor="mm", font=f_destaque)
@@ -418,7 +369,6 @@ class WhatsAppService:
             periodo = dados.get('periodo', '')
             d.text((W/2, 1040), f"Período: {periodo} | Atualizado em {datetime.now().strftime('%H:%M')}", fill=cor_texto_sec, anchor="mm", font=ImageFont.load_default())
 
-            # Converter para Base64
             buffered = io.BytesIO()
             img.save(buffered, format="PNG")
             img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
@@ -428,18 +378,13 @@ class WhatsAppService:
         except Exception as e:
             print(f"Erro imagem Pillow: {e}")
             return None
-# ---------------------------------------------------------
+
+    # ---------------------------------------------------------
     # NOVO: GERAR IMAGEM DE PERFORMANCE (TABELA)
     # ---------------------------------------------------------
     def gerar_imagem_performance_b64(self, dados_relatorio):
         """
         Gera uma imagem com a tabela de performance do dia.
-        dados_relatorio: {
-            'titulo': 'PERFORMANCE PAP',
-            'data': '20/12/2025',
-            'lista': [{'nome': 'JOAO', 'total': 10, 'cc': 2, 'pct': '20%'}, ...],
-            'totais': {'total': 100, 'cc': 20, 'pct': '20%'}
-        }
         """
         if not Image: return None
 
@@ -448,14 +393,12 @@ class WhatsAppService:
             lista = dados_relatorio.get('lista', [])
             qtd_linhas = len(lista)
             
-            # Altura dinâmica: Cabeçalho (250) + Linhas (60px cada) + Rodapé (150)
             H_BASE = 250
             H_LINHA = 60
             H_RODAPE = 150
             W = 1000
             H = H_BASE + (qtd_linhas * H_LINHA) + H_RODAPE
 
-            # Cores
             cor_fundo = (255, 255, 255)
             cor_azul_escuro = (10, 30, 60)
             cor_azul_claro = (235, 240, 255) # Para linhas alternadas
@@ -466,19 +409,14 @@ class WhatsAppService:
             img = Image.new('RGB', (W, H), color=cor_fundo)
             d = ImageDraw.Draw(img)
 
-            # Fontes (Tenta carregar ou usa padrão)
+            # Fontes
             try:
-                # Tenta usar as fontes que já funcionam no seu servidor/local
-                # Ajuste os caminhos se necessário, igual ao seu método anterior
                 f_titulo = ImageFont.truetype("arial.ttf", 60)
                 f_sub = ImageFont.truetype("arial.ttf", 35)
                 f_texto = ImageFont.truetype("arial.ttf", 30)
-                f_bold = ImageFont.truetype("arialbd.ttf", 30) # Arial Bold se tiver
+                f_bold = ImageFont.truetype("arialbd.ttf", 30)
             except:
-                f_titulo = ImageFont.load_default()
-                f_sub = ImageFont.load_default()
-                f_texto = ImageFont.load_default()
-                f_bold = ImageFont.load_default()
+                f_titulo = f_sub = f_texto = f_bold = ImageFont.load_default()
 
             # 2. Cabeçalho
             d.rectangle([(0, 0), (W, 180)], fill=cor_azul_escuro)
@@ -487,7 +425,7 @@ class WhatsAppService:
 
             # Cabeçalho da Tabela
             y_start = 200
-            col_x = [50, 450, 700, 900] # Posições X das colunas: Nome, Total, CC, %
+            col_x = [50, 450, 700, 900]
             
             d.text((col_x[0], y_start), "VENDEDOR", fill=cor_azul_escuro, anchor="lm", font=f_bold)
             d.text((col_x[1], y_start), "TOTAL", fill=cor_azul_escuro, anchor="mm", font=f_bold)
@@ -499,13 +437,11 @@ class WhatsAppService:
             # 3. Linhas da Tabela
             y = y_start + 60
             for i, item in enumerate(lista):
-                # Fundo alternado
                 if i % 2 == 0:
                     d.rectangle([(30, y-30), (W-30, y+30)], fill=cor_azul_claro)
 
                 d.text((col_x[0], y), str(item['nome'])[:22], fill=cor_texto, anchor="lm", font=f_texto)
                 
-                # Destaque se vendeu
                 cor_num = cor_verde if item['total'] > 0 else (150,150,150)
                 d.text((col_x[1], y), str(item['total']), fill=cor_num, anchor="mm", font=f_bold)
                 d.text((col_x[2], y), str(item['cc']), fill=cor_texto, anchor="mm", font=f_texto)
@@ -521,7 +457,6 @@ class WhatsAppService:
             resumo = f"🏆 TOTAL: {totais['total']}   |   💳 CARTÃO: {totais['cc']} ({totais['pct']})"
             d.text((W/2, y_totais + 20), resumo, fill="white", anchor="mm", font=f_sub)
 
-            # Converter para Base64
             buffered = io.BytesIO()
             img.save(buffered, format="PNG")
             img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
