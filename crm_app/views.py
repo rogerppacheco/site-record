@@ -2732,16 +2732,23 @@ class ImportarDFVView(APIView):
 class WebhookWhatsAppView(APIView):
     permission_classes = [AllowAny]
 
+
     def post(self, request, *args, **kwargs):
+        import logging
+        logger = logging.getLogger("crm_app.webhook_whatsapp")
         try:
             data = request.data
-            # print(">>> WEBHOOK:", json.dumps(data, default=str)) 
+            logger.info(f"[WHATSAPP_WEBHOOK] Payload recebido: {json.dumps(data, default=str)[:1000]}")
 
             if isinstance(data, list): data = data[0] if len(data) > 0 else {}
-            if not isinstance(data, dict): return Response({'status': 'ignored_format'})
+            if not isinstance(data, dict):
+                logger.warning("[WHATSAPP_WEBHOOK] Ignorado: formato não é dict.")
+                return Response({'status': 'ignored_format'})
 
             raw_phone = data.get('phone') or data.get('sender')
-            if not raw_phone: return Response({'status': 'ignored_no_phone'})
+            if not raw_phone:
+                logger.warning("[WHATSAPP_WEBHOOK] Ignorado: telefone não encontrado.")
+                return Response({'status': 'ignored_no_phone'})
 
             phone = str(raw_phone).split('@')[0].strip()[:45]
 
@@ -2750,8 +2757,12 @@ class WebhookWhatsAppView(APIView):
                 text = data['text'].get('message', '').strip()
             elif 'text' in data and isinstance(data['text'], str):
                 text = data['text'].strip()
-            
-            if not text: return Response({'status': 'ignored_no_text'})
+
+            logger.info(f"[WHATSAPP_WEBHOOK] phone={phone} | text='{text}'")
+
+            if not text:
+                logger.warning("[WHATSAPP_WEBHOOK] Ignorado: texto vazio.")
+                return Response({'status': 'ignored_no_text'})
 
             service = WhatsAppService()
 
@@ -2761,17 +2772,21 @@ class WebhookWhatsAppView(APIView):
                     telefone=phone, 
                     defaults={'etapa': 'MENU', 'dados_temp': {}}
                 )
+                logger.info(f"[WHATSAPP_WEBHOOK] Sessao: etapa={sessao.etapa} | created={created}")
             except IntegrityError:
                 sessao = SessaoWhatsapp.objects.get(telefone=phone)
+                logger.info(f"[WHATSAPP_WEBHOOK] Sessao recuperada: etapa={sessao.etapa}")
 
             msg_upper = text.upper().strip()
+            logger.info(f"[WHATSAPP_WEBHOOK] msg_upper='{msg_upper}'")
 
             # =========================================================
             # GATILHOS INICIAIS (MENU PRINCIPAL)
             # =========================================================
-            
+
             # 1. GATILHO: FACHADA
             if "FACHADA" in msg_upper:
+                logger.info("[WHATSAPP_WEBHOOK] Gatilho FACHADA detectado. Iniciando fluxo.")
                 sessao.etapa = 'FACHADA_AGUARDANDO_CEP'
                 sessao.save()
                 service.enviar_mensagem_texto(phone, "🏢 *CONSULTA MASSIVA (DFV)*\n\nEu vou listar todos os números viáveis de uma rua.\nPor favor, digite o *CEP* (somente números):")
