@@ -1,0 +1,531 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Performance de Vendas - Record PAP</title>
+    <link rel="shortcut icon" href="{% static 'logo.png' %}" type="image/x-icon">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=13.1">
+    
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
+
+    <style>
+        .table-excel { font-size: 0.85rem; border-collapse: separate; border-spacing: 0; width: 100%; }
+        .table-excel thead th { background-color: #4e73df; color: white; border: 1px solid #d1d3e2; padding: 8px; text-align: center; vertical-align: middle; position: sticky; top: 0; z-index: 2; font-weight: 600; }
+        .table-excel tbody td { border: 1px solid #e3e6f0; padding: 6px; text-align: center; vertical-align: middle; font-weight: 500; }
+        .table-excel tfoot td { background-color: #2c3e50; color: white; font-weight: bold; padding: 8px; text-align: center; position: sticky; bottom: 0; z-index: 2; }
+        .bg-green-soft { background-color: #d1e7dd !important; color: #0f5132; }
+        .bg-red-soft { background-color: #f8d7da !important; color: #842029; opacity: 0.8; }
+        .bg-header-group { background-color: #e7eef7 !important; color: #1e3a5f !important; font-weight: 600; }
+        .bg-info { background-color: #0d6efd !important; }
+        .bg-success { background-color: #198754 !important; }
+        .bg-total-column { background-color: #e7f1ff !important; color: #003d82 !important; font-weight: bold; }
+        #capture-area { position: absolute; left: -9999px; top: -9999px; width: 1200px; background: white; padding: 20px; }
+        #capture-area .table-excel thead th { position: static !important; }
+        #capture-area .table-excel tfoot td { position: static !important; }
+        #capture-summary { display: none; background-color: #f8f9fa; border: 1px solid #dee2e6; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+        #capture-summary.show { display: block; }
+        .nav-pills .nav-link { color: #5a5c69; font-weight: 600; border-radius: 20px; padding: 8px 20px; margin-right: 5px; }
+        .nav-pills .nav-link.active { background-color: #4e73df; color: white; box-shadow: 0 2px 5px rgba(78,115,223,0.3); }
+        
+        /* Estilo para o checkbox no modal */
+        .chk-grupo { width: 1.2em; height: 1.2em; margin-top: 0.2em; }
+    </style>
+</head>
+<body>
+
+    <header class="main-header">
+        <div class="header-container">
+            <a href="/"><img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo"></a>
+            <button class="menu-toggle" id="menu-toggle"><div class="bar"></div><div class="bar"></div><div class="bar"></div></button>
+            <nav class="main-nav" id="main-nav">
+                <ul>
+                    <li><a href="/area-interna/">Voltar</a></li>
+                    <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main class="container-fluid px-4 py-4">
+        
+        <div class="d-flex justify-content-between align-items-center mb-4 bg-white p-3 rounded shadow-sm flex-wrap gap-2">
+            <div><h4 class="fw-bold text-dark mb-0"><i class="bi bi-bar-chart-line-fill text-primary"></i> Painel de Performance</h4></div>
+            
+            <div class="d-flex align-items-center gap-2">
+                <button class="btn btn-sm btn-outline-dark fw-bold" onclick="abrirConfiguracaoRobo()">
+                    <i class="bi bi-robot"></i> Robô Automático
+                </button>
+
+                <button class="btn btn-sm btn-success" onclick="abrirModalEnvioManual()">
+                    <i class="bi bi-whatsapp"></i> Enviar Imagem Agora
+                </button>
+                
+                <div class="vr mx-2"></div>
+                
+                <label class="fw-bold text-muted small mb-0">Canal:</label>
+                <select id="filtro-canal" class="form-select form-select-sm" style="width: 150px;" onchange="carregarDados()">
+                    <option value="">Todos</option>
+                    <option value="PAP">PAP</option>
+                    <option value="DIGITAL">Digital</option>
+                    <option value="RECEPTIVO">Receptivo</option>
+                    <option value="PARCEIRO">Parceiro</option>
+                </select>
+                <button class="btn btn-sm btn-primary rounded-circle" onclick="carregarDados()" title="Atualizar">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>
+            </div>
+        </div>
+
+        <ul class="nav nav-pills mb-3" id="pills-tab" role="tablist">
+            <li class="nav-item"><button class="nav-link active" id="tab-hoje" data-bs-toggle="pill" data-bs-target="#content-hoje">Hoje</button></li>
+            <li class="nav-item"><button class="nav-link" id="tab-semana" data-bs-toggle="pill" data-bs-target="#content-semana">Semanal</button></li>
+            <li class="nav-item"><button class="nav-link" id="tab-mes" data-bs-toggle="pill" data-bs-target="#content-mes">Mensal</button></li>
+        </ul>
+
+        <div class="tab-content" id="pills-tabContent">
+            <div class="tab-pane fade show active" id="content-hoje">
+                <div class="card border-0 shadow"><div class="card-body p-0 table-responsive"><table class="table-excel"><thead><tr><th class="text-start ps-3">Vendedor</th><th>Canal</th><th>Vendas Hoje (O.S.)</th><th>Vendas Cartão (CC)</th><th>% CC / Total</th></tr></thead><tbody id="tbody-hoje"></tbody><tfoot id="tfoot-hoje"></tfoot></table></div></div>
+            </div>
+            <div class="tab-pane fade" id="content-semana">
+                <div class="card border-0 shadow"><div class="card-body p-0 table-responsive"><table class="table-excel"><thead><tr><th class="text-start ps-3">Vendedor</th><th>Seg</th><th>Ter</th><th>Qua</th><th>Qui</th><th>Sex</th><th>Sáb</th><th class="bg-header-group">Total Semana</th><th>Total CC</th><th>% CC</th></tr></thead><tbody id="tbody-semana"></tbody><tfoot id="tfoot-semana"></tfoot></table></div></div>
+            </div>
+            <div class="tab-pane fade" id="content-mes">
+                <div class="card border-0 shadow"><div class="card-body p-0 table-responsive"><table class="table-excel"><thead><tr><th class="text-start ps-3">Vendedor</th><th class="bg-header-group">Total Vendas</th><th class="bg-success text-white">Instaladas</th><th>Total CC</th><th>Instaladas CC</th><th>% CC Total</th><th>% CC Inst</th><th class="bg-info text-white">Aprov.</th><th>Pende</th><th>Agend</th><th>Canc</th></tr></thead><tbody id="tbody-mes"></tbody><tfoot id="tfoot-mes"></tfoot></table></div></div>
+            </div>
+        </div>
+    </main>
+
+    <div class="modal fade" id="modalEnvioManual" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Enviar Imagem Agora</h5><button class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="mb-3"><label class="fw-bold">Para quem?</label><div class="input-group"><input type="text" id="manual-destino" class="form-control" placeholder="ID Grupo ou Telefone..."><button class="btn btn-outline-secondary" onclick="abrirSeletorGrupos('manual-destino')"><i class="bi bi-search"></i></button></div></div><div class="alert alert-info small">Isso vai gerar um "print" da tabela atual e enviar imediatamente.</div></div><div class="modal-footer"><button class="btn btn-success w-100" id="btn-enviar-manual" onclick="dispararEnvioManual()">🚀 Enviar Imagem</button></div></div></div></div>
+
+    <div class="modal fade" id="modalConfigRobo" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content"><div class="modal-header bg-dark text-white"><h5 class="modal-title">🤖 Configuração de Automação</h5><button class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body">
+        
+        <div class="row g-3 mb-4 p-3 bg-light rounded border">
+            <div class="col-12"><h6 class="fw-bold text-primary">Nova Regra de Envio</h6></div>
+            <input type="hidden" id="robo-id">
+            <div class="col-md-4"><label class="small fw-bold">Nome da Regra</label><input type="text" id="robo-nome" class="form-control form-control-sm" placeholder="Ex: Hora a Hora PAP"></div>
+            <div class="col-md-3"><label class="small fw-bold">Frequência</label><select id="robo-tipo" class="form-select form-select-sm"><option value="HORARIO">Hora em Hora (9h-19h)</option><option value="SEMANAL">Semanal (Ter/Qui/Sáb 17h)</option></select></div>
+            <div class="col-md-3"><label class="small fw-bold">Canal</label><select id="robo-canal" class="form-select form-select-sm"><option value="TODOS">Todos</option><option value="PAP">PAP</option><option value="DIGITAL">Digital</option><option value="RECEPTIVO">Receptivo</option><option value="PARCEIRO">Parceiro</option></select></div>
+            <div class="col-md-2 d-flex align-items-end"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="robo-ativo" checked><label class="form-check-label small fw-bold">Ativo</label></div></div>
+            <div class="col-12"><label class="small fw-bold">Destinatários (Grupos ou Números)</label><div class="input-group input-group-sm"><input type="text" id="robo-destinos" class="form-control" placeholder="12036... , 5531..."><button class="btn btn-outline-secondary" onclick="abrirSeletorGrupos('robo-destinos')">🔍 Buscar Grupos</button></div><small class="text-muted">Separe múltiplos destinos por vírgula.</small></div>
+            <div class="col-12 text-end"><button class="btn btn-primary btn-sm" onclick="salvarRegraRobo()"><i class="bi bi-save"></i> Salvar Regra</button></div>
+        </div>
+
+        <h6 class="fw-bold mb-2">Regras Ativas</h6>
+        <div class="table-responsive"><table class="table table-sm table-hover border">
+            <thead class="table-light"><tr><th>Nome</th><th>Tipo</th><th>Canal</th><th>Destinos</th><th>Status</th><th>Ações</th></tr></thead>
+            <tbody id="lista-regras-robo"></tbody>
+        </table></div>
+
+    </div></div></div></div>
+
+    <div class="modal fade" id="modalSeletor" tabindex="-1">
+        <div class="modal-dialog modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Selecionar Grupos</h5>
+                    <button class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="input-group mb-2">
+                        <span class="input-group-text"><i class="bi bi-search"></i></span>
+                        <input type="text" class="form-control" placeholder="Filtrar lista..." onkeyup="filtrarListaGrupos(this.value)">
+                    </div>
+                    
+                    <div class="d-flex justify-content-between align-items-center mb-2 px-1">
+                        <small class="text-muted fw-bold" id="contador-selecionados">0 selecionados</small>
+                        <div>
+                            <button class="btn btn-link btn-sm p-0 text-decoration-none" onclick="marcarTodos(true)">Marcar Todos</button>
+                            <span class="text-muted mx-1">|</span>
+                            <button class="btn btn-link btn-sm p-0 text-decoration-none text-danger" onclick="marcarTodos(false)">Desmarcar</button>
+                        </div>
+                    </div>
+
+                    <div class="list-group list-group-flush border rounded" id="lista-grupos-api" style="max-height: 400px; overflow-y: auto;">
+                        <div class="text-center p-3 text-muted">Carregando...</div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button class="btn btn-primary w-100 fw-bold" onclick="confirmarSelecaoGrupos()">
+                        <i class="bi bi-check-lg"></i> Confirmar Seleção
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="capture-area">
+        <h3 class="text-center mb-2 fw-bold" id="capture-title">Relatório de Performance</h3>
+        <div id="capture-summary" style="display: none; background-color: #f8f9fa; border: 1px solid #dee2e6; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+            <div style="display: flex; gap: 30px; justify-content: center; align-items: center;">
+                <div style="text-align: center;">
+                    <p style="margin: 0; font-size: 12px; color: #666; font-weight: bold; text-transform: uppercase;">Total Geral</p>
+                    <p style="margin: 5px 0 0 0; font-size: 24px; font-weight: bold; color: #333;" id="capture-total">0</p>
+                </div>
+                <div style="text-align: center;">
+                    <p style="margin: 0; font-size: 12px; color: #666; font-weight: bold; text-transform: uppercase;">Total CC</p>
+                    <p style="margin: 5px 0 0 0; font-size: 24px; font-weight: bold; color: #198754;" id="capture-cc">0</p>
+                </div>
+                <div style="text-align: center;">
+                    <p style="margin: 0; font-size: 12px; color: #666; font-weight: bold; text-transform: uppercase;">% CC</p>
+                    <p style="margin: 5px 0 0 0; font-size: 24px; font-weight: bold; color: #0d6efd;" id="capture-percentual">0%</p>
+                </div>
+            </div>
+        </div>
+        <table class="table-excel" id="capture-table"></table>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        const token = localStorage.getItem('accessToken');
+        if (!token) window.location.href = '/';
+
+        let campoDestinoAlvo = ''; 
+        const modalRobo = new bootstrap.Modal(document.getElementById('modalConfigRobo'));
+        const modalManual = new bootstrap.Modal(document.getElementById('modalEnvioManual'));
+        const modalSeletor = new bootstrap.Modal(document.getElementById('modalSeletor'));
+
+        // --- CARREGAMENTO INICIAL ---
+        document.addEventListener('DOMContentLoaded', () => { carregarDados(); });
+
+        async function carregarDados() {
+            const canal = document.getElementById('filtro-canal').value;
+            try {
+                const response = await axios.get(`/api/crm/performance-painel/?canal=${canal}`, { headers: { 'Authorization': `Bearer ${token}` }});
+                renderHoje(response.data.hoje);
+                renderSemana(response.data.semana);
+                renderMes(response.data.mes);
+            } catch (e) { console.error(e); }
+        }
+
+        // Funções de Renderização
+        function cellClass(v) { return v > 0 ? 'bg-green-soft fw-bold' : 'bg-red-soft opacity-50'; }
+        
+        function renderHoje(lista) {
+            let h='', tV=0, tC=0;
+            lista.forEach(i => { tV+=i.total; tC+=i.cc; h+=`<tr><td class="text-start ps-3 fw-bold">${i.vendedor}</td><td>${i.canal||'-'}</td><td class="${cellClass(i.total)}">${i.total}</td><td>${i.cc}</td><td>${i.pct_cc}%</td></tr>`; });
+            
+            // Linha de TOTAL logo após o cabeçalho
+            const pct = tV > 0 ? ((tC/tV)*100).toFixed(1) : 0;
+            const linhaTotal = `<tr style="background-color: #2c3e50; color: white; font-weight: bold;"><td class="text-start ps-3">TOTAL</td><td>-</td><td>${tV}</td><td>${tC}</td><td>${pct}%</td></tr>`;
+            
+            // TOTAL aparece primeiro, depois os dados
+            document.getElementById('tbody-hoje').innerHTML = linhaTotal + (h || '<tr><td colspan="5">Sem dados</td></tr>');
+            
+            // Remover tfoot
+            document.getElementById('tfoot-hoje').innerHTML = '';
+        }
+        
+        function renderSemana(lista) {
+            let h='', tS=0, tC=0;
+            let dias_total = [0, 0, 0, 0, 0, 0]; // seg, ter, qua, qui, sex, sab
+            
+            lista.forEach(i => {
+                tS+=i.total;
+                tC+=i.cc;
+                
+                // Somar dias da semana
+                if (i.dias) {
+                    for (let d = 0; d < 6; d++) {
+                        dias_total[d] += (i.dias[d] || 0);
+                    }
+                }
+                
+                h+=`<tr><td class="text-start ps-3 fw-bold">${i.vendedor}</td><td>${i.dias[0]}</td><td>${i.dias[1]}</td><td>${i.dias[2]}</td><td>${i.dias[3]}</td><td>${i.dias[4]}</td><td>${i.dias[5]}</td><td class="bg-total-column">${i.total}</td><td>${i.cc}</td><td>${i.pct_cc}%</td></tr>`;
+            });
+            
+            // Linha de TOTAL logo após o cabeçalho
+            const pct = tS > 0 ? ((tC/tS)*100).toFixed(1) : 0;
+            const linhaTotal = `<tr style="background-color: #2c3e50; color: white; font-weight: bold;"><td class="text-start ps-3">TOTAL</td><td>${dias_total[0]}</td><td>${dias_total[1]}</td><td>${dias_total[2]}</td><td>${dias_total[3]}</td><td>${dias_total[4]}</td><td>${dias_total[5]}</td><td>${tS}</td><td>${tC}</td><td>${pct}%</td></tr>`;
+            
+            // TOTAL aparece primeiro, depois os dados
+            document.getElementById('tbody-semana').innerHTML = linhaTotal + h;
+            
+            // Remover tfoot
+            document.getElementById('tfoot-semana').innerHTML = '';
+        }
+        
+        function renderMes(lista) {
+            let h='', tT=0, tI=0, tCC=0, tCI=0, tPend=0, tAgend=0, tCanc=0;
+            
+            lista.forEach(i => {
+                tT += i.total;
+                tI += i.instaladas;
+                tCC += i.cc_total;
+                tCI += i.cc_inst;
+                tPend += i.pend;
+                tAgend += i.agend;
+                tCanc += i.canc;
+                
+                h+=`<tr><td class="text-start ps-3 fw-bold">${i.vendedor}</td><td class="bg-total-column">${i.total}</td><td class="${cellClass(i.instaladas)}">${i.instaladas}</td><td>${i.cc_total}</td><td>${i.cc_inst}</td><td>${i.pct_cc_total}%</td><td>${i.pct_cc_inst}%</td><td class="bg-info text-white fw-bold">${i.aproveitamento}%</td><td>${i.pend}</td><td>${i.agend}</td><td>${i.canc}</td></tr>`;
+            });
+            
+            // Calcular totais
+            const pct_cc_total = tT > 0 ? ((tCC / tT) * 100).toFixed(1) : 0;
+            const pct_cc_inst = tI > 0 ? ((tCI / tI) * 100).toFixed(1) : 0;
+            const aprov = tT > 0 ? ((tI / tT) * 100).toFixed(1) : 0;
+            
+            // Linha de TOTAL logo após o cabeçalho
+            const linhaTotal = `<tr style="background-color: #2c3e50; color: white; font-weight: bold;"><td class="text-start ps-3">TOTAL</td><td>${tT}</td><td>${tI}</td><td>${tCC}</td><td>${tCI}</td><td>${pct_cc_total}%</td><td>${pct_cc_inst}%</td><td>${aprov}%</td><td>${tPend}</td><td>${tAgend}</td><td>${tCanc}</td></tr>`;
+            
+            // TOTAL aparece primeiro, depois os dados
+            document.getElementById('tbody-mes').innerHTML = linhaTotal + h;
+            
+            // Remover tfoot
+            document.getElementById('tfoot-mes').innerHTML = '';
+        }
+
+        // --- LÓGICA DO ROBÔ ---
+        function abrirConfiguracaoRobo() {
+            carregarRegrasRobo();
+            modalRobo.show();
+        }
+
+        async function carregarRegrasRobo() {
+            const tb = document.getElementById('lista-regras-robo');
+            tb.innerHTML = '<tr><td colspan="6" class="text-center">Carregando...</td></tr>';
+            try {
+                const res = await axios.post('/api/crm/automacao-performance/', { acao: 'listar' }, { headers: { 'Authorization': `Bearer ${token}` }});
+                tb.innerHTML = '';
+                res.data.forEach(r => {
+                    tb.innerHTML += `<tr>
+                        <td>${r.nome}</td>
+                        <td>${r.tipo}</td>
+                        <td>${r.canal_alvo}</td>
+                        <td class="text-truncate" style="max-width: 100px;">${r.destinatarios}</td>
+                        <td>${r.ativo ? '<span class="badge bg-success">ON</span>' : '<span class="badge bg-secondary">OFF</span>'}</td>
+                        <td>
+                            <button class="btn btn-sm btn-editar me-1" onclick='editarRegra(${JSON.stringify(r)})'><i class="bi bi-pencil"></i></button>
+                            <button class="btn btn-sm btn-excluir" onclick="excluirRegra(${r.id})"><i class="bi bi-trash"></i></button>
+                        </td>
+                    </tr>`;
+                });
+            } catch(e) { tb.innerHTML = '<tr><td colspan="6" class="text-danger">Erro ao carregar regras.</td></tr>'; }
+        }
+
+        async function salvarRegraRobo() {
+            const dados = {
+                id: document.getElementById('robo-id').value || null,
+                nome: document.getElementById('robo-nome').value,
+                tipo: document.getElementById('robo-tipo').value,
+                canal_alvo: document.getElementById('robo-canal').value,
+                destinatarios: document.getElementById('robo-destinos').value,
+                ativo: document.getElementById('robo-ativo').checked
+            };
+            if(!dados.nome || !dados.destinatarios) return alert("Preencha Nome e Destinatários.");
+            await axios.post('/api/crm/automacao-performance/', { acao: 'salvar', dados }, { headers: { 'Authorization': `Bearer ${token}` }});
+            
+            document.getElementById('robo-id').value = '';
+            document.getElementById('robo-nome').value = '';
+            document.getElementById('robo-destinos').value = '';
+            carregarRegrasRobo();
+        }
+
+        function editarRegra(r) {
+            document.getElementById('robo-id').value = r.id;
+            document.getElementById('robo-nome').value = r.nome;
+            document.getElementById('robo-tipo').value = r.tipo;
+            document.getElementById('robo-canal').value = r.canal_alvo;
+            document.getElementById('robo-destinos').value = r.destinatarios;
+            document.getElementById('robo-ativo').checked = r.ativo;
+        }
+
+        async function excluirRegra(id) {
+            if(!confirm("Excluir esta regra?")) return;
+            await axios.post('/api/crm/automacao-performance/', { acao: 'excluir', id }, { headers: { 'Authorization': `Bearer ${token}` }});
+            carregarRegrasRobo();
+        }
+
+        // --- SELETOR DE GRUPOS MÚLTIPLOS ---
+        function abrirSeletorGrupos(campoId) {
+            campoDestinoAlvo = campoId; 
+            const input = document.getElementById(campoId);
+            const atuais = input.value.split(',').map(s => s.trim()).filter(s => s);
+            
+            const listaEl = document.getElementById('lista-grupos-api');
+            listaEl.innerHTML = '<div class="text-center p-4"><div class="spinner-border text-primary"></div><div class="mt-2 text-muted">Buscando grupos no Z-API...</div></div>';
+            
+            modalSeletor.show();
+            
+            axios.get('/api/crm/grupos-disparo-api/', { headers: { 'Authorization': `Bearer ${token}` }})
+            .then(res => {
+                listaEl.innerHTML = '';
+                const grupos = res.data;
+
+                if (grupos.length === 0) {
+                    listaEl.innerHTML = '<div class="text-center p-3 text-muted">Nenhum grupo encontrado na API.</div>';
+                    return;
+                }
+
+                grupos.forEach(g => {
+                    const isChecked = atuais.includes(g.id) ? 'checked' : '';
+                    listaEl.innerHTML += `
+                        <label class="list-group-item list-group-item-action d-flex gap-3 align-items-center py-3" style="cursor:pointer;">
+                            <input class="form-check-input flex-shrink-0 chk-grupo" type="checkbox" value="${g.id}" ${isChecked} onchange="atualizarContador()">
+                            <div class="w-100">
+                                <div class="fw-bold text-dark">${g.name}</div>
+                                <div class="small text-muted font-monospace" style="font-size: 0.75rem;">${g.id}</div>
+                            </div>
+                        </label>`;
+                });
+                
+                atualizarContador();
+            })
+            .catch(err => {
+                console.error(err);
+                listaEl.innerHTML = '<div class="alert alert-danger m-3">Erro ao buscar grupos.</div>';
+            });
+        }
+
+        function atualizarContador() {
+            const total = document.querySelectorAll('.chk-grupo:checked').length;
+            document.getElementById('contador-selecionados').innerText = `${total} selecionados`;
+        }
+
+        function marcarTodos(estado) {
+            const visiveis = Array.from(document.querySelectorAll('.chk-grupo')).filter(el => el.closest('label').style.display !== 'none');
+            visiveis.forEach(ck => ck.checked = estado);
+            atualizarContador();
+        }
+
+        function filtrarListaGrupos(termo) {
+            const labels = document.querySelectorAll('#lista-grupos-api label');
+            const termoLower = termo.toLowerCase();
+            labels.forEach(label => {
+                const texto = label.innerText.toLowerCase();
+                label.style.display = texto.includes(termoLower) ? 'flex' : 'none';
+            });
+        }
+
+        function confirmarSelecaoGrupos() {
+            const input = document.getElementById(campoDestinoAlvo);
+            let valoresAtuais = input.value.split(',').map(s => s.trim()).filter(s => s);
+            
+            const todosNoModal = Array.from(document.querySelectorAll('.chk-grupo')).map(c => c.value);
+            const marcados = Array.from(document.querySelectorAll('.chk-grupo:checked')).map(c => c.value);
+            
+            // Mantém manuais + Adiciona novos marcados - Remove desmarcados
+            let novaLista = valoresAtuais.filter(id => !todosNoModal.includes(id)); 
+            novaLista = novaLista.concat(marcados);
+            
+            input.value = [...new Set(novaLista)].join(', ');
+            modalSeletor.hide();
+        }
+
+        // --- ENVIO MANUAL (IMAGEM) ---
+        function abrirModalEnvioManual() { modalManual.show(); }
+
+        async function dispararEnvioManual() {
+            const destino = document.getElementById('manual-destino').value;
+            if(!destino) return alert("Informe o destino.");
+            
+            const btnEnviar = document.getElementById('btn-enviar-manual');
+            const textoBotao = btnEnviar.innerHTML;
+            
+            // Desabilitar botão e mostrar loading
+            btnEnviar.disabled = true;
+            btnEnviar.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Enviando...';
+            
+            const tabelaVisivel = document.querySelector('.tab-pane.active table');
+            if(!tabelaVisivel) {
+                btnEnviar.disabled = false;
+                btnEnviar.innerHTML = textoBotao;
+                return alert("Nenhuma tabela visível.");
+            }
+            
+            // Copiar cabeçalho (thead) + corpo (tbody) da tabela visível
+            const theadCopia = tabelaVisivel.querySelector('thead').cloneNode(true);
+            const tbodyCopia = tabelaVisivel.querySelector('tbody').cloneNode(true);
+            const tabelaCopia = document.createElement('table');
+            tabelaCopia.className = 'table-excel';
+            tabelaCopia.appendChild(theadCopia);
+            tabelaCopia.appendChild(tbodyCopia);
+            
+            // Preencher dados da tabela com cabeçalho
+            document.getElementById('capture-table').innerHTML = tabelaCopia.outerHTML;
+            
+            // Extrair dados da primeira linha (TOTAL) que agora é o primeiro tr do tbody
+            const primeiraLinha = tabelaVisivel.querySelector('tbody tr');
+            if(primeiraLinha && primeiraLinha.textContent.includes('TOTAL')) {
+                const colunas = primeiraLinha.querySelectorAll('td');
+                // Adaptar conforme a aba ativa
+                const abAtiva = document.querySelector('.nav-pills .nav-link.active').id;
+                
+                if(abAtiva === 'tab-hoje' && colunas.length >= 5) {
+                    // Hoje: TOTAL | - | total | cc | % 
+                    document.getElementById('capture-total').textContent = colunas[2].textContent;
+                    document.getElementById('capture-cc').textContent = colunas[3].textContent;
+                    document.getElementById('capture-percentual').textContent = colunas[4].textContent;
+                } else if(abAtiva === 'tab-semana' && colunas.length >= 10) {
+                    // Semana: TOTAL | seg | ter | qua | qui | sex | sab | total | cc | %
+                    document.getElementById('capture-total').textContent = colunas[7].textContent;
+                    document.getElementById('capture-cc').textContent = colunas[8].textContent;
+                    document.getElementById('capture-percentual').textContent = colunas[9].textContent;
+                } else if(abAtiva === 'tab-mes' && colunas.length >= 11) {
+                    // Mensal: TOTAL | total | inst | cc_total | cc_inst | % total | % inst | aprov | pend | agend | canc
+                    document.getElementById('capture-total').textContent = colunas[1].textContent;
+                    document.getElementById('capture-cc').textContent = colunas[3].textContent;
+                    const pctCC = colunas[5].textContent;
+                    document.getElementById('capture-percentual').textContent = pctCC;
+                }
+            }
+            
+            // Mostrar resumo na captura
+            document.getElementById('capture-summary').classList.add('show');
+            
+            // Definir título dinâmico
+            const tabAtiva = document.querySelector('.nav-pills .nav-link.active').textContent.trim();
+            document.getElementById('capture-title').textContent = `Performance - ${tabAtiva}`;
+            
+            const canvas = await html2canvas(document.getElementById('capture-area'));
+            const imgData = canvas.toDataURL("image/png");
+            
+            // Remover sumário após captura
+            document.getElementById('capture-summary').classList.remove('show');
+
+            try {
+                await axios.post('/api/crm/enviar-imagem-performance/', { 
+                    chat_id: destino, 
+                    imagem_b64: imgData, 
+                    titulo: "Performance Manual"
+                }, { headers: { 'Authorization': `Bearer ${token}` }});
+                
+                // Sucesso
+                btnEnviar.disabled = false;
+                btnEnviar.innerHTML = '<i class="bi bi-check-circle me-2"></i>Enviado!';
+                
+                setTimeout(() => {
+                    btnEnviar.innerHTML = textoBotao;
+                    modalManual.hide();
+                    document.getElementById('manual-destino').value = '';
+                }, 2000);
+            } catch(e) { 
+                console.error(e);
+                
+                // Erro
+                btnEnviar.disabled = false;
+                btnEnviar.innerHTML = '<i class="bi bi-exclamation-circle me-2"></i>Erro ao Enviar';
+                btnEnviar.style.backgroundColor = '#dc3545';
+                btnEnviar.style.borderColor = '#dc3545';
+                
+                alert("Erro ao enviar: " + (e.response?.data?.detail || e.message)); 
+                
+                setTimeout(() => {
+                    btnEnviar.innerHTML = textoBotao;
+                    btnEnviar.style.backgroundColor = '';
+                    btnEnviar.style.borderColor = '';
+                }, 3000);
+            }
+        }
+    </script>
+    <script src="{% static 'js/auth.js' %}?v=7.0"></script>
+    <script src="{% static 'js/menu.js' %}?v=7.0"></script>
+</body>
+</html>
+

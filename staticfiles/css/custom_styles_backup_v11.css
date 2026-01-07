@@ -1,0 +1,1190 @@
+/* ==========================================================================
+   1. VARIÁVEIS GERAIS & DESIGN SYSTEM
+   ========================================================================== */
+:root {
+    /* Paleta de Cores Moderna */
+    --cor-primaria: #0d6efd;
+    --cor-primaria-hover: #0b5ed7;
+    --cor-secundaria: #6c757d;
+    --cor-sucesso: #198754;
+    --cor-perigo: #dc3545;
+    --cor-aviso: #ffc107;
+    
+    /* Cores de Fundo e Texto */
+    --cor-fundo: #f4f6f9;
+    --cor-surface: #ffffff;
+    --cor-texto: #212529;
+    --cor-texto-suave: #6c757d;
+    --cor-borda: #dee2e6;
+    
+    /* Header */
+    --cor-header-bg: #ffffff;
+    --cor-header-text: #212529;
+    
+    /* Efeitos Visuais */
+    --sombra-suave: 0 2px 4px rgba(0,0,0,0.05);
+    --sombra-media: 0 4px 12px rgba(0, 0, 0, 0.08);
+    --sombra-alta: 0 8px 24px rgba(0, 0, 0, 0.12);
+    --sombra-elevada: 0 12px 32px rgba(0, 0, 0, 0.15);
+    --transition-speed: 0.3s;
+    --transition-cubic: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Reset Básico Seguro (Compatível com Bootstrap) */
+* {
+    box-sizing: border-box;
+}
+
+/* Aplica reset apenas onde não interfere em componentes complexos */
+body, h1, h2, h3, h4, h5, h6, p, figure, blockquote, dl, dd {
+    margin: 0;
+}
+
+body {
+    background-color: var(--cor-fundo);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    color: var(--cor-texto);
+    line-height: 1.6;
+    padding-top: 100px; /* Espaço para header fixo */
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+a { 
+    text-decoration: none; 
+    color: inherit; 
+    transition: all var(--transition-speed) ease; 
+}
+
+ul { 
+    list-style: none; 
+    padding-left: 0; 
+    margin-bottom: 0; 
+}
+
+/* ==========================================================================
+   2. CABEÇALHO E NAVEGAÇÃO PADRONIZADO
+   ========================================================================== */
+.main-header {
+    background-color: var(--cor-header-bg);
+    padding: 0 1.5rem;
+    position: fixed;
+    top: 0; 
+    left: 0; 
+    width: 100%; 
+    height: 80px;
+    z-index: 1020; 
+    box-shadow: var(--sombra-suave);
+    display: flex; 
+    align-items: center;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+}
+
+.header-container {
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center;
+    width: 100%; 
+    max-width: 1400px; 
+    margin: 0 auto; 
+    height: 100%;
+}
+
+.logo { 
+    height: 45px; 
+    width: auto; 
+    display: block; 
+    object-fit: contain; 
+    transition: transform var(--transition-speed) ease;
+}
+
+.logo:hover {
+    transform: scale(1.05);
+}
+
+/* Navegação Desktop */
+.main-nav { 
+    height: 100%; 
+    display: flex; 
+    align-items: center; 
+}
+
+.main-nav > ul { 
+    display: flex; 
+    gap: 20px; 
+    align-items: center; 
+    margin: 0;
+    padding: 0;
+}
+
+.main-nav a {
+    color: var(--cor-texto-suave); 
+    font-weight: 600; 
+    font-size: 0.95rem;
+    padding: 10px 16px; 
+    border-radius: 8px; 
+    position: relative;
+    transition: all var(--transition-speed) ease;
+}
+
+.main-nav a:not(.nav-button, .logout-button)::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--cor-primaria), var(--cor-primaria-hover));
+    transition: width 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.main-nav a:not(.nav-button):hover { 
+    color: var(--cor-primaria);
+    background-color: rgba(13, 110, 253, 0.08);
+}
+
+.main-nav a:not(.nav-button, .logout-button):hover::after {
+    width: 100%;
+}
+
+/* Botões Especiais no Header */
+.main-nav .btn-login-trigger, 
+.main-nav .nav-button {
+    background-color: var(--cor-primaria); 
+    color: #fff !important;
+    padding: 12px 24px; 
+    border-radius: 50px; 
+    border: none; 
+    cursor: pointer;
+    font-size: 0.95rem; 
+    font-weight: 600;
+    box-shadow: 0 4px 10px rgba(13, 110, 253, 0.2);
+    transition: all var(--transition-speed) ease;
+}
+
+.main-nav .btn-login-trigger:hover,
+.main-nav .nav-button:hover {
+    background-color: var(--cor-primaria-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(13, 110, 253, 0.3);
+}
+
+.logout-button { 
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%) !important; 
+    border: none !important;
+    box-shadow: 0 4px 15px rgba(220, 53, 69, 0.25) !important;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+}
+
+.logout-button::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.15);
+    transition: left 0.4s ease;
+}
+
+.logout-button:hover {
+    background: linear-gradient(135deg, #c82333 0%, #a71d2a 100%) !important;
+    box-shadow: 0 8px 25px rgba(220, 53, 69, 0.4) !important;
+    transform: translateY(-2px);
+}
+
+.logout-button:hover::before {
+    left: 100%;
+}
+
+/* Menu Toggle (Mobile) */
+.menu-toggle {
+    display: none; 
+    flex-direction: column; 
+    justify-content: space-between;
+    width: 32px; 
+    height: 24px; 
+    background: transparent; 
+    border: none;
+    cursor: pointer; 
+    padding: 0; 
+    z-index: 1030;
+}
+
+.menu-toggle .bar {
+    height: 3px; 
+    width: 100%; 
+    background-color: var(--cor-texto);
+    border-radius: 4px; 
+    transition: all var(--transition-speed) ease;
+}
+
+/* ==========================================================================
+   3. RESPONSIVIDADE (MOBILE & TABLET)
+   ========================================================================== */
+@media (max-width: 992px) {
+    .menu-toggle { display: flex; }
+
+    /* Animação do ícone Hambúrguer para X */
+    .menu-toggle.active .bar:nth-child(1) { 
+        transform: rotate(45deg) translate(8px, 8px);
+    }
+    .menu-toggle.active .bar:nth-child(2) { 
+        opacity: 0; 
+    }
+    .menu-toggle.active .bar:nth-child(3) { 
+        transform: rotate(-45deg) translate(7px, -7px);
+    }
+
+    /* Menu Lateral Simples e Limpo */
+    .main-nav {
+        position: fixed; 
+        top: 0; 
+        right: 0;
+        width: 85%; 
+        max-width: 320px; 
+        height: 100vh;
+        background-color: #ffffff;
+        padding: 100px 1.5rem 2rem;
+        flex-direction: column; 
+        align-items: flex-start;
+        transform: translateX(100%); 
+        transition: transform 0.3s ease;
+        box-shadow: -4px 0 20px rgba(0,0,0,0.1);
+        z-index: 1025;
+        overflow-y: auto;
+        border-radius: 24px 0 0 24px;
+    }
+    
+    .main-nav.active { 
+        transform: translateX(0); 
+    }
+    
+    .main-nav > ul { 
+        flex-direction: column; 
+        width: 100%; 
+        gap: 8px; 
+    }
+    
+    .main-nav a { 
+        display: block; 
+        width: 100%; 
+        padding: 16px 20px; 
+        border-radius: 12px;
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--cor-texto);
+        background-color: #f8f9fa;
+        border: 2px solid transparent;
+        transition: all 0.2s ease;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .main-nav a::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 0;
+        height: 100%;
+        width: 4px;
+        background-color: var(--cor-primaria);
+        transform: scaleY(0);
+        transition: transform 0.2s ease;
+    }
+
+    .main-nav a:not(.nav-button):hover { 
+        color: var(--cor-primaria);
+        background-color: #e3f2fd;
+        border-color: var(--cor-primaria);
+        transform: translateX(4px);
+        box-shadow: 0 4px 12px rgba(13, 110, 253, 0.15);
+    }
+
+    .main-nav a:not(.nav-button):hover::before {
+        transform: scaleY(1);
+    }
+    
+    /* Botões no Menu Mobile */
+    .main-nav .nav-button { 
+        width: 100%; 
+        margin-top: 20px; 
+        text-align: center; 
+        padding: 16px 24px;
+        border-radius: 50px;
+        font-size: 1rem;
+        font-weight: 700;
+        border: none;
+        box-shadow: 0 4px 12px rgba(13, 110, 253, 0.2);
+    }
+
+    .main-nav .nav-button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(13, 110, 253, 0.3);
+    }
+
+    .main-nav .logout-button {
+        margin-top: 10px;
+        box-shadow: 0 4px 12px rgba(220, 53, 69, 0.2) !important;
+    }
+
+    .main-nav .logout-button:hover {
+        box-shadow: 0 6px 16px rgba(220, 53, 69, 0.3) !important;
+    }
+
+    /* Link ativo no menu */
+    .main-nav a[style*="color: var(--cor-primaria)"] {
+        background-color: #e3f2fd;
+        color: var(--cor-primaria) !important;
+        border-color: var(--cor-primaria);
+        font-weight: 700;
+    }
+
+    .main-nav a[style*="color: var(--cor-primaria)"]::before {
+        transform: scaleY(1);
+    }
+}
+
+/* ==========================================================================
+   4. SISTEMA & TABELAS (MOBILE CARD VIEW)
+   ========================================================================== */
+.system-container {
+    max-width: 900px; margin: 0 auto; background: var(--cor-surface);
+    padding: 2rem; border-radius: 16px; box-shadow: var(--sombra-media);
+}
+
+/* TABELA RESPONSIVA TRANSFORMADA EM CARDS */
+@media (max-width: 768px) {
+    .system-container { padding: 1rem; }
+    
+    /* Esconde o cabeçalho tradicional */
+    .table-responsive thead { display: none; }
+    
+    /* Transforma a linha em um Card */
+    .table-responsive tbody tr {
+        display: block;
+        margin-bottom: 1.5rem;
+        background-color: #fff;
+        border: 1px solid var(--cor-borda);
+        border-radius: 12px;
+        box-shadow: var(--sombra-suave);
+        padding: 1rem;
+    }
+    
+    /* Transforma a célula em linha do card */
+    .table-responsive tbody td {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        text-align: right;
+        padding: 0.8rem 0;
+        border-bottom: 1px solid #f0f0f0;
+    }
+    
+    .table-responsive tbody td:last-child { border-bottom: none; }
+    
+    /* Usa o data-label para criar o "título" da linha à esquerda */
+    .table-responsive tbody td::before {
+        content: attr(data-label);
+        font-weight: 700;
+        color: var(--cor-texto-suave);
+        margin-right: 1rem;
+        text-align: left;
+    }
+    
+    /* Ajustes para inputs dentro da tabela no mobile */
+    .table-responsive .form-select {
+        max-width: 180px; /* Não deixa estourar */
+        text-align: right;
+    }
+}
+
+/* ==========================================================================
+   5. COMPONENTES GERAIS
+   ========================================================================== */
+.area-interna-section {
+    padding: 2rem; min-height: calc(100vh - 160px);
+}
+
+.modal-content {
+    border-radius: 16px; 
+    border: none; 
+    box-shadow: var(--sombra-elevada);
+    background: #ffffff;
+}
+
+.modal-backdrop {
+    background: rgba(0, 0, 0, 0.4) !important;
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+}
+
+.form-control:focus, .form-select:focus {
+    box-shadow: 0 0 0 4px rgba(13, 110, 253, 0.15);
+    border-color: var(--cor-primaria);
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+input:focus, textarea:focus, select:focus {
+    border-color: var(--cor-primaria) !important;
+    box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.1) !important;
+    outline: none !important;
+}
+
+textarea:focus {
+    box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.15) !important;
+}
+
+/* Botão de ação flutuante (opcional para mobile) */
+.mobile-fab {
+    position: fixed; bottom: 20px; right: 20px;
+    background: var(--cor-primaria); color: white;
+    width: 56px; height: 56px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: var(--sombra-alta); z-index: 100;
+}
+
+/* ==========================================================================
+   6. ÁREA INTERNA (DASHBOARD & BOTÕES)
+   ========================================================================== */
+.area-interna-section {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: calc(100vh - 160px); /* Altura total menos header/footer */
+    padding: 2rem;
+}
+
+.area-interna-container {
+    text-align: center;
+    background: var(--cor-surface);
+    padding: 4rem 3rem;
+    border-radius: 20px;
+    box-shadow: var(--sombra-media);
+    max-width: 900px;
+    width: 100%;
+    border: 1px solid rgba(0,0,0,0.02);
+}
+
+.area-interna-container h1 {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+    color: var(--cor-texto);
+}
+
+.button-group {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 1.5rem;
+    margin-top: 3rem;
+}
+
+.action-button {
+    background-color: var(--cor-surface);
+    border: 2px solid rgba(13, 110, 253, 0.1);
+    padding: 1.5rem 2rem;
+    min-width: 220px;
+    border-radius: 12px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--cor-primaria);
+    box-shadow: var(--sombra-suave);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+}
+
+.action-button:hover {
+    background-color: var(--cor-primaria);
+    color: white;
+    transform: translateY(-5px);
+    box-shadow: 0 10px 20px rgba(13, 110, 253, 0.25);
+    border-color: var(--cor-primaria);
+}
+
+/* ==========================================================================
+   7. UI HELPERS (BOTÕES GERAIS, FOOTER, TABELAS)
+   ========================================================================== */
+
+/* ===== ANIMAÇÕES ===== */
+@keyframes pulse-token {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
+    }
+    50% {
+        box-shadow: 0 0 0 8px rgba(76, 175, 80, 0);
+    }
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    padding: 0.6rem 1.2rem;
+    font-size: 1rem;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s var(--transition-cubic);
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.3);
+    transform: translate(-50%, -50%);
+    transition: width 0.6s, height 0.6s;
+}
+
+.btn:hover::before {
+    width: 300px;
+    height: 300px;
+}
+
+.btn-primary, .btn.btn-primary {
+    background: linear-gradient(135deg, #0d6efd 0%, #0b5ed7 100%);
+    color: white;
+}
+
+.btn-primary:hover, .btn.btn-primary:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(13, 110, 253, 0.25);
+}
+
+.btn-success, .btn.btn-success {
+    background: linear-gradient(135deg, #198754 0%, #157347 100%);
+    color: white;
+}
+
+.btn-success:hover, .btn.btn-success:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(25, 135, 84, 0.25);
+}
+
+.btn-danger, .btn.btn-danger {
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+    color: white;
+}
+
+.btn-danger:hover, .btn.btn-danger:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(220, 53, 69, 0.25);
+}
+
+.btn-warning, .btn.btn-warning {
+    background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%);
+    color: #212529;
+}
+
+.btn-warning:hover, .btn.btn-warning:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(255, 193, 7, 0.25);
+}
+
+.btn-info, .btn.btn-info {
+    background: linear-gradient(135deg, #0dcaf0 0%, #17a2b8 100%);
+    color: white;
+}
+
+.btn-info:hover, .btn.btn-info:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(13, 202, 240, 0.25);
+}
+
+.btn-confirmar {
+    background: linear-gradient(135deg, #0d6efd 0%, #0b5ed7 100%);
+    color: white;
+}
+.btn-confirmar:hover { 
+    background: linear-gradient(135deg, #0b5ed7 0%, #0a4fc4 100%);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(13, 110, 253, 0.25);
+}
+
+.btn-cancelar {
+    background-color: #e9ecef;
+    color: var(--cor-texto);
+    border: 1px solid #dee2e6;
+}
+.btn-cancelar:hover { 
+    background-color: #dde0e3;
+    border-color: #ccc;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(0, 0, 0, 0.1);
+}
+
+/* ========================================================================== */
+/* BOTÕES DE AÇÃO PADRONIZADOS: EDITAR E EXCLUIR */
+/* ========================================================================== */
+
+/* Botão Editar - Estilo Padrão */
+.btn-editar, .btn-action-edit {
+    background: linear-gradient(135deg, #0d6efd 0%, #0b5ed7 100%) !important;
+    color: white !important;
+    border: none !important;
+    font-weight: 600;
+    font-size: 0.85rem;
+    padding: 0.5rem 0.875rem !important;
+    border-radius: 6px;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(13, 110, 253, 0.2);
+}
+
+.btn-editar::before, .btn-action-edit::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.15);
+    transition: left 0.4s ease;
+    z-index: 0;
+}
+
+.btn-editar:hover, .btn-action-edit:hover {
+    background: linear-gradient(135deg, #0b5ed7 0%, #0a4fc4 100%) !important;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(13, 110, 253, 0.3);
+    color: white !important;
+}
+
+.btn-editar:hover::before, .btn-action-edit:hover::before {
+    left: 100%;
+}
+
+.btn-editar:active, .btn-action-edit:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px rgba(13, 110, 253, 0.25);
+}
+
+.btn-editar i, .btn-action-edit i {
+    font-size: 1rem;
+    position: relative;
+    z-index: 1;
+}
+
+.btn-editar span, .btn-action-edit span {
+    position: relative;
+    z-index: 1;
+}
+
+/* Botão Editar - Tamanho Small (btn-sm) */
+.btn-sm.btn-editar, .btn-sm.btn-action-edit {
+    padding: 0.375rem 0.75rem !important;
+    font-size: 0.8rem;
+}
+
+/* Botão Editar - Tamanho Large (btn-lg) */
+.btn-lg.btn-editar, .btn-lg.btn-action-edit {
+    padding: 0.75rem 1.25rem !important;
+    font-size: 0.95rem;
+}
+
+/* ========================================================================== */
+
+/* Botão Excluir - Estilo Padrão */
+.btn-excluir, .btn-action-delete {
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%) !important;
+    color: white !important;
+    border: none !important;
+    font-weight: 600;
+    font-size: 0.85rem;
+    padding: 0.5rem 0.875rem !important;
+    border-radius: 6px;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(220, 53, 69, 0.2);
+}
+
+.btn-excluir::before, .btn-action-delete::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.15);
+    transition: left 0.4s ease;
+    z-index: 0;
+}
+
+.btn-excluir:hover, .btn-action-delete:hover {
+    background: linear-gradient(135deg, #c82333 0%, #a71d2a 100%) !important;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(220, 53, 69, 0.3);
+    color: white !important;
+}
+
+.btn-excluir:hover::before, .btn-action-delete:hover::before {
+    left: 100%;
+}
+
+.btn-excluir:active, .btn-action-delete:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px rgba(220, 53, 69, 0.25);
+}
+
+.btn-excluir i, .btn-action-delete i {
+    font-size: 1rem;
+    position: relative;
+    z-index: 1;
+}
+
+.btn-excluir span, .btn-action-delete span {
+    position: relative;
+    z-index: 1;
+}
+
+/* Botão Excluir - Tamanho Small (btn-sm) */
+.btn-sm.btn-excluir, .btn-sm.btn-action-delete {
+    padding: 0.375rem 0.75rem !important;
+    font-size: 0.8rem;
+}
+
+/* Botão Excluir - Tamanho Large (btn-lg) */
+.btn-lg.btn-excluir, .btn-lg.btn-action-delete {
+    padding: 0.75rem 1.25rem !important;
+    font-size: 0.95rem;
+}
+
+/* ========================================================================== */
+/* ALTERNATIVAS: Outline (Menos Destaque) */
+/* ========================================================================== */
+
+/* Editar - Outline */
+.btn-outline-editar, .btn.btn-outline-primary.btn-editar {
+    background: white !important;
+    color: var(--cor-primaria) !important;
+    border: 2px solid var(--cor-primaria) !important;
+    box-shadow: none !important;
+}
+
+.btn-outline-editar:hover, .btn.btn-outline-primary.btn-editar:hover {
+    background: var(--cor-primaria) !important;
+    color: white !important;
+}
+
+/* Excluir - Outline */
+.btn-outline-excluir, .btn.btn-outline-danger.btn-excluir {
+    background: white !important;
+    color: var(--cor-perigo) !important;
+    border: 2px solid var(--cor-perigo) !important;
+    box-shadow: none !important;
+}
+
+.btn-outline-excluir:hover, .btn.btn-outline-danger.btn-excluir:hover {
+    background: var(--cor-perigo) !important;
+    color: white !important;
+}
+
+/* Indicador de Token */
+.token-indicator {
+    animation: pulse-token 2s infinite;
+}
+
+/* Spinner de Carregamento */
+.spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(13, 110, 253, 0.2);
+    border-top-color: var(--cor-primaria);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+footer {
+    background-color: #1a1d20;
+    color: #adb5bd;
+    text-align: center;
+    padding: 3rem 1.5rem;
+    margin-top: auto; /* Garante que fique no rodapé */
+}
+
+footer a { 
+    color: var(--cor-primaria); 
+    text-decoration: none;
+}
+footer a:hover { text-decoration: underline; }
+
+/* Tabela Responsiva com CSS Grid/Flex */
+.table-responsive {
+    width: 100%;
+    overflow-x: auto;
+    border-radius: 8px;
+    box-shadow: var(--sombra-suave);
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+}
+
+.table th {
+    background-color: #f8f9fa;
+    color: #6c757d;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.85rem;
+    padding: 1rem;
+    border-bottom: 2px solid #e9ecef;
+    text-align: left;
+}
+
+.table td {
+    padding: 1rem;
+    border-bottom: 1px solid #f1f1f1;
+    color: var(--cor-texto);
+}
+
+/* Modo Card para Tabela no Mobile */
+@media (max-width: 768px) {
+    .table thead { display: none; }
+    
+    .table tbody tr {
+        display: flex;
+        flex-direction: column;
+        background: #fff;
+        border: 1px solid #e0e0e0;
+        border-radius: 12px;
+        margin-bottom: 1rem;
+        padding: 1rem;
+        box-shadow: var(--sombra-suave);
+    }
+
+    .table tbody td {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.8rem 0;
+        border-bottom: 1px solid #f5f5f5;
+        text-align: right;
+    }
+    
+    .table tbody td:last-child { border-bottom: none; }
+    
+    .table tbody td::before {
+        content: attr(data-label);
+        font-weight: 700;
+        color: #888;
+        text-align: left;
+        margin-right: 1rem;
+    }
+}
+
+/* ==========================================================================
+   9. COMPONENTES DE SISTEMA (ADICIONADO AGORA)
+   ========================================================================== */
+/* Container Centralizado para Telas de Sistema */
+.system-container {
+    max-width: 900px;
+    margin: 0 auto;
+    background: var(--cor-surface);
+    padding: 2rem;
+    border-radius: 16px;
+    box-shadow: var(--sombra-media);
+}
+
+.system-header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+/* ========================================================================== */
+/* OVERRIDE GLOBAL: GARANTIR PADRONIZAÇÃO DE BOTÕES EDITAR/EXCLUIR */
+/* ========================================================================== */
+
+/* Qualquer botão com "editar" na classe vira btn-editar */
+button[onclick*="editar"],
+button[onclick*="Editar"],
+.btn-outline-warning:has(+ .btn-outline-danger),
+.btn.btn-sm.btn-outline-warning {
+    background: linear-gradient(135deg, #0d6efd 0%, #0b5ed7 100%) !important;
+    color: white !important;
+    border: none !important;
+    box-shadow: 0 4px 12px rgba(13, 110, 253, 0.2) !important;
+    font-weight: 600;
+    padding: 0.375rem 0.75rem !important;
+    border-radius: 6px !important;
+    font-size: 0.8rem;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+}
+
+button[onclick*="editar"]:hover,
+button[onclick*="Editar"]:hover,
+.btn-outline-warning:has(+ .btn-outline-danger):hover,
+.btn.btn-sm.btn-outline-warning:hover {
+    background: linear-gradient(135deg, #0b5ed7 0%, #0a4fc4 100%) !important;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(13, 110, 253, 0.3) !important;
+}
+
+/* Qualquer botão com "excluir" na classe vira btn-excluir */
+button[onclick*="excluir"],
+button[onclick*="Excluir"],
+.btn-outline-danger[onclick*="excluir"],
+.btn-outline-danger[onclick*="Excluir"],
+.btn-action-delete,
+.btn.btn-sm.btn-outline-danger {
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%) !important;
+    color: white !important;
+    border: none !important;
+    box-shadow: 0 4px 12px rgba(220, 53, 69, 0.2) !important;
+    font-weight: 600;
+    padding: 0.375rem 0.75rem !important;
+    border-radius: 6px !important;
+    font-size: 0.8rem;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+}
+
+button[onclick*="excluir"]:hover,
+button[onclick*="Excluir"]:hover,
+.btn-outline-danger[onclick*="excluir"]:hover,
+.btn-outline-danger[onclick*="Excluir"]:hover,
+.btn-action-delete:hover,
+.btn.btn-sm.btn-outline-danger:hover {
+    background: linear-gradient(135deg, #c82333 0%, #a71d2a 100%) !important;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(220, 53, 69, 0.3) !important;
+}
+
+/* Garantir que ícones dentro dos botões tenham z-index maior */
+button i {
+    position: relative;
+    z-index: 1;
+    pointer-events: none;
+}
+
+/* Remove estilos de outline que conflitam */
+.btn-outline-warning,
+.btn-outline-primary,
+.btn-action-edit {
+    background: linear-gradient(135deg, #0d6efd 0%, #0b5ed7 100%) !important;
+    color: white !important;
+    border: none !important;
+}
+
+.btn-outline-warning:hover,
+.btn-outline-primary:hover,
+.btn-action-edit:hover {
+    background: linear-gradient(135deg, #0b5ed7 0%, #0a4fc4 100%) !important;
+    color: white !important;
+}
+
+/* Override específico para btn-action-delete */
+.btn-action-delete {
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 6px !important;
+    padding: 0.375rem 0.75rem !important;
+}
+
+.btn-action-delete:hover {
+    background: linear-gradient(135deg, #c82333 0%, #a71d2a 100%) !important;
+    color: white !important;
+}
+
+.system-header h1 { font-size: 2rem; color: var(--cor-texto); margin-bottom: 10px; }
+
+/* Filtros e Pesquisa */
+.filters-container {
+    display: flex; gap: 15px; margin-bottom: 25px;
+    flex-wrap: wrap; justify-content: center; align-items: center;
+    background: #f8f9fa; padding: 15px; border-radius: 12px;
+}
+
+.search-input {
+    padding: 10px 15px; border: 1px solid var(--cor-borda);
+    border-radius: 50px; flex: 1; min-width: 200px; max-width: 300px;
+    outline: none; transition: 0.3s;
+}
+.search-input:focus { border-color: var(--cor-primaria); box-shadow: 0 0 0 3px rgba(13,110,253,0.1); }
+
+/* Abas (Tabs) */
+.tab-container {
+    display: flex; justify-content: center; gap: 10px; margin-bottom: 30px; flex-wrap: wrap;
+}
+
+.tab-button {
+    background: transparent; border: 2px solid var(--cor-borda);
+    padding: 8px 24px; border-radius: 50px; cursor: pointer;
+    font-weight: 600; color: var(--cor-texto-suave); transition: 0.3s;
+}
+
+.tab-button:hover { background-color: #f8f9fa; border-color: #ccc; }
+
+.tab-button.active {
+    border-color: var(--cor-primaria); background-color: rgba(13, 110, 253, 0.1);
+    color: var(--cor-primaria);
+}
+
+/* Lista de Cards (Funcionários) */
+.list-container { display: flex; flex-direction: column; gap: 15px; }
+
+.list-item {
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 12px; 
+    padding: 20px;
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center;
+    transition: all 0.4s var(--transition-cubic);
+    box-shadow: var(--sombra-suave);
+    position: relative;
+    overflow: hidden;
+}
+
+.list-item::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    width: 4px;
+    background: transparent;
+    transition: background 0.3s ease;
+}
+
+.list-item:hover { 
+    transform: translateY(-4px);
+    box-shadow: var(--sombra-elevada);
+    border-color: var(--cor-primaria);
+}
+
+.list-item:hover::before {
+    background: var(--cor-primaria);
+}
+
+/* Indicadores Visuais de Status */
+.list-item.presente { border-left: 6px solid var(--cor-sucesso); }
+.list-item.ausente { border-left: 6px solid var(--cor-perigo); }
+
+.item-info h3 { font-size: 1.2rem; margin-bottom: 5px; color: var(--cor-texto); font-weight: 700; }
+.item-meta { font-size: 0.9rem; color: var(--cor-texto-suave); margin-bottom: 2px; }
+.item-meta strong { color: #555; }
+
+/* Botões de Ação nos Cards */
+.actions-group { display: flex; gap: 10px; }
+
+.btn-success-light {
+    background-color: white; color: var(--cor-sucesso);
+    border: 1px solid var(--cor-sucesso); padding: 8px 16px;
+    border-radius: 6px; font-weight: 600; cursor: pointer;
+}
+.btn-success-light:hover { background-color: var(--cor-sucesso); color: white; }
+
+.btn-danger-light {
+    background-color: white; color: var(--cor-perigo);
+    border: 1px solid var(--cor-perigo); padding: 8px 16px;
+    border-radius: 6px; font-weight: 600; cursor: pointer;
+}
+.btn-danger-light:hover { background-color: var(--cor-perigo); color: white; }
+
+.btn-primary-light {
+    background-color: white; color: var(--cor-primaria);
+    border: 1px solid var(--cor-primaria); padding: 8px 16px;
+    border-radius: 6px; font-weight: 600; cursor: pointer;
+}
+.btn-primary-light:hover { background-color: var(--cor-primaria); color: white; }
+
+/* MODAIS - Ajustes Adicionais */
+.modal-overlay.active { display: flex; } /* Classe para ativar via JS */
+
+.form-group select, .form-group textarea {
+    width: 100%; padding: 10px; border: 1px solid var(--cor-borda);
+    border-radius: 8px; font-family: inherit;
+}
+
+/* ===== TIPOGRAFIA APRIMORADA ===== */
+h1 { 
+    font-size: 2.2rem; 
+    font-weight: 700; 
+    letter-spacing: -0.5px;
+    color: var(--cor-texto);
+}
+
+h2 { 
+    font-size: 1.8rem; 
+    font-weight: 700; 
+    letter-spacing: -0.3px;
+    color: var(--cor-texto);
+}
+
+h3 { 
+    font-size: 1.4rem; 
+    font-weight: 600; 
+    letter-spacing: -0.2px;
+    color: var(--cor-texto);
+}
+
+h4 { 
+    font-size: 1.1rem; 
+    font-weight: 600;
+    color: var(--cor-texto);
+}
+
+h5 { 
+    font-size: 0.95rem; 
+    font-weight: 600;
+    color: var(--cor-texto);
+}
+
+h6 { 
+    font-size: 0.85rem; 
+    font-weight: 600; 
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--cor-texto-suave);
+}
+
+/* ===== ELEVAÇÃO (SOMBRAS) ===== */
+.elevation-1 { box-shadow: var(--sombra-suave); }
+.elevation-2 { box-shadow: var(--sombra-media); }
+.elevation-3 { box-shadow: var(--sombra-alta); }
+.elevation-4 { box-shadow: var(--sombra-elevada); }
+
+/* Transições Suaves Globais */
+*:not(.spinner) {
+    transition: background-color 0.2s ease, 
+                color 0.2s ease, 
+                border-color 0.2s ease;
+}
+
+/* Responsividade da Lista */
+@media (max-width: 768px) {
+    .list-item { flex-direction: column; text-align: center; gap: 15px; }
+    .actions-group { width: 100%; justify-content: center; }
+    .actions-group button { flex: 1; }
+}

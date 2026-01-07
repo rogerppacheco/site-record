@@ -1,0 +1,735 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Record Vertical - CDOI</title>
+    <link rel="shortcut icon" href="{% static 'logo.png' %}" type="image/x-icon">
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=13.1">
+    <style>
+        /* Estilos específicos para a página CDOI */
+        .card { 
+            border: none; 
+            border-radius: 12px; 
+            box-shadow: var(--sombra-suave); 
+        }
+        
+        .card-header { 
+            background-color: var(--cor-surface); 
+            border-bottom: 1px solid var(--cor-borda); 
+            padding: 1rem; 
+            font-weight: 600; 
+            color: var(--cor-primaria); 
+            border-radius: 12px 12px 0 0;
+        }
+        
+        .status-badge { 
+            font-size: 0.85rem; 
+            padding: 5px 10px; 
+            border-radius: 15px; 
+        }
+        
+        .status-SEM_TRATAMENTO { 
+            background-color: #e2e6ea; 
+            color: #5a5c69; 
+        }
+        
+        .status-EM_CADASTRO { 
+            background-color: #fff3cd; 
+            color: #856404; 
+        }
+        
+        .status-EM_PROJETO { 
+            background-color: #d1ecf1; 
+            color: #0c5460; 
+        }
+        
+        .status-EM_EXECUCAO { 
+            background-color: #cce5ff; 
+            color: #004085; 
+        }
+        
+        .status-CONCLUIDA { 
+            background-color: #d4edda; 
+            color: #155724; 
+        }
+        
+        .status-CANCELADA {
+            background-color: #f8d7da; /* vermelho claro */
+            color: #842029;
+        }
+        
+        .status-ARQUIVADA {
+            background-color: #e2e3e5; /* cinza claro */
+            color: #41464b;
+        }
+        
+        /* Tooltip de imagem ao passar o mouse */
+        .image-preview-icon {
+            cursor: pointer;
+            font-size: 1.5rem;
+            color: var(--cor-primaria);
+            position: relative;
+            display: inline-block;
+        }
+        
+        .image-preview-icon:hover {
+            transform: scale(1.1);
+            transition: transform 0.2s;
+        }
+        
+        .image-tooltip {
+            display: none;
+            position: absolute;
+            z-index: 1000;
+            left: 50%;
+            top: -210px;
+            transform: translateX(-50%);
+            background: white;
+            border: 3px solid var(--cor-primaria);
+            border-radius: 8px;
+            padding: 5px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        
+        .image-preview-icon:hover .image-tooltip {
+            display: block;
+        }
+        
+        .image-tooltip img {
+            width: 200px;
+            height: 200px;
+            object-fit: cover;
+            border-radius: 4px;
+        }
+        
+        .no-image-icon {
+            color: #ccc;
+            cursor: not-allowed;
+        }
+        
+        /* Personalização das abas */
+        .nav-tabs .nav-link {
+            color: var(--cor-texto-suave);
+            font-weight: 600;
+            border: none;
+            border-bottom: 3px solid transparent;
+        }
+        
+        .nav-tabs .nav-link.active {
+            color: var(--cor-primaria);
+            border-bottom: 3px solid var(--cor-primaria);
+            background: transparent;
+        }
+        
+        /* Ajustes para usar melhor o espaço da tela */
+        .system-container {
+            max-width: 1400px !important;
+            transition: max-width 0.3s ease;
+        }
+
+        /* Quando a aba lista está ativa, expande ainda mais */
+        .tab-pane#lista-content.active ~ * .system-container,
+        body:has(#lista-content.active) .system-container {
+            max-width: 95% !important;
+        }
+
+        /* Aba Meus Acionamentos - Expansão correta */
+        #lista-content {
+            width: 100%;
+            padding: 0;
+        }
+
+        #lista-content .card {
+            width: 100%;
+            margin: 0;
+            border-radius: 12px;
+        }
+        
+        /* Força largura mínima da tabela em telas grandes */
+        @media (min-width: 1200px) {
+            #lista-content .table {
+                min-width: auto;
+                font-size: 0.9rem;
+            }
+            
+            #lista-content .card {
+                box-shadow: var(--sombra-media);
+            }
+        }
+        
+        /* CORREÇÃO ESPECÍFICA PARA TABELA CDOI - Força comportamento desktop sempre */
+        #lista-content .table-responsive {
+            overflow-x: visible;
+            width: 100%;
+        }
+        
+        #lista-content .table-responsive thead {
+            display: table-header-group !important;
+        }
+
+        #lista-content .table {
+            width: 100%;
+            min-width: auto;
+            margin-bottom: 0;
+            font-size: 0.9rem;
+        }
+
+        #lista-content .table th,
+        #lista-content .table td {
+            padding: 8px 10px;
+            vertical-align: middle;
+            white-space: nowrap;
+        }
+        
+        /* Colunas específicas podem quebrar linha e são mais largas */
+        #lista-content .table td:nth-child(2),
+        #lista-content .table td:nth-child(3) {
+            white-space: normal;
+            max-width: 200px;
+            min-width: 150px;
+        }
+        
+        /* Colunas de badges e ícones mais estreitas */
+        #lista-content .table th:nth-child(6),
+        #lista-content .table th:nth-child(7),
+        #lista-content .table th:nth-child(8),
+        #lista-content .table td:nth-child(6),
+        #lista-content .table td:nth-child(7),
+        #lista-content .table td:nth-child(8) {
+            width: 80px;
+            text-align: center;
+        }
+        
+        /* Coluna de telefone pode ser mais estreita */
+        #lista-content .table th:nth-child(5),
+        #lista-content .table td:nth-child(5) {
+            width: 120px;
+        }
+        
+        /* Coluna ID mais estreita */
+        #lista-content .table th:nth-child(1),
+        #lista-content .table td:nth-child(1) {
+            width: 50px;
+        }
+
+            vertical-align: middle;
+        }
+
+        #lista-content .table th {
+            background-color: var(--cor-surface);
+            font-weight: 600;
+            color: var(--cor-primaria);
+            border-bottom: 2px solid var(--cor-borda);
+        }
+
+        #lista-content .table tbody tr {
+            border-bottom: 1px solid var(--cor-borda);
+            transition: background-color 0.2s;
+        }
+
+        #lista-content .table tbody tr:hover {
+            background-color: var(--cor-surface);
+        }
+
+        #lista-content .card {
+            width: 100%;
+        }
+
+        #lista-content .card-body {
+            padding: 0 !important;
+            overflow-x: visible;
+            overflow-y: visible;
+            display: block;
+            width: 100%;
+        }
+
+        #lista-content .card-body.table-responsive {
+            display: block;
+            width: 100%;
+            padding: 0 !important;
+            overflow: visible;
+        }
+
+        /* Garante expansão adequada em telas grandes */
+        @media (min-width: 1200px) {
+            #lista-content .table {
+                font-size: 0.95rem;
+            }
+
+            #lista-content .card-body {
+                overflow-x: auto;
+            }
+            
+            .system-container {
+                max-width: 95% !important;
+            }
+        }
+        
+        #lista-content .table-responsive tbody tr {
+            display: table-row !important;
+            margin-bottom: 0 !important;
+            background-color: transparent !important;
+            border: none !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+        }
+        
+        #lista-content .table-responsive tbody td {
+            display: table-cell !important;
+            border-bottom: 1px solid var(--cor-borda) !important;
+            padding: 1rem 0.75rem !important;
+            text-align: left !important;
+            justify-content: flex-start !important;
+            align-items: center !important;
+        }
+        
+        #lista-content .table-responsive tbody td::before {
+            display: none !important;
+            content: none !important;
+        }
+        
+        #lista-content .table-responsive tbody td:last-child {
+            border-bottom: 1px solid var(--cor-borda) !important;
+            text-align: right !important;
+        }
+
+        /* Extra: força tabela clássica também para .table dentro de #lista-content */
+        #lista-content .table thead { display: table-header-group !important; }
+        #lista-content .table tbody tr {
+            display: table-row !important;
+            margin-bottom: 0 !important;
+            background-color: transparent !important;
+            border: none !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+        }
+        #lista-content .table tbody td {
+            display: table-cell !important;
+            border-bottom: 1px solid var(--cor-borda) !important;
+            padding: 1rem 0.75rem !important;
+            text-align: left !important;
+            justify-content: flex-start !important;
+            align-items: center !important;
+        }
+        #lista-content .table tbody td::before { display: none !important; }
+        
+        /* Garante que a tabela não vire cards em desktop */
+        @media (min-width: 769px) {
+            .table-responsive {
+                font-size: 0.95rem;
+            }
+            
+            .table-responsive th,
+            .table-responsive td {
+                padding: 1rem 0.75rem;
+                vertical-align: middle;
+            }
+            
+            /* Força comportamento de tabela normal em desktop */
+            .table-responsive thead { display: table-header-group !important; }
+            .table-responsive tbody tr { display: table-row !important; }
+            .table-responsive tbody td { 
+                display: table-cell !important; 
+                border-bottom: 1px solid var(--cor-borda) !important;
+                padding: 1rem 0.75rem !important;
+            }
+            .table-responsive tbody td::before { display: none !important; }
+        }
+        
+        /* Melhora a aparência da tabela */
+        .table th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+            color: var(--cor-texto);
+            border-bottom: 2px solid var(--cor-borda);
+        }
+        
+        .table-hover tbody tr:hover {
+            background-color: rgba(13, 110, 253, 0.05);
+        }
+    </style>
+</head>
+<body>
+    <header class="main-header">
+        <div class="header-container">
+            <a href="/"><img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo"></a>
+            <button class="menu-toggle" id="menu-toggle"><div class="bar"></div><div class="bar"></div><div class="bar"></div></button>
+            <nav class="main-nav" id="main-nav">
+                <ul>
+                    <li><a href="/area-interna/">Voltar</a></li>
+                    <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main class="area-interna-section">
+        <div class="system-container">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1 style="font-size: 1.8rem; margin: 0;"><i class="fa-solid fa-building text-primary"></i> Gestão CDOI</h1>
+                    <p class="text-muted mb-0">Solicitações e acionamentos para condomínios.</p>
+                </div>
+            </div>
+
+            <ul class="nav nav-tabs mb-4" id="cdoiTabs" role="tablist">
+                <li class="nav-item"><button class="nav-link active" id="nova-tab" data-bs-toggle="tab" data-bs-target="#nova-content" type="button"><i class="bi bi-plus-circle"></i> <span id="tab-titulo">Nova Solicitação</span></button></li>
+                <li class="nav-item"><button class="nav-link" id="lista-tab" data-bs-toggle="tab" data-bs-target="#lista-content" type="button" onclick="carregarMeusAcionamentos()"><i class="bi bi-list-ul"></i> Meus Acionamentos</button></li>
+            </ul>
+
+    <div class="tab-content">
+        <div class="tab-pane fade show active" id="nova-content">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between">
+                    <span>Dados do Condomínio</span>
+                    <button id="btn-cancelar-edicao" class="btn btn-sm btn-outline-danger d-none" onclick="cancelarEdicao()">Cancelar Edição</button>
+                </div>
+                <div class="card-body">
+                    <form id="form-cdoi">
+                        <input type="hidden" id="edit_mode_id" value=""> <div class="row g-3 mb-4">
+                            <div class="col-md-6"><label>Nome do Condomínio *</label><input type="text" name="nome_condominio" id="inp_nome" class="form-control" required></div>
+                            <div class="col-md-3"><label>CEP *</label><input type="text" name="cep" id="inp_cep" class="form-control" required onblur="buscarCep(this.value)"></div>
+                            <div class="col-md-3"><label>Cidade/UF</label><input type="text" id="cidade_uf" class="form-control bg-light" readonly><input type="hidden" name="cidade" id="cidade"><input type="hidden" name="uf" id="uf"></div>
+                            <div class="col-md-5"><label>Logradouro</label><input type="text" name="logradouro" id="logradouro" class="form-control bg-light" readonly></div>
+                            <div class="col-md-2"><label>Número *</label><input type="text" name="numero" id="inp_numero" class="form-control" required></div>
+                            <div class="col-md-5"><label>Bairro</label><input type="text" name="bairro" id="bairro" class="form-control bg-light" readonly></div>
+                            <div class="col-md-3"><label>Latitude</label><input type="text" name="latitude" id="inp_lat" class="form-control"></div>
+                            <div class="col-md-3"><label>Longitude</label><input type="text" name="longitude" id="inp_long" class="form-control"></div>
+                        </div>
+
+                        <h6 class="text-primary fw-bold mb-3 border-bottom pb-2">Contato e Síndico</h6>
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6"><label>Nome do Síndico *</label><input type="text" name="nome_sindico" id="inp_sindico" class="form-control" required></div>
+                            <div class="col-md-6">
+                                <label>Contato (WhatsApp) *</label>
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="bi bi-whatsapp"></i></span>
+                                    <input type="text" name="contato" id="inp_contato" class="form-control" required onblur="validarWhatsapp(this)">
+                                </div>
+                                <div id="zap-feedback" class="form-text"></div>
+                            </div>
+                            <div class="col-md-6 file-input-group"><label>Carta Síndico *</label><input type="file" name="arquivo_carta" class="form-control" accept=".pdf,.jpg" required></div>
+                            <div class="col-md-6 file-input-group"><label>Fotos Fachada *</label><input type="file" name="arquivo_fachada" class="form-control" accept="image/*" multiple required></div>
+                        </div>
+
+                        <h6 class="text-primary fw-bold mb-3 border-bottom pb-2">Dados Técnicos</h6>
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-4">
+                                <label>Infraestrutura</label>
+                                <select name="infraestrutura" id="inp_infra" class="form-select">
+                                    <option value="SUBTERRANEA">Subterrânea</option>
+                                    <option value="AEREA">Aérea (Poste)</option>
+                                    <option value="MISTA">Mista</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4 pt-4">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" name="possui_shaft" id="inp_shaft">
+                                    <label class="form-check-label fw-bold" for="inp_shaft">Possui Shaft / DG?</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card bg-light border-0 mb-4">
+                            <div class="card-body">
+                                <h6 class="fw-bold">Estrutura de Blocos</h6>
+                                <div class="row g-2 align-items-end mb-2">
+                                    <div class="col-md-3"><input type="text" id="temp_bloco" class="form-control form-control-sm" placeholder="Nome Bloco"></div>
+                                    <div class="col-md-3"><input type="number" id="temp_andares" class="form-control form-control-sm" placeholder="Andares"></div>
+                                    <div class="col-md-3"><input type="number" id="temp_aptos" class="form-control form-control-sm" placeholder="Aptos/Andar"></div>
+                                    <div class="col-md-3"><button type="button" class="btn btn-secondary btn-sm w-100" onclick="addBloco()">Adicionar</button></div>
+                                </div>
+                                <table class="table table-sm mb-0 bg-white text-center rounded border">
+                                    <thead class="table-light"><tr><th>Bloco</th><th>Andares</th><th>Aptos/Andar</th><th>Total HPs</th><th>Ação</th></tr></thead>
+                                    <tbody id="lista-blocos"></tbody>
+                                    <tfoot class="table-light">
+                                        <tr><td colspan="3" class="text-end fw-bold">Total Geral:</td><td id="total-hps-geral" class="fw-bold">0</td><td></td></tr>
+                                        <tr><td colspan="3" class="text-end text-primary fw-bold">Pré-venda (10%):</td><td id="prevenda-calc" class="text-primary fw-bold">0</td><td></td></tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </div>
+
+                        <input type="hidden" name="total_hps_final" id="input_total_hps">
+                        <input type="hidden" name="prevenda_final" id="input_prevenda">
+                        <input type="hidden" name="dados_blocos_json" id="input_blocos_json">
+
+                        <div class="d-grid">
+                            <button type="button" id="btn-submit" class="btn btn-success btn-lg" onclick="enviarFormulario(this)">
+                                <i class="bi bi-send-fill"></i> Enviar Solicitação
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-pane fade" id="lista-content">
+            <div class="card">
+                <div class="card-header bg-white d-flex justify-content-between">
+                    <h5 class="m-0 text-primary">Histórico</h5>
+                    <button class="btn btn-sm btn-outline-primary" onclick="carregarMeusAcionamentos()"><i class="bi bi-arrow-clockwise"></i> Atualizar</button>
+                </div>
+                <div class="card-body p-0 table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light"><tr><th>ID</th><th>Condomínio</th><th>Endereço</th><th>Síndico</th><th>Telefone</th><th>Total HPs</th><th>Pré-vendas</th><th>Foto</th><th>Status</th><th>Ações</th></tr></thead>
+                        <tbody id="tbody-acionamentos"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modalStatus" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Atualizar Status</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><input type="hidden" id="st-id"><label>Novo Status</label><select id="st-val" class="form-select mb-2"><option value="SEM_TRATAMENTO">Sem tratamento</option><option value="EM_CADASTRO">Em cadastro</option><option value="EM_PROJETO">Em Projeto</option><option value="EM_EXECUCAO">Em Execução</option><option value="CONCLUIDA">Concluída</option><option value="CANCELADA">Cancelada</option><option value="ARQUIVADA">Arquivada</option></select><label>Obs</label><textarea id="st-obs" class="form-control"></textarea></div><div class="modal-footer"><button onclick="salvarStatus()" class="btn btn-primary">Salvar</button></div></div></div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{% static 'js/auth.js' %}?v=7.0"></script>
+<script src="{% static 'js/menu.js' %}?v=7.0"></script>
+<script>
+    let blocos = [];
+
+    // --- BLOCOS E PRÉ-VENDA ---
+    function addBloco() {
+        const nome = document.getElementById('temp_bloco').value;
+        const andares = parseInt(document.getElementById('temp_andares').value) || 0;
+        const aptos = parseInt(document.getElementById('temp_aptos').value) || 0;
+        if(!nome || andares <= 0) return;
+        
+        blocos.push({ nome, andares, aptos, total: andares * aptos });
+        atualizarTabelaBlocos();
+        document.getElementById('temp_bloco').value = '';
+    }
+
+    function atualizarTabelaBlocos() {
+        const tbody = document.getElementById('lista-blocos'); tbody.innerHTML = '';
+        let total = 0;
+        blocos.forEach((b, i) => {
+            total += b.total;
+            tbody.innerHTML += `<tr><td>${b.nome}</td><td>${b.andares}</td><td>${b.aptos}</td><td>${b.total}</td><td><i class="bi bi-trash text-danger" onclick="blocos.splice(${i},1);atualizarTabelaBlocos()"></i></td></tr>`;
+        });
+        
+        // CÁLCULO DE PRÉ-VENDA (30%)
+        const prevenda = Math.ceil(total * 0.1);
+        
+        document.getElementById('total-hps-geral').innerText = total;
+        document.getElementById('prevenda-calc').innerText = prevenda;
+        document.getElementById('input_total_hps').value = total;
+        document.getElementById('input_prevenda').value = prevenda;
+        document.getElementById('input_blocos_json').value = JSON.stringify(blocos);
+    }
+
+    // --- VALIDAÇÃO WHATSAPP ---
+    async function validarWhatsapp(input) {
+        const feedback = document.getElementById('zap-feedback');
+        const num = input.value.replace(/\D/g, '');
+        if (num.length < 10) return;
+        
+        feedback.innerText = "Verificando...";
+        try {
+            const token = localStorage.getItem('accessToken');
+            const res = await fetch(`/api/crm/whatsapp/verificar/?numero=${num}`, { headers: {'Authorization': `Bearer ${token}`} });
+            const data = await res.json();
+            if (data.exists) {
+                input.classList.add('is-valid'); input.classList.remove('is-invalid');
+                feedback.innerText = "WhatsApp Válido ✅"; feedback.className = "form-text text-success fw-bold";
+            } else {
+                input.classList.add('is-invalid'); input.classList.remove('is-valid');
+                feedback.innerText = "Sem WhatsApp ❌"; feedback.className = "form-text text-danger fw-bold";
+            }
+        } catch(e) { feedback.innerText = "Erro ao validar."; }
+    }
+
+    // --- CRUD ---
+    async function carregarMeusAcionamentos() {
+        const tbody = document.getElementById('tbody-acionamentos');
+        tbody.innerHTML = '<tr><td colspan="10">Carregando...</td></tr>';
+        const res = await fetch('/api/crm/cdoi/listar/', { headers: {'Authorization': `Bearer ${localStorage.getItem('accessToken')}`} });
+        const lista = await res.json();
+        tbody.innerHTML = '';
+        lista.forEach(i => {
+            let btns = '';
+            btns += `<button class="btn btn-sm btn-editar me-1" onclick='editarTudo(${i.id})'>✏️ Editar</button>`;
+            if (i.can_edit) btns += `<button class="btn btn-sm btn-outline-info me-1" onclick='modalStatus(${i.id}, "${i.status_cod}", "${i.observacao}")'>🔄 Status</button>`;
+            btns += `<button class="btn btn-sm btn-excluir" onclick='excluir(${i.id})'>🗑️</button>`;
+            
+            const endereco = `${i.logradouro || ''}, ${i.numero || ''} - ${i.bairro || ''}`;
+            const telefone = i.contato || '-';
+            const sindico = i.nome_sindico || '-';
+            const totalHps = i.total_hps || 0;
+            const prevenda = i.prevenda || 0;
+            
+            // Coluna de imagem com preview e link
+            let imagemHtml = '';
+            if (i.link_fotos_fachada) {
+                imagemHtml = `
+                    <span class="image-preview-icon" onclick="window.open('${i.link_fotos_fachada}', '_blank')">
+                        <i class="bi bi-image"></i>
+                        <div class="image-tooltip">
+                            <img src="${i.link_fotos_fachada}" alt="Foto Fachada" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'200\' height=\'200\'%3E%3Crect fill=\'%23ddd\' width=\'200\' height=\'200\'/%3E%3Ctext x=\'50%25\' y=\'50%25\' dominant-baseline=\'middle\' text-anchor=\'middle\' font-family=\'sans-serif\' font-size=\'16\' fill=\'%23999\'%3ESem imagem%3C/text%3E%3C/svg%3E'">
+                        </div>
+                    </span>
+                `;
+            } else {
+                imagemHtml = '<i class="bi bi-image no-image-icon"></i>';
+            }
+            
+            tbody.innerHTML += `<tr>
+                <td>#${i.id}</td>
+                <td><strong>${i.nome}</strong><br><small class="text-muted">${i.cidade}</small></td>
+                <td><small>${endereco}</small></td>
+                <td>${sindico}</td>
+                <td>${telefone}</td>
+                <td class="text-center"><span class="badge bg-primary">${totalHps}</span></td>
+                <td class="text-center"><span class="badge bg-success">${prevenda}</span></td>
+                <td class="text-center">${imagemHtml}</td>
+                <td><span class="badge status-badge status-${i.status_cod}">${i.status}</span></td>
+                <td class="text-end">${btns}</td>
+            </tr>`;
+        });
+    }
+
+    function editarTudo(item) {
+        const id = item; // Agora 'item' é apenas o ID
+        fetch(`/api/crm/cdoi/editar/${id}/`, { headers: {'Authorization': `Bearer ${localStorage.getItem('accessToken')}`} })
+            .then(res => {
+                if (!res.ok) throw new Error('Não foi possível carregar os dados para edição.');
+                return res.json();
+            })
+            .then(d => {
+                document.getElementById('edit_mode_id').value = d.id;
+                document.getElementById('tab-titulo').innerText = `Editando #${d.id}`;
+                document.getElementById('btn-submit').innerHTML = 'Salvar Alterações';
+                document.getElementById('btn-submit').classList.replace('btn-success', 'btn-warning');
+                document.getElementById('btn-cancelar-edicao').classList.remove('d-none');
+                
+                document.querySelectorAll('.file-input-group').forEach(el => el.style.display = 'none');
+                document.querySelectorAll('.file-input-group input').forEach(el => el.required = false);
+
+                document.getElementById('inp_nome').value = d.nome_condominio;
+                document.getElementById('inp_cep').value = d.cep;
+                document.getElementById('inp_numero').value = d.numero;
+                document.getElementById('inp_sindico').value = d.nome_sindico;
+                document.getElementById('inp_contato').value = d.contato;
+                document.getElementById('inp_infra').value = d.infraestrutura;
+                document.getElementById('inp_shaft').checked = d.possui_shaft;
+                document.getElementById('inp_lat').value = d.latitude || '';
+                document.getElementById('inp_long').value = d.longitude || '';
+                
+                buscarCep(d.cep);
+
+                blocos = d.blocos.map(b => ({ nome: b.nome, andares: b.andares, aptos: b.aptos, total: b.total }));
+                atualizarTabelaBlocos();
+                
+                new bootstrap.Tab(document.querySelector('#nova-tab')).show();
+            })
+            .catch(error => {
+                alert(error.message);
+                console.error("Erro ao editar:", error);
+            });
+    }
+
+    function cancelarEdicao() {
+        document.getElementById('form-cdoi').reset();
+        document.getElementById('edit_mode_id').value = '';
+        document.getElementById('tab-titulo').innerText = 'Nova Solicitação';
+        document.getElementById('btn-submit').innerHTML = '<i class="bi bi-send-fill"></i> Enviar Solicitação';
+        document.getElementById('btn-submit').classList.replace('btn-warning', 'btn-success');
+        document.getElementById('btn-cancelar-edicao').classList.add('d-none');
+        document.querySelectorAll('.file-input-group').forEach(el => el.style.display = 'block');
+        blocos = []; atualizarTabelaBlocos();
+    }
+
+    async function excluir(id) {
+        if(!confirm('Excluir solicitação?')) return;
+        try {
+            const res = await fetch(`/api/crm/cdoi/editar/${id}/`, { 
+                method: 'DELETE', 
+                headers: {'Authorization': `Bearer ${localStorage.getItem('accessToken')}`} 
+            });
+
+            if (res.ok) {
+                alert('Solicitação excluída com sucesso.');
+                carregarMeusAcionamentos();
+            } else {
+                const errorData = await res.json().catch(() => ({ detail: 'Erro desconhecido.' }));
+                const errorMessage = res.status === 403 ? 'Acesso negado. Você não tem permissão.' : (errorData.detail || 'Não foi possível excluir.');
+                alert(`Erro: ${errorMessage}`);
+            }
+        } catch (error) {
+            alert('Ocorreu um erro de conexão ao tentar excluir.');
+        }
+    }
+
+    async function enviarFormulario(btn) {
+        const form = document.getElementById('form-cdoi');
+        if(!form.checkValidity()) { form.reportValidity(); return; }
+        
+        const id = document.getElementById('edit_mode_id').value;
+        const isEdit = !!id;
+        
+        const formData = new FormData(form);
+        const dataJson = Object.fromEntries(formData.entries());
+        
+        const url = isEdit ? `/api/crm/cdoi/editar/${id}/` : '/api/crm/cdoi/novo/';
+        const method = isEdit ? 'PUT' : 'POST';
+        const headers = {'Authorization': `Bearer ${localStorage.getItem('accessToken')}`};
+        if(isEdit) headers['Content-Type'] = 'application/json';
+
+        try {
+            const res = await fetch(url, {
+                method: method,
+                headers: headers,
+                body: isEdit ? JSON.stringify(dataJson) : formData
+            });
+            if(res.ok) { alert('Salvo!'); cancelarEdicao(); if(isEdit) carregarMeusAcionamentos(); else window.location.reload(); }
+            else { alert('Erro ao salvar.'); }
+        } catch(e) { alert('Erro de conexão.'); }
+    }
+
+    // Modal Status
+    const mStatus = new bootstrap.Modal(document.getElementById('modalStatus'));
+    function modalStatus(id, st, obs) {
+        document.getElementById('st-id').value = id;
+        document.getElementById('st-val').value = st;
+        document.getElementById('st-obs').value = obs;
+        mStatus.show();
+    }
+    async function salvarStatus() {
+        const id = document.getElementById('st-id').value;
+        await fetch(`/api/crm/cdoi/editar/${id}/`, {
+            method: 'PATCH',
+            headers: {'Authorization': `Bearer ${localStorage.getItem('accessToken')}`, 'Content-Type': 'application/json'},
+            body: JSON.stringify({ status: document.getElementById('st-val').value, observacao: document.getElementById('st-obs').value })
+        });
+        mStatus.hide(); carregarMeusAcionamentos();
+    }
+    async function buscarCep(cep) { try { const r=await fetch(`https://viacep.com.br/ws/${cep.replace(/\D/g,'')}/json/`); const d=await r.json(); if(!d.erro){ document.getElementById('logradouro').value=d.logradouro; document.getElementById('bairro').value=d.bairro; document.getElementById('cidade_uf').value=`${d.localidade}-${d.uf}`; document.getElementById('cidade').value=d.localidade; document.getElementById('uf').value=d.uf; } } catch(e){} }
+    
+    // Expande o container quando a aba Meus Acionamentos está ativa
+    document.getElementById('lista-tab').addEventListener('click', function() {
+        setTimeout(() => {
+            document.querySelector('.system-container').style.maxWidth = '95%';
+        }, 50);
+    });
+    
+    document.getElementById('nova-tab').addEventListener('click', function() {
+        setTimeout(() => {
+            document.querySelector('.system-container').style.maxWidth = '1400px';
+        }, 50);
+    });
+</script>
+        </div>
+    </main>
+</body>
+</html>
+

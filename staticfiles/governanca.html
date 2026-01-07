@@ -1,0 +1,1231 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Governança - Record PAP</title>
+    <link rel="shortcut icon" href="{% static 'logo.png' %}" type="image/x-icon">
+    <link rel="icon" type="image/png" href="{% static 'logo.png' %}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=13.1">
+    <style>
+        /* Layout de Administração */
+        body { overflow-x: hidden; background-color: var(--cor-fundo); }
+        /* Header Fixo no Topo */
+        .main-header {
+            position: fixed; top: 0; left: 0; width: 100%; z-index: 1000;
+            background-color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.05); height: 80px;
+        }
+        .admin-wrapper { display: flex; min-height: 100vh; padding-top: 80px; }
+        /* Sidebar Melhorada */
+        .admin-sidebar {
+            width: 280px; background: #fff; border-right: 1px solid var(--cor-borda);
+            padding: 1.5rem; display: flex; flex-direction: column; 
+            position: fixed; top: 80px; left: 0; bottom: 0; 
+            overflow-y: auto; z-index: 900; box-shadow: 2px 0 5px rgba(0,0,0,0.02);
+        }
+        .admin-sidebar::-webkit-scrollbar { width: 6px; }
+        .admin-sidebar::-webkit-scrollbar-track { background: #f1f1f1; }
+        .admin-sidebar::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+        .admin-content {
+            flex: 1; margin-left: 280px; padding: 2rem; max-width: 1600px; width: calc(100% - 280px); 
+        }
+
+        .nav-section-title {
+            font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px;
+            color: var(--cor-texto-suave); margin-top: 1.5rem; margin-bottom: 0.5rem; font-weight: 700;
+        }
+        
+        .admin-nav-link {
+            display: flex; align-items: center; padding: 10px 15px;
+            color: var(--cor-texto); text-decoration: none; border-radius: 8px;
+            margin-bottom: 5px; font-weight: 500; transition: all 0.2s;
+        }
+        .admin-nav-link i { margin-right: 12px; font-size: 1.1rem; color: var(--cor-secundaria); }
+        .admin-nav-link:hover { background-color: #f0f4ff; color: var(--cor-primaria); }
+        .admin-nav-link.active { background-color: var(--cor-primaria); color: #fff; box-shadow: var(--sombra-suave); }
+        .admin-nav-link.active i { color: #fff; }
+
+        .content-section { display: none; animation: fadeIn 0.3s ease-out; }
+        .content-section.active { display: block; }
+
+        .card { border: none; border-radius: 12px; box-shadow: var(--sombra-suave); margin-bottom: 1.5rem; }
+        .card-header { background-color: #fff; border-bottom: 1px solid var(--cor-borda); padding: 1.5rem; border-radius: 12px 12px 0 0 !important; }
+        .card-body { padding: 1.5rem; }
+        .table-responsive { border-radius: 8px; }
+        
+        .perm-list { max-height: 300px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 6px; padding: 10px; background: #f8f9fa; }
+        .perm-item { display: flex; align-items: center; padding: 6px 0; border-bottom: 1px solid #e9ecef; }
+        .btn-xs { padding: 0.25rem 0.5rem; font-size: 0.75rem; line-height: 1.5; border-radius: 0.2rem; }
+        #iframe-calendario { width: 100%; height: 750px; border: none; display: block; }
+        .input-meta, .input-premio { border: 1px solid #ced4da !important; padding: 0.2rem 0.5rem !important; }
+
+        @media (max-width: 992px) {
+            .admin-sidebar { transform: translateX(-100%); transition: transform 0.3s; top: 80px; height: calc(100vh - 80px); }
+            .admin-sidebar.show { transform: translateX(0); }
+            .admin-content { margin-left: 0; padding: 1rem; width: 100%; }
+        }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+
+    <header class="main-header">
+        <div class="header-container">
+            <a href="/"><img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo"></a>
+            <button class="menu-toggle" id="menu-toggle"><div class="bar"></div><div class="bar"></div><div class="bar"></div></button>
+            <nav class="main-nav" id="main-nav">
+                <ul>
+                    <li><a href="/area-interna/">Voltar</a></li>
+                    <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <div class="admin-wrapper">
+        <nav class="admin-sidebar">
+            <div class="nav-section-title">Administração</div>
+            <a href="#" class="admin-nav-link active" onclick="mostrarSecao(event, 'usuarios', this)"><i class="bi bi-people"></i> Gestão de Usuários</a>
+            <a href="#" class="admin-nav-link" onclick="mostrarSecao(event, 'perfis', this)"><i class="bi bi-shield-lock"></i> Perfis de Acesso</a>
+
+            <div class="nav-section-title">Configurações CRM</div>
+            <a href="#" class="admin-nav-link" onclick="mostrarSecao(event, 'comissionamento', this)"><i class="bi bi-cash-stack"></i> Comissionamento</a>
+            <a href="#" class="admin-nav-link" onclick="mostrarSecao(event, 'cadastros_gerais', this)"><i class="bi bi-sliders"></i> Cadastros Gerais</a>
+            <a href="#" class="admin-nav-link" onclick="mostrarSecao(event, 'motivos', this)"><i class="bi bi-list-check"></i> Motivos de Ausência</a>
+            <a href="#" class="admin-nav-link" onclick="mostrarSecao(event, 'feriados', this)"><i class="bi bi-calendar-event"></i> Feriados / Sazonalidade</a>
+
+            <div class="nav-section-title">Automação</div>
+            <a href="#" class="admin-nav-link" onclick="mostrarSecao(event, 'automacao', this)"><i class="bi bi-whatsapp"></i> Automação WhatsApp</a>
+
+            <div class="nav-section-title">Financeiro</div>
+            <a href="#" class="admin-nav-link" onclick="mostrarSecao(event, 'relatorios', this)"><i class="bi bi-file-earmark-bar-graph"></i> Relatórios</a>
+            <a href="/painel-performance/" class="admin-nav-link"><i class="bi bi-speedometer2"></i> Painel de Performance</a>
+
+            <div class="mt-auto pt-4 border-top">
+                <div class="nav-section-title mt-0">Acesso Rápido</div>
+                <a href="/presenca/" class="admin-nav-link"><i class="bi bi-clock-history"></i> Presença</a>
+                <a href="/crm-vendas/" class="admin-nav-link"><i class="bi bi-cart-plus"></i> Nova Venda</a>
+            </div>
+        </nav>
+
+        <main class="admin-content">
+            
+            <section id="usuarios-section" class="content-section active">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h3>Gestão de Usuários</h3>
+                    <button class="btn btn-primary" onclick="abrirModalUsuario()"><i class="bi bi-person-plus-fill"></i> Novo Usuário</button>
+                </div>
+                <div class="card mt-4">
+                    <div class="card-header bg-white py-3">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <h5 class="mb-0">Lista de Usuários <span id="lista-status-titulo" class="badge bg-success">Ativos</span></h5>
+                            <div class="d-flex gap-2">
+                                <input type="text" id="busca-usuario" class="form-control form-control-sm" placeholder="Pesquisar usuário..." style="width: 200px;">
+                                <div class="btn-group">
+                                    <button onclick="mostrarListaUsuarios('ativos', this)" class="btn btn-sm btn-outline-primary active">Ativos</button>
+                                    <button onclick="mostrarListaUsuarios('inativos', this)" class="btn btn-sm btn-outline-secondary">Inativos</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="acoes-massa" class="mt-3 p-2 bg-light rounded border d-none align-items-center justify-content-between">
+                            <span class="small fw-bold text-muted"><span id="count-selecionados">0</span> selecionados</span>
+                            <div class="d-flex gap-2">
+                                <select id="novo-perfil-massa" class="form-select form-select-sm" style="width: 200px;"><option value="">Alterar Perfil para...</option></select>
+                                <button onclick="aplicarMudancaPerfilEmMassa()" class="btn btn-sm btn-primary">Aplicar</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0" id="tabela-usuarios">
+                                <thead class="table-light"><tr id="user-list-header"><th style="width: 40px;"><input type="checkbox" id="check-all" onclick="toggleTodos(this)"></th><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Canal</th> <th>Líder</th><th class="text-end">Ações</th></tr></thead>
+                                <tbody id="user-list-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="perfis-section" class="content-section">
+                <div class="d-flex justify-content-between align-items-center mb-4"><h3>Gestão de Perfis de Acesso</h3><button class="btn btn-primary" id="btn-adicionar-perfil"><i class="bi bi-plus-lg"></i> Novo Perfil</button></div>
+                <div class="alert alert-info py-2 small"><i class="bi bi-info-circle"></i> Defina aqui quais módulos cada cargo pode acessar.</div>
+                <div class="card"><div class="card-body p-0"><div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead class="table-light"><tr><th>Nome do Perfil</th><th>Permissões Habilitadas</th><th class="text-center" style="width: 180px;">Ações</th></tr></thead><tbody id="perfis-tabela-corpo"></tbody></table></div></div></div>
+            </section>
+            
+            <section id="comissionamento-section" class="content-section">
+                <h3 class="mb-4">Gestão de Comissionamento</h3>
+                <div class="card">
+                    <div class="card-header"><ul class="nav nav-tabs card-header-tabs"><li class="nav-item"><button class="nav-link active" onclick="openTab(event, 'regras_comissao_tab')">Regras de Comissão</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'recebimento_operadora_tab')">Recebimento Operadora</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'config_mensal_tab')">Configurações do Mês</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'campanhas_tab')">Campanhas</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'adiantamentos_descontos_tab')">Adiantamentos e Descontos</button></li></ul></div>
+                    <div class="card-body">
+                        <div id="regras_comissao_tab" class="tab-content active">
+                            <div class="bg-light p-4 rounded border mb-4"><h5 class="text-primary mb-3">Nova Regra (Pagamento ao Vendedor)</h5><form id="form-regra-comissao"><input type="hidden" id="regra_comissao_id"><div class="row g-3"><div class="col-md-4"><label class="form-label fw-bold">Consultor</label><select id="regra_consultor_id" class="form-select" required></select></div><div class="col-md-4"><label class="form-label fw-bold">Plano</label><select id="regra_plano_id" class="form-select" required></select></div><div class="col-md-2"><label class="form-label fw-bold">Tipo Venda</label><select id="regra_tipo_venda" class="form-select" required><option value="PAP">PAP</option><option value="TELAG">TELAG</option></select></div><div class="col-md-2"><label class="form-label fw-bold">Cliente</label><select id="regra_tipo_cliente" class="form-select" required><option value="CPF">CPF</option><option value="CNPJ">CNPJ</option></select></div><div class="col-md-3"><label class="form-label fw-bold">Base (R$)</label><input type="number" class="form-control" id="regra_valor_base" step="0.01" required></div><div class="col-md-3"><label class="form-label fw-bold">Acelerado (R$)</label><input type="number" class="form-control" id="regra_valor_acelerado" step="0.01" required></div><div class="col-md-6 d-flex align-items-end"><button type="submit" class="btn btn-primary w-100 me-2">Salvar Regra</button><button type="button" class="btn btn-outline-secondary w-50" onclick="resetFormRegraComissao()">Limpar</button></div></div></form></div>
+                            <div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead class="table-light"><tr><th>Consultor</th><th>Plano</th><th>Tipo</th><th>Cliente</th><th>Base</th><th>Acelerado</th><th>Ações</th></tr></thead><tbody id="lista-regras-comissao"></tbody></table></div>
+                        </div>
+                        <div id="recebimento_operadora_tab" class="tab-content" style="display:none;">
+                            <div class="bg-light p-4 rounded border mb-4"><h5 class="text-success mb-3"><i class="bi bi-bank"></i> Configuração de Recebimento (Operadora -> Empresa)</h5><form id="form-comissao-operadora"><input type="hidden" id="co_id"><div class="row g-3 align-items-end"><div class="col-md-4"><label class="form-label fw-bold">Plano Vendido</label><select id="co_plano_id" class="form-select" required></select></div><div class="col-md-2"><label class="form-label fw-bold">Comissão Base (R$)</label><input type="number" class="form-control" id="co_valor_base" step="0.01" required placeholder="0,00"></div><div class="col-md-2"><label class="form-label fw-bold text-success">Bônus Transição (R$)</label><input type="number" class="form-control border-success" id="co_bonus" step="0.01" value="0" placeholder="0,00"></div><div class="col-md-2"><label class="form-label small text-muted">Validade Bônus (Fim)</label><input type="date" class="form-control" id="co_data_fim"></div><div class="col-md-2"><button type="submit" class="btn btn-success w-100">Salvar Config</button></div></div></form></div>
+                            <div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead class="table-light"><tr><th>Plano</th><th>Recebimento Base</th><th class="text-success">Bônus Transição</th><th>Validade Bônus</th><th class="fw-bold">Total Recebido</th><th class="text-end">Ações</th></tr></thead><tbody id="lista-comissoes-operadora"></tbody></table></div>
+                        </div>
+                        <div id="config_mensal_tab" class="tab-content" style="display:none;"><h5>Configurações Variáveis do Mês</h5><div class="d-flex align-items-center mb-4"><label for="select_mes_config" class="form-label me-2 fw-bold">Mês de Referência:</label><input type="month" id="select_mes_config" class="form-control" style="width: auto;" onchange="carregarConfigMensal()"></div><div id="form-container-config-mensal" class="p-4 border rounded bg-light text-center text-muted">Selecione um mês para ver as opções.</div></div>
+                        <div id="campanhas_tab" class="tab-content" style="display:none;">
+                            <div class="bg-light p-4 rounded border mb-4"><h5 class="text-primary mb-3"><i class="bi bi-cash-coin"></i> Nova Campanha (Financeira)</h5><form id="form-campanha"><input type="hidden" id="campanha_id"><div class="row g-3"><div class="col-md-6"><label class="form-label fw-bold">Nome da Campanha</label><input type="text" class="form-control" id="campanha_nome" required placeholder="Ex: Arrancada Fibra 1GB"></div><div class="col-md-3"><label class="form-label fw-bold">Início</label><input type="date" class="form-control" id="campanha_data_inicio" required></div><div class="col-md-3"><label class="form-label fw-bold">Fim</label><input type="date" class="form-control" id="campanha_data_fim" required></div><div class="col-12 mt-2"><div class="card bg-white border p-3"><div class="d-flex justify-content-between align-items-center mb-2"><label class="form-label fw-bold text-primary mb-0"><i class="bi bi-list-ol"></i> Faixas de Premiação (Escalonamento)</label><button type="button" class="btn btn-sm btn-outline-primary" onclick="adicionarFaixaCampanha()"><i class="bi bi-plus-lg"></i> Adicionar Faixa</button></div><div class="table-responsive" style="max-height: 200px; overflow-y: auto;"><table class="table table-sm table-bordered mb-0"><thead class="table-light small"><tr><th style="width: 40%;">Meta (Qtd Vendas)</th><th style="width: 40%;">Prêmio (R$)</th><th style="width: 20%;">Ação</th></tr></thead><tbody id="tbody-faixas-campanha"></tbody></table></div><div class="form-text small text-muted mt-1">* O sistema pagará o prêmio da <strong>maior meta</strong> atingida pelo vendedor.</div></div></div><div class="col-md-3"><label class="form-label fw-bold">Critério</label><select class="form-select" id="campanha_tipo_meta"><option value="LIQUIDA" selected>Vendas Instaladas (Líquida)</option><option value="BRUTA">Vendas Abertas (Bruta)</option></select></div><div class="col-md-3"><label class="form-label fw-bold">Status</label><select class="form-select" id="campanha_ativo"><option value="true">Ativa</option><option value="false">Inativa</option></select></div><div class="col-12"><div class="card p-3 border-warning bg-white"><h6 class="text-warning fw-bold mb-3"><i class="bi bi-filter-circle"></i> Regras de Elegibilidade (Segure Ctrl)</h6><div class="row g-3"><div class="col-md-4"><label class="form-label small fw-bold">1. Planos Válidos</label><select class="form-select" id="campanha_planos" multiple style="height: 120px;"></select></div><div class="col-md-4"><label class="form-label small fw-bold">2. Formas de Pagamento Válidas</label><select class="form-select" id="campanha_pagamentos" multiple style="height: 120px;"></select></div><div class="col-md-4"><label class="form-label small fw-bold">3. Canal Permitido</label><select class="form-select" id="campanha_canal_alvo"><option value="TODOS">Todos os Canais</option><option value="PAP">Apenas PAP</option><option value="DIGITAL">Apenas Digital</option><option value="RECEPTIVO">Apenas Receptivo</option><option value="PARCEIRO">Apenas Parceiro</option></select><label class="form-label small fw-bold mt-2">Obs.</label><input type="text" class="form-control form-control-sm" id="campanha_regras" placeholder="Opcional"></div></div></div></div><div class="col-12 d-flex justify-content-end gap-2 pt-2"><button type="button" class="btn btn-outline-secondary" onclick="resetFormCampanha()">Cancelar</button><button type="submit" class="btn btn-success px-4">Salvar Campanha</button></div></div></form></div>
+                            <div class="card border-0 shadow-sm"><div class="card-body p-0 table-responsive"><table class="table table-hover align-middle mb-0"><thead class="table-light"><tr><th>Nome</th><th>Período</th><th>Faixas de Premiação</th><th>Regras</th><th>Status</th><th class="text-end">Ações</th></tr></thead><tbody id="lista-campanhas"></tbody></table></div></div>
+                        </div>
+                        <div id="adiantamentos_descontos_tab" class="tab-content" style="display:none;">
+                            <div class="row"><div class="col-md-4"><div class="card border-primary mb-3 shadow-sm"><div class="card-header bg-primary text-white py-2"><h6 class="mb-0"><i class="bi bi-cash-stack"></i> Novo Adiantamento</h6></div><div class="card-body"><form id="form-adiantamento"><div class="mb-2"><label class="form-label small fw-bold">Colaborador</label><select id="ad_usuario" class="form-select form-select-sm" required></select></div><div class="mb-2"><label class="form-label small fw-bold">Tipo</label><select id="ad_tipo" class="form-select form-select-sm" onchange="toggleCamposAdiantamento()"><option value="ADIANTAMENTO_CNPJ">Adiantamento CNPJ</option><option value="ADIANTAMENTO_COMISSAO">Adiantamento de Comissão</option></select></div><div class="row g-2 mb-2"><div class="col-6"><label class="form-label small fw-bold">Data</label><input type="date" id="ad_data" class="form-control form-control-sm" required></div><div class="col-6"><label class="form-label small fw-bold">Valor (R$)</label><input type="number" class="form-control form-control-sm" id="ad_valor" step="0.01" required></div></div><div id="box-qtd-vendas" class="mb-2 bg-light p-2 rounded border"><label class="form-label small fw-bold text-primary">Qtd. Vendas Adiantadas</label><input type="number" id="ad_qtd" class="form-control form-control-sm"></div><div class="mb-3"><label class="form-label small fw-bold">Observação</label><textarea id="ad_obs" class="form-control form-control-sm" rows="2"></textarea></div><button type="submit" class="btn btn-primary btn-sm w-100">Registrar</button></form></div></div><div class="card border-danger shadow-sm"><div class="card-header bg-danger text-white py-2"><h6 class="mb-0"><i class="bi bi-dash-circle"></i> Novo Desconto</h6></div><div class="card-body"><form id="form-desconto"><div class="mb-2"><label class="form-label small fw-bold">Colaborador</label><select id="desc_usuario" class="form-select form-select-sm" required></select></div><div class="mb-2"><label class="form-label small fw-bold">Motivo</label><input type="text" id="desc_motivo" class="form-control form-control-sm" placeholder="Ex: Equipamento perdido" required></div><div class="row g-2 mb-3"><div class="col-6"><label class="form-label small fw-bold">Data</label><input type="date" id="desc_data" class="form-control form-control-sm" required></div><div class="col-6"><label class="form-label small fw-bold">Valor (R$)</label><input type="number" class="form-control form-control-sm" id="desc_valor" step="0.01" required></div></div><button type="submit" class="btn btn-danger btn-sm w-100">Registrar</button></form></div></div></div><div class="col-md-8"><div class="card h-100 shadow-sm"><div class="card-header bg-white d-flex justify-content-between align-items-center"><h6 class="mb-0 fw-bold">Histórico de Lançamentos</h6><div class="input-group input-group-sm" style="width: 200px;"><input type="month" id="filtro-mes-lancamentos" class="form-control" onchange="carregarLancamentosFinanceiros()"></div></div><div class="card-body p-0 table-responsive"><table class="table table-hover table-striped mb-0 small align-middle"><thead class="table-light"><tr><th>Data</th><th>Colaborador</th><th>Tipo / Descrição</th><th class="text-end">Valor</th><th class="text-end">Ações</th></tr></thead><tbody id="lista-lancamentos-fin"></tbody></table></div></div></div></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="cadastros_gerais-section" class="content-section">
+                <h3 class="mb-4">Cadastros Gerais do CRM</h3>
+                <div class="card"><div class="card-header"><ul class="nav nav-tabs card-header-tabs"><li class="nav-item"><button class="nav-link active" onclick="openTab(event, 'operadoras')">Operadoras</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'planos')">Planos</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'formasPagamento')">Pagamentos</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'status')">Status</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'pendencias')">Pendências</button></li></ul></div>
+                    <div class="card-body">
+                        <div id="operadoras" class="tab-content active"><form id="form-operadora" class="row g-3 mb-4 align-items-end bg-light p-3 rounded border"><input type="hidden" id="operadora_id"><div class="col-md-4"><label class="form-label fw-bold">Nome</label><input type="text" class="form-control" id="operadora_nome" required></div><div class="col-md-3"><label class="form-label fw-bold">CNPJ</label><input type="text" class="form-control" id="operadora_cnpj"></div><div class="col-md-3"><label class="form-label fw-bold">Status</label><select id="operadora_status" class="form-select" required><option value="1">Ativo</option><option value="0">Inativo</option></select></div><div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Salvar</button></div></form><table class="table table-hover align-middle"><thead class="table-light"><tr><th>Nome</th><th>CNPJ</th><th>Status</th><th>Ações</th></tr></thead><tbody id="lista-operadoras"></tbody></table></div>
+                        <div id="planos" class="tab-content" style="display:none;"><form id="form-plano" class="row g-3 mb-4 align-items-end bg-light p-3 rounded border"><input type="hidden" id="plano_id"><div class="col-md-3"><label class="form-label fw-bold">Nome</label><input type="text" class="form-control" id="plano_nome" required></div><div class="col-md-2"><label class="form-label fw-bold">Valor</label><input type="number" class="form-control" id="plano_valor" step="0.01" required></div><div class="col-md-2"><label class="form-label fw-bold">Comissão</label><input type="number" class="form-control" id="plano_comissao" step="0.01"></div><div class="col-md-3"><label class="form-label fw-bold">Operadora</label><select id="plano_operadora_id" class="form-select" required></select></div><div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Salvar</button></div></form><table class="table table-hover align-middle"><thead class="table-light"><tr><th>Nome</th><th>Operadora</th><th>Valor</th><th>Comissão</th><th>Ações</th></tr></thead><tbody id="lista-planos"></tbody></table></div>
+                        <div id="formasPagamento" class="tab-content" style="display:none;"><div class="input-group mb-3"><input type="text" id="nova-forma-pagamento-nome" placeholder="Nova Forma (Ex: PIX)" class="form-control"><button id="btn-salvar-forma-pagamento" class="btn btn-primary">Adicionar</button></div><ul id="lista-formas-pagamento" class="list-group"></ul></div>
+                        <div id="status" class="tab-content" style="display:none;"><form id="form-status" class="row g-3 mb-4 align-items-end bg-light p-3 rounded border"><input type="hidden" id="status_id"><div class="col-md-3"><label class="form-label fw-bold">Nome</label><input type="text" class="form-control" id="status_nome" required></div><div class="col-md-3"><label class="form-label fw-bold">Tipo</label><select id="status_tipo" class="form-select" required><option value="Tratamento">Tratamento</option><option value="Esteira">Esteira</option><option value="Comissionamento">Comissionamento</option></select></div><div class="col-md-3"><label class="form-label fw-bold">Estado</label><input type="text" class="form-control" id="status_estado" placeholder="Ex: Fechado"></div><div class="col-md-1"><label class="form-label fw-bold">Cor</label><input type="color" class="form-control form-control-color w-100" id="status_cor" value="#FFFFFF"></div><div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Salvar</button></div></form><table class="table table-hover align-middle"><thead class="table-light"><tr><th>Nome</th><th>Tipo</th><th>Estado</th><th>Cor</th><th>Ações</th></tr></thead><tbody id="lista-status"></tbody></table></div>
+                        <div id="pendencias" class="tab-content" style="display:none;"><form id="form-pendencia" class="row g-3 mb-4 align-items-end bg-light p-3 rounded border"><input type="hidden" id="pendencia_id"><div class="col-md-6"><label class="form-label fw-bold">Motivo</label><input type="text" class="form-control" id="pendencia_nome" required></div><div class="col-md-4"><label class="form-label fw-bold">Tipo</label><input type="text" class="form-control" id="pendencia_tipo" placeholder="Ex: Documentação" required></div><div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Salvar</button></div></form><table class="table table-hover align-middle"><thead class="table-light"><tr><th>Nome</th><th>Tipo</th><th>Ações</th></tr></thead><tbody id="lista-pendencias"></tbody></table></div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="motivos-section" class="content-section">
+                <h3 class="mb-4">Gestão de Motivos de Ausência</h3>
+                <div class="card"><div class="card-body"><div class="input-group mb-3"><input type="text" id="novo-motivo-nome" placeholder="Nome do novo motivo" class="form-control"><div class="input-group-text bg-light"><input class="form-check-input mt-0" type="checkbox" id="novo-motivo-desconto" checked><label class="form-check-label ms-2" for="novo-motivo-desconto">Gera Desconto</label></div><button id="btn-salvar-motivo" class="btn btn-primary">Adicionar</button></div><ul id="lista-motivos" class="list-group"></ul></div></div>
+            </section>
+
+            <section id="feriados-section" class="content-section">
+                <h3 class="mb-4">Sazonalidade e Feriados</h3>
+                <div class="card">
+                    <div class="card-header"><ul class="nav nav-tabs card-header-tabs"><li class="nav-item"><button class="nav-link active" onclick="openTab(event, 'tab-lista-feriados')">Lista de Feriados</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'tab-calendario-fiscal')">Calendário de Pesos</button></li></ul></div>
+                    <div class="card-body"><div id="tab-lista-feriados" class="tab-content active"><div class="input-group mb-4"><input type="date" id="novo-feriado-data" class="form-control"><input type="text" id="novo-feriado-descricao" placeholder="Descrição (Ex: Natal)" class="form-control"><button id="btn-salvar-feriado" class="btn btn-primary">Adicionar</button></div><table class="table table-hover align-middle"><thead class="table-light"><tr><th>Data</th><th>Descrição</th><th>Ações</th></tr></thead><tbody id="lista-feriados"></tbody></table></div><div id="tab-calendario-fiscal" class="tab-content" style="display:none;"><iframe src="/calendario/?modo=iframe" id="iframe-calendario"></iframe></div></div>
+                </div>
+            </section>
+
+            <section id="automacao-section" class="content-section">
+                <h3 class="mb-4">Automação de Mensagens (WhatsApp)</h3>
+                <div class="row">
+                    <div class="col-lg-5">
+                        <div class="card border-success shadow-sm">
+                            <div class="card-header bg-success text-white"><h5 class="mb-0"><i class="bi bi-robot"></i> Nova Regra de Evento</h5></div>
+                            <div class="card-body">
+                                <form id="form-regra-automacao">
+                                    <input type="hidden" id="regra_auto_id">
+                                    <div class="mb-3"><label class="form-label fw-bold">Nome da Regra</label><input type="text" class="form-control" id="regra_nome" placeholder="Ex: Aviso Backoffice - Novo CDOI" required></div>
+                                    <div class="row g-2 mb-3">
+                                        <div class="col-md-8"><label class="form-label fw-bold">Evento Gatilho</label><select id="regra_evento" class="form-select" required><option value="NOVO_CDOI">Novo CDOI Cadastrado (Record Vertical)</option></select></div>
+                                        <div class="col-md-4"><label class="form-label fw-bold">Status</label><select id="regra_ativo" class="form-select"><option value="true">Ativo</option><option value="false">Inativo</option></select></div>
+                                    </div>
+                                    <div class="mb-3"><label class="form-label fw-bold d-flex justify-content-between">Grupos de Destino (WhatsApp) <button type="button" class="btn btn-xs btn-outline-secondary" onclick="carregarGruposExternos()"><i class="bi bi-arrow-clockwise"></i> Atualizar Lista</button></label><select id="regra_grupos" class="form-select" multiple style="height: 120px;"><option value="" disabled>Clique em atualizar para buscar...</option></select><div class="form-text small">Segure Ctrl para selecionar vários.</div></div>
+                                    <div class="mb-3"><label class="form-label fw-bold">Números Individuais (Opcional)</label><input type="text" class="form-control" id="regra_numeros" placeholder="Ex: 553199999999, 551188888888"><div class="form-text small">Separe por vírgula. Use DDI (55).</div></div>
+                                    <div class="mb-3"><label class="form-label fw-bold">Mensagem Personalizada</label><div class="bg-light p-2 border rounded mb-2 small text-secondary"><strong>Variáveis Disponíveis:</strong><br><code>{id}</code>, <code>{cliente}</code>, <code>{sindico}</code>, <code>{contato}</code>, <code>{total_hps}</code>, <code>{usuario}</code>, <code>{cidade}</code>, <code>{link}</code></div><textarea id="regra_msg" class="form-control" rows="5" required>🔔 *NOVO CDOI*&#13;&#10;Cliente: {cliente}&#13;&#10;Resp: {usuario}&#13;&#10;Link: {link}</textarea></div>
+                                    <div class="d-grid gap-2"><button type="submit" class="btn btn-success">Salvar Regra</button><button type="button" class="btn btn-outline-secondary" onclick="resetFormRegraAuto()">Limpar</button></div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-7">
+                        <div class="card"><div class="card-header bg-white fw-bold">Regras Ativas</div><div class="card-body p-0 table-responsive"><table class="table table-hover align-middle mb-0"><thead class="table-light"><tr><th>Nome / Evento</th><th>Destinos</th><th>Status</th><th class="text-end">Ações</th></tr></thead><tbody id="lista-regras-auto"></tbody></table></div></div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="relatorios-section" class="content-section">
+                <h3 class="mb-4">Relatórios Gerenciais</h3>
+                <div class="card">
+                    <div class="card-header"><ul class="nav nav-tabs card-header-tabs" id="relatoriosTabs" role="tablist"><li class="nav-item"><button class="nav-link active" id="tab-rel-financeiro" data-bs-toggle="tab" data-bs-target="#content-rel-financeiro" type="button"><i class="bi bi-cash-coin"></i> Financeiro (Presença)</button></li><li class="nav-item"><button class="nav-link" id="tab-rel-campanhas" data-bs-toggle="tab" data-bs-target="#content-rel-campanhas" type="button" onclick="carregarOpcoesCampanhasRelatorio()"><i class="bi bi-trophy"></i> Resultado de Campanhas</button></li></ul></div>
+                    <div class="card-body">
+                        <div class="tab-content">
+                            <div class="tab-pane fade show active" id="content-rel-financeiro">
+                                <div class="card p-3 mb-4 bg-light border"><div class="row g-3 align-items-end"><div class="col-md-3"><label class="form-label fw-bold">Data Início</label><input type="date" id="finDataInicio" class="form-control"></div><div class="col-md-3"><label class="form-label fw-bold">Data Fim</label><input type="date" id="finDataFim" class="form-control"></div><div class="col-md-3"><button class="btn btn-primary w-100" onclick="carregarRelatorioFinanceiro()"><i class="bi bi-search"></i> Pesquisar</button></div><div class="col-md-3"><button class="btn btn-success w-100" onclick="baixarExcelFinanceiro()"><i class="bi bi-file-earmark-excel"></i> Baixar Excel</button></div></div></div>
+                                <div class="card mb-4" id="cardPrevisao" style="display:none;"><div class="card-header bg-info text-white"><h5 class="mb-0">Previsão</h5></div><div class="card-body p-0 table-responsive"><table class="table table-hover mb-0"><thead class="table-light"><tr><th>Nome</th><th>Dias Úteis</th><th>Valor Diário</th><th>Valor Total Previsto</th></tr></thead><tbody id="tbodyPrevisao"></tbody></table></div></div>
+                                <div class="card mb-4" id="cardDescontos" style="display:none;"><div class="card-header bg-danger text-white"><h5 class="mb-0">Pagamento Final</h5></div><div class="card-body p-0 table-responsive"><table class="table table-hover mb-0"><thead class="table-light"><tr><th>Nome</th><th>Dias Úteis</th><th>Qtd Faltas</th><th>Valor Diário</th><th>Valor Desconto</th><th>Total a Receber</th></tr></thead><tbody id="tbodyDescontos"></tbody></table></div></div>
+                            </div>
+                            <div class="tab-pane fade" id="content-rel-campanhas">
+                                <div class="row mb-4 align-items-end"><div class="col-md-6"><label class="form-label fw-bold">Selecione a Campanha:</label><div class="input-group"><select class="form-select" id="select-rel-campanha" required><option value="">Carregando...</option></select><button class="btn btn-primary" onclick="carregarResultadoCampanha()"><i class="bi bi-search"></i> Ver Resultado</button></div></div></div>
+                                <div id="resultado-campanha-container" style="display:none;"><div class="alert alert-info d-flex justify-content-between align-items-center mb-3"><div><strong id="campanha-titulo-resumo">Nome</strong><br><span class="small" id="campanha-periodo-resumo"></span></div><div class="text-end"><h3 class="m-0 text-success fw-bold" id="campanha-total-premios">R$ 0,00</h3></div></div><div class="d-flex justify-content-between align-items-center mb-2 p-2 bg-white rounded shadow-sm border"><div class="form-check"><input class="form-check-input" type="checkbox" id="check-all-relatorio" onclick="toggleSelecaoRelatorio(this)"><label class="form-check-label small fw-bold" for="check-all-relatorio">SELECIONAR TODOS</label></div><div><button class="btn btn-success btn-sm" onclick="enviarResultadoWhatsappSelecionados()"><i class="bi bi-whatsapp"></i> Enviar Resultado para <span id="count-wpp">0</span> Vendedores</button></div></div><div class="table-responsive border rounded"><table class="table table-hover align-middle mb-0"><thead class="table-light"><tr><th style="width: 40px;">#</th><th class="text-center" style="width: 50px;">Rank</th><th>Vendedor</th><th class="text-center">Vendas Válidas</th><th class="text-center">Meta</th><th>Progresso</th><th class="text-end">Prêmio (R$)</th></tr></thead><tbody id="tbody-resultado-campanha"></tbody></table></div></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <div class="modal fade" id="userModal" tabindex="-1">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable" style="max-width: 90%;">
+            <div class="modal-content">
+                <div class="modal-header bg-light border-bottom">
+                    <h5 class="modal-title fw-bold" id="userModalTitle">Novo Usuário</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <ul class="nav nav-tabs nav-fill" id="userModalTabs" role="tablist">
+                        <li class="nav-item">
+                            <button class="nav-link active fw-bold" id="dados-tab" data-bs-toggle="tab" data-bs-target="#dados-content" type="button">Dados Pessoais</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link fw-bold" id="financeiro-tab" data-bs-toggle="tab" data-bs-target="#financeiro-content" type="button">Financeiro</button>
+                        </li>
+                    </ul>
+                    <form id="user-form">
+                        <input type="hidden" id="user_id">
+                        <div class="tab-content p-4">
+                            <!-- TAB: DADOS PESSOAIS -->
+                            <div class="tab-pane fade show active" id="dados-content">
+                                <div class="row g-3">
+                                    <div class="col-12">
+                                        <label class="form-label fw-bold">Nome Completo</label>
+                                        <input type="text" class="form-control" id="nome_completo" required>
+                                    </div>
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label fw-bold">CPF</label>
+                                        <input type="text" class="form-control" id="cpf">
+                                    </div>
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label fw-bold">E-mail</label>
+                                        <input type="email" class="form-control" id="email" required>
+                                    </div>
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label fw-bold">WhatsApp</label>
+                                        <input type="text" class="form-control" id="tel_whatsapp">
+                                    </div>
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label fw-bold">Username</label>
+                                        <input type="text" class="form-control" id="usuario_login" required>
+                                    </div>
+                                    <div class="col-lg-2 col-md-4">
+                                        <label class="form-label fw-bold">Senha</label>
+                                        <input type="password" class="form-control" id="senha" placeholder="Deixe vazio se não alterar">
+                                    </div>
+                                    <div class="col-lg-2 col-md-4">
+                                        <label class="form-label fw-bold">Perfil</label>
+                                        <select class="form-select" id="perfil_id" required></select>
+                                    </div>
+                                    <div class="col-lg-2 col-md-4">
+                                        <label class="form-label fw-bold">Líder</label>
+                                        <select class="form-select" id="supervisor_id">
+                                            <option value="">Nenhum</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-lg-2 col-md-4">
+                                        <label class="form-label fw-bold">Canal</label>
+                                        <select class="form-select" id="user_canal">
+                                            <option value="PAP">PAP</option>
+                                            <option value="DIGITAL">Digital</option>
+                                            <option value="RECEPTIVO">Receptivo</option>
+                                            <option value="PARCEIRO">Parceiro</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-lg-2 col-md-4">
+                                        <label class="form-label fw-bold">Cluster</label>
+                                        <select class="form-select" id="user_cluster">
+                                            <option value="">Nenhum</option>
+                                            <option value="CLUSTER_1">CLUSTER 1</option>
+                                            <option value="CLUSTER_2">CLUSTER 2</option>
+                                            <option value="CLUSTER_3">CLUSTER 3</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-12 mt-3 pt-3 border-top">
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="participa_controle_presenca">
+                                            <label class="form-check-label fw-bold" for="participa_controle_presenca">Participa Controle Presença?</label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- TAB: FINANCEIRO -->
+                            <div class="tab-pane fade" id="financeiro-content">
+                                <div class="row g-3">
+                                    <div class="col-lg-3 col-md-4">
+                                        <label class="form-label small fw-bold">Meta</label>
+                                        <input type="number" class="form-control" id="meta_comissao">
+                                    </div>
+                                    <div class="col-lg-3 col-md-4">
+                                        <label class="form-label small fw-bold">Chave PIX</label>
+                                        <input type="text" class="form-control" id="chave_pix">
+                                    </div>
+                                    <div class="col-lg-3 col-md-4">
+                                        <label class="form-label small fw-bold">Titular</label>
+                                        <input type="text" class="form-control" id="nome_da_conta">
+                                    </div>
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label small fw-bold">Almoço</label>
+                                        <input type="number" class="form-control" id="valor_almoco" step="0.01">
+                                    </div>
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label small fw-bold">Passagem</label>
+                                        <input type="number" class="form-control" id="valor_passagem" step="0.01">
+                                    </div>
+
+                                    <div class="col-12">
+                                        <hr class="text-muted">
+                                        <h6 class="text-secondary small text-uppercase fw-bold">Descontos</h6>
+                                    </div>
+
+                                    <div class="col-lg-2 col-md-4">
+                                        <label class="form-label small">Desc. Boleto</label>
+                                        <input type="number" class="form-control" id="desconto_boleto" step="0.01">
+                                    </div>
+                                    <div class="col-lg-2 col-md-4">
+                                        <label class="form-label small">Desc. Viab.</label>
+                                        <input type="number" class="form-control" id="desconto_inclusao_viabilidade" step="0.01">
+                                    </div>
+                                    <div class="col-lg-2 col-md-4">
+                                        <label class="form-label small">Desc. Antecip.</label>
+                                        <input type="number" class="form-control" id="desconto_instalacao_antecipada" step="0.01">
+                                    </div>
+                                    <div class="col-lg-2 col-md-4">
+                                        <label class="form-label small">Adiant. CNPJ</label>
+                                        <input type="number" class="form-control" id="adiantamento_cnpj" step="0.01">
+                                    </div>
+                                    <div class="col-lg-2 col-md-4">
+                                        <label class="form-label small">Desc. INSS</label>
+                                        <input type="number" class="form-control" id="desconto_inss_fixo" step="0.01">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" form="user-form" class="btn btn-primary px-4">Salvar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="perfilModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="modal-perfil-titulo">Perfil</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="perfilForm"><input type="hidden" id="modal_perfil_id"><div class="mb-3"><label class="form-label fw-bold">Nome</label><input type="text" class="form-control" id="modal_perfil_nome" required></div><div class="mb-3"><label class="form-label fw-bold text-primary">Permissões</label><input type="text" id="filtro-permissoes" class="form-control form-control-sm mb-2" placeholder="Buscar..."><div id="lista-permissoes" class="perm-list"></div></div></form></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button type="button" class="btn btn-primary" onclick="salvarPerfil()">Salvar</button></div></div></div></div>
+    <div class="modal fade" id="excluirPerfilModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Confirmar Exclusão</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>Excluir o perfil "<strong id="nome-perfil-excluir"></strong>"?</p><input type="hidden" id="id-perfil-excluir"></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button type="button" class="btn btn-danger" id="btn-confirmar-exclusao-perfil">Excluir</button></div></div></div></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
+    <script src="{% static 'js/auth.js' %}?v=7.0"></script>
+    <script src="{% static 'js/menu.js' %}?v=7.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    
+    <script>
+    const apiUrl = '';
+
+    function fmtMoeda(valor) {
+        if (valor === null || valor === undefined || valor === '') return 'R$ 0,00';
+        return parseFloat(valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    }
+    
+    function openTab(evt, tabName) {
+        evt.preventDefault();
+        const parent = evt.currentTarget.closest('.card');
+        parent.querySelectorAll('.tab-content').forEach(t => { t.classList.remove("active"); t.style.display = "none"; });
+        parent.querySelectorAll('.nav-link').forEach(l => l.classList.remove("active"));
+        const target = document.getElementById(tabName);
+        if(target){ target.style.display = "block"; target.classList.add("active"); }
+        evt.currentTarget.classList.add("active");
+        
+        // Carregar dados das abas
+        if(tabName === 'formasPagamento') carregarFormasPagamento();
+        if(tabName === 'status') carregarStatus();
+        if(tabName === 'pendencias') carregarMotivosPendencia();
+    }
+
+    function mostrarSecao(event, idSecao, menuItem) {
+        if (event) event.preventDefault();
+        document.querySelectorAll('.content-section').forEach(s => s.classList.remove('active'));
+        const secaoAlvo = document.getElementById(`${idSecao}-section`);
+        if (secaoAlvo) secaoAlvo.classList.add('active');
+        document.querySelectorAll('.admin-nav-link').forEach(l => l.classList.remove('active'));
+        if (menuItem) menuItem.classList.add('active');
+    }
+
+    async function apiFetch(endpoint, options = {}) {
+        const headers = { 'Content-Type': 'application/json', ...options.headers };
+        const token = localStorage.getItem('accessToken');
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        try {
+            let finalEndpoint = endpoint;
+            if (!endpoint.startsWith('/api')) {
+                const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+                finalEndpoint = `/api${cleanEndpoint}`;
+            }
+            const fetchUrl = `${apiUrl}${finalEndpoint}`; 
+            const response = await fetch(fetchUrl, { ...options, headers });
+            if (options.isBlob) {
+                if (!response.ok) throw new Error('Erro no download.');
+                return await response.blob();
+            }
+            if (options.body instanceof FormData) delete headers['Content-Type'];
+            let responseData = {};
+            const contentType = response.headers.get("content-type");
+            if (contentType && contentType.indexOf("application/json") !== -1) {
+                try { responseData = await response.clone().json(); } catch (e) { }
+            }
+            if (response.status === 401) { alert('Sessão expirada.'); logout(); throw new Error('Não autorizado'); }
+            if (!response.ok) {
+                const errorData = responseData || await response.text();
+                throw new Error(errorData.detail || errorData.error || (typeof errorData === 'string' ? errorData : JSON.stringify(errorData)));
+            }
+            if (response.status === 204) return null;
+            return responseData;
+        } catch (e) { throw e; }
+    }
+    
+    const token = localStorage.getItem('accessToken');
+    if (!token) window.location.href = '/';
+    const decodedToken = jwt_decode(token);
+    const userProfile = decodedToken ? decodedToken.perfil : null;
+    const isSuperuser = decodedToken ? decodedToken.is_superuser : false;
+    
+    if (decodedToken && decodedToken.username) { 
+         const wel = document.getElementById('welcome-user');
+         if(wel) wel.textContent = `Olá, ${decodedToken.username}`; 
+    }
+
+    if (!userProfile || !['Diretoria', 'Admin'].includes(userProfile) && !isSuperuser) {
+        alert('Acesso negado.'); window.location.href = '/area-interna/';
+    }
+
+    // Variáveis Globais
+    const API_GRUPOS = '/grupos/';
+    const API_PERMISSOES = '/permissoes/';
+    let todosUsuariosCache = []; 
+    let todasPermissoes = [];
+    const perfilModal = new bootstrap.Modal(document.getElementById('perfilModal'));
+    const excluirPerfilModal = new bootstrap.Modal(document.getElementById('excluirPerfilModal'));
+    const userModal = new bootstrap.Modal(document.getElementById('userModal'));
+    const userForm = document.getElementById('user-form');
+
+    // --- FUNÇÕES DE PERFIS ---
+    async function carregarPerfis() {
+        const tbody = document.getElementById('perfis-tabela-corpo');
+        tbody.innerHTML = '<tr><td colspan="3" class="text-center py-3">Carregando...</td></tr>';
+        try {
+            const res = await apiFetch(API_GRUPOS);
+            const grupos = Array.isArray(res) ? res : (res?.results || []);
+            tbody.innerHTML = '';
+            const selectMassa = document.getElementById('novo-perfil-massa');
+            selectMassa.innerHTML = '<option value="">Alterar Perfil para...</option>';
+            if(grupos.length === 0) { tbody.innerHTML = '<tr><td colspan="3">Nenhum perfil.</td></tr>'; return; }
+            grupos.forEach(grupo => {
+                const badges = grupo.permissions_details.map(p => `<span class=\"badge bg-info text-dark badge-perm\">${formatarNomePermissao(p.name)}</span>`).join('');
+                selectMassa.add(new Option(grupo.name, grupo.id));
+                tbody.innerHTML += `<tr><td class=\"fw-bold text-primary\">${grupo.name}</td><td>${badges || 'Sem permissões'}</td><td class=\"text-end\"><button class=\"btn btn-xs btn-editar me-1\" onclick='editarPerfil(${JSON.stringify(grupo)})'><i class=\"bi bi-pencil\"></i></button><button class=\"btn btn-xs btn-excluir\" onclick=\"confirmarExclusaoPerfil(${grupo.id}, '${grupo.name}')\"><i class=\"bi bi-trash\"></i></button></td></tr>`;
+            });
+        } catch (e) { tbody.innerHTML = '<tr><td colspan="3">Erro ao carregar perfis.</td></tr>'; }
+    }
+
+    async function abrirModalPerfil(grupo = null) {
+        document.getElementById('modal-perfil-titulo').textContent = grupo ? 'Editar Perfil' : 'Novo Perfil';
+        document.getElementById('modal_perfil_id').value = grupo ? grupo.id : '';
+        document.getElementById('modal_perfil_nome').value = grupo ? grupo.name : '';
+        document.getElementById('filtro-permissoes').value = '';
+        const container = document.getElementById('lista-permissoes');
+        container.innerHTML = 'Carregando...';
+        perfilModal.show();
+        if (todasPermissoes.length === 0) { try { todasPermissoes = await apiFetch(API_PERMISSOES); } catch(e) { container.innerHTML = 'Erro'; return; } }
+        renderizarListaPermissoes(grupo ? grupo.permissions : []);
+    }
+    
+    function renderizarListaPermissoes(permsAtuais) {
+        const container = document.getElementById('lista-permissoes');
+        container.innerHTML = '';
+        todasPermissoes.forEach(p => {
+            const isChecked = permsAtuais.includes(p.id) ? 'checked' : '';
+            container.innerHTML += `<div class="perm-item form-check"><input class="form-check-input" type="checkbox" value="${p.id}" id="perm-${p.id}" ${isChecked}><label class="form-check-label perm-label" for="perm-${p.id}">${formatarNomePermissao(p.name)}</label></div>`;
+        });
+    }
+
+    window.editarPerfil = (grupo) => abrirModalPerfil(grupo);
+    document.getElementById('btn-adicionar-perfil').onclick = () => abrirModalPerfil(null);
+
+    async function salvarPerfil() {
+        const id = document.getElementById('modal_perfil_id').value;
+        const nome = document.getElementById('modal_perfil_nome').value;
+        const perms = Array.from(document.querySelectorAll('#lista-permissoes input:checked')).map(el => parseInt(el.value));
+        if (!nome) return alert('Nome obrigatório.');
+        try {
+            const method = id ? 'PATCH' : 'POST';
+            const url = id ? `${API_GRUPOS}${id}/` : API_GRUPOS;
+            await apiFetch(url, { method, body: JSON.stringify({ name: nome, permissions: perms }) });
+            perfilModal.hide(); carregarPerfis();
+        } catch (e) { alert('Erro ao salvar perfil.'); }
+    }
+
+    window.confirmarExclusaoPerfil = (id, nome) => { document.getElementById('id-perfil-excluir').value = id; document.getElementById('nome-perfil-excluir').textContent = nome; excluirPerfilModal.show(); };
+    document.getElementById('btn-confirmar-exclusao-perfil').onclick = async () => { const id = document.getElementById('id-perfil-excluir').value; try { await apiFetch(`${API_GRUPOS}${id}/`, { method: 'DELETE' }); excluirPerfilModal.hide(); carregarPerfis(); } catch(e){ alert(e.message); } };
+    function formatarNomePermissao(nome) { return nome.replace('Can view', 'Visualizar').replace('Can add', 'Adicionar').replace('Can change', 'Editar').replace('Can delete', 'Excluir').replace('Pode visualizar', 'Acesso a'); }
+
+    // --- FUNÇÕES DE USUÁRIOS ---
+    function mostrarListaUsuarios(status, btn) {
+        document.getElementById('lista-status-titulo').textContent = status === 'ativos' ? 'Ativos' : 'Inativos';
+        if(btn) { btn.parentElement.querySelectorAll('.btn').forEach(b => b.classList.remove('active', 'btn-outline-primary')); btn.classList.add('active', 'btn-outline-primary'); }
+        // Limpar campo de busca ao trocar de aba
+        const campoBusca = document.getElementById('busca-usuario');
+        if (campoBusca) campoBusca.value = '';
+        carregarUsuarios(status);
+    }
+
+    async function carregarUsuarios(status = 'ativos') { 
+        try { 
+            const res = await apiFetch(`/usuarios/?is_active=${status === 'ativos'}`); 
+            const dados = Array.isArray(res) ? res : (res?.results || []);
+            if (dados.length === 0) {
+                console.warn('Nenhum dado encontrado para /usuarios/?is_active=' + (status === 'ativos'));
+            }
+            todosUsuariosCache = dados;
+            renderizarTabelaUsuarios(todosUsuariosCache, status);
+        } catch (e) { 
+            document.getElementById('user-list-body').innerHTML = `<tr><td colspan="7">Erro: ${e.message}</td></tr>`;
+        }
+    }
+
+    function renderizarTabelaUsuarios(lista, status) {
+        const userListBody = document.getElementById('user-list-body'); 
+        userListBody.innerHTML = '';
+        const isAtivos = status === 'ativos';
+        const headerRow = document.getElementById('user-list-header');
+        headerRow.innerHTML = isAtivos 
+            ? `<th style="width: 40px;"><input type="checkbox" id="check-all" onclick="toggleTodos(this)"></th><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Canal</th><th>Líder</th><th class="text-end">Ações</th>` 
+            : `<th>Nome</th><th>E-mail</th><th>Perfil</th><th>Canal</th><th class="text-end">Ações</th>`;
+        
+        if (!lista.length) { userListBody.innerHTML = '<tr><td colspan="7">Nenhum usuário.</td></tr>'; return; }
+
+        lista.forEach(user => {
+            const perfil = user.groups?.[0]?.name || user.perfil_nome || 'Sem Perfil';
+            const acoes = isAtivos 
+                ? `<button class="btn btn-xs btn-editar me-1" onclick="editarUsuarioPeloId(${user.id})"><i class="bi bi-pencil"></i></button><button class="btn btn-xs btn-excluir" onclick="inativarUsuario(${user.id})"><i class="bi bi-trash"></i></button>` 
+                : `<button class="btn btn-xs btn-outline-success" onclick="reativarUsuario(${user.id})"><i class="bi bi-check-circle"></i></button>`;
+            const check = isAtivos ? `<td><input type="checkbox" class="user-check" value="${user.id}"></td>` : '';
+            userListBody.innerHTML += `<tr>${check}<td>${user.nome_completo}</td><td>${user.email}</td><td>${perfil}</td><td>${user.canal||'-'}</td><td>${user.supervisor_nome||'-'}</td><td class="text-end">${acoes}</td></tr>`;
+        });
+    }
+
+    function filtrarUsuarios() {
+        const termoBusca = document.getElementById('busca-usuario').value.toLowerCase().trim();
+        const statusAtual = document.getElementById('lista-status-titulo').textContent.includes('Ativos') ? 'ativos' : 'inativos';
+        
+        if (!termoBusca) {
+            renderizarTabelaUsuarios(todosUsuariosCache, statusAtual);
+            return;
+        }
+        
+        const usuariosFiltrados = todosUsuariosCache.filter(user => {
+            const nome = (user.nome_completo || '').toLowerCase();
+            const email = (user.email || '').toLowerCase();
+            const perfil = (user.groups?.[0]?.name || user.perfil_nome || '').toLowerCase();
+            const canal = (user.canal || '').toLowerCase();
+            const supervisor = (user.supervisor_nome || '').toLowerCase();
+            
+            return nome.includes(termoBusca) || 
+                   email.includes(termoBusca) || 
+                   perfil.includes(termoBusca) ||
+                   canal.includes(termoBusca) ||
+                   supervisor.includes(termoBusca);
+        });
+        
+        renderizarTabelaUsuarios(usuariosFiltrados, statusAtual);
+    }
+
+    function editarUsuarioPeloId(id) { const user = todosUsuariosCache.find(u => u.id === id); if (user) abrirModalUsuario(user); }
+    window.toggleTodos = (s) => document.querySelectorAll('.user-check').forEach(c => c.checked = s.checked);
+    window.aplicarMudancaPerfilEmMassa = async () => { 
+        const novoPerfil = document.getElementById('novo-perfil-massa').value;
+        const ids = Array.from(document.querySelectorAll('.user-check:checked')).map(c => c.value);
+        if (!novoPerfil || !ids.length) return alert('Selecione perfil e usuários.');
+        for (const uid of ids) await apiFetch(`/usuarios/${uid}/`, { method: 'PATCH', body: JSON.stringify({ groups: [parseInt(novoPerfil)] }) });
+        alert('Atualizado.'); carregarUsuarios('ativos'); 
+    };
+
+    async function abrirModalUsuario(user = null) {
+        document.getElementById('user-form').reset();
+        document.getElementById('user_id').value = user ? user.id : '';
+        document.getElementById('userModalTitle').textContent = user ? 'Editar Usuário' : 'Novo Usuário';
+        await carregarDadosParaFormulario();
+        if (user) {
+            document.getElementById('nome_completo').value = user.nome_completo || '';
+            document.getElementById('cpf').value = user.cpf || '';
+            document.getElementById('email').value = user.email || '';
+            document.getElementById('tel_whatsapp').value = user.tel_whatsapp || '';
+            document.getElementById('usuario_login').value = user.username || '';
+            if (user.groups && user.groups.length > 0) document.getElementById('perfil_id').value = user.groups[0].id;
+            document.getElementById('supervisor_id').value = user.supervisor || '';
+            document.getElementById('user_canal').value = user.canal || 'PAP';
+            document.getElementById('user_cluster').value = user.cluster || '';
+            document.getElementById('participa_controle_presenca').checked = user.participa_controle_presenca;
+            ['valor_almoco', 'valor_passagem', 'chave_pix', 'nome_da_conta', 'meta_comissao', 'desconto_boleto', 'desconto_inclusao_viabilidade', 'desconto_instalacao_antecipada', 'adiantamento_cnpj', 'desconto_inss_fixo'].forEach(id => { document.getElementById(id).value = user[id] || ''; });
+        }
+        userModal.show();
+    }
+
+    async function carregarDadosParaFormulario() {
+        const pSelect = document.getElementById('perfil_id');
+        const sSelect = document.getElementById('supervisor_id');
+        pSelect.innerHTML = ''; sSelect.innerHTML = '<option value="">Nenhum</option>';
+        try {
+            const [grupos, usuarios] = await Promise.all([ apiFetch(API_GRUPOS), apiFetch('/usuarios/?is_active=true') ]);
+            grupos.forEach(g => pSelect.add(new Option(g.name, g.id)));
+            usuarios.forEach(u => sSelect.add(new Option(u.nome_completo, u.id)));
+        } catch (e) {}
+    }
+
+    userForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const id = document.getElementById('user_id').value;
+        const nomeCompleto = document.getElementById('nome_completo').value.trim();
+        const parts = nomeCompleto.split(' ');
+        const body = {
+            first_name: parts.shift(), last_name: parts.join(' '),
+            cpf: document.getElementById('cpf').value,
+            email: document.getElementById('email').value,
+            tel_whatsapp: document.getElementById('tel_whatsapp').value,
+            username: document.getElementById('usuario_login').value,
+            supervisor: document.getElementById('supervisor_id').value || null,
+            canal: document.getElementById('user_canal').value,
+            cluster: document.getElementById('user_cluster').value || null,
+            groups: document.getElementById('perfil_id').value ? [parseInt(document.getElementById('perfil_id').value)] : [],
+            valor_almoco: document.getElementById('valor_almoco').value,
+            valor_passagem: document.getElementById('valor_passagem').value,
+            chave_pix: document.getElementById('chave_pix').value,
+            nome_da_conta: document.getElementById('nome_da_conta').value,
+            meta_comissao: document.getElementById('meta_comissao').value,
+            desconto_boleto: document.getElementById('desconto_boleto').value,
+            desconto_inclusao_viabilidade: document.getElementById('desconto_inclusao_viabilidade').value,
+            desconto_instalacao_antecipada: document.getElementById('desconto_instalacao_antecipada').value,
+            adiantamento_cnpj: document.getElementById('adiantamento_cnpj').value,
+            desconto_inss_fixo: document.getElementById('desconto_inss_fixo').value,
+            participa_controle_presenca: document.getElementById('participa_controle_presenca').checked
+        };
+        if (document.getElementById('senha').value) body.password = document.getElementById('senha').value;
+        try { 
+            await apiFetch(id ? `/usuarios/${id}/` : '/usuarios/', { method: id ? 'PUT' : 'POST', body: JSON.stringify(body) }); 
+            userModal.hide(); carregarUsuarios('ativos'); 
+        } catch (e) { alert(`Erro: ${e.message}`); }
+    });
+
+    async function inativarUsuario(id) { if(confirm('Inativar?')) { await apiFetch(`/usuarios/${id}/`, { method: 'DELETE' }); carregarUsuarios('ativos'); } }
+    async function reativarUsuario(id) { if(confirm('Reativar?')) { await apiFetch(`/usuarios/${id}/reativar/`, { method: 'PUT' }); carregarUsuarios('inativos'); } }
+
+    // --- CADASTROS GERAIS ---
+    async function carregarOperadoras() {
+        const res = await apiFetch('/crm/operadoras/');
+        const lista = Array.isArray(res) ? res : (res?.results || []);
+        const tbody = document.getElementById('lista-operadoras'); tbody.innerHTML = '';
+        const selPlanos = document.getElementById('plano_operadora_id'); selPlanos.innerHTML = '<option value="">Selecione...</option>';
+        lista.forEach(o => {
+            tbody.innerHTML += `<tr><td>${o.nome}</td><td>${o.cnpj || '-'}</td><td>${o.ativo?'Ativo':'Inativo'}</td><td><button class="btn btn-sm btn-editar me-1" onclick='editarOperadora(${JSON.stringify(o)})'>✏️</button><button class="btn btn-sm btn-excluir" onclick="excluirOperadora(${o.id})">🗑️</button></td></tr>`;
+            if(o.ativo) selPlanos.add(new Option(o.nome, o.id));
+        });
+    }
+    document.getElementById('form-operadora').onsubmit = async(e) => {
+        e.preventDefault();
+        const id = document.getElementById('operadora_id').value;
+        const body = { nome: document.getElementById('operadora_nome').value, cnpj: document.getElementById('operadora_cnpj').value, ativo: document.getElementById('operadora_status').value == '1' };
+        await apiFetch(id ? `/crm/operadoras/${id}/` : '/crm/operadoras/', {method: id?'PUT':'POST', body: JSON.stringify(body)});
+        document.getElementById('form-operadora').reset(); document.getElementById('operadora_id').value=''; carregarOperadoras();
+    };
+    window.editarOperadora = (o) => { document.getElementById('operadora_id').value=o.id; document.getElementById('operadora_nome').value=o.nome; document.getElementById('operadora_cnpj').value=o.cnpj; document.getElementById('operadora_status').value = o.ativo ? '1' : '0'; };
+    window.excluirOperadora = async (id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/operadoras/${id}/`, {method:'DELETE'}); carregarOperadoras(); } };
+
+    async function carregarPlanos() {
+        const res = await apiFetch('/crm/planos/');
+        const lista = Array.isArray(res) ? res : (res?.results || []);
+        const tbody = document.getElementById('lista-planos'); tbody.innerHTML = '';
+        lista.forEach(p => {
+            tbody.innerHTML += `<tr><td>${p.nome}</td><td>${p.operadora_nome || '-'}</td><td>${fmtMoeda(p.valor)}</td><td>${fmtMoeda(p.comissao)}</td><td><button class="btn btn-sm btn-editar me-1" onclick='editarPlano(${JSON.stringify(p)})'>✏️</button><button class="btn btn-sm btn-excluir" onclick="excluirPlano(${p.id})">🗑️</button></td></tr>`;
+        });
+    }
+    document.getElementById('form-plano').onsubmit = async(e) => {
+        e.preventDefault();
+        const id = document.getElementById('plano_id').value;
+        const body = { nome: document.getElementById('plano_nome').value, valor: document.getElementById('plano_valor').value, comissao: document.getElementById('plano_comissao').value, operadora: document.getElementById('plano_operadora_id').value, ativo: true };
+        await apiFetch(id ? `/crm/planos/${id}/` : '/crm/planos/', {method: id?'PUT':'POST', body: JSON.stringify(body)});
+        document.getElementById('form-plano').reset(); document.getElementById('plano_id').value=''; carregarPlanos();
+    };
+    window.editarPlano = (p) => { document.getElementById('plano_id').value = p.id; document.getElementById('plano_nome').value = p.nome; document.getElementById('plano_valor').value = p.valor; document.getElementById('plano_comissao').value = p.comissao; document.getElementById('plano_operadora_id').value = p.operadora; };
+    window.excluirPlano = async (id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/planos/${id}/`, {method:'DELETE'}); carregarPlanos(); } };
+
+    async function carregarFormasPagamento() {
+        const res = await apiFetch('/crm/formas-pagamento/');
+        const lista = Array.isArray(res) ? res : (res?.results || []);
+        const ul = document.getElementById('lista-formas-pagamento'); ul.innerHTML = '';
+        lista.forEach(f => ul.innerHTML += `<li class="list-group-item d-flex justify-content-between align-items-center">${f.nome} <div class="d-flex gap-2"><button class="btn btn-sm btn-editar" onclick="editarFormaPagamento(${f.id}, '${f.nome}')"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-excluir" onclick="excluirFormaPagamento(${f.id})"><i class="bi bi-trash"></i></button></div></li>`);
+    }
+    window.editarFormaPagamento = async(id, nome) => {
+        const novoNome = prompt('Novo nome:', nome);
+        if(novoNome && novoNome !== nome) {
+            await apiFetch(`/crm/formas-pagamento/${id}/`, {method:'PATCH', body:JSON.stringify({nome: novoNome})});
+            carregarFormasPagamento();
+        }
+    };
+    document.getElementById('btn-salvar-forma-pagamento').onclick = async () => {
+        const nome = document.getElementById('nova-forma-pagamento-nome').value;
+        if(nome) await apiFetch('/crm/formas-pagamento/', {method:'POST', body:JSON.stringify({nome, ativo:true})});
+        document.getElementById('nova-forma-pagamento-nome').value=''; carregarFormasPagamento();
+    };
+    window.excluirFormaPagamento = async(id)=>{ if(confirm('Excluir?')) { await apiFetch(`/crm/formas-pagamento/${id}/`, {method:'DELETE'}); carregarFormasPagamento(); } };
+
+    let listaStatusGlobal = [];
+    async function carregarStatus() {
+        const res = await apiFetch('/crm/status/');
+        const lista = Array.isArray(res) ? res : (res?.results || []);
+        listaStatusGlobal = lista;
+        const tbody = document.getElementById('lista-status'); tbody.innerHTML = '';
+        lista.forEach(s => tbody.innerHTML += `<tr><td>${s.nome}</td><td>${s.tipo}</td><td>${s.estado||'-'}</td><td><span class="badge" style="background:${s.cor};color:#000">${s.cor}</span></td><td class="text-end"><button class="btn btn-sm btn-editar me-1" onclick="editarStatus(${s.id})"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-excluir" onclick="excluirStatus(${s.id})"><i class="bi bi-trash"></i></button></td></tr>`);
+    }
+    window.editarStatus = (id) => {
+        const s = listaStatusGlobal.find(item => item.id === id);
+        if(!s) return;
+        document.getElementById('status_id').value = s.id;
+        document.getElementById('status_nome').value = s.nome;
+        document.getElementById('status_tipo').value = s.tipo;
+        document.getElementById('status_estado').value = s.estado || '';
+        document.getElementById('status_cor').value = s.cor;
+        document.getElementById('status').scrollIntoView({behavior:'smooth'});
+    };
+    document.getElementById('form-status').onsubmit = async(e) => {
+        e.preventDefault();
+        const id = document.getElementById('status_id').value;
+        const body = { nome: document.getElementById('status_nome').value, tipo: document.getElementById('status_tipo').value, estado: document.getElementById('status_estado').value, cor: document.getElementById('status_cor').value };
+        if(id) {
+            await apiFetch(`/crm/status/${id}/`, {method:'PATCH', body: JSON.stringify(body)});
+        } else {
+            await apiFetch('/crm/status/', {method:'POST', body: JSON.stringify(body)});
+        }
+        document.getElementById('form-status').reset(); carregarStatus();
+    };
+    window.excluirStatus = async(id)=>{ if(confirm('Excluir?')) { await apiFetch(`/crm/status/${id}/`, {method:'DELETE'}); carregarStatus(); } };
+
+    let listaPendenciasGlobal = [];
+    async function carregarMotivosPendencia() {
+        const res = await apiFetch('/crm/motivos-pendencia/');
+        const lista = Array.isArray(res) ? res : (res?.results || []);
+        listaPendenciasGlobal = lista;
+        const tbody = document.getElementById('lista-pendencias'); tbody.innerHTML = '';
+        lista.forEach(p => tbody.innerHTML += `<tr><td>${p.nome}</td><td>${p.tipo_pendencia}</td><td class="text-end"><button class="btn btn-sm btn-editar me-1" onclick="editarPendencia(${p.id})"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-excluir" onclick="excluirPendencia(${p.id})"><i class="bi bi-trash"></i></button></td></tr>`);
+    }
+    window.editarPendencia = (id) => {
+        const p = listaPendenciasGlobal.find(item => item.id === id);
+        if(!p) return;
+        document.getElementById('pendencia_id').value = p.id;
+        document.getElementById('pendencia_nome').value = p.nome;
+        document.getElementById('pendencia_tipo').value = p.tipo_pendencia;
+        document.getElementById('pendencias').scrollIntoView({behavior:'smooth'});
+    };
+    document.getElementById('form-pendencia').onsubmit = async(e) => {
+        e.preventDefault();
+        const id = document.getElementById('pendencia_id').value;
+        const body = { nome: document.getElementById('pendencia_nome').value, tipo_pendencia: document.getElementById('pendencia_tipo').value };
+        if(id) {
+            await apiFetch(`/crm/motivos-pendencia/${id}/`, {method:'PATCH', body: JSON.stringify(body)});
+        } else {
+            await apiFetch('/crm/motivos-pendencia/', {method:'POST', body: JSON.stringify(body)});
+        }
+        document.getElementById('form-pendencia').reset(); carregarMotivosPendencia();
+    };
+    window.excluirPendencia = async(id)=>{ if(confirm('Excluir?')) { await apiFetch(`/crm/motivos-pendencia/${id}/`, {method:'DELETE'}); carregarMotivosPendencia(); } };
+
+    async function carregarRegrasComissao() {
+        const [resRegras, resPlanos, resUsers] = await Promise.all([apiFetch('/crm/regras-comissao/'), apiFetch('/crm/planos/'), apiFetch('/usuarios/?is_active=true')]);
+        const regras = Array.isArray(resRegras) ? resRegras : (resRegras?.results || []);
+        const planos = Array.isArray(resPlanos) ? resPlanos : (resPlanos?.results || []);
+        const users = Array.isArray(resUsers) ? resUsers : (resUsers?.results || []);
+        const selPlanos = document.getElementById('regra_plano_id'); selPlanos.innerHTML = '<option value="">Selecione...</option>';
+        const selUsers = document.getElementById('regra_consultor_id'); selUsers.innerHTML = '<option value="">Todos</option>';
+        planos.forEach(p => selPlanos.add(new Option(p.nome, p.id)));
+        users.forEach(u => selUsers.add(new Option(u.nome_completo, u.id)));
+        const tbody = document.getElementById('lista-regras-comissao'); tbody.innerHTML = '';
+        regras.forEach(r => tbody.innerHTML += `<tr><td>${r.consultor_nome||'TODOS'}</td><td>${r.plano_nome}</td><td>${r.tipo_venda}</td><td>${r.tipo_cliente}</td><td>${r.valor_base}</td><td>${r.valor_acelerado}</td><td><button class="btn btn-sm btn-warning me-1" onclick='editarRegra(${JSON.stringify(r)})'>✏️</button><button class="btn btn-sm btn-danger" onclick="excluirRegra(${r.id})">🗑️</button></td></tr>`);
+    }
+    document.getElementById('form-regra-comissao').onsubmit = async(e) => {
+        e.preventDefault();
+        const id = document.getElementById('regra_comissao_id').value;
+        const body = { consultor: document.getElementById('regra_consultor_id').value || null, plano: document.getElementById('regra_plano_id').value, tipo_venda: document.getElementById('regra_tipo_venda').value, tipo_cliente: document.getElementById('regra_tipo_cliente').value, valor_base: document.getElementById('regra_valor_base').value, valor_acelerado: document.getElementById('regra_valor_acelerado').value };
+        await apiFetch(id ? `/crm/regras-comissao/${id}/` : '/crm/regras-comissao/', {method: id?'PUT':'POST', body: JSON.stringify(body)});
+        carregarRegrasComissao(); resetFormRegraComissao();
+    };
+    function resetFormRegraComissao() { document.getElementById('form-regra-comissao').reset(); document.getElementById('regra_comissao_id').value = ''; }
+    window.editarRegra = (r) => { document.getElementById('regra_comissao_id').value = r.id; document.getElementById('regra_consultor_id').value = r.consultor || ""; document.getElementById('regra_plano_id').value = r.plano; document.getElementById('regra_tipo_venda').value = r.tipo_venda; document.getElementById('regra_tipo_cliente').value = r.tipo_cliente; document.getElementById('regra_valor_base').value = r.valor_base; document.getElementById('regra_valor_acelerado').value = r.valor_acelerado; document.getElementById('form-regra-comissao').scrollIntoView({ behavior: 'smooth' }); };
+    window.excluirRegra = async(id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/regras-comissao/${id}/`, {method:'DELETE'}); carregarRegrasComissao(); } };
+
+    async function carregarConfigMensal() {
+        const inputMes = document.getElementById('select_mes_config').value;
+        if(!inputMes) return;
+        const [ano, mes] = inputMes.split('-');
+        const container = document.getElementById('form-container-config-mensal');
+        container.innerHTML = '<div class="spinner-border spinner-border-sm"></div> Carregando status...';
+        try {
+            const dados = await apiFetch(`/crm/comissionamento/?ano=${ano}&mes=${mes}`);
+            const statusMes = dados.status || 'Aberto';
+            const totalPago = dados.total_pagar || 0;
+            let html = `<div class="d-flex justify-content-between align-items-center"><div>Status: <strong>${statusMes.toUpperCase()}</strong></div><div>Total Pago/Previsto: <strong>${fmtMoeda(totalPago)}</strong></div></div><hr>`;
+            if (statusMes === 'Fechado') {
+                html += `<button class="btn btn-warning w-100" onclick="acaoConfigMensal('reabrir', ${ano}, ${mes})">Reabrir Mês (Permite Edição)</button>`;
+            } else {
+                html += `<p class="small text-muted">Ao fechar o mês, as comissões são congeladas e marcadas como pagas.</p><button class="btn btn-success w-100" onclick="acaoConfigMensal('fechar', ${ano}, ${mes}, ${totalPago})">Fechar Mês e Congelar Valores</button>`;
+            }
+            container.innerHTML = html;
+        } catch(e) { container.innerHTML = `<div class="text-danger">Erro ao carregar: ${e.message}</div>`; }
+    }
+
+    async function acaoConfigMensal(acao, ano, mes, valor=0) {
+        if(!confirm(`Confirma ${acao} o mês ${mes}/${ano}?`)) return;
+        try {
+            const endpoint = acao === 'fechar' ? '/crm/fechar-pagamento/' : '/crm/reabrir-pagamento/';
+            await apiFetch(endpoint, { method: 'POST', body: JSON.stringify({ ano, mes, total_pago: valor }) });
+            alert('Sucesso!'); carregarConfigMensal();
+        } catch(e) { alert('Erro: ' + e.message); }
+    }
+
+    // --- CAMPANHAS ---
+    function adicionarFaixaCampanha(meta = '', valor = '') {
+        const tbody = document.getElementById('tbody-faixas-campanha');
+        tbody.insertAdjacentHTML('beforeend', `<tr><td><input type="number" class="form-control form-control-sm input-meta" value="${meta}" placeholder="Ex: 15" required min="1"></td><td><input type="number" class="form-control form-control-sm input-premio" value="${valor}" placeholder="Ex: 150.00" required step="0.01"></td><td class="text-center"><button type="button" class="btn btn-xs btn-outline-danger" onclick="this.closest('tr').remove()"><i class="bi bi-trash"></i></button></td></tr>`);
+    }
+    async function carregarDadosAuxiliaresCampanha() {
+        const [resPlanos, resPagamentos] = await Promise.all([apiFetch('/crm/planos/'), apiFetch('/crm/formas-pagamento/')]);
+        const planos = Array.isArray(resPlanos) ? resPlanos : (resPlanos?.results || []);
+        const pagamentos = Array.isArray(resPagamentos) ? resPagamentos : (resPagamentos?.results || []);
+        const selPlanos = document.getElementById('campanha_planos'), selPags = document.getElementById('campanha_pagamentos');
+        selPlanos.innerHTML = ''; selPags.innerHTML = '';
+        planos.filter(p=>p.ativo).forEach(p => selPlanos.add(new Option(p.nome, p.id)));
+        pagamentos.filter(fp=>fp.ativo).forEach(fp => selPags.add(new Option(fp.nome, fp.id)));
+    }
+    async function carregarCampanhas() {
+        const lista = await apiFetch('/crm/campanhas/');
+        const tbody = document.getElementById('lista-campanhas'); tbody.innerHTML = '';
+        if(!lista.length) return tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Nenhuma campanha.</td></tr>';
+        lista.forEach(c => {
+            let resumoMetas = '';
+            if (c.regras_meta && c.regras_meta.length) c.regras_meta.sort((a,b)=>b.meta-a.meta).forEach(r => resumoMetas += `<div class="small">Meta <b>${r.meta}</b>: <span class="text-success">${fmtMoeda(r.valor_premio)}</span></div>`);
+            else resumoMetas = `<div class="fw-bold">Meta: ${c.meta_vendas}</div><div class="text-success small">${fmtMoeda(c.valor_premio)}</div>`;
+            tbody.innerHTML += `<tr><td class="fw-bold">${c.nome}</td><td class="small">${c.data_inicio} <br> ${c.data_fim}</td><td>${resumoMetas}</td><td>Canal: ${c.canal_alvo}</td><td>${c.ativo?'<span class="badge bg-success">Ativa</span>':'Encerrada'}</td><td class="text-end"><button class="btn btn-sm btn-editar me-1" onclick='editarCampanha(${JSON.stringify(c)})'>✏️</button><button class="btn btn-sm btn-excluir" onclick="excluirCampanha(${c.id})">🗑️</button></td></tr>`;
+        });
+    }
+    document.getElementById('form-campanha').onsubmit = async(e) => {
+        e.preventDefault();
+        const faixas = [];
+        document.querySelectorAll('#tbody-faixas-campanha tr').forEach(tr => {
+            const m = tr.querySelector('.input-meta').value, p = tr.querySelector('.input-premio').value;
+            if(m && p) faixas.push({ meta: parseInt(m), valor_premio: parseFloat(p) });
+        });
+        if(!faixas.length) return alert("Adicione ao menos uma faixa.");
+        const id = document.getElementById('campanha_id').value;
+        const body = {
+            nome: document.getElementById('campanha_nome').value,
+            data_inicio: document.getElementById('campanha_data_inicio').value,
+            data_fim: document.getElementById('campanha_data_fim').value,
+            tipo_meta: document.getElementById('campanha_tipo_meta').value,
+            canal_alvo: document.getElementById('campanha_canal_alvo').value,
+            regras: document.getElementById('campanha_regras').value,
+            ativo: document.getElementById('campanha_ativo').value === 'true',
+            regras_meta: faixas,
+            planos_elegiveis: Array.from(document.getElementById('campanha_planos').selectedOptions).map(o=>parseInt(o.value)),
+            formas_pagamento_elegiveis: Array.from(document.getElementById('campanha_pagamentos').selectedOptions).map(o=>parseInt(o.value))
+        };
+        await apiFetch(id ? `/crm/campanhas/${id}/` : '/crm/campanhas/', {method: id?'PUT':'POST', body: JSON.stringify(body)});
+        alert('Salvo!'); resetFormCampanha(); carregarCampanhas();
+    };
+    window.editarCampanha = (c) => {
+        document.getElementById('campanha_id').value = c.id;
+        document.getElementById('campanha_nome').value = c.nome;
+        document.getElementById('campanha_data_inicio').value = c.data_inicio;
+        document.getElementById('campanha_data_fim').value = c.data_fim;
+        document.getElementById('campanha_tipo_meta').value = c.tipo_meta || 'LIQUIDA';
+        document.getElementById('campanha_canal_alvo').value = c.canal_alvo || 'TODOS';
+        document.getElementById('campanha_regras').value = c.regras || '';
+        document.getElementById('campanha_ativo').value = c.ativo ? 'true' : 'false';
+        Array.from(document.getElementById('campanha_planos').options).forEach(o => o.selected = (c.planos_elegiveis||[]).includes(parseInt(o.value)));
+        Array.from(document.getElementById('campanha_pagamentos').options).forEach(o => o.selected = (c.formas_pagamento_elegiveis||[]).includes(parseInt(o.value)));
+        document.getElementById('tbody-faixas-campanha').innerHTML = '';
+        if(c.regras_meta && c.regras_meta.length) c.regras_meta.forEach(r => adicionarFaixaCampanha(r.meta, r.valor_premio));
+        else adicionarFaixaCampanha(c.meta_vendas, c.valor_premio);
+        document.getElementById('form-campanha').scrollIntoView({ behavior: 'smooth' });
+    };
+    window.resetFormCampanha = () => { document.getElementById('form-campanha').reset(); document.getElementById('campanha_id').value=''; document.getElementById('tbody-faixas-campanha').innerHTML=''; adicionarFaixaCampanha(); };
+    window.excluirCampanha = async(id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/campanhas/${id}/`, {method:'DELETE'}); carregarCampanhas(); } };
+
+    // --- COMISSÃO OPERADORA ---
+    async function carregarComissoesOperadora() {
+        const res = await apiFetch('/crm/comissoes-operadora/');
+        const lista = Array.isArray(res) ? res : (res?.results || []);
+        const tbody = document.getElementById('lista-comissoes-operadora'); tbody.innerHTML = '';
+        const selPlano = document.getElementById('co_plano_id'); selPlano.innerHTML = '<option value="">Selecione...</option>';
+        const resPlanos = await apiFetch('/crm/planos/');
+        const planos = Array.isArray(resPlanos) ? resPlanos : (resPlanos?.results || []);
+        planos.forEach(p => selPlano.add(new Option(p.nome, p.id)));
+        lista.forEach(co => {
+            const total = parseFloat(co.valor_base || 0) + parseFloat(co.bonus_transicao || 0);
+            tbody.innerHTML += `<tr><td>${co.plano_nome || co.plano}</td><td>${fmtMoeda(co.valor_base)}</td><td class="text-success">${fmtMoeda(co.bonus_transicao)}</td><td>${co.data_fim_bonus||'-'}</td><td class="fw-bold">${fmtMoeda(total)}</td><td><button class="btn btn-warning btn-sm" onclick='editarComissaoOp(${JSON.stringify(co)})'>✏️</button></td></tr>`;
+        });
+    }
+    document.getElementById('form-comissao-operadora').onsubmit = async(e) => {
+        e.preventDefault();
+        const id = document.getElementById('co_id').value;
+        const body = { plano: document.getElementById('co_plano_id').value, valor_base: document.getElementById('co_valor_base').value, bonus_transicao: document.getElementById('co_bonus').value, data_fim_bonus: document.getElementById('co_data_fim').value || null };
+        await apiFetch(id ? `/crm/comissoes-operadora/${id}/` : '/crm/comissoes-operadora/', {method: id?'PUT':'POST', body: JSON.stringify(body)});
+        document.getElementById('form-comissao-operadora').reset(); document.getElementById('co_id').value=''; carregarComissoesOperadora();
+    };
+    window.editarComissaoOp = (co) => { document.getElementById('co_id').value = co.id; document.getElementById('co_plano_id').value = co.plano; document.getElementById('co_valor_base').value = co.valor_base; document.getElementById('co_bonus').value = co.bonus_transicao; document.getElementById('co_data_fim').value = co.data_fim_bonus || ''; };
+
+    // --- ADIANTAMENTOS E DESCONTOS ---
+    async function carregarUsuariosSelectsFinanceiro() {
+        const res = await apiFetch('/usuarios/?is_active=true');
+        const users = Array.isArray(res) ? res : (res?.results || []);
+        if (!users) return;
+        const selAd = document.getElementById('ad_usuario'), selDesc = document.getElementById('desc_usuario');
+        selAd.innerHTML = '<option value="">Selecione...</option>'; selDesc.innerHTML = '<option value="">Selecione...</option>';
+        users.forEach(u => { const opt = new Option(u.username, u.id); selAd.add(opt.cloneNode(true)); selDesc.add(opt); });
+    }
+    window.toggleCamposAdiantamento = () => { document.getElementById('box-qtd-vendas').style.display = document.getElementById('ad_tipo').value === 'ADIANTAMENTO_CNPJ' ? 'block' : 'none'; };
+    document.getElementById('form-adiantamento').onsubmit = async (e) => {
+        e.preventDefault();
+        await apiFetch('/crm/lancamentos-financeiros/', {method:'POST', body:JSON.stringify({usuario: document.getElementById('ad_usuario').value, tipo: document.getElementById('ad_tipo').value, data: document.getElementById('ad_data').value, valor: document.getElementById('ad_valor').value, quantidade_vendas: document.getElementById('ad_qtd').value || 0, descricao: document.getElementById('ad_obs').value})});
+        alert('Salvo!'); document.getElementById('form-adiantamento').reset(); carregarLancamentosFinanceiros();
+    };
+    document.getElementById('form-desconto').onsubmit = async (e) => {
+        e.preventDefault();
+        await apiFetch('/crm/lancamentos-financeiros/', {method:'POST', body:JSON.stringify({usuario: document.getElementById('desc_usuario').value, tipo: 'DESCONTO', data: document.getElementById('desc_data').value, valor: document.getElementById('desc_valor').value, descricao: document.getElementById('desc_motivo').value})});
+        alert('Salvo!'); document.getElementById('form-desconto').reset(); carregarLancamentosFinanceiros();
+    };
+    async function carregarLancamentosFinanceiros() {
+        let mes = document.getElementById('filtro-mes-lancamentos').value;
+        if (!mes) { const h = new Date(); mes = `${h.getFullYear()}-${String(h.getMonth()+1).padStart(2, '0')}`; document.getElementById('filtro-mes-lancamentos').value = mes; }
+        const res = await apiFetch('/crm/lancamentos-financeiros/');
+        const lista = Array.isArray(res) ? res : (res?.results || []);
+        const tbody = document.getElementById('lista-lancamentos-fin'); tbody.innerHTML = '';
+        lista.filter(l => l.data && l.data.startsWith(mes)).forEach(l => {
+            tbody.innerHTML += `<tr><td>${new Date(l.data).toLocaleDateString('pt-BR',{timeZone:'UTC'})}</td><td>${l.usuario_nome || 'N/A'}</td><td>${l.tipo} - ${l.descricao}</td><td class="text-end fw-bold ${l.tipo==='DESCONTO'?'text-danger':'text-primary'}">${fmtMoeda(l.valor)}</td><td class="text-end"><button class="btn btn-xs btn-outline-danger" onclick="excluirLancamento(${l.id})">🗑️</button></td></tr>`;
+        });
+    }
+    window.excluirLancamento = async (id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/lancamentos-financeiros/${id}/`, {method:'DELETE'}); carregarLancamentosFinanceiros(); } };
+
+    // ====================================================================
+    // 4. AUTOMAÇÃO DE EVENTOS (NOVA LÓGICA ROBUSTA)
+    // ====================================================================
+    async function carregarGruposExternos() {
+        const select = document.getElementById('regra_grupos');
+        select.innerHTML = '<option disabled>Buscando na API...</option>';
+        try {
+            const res = await apiFetch('/whatsapp/groups/');
+            const grupos = Array.isArray(res) ? res : (res?.results || []);
+            select.innerHTML = '';
+            if (grupos && grupos.length > 0) {
+                grupos.forEach(g => { select.add(new Option(g.name || g.subject, g.id || g.jid)); });
+            } else { throw new Error("Lista vazia"); }
+        } catch (e) {
+            console.warn("API de grupos não encontrada ou erro. Usando modo manual.", e);
+            select.innerHTML = '<option value="" disabled>Não foi possível carregar automático.</option>';
+            const manualId = prompt("A API de grupos não retornou. Digite o ID do grupo (JID) se souber, ou cancele:");
+            if(manualId) select.add(new Option("Grupo Manual ("+manualId+")", manualId, true, true));
+        }
+    }
+
+    async function carregarRegrasAutomacao() {
+        const tbody = document.getElementById('lista-regras-auto');
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center">Carregando...</td></tr>';
+        try {
+            const lista = await apiFetch('/regras-automacao/');
+            tbody.innerHTML = '';
+            if(lista.length === 0) { tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Nenhuma regra ativa.</td></tr>'; return; }
+            lista.forEach(r => {
+                const statusBadge = r.ativo ? '<span class="badge bg-success">Ativo</span>' : '<span class="badge bg-secondary">Inativo</span>';
+                tbody.innerHTML += `<tr><td><strong class="text-primary">${r.nome}</strong><br><small class="text-muted">${r.evento_gatilho}</small></td><td><span class="badge bg-light text-dark border">Grupos: ${r.destinos_grupos?r.destinos_grupos.length:0}</span> <span class="badge bg-light text-dark border">Nums: ${r.destinos_numeros?r.destinos_numeros.length:0}</span></td><td>${statusBadge}</td><td class="text-end"><button class="btn btn-sm btn-editar me-1" onclick='editarRegraAuto(${JSON.stringify(r)})'><i class="bi bi-pencil"></i></button> <button class="btn btn-sm btn-excluir" onclick="excluirRegraAuto(${r.id})"><i class="bi bi-trash"></i></button></td></tr>`;
+            });
+        } catch (e) { tbody.innerHTML = '<tr><td colspan="4" class="text-danger text-center">Erro ao carregar regras.</td></tr>'; }
+    }
+
+    document.getElementById('form-regra-automacao').onsubmit = async (e) => {
+        e.preventDefault();
+        const id = document.getElementById('regra_auto_id').value;
+        const gruposIds = Array.from(document.getElementById('regra_grupos').selectedOptions).map(opt => opt.value);
+        const numsList = document.getElementById('regra_numeros').value.split(',').map(n => n.trim()).filter(n => n.length > 0);
+        const payload = {
+            nome: document.getElementById('regra_nome').value,
+            ativo: document.getElementById('regra_ativo').value === 'true',
+            evento_gatilho: document.getElementById('regra_evento').value,
+            destinos_grupos: gruposIds,
+            destinos_numeros: numsList,
+            template_mensagem: document.getElementById('regra_msg').value
+        };
+        try {
+            if(id) await apiFetch(`/regras-automacao/${id}/`, { method: 'PUT', body: JSON.stringify(payload) });
+            else await apiFetch('/regras-automacao/', { method: 'POST', body: JSON.stringify(payload) });
+            alert('Regra salva com sucesso!'); resetFormRegraAuto(); carregarRegrasAutomacao();
+        } catch(err) { alert('Erro ao salvar: ' + err.message); }
+    };
+
+    window.editarRegraAuto = (r) => {
+        document.getElementById('regra_auto_id').value = r.id;
+        document.getElementById('regra_nome').value = r.nome;
+        document.getElementById('regra_evento').value = r.evento_gatilho;
+        document.getElementById('regra_ativo').value = r.ativo ? 'true' : 'false';
+        document.getElementById('regra_numeros').value = r.destinos_numeros.join(', ');
+        document.getElementById('regra_msg').value = r.template_mensagem;
+        const select = document.getElementById('regra_grupos');
+        if (select.options.length <= 1) r.destinos_grupos.forEach(gid => select.add(new Option(gid, gid, true, true)));
+        else Array.from(select.options).forEach(opt => opt.selected = r.destinos_grupos.includes(opt.value));
+    };
+
+    window.excluirRegraAuto = async (id) => { if(confirm('Excluir esta regra de automação?')) { try { await apiFetch(`/regras-automacao/${id}/`, { method: 'DELETE' }); carregarRegrasAutomacao(); } catch(e) { alert('Erro ao excluir.'); } } };
+    window.resetFormRegraAuto = () => { document.getElementById('form-regra-automacao').reset(); document.getElementById('regra_auto_id').value = ''; Array.from(document.getElementById('regra_grupos').options).forEach(opt => opt.selected = false); };
+
+    // --- MOTIVOS (FUNÇÃO RESTAURADA) ---
+    async function carregarMotivos() {
+        const ul = document.getElementById('lista-motivos');
+        ul.innerHTML = 'Carregando...';
+        try {
+            const resposta = await apiFetch('/presenca/motivos/');
+            const lista = Array.isArray(resposta) ? resposta : (resposta.results || []);
+            ul.innerHTML = '';
+            lista.forEach(m => {
+                ul.innerHTML += `<li class="list-group-item d-flex justify-content-between"><span><strong>${m.nome||m.motivo}</strong> ${m.gera_desconto?'(Desc)':'(Abona)'}</span><button class="btn btn-sm btn-excluir" onclick="excluirMotivo(${m.id})">🗑️</button></li>`;
+            });
+        } catch(e) { ul.innerHTML = 'Erro ao carregar.'; }
+    }
+    
+    // --- BOTÃO SALVAR MOTIVO RESTAURADO ---
+    const btnSalvarMotivo = document.getElementById('btn-salvar-motivo');
+    if(btnSalvarMotivo) {
+        btnSalvarMotivo.onclick = async () => {
+            const nome = document.getElementById('novo-motivo-nome').value;
+            if(!nome) return;
+            await apiFetch('/presenca/motivos/', {method:'POST', body: JSON.stringify({ nome, gera_desconto: document.getElementById('novo-motivo-desconto').checked })});
+            document.getElementById('novo-motivo-nome').value=''; carregarMotivos();
+        };
+    }
+    window.excluirMotivo = async(id) => { if(confirm('Excluir?')) { await apiFetch(`/presenca/motivos/${id}/`, {method:'DELETE'}); carregarMotivos(); } };
+
+    async function carregarFeriados() {
+        const res = await apiFetch('/presenca/dias-nao-uteis/');
+        const lista = Array.isArray(res) ? res : (res?.results || []);
+        const tbody = document.getElementById('lista-feriados'); tbody.innerHTML = '';
+        lista.forEach(f => tbody.innerHTML += `<tr><td>${f.data.split('-').reverse().join('/')}</td><td>${f.descricao||'-'}</td><td><button class="btn btn-sm btn-danger" onclick="excluirFeriado(${f.id})">🗑️</button></td></tr>`);
+    }
+    const btnSalvarFeriado = document.getElementById('btn-salvar-feriado');
+    if(btnSalvarFeriado) {
+        btnSalvarFeriado.onclick = async () => {
+            const dt = document.getElementById('novo-feriado-data').value;
+            if(!dt) return;
+            await apiFetch('/presenca/dias-nao-uteis/', {method:'POST', body: JSON.stringify({ data: dt, descricao: document.getElementById('novo-feriado-descricao').value })});
+            carregarFeriados();
+        };
+    }
+    window.excluirFeriado = async(id) => { if(confirm('Excluir?')) { await apiFetch(`/presenca/dias-nao-uteis/${id}/`, {method:'DELETE'}); carregarFeriados(); } };
+
+    // --- RELATÓRIOS ---
+    async function carregarRelatorioFinanceiro() {
+        let ini = document.getElementById('finDataInicio').value;
+        let fim = document.getElementById('finDataFim').value;
+        if(!ini || !fim) { const h = new Date(); ini = new Date(h.getFullYear(), h.getMonth(), 1).toISOString().split('T')[0]; fim = new Date(h.getFullYear(), h.getMonth()+1, 0).toISOString().split('T')[0]; document.getElementById('finDataInicio').value=ini; document.getElementById('finDataFim').value=fim; }
+        document.getElementById('cardPrevisao').style.display='block';
+        document.getElementById('cardDescontos').style.display='block';
+        try {
+            const dados = await apiFetch(`/presenca/relatorio-financeiro/?inicio=${ini}&fim=${fim}`);
+            const tPrev = document.getElementById('tbodyPrevisao'), tDesc = document.getElementById('tbodyDescontos');
+            tPrev.innerHTML = ''; tDesc.innerHTML = '';
+            (dados.previsao||[]).forEach(p => tPrev.innerHTML += `<tr><td>${p.colaborador_username||p.colaborador}</td><td>${p.dias_uteis}</td><td>${fmtMoeda(p.valor_diario)}</td><td class="fw-bold">${fmtMoeda(p.total_receber||p.total_previsto)}</td></tr>`);
+            (dados.descontos||[]).forEach(d => tDesc.innerHTML += `<tr><td>${d.colaborador_username||d.colaborador}</td><td>${d.dias_uteis}</td><td>${d.qtd_faltas}</td><td>${fmtMoeda(d.valor_diario)}</td><td class="text-danger">${fmtMoeda(d.valor_desconto)}</td><td class="fw-bold">${fmtMoeda(d.total_receber)}</td></tr>`);
+        } catch(e) { alert(e.message); }
+    }
+    
+    async function baixarExcelFinanceiro() {
+        const ini = document.getElementById('finDataInicio').value, fim = document.getElementById('finDataFim').value;
+        if(!ini) return;
+        const blob = await apiFetch(`/presenca/relatorio-financeiro/excel/?inicio=${ini}&fim=${fim}`, { isBlob: true });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = 'Relatorio.xlsx'; document.body.appendChild(a); a.click(); a.remove();
+    }
+
+    async function carregarOpcoesCampanhasRelatorio() {
+        const select = document.getElementById('select-rel-campanha');
+        if (select.options.length > 1) return;
+        const campanhas = await apiFetch('/crm/campanhas/');
+        select.innerHTML = '<option value="">Selecione...</option>';
+        campanhas.forEach(c => select.add(new Option(`${c.ativo?'[Ativa]':'[Fim]'} ${c.nome}`, c.id)));
+    }
+
+    let resultadoCampanhaCache = [];
+    async function carregarResultadoCampanha() {
+        const id = document.getElementById('select-rel-campanha').value;
+        if(!id) return;
+        document.getElementById('resultado-campanha-container').style.display = 'block';
+        const tbody = document.getElementById('tbody-resultado-campanha'); tbody.innerHTML = '<tr><td colspan="7">Calculando...</td></tr>';
+        try {
+            const dados = await apiFetch(`/crm/campanhas/${id}/resultado/`);
+            resultadoCampanhaCache = dados.ranking;
+            document.getElementById('campanha-titulo-resumo').innerText = dados.campanha;
+            document.getElementById('campanha-total-premios').innerText = fmtMoeda(dados.ranking.reduce((acc, r) => acc + parseFloat(r.premio_receber), 0));
+            tbody.innerHTML = '';
+            dados.ranking.forEach(r => {
+                const premio = parseFloat(r.premio_receber);
+                tbody.innerHTML += `<tr><td><input type="checkbox" class="form-check-input check-vendedor-rel" value="${r.vendedor_id}"></td><td class="text-center">${r.ranking}º</td><td>${r.vendedor}</td><td class="text-center">${r.vendas_validas}</td><td class="text-center">${r.meta_atingida_para_premio||r.meta}</td><td>${r.percentual}%</td><td class="text-end ${premio>0?'text-success fw-bold':''}">${fmtMoeda(premio)}</td></tr>`;
+            });
+        } catch(e) { tbody.innerHTML = `<tr><td colspan="7">${e.message}</td></tr>`; }
+    }
+
+    function toggleSelecaoRelatorio(s) { document.querySelectorAll('.check-vendedor-rel').forEach(c => c.checked = s.checked); atualizarContadorWpp(); }
+    document.addEventListener('change', (e) => { if(e.target.classList.contains('check-vendedor-rel')) atualizarContadorWpp(); });
+    function atualizarContadorWpp() { document.getElementById('count-wpp').innerText = document.querySelectorAll('.check-vendedor-rel:checked').length; }
+    
+    async function enviarResultadoWhatsappSelecionados() {
+        const ids = Array.from(document.querySelectorAll('.check-vendedor-rel:checked')).map(c => parseInt(c.value));
+        if(!ids.length) return alert("Selecione vendedores.");
+        const campId = document.getElementById('select-rel-campanha').value;
+        if(!confirm(`Enviar para ${ids.length} pessoas?`)) return;
+        
+        const dadosEnvio = resultadoCampanhaCache.filter(r => ids.includes(r.vendedor_id)).map(r => ({
+            vendedor_id: r.vendedor_id, vendas_validas: r.vendas_validas, premio_receber: String(r.premio_receber),
+            meta_alcancada: r.meta_atingida_para_premio || r.meta, meta_atingida: r.meta, proxima_faixa: r.proxima_faixa || null
+        }));
+        
+        const res = await apiFetch(`/crm/campanhas/enviar-resultado-whatsapp/`, { method: 'POST', body: JSON.stringify({ campanha_id: parseInt(campId), vendedores_dados: dadosEnvio }) });
+        alert(res.mensagem);
+    }
+
+    // --- INICIALIZAÇÃO (MOVIDO PARA O FINAL) ---
+    document.addEventListener('DOMContentLoaded', () => {
+        carregarDadosParaFormulario();
+        carregarPerfis();
+        carregarUsuarios('ativos'); 
+        
+        carregarMotivos();
+        carregarFeriados();
+        
+        carregarOperadoras();
+        carregarPlanos();
+        carregarFormasPagamento();
+        carregarStatus();
+        carregarMotivosPendencia();
+        carregarRegrasComissao();
+        
+        carregarDadosAuxiliaresCampanha();
+        carregarCampanhas();
+        adicionarFaixaCampanha(); 
+        
+        carregarComissoesOperadora(); 
+        carregarUsuariosSelectsFinanceiro();
+        carregarLancamentosFinanceiros();
+        
+        // --- NOVAS FUNÇÕES DA ABA AUTOMAÇÃO (SUBSTITUÍRAM AS ANTIGAS) ---
+        carregarRegrasAutomacao();
+        carregarGruposExternos();
+
+        // Adicionar event listener para busca de usuários
+        const campoBuscaUsuario = document.getElementById('busca-usuario');
+        if (campoBuscaUsuario) {
+            campoBuscaUsuario.addEventListener('input', filtrarUsuarios);
+            campoBuscaUsuario.addEventListener('keyup', filtrarUsuarios);
+        }
+
+        const link = document.querySelector('.admin-nav-link');
+        if(link) mostrarSecao(null, 'usuarios', link);
+    });
+    </script>
+</body>
+</html>
+

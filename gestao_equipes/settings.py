@@ -14,10 +14,15 @@ ALLOWED_HOSTS = [
     'localhost',
     'testserver',
     'record-pap-app-80fd14bb6cb5.herokuapp.com',
-    'www.recordpap.com.br', 
-    'recordpap.com.br',   
+    'www.recordpap.com.br',
+    'recordpap.com.br',
     '.herokuapp.com',
     'site-record-production.up.railway.app',
+    'site-record.up.railway.app',
+    'pleasing-recreation.up.railway.app',
+    # Permite qualquer subdomínio do Railway ou Heroku
+    '.up.railway.app',
+    '.herokuapp.com',
 ]
 
 INSTALLED_APPS = [
@@ -148,7 +153,16 @@ STATICFILES_DIRS = [
     os.path.join(BASE_DIR, 'static'),
     os.path.join(BASE_DIR, 'frontend', 'public'),
 ]
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+# Garante que o Whitenoise sirva arquivos estáticos corretamente em produção
+
+# Serve arquivos estáticos corretamente em todos ambientes
+if not DEBUG:
+    STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+else:
+    STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
+
+# Instrução: Após cada deploy, execute no Railway:
+# python manage.py collectstatic --noinput
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
