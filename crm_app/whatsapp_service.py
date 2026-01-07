@@ -51,6 +51,8 @@ class WhatsAppService:
         logger.warning(f"[Z-API DEBUG] Token: [{self.token[:5]}...{self.token[-3:] if self.token else ''}]")
         logger.warning(f"[Z-API DEBUG] Client-Token: [{self.client_token[:5]}...{self.client_token[-3:] if self.client_token else ''}]")
         logger.warning(f"[Z-API DEBUG] Headers: {self._get_headers()}")
+        import os
+        logger.warning(f"[Z-API DEBUG] Todos os envs: {dict(os.environ)}")
         if payload:
             logger.warning(f"[Z-API DEBUG] Payload: {payload}")
         try:
