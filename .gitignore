@@ -11,6 +11,8 @@ db.sqlite3
 
 # Arquivos de Ambiente com Senhas
 .env
+# Arquivos de Ambiente do Heroku
+heroku_env.txt
 
 # Arquivos de IDEs
 .vscode/
