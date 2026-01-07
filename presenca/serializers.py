@@ -1,4 +1,7 @@
+
+from rest_framework import serializers
 from usuarios.models import Usuario
+from .models import MotivoAusencia, Presenca, DiaNaoUtil
 
 # Serializer leve para presença
 class UsuarioPresencaSerializer(serializers.ModelSerializer):
@@ -8,9 +11,6 @@ class UsuarioPresencaSerializer(serializers.ModelSerializer):
         model = Usuario
         fields = ['id', 'username', 'first_name', 'last_name', 'perfil_nome', 'supervisor_nome']
 # site-record/presenca/serializers.py
-
-from rest_framework import serializers
-from .models import MotivoAusencia, Presenca, DiaNaoUtil
 
 class MotivoAusenciaSerializer(serializers.ModelSerializer):
     class Meta:
