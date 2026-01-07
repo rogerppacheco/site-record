@@ -37,7 +37,7 @@ class WhatsAppService:
             'Content-Type': 'application/json'
         }
         if self.client_token:
-            headers['Client-Token'] = self.client_token
+            headers['client-token'] = self.client_token
         return headers
 
     def _send_request(self, url, payload=None, method='POST'):
