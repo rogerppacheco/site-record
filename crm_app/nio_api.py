@@ -302,34 +302,49 @@ def _map_invoice(invoice: Dict, debt: Dict) -> Dict:
 
 
 def consultar_dividas_nio(cpf: str, offset: int = 0, limit: int = 10, storage_state: Optional[str] = None, headless: bool = True) -> Dict:
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"[M10] Iniciando consulta NIO para CPF: {cpf}")
     session = requests.Session()
 
-    params = fetch_params_requests(session)
-    if not params:
-        params = fetch_params_playwright(headless=headless, storage_state=storage_state)
+    try:
+        params = fetch_params_requests(session)
+        logger.info(f"[M10] Params via requests: {params}")
+        if not params:
+            params = fetch_params_playwright(headless=headless, storage_state=storage_state)
+            logger.info(f"[M10] Params via playwright: {params}")
+        if not params:
+            logger.error("[M10] Falha ao obter token/apiServerUrl (possível bloqueio/captcha). Rode headful para renovar cookies.")
+            raise RuntimeError("Falha ao obter token/apiServerUrl (possível bloqueio/captcha). Rode headful para renovar cookies.")
 
-    if not params:
-        raise RuntimeError("Falha ao obter token/apiServerUrl (possível bloqueio/captcha). Rode headful para renovar cookies.")
+        token = params.get("token")
+        api_url = params.get("apiServerUrl")
+        logger.info(f"[M10] Token: {token}, API URL: {api_url}")
+        if not token or not api_url:
+            logger.error("[M10] /params sem token ou apiServerUrl")
+            raise RuntimeError("/params sem token ou apiServerUrl")
 
-    token = params.get("token")
-    api_url = params.get("apiServerUrl")
-    if not token or not api_url:
-        raise RuntimeError("/params sem token ou apiServerUrl")
+        session_id = get_session_id(api_url, token, session)
+        logger.info(f"[M10] Session ID: {session_id}")
+        if not session_id:
+            logger.error("[M10] Falha ao obter sessionId")
+            raise RuntimeError("Falha ao obter sessionId")
 
-    session_id = get_session_id(api_url, token, session)
-    if not session_id:
-        raise RuntimeError("Falha ao obter sessionId")
+        data = get_debts(api_url, token, session_id, cpf, offset, limit, session)
+        logger.info(f"[M10] Dados recebidos: {data}")
+        invoices = []
+        for debt in data.get("debts", []):
+            for inv in debt.get("invoices", []) or []:
+                invoices.append(_map_invoice(inv, debt))
 
-    data = get_debts(api_url, token, session_id, cpf, offset, limit, session)
-    invoices = []
-    for debt in data.get("debts", []):
-        for inv in debt.get("invoices", []) or []:
-            invoices.append(_map_invoice(inv, debt))
-
-    return {
-        "token": token,
-        "api_base": api_url,
-        "session_id": session_id,
-        "invoices": invoices,
-        "raw": data,
-    }
+        logger.info(f"[M10] Faturas mapeadas: {len(invoices)}")
+        return {
+            "token": token,
+            "api_base": api_url,
+            "session_id": session_id,
+            "invoices": invoices,
+            "raw": data,
+        }
+    except Exception as e:
+        logger.exception(f"[M10] Erro na consulta NIO: {e}")
+        raise
