@@ -1011,7 +1011,7 @@
         const select = document.getElementById('regra_grupos');
         select.innerHTML = '<option disabled>Buscando na API...</option>';
         try {
-            const res = await apiFetch('/whatsapp/groups/');
+            const res = await apiFetch('/crm/integracao/listar-grupos/');
             const grupos = Array.isArray(res) ? res : (res?.results || []);
             select.innerHTML = '';
             if (grupos && grupos.length > 0) {
