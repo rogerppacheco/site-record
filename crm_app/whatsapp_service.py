@@ -45,6 +45,14 @@ class WhatsAppService:
         Método auxiliar central para envio de requisições.
         Resolve o erro 'object has no attribute _send_request'.
         """
+        # LOG DETALHADO PARA DEBUG
+        logger.warning(f"[Z-API DEBUG] URL: {url}")
+        logger.warning(f"[Z-API DEBUG] Instance ID: [{self.instance_id}]")
+        logger.warning(f"[Z-API DEBUG] Token: [{self.token[:5]}...{self.token[-3:] if self.token else ''}]")
+        logger.warning(f"[Z-API DEBUG] Client-Token: [{self.client_token[:5]}...{self.client_token[-3:] if self.client_token else ''}]")
+        logger.warning(f"[Z-API DEBUG] Headers: {self._get_headers()}")
+        if payload:
+            logger.warning(f"[Z-API DEBUG] Payload: {payload}")
         try:
             if method == 'GET':
                 response = requests.get(url, headers=self._get_headers(), timeout=15)
