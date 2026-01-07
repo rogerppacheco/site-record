@@ -1,0 +1,492 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Controle de Presença - Record PAP</title>
+    <link rel="shortcut icon" href="{% static 'logo.png' %}" type="image/x-icon">
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=13.1">
+    
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
+
+    <style>
+        /* --- LAYOUT E CENTRALIZAÇÃO --- */
+        .system-container {
+            width: 100%;
+            padding-right: 20px;
+            padding-left: 20px;
+            margin-right: auto;
+            margin-left: auto;
+            max-width: 1400px;
+        }
+
+        /* Layout de Cards */
+        .presence-card {
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            background: #fff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            transition: transform 0.2s;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; 
+        }
+        .presence-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        
+        /* Avatar Centralizado */
+        .avatar-circle {
+            width: 45px; height: 45px;
+            background-color: #f8f9fa;
+            color: #6c757d;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: bold; font-size: 1.1rem;
+            border: 1px solid #e9ecef;
+            flex-shrink: 0;
+            text-transform: uppercase;
+        }
+        
+        /* Auditoria */
+        .audit-info {
+            font-size: 0.75rem;
+            color: #6c757d;
+            background-color: #fdfdfd;
+            border-top: 1px solid #f0f0f0;
+            padding: 8px 15px;
+            line-height: 1.4;
+        }
+        .audit-line { margin-bottom: 2px; }
+        
+        /* Botões Pendentes (Grandes) */
+        .action-footer-pending {
+            margin-top: auto;
+            border-top: 1px solid #e9ecef;
+            display: flex;
+            width: 100%;
+        }
+        .action-footer-pending .btn {
+            border-radius: 0; 
+            padding: 12px 0;
+            font-weight: bold;
+            font-size: 1rem;
+        }
+
+        /* Estilos de Formulário */
+        .nav-tabs .nav-link.active { color: var(--cor-primaria); border-bottom: 3px solid var(--cor-primaria); }
+
+        /* GARANTIA DE OCULTAÇÃO NO CSS */
+        .restricted-access {
+            display: none !important;
+        }
+
+        /* --- RESPONSIVIDADE --- */
+        @media (max-width: 768px) {
+            .system-container {
+                padding-left: 15px !important; 
+                padding-right: 15px !important;
+            }
+            
+            .header-controls {
+                flex-direction: column;
+                align-items: center;
+                text-align: center;
+                gap: 15px;
+            }
+            .header-controls div:first-child {
+                text-align: center;
+                width: 100%;
+            }
+            
+            .action-footer-pending .btn { padding: 15px 0; }
+        }
+    </style>
+</head>
+<body>
+
+    <header class="main-header">
+        <div class="header-container">
+            <a href="/"><img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo"></a>
+            <button class="menu-toggle" id="menu-toggle"><div class="bar"></div><div class="bar"></div><div class="bar"></div></button>
+            <nav class="main-nav" id="main-nav">
+                <ul>
+                    <li><a href="/area-interna/">Voltar</a></li>
+                    <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main class="area-interna-section">
+        <div class="system-container">
+            
+            <div class="d-flex justify-content-between align-items-center mb-4 header-controls">
+                <div>
+                    <h1 style="font-size: 1.8rem; margin: 0;">Controle de Presença</h1>
+                    <p class="text-muted mb-0">Gerencie a presença diária da equipe.</p>
+                </div>
+                
+                <div id="container-filtro-data" class="gap-2 restricted-access">
+                    <input type="date" id="data-presenca" class="form-control" onchange="carregarDadosIniciais()">
+                    <button class="btn btn-outline-secondary" onclick="carregarDadosIniciais()"><i class="bi bi-arrow-clockwise"></i></button>
+                </div>
+
+                <div id="display-data-hoje" class="fw-bold text-primary align-self-center">
+                    <i class="bi bi-calendar-event"></i> <span id="texto-data-fixa"></span>
+                </div>
+            </div>
+
+            <ul class="nav nav-tabs mb-4" id="tab-container">
+                <li class="nav-item">
+                    <a class="nav-link active" onclick="switchTab('minha-equipe', this)">Minha Equipe</a>
+                </li>
+                <li class="nav-item restricted-access" id="tab-todos">
+                    <a class="nav-link" onclick="switchTab('todos-usuarios', this)">Todos os Usuários</a>
+                </li>
+            </ul>
+            
+            <div id="grid-colaboradores" class="row g-3 justify-content-center">
+                <div class="col-12 text-center py-5">
+                    <div class="spinner-border text-primary"></div>
+                    <p class="mt-2 text-muted">Carregando equipe...</p>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <div class="modal fade" id="modal-ausencia" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title" id="modal-title">Registrar Ausência</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Motivo</label>
+                        <select class="form-select" id="select-motivo"></select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Observação</label>
+                        <textarea class="form-control" id="obs-motivo" rows="2" placeholder="Detalhes opcionais..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-danger" id="btn-confirmar-ausencia">Confirmar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{% static 'js/auth.js' %}?v=7.0"></script>
+    <script src="{% static 'js/menu.js' %}?v=7.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        const token = localStorage.getItem('accessToken');
+        if(!token) window.location.href = '/';
+
+        const decoded = jwt_decode(token);
+        // Normaliza o perfil para garantir comparação correta
+        const userRole = (decoded.user_role || decoded.perfil || 'Vendedor');
+        const isSuperuser = decoded.is_superuser || false;
+
+        // --- DEBUG NO CONSOLE (F12) PARA VOCÊ CONFERIR ---
+        console.log("Perfil Detectado:", userRole);
+        console.log("É Superusuário?", isSuperuser);
+
+        // Lógica de Permissão para Visualizar Botões de Edição
+        const isGestorSupremo = isSuperuser || userRole === 'Diretoria' || userRole === 'Admin';
+
+        if (userRole === 'Vendedor' && !isSuperuser) {
+            alert('Acesso restrito a gestores.');
+            window.location.href = '/area-interna/';
+        }
+        
+        const API_MOTIVOS = '/api/presenca/motivos/';
+        const API_REGISTROS = '/api/presenca/registros/';
+
+        let motivosDisponiveis = [];
+        let activeTab = 'minha-equipe';
+        let modalAusencia;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            modalAusencia = new bootstrap.Modal(document.getElementById('modal-ausencia'));
+
+            const hoje = new Date();
+            const inputData = document.getElementById('data-presenca');
+            inputData.valueAsDate = hoje;
+
+            // --- LÓGICA RESTRITIVA ---
+            // Se for superusuário (Roger ID 1), ele VAI entrar aqui.
+            const isDiretoriaOrAdmin = (userRole === 'Diretoria' || userRole === 'Admin' || isSuperuser);
+
+            if (isDiretoriaOrAdmin) {
+                // Remove a classe que oculta e ajusta o display
+                const filtro = document.getElementById('container-filtro-data');
+                filtro.classList.remove('restricted-access');
+                filtro.classList.add('d-flex');
+                
+                document.getElementById('display-data-hoje').style.display = 'none';
+                
+                const abaTodos = document.getElementById('tab-todos');
+                abaTodos.classList.remove('restricted-access');
+                
+                // Define aba padrão como todos
+                activeTab = 'todos-usuarios';
+                document.querySelectorAll('.nav-link').forEach(b => b.classList.remove('active'));
+                document.querySelector('#tab-todos .nav-link').classList.add('active');
+            } else {
+                // Garante que a data fixa apareça
+                document.getElementById('texto-data-fixa').textContent = hoje.toLocaleDateString('pt-BR');
+                // Garante que a aba ativa seja "Minha Equipe"
+                activeTab = 'minha-equipe';
+            }
+
+            carregarMotivos();
+            carregarDadosIniciais();
+        });
+
+        window.switchTab = function(tabName, element) {
+            activeTab = tabName;
+            document.querySelectorAll('.nav-link').forEach(btn => btn.classList.remove('active'));
+            element.classList.add('active');
+            carregarDadosIniciais();
+        }
+
+        async function carregarMotivos() {
+            try {
+                const res = await apiClient.get('/api/presenca/motivos/');
+                motivosDisponiveis = res.data;
+            } catch(e){}
+        }
+
+        async function carregarDadosIniciais() {
+            const data = document.getElementById('data-presenca').value;
+            const grid = document.getElementById('grid-colaboradores');
+            grid.innerHTML = '<div class="col-12 text-center py-5"><div class="spinner-border text-primary"></div><p class="mt-2">Carregando...</p></div>';
+
+            const equipeEndpoint = (activeTab === 'todos-usuarios')
+                ? '/api/presenca/todos-usuarios/?participa_controle_presenca=true'
+                : '/api/presenca/minha-equipe/?participa_controle_presenca=true';
+
+            try {
+                const [equipeRes, presencasRes] = await Promise.all([
+                    apiClient.get(equipeEndpoint),
+                    apiClient.get(`${API_REGISTROS}?data=${data}`)
+                ]);
+                
+                const equipe = equipeRes.data;
+                const presencasDoDia = presencasRes.data;
+
+                if(Array.isArray(equipe)) {
+                    renderizarCards(equipe, presencasDoDia || []);
+                } else if (equipe && Array.isArray(equipe.results)) {
+                    renderizarCards(equipe.results, presencasDoDia || []);
+                } else if (equipe && equipe.detail) {
+                    grid.innerHTML = `<div class="col-12 text-center text-danger py-4">Erro ao carregar equipe: ${equipe.detail}</div>`;
+                } else {
+                    grid.innerHTML = '<div class="col-12 text-center text-danger py-4">Erro ao carregar equipe (resposta inesperada).</div>';
+                }
+
+            } catch(e) {
+                console.error(e);
+                grid.innerHTML = '<div class="col-12 text-center text-danger py-4">Erro de conexão.</div>';
+            }
+        }
+
+        function renderizarCards(lista, presencasDoDia) {
+            const grid = document.getElementById('grid-colaboradores');
+            grid.innerHTML = '';
+
+            const presencasMap = Array.isArray(presencasDoDia)
+                ? presencasDoDia.reduce((map, p) => { map[p.colaborador] = p; return map; }, {})
+                : {};
+
+            if (!Array.isArray(lista) || lista.length === 0) {
+                grid.innerHTML = '<div class="col-12 text-center text-muted py-5">Nenhum colaborador encontrado.</div>';
+                return;
+            }
+
+            lista.forEach(p => {
+                const registro = presencasMap[p.id];
+                
+                let barClass = 'status-pendente';
+                let statusText = 'Pendente';
+                let statusColor = 'text-muted';
+                let cardBorder = '#ced4da';
+                
+                if (registro) {
+                    if (registro.status) {
+                        barClass = 'status-presente';
+                        statusText = 'Presente';
+                        statusColor = 'text-success';
+                        cardBorder = 'var(--cor-sucesso)';
+                    } else {
+                        const desc = registro.motivo_nome || 'Motivo não informado';
+                        statusText = `Ausente: ${desc}`;
+                        statusColor = 'text-danger';
+                        barClass = registro.motivo_ausencia?.gera_desconto ? 'status-ausente' : 'status-justificado';
+                        cardBorder = registro.motivo_ausencia?.gera_desconto ? 'var(--cor-perigo)' : 'var(--cor-aviso)';
+                    }
+                }
+
+                const usernameDisplay = (p.username || '??').toUpperCase();
+                const iniciais = usernameDisplay.substring(0, 2);
+                const cardCol = document.createElement('div');
+                
+                // Grid denso
+                cardCol.className = 'col-12 col-sm-6 col-lg-3 col-xl-3';
+
+                // Conteúdo do Card
+                let cardContent = `
+                    <div class="p-3 flex-grow-1">
+                        <div class="d-flex align-items-center gap-3 mb-2">
+                            <div class="avatar-circle flex-shrink-0">${iniciais}</div>
+                            <div class="overflow-hidden flex-grow-1">
+                                <h6 class="mb-0 text-truncate fw-bold text-dark" title="${usernameDisplay}">${usernameDisplay}</h6>
+                                <small class="fw-bold ${statusColor}" id="status-text-${p.id}">${statusText}</small>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                // Rodapé (Ações ou Auditoria)
+                let footerContent = '';
+
+                if (!registro) {
+                    // PENDENTE: Botões Grandes (Visíveis para quem pode marcar)
+                    footerContent = `
+                        <div class="action-footer-pending d-flex w-100">
+                            <button class="btn btn-success flex-grow-1" style="border-right: 1px solid rgba(0,0,0,0.1);" onclick="salvarStatus(${p.id}, '${usernameDisplay}', true)">PRESENTE</button>
+                            <button class="btn btn-danger flex-grow-1" onclick="abrirModalAusencia(${p.id}, '${usernameDisplay}')">AUSÊNCIA</button>
+                        </div>
+                    `;
+                } else {
+                    // JÁ MARCADO: Auditoria
+                    let auditHtml = '';
+                    const opts = { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' };
+                    
+                    if (registro.criado_em) {
+                        const dt = new Date(registro.criado_em).toLocaleString('pt-BR', opts);
+                        const user = (registro.lancado_por_nome || 'Sistema').split(' ')[0].toUpperCase();
+                        auditHtml += `<div class="audit-line">Lançado: <strong>${user}</strong> em ${dt}</div>`;
+                    }
+                    if (registro.editado_em && registro.editado_por_nome) {
+                        const dtEdit = new Date(registro.editado_em).toLocaleString('pt-BR', opts);
+                        const userEdit = (registro.editado_por_nome || '').split(' ')[0].toUpperCase();
+                        auditHtml += `<div class="audit-line text-primary">Editado: <strong>${userEdit}</strong> em ${dtEdit}</div>`;
+                    }
+                    
+                    footerContent = `<div class="audit-info" id="audit-${p.id}">${auditHtml}</div>`;
+
+                    // BOTÕES DE EDIÇÃO/EXCLUSÃO: Apenas para Gestores Supremos
+                    if (isGestorSupremo) {
+                        footerContent += `
+                        <div class="action-footer-recorded d-flex w-100" id="footer-recorded-${p.id}">
+                            <button class="btn btn-action-edit flex-grow-1" onclick="ativarModoEdicao(${p.id}, '${usernameDisplay}')">
+                                <i class="bi bi-pencil-square"></i> Alterar
+                            </button>
+                            <button class="btn btn-action-delete flex-grow-1" onclick="removerRegistro(${registro.id})">
+                                <i class="bi bi-trash"></i> Excluir
+                            </button>
+                        </div>
+                        `;
+                    }
+                }
+
+                cardCol.innerHTML = `
+                    <div class="presence-card" id="card-${p.id}" style="border-left: 5px solid ${cardBorder};">
+                        ${cardContent}
+                        ${footerContent}
+                    </div>
+                `;
+                grid.appendChild(cardCol);
+            });
+        }
+
+        // --- MODO DE EDIÇÃO VISUAL ---
+        window.ativarModoEdicao = function(id, nome) {
+            const cardEl = document.getElementById(`card-${id}`);
+            
+            const auditDiv = document.getElementById(`audit-${id}`);
+            const recordedFooter = document.getElementById(`footer-recorded-${id}`);
+            if(auditDiv) auditDiv.style.display = 'none'; 
+            if(recordedFooter) recordedFooter.remove();
+
+            const statusText = document.getElementById(`status-text-${id}`);
+            if(statusText) {
+                statusText.textContent = "Editando...";
+                statusText.className = "fw-bold text-warning";
+            }
+            cardEl.style.borderLeftColor = "#ffc107"; 
+
+            const buttonsHtml = `
+                <div class="action-footer-pending d-flex w-100 mt-auto">
+                    <button class="btn btn-success flex-grow-1" style="border-right: 1px solid rgba(0,0,0,0.1);" onclick="salvarStatus(${id}, '${nome}', true)">PRESENTE</button>
+                    <button class="btn btn-danger flex-grow-1" onclick="abrirModalAusencia(${id}, '${nome}')">AUSÊNCIA</button>
+                </div>
+            `;
+            
+            cardEl.insertAdjacentHTML('beforeend', buttonsHtml);
+        }
+
+        // --- EXCLUSÃO DEFINITIVA ---
+        window.removerRegistro = async function(registroId) {
+            if (!confirm('Tem certeza que deseja APAGAR este registro?')) return;
+
+            try {
+                await apiClient.delete(`${API_REGISTROS}${registroId}/`); 
+                carregarDadosIniciais(); 
+            } catch(e) {
+                console.error(e);
+                alert('Erro ao excluir registro.');
+            }
+        }
+
+        async function salvarStatus(vendedorId, nome, presente, detalhes = {}) {
+            const data = document.getElementById('data-presenca').value;
+            const body = {
+                colaborador: vendedorId,
+                data: data,
+                status: presente,
+                motivo: !presente ? detalhes.motivoId : null,
+                observacao: !presente ? detalhes.observacao : ""
+            };
+
+            try {
+                await apiClient.post(API_REGISTROS, body); 
+                carregarDadosIniciais(); 
+            } catch (e) { alert('Erro ao salvar.'); console.error(e); }
+        }
+
+        window.abrirModalAusencia = function(id, nome) {
+            document.getElementById('modal-title').textContent = `Registrar Ausência: ${nome}`;
+            const select = document.getElementById('select-motivo');
+            select.innerHTML = '<option value="">Selecione...</option>';
+            motivosDisponiveis.forEach(m => select.add(new Option(m.motivo, m.id)));
+            document.getElementById('obs-motivo').value = '';
+            
+            document.getElementById('btn-confirmar-ausencia').onclick = function() {
+                const motivoId = select.value;
+                if (!motivoId) { alert('Selecione o motivo.'); return; }
+                const obs = document.getElementById('obs-motivo').value;
+                salvarStatus(id, nome, false, { motivoId: motivoId, observacao: obs });
+                modalAusencia.hide();
+            };
+            modalAusencia.show();
+        }
+    </script>
+</body>
+</html>
+

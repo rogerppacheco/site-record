@@ -1,0 +1,905 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auditoria de Vendas - Record PAP</title>
+    <link rel="shortcut icon" href="{% static 'logo.png' %}" type="image/x-icon">
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=13.1">
+    <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
+    
+    <style>
+        /* Layout compacto sem rolagem visível */
+        .script-section { background-color: #fff; border-left: 3px solid var(--cor-primaria, #0d6efd); padding: 12px; margin-bottom: 12px; border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.06); }
+        .script-title { color: var(--cor-primaria, #0d6efd); font-weight: 800; margin-bottom: 8px; text-transform: uppercase; font-size: 0.85rem; border-bottom: 1px solid #eee; padding-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
+        .script-text { font-size: 0.95rem; line-height: 1.35; color: #212529; margin-bottom: 10px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .checklist-box { background-color: #fff3cd; border: 1px solid #ffecb5; padding: 10px; border-radius: 6px; margin-bottom: 10px; }
+        .form-check-input:checked { background-color: #198754; border-color: #198754; }
+        .checklist-label { font-weight: 600; color: #664d03; }
+        .form-control-script { border: 1px solid #ced4da; background-color: #f8f9fa; font-weight: 600; color: #495057; }
+            .form-control-script { border: 1px solid #ced4da; background-color: #f8f9fa; font-weight: 600; color: #495057; height: 32px; font-size: 0.95rem; padding: 4px 10px; }
+        .form-control-script:focus { background-color: #fff; border-color: var(--cor-primaria, #0d6efd); box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.15); }
+        .btn-copy { border-top-left-radius: 0; border-bottom-left-radius: 0; border-color: #ced4da; color: #6c757d; }
+        .btn-copy:hover { background-color: #e9ecef; color: #0d6efd; }
+        .btn-auditar { background-color: #212529; color: white; border-radius: 50px; padding: 6px 16px; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 6px; border: none; transition: transform 0.2s, box-shadow 0.2s; text-decoration: none; }
+        .btn-auditar:hover { background-color: #000; transform: translateY(-1px); color: #fff; box-shadow: 0 4px 6px rgba(0,0,0,0.2); }
+        .loading-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.8); z-index: 9999; text-align: center; padding-top: 20%; }
+        .nav-pills .nav-link { border-radius: 8px; font-weight: 600; color: #6c757d; background-color: #fff; border: 1px solid #dee2e6; margin: 0 5px; padding: 10px 20px; }
+        .nav-pills .nav-link.active { background-color: var(--cor-primaria, #0d6efd); color: white; border-color: var(--cor-primaria, #0d6efd); }
+        .auditor-badge { font-size: 0.75rem; background: #e9ecef; color: #495057; padding: 4px 10px; border-radius: 4px; border: 1px solid #dee2e6; display: inline-flex; align-items: center; gap: 5px; font-weight: 600; }
+        .locked-row { opacity: 0.9; background-color: #fffbf0 !important; }
+        .edit-info { font-size: 0.75rem; color: #6c757d; display: block; margin-top: 2px; }
+
+        /* Grids utilitários para reduzir altura */
+        .grid-auto-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+        .grid-auto-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; }
+
+        /* Ajustes gerais de layout no modal */
+        .modal-fullscreen .modal-content { display: flex; flex-direction: column; height: 100vh; }
+        .modal-fullscreen .modal-body { padding: 0; overflow: hidden; flex: 1 1 auto; display: flex; flex-direction: column; }
+        .flex-grow-1 { flex: 1 1 auto; padding: 12px; overflow: auto; }
+        .sticky-actions { position: sticky; bottom: 0; background: #f8f9fa; z-index: 1040; box-shadow: 0 -4px 12px rgba(0,0,0,0.08); }
+        .container.compact-container { max-width: 1200px; padding: 0; }
+        .tab-pane { padding: 0; }
+
+        /* Cards e linhas mais próximas */
+        .row.g-3 { row-gap: 10px; }
+        .script-text.mb-2 { margin-bottom: 6px !important; }
+        .script-title + .script-text { margin-bottom: 10px; }
+        .text-end.mt-4 { margin-top: 12px !important; }
+        .btn.btn-lg { padding: 10px 18px; }
+    </style>
+</head>
+<body>
+
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Carregando...</span>
+        </div>
+    </div>
+
+    <header class="main-header">
+        <div class="header-container">
+            <a href="/"><img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo"></a>
+            <button class="menu-toggle" id="menu-toggle"><div class="bar"></div><div class="bar"></div><div class="bar"></div></button>
+            <nav class="main-nav" id="main-nav">
+                <ul>
+                    <li><a href="/area-interna/">Voltar</a></li>
+                    <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main class="area-interna-section">
+        <div class="system-container" style="max-width: 1600px;">
+            <div class="d-flex justify-content-between align-items-center mb-4 header-controls">
+                <div>
+                    <h1 style="font-size: 1.8rem; margin: 0;">Auditoria de Vendas</h1>
+                    <p class="text-muted mb-0">Validação de dados e qualidade (Script Oficial).</p>
+                </div>
+                <button class="btn btn-outline-primary fw-bold shadow-sm" onclick="carregarVendasPendentes()">
+                    <i class="bi bi-arrow-clockwise"></i> Atualizar Lista
+                </button>
+            </div>
+
+            <div class="card border-0 shadow-none" style="background: transparent;">
+                <div class="table-responsive" style="overflow-y: visible; overflow-x: auto; padding: 4px;">
+                    <table class="table table-hover mb-0 bg-white rounded shadow-sm align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="ps-3">ID</th>
+                                <th>Data Venda</th>
+                                <th>Cliente / CPF</th>
+                                <th>Vendedor</th>
+                                <th>Produto</th>
+                                <th>Status Tratamento</th>
+                                <th>Última Edição</th>
+                                <th>Auditor</th>
+                                <th class="text-end pe-4">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="listaVendasBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <div class="modal fade" id="modalAuditoria" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog modal-fullscreen">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white py-2">
+                    <h6 class="modal-title d-flex align-items-center gap-2">
+                        <i class="bi bi-headset"></i> Auditoria Venda #<span id="script-id-venda"></span>
+                        <span class="badge bg-light text-primary ms-2" id="script-vendedor-nome"></span>
+                    </h6>
+                    <button type="button" class="btn-close btn-close-white" onclick="fecharScriptSemSalvar()"></button>
+                </div>
+                
+                <div class="modal-body p-0 d-flex flex-column">
+                    <input type="hidden" id="auditoria_id_venda">
+                    
+                    <div class="bg-white border-bottom py-3 px-4 shadow-sm">
+                        <ul class="nav nav-pills nav-fill" id="pills-tab" role="tablist">
+                            <li class="nav-item" role="presentation"><button class="nav-link active" id="pills-identidade-tab" data-bs-toggle="pill" data-bs-target="#pills-identidade" type="button">1. Identidade</button></li>
+                            <li class="nav-item" role="presentation"><button class="nav-link" id="pills-contato-tab" data-bs-toggle="pill" data-bs-target="#pills-contato" type="button">2. Contato</button></li>
+                            <li class="nav-item" role="presentation"><button class="nav-link" id="pills-endereco-tab" data-bs-toggle="pill" data-bs-target="#pills-endereco" type="button">3. Endereço</button></li>
+                            <li class="nav-item" role="presentation"><button class="nav-link" id="pills-oferta-tab" data-bs-toggle="pill" data-bs-target="#pills-oferta" type="button">4. Oferta & Pagto</button></li>
+                            <li class="nav-item" role="presentation"><button class="nav-link" id="pills-finalizacao-tab" data-bs-toggle="pill" data-bs-target="#pills-finalizacao" type="button">5. Finalização</button></li>
+                        </ul>
+                    </div>
+
+                    <div class="flex-grow-1 overflow-auto bg-light p-4">
+                        <div class="container compact-container">
+                            <div class="tab-content" id="pills-tabContent">
+                                
+                                <div class="tab-pane fade show active" id="pills-identidade" role="tabpanel">
+                                    <div class="script-section">
+                                        <div class="script-title">1. Introdução e Identificação</div>
+                                        <p class="script-text">
+                                            "<span id="script-saudacao" class="fw-bold">Olá</span>, tudo bem? Aqui é a(o) <strong><span id="script-user-logado" class="text-primary text-uppercase"></span></strong> da Nio Fibra. 
+                                            Estou ligando para confirmar os dados do seu pedido e passar algumas informações importantes. 
+                                            Posso prosseguir com a auditoria?"
+                                        </p>
+                                    </div>
+
+                                    <div class="script-section">
+                                        <div class="script-title">Dados Pessoais</div>
+                                        <div class="grid-auto-3 mb-3">
+                                            <div>
+                                                <p class="script-text mb-2">"Poderia, por gentileza, confirmar seu nome completo?"</p>
+                                                <div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-cliente-nome"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cliente-nome')" title="Copiar"><i class="bi bi-clipboard" id="btn-icon-audit-cliente-nome"></i></button></div>
+                                            </div>
+                                            <div>
+                                                <p class="script-text mb-2">"Poderia me informar o seu CPF?"</p>
+                                                <div class="input-group"><input type="text" class="form-control form-control-script" id="audit-cliente-cpf" maxlength="18" onkeyup="mascaraCPF(this)"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cliente-cpf', true)" title="Copiar apenas números"><i class="bi bi-clipboard" id="btn-icon-audit-cliente-cpf"></i></button></div>
+                                            </div>
+                                        </div>
+
+                                        <div class="grid-auto-3 mb-3">
+                                            <div><label class="form-label small text-muted fw-bold">Nome da Mãe</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-nome-mae"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-nome-mae')"><i class="bi bi-clipboard" id="btn-icon-audit-nome-mae"></i></button></div></div>
+                                            <div><label class="form-label small text-muted fw-bold">Data Nasc.</label><input type="date" class="form-control form-control-script" id="audit-data-nasc" onchange="calcularIdadeAuto()"></div>
+                                            <div><label class="form-label small text-muted fw-bold">Idade</label><input type="text" class="form-control bg-white" id="audit-idade-calc" readonly></div>
+                                        </div>
+
+                                        <div id="div-representante" style="display:none;" class="mt-3 pt-3 border-top bg-light p-3 rounded">
+                                            <h6 class="script-title mb-2 text-secondary">Representante Legal (CNPJ)</h6>
+                                            <p class="script-text mb-2 small text-muted">"Por favor, confirme os dados do representante legal."</p>
+                                            <div class="grid-auto-3">
+                                                <div>
+                                                    <label class="form-label small text-muted fw-bold">CPF Rep.</label>
+                                                    <div class="input-group">
+                                                        <input type="text" class="form-control form-control-script" id="audit-cpf-rep" onkeyup="mascaraCPF(this)">
+                                                        <button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cpf-rep', true)"><i class="bi bi-clipboard" id="btn-icon-audit-cpf-rep"></i></button>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label class="form-label small text-muted fw-bold">Nome Rep.</label>
+                                                    <div class="input-group">
+                                                        <input type="text" class="form-control form-control-script uppercase-input" id="audit-nome-rep">
+                                                        <button class="btn btn-copy" type="button" onclick="copiarCampo('audit-nome-rep')"><i class="bi bi-clipboard" id="btn-icon-audit-nome-rep"></i></button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="checklist-box mt-4"><div class="form-check"><input class="form-check-input" type="checkbox" id="check-biometria"><label class="form-check-label checklist-label" for="check-biometria">Verifiquei se a Biometria está APROVADA (Prazo link 48h)</label></div></div>
+                                        <div class="text-end mt-3"><button class="btn btn-primary" onclick="proximaAba('pills-contato-tab')">Próximo <i class="bi bi-arrow-right"></i></button></div>
+                                    </div>
+                                </div>
+
+                                <div class="tab-pane fade" id="pills-contato" role="tabpanel">
+                                    <div class="script-section">
+                                        <div class="script-title">Confirmação de Contato</div>
+                                        <div class="grid-auto-2 mb-2">
+                                            <div>
+                                                <p class="script-text mb-2">"Qual é o seu número de telefone no WhatsApp?"</p>
+                                                <div class="input-group mb-2"><span class="input-group-text bg-success text-white"><i class="bi bi-whatsapp"></i></span><input type="text" class="form-control form-control-script" id="audit-tel1" maxlength="15" onkeyup="mascaraTelefone(this)"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-tel1', true)"><i class="bi bi-clipboard" id="btn-icon-audit-tel1"></i></button></div>
+                                            </div>
+                                            <div>
+                                                <p class="script-text mb-2">"Poderia me informar um segundo telefone de contato?"</p>
+                                                <div class="input-group mb-2"><input type="text" class="form-control form-control-script" id="audit-tel2" maxlength="15" onkeyup="mascaraTelefone(this)"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-tel2', true)"><i class="bi bi-clipboard" id="btn-icon-audit-tel2"></i></button></div>
+                                            </div>
+                                        </div>
+                                        <div class="alert alert-info border-info my-3 py-2"><p class="mb-0 fst-italic">"Lembrando que é nesse número que você receberá a confirmação do pedido. Para confirmar a instalação, preciso que após receber a mensagem da Nio no seu WhatsApp você digite <strong>'SIM'</strong>. No WhatsApp da Nio, você poderá acompanhar a instalação em tempo real e até mesmo reagendar."</p></div>
+                                        <p class="script-text mb-2">"Qual é o seu endereço de e-mail?"</p>
+                                        <div class="input-group mb-2"><input type="email" class="form-control form-control-script lowercase-input" id="audit-email"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-email')"><i class="bi bi-clipboard" id="btn-icon-audit-email"></i></button></div>
+                                        <div class="text-end mt-4"><button class="btn btn-primary" onclick="proximaAba('pills-endereco-tab')">Próximo <i class="bi bi-arrow-right"></i></button></div>
+                                    </div>
+                                </div>
+
+                                <div class="tab-pane fade" id="pills-endereco" role="tabpanel">
+                                    <div class="script-section">
+                                        <div class="script-title">Endereço de Instalação</div>
+                                        <div class="checklist-box mb-3"><div class="form-check mb-2"><input class="form-check-input" type="checkbox" id="check-fibra"><label class="form-check-label checklist-label" for="check-fibra">Questionei se o endereço já possui Fibra instalada?</label></div><div class="form-check"><input class="form-check-input" type="checkbox" id="check-viabilidade"><label class="form-check-label checklist-label" for="check-viabilidade">Validei a viabilidade no sistema (DFV/Site/Portal)?</label></div></div>
+                                        <p class="script-text mb-3">"Agora, vamos confirmar o seu endereço de instalação. Poderia confirmar: Nome da Rua, Número e CEP?"</p>
+                                        <div class="row g-3">
+                                            <div class="col-md-2"><label class="form-label small text-muted fw-bold">CEP</label><div class="input-group"><input type="text" class="form-control form-control-script" id="audit-cep" maxlength="9" onkeyup="mascaraCEP(this)"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cep', true)"><i class="bi bi-clipboard" id="btn-icon-audit-cep"></i></button></div></div>
+                                            <div class="col-md-4"><label class="form-label small text-muted fw-bold">Logradouro</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-logradouro"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-logradouro')"><i class="bi bi-clipboard" id="btn-icon-audit-logradouro"></i></button></div></div>
+                                            <div class="col-md-2"><label class="form-label small text-muted fw-bold">Número</label><div class="input-group"><input type="text" class="form-control form-control-script" id="audit-numero"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-numero')"><i class="bi bi-clipboard" id="btn-icon-audit-numero"></i></button></div></div>
+                                            <div class="col-md-2"><label class="form-label small text-muted fw-bold">Complemento</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-complemento"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-complemento')"><i class="bi bi-clipboard" id="btn-icon-audit-complemento"></i></button></div></div>
+                                            <div class="col-md-3"><label class="form-label small text-muted fw-bold">Bairro</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-bairro"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-bairro')"><i class="bi bi-clipboard" id="btn-icon-audit-bairro"></i></button></div></div>
+                                            <div class="col-md-3"><label class="form-label small text-muted fw-bold">Cidade</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-cidade"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-cidade')"><i class="bi bi-clipboard" id="btn-icon-audit-cidade"></i></button></div></div>
+                                            <div class="col-md-2"><label class="form-label small text-muted fw-bold">UF</label><div class="input-group"><select class="form-select form-control-script" id="audit-uf"><option value="">Selecione</option><option value="AC">AC</option><option value="AL">AL</option><option value="AP">AP</option><option value="AM">AM</option><option value="BA">BA</option><option value="CE">CE</option><option value="DF">DF</option><option value="ES">ES</option><option value="GO">GO</option><option value="MA">MA</option><option value="MT">MT</option><option value="MS">MS</option><option value="MG">MG</option><option value="PA">PA</option><option value="PB">PB</option><option value="PR">PR</option><option value="PE">PE</option><option value="PI">PI</option><option value="RJ">RJ</option><option value="RN">RN</option><option value="RS">RS</option><option value="RO">RO</option><option value="RR">RR</option><option value="SC">SC</option><option value="SP">SP</option><option value="SE">SE</option><option value="TO">TO</option></select><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-uf')"><i class="bi bi-clipboard" id="btn-icon-audit-uf"></i></button></div></div>
+                                            <div class="col-md-4"><label class="form-label small text-muted fw-bold">Ponto de Referência</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-ref"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-ref')"><i class="bi bi-clipboard" id="btn-icon-audit-ref"></i></button></div></div>
+                                        </div>
+                                        <p class="script-text mt-3 text-success">"Ok, endereço confirmado."</p>
+                                        <div class="text-end mt-2">
+                                            <button class="btn btn-outline-secondary" type="button" onclick="copiarEnderecoCompleto()">
+                                                <i class="bi bi-clipboard-check"></i> Copiar Endereço Completo
+                                            </button>
+                                        </div>
+                                        <div class="text-end mt-4"><button class="btn btn-primary" onclick="proximaAba('pills-oferta-tab')">Próximo <i class="bi bi-arrow-right"></i></button></div>
+                                    </div>
+                                </div>
+
+                                <div class="tab-pane fade" id="pills-oferta" role="tabpanel">
+                                    <div class="script-section">
+                                        <div class="script-title">Informações do Plano e Pagamento</div>
+                                        <div class="row g-3 p-3 bg-light rounded border mb-3">
+                                            <div class="col-12 text-muted fw-bold small text-uppercase mb-1">Confirme os dados do sistema:</div>
+                                            <div class="col-md-6"><label class="form-label small">Plano Contratado</label><select class="form-select form-control-script" id="audit-plano" onchange="atualizarTextoPlano()"></select></div>
+                                            <div class="col-md-6"><label class="form-label small">Forma de Pagamento</label><select class="form-select form-control-script" id="audit-pagamento" onchange="atualizarTextoPlano()"></select></div>
+                                        </div>
+                                        <div class="p-3 bg-primary-subtle border border-primary rounded mb-3"><p class="script-text mb-0">"O plano que você contratou foi o <strong class="text-primary text-uppercase" id="txt-plano-nome">...</strong> com o valor de <strong class="text-success" id="txt-plano-valor">R$ ...</strong> e a forma de pagamento foi <strong class="text-dark text-uppercase" id="txt-pagamento-nome">...</strong>."</p></div>
+                                        <p class="script-text">"O valor mensal será fixo até <strong>janeiro de 2028</strong>."</p>
+                                        <p class="script-text">"A fidelidade do plano é de 12 meses. Você está ciente do valor contratado, do plano e da fidelidade mencionada?"</p>
+                                        <p class="script-text small text-muted">(Informar taxa de habilitação proporcional em caso de cancelamento em 12 meses)</p>
+                                        <hr>
+                                        <div id="script-pagamento-cartao" style="display:none;"><h6 class="fw-bold text-primary">SCRIPT CARTÃO DE CRÉDITO</h6><ul class="list-group mb-3"><li class="list-group-item">"É importante verificar se você possui limite disponível."</li><li class="list-group-item">"Você terá até 24h para preencher o link com os dados do cartão."</li><li class="list-group-item">"Após o cadastro, é feita uma pré-reserva. No dia da instalação, essa pré-reserva vira cobrança."</li><li class="list-group-item">"A data de vencimento será a mesma da fatura do seu cartão."</li></ul></div>
+                                        <div id="script-pagamento-dacc" style="display:none;"><h6 class="fw-bold text-primary">SCRIPT DÉBITO EM CONTA (DACC)</h6><ul class="list-group mb-3"><li class="list-group-item">"Por favor, confirme: Banco, Agência e Conta."</li><li class="list-group-item fw-bold text-danger">"Se for Banco do Brasil, Santander ou Nubank, você precisa entrar no app do banco e autorizar o débito."</li><li class="list-group-item">"O primeiro pagamento será por BOLETO (vencimento para 25 dias após instalação). O débito automático inicia no 2º mês."</li></ul></div>
+                                        <div id="script-pagamento-boleto" style="display:none;"><h6 class="fw-bold text-primary">SCRIPT BOLETO</h6><ul class="list-group mb-3"><li class="list-group-item">"No dia da instalação, você receberá o boleto por WhatsApp, com vencimento para 25 dias após a instalação."</li></ul></div>
+                                        <p class="script-text mt-3 fw-bold">"Importante: Não há como escolher ou mudar a data de vencimento; ela é definida pela data da instalação."</p>
+                                        <div class="text-end mt-4"><button class="btn btn-primary" onclick="proximaAba('pills-finalizacao-tab')">Próximo <i class="bi bi-arrow-right"></i></button></div>
+                                    </div>
+                                </div>
+
+                                <div class="tab-pane fade" id="pills-finalizacao" role="tabpanel">
+                                    <div class="script-section">
+                                        <div class="script-title">Agendamento e Encerramento</div>
+                                        <p class="script-text">"Poderia me informar qual o melhor dia da semana e horário (manhã ou tarde) para agendarmos a instalação?"</p>
+                                        <div class="checklist-box mb-3"><div class="form-check"><input class="form-check-input" type="checkbox" id="check-maioridade"><label class="form-check-label checklist-label" for="check-maioridade">Sinalizei que deve haver um maior de 18 anos com documento para receber o técnico?</label></div></div>
+                                        <div class="card bg-light border-0 mb-3"><div class="card-body"><h6 class="card-subtitle mb-3 text-muted text-uppercase small fw-bold">Preferência de Agendamento</h6><div class="row g-3"><div class="col-md-6"><label class="form-label fw-bold">Data</label><input type="date" class="form-control" id="audit-data-agendamento"></div><div class="col-md-6"><label class="form-label fw-bold">Turno</label><select class="form-select" id="audit-turno-agendamento"><option value="">Não agendado</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select></div></div></div></div>
+                                        <div class="script-section bg-light border p-3 rounded mb-3"><div class="script-title small">Aplicativo Nio</div><p class="script-text mb-0">"Para finalizar, gostaria de informar que temos o aplicativo Nio. Nele, você pode: <strong>Acompanhar a internet, Solicitar 2ª via da fatura, Atualizar dados e Pedir suporte.</strong> O app é essencial, pois você terá tudo na palma da sua mão. <br><br>Qualquer dúvida, entre em contato pelo WhatsApp (21 3605 1000). Enviaremos uma pesquisa de satisfação amanhã, sua opinião é muito importante!"</p></div>
+                                        <div class="mb-2"><label class="form-label fw-bold text-danger">Observações da Auditoria</label><textarea class="form-control uppercase-input" id="script-obs-venda" rows="3" placeholder="Anote aqui qualquer divergência..."></textarea></div>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="modal-footer bg-light justify-content-between flex-wrap shadow-lg sticky-actions" style="z-index: 1050;">
+                        <div class="d-flex align-items-center gap-3">
+                            <button type="button" class="btn btn-danger btn-lg fw-bold" onclick="abrirModalReprovacao()">
+                                <i class="bi bi-x-circle-fill"></i> REPROVAR / PENDENCIAR
+                            </button>
+                            
+                            <div id="token-indicator-modal" class="token-indicator" style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 8px; background: #e8f5e9; cursor: pointer; font-size: 0.85rem;" onclick="renovarTokenManual()" title="Token válido. Clique para renovar">
+                                <i class="bi bi-shield-check" style="color: #4caf50;"></i>
+                                <span id="token-time-modal" style="font-size: 0.8rem; font-weight: 600; color: #2e7d32;">--:--</span>
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn btn-secondary btn-lg" onclick="fecharScriptSemSalvar()">Sair</button>
+                            <button type="button" class="btn btn-success btn-lg fw-bold" onclick="finalizarComoAuditada()">
+                                <i class="bi bi-check-circle-fill"></i> SÓ AUDITAR
+                            </button>
+                            <button type="button" class="btn btn-primary btn-lg fw-bold" onclick="prepararAgendamento()">
+                                <i class="bi bi-calendar-plus-fill"></i> APROVAR E CADASTRAR
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modal-reprovacao" tabindex="-1" style="z-index: 1060;"><div class="modal-dialog"><div class="modal-content border-danger"><div class="modal-header bg-danger text-white"><h5 class="modal-title">Reprovar / Pendenciar Venda</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>Selecione o motivo:</p><div class="mb-3"><label class="form-label fw-bold">Novo Status</label><select class="form-select" id="repro-status"><option value="">Carregando...</option></select></div><div id="div-campos-aguardando-pagamento" style="display: none;" class="p-3 mb-3 bg-light border rounded"><div class="text-danger small fw-bold text-uppercase mb-2">Dados do pedido criado:</div><div class="mb-3"><label class="form-label fw-bold">O.S. *</label><input type="text" class="form-control" id="repro-os"></div><div class="row"><div class="col-6"><label class="form-label fw-bold">Data *</label><input type="date" class="form-control" id="repro-data"></div><div class="col-6"><label class="form-label fw-bold">Turno *</label><select class="form-select" id="repro-turno"><option value="">Selecione...</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select></div></div></div><div class="mb-3"><label class="form-label fw-bold">Observação</label><textarea class="form-control uppercase-input" id="repro-obs" rows="4"></textarea></div></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button type="button" class="btn btn-danger" onclick="confirmarReprovacao()">Confirmar</button></div></div></div></div>
+    <div class="modal fade" id="modal-aprovacao" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header bg-success text-white"><h5 class="modal-title">Venda Aprovada!</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>Copie a mensagem:</p><textarea id="aprovacao-mensagem" class="form-control mb-3" rows="12" readonly></textarea><button id="btn-copiar" class="btn btn-outline-success w-100" onclick="copiarMensagem()"><i class="bi bi-whatsapp"></i> Copiar</button></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button></div></div></div></div>
+    <div class="modal fade" id="modal-agendamento" tabindex="-1" data-bs-backdrop="static"><div class="modal-dialog"><div class="modal-content border-primary"><div class="modal-header bg-primary text-white"><h5 class="modal-title">Dados do Agendamento</h5><button type="button" class="btn-close btn-close-white" onclick="cancelarAgendamento()"></button></div><div class="modal-body"><div class="alert alert-info small">Aprovando para <strong>CADASTRADA</strong>. Preencha a O.S.</div><form id="form-agendamento"><div class="mb-3"><label class="form-label fw-bold">O.S. <span class="text-danger">*</span></label><input type="text" class="form-control" id="agenda-os" required></div><div class="row"><div class="col-md-6 mb-3"><label class="form-label fw-bold">Data <span class="text-danger">*</span></label><input type="date" class="form-control" id="agenda-data-final" required></div><div class="col-md-6 mb-3"><label class="form-label fw-bold">Turno <span class="text-danger">*</span></label><select class="form-select" id="agenda-turno-final" required><option value="">Selecione...</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select></div></div><div class="mb-3"><label class="form-label fw-bold">Observações</label><textarea class="form-control" id="agenda-obs" rows="3" placeholder="Observações da venda..."></textarea></div></form></div><div class="modal-footer"><button type="button" class="btn btn-secondary" onclick="cancelarAgendamento()">Voltar</button><button type="button" class="btn btn-primary" onclick="salvarAgendamentoFinal()">Confirmar</button></div></div></div></div>
+
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{% static 'js/auth.js' %}?v=8.0"></script>
+    <script src="{% static 'js/menu.js' %}?v=8.0"></script>
+    
+    <script>
+        const API_BASE = '/api/crm/vendas';
+        const API_AUX = '/api/crm';
+        
+        let vendas = [];
+        let vendaEmAuditoria = null;
+        let globalStatusOptions = [];
+        let planosOptions = [];
+        let formasPagamentoOptions = [];
+        let debounceRepTimer; 
+
+        const modalAuditoria = new bootstrap.Modal(document.getElementById('modalAuditoria'));
+        const modalReprovacao = new bootstrap.Modal(document.getElementById('modal-reprovacao'));
+        const modalAprovacao = new bootstrap.Modal(document.getElementById('modal-aprovacao'));
+        const modalAgendamento = new bootstrap.Modal(document.getElementById('modal-agendamento'));
+
+        // =========================================================================
+        // FUNÇÃO FETCH PADRONIZADA (SUBSTITUI API CLIENT EXTERNO)
+        // =========================================================================
+        async function apiFetch(endpoint, options = {}) {
+            const token = localStorage.getItem('accessToken');
+            const headers = {
+                'Content-Type': 'application/json',
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+            };
+            const config = { ...options, headers };
+            
+            try {
+                const response = await fetch(endpoint, config);
+                if (response.status === 401) { logout(); return null; }
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(errorText || response.statusText);
+                }
+                if (response.status === 204) return null;
+                return await response.json();
+            } catch (e) { throw e; }
+        }
+
+        $(document).ready(function() {
+            if (!localStorage.getItem('accessToken')) { window.location.href = '/'; return; }
+            $(document).on('input', '.uppercase-input', function() { this.value = this.value.toUpperCase(); });
+            $(document).on('input', '.lowercase-input', function() { this.value = this.value.toLowerCase(); });
+            
+            $('#repro-status').change(function() {
+                const text = $(this).find('option:selected').text().toUpperCase();
+                if(text.includes('AGUARDANDO PAGAMENTO')) $('#div-campos-aguardando-pagamento').slideDown();
+                else { $('#div-campos-aguardando-pagamento').slideUp(); $('#repro-os').val(''); }
+            });
+
+            // Monitoramento do campo de CPF do Representante
+            $('#audit-cpf-rep').on('input', function() {
+                const val = $(this).val().replace(/\D/g, '');
+                clearTimeout(debounceRepTimer);
+                if(val.length >= 11) {
+                    debounceRepTimer = setTimeout(() => buscarRepresentante(val), 600);
+                }
+            });
+
+            $('#audit-cep').on('blur', function() {
+                const cep = $(this).val().replace(/\D/g, '');
+                if (cep.length === 8) {
+                    $('#audit-logradouro').val('Carregando...');
+                    $.getJSON(`https://viacep.com.br/ws/${cep}/json/`, function(data) {
+                        if (!data.erro) {
+                            $('#audit-logradouro').val(data.logradouro.toUpperCase());
+                            $('#audit-bairro').val(data.bairro.toUpperCase());
+                            $('#audit-cidade').val(data.localidade.toUpperCase());
+                            $('#audit-uf').val(data.uf.toUpperCase());
+                            $('#audit-numero').focus();
+                        } else {
+                            alert("CEP não encontrado.");
+                            $('#audit-logradouro').val('');
+                        }
+                    }).fail(function() {
+                        alert("Erro ao buscar CEP.");
+                        $('#audit-logradouro').val('');
+                    });
+                }
+            });
+
+            carregarAuxiliares().then(() => carregarVendasPendentes());
+        });
+
+        // =========================================================================
+        // FUNÇÕES AUXILIARES DE LÓGICA
+        // =========================================================================
+        function atualizarSaudacao() {
+            const hora = new Date().getHours();
+            let saudacao = "Bom dia";
+            if (hora >= 12 && hora < 18) saudacao = "Boa tarde";
+            else if (hora >= 18) saudacao = "Boa noite";
+            $('#script-saudacao').text(saudacao);
+        }
+
+        function copiarCampo(id, apenasNumeros = false) {
+            let valor = document.getElementById(id).value;
+            if(!valor) return;
+            if (apenasNumeros) valor = valor.replace(/\D/g, "");
+            navigator.clipboard.writeText(valor).then(() => {
+                const icon = document.getElementById('btn-icon-' + id);
+                if(icon) {
+                    const originalClass = icon.className;
+                    icon.className = "bi bi-check-lg text-success";
+                    setTimeout(() => { icon.className = originalClass; }, 2000);
+                }
+            });
+        }
+
+        function proximaAba(tabId) {
+            const triggerEl = document.getElementById(tabId);
+            bootstrap.Tab.getOrCreateInstance(triggerEl).show();
+        }
+
+        function mascaraCPF(i) {
+            let v = i.value;
+            if(v.length > 14) { 
+                v = v.replace(/\D/g, "").replace(/^(\d{2})(\d)/, "$1.$2").replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3").replace(/\.(\d{3})(\d)/, ".$1/$2").replace(/(\d{4})(\d)/, "$1-$2");
+            } else { 
+                v = v.replace(/\D/g, "").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d{1,2})$/, "$1-$2");
+            }
+            i.value = v;
+        }
+
+        function mascaraTelefone(i) {
+            let v = i.value.replace(/\D/g, "").replace(/^(\d{2})(\d)/g, "($1) $2").replace(/(\d)(\d{4})$/, "$1-$2");
+            i.value = v;
+        }
+
+        function mascaraCEP(i) {
+            let v = i.value.replace(/\D/g, "").replace(/^(\d{5})(\d)/, "$1-$2");
+            i.value = v;
+        }
+
+        function aplicarMascarasManuais() {
+            const els = ['audit-cliente-cpf', 'audit-tel1', 'audit-tel2', 'audit-cep', 'audit-cpf-rep'];
+            els.forEach(id => {
+                const el = document.getElementById(id);
+                if(el && el.value) {
+                    if(id.includes('cpf')) mascaraCPF(el);
+                    else if(id.includes('tel')) mascaraTelefone(el);
+                    else if(id.includes('cep')) mascaraCEP(el);
+                }
+            });
+        }
+
+        // =========================================================================
+        // CARREGAMENTO DE DADOS (COM API FETCH + PAGINAÇÃO)
+        // =========================================================================
+        async function carregarAuxiliares() {
+            try {
+                // MUDANÇA: Usando apiFetch e page_size=1000
+                const [statusRes, planosRes, pagRes] = await Promise.all([
+                    apiFetch(`${API_AUX}/status/?tipo=Tratamento&page_size=1000`),
+                    apiFetch(`${API_AUX}/planos/?page_size=1000`),
+                    apiFetch(`${API_AUX}/formas-pagamento/?page_size=1000`)
+                ]);
+                
+                // Normalização: Array direto ou objeto paginado
+                globalStatusOptions = Array.isArray(statusRes) ? statusRes : (statusRes.results || []);
+                planosOptions = Array.isArray(planosRes) ? planosRes : (planosRes.results || []);
+                formasPagamentoOptions = Array.isArray(pagRes) ? pagRes : (pagRes.results || []);
+                
+                const selPlano = $('#audit-plano');
+                const selPag = $('#audit-pagamento');
+                selPlano.empty().append('<option value="">Selecione...</option>');
+                selPag.empty().append('<option value="">Selecione...</option>');
+                
+                planosOptions.forEach(p => selPlano.append(`<option value="${p.id}">${p.nome}</option>`));
+                formasPagamentoOptions.forEach(f => selPag.append(`<option value="${f.id}">${f.nome}</option>`));
+            } catch(e) {
+                console.error("Erro auxiliares", e);
+            }
+        }
+
+        function atualizarTextoPlano() {
+            const planoId = $('#audit-plano').val(); const pagId = $('#audit-pagamento').val();
+            const plano = planosOptions.find(p => p.id == planoId); 
+            const pag = formasPagamentoOptions.find(f => f.id == pagId);
+            
+            let valorFinal = 0;
+            if (plano) {
+                valorFinal = parseFloat(plano.valor);
+                if (pag && (pag.nome.toUpperCase().includes('CRÉDITO') || pag.nome.toUpperCase().includes('CREDITO'))) {
+                    valorFinal -= 10;
+                }
+                $('#txt-plano-nome').text(plano.nome.toUpperCase());
+                $('#txt-plano-valor').text('R$ ' + valorFinal.toFixed(2).replace('.', ','));
+            } else {
+                $('#txt-plano-nome').text('...');
+                $('#txt-plano-valor').text('R$ ...');
+            }
+            
+            if (pag) { 
+                $('#txt-pagamento-nome').text(pag.nome.toUpperCase()); 
+                atualizarScriptPagamento(pag.nome.toUpperCase());
+            } else { 
+                $('#txt-pagamento-nome').text('...');
+                $('#script-pagamento-cartao, #script-pagamento-dacc, #script-pagamento-boleto').hide();
+            }
+        }
+
+        function atualizarScriptPagamento(nomePagamento) {
+            $('#script-pagamento-cartao, #script-pagamento-dacc, #script-pagamento-boleto').hide();
+            if (nomePagamento.includes('CRÉDITO') || nomePagamento.includes('CREDITO')) $('#script-pagamento-cartao').show();
+            else if (nomePagamento.includes('DÉBITO') || nomePagamento.includes('DEBITO') || nomePagamento.includes('DACC')) $('#script-pagamento-dacc').show();
+            else if (nomePagamento.includes('BOLETO')) $('#script-pagamento-boleto').show();
+        }
+
+        // =========================================================================
+        // LISTAGEM DE VENDAS (COM API FETCH E LOOKUP)
+        // =========================================================================
+        function carregarVendasPendentes() {
+            $('#loadingOverlay').show();
+            apiFetch(`${API_BASE}/pendentes_auditoria/?page_size=100`)
+            .then(data => {
+                const tbody = $('#listaVendasBody'); tbody.empty();
+                // Normalização
+                const lista = Array.isArray(data) ? data : (data.results || []);
+                
+                if (!lista || lista.length === 0) { tbody.append('<tr><td colspan="9" class="text-center text-muted py-4">Nenhuma venda pendente.</td></tr>'); return; }
+                
+                lista.forEach(v => {
+                    let nomeCliente = 'N/A'; let cpfCliente = '-';
+                    if (v.cliente && typeof v.cliente === 'object') { nomeCliente = v.cliente.nome_razao_social || 'N/A'; cpfCliente = v.cliente.cpf_cnpj || '-'; } 
+                    else { nomeCliente = v.cliente_nome_razao_social || 'N/A'; cpfCliente = v.cliente_cpf_cnpj || '-'; }
+                    
+                    let nomeVendedor = v.vendedor_nome || (v.vendedor ? (v.vendedor.username || v.vendedor) : 'N/A');
+                    
+                    // LOOKUP PRODUTO
+                    let produto = '-';
+                    if (v.plano_nome) { produto = v.plano_nome; }
+                    else if (v.plano) {
+                        if (typeof v.plano === 'object') { produto = v.plano.nome || '-'; }
+                        else {
+                            const pEncontrado = planosOptions.find(p => String(p.id) === String(v.plano));
+                            produto = pEncontrado ? pEncontrado.nome : `(ID: ${v.plano})`;
+                        }
+                    }
+
+                    // LOOKUP STATUS TRATAMENTO
+                    let statusNome = '-';
+                    if (v.status_tratamento_nome) { statusNome = v.status_tratamento_nome; }
+                    else if (v.status_tratamento) {
+                        if (typeof v.status_tratamento === 'object') { statusNome = v.status_tratamento.nome || '-'; }
+                        else {
+                            const sEncontrado = globalStatusOptions.find(s => String(s.id) === String(v.status_tratamento));
+                            statusNome = sEncontrado ? sEncontrado.nome : `(ID: ${v.status_tratamento})`;
+                        }
+                    }
+
+                    let dataFormatada = v.data_criacao ? new Date(v.data_criacao).toLocaleString('pt-BR', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'}) : '-';
+                    
+                    let infoEdicao = '-';
+                    if (v.nome_editor) {
+                        let dataEdicao = v.data_ultima_alteracao ? new Date(v.data_ultima_alteracao).toLocaleString('pt-BR', {day: '2-digit', month: '2-digit', hour: '2-digit', minute:'2-digit'}) : '';
+                        infoEdicao = `<div><strong class="text-dark small">${v.nome_editor}</strong></div><div class="edit-info">${dataEdicao}</div>`;
+                    }
+
+                    let token = localStorage.getItem('accessToken');
+                    let myId = token ? parseInt(jwt_decode(token).user_id) : null;
+                    const nomeAuditor = v.auditor_atual_nome || (v.auditor_atual ? `ID: ${v.auditor_atual}` : '-');
+                    
+                    let auditorInfo = '-'; let btnHtml = ''; let classeLinha = '';
+                    
+                    if (v.auditor_atual && v.auditor_atual !== myId) {
+                        classeLinha = 'locked-row';
+                        auditorInfo = `<div class="d-flex align-items-center gap-2"><span class="auditor-badge text-truncate" style="max-width: 100px;" title="${nomeAuditor}"><i class="bi bi-lock-fill"></i> ${nomeAuditor}</span><button class="btn btn-sm btn-outline-danger border-0" onclick="forcarLiberacao(${v.id})" title="Desbloquear"><i class="bi bi-unlock"></i></button></div>`;
+                        btnHtml = `<span class="badge bg-secondary">Em uso</span>`;
+                    } else if (v.auditor_atual === myId) {
+                        auditorInfo = `<span class="auditor-badge bg-success text-white">VOCÊ</span>`;
+                        btnHtml = `<button class="btn btn-auditar" onclick="retomarAuditoria(${v.id})"><i class="bi bi-play-circle"></i> Continuar</button>`;
+                    } else {
+                        btnHtml = `<button class="btn btn-auditar" onclick="tentarAuditoria(${v.id})"><i class="bi bi-headset"></i> Auditar</button>`;
+                    }
+                    
+                    tbody.append(`<tr class="${classeLinha}"><td class="fw-bold text-primary">#${v.id}</td><td>${dataFormatada}</td><td><div class="fw-bold text-dark">${nomeCliente}</div><div class="small text-muted" style="font-size: 0.8rem;">${cpfCliente}</div></td><td>${nomeVendedor}</td><td>${produto}</td><td><span class="badge bg-warning text-dark">${statusNome}</span></td><td>${infoEdicao}</td><td>${auditorInfo}</td><td class="text-end">${btnHtml}</td></tr>`);
+                });
+            })
+            .catch(e => { console.error(e); alert('Erro ao carregar vendas.'); })
+            .finally(() => $('#loadingOverlay').hide());
+        }
+
+        // =========================================================================
+        // FUNÇÕES DE AÇÃO (USANDO API FETCH)
+        // =========================================================================
+        function tentarAuditoria(id) { if(!confirm(`Iniciar auditoria da Venda #${id}?`)) return; alocarVenda(id); }
+        function retomarAuditoria(id) { carregarDadosNoScript(id); }
+        
+        function alocarVenda(id) { 
+            $('#loadingOverlay').show(); 
+            apiFetch(`${API_BASE}/${id}/alocar-auditoria/`, { method: 'POST' })
+            .then(() => carregarDadosNoScript(id))
+            .catch(err => { 
+                $('#loadingOverlay').hide(); 
+                alert('Erro ao alocar venda (talvez já esteja em uso).'); 
+                carregarVendasPendentes(); 
+            }); 
+        }
+        
+        function forcarLiberacao(id) { 
+            if(!confirm("Forçar desbloqueio?")) return; 
+            $('#loadingOverlay').show(); 
+            apiFetch(`${API_BASE}/${id}/liberar-auditoria/`, { method: 'POST' })
+            .then(() => { alert("Liberada."); carregarVendasPendentes(); })
+            .catch(() => { $('#loadingOverlay').hide(); alert("Sem permissão."); }); 
+        }
+
+        function carregarDadosNoScript(id) {
+            apiFetch(`${API_BASE}/${id}/`).then(res => {
+                // Normalização para objeto de venda
+                let v = Array.isArray(res) ? (res[0] || {}) : (res.results ? res.results[0] : res);
+                vendaEmAuditoria = v;
+                $('#loadingOverlay').hide(); $('#auditoria_id_venda').val(v.id); $('#script-id-venda').text(v.id); $('#script-vendedor-nome').text(v.vendedor_nome || 'N/A');
+                try { $('#script-user-logado').text(jwt_decode(localStorage.getItem('accessToken')).username || 'Consultor'); } catch(e) {}
+                const nomeCli = (v.cliente && v.cliente.nome_razao_social) ? v.cliente.nome_razao_social : (v.cliente_nome_razao_social || '');
+                const cpfCli = (v.cliente && v.cliente.cpf_cnpj) ? v.cliente.cpf_cnpj : (v.cliente_cpf_cnpj || '');
+                const emailCli = (v.cliente && v.cliente.email) ? v.cliente.email : (v.cliente_email || '');
+                $('#audit-cliente-nome').val(nomeCli); $('#audit-cliente-cpf').val(cpfCli); $('#audit-email').val(emailCli);
+                $('#audit-nome-mae').val(v.nome_mae || ''); $('#audit-data-nasc').val(v.data_nascimento || '');
+                $('#audit-tel1').val(v.telefone1 || ''); $('#audit-tel2').val(v.telefone2 || '');
+                $('#audit-cep').val(v.cep || ''); $('#audit-logradouro').val(v.logradouro || ''); $('#audit-numero').val(v.numero_residencia || '');
+                $('#audit-complemento').val(v.complemento || ''); $('#audit-bairro').val(v.bairro || ''); $('#audit-cidade').val(v.cidade || '');
+                $('#audit-uf').val(v.estado || ''); $('#audit-ref').val(v.ponto_referencia || '');
+                if(v.plano) $('#audit-plano').val(v.plano.id || v.plano); if(v.forma_pagamento) $('#audit-pagamento').val(v.forma_pagamento.id || v.forma_pagamento);
+                $('#audit-data-agendamento').val(v.data_agendamento || ''); $('#audit-turno-agendamento').val(v.periodo_agendamento || ''); $('#script-obs-venda').val(v.observacoes || '');
+                
+                $('#repro-data').val(v.data_abertura ? v.data_abertura.split('T')[0] : '');
+
+                // Carrega campos do Representante e exibe se for CNPJ
+                $('#audit-cpf-rep').val(v.cpf_representante_legal || '');
+                $('#audit-nome-rep').val(v.nome_representante_legal || '');
+                
+                const cpfLimpo = cpfCli.replace(/\D/g, '');
+                if (cpfLimpo.length > 11 || v.cpf_representante_legal) {
+                    $('#div-representante').show();
+                } else {
+                    $('#div-representante').hide();
+                }
+
+                calcularIdadeAuto(); atualizarTextoPlano(); aplicarMascarasManuais(); 
+                atualizarSaudacao();
+                $('.form-check-input').prop('checked', false);
+                $('.nav-link').removeClass('active'); $('.tab-pane').removeClass('show active');
+                $('#pills-identidade-tab').addClass('active'); $('#pills-identidade').addClass('show active');
+                modalAuditoria.show();
+            }).catch(e => { console.error(e); $('#loadingOverlay').hide(); alert('Erro ao abrir venda.'); });
+        }
+
+        async function buscarRepresentante(cpf) {
+            const inputNome = $('#audit-nome-rep');
+            inputNome.val("BUSCANDO...");
+            inputNome.prop('readonly', true).css('background-color', '#e9ecef');
+
+            try {
+                const data = await apiFetch(`${API_AUX}/clientes/?search=${cpf}`);
+                let encontrado = false;
+
+                if(data && data.length > 0) {
+                    const rep = data.find(cli => cli.cpf_cnpj.replace(/\D/g, '') === cpf.replace(/\D/g, ''));
+                    if (rep) {
+                        inputNome.val(rep.nome_razao_social);
+                        inputNome.prop('readonly', true).css('background-color', '#e9ecef');
+                        encontrado = true;
+                    }
+                }
+
+                if (!encontrado) {
+                    inputNome.val("");
+                    inputNome.prop('readonly', false).css('background-color', '#ffffff');
+                    inputNome.focus();
+                }
+            } catch(e) {
+                console.error("Erro rep:", e);
+                inputNome.val("");
+                inputNome.prop('readonly', false).css('background-color', '#ffffff');
+            }
+        }
+
+        function calcularIdadeAuto() {
+            const dn = $('#audit-data-nasc').val(); if(!dn) { $('#audit-idade-calc').val(''); return; }
+            const nasc = new Date(dn); const hoje = new Date(); let idade = hoje.getFullYear() - nasc.getFullYear();
+            if (hoje.getMonth() < nasc.getMonth() || (hoje.getMonth() === nasc.getMonth() && hoje.getDate() < nasc.getDate())) idade--;
+            $('#audit-idade-calc').val(idade + ' anos');
+        }
+
+        function coletarDadosAuditoria() {
+            return {
+                cliente_nome: $('#audit-cliente-nome').val(), cliente_cpf: $('#audit-cliente-cpf').val(), cliente_email: $('#audit-email').val(),
+                nome_mae: $('#audit-nome-mae').val(), data_nascimento: $('#audit-data-nasc').val(), telefone1: $('#audit-tel1').val(), telefone2: $('#audit-tel2').val(),
+                cep: $('#audit-cep').val(), logradouro: $('#audit-logradouro').val(), numero: $('#audit-numero').val(), complemento: $('#audit-complemento').val(),
+                bairro: $('#audit-bairro').val(), cidade: $('#audit-cidade').val(), estado: $('#audit-uf').val(), referencia: $('#audit-ref').val(),
+                plano: $('#audit-plano').val(), forma_pagamento: $('#audit-pagamento').val(), data_agendamento: $('#audit-data-agendamento').val(), periodo_agendamento: $('#audit-turno-agendamento').val(),
+                observacoes: $('#script-obs-venda').val(),
+                cpf_representante_legal: $('#audit-cpf-rep').val(),
+                nome_representante_legal: $('#audit-nome-rep').val()
+            };
+        }
+        
+        function validarAuditoriaCompleta() {
+            const cep = $('#audit-cep').val();
+            const logradouro = $('#audit-logradouro').val();
+            const numero = $('#audit-numero').val();
+            const plano = $('#audit-plano').val();
+            const pagamento = $('#audit-pagamento').val();
+
+            if (!cep || !logradouro || !numero || !plano || !pagamento) {
+                alert("Atenção: É obrigatório preencher Endereço (Aba 3) e Oferta/Pagamento (Aba 4) antes de prosseguir.");
+                if (!cep || !logradouro || !numero) proximaAba('pills-endereco-tab'); else proximaAba('pills-oferta-tab');
+                return false;
+            }
+            return true;
+        }
+
+        function validarChecklist() {
+            if(!$('#check-biometria').is(':checked')) { alert('Erro: Confirme a Biometria!'); proximaAba('pills-identidade-tab'); return false; }
+            if(!$('#check-fibra').is(':checked')) { alert('Erro: Questione sobre Fibra existente!'); proximaAba('pills-endereco-tab'); return false; }
+            if(!$('#check-viabilidade').is(':checked')) { alert('Erro: Valide a Viabilidade!'); proximaAba('pills-endereco-tab'); return false; }
+            if(!$('#check-maioridade').is(':checked')) { alert('Erro: Confirme que o cliente foi avisado sobre o responsável +18!'); proximaAba('pills-finalizacao-tab'); return false; }
+            return true;
+        }
+
+        function finalizarComoAuditada() { 
+            if(!validarAuditoriaCompleta()) return;
+            if(!validarChecklist()) return;
+            if(!confirm("Aprovar venda como AUDITADA?")) return; 
+            enviarFinalizacao('AUDITADA', $('#script-obs-venda').val(), coletarDadosAuditoria()); 
+        }
+
+        function prepararAgendamento() {
+            if(!validarAuditoriaCompleta()) return;
+            if(!validarChecklist()) return;
+            const d = coletarDadosAuditoria();
+            modalAuditoria.hide(); 
+            $('#agenda-os').val(vendaEmAuditoria.ordem_servico || '');
+            $('#agenda-obs').val($('#script-obs-venda').val());
+            if(d.data_agendamento) $('#agenda-data-final').val(d.data_agendamento); 
+            if(d.periodo_agendamento) $('#agenda-turno-final').val(d.periodo_agendamento);
+            modalAgendamento.show();
+        }
+
+        async function abrirModalReprovacao() {
+            const sel = $('#repro-status'); if (globalStatusOptions.length === 0) { try { const r = await apiFetch(`${API_AUX}/status/?tipo=Tratamento`); globalStatusOptions = r || []; } catch(e){} }
+            sel.empty().append('<option value="">Selecione...</option>');
+            if (globalStatusOptions.length > 0) { globalStatusOptions.filter(s => {
+                const nome = s.nome.toUpperCase();
+                return !(nome === 'AUDITADA' || nome === 'APROVADA' || nome === 'CADASTRADA' || nome.startsWith('APROVADA E '));
+            }).forEach(s => sel.append(`<option value="${s.id}">${s.nome}</option>`)); }
+            $('#div-campos-aguardando-pagamento').hide(); $('#repro-os').val(''); $('#repro-data').val($('#audit-data-agendamento').val()); $('#repro-turno').val($('#audit-turno-agendamento').val()); $('#repro-obs').val($('#script-obs-venda').val()); 
+            modalReprovacao.show();
+        }
+
+        function confirmarReprovacao() {
+            const stId = $('#repro-status').val(); const obs = $('#repro-obs').val(); const stText = $('#repro-status option:selected').text().toUpperCase();
+            if(!stId || !obs) { alert('Selecione status e motivo.'); return; }
+            if (stText.includes('AGUARDANDO PAGAMENTO')) {
+                const os = $('#repro-os').val(), dt = $('#repro-data').val(), tr = $('#repro-turno').val();
+                if (!os || !dt || !tr) { alert('O.S, Data e Turno obrigatórios.'); return; }
+                $('#loadingOverlay').show();
+                apiFetch(`${API_BASE}/${vendaEmAuditoria.id}/`, { method: 'PATCH', body: JSON.stringify({ ordem_servico: os, data_agendamento: dt, periodo_agendamento: tr }) })
+                .then(() => { const d = coletarDadosAuditoria(); d.data_agendamento = dt; d.periodo_agendamento = tr; return enviarFinalizacao(stId, obs, d, true); })
+                .catch(e => { alert('Erro: ' + e.message); $('#loadingOverlay').hide(); });
+            } else { $('#loadingOverlay').show(); enviarFinalizacao(stId, obs, coletarDadosAuditoria(), true); }
+        }
+
+        function salvarAgendamentoFinal() {
+            const os = $('#agenda-os').val(), dt = $('#agenda-data-final').val(), tr = $('#agenda-turno-final').val();
+            const obs = $('#agenda-obs').val();
+            if(!os || !dt || !tr) { alert('Preencha tudo.'); return; }
+            $('#loadingOverlay').show();
+            apiFetch(`${API_AUX}/status/?tipo=Esteira`).then(res => {
+                const lista = Array.isArray(res) ? res : (res.results || []);
+                const st = lista.find(s => s.nome.toUpperCase() === 'AGENDADO'); if(!st) throw new Error("Status AGENDADO sumiu.");
+                return apiFetch(`${API_BASE}/${vendaEmAuditoria.id}/`, { method: 'PATCH', body: JSON.stringify({ ordem_servico: os, data_agendamento: dt, periodo_agendamento: tr, status_esteira: st.id }) });
+            }).then(() => {
+                const d = coletarDadosAuditoria(); 
+                d.data_agendamento = dt; 
+                d.periodo_agendamento = tr;
+                d.observacoes = obs;
+                return enviarFinalizacao('CADASTRADA', obs, d, false, true);
+            }).catch(e => { alert('Erro: ' + e.message); $('#loadingOverlay').hide(); });
+        }
+
+        function enviarFinalizacao(st, obs, dados, fechaRep=false, abreZap=false) {
+            return apiFetch(`${API_BASE}/${vendaEmAuditoria.id}/finalizar_auditoria/`, { method: 'POST', body: JSON.stringify({ status: st, observacoes: obs, dados_atualizados: dados }) })
+            .then(() => { alert('Salvo!'); if(fechaRep) modalReprovacao.hide(); modalAgendamento.hide(); modalAuditoria.hide(); if(abreZap) gerarAprovacaoMsg(dados); else carregarVendasPendentes(); })
+            .catch(e => { console.error(e); alert('Erro ao finalizar.'); })
+            .finally(() => { if(!abreZap) $('#loadingOverlay').hide(); });
+        }
+
+        async function fecharScriptSemSalvar() { 
+            if(confirm("Deseja sair? O que você preencheu será salvo como rascunho.")) {
+                $('#loadingOverlay').show();
+                const d = coletarDadosAuditoria();
+                const rascunho = {
+                    cliente_email: d.cliente_email || null,
+                    cliente_nome_razao_social: d.cliente_nome || null,
+                    cliente_cpf_cnpj: d.cliente_cpf || null,
+                    observacoes: d.observacoes || null,
+                    nome_mae: d.nome_mae || null,
+                    data_nascimento: d.data_nascimento || null,
+                    telefone1: d.telefone1 || null,
+                    telefone2: d.telefone2 || null,
+                    cep: d.cep || null,
+                    logradouro: d.logradouro || null,
+                    numero_residencia: d.numero || null,
+                    complemento: d.complemento || null,
+                    bairro: d.bairro || null,
+                    cidade: d.cidade || null,
+                    estado: d.estado || null,
+                    ponto_referencia: d.referencia || null,
+                    plano: d.plano || null,
+                    forma_pagamento: d.forma_pagamento || null,
+                    data_agendamento: d.data_agendamento || null,
+                    periodo_agendamento: d.periodo_agendamento || null,
+                    cpf_representante_legal: d.cpf_representante_legal || null,
+                    nome_representante_legal: d.nome_representante_legal || null
+                };
+                Object.keys(rascunho).forEach(key => { if (rascunho[key] === "") rascunho[key] = null; });
+
+                try {
+                    await apiFetch(`${API_BASE}/${vendaEmAuditoria.id}/`, { method: 'PATCH', body: JSON.stringify(rascunho) });
+                    await apiFetch(`${API_BASE}/${vendaEmAuditoria.id}/liberar-auditoria/`, { method: 'POST' });
+                    modalAuditoria.hide(); 
+                    carregarVendasPendentes();
+                } catch (e) {
+                    console.error("Erro ao salvar rascunho:", e);
+                    apiFetch(`${API_BASE}/${vendaEmAuditoria.id}/liberar-auditoria/`, { method: 'POST' }).finally(() => {
+                        modalAuditoria.hide(); 
+                        carregarVendasPendentes();
+                    });
+                } finally {
+                    $('#loadingOverlay').hide();
+                }
+            } 
+        }
+        
+        function cancelarAgendamento() { modalAgendamento.hide(); modalAuditoria.show(); }
+        
+        function gerarAprovacaoMsg(d) {
+            $('#loadingOverlay').hide();
+            const planoTexto = $('#audit-plano option:selected').text();
+            const dataAgendamento = d.data_agendamento ? d.data_agendamento.split('-').reverse().join('/') : '';
+            
+            let txt = `APROVADO!✅✅\n`;
+            txt += `PLANO ADQUIRIDO: ${planoTexto}\n`;
+            txt += `NOME DO CLIENTE: ${d.cliente_nome}\n`;
+            txt += `CPF/CNPJ: ${d.cliente_cpf}\n`;
+            if($('#agenda-os').val()) txt += `OS: ${$('#agenda-os').val()}\n`;
+            const formaPagtoTexto = $('#audit-pagamento option:selected').text().toUpperCase();
+            const isDacc = formaPagtoTexto.includes('DÉBITO') || formaPagtoTexto.includes('DEBITO') || formaPagtoTexto.includes('DACC') ? 'SIM' : 'NÃO';
+            txt += `DACC: ${isDacc}\n`;
+            if(dataAgendamento) {
+                let turnoFmt = d.periodo_agendamento;
+                if(turnoFmt === 'MANHA') turnoFmt = 'na parte da manhã';
+                else if(turnoFmt === 'TARDE') turnoFmt = 'na parte da tarde';
+                txt += `AGENDAMENTO: Agendamento confirmado para o dia ${dataAgendamento} ${turnoFmt}\n`;
+            }
+            txt += `VENDEDOR: ${$('#script-vendedor-nome').text()}\n`;
+            txt += `⚠FATURA, SEGUNDA VIA OU DÚVIDAS\n`;
+            txt += `https://www.niointernet.com.br/\n`;
+            txt += `\nLembrete importante: Peça seu cliente para salvar o telefone 21 4040-1810 na sua agenda, isso evita pendências indevidas.\n`;
+            txt += `Para que sua instalação seja concluída favor salvar esse contato, Técnico Nio 21 4040-1810, para receber informações da Visita.`;
+
+            $('#aprovacao-mensagem').val(txt); 
+            modalAprovacao.show();
+            document.getElementById('modal-aprovacao').addEventListener('hidden.bs.modal', () => carregarVendasPendentes(), {once:true});
+        }
+
+        function copiarMensagem() { const t = document.getElementById("aprovacao-mensagem"); t.select(); navigator.clipboard.writeText(t.value).then(() => alert("Copiado!")); }
+        function logout() { localStorage.removeItem('accessToken'); window.location.href = '/'; }
+    function copiarEnderecoCompleto() {
+        function toTitleCase(str) {
+            return str.toLowerCase().replace(/\b\w+/g, function(txt){
+                return txt.charAt(0).toUpperCase() + txt.substr(1);
+            });
+        }
+        var cep = document.getElementById('audit-cep').value;
+        var logradouro = toTitleCase(document.getElementById('audit-logradouro').value);
+        var numero = document.getElementById('audit-numero').value;
+        var complemento = toTitleCase(document.getElementById('audit-complemento').value);
+        var bairro = toTitleCase(document.getElementById('audit-bairro').value);
+        var cidade = toTitleCase(document.getElementById('audit-cidade').value);
+        var uf = document.getElementById('audit-uf').value.toUpperCase();
+        var ref = toTitleCase(document.getElementById('audit-ref').value);
+        var enderecoCompleto = `${logradouro}, ${numero}`;
+        if (complemento) enderecoCompleto += `, ${complemento}`;
+        enderecoCompleto += `, ${bairro}, ${cidade} - ${uf}, ${cep}`;
+        if (ref) enderecoCompleto += `, ${ref}`;
+        navigator.clipboard.writeText(enderecoCompleto);
+    }
+    </script>
+</body>
+</html>

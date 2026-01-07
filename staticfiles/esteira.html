@@ -1,0 +1,798 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Esteira de Vendas - Record PAP</title>
+    <link rel="shortcut icon" href="{% static 'logo.png' %}" type="image/x-icon">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=13.1">
+    <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
+    <style>
+        /* --- ESTILO DE CARDS FLUTUANTES NA TABELA --- */
+        table.table {
+            border-collapse: separate !important; 
+            border-spacing: 0 16px !important;    
+        }
+        
+        /* Reset das células */
+        .table > :not(caption) > * > * {
+            background-color: transparent; 
+            border-bottom-width: 0;
+            box-shadow: none;
+            vertical-align: middle;
+        }
+
+        /* Estilo do cabeçalho */
+        .table thead th {
+            border: none;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            color: #6c757d;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            padding-bottom: 0;
+        }
+
+        /* Select limpo */
+        .status-select { 
+            min-width: 160px; 
+            font-size: 0.9rem; 
+            border: 1px solid #dee2e6;
+            background-color: #f8f9fa;
+        } 
+
+        .nav-tabs .nav-link.active { color: var(--cor-primaria); border-bottom: 3px solid var(--cor-primaria); background: transparent; }
+        input[type="text"], textarea { text-transform: uppercase; }
+        
+        .nav-link.data-tab { font-size: 0.85rem; color: #666; }
+        .nav-link.data-tab.active { color: var(--cor-primaria); font-weight: bold; }
+
+        /* Esconde barra de rolagem horizontal padrão se não for necessária */
+        .table-responsive::-webkit-scrollbar { height: 6px; }
+        .table-responsive::-webkit-scrollbar-thumb { background-color: #ccc; border-radius: 4px; }
+
+        @media (max-width: 576px) {
+            .header-controls { flex-direction: column; align-items: flex-start; gap: 10px; }
+            .header-controls button { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+
+    <header class="main-header">
+        <div class="header-container">
+            <a href="/"><img src="{% static 'logo.png' %}" alt="Record PAP Logo" class="logo"></a>
+            <button class="menu-toggle" id="menu-toggle"><div class="bar"></div><div class="bar"></div><div class="bar"></div></button>
+            <nav class="main-nav" id="main-nav">
+                <ul>
+                    <li><a href="/area-interna/">Voltar</a></li>
+                    <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main class="area-interna-section">
+        <div class="system-container" style="max-width: 1600px;">
+            <div class="d-flex justify-content-between align-items-center mb-4 header-controls">
+                <div>
+                    <h1 style="font-size: 1.8rem; margin: 0;">Esteira de Vendas</h1>
+                    <p class="text-muted mb-0">Acompanhamento e tratamento de pendências.</p>
+                </div>
+                
+                <div class="d-flex gap-2">
+                    <div class="input-group" style="max-width: 300px;">
+                        <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                        <input type="text" id="filtro-busca" class="form-control" placeholder="Buscar CPF ou OS..." onkeyup="if(event.key === 'Enter') carregarVendas()">
+                    </div>
+
+                    <button id="btn-toggle-wpp" class="btn btn-outline-success fw-bold shadow-sm" style="display: none;" onclick="toggleEnvioZap()">
+                        <i class="bi bi-whatsapp"></i> WPP ON
+                    </button>
+
+                    <button onclick="carregarVendas()" class="btn btn-outline-primary fw-bold shadow-sm">
+                        <i class="bi bi-arrow-clockwise"></i> Atualizar Lista
+                    </button>
+                </div>
+            </div>
+
+            <ul class="nav nav-tabs mb-3" id="abas-esteira">
+                <li class="nav-item"><a class="nav-link active" href="#" data-tab="TODOS" onclick="filtrarStatus('TODOS', this)">Todos</a></li>
+                <li class="nav-item"><a class="nav-link" href="#" data-tab="AGENDADO" onclick="filtrarStatus('AGENDADO', this)">Agendados</a></li>
+                <li class="nav-item"><a class="nav-link" href="#" data-tab="PENDEN" onclick="filtrarStatus('PENDEN', this)">Pendentes</a></li>
+            </ul>
+
+            <div class="card border-0 shadow-none" style="background: transparent;">
+                <div class="table-responsive" style="overflow-y: visible; overflow-x: auto; padding: 4px;">
+                    <table class="table mb-0">
+                        <thead>
+                            <tr>
+                                <th class="ps-3">ID</th>
+                                <th>Data Venda</th> 
+                                <th>O.S.</th>
+                                <th>Data Agendada</th> 
+                                <th>Turno</th>
+                                <th>Cliente</th>
+                                <th>Vendedor</th>
+                                <th>Plano</th>
+                                <th>Status Atual</th>
+                                <th>Motivo Pendência</th>
+                                <th>Resp. Alteração</th> <th class="pe-3">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabela-esteira-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <div class="modal fade" id="modal-editar-venda" tabindex="-1">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Editar Venda</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="edit-venda-id-hidden">
+                    
+                    <div class="row g-3 mb-4 p-3 bg-light rounded border">
+                        <div class="col-12"><h6 class="text-primary border-bottom pb-2">Status e Plano</h6></div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Status da Esteira</label>
+                            <select class="form-select" id="edit-status-esteira" onchange="verificarStatusInstaladaModal(this)"></select>
+                        </div>
+                        <div class="col-md-6"><label class="form-label">Plano</label><select class="form-select" id="edit-plano"></select></div>
+                        <div class="col-md-6"><label class="form-label">Forma de Pagamento</label><select class="form-select" id="edit-pagamento"></select></div>
+                    </div>
+
+                    <div class="row g-3 mb-4">
+                         <div class="col-12"><h6 class="text-secondary border-bottom pb-2">Dados do Cliente</h6></div>
+                        <div class="col-md-6"><label class="form-label fw-bold">Nome do Cliente</label><input type="text" class="form-control uppercase-input" id="edit-cliente-nome"></div>
+                        <div class="col-md-6"><label class="form-label text-muted">CPF/CNPJ (Leitura)</label><input type="text" class="form-control bg-light" id="edit-cliente-cpf" readonly></div>
+                        
+                        <div class="col-md-6"><label class="form-label">Nome da Mãe</label><input type="text" class="form-control uppercase-input" id="edit-nome-mae"></div>
+                        <div class="col-md-6"><label class="form-label">Data Nascimento</label><input type="date" class="form-control" id="edit-data-nascimento"></div>
+
+                        <div class="col-md-6"><label class="form-label">Telefone 1</label><input type="text" class="form-control" id="edit-telefone1"></div>
+                        <div class="col-md-6"><label class="form-label">Telefone 2</label><input type="text" class="form-control" id="edit-telefone2"></div>
+                    </div>
+
+                    <div class="row g-3 mb-4">
+                        <div class="col-12"><h6 class="text-secondary border-bottom pb-2">Endereço de Instalação</h6></div>
+                        <div class="col-md-3"><label class="form-label">CEP</label><input type="text" class="form-control" id="edit-cep"></div>
+                        <div class="col-md-7"><label class="form-label">Logradouro</label><input type="text" class="form-control uppercase-input" id="edit-logradouro"></div>
+                        <div class="col-md-2"><label class="form-label">Número</label><input type="text" class="form-control uppercase-input" id="edit-numero"></div>
+                        <div class="col-md-4"><label class="form-label">Bairro</label><input type="text" class="form-control uppercase-input" id="edit-bairro"></div>
+                        <div class="col-md-4"><label class="form-label">Cidade</label><input type="text" class="form-control uppercase-input" id="edit-cidade"></div>
+                        <div class="col-md-4"><label class="form-label">Complemento</label><input type="text" class="form-control uppercase-input" id="edit-complemento"></div>
+                        <div class="col-md-2"><label class="form-label">UF</label><input type="text" class="form-control uppercase-input" id="edit-estado" maxlength="2"></div>
+                        <div class="col-12"><label class="form-label">Ponto de Referência</label><input type="text" class="form-control uppercase-input" id="edit-referencia"></div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Observações</label>
+                        <textarea class="form-control uppercase-input" id="edit-observacoes" rows="3"></textarea>
+                    </div>
+
+                    <div id="campos-instalacao-modal" style="display: none; background: #d1e7dd; padding: 15px; border-radius: 8px; border: 1px solid #badbcc;">
+                        <h6 class="text-success mb-3 border-bottom pb-2"><i class="bi bi-check-circle-fill"></i> Confirmação de Instalação</h6>
+                        <div class="row g-3">
+                            <div class="col-md-6"><label class="form-label fw-bold">Data da Instalação</label><input type="date" class="form-control" id="edit-data-instalacao-modal"></div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Houve Antecipação?</label>
+                                <select class="form-select" id="edit-antecipou-modal"><option value="false">Não</option><option value="true">Sim</option></select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" onclick="salvarEdicaoVenda()">Salvar Alterações</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modal-agendamento" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog">
+            <div class="modal-content border-primary">
+                <div class="modal-header bg-primary text-white"><h5 class="modal-title">Dados do Agendamento</h5><button type="button" class="btn-close btn-close-white" onclick="cancelarAcaoStatus()"></button></div>
+                <div class="modal-body">
+                    <div class="alert alert-info small">
+                        <span id="msg-agendamento-novo">Você alterou para <strong>AGENDADO</strong>. Preencha os dados da O.S.</span>
+                        <span id="msg-agendamento-existente" style="display:none;">Reagendamento: A O.S. foi mantida. Informe a nova data/turno.</span>
+                    </div>
+                    <form id="form-agendamento">
+                        <div class="mb-3"><label class="form-label fw-bold">Número da O.S. *</label><input type="text" class="form-control" id="agenda-os" required><div id="os-feedback" class="invalid-feedback">O.S. já existe!</div></div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3"><label class="form-label fw-bold">Data *</label><input type="date" class="form-control" id="agenda-data" required></div>
+                            <div class="col-md-6 mb-3"><label class="form-label fw-bold">Turno *</label><select class="form-select" id="agenda-turno" required><option value="">Selecione...</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select></div>
+                        </div>
+                        <div class="mb-3"><label class="form-label">Observação da Venda</label><textarea class="form-control uppercase-input" id="agenda-observacao-venda" rows="2" placeholder="Digite a observação..."></textarea></div>
+                    </form>
+                </div>
+                <div class="modal-footer"><button type="button" class="btn btn-secondary" onclick="cancelarAcaoStatus()">Cancelar</button><button type="button" class="btn btn-primary" onclick="salvarAgendamento()">Confirmar</button></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modal-instalacao" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog">
+            <div class="modal-content border-success">
+                <div class="modal-header bg-success text-white"><h5 class="modal-title">Confirmar Instalação</h5><button type="button" class="btn-close btn-close-white" onclick="cancelarAcaoStatus()"></button></div>
+                <div class="modal-body">
+                    <div class="alert alert-success small">Você alterou para <strong>INSTALADA</strong>. Confirme os detalhes.</div>
+                    <form id="form-instalacao">
+                        <div class="mb-3"><label class="form-label fw-bold">Data da Instalação *</label><input type="date" class="form-control" id="instalacao-data" required></div>
+                        <div class="mb-3"><label class="form-label fw-bold">Houve Antecipação? *</label><select class="form-select" id="instalacao-antecipou" required><option value="false">Não</option><option value="true">Sim</option></select></div>
+                    </form>
+                </div>
+                <div class="modal-footer"><button type="button" class="btn btn-secondary" onclick="cancelarAcaoStatus()">Cancelar</button><button type="button" class="btn btn-success" onclick="salvarInstalacao()">Confirmar Instalação</button></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modal-pendencia" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog">
+            <div class="modal-content border-warning">
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title" id="titulo-modal-pendencia"><i class="bi bi-exclamation-triangle-fill"></i> Registrar Pendência</h5>
+                    <button type="button" class="btn-close" onclick="cancelarAcaoStatus()"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning small">Informe o motivo para continuar.</div>
+                    <form id="form-pendencia">
+                        <div class="mb-3"><label class="form-label fw-bold">Motivo *</label><select class="form-select" id="pendencia-motivo" required><option value="">Carregando motivos...</option></select></div>
+                        <div class="mb-3"><label class="form-label">Observação Adicional</label><textarea class="form-control uppercase-input" id="pendencia-obs" rows="3" placeholder="Detalhes..."></textarea></div>
+                    </form>
+                </div>
+                <div class="modal-footer"><button type="button" class="btn btn-secondary" onclick="cancelarAcaoStatus()">Cancelar</button><button type="button" class="btn btn-primary" onclick="salvarPendencia()">Confirmar</button></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="{% static 'js/auth.js' %}?v=7.0"></script>
+    <script src="{% static 'js/menu.js' %}?v=7.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        const apiUrl = ''; 
+        function getVal(id) { const el = document.getElementById(id); if (!el) return null; return el.value === "" ? null : el.value; }
+        function setVal(id, valor) { const el = document.getElementById(id); if (el) el.value = (valor !== null && valor !== undefined) ? valor : ''; }
+
+        async function apiFetch(endpoint, options = {}) {
+            const token = localStorage.getItem('accessToken');
+            const headers = {
+                'Content-Type': 'application/json',
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+            };
+
+            try {
+                const response = await fetch(`${apiUrl}/api${endpoint}`, { ...options, headers });
+                if (response.status === 401) { logout(); return null; }
+                if (!response.ok) throw new Error(await response.text());
+                if (response.status === 204) return null;
+                return await response.json();
+            } catch (e) { throw e; }
+        }
+
+        const token = localStorage.getItem('accessToken');
+        if(!token) window.location.href = '/';
+        const decodedToken = jwt_decode(token);
+        const userProfile = decodedToken ? (decodedToken.user_role || decodedToken.perfil) : null;
+        const allowedProfiles = ['Diretoria', 'BackOffice', 'Supervisor', 'Admin'];
+        if (!allowedProfiles.includes(userProfile)) { alert('Acesso negado.'); window.location.href = '/area-interna/'; }
+
+        const podeConfigurarZap = ['Diretoria', 'Admin'].includes(userProfile);
+        let envioWhatsappAtivo = true;
+
+        let filtroAtual = 'TODOS';
+        let tempVendaId = null;
+        let tempStatusId = null;
+        const modalEditar = new bootstrap.Modal(document.getElementById('modal-editar-venda'));
+        const modalAgendamento = new bootstrap.Modal(document.getElementById('modal-agendamento'));
+        const modalInstalacao = new bootstrap.Modal(document.getElementById('modal-instalacao'));
+        const modalPendencia = new bootstrap.Modal(document.getElementById('modal-pendencia'));
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            carregarVendas();
+            carregarMotivosPendencia();
+            document.querySelectorAll('input[type="text"], textarea').forEach(input => { input.addEventListener('input', function() { this.value = this.value.toUpperCase(); }); });
+
+            if (podeConfigurarZap) {
+                const btnZap = document.getElementById('btn-toggle-wpp');
+                if (btnZap) { btnZap.style.display = 'inline-flex'; atualizarBotaoZap(); }
+            }
+        });
+
+        function toggleEnvioZap() {
+            envioWhatsappAtivo = !envioWhatsappAtivo;
+            atualizarBotaoZap();
+        }
+
+        function atualizarBotaoZap() {
+            const btn = document.getElementById('btn-toggle-wpp');
+            if (!btn) return;
+            btn.textContent = envioWhatsappAtivo ? 'WPP ON' : 'WPP OFF';
+            btn.classList.toggle('btn-outline-success', envioWhatsappAtivo);
+            btn.classList.toggle('btn-outline-secondary', !envioWhatsappAtivo);
+            btn.title = envioWhatsappAtivo ? 'Enviar WhatsApp ao alterar status' : 'Silenciar WhatsApp ao alterar status';
+            if (!btn.querySelector('i')) {
+                const icon = document.createElement('i');
+                icon.className = 'bi bi-whatsapp me-1';
+                btn.prepend(icon);
+            }
+        }
+
+        async function carregarMotivosPendencia() {
+            try {
+                // Forçamos trazer todos os motivos
+                const res = await apiFetch('/crm/motivos-pendencia/?page_size=1000');
+                const lista = Array.isArray(res) ? res : (res.results || []);
+                const select = document.getElementById('pendencia-motivo');
+                select.innerHTML = '<option value="">Selecione o motivo...</option>';
+                lista.forEach(m => { select.innerHTML += `<option value="${m.id}">${m.nome}</option>`; });
+            } catch (e) { /* erro ao carregar motivos, já tratado */ }
+        }
+
+        function formatarDataSemFuso(dataIso) {
+            if (!dataIso) return '-';
+            const [ano, mes, dia] = dataIso.split('-');
+            return `${dia}/${mes}/${ano}`;
+        }
+
+        function calcularContadores(vendasLista) {
+            const contagem = { todos: vendasLista.length, pendentes: 0, datas: {} };
+            vendasLista.forEach(v => {
+                const statusObj = v.status_esteira_obj; 
+                const statusNome = (statusObj && statusObj.nome) ? String(statusObj.nome).toUpperCase() : '';
+                
+                if (statusNome.includes('PENDEN')) contagem.pendentes += 1;
+                if (statusNome.includes('AGENDADO') && v.data_agendamento) {
+                    contagem.datas[v.data_agendamento] = (contagem.datas[v.data_agendamento] || 0) + 1;
+                }
+            });
+            return contagem;
+        }
+
+        function atualizarContadoresAbas(contagem) {
+            const todosTab = document.querySelector('#abas-esteira a[data-tab="TODOS"]');
+            const agendadosTab = document.querySelector('#abas-esteira a[data-tab="AGENDADO"]');
+            const pendentesTab = document.querySelector('#abas-esteira a[data-tab="PENDEN"]');
+
+            if (todosTab) todosTab.textContent = `Todos (${contagem.todos || 0})`;
+            const totalAgendados = Object.values(contagem.datas || {}).reduce((acc, val) => acc + val, 0);
+            if (agendadosTab) agendadosTab.textContent = `Agendados (${totalAgendados})`;
+            if (pendentesTab) pendentesTab.textContent = `Pendentes (${contagem.pendentes || 0})`;
+        }
+
+        async function carregarVendas(silent = false) {
+            const tbody = document.getElementById('tabela-esteira-body');
+            const busca = document.getElementById('filtro-busca').value;
+            
+            if (!silent) { tbody.innerHTML = '<tr><td colspan="11" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>'; }
+            
+            try {
+                const timestamp = new Date().getTime();
+                let url = `/crm/vendas/?flow=esteira&_t=${timestamp}`;
+                if(busca) url += `&search=${busca}`;
+
+                // --- Carregamos Listas Auxiliares ---
+                // ...
+                const [vendasRes, statusRes, motivosRes, usuariosRes] = await Promise.all([
+                    apiFetch(url),
+                    apiFetch('/crm/status/?tipo=Esteira'),
+                    apiFetch('/crm/motivos-pendencia/?page_size=1000'), 
+                    // CORRIGIDO: Removido '/api' inicial
+                    apiFetch('/usuarios/?page_size=1000&is_active=true') 
+                ]);
+                
+                let vendas = Array.isArray(vendasRes) ? vendasRes : (vendasRes && vendasRes.results ? vendasRes.results : []);
+                const statusLista = Array.isArray(statusRes) ? statusRes : (statusRes && statusRes.results ? statusRes.results : []);
+                const motivosLista = Array.isArray(motivosRes) ? motivosRes : (motivosRes && motivosRes.results ? motivosRes.results : []);
+                const usuariosLista = Array.isArray(usuariosRes) ? usuariosRes : (usuariosRes && usuariosRes.results ? usuariosRes.results : []);
+
+                // DEBUG:
+                // ...
+
+                // --- 1. LOOKUP DE STATUS (ID -> Objeto) ---
+                vendas = vendas.map(v => {
+                    const vStatusId = String(v.status_esteira || '');
+                    let sEncontrado = null;
+                    if (v.status_esteira_nome) {
+                        // Se o backend mandou o nome, cria o objeto usando ele (Mais rápido e confiável)
+                        sEncontrado = statusLista.find(s => s.id === v.status_esteira) || { nome: v.status_esteira_nome, cor: 'transparent', id: v.status_esteira };
+                    } else if (v.status_esteira) {
+                        // Fallback: Procura pelo ID
+                        sEncontrado = statusLista.find(s => String(s.id) === vStatusId);
+                    }
+
+                    if (sEncontrado) {
+                        v.status_esteira_obj = sEncontrado;
+                    } else if (v.status_esteira && typeof v.status_esteira === 'object') {
+                        v.status_esteira_obj = v.status_esteira;
+                    } else {
+                        v.status_esteira_obj = { nome: '-', cor: 'transparent', id: v.status_esteira };
+                    }
+                    return v;
+                });
+
+                // Filtros de Segurança
+                vendas = vendas.filter(v => {
+                    const status = v.status_esteira_obj;
+                    if (!status || !status.id) return true; 
+                    if (status.estado && String(status.estado).toUpperCase() === 'FECHADO') return false;
+                    if (status.nome && String(status.nome).toUpperCase().includes('CANCEL')) return false;
+                    return true;
+                });
+
+                const contadores = calcularContadores(vendas);
+                gerarAbasDeData(vendas, contadores.datas);
+                atualizarContadoresAbas(contadores);
+
+                // Filtragem por Aba
+                if(filtroAtual === 'TODOS') {} 
+                else if (filtroAtual === 'AGENDADO') {
+                    vendas = vendas.filter(v => v.status_esteira_obj.nome && String(v.status_esteira_obj.nome).toUpperCase().includes('AGENDADO'));
+                }
+                else if (filtroAtual === 'PENDEN') {
+                    vendas = vendas.filter(v => v.status_esteira_obj.nome && String(v.status_esteira_obj.nome).toUpperCase().includes('PENDEN'));
+                }
+                else {
+                    vendas = vendas.filter(v => v.data_agendamento === filtroAtual);
+                }
+
+                if(vendas.length === 0) { tbody.innerHTML = '<tr><td colspan="11" class="text-center py-4 text-muted">Nenhuma venda encontrada nesta etapa.</td></tr>'; return; }
+
+                // Função auxiliar para achar nome de usuário pelo ID
+                const getNomeUsuario = (userId) => {
+                    if (!userId) return null;
+                    if (typeof userId === 'object') return userId.username || userId.first_name || 'Obj s/ nome';
+                    const u = usuariosLista.find(user => String(user.id) === String(userId));
+                    return u ? (u.first_name || u.username) : userId;
+                };
+
+                let htmlContent = '';
+                vendas.forEach((v) => {
+                    const dataFmt = v.data_criacao ? new Date(v.data_criacao).toLocaleDateString('pt-BR') : '-';
+                    const osAtual = v.ordem_servico || '-';
+                    const dataAgendada = formatarDataSemFuso(v.data_agendamento); 
+                    const turno = v.periodo_agendamento || '-';
+                    
+                    const statusObj = v.status_esteira_obj;
+                    const nomeStatus = statusObj.nome || '-';
+                    const corFundo = statusObj.cor || 'transparent';
+                    const statusId = statusObj.id || '';
+
+                    // --- 2. TRATAMENTO DE MOTIVO PENDÊNCIA (PRIORIZA O NOME DO BACKEND) ---
+                    let motivoPendencia = '-';
+                    if (v.motivo_pendencia_nome) {
+                        motivoPendencia = v.motivo_pendencia_nome; // Já vem pronto do backend
+                    } else if (v.motivo_pendencia) {
+                        if (typeof v.motivo_pendencia === 'object' && v.motivo_pendencia.nome) {
+                            motivoPendencia = v.motivo_pendencia.nome;
+                        } else {
+                            const mEncontrado = motivosLista.find(m => String(m.id) === String(v.motivo_pendencia));
+                            motivoPendencia = mEncontrado ? mEncontrado.nome : `(Cód: ${v.motivo_pendencia})`;
+                        }
+                    }
+
+                    // --- 3. TRATAMENTO RESP. ALTERAÇÃO (PRIORIZA nome_editor) ---
+                    let alteradoPor = v.nome_editor || '-';
+                    if (alteradoPor === '-') {
+                         let rawUser = v.alterado_por || v.responsavel_alteracao || v.usuario_alteracao;
+                         if (rawUser) alteradoPor = getNomeUsuario(rawUser) || rawUser;
+                    }
+
+                    // Vendedor
+                    let nomeVendedor = v.vendedor_nome || getNomeUsuario(v.vendedor) || 'N/A';
+                    
+                    // Plano
+                    let nomePlano = v.plano_nome || '-';
+                    if (nomePlano === '-' && v.plano && v.plano.nome) nomePlano = v.plano.nome;
+
+                    const nomeCliente = v.cliente_nome_razao_social || (v.cliente ? v.cliente.nome_razao_social : '-') || '-';
+                    const docCliente = v.cliente_cpf_cnpj || (v.cliente ? v.cliente.cpf_cnpj : '') || '';
+
+                    const rowStyle = `background: #fff; border: 1px solid rgba(0,0,0,0.1); box-shadow: -4px 4px 0px ${corFundo}, 0 8px 20px rgba(0,0,0,0.08); transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); border-radius: 10px; overflow: hidden;`;
+
+                    let selectStatus = `<select class="form-select form-select-sm status-select" data-venda-id="${v.id}" data-os="${osAtual}" data-statusAtual="${nomeStatus}" data-statusid="${statusId}" onchange="atualizarStatus(${v.id}, this)" onfocus="this.dataset.valorAnterior=this.value">`;
+                    selectStatus += `<option value="">Selecione...</option>`;
+                    statusLista.forEach(s => {
+                        const selected = (String(statusId) === String(s.id)) ? 'selected' : '';
+                        selectStatus += `<option value="${s.id}" ${selected}>${s.nome}</option>`;
+                    });
+                    selectStatus += `</select>`;
+                    
+                    let temDadosEditaveis = false;
+                    if (nomeStatus && nomeStatus !== '-') {
+                        const sUpper = String(nomeStatus).toUpperCase();
+                        temDadosEditaveis = (sUpper.includes('AGENDADO') || sUpper === 'INSTALADA' || sUpper.includes('PENDEN') || sUpper.includes('CANCEL'));
+                    }
+                    const btnEditar = temDadosEditaveis ? `<button class="btn btn-sm btn-link text-primary p-0 ms-1" onclick="editarStatusExistente(${v.id}, '${nomeStatus}', '${statusId}')" title="Editar dados" aria-label="Editar dados da venda #${v.id}"><i class="bi bi-pencil-square"></i></button>` : '';
+
+                    htmlContent += `
+                        <tr style="${rowStyle}" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='translateY(0)'">
+                            <td class="fw-bold text-primary ps-4">#${v.id}</td>
+                            <td>${dataFmt}</td>
+                            <td>${osAtual}</td>
+                            <td>${dataAgendada}</td>
+                            <td>${turno}</td>
+                            <td><div class="fw-bold text-dark">${nomeCliente}</div><div class="small text-muted">${docCliente}</div></td>
+                            <td>${nomeVendedor}</td> 
+                            <td>${nomePlano}</td>
+                            <td><div class="d-flex align-items-center">${selectStatus}${btnEditar}</div></td>
+                            <td class="text-danger small fw-bold">${motivoPendencia}</td>
+                            <td><small class="text-muted fw-bold">${alteradoPor}</small></td>
+                            <td class="pe-4 text-end"><button class="btn btn-sm btn-outline-primary rounded-circle p-2" onclick="abrirEdicao(${v.id})" aria-label="Editar venda #${v.id}"><i class="bi bi-pencil-fill"></i></button></td>
+                        </tr>
+                    `;
+                });
+                tbody.innerHTML = htmlContent;
+            } catch (e) { 
+                if(!silent) tbody.innerHTML = '<tr><td colspan="11" class="text-center text-danger">Erro ao carregar.<br><small>'+(e.message || e)+'</small></td></tr>'; 
+                // ...
+            }
+        }
+
+        function gerarAbasDeData(todasVendas, contagemDatas = {}) {
+            const ul = document.getElementById('abas-esteira');
+            while (ul.children.length > 3) { ul.removeChild(ul.lastChild); }
+            const datasUnicas = new Set();
+            todasVendas.forEach(v => {
+                if (v.data_agendamento && v.status_esteira_obj && v.status_esteira_obj.nome && String(v.status_esteira_obj.nome).toUpperCase().includes('AGENDADO')) {
+                    datasUnicas.add(v.data_agendamento);
+                }
+            });
+            Array.from(datasUnicas).sort().forEach(dataIso => {
+                const partes = dataIso.split('-');
+                const dataExibicao = `${partes[2]}/${partes[1]}`;
+                const contadorDia = contagemDatas[dataIso] || 0;
+                const li = document.createElement('li'); li.className = 'nav-item';
+                const a = document.createElement('a'); a.className = `nav-link data-tab ${filtroAtual === dataIso ? 'active' : ''}`;
+                a.href = '#'; a.textContent = `${dataExibicao} (${contadorDia})`; 
+                a.onclick = (e) => { e.preventDefault(); filtrarStatus(dataIso, a); };
+                li.appendChild(a); ul.appendChild(li);
+            });
+        }
+
+        function filtrarStatus(status, element) {
+            filtroAtual = status;
+            document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+            if(element) element.classList.add('active');
+            carregarVendas();
+        }
+
+        async function editarStatusExistente(id, statusNome, statusId) {
+            tempVendaId = id;
+            tempStatusId = statusId;
+            const statusTexto = statusNome ? statusNome.toUpperCase() : '';
+            
+            try {
+                const vendaData = await apiFetch(`/crm/vendas/${id}/`);
+                
+                if (statusTexto.includes('AGENDADO') || statusTexto === 'CADASTRADA') {
+                    setVal('agenda-os', vendaData.ordem_servico);
+                    setVal('agenda-data', vendaData.data_agendamento);
+                    setVal('agenda-turno', vendaData.periodo_agendamento);
+                    setVal('agenda-observacao-venda', vendaData.observacoes);
+                    
+                    const campoOS = document.getElementById('agenda-os');
+                    if (vendaData.ordem_servico) {
+                        campoOS.readOnly = true;
+                        campoOS.classList.add('bg-light');
+                        document.getElementById('msg-agendamento-novo').style.display = 'none';
+                        document.getElementById('msg-agendamento-existente').style.display = 'inline';
+                    } else {
+                        campoOS.readOnly = false;
+                        campoOS.classList.remove('bg-light');
+                        document.getElementById('msg-agendamento-novo').style.display = 'inline';
+                        document.getElementById('msg-agendamento-existente').style.display = 'none';
+                    }
+                    modalAgendamento.show();
+
+                } else if (statusTexto === 'INSTALADA') {
+                    setVal('instalacao-data', vendaData.data_instalacao);
+                    document.getElementById('instalacao-antecipou').value = vendaData.antecipou_instalacao ? 'true' : 'false';
+                    modalInstalacao.show();
+
+                } else if (statusTexto.includes('PENDEN') || statusTexto.includes('CANCEL')) {
+                    setVal('pendencia-motivo', vendaData.motivo_pendencia);
+                    setVal('pendencia-obs', vendaData.observacoes);
+                    
+                    const titulo = document.getElementById('titulo-modal-pendencia');
+                    if(titulo) titulo.innerHTML = statusTexto.includes('CANCEL') ? '<i class="bi bi-x-circle-fill"></i> Motivo do Cancelamento' : '<i class="bi bi-exclamation-triangle-fill"></i> Registrar Pendência';
+                    
+                    modalPendencia.show();
+                } else {
+                    abrirEdicao(id);
+                }
+            } catch (e) {
+                alert('Erro ao carregar dados para edição: ' + (e.message || e));
+            }
+        }
+
+        async function atualizarStatus(id, selectElem) {
+            const statusId = selectElem.value;
+            const valorAnterior = selectElem.dataset.valorAnterior;
+            
+            if (statusId && statusId === valorAnterior) {
+                const statusTexto = selectElem.options[selectElem.selectedIndex].text;
+                editarStatusExistente(id, statusTexto, statusId);
+                return;
+            }
+            
+            const statusTexto = selectElem.options[selectElem.selectedIndex].text.toUpperCase();
+            const osExistente = selectElem.dataset.os;
+            const statusAtual = selectElem.dataset.statusAtual;
+            tempVendaId = id; tempStatusId = statusId;
+
+            if (statusTexto === 'CADASTRADA' || statusTexto.includes('AGENDADO')) {
+                document.getElementById('form-agendamento').reset();
+                document.getElementById('agenda-os').classList.remove('is-invalid');
+                
+                const campoOS = document.getElementById('agenda-os');
+                document.getElementById('agenda-data').value = '';
+                document.getElementById('agenda-turno').value = '';
+                
+                try {
+                    const vendaData = await apiFetch(`/crm/vendas/${id}/`);
+                    document.getElementById('agenda-observacao-venda').value = vendaData.observacoes || '';
+                    if (statusAtual && String(statusAtual).toUpperCase() === statusTexto && vendaData.data_agendamento) {
+                        document.getElementById('agenda-data').value = vendaData.data_agendamento;
+                        document.getElementById('agenda-turno').value = vendaData.periodo_agendamento || '';
+                    }
+                } catch (e) { /* erro ao carregar dados da venda */ }
+
+                if (osExistente && osExistente.trim() !== "-" && osExistente.trim() !== "") {
+                    campoOS.value = osExistente; campoOS.readOnly = true; campoOS.classList.add('bg-light');
+                    document.getElementById('msg-agendamento-novo').style.display = 'none';
+                    document.getElementById('msg-agendamento-existente').style.display = 'inline';
+                } else {
+                    campoOS.value = ''; campoOS.readOnly = false; campoOS.classList.remove('bg-light');
+                    document.getElementById('msg-agendamento-novo').style.display = 'inline';
+                    document.getElementById('msg-agendamento-existente').style.display = 'none';
+                }
+                modalAgendamento.show();
+            } 
+            else if (statusTexto === 'INSTALADA') {
+                document.getElementById('form-instalacao').reset();
+                document.getElementById('instalacao-data').valueAsDate = new Date();
+                document.getElementById('instalacao-antecipou').checked = false;
+                
+                if (statusAtual && String(statusAtual).toUpperCase() === statusTexto) {
+                    try {
+                        const vendaData = await apiFetch(`/crm/vendas/${id}/`);
+                        if (vendaData && vendaData.data_instalacao) {
+                            document.getElementById('instalacao-data').value = vendaData.data_instalacao;
+                            document.getElementById('instalacao-antecipou').checked = vendaData.antecipou_instalacao || false;
+                        }
+                    } catch (e) { /* dados existentes não encontrados */ }
+                }
+                modalInstalacao.show();
+            } 
+            else if (statusTexto.includes('PENDEN') || statusTexto.includes('CANCEL')) {
+                document.getElementById('form-pendencia').reset();
+                const titulo = document.getElementById('titulo-modal-pendencia');
+                if(titulo) titulo.innerHTML = statusTexto.includes('CANCEL') ? '<i class="bi bi-x-circle-fill"></i> Motivo do Cancelamento' : '<i class="bi bi-exclamation-triangle-fill"></i> Registrar Pendência';
+                document.getElementById('pendencia-motivo').value = '';
+                document.getElementById('pendencia-obs').value = '';
+                
+                if (statusAtual && String(statusAtual).toUpperCase() === statusTexto) {
+                    try {
+                        const vendaData = await apiFetch(`/crm/vendas/${id}/`);
+                        if (vendaData) {
+                            document.getElementById('pendencia-motivo').value = vendaData.motivo_pendencia || '';
+                            document.getElementById('pendencia-obs').value = vendaData.observacao_pendencia || '';
+                        }
+                    } catch (e) { /* dados existentes não encontrados */ }
+                }
+                modalPendencia.show();
+            } 
+            else { salvarStatusNoBanco(id, { status_esteira: statusId }); }
+        }
+
+        async function salvarAgendamento() {
+            const os = getVal('agenda-os').trim();
+            const data = getVal('agenda-data');
+            const turno = getVal('agenda-turno');
+            const observacao = getVal('agenda-observacao-venda') || '';
+            if (!os || !data || !turno) { alert("Preencha todos os campos."); return; }
+            const campoOS = document.getElementById('agenda-os');
+            if (!campoOS.readOnly) {
+                try {
+                    const res = await apiFetch(`/crm/vendas/?ordem_servico=${os}`);
+                    const lista = Array.isArray(res) ? res : (res.results || []);
+                    if (lista.some(v => v.id !== tempVendaId)) { document.getElementById('agenda-os').classList.add('is-invalid'); return; }
+                } catch (e) { alert("Erro ao validar O.S."); return; }
+            }
+            await salvarStatusNoBanco(tempVendaId, { status_esteira: tempStatusId, ordem_servico: os, data_agendamento: data, periodo_agendamento: turno, observacoes: observacao });
+            modalAgendamento.hide();
+        }
+
+        async function salvarInstalacao() {
+            await salvarStatusNoBanco(tempVendaId, { status_esteira: tempStatusId, data_instalacao: getVal('instalacao-data'), antecipou_instalacao: (getVal('instalacao-antecipou') === 'true') });
+            modalInstalacao.hide();
+        }
+
+        async function salvarPendencia() {
+            if (!getVal('pendencia-motivo')) { alert("Selecione o motivo."); return; }
+            await salvarStatusNoBanco(tempVendaId, { status_esteira: tempStatusId, motivo_pendencia: getVal('pendencia-motivo'), observacoes: getVal('pendencia-obs') });
+            modalPendencia.hide();
+        }
+
+        async function salvarStatusNoBanco(id, payload) {
+            const body = { ...payload, enviar_whatsapp: envioWhatsappAtivo };
+            try { await apiFetch(`/crm/vendas/${id}/`, { method: 'PATCH', body: JSON.stringify(body) }); carregarVendas(true); } 
+            catch(e) { alert('Erro ao atualizar status: ' + e.message); carregarVendas(true); }
+        }
+        
+        function cancelarAcaoStatus() { modalAgendamento.hide(); modalInstalacao.hide(); modalPendencia.hide(); carregarVendas(true); }
+
+        async function abrirEdicao(id) {
+            setVal('edit-venda-id-hidden', id);
+            document.getElementById('campos-instalacao-modal').style.display = 'none';
+            try {
+                const [v, pRes, sRes, fRes] = await Promise.all([ apiFetch(`/crm/vendas/${id}/`), apiFetch('/crm/planos/'), apiFetch('/crm/status/?tipo=Esteira'), apiFetch('/crm/formas-pagamento/') ]);
+                const planos = Array.isArray(pRes) ? pRes : (pRes.results || []);
+                const statusLista = Array.isArray(sRes) ? sRes : (sRes.results || []);
+                const formas = Array.isArray(fRes) ? fRes : (fRes.results || []);
+
+                const pSel = document.getElementById('edit-plano'); pSel.innerHTML = ''; planos.forEach(p => pSel.innerHTML += `<option value="${p.id}" ${v.plano==p.id?'selected':''}>${p.nome}</option>`);
+                const sSel = document.getElementById('edit-status-esteira'); sSel.innerHTML = ''; statusLista.forEach(s => sSel.innerHTML += `<option value="${s.id}" ${v.status_esteira==s.id?'selected':''}>${s.nome}</option>`);
+                const pgSel = document.getElementById('edit-pagamento'); pgSel.innerHTML = ''; formas.forEach(f => pgSel.innerHTML += `<option value="${f.id}" ${v.forma_pagamento==f.id?'selected':''}>${f.nome}</option>`);
+                
+                setVal('edit-cliente-nome', v.cliente_nome_razao_social); setVal('edit-cliente-cpf', v.cliente_cpf_cnpj);
+                setVal('edit-telefone1', v.telefone1); setVal('edit-telefone2', v.telefone2);
+                setVal('edit-nome-mae', v.nome_mae); setVal('edit-data-nascimento', v.data_nascimento);
+                setVal('edit-cep', v.cep); setVal('edit-logradouro', v.logradouro); setVal('edit-numero', v.numero_residencia);
+                setVal('edit-complemento', v.complemento); setVal('edit-bairro', v.bairro); setVal('edit-cidade', v.cidade);
+                setVal('edit-estado', v.estado); setVal('edit-referencia', v.ponto_referencia); setVal('edit-observacoes', v.observacoes);
+
+                if (v.status_esteira) {
+                    const statusObj = statusLista.find(s => s.id == v.status_esteira);
+                    if (statusObj && statusObj.nome.toUpperCase() === 'INSTALADA') {
+                        document.getElementById('campos-instalacao-modal').style.display = 'block';
+                        setVal('edit-data-instalacao-modal', v.data_instalacao);
+                        setVal('edit-antecipou-modal', v.antecipou_instalacao ? 'true' : 'false');
+                    }
+                }
+                modalEditar.show();
+            } catch(e) { alert('Erro ao abrir edição.'); }
+        }
+
+        function verificarStatusInstaladaModal(select) {
+            const texto = select.options[select.selectedIndex].text.toUpperCase();
+            document.getElementById('campos-instalacao-modal').style.display = (texto === 'INSTALADA') ? 'block' : 'none';
+        }
+
+        async function salvarEdicaoVenda() {
+            const id = getVal('edit-venda-id-hidden');
+            const body = {
+                cliente: { nome_razao_social: getVal('edit-cliente-nome') },
+                plano: getVal('edit-plano'), forma_pagamento: getVal('edit-pagamento'), status_esteira: getVal('edit-status-esteira'),
+                nome_mae: getVal('edit-nome-mae'), data_nascimento: getVal('edit-data-nascimento'),
+                telefone1: getVal('edit-telefone1'), telefone2: getVal('edit-telefone2'),
+                cep: getVal('edit-cep'), logradouro: getVal('edit-logradouro'), numero_residencia: getVal('edit-numero'),
+                complemento: getVal('edit-complemento'), bairro: getVal('edit-bairro'), cidade: getVal('edit-cidade'),
+                estado: getVal('edit-estado'), ponto_referencia: getVal('edit-referencia'), observacoes: getVal('edit-observacoes'),
+                enviar_whatsapp: envioWhatsappAtivo
+            };
+            const divInst = document.getElementById('campos-instalacao-modal');
+            if (divInst && divInst.style.display !== 'none') {
+                body.data_instalacao = getVal('edit-data-instalacao-modal');
+                body.antecipou_instalacao = getVal('edit-antecipou-modal') === 'true';
+            }
+            try { await apiFetch(`/crm/vendas/${id}/`, { method: 'PATCH', body: JSON.stringify(body) }); modalEditar.hide(); carregarVendas(true); alert('Salvo!'); } catch(e){ alert('Erro ao salvar.'); }
+        }
+
+        function logout() { localStorage.removeItem('accessToken'); window.location.href = '/'; }
+    </script>
+</body>
+</html>

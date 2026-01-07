@@ -1,0 +1,196 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste de Botões v=13.1 - Record PAP</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=13.1">
+    <style>
+        body { background-color: #f8f9fa; padding: 20px; }
+        .test-section { background: white; border-radius: 12px; padding: 30px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .test-section h2 { border-bottom: 2px solid var(--cor-primaria); padding-bottom: 10px; margin-bottom: 20px; }
+        .button-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
+        .button-group { display: flex; flex-direction: column; gap: 10px; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6; }
+        .button-group label { font-weight: bold; font-size: 0.9rem; color: var(--cor-texto-suave); }
+    </style>
+</head>
+<body>
+    <div class="container-xl">
+        <h1 class="mb-4">🧪 Teste de Botões v=13.1</h1>
+        
+        <!-- SEÇÃO 1: BOTÕES EDITAR -->
+        <div class="test-section">
+            <h2><i class="bi bi-pencil-square"></i> Botões de Editar (Classe: .btn-editar / .btn-action-edit)</h2>
+            <div class="button-grid">
+                <!-- Variante 1: btn-editar -->
+                <div class="button-group">
+                    <label>Variante 1: .btn-editar</label>
+                    <button class="btn btn-editar" onclick="alert('Editar clicado!')">
+                        <i class="bi bi-pencil-square"></i> Editar
+                    </button>
+                </div>
+                
+                <!-- Variante 2: btn-action-edit -->
+                <div class="button-group">
+                    <label>Variante 2: .btn-action-edit</label>
+                    <button class="btn btn-action-edit" onclick="alert('Editar clicado!')">
+                        <i class="bi bi-pencil-square"></i> Editar
+                    </button>
+                </div>
+                
+                <!-- Variante 3: btn-action-edit sem .btn -->
+                <div class="button-group">
+                    <label>Variante 3: .btn-action-edit (sem .btn)</label>
+                    <button class="btn-action-edit" onclick="alert('Editar clicado!')">
+                        <i class="bi bi-pencil-square"></i> Editar
+                    </button>
+                </div>
+                
+                <!-- Variante 4: Com flex-grow-1 (presenca.html) -->
+                <div class="button-group">
+                    <label>Variante 4: Com .flex-grow-1 (presenca.html)</label>
+                    <button class="btn btn-action-edit flex-grow-1" onclick="alert('Editar clicado!')">
+                        <i class="bi bi-pencil-square"></i> Alterar
+                    </button>
+                </div>
+            </div>
+            <div class="alert alert-info mt-3">
+                <i class="bi bi-info-circle"></i> 
+                <strong>Esperado:</strong> Todos os botões devem aparecer com fundo azul (#0066FF), texto branco, e efeito de hover (levanta + brightens)
+            </div>
+        </div>
+        
+        <!-- SEÇÃO 2: BOTÕES EXCLUIR -->
+        <div class="test-section">
+            <h2><i class="bi bi-trash"></i> Botões de Excluir (Classe: .btn-excluir / .btn-action-delete)</h2>
+            <div class="button-grid">
+                <!-- Variante 1: btn-excluir -->
+                <div class="button-group">
+                    <label>Variante 1: .btn-excluir</label>
+                    <button class="btn btn-excluir" onclick="alert('Excluir clicado!')">
+                        <i class="bi bi-trash"></i> Excluir
+                    </button>
+                </div>
+                
+                <!-- Variante 2: btn-action-delete -->
+                <div class="button-group">
+                    <label>Variante 2: .btn-action-delete</label>
+                    <button class="btn btn-action-delete" onclick="alert('Excluir clicado!')">
+                        <i class="bi bi-trash"></i> Excluir
+                    </button>
+                </div>
+                
+                <!-- Variante 3: btn-action-delete sem .btn -->
+                <div class="button-group">
+                    <label>Variante 3: .btn-action-delete (sem .btn)</label>
+                    <button class="btn-action-delete" onclick="alert('Excluir clicado!')">
+                        <i class="bi bi-trash"></i> Excluir
+                    </button>
+                </div>
+                
+                <!-- Variante 4: Com flex-grow-1 (presenca.html) -->
+                <div class="button-group">
+                    <label>Variante 4: Com .flex-grow-1 (presenca.html)</label>
+                    <button class="btn btn-action-delete flex-grow-1" onclick="alert('Excluir clicado!')">
+                        <i class="bi bi-trash"></i> Excluir
+                    </button>
+                </div>
+            </div>
+            <div class="alert alert-warning mt-3">
+                <i class="bi bi-exclamation-triangle"></i> 
+                <strong>Esperado:</strong> Todos os botões devem aparecer com fundo vermelho (#FF3D71), texto branco, e efeito de hover (levanta + brightens)
+            </div>
+        </div>
+        
+        <!-- SEÇÃO 3: COMBINAÇÕES EM LINHA (presenca.html pattern) -->
+        <div class="test-section">
+            <h2><i class="bi bi-layout-split"></i> Padrão presenca.html (Botões em Linha)</h2>
+            <div class="row gap-3">
+                <div class="col-md-6">
+                    <h5>Padrão Correto (sem flex-grow-1)</h5>
+                    <div class="d-flex w-100 gap-2" style="border: 1px solid var(--cor-borda); padding: 15px; border-radius: 8px;">
+                        <button class="btn btn-action-edit" onclick="alert('Editar!')">
+                            <i class="bi bi-pencil-square"></i> Alterar
+                        </button>
+                        <button class="btn btn-action-delete" onclick="alert('Excluir!')">
+                            <i class="bi bi-trash"></i> Excluir
+                        </button>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <h5>Padrão presenca.html (com flex-grow-1)</h5>
+                    <div class="d-flex w-100 gap-0" style="border: 1px solid var(--cor-borda); padding: 0; border-radius: 8px; overflow: hidden;">
+                        <button class="btn btn-action-edit flex-grow-1" style="border-radius: 0;" onclick="alert('Editar!')">
+                            <i class="bi bi-pencil-square"></i> Alterar
+                        </button>
+                        <button class="btn btn-action-delete flex-grow-1" style="border-radius: 0;" onclick="alert('Excluir!')">
+                            <i class="bi bi-trash"></i> Excluir
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="alert alert-success mt-3">
+                <i class="bi bi-check-circle"></i> 
+                <strong>Esperado:</strong> Ambas as linhas devem mostrar botões com cores corretas lado a lado
+            </div>
+        </div>
+        
+        <!-- SEÇÃO 4: CLASSES DE CONTRASTE -->
+        <div class="test-section">
+            <h2><i class="bi bi-eye"></i> Classes de Contraste (v=13.1)</h2>
+            <div class="row gap-3">
+                <div class="col-md-6">
+                    <div class="card card-dark">
+                        <div class="card-body">
+                            <h6 class="label-on-dark">Card Escuro com Contraste</h6>
+                            <p class="text-contrast-high mb-0">Este texto tem contraste alto para melhor legibilidade</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div style="background: linear-gradient(135deg, #1a3a52 0%, #0f2438 100%); color: white; padding: 20px; border-radius: 8px;">
+                        <h6 class="label-on-dark">Fundo Gradiente Escuro</h6>
+                        <p class="text-contrast-high mb-0">Texto com sombra para contraste em fundos escuros</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- SEÇÃO 5: INFORMAÇÕES DE DEBUG -->
+        <div class="test-section bg-light">
+            <h2><i class="bi bi-bug"></i> Informações de Debug</h2>
+            <div class="row">
+                <div class="col-md-6">
+                    <h6>Versão CSS Carregada:</h6>
+                    <code id="css-version">Detectando...</code>
+                </div>
+                <div class="col-md-6">
+                    <h6>Variáveis CSS Ativas:</h6>
+                    <ul class="small">
+                        <li><span style="background: var(--cor-primaria); color: white; padding: 2px 8px; border-radius: 4px;">--cor-primaria</span> #0066FF</li>
+                        <li><span style="background: var(--cor-perigo); color: white; padding: 2px 8px; border-radius: 4px;">--cor-perigo</span> #FF3D71</li>
+                        <li><span style="background: var(--gradiente-primario); color: white; padding: 2px 8px; border-radius: 4px;">--gradiente-primario</span></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <div class="alert alert-success">
+            <i class="bi bi-check-circle"></i> 
+            <strong>Teste Completo!</strong> Se todos os botões aparecem com cores corretas, a correção v=13.1 foi bem-sucedida.
+        </div>
+    </div>
+    
+    <script>
+        // Detectar versão CSS
+        document.addEventListener('DOMContentLoaded', () => {
+            const cssLink = document.querySelector('link[href*="custom_styles"]');
+            const cssVersion = cssLink ? cssLink.href.split('v=')[1] : 'Não detectada';
+            document.getElementById('css-version').textContent = `v=${cssVersion}`;
+        });
+    </script>
+</body>
+</html>
