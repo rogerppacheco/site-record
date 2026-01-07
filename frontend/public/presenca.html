@@ -267,8 +267,20 @@
         async function carregarMotivos() {
             try {
                 const res = await apiClient.get('/api/presenca/motivos/');
-                motivosDisponiveis = res.data;
-            } catch(e){}
+                // Aceita resposta paginada (results) ou array simples
+                if (Array.isArray(res.data)) {
+                    motivosDisponiveis = res.data;
+                } else if (Array.isArray(res.data.results)) {
+                    motivosDisponiveis = res.data.results;
+                } else {
+                    motivosDisponiveis = [];
+                }
+            } catch(e){
+                if (e.response && e.response.status === 401) {
+                    alert('Sessão expirada. Faça login novamente.');
+                    window.location.href = '/';
+                }
+            }
         }
 
         async function carregarDadosIniciais() {
@@ -280,27 +292,30 @@
                 ? '/api/presenca/todos-usuarios/?participa_controle_presenca=true'
                 : '/api/presenca/minha-equipe/?participa_controle_presenca=true';
 
+            const t0 = performance.now();
             try {
                 const [equipeRes, presencasRes] = await Promise.all([
                     apiClient.get(equipeEndpoint),
                     apiClient.get(`${API_REGISTROS}?data=${data}`)
                 ]);
-                
-                const equipe = equipeRes.data;
-                const presencasDoDia = presencasRes.data;
+                const t1 = performance.now();
+                console.log('Equipe carregada:', equipeRes.data, 'Presenças:', presencasRes.data, 'Tempo:', (t1-t0).toFixed(0)+'ms');
+                // Corrige para aceitar resposta paginada (results) ou array simples
+                let equipe = equipeRes.data;
+                let presencasDoDia = presencasRes.data;
+                if (equipe && Array.isArray(equipe.results)) equipe = equipe.results;
+                if (presencasDoDia && Array.isArray(presencasDoDia.results)) presencasDoDia = presencasDoDia.results;
 
                 if(Array.isArray(equipe)) {
                     renderizarCards(equipe, presencasDoDia || []);
-                } else if (equipe && Array.isArray(equipe.results)) {
-                    renderizarCards(equipe.results, presencasDoDia || []);
                 } else if (equipe && equipe.detail) {
-                    grid.innerHTML = `<div class="col-12 text-center text-danger py-4">Erro ao carregar equipe: ${equipe.detail}</div>`;
+                    grid.innerHTML = `<div class=\"col-12 text-center text-danger py-4\">Erro ao carregar equipe: ${equipe.detail}</div>`;
                 } else {
-                    grid.innerHTML = '<div class="col-12 text-center text-danger py-4">Erro ao carregar equipe (resposta inesperada).</div>';
+                    grid.innerHTML = '<div class=\"col-12 text-center text-danger py-4\">Erro ao carregar equipe (resposta inesperada).</div>';
                 }
 
             } catch(e) {
-                console.error(e);
+                console.error('Erro ao carregar dados iniciais:', e);
                 grid.innerHTML = '<div class="col-12 text-center text-danger py-4">Erro de conexão.</div>';
             }
         }
@@ -464,19 +479,30 @@
                 observacao: !presente ? detalhes.observacao : ""
             };
 
+            console.log('Enviando registro de presença:', body);
+            const t0 = performance.now();
             try {
-                await apiClient.post(API_REGISTROS, body); 
-                carregarDadosIniciais(); 
-            } catch (e) { alert('Erro ao salvar.'); console.error(e); }
+                const resp = await apiClient.post(API_REGISTROS, body);
+                const t1 = performance.now();
+                console.log('Resposta do registro:', resp.data, 'Tempo:', (t1-t0).toFixed(0)+'ms');
+                carregarDadosIniciais();
+            } catch (e) {
+                alert('Erro ao salvar.');
+                console.error('Erro ao registrar presença:', e);
+            }
         }
 
         window.abrirModalAusencia = function(id, nome) {
             document.getElementById('modal-title').textContent = `Registrar Ausência: ${nome}`;
             const select = document.getElementById('select-motivo');
             select.innerHTML = '<option value="">Selecione...</option>';
+            // Correção: garante que motivosDisponiveis é array
+            if (!Array.isArray(motivosDisponiveis)) {
+                alert('Erro ao carregar motivos de ausência. Faça login novamente ou contate o suporte.');
+                return;
+            }
             motivosDisponiveis.forEach(m => select.add(new Option(m.motivo, m.id)));
             document.getElementById('obs-motivo').value = '';
-            
             document.getElementById('btn-confirmar-ausencia').onclick = function() {
                 const motivoId = select.value;
                 if (!motivoId) { alert('Selecione o motivo.'); return; }
