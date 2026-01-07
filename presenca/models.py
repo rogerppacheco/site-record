@@ -41,6 +41,9 @@ class Presenca(models.Model):
 
     class Meta:
         unique_together = ('colaborador', 'data')
+        indexes = [
+            models.Index(fields=['colaborador', 'data']),
+        ]
 
     def __str__(self):
         estado = "Presente" if self.status else f"Ausente ({self.motivo})"

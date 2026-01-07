@@ -1,3 +1,12 @@
+from usuarios.models import Usuario
+
+# Serializer leve para presença
+class UsuarioPresencaSerializer(serializers.ModelSerializer):
+    perfil_nome = serializers.CharField(source='perfil.nome', read_only=True)
+    supervisor_nome = serializers.CharField(source='supervisor.get_full_name', read_only=True, default=None)
+    class Meta:
+        model = Usuario
+        fields = ['id', 'username', 'first_name', 'last_name', 'perfil_nome', 'supervisor_nome']
 # site-record/presenca/serializers.py
 
 from rest_framework import serializers

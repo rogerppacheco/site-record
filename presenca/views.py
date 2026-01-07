@@ -57,21 +57,43 @@ class PresencaViewSet(viewsets.ModelViewSet):
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     def create(self, request, *args, **kwargs):
+        from django.db import transaction
         data = request.data.copy()
         colaborador_id = data.get('colaborador')
         data_registro = data.get('data')
-        registro_existente = Presenca.objects.filter(colaborador_id=colaborador_id, data=data_registro).first()
-
-        if registro_existente:
-            serializer = self.get_serializer(registro_existente, data=data, partial=True)
-            serializer.is_valid(raise_exception=True)
-            serializer.save(editado_por=request.user)
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        else:
-            serializer = self.get_serializer(data=data)
-            serializer.is_valid(raise_exception=True)
-            serializer.save(lancado_por=request.user)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        if not colaborador_id or not data_registro:
+            return Response({'detail': 'Colaborador e data são obrigatórios.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            with transaction.atomic():
+                obj, created = Presenca.objects.get_or_create(
+                    colaborador_id=colaborador_id,
+                    data=data_registro,
+                    defaults={
+                        'status': data.get('status', True),
+                        'motivo_id': data.get('motivo'),
+                        'observacao': data.get('observacao', ''),
+                        'lancado_por': request.user
+                    }
+                )
+                if not created:
+                    # Atualiza apenas campos relevantes
+                    update_fields = []
+                    if 'status' in data:
+                        obj.status = data['status']
+                        update_fields.append('status')
+                    if 'motivo' in data:
+                        obj.motivo_id = data['motivo']
+                        update_fields.append('motivo')
+                    if 'observacao' in data:
+                        obj.observacao = data['observacao']
+                        update_fields.append('observacao')
+                    obj.editado_por = request.user
+                    update_fields.append('editado_por')
+                    obj.save(update_fields=update_fields)
+                serializer = self.get_serializer(obj)
+                return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+        except Exception as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False) 
@@ -101,12 +123,15 @@ class MinhaEquipeListView(generics.ListAPIView):
         return result
 
 class TodosUsuariosListView(generics.ListAPIView):
+    from .serializers import UsuarioPresencaSerializer
+    serializer_class = UsuarioPresencaSerializer
+    permission_classes = [IsAuthenticated]
     def get_queryset(self):
-        qs = Usuario.objects.filter(is_active=True, participa_controle_presenca=True).order_by('first_name')
+        qs = Usuario.objects.filter(is_active=True, participa_controle_presenca=True)\
+            .select_related('perfil', 'supervisor')\
+            .order_by('first_name')
         print(f"[DEBUG TodosUsuariosListView] queryset type: {type(qs)}, count: {qs.count()}")
         return qs
-    serializer_class = UsuarioSerializer
-    permission_classes = [IsAuthenticated]
 
 # =========================================================================
 # RELATÓRIOS FINANCEIROS (CORRIGIDO)
