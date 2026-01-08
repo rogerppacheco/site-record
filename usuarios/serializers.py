@@ -3,10 +3,12 @@ from .models import Usuario, Perfil, PermissaoPerfil
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth.models import Permission, Group
+import logging
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
-# --- SERIALIZERS DE SEGURANÇA (ADICIONADOS) ---
+# --- SERIALIZERS DE SEGURANÇA ---
 
 class TrocaSenhaSerializer(serializers.Serializer):
     """
@@ -27,7 +29,7 @@ class ResetSenhaSolicitacaoSerializer(serializers.Serializer):
     cpf = serializers.CharField(required=True)
     whatsapp = serializers.CharField(required=True)
 
-# --- SERIALIZERS DE PERMISSÃO E GRUPO (MANTIDOS) ---
+# --- SERIALIZERS DE PERMISSÃO E GRUPO ---
 
 class PermissionSerializer(serializers.ModelSerializer):
     class Meta:
@@ -42,7 +44,7 @@ class GroupSerializer(serializers.ModelSerializer):
         model = Group
         fields = ['id', 'name', 'permissions', 'permissions_details']
 
-# --- SERIALIZERS LEGADOS E AUXILIARES ---
+# --- SERIALIZERS AUXILIARES ---
 
 class RecursoSerializer(serializers.Serializer):
     recurso = serializers.CharField()
@@ -52,7 +54,7 @@ class RecursoSerializer(serializers.Serializer):
 class PerfilSerializer(serializers.ModelSerializer):
     class Meta:
         model = Perfil
-        fields = '__all__'
+        fields = ['id', 'nome', 'cod_perfil', 'descricao']
 
 class PermissaoPerfilSerializer(serializers.ModelSerializer):
     class Meta:
@@ -62,50 +64,87 @@ class PermissaoPerfilSerializer(serializers.ModelSerializer):
             'perfil': {'write_only': True}
         }
 
-# --- SERIALIZERS DE USUÁRIO ---
+class UsuarioLiderSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Usuario
+        fields = ['id', 'first_name', 'last_name', 'username']
+
+# --- SERIALIZER PRINCIPAL DE USUÁRIO (CORRIGIDO) ---
 
 class UsuarioSerializer(serializers.ModelSerializer):
-    perfil_nome = serializers.CharField(source='perfil.nome', read_only=True)
-    supervisor_nome = serializers.CharField(source='supervisor.get_full_name', read_only=True, default=None)
     nome_completo = serializers.CharField(source='get_full_name', read_only=True)
     groups = GroupSerializer(many=True, read_only=True)
-    password = serializers.CharField(write_only=True, required=False)
-
+    
     class Meta:
         model = Usuario
         fields = [
-            'id', 'username', 'password', 'first_name', 'last_name', 'nome_completo', 'email', 'cpf',
-            'perfil', 'perfil_nome', 'groups',
-            'supervisor', 'supervisor_nome',
+            'id', 'username', 'first_name', 'last_name', 'nome_completo', 'email', 'cpf',
+            'perfil',       # Aceita ID na escrita
+            'groups', 
+            'supervisor',   # Aceita ID na escrita
             'valor_almoco', 'valor_passagem', 'chave_pix', 'nome_da_conta',
             'meta_comissao', 'desconto_boleto', 'desconto_inclusao_viabilidade',
-            'desconto_instalacao_antecipada', 'adiantamento_cnpj', 'desconto_inss_fixo',
+            'desconto_instalacao_antecipada',
+            'adiantamento_cnpj', 'desconto_inss_fixo',
             'is_active', 'is_staff',
             'canal',
             'cluster',
             'participa_controle_presenca',
             'tel_whatsapp',
-            'obriga_troca_senha' # <--- ADICIONADO PARA O FRONTEND VER
+            'obriga_troca_senha',
+            'password'
         ]
+        extra_kwargs = {
+            'password': {'write_only': True, 'required': False},
+            'perfil': {'required': False, 'allow_null': True},
+            'supervisor': {'required': False, 'allow_null': True},
+        }
+
+    def to_representation(self, instance):
+        """
+        Transforma a resposta para o Frontend.
+        Quando o front pede a lista, ele recebe o objeto Perfil inteiro (com nome),
+        não apenas o ID.
+        """
+        ret = super().to_representation(instance)
+        
+        # Injeta os detalhes do perfil
+        if instance.perfil:
+            ret['perfil'] = PerfilSerializer(instance.perfil).data
+        
+        # Injeta os detalhes do supervisor (Líder)
+        if instance.supervisor:
+            ret['supervisor'] = UsuarioLiderSerializer(instance.supervisor).data
+            
+        return ret
 
     def create(self, validated_data):
         password = validated_data.pop('password', None)
         instance = self.Meta.model(**validated_data)
-        if password is not None:
-            instance.set_password(password)
         
-        # Novos usuários devem trocar a senha por padrão
-        instance.obriga_troca_senha = True 
+        if password:
+            instance.set_password(password)
+            # Ao criar, força troca de senha no primeiro acesso
+            instance.obriga_troca_senha = True 
+            
         instance.save()
         return instance
 
     def update(self, instance, validated_data):
         password = validated_data.pop('password', None)
-        instance = super().update(instance, validated_data)
-        if password is not None:
+        
+        # Atualiza campos normais
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+            
+        # Atualiza senha se fornecida
+        if password:
             instance.set_password(password)
-            instance.save()
+            
+        instance.save()
         return instance
+
+# --- SERIALIZER DE PERFIL DO USUÁRIO (LEITURA) ---
 
 class UserProfileSerializer(serializers.ModelSerializer):
     perfil_nome = serializers.CharField(source='perfil.nome', read_only=True)
@@ -123,6 +162,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'tel_whatsapp',
             'obriga_troca_senha'
         ]
+
+# --- SERIALIZER DE LOGIN (CUSTOMIZADO) ---
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     @classmethod
@@ -150,8 +191,6 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         username_input = attrs.get('username', '')
         password = attrs.get('password', '')
         
-        import logging
-        logger = logging.getLogger(__name__)
         logger.warning(f"[LOGIN] Input: username_input='{username_input}', password_len={len(password) if password else 0}")
         
         # Tentar primeiro com o valor fornecido (username ou email)
@@ -170,7 +209,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                 logger.warning(f"[LOGIN] User not found by email either")
                 pass
         
-        # Se encontrou usuário, atualizar attrs para autenticação
+        # Se encontrou usuário, atualizar attrs para autenticação do Django
         if self.user:
             attrs['username'] = self.user.username
             logger.warning(f"[LOGIN] Updated attrs username to: {attrs['username']}")
