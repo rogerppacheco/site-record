@@ -1,3 +1,7 @@
+# Função utilitária para busca de fatura via CPF/ID (usada pelo WhatsApp)
+def buscar_fatura_nio(cliente_id):
+    from crm_app.services_nio import buscar_fatura_nio_por_cpf
+    return buscar_fatura_nio_por_cpf(cliente_id)
 """
 Serviço de busca de faturas com rastreamento, métricas e retry automático
 """
