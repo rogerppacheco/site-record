@@ -2815,6 +2815,13 @@ class WebhookWhatsAppView(APIView):
                 service.enviar_mensagem_texto(phone, "📅 *CONSULTA DE PREVISÃO*\n\nPor favor, digite o *número do pedido* (Ordem de Serviço):")
                 return Response({'status': 'previsao_start'})
 
+            # 5. GATILHO: FATURA
+            elif "FATURA" in msg_upper:
+                sessao.etapa = 'FATURA_AGUARDANDO_ID'
+                sessao.save()
+                service.enviar_mensagem_texto(phone, "💳 *CONSULTA DE FATURA NIO*\n\nPor favor, digite o *CPF* ou *ID do cliente* para buscar a fatura:")
+                return Response({'status': 'fatura_start'})
+
             # =========================================================
             # FLUXOS EM ANDAMENTO
             # =========================================================
@@ -2836,19 +2843,30 @@ class WebhookWhatsAppView(APIView):
                 return Response({'status': 'status_choice'})
 
             # --- FLUXO STATUS: EXECUÇÃO (Recebe o CPF ou OS) ---
+
             elif sessao.etapa == 'STATUS_AGUARDANDO_DADO':
                 tipo = sessao.dados_temp.get('tipo_busca')
                 valor = text
 
                 service.enviar_mensagem_texto(phone, f"🔎 Buscando pedido por {tipo}...")
-                
-                # Importa a função nova do utils
                 from .utils import consultar_status_venda
                 resp_msg = consultar_status_venda(tipo, valor)
-                
                 service.enviar_mensagem_texto(phone, resp_msg)
                 sessao.delete() # Encerra
                 return Response({'status': 'status_end'})
+
+            # --- FLUXO FATURA: EXECUÇÃO ---
+            elif sessao.etapa == 'FATURA_AGUARDANDO_ID':
+                cliente_id = text.strip()
+                service.enviar_mensagem_texto(phone, f"🔎 Buscando fatura para o cliente {cliente_id}...")
+                from .services_busca_faturas import buscar_fatura_nio
+                resultado = buscar_fatura_nio(cliente_id)
+                if resultado:
+                    service.enviar_mensagem_texto(phone, f"Fatura encontrada:\n{resultado}")
+                else:
+                    service.enviar_mensagem_texto(phone, "❌ Não foi possível localizar a fatura.")
+                sessao.delete()
+                return Response({'status': 'fatura_end'})
 
             # --- FLUXO PREVISÃO: EXECUÇÃO (Recebe o número do pedido) ---
             elif sessao.etapa == 'PREVISAO_AGUARDANDO_PEDIDO':
