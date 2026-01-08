@@ -8,10 +8,20 @@ def buscar_fatura_nio_bonus_m10(request):
     if not cpf:
         return Response({"error": "CPF não informado."}, status=400)
     try:
-        # Aqui você pode validar o CPF e chamar a função de consulta real
-        # Exemplo: resultado = consultar_dividas_nio(cpf=cpf)
-        # Para teste, retorna erro padrão se não encontrar
-        return Response({"success": False, "message": "Não foi possível buscar a fatura. Verifique o CPF ou tente novamente."}, status=404)
+        from crm_app.services_nio import buscar_fatura_nio_por_cpf
+        resultado = buscar_fatura_nio_por_cpf(cpf, incluir_pdf=True)
+        if resultado and resultado.get('valor'):
+            return Response({
+                "success": True,
+                "valor": resultado.get('valor'),
+                "codigo_pix": resultado.get('codigo_pix'),
+                "codigo_barras": resultado.get('codigo_barras'),
+                "data_vencimento": resultado.get('data_vencimento'),
+                "pdf_url": resultado.get('pdf_url'),
+                "pdf_salvo": resultado.get('pdf_salvo')
+            })
+        else:
+            return Response({"success": False, "message": "Não foi possível buscar a fatura. Verifique o CPF ou tente novamente."}, status=404)
     except Exception as e:
         return Response({"success": False, "message": str(e)}, status=500)
 import logging

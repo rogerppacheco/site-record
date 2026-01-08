@@ -41,6 +41,16 @@ class UsuarioViewSet(viewsets.ModelViewSet):
         if is_active is not None:
             queryset = queryset.filter(is_active=(is_active.lower() == 'true'))
         return queryset.order_by('first_name', 'last_name')
+
+    def list(self, request, *args, **kwargs):
+        import logging
+        logger = logging.getLogger(__name__)
+        try:
+            response = super().list(request, *args, **kwargs)
+            return response
+        except Exception as e:
+            logger.error(f"[ERRO API USUARIOS] {str(e)}", exc_info=True)
+            return Response({"detail": f"Erro interno: {str(e)}"}, status=500)
     
     @action(detail=False, methods=['get'], url_path='me')
     def me(self, request):
@@ -55,18 +65,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
             instance.save()
             return Response(status=status.HTTP_204_NO_CONTENT)
         except Exception as e:
-            return Response(
-                {"detail": f"Ocorreu um erro ao inativar o usuário: {str(e)}"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-    @action(detail=True, methods=['put'], url_path='reativar')
-    def reativar(self, request, pk=None):
-        usuario = self.get_object()
-        usuario.is_active = True
-        usuario.save()
-        serializer = self.get_serializer(usuario)
-        return Response(serializer.data)
+            return Response({"detail": f"Ocorreu um erro ao inativar o usuário: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
 
     # --- NOVA SEGURANÇA: ESQUECI A SENHA ---
     @action(detail=False, methods=['post'], permission_classes=[AllowAny], authentication_classes=[], url_path='esqueci-senha')

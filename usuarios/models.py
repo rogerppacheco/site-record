@@ -65,6 +65,7 @@ class Usuario(AbstractUser):
     desconto_boleto = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     desconto_inclusao_viabilidade = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     desconto_instalacao_antecipada = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    is_active = models.BooleanField(default=True, db_index=True)
     adiantamento_cnpj = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     desconto_inss_fixo = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
 
@@ -76,6 +77,9 @@ class Usuario(AbstractUser):
     )
 
     # --- WHATSAPP ---
+
+        # Cache para lista de perfis (exemplo de uso em views)
+
     tel_whatsapp = models.CharField(
         max_length=20, 
         blank=True, 
