@@ -2858,13 +2858,26 @@ class WebhookWhatsAppView(APIView):
             # --- FLUXO FATURA: EXECUÇÃO ---
             elif sessao.etapa == 'FATURA_AGUARDANDO_ID':
                 cliente_id = text.strip()
+                logger.info(f"[WHATSAPP_WEBHOOK] Iniciando busca de fatura para cliente_id={cliente_id}")
                 service.enviar_mensagem_texto(phone, f"🔎 Buscando fatura para o cliente {cliente_id}...")
                 from .services_busca_faturas import buscar_fatura_nio
-                resultado = buscar_fatura_nio(cliente_id)
-                if resultado:
-                    service.enviar_mensagem_texto(phone, f"Fatura encontrada:\n{resultado}")
-                else:
-                    service.enviar_mensagem_texto(phone, "❌ Não foi possível localizar a fatura.")
+                try:
+                    resultado = buscar_fatura_nio(cliente_id)
+                    logger.info(f"[WHATSAPP_WEBHOOK] Resultado buscar_fatura_nio: {resultado}")
+                    if resultado:
+                        # Se for dict ou lista, transforma em texto amigável
+                        if isinstance(resultado, dict):
+                            msg = '\n'.join([f"{k}: {v}" for k, v in resultado.items()])
+                        elif isinstance(resultado, list):
+                            msg = '\n'.join([str(item) for item in resultado])
+                        else:
+                            msg = str(resultado)
+                        service.enviar_mensagem_texto(phone, f"Fatura encontrada:\n{msg}")
+                    else:
+                        service.enviar_mensagem_texto(phone, "❌ Não foi possível localizar a fatura.")
+                except Exception as e:
+                    logger.error(f"[WHATSAPP_WEBHOOK] Erro buscar_fatura_nio: {e}", exc_info=True)
+                    service.enviar_mensagem_texto(phone, f"❌ Erro ao buscar fatura: {e}")
                 sessao.delete()
                 return Response({'status': 'fatura_end'})
 
