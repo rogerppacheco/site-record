@@ -54,7 +54,7 @@ class RecursoSerializer(serializers.Serializer):
 class PerfilSerializer(serializers.ModelSerializer):
     class Meta:
         model = Perfil
-        fields = ['id', 'nome', 'cod_perfil', 'descricao']
+        fields = ['id', 'cod_perfil', 'nome', 'descricao']
 
 class PermissaoPerfilSerializer(serializers.ModelSerializer):
     class Meta:

@@ -3,6 +3,7 @@ from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
 
 class Perfil(models.Model):
+    cod_perfil = models.CharField(max_length=50, unique=True, blank=True, null=True, verbose_name="Código do Perfil")
     nome = models.CharField(max_length=100, unique=True)
     descricao = models.TextField(blank=True, null=True)
 
