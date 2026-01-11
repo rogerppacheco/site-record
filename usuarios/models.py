@@ -15,6 +15,8 @@ class Perfil(models.Model):
         return self.nome
 
 class Usuario(AbstractUser):
+    matricula_pap = models.CharField(max_length=50, blank=True, null=True, verbose_name="Matrícula PAP")
+    senha_pap = models.CharField(max_length=128, blank=True, null=True, verbose_name="Senha PAP")
     # --- CANAIS ---
     # Adicionado DIGITAL, RECEPTIVO e PARCEIRO para o Dashboard
     CANAL_CHOICES = [
