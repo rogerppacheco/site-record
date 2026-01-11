@@ -464,7 +464,7 @@ class VendaViewSet(viewsets.ModelViewSet):
     def pendentes_auditoria(self, request):
         request.GET._mutable = True; request.GET['flow'] = 'auditoria'; request.GET['view'] = 'geral'; request.GET._mutable = False
         qs = self.filter_queryset(self.get_queryset())
-        qs = qs.exclude(status_tratamento__estado__iexact='FECHADO').order_by('id')
+        qs = qs.exclude(status_tratamento__estado__iexact='FECHADO').order_by('-id')
         page = self.paginate_queryset(qs)
         if page is not None:
             serializer = self.get_serializer(page, many=True)

@@ -1,7 +1,16 @@
 #!/usr/bin/env python
 """Django's command-line utility for administrative tasks."""
+
 import os
 import sys
+from pathlib import Path
+if os.environ.get('DJANGO_ENV') != 'production':
+    try:
+        from dotenv import load_dotenv
+        env_path = Path(__file__).resolve().parent / '.env'
+        load_dotenv(dotenv_path=env_path)
+    except ImportError:
+        pass
 
 
 def main():

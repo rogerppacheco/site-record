@@ -52,39 +52,49 @@ class RecursoSerializer(serializers.Serializer):
         return instance
 
 class PerfilSerializer(serializers.ModelSerializer):
+    def validate_cod_perfil(self, value):
+        if not value:
+            raise serializers.ValidationError("O campo 'cod_perfil' é obrigatório.")
+        if Perfil.objects.filter(cod_perfil=value).exists():
+            raise serializers.ValidationError("Já existe um perfil com este código.")
+        return value
+
     class Meta:
         model = Perfil
-        fields = ['id', 'cod_perfil', 'nome', 'descricao']
-
-class PermissaoPerfilSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = PermissaoPerfil
-        fields = ['id', 'perfil', 'recurso', 'pode_ver', 'pode_criar', 'pode_editar', 'pode_excluir']
-        extra_kwargs = {
-            'perfil': {'write_only': True}
-        }
+        fields = ['id', 'nome', 'cod_perfil']
 
 class UsuarioLiderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Usuario
-        fields = ['id', 'first_name', 'last_name', 'username']
-
-# --- SERIALIZER PRINCIPAL DE USUÁRIO (CORRIGIDO) ---
+        fields = ['id', 'username', 'first_name', 'last_name', 'email']
 
 class UsuarioSerializer(serializers.ModelSerializer):
+    # Campos de leitura
     nome_completo = serializers.CharField(source='get_full_name', read_only=True)
-    groups = GroupSerializer(many=True, read_only=True)
-    
+    perfil_detalhe = PerfilSerializer(source='perfil', read_only=True)
+    supervisor_detalhe = UsuarioLiderSerializer(source='supervisor', read_only=True)
+    groups_detalhe = GroupSerializer(source='groups', many=True, read_only=True)
+    supervisor_nome = serializers.SerializerMethodField()
+
+    # MÉTODO PARA OBTER O NOME DO LÍDER
+    def get_supervisor_nome(self, obj):
+        if obj.supervisor:
+            nome = f"{obj.supervisor.first_name} {obj.supervisor.last_name}".strip()
+            return nome if nome else obj.supervisor.username
+        return "-"
+
+    # ...existing code...
+
     class Meta:
         model = Usuario
         fields = [
             'id', 'username', 'first_name', 'last_name', 'nome_completo', 'email', 'cpf',
-            'perfil',       # Aceita ID na escrita
-            'groups', 
-            'supervisor',   # Aceita ID na escrita
+            'perfil', 'perfil_detalhe',
+            'groups', 'groups_detalhe',
+            'supervisor', 'supervisor_detalhe', 'supervisor_nome',
             'valor_almoco', 'valor_passagem', 'chave_pix', 'nome_da_conta',
             'meta_comissao', 'desconto_boleto', 'desconto_inclusao_viabilidade',
-            'desconto_instalacao_antecipada',
+            'desconto_instalacao_antecipada', 
             'adiantamento_cnpj', 'desconto_inss_fixo',
             'is_active', 'is_staff',
             'canal',
@@ -120,14 +130,14 @@ class UsuarioSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         password = validated_data.pop('password', None)
+        groups = validated_data.pop('groups', [])
         instance = self.Meta.model(**validated_data)
-        
         if password:
             instance.set_password(password)
-            # Ao criar, força troca de senha no primeiro acesso
-            instance.obriga_troca_senha = True 
-            
+            instance.obriga_troca_senha = True
         instance.save()
+        if groups:
+            instance.groups.set(groups)
         return instance
 
     def update(self, instance, validated_data):
@@ -135,7 +145,10 @@ class UsuarioSerializer(serializers.ModelSerializer):
         
         # Atualiza campos normais
         for attr, value in validated_data.items():
-            setattr(instance, attr, value)
+            if attr == 'groups':
+                instance.groups.set(value)
+            else:
+                setattr(instance, attr, value)
             
         # Atualiza senha se fornecida
         if password:
@@ -170,20 +183,17 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def get_token(cls, user):
         token = super().get_token(user)
         token['username'] = user.username
-
+        token['user_name'] = user.get_full_name() if hasattr(user, 'get_full_name') else user.username
         # Adiciona o perfil legado
         if hasattr(user, 'perfil') and user.perfil is not None:
             token['perfil'] = user.perfil.nome
         else:
-            token['perfil'] = None
-            
+            token['perfil'] = 'Vendedor'
         # Adiciona o primeiro grupo como perfil principal
         if user.groups.exists():
             token['grupo_principal'] = user.groups.first().name
-
         # --- SEGURANÇA: Adiciona flag no Token ---
         token['obriga_troca_senha'] = user.obriga_troca_senha
-
         return token
 
     def validate(self, attrs):

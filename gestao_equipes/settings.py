@@ -1,3 +1,7 @@
+REST_FRAMEWORK = {
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 20,
+}
 from pathlib import Path
 import os
 from decouple import config
@@ -114,7 +118,7 @@ if database_url:
     DATABASES['default']['OPTIONS'] = {
         'connect_timeout': 10,
     }
-    print("✅ Usando PostgreSQL (Railway)")
+    print("OK - Usando PostgreSQL (Railway)")
 
 elif jawsdb_url:
     # Usar MySQL (JawsDB - Heroku)
@@ -176,7 +180,7 @@ REST_FRAMEWORK = {
     ),
     # ✅ PAGINAÇÃO PARA PERFORMANCE
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 50,  # 50 registros por página
+    'PAGE_SIZE': 20,  # 20 registros por página
     'MAX_PAGE_SIZE': 1000,  # Permite até 1000 registros por página na API
     # ✅ FILTRAGEM
     'DEFAULT_FILTER_BACKENDS': [

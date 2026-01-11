@@ -3,7 +3,7 @@ from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
 
 class Perfil(models.Model):
-    cod_perfil = models.CharField(max_length=50, unique=True, blank=True, null=True, verbose_name="Código do Perfil")
+    cod_perfil = models.CharField(max_length=50, unique=True, blank=False, null=False, verbose_name="Código do Perfil")
     nome = models.CharField(max_length=100, unique=True)
     descricao = models.TextField(blank=True, null=True)
 
@@ -78,15 +78,12 @@ class Usuario(AbstractUser):
     )
 
     # --- WHATSAPP ---
-
-        # Cache para lista de perfis (exemplo de uso em views)
-
     tel_whatsapp = models.CharField(
         max_length=20, 
         blank=True, 
         null=True, 
         verbose_name="WhatsApp do Consultor",
-        help_text="Número com DDD (apenas números). O sistema verificará se possui WhatsApp."
+        help_text="Número com DDD (apenas números). O sistema verificará se possui WhatsApp via validação assíncrona."
     )
 
     # --- SEGURANÇA ---
@@ -104,44 +101,14 @@ class Usuario(AbstractUser):
 
     def clean(self):
         """
-        Validação personalizada: Verifica na Z-API se o número tem WhatsApp.
+        Validação padrão do Django.
+        OBS: A validação de existência do WhatsApp na API externa (Z-API) foi REMOVIDA daqui 
+        para não bloquear o salvamento. Ela deve ser feita via endpoint dedicado no Frontend.
         """
         super().clean()
-        
-        # Só valida se o número mudou ou se é novo, para não travar edições irrelevantes
-        # Mas como não temos acesso fácil ao 'dirty fields' aqui sem biblioteca extra,
-        # validamos sempre que tiver número. 
-        # Em produção, o try/except garante que não quebre se a API cair.
-        
-        if self.tel_whatsapp:
-            try:
-                # Importação local para evitar circular import
-                from crm_app.whatsapp_service import WhatsAppService
-                service = WhatsAppService()
-                
-                # Verifica apenas se configurado para evitar travamento em dev/migração
-                if service.token and service.instance_id:
-                    # Pequena otimização: se for rodar migration ou shell, pode pular
-                    # mas aqui deixamos para garantir integridade via Admin
-                    existe = service.verificar_numero_existe(self.tel_whatsapp)
-                    if not existe:
-                        raise ValidationError({
-                            'tel_whatsapp': f"O número {self.tel_whatsapp} não possui uma conta de WhatsApp válida segundo a API."
-                        })
-            except ImportError:
-                pass # Se crm_app não estiver pronto
-            except ValidationError:
-                raise # Repassa o erro de validação para o form
-            except Exception as e:
-                # Logar erro silenciosamente em produção se API falhar, para não impedir salvamento
-                pass
 
     def save(self, *args, **kwargs):
-        # Chama a validação antes de salvar
-        # self.full_clean() 
-        # COMENTADO: full_clean() chama clean(), que chama a API do Zap. 
-        # Isso pode deixar o save() muito lento ou quebrar imports em massa.
-        # Melhor deixar a validação apenas no Formulário/Admin/Serializer.
+        # Salva diretamente sem chamadas externas bloqueantes
         super().save(*args, **kwargs)
 
 class PermissaoPerfil(models.Model):

@@ -121,7 +121,10 @@
                 <div class="card mt-4">
                     <div class="card-header bg-white py-3">
                         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                            <h5 class="mb-0">Lista de Usuários <span id="lista-status-titulo" class="badge bg-success">Ativos</span></h5>
+                            <div>
+                                <h5 class="mb-0">Lista de Usuários <span id="lista-status-titulo" class="badge bg-success">Ativos</span></h5>
+                                <small id="contador-usuarios" class="text-muted">Carregando...</small>
+                            </div>
                             <div class="d-flex gap-2">
                                 <input type="text" id="busca-usuario" class="form-control form-control-sm" placeholder="Pesquisar usuário..." style="width: 200px;">
                                 <div class="btn-group">
@@ -293,7 +296,16 @@
                                     </div>
                                     <div class="col-lg-3 col-md-6">
                                         <label class="form-label fw-bold">WhatsApp</label>
-                                        <input type="text" class="form-control" id="tel_whatsapp">
+                                        <div class="input-group">
+                                            <input type="text" class="form-control" id="tel_whatsapp" autocomplete="off">
+                                            <span class="input-group-text bg-transparent border-0" id="whatsapp-status-icon" style="display:none; min-width:2rem;">
+                                                <span id="whatsapp-spinner" class="spinner-border spinner-border-sm text-secondary" style="display:none;"></span>
+                                                <span id="whatsapp-check" class="text-success" style="display:none;"><i class="bi bi-check-circle-fill"></i></span>
+                                                <span id="whatsapp-x" class="text-danger" style="display:none;"><i class="bi bi-x-circle-fill"></i></span>
+                                                <span id="whatsapp-warning" class="text-warning" style="display:none;"><i class="bi bi-exclamation-triangle-fill"></i></span>
+                                            </span>
+                                        </div>
+                                        <div id="whatsapp-feedback" class="form-text"></div>
                                     </div>
                                     <div class="col-lg-3 col-md-6">
                                         <label class="form-label fw-bold">Username</label>
@@ -412,6 +424,74 @@
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     
     <script>
+    // --- Validação assíncrona de WhatsApp ---
+    document.addEventListener('DOMContentLoaded', function() {
+        const telInput = document.getElementById('tel_whatsapp');
+        const statusIcon = document.getElementById('whatsapp-status-icon');
+        const spinner = document.getElementById('whatsapp-spinner');
+        const check = document.getElementById('whatsapp-check');
+        const xIcon = document.getElementById('whatsapp-x');
+        const warning = document.getElementById('whatsapp-warning');
+        const feedback = document.getElementById('whatsapp-feedback');
+
+        function limparValidacaoWhatsapp() {
+            telInput.classList.remove('is-valid', 'is-invalid');
+            feedback.textContent = '';
+            statusIcon.style.display = 'none';
+            spinner.style.display = 'none';
+            check.style.display = 'none';
+            xIcon.style.display = 'none';
+            warning.style.display = 'none';
+        }
+
+        if (telInput) {
+            telInput.addEventListener('input', limparValidacaoWhatsapp);
+            telInput.addEventListener('blur', async function() {
+                limparValidacaoWhatsapp();
+                const numero = telInput.value.replace(/\D/g, '');
+                if (!numero) return;
+                statusIcon.style.display = '';
+                spinner.style.display = '';
+                // Recupera token JWT do localStorage ou cookie
+                let token = localStorage.getItem('access') || localStorage.getItem('token');
+                if (!token && window.getToken) token = window.getToken();
+                try {
+                    const resp = await fetch('/api/usuarios/validar-whatsapp/', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...(token ? { 'Authorization': 'Bearer ' + token } : {})
+                        },
+                        body: JSON.stringify({ telefone: numero })
+                    });
+                    const data = await resp.json();
+                    spinner.style.display = 'none';
+                    if (data.valido === true) {
+                        telInput.classList.add('is-valid');
+                        check.style.display = '';
+                        feedback.textContent = 'Número válido e possui WhatsApp.';
+                        feedback.className = 'form-text text-success';
+                    } else if (data.valido === false) {
+                        telInput.classList.add('is-invalid');
+                        xIcon.style.display = '';
+                        feedback.textContent = data.mensagem || 'Número não possui WhatsApp.';
+                        feedback.className = 'form-text text-danger';
+                    } else {
+                        warning.style.display = '';
+                        feedback.textContent = 'Não foi possível validar, mas pode salvar.';
+                        feedback.className = 'form-text text-warning';
+                    }
+                    statusIcon.style.display = '';
+                } catch (e) {
+                    spinner.style.display = 'none';
+                    warning.style.display = '';
+                    feedback.textContent = 'Não foi possível validar, mas pode salvar.';
+                    feedback.className = 'form-text text-warning';
+                    statusIcon.style.display = '';
+                }
+            });
+        }
+    });
     const apiUrl = '';
 
     function fmtMoeda(valor) {
@@ -493,8 +573,71 @@
     // Variáveis Globais
     const API_GRUPOS = '/grupos/';
     const API_PERMISSOES = '/permissoes/';
-    let todosUsuariosCache = []; 
+    let todosUsuariosCache = [];
+    let usuariosSelectCache = { data: [], timestamp: 0 };
+    let gruposCache = { data: [], timestamp: 0 };
+    let lideresCache = { data: [], timestamp: 0 }; // Cache para líderes/supervisores
+    let paginacaoAtual = { page: 1, total: 0, pages: 0 };
+    const CACHE_DURATION = 5 * 60 * 1000; // 5 minutos
+    const ITEMS_PER_PAGE = 20; // Corrigido: corresponde ao PAGE_SIZE da API (settings.py linha 183)
     let todasPermissoes = [];
+
+    // Função para enriquecer dados dos usuários com nomes de perfis e usernames
+    async function enriquecerDadosUsuarios(usuarios) {
+        console.log('=== ENRIQUECENDO DADOS ===');
+        console.log('Usuários recebidos:', usuarios.length);
+
+        // Carregar grupos se necessário
+        if (gruposCache.data.length === 0) {
+            try {
+                console.log('Carregando grupos da API...');
+                const res = await apiFetch(API_GRUPOS);
+                const grupos = Array.isArray(res) ? res : (res?.results || []);
+                gruposCache.data = grupos;
+                gruposCache.timestamp = Date.now();
+                console.log('Grupos carregados:', grupos.length, 'grupos');
+                console.log('Primeiro grupo:', grupos[0]);
+            } catch (e) {
+                console.error('Erro ao carregar grupos:', e);
+            }
+        } else {
+            console.log('Usando grupos do cache:', gruposCache.data.length, 'grupos');
+        }
+
+        // Enriquecer cada usuário com dados dos grupos
+        return usuarios.map((user, index) => {
+            const enrichedUser = { ...user };
+
+            console.log(`\n--- Processando usuário ${index + 1}: ${user.username || user.id} ---`);
+            console.log('Groups original:', user.groups);
+
+            // FORÇAR perfil - tentar todas as possibilidades
+            if (user.groups && user.groups.length > 0) {
+                const groupId = typeof user.groups[0] === 'object' ? user.groups[0].id : user.groups[0];
+                console.log('Procurando grupo com ID:', groupId);
+                console.log('Grupos disponíveis:', gruposCache.data.map(g => ({id: g.id, name: g.name})));
+
+                const grupo = gruposCache.data.find(g => g.id == groupId);
+                if (grupo && grupo.name) {
+                    enrichedUser.perfil_nome = grupo.name;
+                    console.log(`✅ Perfil encontrado: ${grupo.name}`);
+                } else {
+                    console.log(`❌ Grupo não encontrado para ID ${groupId}`);
+                }
+            } else {
+                console.log('⚠️ Usuário sem groups definido');
+            }
+
+            // Garantir que pelo menos algo apareça como perfil
+            if (!enrichedUser.perfil_nome) {
+                enrichedUser.perfil_nome = 'Sem Perfil';
+                console.log(`⚠️ Usando perfil padrão: Sem Perfil`);
+            }
+
+            console.log('Perfil final:', enrichedUser.perfil_nome);
+            return enrichedUser;
+        });
+    }
     const perfilModal = new bootstrap.Modal(document.getElementById('perfilModal'));
     const excluirPerfilModal = new bootstrap.Modal(document.getElementById('excluirPerfilModal'));
     const userModal = new bootstrap.Modal(document.getElementById('userModal'));
@@ -561,74 +704,561 @@
     function formatarNomePermissao(nome) { return nome.replace('Can view', 'Visualizar').replace('Can add', 'Adicionar').replace('Can change', 'Editar').replace('Can delete', 'Excluir').replace('Pode visualizar', 'Acesso a'); }
 
     // --- FUNÇÕES DE USUÁRIOS ---
+    
+    // Função para carregar cache de líderes (supervisores)
+    async function carregarCacheLideres() {
+        const agora = Date.now();
+        const CACHE_DURATION = 5 * 60 * 1000; // 5 minutos
+        
+        // Verificar se o cache ainda é válido
+        if (lideresCache.data.length > 0 && (agora - lideresCache.timestamp) < CACHE_DURATION) {
+            console.log('Usando cache de líderes:', lideresCache.data.length, 'líderes');
+            return lideresCache.data;
+        }
+        
+        try {
+            console.log('Carregando líderes do endpoint /usuarios/lideres...');
+            const resLideres = await apiFetch('/usuarios/lideres/');
+            const lideres = Array.isArray(resLideres) ? resLideres : [];
+            
+            // Criar um mapa para busca rápida por ID
+            lideresCache.data = lideres;
+            lideresCache.timestamp = agora;
+            
+            console.log('Cache de líderes atualizado:', lideres.length, 'líderes');
+            return lideres;
+        } catch (e) {
+            console.warn('Erro ao carregar líderes:', e);
+            return lideresCache.data; // Retornar cache antigo se houver erro
+        }
+    }
+    
+    // Função auxiliar para buscar username do supervisor (apenas username, não nome completo)
+    function buscarNomeSupervisor(supervisorId, userData = null) {
+        if (!supervisorId) return '-';
+        
+        // Primeiro: verificar se o supervisor está nos dados do usuário atual (mais rápido)
+        if (userData && userData.supervisor_detalhe) {
+            if (userData.supervisor_detalhe.username) {
+                return userData.supervisor_detalhe.username;
+            }
+        }
+        
+        // Segundo: buscar no cache de líderes (eficiente e sempre completo)
+        const lider = lideresCache.data.find(l => l.id == supervisorId);
+        if (lider) {
+            // Priorizar username direto se disponível
+            if (lider.username) return lider.username;
+            // Fallback: extrair username do nome_exibicao (formato: "Nome (username)" ou apenas "username")
+            if (lider.nome_exibicao) {
+                const match = lider.nome_exibicao.match(/\(([^)]+)\)$/);
+                return match ? match[1] : lider.nome_exibicao;
+            }
+        }
+        
+        // Terceiro: buscar no cache completo de usuários (fallback)
+        const supervisorUser = todosUsuariosCache.find(u => u.id == supervisorId);
+        if (supervisorUser && supervisorUser.username) {
+            return supervisorUser.username;
+        }
+        
+        return '-';
+    }
+    
     function mostrarListaUsuarios(status, btn) {
         document.getElementById('lista-status-titulo').textContent = status === 'ativos' ? 'Ativos' : 'Inativos';
         if(btn) { btn.parentElement.querySelectorAll('.btn').forEach(b => b.classList.remove('active', 'btn-outline-primary')); btn.classList.add('active', 'btn-outline-primary'); }
         // Limpar campo de busca ao trocar de aba
         const campoBusca = document.getElementById('busca-usuario');
         if (campoBusca) campoBusca.value = '';
-        carregarUsuarios(status);
+        // Resetar para página 1 ao trocar de status
+        paginacaoAtual.page = 1;
+        carregarUsuarios(status, 1);
     }
 
-    async function carregarUsuarios(status = 'ativos') { 
-        try { 
-            const res = await apiFetch(`/usuarios/?is_active=${status === 'ativos'}`); 
-            const dados = Array.isArray(res) ? res : (res?.results || []);
+    async function carregarUsuarios(status = 'ativos', page = 1) {
+        try {
+            // Tentar com paginação da API primeiro
+            console.log('Tentando carregar com paginação da API, página:', page, 'status:', status);
+            let res, dados, total;
+
+            let todosUsuariosParaCache = [];
+
+            try {
+                res = await apiFetch(`/usuarios/?is_active=${status === 'ativos'}&page=${page}&page_size=${ITEMS_PER_PAGE}`);
+                console.log('Resposta da API com paginação:', res);
+
+                dados = Array.isArray(res) ? res : (res?.results || []);
+                // IMPORTANTE: Usar o count da resposta paginada para calcular páginas corretamente
+                total = res?.count || (Array.isArray(res) ? res.length : dados.length);
+                console.log('Total de usuários (count):', total, 'Dados na página:', dados.length);
+
+                // Se a API suporta paginação, precisamos carregar TODAS as páginas para o cache
+                // para poder buscar supervisores de qualquer página e fazer busca completa
+                if (total > dados.length) {
+                    console.log(`Carregando todas as páginas para cache (total: ${total}, por página: ${dados.length})...`);
+                    todosUsuariosParaCache = [...dados]; // Começar com os dados da primeira página
+                    
+                    // Calcular quantas páginas existem baseado no tamanho padrão da página (20)
+                    const tamanhoPagina = dados.length || ITEMS_PER_PAGE;
+                    const totalPages = Math.ceil(total / tamanhoPagina);
+                    console.log(`Total de páginas a carregar: ${totalPages} (${total} usuários ÷ ${tamanhoPagina} por página)`);
+                    
+                    // Carregar todas as páginas restantes
+                    for (let p = 2; p <= totalPages; p++) {
+                        try {
+                            // Usar o mesmo page_size da primeira requisição para manter consistência
+                            const resPage = await apiFetch(`/usuarios/?is_active=${status === 'ativos'}&page=${p}&page_size=${ITEMS_PER_PAGE}`);
+                            const dadosPage = Array.isArray(resPage) ? resPage : (resPage?.results || []);
+                            todosUsuariosParaCache = todosUsuariosParaCache.concat(dadosPage);
+                            console.log(`Página ${p} carregada: ${dadosPage.length} usuários`);
+                        } catch (e) {
+                            console.warn(`Erro ao carregar página ${p}:`, e);
+                        }
+                    }
+                    console.log(`Todos os usuários carregados para cache: ${todosUsuariosParaCache.length} de ${total} esperados`);
+                } else {
+                    todosUsuariosParaCache = dados;
+                }
+            } catch (apiError) {
+                console.warn('API não suporta paginação, tentando carregar todos os usuários com page_size grande:', apiError);
+                // Fallback: tentar carregar todos de uma vez com page_size muito grande
+                try {
+                    res = await apiFetch(`/usuarios/?is_active=${status === 'ativos'}&page_size=1000`);
+                    todosUsuariosParaCache = Array.isArray(res) ? res : (res?.results || []);
+                    total = res?.count || todosUsuariosParaCache.length;
+                    
+                    // Simular paginação no frontend
+                    const startIndex = (page - 1) * ITEMS_PER_PAGE;
+                    const endIndex = startIndex + ITEMS_PER_PAGE;
+                    dados = todosUsuariosParaCache.slice(startIndex, endIndex);
+                    console.log(`Simulando paginação: mostrando ${dados.length} de ${total} usuários (página ${page})`);
+                } catch (e) {
+                    console.error('Erro ao carregar usuários:', e);
+                    dados = [];
+                    todosUsuariosParaCache = [];
+                    total = 0;
+                }
+            }
+
+            // ATUALIZAR CACHE COM TODOS OS USUÁRIOS (não apenas da página atual)
+            todosUsuariosCache = todosUsuariosParaCache;
+            console.log('Cache atualizado com', todosUsuariosCache.length, 'usuários');
+
+            // Carregar cache de líderes se necessário (para garantir que todos os supervisores estejam disponíveis)
+            await carregarCacheLideres();
+
+            console.log('Dados processados:', dados.length, 'usuários mostrados, total:', total);
+
+            // DEBUG: Mostrar estrutura real dos dados
+            if (dados.length > 0) {
+                console.log('=== ESTRUTURA DO PRIMEIRO USUÁRIO ===');
+                console.log('Usuário completo:', dados[0]);
+                console.log('Campos disponíveis:', Object.keys(dados[0]));
+                console.log('Groups:', dados[0].groups);
+                console.log('Supervisor:', dados[0].supervisor);
+                console.log('Supervisor_username:', dados[0].supervisor_username);
+                console.log('Supervisor_nome:', dados[0].supervisor_nome);
+                console.log('=====================================');
+            }
+
             if (dados.length === 0) {
                 console.warn('Nenhum dado encontrado para /usuarios/?is_active=' + (status === 'ativos'));
             }
-            todosUsuariosCache = dados;
-            renderizarTabelaUsuarios(todosUsuariosCache, status);
-        } catch (e) { 
+
+            // Atualizar informações de paginação
+            paginacaoAtual = {
+                page: page,
+                total: total,
+                pages: Math.ceil(total / ITEMS_PER_PAGE)
+            };
+
+            console.log('Paginação calculada:', paginacaoAtual);
+            
+            // Atualizar contador de usuários
+            let startItemUsuarios = ((page - 1) * ITEMS_PER_PAGE) + 1;
+            const endItemUsuarios = Math.min(page * ITEMS_PER_PAGE, total);
+            const contadorEl = document.getElementById('contador-usuarios');
+            if (contadorEl) {
+                contadorEl.textContent = `Mostrando ${startItemUsuarios}-${endItemUsuarios} de ${total} usuário(s)`;
+            }
+
+            // Enriquecer dados com nomes de perfis
+            const usuariosEnriquecidos = await enriquecerDadosUsuarios(dados);
+
+            // DEBUG: Verificar se enriquecimento funcionou
+            if (usuariosEnriquecidos.length > 0) {
+                console.log('=== APÓS ENRIQUECIMENTO ===');
+                console.log('Primeiro usuário enriquecido:', usuariosEnriquecidos[0]);
+                console.log('Perfil_nome:', usuariosEnriquecidos[0].perfil_nome);
+                console.log('==========================');
+            }
+
+            renderizarTabelaUsuarios(usuariosEnriquecidos, status);
+
+            // Forçar criação da paginação após um pequeno delay
+            setTimeout(() => {
+                console.log('=== TENTANDO RENDERIZAR PAGINAÇÃO ===');
+                console.log('Páginas disponíveis:', paginacaoAtual.pages);
+                console.log('Total de usuários:', paginacaoAtual.total);
+                renderizarControlesPaginacao(status);
+            }, 200);
+        } catch (e) {
             document.getElementById('user-list-body').innerHTML = `<tr><td colspan="7">Erro: ${e.message}</td></tr>`;
         }
     }
 
-    function renderizarTabelaUsuarios(lista, status) {
-        const userListBody = document.getElementById('user-list-body'); 
-        userListBody.innerHTML = '';
-        const isAtivos = status === 'ativos';
-        const headerRow = document.getElementById('user-list-header');
-        headerRow.innerHTML = isAtivos 
-            ? `<th style="width: 40px;"><input type="checkbox" id="check-all" onclick="toggleTodos(this)"></th><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Canal</th><th>Líder</th><th class="text-end">Ações</th>` 
-            : `<th>Nome</th><th>E-mail</th><th>Perfil</th><th>Canal</th><th class="text-end">Ações</th>`;
-        
-        if (!lista.length) { userListBody.innerHTML = '<tr><td colspan="7">Nenhum usuário.</td></tr>'; return; }
+    function renderizarControlesPaginacao(status) {
+        console.log('=== RENDERIZANDO PAGINAÇÃO ===');
+        console.log('Status:', status);
+        console.log('Páginas:', paginacaoAtual.pages);
+        console.log('Total:', paginacaoAtual.total);
+        console.log('Página atual:', paginacaoAtual.page);
 
-        lista.forEach(user => {
-            const perfil = user.groups?.[0]?.name || user.perfil_nome || 'Sem Perfil';
-            const acoes = isAtivos 
-                ? `<button class="btn btn-xs btn-editar me-1" onclick="editarUsuarioPeloId(${user.id})"><i class="bi bi-pencil"></i></button><button class="btn btn-xs btn-excluir" onclick="inativarUsuario(${user.id})"><i class="bi bi-trash"></i></button>` 
-                : `<button class="btn btn-xs btn-outline-success" onclick="reativarUsuario(${user.id})"><i class="bi bi-check-circle"></i></button>`;
-            const check = isAtivos ? `<td><input type="checkbox" class="user-check" value="${user.id}"></td>` : '';
-            userListBody.innerHTML += `<tr>${check}<td>${user.nome_completo}</td><td>${user.email}</td><td>${perfil}</td><td>${user.canal||'-'}</td><td>${user.supervisor_nome||'-'}</td><td class="text-end">${acoes}</td></tr>`;
-        });
-    }
+        // FORÇAR criação do container
+        let container = document.getElementById('pagination-container');
+        if (!container) {
+            console.log('Container não existe, criando...');
+            const tabela = document.getElementById('tabela-usuarios');
+            if (!tabela) {
+                console.error('Tabela não encontrada!');
+                return;
+            }
 
-    function filtrarUsuarios() {
-        const termoBusca = document.getElementById('busca-usuario').value.toLowerCase().trim();
-        const statusAtual = document.getElementById('lista-status-titulo').textContent.includes('Ativos') ? 'ativos' : 'inativos';
+            // Procurar o card-body
+            let cardBody = tabela.closest('.card-body');
+            if (!cardBody) {
+                // Tentar encontrar o table-responsive
+                const tableWrapper = tabela.closest('.table-responsive');
+                if (tableWrapper && tableWrapper.parentNode) {
+                    cardBody = tableWrapper.parentNode;
+                }
+            }
+
+            if (cardBody) {
+                container = document.createElement('div');
+                container.id = 'pagination-container';
+                container.className = 'd-flex justify-content-center mt-3 mb-3';
+                container.style.marginTop = '20px';
+                container.style.padding = '15px';
+                container.style.borderTop = '2px solid #dee2e6';
+                container.style.backgroundColor = '#f8f9fa';
+
+                // Inserir após a tabela ou table-responsive
+                const tableWrapper = tabela.closest('.table-responsive') || tabela;
+                if (tableWrapper.nextSibling) {
+                    cardBody.insertBefore(container, tableWrapper.nextSibling);
+                } else {
+                    cardBody.appendChild(container);
+                }
+                console.log('✅ Container criado e inserido no DOM');
+            } else {
+                console.error('❌ Não foi possível encontrar o card-body');
+                return;
+            }
+        }
+
+        // Calcular quantos usuários estão sendo mostrados nesta página
+        let startItemPaginacao = ((paginacaoAtual.page - 1) * ITEMS_PER_PAGE) + 1;
+        const endItemPaginacao = Math.min(paginacaoAtual.page * ITEMS_PER_PAGE, paginacaoAtual.total);
+        const showingText = `Mostrando ${startItemPaginacao}-${endItemPaginacao} de ${paginacaoAtual.total} usuário(s)`;
         
-        if (!termoBusca) {
-            renderizarTabelaUsuarios(todosUsuariosCache, statusAtual);
+        // SEMPRE mostrar informação de paginação
+        if (paginacaoAtual.pages <= 1) {
+            console.log('Apenas uma página, mostrando informação');
+            container.innerHTML = `<div class="text-center text-muted small p-2">📄 Página 1 de 1 - ${showingText}</div>`;
+            container.style.display = 'block';
+            container.style.visibility = 'visible';
             return;
         }
-        
-        const usuariosFiltrados = todosUsuariosCache.filter(user => {
-            const nome = (user.nome_completo || '').toLowerCase();
-            const email = (user.email || '').toLowerCase();
-            const perfil = (user.groups?.[0]?.name || user.perfil_nome || '').toLowerCase();
-            const canal = (user.canal || '').toLowerCase();
-            const supervisor = (user.supervisor_nome || '').toLowerCase();
-            
-            return nome.includes(termoBusca) || 
-                   email.includes(termoBusca) || 
-                   perfil.includes(termoBusca) ||
-                   canal.includes(termoBusca) ||
-                   supervisor.includes(termoBusca);
+
+        console.log('✅ Renderizando paginação com', paginacaoAtual.pages, 'páginas');
+
+        // PAGINAÇÃO SIMPLIFICADA E DIRETA
+        let paginationHTML = '<nav><ul class="pagination justify-content-center">';
+
+        // Botão Anterior
+        if (paginacaoAtual.page > 1) {
+            paginationHTML += `<li class="page-item"><a class="page-link" href="#" onclick="event.preventDefault(); carregarUsuarios('${status}', ${paginacaoAtual.page - 1});">◀ Anterior</a></li>`;
+        } else {
+            paginationHTML += '<li class="page-item disabled"><span class="page-link">◀ Anterior</span></li>';
+        }
+
+        // Mostrar páginas próximas (máximo 7 páginas)
+        const total = paginacaoAtual.pages;
+        const current = paginacaoAtual.page;
+        const start = Math.max(1, current - 3);
+        const end = Math.min(total, current + 3);
+
+        // Página 1 se necessário
+        if (start > 1) {
+            paginationHTML += `<li class="page-item"><a class="page-link" href="#" onclick="event.preventDefault(); carregarUsuarios('${status}', 1);">1</a></li>`;
+            if (start > 2) paginationHTML += '<li class="page-item disabled"><span class="page-link">...</span></li>';
+        }
+
+        // Páginas do meio
+        for (let i = start; i <= end; i++) {
+            if (i === current) {
+                paginationHTML += `<li class="page-item active"><span class="page-link">${i}</span></li>`;
+            } else {
+                paginationHTML += `<li class="page-item"><a class="page-link" href="#" onclick="event.preventDefault(); carregarUsuarios('${status}', ${i});">${i}</a></li>`;
+            }
+        }
+
+        // Última página se necessário
+        if (end < total) {
+            if (end < total - 1) paginationHTML += '<li class="page-item disabled"><span class="page-link">...</span></li>';
+            paginationHTML += `<li class="page-item"><a class="page-link" href="#" onclick="event.preventDefault(); carregarUsuarios('${status}', ${total});">${total}</a></li>`;
+        }
+
+        // Botão Próximo
+        if (current < total) {
+            paginationHTML += `<li class="page-item"><a class="page-link" href="#" onclick="event.preventDefault(); carregarUsuarios('${status}', ${current + 1});">Próximo ▶</a></li>`;
+        } else {
+            paginationHTML += '<li class="page-item disabled"><span class="page-link">Próximo ▶</span></li>';
+        }
+
+        paginationHTML += '</ul></nav>';
+
+        // Adicionar informações com contador
+        let startItemPag = ((current - 1) * ITEMS_PER_PAGE) + 1;
+        const endItemPag = Math.min(current * ITEMS_PER_PAGE, paginacaoAtual.total);
+        paginationHTML += `<div class="text-center mt-2 text-muted small">Página ${current} de ${total} - Mostrando ${startItemPag}-${endItemPag} de ${paginacaoAtual.total} usuário(s)</div>`;
+
+        container.innerHTML = paginationHTML;
+        container.style.display = 'block';
+        container.style.visibility = 'visible';
+        container.style.opacity = '1';
+        console.log('✅ Paginação renderizada com sucesso');
+        console.log('Container visível:', container.style.display);
+        console.log('Container HTML:', container.innerHTML.substring(0, 200));
+    }
+
+    // Função global para debug - forçar renderização da paginação
+    window.debugPaginacao = function() {
+        console.log('=== DEBUG PAGINAÇÃO ===');
+        console.log('Páginas:', paginacaoAtual);
+        console.log('Container existe?', !!document.getElementById('pagination-container'));
+        renderizarControlesPaginacao('ativos');
+    };
+
+    // Função global para debug - mostrar estrutura dos dados
+    window.debugUsuarios = function() {
+        console.log('=== DEBUG USUÁRIOS ===');
+        console.log('Cache de usuários:', todosUsuariosCache.length);
+        if (todosUsuariosCache.length > 0) {
+            console.log('Primeiro usuário:', todosUsuariosCache[0]);
+            console.log('Campos:', Object.keys(todosUsuariosCache[0]));
+        }
+        console.log('Cache de grupos:', gruposCache.data.length);
+        if (gruposCache.data.length > 0) {
+            console.log('Primeiro grupo:', gruposCache.data[0]);
+        }
+    };
+
+    function renderizarTabelaUsuarios(lista, status) {
+        const userListBody = document.getElementById('user-list-body');
+        const isAtivos = status === 'ativos';
+        const headerRow = document.getElementById('user-list-header');
+
+        // Otimizar renderização do header
+        headerRow.innerHTML = isAtivos
+            ? `<th style="width: 40px;"><input type="checkbox" id="check-all" onclick="toggleTodos(this)"></th><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Canal</th><th>Líder</th><th class="text-end">Ações</th>`
+            : `<th>Nome</th><th>E-mail</th><th>Perfil</th><th>Canal</th><th class="text-end">Ações</th>`;
+
+        if (!lista.length) {
+            userListBody.innerHTML = '<tr><td colspan="7">Nenhum usuário.</td></tr>';
+            return;
+        }
+
+        // Otimizar renderização usando documentFragment
+        const fragment = document.createDocumentFragment();
+        const colunas = isAtivos ? 7 : 5;
+
+        lista.forEach(user => {
+            const row = document.createElement('tr');
+
+            if (isAtivos) {
+                const checkCell = document.createElement('td');
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'user-check';
+                checkbox.value = user.id;
+                checkCell.appendChild(checkbox);
+                row.appendChild(checkCell);
+            }
+
+            // Nome completo
+            const nomeCell = document.createElement('td');
+            nomeCell.textContent = user.nome_completo;
+            row.appendChild(nomeCell);
+
+            // Email
+            const emailCell = document.createElement('td');
+            emailCell.textContent = user.email;
+            row.appendChild(emailCell);
+
+            // PERFIL - SIMPLIFICADO
+            const perfilCell = document.createElement('td');
+
+            let perfilNome = user.perfil_nome || 'Usuário';
+
+            if (!user.perfil_nome && user.groups && user.groups.length > 0) {
+                const groupId = user.groups[0]?.id || user.groups[0];
+                const grupo = gruposCache.data.find(g => g.id == groupId);
+                if (grupo && grupo.name) {
+                    perfilNome = grupo.name;
+                    user.perfil_nome = grupo.name; // Cache no usuário
+                }
+            }
+
+            perfilCell.textContent = perfilNome;
+            row.appendChild(perfilCell);
+
+            // Canal
+            const canalCell = document.createElement('td');
+            canalCell.textContent = user.canal || '-';
+            row.appendChild(canalCell);
+
+            if (isAtivos) {
+                // SUPERVISOR/USERNAME - BUSCAR NO CACHE DE LÍDERES
+                const liderCell = document.createElement('td');
+                let supervisorNome = '-';
+
+                if (user.supervisor) {
+                    // Extrair ID do supervisor (pode ser objeto ou número)
+                    let supervisorId = null;
+                    if (typeof user.supervisor === 'object' && user.supervisor !== null) {
+                        supervisorId = user.supervisor.id || user.supervisor.pk;
+                    } else {
+                        supervisorId = user.supervisor;
+                    }
+
+                    if (supervisorId) {
+                        // Usar função auxiliar que busca no cache de líderes, passando também os dados do usuário
+                        supervisorNome = buscarNomeSupervisor(supervisorId, user);
+                    }
+                }
+
+                liderCell.textContent = supervisorNome;
+                row.appendChild(liderCell);
+            }
+
+            // Ações
+            const acoesCell = document.createElement('td');
+            acoesCell.className = 'text-end';
+
+            if (isAtivos) {
+                const btnEditar = document.createElement('button');
+                btnEditar.className = 'btn btn-xs btn-editar me-1';
+                btnEditar.innerHTML = '<i class="bi bi-pencil"></i>';
+                btnEditar.onclick = () => editarUsuarioPeloId(user.id);
+
+                const btnExcluir = document.createElement('button');
+                btnExcluir.className = 'btn btn-xs btn-excluir';
+                btnExcluir.innerHTML = '<i class="bi bi-trash"></i>';
+                btnExcluir.onclick = () => inativarUsuario(user.id);
+
+                acoesCell.appendChild(btnEditar);
+                acoesCell.appendChild(btnExcluir);
+            } else {
+                const btnReativar = document.createElement('button');
+                btnReativar.className = 'btn btn-xs btn-outline-success';
+                btnReativar.innerHTML = '<i class="bi bi-check-circle"></i>';
+                btnReativar.onclick = () => reativarUsuario(user.id);
+                acoesCell.appendChild(btnReativar);
+            }
+
+            row.appendChild(acoesCell);
+            fragment.appendChild(row);
         });
-        
-        renderizarTabelaUsuarios(usuariosFiltrados, statusAtual);
+
+        userListBody.innerHTML = '';
+        userListBody.appendChild(fragment);
+    }
+
+    async function filtrarUsuarios() {
+        const termoBusca = document.getElementById('busca-usuario').value.toLowerCase().trim();
+        const statusAtual = document.getElementById('lista-status-titulo').textContent.includes('Ativos') ? 'ativos' : 'inativos';
+        const isAtivos = statusAtual === 'ativos';
+
+        if (!termoBusca) {
+            // Se não há busca, recarregar a página atual
+            carregarUsuarios(statusAtual, paginacaoAtual.page);
+            return;
+        }
+
+        // Verificar se o cache está carregado
+        if (todosUsuariosCache.length === 0) {
+            console.log('Cache vazio, carregando usuários primeiro...');
+            await carregarUsuarios(statusAtual, 1);
+            // Aguardar um pouco para garantir que o cache foi atualizado
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
+
+        // Filtrar usando o cache local (mais rápido e eficiente)
+        let usuariosFiltrados = todosUsuariosCache.filter(user => {
+            // Verificar se o usuário corresponde ao status atual
+            if (user.is_active !== isAtivos) {
+                return false;
+            }
+
+            // Buscar em múltiplos campos
+            const nomeCompleto = (user.nome_completo || '').toLowerCase();
+            const username = (user.username || '').toLowerCase();
+            const email = (user.email || '').toLowerCase();
+            const cpf = (user.cpf || '').toLowerCase();
+            const perfilNome = (user.perfil_nome || '').toLowerCase();
+            
+            // Buscar nome do supervisor
+            let supervisorNome = '';
+            if (user.supervisor) {
+                const supervisorId = typeof user.supervisor === 'object' && user.supervisor !== null 
+                    ? (user.supervisor.id || user.supervisor.pk) 
+                    : user.supervisor;
+                if (supervisorId) {
+                    supervisorNome = buscarNomeSupervisor(supervisorId, user).toLowerCase();
+                }
+            }
+
+            // Verificar se o termo de busca está em algum campo
+            return nomeCompleto.includes(termoBusca) ||
+                   username.includes(termoBusca) ||
+                   email.includes(termoBusca) ||
+                   cpf.includes(termoBusca) ||
+                   perfilNome.includes(termoBusca) ||
+                   supervisorNome.includes(termoBusca);
+        });
+
+        // Enriquecer dados com nomes de perfis e supervisores
+        try {
+            const usuariosEnriquecidos = await enriquecerDadosUsuarios(usuariosFiltrados);
+            
+            // Renderizar apenas os resultados filtrados (sem paginação na busca)
+            renderizarTabelaUsuarios(usuariosEnriquecidos, statusAtual);
+            
+            // Atualizar informações de paginação para mostrar que está em modo busca
+            const totalFiltrados = usuariosFiltrados.length;
+            paginacaoAtual = {
+                page: 1,
+                total: totalFiltrados,
+                pages: 1
+            };
+            
+            // Atualizar contador de usuários (modo busca)
+            const contadorEl = document.getElementById('contador-usuarios');
+            if (contadorEl) {
+                contadorEl.textContent = `Busca: ${totalFiltrados} resultado(s) encontrado(s)`;
+            }
+            
+            // Atualizar controles de paginação
+            renderizarControlesPaginacao(statusAtual);
+            
+            console.log(`Busca realizada: ${totalFiltrados} usuário(s) encontrado(s) para "${termoBusca}"`);
+        } catch (e) {
+            console.error('Erro ao filtrar usuários:', e);
+            document.getElementById('user-list-body').innerHTML = `<tr><td colspan="7">Erro ao filtrar: ${e.message}</td></tr>`;
+        }
     }
 
     function editarUsuarioPeloId(id) { const user = todosUsuariosCache.find(u => u.id === id); if (user) abrirModalUsuario(user); }
@@ -638,39 +1268,144 @@
         const ids = Array.from(document.querySelectorAll('.user-check:checked')).map(c => c.value);
         if (!novoPerfil || !ids.length) return alert('Selecione perfil e usuários.');
         for (const uid of ids) await apiFetch(`/usuarios/${uid}/`, { method: 'PATCH', body: JSON.stringify({ groups: [parseInt(novoPerfil)] }) });
-        alert('Atualizado.'); carregarUsuarios('ativos'); 
+        // Invalidar cache de usuários após mudança de perfil
+        todosUsuariosCache = [];
+        lideresCache = { data: [], timestamp: 0 }; // Limpar cache de líderes também
+        alert('Atualizado.');
+        const statusAtual = document.getElementById('lista-status-titulo').textContent.includes('Ativos') ? 'ativos' : 'inativos';
+        carregarUsuarios(statusAtual, paginacaoAtual.page); 
     };
 
     async function abrirModalUsuario(user = null) {
+        console.log('Abrindo modal de usuário...');
         document.getElementById('user-form').reset();
         document.getElementById('user_id').value = user ? user.id : '';
         document.getElementById('userModalTitle').textContent = user ? 'Editar Usuário' : 'Novo Usuário';
-        await carregarDadosParaFormulario();
+        
+        // Carregar dados ANTES de mostrar o modal
+        try {
+            await carregarDadosParaFormulario();
+            console.log('Dados do formulário carregados');
+        } catch (e) {
+            console.error('Erro ao carregar dados:', e);
+        }
+        
         if (user) {
             document.getElementById('nome_completo').value = user.nome_completo || '';
             document.getElementById('cpf').value = user.cpf || '';
             document.getElementById('email').value = user.email || '';
             document.getElementById('tel_whatsapp').value = user.tel_whatsapp || '';
             document.getElementById('usuario_login').value = user.username || '';
-            if (user.groups && user.groups.length > 0) document.getElementById('perfil_id').value = user.groups[0].id;
-            document.getElementById('supervisor_id').value = user.supervisor || '';
+            if (user.groups && user.groups.length > 0) {
+                const groupId = typeof user.groups[0] === 'object' ? user.groups[0].id : user.groups[0];
+                document.getElementById('perfil_id').value = groupId || '';
+            }
+            // Extrair ID do supervisor (pode ser objeto ou número)
+            let supervisorId = '';
+            if (user.supervisor) {
+                if (typeof user.supervisor === 'object' && user.supervisor !== null) {
+                    supervisorId = user.supervisor.id || user.supervisor.pk || '';
+                } else {
+                    supervisorId = user.supervisor;
+                }
+            }
+            document.getElementById('supervisor_id').value = supervisorId;
             document.getElementById('user_canal').value = user.canal || 'PAP';
             document.getElementById('user_cluster').value = user.cluster || '';
             document.getElementById('participa_controle_presenca').checked = user.participa_controle_presenca;
             ['valor_almoco', 'valor_passagem', 'chave_pix', 'nome_da_conta', 'meta_comissao', 'desconto_boleto', 'desconto_inclusao_viabilidade', 'desconto_instalacao_antecipada', 'adiantamento_cnpj', 'desconto_inss_fixo'].forEach(id => { document.getElementById(id).value = user[id] || ''; });
         }
-        userModal.show();
+        
+        // Pequeno delay para garantir que os selects foram populados
+        setTimeout(() => {
+            userModal.show();
+            console.log('Modal exibido');
+        }, 100);
     }
 
     async function carregarDadosParaFormulario() {
         const pSelect = document.getElementById('perfil_id');
         const sSelect = document.getElementById('supervisor_id');
-        pSelect.innerHTML = ''; sSelect.innerHTML = '<option value="">Nenhum</option>';
+        
+        if (!pSelect || !sSelect) {
+            console.error('Selects não encontrados!');
+            return;
+        }
+
+        pSelect.innerHTML = '<option value="">Carregando...</option>';
+        sSelect.innerHTML = '<option value="">Carregando...</option>';
+
         try {
-            const [grupos, usuarios] = await Promise.all([ apiFetch(API_GRUPOS), apiFetch('/usuarios/?is_active=true') ]);
-            grupos.forEach(g => pSelect.add(new Option(g.name, g.id)));
-            usuarios.forEach(u => sSelect.add(new Option(u.nome_completo, u.id)));
-        } catch (e) {}
+            const agora = Date.now();
+
+            // Cache para grupos (perfis)
+            let grupos;
+            if (!pSelect._gruposCache || (agora - (pSelect._gruposTimestamp || 0)) > CACHE_DURATION) {
+                console.log('Carregando grupos para o formulário...');
+                const resGrupos = await apiFetch(API_GRUPOS);
+                grupos = Array.isArray(resGrupos) ? resGrupos : (resGrupos?.results || []);
+                pSelect._gruposCache = grupos;
+                pSelect._gruposTimestamp = agora;
+                console.log('Grupos carregados:', grupos.length);
+            } else {
+                grupos = pSelect._gruposCache;
+                console.log('Usando grupos do cache:', grupos.length);
+            }
+
+            pSelect.innerHTML = '<option value="">Selecione um perfil</option>';
+            if (grupos && grupos.length > 0) {
+                grupos.forEach(g => {
+                    if (g && g.name && g.id) {
+                        pSelect.add(new Option(g.name, g.id));
+                    }
+                });
+            } else {
+                pSelect.innerHTML = '<option value="">Nenhum perfil disponível</option>';
+            }
+
+            // Carregar cache de líderes se necessário
+            await carregarCacheLideres();
+            
+            // Usar cache de líderes para o dropdown (mais eficiente e sempre completo)
+            sSelect.innerHTML = '<option value="">Nenhum</option>';
+            if (lideresCache.data && lideresCache.data.length > 0) {
+                lideresCache.data.forEach(l => {
+                    if (l && l.id) {
+                        const nomeExibicao = l.nome_exibicao || l.username || '-';
+                        sSelect.add(new Option(nomeExibicao, l.id));
+                    }
+                });
+                console.log('Dropdown de supervisores populado com', lideresCache.data.length, 'líderes');
+            } else {
+                // Fallback: usar cache de usuários se líderes não estiver disponível
+                let usuarios;
+                if (todosUsuariosCache.length > 0 && (agora - (todosUsuariosCache._timestamp || 0)) < CACHE_DURATION) {
+                    usuarios = todosUsuariosCache.filter(u => u.is_active !== false);
+                    console.log('Usando usuários do cache para select (fallback):', usuarios.length);
+                } else {
+                    console.log('Carregando usuários para o select (fallback)...');
+                    const resUsuarios = await apiFetch('/usuarios/?is_active=true');
+                    usuarios = Array.isArray(resUsuarios) ? resUsuarios : (resUsuarios?.results || []);
+                    console.log('Usuários carregados:', usuarios.length);
+                }
+                
+                if (usuarios && usuarios.length > 0) {
+                    usuarios.forEach(u => {
+                        if (u && u.username && u.id) {
+                            sSelect.add(new Option(u.username, u.id));
+                        }
+                    });
+                } else {
+                    sSelect.innerHTML = '<option value="">Nenhum usuário disponível</option>';
+                }
+            }
+
+            console.log('✅ Dropdowns carregados com sucesso');
+        } catch (e) {
+            console.error('Erro ao carregar dados do formulário:', e);
+            pSelect.innerHTML = '<option value="">Erro ao carregar</option>';
+            sSelect.innerHTML = '<option value="">Erro ao carregar</option>';
+        }
     }
 
     userForm.addEventListener('submit', async function(e) {
@@ -678,37 +1413,75 @@
         const id = document.getElementById('user_id').value;
         const nomeCompleto = document.getElementById('nome_completo').value.trim();
         const parts = nomeCompleto.split(' ');
+        
+        // Função auxiliar para converter string vazia em null ou número
+        const cleanValue = (val, isNumber = false) => {
+            if (!val || val === '') return null;
+            if (isNumber) {
+                const num = parseFloat(val);
+                return isNaN(num) ? null : num;
+            }
+            return val;
+        };
+        
+        const supervisorValue = document.getElementById('supervisor_id').value;
         const body = {
-            first_name: parts.shift(), last_name: parts.join(' '),
-            cpf: document.getElementById('cpf').value,
+            first_name: parts.shift() || '',
+            last_name: parts.join(' ') || '',
+            cpf: cleanValue(document.getElementById('cpf').value),
             email: document.getElementById('email').value,
-            tel_whatsapp: document.getElementById('tel_whatsapp').value,
+            tel_whatsapp: cleanValue(document.getElementById('tel_whatsapp').value),
             username: document.getElementById('usuario_login').value,
-            supervisor: document.getElementById('supervisor_id').value || null,
+            supervisor: supervisorValue ? parseInt(supervisorValue) : null,
             canal: document.getElementById('user_canal').value,
-            cluster: document.getElementById('user_cluster').value || null,
+            cluster: cleanValue(document.getElementById('user_cluster').value),
             groups: document.getElementById('perfil_id').value ? [parseInt(document.getElementById('perfil_id').value)] : [],
-            valor_almoco: document.getElementById('valor_almoco').value,
-            valor_passagem: document.getElementById('valor_passagem').value,
-            chave_pix: document.getElementById('chave_pix').value,
-            nome_da_conta: document.getElementById('nome_da_conta').value,
-            meta_comissao: document.getElementById('meta_comissao').value,
-            desconto_boleto: document.getElementById('desconto_boleto').value,
-            desconto_inclusao_viabilidade: document.getElementById('desconto_inclusao_viabilidade').value,
-            desconto_instalacao_antecipada: document.getElementById('desconto_instalacao_antecipada').value,
-            adiantamento_cnpj: document.getElementById('adiantamento_cnpj').value,
-            desconto_inss_fixo: document.getElementById('desconto_inss_fixo').value,
+            valor_almoco: cleanValue(document.getElementById('valor_almoco').value, true),
+            valor_passagem: cleanValue(document.getElementById('valor_passagem').value, true),
+            chave_pix: cleanValue(document.getElementById('chave_pix').value),
+            nome_da_conta: cleanValue(document.getElementById('nome_da_conta').value),
+            meta_comissao: cleanValue(document.getElementById('meta_comissao').value, true),
+            desconto_boleto: cleanValue(document.getElementById('desconto_boleto').value, true),
+            desconto_inclusao_viabilidade: cleanValue(document.getElementById('desconto_inclusao_viabilidade').value, true),
+            desconto_instalacao_antecipada: cleanValue(document.getElementById('desconto_instalacao_antecipada').value, true),
+            adiantamento_cnpj: cleanValue(document.getElementById('adiantamento_cnpj').value, true),
+            desconto_inss_fixo: cleanValue(document.getElementById('desconto_inss_fixo').value, true),
             participa_controle_presenca: document.getElementById('participa_controle_presenca').checked
         };
-        if (document.getElementById('senha').value) body.password = document.getElementById('senha').value;
+        
+        const senha = document.getElementById('senha').value;
+        if (senha && senha.trim()) {
+            body.password = senha.trim();
+        }
+        
         try { 
-            await apiFetch(id ? `/usuarios/${id}/` : '/usuarios/', { method: id ? 'PUT' : 'POST', body: JSON.stringify(body) }); 
-            userModal.hide(); carregarUsuarios('ativos'); 
-        } catch (e) { alert(`Erro: ${e.message}`); }
+            await apiFetch(id ? `/usuarios/${id}/` : '/usuarios/', { method: id ? 'PUT' : 'POST', body: JSON.stringify(body) });
+            // Invalidar cache após salvar usuário
+            todosUsuariosCache = [];
+            lideresCache = { data: [], timestamp: 0 }; // Limpar cache de líderes também
+            userModal.hide();
+            const statusAtual = document.getElementById('lista-status-titulo').textContent.includes('Ativos') ? 'ativos' : 'inativos';
+            carregarUsuarios(statusAtual, paginacaoAtual.page);
+        } catch (e) { 
+            console.error('Erro ao salvar usuário:', e);
+            alert(`Erro: ${e.message}`); 
+        }
     });
 
-    async function inativarUsuario(id) { if(confirm('Inativar?')) { await apiFetch(`/usuarios/${id}/`, { method: 'DELETE' }); carregarUsuarios('ativos'); } }
-    async function reativarUsuario(id) { if(confirm('Reativar?')) { await apiFetch(`/usuarios/${id}/reativar/`, { method: 'PUT' }); carregarUsuarios('inativos'); } }
+    async function inativarUsuario(id) {
+        if(confirm('Inativar?')) {
+            await apiFetch(`/usuarios/${id}/`, { method: 'DELETE' });
+            const statusAtual = document.getElementById('lista-status-titulo').textContent.includes('Ativos') ? 'ativos' : 'inativos';
+            carregarUsuarios(statusAtual, paginacaoAtual.page);
+        }
+    }
+    async function reativarUsuario(id) {
+        if(confirm('Reativar?')) {
+            await apiFetch(`/usuarios/${id}/reativar/`, { method: 'PUT' });
+            const statusAtual = document.getElementById('lista-status-titulo').textContent.includes('Ativos') ? 'ativos' : 'inativos';
+            carregarUsuarios(statusAtual, paginacaoAtual.page);
+        }
+    }
 
     // --- CADASTROS GERAIS ---
     async function carregarOperadoras() {
@@ -1011,7 +1784,7 @@
         const select = document.getElementById('regra_grupos');
         select.innerHTML = '<option disabled>Buscando na API...</option>';
         try {
-            const res = await apiFetch('/crm/integracao/listar-grupos/');
+            const res = await apiFetch('/whatsapp/groups/');
             const grupos = Array.isArray(res) ? res : (res?.results || []);
             select.innerHTML = '';
             if (grupos && grupos.length > 0) {
@@ -1215,17 +1988,44 @@
         carregarRegrasAutomacao();
         carregarGruposExternos();
 
-        // Adicionar event listener para busca de usuários
+        // Adicionar event listener para busca de usuários com debounce
         const campoBuscaUsuario = document.getElementById('busca-usuario');
         if (campoBuscaUsuario) {
-            campoBuscaUsuario.addEventListener('input', filtrarUsuarios);
-            campoBuscaUsuario.addEventListener('keyup', filtrarUsuarios);
+            let debounceTimer;
+            const debouncedFiltrar = () => {
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => {
+                    filtrarUsuarios();
+                }, 300); // Aguardar 300ms após parar de digitar
+            };
+            
+            campoBuscaUsuario.addEventListener('input', debouncedFiltrar);
+            campoBuscaUsuario.addEventListener('keyup', (e) => {
+                // Se pressionar Enter, buscar imediatamente
+                if (e.key === 'Enter') {
+                    clearTimeout(debounceTimer);
+                    filtrarUsuarios();
+                }
+            });
         }
 
         const link = document.querySelector('.admin-nav-link');
         if(link) mostrarSecao(null, 'usuarios', link);
+
+        // Carregar usuários iniciais com paginação
+        carregarUsuarios('ativos', 1).then(() => {
+            // Forçar renderização da paginação após carregamento
+            setTimeout(() => {
+                console.log('🔧 Forçando renderização da paginação após carregamento...');
+                renderizarControlesPaginacao('ativos');
+            }, 500);
+        });
+
+        // Pré-carregar dados para melhorar performance do modal de usuários
+        setTimeout(() => {
+            carregarDadosParaFormulario().catch(() => {});
+        }, 1000);
     });
     </script>
 </body>
 </html>
-
