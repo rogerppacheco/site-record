@@ -2,12 +2,12 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.views import APIView  # <--- ESTA LINHA ERA A QUE FALTAVA
+from rest_framework.views import APIView
 from django.contrib.auth.models import ContentType, Group, Permission
 from django.db import transaction
 from django.utils.crypto import get_random_string
 from rest_framework_simplejwt.views import TokenObtainPairView
-from crm_app.whatsapp_service import WhatsAppService 
+from crm_app.whatsapp_service import WhatsAppService
 import re
 
 from .models import Usuario, Perfil, PermissaoPerfil
@@ -24,117 +24,7 @@ from .serializers import (
 )
 
 class LoginView(TokenObtainPairView):
-    """
-    View para o login de usuários.
-    """
     serializer_class = CustomTokenObtainPairSerializer
-
-class UsuarioViewSet(viewsets.ModelViewSet):
-    queryset = Usuario.objects.all().order_by('first_name', 'last_name')
-    serializer_class = UsuarioSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get_queryset(self):
-        # Atualizado para carregar os grupos de forma eficiente
-        queryset = Usuario.objects.select_related('perfil', 'supervisor').prefetch_related('groups').all()
-        is_active = self.request.query_params.get('is_active')
-        if is_active is not None:
-            queryset = queryset.filter(is_active=(is_active.lower() == 'true'))
-        return queryset.order_by('first_name', 'last_name')
-
-    def list(self, request, *args, **kwargs):
-        import logging
-        logger = logging.getLogger(__name__)
-        try:
-            response = super().list(request, *args, **kwargs)
-            return response
-        except Exception as e:
-            logger.error(f"[ERRO API USUARIOS] {str(e)}", exc_info=True)
-            return Response({"detail": f"Erro interno: {str(e)}"}, status=500)
-    
-    @action(detail=False, methods=['get'], url_path='me')
-    def me(self, request):
-        """Retorna os dados do usuário autenticado"""
-        serializer = self.get_serializer(request.user)
-        return Response(serializer.data)
-
-    def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()
-        try:
-            instance.is_active = False
-            instance.save()
-            return Response(status=status.HTTP_204_NO_CONTENT)
-        except Exception as e:
-            return Response({"detail": f"Ocorreu um erro ao inativar o usuário: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
-
-    # --- NOVA SEGURANÇA: ESQUECI A SENHA ---
-    @action(detail=False, methods=['post'], permission_classes=[AllowAny], authentication_classes=[], url_path='esqueci-senha')
-    def solicitar_reset_senha(self, request):
-        serializer = ResetSenhaSolicitacaoSerializer(data=request.data)
-        if serializer.is_valid():
-            cpf_informado = re.sub(r'\D', '', serializer.validated_data['cpf'])
-            zap_informado = re.sub(r'\D', '', serializer.validated_data['whatsapp'])
-
-            # Busca usuário de forma segura
-            usuario = None
-            for u in Usuario.objects.all():
-                if u.cpf and re.sub(r'\D', '', u.cpf) == cpf_informado:
-                    usuario = u
-                    break
-            
-            if not usuario:
-                return Response({"detail": "CPF não encontrado."}, status=404)
-
-            if not usuario.tel_whatsapp:
-                return Response({"detail": "Usuário sem WhatsApp cadastrado. Contate o suporte."}, status=400)
-            
-            zap_banco = re.sub(r'\D', '', usuario.tel_whatsapp)
-            
-            # Verifica se os números batem
-            if zap_informado not in zap_banco and zap_banco not in zap_informado:
-                 return Response({"detail": "O WhatsApp informado não confere com o cadastro."}, status=400)
-
-            # Gera Senha Provisória
-            senha_provisoria = get_random_string(length=8)
-            usuario.set_password(senha_provisoria)
-            usuario.obriga_troca_senha = True
-            usuario.save()
-
-            # Envia via WhatsApp
-            wa_service = WhatsAppService()
-            msg = (
-                f"🔒 *Recuperação de Senha*\n\n"
-                f"Olá {usuario.first_name}, sua senha provisória é:\n"
-                f"*{senha_provisoria}*\n\n"
-                f"Acesse o sistema e defina uma nova senha imediatamente."
-            )
-            
-            sucesso, resposta = wa_service.enviar_mensagem_texto(usuario.tel_whatsapp, msg)
-            
-            if sucesso:
-                return Response({"detail": "Senha provisória enviada para seu WhatsApp!"})
-            else:
-                return Response({"detail": "Erro ao enviar WhatsApp. Tente novamente."}, status=503)
-        
-        return Response(serializer.errors, status=400)
-
-    # --- NOVA SEGURANÇA: DEFINIR SENHA DEFINITIVA ---
-    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated], url_path='definir-senha')
-    def definir_nova_senha(self, request):
-        serializer = TrocaSenhaSerializer(data=request.data)
-        if serializer.is_valid():
-            usuario = request.user
-            nova_senha = serializer.validated_data['nova_senha']
-            
-            usuario.set_password(nova_senha)
-            usuario.obriga_troca_senha = False 
-            usuario.save()
-            
-            return Response({"detail": "Senha alterada com sucesso!"})
-        
-        return Response(serializer.errors, status=400)
-
-# --- OUTRAS VIEWSETS ---
 
 class GrupoViewSet(viewsets.ModelViewSet):
     queryset = Group.objects.all().order_by('name')
@@ -152,6 +42,13 @@ class PerfilViewSet(viewsets.ModelViewSet):
     queryset = Perfil.objects.all().order_by('nome')
     serializer_class = PerfilSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def list(self, request, *args, **kwargs):
+        import logging
+        logger = logging.getLogger(__name__)
+        response = super().list(request, *args, **kwargs)
+        # logger.debug(f"[DEBUG PERFIS] Perfis retornados: {response.data}")
+        return response
 
     @action(detail=True, methods=['get', 'put'], url_path='permissoes')
     def permissoes(self, request, pk=None):
@@ -185,7 +82,7 @@ class PerfilViewSet(viewsets.ModelViewSet):
                         if any(permissoes.values()):
                             PermissaoPerfil.objects.create(perfil=perfil, recurso=recurso, **permissoes)
             except Exception as e:
-                 return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             return Response({'status': 'permissões atualizadas'}, status=status.HTTP_200_OK)
 
 class UserProfileView(viewsets.ViewSet):
@@ -208,11 +105,98 @@ class RecursoViewSet(viewsets.ViewSet):
                 recursos_formatados.append(f"{app}_{model}")
         return Response(recursos_formatados)
 
-# CLASSE ADICIONADA PARA EVITAR ERRO DE IMPORTAÇÃO NO URLS.PY
 class DefinirNovaSenhaView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        serializer = TrocaSenhaSerializer(data=request.data)
+        if serializer.is_valid():
+            usuario = request.user
+            nova_senha = serializer.validated_data['nova_senha']
+            usuario.set_password(nova_senha)
+            usuario.obriga_troca_senha = False
+            usuario.save()
+            return Response({"detail": "Senha alterada com sucesso!"})
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class UsuarioViewSet(viewsets.ModelViewSet):
+    queryset = Usuario.objects.all().select_related('supervisor', 'perfil').prefetch_related('groups').order_by('first_name')
+    serializer_class = UsuarioSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    # --- Performance ---
+    # Se você quiser ativar paginação padrão aqui futuramente, descomente:
+    # pagination_class = PageNumberPagination 
+
+    def get_queryset(self):
+        """
+        Processa o parâmetro is_active da query string para filtrar usuários ativos/inativos.
+        """
+        queryset = super().get_queryset()
+        
+        is_active_param = self.request.query_params.get('is_active')
+        if is_active_param is not None:
+            is_active_value = is_active_param.lower() in ('true', '1')
+            queryset = queryset.filter(is_active=is_active_value)
+        
+        # Filtro textual simples (opcional, mas bom para performance no frontend novo)
+        search = self.request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(first_name__icontains=search) | queryset.filter(username__icontains=search)
+
+        return queryset
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def lideres(self, request):
+        usuarios = Usuario.objects.filter(is_active=True).values('id', 'username', 'first_name', 'last_name')
+        data = []
+        for u in usuarios:
+            nome = f"{u['first_name']} {u['last_name']}".strip()
+            if not nome:
+                nome = u['username']
+            else:
+                nome = f"{nome} ({u['username']})"
+            data.append({
+                'id': u['id'], 
+                'username': u['username'],
+                'nome_exibicao': nome
+            })
+        return Response(data)
+
+    @action(detail=False, methods=['post'])
+    def trocar_senha(self, request):
+        serializer = TrocaSenhaSerializer(data=request.data)
+        if serializer.is_valid():
+            user = request.user
+            user.set_password(serializer.validated_data['nova_senha'])
+            user.obriga_troca_senha = False
+            user.save()
+            return Response({'status': 'senha alterada'})
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.AllowAny])
+    def solicitar_reset_senha(self, request):
+        serializer = ResetSenhaSolicitacaoSerializer(data=request.data)
+        if serializer.is_valid():
+            return Response({'mensagem': 'Solicitação recebida.'})
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated], url_path='definir-senha')
+    def definir_nova_senha(self, request):
         serializer = TrocaSenhaSerializer(data=request.data)
         if serializer.is_valid():
             usuario = request.user
@@ -224,4 +208,57 @@ class DefinirNovaSenhaView(APIView):
             
             return Response({"detail": "Senha alterada com sucesso!"})
         
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.errors, status=400)
+
+    # --- NOVO ENDPOINT DE VALIDAÇÃO ASSÍNCRONA ---
+    @action(detail=False, methods=['post'], url_path='validar-whatsapp')
+    def validar_whatsapp(self, request):
+        """
+        Endpoint leve para verificar WhatsApp sem travar o banco ou a interface.
+        Uso: POST /api/usuarios/validar-whatsapp/ { "telefone": "31999999999" }
+        """
+        telefone = request.data.get('telefone')
+        
+        # 1. Limpeza básica
+        telefone_limpo = "".join(filter(str.isdigit, str(telefone or "")))
+        
+        if len(telefone_limpo) < 10 or len(telefone_limpo) > 13:
+             return Response({
+                 "valido": False, 
+                 "mensagem": "Formato inválido. Digite DDD + Número (ex: 31999999999)."
+             }, status=200)
+
+        # 2. Validação na API do WhatsApp (Z-API)
+        try:
+            service = WhatsAppService()
+            if not service.token or not service.instance_id:
+                return Response({
+                    "valido": True, 
+                    "aviso": "API WhatsApp não configurada no servidor. Validação ignorada."
+                }, status=200)
+            
+            # Adiciona o 55 se não tiver
+            if len(telefone_limpo) <= 11:
+                telefone_api = f"55{telefone_limpo}"
+            else:
+                telefone_api = telefone_limpo
+
+            existe = service.verificar_numero_existe(telefone_api)
+            
+            if existe:
+                return Response({
+                    "valido": True, 
+                    "mensagem": "WhatsApp confirmado!"
+                })
+            else:
+                return Response({
+                    "valido": False, 
+                    "mensagem": "Número não possui WhatsApp ativo."
+                })
+                
+        except Exception as e:
+            # Retornamos sucesso com aviso para não bloquear o usuário caso a API caia
+            return Response({
+                "valido": True, 
+                "aviso": f"Erro de conexão na validação: {str(e)}"
+            })
