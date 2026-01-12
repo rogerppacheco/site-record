@@ -295,6 +295,14 @@
                                         <input type="email" class="form-control" id="email" required>
                                     </div>
                                     <div class="col-lg-3 col-md-6">
+                                        <label class="form-label fw-bold">Matrícula PAP</label>
+                                        <input type="text" class="form-control" id="matricula_pap">
+                                    </div>
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label fw-bold">Senha PAP</label>
+                                        <input type="text" class="form-control" id="senha_pap">
+                                    </div>
+                                    <div class="col-lg-3 col-md-6">
                                         <label class="form-label fw-bold">WhatsApp</label>
                                         <div class="input-group">
                                             <input type="text" class="form-control" id="tel_whatsapp" autocomplete="off">
@@ -1277,6 +1285,8 @@
     };
 
     async function abrirModalUsuario(user = null) {
+            document.getElementById('matricula_pap').value = user ? user.matricula_pap || '' : '';
+            document.getElementById('senha_pap').value = user ? user.senha_pap || '' : '';
         console.log('Abrindo modal de usuário...');
         document.getElementById('user-form').reset();
         document.getElementById('user_id').value = user ? user.id : '';
@@ -1409,6 +1419,8 @@
     }
 
     userForm.addEventListener('submit', async function(e) {
+            const matricula_pap = document.getElementById('matricula_pap').value;
+            const senha_pap = document.getElementById('senha_pap').value;
         e.preventDefault();
         const id = document.getElementById('user_id').value;
         const nomeCompleto = document.getElementById('nome_completo').value.trim();
@@ -1426,6 +1438,8 @@
         
         const supervisorValue = document.getElementById('supervisor_id').value;
         const body = {
+                        matricula_pap: cleanValue(matricula_pap),
+                        senha_pap: cleanValue(senha_pap),
             first_name: parts.shift() || '',
             last_name: parts.join(' ') || '',
             cpf: cleanValue(document.getElementById('cpf').value),
