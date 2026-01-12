@@ -1,3 +1,68 @@
+        <!-- Modal de Reemissão de Venda -->
+        <div class="modal fade" id="modal-reemitir-venda" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Reemitir Venda</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="form-reemitir-venda">
+                            <input type="hidden" id="reemitir-venda-id">
+                            <div class="mb-3">
+                                <label for="nova-os" class="form-label">Nova O.S.</label>
+                                <input type="text" class="form-control" id="nova-os" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="nova-data-agendamento" class="form-label">Nova Data de Agendamento</label>
+                                <input type="date" class="form-control" id="nova-data-agendamento" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="novo-turno" class="form-label">Novo Turno</label>
+                                <select class="form-select" id="novo-turno" required>
+                                    <option value="MANHA">Manhã</option>
+                                    <option value="TARDE">Tarde</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="btn btn-primary w-100">Duplicar Venda</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script>
+        // Função para abrir o modal de reemissão
+        function abrirModalReemitirVenda(vendaId) {
+            document.getElementById('reemitir-venda-id').value = vendaId;
+            document.getElementById('form-reemitir-venda').reset();
+            new bootstrap.Modal(document.getElementById('modal-reemitir-venda')).show();
+        }
+
+        // Submissão do formulário de reemissão
+        document.addEventListener('DOMContentLoaded', function() {
+            const formReemitir = document.getElementById('form-reemitir-venda');
+            if (formReemitir) {
+                formReemitir.onsubmit = async function(e) {
+                    e.preventDefault();
+                    const id = document.getElementById('reemitir-venda-id').value;
+                    const nova_os = document.getElementById('nova-os').value;
+                    const nova_data = document.getElementById('nova-data-agendamento').value;
+                    const novo_turno = document.getElementById('novo-turno').value;
+                    try {
+                        await axios.post('/api/crm/duplicar-venda/', {
+                            id_venda: id,
+                            nova_os,
+                            nova_data_agendamento: nova_data,
+                            novo_turno: novo_turno
+                        }, {headers: {'Authorization': `Bearer ${token}`}});
+                        location.reload();
+                    } catch (err) {
+                        alert('Erro ao duplicar venda: ' + (err.response?.data?.detail || err.message));
+                    }
+                };
+            }
+        });
+        </script>
 {% load static %}
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -97,7 +162,7 @@
                 <div class="mb-3">
                     <ul class="nav nav-pills" id="abas-status">
                         <li class="nav-item"><a class="nav-link active" href="#" onclick="filtrarPorStatus('', this)"><i class="bi bi-collection"></i> Todos <span id="count-todos" class="badge-contador">0</span></a></li>
-                        <li class="nav-item"><a class="nav-link" href="#" onclick="filtrarPorStatus('PENDENC', this)"><i class="bi bi-hourglass-split"></i> Pendentes <span id="count-pendentes" class="badge-contador">0</span></a></li>
+                        <li class="nav-item"><a class="nav-link" href="#" onclick="filtrarPorStatus('PENDEN(C|Ç|CIA|CIADA|CIA)?', this)"><i class="bi bi-hourglass-split"></i> Pendentes <span id="count-pendentes" class="badge-contador">0</span></a></li>
                         <li class="nav-item"><a class="nav-link" href="#" onclick="filtrarPorStatus('AGENDADO', this)"><i class="bi bi-calendar-event"></i> Agendados <span id="count-agendados" class="badge-contador">0</span></a></li>
                         <li class="nav-item"><a class="nav-link" href="#" onclick="filtrarPorStatus('INSTALADA', this)"><i class="bi bi-check-circle-fill"></i> Instalados <span id="count-instalados" class="badge-contador">0</span></a></li>
                         <li class="nav-item"><a class="nav-link" href="#" onclick="filtrarPorStatus('CANCELAD', this)"><i class="bi bi-x-circle-fill"></i> Cancelados <span id="count-cancelados" class="badge-contador">0</span></a></li>
@@ -781,11 +846,18 @@
                         agendamentoDisplay = `<span>${parts[2]}/${parts[1]}</span> <span class="badge bg-light text-dark border ms-1">${turno}</span>`;
                     }
 
-                    const botoes = `
+
+                    let botoes = `
                         <button onclick="reenviarWhatsApp(${v.id})" class="btn btn-sm btn-outline-success me-1" title="Reenviar Aprovação"><i class="bi bi-whatsapp"></i></button>
                         <button onclick="editarVenda(${v.id})" class="btn btn-sm btn-editar me-1" title="Editar"><i class="bi bi-pencil"></i></button>
                         <button onclick="excluirVenda(${v.id})" class="btn btn-sm btn-excluir" title="Excluir"><i class="bi bi-trash"></i></button>
                     `;
+
+                    // Adiciona botão de reemissão para status PENDENCIADA ou CANCELADA
+                    const statusEsteiraStr = String(statusNome).toUpperCase();
+                    if (statusEsteiraStr.includes('PENDENCIADA') || statusEsteiraStr.includes('CANCELADA')) {
+                        botoes = `<button onclick="abrirModalReemitirVenda(${v.id})" class="btn btn-sm btn-warning me-1" title="Reemitir"><i class="bi bi-files"></i></button>` + botoes;
+                    }
 
                     return [
                         `<span class="ps-3 fw-bold">#${v.id}</span>`,
