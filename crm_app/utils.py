@@ -1,3 +1,56 @@
+def listar_fachadas_dfv_por_endereco(endereco):
+    """
+    Busca fachadas por endereço (logradouro, bairro ou município) na base DFV.
+    """
+    if not endereco:
+        return ["❌ *Endereço não informado.*"]
+    endereco = endereco.strip().upper()
+    fachadas = DFV.objects.filter(
+        Q(logradouro__icontains=endereco) |
+        Q(bairro__icontains=endereco) |
+        Q(municipio__icontains=endereco)
+    ).filter(
+        Q(tipo_viabilidade__icontains='VIAVEL') | Q(tipo_viabilidade__icontains='VIÁVEL')
+    ).values_list('num_fachada', 'complemento', 'logradouro', 'bairro', 'tipo_rede', 'nome_cdo', 'cep')
+    if not fachadas:
+        return [f"❌ *NENHUMA FACHADA ENCONTRADA*\n\nNão encontramos nenhum número viável cadastrado na base DFV para o endereço informado."]
+    exemplo = fachadas[0]
+    logradouro = exemplo[2] or "Rua Desconhecida"
+    bairro = exemplo[3] or "Bairro Desconhecido"
+    tecnologia = exemplo[4] or "-"
+    nome_cdo = exemplo[5] or "-"
+    cep = exemplo[6] or "-"
+    def num_compl(num, compl):
+        num = (num or '').strip()
+        compl = (compl or '').strip()
+        if compl:
+            return f"{num} ({compl})"
+        return num
+    numeros = [num_compl(f[0], f[1]) for f in fachadas if f[0]]
+    try:
+        numeros.sort(key=lambda x: int(''.join(filter(str.isdigit, x.split(' ')[0]))) if any(c.isdigit() for c in x.split(' ')[0]) else 0)
+    except:
+        numeros.sort()
+    total = len(numeros)
+    lista_str = ", ".join(numeros)
+    cdos = sorted(set([f[5] for f in fachadas if f[5]]))
+    cdos_str = ', '.join(cdos) if cdos else '-'
+    if len(lista_str) > 3000:
+        lista_str = lista_str[:3000] + "... (lista muito longa)"
+    mensagem = (
+        f"🏢 *RELATÓRIO DE FACHADAS (DFV)*\n\n"
+        f"📍 *Endereço:* {logradouro}\n"
+        f"🏙️ *Bairro:* {bairro}\n"
+        f"🏢 *NOME_CDO(s):* {cdos_str}\n"
+        f"📡 *Tecnologia:* {tecnologia}\n"
+        f"📬 *CEP:* {cep}\n"
+        f"✅ *Total Viáveis:* {total}\n\n"
+        f"🔢 *Números Disponíveis (com complemento):*\n"
+        f"{lista_str}"
+    )
+    def split_message(msg, max_len=4096):
+        return [msg[i:i+max_len] for i in range(0, len(msg), max_len)]
+    return split_message(mensagem)
 import logging
 import requests
 import re
@@ -135,7 +188,7 @@ def listar_fachadas_dfv(cep):
         cep=cep_limpo
     ).filter(
         Q(tipo_viabilidade__icontains='VIAVEL') | Q(tipo_viabilidade__icontains='VIÁVEL')
-    ).values_list('num_fachada', 'complemento', 'logradouro', 'bairro', 'tipo_rede')
+    ).values_list('num_fachada', 'complemento', 'logradouro', 'bairro', 'tipo_rede', 'nome_cdo')
 
     if not fachadas:
         return (
@@ -149,6 +202,7 @@ def listar_fachadas_dfv(cep):
     logradouro = exemplo[2] or "Rua Desconhecida"
     bairro = exemplo[3] or "Bairro Desconhecido"
     tecnologia = exemplo[4] or "-"
+    nome_cdo = exemplo[5] or "-"
 
     # Monta lista de números + complemento
     def num_compl(num, compl):
@@ -168,19 +222,30 @@ def listar_fachadas_dfv(cep):
     total = len(numeros)
     lista_str = ", ".join(numeros)
 
+    # Listar todos os NOME_CDOs distintos para o CEP
+    cdos = sorted(set([f[5] for f in fachadas if f[5]]))
+    cdos_str = ', '.join(cdos) if cdos else '-'
+
     # Se a lista for muito grande, corta para não travar o Zap
     if len(lista_str) > 3000:
         lista_str = lista_str[:3000] + "... (lista muito longa)"
 
-    return (
+    mensagem = (
         f"🏢 *RELATÓRIO DE FACHADAS (DFV)*\n\n"
         f"📍 *Endereço:* {logradouro}\n"
         f"🏙️ *Bairro:* {bairro}\n"
+        f"🏢 *NOME_CDO(s):* {cdos_str}\n"
         f"📡 *Tecnologia:* {tecnologia}\n"
         f"✅ *Total Viáveis:* {total}\n\n"
         f"🔢 *Números Disponíveis (com complemento):*\n"
         f"{lista_str}"
     )
+
+    # Função para dividir mensagem longa em partes de até 4096 caracteres
+    def split_message(msg, max_len=4096):
+        return [msg[i:i+max_len] for i in range(0, len(msg), max_len)]
+
+    return split_message(mensagem)
 
 def consultar_viabilidade_kmz(cep, numero):
     """

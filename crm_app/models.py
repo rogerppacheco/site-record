@@ -478,6 +478,7 @@ class DFV(models.Model):
     tipo_viabilidade = models.CharField(max_length=100, null=True, blank=True)
     tipo_rede = models.CharField(max_length=50, null=True, blank=True) 
     celula = models.CharField(max_length=50, null=True, blank=True)
+    nome_cdo = models.CharField(max_length=100, null=True, blank=True, help_text="Nome do CDO")
     data_importacao = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
