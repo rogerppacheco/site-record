@@ -806,8 +806,9 @@ class VendaViewSet(viewsets.ModelViewSet):
         for v in vendas.iterator():
             sup_nome = v.vendedor.supervisor.username if v.vendedor and v.vendedor.supervisor else '-'
             canal_venda = getattr(v.vendedor, 'canal', '-') if v.vendedor else '-'
-            dt_criacao = v.data_criacao.strftime('%d/%m/%Y %H:%M') if v.data_criacao else '-'
-            dt_abertura = v.data_abertura.strftime('%d/%m/%Y %H:%M') if v.data_abertura else '-'
+            from django.utils import timezone
+            dt_criacao = timezone.localtime(v.data_criacao).strftime('%d/%m/%Y %H:%M') if v.data_criacao else '-'
+            dt_abertura = timezone.localtime(v.data_abertura).strftime('%d/%m/%Y %H:%M') if v.data_abertura else '-'
             dt_agendamento = v.data_agendamento.strftime('%d/%m/%Y') if v.data_agendamento else '-'
             dt_instalacao = v.data_instalacao.strftime('%d/%m/%Y') if v.data_instalacao else '-'
             data.append([

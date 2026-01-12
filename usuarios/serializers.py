@@ -89,6 +89,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
         model = Usuario
         fields = [
             'id', 'username', 'first_name', 'last_name', 'nome_completo', 'email', 'cpf',
+            'matricula_pap', 'senha_pap',
             'perfil', 'perfil_detalhe',
             'groups', 'groups_detalhe',
             'supervisor', 'supervisor_detalhe', 'supervisor_nome',
