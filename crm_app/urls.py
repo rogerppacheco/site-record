@@ -109,7 +109,7 @@ router.register(r'lancamentos-financeiros', LancamentoFinanceiroViewSet, basenam
 
 urlpatterns = [
     path('', include(router.urls)),
-    path('api/crm/duplicar-venda/', duplicar_venda, name='duplicar-venda'),
+    path('duplicar-venda/', duplicar_venda, name='duplicar-venda'),
         # --- Endpoint para busca automática de fatura NIO (Bonus M-10) ---
         path('bonus-m10/buscar-fatura-nio/', buscar_fatura_nio_bonus_m10, name='buscar-fatura-nio-bonus-m10'),
     
