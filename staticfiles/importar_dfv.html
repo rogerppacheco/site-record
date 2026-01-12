@@ -292,10 +292,12 @@
                     
                     let html = '';
                     data.logs.forEach(log => {
-                        const statusBadge = getBadgeStatus(log.status);
+                        let statusBadge = getBadgeStatus(log.status);
+                        if (log.status === 'PROCESSANDO') {
+                            statusBadge += `<br><small>${log.total_processadas || 0} de ${log.total_registros || 0} processados</small>`;
+                        }
                         const dataFormatada = log.iniciado_em || '-';
                         const duracao = log.duracao_segundos ? `${log.duracao_segundos}s` : '-';
-                        
                         html += `
                             <tr>
                                 <td><strong>${log.nome_arquivo}</strong></td>
