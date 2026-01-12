@@ -91,6 +91,7 @@ class Cliente(models.Model):
         verbose_name_plural = "Clientes"
 
 class Venda(models.Model):
+    reemissao = models.BooleanField(default=False, verbose_name="Reemissão")
     ativo = models.BooleanField(default=True, verbose_name="Venda Ativa")
     vendedor = models.ForeignKey(Usuario, on_delete=models.SET_NULL, null=True, related_name='vendas', db_index=True)
     cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name='vendas')

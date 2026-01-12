@@ -8,6 +8,7 @@ from usuarios.views import LoginView, DefinirNovaSenhaView
 # IMPORTAÇÕES ESPECÍFICAS DE VIEWS
 from .views import (
         buscar_fatura_nio_bonus_m10,
+    duplicar_venda,
     # ViewSets
     VendaViewSet, 
     ClienteViewSet, 
@@ -108,6 +109,7 @@ router.register(r'lancamentos-financeiros', LancamentoFinanceiroViewSet, basenam
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('api/crm/duplicar-venda/', duplicar_venda, name='duplicar-venda'),
         # --- Endpoint para busca automática de fatura NIO (Bonus M-10) ---
         path('bonus-m10/buscar-fatura-nio/', buscar_fatura_nio_bonus_m10, name='buscar-fatura-nio-bonus-m10'),
     

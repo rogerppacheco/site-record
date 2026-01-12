@@ -1,3 +1,32 @@
+# Endpoint para duplicar venda (Reemissão)
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from .models import Venda
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def duplicar_venda(request):
+    id_venda = request.data.get('id_venda')
+    nova_os = request.data.get('nova_os')
+    nova_data = request.data.get('nova_data_agendamento')
+    novo_turno = request.data.get('novo_turno')
+    if not (id_venda and nova_os and nova_data and novo_turno):
+        return Response({'detail': 'Dados obrigatórios faltando.'}, status=400)
+    try:
+        venda = Venda.objects.get(id=id_venda)
+        venda.pk = None  # Duplicar
+        venda.ordem_servico = nova_os
+        venda.data_agendamento = nova_data
+        venda.periodo_agendamento = novo_turno
+        venda.reemissao = True
+        venda.status_esteira = None  # ou status inicial desejado
+        venda.save()
+        return Response({'success': True, 'nova_venda_id': venda.id})
+    except Venda.DoesNotExist:
+        return Response({'detail': 'Venda não encontrada.'}, status=404)
+    except Exception as e:
+        return Response({'detail': str(e)}, status=500)
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 # --- NOVO ENDPOINT: Buscar Fatura NIO para Bonus M-10 ---
@@ -3337,6 +3366,11 @@ class PainelPerformanceView(APIView):
         if filtro_canal:
             users = users.filter(canal__iexact=filtro_canal)
 
+        # 4b. Filtro de Cluster (Query Param)
+        filtro_cluster = request.query_params.get('cluster')
+        if filtro_cluster:
+            users = users.filter(cluster=filtro_cluster)
+
         # 5. Filtros de Venda
         # IMPORTANTE: filtro_os_valida já garante que tem OS, mas agora filtramos pela DATA DE ABERTURA
         filtro_os_valida = Q(vendas__ativo=True) & ~Q(vendas__ordem_servico='') & Q(vendas__ordem_servico__isnull=False)
@@ -3355,7 +3389,7 @@ class PainelPerformanceView(APIView):
         qs_hoje = users.annotate(
             vendas_total=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date=hoje)),
             vendas_cc=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date=hoje) & filtro_cc)
-        ).values('username', 'canal', 'vendas_total', 'vendas_cc').order_by('username')  # Ordem alfabética
+        ).values('username', 'canal', 'cluster', 'vendas_total', 'vendas_cc').order_by('username')  # Ordem alfabética
 
         lista_hoje = []
         for u in qs_hoje:
@@ -3368,6 +3402,7 @@ class PainelPerformanceView(APIView):
             lista_hoje.append({
                 'vendedor': nome_display.upper(),
                 'canal': u['canal'],
+                'cluster': u.get('cluster', '-'),
                 'total': total,
                 'cc': cc,
                 'pct_cc': round(pct, 2)
@@ -3383,7 +3418,7 @@ class PainelPerformanceView(APIView):
             sab=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date=dias_semana[5])),
             total_semana=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_semana)),
             total_cc=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_semana) & filtro_cc)
-        ).values('username', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'total_semana', 'total_cc').order_by('username')  # Ordem alfabética
+        ).values('username', 'cluster', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'total_semana', 'total_cc').order_by('username')  # Ordem alfabética
 
         lista_semana = []
         for u in qs_semana:
@@ -3393,6 +3428,7 @@ class PainelPerformanceView(APIView):
 
             lista_semana.append({
                 'vendedor': nome_display.upper(),
+                'cluster': u.get('cluster', '-'),
                 'dias': [u['seg'], u['ter'], u['qua'], u['qui'], u['sex'], u['sab']],
                 'total': total,
                 'cc': u['total_cc'],
@@ -3405,21 +3441,17 @@ class PainelPerformanceView(APIView):
         
         qs_mes = users.annotate(
             total_vendas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_mes)),
-            
             # CORREÇÃO AQUI: Trocado data_abertura por data_instalacao
             instaladas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_instalacao__gte=inicio_mes) & filtro_inst),
-            
             total_cc=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_mes) & filtro_cc),
-            
             # CORREÇÃO AQUI TAMBÉM: Instaladas com cartão (olha a data da instalação)
             instaladas_cc=Count('vendas', filter=filtro_os_valida & Q(vendas__data_instalacao__gte=inicio_mes) & filtro_inst & filtro_cc),
-            
             pendenciadas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_mes, vendas__status_esteira__nome__icontains='PENDEN')),
             agendadas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_mes, vendas__status_esteira__nome__iexact='AGENDADO')),
             canceladas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_mes, vendas__status_esteira__nome__icontains='CANCELAD'))
         ).values(
-            'username', 'total_vendas', 'instaladas', 'total_cc', 'instaladas_cc', 'pendenciadas', 'agendadas', 'canceladas'
-        ).order_by('username')  # Ordem alfab�tica
+            'username', 'cluster', 'total_vendas', 'instaladas', 'total_cc', 'instaladas_cc', 'pendenciadas', 'agendadas', 'canceladas'
+        ).order_by('username')  # Ordem alfabética
 
         lista_mes = []
         for u in qs_mes:
@@ -3439,6 +3471,7 @@ class PainelPerformanceView(APIView):
 
             lista_mes.append({
                 'vendedor': nome_display.upper(),
+                'cluster': u.get('cluster', '-'),
                 'total': tot,
                 'instaladas': inst,
                 'cc_total': u['total_cc'],
