@@ -14,14 +14,23 @@ def duplicar_venda(request):
     if not (id_venda and nova_os and nova_data and novo_turno):
         return Response({'detail': 'Dados obrigatórios faltando.'}, status=400)
     try:
+        from django.utils import timezone
+        from crm_app.whatsapp_service import WhatsAppService
         venda = Venda.objects.get(id=id_venda)
         venda.pk = None  # Duplicar
         venda.ordem_servico = nova_os
+        venda.data_abertura = timezone.now()  # Atualiza data de abertura para agora
         venda.data_agendamento = nova_data
         venda.periodo_agendamento = novo_turno
         venda.reemissao = True
         venda.status_esteira = None  # ou status inicial desejado
         venda.save()
+
+        # Enviar WhatsApp para o vendedor
+        if venda.vendedor and venda.telefone1:
+            ws = WhatsAppService()
+            ws.enviar_mensagem_cadastrada(venda)
+
         return Response({'success': True, 'nova_venda_id': venda.id})
     except Venda.DoesNotExist:
         return Response({'detail': 'Venda não encontrada.'}, status=404)
@@ -821,8 +830,9 @@ class VendaViewSet(viewsets.ModelViewSet):
 
         vendas = self.filter_queryset(self.get_queryset())
 
+
         headers = [
-            'ID', 'Data Criação', 'Data Abertura (OS)', 'Vendedor', 'Supervisor', 'Canal',
+            'ID', 'Reemissão', 'Data Criação', 'Data Abertura (OS)', 'Vendedor', 'Supervisor', 'Canal',
             'Cliente', 'CPF/CNPJ', 'Telefone 1', 'Telefone 2', 'Email',
             'Plano', 'Valor', 'Forma Pagamento', 
             'Status Esteira', 'Status Tratamento', 'Status Comissionamento',
@@ -842,6 +852,7 @@ class VendaViewSet(viewsets.ModelViewSet):
             dt_instalacao = v.data_instalacao.strftime('%d/%m/%Y') if v.data_instalacao else '-'
             data.append([
                 v.id,
+                'Sim' if getattr(v, 'reemissao', False) else 'Não',
                 dt_criacao,
                 dt_abertura,
                 v.vendedor.username if v.vendedor else '-',
@@ -2742,7 +2753,8 @@ class ImportarDFVView(APIView):
                             bairro=row.get('BAIRRO'),
                             tipo_viabilidade=row.get('TIPO_VIABILIDADE'),
                             tipo_rede=row.get('TIPO_REDE'),
-                            celula=row.get('CELULA')
+                            celula=row.get('CELULA'),
+                            nome_cdo=row.get('NOME_CDO')
                         ))
                         sucesso_count += 1
                     except Exception as e:
@@ -2938,15 +2950,22 @@ class WebhookWhatsAppView(APIView):
 
             # --- FLUXO FACHADA (Antigo) ---
             elif sessao.etapa == 'FACHADA_AGUARDANDO_CEP':
-                cep_limpo = "".join(filter(str.isdigit, text))
+                entrada = text.strip()
+                from .utils import listar_fachadas_dfv, listar_fachadas_dfv_por_endereco
+                # Se for CEP válido, busca por CEP
+                cep_limpo = "".join(filter(str.isdigit, entrada))
                 if len(cep_limpo) == 8:
-                    service.enviar_mensagem_texto(phone, "🔎 Buscando todas as fachadas no DFV...")
-                    from .utils import listar_fachadas_dfv
-                    resp_msg = listar_fachadas_dfv(cep_limpo)
-                    service.enviar_mensagem_texto(phone, resp_msg)
-                    sessao.delete() 
+                    service.enviar_mensagem_texto(phone, "🔎 Buscando todas as fachadas no DFV pelo CEP...")
+                    resp_msgs = listar_fachadas_dfv(cep_limpo)
                 else:
-                    service.enviar_mensagem_texto(phone, "⚠️ CEP inválido. Digite 8 números:")
+                    service.enviar_mensagem_texto(phone, "🔎 Buscando todas as fachadas no DFV pelo endereço...")
+                    resp_msgs = listar_fachadas_dfv_por_endereco(entrada)
+                if isinstance(resp_msgs, list):
+                    for msg in resp_msgs:
+                        service.enviar_mensagem_texto(phone, msg)
+                else:
+                    service.enviar_mensagem_texto(phone, resp_msgs)
+                sessao.delete()
                 return Response({'status': 'fachada_end'})
 
             # --- FLUXO VIABILIDADE (Antigo) ---
