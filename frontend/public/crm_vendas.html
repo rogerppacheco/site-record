@@ -1,4 +1,4 @@
-        <!-- Modal de Reemissão de Venda -->
+<!-- Modal de Reemissão de Venda -->
         <div class="modal fade" id="modal-reemitir-venda" tabindex="-1">
             <div class="modal-dialog">
                 <div class="modal-content">
@@ -82,6 +82,7 @@
     
     <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
 
     <style>
         input[type="text"]:not(#input-email), textarea { text-transform: uppercase; }
@@ -241,7 +242,7 @@
     </main>
 
     <div class="modal fade" id="modalDetalheDashboard" tabindex="-1"><div class="modal-dialog modal-dialog-centered modal-dialog-scrollable"><div class="modal-content"><div class="modal-header"><h5 class="modal-title fw-bold" id="tituloDetalheDashboard">Detalhes</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body p-0"><div class="list-group list-group-flush" id="listaDetalheDashboard"></div></div></div></div></div>
-    <div class="modal fade" id="modalMix" tabindex="-1"><div class="modal-dialog modal-lg modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title fw-bold"><i class="bi bi-graph-up"></i> Detalhamento de Vendas (Mix)</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="row"><div class="col-md-6 border-end"><h6 class="text-center fw-bold mb-3 text-primary">Mix de Velocidade/Plano</h6><div class="table-responsive"><table class="table table-sm table-striped"><thead class="table-light"><tr><th>Plano</th><th class="text-end">Qtd</th><th class="text-end">%</th></tr></thead><tbody id="tbody-mix-velocidade"></tbody></table></div></div><div class="col-md-6"><h6 class="text-center fw-bold mb-3 text-success">Mix Forma de Pagamento</h6><div class="table-responsive"><table class="table table-sm table-striped"><thead class="table-light"><tr><th>Forma Pagto</th><th class="text-end">Qtd</th><th class="text-end">%</th></tr></thead><tbody id="tbody-mix-pagamento"></tbody></table></div></div></div></div></div></div></div>
+    <div class="modal fade" id="modalMix" tabindex="-1"><div class="modal-dialog modal-lg modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title fw-bold"><i class="bi bi-graph-up"></i> Detalhamento de Vendas (Mix)</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="row"><div class="col-md-6 border-end"><h6 class="text-center fw-bold mb-3 text-primary">Mix de Velocidade/Plano</h6><div class="table-responsive"><table class="table table-sm table-striped"><thead class="table-light"><tr><th>Plano</th><th class="text-end">Qtd</th><th class="text-end">%</th></tr></thead><tbody id="tbody-mix-velocidade"></tbody></table></div></div><div class="col-md-6"><h6 class="text-center fw-bold mb-3 text-success">Mix Forma de Pagamento</h6><div class="table-responsive"><table class="table table-sm table-striped"><thead class="table-light"><tr><th>Forma Pagto</th><th class="text-end">Qtd</th><th class="text-end">%</th></tr></thead><tbody id="tbody-mix-pagamento"></tbody></table></div></div></div></div></div></div>
 
     <div class="modal fade" id="modal-origem-venda" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered">
@@ -777,8 +778,8 @@
                     }
 
                     // --- 3. REGRA DE NEGÓCIO DA AUDITORIA (CORRIGIDA) ---
-                    const stTratUpper = String(statusTratamentoNome).toUpperCase();
-                    const estadoTratUpper = String(statusTratamentoEstado).toUpperCase();
+                    const stTratUpper = statusTratamentoNome.toUpperCase();
+                    const estadoTratUpper = statusTratamentoEstado.toUpperCase();
 
                     if (statusNome === 'Aguardando') {
                         // REGRA MESTRA: Se o tratamento está FECHADO (Duplicidade, Cancelado, Reprovado Final), a esteira morre.
