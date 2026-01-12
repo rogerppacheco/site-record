@@ -2728,40 +2728,41 @@ class ImportarDFVView(APIView):
             log.total_registros = len(df)
             log.save(update_fields=['total_registros'])
             
-            objs = []
             erros_count = 0
             sucesso_count = 0
             valor_total = 0
-            
+            from .models import DFV
             with transaction.atomic():
                 for idx, row in df.iterrows():
                     try:
-                        # Tratamento do CEP
                         cep_raw = str(row.get('CEP', '')).strip()
                         cep_limpo = "".join(filter(str.isdigit, cep_raw))
-                        
-                        # Tratamento da Fachada (Número)
                         fachada_raw = str(row.get('NUM_FACHADA', '')).strip()
-                        
-                        objs.append(DFV(
-                            uf=row.get('UF'),
-                            municipio=row.get('MUNICIPIO'),
-                            logradouro=row.get('LOGRADOURO'),
-                            num_fachada=fachada_raw,
-                            complemento=row.get('COMPLEMENTO'),
+                        defaults = {
+                            'uf': row.get('UF'),
+                            'municipio': row.get('MUNICIPIO'),
+                            'logradouro': row.get('LOGRADOURO'),
+                            'complemento': row.get('COMPLEMENTO'),
+                            'bairro': row.get('BAIRRO'),
+                            'tipo_viabilidade': row.get('TIPO_VIABILIDADE'),
+                            'tipo_rede': row.get('TIPO_REDE'),
+                            'celula': row.get('CELULA'),
+                            'nome_cdo': row.get('NOME_CDO')
+                        }
+                        obj, created = DFV.objects.update_or_create(
                             cep=cep_limpo,
-                            bairro=row.get('BAIRRO'),
-                            tipo_viabilidade=row.get('TIPO_VIABILIDADE'),
-                            tipo_rede=row.get('TIPO_REDE'),
-                            celula=row.get('CELULA'),
-                            nome_cdo=row.get('NOME_CDO')
-                        ))
+                            num_fachada=fachada_raw,
+                            defaults=defaults
+                        )
                         sucesso_count += 1
                     except Exception as e:
                         erros_count += 1
-                
-                # Bulk create dos registros
-                DFV.objects.bulk_create(objs, batch_size=1000)
+                        # Log detalhado do erro
+                        if hasattr(log, 'mensagem_erro'):
+                            log.mensagem_erro = (log.mensagem_erro or '') + f"\nLinha {idx+1}: {str(e)}"
+                        else:
+                            log.mensagem_erro = f"Linha {idx+1}: {str(e)}"
+                        log.save(update_fields=['mensagem_erro'])
             
             # Atualizar log com sucesso
             log.status = 'SUCESSO'
