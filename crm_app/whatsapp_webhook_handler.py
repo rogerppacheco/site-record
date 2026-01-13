@@ -59,26 +59,44 @@ def processar_webhook_whatsapp(data):
     )
     from crm_app.nio_api import consultar_dividas_nio
     
+    # Log completo do payload recebido para debug
+    logger.info(f"[Webhook] Payload completo recebido: {data}")
+    logger.info(f"[Webhook] Tipo do payload: {type(data)}")
+    logger.info(f"[Webhook] Chaves disponíveis: {list(data.keys()) if isinstance(data, dict) else 'N/A'}")
+    
     # Extrair telefone e mensagem do payload
-    telefone = data.get('phone') or data.get('from') or data.get('phoneNumber')
+    telefone = data.get('phone') or data.get('from') or data.get('phoneNumber') or data.get('phone_number')
     mensagem_texto = ""
     
+    # Tentar múltiplos formatos de mensagem
     if 'message' in data:
         if isinstance(data['message'], dict):
-            mensagem_texto = data['message'].get('text') or data['message'].get('body') or ""
+            mensagem_texto = data['message'].get('text') or data['message'].get('body') or data['message'].get('message') or ""
         else:
             mensagem_texto = str(data['message'])
     else:
-        mensagem_texto = data.get('text') or data.get('body') or data.get('message', '')
+        mensagem_texto = data.get('text') or data.get('body') or data.get('message') or data.get('content') or ""
+    
+    # Se ainda não encontrou, tentar em nested structures comuns
+    if not mensagem_texto:
+        if 'data' in data and isinstance(data['data'], dict):
+            mensagem_texto = data['data'].get('text') or data['data'].get('body') or data['data'].get('message') or ""
+        if 'payload' in data and isinstance(data['payload'], dict):
+            mensagem_texto = data['payload'].get('text') or data['payload'].get('body') or data['payload'].get('message') or ""
+    
+    logger.info(f"[Webhook] Telefone extraído: {telefone}")
+    logger.info(f"[Webhook] Mensagem extraída: {mensagem_texto}")
     
     if not telefone or not mensagem_texto:
         logger.warning(f"[Webhook] Dados incompletos: telefone={telefone}, mensagem={mensagem_texto}")
-        return {'status': 'erro', 'mensagem': 'Dados incompletos'}
+        logger.warning(f"[Webhook] Payload completo para análise: {data}")
+        return {'status': 'erro', 'mensagem': f'Dados incompletos: telefone={telefone}, mensagem={mensagem_texto}'}
     
     telefone_formatado = formatar_telefone(telefone)
     mensagem_limpa = mensagem_texto.strip().upper()
     
     logger.info(f"[Webhook] Mensagem recebida de {telefone_formatado}: {mensagem_texto}")
+    logger.info(f"[Webhook] Mensagem limpa (uppercase): {mensagem_limpa}")
     
     # Inicializar serviço WhatsApp
     whatsapp_service = WhatsAppService()
@@ -104,11 +122,16 @@ def processar_webhook_whatsapp(data):
         resposta = None
         
         # === COMANDOS INICIAIS ===
+        logger.info(f"[Webhook] Verificando comando. Mensagem limpa: '{mensagem_limpa}'")
+        logger.info(f"[Webhook] Etapa atual: {etapa_atual}")
+        
         if mensagem_limpa in ['FACHADA', 'FACADA']:
+            logger.info(f"[Webhook] Comando FACHADA reconhecido!")
             sessao.etapa = 'fachada_cep'
             sessao.dados_temp = {}
             sessao.save()
             resposta = "🏢 *CONSULTA MASSIVA (DFV)*\n\nEu vou listar todos os números viáveis de uma rua.\nPor favor, digite o CEP (somente números):"
+            logger.info(f"[Webhook] Resposta preparada para FACHADA: {resposta[:50]}...")
         
         elif mensagem_limpa in ['VIABILIDADE', 'VIABIL']:
             sessao.etapa = 'viabilidade_cep'
