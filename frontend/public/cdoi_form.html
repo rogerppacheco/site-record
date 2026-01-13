@@ -395,7 +395,17 @@
                 </div>
                 <div class="card-body">
                     <form id="form-cdoi">
-                        <input type="hidden" id="edit_mode_id" value=""> <div class="row g-3 mb-4">
+                        <input type="hidden" id="edit_mode_id" value="">
+                        <div id="div-criado-por" class="row g-3 mb-4" style="display: none;">
+                            <div class="col-md-12">
+                                <label>Acionado por (Quem criou) *</label>
+                                <select name="criado_por_id" id="inp_criado_por" class="form-select" required>
+                                    <option value="">Carregando usuários...</option>
+                                </select>
+                                <small class="text-muted">Selecione quem acionou esta solicitação</small>
+                            </div>
+                        </div>
+                        <div class="row g-3 mb-4">
                             <div class="col-md-6"><label>Nome do Condomínio *</label><input type="text" name="nome_condominio" id="inp_nome" class="form-control" required></div>
                             <div class="col-md-3"><label>CEP *</label><input type="text" name="cep" id="inp_cep" class="form-control" required onblur="buscarCep(this.value)"></div>
                             <div class="col-md-3"><label>Cidade/UF</label><input type="text" id="cidade_uf" class="form-control bg-light" readonly><input type="hidden" name="cidade" id="cidade"><input type="hidden" name="uf" id="uf"></div>
@@ -481,7 +491,7 @@
                 </div>
                 <div class="card-body p-0 table-responsive">
                     <table class="table table-hover align-middle mb-0">
-                        <thead class="table-light"><tr><th>ID</th><th>Condomínio</th><th>Endereço</th><th>Síndico</th><th>Telefone</th><th>Total HPs</th><th>Pré-vendas</th><th>Foto</th><th>Status</th><th>Ações</th></tr></thead>
+                        <thead class="table-light"><tr><th>ID</th><th>Condomínio</th><th>Endereço</th><th>Síndico</th><th>Telefone</th><th>Total HPs</th><th>Pré-vendas</th><th>Foto</th><th>Status</th><th>Acionado por</th><th>Ações</th></tr></thead>
                         <tbody id="tbody-acionamentos"></tbody>
                     </table>
                 </div>
@@ -552,7 +562,7 @@
     // --- CRUD ---
     async function carregarMeusAcionamentos() {
         const tbody = document.getElementById('tbody-acionamentos');
-        tbody.innerHTML = '<tr><td colspan="10">Carregando...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11">Carregando...</td></tr>';
         const res = await fetch('/api/crm/cdoi/listar/', { headers: {'Authorization': `Bearer ${localStorage.getItem('accessToken')}`} });
         const lista = await res.json();
         tbody.innerHTML = '';
@@ -583,6 +593,8 @@
                 imagemHtml = '<i class="bi bi-image no-image-icon"></i>';
             }
             
+            const acionadoPor = i.criado_por_nome || '-';
+            
             tbody.innerHTML += `<tr>
                 <td>#${i.id}</td>
                 <td><strong>${i.nome}</strong><br><small class="text-muted">${i.cidade}</small></td>
@@ -593,19 +605,58 @@
                 <td class="text-center"><span class="badge bg-success">${prevenda}</span></td>
                 <td class="text-center">${imagemHtml}</td>
                 <td><span class="badge status-badge status-${i.status_cod}">${i.status}</span></td>
+                <td><small>${acionadoPor}</small></td>
                 <td class="text-end">${btns}</td>
             </tr>`;
         });
     }
 
+    async function carregarUsuariosParaSelect() {
+        const select = document.getElementById('inp_criado_por');
+        if (!select) return;
+        
+        // Verifica se já foi carregado
+        if (select.options.length > 1 && select.options[0].value !== '') {
+            return; // Já carregado
+        }
+        
+        try {
+            const token = localStorage.getItem('accessToken');
+            const res = await fetch('/api/usuarios/?is_active=true&page_size=1000', {
+                headers: {'Authorization': `Bearer ${token}`}
+            });
+            const data = await res.json();
+            const usuarios = Array.isArray(data) ? data : (data.results || []);
+            
+            select.innerHTML = '<option value="">Selecione quem acionou...</option>';
+            usuarios.forEach(u => {
+                let nomeExibicao = u.username || '-';
+                if (u.first_name || u.last_name) {
+                    nomeExibicao = `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username;
+                }
+                select.add(new Option(nomeExibicao, u.id));
+            });
+        } catch (e) {
+            console.error('Erro ao carregar usuários:', e);
+            select.innerHTML = '<option value="">Erro ao carregar usuários</option>';
+        }
+    }
+    
     function editarTudo(item) {
         const id = item; // Agora 'item' é apenas o ID
+        
+        // Mostra o campo "Acionado por" no modo edição
+        document.getElementById('div-criado-por').style.display = 'block';
+        
+        // Carrega usuários para o select
+        carregarUsuariosParaSelect();
+        
         fetch(`/api/crm/cdoi/editar/${id}/`, { headers: {'Authorization': `Bearer ${localStorage.getItem('accessToken')}`} })
             .then(res => {
                 if (!res.ok) throw new Error('Não foi possível carregar os dados para edição.');
                 return res.json();
             })
-            .then(d => {
+            .then(async d => {
                 document.getElementById('edit_mode_id').value = d.id;
                 document.getElementById('tab-titulo').innerText = `Editando #${d.id}`;
                 document.getElementById('btn-submit').innerHTML = 'Salvar Alterações';
@@ -624,6 +675,12 @@
                 document.getElementById('inp_shaft').checked = d.possui_shaft;
                 document.getElementById('inp_lat').value = d.latitude || '';
                 document.getElementById('inp_long').value = d.longitude || '';
+                
+                // Aguarda o select ser populado antes de definir o valor
+                await carregarUsuariosParaSelect();
+                if (d.criado_por_id) {
+                    document.getElementById('inp_criado_por').value = d.criado_por_id;
+                }
                 
                 buscarCep(d.cep);
 
@@ -646,6 +703,8 @@
         document.getElementById('btn-submit').classList.replace('btn-warning', 'btn-success');
         document.getElementById('btn-cancelar-edicao').classList.add('d-none');
         document.querySelectorAll('.file-input-group').forEach(el => el.style.display = 'block');
+        // Esconde o campo "Acionado por" no modo novo
+        document.getElementById('div-criado-por').style.display = 'none';
         blocos = []; atualizarTabelaBlocos();
     }
 
