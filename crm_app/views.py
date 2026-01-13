@@ -3044,19 +3044,32 @@ class ImportarDFVView(APIView):
                 LogImportacaoDFV.objects.filter(id=log_id).update(**update_data)
                 print(f"[DFV] FINALIZADO processamento log_id={log_id} | status={status_final} | sucesso={sucesso_count} | erros={erros_count} | removidos={registros_removidos}")
             except Exception as e:
-                print(f"ERRO CRÍTICO DFV: {e}")
-                log.status = 'ERRO'
-                log.mensagem_erro = f'Erro fatal: {str(e)}'
-                log.save()
+                print(f"[DFV] ERRO CRÍTICO DFV: {e}")
+                import traceback
+                traceback.print_exc()
+                try:
+                    from django.utils import timezone
+                    LogImportacaoDFV.objects.filter(id=log_id).update(
+                        status='ERRO',
+                        mensagem_erro=f'Erro fatal: {str(e)}',
+                        finalizado_em=timezone.now()
+                    )
+                except Exception as e2:
+                    print(f"[DFV] ERRO ao atualizar log de erro: {e2}")
         except Exception as e:
-            print(f"ERRO NA THREAD DFV: {e}")
+            print(f"[DFV] ERRO NA THREAD DFV: {e}")
+            import traceback
+            traceback.print_exc()
             try:
-                log = LogImportacaoDFV.objects.get(id=log_id)
-                log.status = 'ERRO'
-                log.mensagem_erro = f'Falha interna: {str(e)}'
-                log.save()
+                from .models import LogImportacaoDFV
+                from django.utils import timezone
+                LogImportacaoDFV.objects.filter(id=log_id).update(
+                    status='ERRO',
+                    mensagem_erro=f'Falha interna: {str(e)}',
+                    finalizado_em=timezone.now()
+                )
             except Exception as e2:
-                print(f"ERRO AO ATUALIZAR LOG DE ERRO: {e2}")
+                print(f"[DFV] ERRO AO ATUALIZAR LOG DE ERRO: {e2}")
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
