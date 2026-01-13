@@ -280,7 +280,21 @@
                 const response = await fetch('/api/crm/logs-dfv/', {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
+                
+                if (!response.ok) {
+                    console.error('[DFV] Erro ao buscar logs:', response.status, response.statusText);
+                    return;
+                }
+                
                 const data = await response.json();
+                
+                // Debug: logar dados recebidos para verificar se estão atualizando
+                const logsProcessando = data.logs?.filter(l => l.status === 'PROCESSANDO') || [];
+                if (logsProcessando.length > 0) {
+                    logsProcessando.forEach(log => {
+                        console.log(`[DFV] Log ${log.id}: sucesso=${log.sucesso}, processadas=${log.total_processadas}, total=${log.total_registros}`);
+                    });
+                }
                 
                 if (data.success && data.logs) {
                     const historico = document.getElementById('historicoDFV');
