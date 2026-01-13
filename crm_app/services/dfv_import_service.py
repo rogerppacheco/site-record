@@ -49,10 +49,11 @@ class DFVImportService:
     
     # Constantes de configuração
     CHUNK_SIZE_CLEANUP = 100_000  # Tamanho do chunk para limpeza de dados
-    CHUNK_SIZE_PREPARATION = 50_000  # Tamanho do chunk para preparação de objetos
+    CHUNK_SIZE_PREPARATION = 20_000  # Tamanho do chunk para preparação de objetos (reduzido para evitar travamento)
     BATCH_SIZE_DELETE = 10_000  # Tamanho do lote para remoção de duplicados
     BATCH_SIZE_CREATE = 1_000  # Tamanho do lote para criação de registros
     PROGRESS_UPDATE_INTERVAL = 5  # Atualizar progresso a cada N chunks
+    PREPARATION_PROGRESS_INTERVAL = 5_000  # Atualizar progresso a cada N registros durante preparação
     
     # Colunas obrigatórias
     REQUIRED_COLUMNS = ['CEP', 'NUM_FACHADA']
@@ -328,11 +329,19 @@ class DFVImportService:
         
         total_chunks = (len(df) + self.CHUNK_SIZE_PREPARATION - 1) // self.CHUNK_SIZE_PREPARATION
         
+        processed_in_chunk = 0
+        
         for chunk_idx in range(0, len(df), self.CHUNK_SIZE_PREPARATION):
             chunk_num = (chunk_idx // self.CHUNK_SIZE_PREPARATION) + 1
             chunk_df = df.iloc[chunk_idx:chunk_idx + self.CHUNK_SIZE_PREPARATION]
             
-            for row_tuple in chunk_df.itertuples(index=False):
+            logger.debug(
+                f"[DFV] Processando chunk {chunk_num}/{total_chunks} "
+                f"({len(chunk_df)} registros)..."
+            )
+            
+            # Processar linha por linha com atualização de progresso mais frequente
+            for row_idx, row_tuple in enumerate(chunk_df.itertuples(index=False)):
                 try:
                     # Extrair valores
                     cep_val = getattr(row_tuple, 'cep_limpo', '')
@@ -354,24 +363,43 @@ class DFVImportService:
                     )
                     registros_para_criar.append(obj)
                     
+                    processed_in_chunk += 1
+                    total_processed_so_far = chunk_idx + processed_in_chunk
+                    
+                    # Atualizar progresso a cada N registros para mostrar que está progredindo
+                    if processed_in_chunk % self.PREPARATION_PROGRESS_INTERVAL == 0:
+                        self._update_progress(
+                            total_processed=total_processed_so_far,
+                            errors=erros_count,
+                            message=f'Preparando objetos... {chunk_num}/{total_chunks} chunks ({total_processed_so_far}/{len(df)} registros)'
+                        )
+                        logger.debug(
+                            f"[DFV] Chunk {chunk_num}/{total_chunks}: "
+                            f"{processed_in_chunk}/{len(chunk_df)} registros processados no chunk, "
+                            f"total: {len(registros_para_criar)} objetos preparados"
+                        )
+                    
                 except Exception as e:
                     erros_count += 1
                     if len(erros_detalhados) < 10:
                         erros_detalhados.append(f"Erro ao criar objeto: {str(e)}")
                     logger.warning(f"[DFV] Erro ao criar objeto DFV: {e}")
             
-            # Atualizar progresso
+            # Resetar contador para próximo chunk
+            processed_in_chunk = 0
+            
+            # Atualizar progresso ao final de cada chunk
+            total_processed_so_far = min(chunk_idx + self.CHUNK_SIZE_PREPARATION, len(df))
             self._update_progress(
-                total_processed=min(chunk_idx + self.CHUNK_SIZE_PREPARATION, len(df)),
+                total_processed=total_processed_so_far,
                 errors=erros_count,
-                message=f'Preparando objetos... {chunk_num}/{total_chunks} chunks'
+                message=f'Preparando objetos... {chunk_num}/{total_chunks} chunks ({total_processed_so_far}/{len(df)} registros)'
             )
             
-            if chunk_num % self.PROGRESS_UPDATE_INTERVAL == 0:
-                logger.debug(
-                    f"[DFV] Chunk {chunk_num}/{total_chunks} processado. "
-                    f"Objetos preparados: {len(registros_para_criar)}"
-                )
+            logger.info(
+                f"[DFV] Chunk {chunk_num}/{total_chunks} concluído. "
+                f"Total de objetos preparados: {len(registros_para_criar)}"
+            )
         
         logger.info(
             f"[DFV] Preparação concluída: {len(registros_para_criar)} objetos, "
