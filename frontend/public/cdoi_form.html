@@ -400,10 +400,10 @@
                             <div class="col-md-3"><label>CEP *</label><input type="text" name="cep" id="inp_cep" class="form-control" required onblur="buscarCep(this.value)"></div>
                             <div class="col-md-3"><label>Cidade/UF</label><input type="text" id="cidade_uf" class="form-control bg-light" readonly><input type="hidden" name="cidade" id="cidade"><input type="hidden" name="uf" id="uf"></div>
                             <div class="col-md-5"><label>Logradouro</label><input type="text" name="logradouro" id="logradouro" class="form-control bg-light" readonly></div>
-                            <div class="col-md-2"><label>Número *</label><input type="text" name="numero" id="inp_numero" class="form-control" required></div>
+                            <div class="col-md-2"><label>Número *</label><input type="text" name="numero" id="inp_numero" class="form-control" required onblur="buscarCoordenadas()" oninput="debounceBuscarCoordenadas()"></div>
                             <div class="col-md-5"><label>Bairro</label><input type="text" name="bairro" id="bairro" class="form-control bg-light" readonly></div>
-                            <div class="col-md-3"><label>Latitude</label><input type="text" name="latitude" id="inp_lat" class="form-control"></div>
-                            <div class="col-md-3"><label>Longitude</label><input type="text" name="longitude" id="inp_long" class="form-control"></div>
+                            <div class="col-md-3"><label>Latitude</label><input type="text" name="latitude" id="inp_lat" class="form-control" readonly><small class="text-muted">Preenchido automaticamente</small></div>
+                            <div class="col-md-3"><label>Longitude</label><input type="text" name="longitude" id="inp_long" class="form-control" readonly><small class="text-muted">Preenchido automaticamente</small></div>
                         </div>
 
                         <h6 class="text-primary fw-bold mb-3 border-bottom pb-2">Contato e Síndico</h6>
@@ -713,7 +713,105 @@
         });
         mStatus.hide(); carregarMeusAcionamentos();
     }
-    async function buscarCep(cep) { try { const r=await fetch(`https://viacep.com.br/ws/${cep.replace(/\D/g,'')}/json/`); const d=await r.json(); if(!d.erro){ document.getElementById('logradouro').value=d.logradouro; document.getElementById('bairro').value=d.bairro; document.getElementById('cidade_uf').value=`${d.localidade}-${d.uf}`; document.getElementById('cidade').value=d.localidade; document.getElementById('uf').value=d.uf; } } catch(e){} }
+    async function buscarCep(cep) { 
+        try { 
+            const r=await fetch(`https://viacep.com.br/ws/${cep.replace(/\D/g,'')}/json/`); 
+            const d=await r.json(); 
+            if(!d.erro){ 
+                document.getElementById('logradouro').value=d.logradouro; 
+                document.getElementById('bairro').value=d.bairro; 
+                document.getElementById('cidade_uf').value=`${d.localidade}-${d.uf}`; 
+                document.getElementById('cidade').value=d.localidade; 
+                document.getElementById('uf').value=d.uf; 
+                // Após buscar CEP, tenta buscar coordenadas se o número já estiver preenchido
+                setTimeout(() => buscarCoordenadas(), 500);
+            } 
+        } catch(e){} 
+    }
+    
+    // Debounce para evitar muitas chamadas durante digitação
+    let timeoutCoordenadas = null;
+    function debounceBuscarCoordenadas() {
+        clearTimeout(timeoutCoordenadas);
+        timeoutCoordenadas = setTimeout(() => buscarCoordenadas(), 1000);
+    }
+    
+    // Função para buscar coordenadas (latitude/longitude) via geocodificação
+    async function buscarCoordenadas() {
+        const logradouro = document.getElementById('logradouro').value;
+        const numero = document.getElementById('inp_numero').value;
+        const bairro = document.getElementById('bairro').value;
+        const cidade = document.getElementById('cidade').value;
+        const uf = document.getElementById('uf').value;
+        const cep = document.getElementById('inp_cep').value.replace(/\D/g, '');
+        
+        // Verifica se temos dados suficientes para geocodificar
+        if (!logradouro || !numero || !cidade || !uf) {
+            return; // Não tem dados suficientes ainda
+        }
+        
+        // Monta o endereço completo para geocodificação
+        const enderecoCompleto = `${logradouro}, ${numero}, ${bairro || ''}, ${cidade}, ${uf}, Brasil`.replace(/,\s*,/g, ',').replace(/,\s*$/, '');
+        
+        const latInput = document.getElementById('inp_lat');
+        const lngInput = document.getElementById('inp_long');
+        
+        // Mostra indicador de carregamento
+        latInput.value = 'Buscando...';
+        lngInput.value = 'Buscando...';
+        
+        try {
+            // Usa Nominatim (OpenStreetMap) - API gratuita de geocodificação
+            const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(enderecoCompleto)}&limit=1&countrycodes=br`;
+            
+            const response = await fetch(url, {
+                headers: {
+                    'User-Agent': 'RecordPap/1.0' // Nominatim requer User-Agent
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error('Erro ao buscar coordenadas');
+            }
+            
+            const data = await response.json();
+            
+            if (data && data.length > 0 && data[0].lat && data[0].lon) {
+                latInput.value = parseFloat(data[0].lat).toFixed(6);
+                lngInput.value = parseFloat(data[0].lon).toFixed(6);
+                console.log('Coordenadas encontradas:', latInput.value, lngInput.value);
+            } else {
+                // Tenta buscar apenas com CEP se não encontrou com endereço completo
+                if (cep && cep.length === 8) {
+                    const urlCep = `https://nominatim.openstreetmap.org/search?format=json&postalcode=${cep}&countrycodes=br&limit=1`;
+                    const responseCep = await fetch(urlCep, {
+                        headers: {
+                            'User-Agent': 'RecordPap/1.0'
+                        }
+                    });
+                    
+                    if (responseCep.ok) {
+                        const dataCep = await responseCep.json();
+                        if (dataCep && dataCep.length > 0 && dataCep[0].lat && dataCep[0].lon) {
+                            latInput.value = parseFloat(dataCep[0].lat).toFixed(6);
+                            lngInput.value = parseFloat(dataCep[0].lon).toFixed(6);
+                            console.log('Coordenadas encontradas pelo CEP:', latInput.value, lngInput.value);
+                            return;
+                        }
+                    }
+                }
+                
+                // Se não encontrou, limpa os campos
+                latInput.value = '';
+                lngInput.value = '';
+                console.warn('Coordenadas não encontradas para:', enderecoCompleto);
+            }
+        } catch (error) {
+            console.error('Erro ao buscar coordenadas:', error);
+            latInput.value = '';
+            lngInput.value = '';
+        }
+    }
     
     // Expande o container quando a aba Meus Acionamentos está ativa
     document.getElementById('lista-tab').addEventListener('click', function() {
