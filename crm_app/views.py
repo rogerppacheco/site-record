@@ -3055,10 +3055,8 @@ class ImportarDFVView(APIView):
                                 else:
                                     print(f"[DFV] Nenhum duplicado encontrado no lote {lote_num}/{total_lotes}")
                             
-                            # Atualizar log a cada lote para mostrar progresso
-                            LogImportacaoDFV.objects.filter(id=log_id).update(
-                                registros_removidos=registros_removidos
-                            )
+                            # Atualizar log a cada lote para mostrar progresso (sem registros_removidos - campo não existe)
+                            # O progresso é mostrado via logs apenas
                 else:
                     print(f"[DFV] Banco vazio - pulando remoção de duplicados")
                 
@@ -3067,8 +3065,7 @@ class ImportarDFVView(APIView):
                 # Atualizar log para indicar que a remoção de duplicados terminou
                 # Isso ajuda o frontend a saber que passou dessa etapa
                 LogImportacaoDFV.objects.filter(id=log_id).update(
-                    total_processadas=linhas_processadas,  # Manter o valor da coleta
-                    registros_removidos=registros_removidos # Adicionar o total de removidos
+                    total_processadas=linhas_processadas  # Manter o valor da coleta
                 )
                 print(f"[DFV] Remoção de duplicados concluída. Iniciando criação de registros...")
                 
