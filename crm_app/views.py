@@ -2844,28 +2844,54 @@ class ImportarKMLView(APIView):
         except Exception as e:
             return Response({'error': f'Erro crítico KML: {str(e)}'}, status=500)
         
-# --- NOVA VIEW: IMPORTAÇÃO DFV (CSV) ---
+# --- IMPORTAÇÃO DFV (CSV) - VERSÃO PROFISSIONAL ---
 class ImportarDFVView(APIView):
-    """Importa arquivo DFV (Dados do Faturamento de Vendas) em background"""
+    """
+    View para importação de arquivos DFV (Dados do Faturamento de Vendas).
+    
+    Esta view segue as melhores práticas:
+    - Separação de responsabilidades (usa Service Layer)
+    - Processamento assíncrono em background
+    - Resposta imediata ao cliente
+    - Tratamento robusto de erros
+    """
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request, *args, **kwargs):
+        """
+        Endpoint para upload e processamento de arquivo DFV.
+        
+        Returns:
+            Response com log_id e status da importação iniciada
+        """
+        import logging
+        import threading
+        
+        logger = logging.getLogger(__name__)
+        
         file_obj = request.FILES.get('file')
         if not file_obj:
-            return Response({'error': 'Arquivo CSV não enviado.'}, status=400)
+            return Response(
+                {'error': 'Arquivo CSV não enviado.'}, 
+                status=400
+            )
         
         try:
             from .models import LogImportacaoDFV
             from django.utils import timezone
-            import threading
-            import io
             
             # Criar log de importação ANTES de ler o arquivo
             log = LogImportacaoDFV.objects.create(
                 nome_arquivo=file_obj.name,
                 usuario=request.user,
-                status='PROCESSANDO'
+                status='PROCESSANDO',
+                tamanho_arquivo=0  # Será atualizado durante o processamento
+            )
+            
+            logger.info(
+                f"[DFV] Nova importação iniciada - Log ID: {log.id}, "
+                f"Arquivo: {file_obj.name}, Usuário: {request.user.username}"
             )
             
             # Ler arquivo em chunks para evitar timeout durante o upload
@@ -2873,21 +2899,33 @@ class ImportarDFVView(APIView):
             arquivo_bytes = b''
             chunk_size = 1024 * 1024  # 1MB por chunk
             
-            print(f"[DFV] Iniciando leitura do arquivo {file_obj.name} em chunks...")
+            logger.debug(f"[DFV] Iniciando leitura do arquivo {file_obj.name} em chunks...")
             while True:
                 chunk = file_obj.read(chunk_size)
                 if not chunk:
                     break
                 arquivo_bytes += chunk
-                print(f"[DFV] Lidos {len(arquivo_bytes) / (1024*1024):.2f} MB do arquivo...")
             
-            print(f"[DFV] Arquivo completo lido: {len(arquivo_bytes) / (1024*1024):.2f} MB")
-            arquivo_nome = file_obj.name
-            user_id = request.user.id
+            logger.info(
+                f"[DFV] Arquivo completo lido: {file_obj.name} "
+                f"({len(arquivo_bytes) / (1024*1024):.2f} MB)"
+            )
             
             # Iniciar processamento em thread background
             def processar_dfv_async():
-                self._processar_dfv_interno(log.id, arquivo_bytes, arquivo_nome, user_id)
+                """Wrapper para processamento assíncrono"""
+                try:
+                    from .services.dfv_import_service import DFVImportService
+                    
+                    service = DFVImportService(log_id=log.id)
+                    service.process(arquivo_bytes, file_obj.name)
+                    
+                except Exception as e:
+                    logger.error(
+                        f"[DFV] Erro crítico no processamento assíncrono: {e}",
+                        exc_info=True
+                    )
+                    # O serviço já atualiza o log em caso de erro
             
             thread = threading.Thread(target=processar_dfv_async, daemon=True)
             thread.start()
@@ -2900,409 +2938,16 @@ class ImportarDFVView(APIView):
                 'status': 'PROCESSANDO',
                 'background': True
             })
+            
         except Exception as e:
-            import traceback
-            traceback.print_exc()
-            return Response({
-                'error': f'Erro ao iniciar importação: {str(e)}'
-            }, status=500)
-    
-    def _processar_dfv_interno(self, log_id, arquivo_bytes, arquivo_nome, user_id):
-        """Processa DFV em background thread"""
-        print(f"[DFV] INICIANDO processamento log_id={log_id}")
-        try:
-            from .models import LogImportacaoDFV, DFV
-            from django.utils import timezone
-            from django.db import transaction
-            from django.db.models import Q
-            from io import BytesIO
-            from django.contrib.auth import get_user_model
-            import pandas as pd
-            import numpy as np
-            
-            log = LogImportacaoDFV.objects.get(id=log_id)
-            User = get_user_model()
-            usuario = User.objects.get(id=user_id)
-            inicio = timezone.now()
-            
-            # Atualizar status para PROCESSANDO imediatamente
-            LogImportacaoDFV.objects.filter(id=log_id).update(status='PROCESSANDO')
-            print(f"[DFV] Status atualizado para PROCESSANDO - log_id={log_id}")
-            
-            try:
-                print(f"[DFV] Tamanho do arquivo em bytes: {len(arquivo_bytes)}")
-                print(f"[DFV] Lendo arquivo e preparando DataFrame para log_id={log_id}")
-                
-                # Criar objeto BytesIO do arquivo
-                arquivo_io = BytesIO(arquivo_bytes)
-                print(f"[DFV] BytesIO criado, iniciando leitura CSV...")
-                
-                # Tenta ler com UTF-8, caso contrário usa Latin-1
-                # Para arquivos grandes, usar engine padrão (C) que é mais rápido
-                try:
-                    print(f"[DFV] Tentando ler com encoding UTF-8...")
-                    # Usar engine padrão (C) que é mais rápido e suporta low_memory
-                    df = pd.read_csv(
-                        arquivo_io, 
-                        sep=';', 
-                        dtype=str, 
-                        encoding='utf-8', 
-                        low_memory=False,
-                        on_bad_lines='skip'  # Pular linhas com problemas
-                    )
-                    print(f"[DFV] Arquivo lido com sucesso usando UTF-8")
-                except UnicodeDecodeError as e:
-                    print(f"[DFV] Erro UTF-8, tentando Latin-1: {e}")
-                    arquivo_io.seek(0)
-                    df = pd.read_csv(
-                        arquivo_io, 
-                        sep=';', 
-                        dtype=str, 
-                        encoding='latin-1', 
-                        low_memory=False,
-                        on_bad_lines='skip'
-                    )
-                    print(f"[DFV] Arquivo lido com sucesso usando Latin-1")
-                except Exception as e:
-                    print(f"[DFV] ERRO ao ler CSV: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    # Atualizar log com erro antes de levantar exceção
-                    LogImportacaoDFV.objects.filter(id=log_id).update(
-                        status='ERRO',
-                        mensagem_erro=f'Erro ao ler arquivo CSV: {str(e)}',
-                        finalizado_em=timezone.now()
-                    )
-                    raise
-                
-                print(f"[DFV] DataFrame criado, shape: {df.shape}")
-                print(f"[DFV] Normalizando nomes de colunas...")
-                # Normalizar colunas primeiro (mais eficiente)
-                # Normaliza nomes de colunas (remove espaços e maiúsculo)
-                df.columns = [str(c).strip().upper() for c in df.columns]
-                print(f"[DFV] Colunas normalizadas: {list(df.columns)[:10]}...")
-                
-                total_registros = len(df)
-                print(f"[DFV] Total de registros calculado: {total_registros}")
-                print(f"[DFV] Atualizando log no banco...")
-                # Atualizar log com total de registros IMEDIATAMENTE
-                LogImportacaoDFV.objects.filter(id=log_id).update(
-                    total_registros=total_registros,
-                    total_processadas=0,
-                    sucesso=0
-                )
-                print(f"[DFV] Log atualizado. Total de registros no arquivo: {total_registros}")
-                print(f"[DFV] Iniciando ETAPA 1: Coleta de CEPs e fachadas...")
-                
-                # ETAPA 1: Coletar todos os (CEP, fachada) únicos do arquivo usando operações vetorizadas
-                print(f"[DFV] Coletando CEPs e fachadas do arquivo (otimizado)...")
-                print(f"[DFV] Colunas disponíveis: {list(df.columns)[:10]}...")
-                
-                # Limpar e processar CEPs usando operações vetorizadas (muito mais rápido)
-                import re
-                
-                # Garantir que as colunas existam
-                if 'CEP' not in df.columns:
-                    raise ValueError("Coluna 'CEP' não encontrada no arquivo")
-                if 'NUM_FACHADA' not in df.columns:
-                    raise ValueError("Coluna 'NUM_FACHADA' não encontrada no arquivo")
-                
-                print(f"[DFV] Preenchendo valores NaN e convertendo para string...")
-                # Preencher valores NaN com string vazia (mais rápido usando fillna direto)
-                df['CEP'] = df['CEP'].fillna('').astype(str)
-                df['NUM_FACHADA'] = df['NUM_FACHADA'].fillna('').astype(str)
-                
-                print(f"[DFV] Limpando CEPs (vetorizado) - processando {len(df)} registros...")
-                # Limpar CEP: remover tudo que não é dígito (vetorizado)
-                # Usar apply com função lambda pode ser mais rápido que regex para grandes volumes
-                import re
-                def limpar_cep(cep_str):
-                    if not cep_str:
-                        return ''
-                    return ''.join(filter(str.isdigit, str(cep_str)))
-                
-                # Processar em chunks para não travar
-                chunk_size_limpeza = 100000
-                df['cep_limpo'] = ''
-                df['fachada_limpa'] = ''
-                
-                total_chunks_limpeza = (len(df) + chunk_size_limpeza - 1) // chunk_size_limpeza
-                for i in range(0, len(df), chunk_size_limpeza):
-                    chunk_num = (i // chunk_size_limpeza) + 1
-                    end_idx = min(i + chunk_size_limpeza, len(df))
-                    print(f"[DFV] Limpando CEPs chunk {chunk_num}/{total_chunks_limpeza} ({i} a {end_idx})...")
-                    df.loc[df.index[i:end_idx], 'cep_limpo'] = df.loc[df.index[i:end_idx], 'CEP'].apply(limpar_cep)
-                    df.loc[df.index[i:end_idx], 'fachada_limpa'] = df.loc[df.index[i:end_idx], 'NUM_FACHADA'].str.strip()
-                
-                print(f"[DFV] CEPs limpos! Total processado: {len(df)}")
-                
-                print(f"[DFV] Filtrando linhas válidas...")
-                # Filtrar linhas válidas (CEP e fachada não vazios)
-                mask_valido = (df['cep_limpo'].str.len() > 0) & (df['fachada_limpa'].str.len() > 0)
-                df_valido = df[mask_valido].copy()
-                
-                # Contar erros (linhas inválidas)
-                erros_count = (~mask_valido).sum()
-                linhas_processadas = len(df_valido)
-                
-                print(f"[DFV] Linhas válidas: {linhas_processadas}/{total_registros} (erros: {erros_count})")
-                
-                # Inicializar lista de erros detalhados
-                erros_detalhados = []
-                
-                print(f"[DFV] Criando conjunto de pares únicos (CEP, fachada)...")
-                # Criar conjunto de (CEP, fachada) únicos usando pandas (mais eficiente)
-                # Usar drop_duplicates para obter pares únicos sem criar lista gigante na memória
-                df_pares = df_valido[['cep_limpo', 'fachada_limpa']].drop_duplicates()
-                cep_fachada_set = set(zip(df_pares['cep_limpo'], df_pares['fachada_limpa']))
-                print(f"[DFV] Pares únicos criados: {len(cep_fachada_set)}")
-                
-                print(f"[DFV] Preparando objetos DFV...")
-                # Preparar objetos DFV em lote (processar em chunks para não travar)
-                registros_para_criar = []
-                chunk_size = 50000  # Processar em chunks de 50k
-                total_chunks = (len(df_valido) + chunk_size - 1) // chunk_size
-                
-                for chunk_idx in range(0, len(df_valido), chunk_size):
-                    chunk_num = (chunk_idx // chunk_size) + 1
-                    chunk_df = df_valido.iloc[chunk_idx:chunk_idx + chunk_size]
-                    print(f"[DFV] Processando chunk {chunk_num}/{total_chunks} ({len(chunk_df)} registros)...")
-                    
-                    # Usar itertuples que é mais rápido que iterrows
-                    for row_tuple in chunk_df.itertuples(index=False):
-                        try:
-                            # Obter valores das colunas pelo índice ou nome
-                            cep_val = getattr(row_tuple, 'cep_limpo', '')
-                            fachada_val = getattr(row_tuple, 'fachada_limpa', '')
-                            
-                            # Tentar obter outros campos (pode não existir)
-                            uf_val = getattr(row_tuple, 'UF', None) if hasattr(row_tuple, 'UF') else None
-                            municipio_val = getattr(row_tuple, 'MUNICIPIO', None) if hasattr(row_tuple, 'MUNICIPIO') else None
-                            logradouro_val = getattr(row_tuple, 'LOGRADOURO', None) if hasattr(row_tuple, 'LOGRADOURO') else None
-                            complemento_val = getattr(row_tuple, 'COMPLEMENTO', None) if hasattr(row_tuple, 'COMPLEMENTO') else None
-                            bairro_val = getattr(row_tuple, 'BAIRRO', None) if hasattr(row_tuple, 'BAIRRO') else None
-                            tipo_viabilidade_val = getattr(row_tuple, 'TIPO_VIABILIDADE', None) if hasattr(row_tuple, 'TIPO_VIABILIDADE') else None
-                            tipo_rede_val = getattr(row_tuple, 'TIPO_REDE', None) if hasattr(row_tuple, 'TIPO_REDE') else None
-                            celula_val = getattr(row_tuple, 'CELULA', None) if hasattr(row_tuple, 'CELULA') else None
-                            nome_cdo_val = getattr(row_tuple, 'NOME_CDO', None) if hasattr(row_tuple, 'NOME_CDO') else None
-                            
-                            obj = DFV(
-                                cep=cep_val,
-                                num_fachada=fachada_val,
-                                uf=uf_val,
-                                municipio=municipio_val,
-                                logradouro=logradouro_val,
-                                complemento=complemento_val,
-                                bairro=bairro_val,
-                                tipo_viabilidade=tipo_viabilidade_val,
-                                tipo_rede=tipo_rede_val,
-                                celula=celula_val,
-                                nome_cdo=nome_cdo_val
-                            )
-                            registros_para_criar.append(obj)
-                        except Exception as e:
-                            erros_count += 1
-                            if len(erros_detalhados) < 10:  # Limitar logs de erro
-                                erros_detalhados.append(f"Erro ao criar objeto DFV: {str(e)}")
-                                print(f"[DFV] ERRO ao criar objeto DFV: {e}")
-                    
-                    # Atualizar progresso a cada chunk
-                    LogImportacaoDFV.objects.filter(id=log_id).update(
-                        total_processadas=min(chunk_idx + chunk_size, linhas_processadas)
-                    )
-                    print(f"[DFV] Chunk {chunk_num}/{total_chunks} processado. Objetos preparados até agora: {len(registros_para_criar)}")
-                
-                # Atualizar log após terminar a coleta
-                LogImportacaoDFV.objects.filter(id=log_id).update(
-                    total_processadas=linhas_processadas
-                )
-                print(f"[DFV] Coletados {len(cep_fachada_set)} registros únicos (CEP+fachada) de {linhas_processadas} linhas válidas")
-                print(f"[DFV] Total de objetos DFV preparados: {len(registros_para_criar)}")
-                
-                # ETAPA 2: Remover registros existentes com os mesmos (CEP, fachada)
-                print(f"[DFV] Verificando e removendo registros duplicados do banco...")
-                registros_removidos = 0
-                
-                # Verificar rapidamente se há registros no banco antes de construir query gigante
-                total_no_banco = DFV.objects.count()
-                print(f"[DFV] Total de registros no banco antes da remoção: {total_no_banco}")
-                print(f"[DFV] Total de pares (CEP, fachada) únicos a verificar: {len(cep_fachada_set)}")
-                
-                if total_no_banco > 0:
-                    # Remover duplicados em lotes para melhor performance
-                    # Dividir em lotes de 10000 para não criar query OR gigante
-                    cep_fachada_list = list(cep_fachada_set)
-                    batch_size_remocao = 10000
-                    total_lotes = (len(cep_fachada_list) + batch_size_remocao - 1) // batch_size_remocao
-                    print(f"[DFV] Processando remoção em {total_lotes} lote(s) de até {batch_size_remocao} pares cada...")
-                    
-                    # Atualizar log antes de começar a remoção
-                    LogImportacaoDFV.objects.filter(id=log_id).update(
-                        mensagem=f'Removendo duplicados... 0/{total_lotes} lotes'
-                    )
-                    
-                    for i in range(0, len(cep_fachada_list), batch_size_remocao):
-                        lote_num = (i // batch_size_remocao) + 1
-                        batch_cep_fachada = cep_fachada_list[i:i + batch_size_remocao]
-                        
-                        print(f"[DFV] Processando lote {lote_num}/{total_lotes} de remoção de duplicados ({len(batch_cep_fachada)} pares)...")
-                        
-                        # Atualizar progresso no log ANTES de processar o lote (fora da transação para garantir visibilidade)
-                        LogImportacaoDFV.objects.filter(id=log_id).update(
-                            mensagem=f'Removendo duplicados... {lote_num}/{total_lotes} lotes ({registros_removidos} removidos)'
-                        )
-                        
-                        # Processar remoção em transação separada para cada lote
-                        with transaction.atomic():
-                            q_objects = Q()
-                            for cep, fachada in batch_cep_fachada:
-                                q_objects |= Q(cep=cep, num_fachada=fachada)
-                            
-                            if q_objects:
-                                count_batch = DFV.objects.filter(q_objects).count()
-                                if count_batch > 0:
-                                    print(f"[DFV] Encontrados {count_batch} registros duplicados no lote {lote_num}, removendo...")
-                                    DFV.objects.filter(q_objects).delete()
-                                    registros_removidos += count_batch
-                                    print(f"[DFV] Removidos {count_batch} registros duplicados (lote {lote_num}/{total_lotes})")
-                                else:
-                                    print(f"[DFV] Nenhum duplicado encontrado no lote {lote_num}/{total_lotes}")
-                        
-                        # Atualizar log após processar o lote (fora da transação para garantir visibilidade imediata)
-                        LogImportacaoDFV.objects.filter(id=log_id).update(
-                            mensagem=f'Removendo duplicados... {lote_num}/{total_lotes} lotes ({registros_removidos} removidos)'
-                        )
-                else:
-                    print(f"[DFV] Banco vazio - pulando remoção de duplicados")
-                
-                print(f"[DFV] Total removido: {registros_removidos} registros duplicados")
-                
-                # Atualizar log para indicar que a remoção de duplicados terminou
-                # Isso ajuda o frontend a saber que passou dessa etapa
-                LogImportacaoDFV.objects.filter(id=log_id).update(
-                    total_processadas=linhas_processadas,  # Manter o valor da coleta
-                    mensagem=f'Remoção de duplicados concluída ({registros_removidos} removidos). Criando registros...'
-                )
-                print(f"[DFV] Remoção de duplicados concluída. Iniciando criação de registros...")
-                
-                # ETAPA 3: Criar novos registros em bulk (fora da transação para permitir atualizações de log)
-                print(f"[DFV] Criando {len(registros_para_criar)} novos registros...")
-                sucesso_count = 0
-                
-                # Criar em lotes para melhor performance
-                batch_size = 1000
-                total_batches = (len(registros_para_criar) + batch_size - 1) // batch_size
-                
-                for i in range(0, len(registros_para_criar), batch_size):
-                    batch_num = (i // batch_size) + 1
-                    batch = registros_para_criar[i:i + batch_size]
-                    try:
-                        # Criar lote em transação separada
-                        with transaction.atomic():
-                            DFV.objects.bulk_create(batch, ignore_conflicts=False)
-                        sucesso_count += len(batch)
-                        print(f"[DFV] Progresso: {sucesso_count}/{len(registros_para_criar)} registros importados com sucesso (lote {batch_num}/{total_batches})")
-                        
-                        # Atualizar log após cada lote (fora da transação para garantir visibilidade)
-                        # IMPORTANTE: Não sobrescrever total_processadas, apenas atualizar sucesso
-                        LogImportacaoDFV.objects.filter(id=log_id).update(
-                            sucesso=sucesso_count
-                        )
-                    except Exception as e:
-                        # Se erro no bulk_create, tentar inserir um por um
-                        print(f"[DFV] Erro no bulk_create (lote {batch_num}/{total_batches}), tentando inserção individual: {e}")
-                        import traceback
-                        traceback.print_exc()
-                        
-                        for obj in batch:
-                            try:
-                                with transaction.atomic():
-                                    obj.save()
-                                sucesso_count += 1
-                            except Exception as e2:
-                                erros_count += 1
-                                if len(erros_detalhados) < 100:  # Limitar a 100 erros detalhados
-                                    erros_detalhados.append(f"Erro ao salvar registro CEP={obj.cep} fachada={obj.num_fachada}: {str(e2)}")
-                        
-                        # Atualizar log após processar o lote (mesmo com erros)
-                        # IMPORTANTE: Não sobrescrever total_processadas, apenas atualizar sucesso
-                        LogImportacaoDFV.objects.filter(id=log_id).update(
-                            sucesso=sucesso_count
-                        )
-                        print(f"[DFV] Lote {batch_num}/{total_batches} processado individualmente. Sucesso: {sucesso_count}, Erros: {erros_count}")
-                
-                # Finalizar log - usar update() para garantir que seja salvo corretamente
-                finalizado_em = timezone.now()
-                
-                # Calcular duração
-                log_atualizado = LogImportacaoDFV.objects.get(id=log_id)
-                if log_atualizado.iniciado_em:
-                    delta = finalizado_em - log_atualizado.iniciado_em
-                    duracao_segundos = int(delta.total_seconds())
-                else:
-                    duracao_segundos = 0
-                
-                # Mensagem de erro (limitar tamanho)
-                mensagem_erro_final = None
-                if erros_detalhados:
-                    mensagem_erro_final = '\n'.join(erros_detalhados[:100])  # Limitar a 100 erros
-                    if len(erros_detalhados) > 100:
-                        mensagem_erro_final += f"\n... e mais {len(erros_detalhados) - 100} erros"
-                
-                # Definir status final e mensagem
-                if erros_count > 0 and sucesso_count == 0:
-                    status_final = 'ERRO'
-                    mensagem_final = None
-                    mensagem_erro_final = (mensagem_erro_final or '') + f'\nNenhum registro foi importado com sucesso.'
-                elif erros_count > 0:
-                    status_final = 'PARCIAL'
-                    mensagem_final = f'Importação concluída parcialmente: {sucesso_count} registros importados com sucesso, {erros_count} erros. {registros_removidos} registros duplicados removidos.'
-                else:
-                    status_final = 'SUCESSO'
-                    mensagem_final = f'Importação concluída com sucesso: {sucesso_count} registros importados. {registros_removidos} registros duplicados removidos e atualizados.'
-                
-                # Atualizar tudo de uma vez usando update()
-                update_data = {
-                    'finalizado_em': finalizado_em,
-                    'duracao_segundos': duracao_segundos,
-                    'sucesso': sucesso_count,
-                    'erros': erros_count,
-                    'status': status_final,
-                }
-                if mensagem_final:
-                    update_data['mensagem'] = mensagem_final
-                if mensagem_erro_final:
-                    update_data['mensagem_erro'] = mensagem_erro_final
-                
-                LogImportacaoDFV.objects.filter(id=log_id).update(**update_data)
-                print(f"[DFV] FINALIZADO processamento log_id={log_id} | status={status_final} | sucesso={sucesso_count} | erros={erros_count} | removidos={registros_removidos}")
-            except Exception as e:
-                print(f"[DFV] ERRO CRÍTICO DFV: {e}")
-                import traceback
-                traceback.print_exc()
-                try:
-                    from django.utils import timezone
-                    LogImportacaoDFV.objects.filter(id=log_id).update(
-                        status='ERRO',
-                        mensagem_erro=f'Erro fatal: {str(e)}',
-                        finalizado_em=timezone.now()
-                    )
-                except Exception as e2:
-                    print(f"[DFV] ERRO ao atualizar log de erro: {e2}")
-        except Exception as e:
-            print(f"[DFV] ERRO NA THREAD DFV: {e}")
-            import traceback
-            traceback.print_exc()
-            try:
-                from .models import LogImportacaoDFV
-                from django.utils import timezone
-                LogImportacaoDFV.objects.filter(id=log_id).update(
-                    status='ERRO',
-                    mensagem_erro=f'Falha interna: {str(e)}',
-                    finalizado_em=timezone.now()
-                )
-            except Exception as e2:
-                print(f"[DFV] ERRO AO ATUALIZAR LOG DE ERRO: {e2}")
+            logger.error(
+                f"[DFV] Erro ao iniciar importação: {e}",
+                exc_info=True
+            )
+            return Response(
+                {'error': f'Erro ao iniciar importação: {str(e)}'}, 
+                status=500
+            )
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
