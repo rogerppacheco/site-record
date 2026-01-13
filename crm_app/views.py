@@ -2886,19 +2886,24 @@ class ImportarDFVView(APIView):
                     raise
                 
                 print(f"[DFV] DataFrame criado, shape: {df.shape}")
+                print(f"[DFV] Substituindo NaN por None...")
                 df = df.replace({np.nan: None})
+                print(f"[DFV] NaN substituído. Normalizando nomes de colunas...")
                 # Normaliza nomes de colunas (remove espaços e maiúsculo)
                 df.columns = [c.strip().upper() for c in df.columns]
                 print(f"[DFV] Colunas normalizadas: {list(df.columns)[:5]}...")
                 
                 total_registros = len(df)
+                print(f"[DFV] Total de registros calculado: {total_registros}")
+                print(f"[DFV] Atualizando log no banco...")
                 # Atualizar log com total de registros IMEDIATAMENTE
                 LogImportacaoDFV.objects.filter(id=log_id).update(
                     total_registros=total_registros,
                     total_processadas=0,
                     sucesso=0
                 )
-                print(f"[DFV] Total de registros no arquivo: {total_registros}")
+                print(f"[DFV] Log atualizado. Total de registros no arquivo: {total_registros}")
+                print(f"[DFV] Iniciando ETAPA 1: Coleta de CEPs e fachadas...")
                 
                 # ETAPA 1: Coletar todos os (CEP, fachada) únicos do arquivo usando operações vetorizadas
                 print(f"[DFV] Coletando CEPs e fachadas do arquivo (otimizado)...")
