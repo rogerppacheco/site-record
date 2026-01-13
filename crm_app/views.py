@@ -2812,28 +2812,55 @@ class ImportarDFVView(APIView):
             from django.db.models import Q
             from io import BytesIO
             from django.contrib.auth import get_user_model
+            import pandas as pd
+            import numpy as np
             
             log = LogImportacaoDFV.objects.get(id=log_id)
             User = get_user_model()
             usuario = User.objects.get(id=user_id)
             inicio = timezone.now()
             
+            # Atualizar status para PROCESSANDO imediatamente
+            LogImportacaoDFV.objects.filter(id=log_id).update(status='PROCESSANDO')
+            print(f"[DFV] Status atualizado para PROCESSANDO - log_id={log_id}")
+            
             try:
+                print(f"[DFV] Tamanho do arquivo em bytes: {len(arquivo_bytes)}")
                 print(f"[DFV] Lendo arquivo e preparando DataFrame para log_id={log_id}")
+                
                 # Criar objeto BytesIO do arquivo
                 arquivo_io = BytesIO(arquivo_bytes)
+                print(f"[DFV] BytesIO criado, iniciando leitura CSV...")
+                
                 # Tenta ler com UTF-8, caso contrário usa Latin-1
                 try:
-                    df = pd.read_csv(arquivo_io, sep=';', dtype=str, encoding='utf-8')
-                except UnicodeDecodeError:
+                    print(f"[DFV] Tentando ler com encoding UTF-8...")
+                    df = pd.read_csv(arquivo_io, sep=';', dtype=str, encoding='utf-8', low_memory=False)
+                    print(f"[DFV] Arquivo lido com sucesso usando UTF-8")
+                except UnicodeDecodeError as e:
+                    print(f"[DFV] Erro UTF-8, tentando Latin-1: {e}")
                     arquivo_io.seek(0)
-                    df = pd.read_csv(arquivo_io, sep=';', dtype=str, encoding='latin-1')
+                    df = pd.read_csv(arquivo_io, sep=';', dtype=str, encoding='latin-1', low_memory=False)
+                    print(f"[DFV] Arquivo lido com sucesso usando Latin-1")
+                except Exception as e:
+                    print(f"[DFV] ERRO ao ler CSV: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    raise
+                
+                print(f"[DFV] DataFrame criado, shape: {df.shape}")
                 df = df.replace({np.nan: None})
                 # Normaliza nomes de colunas (remove espaços e maiúsculo)
                 df.columns = [c.strip().upper() for c in df.columns]
+                print(f"[DFV] Colunas normalizadas: {list(df.columns)[:5]}...")
+                
                 total_registros = len(df)
-                # Atualizar log com total de registros
-                LogImportacaoDFV.objects.filter(id=log_id).update(total_registros=total_registros)
+                # Atualizar log com total de registros IMEDIATAMENTE
+                LogImportacaoDFV.objects.filter(id=log_id).update(
+                    total_registros=total_registros,
+                    total_processadas=0,
+                    sucesso=0
+                )
                 print(f"[DFV] Total de registros no arquivo: {total_registros}")
                 
                 # ETAPA 1: Coletar todos os (CEP, fachada) únicos do arquivo
