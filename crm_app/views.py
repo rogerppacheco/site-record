@@ -3136,13 +3136,24 @@ class ImportarDFVView(APIView):
                     total_lotes = (len(cep_fachada_list) + batch_size_remocao - 1) // batch_size_remocao
                     print(f"[DFV] Processando remoção em {total_lotes} lote(s) de até {batch_size_remocao} pares cada...")
                     
-                    with transaction.atomic():
-                        for i in range(0, len(cep_fachada_list), batch_size_remocao):
-                            lote_num = (i // batch_size_remocao) + 1
-                            batch_cep_fachada = cep_fachada_list[i:i + batch_size_remocao]
-                            
-                            print(f"[DFV] Processando lote {lote_num}/{total_lotes} de remoção de duplicados ({len(batch_cep_fachada)} pares)...")
-                            
+                    # Atualizar log antes de começar a remoção
+                    LogImportacaoDFV.objects.filter(id=log_id).update(
+                        mensagem=f'Removendo duplicados... 0/{total_lotes} lotes'
+                    )
+                    
+                    for i in range(0, len(cep_fachada_list), batch_size_remocao):
+                        lote_num = (i // batch_size_remocao) + 1
+                        batch_cep_fachada = cep_fachada_list[i:i + batch_size_remocao]
+                        
+                        print(f"[DFV] Processando lote {lote_num}/{total_lotes} de remoção de duplicados ({len(batch_cep_fachada)} pares)...")
+                        
+                        # Atualizar progresso no log ANTES de processar o lote (fora da transação para garantir visibilidade)
+                        LogImportacaoDFV.objects.filter(id=log_id).update(
+                            mensagem=f'Removendo duplicados... {lote_num}/{total_lotes} lotes ({registros_removidos} removidos)'
+                        )
+                        
+                        # Processar remoção em transação separada para cada lote
+                        with transaction.atomic():
                             q_objects = Q()
                             for cep, fachada in batch_cep_fachada:
                                 q_objects |= Q(cep=cep, num_fachada=fachada)
@@ -3156,9 +3167,11 @@ class ImportarDFVView(APIView):
                                     print(f"[DFV] Removidos {count_batch} registros duplicados (lote {lote_num}/{total_lotes})")
                                 else:
                                     print(f"[DFV] Nenhum duplicado encontrado no lote {lote_num}/{total_lotes}")
-                            
-                            # Atualizar log a cada lote para mostrar progresso (sem registros_removidos - campo não existe)
-                            # O progresso é mostrado via logs apenas
+                        
+                        # Atualizar log após processar o lote (fora da transação para garantir visibilidade imediata)
+                        LogImportacaoDFV.objects.filter(id=log_id).update(
+                            mensagem=f'Removendo duplicados... {lote_num}/{total_lotes} lotes ({registros_removidos} removidos)'
+                        )
                 else:
                     print(f"[DFV] Banco vazio - pulando remoção de duplicados")
                 
@@ -3167,7 +3180,8 @@ class ImportarDFVView(APIView):
                 # Atualizar log para indicar que a remoção de duplicados terminou
                 # Isso ajuda o frontend a saber que passou dessa etapa
                 LogImportacaoDFV.objects.filter(id=log_id).update(
-                    total_processadas=linhas_processadas  # Manter o valor da coleta
+                    total_processadas=linhas_processadas,  # Manter o valor da coleta
+                    mensagem=f'Remoção de duplicados concluída ({registros_removidos} removidos). Criando registros...'
                 )
                 print(f"[DFV] Remoção de duplicados concluída. Iniciando criação de registros...")
                 
