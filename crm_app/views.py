@@ -2769,16 +2769,29 @@ class ImportarDFVView(APIView):
             from .models import LogImportacaoDFV
             from django.utils import timezone
             import threading
+            import io
             
-            # Criar log de importação
+            # Criar log de importação ANTES de ler o arquivo
             log = LogImportacaoDFV.objects.create(
                 nome_arquivo=file_obj.name,
                 usuario=request.user,
                 status='PROCESSANDO'
             )
             
-            # Ler arquivo em memória para passar para thread
-            arquivo_bytes = file_obj.read()
+            # Ler arquivo em chunks para evitar timeout durante o upload
+            # Isso permite que o Gunicorn processe enquanto o arquivo está sendo recebido
+            arquivo_bytes = b''
+            chunk_size = 1024 * 1024  # 1MB por chunk
+            
+            print(f"[DFV] Iniciando leitura do arquivo {file_obj.name} em chunks...")
+            while True:
+                chunk = file_obj.read(chunk_size)
+                if not chunk:
+                    break
+                arquivo_bytes += chunk
+                print(f"[DFV] Lidos {len(arquivo_bytes) / (1024*1024):.2f} MB do arquivo...")
+            
+            print(f"[DFV] Arquivo completo lido: {len(arquivo_bytes) / (1024*1024):.2f} MB")
             arquivo_nome = file_obj.name
             user_id = request.user.id
             
@@ -2798,6 +2811,8 @@ class ImportarDFVView(APIView):
                 'background': True
             })
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             return Response({
                 'error': f'Erro ao iniciar importação: {str(e)}'
             }, status=500)
