@@ -1,68 +1,3 @@
-<!-- Modal de Reemissão de Venda -->
-        <div class="modal fade" id="modal-reemitir-venda" tabindex="-1">
-            <div class="modal-dialog">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title">Reemitir Venda</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                    </div>
-                    <div class="modal-body">
-                        <form id="form-reemitir-venda">
-                            <input type="hidden" id="reemitir-venda-id">
-                            <div class="mb-3">
-                                <label for="nova-os" class="form-label">Nova O.S.</label>
-                                <input type="text" class="form-control" id="nova-os" required>
-                            </div>
-                            <div class="mb-3">
-                                <label for="nova-data-agendamento" class="form-label">Nova Data de Agendamento</label>
-                                <input type="date" class="form-control" id="nova-data-agendamento" required>
-                            </div>
-                            <div class="mb-3">
-                                <label for="novo-turno" class="form-label">Novo Turno</label>
-                                <select class="form-select" id="novo-turno" required>
-                                    <option value="MANHA">Manhã</option>
-                                    <option value="TARDE">Tarde</option>
-                                </select>
-                            </div>
-                            <button type="submit" class="btn btn-primary w-100">Duplicar Venda</button>
-                        </form>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <script>
-        // Função para abrir o modal de reemissão
-        function abrirModalReemitirVenda(vendaId) {
-            document.getElementById('reemitir-venda-id').value = vendaId;
-            document.getElementById('form-reemitir-venda').reset();
-            new bootstrap.Modal(document.getElementById('modal-reemitir-venda')).show();
-        }
-
-        // Submissão do formulário de reemissão
-        document.addEventListener('DOMContentLoaded', function() {
-            const formReemitir = document.getElementById('form-reemitir-venda');
-            if (formReemitir) {
-                formReemitir.onsubmit = async function(e) {
-                    e.preventDefault();
-                    const id = document.getElementById('reemitir-venda-id').value;
-                    const nova_os = document.getElementById('nova-os').value;
-                    const nova_data = document.getElementById('nova-data-agendamento').value;
-                    const novo_turno = document.getElementById('novo-turno').value;
-                    try {
-                        await axios.post('/api/crm/duplicar-venda/', {
-                            id_venda: id,
-                            nova_os,
-                            nova_data_agendamento: nova_data,
-                            novo_turno: novo_turno
-                        }, {headers: {'Authorization': `Bearer ${token}`}});
-                        location.reload();
-                    } catch (err) {
-                        alert('Erro ao duplicar venda: ' + (err.response?.data?.detail || err.message));
-                    }
-                };
-            }
-        });
-        </script>
 {% load static %}
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -82,7 +17,6 @@
     
     <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
 
     <style>
         input[type="text"]:not(#input-email), textarea { text-transform: uppercase; }
@@ -118,6 +52,23 @@
         .input-loading { background: url('https://i.gifer.com/ZZ5H.gif') no-repeat right 10px center; background-size: 20px; }
 
         @media (max-width: 576px) { .header-controls { flex-direction: column; align-items: flex-start; gap: 10px; } .header-controls button { width: 100%; } }
+        
+        /* Correção para modal não aparecer */
+        #modal-origem-venda {
+            z-index: 1055 !important;
+        }
+        
+        #modal-origem-venda.show {
+            display: block !important;
+        }
+        
+        #modal-origem-venda .modal-dialog {
+            z-index: 1056 !important;
+        }
+        
+        .modal-backdrop {
+            z-index: 1050 !important;
+        }
     </style>
 </head>
 <body>
@@ -163,7 +114,7 @@
                 <div class="mb-3">
                     <ul class="nav nav-pills" id="abas-status">
                         <li class="nav-item"><a class="nav-link active" href="#" onclick="filtrarPorStatus('', this)"><i class="bi bi-collection"></i> Todos <span id="count-todos" class="badge-contador">0</span></a></li>
-                        <li class="nav-item"><a class="nav-link" href="#" onclick="filtrarPorStatus('PENDEN(C|Ç|CIA|CIADA|CIA)?', this)"><i class="bi bi-hourglass-split"></i> Pendentes <span id="count-pendentes" class="badge-contador">0</span></a></li>
+                        <li class="nav-item"><a class="nav-link" href="#" onclick="filtrarPorStatus('PENDENC', this)"><i class="bi bi-hourglass-split"></i> Pendentes <span id="count-pendentes" class="badge-contador">0</span></a></li>
                         <li class="nav-item"><a class="nav-link" href="#" onclick="filtrarPorStatus('AGENDADO', this)"><i class="bi bi-calendar-event"></i> Agendados <span id="count-agendados" class="badge-contador">0</span></a></li>
                         <li class="nav-item"><a class="nav-link" href="#" onclick="filtrarPorStatus('INSTALADA', this)"><i class="bi bi-check-circle-fill"></i> Instalados <span id="count-instalados" class="badge-contador">0</span></a></li>
                         <li class="nav-item"><a class="nav-link" href="#" onclick="filtrarPorStatus('CANCELAD', this)"><i class="bi bi-x-circle-fill"></i> Cancelados <span id="count-cancelados" class="badge-contador">0</span></a></li>
@@ -242,9 +193,9 @@
     </main>
 
     <div class="modal fade" id="modalDetalheDashboard" tabindex="-1"><div class="modal-dialog modal-dialog-centered modal-dialog-scrollable"><div class="modal-content"><div class="modal-header"><h5 class="modal-title fw-bold" id="tituloDetalheDashboard">Detalhes</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body p-0"><div class="list-group list-group-flush" id="listaDetalheDashboard"></div></div></div></div></div>
-    <div class="modal fade" id="modalMix" tabindex="-1"><div class="modal-dialog modal-lg modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title fw-bold"><i class="bi bi-graph-up"></i> Detalhamento de Vendas (Mix)</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="row"><div class="col-md-6 border-end"><h6 class="text-center fw-bold mb-3 text-primary">Mix de Velocidade/Plano</h6><div class="table-responsive"><table class="table table-sm table-striped"><thead class="table-light"><tr><th>Plano</th><th class="text-end">Qtd</th><th class="text-end">%</th></tr></thead><tbody id="tbody-mix-velocidade"></tbody></table></div></div><div class="col-md-6"><h6 class="text-center fw-bold mb-3 text-success">Mix Forma de Pagamento</h6><div class="table-responsive"><table class="table table-sm table-striped"><thead class="table-light"><tr><th>Forma Pagto</th><th class="text-end">Qtd</th><th class="text-end">%</th></tr></thead><tbody id="tbody-mix-pagamento"></tbody></table></div></div></div></div></div></div>
+    <div class="modal fade" id="modalMix" tabindex="-1"><div class="modal-dialog modal-lg modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title fw-bold"><i class="bi bi-graph-up"></i> Detalhamento de Vendas (Mix)</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="row"><div class="col-md-6 border-end"><h6 class="text-center fw-bold mb-3 text-primary">Mix de Velocidade/Plano</h6><div class="table-responsive"><table class="table table-sm table-striped"><thead class="table-light"><tr><th>Plano</th><th class="text-end">Qtd</th><th class="text-end">%</th></tr></thead><tbody id="tbody-mix-velocidade"></tbody></table></div></div><div class="col-md-6"><h6 class="text-center fw-bold mb-3 text-success">Mix Forma de Pagamento</h6><div class="table-responsive"><table class="table table-sm table-striped"><thead class="table-light"><tr><th>Forma Pagto</th><th class="text-end">Qtd</th><th class="text-end">%</th></tr></thead><tbody id="tbody-mix-pagamento"></tbody></table></div></div></div></div></div></div></div>
 
-    <div class="modal fade" id="modal-origem-venda" tabindex="-1">
+    <div class="modal fade" id="modal-origem-venda" tabindex="-1" style="z-index: 1055;">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content border-0 bg-transparent">
                 <div class="modal-body p-0">
@@ -282,6 +233,28 @@
                 <div class="modal-header bg-warning text-dark"><h5 class="modal-title fw-bold"><i class="bi bi-exclamation-triangle-fill"></i> Atenção: Cliente Recorrente</h5><button type="button" class="btn-close" onclick="fecharModalAviso()"></button></div>
                 <div class="modal-body"><div class="alert alert-light border text-center mb-3"><h4 class="fw-bold text-warning" id="aviso-qtd-vendas" style="font-size: 2.5rem;">0</h4><span class="text-muted text-uppercase small fw-bold">Vendas Ativas Encontradas</span></div><p class="text-center mb-3">O cliente <strong id="aviso-nome-cliente"></strong> já possui histórico em nossa base.</p><div class="alert alert-danger" role="alert"><div class="d-flex align-items-center mb-2"><i class="bi bi-shield-lock-fill fs-3 me-3"></i><div><strong>Aviso de Segurança:</strong><br>Esta venda passará por uma <u>auditoria mais apurada</u> devido à duplicidade de CPF/CNPJ.</div></div><hr><p class="mb-0 fw-bold text-center small text-uppercase"><i class="bi bi-exclamation-circle"></i> Essa venda poderá gerar uma recompra ou uma venda indevida!</p></div><p class="small text-muted text-center mt-3">Deseja continuar com este CPF ou informar um novo?</p></div>
                 <div class="modal-footer justify-content-center"><button type="button" class="btn btn-outline-secondary px-4" onclick="fecharModalAviso()">Informar Outro CPF</button><button type="button" class="btn btn-warning px-4 fw-bold" onclick="confirmarClienteExistente()">Sim, Continuar Venda</button></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modal-reemissao" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog">
+            <div class="modal-content border-warning">
+                <div class="modal-header bg-warning text-dark"><h5 class="modal-title"><i class="bi bi-arrow-repeat"></i> Reemissão de Venda</h5><button type="button" class="btn-close btn-close-white" onclick="cancelarReemissao()"></button></div>
+                <div class="modal-body">
+                    <div class="alert alert-warning small">
+                        Ao confirmar, a venda será marcada como <strong>Reemissão</strong>, o status será alterado para <strong>AGENDADO</strong> e aparecerá na esteira.
+                    </div>
+                    <form id="form-reemissao">
+                        <div class="mb-3"><label class="form-label fw-bold">Número da O.S. *</label><input type="text" class="form-control" id="reemissao-os" required><div id="reemissao-os-feedback" class="invalid-feedback">O.S. já existe!</div></div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3"><label class="form-label fw-bold">Data Agendada *</label><input type="date" class="form-control" id="reemissao-data" required></div>
+                            <div class="col-md-6 mb-3"><label class="form-label fw-bold">Turno *</label><select class="form-select" id="reemissao-turno" required><option value="">Selecione...</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select></div>
+                        </div>
+                        <div class="mb-3"><label class="form-label">Observação</label><textarea class="form-control" id="reemissao-observacao" rows="2" oninput="this.value = this.value.toUpperCase()" placeholder="Digite a observação..."></textarea></div>
+                    </form>
+                </div>
+                <div class="modal-footer"><button type="button" class="btn btn-secondary" onclick="cancelarReemissao()">Cancelar</button><button type="button" class="btn btn-warning" onclick="salvarReemissao()">Confirmar Reemissão</button></div>
             </div>
         </div>
     </div>
@@ -397,7 +370,8 @@
         const token = localStorage.getItem('accessToken');
         if(!token) window.location.href = '/';
 
-        let modalOrigem, modalNovaVenda, modalAviso, modalDetalhe, modalMix, modalCep;
+        let modalOrigem, modalNovaVenda, modalAviso, modalDetalhe, modalMix, modalCep, modalReemissao;
+        let vendaReemissaoId = null;
         let clienteTemp = null, debounceTimer, debounceRepTimer, viewAtual = 'minhas_vendas', userProfile = null;
         let dadosMixCache = null;
         let dashboardDataCache = {}; 
@@ -405,12 +379,25 @@
         let origemCadastroAtual = ''; 
 
         document.addEventListener('DOMContentLoaded', async () => {
-            modalOrigem = new bootstrap.Modal(document.getElementById('modal-origem-venda'));
+            const modalOrigemEl = document.getElementById('modal-origem-venda');
+            if (modalOrigemEl) {
+                modalOrigem = new bootstrap.Modal(modalOrigemEl);
+                
+                // Event listeners para limpar backdrop quando o modal for fechado
+                modalOrigemEl.addEventListener('hidden.bs.modal', function () {
+                    document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+                    document.body.classList.remove('modal-open');
+                    document.body.style.paddingRight = '';
+                    document.body.style.overflow = '';
+                });
+            }
+            
             modalNovaVenda = new bootstrap.Modal(document.getElementById('modal-nova-venda'));
             modalAviso = new bootstrap.Modal(document.getElementById('modal-aviso-cliente'));
             modalDetalhe = new bootstrap.Modal(document.getElementById('modalDetalheDashboard'));
             modalMix = new bootstrap.Modal(document.getElementById('modalMix'));
             modalCep = new bootstrap.Modal(document.getElementById('modal-cep-nao-encontrado'));
+            modalReemissao = new bootstrap.Modal(document.getElementById('modal-reemissao'));
             
             const hoje = new Date();
             document.getElementById('filtro-inicio').valueAsDate = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
@@ -778,8 +765,8 @@
                     }
 
                     // --- 3. REGRA DE NEGÓCIO DA AUDITORIA (CORRIGIDA) ---
-                    const stTratUpper = statusTratamentoNome.toUpperCase();
-                    const estadoTratUpper = statusTratamentoEstado.toUpperCase();
+                    const stTratUpper = String(statusTratamentoNome).toUpperCase();
+                    const estadoTratUpper = String(statusTratamentoEstado).toUpperCase();
 
                     if (statusNome === 'Aguardando') {
                         // REGRA MESTRA: Se o tratamento está FECHADO (Duplicidade, Cancelado, Reprovado Final), a esteira morre.
@@ -847,18 +834,20 @@
                         agendamentoDisplay = `<span>${parts[2]}/${parts[1]}</span> <span class="badge bg-light text-dark border ms-1">${turno}</span>`;
                     }
 
-
-                    let botoes = `
+                    // Verificar se é cancelada ou pendênciada (para mostrar botão de reemissão)
+                    const isCancelada = stEsteiraUpper.includes('CANCELAD') || stTratUpper.includes('CANCELAD');
+                    const isPendenciada = stEsteiraUpper.includes('PENDEN') || stEsteiraUpper.includes('PENDÊN') || stTratUpper.includes('PENDENTE');
+                    
+                    // Botão de reemissão só aparece para canceladas ou pendênciadas
+                    const btnReemissao = (isCancelada || isPendenciada) ? 
+                        `<button onclick="abrirModalReemissao(${v.id})" class="btn btn-sm btn-outline-warning me-1" title="Reemissão"><i class="bi bi-arrow-repeat"></i></button>` : '';
+                    
+                    const botoes = `
+                        ${btnReemissao}
                         <button onclick="reenviarWhatsApp(${v.id})" class="btn btn-sm btn-outline-success me-1" title="Reenviar Aprovação"><i class="bi bi-whatsapp"></i></button>
                         <button onclick="editarVenda(${v.id})" class="btn btn-sm btn-editar me-1" title="Editar"><i class="bi bi-pencil"></i></button>
                         <button onclick="excluirVenda(${v.id})" class="btn btn-sm btn-excluir" title="Excluir"><i class="bi bi-trash"></i></button>
                     `;
-
-                    // Adiciona botão de reemissão para status PENDENCIADA ou CANCELADA
-                    const statusEsteiraStr = String(statusNome).toUpperCase();
-                    if (statusEsteiraStr.includes('PENDENCIADA') || statusEsteiraStr.includes('CANCELADA')) {
-                        botoes = `<button onclick="abrirModalReemitirVenda(${v.id})" class="btn btn-sm btn-warning me-1" title="Reemitir"><i class="bi bi-files"></i></button>` + botoes;
-                    }
 
                     return [
                         `<span class="ps-3 fw-bold">#${v.id}</span>`,
@@ -946,24 +935,85 @@
         }
 
         function abrirModalOrigem() {
-            document.getElementById('form-nova-venda').reset();
-            document.getElementById('id-venda-edicao').value = '';
-            document.getElementById('titulo-modal-venda').innerHTML = 'Registrar Venda';
-            document.getElementById('feedback-whatsapp').innerHTML = ''; 
-            document.getElementById('input-telefone').classList.remove('is-valid', 'is-invalid'); 
-            document.getElementById('btn-salvar-venda').disabled = false; 
-            document.getElementById('container-status-esteira').classList.add('d-none'); 
-            document.getElementById('container-vendedor-modal').classList.add('d-none'); 
-            document.getElementById('container-status-gestao').classList.add('d-none'); 
+            console.log('[DEBUG] abrirModalOrigem chamado');
+            
+            // Limpar qualquer backdrop preso
+            document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+            document.body.classList.remove('modal-open');
+            document.body.style.paddingRight = '';
+            document.body.style.overflow = '';
+            
+            // Resetar formulário
+            const formNovaVenda = document.getElementById('form-nova-venda');
+            if (formNovaVenda) formNovaVenda.reset();
+            
+            const idVendaEdicao = document.getElementById('id-venda-edicao');
+            if (idVendaEdicao) idVendaEdicao.value = '';
+            
+            const tituloModal = document.getElementById('titulo-modal-venda');
+            if (tituloModal) tituloModal.innerHTML = 'Registrar Venda';
+            
+            const feedbackWhatsapp = document.getElementById('feedback-whatsapp');
+            if (feedbackWhatsapp) feedbackWhatsapp.innerHTML = '';
+            
+            const inputTelefone = document.getElementById('input-telefone');
+            if (inputTelefone) inputTelefone.classList.remove('is-valid', 'is-invalid');
+            
+            const btnSalvar = document.getElementById('btn-salvar-venda');
+            if (btnSalvar) btnSalvar.disabled = false;
+            
+            const containerEsteira = document.getElementById('container-status-esteira');
+            if (containerEsteira) containerEsteira.classList.add('d-none');
+            
+            const containerVendedor = document.getElementById('container-vendedor-modal');
+            if (containerVendedor) containerVendedor.classList.add('d-none');
+            
+            const containerGestao = document.getElementById('container-status-gestao');
+            if (containerGestao) containerGestao.classList.add('d-none');
             
             ['input-nome', 'input-email', 'input-telefone', 'input-telefone2', 'input-nome-mae', 'input-data-nascimento'].forEach(id => {
                 const el = document.getElementById(id);
                 if(el) { el.readOnly = false; el.value = ''; }
             });
+            
             const areaRep = document.getElementById('area-representante');
             if(areaRep) areaRep.style.display = 'none';
             
-            modalOrigem.show();
+            // Verificar se o modal existe e está inicializado
+            const modalElement = document.getElementById('modal-origem-venda');
+            if (!modalElement) {
+                console.error('[ERRO] Modal modal-origem-venda não encontrado no DOM');
+                alert('Erro: Modal não encontrado. Recarregue a página.');
+                return;
+            }
+            
+            // Verificar se modalOrigem foi inicializado
+            if (!modalOrigem) {
+                console.warn('[AVISO] modalOrigem não inicializado, tentando criar agora...');
+                try {
+                    modalOrigem = new bootstrap.Modal(modalElement);
+                } catch (e) {
+                    console.error('[ERRO] Não foi possível criar instância do modal:', e);
+                    alert('Erro ao abrir modal. Recarregue a página.');
+                    return;
+                }
+            }
+            
+            console.log('[DEBUG] Tentando abrir modal...');
+            try {
+                modalOrigem.show();
+                console.log('[DEBUG] modalOrigem.show() executado');
+            } catch (e) {
+                console.error('[ERRO] Erro ao abrir modal:', e);
+                // Fallback: tentar abrir manualmente
+                modalElement.classList.add('show');
+                modalElement.style.display = 'block';
+                document.body.classList.add('modal-open');
+                const backdrop = document.createElement('div');
+                backdrop.className = 'modal-backdrop fade show';
+                backdrop.style.zIndex = '1050';
+                document.body.appendChild(backdrop);
+            }
         }
 
         function selecionarOrigem(tipo) {
@@ -1327,12 +1377,15 @@
                 const areaStatus = document.getElementById('container-status-esteira');
                 const areaVendedor = document.getElementById('container-vendedor-modal');
                 const areaTrat = document.getElementById('container-status-gestao');
+                
                 if(['Admin', 'Diretoria', 'BackOffice'].includes(userProfile)) {
                     areaStatus.classList.remove('d-none');
                     areaVendedor.classList.remove('d-none'); 
                     areaTrat.classList.remove('d-none');
                 } else {
-                    areaStatus.classList.add('d-none'); areaVendedor.classList.add('d-none'); areaTrat.classList.add('d-none');
+                    areaStatus.classList.add('d-none'); 
+                    areaVendedor.classList.add('d-none'); 
+                    areaTrat.classList.add('d-none');
                 }
 
                 // Adiciona debug simples nos selects
@@ -1376,6 +1429,14 @@
             const method = idEdicao ? 'PUT' : 'POST';
             const url = idEdicao ? `/crm/vendas/${idEdicao}/` : '/crm/vendas/';
             
+            // CORREÇÃO: Converter checkbox de reemissão para boolean
+            const checkboxReemissao = document.getElementById('checkbox-reemissao');
+            if (checkboxReemissao) {
+                data.reemissao = checkboxReemissao.checked;
+            } else {
+                data.reemissao = false;
+            }
+            
             if (origemCadastroAtual === 'SEM_APP') {
                 if(!data.plano || !data.forma_pagamento || !data.cep || !data.logradouro) {
                     alert("Por favor, preencha todos os campos obrigatórios.");
@@ -1406,6 +1467,67 @@
         }
 
         async function excluirVenda(id) { if(!confirm('Tem certeza?')) return; try { await apiFetch(`/crm/vendas/${id}/`, { method: 'DELETE' }); carregarVendas(); } catch(e) { alert('Erro ao excluir.'); } }
+        
+        // Funções para Reemissão
+        async function abrirModalReemissao(id) {
+            vendaReemissaoId = id;
+            document.getElementById('form-reemissao').reset();
+            document.getElementById('reemissao-os-feedback').textContent = '';
+            document.getElementById('reemissao-os').classList.remove('is-invalid');
+            modalReemissao.show();
+        }
+        
+        function cancelarReemissao() {
+            modalReemissao.hide();
+            vendaReemissaoId = null;
+        }
+        
+        async function salvarReemissao() {
+            const os = document.getElementById('reemissao-os').value.trim();
+            const data = document.getElementById('reemissao-data').value;
+            const turno = document.getElementById('reemissao-turno').value;
+            const observacao = document.getElementById('reemissao-observacao').value || '';
+            
+            if (!os || !data || !turno) {
+                alert("Preencha todos os campos obrigatórios.");
+                return;
+            }
+            
+            // Validar O.S. única
+            try {
+                const res = await apiFetch(`/crm/vendas/?ordem_servico=${os}`);
+                const lista = Array.isArray(res) ? res : (res.results || []);
+                if (lista.some(v => v.id !== vendaReemissaoId)) {
+                    document.getElementById('reemissao-os').classList.add('is-invalid');
+                    document.getElementById('reemissao-os-feedback').textContent = 'O.S. já existe!';
+                    return;
+                }
+            } catch (e) {
+                alert("Erro ao validar O.S.");
+                return;
+            }
+            
+            try {
+                // Duplicar venda (criar nova venda)
+                const resultado = await apiFetch('/crm/duplicar-venda/', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        id_venda: vendaReemissaoId,
+                        nova_os: os,
+                        nova_data_agendamento: data,
+                        novo_turno: turno,
+                        nova_observacao: observacao
+                    })
+                });
+                
+                modalReemissao.hide();
+                aplicarFiltros();
+                alert('Reemissão criada com sucesso! Uma nova venda foi criada com status AGENDADO e aparecerá na esteira.');
+            } catch (error) {
+                alert('Erro ao criar reemissão: ' + (error.detail || error.message || error));
+            }
+        }
+        
         function logout() { localStorage.removeItem('accessToken'); window.location.href = '/'; }
         
         function validarTelefonesDiferentes() {

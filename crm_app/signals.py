@@ -1,6 +1,6 @@
 from django.db.models.signals import pre_save, post_save
 from django.dispatch import receiver
-from .models import Venda, ContratoM10
+from .models import Venda, ContratoM10, StatusCRM
 from .whatsapp_service import WhatsAppService
 import logging
 
@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 def verificar_mudanca_status(sender, instance, **kwargs):
     """
     Antes de salvar, captura o status atual do banco de dados para comparar depois.
+    E também define status_esteira como AGENDADO quando reemissão é marcada.
     """
     if instance.pk:
         try:
@@ -17,6 +18,15 @@ def verificar_mudanca_status(sender, instance, **kwargs):
             # Armazena temporariamente na instância em memória
             instance._old_status_tratamento = old_instance.status_tratamento
             instance._old_status_esteira = old_instance.status_esteira
+            instance._old_reemissao = old_instance.reemissao
+            
+            # Se reemissão foi marcada como True, definir status_esteira como AGENDADO
+            if instance.reemissao and not old_instance.reemissao:
+                try:
+                    st_agendado = StatusCRM.objects.get(nome__iexact="AGENDADO", tipo__iexact="Esteira")
+                    instance.status_esteira = st_agendado
+                except StatusCRM.DoesNotExist:
+                    pass
         except Venda.DoesNotExist:
             pass
 

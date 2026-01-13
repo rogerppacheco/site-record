@@ -41,4 +41,5 @@ urlpatterns = [
 
     # --- Rotas da API ---
     path('api/', include(router.urls)),
+    path('api/', include('crm_app.urls')),
 ]

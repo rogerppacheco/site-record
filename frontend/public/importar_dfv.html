@@ -292,9 +292,65 @@
                     
                     let html = '';
                     data.logs.forEach(log => {
-                        const statusBadge = getBadgeStatus(log.status);
+                        // Para status PROCESSANDO, mostrar progresso de salvamento no banco (sucesso)
+                        let statusBadge = getBadgeStatus(log.status);
                         const dataFormatada = log.iniciado_em || '-';
                         const duracao = log.duracao_segundos ? `${log.duracao_segundos}s` : '-';
+                        let registrosDisplay = log.total_registros || 0;
+                        
+                        // Se está processando, mostrar progresso de salvamento no banco no status
+                        if (log.status === 'PROCESSANDO' && log.total_registros > 0) {
+                            const salvos = log.sucesso || 0;
+                            const processadas = log.total_processadas || 0;
+                            const percent = Math.round((salvos / log.total_registros) * 100);
+                            
+                            // Se processadas = total mas sucesso ainda é 0, está na fase de remoção de duplicados ou início da criação
+                            if (processadas >= log.total_registros && salvos === 0) {
+                                // Verificar se já passou muito tempo (mais de 2 minutos) desde o início
+                                // Se sim, provavelmente travou ou está demorando muito na remoção
+                                const agora = new Date();
+                                const iniciado = new Date(log.iniciado_em);
+                                const minutosDecorridos = (agora - iniciado) / (1000 * 60);
+                                
+                                if (minutosDecorridos > 2) {
+                                    statusBadge = `<span class="badge bg-warning"><i class="bi bi-exclamation-triangle"></i> Removendo duplicados... (${Math.round(minutosDecorridos)}min)</span>`;
+                                } else {
+                                    statusBadge = `<span class="badge bg-warning"><i class="bi bi-hourglass-split"></i> Removendo duplicados...</span>`;
+                                }
+                            } 
+                            // Se sucesso > 0, está criando registros no banco
+                            else if (salvos > 0) {
+                                statusBadge = `<span class="badge bg-info"><i class="bi bi-hourglass-split"></i> Processando: ${salvos}/${log.total_registros} (${percent}%)</span>`;
+                            }
+                            // Se sucesso = total, tudo foi salvo (aguardando finalização)
+                            else if (salvos >= log.total_registros) {
+                                statusBadge = `<span class="badge bg-success"><i class="bi bi-check-circle"></i> Finalizando: ${salvos}/${log.total_registros} (100%)</span>`;
+                            }
+                        }
+                        
+                        // Coluna SUCESSO: mostrar total_processadas (processados sem erros)
+                        let sucessoDisplay = log.sucesso || 0;
+                        if (log.status === 'PROCESSANDO' && log.total_registros > 0) {
+                            // Mostrar total_processadas (o que foi processado até agora)
+                            const processadas = log.total_processadas || 0;
+                            const percentProcessadas = processadas > 0 ? Math.round((processadas / log.total_registros) * 100) : 0;
+                            
+                            if (processadas > 0) {
+                                sucessoDisplay = `${processadas} / ${log.total_registros} (${percentProcessadas}%)`;
+                            } else {
+                                sucessoDisplay = `${log.sucesso || 0} / ${log.total_registros} (0%)`;
+                            }
+                        } else if (log.status !== 'PROCESSANDO') {
+                            // Se não está processando, mostrar sucesso final
+                            const sucessoFinal = log.sucesso || 0;
+                            const totalFinal = log.total_registros || 0;
+                            if (totalFinal > 0) {
+                                const percentFinal = Math.round((sucessoFinal / totalFinal) * 100);
+                                sucessoDisplay = `${sucessoFinal} / ${totalFinal} (${percentFinal}%)`;
+                            } else {
+                                sucessoDisplay = sucessoFinal;
+                            }
+                        }
                         
                         html += `
                             <tr>
@@ -302,8 +358,8 @@
                                 <td>${statusBadge}</td>
                                 <td>${dataFormatada}</td>
                                 <td>${duracao}</td>
-                                <td>${log.total_registros || 0}</td>
-                                <td><span class="badge bg-success">${log.sucesso || 0}</span></td>
+                                <td>${registrosDisplay}</td>
+                                <td><span class="badge bg-success">${sucessoDisplay}</span></td>
                                 <td><span class="badge bg-danger">${log.erros || 0}</span></td>
                                 <td>${log.usuario_nome || 'Sistema'}</td>
                             </tr>

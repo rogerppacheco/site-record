@@ -14,13 +14,13 @@ def api_verificar_email(request, email=None):
 @permission_classes([permissions.IsAuthenticated])
 def api_verificar_whatsapp(request, telefone=None):
     return Response({"status": "ok", "telefone": telefone})
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.views import APIView
 from rest_framework import status
 
 # --- RESTAURAÇÃO: WebhookWhatsAppView ---
 class WebhookWhatsAppView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]  # Permite acesso sem autenticação para webhooks
 
     def post(self, request, *args, **kwargs):
         """
@@ -30,15 +30,14 @@ class WebhookWhatsAppView(APIView):
         - Fatura
         - Status
         """
+        from crm_app.whatsapp_webhook_handler import processar_webhook_whatsapp
+        
         data = request.data
-        # Reutiliza a lógica do webhook já existente
-        # (Se necessário, mova a lógica do webhook para um método separado e chame aqui)
         try:
-            # --- Coloque aqui a lógica do webhook WhatsApp já existente ---
-            # Exemplo: processar_whatsapp_webhook(data)
-            # Por enquanto, apenas retorna sucesso para evitar erro de importação
-            return Response({'status': 'ok', 'mensagem': 'Webhook WhatsApp recebido.'})
+            resultado = processar_webhook_whatsapp(data)
+            return Response(resultado, status=200 if resultado.get('status') == 'ok' else 500)
         except Exception as e:
+            logger.exception(f"[WebhookWhatsAppView] Erro: {e}")
             return Response({'status': 'erro', 'mensagem': str(e)}, status=500)
 # Endpoint para duplicar venda (Reemissão)
 from rest_framework.decorators import api_view, permission_classes
@@ -49,34 +48,88 @@ from .models import Venda
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def duplicar_venda(request):
+    """
+    Duplica uma venda (reemissão).
+    Cria uma NOVA venda com TODOS os dados iguais (incluindo data_criacao), exceto:
+    - data_abertura (OS): atual (timezone.now())
+    - ordem_servico: nova OS informada
+    - data_agendamento: nova data informada
+    - periodo_agendamento: novo turno informado
+    - status_esteira: AGENDADO
+    - reemissao: True
+    - observacoes: copiada da venda original (não muda)
+    """
     id_venda = request.data.get('id_venda')
-    nova_os = request.data.get('nova_os')
-    nova_data = request.data.get('nova_data_agendamento')
-    novo_turno = request.data.get('novo_turno')
+    nova_os = request.data.get('nova_os') or request.data.get('ordem_servico')
+    nova_data = request.data.get('nova_data_agendamento') or request.data.get('data_agendamento')
+    novo_turno = request.data.get('novo_turno') or request.data.get('periodo_agendamento')
+    # observacoes não é usado - copia da venda original
+    
     if not (id_venda and nova_os and nova_data and novo_turno):
-        return Response({'detail': 'Dados obrigatórios faltando.'}, status=400)
+        return Response({'detail': 'Dados obrigatórios faltando: id_venda, ordem_servico, data_agendamento, periodo_agendamento.'}, status=400)
+    
     try:
         from django.utils import timezone
         from crm_app.whatsapp_service import WhatsAppService
-        venda = Venda.objects.get(id=id_venda)
-        venda.pk = None  # Duplicar
-        venda.ordem_servico = nova_os
-        venda.data_abertura = timezone.now()  # Atualiza data de abertura para agora
-        venda.data_agendamento = nova_data
-        venda.periodo_agendamento = novo_turno
-        venda.reemissao = True
-        venda.status_esteira = None  # ou status inicial desejado
-        venda.save()
+        from .models import StatusCRM
+        
+        venda_original = Venda.objects.get(id=id_venda)
+        
+        # Duplicar venda (criar nova)
+        # Método correto: copiar a instância usando pk=None diretamente da instância
+        venda_nova = Venda()
+        
+        # Copiar TODOS os campos da venda original (incluindo data_criacao)
+        # ForeignKeys e relacionamentos são copiados como objetos (não IDs)
+        data_criacao_original = venda_original.data_criacao  # Preservar data_criacao
+        
+        for field in venda_original._meta.get_fields():
+            if field.auto_created or field.name in ['id', 'pk']:
+                continue
+            if hasattr(venda_original, field.name):
+                value = getattr(venda_original, field.name)
+                setattr(venda_nova, field.name, value)
+        
+        # APENAS estes campos mudam (vêm do formulário):
+        venda_nova.ordem_servico = nova_os
+        venda_nova.data_abertura = timezone.now()  # Data de abertura da OS = agora
+        venda_nova.data_agendamento = nova_data
+        venda_nova.periodo_agendamento = novo_turno
+        # observacoes: copiada da venda original (não usar nova_observacao)
+        
+        # Marcar como reemissão
+        venda_nova.reemissao = True
+        
+        # Status esteira = AGENDADO
+        try:
+            status_agendado = StatusCRM.objects.get(nome__iexact="AGENDADO", tipo__iexact="Esteira")
+            venda_nova.status_esteira = status_agendado
+        except StatusCRM.DoesNotExist:
+            return Response({'detail': 'Status AGENDADO (Esteira) não encontrado.'}, status=400)
+        
+        # Salvar nova venda primeiro (para gerar o ID)
+        venda_nova.save()
+        
+        # Preservar data_criacao da venda original (usar update para evitar auto_now_add)
+        if data_criacao_original:
+            Venda.objects.filter(id=venda_nova.id).update(data_criacao=data_criacao_original)
+            venda_nova.data_criacao = data_criacao_original  # Atualizar em memória também
 
         # Enviar WhatsApp para o vendedor
-        if venda.vendedor and venda.telefone1:
-            ws = WhatsAppService()
-            ws.enviar_mensagem_cadastrada(venda)
+        if venda_nova.vendedor and venda_nova.telefone1:
+            try:
+                ws = WhatsAppService()
+                ws.enviar_mensagem_cadastrada(venda_nova)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Erro ao enviar WhatsApp para reemissão: {e}")
 
-        return Response({'success': True, 'nova_venda_id': venda.id})
+        return Response({'success': True, 'nova_venda_id': venda_nova.id, 'message': 'Reemissão criada com sucesso!'})
     except Venda.DoesNotExist:
         return Response({'detail': 'Venda não encontrada.'}, status=404)
     except Exception as e:
+        import logging
+        logging.getLogger(__name__).exception(f"Erro ao duplicar venda: {e}")
         return Response({'detail': str(e)}, status=500)
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -2742,14 +2795,18 @@ class ImportarDFVView(APIView):
         """Processa DFV em background thread"""
         print(f"[DFV] INICIANDO processamento log_id={log_id}")
         try:
-            from .models import LogImportacaoDFV
+            from .models import LogImportacaoDFV, DFV
             from django.utils import timezone
             from django.db import transaction
+            from django.db.models import Q
             from io import BytesIO
+            from django.contrib.auth import get_user_model
+            
             log = LogImportacaoDFV.objects.get(id=log_id)
             User = get_user_model()
             usuario = User.objects.get(id=user_id)
             inicio = timezone.now()
+            
             try:
                 print(f"[DFV] Lendo arquivo e preparando DataFrame para log_id={log_id}")
                 # Criar objeto BytesIO do arquivo
@@ -2764,69 +2821,190 @@ class ImportarDFVView(APIView):
                 # Normaliza nomes de colunas (remove espaços e maiúsculo)
                 df.columns = [c.strip().upper() for c in df.columns]
                 total_registros = len(df)
-                log.total_registros = total_registros
-                log.save(update_fields=['total_registros'])
+                # Atualizar log com total de registros
+                LogImportacaoDFV.objects.filter(id=log_id).update(total_registros=total_registros)
                 print(f"[DFV] Total de registros no arquivo: {total_registros}")
+                
+                # ETAPA 1: Coletar todos os (CEP, fachada) únicos do arquivo
+                print(f"[DFV] Coletando CEPs e fachadas do arquivo...")
+                cep_fachada_set = set()
+                registros_para_criar = []
                 erros_count = 0
-                sucesso_count = 0
-                valor_total = 0
-                from .models import DFV
-                erro_critico = False
-                erro_critico_msg = ''
-                with transaction.atomic():
-                    for idx, row in df.iterrows():
-                        try:
-                            cep_raw = str(row.get('CEP', '')).strip()
-                            cep_limpo = "".join(filter(str.isdigit, cep_raw))
-                            fachada_raw = str(row.get('NUM_FACHADA', '')).strip()
-                            defaults = {
-                                'uf': row.get('UF'),
-                                'municipio': row.get('MUNICIPIO'),
-                                'logradouro': row.get('LOGRADOURO'),
-                                'complemento': row.get('COMPLEMENTO'),
-                                'bairro': row.get('BAIRRO'),
-                                'tipo_viabilidade': row.get('TIPO_VIABILIDADE'),
-                                'tipo_rede': row.get('TIPO_REDE'),
-                                'celula': row.get('CELULA'),
-                                'nome_cdo': row.get('NOME_CDO')
-                            }
-                            obj, created = DFV.objects.update_or_create(
-                                cep=cep_limpo,
-                                num_fachada=fachada_raw,
-                                defaults=defaults
-                            )
-                            sucesso_count += 1
-                        except Exception as e:
+                erros_detalhados = []
+                linhas_processadas = 0
+                
+                for idx, row in df.iterrows():
+                    try:
+                        cep_raw = str(row.get('CEP', '')).strip()
+                        cep_limpo = "".join(filter(str.isdigit, cep_raw))
+                        fachada_raw = str(row.get('NUM_FACHADA', '')).strip()
+                        
+                        # Validar CEP e fachada
+                        if not cep_limpo or not fachada_raw:
                             erros_count += 1
-                            # Log detalhado do erro
-                            msg_erro = f"Linha {idx+1}: {str(e)}"
-                            print(f"[DFV] ERRO registro {idx+1}: {e}")
-                            if hasattr(log, 'mensagem_erro'):
-                                log.mensagem_erro = (log.mensagem_erro or '') + f"\n{msg_erro}"
-                            else:
-                                log.mensagem_erro = msg_erro
-                            log.save(update_fields=['mensagem_erro'])
-                            # Se erro crítico, parar processamento
-                            if erros_count >= 10:
-                                erro_critico = True
-                                erro_critico_msg = f"Processo interrompido: mais de 10 erros consecutivos. Último erro: {msg_erro}"
-                                print(f"[DFV] ERRO CRÍTICO atingido para log_id={log_id}")
-                                break
-                        # Atualiza progresso a cada 10 registros
-                        if (idx + 1) % 10 == 0 or (idx + 1) == total_registros:
-                            log.total_processadas = idx + 1
-                            log.save(update_fields=['total_processadas'])
-                            print(f"[DFV] Progresso: {idx+1}/{total_registros} para log_id={log_id}")
-                if erro_critico:
-                    log.status = 'ERRO'
-                    log.mensagem_erro = (log.mensagem_erro or '') + f"\n{erro_critico_msg}"
+                            erros_detalhados.append(f"Linha {idx+1}: CEP ou fachada vazios")
+                            continue
+                        
+                        # Adicionar ao conjunto de CEPs+fachadas
+                        cep_fachada_set.add((cep_limpo, fachada_raw))
+                        
+                        # Preparar objeto DFV para criação
+                        obj = DFV(
+                            cep=cep_limpo,
+                            num_fachada=fachada_raw,
+                            uf=row.get('UF'),
+                            municipio=row.get('MUNICIPIO'),
+                            logradouro=row.get('LOGRADOURO'),
+                            complemento=row.get('COMPLEMENTO'),
+                            bairro=row.get('BAIRRO'),
+                            tipo_viabilidade=row.get('TIPO_VIABILIDADE'),
+                            tipo_rede=row.get('TIPO_REDE'),
+                            celula=row.get('CELULA'),
+                            nome_cdo=row.get('NOME_CDO')
+                        )
+                        registros_para_criar.append(obj)
+                        linhas_processadas += 1
+                        
+                        # Atualizar progresso a cada 10000 linhas processadas na coleta
+                        if linhas_processadas % 10000 == 0:
+                            LogImportacaoDFV.objects.filter(id=log_id).update(
+                                total_processadas=linhas_processadas
+                            )
+                            print(f"[DFV] Progresso na coleta: {linhas_processadas}/{total_registros} linhas processadas")
+                    except Exception as e:
+                        erros_count += 1
+                        msg_erro = f"Linha {idx+1}: {str(e)}"
+                        erros_detalhados.append(msg_erro)
+                        print(f"[DFV] ERRO ao processar linha {idx+1}: {e}")
+                
+                # Atualizar log após terminar a coleta
+                LogImportacaoDFV.objects.filter(id=log_id).update(
+                    total_processadas=linhas_processadas
+                )
+                print(f"[DFV] Coletados {len(cep_fachada_set)} registros únicos (CEP+fachada)")
+                
+                # ETAPA 2: Remover registros existentes com os mesmos (CEP, fachada)
+                print(f"[DFV] Verificando e removendo registros duplicados do banco...")
+                registros_removidos = 0
+                
+                # Verificar rapidamente se há registros no banco antes de construir query gigante
+                total_no_banco = DFV.objects.count()
+                print(f"[DFV] Total de registros no banco antes da remoção: {total_no_banco}")
+                
+                if total_no_banco > 0:
+                    # Remover duplicados em lotes para melhor performance
+                    # Dividir em lotes de 10000 para não criar query OR gigante
+                    cep_fachada_list = list(cep_fachada_set)
+                    batch_size_remocao = 10000
+                    
+                    with transaction.atomic():
+                        for i in range(0, len(cep_fachada_list), batch_size_remocao):
+                            batch_cep_fachada = cep_fachada_list[i:i + batch_size_remocao]
+                            q_objects = Q()
+                            for cep, fachada in batch_cep_fachada:
+                                q_objects |= Q(cep=cep, num_fachada=fachada)
+                            
+                            if q_objects:
+                                count_batch = DFV.objects.filter(q_objects).count()
+                                if count_batch > 0:
+                                    DFV.objects.filter(q_objects).delete()
+                                    registros_removidos += count_batch
+                                    print(f"[DFV] Removidos {count_batch} registros duplicados (lote {i//batch_size_remocao + 1})")
                 else:
-                    log.status = 'SUCESSO'
-                log.total_processadas = sucesso_count
-                log.sucesso = sucesso_count
-                log.erros = erros_count
-                log.total_valor_importado = valor_total
-                print(f"[DFV] FINALIZADO processamento log_id={log_id} | status={log.status}")
+                    print(f"[DFV] Banco vazio - pulando remoção de duplicados")
+                
+                print(f"[DFV] Total removido: {registros_removidos} registros duplicados")
+                
+                # Atualizar log para indicar que a remoção de duplicados terminou
+                # Isso ajuda o frontend a saber que passou dessa etapa
+                LogImportacaoDFV.objects.filter(id=log_id).update(
+                    total_processadas=linhas_processadas  # Manter o valor da coleta
+                )
+                print(f"[DFV] Remoção de duplicados concluída. Iniciando criação de registros...")
+                
+                # ETAPA 3: Criar novos registros em bulk (fora da transação para permitir atualizações de log)
+                print(f"[DFV] Criando {len(registros_para_criar)} novos registros...")
+                sucesso_count = 0
+                
+                # Criar em lotes para melhor performance
+                batch_size = 1000
+                for i in range(0, len(registros_para_criar), batch_size):
+                    batch = registros_para_criar[i:i + batch_size]
+                    try:
+                        # Criar lote em transação separada
+                        with transaction.atomic():
+                            DFV.objects.bulk_create(batch, ignore_conflicts=False)
+                        sucesso_count += len(batch)
+                        print(f"[DFV] Progresso: {sucesso_count}/{len(registros_para_criar)} registros importados com sucesso")
+                        
+                        # Atualizar log após cada lote (fora da transação para garantir visibilidade)
+                        # IMPORTANTE: Não sobrescrever total_processadas, apenas atualizar sucesso
+                        LogImportacaoDFV.objects.filter(id=log_id).update(
+                            sucesso=sucesso_count
+                        )
+                    except Exception as e:
+                        # Se erro no bulk_create, tentar inserir um por um
+                        print(f"[DFV] Erro no bulk_create, tentando inserção individual: {e}")
+                        for obj in batch:
+                            try:
+                                with transaction.atomic():
+                                    obj.save()
+                                sucesso_count += 1
+                            except Exception as e2:
+                                erros_count += 1
+                                erros_detalhados.append(f"Erro ao salvar registro CEP={obj.cep} fachada={obj.num_fachada}: {str(e2)}")
+                        
+                        # Atualizar log após processar o lote (mesmo com erros)
+                        # IMPORTANTE: Não sobrescrever total_processadas, apenas atualizar sucesso
+                        LogImportacaoDFV.objects.filter(id=log_id).update(
+                            sucesso=sucesso_count
+                        )
+                
+                # Finalizar log - usar update() para garantir que seja salvo corretamente
+                finalizado_em = timezone.now()
+                
+                # Calcular duração
+                log_atualizado = LogImportacaoDFV.objects.get(id=log_id)
+                if log_atualizado.iniciado_em:
+                    delta = finalizado_em - log_atualizado.iniciado_em
+                    duracao_segundos = int(delta.total_seconds())
+                else:
+                    duracao_segundos = 0
+                
+                # Mensagem de erro (limitar tamanho)
+                mensagem_erro_final = None
+                if erros_detalhados:
+                    mensagem_erro_final = '\n'.join(erros_detalhados[:100])  # Limitar a 100 erros
+                    if len(erros_detalhados) > 100:
+                        mensagem_erro_final += f"\n... e mais {len(erros_detalhados) - 100} erros"
+                
+                # Definir status final e mensagem
+                if erros_count > 0 and sucesso_count == 0:
+                    status_final = 'ERRO'
+                    mensagem_final = None
+                    mensagem_erro_final = (mensagem_erro_final or '') + f'\nNenhum registro foi importado com sucesso.'
+                elif erros_count > 0:
+                    status_final = 'PARCIAL'
+                    mensagem_final = f'Importação concluída parcialmente: {sucesso_count} registros importados com sucesso, {erros_count} erros. {registros_removidos} registros duplicados removidos.'
+                else:
+                    status_final = 'SUCESSO'
+                    mensagem_final = f'Importação concluída com sucesso: {sucesso_count} registros importados. {registros_removidos} registros duplicados removidos e atualizados.'
+                
+                # Atualizar tudo de uma vez usando update()
+                update_data = {
+                    'finalizado_em': finalizado_em,
+                    'duracao_segundos': duracao_segundos,
+                    'sucesso': sucesso_count,
+                    'erros': erros_count,
+                    'status': status_final,
+                }
+                if mensagem_final:
+                    update_data['mensagem'] = mensagem_final
+                if mensagem_erro_final:
+                    update_data['mensagem_erro'] = mensagem_erro_final
+                
+                LogImportacaoDFV.objects.filter(id=log_id).update(**update_data)
+                print(f"[DFV] FINALIZADO processamento log_id={log_id} | status={status_final} | sucesso={sucesso_count} | erros={erros_count} | removidos={registros_removidos}")
             except Exception as e:
                 print(f"ERRO CRÍTICO DFV: {e}")
                 log.status = 'ERRO'
