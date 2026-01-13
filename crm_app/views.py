@@ -3177,14 +3177,17 @@ class ImportarDFVView(APIView):
                 
                 # Criar em lotes para melhor performance
                 batch_size = 1000
+                total_batches = (len(registros_para_criar) + batch_size - 1) // batch_size
+                
                 for i in range(0, len(registros_para_criar), batch_size):
+                    batch_num = (i // batch_size) + 1
                     batch = registros_para_criar[i:i + batch_size]
                     try:
                         # Criar lote em transação separada
                         with transaction.atomic():
                             DFV.objects.bulk_create(batch, ignore_conflicts=False)
                         sucesso_count += len(batch)
-                        print(f"[DFV] Progresso: {sucesso_count}/{len(registros_para_criar)} registros importados com sucesso")
+                        print(f"[DFV] Progresso: {sucesso_count}/{len(registros_para_criar)} registros importados com sucesso (lote {batch_num}/{total_batches})")
                         
                         # Atualizar log após cada lote (fora da transação para garantir visibilidade)
                         # IMPORTANTE: Não sobrescrever total_processadas, apenas atualizar sucesso
@@ -3193,7 +3196,10 @@ class ImportarDFVView(APIView):
                         )
                     except Exception as e:
                         # Se erro no bulk_create, tentar inserir um por um
-                        print(f"[DFV] Erro no bulk_create, tentando inserção individual: {e}")
+                        print(f"[DFV] Erro no bulk_create (lote {batch_num}/{total_batches}), tentando inserção individual: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        
                         for obj in batch:
                             try:
                                 with transaction.atomic():
@@ -3201,13 +3207,15 @@ class ImportarDFVView(APIView):
                                 sucesso_count += 1
                             except Exception as e2:
                                 erros_count += 1
-                                erros_detalhados.append(f"Erro ao salvar registro CEP={obj.cep} fachada={obj.num_fachada}: {str(e2)}")
+                                if len(erros_detalhados) < 100:  # Limitar a 100 erros detalhados
+                                    erros_detalhados.append(f"Erro ao salvar registro CEP={obj.cep} fachada={obj.num_fachada}: {str(e2)}")
                         
                         # Atualizar log após processar o lote (mesmo com erros)
                         # IMPORTANTE: Não sobrescrever total_processadas, apenas atualizar sucesso
                         LogImportacaoDFV.objects.filter(id=log_id).update(
                             sucesso=sucesso_count
                         )
+                        print(f"[DFV] Lote {batch_num}/{total_batches} processado individualmente. Sucesso: {sucesso_count}, Erros: {erros_count}")
                 
                 # Finalizar log - usar update() para garantir que seja salvo corretamente
                 finalizado_em = timezone.now()
