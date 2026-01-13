@@ -30,14 +30,22 @@ class WebhookWhatsAppView(APIView):
         - Fatura
         - Status
         """
+        import logging
+        logger_webhook = logging.getLogger(__name__)
+        
         from crm_app.whatsapp_webhook_handler import processar_webhook_whatsapp
         
         data = request.data
+        logger_webhook.info(f"[WebhookWhatsAppView] Recebido POST com dados: {data}")
+        
         try:
             resultado = processar_webhook_whatsapp(data)
+            logger_webhook.info(f"[WebhookWhatsAppView] Resultado do processamento: {resultado}")
             return Response(resultado, status=200 if resultado.get('status') == 'ok' else 500)
         except Exception as e:
-            logger.exception(f"[WebhookWhatsAppView] Erro: {e}")
+            import logging
+            logger_webhook = logging.getLogger(__name__)
+            logger_webhook.exception(f"[WebhookWhatsAppView] Erro: {e}")
             return Response({'status': 'erro', 'mensagem': str(e)}, status=500)
 # Endpoint para duplicar venda (Reemissão)
 from rest_framework.decorators import api_view, permission_classes
