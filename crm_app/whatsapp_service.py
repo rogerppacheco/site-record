@@ -54,9 +54,10 @@ class WhatsAppService:
         Resolve o erro 'object has no attribute _send_request'.
         """
         # LOG DETALHADO PARA DEBUG
-        logger.warning(f"[Z-API DEBUG] URL: {url}")
-        # logger.warning(f"[Z-API DEBUG] Instance ID: [{self.instance_id}]") # Ocultado para segurança nos logs
-        # logger.warning(f"[Z-API DEBUG] Headers: {self._get_headers()}")
+        logger.info(f"[Z-API] Método: {method}, URL: {url}")
+        logger.info(f"[Z-API] Headers: {self._get_headers()}")
+        if payload:
+            logger.info(f"[Z-API] Payload: {payload}")
 
         try:
             if method == 'GET':
@@ -64,20 +65,30 @@ class WhatsAppService:
             else:
                 response = requests.post(url, json=payload, headers=self._get_headers(), timeout=30)
             
+            logger.info(f"[Z-API] Status Code: {response.status_code}")
+            logger.info(f"[Z-API] Response Text: {response.text[:500]}...")
+            
             if response.status_code not in [200, 201]:
-                logger.error(f"Z-API Erro {response.status_code}: {response.text}")
+                logger.error(f"[Z-API] Erro {response.status_code}: {response.text}")
                 return None
             
             try:
-                return response.json()
+                json_response = response.json()
+                logger.info(f"[Z-API] JSON Response: {json_response}")
+                return json_response
             except ValueError:
+                logger.warning(f"[Z-API] Resposta não é JSON, retornando texto: {response.text[:200]}")
                 return response.text
 
         except requests.exceptions.RequestException as e:
-            logger.error(f"Z-API Connection Error: {e}")
+            logger.error(f"[Z-API] Connection Error: {e}")
+            import traceback
+            traceback.print_exc()
             return None
         except Exception as e:
-            logger.error(f"Z-API Generic Error: {e}")
+            logger.error(f"[Z-API] Generic Error: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
     def _formatar_telefone(self, telefone):
@@ -115,15 +126,24 @@ class WhatsAppService:
         url = f"{self.base_url}/send-text"
         telefone_limpo = self._formatar_telefone(telefone)
 
+        logger.info(f"[WhatsAppService] Enviando mensagem para {telefone_limpo}")
+        logger.info(f"[WhatsAppService] URL: {url}")
+        logger.info(f"[WhatsAppService] Mensagem (primeiros 100 chars): {mensagem[:100]}...")
+
         payload = {
             "phone": telefone_limpo,
             "message": mensagem
         }
 
+        logger.info(f"[WhatsAppService] Payload: phone={telefone_limpo}, message_length={len(mensagem)}")
+
         resp = self._send_request(url, payload)
         if resp:
+            logger.info(f"[WhatsAppService] Resposta recebida: {resp}")
             return True, resp
-        return False, "Erro ao enviar"
+        else:
+            logger.error(f"[WhatsAppService] Erro: resposta vazia ou None")
+            return False, "Erro ao enviar - resposta vazia"
 
     # ---------------------------------------------------------
     # 3. ENVIAR IMAGEM (BASE64)

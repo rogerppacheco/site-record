@@ -297,13 +297,26 @@ def processar_webhook_whatsapp(data):
         # Enviar resposta via WhatsApp
         if resposta:
             try:
+                logger.info(f"[Webhook] Preparando para enviar resposta para {telefone_formatado}")
+                logger.info(f"[Webhook] Resposta a ser enviada: {resposta[:100]}...")
+                
                 # Dividir mensagem se muito longa (limite WhatsApp ~4096 caracteres)
                 mensagens = [resposta[i:i+4000] for i in range(0, len(resposta), 4000)]
-                for msg in mensagens:
-                    whatsapp_service.enviar_mensagem_texto(telefone_formatado, msg)
+                logger.info(f"[Webhook] Dividindo em {len(mensagens)} mensagem(ns)")
+                
+                for idx, msg in enumerate(mensagens):
+                    logger.info(f"[Webhook] Enviando mensagem {idx+1}/{len(mensagens)} para {telefone_formatado}")
+                    sucesso, resultado = whatsapp_service.enviar_mensagem_texto(telefone_formatado, msg)
+                    if sucesso:
+                        logger.info(f"[Webhook] Mensagem {idx+1} enviada com sucesso: {resultado}")
+                    else:
+                        logger.error(f"[Webhook] Erro ao enviar mensagem {idx+1}: {resultado}")
+                
                 logger.info(f"[Webhook] Resposta enviada para {telefone_formatado}")
             except Exception as e:
                 logger.error(f"[Webhook] Erro ao enviar resposta: {e}")
+                import traceback
+                traceback.print_exc()
                 return {'status': 'erro', 'mensagem': f'Erro ao enviar resposta: {str(e)}'}
         
         return {'status': 'ok', 'mensagem': 'Processado com sucesso'}
