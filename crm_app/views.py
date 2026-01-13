@@ -19,16 +19,19 @@ from rest_framework.views import APIView
 from rest_framework import status
 
 # --- RESTAURAÇÃO: WebhookWhatsAppView ---
+# URL de produção: https://www.recordpap.com.br/api/crm/webhook-whatsapp/
+# URL alternativa: https://site-record-production.up.railway.app/api/crm/webhook-whatsapp/
+# Configurar no Z-API: Método POST, Eventos: Mensagens recebidas
 class WebhookWhatsAppView(APIView):
     permission_classes = [AllowAny]  # Permite acesso sem autenticação para webhooks
 
     def post(self, request, *args, **kwargs):
         """
         Endpoint para receber eventos do WhatsApp e processar fluxos:
-        - Fachada
-        - Viabilidade
-        - Fatura
-        - Status
+        - Fachada: Consulta fachadas por CEP (DFV)
+        - Viabilidade: Consulta viabilidade por CEP e número (KMZ)
+        - Fatura: Consulta fatura por CPF (Nio API)
+        - Status: Consulta status de venda por CPF ou OS
         """
         import logging
         logger_webhook = logging.getLogger(__name__)
