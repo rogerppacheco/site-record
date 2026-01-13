@@ -4845,7 +4845,15 @@ class CdoiListView(APIView):
             queryset = CdoiSolicitacao.objects.filter(criado_por=user).order_by('-data_criacao')
 
         data = []
-        for item in queryset:
+        for item in queryset.select_related('criado_por'):
+            # Monta nome do criador
+            criado_por_nome = '-'
+            if item.criado_por:
+                if item.criado_por.first_name or item.criado_por.last_name:
+                    criado_por_nome = f"{item.criado_por.first_name or ''} {item.criado_por.last_name or ''}".strip()
+                else:
+                    criado_por_nome = item.criado_por.username or '-'
+            
             data.append({
                 'id': item.id,
                 'nome': item.nome_condominio,
@@ -4862,7 +4870,9 @@ class CdoiListView(APIView):
                 'observacao': item.observacao or "",
                 'data': item.data_criacao.strftime('%d/%m/%Y'),
                 'link_fotos_fachada': item.link_fotos_fachada or "",
-                'can_edit': eh_gestao # Flag para o frontend saber se libera edição
+                'can_edit': eh_gestao, # Flag para o frontend saber se libera edição
+                'criado_por_id': item.criado_por.id if item.criado_por else None,
+                'criado_por_nome': criado_por_nome
             })
         
         return Response(data)
@@ -4888,6 +4898,14 @@ class CdoiUpdateView(APIView):
                 for b in cdoi.blocos.all()
             ]
 
+            # Monta nome do criador
+            criado_por_nome = '-'
+            if cdoi.criado_por:
+                if cdoi.criado_por.first_name or cdoi.criado_por.last_name:
+                    criado_por_nome = f"{cdoi.criado_por.first_name or ''} {cdoi.criado_por.last_name or ''}".strip()
+                else:
+                    criado_por_nome = cdoi.criado_por.username or '-'
+            
             data = {
                 'id': cdoi.id,
                 'nome_condominio': cdoi.nome_condominio,
@@ -4900,6 +4918,8 @@ class CdoiUpdateView(APIView):
                 'latitude': cdoi.latitude or '',
                 'longitude': cdoi.longitude or '',
                 'blocos': blocos,
+                'criado_por_id': cdoi.criado_por.id if cdoi.criado_por else None,
+                'criado_por_nome': criado_por_nome,
             }
             return Response(data)
         except CdoiSolicitacao.DoesNotExist:
@@ -4941,6 +4961,15 @@ class CdoiUpdateView(APIView):
                 cdoi.latitude = data.get('latitude')
             if data.get('longitude'):
                 cdoi.longitude = data.get('longitude')
+            
+            # Permite alterar quem acionou (criado_por)
+            if 'criado_por_id' in data and data.get('criado_por_id'):
+                try:
+                    from usuarios.models import Usuario
+                    novo_criador = Usuario.objects.get(id=data.get('criado_por_id'))
+                    cdoi.criado_por = novo_criador
+                except Usuario.DoesNotExist:
+                    pass  # Ignora se usuário não existir
 
             # Atualiza blocos apenas se fornecido
             blocos_json = data.get('dados_blocos_json') or data.get('input_blocos_json')
