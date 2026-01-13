@@ -2833,19 +2833,43 @@ class ImportarDFVView(APIView):
                 print(f"[DFV] BytesIO criado, iniciando leitura CSV...")
                 
                 # Tenta ler com UTF-8, caso contrário usa Latin-1
+                # Para arquivos grandes, usar chunksize pode ajudar, mas vamos tentar ler tudo de uma vez primeiro
                 try:
                     print(f"[DFV] Tentando ler com encoding UTF-8...")
-                    df = pd.read_csv(arquivo_io, sep=';', dtype=str, encoding='utf-8', low_memory=False)
+                    # Usar engine='python' para arquivos grandes pode ser mais estável
+                    df = pd.read_csv(
+                        arquivo_io, 
+                        sep=';', 
+                        dtype=str, 
+                        encoding='utf-8', 
+                        low_memory=False,
+                        engine='python',
+                        on_bad_lines='skip'  # Pular linhas com problemas
+                    )
                     print(f"[DFV] Arquivo lido com sucesso usando UTF-8")
                 except UnicodeDecodeError as e:
                     print(f"[DFV] Erro UTF-8, tentando Latin-1: {e}")
                     arquivo_io.seek(0)
-                    df = pd.read_csv(arquivo_io, sep=';', dtype=str, encoding='latin-1', low_memory=False)
+                    df = pd.read_csv(
+                        arquivo_io, 
+                        sep=';', 
+                        dtype=str, 
+                        encoding='latin-1', 
+                        low_memory=False,
+                        engine='python',
+                        on_bad_lines='skip'
+                    )
                     print(f"[DFV] Arquivo lido com sucesso usando Latin-1")
                 except Exception as e:
                     print(f"[DFV] ERRO ao ler CSV: {e}")
                     import traceback
                     traceback.print_exc()
+                    # Atualizar log com erro antes de levantar exceção
+                    LogImportacaoDFV.objects.filter(id=log_id).update(
+                        status='ERRO',
+                        mensagem_erro=f'Erro ao ler arquivo CSV: {str(e)}',
+                        finalizado_em=timezone.now()
+                    )
                     raise
                 
                 print(f"[DFV] DataFrame criado, shape: {df.shape}")
