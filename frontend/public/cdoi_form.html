@@ -739,8 +739,13 @@
         const formData = new FormData(form);
         const dataJson = Object.fromEntries(formData.entries());
         
+        // Converte criado_por_id para inteiro se existir
+        if (dataJson.criado_por_id) {
+            dataJson.criado_por_id = parseInt(dataJson.criado_por_id);
+        }
+        
         const url = isEdit ? `/api/crm/cdoi/editar/${id}/` : '/api/crm/cdoi/novo/';
-        const method = isEdit ? 'PUT' : 'POST';
+        const method = isEdit ? 'PATCH' : 'POST'; // Usa PATCH para edição conforme a view
         const headers = {'Authorization': `Bearer ${localStorage.getItem('accessToken')}`};
         if(isEdit) headers['Content-Type'] = 'application/json';
 
