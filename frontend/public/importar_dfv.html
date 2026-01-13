@@ -329,6 +329,19 @@
                         console.log(`[DFV] Log ${log.id} (${log.nome_arquivo}): ${fase}`);
                         if (log.mensagem) {
                             console.log(`[DFV]   Mensagem: ${log.mensagem}`);
+                        } else {
+                            console.log(`[DFV]   Mensagem: (não disponível)`);
+                        }
+                        // Log completo para debug (apenas quando está na fase de remoção)
+                        if (processadas >= total && salvos === 0) {
+                            console.log(`[DFV]   Debug completo:`, {
+                                id: log.id,
+                                mensagem: log.mensagem || '(null)',
+                                sucesso: log.sucesso,
+                                processadas: log.total_processadas,
+                                total: log.total_registros,
+                                status: log.status
+                            });
                         }
                     });
                 }
