@@ -174,6 +174,9 @@ urlpatterns = [
     # --- Mapas e ZAP ---
     path('importar-kml/', ImportarKMLView.as_view(), name='importar-kml'),
     path('importar-dfv/', ImportarDFVView.as_view(), name='importar-dfv'),
+    # Webhook WhatsApp - URL para configurar no Z-API:
+    # Produção: https://www.recordpap.com.br/api/crm/webhook-whatsapp/
+    # Alternativa: https://site-record-production.up.railway.app/api/crm/webhook-whatsapp/
     path('webhook-whatsapp/', WebhookWhatsAppView.as_view(), name='webhook-whatsapp'),
     
     # Validação WhatsApp (Duas rotas para compatibilidade)
