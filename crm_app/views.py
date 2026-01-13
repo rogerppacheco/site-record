@@ -9,11 +9,80 @@ from rest_framework.response import Response
 def api_verificar_email(request, email=None):
     return Response({"status": "ok", "email": email})
 
-# Endpoint de teste (whatsapp)
+# Endpoint de validação WhatsApp
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def api_verificar_whatsapp(request, telefone=None):
-    return Response({"status": "ok", "telefone": telefone})
+    """
+    Valida se um número possui WhatsApp ativo via Z-API.
+    Aceita telefone como parâmetro de URL ou query string.
+    """
+    # Pega telefone da URL ou query string
+    if not telefone:
+        telefone = request.GET.get('numero') or request.GET.get('telefone')
+    
+    if not telefone:
+        return Response({
+            "exists": False,
+            "whatsapp_valido": False,
+            "possui_whatsapp": False,
+            "erro": "Número não informado"
+        }, status=400)
+    
+    # Limpa o telefone (remove caracteres não numéricos)
+    import re
+    telefone_limpo = re.sub(r'\D', '', str(telefone))
+    
+    if len(telefone_limpo) < 10:
+        return Response({
+            "exists": False,
+            "whatsapp_valido": False,
+            "possui_whatsapp": False,
+            "erro": "Número inválido (mínimo 10 dígitos)"
+        }, status=400)
+    
+    try:
+        from crm_app.whatsapp_service import WhatsAppService
+        
+        service = WhatsAppService()
+        
+        # Verifica se a API está configurada
+        if not service.instance_id or not service.token:
+            return Response({
+                "exists": True,  # Retorna True para não bloquear o cadastro
+                "whatsapp_valido": True,
+                "possui_whatsapp": True,
+                "aviso": "API WhatsApp não configurada. Validação ignorada."
+            }, status=200)
+        
+        # Formata telefone para a API (adiciona 55 se necessário)
+        if len(telefone_limpo) <= 11:
+            telefone_api = f"55{telefone_limpo}"
+        else:
+            telefone_api = telefone_limpo
+        
+        # Verifica se o número existe no WhatsApp
+        existe = service.verificar_numero_existe(telefone_api)
+        
+        return Response({
+            "exists": existe,
+            "whatsapp_valido": existe,
+            "possui_whatsapp": existe,
+            "telefone": telefone_limpo
+        }, status=200)
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.exception(f"Erro ao verificar WhatsApp: {e}")
+        
+        # Retorna True com aviso para não bloquear o cadastro em caso de erro
+        return Response({
+            "exists": True,
+            "whatsapp_valido": True,
+            "possui_whatsapp": True,
+            "aviso": f"Erro ao verificar WhatsApp: {str(e)}. Validação ignorada."
+        }, status=200)
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.views import APIView
 from rest_framework import status
