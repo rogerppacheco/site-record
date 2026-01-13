@@ -2919,14 +2919,42 @@ class ImportarDFVView(APIView):
                     raise ValueError("Coluna 'NUM_FACHADA' não encontrada no arquivo")
                 
                 print(f"[DFV] Preenchendo valores NaN...")
-                # Preencher valores NaN com string vazia
-                df['CEP'] = df['CEP'].fillna('').astype(str)
-                df['NUM_FACHADA'] = df['NUM_FACHADA'].fillna('').astype(str)
+                # Preencher valores NaN com string vazia (mais rápido usando fillna direto)
+                if 'CEP' in df.columns:
+                    df['CEP'] = df['CEP'].fillna('').astype(str)
+                else:
+                    print(f"[DFV] AVISO: Coluna CEP não encontrada!")
+                    raise ValueError("Coluna 'CEP' não encontrada no arquivo")
                 
-                print(f"[DFV] Limpando CEPs (vetorizado)...")
+                if 'NUM_FACHADA' in df.columns:
+                    df['NUM_FACHADA'] = df['NUM_FACHADA'].fillna('').astype(str)
+                else:
+                    print(f"[DFV] AVISO: Coluna NUM_FACHADA não encontrada!")
+                    raise ValueError("Coluna 'NUM_FACHADA' não encontrada no arquivo")
+                
+                print(f"[DFV] Limpando CEPs (vetorizado) - processando {len(df)} registros...")
                 # Limpar CEP: remover tudo que não é dígito (vetorizado)
-                df['cep_limpo'] = df['CEP'].str.replace(r'[^\d]', '', regex=True)
-                df['fachada_limpa'] = df['NUM_FACHADA'].str.strip()
+                # Usar apply com função lambda pode ser mais rápido que regex para grandes volumes
+                import re
+                def limpar_cep(cep_str):
+                    if not cep_str:
+                        return ''
+                    return ''.join(filter(str.isdigit, str(cep_str)))
+                
+                # Processar em chunks para não travar
+                chunk_size_limpeza = 100000
+                df['cep_limpo'] = ''
+                df['fachada_limpa'] = ''
+                
+                total_chunks_limpeza = (len(df) + chunk_size_limpeza - 1) // chunk_size_limpeza
+                for i in range(0, len(df), chunk_size_limpeza):
+                    chunk_num = (i // chunk_size_limpeza) + 1
+                    end_idx = min(i + chunk_size_limpeza, len(df))
+                    print(f"[DFV] Limpando CEPs chunk {chunk_num}/{total_chunks_limpeza} ({i} a {end_idx})...")
+                    df.loc[df.index[i:end_idx], 'cep_limpo'] = df.loc[df.index[i:end_idx], 'CEP'].apply(limpar_cep)
+                    df.loc[df.index[i:end_idx], 'fachada_limpa'] = df.loc[df.index[i:end_idx], 'NUM_FACHADA'].str.strip()
+                
+                print(f"[DFV] CEPs limpos! Total processado: {len(df)}")
                 
                 print(f"[DFV] Filtrando linhas válidas...")
                 # Filtrar linhas válidas (CEP e fachada não vazios)
