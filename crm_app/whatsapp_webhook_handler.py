@@ -123,9 +123,13 @@ def processar_webhook_whatsapp(data):
         
         # === COMANDOS INICIAIS ===
         logger.info(f"[Webhook] Verificando comando. Mensagem limpa: '{mensagem_limpa}'")
+        logger.info(f"[Webhook] Mensagem original: '{mensagem_texto}'")
         logger.info(f"[Webhook] Etapa atual: {etapa_atual}")
         
-        if mensagem_limpa in ['FACHADA', 'FACADA']:
+        # Verificação mais flexível - aceita comandos com ou sem acentuação, maiúsculas/minúsculas
+        mensagem_sem_acentos = mensagem_limpa.replace('Á', 'A').replace('É', 'E').replace('Í', 'I').replace('Ó', 'O').replace('Ú', 'U')
+        
+        if 'FACHADA' in mensagem_limpa or 'FACADA' in mensagem_limpa:
             logger.info(f"[Webhook] Comando FACHADA reconhecido!")
             sessao.etapa = 'fachada_cep'
             sessao.dados_temp = {}
@@ -133,11 +137,13 @@ def processar_webhook_whatsapp(data):
             resposta = "🏢 *CONSULTA MASSIVA (DFV)*\n\nEu vou listar todos os números viáveis de uma rua.\nPor favor, digite o CEP (somente números):"
             logger.info(f"[Webhook] Resposta preparada para FACHADA: {resposta[:50]}...")
         
-        elif mensagem_limpa in ['VIABILIDADE', 'VIABIL']:
+        elif 'VIABILIDADE' in mensagem_limpa or 'VIABIL' in mensagem_limpa:
+            logger.info(f"[Webhook] Comando VIABILIDADE reconhecido!")
             sessao.etapa = 'viabilidade_cep'
             sessao.dados_temp = {}
             sessao.save()
             resposta = "🗺️ *CONSULTA VIABILIDADE (KMZ)*\n\nIdentifiquei que você quer consultar a mancha.\nPor favor, digite o CEP:"
+            logger.info(f"[Webhook] Resposta preparada para VIABILIDADE: {resposta[:50]}...")
         
         elif mensagem_limpa in ['STATUS', 'STAT']:
             sessao.etapa = 'status_tipo'
