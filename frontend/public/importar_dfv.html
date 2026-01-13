@@ -292,7 +292,44 @@
                 const logsProcessando = data.logs?.filter(l => l.status === 'PROCESSANDO') || [];
                 if (logsProcessando.length > 0) {
                     logsProcessando.forEach(log => {
-                        console.log(`[DFV] Log ${log.id}: sucesso=${log.sucesso}, processadas=${log.total_processadas}, total=${log.total_registros}`);
+                        const salvos = log.sucesso || 0;
+                        const processadas = log.total_processadas || 0;
+                        const total = log.total_registros || 0;
+                        
+                        // Detectar fase atual
+                        let fase = 'Desconhecida';
+                        if (processadas === 0 && salvos === 0) {
+                            fase = 'Iniciando...';
+                        } else if (processadas < total && salvos === 0) {
+                            const percent = Math.round((processadas / total) * 100);
+                            fase = `Preparando objetos: ${processadas}/${total} (${percent}%)`;
+                        } else if (processadas >= total && salvos === 0) {
+                            // Fase de remoção de duplicados
+                            if (log.mensagem && log.mensagem.includes('Removendo duplicados')) {
+                                const match = log.mensagem.match(/Removendo duplicados\.\.\.\s*(\d+)\/(\d+)\s*lotes\s*\((\d+)\s*removidos\)/);
+                                if (match) {
+                                    const loteAtual = match[1];
+                                    const totalLotes = match[2];
+                                    const removidos = match[3];
+                                    const percentLotes = Math.round((parseInt(loteAtual) / parseInt(totalLotes)) * 100);
+                                    fase = `Removendo duplicados: Lote ${loteAtual}/${totalLotes} (${percentLotes}%) - ${removidos} removidos até agora`;
+                                } else {
+                                    fase = `Removendo duplicados: ${log.mensagem}`;
+                                }
+                            } else {
+                                fase = 'Removendo duplicados... (aguardando progresso)';
+                            }
+                        } else if (salvos > 0 && salvos < total) {
+                            const percent = Math.round((salvos / total) * 100);
+                            fase = `Criando registros: ${salvos}/${total} (${percent}%)`;
+                        } else if (salvos >= total) {
+                            fase = `Finalizando: ${salvos}/${total} (100%)`;
+                        }
+                        
+                        console.log(`[DFV] Log ${log.id} (${log.nome_arquivo}): ${fase}`);
+                        if (log.mensagem) {
+                            console.log(`[DFV]   Mensagem: ${log.mensagem}`);
+                        }
                     });
                 }
                 
@@ -320,16 +357,30 @@
                             
                             // Se processadas = total mas sucesso ainda é 0, está na fase de remoção de duplicados ou início da criação
                             if (processadas >= log.total_registros && salvos === 0) {
-                                // Verificar se já passou muito tempo (mais de 2 minutos) desde o início
-                                // Se sim, provavelmente travou ou está demorando muito na remoção
-                                const agora = new Date();
-                                const iniciado = new Date(log.iniciado_em);
-                                const minutosDecorridos = (agora - iniciado) / (1000 * 60);
-                                
-                                if (minutosDecorridos > 2) {
-                                    statusBadge = `<span class="badge bg-warning"><i class="bi bi-exclamation-triangle"></i> Removendo duplicados... (${Math.round(minutosDecorridos)}min)</span>`;
+                                // Verificar se há mensagem de progresso da remoção de duplicados
+                                if (log.mensagem && log.mensagem.includes('Removendo duplicados')) {
+                                    // Extrair informações da mensagem (ex: "Removendo duplicados... 3/10 lotes (150 removidos)")
+                                    const match = log.mensagem.match(/Removendo duplicados\.\.\.\s*(\d+)\/(\d+)\s*lotes/);
+                                    if (match) {
+                                        const loteAtual = match[1];
+                                        const totalLotes = match[2];
+                                        const percentLotes = Math.round((parseInt(loteAtual) / parseInt(totalLotes)) * 100);
+                                        statusBadge = `<span class="badge bg-warning"><i class="bi bi-hourglass-split"></i> Removendo duplicados: ${loteAtual}/${totalLotes} lotes (${percentLotes}%)</span>`;
+                                    } else {
+                                        statusBadge = `<span class="badge bg-warning"><i class="bi bi-hourglass-split"></i> ${log.mensagem}</span>`;
+                                    }
                                 } else {
-                                    statusBadge = `<span class="badge bg-warning"><i class="bi bi-hourglass-split"></i> Removendo duplicados...</span>`;
+                                    // Verificar se já passou muito tempo (mais de 2 minutos) desde o início
+                                    // Se sim, provavelmente travou ou está demorando muito na remoção
+                                    const agora = new Date();
+                                    const iniciado = new Date(log.iniciado_em);
+                                    const minutosDecorridos = (agora - iniciado) / (1000 * 60);
+                                    
+                                    if (minutosDecorridos > 2) {
+                                        statusBadge = `<span class="badge bg-warning"><i class="bi bi-exclamation-triangle"></i> Removendo duplicados... (${Math.round(minutosDecorridos)}min)</span>`;
+                                    } else {
+                                        statusBadge = `<span class="badge bg-warning"><i class="bi bi-hourglass-split"></i> Removendo duplicados...</span>`;
+                                    }
                                 }
                             } 
                             // Se sucesso > 0, está criando registros no banco
