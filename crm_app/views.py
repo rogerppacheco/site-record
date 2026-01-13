@@ -2976,12 +2976,11 @@ class ImportarDFVView(APIView):
                     raise
                 
                 print(f"[DFV] DataFrame criado, shape: {df.shape}")
-                print(f"[DFV] Substituindo NaN por None...")
-                df = df.replace({np.nan: None})
-                print(f"[DFV] NaN substituído. Normalizando nomes de colunas...")
+                print(f"[DFV] Normalizando nomes de colunas...")
+                # Normalizar colunas primeiro (mais eficiente)
                 # Normaliza nomes de colunas (remove espaços e maiúsculo)
-                df.columns = [c.strip().upper() for c in df.columns]
-                print(f"[DFV] Colunas normalizadas: {list(df.columns)[:5]}...")
+                df.columns = [str(c).strip().upper() for c in df.columns]
+                print(f"[DFV] Colunas normalizadas: {list(df.columns)[:10]}...")
                 
                 total_registros = len(df)
                 print(f"[DFV] Total de registros calculado: {total_registros}")
@@ -3008,19 +3007,10 @@ class ImportarDFVView(APIView):
                 if 'NUM_FACHADA' not in df.columns:
                     raise ValueError("Coluna 'NUM_FACHADA' não encontrada no arquivo")
                 
-                print(f"[DFV] Preenchendo valores NaN...")
+                print(f"[DFV] Preenchendo valores NaN e convertendo para string...")
                 # Preencher valores NaN com string vazia (mais rápido usando fillna direto)
-                if 'CEP' in df.columns:
-                    df['CEP'] = df['CEP'].fillna('').astype(str)
-                else:
-                    print(f"[DFV] AVISO: Coluna CEP não encontrada!")
-                    raise ValueError("Coluna 'CEP' não encontrada no arquivo")
-                
-                if 'NUM_FACHADA' in df.columns:
-                    df['NUM_FACHADA'] = df['NUM_FACHADA'].fillna('').astype(str)
-                else:
-                    print(f"[DFV] AVISO: Coluna NUM_FACHADA não encontrada!")
-                    raise ValueError("Coluna 'NUM_FACHADA' não encontrada no arquivo")
+                df['CEP'] = df['CEP'].fillna('').astype(str)
+                df['NUM_FACHADA'] = df['NUM_FACHADA'].fillna('').astype(str)
                 
                 print(f"[DFV] Limpando CEPs (vetorizado) - processando {len(df)} registros...")
                 # Limpar CEP: remover tudo que não é dígito (vetorizado)
@@ -3057,10 +3047,14 @@ class ImportarDFVView(APIView):
                 
                 print(f"[DFV] Linhas válidas: {linhas_processadas}/{total_registros} (erros: {erros_count})")
                 
+                # Inicializar lista de erros detalhados
+                erros_detalhados = []
+                
                 print(f"[DFV] Criando conjunto de pares únicos (CEP, fachada)...")
-                # Criar conjunto de (CEP, fachada) únicos (vetorizado)
-                cep_fachada_pairs = list(zip(df_valido['cep_limpo'], df_valido['fachada_limpa']))
-                cep_fachada_set = set(cep_fachada_pairs)
+                # Criar conjunto de (CEP, fachada) únicos usando pandas (mais eficiente)
+                # Usar drop_duplicates para obter pares únicos sem criar lista gigante na memória
+                df_pares = df_valido[['cep_limpo', 'fachada_limpa']].drop_duplicates()
+                cep_fachada_set = set(zip(df_pares['cep_limpo'], df_pares['fachada_limpa']))
                 print(f"[DFV] Pares únicos criados: {len(cep_fachada_set)}")
                 
                 print(f"[DFV] Preparando objetos DFV...")
@@ -3074,31 +3068,49 @@ class ImportarDFVView(APIView):
                     chunk_df = df_valido.iloc[chunk_idx:chunk_idx + chunk_size]
                     print(f"[DFV] Processando chunk {chunk_num}/{total_chunks} ({len(chunk_df)} registros)...")
                     
-                    for idx, row in chunk_df.iterrows():
+                    # Usar itertuples que é mais rápido que iterrows
+                    for row_tuple in chunk_df.itertuples(index=False):
                         try:
+                            # Obter valores das colunas pelo índice ou nome
+                            cep_val = getattr(row_tuple, 'cep_limpo', '')
+                            fachada_val = getattr(row_tuple, 'fachada_limpa', '')
+                            
+                            # Tentar obter outros campos (pode não existir)
+                            uf_val = getattr(row_tuple, 'UF', None) if hasattr(row_tuple, 'UF') else None
+                            municipio_val = getattr(row_tuple, 'MUNICIPIO', None) if hasattr(row_tuple, 'MUNICIPIO') else None
+                            logradouro_val = getattr(row_tuple, 'LOGRADOURO', None) if hasattr(row_tuple, 'LOGRADOURO') else None
+                            complemento_val = getattr(row_tuple, 'COMPLEMENTO', None) if hasattr(row_tuple, 'COMPLEMENTO') else None
+                            bairro_val = getattr(row_tuple, 'BAIRRO', None) if hasattr(row_tuple, 'BAIRRO') else None
+                            tipo_viabilidade_val = getattr(row_tuple, 'TIPO_VIABILIDADE', None) if hasattr(row_tuple, 'TIPO_VIABILIDADE') else None
+                            tipo_rede_val = getattr(row_tuple, 'TIPO_REDE', None) if hasattr(row_tuple, 'TIPO_REDE') else None
+                            celula_val = getattr(row_tuple, 'CELULA', None) if hasattr(row_tuple, 'CELULA') else None
+                            nome_cdo_val = getattr(row_tuple, 'NOME_CDO', None) if hasattr(row_tuple, 'NOME_CDO') else None
+                            
                             obj = DFV(
-                                cep=row['cep_limpo'],
-                                num_fachada=row['fachada_limpa'],
-                                uf=row.get('UF'),
-                                municipio=row.get('MUNICIPIO'),
-                                logradouro=row.get('LOGRADOURO'),
-                                complemento=row.get('COMPLEMENTO'),
-                                bairro=row.get('BAIRRO'),
-                                tipo_viabilidade=row.get('TIPO_VIABILIDADE'),
-                                tipo_rede=row.get('TIPO_REDE'),
-                                celula=row.get('CELULA'),
-                                nome_cdo=row.get('NOME_CDO')
+                                cep=cep_val,
+                                num_fachada=fachada_val,
+                                uf=uf_val,
+                                municipio=municipio_val,
+                                logradouro=logradouro_val,
+                                complemento=complemento_val,
+                                bairro=bairro_val,
+                                tipo_viabilidade=tipo_viabilidade_val,
+                                tipo_rede=tipo_rede_val,
+                                celula=celula_val,
+                                nome_cdo=nome_cdo_val
                             )
                             registros_para_criar.append(obj)
                         except Exception as e:
                             erros_count += 1
-                            if erros_count <= 10:  # Limitar logs de erro
-                                print(f"[DFV] ERRO ao criar objeto DFV linha {idx+1}: {e}")
+                            if len(erros_detalhados) < 10:  # Limitar logs de erro
+                                erros_detalhados.append(f"Erro ao criar objeto DFV: {str(e)}")
+                                print(f"[DFV] ERRO ao criar objeto DFV: {e}")
                     
                     # Atualizar progresso a cada chunk
                     LogImportacaoDFV.objects.filter(id=log_id).update(
                         total_processadas=min(chunk_idx + chunk_size, linhas_processadas)
                     )
+                    print(f"[DFV] Chunk {chunk_num}/{total_chunks} processado. Objetos preparados até agora: {len(registros_para_criar)}")
                 
                 # Atualizar log após terminar a coleta
                 LogImportacaoDFV.objects.filter(id=log_id).update(
