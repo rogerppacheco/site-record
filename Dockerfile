@@ -19,4 +19,4 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 RUN pip install playwright && playwright install
 
 # Comando de inicialização
-CMD ["gunicorn", "gestao_equipes.wsgi", "--timeout", "120", "--max-requests", "50", "--max-requests-jitter", "10"]
+CMD ["gunicorn", "gestao_equipes.wsgi", "--timeout", "1200", "--graceful-timeout", "1200", "--keep-alive", "5", "--max-requests", "50", "--max-requests-jitter", "10"]
