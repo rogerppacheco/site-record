@@ -2900,33 +2900,47 @@ class ImportarDFVView(APIView):
                 )
                 print(f"[DFV] Total de registros no arquivo: {total_registros}")
                 
-                # ETAPA 1: Coletar todos os (CEP, fachada) únicos do arquivo
-                print(f"[DFV] Coletando CEPs e fachadas do arquivo...")
-                cep_fachada_set = set()
-                registros_para_criar = []
-                erros_count = 0
-                erros_detalhados = []
-                linhas_processadas = 0
+                # ETAPA 1: Coletar todos os (CEP, fachada) únicos do arquivo usando operações vetorizadas
+                print(f"[DFV] Coletando CEPs e fachadas do arquivo (otimizado)...")
                 
-                for idx, row in df.iterrows():
+                # Limpar e processar CEPs usando operações vetorizadas (muito mais rápido)
+                import re
+                
+                # Garantir que as colunas existam
+                if 'CEP' not in df.columns:
+                    raise ValueError("Coluna 'CEP' não encontrada no arquivo")
+                if 'NUM_FACHADA' not in df.columns:
+                    raise ValueError("Coluna 'NUM_FACHADA' não encontrada no arquivo")
+                
+                # Preencher valores NaN com string vazia
+                df['CEP'] = df['CEP'].fillna('').astype(str)
+                df['NUM_FACHADA'] = df['NUM_FACHADA'].fillna('').astype(str)
+                
+                # Limpar CEP: remover tudo que não é dígito (vetorizado)
+                df['cep_limpo'] = df['CEP'].str.replace(r'[^\d]', '', regex=True)
+                df['fachada_limpa'] = df['NUM_FACHADA'].str.strip()
+                
+                # Filtrar linhas válidas (CEP e fachada não vazios)
+                mask_valido = (df['cep_limpo'].str.len() > 0) & (df['fachada_limpa'].str.len() > 0)
+                df_valido = df[mask_valido].copy()
+                
+                # Contar erros (linhas inválidas)
+                erros_count = (~mask_valido).sum()
+                linhas_processadas = len(df_valido)
+                
+                print(f"[DFV] Linhas válidas: {linhas_processadas}/{total_registros} (erros: {erros_count})")
+                
+                # Criar conjunto de (CEP, fachada) únicos (vetorizado)
+                cep_fachada_pairs = list(zip(df_valido['cep_limpo'], df_valido['fachada_limpa']))
+                cep_fachada_set = set(cep_fachada_pairs)
+                
+                # Preparar objetos DFV em lote (vetorizado)
+                registros_para_criar = []
+                for idx, row in df_valido.iterrows():
                     try:
-                        cep_raw = str(row.get('CEP', '')).strip()
-                        cep_limpo = "".join(filter(str.isdigit, cep_raw))
-                        fachada_raw = str(row.get('NUM_FACHADA', '')).strip()
-                        
-                        # Validar CEP e fachada
-                        if not cep_limpo or not fachada_raw:
-                            erros_count += 1
-                            erros_detalhados.append(f"Linha {idx+1}: CEP ou fachada vazios")
-                            continue
-                        
-                        # Adicionar ao conjunto de CEPs+fachadas
-                        cep_fachada_set.add((cep_limpo, fachada_raw))
-                        
-                        # Preparar objeto DFV para criação
                         obj = DFV(
-                            cep=cep_limpo,
-                            num_fachada=fachada_raw,
+                            cep=row['cep_limpo'],
+                            num_fachada=row['fachada_limpa'],
                             uf=row.get('UF'),
                             municipio=row.get('MUNICIPIO'),
                             logradouro=row.get('LOGRADOURO'),
@@ -2938,25 +2952,15 @@ class ImportarDFVView(APIView):
                             nome_cdo=row.get('NOME_CDO')
                         )
                         registros_para_criar.append(obj)
-                        linhas_processadas += 1
-                        
-                        # Atualizar progresso a cada 10000 linhas processadas na coleta
-                        if linhas_processadas % 10000 == 0:
-                            LogImportacaoDFV.objects.filter(id=log_id).update(
-                                total_processadas=linhas_processadas
-                            )
-                            print(f"[DFV] Progresso na coleta: {linhas_processadas}/{total_registros} linhas processadas")
                     except Exception as e:
                         erros_count += 1
-                        msg_erro = f"Linha {idx+1}: {str(e)}"
-                        erros_detalhados.append(msg_erro)
-                        print(f"[DFV] ERRO ao processar linha {idx+1}: {e}")
+                        print(f"[DFV] ERRO ao criar objeto DFV linha {idx+1}: {e}")
                 
                 # Atualizar log após terminar a coleta
                 LogImportacaoDFV.objects.filter(id=log_id).update(
                     total_processadas=linhas_processadas
                 )
-                print(f"[DFV] Coletados {len(cep_fachada_set)} registros únicos (CEP+fachada)")
+                print(f"[DFV] Coletados {len(cep_fachada_set)} registros únicos (CEP+fachada) de {linhas_processadas} linhas válidas")
                 
                 # ETAPA 2: Remover registros existentes com os mesmos (CEP, fachada)
                 print(f"[DFV] Verificando e removendo registros duplicados do banco...")
