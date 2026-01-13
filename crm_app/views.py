@@ -62,14 +62,35 @@ def api_verificar_whatsapp(request, telefone=None):
             telefone_api = telefone_limpo
         
         # Verifica se o número existe no WhatsApp
-        existe = service.verificar_numero_existe(telefone_api)
-        
-        return Response({
-            "exists": existe,
-            "whatsapp_valido": existe,
-            "possui_whatsapp": existe,
-            "telefone": telefone_limpo
-        }, status=200)
+        try:
+            existe = service.verificar_numero_existe(telefone_api)
+            
+            # Se a API retornou None (erro), trata como se não existisse mas permite salvar
+            if existe is None:
+                return Response({
+                    "exists": True,  # Permite salvar mesmo se não conseguir verificar
+                    "whatsapp_valido": True,
+                    "possui_whatsapp": True,
+                    "aviso": "Não foi possível verificar WhatsApp (API offline). Você pode salvar mesmo assim."
+                }, status=200)
+            
+            return Response({
+                "exists": existe,
+                "whatsapp_valido": existe,
+                "possui_whatsapp": existe,
+                "telefone": telefone_limpo
+            }, status=200)
+        except Exception as e_inner:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.exception(f"Erro ao chamar verificar_numero_existe: {e_inner}")
+            # Em caso de erro na verificação, permite salvar mas avisa
+            return Response({
+                "exists": True,
+                "whatsapp_valido": True,
+                "possui_whatsapp": True,
+                "aviso": f"Erro ao verificar: {str(e_inner)}. Você pode salvar mesmo assim."
+            }, status=200)
         
     except Exception as e:
         import logging
