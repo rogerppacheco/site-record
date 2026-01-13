@@ -4846,13 +4846,8 @@ class CdoiListView(APIView):
 
         data = []
         for item in queryset.select_related('criado_por'):
-            # Monta nome do criador
-            criado_por_nome = '-'
-            if item.criado_por:
-                if item.criado_por.first_name or item.criado_por.last_name:
-                    criado_por_nome = f"{item.criado_por.first_name or ''} {item.criado_por.last_name or ''}".strip()
-                else:
-                    criado_por_nome = item.criado_por.username or '-'
+            # Usa username ao invés do nome completo
+            criado_por_nome = item.criado_por.username if item.criado_por else '-'
             
             data.append({
                 'id': item.id,
