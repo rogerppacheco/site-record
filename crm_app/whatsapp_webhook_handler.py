@@ -68,14 +68,19 @@ def processar_webhook_whatsapp(data):
     telefone = data.get('phone') or data.get('from') or data.get('phoneNumber') or data.get('phone_number')
     mensagem_texto = ""
     
-    # Tentar múltiplos formatos de mensagem
-    if 'message' in data:
-        if isinstance(data['message'], dict):
-            mensagem_texto = data['message'].get('text') or data['message'].get('body') or data['message'].get('message') or ""
+    # Formato Z-API: text é um dict com 'message' dentro
+    if 'text' in data and isinstance(data['text'], dict):
+        mensagem_texto = data['text'].get('message') or data['text'].get('text') or data['text'].get('body') or ""
+    
+    # Tentar múltiplos formatos de mensagem (outros provedores)
+    if not mensagem_texto:
+        if 'message' in data:
+            if isinstance(data['message'], dict):
+                mensagem_texto = data['message'].get('text') or data['message'].get('body') or data['message'].get('message') or ""
+            else:
+                mensagem_texto = str(data['message'])
         else:
-            mensagem_texto = str(data['message'])
-    else:
-        mensagem_texto = data.get('text') or data.get('body') or data.get('message') or data.get('content') or ""
+            mensagem_texto = data.get('text') or data.get('body') or data.get('message') or data.get('content') or ""
     
     # Se ainda não encontrou, tentar em nested structures comuns
     if not mensagem_texto:
@@ -84,8 +89,16 @@ def processar_webhook_whatsapp(data):
         if 'payload' in data and isinstance(data['payload'], dict):
             mensagem_texto = data['payload'].get('text') or data['payload'].get('body') or data['payload'].get('message') or ""
     
+    # Garantir que mensagem_texto é string
+    if isinstance(mensagem_texto, dict):
+        # Se ainda for dict, tentar extrair valores
+        mensagem_texto = mensagem_texto.get('message') or mensagem_texto.get('text') or mensagem_texto.get('body') or str(mensagem_texto)
+    elif not isinstance(mensagem_texto, str):
+        mensagem_texto = str(mensagem_texto) if mensagem_texto else ""
+    
     logger.info(f"[Webhook] Telefone extraído: {telefone}")
     logger.info(f"[Webhook] Mensagem extraída: {mensagem_texto}")
+    logger.info(f"[Webhook] Tipo da mensagem: {type(mensagem_texto)}")
     
     if not telefone or not mensagem_texto:
         logger.warning(f"[Webhook] Dados incompletos: telefone={telefone}, mensagem={mensagem_texto}")
