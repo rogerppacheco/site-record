@@ -2950,16 +2950,23 @@ class ImportarDFVView(APIView):
                 # Verificar rapidamente se há registros no banco antes de construir query gigante
                 total_no_banco = DFV.objects.count()
                 print(f"[DFV] Total de registros no banco antes da remoção: {total_no_banco}")
+                print(f"[DFV] Total de pares (CEP, fachada) únicos a verificar: {len(cep_fachada_set)}")
                 
                 if total_no_banco > 0:
                     # Remover duplicados em lotes para melhor performance
                     # Dividir em lotes de 10000 para não criar query OR gigante
                     cep_fachada_list = list(cep_fachada_set)
                     batch_size_remocao = 10000
+                    total_lotes = (len(cep_fachada_list) + batch_size_remocao - 1) // batch_size_remocao
+                    print(f"[DFV] Processando remoção em {total_lotes} lote(s) de até {batch_size_remocao} pares cada...")
                     
                     with transaction.atomic():
                         for i in range(0, len(cep_fachada_list), batch_size_remocao):
+                            lote_num = (i // batch_size_remocao) + 1
                             batch_cep_fachada = cep_fachada_list[i:i + batch_size_remocao]
+                            
+                            print(f"[DFV] Processando lote {lote_num}/{total_lotes} de remoção de duplicados ({len(batch_cep_fachada)} pares)...")
+                            
                             q_objects = Q()
                             for cep, fachada in batch_cep_fachada:
                                 q_objects |= Q(cep=cep, num_fachada=fachada)
@@ -2967,9 +2974,17 @@ class ImportarDFVView(APIView):
                             if q_objects:
                                 count_batch = DFV.objects.filter(q_objects).count()
                                 if count_batch > 0:
+                                    print(f"[DFV] Encontrados {count_batch} registros duplicados no lote {lote_num}, removendo...")
                                     DFV.objects.filter(q_objects).delete()
                                     registros_removidos += count_batch
-                                    print(f"[DFV] Removidos {count_batch} registros duplicados (lote {i//batch_size_remocao + 1})")
+                                    print(f"[DFV] Removidos {count_batch} registros duplicados (lote {lote_num}/{total_lotes})")
+                                else:
+                                    print(f"[DFV] Nenhum duplicado encontrado no lote {lote_num}/{total_lotes}")
+                            
+                            # Atualizar log a cada lote para mostrar progresso
+                            LogImportacaoDFV.objects.filter(id=log_id).update(
+                                registros_removidos=registros_removidos
+                            )
                 else:
                     print(f"[DFV] Banco vazio - pulando remoção de duplicados")
                 
@@ -2978,7 +2993,8 @@ class ImportarDFVView(APIView):
                 # Atualizar log para indicar que a remoção de duplicados terminou
                 # Isso ajuda o frontend a saber que passou dessa etapa
                 LogImportacaoDFV.objects.filter(id=log_id).update(
-                    total_processadas=linhas_processadas  # Manter o valor da coleta
+                    total_processadas=linhas_processadas,  # Manter o valor da coleta
+                    registros_removidos=registros_removidos # Adicionar o total de removidos
                 )
                 print(f"[DFV] Remoção de duplicados concluída. Iniciando criação de registros...")
                 
