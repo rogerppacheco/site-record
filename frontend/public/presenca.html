@@ -79,6 +79,37 @@
             font-weight: bold;
             font-size: 1rem;
         }
+        
+        /* Botões de Registros Gravados (Edição/Exclusão) */
+        .action-footer-recorded {
+            margin-top: 0;
+            border-top: 1px solid #e9ecef;
+            display: flex;
+            width: 100%;
+        }
+        .action-footer-recorded .btn {
+            border-radius: 0;
+            padding: 8px 0;
+            font-size: 0.9rem;
+            font-weight: 600;
+            border: none;
+        }
+        .btn-action-edit {
+            background-color: #0d6efd;
+            color: white;
+        }
+        .btn-action-edit:hover {
+            background-color: #0b5ed7;
+            color: white;
+        }
+        .btn-action-delete {
+            background-color: #dc3545;
+            color: white;
+        }
+        .btn-action-delete:hover {
+            background-color: #bb2d3b;
+            color: white;
+        }
 
         /* Estilos de Formulário */
         .nav-tabs .nav-link.active { color: var(--cor-primaria); border-bottom: 3px solid var(--cor-primaria); }
@@ -267,19 +298,18 @@
         async function carregarMotivos() {
             try {
                 const res = await apiClient.get('/api/presenca/motivos/');
-                // Aceita resposta paginada (results) ou array simples
+                // CORREÇÃO: Garantir que motivosDisponiveis seja sempre um array
+                // Se a API retornar dados paginados, usar .results, senão usar .data diretamente
                 if (Array.isArray(res.data)) {
                     motivosDisponiveis = res.data;
-                } else if (Array.isArray(res.data.results)) {
+                } else if (res.data && Array.isArray(res.data.results)) {
                     motivosDisponiveis = res.data.results;
                 } else {
                     motivosDisponiveis = [];
                 }
             } catch(e){
-                if (e.response && e.response.status === 401) {
-                    alert('Sessão expirada. Faça login novamente.');
-                    window.location.href = '/';
-                }
+                console.error('[ERRO] Erro ao carregar motivos:', e);
+                motivosDisponiveis = [];
             }
         }
 
@@ -292,30 +322,72 @@
                 ? '/api/presenca/todos-usuarios/?participa_controle_presenca=true'
                 : '/api/presenca/minha-equipe/?participa_controle_presenca=true';
 
-            const t0 = performance.now();
             try {
                 const [equipeRes, presencasRes] = await Promise.all([
                     apiClient.get(equipeEndpoint),
                     apiClient.get(`${API_REGISTROS}?data=${data}`)
                 ]);
-                const t1 = performance.now();
-                console.log('Equipe carregada:', equipeRes.data, 'Presenças:', presencasRes.data, 'Tempo:', (t1-t0).toFixed(0)+'ms');
-                // Corrige para aceitar resposta paginada (results) ou array simples
+                
                 let equipe = equipeRes.data;
                 let presencasDoDia = presencasRes.data;
-                if (equipe && Array.isArray(equipe.results)) equipe = equipe.results;
-                if (presencasDoDia && Array.isArray(presencasDoDia.results)) presencasDoDia = presencasDoDia.results;
+                
+                // DEBUG: Verificar estrutura da resposta de presenças
+                console.log('[DEBUG] Resposta bruta de presenças:', presencasRes);
+                console.log('[DEBUG] Tipo de presencasDoDia:', typeof presencasDoDia);
+                console.log('[DEBUG] É array?', Array.isArray(presencasDoDia));
+                
+                // Se for um objeto com results (paginado), pegar o array
+                if (presencasDoDia && !Array.isArray(presencasDoDia) && presencasDoDia.results) {
+                    presencasDoDia = presencasDoDia.results;
+                    console.log('[DEBUG] Presenças eram paginadas, usando results:', presencasDoDia);
+                } else if (!Array.isArray(presencasDoDia)) {
+                    console.warn('[AVISO] Presenças não é array nem objeto com results:', presencasDoDia);
+                    presencasDoDia = [];
+                }
+
+                // CORREÇÃO: Carregar todos os usuários mesmo se houver paginação
+                if (equipe && equipe.results && Array.isArray(equipe.results)) {
+                    // Se houver paginação, carregar todas as páginas
+                    if (equipe.count && equipe.count > equipe.results.length) {
+                        console.log(`[DEBUG] Detectada paginação: ${equipe.results.length} de ${equipe.count} usuários. Carregando todos...`);
+                        let todosUsuarios = [...equipe.results];
+                        let nextUrl = equipe.next;
+                        
+                        while (nextUrl) {
+                            try {
+                                const nextRes = await apiClient.get(nextUrl);
+                                const nextData = nextRes.data;
+                                if (Array.isArray(nextData)) {
+                                    todosUsuarios = [...todosUsuarios, ...nextData];
+                                    nextUrl = null; // Assumindo que não há mais páginas
+                                } else if (nextData.results && Array.isArray(nextData.results)) {
+                                    todosUsuarios = [...todosUsuarios, ...nextData.results];
+                                    nextUrl = nextData.next;
+                                } else {
+                                    nextUrl = null;
+                                }
+                            } catch (e) {
+                                console.error('Erro ao carregar próxima página:', e);
+                                nextUrl = null;
+                            }
+                        }
+                        equipe = todosUsuarios;
+                        console.log(`[DEBUG] Total de usuários carregados: ${equipe.length}`);
+                    } else {
+                        equipe = equipe.results;
+                    }
+                }
 
                 if(Array.isArray(equipe)) {
                     renderizarCards(equipe, presencasDoDia || []);
                 } else if (equipe && equipe.detail) {
-                    grid.innerHTML = `<div class=\"col-12 text-center text-danger py-4\">Erro ao carregar equipe: ${equipe.detail}</div>`;
+                    grid.innerHTML = `<div class="col-12 text-center text-danger py-4">Erro ao carregar equipe: ${equipe.detail}</div>`;
                 } else {
-                    grid.innerHTML = '<div class=\"col-12 text-center text-danger py-4\">Erro ao carregar equipe (resposta inesperada).</div>';
+                    grid.innerHTML = '<div class="col-12 text-center text-danger py-4">Erro ao carregar equipe (resposta inesperada).</div>';
                 }
 
             } catch(e) {
-                console.error('Erro ao carregar dados iniciais:', e);
+                console.error(e);
                 grid.innerHTML = '<div class="col-12 text-center text-danger py-4">Erro de conexão.</div>';
             }
         }
@@ -324,9 +396,20 @@
             const grid = document.getElementById('grid-colaboradores');
             grid.innerHTML = '';
 
+            // DEBUG: Verificar estrutura dos dados de presença
+            console.log('[DEBUG] Presenças recebidas:', presencasDoDia);
+            
+            // Criar mapa de presenças usando o ID do colaborador
             const presencasMap = Array.isArray(presencasDoDia)
-                ? presencasDoDia.reduce((map, p) => { map[p.colaborador] = p; return map; }, {})
+                ? presencasDoDia.reduce((map, p) => { 
+                    const colaboradorId = p.colaborador; // ID do colaborador
+                    console.log(`[DEBUG] Mapeando presença: colaborador=${colaboradorId}, status=${p.status}`);
+                    map[colaboradorId] = p; 
+                    return map; 
+                }, {})
                 : {};
+            
+            console.log('[DEBUG] Mapa de presenças criado:', presencasMap);
 
             if (!Array.isArray(lista) || lista.length === 0) {
                 grid.innerHTML = '<div class="col-12 text-center text-muted py-5">Nenhum colaborador encontrado.</div>';
@@ -334,7 +417,12 @@
             }
 
             lista.forEach(p => {
+                // DEBUG: Verificar mapeamento - usar o ID do colaborador
                 const registro = presencasMap[p.id];
+                console.log(`[DEBUG] Renderizando card para usuário ID=${p.id}, username=${p.username}, registro encontrado:`, registro ? 'SIM' : 'NÃO');
+                if (registro) {
+                    console.log(`[DEBUG] Detalhes do registro:`, registro);
+                }
                 
                 let barClass = 'status-pendente';
                 let statusText = 'Pendente';
@@ -471,24 +559,202 @@
 
         async function salvarStatus(vendedorId, nome, presente, detalhes = {}) {
             const data = document.getElementById('data-presenca').value;
+            // CORREÇÃO: Garantir que não enviamos 'id' no body para evitar erro de chave duplicada
             const body = {
                 colaborador: vendedorId,
                 data: data,
                 status: presente,
                 motivo: !presente ? detalhes.motivoId : null,
-                observacao: !presente ? detalhes.observacao : ""
+                observacao: !presente ? (detalhes.observacao || "") : ""
             };
 
-            console.log('Enviando registro de presença:', body);
-            const t0 = performance.now();
+            console.log('[DEBUG] Enviando registro de presença:', body);
+
+            // Desabilitar botões durante o salvamento
+            const cardEl = document.getElementById(`card-${vendedorId}`);
+            if (cardEl) {
+                const buttons = cardEl.querySelectorAll('button');
+                buttons.forEach(btn => {
+                    btn.disabled = true;
+                    btn.style.opacity = '0.6';
+                });
+            }
+
             try {
-                const resp = await apiClient.post(API_REGISTROS, body);
-                const t1 = performance.now();
-                console.log('Resposta do registro:', resp.data, 'Tempo:', (t1-t0).toFixed(0)+'ms');
-                carregarDadosIniciais();
+                const response = await apiClient.post(API_REGISTROS, body);
+                console.log('[DEBUG] ✅ Resposta do servidor recebida:', response.data);
+                console.log('[DEBUG] Tipo de resposta:', typeof response.data);
+                console.log('[DEBUG] Campos na resposta:', Object.keys(response.data || {}));
+                
+                // Verificar se a resposta tem os dados necessários
+                if (!response.data) {
+                    console.error('[ERRO] Resposta vazia do servidor');
+                    alert('Erro: Resposta vazia do servidor. Recarregue a página.');
+                    if (cardEl) {
+                        const buttons = cardEl.querySelectorAll('button');
+                        buttons.forEach(btn => {
+                            btn.disabled = false;
+                            btn.style.opacity = '1';
+                        });
+                    }
+                    return;
+                }
+                
+                // Atualizar imediatamente o card com a resposta do servidor
+                console.log('[DEBUG] Chamando atualizarCardAposSalvar...');
+                atualizarCardAposSalvar(vendedorId, nome, response.data);
+                
+                // NÃO recarregar dados imediatamente - a atualização visual é suficiente
+                // Isso evita o "piscar" e permite que o usuário veja a mudança imediatamente
+                console.log('[DEBUG] ✅ Card atualizado. Atualização visual mantida.');
+                
             } catch (e) {
-                alert('Erro ao salvar.');
-                console.error('Erro ao registrar presença:', e);
+                console.error('[ERRO] ❌ Erro ao salvar presença:', e);
+                console.error('[ERRO] Resposta completa do erro:', e.response);
+                const errorMsg = e.response?.data?.detail || e.message || 'Erro ao salvar.';
+                
+                // Se o erro for sobre registro já existente, recarregar os dados para mostrar o registro existente
+                if (errorMsg.includes('Já existe um registro') || errorMsg.includes('já existe') || errorMsg.includes('already exists')) {
+                    console.log('[DEBUG] ⚠️ Registro já existe no banco. Recarregando dados para mostrar o registro existente...');
+                    // Não mostrar alerta, apenas recarregar
+                    setTimeout(() => {
+                        carregarDadosIniciais();
+                    }, 300);
+                } else {
+                    // Para outros erros, mostrar alerta
+                    alert(`Erro ao salvar: ${errorMsg}`);
+                }
+                
+                // Reabilitar botões em caso de erro
+                if (cardEl) {
+                    const buttons = cardEl.querySelectorAll('button');
+                    buttons.forEach(btn => {
+                        btn.disabled = false;
+                        btn.style.opacity = '1';
+                    });
+                }
+            }
+        }
+        
+        // Nova função para atualizar o card imediatamente após salvar
+        function atualizarCardAposSalvar(vendedorId, nome, registro) {
+            console.log('[DEBUG] atualizarCardAposSalvar chamado');
+            console.log('[DEBUG] Parâmetros:', { vendedorId, nome, registro });
+            
+            const cardEl = document.getElementById(`card-${vendedorId}`);
+            if (!cardEl) {
+                console.error(`[ERRO] Card não encontrado: card-${vendedorId}`);
+                return;
+            }
+            
+            console.log('[DEBUG] Card encontrado:', cardEl);
+            
+            const statusText = document.getElementById(`status-text-${vendedorId}`);
+            if (!statusText) {
+                console.error(`[ERRO] Status text não encontrado: status-text-${vendedorId}`);
+            }
+            
+            // Atualizar status visual
+            let statusColor, statusTextValue, cardBorder;
+            
+            if (registro.status) {
+                statusColor = 'text-success';
+                statusTextValue = 'Presente';
+                cardBorder = 'var(--cor-sucesso)';
+            } else {
+                const desc = registro.motivo_nome || 'Motivo não informado';
+                statusTextValue = `Ausente: ${desc}`;
+                statusColor = 'text-danger';
+                cardBorder = 'var(--cor-perigo)';
+            }
+            
+            // Atualizar cor da borda do card
+            cardEl.style.borderLeftColor = cardBorder;
+            
+            // Atualizar texto do status
+            if (statusText) {
+                statusText.textContent = statusTextValue;
+                statusText.className = `fw-bold ${statusColor}`;
+            }
+            
+            // Remover botões pendentes
+            const pendingFooter = cardEl.querySelector('.action-footer-pending');
+            if (pendingFooter) {
+                pendingFooter.remove();
+            }
+            
+            // Remover rodapé existente (auditoria e botões) para evitar duplicação
+            const existingAudit = cardEl.querySelector('.audit-info');
+            if (existingAudit) existingAudit.remove();
+            const existingFooter = cardEl.querySelector('.action-footer-recorded');
+            if (existingFooter) existingFooter.remove();
+            
+            // Construir rodapé de auditoria
+            let auditHtml = '';
+            const opts = { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' };
+            
+            console.log('[DEBUG] Campos de auditoria no registro:', {
+                criado_em: registro.criado_em,
+                lancado_por_nome: registro.lancado_por_nome,
+                editado_em: registro.editado_em,
+                editado_por_nome: registro.editado_por_nome
+            });
+            
+            // Sempre mostrar quem lançou (se houver)
+            if (registro.lancado_por_nome) {
+                let dtCriado = '';
+                if (registro.criado_em) {
+                    try {
+                        dtCriado = new Date(registro.criado_em).toLocaleString('pt-BR', opts);
+                    } catch(e) {
+                        console.warn('[AVISO] Erro ao formatar data criado_em:', e);
+                        dtCriado = 'Data não disponível';
+                    }
+                }
+                const user = (registro.lancado_por_nome || 'Sistema').split(' ')[0].toUpperCase();
+                auditHtml += `<div class="audit-line">Lançado: <strong>${user}</strong>${dtCriado ? ' em ' + dtCriado : ''}</div>`;
+            }
+            
+            // Mostrar quem editou (se foi editado)
+            if (registro.editado_por_nome) {
+                let dtEdit = '';
+                if (registro.editado_em) {
+                    try {
+                        dtEdit = new Date(registro.editado_em).toLocaleString('pt-BR', opts);
+                    } catch(e) {
+                        console.warn('[AVISO] Erro ao formatar data editado_em:', e);
+                        dtEdit = 'Data não disponível';
+                    }
+                }
+                const userEdit = registro.editado_por_nome.split(' ')[0].toUpperCase();
+                auditHtml += `<div class="audit-line text-primary">Editado: <strong>${userEdit}</strong>${dtEdit ? ' em ' + dtEdit : ''}</div>`;
+            }
+            
+            let footerContent = '';
+            if (auditHtml) {
+                footerContent = `<div class="audit-info" id="audit-${vendedorId}">${auditHtml}</div>`;
+            }
+            
+            // Adicionar botões de edição/exclusão para gestores supremos
+            if (isGestorSupremo) {
+                footerContent += `
+                    <div class="action-footer-recorded d-flex w-100" id="footer-recorded-${vendedorId}">
+                        <button class="btn btn-action-edit flex-grow-1" onclick="ativarModoEdicao(${vendedorId}, '${nome}')">
+                            <i class="bi bi-pencil-square"></i> Alterar
+                        </button>
+                        <button class="btn btn-action-delete flex-grow-1" onclick="removerRegistro(${registro.id})">
+                            <i class="bi bi-trash"></i> Excluir
+                        </button>
+                    </div>
+                `;
+            }
+            
+            // Adicionar o rodapé ao card apenas se houver conteúdo
+            if (footerContent) {
+                cardEl.insertAdjacentHTML('beforeend', footerContent);
+                console.log('[DEBUG] ✅ Rodapé adicionado ao card');
+            } else {
+                console.warn('[AVISO] Nenhum conteúdo de rodapé para adicionar');
             }
         }
 
@@ -496,13 +762,15 @@
             document.getElementById('modal-title').textContent = `Registrar Ausência: ${nome}`;
             const select = document.getElementById('select-motivo');
             select.innerHTML = '<option value="">Selecione...</option>';
-            // Correção: garante que motivosDisponiveis é array
-            if (!Array.isArray(motivosDisponiveis)) {
-                alert('Erro ao carregar motivos de ausência. Faça login novamente ou contate o suporte.');
-                return;
+            // CORREÇÃO: Garantir que motivosDisponiveis seja um array antes de usar forEach
+            if (Array.isArray(motivosDisponiveis)) {
+                motivosDisponiveis.forEach(m => select.add(new Option(m.motivo, m.id)));
+            } else {
+                console.error('[ERRO] motivosDisponiveis não é um array:', motivosDisponiveis);
+                alert('Erro ao carregar motivos de ausência. Por favor, recarregue a página.');
             }
-            motivosDisponiveis.forEach(m => select.add(new Option(m.motivo, m.id)));
             document.getElementById('obs-motivo').value = '';
+            
             document.getElementById('btn-confirmar-ausencia').onclick = function() {
                 const motivoId = select.value;
                 if (!motivoId) { alert('Selecione o motivo.'); return; }
@@ -515,4 +783,3 @@
     </script>
 </body>
 </html>
-

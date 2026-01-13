@@ -28,6 +28,9 @@ class PresencaSerializer(serializers.ModelSerializer):
     motivo_nome = serializers.CharField(source='motivo.motivo', read_only=True)
     lancado_por_nome = serializers.CharField(source='lancado_por.username', read_only=True)
     editado_por_nome = serializers.CharField(source='editado_por.username', read_only=True)
+    
+    # CORREÇÃO: Tornar id somente leitura para evitar que seja enviado no create
+    id = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = Presenca

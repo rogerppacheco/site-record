@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated 
 from django.http import Http404, HttpResponse
 from django.db.models import Q
+from django.db import IntegrityError, transaction
 import pandas as pd
 from datetime import datetime, timedelta, date
 
@@ -57,42 +58,76 @@ class PresencaViewSet(viewsets.ModelViewSet):
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     def create(self, request, *args, **kwargs):
-        from django.db import transaction
         data = request.data.copy()
+        
+        # CORREÇÃO: Remover 'id' se for fornecido para evitar erro de chave duplicada
+        if 'id' in data:
+            del data['id']
+        
         colaborador_id = data.get('colaborador')
         data_registro = data.get('data')
         if not colaborador_id or not data_registro:
             return Response({'detail': 'Colaborador e data são obrigatórios.'}, status=status.HTTP_400_BAD_REQUEST)
+        
         try:
             with transaction.atomic():
-                obj, created = Presenca.objects.get_or_create(
+                # Usar update_or_create para buscar ou criar/atualizar registro de forma atômica
+                # Isso evita condições de corrida (race conditions)
+                obj, created = Presenca.objects.update_or_create(
                     colaborador_id=colaborador_id,
                     data=data_registro,
                     defaults={
                         'status': data.get('status', True),
                         'motivo_id': data.get('motivo'),
                         'observacao': data.get('observacao', ''),
-                        'lancado_por': request.user
+                        'editado_por': request.user,
                     }
                 )
-                if not created:
-                    # Atualiza apenas campos relevantes
-                    update_fields = []
-                    if 'status' in data:
-                        obj.status = data['status']
-                        update_fields.append('status')
-                    if 'motivo' in data:
-                        obj.motivo_id = data['motivo']
-                        update_fields.append('motivo')
-                    if 'observacao' in data:
-                        obj.observacao = data['observacao']
-                        update_fields.append('observacao')
-                    obj.editado_por = request.user
-                    update_fields.append('editado_por')
-                    obj.save(update_fields=update_fields)
+                
+                # Se foi criação, definir lancado_por (não editado_por)
+                if created:
+                    obj.lancado_por = request.user
+                    obj.editado_por = None
+                    obj.save(update_fields=['lancado_por', 'editado_por'])
+                
+                # Recarregar o objeto do banco para garantir dados atualizados
+                obj.refresh_from_db()
                 serializer = self.get_serializer(obj)
+                
+                print(f"[DEBUG PresencaViewSet] Registro {'criado' if created else 'atualizado'}: colaborador={colaborador_id}, data={data_registro}, status={obj.status}, id={obj.id}")
+                
                 return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+                
+        except IntegrityError as e:
+            # Em caso de erro de integridade, tentar buscar o registro existente e atualizar
+            error_str = str(e)
+            print(f"[ERRO PresencaViewSet] IntegrityError: {error_str}")
+            
+            # Se for erro de chave duplicada (ID), tentar buscar e atualizar o registro existente
+            if 'duplicar valor da chave' in error_str or 'duplicate key' in error_str.lower():
+                try:
+                    # Tentar buscar o registro existente (pode ter sido criado por outra requisição simultânea)
+                    obj = Presenca.objects.get(colaborador_id=colaborador_id, data=data_registro)
+                    # Atualizar com os novos dados
+                    obj.status = data.get('status', True)
+                    obj.motivo_id = data.get('motivo')
+                    obj.observacao = data.get('observacao', '')
+                    obj.editado_por = request.user
+                    obj.save(update_fields=['status', 'motivo', 'observacao', 'editado_por', 'editado_em'])
+                    
+                    obj.refresh_from_db()
+                    serializer = self.get_serializer(obj)
+                    print(f"[DEBUG PresencaViewSet] Registro recuperado e atualizado apos IntegrityError: id={obj.id}")
+                    return Response(serializer.data, status=status.HTTP_200_OK)
+                except Presenca.DoesNotExist:
+                    pass
+            
+            return Response({'detail': f'Erro de integridade: Já existe um registro para este colaborador nesta data.'}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
+            # Captura outros erros
+            print(f"[ERRO PresencaViewSet] Exceção: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     def update(self, request, *args, **kwargs):
@@ -112,6 +147,8 @@ class DiaNaoUtilViewSet(viewsets.ModelViewSet):
 class MinhaEquipeListView(generics.ListAPIView):
     serializer_class = UsuarioSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = None  # <--- CORREÇÃO: Desativa paginação para trazer toda a equipe
+
     def get_queryset(self):
         user = self.request.user
         qs = getattr(user, 'liderados', None)
@@ -126,6 +163,8 @@ class TodosUsuariosListView(generics.ListAPIView):
     from .serializers import UsuarioPresencaSerializer
     serializer_class = UsuarioPresencaSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = None  # <--- CORREÇÃO: Desativa paginação para trazer todos os usuários
+
     def get_queryset(self):
         qs = Usuario.objects.filter(is_active=True, participa_controle_presenca=True)\
             .select_related('perfil', 'supervisor')\
@@ -213,6 +252,7 @@ class RelatorioFinanceiroView(APIView):
             total_previsao = qtd_dias_uteis * valor_diario
             dados_previsao.append({
                 'nome': nome_display,
+                'username': user.username,  # <--- CORREÇÃO: Adicionado username para evitar "undefined"
                 'dias_uteis': qtd_dias_uteis,
                 'valor_diario': valor_diario,
                 'total_receber': total_previsao
@@ -240,6 +280,7 @@ class RelatorioFinanceiroView(APIView):
 
             dados_descontos.append({
                 'nome': nome_display,
+                'username': user.username,  # <--- CORREÇÃO: Adicionado username para evitar "undefined"
                 'dias_uteis': qtd_dias_uteis,
                 'qtd_faltas': qtd_faltas,
                 'datas_faltas': [d.strftime('%d/%m/%Y') for d in datas_faltas], # Lista formatada para o modal
@@ -267,6 +308,7 @@ class ExportarRelatorioFinanceiroExcelView(RelatorioFinanceiroView):
         for item in lista_final:
             export_list.append({
                 'Colaborador': item['nome'],
+                'Username': item.get('username', ''),  # <--- CORREÇÃO: Adicionado ao Excel também
                 'Dias Úteis': item['dias_uteis'],
                 'Valor Diário (R$)': item['valor_diario'],
                 'Previsão Total (R$)': item['dias_uteis'] * item['valor_diario'],

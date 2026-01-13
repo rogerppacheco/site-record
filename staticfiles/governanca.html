@@ -295,8 +295,25 @@
                                         <input type="email" class="form-control" id="email" required>
                                     </div>
                                     <div class="col-lg-3 col-md-6">
+                                        <label class="form-label fw-bold">Matrícula PAP</label>
+                                        <input type="text" class="form-control" id="matricula_pap">
+                                    </div>
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label fw-bold">Senha PAP</label>
+                                        <input type="text" class="form-control" id="senha_pap">
+                                    </div>
+                                    <div class="col-lg-3 col-md-6">
                                         <label class="form-label fw-bold">WhatsApp</label>
-                                        <input type="text" class="form-control" id="tel_whatsapp">
+                                        <div class="input-group">
+                                            <input type="text" class="form-control" id="tel_whatsapp" autocomplete="off">
+                                            <span class="input-group-text bg-transparent border-0" id="whatsapp-status-icon" style="display:none; min-width:2rem;">
+                                                <span id="whatsapp-spinner" class="spinner-border spinner-border-sm text-secondary" style="display:none;"></span>
+                                                <span id="whatsapp-check" class="text-success" style="display:none;"><i class="bi bi-check-circle-fill"></i></span>
+                                                <span id="whatsapp-x" class="text-danger" style="display:none;"><i class="bi bi-x-circle-fill"></i></span>
+                                                <span id="whatsapp-warning" class="text-warning" style="display:none;"><i class="bi bi-exclamation-triangle-fill"></i></span>
+                                            </span>
+                                        </div>
+                                        <div id="whatsapp-feedback" class="form-text"></div>
                                     </div>
                                     <div class="col-lg-3 col-md-6">
                                         <label class="form-label fw-bold">Username</label>
@@ -415,6 +432,74 @@
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     
     <script>
+    // --- Validação assíncrona de WhatsApp ---
+    document.addEventListener('DOMContentLoaded', function() {
+        const telInput = document.getElementById('tel_whatsapp');
+        const statusIcon = document.getElementById('whatsapp-status-icon');
+        const spinner = document.getElementById('whatsapp-spinner');
+        const check = document.getElementById('whatsapp-check');
+        const xIcon = document.getElementById('whatsapp-x');
+        const warning = document.getElementById('whatsapp-warning');
+        const feedback = document.getElementById('whatsapp-feedback');
+
+        function limparValidacaoWhatsapp() {
+            telInput.classList.remove('is-valid', 'is-invalid');
+            feedback.textContent = '';
+            statusIcon.style.display = 'none';
+            spinner.style.display = 'none';
+            check.style.display = 'none';
+            xIcon.style.display = 'none';
+            warning.style.display = 'none';
+        }
+
+        if (telInput) {
+            telInput.addEventListener('input', limparValidacaoWhatsapp);
+            telInput.addEventListener('blur', async function() {
+                limparValidacaoWhatsapp();
+                const numero = telInput.value.replace(/\D/g, '');
+                if (!numero) return;
+                statusIcon.style.display = '';
+                spinner.style.display = '';
+                // Recupera token JWT do localStorage ou cookie
+                let token = localStorage.getItem('access') || localStorage.getItem('token');
+                if (!token && window.getToken) token = window.getToken();
+                try {
+                    const resp = await fetch('/api/usuarios/validar-whatsapp/', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...(token ? { 'Authorization': 'Bearer ' + token } : {})
+                        },
+                        body: JSON.stringify({ telefone: numero })
+                    });
+                    const data = await resp.json();
+                    spinner.style.display = 'none';
+                    if (data.valido === true) {
+                        telInput.classList.add('is-valid');
+                        check.style.display = '';
+                        feedback.textContent = 'Número válido e possui WhatsApp.';
+                        feedback.className = 'form-text text-success';
+                    } else if (data.valido === false) {
+                        telInput.classList.add('is-invalid');
+                        xIcon.style.display = '';
+                        feedback.textContent = data.mensagem || 'Número não possui WhatsApp.';
+                        feedback.className = 'form-text text-danger';
+                    } else {
+                        warning.style.display = '';
+                        feedback.textContent = 'Não foi possível validar, mas pode salvar.';
+                        feedback.className = 'form-text text-warning';
+                    }
+                    statusIcon.style.display = '';
+                } catch (e) {
+                    spinner.style.display = 'none';
+                    warning.style.display = '';
+                    feedback.textContent = 'Não foi possível validar, mas pode salvar.';
+                    feedback.className = 'form-text text-warning';
+                    statusIcon.style.display = '';
+                }
+            });
+        }
+    });
     const apiUrl = '';
 
     function fmtMoeda(valor) {
@@ -799,11 +884,11 @@
             console.log('Paginação calculada:', paginacaoAtual);
             
             // Atualizar contador de usuários
-            const startItem = ((page - 1) * ITEMS_PER_PAGE) + 1;
-            const endItem = Math.min(page * ITEMS_PER_PAGE, total);
+            let startItemUsuarios = ((page - 1) * ITEMS_PER_PAGE) + 1;
+            const endItemUsuarios = Math.min(page * ITEMS_PER_PAGE, total);
             const contadorEl = document.getElementById('contador-usuarios');
             if (contadorEl) {
-                contadorEl.textContent = `Mostrando ${startItem}-${endItem} de ${total} usuário(s)`;
+                contadorEl.textContent = `Mostrando ${startItemUsuarios}-${endItemUsuarios} de ${total} usuário(s)`;
             }
 
             // Enriquecer dados com nomes de perfis
@@ -882,9 +967,9 @@
         }
 
         // Calcular quantos usuários estão sendo mostrados nesta página
-        const startItem = ((paginacaoAtual.page - 1) * ITEMS_PER_PAGE) + 1;
-        const endItem = Math.min(paginacaoAtual.page * ITEMS_PER_PAGE, paginacaoAtual.total);
-        const showingText = `Mostrando ${startItem}-${endItem} de ${paginacaoAtual.total} usuário(s)`;
+        let startItemPaginacao = ((paginacaoAtual.page - 1) * ITEMS_PER_PAGE) + 1;
+        const endItemPaginacao = Math.min(paginacaoAtual.page * ITEMS_PER_PAGE, paginacaoAtual.total);
+        const showingText = `Mostrando ${startItemPaginacao}-${endItemPaginacao} de ${paginacaoAtual.total} usuário(s)`;
         
         // SEMPRE mostrar informação de paginação
         if (paginacaoAtual.pages <= 1) {
@@ -944,9 +1029,9 @@
         paginationHTML += '</ul></nav>';
 
         // Adicionar informações com contador
-        const startItem = ((current - 1) * ITEMS_PER_PAGE) + 1;
-        const endItem = Math.min(current * ITEMS_PER_PAGE, paginacaoAtual.total);
-        paginationHTML += `<div class="text-center mt-2 text-muted small">Página ${current} de ${total} - Mostrando ${startItem}-${endItem} de ${paginacaoAtual.total} usuário(s)</div>`;
+        let startItemPag = ((current - 1) * ITEMS_PER_PAGE) + 1;
+        const endItemPag = Math.min(current * ITEMS_PER_PAGE, paginacaoAtual.total);
+        paginationHTML += `<div class="text-center mt-2 text-muted small">Página ${current} de ${total} - Mostrando ${startItemPag}-${endItemPag} de ${paginacaoAtual.total} usuário(s)</div>`;
 
         container.innerHTML = paginationHTML;
         container.style.display = 'block';
@@ -1200,6 +1285,8 @@
     };
 
     async function abrirModalUsuario(user = null) {
+            document.getElementById('matricula_pap').value = user ? user.matricula_pap || '' : '';
+            document.getElementById('senha_pap').value = user ? user.senha_pap || '' : '';
         console.log('Abrindo modal de usuário...');
         document.getElementById('user-form').reset();
         document.getElementById('user_id').value = user ? user.id : '';
@@ -1332,6 +1419,8 @@
     }
 
     userForm.addEventListener('submit', async function(e) {
+            const matricula_pap = document.getElementById('matricula_pap').value;
+            const senha_pap = document.getElementById('senha_pap').value;
         e.preventDefault();
         const id = document.getElementById('user_id').value;
         const nomeCompleto = document.getElementById('nome_completo').value.trim();
@@ -1349,6 +1438,8 @@
         
         const supervisorValue = document.getElementById('supervisor_id').value;
         const body = {
+                        matricula_pap: cleanValue(matricula_pap),
+                        senha_pap: cleanValue(senha_pap),
             first_name: parts.shift() || '',
             last_name: parts.join(' ') || '',
             cpf: cleanValue(document.getElementById('cpf').value),

@@ -390,6 +390,21 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
                 validated_data['status_esteira'] = st_ini
             except: pass
 
+        # 4. Automatização: Quando reemissão é marcada, definir status_esteira como AGENDADO
+        nova_reemissao = validated_data.get('reemissao')
+        if nova_reemissao is not None:  # Campo foi enviado na requisição
+            if nova_reemissao and not instance.reemissao:  # Reemissão foi marcada como True (mudou de False para True)
+                try:
+                    st_agendado = StatusCRM.objects.get(nome__iexact="AGENDADO", tipo__iexact="Esteira")
+                    validated_data['status_esteira'] = st_agendado
+                    if 'status_esteira' not in alteracoes:
+                        alteracoes['status_esteira'] = {
+                            'de': self._get_field_repr(instance.status_esteira) if instance.status_esteira else "Nenhum",
+                            'para': 'AGENDADO'
+                        }
+                except StatusCRM.DoesNotExist:
+                    pass
+
         novo_esteira = validated_data.get('status_esteira', instance.status_esteira)
         if novo_esteira and novo_esteira.nome.lower() == 'instalada' and not instance.status_comissionamento:
             try:
