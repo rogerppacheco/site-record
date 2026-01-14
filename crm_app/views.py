@@ -4562,6 +4562,8 @@ class CdoiUpdateView(APIView):
 
         try:
             cdoi = CdoiSolicitacao.objects.get(pk=pk)
+            # Usa select_related/prefetch_related para otimizar a consulta
+            blocos_queryset = cdoi.blocos.all().order_by('nome_bloco')
             blocos = [
                 {
                     'nome': b.nome_bloco,
@@ -4569,8 +4571,13 @@ class CdoiUpdateView(APIView):
                     'aptos': b.unidades_por_andar,
                     'total': b.total_hps_bloco,
                 }
-                for b in cdoi.blocos.all()
+                for b in blocos_queryset
             ]
+            
+            # Log para debug (pode ser removido depois)
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"[CDOI] Editando {cdoi.nome_condominio} (ID: {pk}) - {len(blocos)} blocos encontrados")
 
             # Monta nome do criador
             criado_por_nome = '-'

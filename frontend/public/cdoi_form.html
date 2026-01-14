@@ -219,9 +219,6 @@
             width: 50px;
         }
 
-            vertical-align: middle;
-        }
-
         #lista-content .table th {
             background-color: var(--cor-surface);
             font-weight: 600;
@@ -412,8 +409,26 @@
                             <div class="col-md-5"><label>Logradouro</label><input type="text" name="logradouro" id="logradouro" class="form-control bg-light" readonly></div>
                             <div class="col-md-2"><label>Número *</label><input type="text" name="numero" id="inp_numero" class="form-control" required onblur="buscarCoordenadas()" oninput="debounceBuscarCoordenadas()"></div>
                             <div class="col-md-5"><label>Bairro</label><input type="text" name="bairro" id="bairro" class="form-control bg-light" readonly></div>
-                            <div class="col-md-3"><label>Latitude</label><input type="text" name="latitude" id="inp_lat" class="form-control" readonly><small class="text-muted">Preenchido automaticamente</small></div>
-                            <div class="col-md-3"><label>Longitude</label><input type="text" name="longitude" id="inp_long" class="form-control" readonly><small class="text-muted">Preenchido automaticamente</small></div>
+                            <div class="col-md-3">
+                                <label>Latitude</label>
+                                <div class="input-group">
+                                    <input type="text" name="latitude" id="inp_lat" class="form-control" readonly>
+                                    <button type="button" class="btn btn-outline-secondary" onclick="copiarCoordenada('lat')" title="Copiar latitude">
+                                        <i class="bi bi-clipboard"></i>
+                                    </button>
+                                </div>
+                                <small class="text-muted">Preenchido automaticamente</small>
+                            </div>
+                            <div class="col-md-3">
+                                <label>Longitude</label>
+                                <div class="input-group">
+                                    <input type="text" name="longitude" id="inp_long" class="form-control" readonly>
+                                    <button type="button" class="btn btn-outline-secondary" onclick="copiarCoordenada('long')" title="Copiar longitude">
+                                        <i class="bi bi-clipboard"></i>
+                                    </button>
+                                </div>
+                                <small class="text-muted">Preenchido automaticamente</small>
+                            </div>
                         </div>
 
                         <h6 class="text-primary fw-bold mb-3 border-bottom pb-2">Contato e Síndico</h6>
@@ -445,6 +460,18 @@
                                 <div class="form-check form-switch">
                                     <input class="form-check-input" type="checkbox" name="possui_shaft" id="inp_shaft">
                                     <label class="form-check-label fw-bold" for="inp_shaft">Possui Shaft / DG?</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Resumo dos Blocos Cadastrados (apenas em modo edição) -->
+                        <div id="resumo-blocos-cadastrados" class="card bg-info bg-opacity-10 border-info mb-4" style="display: none;">
+                            <div class="card-body">
+                                <h6 class="fw-bold text-info mb-3">
+                                    <i class="bi bi-building"></i> Blocos Cadastrados
+                                </h6>
+                                <div id="conteudo-resumo-blocos" class="table-responsive">
+                                    <!-- Será preenchido via JavaScript -->
                                 </div>
                             </div>
                         </div>
@@ -684,8 +711,14 @@
                 
                 buscarCep(d.cep);
 
+                // Debug: verificar blocos retornados
+                console.log('[CDOI] Blocos retornados pela API:', d.blocos);
+                
                 blocos = d.blocos.map(b => ({ nome: b.nome, andares: b.andares, aptos: b.aptos, total: b.total }));
                 atualizarTabelaBlocos();
+                
+                // Mostrar resumo dos blocos cadastrados
+                mostrarResumoBlocos(d.blocos);
                 
                 new bootstrap.Tab(document.querySelector('#nova-tab')).show();
             })
@@ -705,7 +738,89 @@
         document.querySelectorAll('.file-input-group').forEach(el => el.style.display = 'block');
         // Esconde o campo "Acionado por" no modo novo
         document.getElementById('div-criado-por').style.display = 'none';
+        // Esconde o resumo de blocos
+        document.getElementById('resumo-blocos-cadastrados').style.display = 'none';
         blocos = []; atualizarTabelaBlocos();
+    }
+
+    // Função para mostrar resumo dos blocos cadastrados
+    function mostrarResumoBlocos(blocosCadastrados) {
+        const resumoDiv = document.getElementById('resumo-blocos-cadastrados');
+        const conteudoDiv = document.getElementById('conteudo-resumo-blocos');
+        
+        if (!blocosCadastrados || blocosCadastrados.length === 0) {
+            resumoDiv.style.display = 'none';
+            return;
+        }
+        
+        let totalGeral = 0;
+        let html = `
+            <table class="table table-sm table-bordered mb-0">
+                <thead class="table-info">
+                    <tr>
+                        <th>Bloco</th>
+                        <th class="text-center">Andares</th>
+                        <th class="text-center">Aptos/Andar</th>
+                        <th class="text-center">Total HPs</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+        
+        blocosCadastrados.forEach(b => {
+            totalGeral += b.total || 0;
+            html += `
+                <tr>
+                    <td><strong>${b.nome || '-'}</strong></td>
+                    <td class="text-center">${b.andares || 0}</td>
+                    <td class="text-center">${b.aptos || 0}</td>
+                    <td class="text-center"><span class="badge bg-primary">${b.total || 0}</span></td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                </tbody>
+                <tfoot class="table-light">
+                    <tr>
+                        <td colspan="3" class="text-end fw-bold">Total Geral:</td>
+                        <td class="text-center fw-bold"><span class="badge bg-success">${totalGeral}</span></td>
+                    </tr>
+                </tfoot>
+            </table>
+        `;
+        
+        conteudoDiv.innerHTML = html;
+        resumoDiv.style.display = 'block';
+    }
+
+    // Função para copiar coordenadas
+    function copiarCoordenada(tipo) {
+        const input = tipo === 'lat' ? document.getElementById('inp_lat') : document.getElementById('inp_long');
+        const valor = input.value.trim();
+        
+        if (!valor || valor === 'Buscando...') {
+            alert('Não há coordenada para copiar.');
+            return;
+        }
+        
+        navigator.clipboard.writeText(valor).then(() => {
+            // Feedback visual
+            const btn = input.nextElementSibling;
+            const iconOriginal = btn.innerHTML;
+            btn.innerHTML = '<i class="bi bi-check"></i>';
+            btn.classList.add('btn-success');
+            btn.classList.remove('btn-outline-secondary');
+            
+            setTimeout(() => {
+                btn.innerHTML = iconOriginal;
+                btn.classList.remove('btn-success');
+                btn.classList.add('btn-outline-secondary');
+            }, 2000);
+        }).catch(err => {
+            console.error('Erro ao copiar:', err);
+            alert('Erro ao copiar. Tente selecionar e copiar manualmente.');
+        });
     }
 
     async function excluir(id) {
