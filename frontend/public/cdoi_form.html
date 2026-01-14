@@ -649,22 +649,86 @@
         
         try {
             const token = localStorage.getItem('accessToken');
-            const res = await fetch('/api/usuarios/?is_active=true&page_size=1000', {
-                headers: {'Authorization': `Bearer ${token}`}
+            let todosUsuarios = [];
+            
+            // Tentar primeiro com page_size grande (mais rápido se a API não paginar)
+            try {
+                const resGrande = await fetch('/api/usuarios/?is_active=true&page_size=10000', {
+                    headers: {'Authorization': `Bearer ${token}`}
+                });
+                
+                if (resGrande.ok) {
+                    const dataGrande = await resGrande.json();
+                    const usuariosGrande = Array.isArray(dataGrande) ? dataGrande : (dataGrande.results || []);
+                    
+                    // Se retornou muitos usuários ou se é array direto, usar esse resultado
+                    if (usuariosGrande.length > 0) {
+                        todosUsuarios = usuariosGrande;
+                        console.log(`[CDOI] Carregados ${todosUsuarios.length} usuários em uma única requisição`);
+                    }
+                }
+            } catch (e) {
+                console.warn('[CDOI] Erro ao carregar com page_size grande, tentando paginação:', e);
+            }
+            
+            // Se não conseguiu carregar todos de uma vez, tentar com paginação
+            if (todosUsuarios.length === 0) {
+                let page = 1;
+                let hasMore = true;
+                
+                while (hasMore) {
+                    const res = await fetch(`/api/usuarios/?is_active=true&page=${page}&page_size=100`, {
+                        headers: {'Authorization': `Bearer ${token}`}
+                    });
+                    
+                    if (!res.ok) {
+                        throw new Error(`Erro HTTP: ${res.status}`);
+                    }
+                    
+                    const data = await res.json();
+                    const usuarios = Array.isArray(data) ? data : (data.results || []);
+                    
+                    todosUsuarios = todosUsuarios.concat(usuarios);
+                    
+                    // Verificar se há mais páginas
+                    if (Array.isArray(data)) {
+                        // Se retornou array direto, não há paginação
+                        hasMore = false;
+                    } else if (data.results) {
+                        // Verificar se há próxima página
+                        hasMore = data.next !== null && data.next !== undefined;
+                        page++;
+                    } else {
+                        hasMore = false;
+                    }
+                    
+                    // Limite de segurança para evitar loop infinito
+                    if (page > 100) {
+                        console.warn('[CDOI] Limite de páginas atingido ao carregar usuários');
+                        hasMore = false;
+                    }
+                }
+            }
+            
+            console.log(`[CDOI] Total de usuários carregados: ${todosUsuarios.length}`);
+            
+            // Ordenar por username
+            todosUsuarios.sort((a, b) => {
+                const usernameA = (a.username || '').toLowerCase();
+                const usernameB = (b.username || '').toLowerCase();
+                return usernameA.localeCompare(usernameB);
             });
-            const data = await res.json();
-            const usuarios = Array.isArray(data) ? data : (data.results || []);
             
             select.innerHTML = '<option value="">Selecione quem acionou...</option>';
-            usuarios.forEach(u => {
-                let nomeExibicao = u.username || '-';
-                if (u.first_name || u.last_name) {
-                    nomeExibicao = `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username;
-                }
-                select.add(new Option(nomeExibicao, u.id));
+            todosUsuarios.forEach(u => {
+                // Mostrar apenas o username
+                const username = u.username || `ID: ${u.id}`;
+                select.add(new Option(username, u.id));
             });
+            
+            console.log(`[CDOI] ${todosUsuarios.length} usuários adicionados ao select`);
         } catch (e) {
-            console.error('Erro ao carregar usuários:', e);
+            console.error('[CDOI] Erro ao carregar usuários:', e);
             select.innerHTML = '<option value="">Erro ao carregar usuários</option>';
         }
     }
