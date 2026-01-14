@@ -464,7 +464,56 @@ class DFVImportService:
                 message=f'Removendo duplicados... {lote_num}/{total_lotes} lotes ({registros_removidos} removidos)'
             )
             
-            # Processar em sub-lotes menores para melhor performance
+            # Postgres: usar tabela temporária por lote para evitar travamentos por IN/OR
+            if connection.vendor == 'postgresql' and execute_values:
+                try:
+                    table_name = DFV._meta.db_table
+                    with transaction.atomic():
+                        with connection.cursor() as cursor:
+                            cursor.execute(
+                                """
+                                CREATE TEMP TABLE IF NOT EXISTS dfv_dups_tmp (
+                                    cep text,
+                                    num_fachada text
+                                ) ON COMMIT DROP
+                                """
+                            )
+                            cursor.execute("TRUNCATE TABLE dfv_dups_tmp")
+                            execute_values(
+                                cursor,
+                                "INSERT INTO dfv_dups_tmp (cep, num_fachada) VALUES %s",
+                                batch_cep_fachada,
+                                page_size=1000
+                            )
+                            cursor.execute(
+                                f"""
+                                DELETE FROM {table_name} t
+                                USING dfv_dups_tmp d
+                                WHERE t.cep = d.cep AND t.num_fachada = d.num_fachada
+                                """
+                            )
+                            count_deleted = cursor.rowcount or 0
+                            registros_removidos += count_deleted
+                    logger.debug(
+                        f"[DFV] Lote {lote_num}/{total_lotes}: deletados {count_deleted} registros "
+                        f"(total: {registros_removidos})"
+                    )
+                    self._update_progress(
+                        message=f'Removendo duplicados... {lote_num}/{total_lotes} lotes ({registros_removidos} removidos)'
+                    )
+                    logger.info(
+                        f"[DFV] === LOTE {lote_num}/{total_lotes} CONCLUÍDO === "
+                        f"Total removido até agora: {registros_removidos}"
+                    )
+                    continue
+                except Exception as e:
+                    logger.error(
+                        f"[DFV] ERRO ao remover duplicados (temp table) no lote {lote_num}: {e}",
+                        exc_info=True
+                    )
+                    # fallback para sub-lotes abaixo
+
+            # Processar em sub-lotes menores para melhor performance (fallback)
             sub_lote_num = 0
             for j in range(0, len(batch_cep_fachada), sub_batch_size):
                 sub_lote_num += 1
