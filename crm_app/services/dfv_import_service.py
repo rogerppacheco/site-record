@@ -434,70 +434,92 @@ class DFVImportService:
         )
         
         cep_fachada_list = list(cep_fachada_set)
-        # Reduzir tamanho do lote para evitar queries OR muito grandes
-        sub_batch_size = 500  # Processar 500 pares por vez dentro de cada transação
+        # Reduzir ainda mais o tamanho do sub-lote para evitar queries OR muito grandes
+        # 100 pares por vez é mais seguro e evita queries OR gigantes
+        sub_batch_size = 100  # Reduzido de 500 para 100 para evitar travamentos
         total_lotes = (len(cep_fachada_list) + self.BATCH_SIZE_DELETE - 1) // self.BATCH_SIZE_DELETE
         registros_removidos = 0
         
         # Atualizar status inicial
         self._update_progress(
-            message=f'Removendo duplicados... 0/{total_lotes} lotes'
+            message=f'Removendo duplicados... 0/{total_lotes} lotes (0 removidos)'
         )
         
         for i in range(0, len(cep_fachada_list), self.BATCH_SIZE_DELETE):
             lote_num = (i // self.BATCH_SIZE_DELETE) + 1
             batch_cep_fachada = cep_fachada_list[i:i + self.BATCH_SIZE_DELETE]
             
-            # Atualizar progresso antes de processar
+            logger.info(
+                f"[DFV] === INICIANDO LOTE {lote_num}/{total_lotes} === "
+                f"({len(batch_cep_fachada)} pares, {len(batch_cep_fachada) // sub_batch_size} sub-lotes)"
+            )
+            
+            # Atualizar progresso antes de processar o lote
             self._update_progress(
                 message=f'Removendo duplicados... {lote_num}/{total_lotes} lotes ({registros_removidos} removidos)'
             )
             
-            logger.info(
-                f"[DFV] Processando lote {lote_num}/{total_lotes} "
-                f"({len(batch_cep_fachada)} pares) em sub-lotes de {sub_batch_size}"
-            )
-            
             # Processar em sub-lotes menores para melhor performance
+            sub_lote_num = 0
             for j in range(0, len(batch_cep_fachada), sub_batch_size):
+                sub_lote_num += 1
                 sub_batch = batch_cep_fachada[j:j + sub_batch_size]
                 
+                logger.debug(
+                    f"[DFV] Lote {lote_num}/{total_lotes}, sub-lote {sub_lote_num}: "
+                    f"processando {len(sub_batch)} pares..."
+                )
+                
                 try:
-                    # Usar query mais eficiente com sub-lotes menores
-                    with transaction.atomic():
+                    # Estratégia otimizada: buscar IDs primeiro, depois deletar
+                    # Isso evita queries OR muito complexas e é mais eficiente
+                    ids_para_deletar = []
+                    
+                    # Buscar IDs em lotes menores ainda (50 por vez) para evitar query OR muito grande
+                    micro_batch_size = 50
+                    for k in range(0, len(sub_batch), micro_batch_size):
+                        micro_batch = sub_batch[k:k + micro_batch_size]
+                        
                         q_objects = Q()
-                        for cep, fachada in sub_batch:
+                        for cep, fachada in micro_batch:
                             q_objects |= Q(cep=cep, num_fachada=fachada)
                         
                         if q_objects:
-                            # Fazer count e delete em uma única query quando possível
-                            # Usar .values_list() primeiro para identificar IDs pode ser mais rápido
-                            # mas vamos manter simples por enquanto
-                            count_sub = DFV.objects.filter(q_objects).count()
+                            # Buscar apenas os IDs primeiro (mais rápido)
+                            ids = list(DFV.objects.filter(q_objects).values_list('id', flat=True))
+                            ids_para_deletar.extend(ids)
+                    
+                    # Deletar todos os IDs encontrados de uma vez (mais eficiente)
+                    if ids_para_deletar:
+                        # Deletar em chunks de 1000 IDs para evitar query muito grande
+                        delete_chunk_size = 1000
+                        for delete_chunk_idx in range(0, len(ids_para_deletar), delete_chunk_size):
+                            delete_chunk = ids_para_deletar[delete_chunk_idx:delete_chunk_idx + delete_chunk_size]
                             
-                            if count_sub > 0:
-                                DFV.objects.filter(q_objects).delete()
-                                registros_removidos += count_sub
+                            with transaction.atomic():
+                                count_deleted = DFV.objects.filter(id__in=delete_chunk).delete()[0]
+                                registros_removidos += count_deleted
                                 
-                                if (j // sub_batch_size) % 10 == 0:  # Log a cada 10 sub-lotes
-                                    logger.debug(
-                                        f"[DFV] Lote {lote_num}/{total_lotes}, "
-                                        f"sub-lote {j//sub_batch_size + 1}: "
-                                        f"{count_sub} registros removidos "
-                                        f"(total: {registros_removidos})"
-                                    )
+                                logger.debug(
+                                    f"[DFV] Lote {lote_num}/{total_lotes}, sub-lote {sub_lote_num}: "
+                                    f"deletados {count_deleted} registros (chunk {delete_chunk_idx//delete_chunk_size + 1})"
+                                )
+                        
+                        # Atualizar progresso a cada sub-lote processado
+                        self._update_progress(
+                            message=f'Removendo duplicados... {lote_num}/{total_lotes} lotes ({registros_removidos} removidos)'
+                        )
                 
                 except Exception as e:
                     logger.error(
-                        f"[DFV] Erro ao remover duplicados no lote {lote_num}, "
-                        f"sub-lote {j//sub_batch_size + 1}: {e}",
+                        f"[DFV] ERRO ao remover duplicados no lote {lote_num}, "
+                        f"sub-lote {sub_lote_num}: {e}",
                         exc_info=True
                     )
-                    # Continuar com próximo sub-lote mesmo em caso de erro
                     
-                    # Tentar remover um por um como fallback para este sub-lote
+                    # Tentar remoção individual como fallback para este sub-lote
                     logger.warning(
-                        f"[DFV] Tentando remoção individual para sub-lote com erro..."
+                        f"[DFV] Tentando remoção individual para sub-lote {sub_lote_num} com erro..."
                     )
                     for cep, fachada in sub_batch:
                         try:
@@ -506,7 +528,7 @@ class DFVImportService:
                                 registros_removidos += deleted
                         except Exception as e2:
                             logger.warning(
-                                f"[DFV] Erro ao remover CEP={cep}, fachada={fachada}: {e2}"
+                                f"[DFV] Erro ao remover individual CEP={cep}, fachada={fachada}: {e2}"
                             )
             
             # Atualizar progresso após processar o lote completo
@@ -515,7 +537,7 @@ class DFVImportService:
             )
             
             logger.info(
-                f"[DFV] Lote {lote_num}/{total_lotes} concluído. "
+                f"[DFV] === LOTE {lote_num}/{total_lotes} CONCLUÍDO === "
                 f"Total removido até agora: {registros_removidos}"
             )
         
