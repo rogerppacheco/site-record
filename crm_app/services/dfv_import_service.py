@@ -471,44 +471,45 @@ class DFVImportService:
                 )
                 
                 try:
-                    # Estratégia otimizada: buscar IDs primeiro, depois deletar
-                    # Isso evita queries OR muito complexas e é mais eficiente
-                    ids_para_deletar = []
-                    
-                    # Buscar IDs em lotes menores ainda (50 por vez) para evitar query OR muito grande
-                    micro_batch_size = 50
-                    for k in range(0, len(sub_batch), micro_batch_size):
-                        micro_batch = sub_batch[k:k + micro_batch_size]
-                        
-                        q_objects = Q()
-                        for cep, fachada in micro_batch:
-                            q_objects |= Q(cep=cep, num_fachada=fachada)
-                        
-                        if q_objects:
-                            # Buscar apenas os IDs primeiro (mais rápido)
-                            ids = list(DFV.objects.filter(q_objects).values_list('id', flat=True))
-                            ids_para_deletar.extend(ids)
-                    
-                    # Deletar todos os IDs encontrados de uma vez (mais eficiente)
-                    if ids_para_deletar:
-                        # Deletar em chunks de 1000 IDs para evitar query muito grande
-                        delete_chunk_size = 1000
-                        for delete_chunk_idx in range(0, len(ids_para_deletar), delete_chunk_size):
-                            delete_chunk = ids_para_deletar[delete_chunk_idx:delete_chunk_idx + delete_chunk_size]
-                            
-                            with transaction.atomic():
-                                count_deleted = DFV.objects.filter(id__in=delete_chunk).delete()[0]
-                                registros_removidos += count_deleted
-                                
-                                logger.debug(
-                                    f"[DFV] Lote {lote_num}/{total_lotes}, sub-lote {sub_lote_num}: "
-                                    f"deletados {count_deleted} registros (chunk {delete_chunk_idx//delete_chunk_size + 1})"
-                                )
-                        
-                        # Atualizar progresso a cada sub-lote processado
-                        self._update_progress(
-                            message=f'Removendo duplicados... {lote_num}/{total_lotes} lotes ({registros_removidos} removidos)'
-                        )
+                    # Estratégia mais rápida: DELETE direto por pares usando SQL tuple IN
+                    # Isso evita múltiplas queries OR e costuma ser muito mais eficiente.
+                    with connection.cursor() as cursor:
+                        if connection.vendor == 'postgresql':
+                            sql = """
+                                DELETE FROM crm_app_dfv
+                                WHERE (cep, num_fachada) IN %s
+                            """
+                            cursor.execute(sql, [tuple(sub_batch)])
+                            count_deleted = cursor.rowcount
+                        else:
+                            # Fallback para outros bancos: manter estratégia de IDs
+                            count_deleted = 0
+                            ids_para_deletar = []
+                            micro_batch_size = 50
+                            for k in range(0, len(sub_batch), micro_batch_size):
+                                micro_batch = sub_batch[k:k + micro_batch_size]
+                                q_objects = Q()
+                                for cep, fachada in micro_batch:
+                                    q_objects |= Q(cep=cep, num_fachada=fachada)
+                                if q_objects:
+                                    ids = list(DFV.objects.filter(q_objects).values_list('id', flat=True))
+                                    ids_para_deletar.extend(ids)
+                            if ids_para_deletar:
+                                delete_chunk_size = 1000
+                                for delete_chunk_idx in range(0, len(ids_para_deletar), delete_chunk_size):
+                                    delete_chunk = ids_para_deletar[delete_chunk_idx:delete_chunk_idx + delete_chunk_size]
+                                    with transaction.atomic():
+                                        count_deleted += DFV.objects.filter(id__in=delete_chunk).delete()[0]
+
+                        if count_deleted:
+                            registros_removidos += count_deleted
+                            logger.debug(
+                                f"[DFV] Lote {lote_num}/{total_lotes}, sub-lote {sub_lote_num}: "
+                                f"deletados {count_deleted} registros (total: {registros_removidos})"
+                            )
+                            self._update_progress(
+                                message=f'Removendo duplicados... {lote_num}/{total_lotes} lotes ({registros_removidos} removidos)'
+                            )
                 
                 except Exception as e:
                     logger.error(
