@@ -4474,21 +4474,44 @@ class CdoiCreateView(APIView):
                 status="SEM_TRATAMENTO" # Status inicial novo
             )
 
-            # Salvar Blocos (Mantido igual)
+            # Salvar Blocos (Melhorado com logs e tratamento de erro)
             blocos_json = data.get('dados_blocos_json')
+            import logging
+            logger = logging.getLogger(__name__)
+            
             if blocos_json:
                 try:
                     blocos = json.loads(blocos_json)
+                    logger.info(f"[CDOI] Salvando {len(blocos)} blocos para {cdoi.nome_condominio} (ID: {cdoi.id})")
+                    
+                    blocos_criados = 0
                     for b in blocos:
-                        CdoiBloco.objects.create(
-                            solicitacao=cdoi,
-                            nome_bloco=b['nome'],
-                            andares=int(b['andares']),
-                            unidades_por_andar=int(b['aptos']),
-                            total_hps_bloco=int(b['total'])
-                        )
+                        try:
+                            CdoiBloco.objects.create(
+                                solicitacao=cdoi,
+                                nome_bloco=b.get('nome', ''),
+                                andares=int(b.get('andares', 0)),
+                                unidades_por_andar=int(b.get('aptos', 0)),
+                                total_hps_bloco=int(b.get('total', 0))
+                            )
+                            blocos_criados += 1
+                            logger.debug(f"[CDOI] Bloco criado: {b.get('nome')} - {b.get('andares')} andares, {b.get('aptos')} aptos")
+                        except Exception as e_bloco_individual:
+                            logger.error(f"[CDOI] Erro ao criar bloco individual {b}: {e_bloco_individual}", exc_info=True)
+                    
+                    logger.info(f"[CDOI] {blocos_criados}/{len(blocos)} blocos salvos com sucesso para {cdoi.nome_condominio}")
+                    
+                    # Verifica se todos foram salvos
+                    if blocos_criados != len(blocos):
+                        logger.warning(f"[CDOI] ATENCAO: Apenas {blocos_criados} de {len(blocos)} blocos foram salvos!")
+                    
+                except json.JSONDecodeError as e_json:
+                    logger.error(f"[CDOI] Erro ao decodificar JSON de blocos: {e_json}")
+                    logger.error(f"[CDOI] JSON recebido: {blocos_json}")
                 except Exception as e_blocos:
-                    print(f"Erro ao salvar blocos: {e_blocos}")
+                    logger.error(f"[CDOI] Erro ao salvar blocos: {e_blocos}", exc_info=True)
+            else:
+                logger.warning(f"[CDOI] Nenhum dado de blocos recebido para {cdoi.nome_condominio} (ID: {cdoi.id})")
 
             # --- ITEM 4: WHATSAPP DESCOMENTADO ---
             try:
@@ -4574,10 +4597,18 @@ class CdoiUpdateView(APIView):
                 for b in blocos_queryset
             ]
             
-            # Log para debug (pode ser removido depois)
+            # Log para debug detalhado
             import logging
             logger = logging.getLogger(__name__)
             logger.info(f"[CDOI] Editando {cdoi.nome_condominio} (ID: {pk}) - {len(blocos)} blocos encontrados")
+            
+            # Log detalhado se não houver blocos mas houver total_hps
+            if len(blocos) == 0 and cdoi.total_hps > 0:
+                logger.warning(
+                    f"[CDOI] ATENCAO: Condominio {cdoi.nome_condominio} (ID: {pk}) "
+                    f"tem total_hps={cdoi.total_hps} mas nenhum bloco cadastrado!"
+                )
+                logger.warning(f"[CDOI] Isso indica que os blocos nao foram salvos durante a criacao.")
 
             # Monta nome do criador
             criado_por_nome = '-'
@@ -4614,6 +4645,8 @@ class CdoiUpdateView(APIView):
         try:
             cdoi = CdoiSolicitacao.objects.get(pk=pk)
             data = request.data
+            import logging
+            logger = logging.getLogger(__name__)
 
             # Campos pontuais
             if data.get('status'):
@@ -4622,6 +4655,43 @@ class CdoiUpdateView(APIView):
                 cdoi.observacao = data.get('observacao')
             if data.get('nome_condominio'):
                 cdoi.nome_condominio = data.get('nome_condominio')
+            
+            # Atualizar blocos se fornecidos
+            if 'dados_blocos_json' in data:
+                blocos_json = data.get('dados_blocos_json')
+                if blocos_json:
+                    try:
+                        # Remove blocos antigos
+                        cdoi.blocos.all().delete()
+                        logger.info(f"[CDOI] Blocos antigos removidos para {cdoi.nome_condominio} (ID: {pk})")
+                        
+                        # Cria novos blocos
+                        blocos = json.loads(blocos_json)
+                        blocos_criados = 0
+                        for b in blocos:
+                            try:
+                                CdoiBloco.objects.create(
+                                    solicitacao=cdoi,
+                                    nome_bloco=b.get('nome', ''),
+                                    andares=int(b.get('andares', 0)),
+                                    unidades_por_andar=int(b.get('aptos', 0)),
+                                    total_hps_bloco=int(b.get('total', 0))
+                                )
+                                blocos_criados += 1
+                            except Exception as e_bloco:
+                                logger.error(f"[CDOI] Erro ao criar bloco na edicao: {e_bloco}")
+                        
+                        logger.info(f"[CDOI] {blocos_criados} blocos atualizados para {cdoi.nome_condominio} (ID: {pk})")
+                        
+                        # Atualiza total_hps e pre_venda se fornecidos
+                        if 'total_hps_final' in data:
+                            cdoi.total_hps = int(data.get('total_hps_final', 0))
+                        if 'prevenda_final' in data:
+                            cdoi.pre_venda_minima = int(data.get('prevenda_final', 0))
+                    except json.JSONDecodeError as e_json:
+                        logger.error(f"[CDOI] Erro ao decodificar JSON de blocos na edicao: {e_json}")
+                    except Exception as e_blocos:
+                        logger.error(f"[CDOI] Erro ao atualizar blocos: {e_blocos}", exc_info=True)
             if data.get('cep'):
                 cdoi.cep = data.get('cep')
             if data.get('numero'):
