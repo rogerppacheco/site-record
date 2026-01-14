@@ -599,9 +599,8 @@ async function renovarTokenManual() {
             if (indicatorModal) indicatorModal.style.opacity = '1';
         }, 1000);
     } catch (e) {
-        timeDisplay.textContent = 'Erro!';
-        if (timeDisplayModal) timeDisplayModal.textContent = 'Erro!';
-        alert('Erro ao renovar token. Faça login novamente.');
+        timeDisplay.textContent = 'Sessão expirada';
+        if (timeDisplayModal) timeDisplayModal.textContent = 'Sessão expirada';
         
         setTimeout(() => {
             indicator.style.opacity = '1';
@@ -621,7 +620,10 @@ async function renovarTokenAutomatico() {
 
 async function renovarTokenAPI() {
     const refresh = localStorage.getItem('refreshToken');
-    if (!refresh) throw new Error('Sem refresh token');
+    if (!refresh) {
+        handleSessaoExpirada('Sua sessão expirou. Faça login novamente.');
+        throw new Error('Sem refresh token');
+    }
 
     const response = await fetch('/api/auth/token/refresh/', {
         method: 'POST',
@@ -633,12 +635,37 @@ async function renovarTokenAPI() {
     });
 
     if (!response.ok) {
-        throw new Error('Falha ao renovar token');
+        if (response.status === 401) {
+            handleSessaoExpirada('Sua sessão expirou. Faça login novamente.');
+            throw new Error('Refresh token inválido ou expirado');
+        }
+        const errorData = await response.json().catch(() => ({}));
+        const detail = errorData.detail || 'Falha ao renovar token';
+        if (window.showAlert) {
+            window.showAlert(detail, 'danger');
+        }
+        throw new Error(detail);
     }
 
     const data = await response.json();
     localStorage.setItem('accessToken', data.access);
     if (data.refresh) localStorage.setItem('refreshToken', data.refresh);
+}
+
+function handleSessaoExpirada(message) {
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('user_profile');
+    localStorage.removeItem('user_permissions');
+    localStorage.removeItem('last_login');
+    
+    if (window.showAlert) {
+        window.showAlert(message, 'warning');
+    }
+    
+    setTimeout(() => {
+        window.location.href = '/';
+    }, 1500);
 }
 
 // Parar monitoramento ao sair da página
