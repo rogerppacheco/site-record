@@ -28,6 +28,11 @@ from crm_app.models import DFV, LogImportacaoDFV
 
 logger = logging.getLogger(__name__)
 
+try:
+    from psycopg2.extras import execute_values
+except Exception:
+    execute_values = None
+
 
 class DFVImportError(Exception):
     """Exceção customizada para erros de importação DFV"""
@@ -575,11 +580,33 @@ class DFVImportService:
             batch = registros_para_criar[i:i + self.BATCH_SIZE_CREATE]
             
             try:
-                # Tentar bulk_create primeiro
-                with transaction.atomic():
-                    DFV.objects.bulk_create(batch, ignore_conflicts=False)
-                
-                sucesso_count += len(batch)
+                # Postgres: usar INSERT em massa com execute_values (bem mais rápido)
+                if connection.vendor == 'postgresql' and execute_values:
+                    now = timezone.now()
+                    table_name = DFV._meta.db_table
+                    columns = (
+                        'uf', 'municipio', 'logradouro', 'num_fachada', 'complemento',
+                        'cep', 'bairro', 'tipo_viabilidade', 'tipo_rede', 'celula',
+                        'nome_cdo', 'data_importacao'
+                    )
+                    values = [
+                        (
+                            obj.uf, obj.municipio, obj.logradouro, obj.num_fachada, obj.complemento,
+                            obj.cep, obj.bairro, obj.tipo_viabilidade, obj.tipo_rede, obj.celula,
+                            obj.nome_cdo, now
+                        )
+                        for obj in batch
+                    ]
+                    with transaction.atomic():
+                        with connection.cursor() as cursor:
+                            sql = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES %s"
+                            execute_values(cursor, sql, values, page_size=1000)
+                    sucesso_count += len(batch)
+                else:
+                    # Fallback: usar bulk_create padrão
+                    with transaction.atomic():
+                        DFV.objects.bulk_create(batch, ignore_conflicts=False)
+                    sucesso_count += len(batch)
                 
                 # Atualizar progresso
                 self._update_progress(
