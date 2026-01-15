@@ -59,6 +59,7 @@ class DFVImportService:
     CHUNK_SIZE_PREPARATION = 20_000  # Tamanho do chunk para preparação de objetos (reduzido para evitar travamento)
     BATCH_SIZE_DELETE = 10_000  # Tamanho do lote para remoção de duplicados
     BATCH_SIZE_CREATE = 1_000  # Tamanho do lote para criação de registros
+    BATCH_SIZE_CREATE_SUB = 500  # Sub-lote para inserção com progresso mais frequente
     PROGRESS_UPDATE_INTERVAL = 5  # Atualizar progresso a cada N chunks
     PREPARATION_PROGRESS_INTERVAL = 5_000  # Atualizar progresso a cada N registros durante preparação
     DB_IMPORT_LOCK_KEY = 93142761  # Chave fixa para lock global de importação (PostgreSQL)
@@ -784,12 +785,58 @@ class DFVImportService:
                                     raise
 
                     try:
-                        try:
-                            inserir_com_copy(values)
-                        except Exception as e:
-                            logger.warning(f"[DFV] COPY falhou, fallback para INSERT em massa: {e}")
-                            inserir_com_retry(values, page_size=1000)
-                        sucesso_count += len(batch)
+                        # Inserir em sub-lotes para progresso mais frequente e menor risco de travamento
+                        sub_size = min(self.BATCH_SIZE_CREATE_SUB, len(values))
+                        for k in range(0, len(values), sub_size):
+                            sub_values = values[k:k + sub_size]
+                            sub_objs = batch[k:k + sub_size]
+                            try:
+                                try:
+                                    inserir_com_copy(sub_values)
+                                except Exception as e:
+                                    logger.warning(f"[DFV] COPY falhou, fallback para INSERT em massa: {e}")
+                                    inserir_com_retry(sub_values, page_size=min(sub_size, 500))
+                                sucesso_count += len(sub_values)
+                            except Exception as e:
+                                # Fallback progressivo para o sub-lote com erro
+                                logger.warning(
+                                    f"[DFV] Falha no sub-lote (size={len(sub_values)}): {e}. "
+                                    f"Tentando tamanhos menores."
+                                )
+                                sub_chunk_sizes = [200, 50, 10]
+                                handled = False
+                                for sub_chunk_size in sub_chunk_sizes:
+                                    try:
+                                        for m in range(0, len(sub_values), sub_chunk_size):
+                                            sub_chunk_vals = sub_values[m:m + sub_chunk_size]
+                                            inserir_com_retry(sub_chunk_vals, page_size=min(sub_chunk_size, len(sub_chunk_vals)), tentativas=2)
+                                            sucesso_count += len(sub_chunk_vals)
+                                        handled = True
+                                        break
+                                    except Exception as e_sub:
+                                        logger.warning(
+                                            f"[DFV] Falha ao inserir sub-lote (size={sub_chunk_size}): {e_sub}. "
+                                            f"Tentando tamanho menor."
+                                        )
+                                if not handled:
+                                    # Último recurso: salvar individualmente
+                                    for obj in sub_objs:
+                                        try:
+                                            with transaction.atomic():
+                                                obj.save()
+                                            sucesso_count += 1
+                                        except Exception as e_ind:
+                                            erros_count += 1
+                                            if len(erros_detalhados) < 100:
+                                                erros_detalhados.append(
+                                                    f"CEP={obj.cep} fachada={obj.num_fachada}: {str(e_ind)}"
+                                                )
+                            # Atualizar progresso a cada sub-lote
+                            self._update_progress(
+                                success=sucesso_count,
+                                errors=erros_count,
+                                message=f'Criando registros... {batch_num}/{total_batches} lotes ({sucesso_count} criados)'
+                            )
                     except Exception:
                         # Fallback: dividir o lote e tentar novamente em partes menores
                         logger.warning(
