@@ -2492,19 +2492,56 @@ class ImportacaoOsabView(APIView):
                 total_processadas=total_registros,
                 mensagem='Salvando resultados no banco...'
             )
-            with transaction.atomic():
+
+            # Salvar em etapas para facilitar debug e evitar travar tudo num único transaction
+            try:
+                from django.db import connection
                 if osab_criar:
-                    self._sincronizar_seq_osab()
-                    ImportacaoOsab.objects.bulk_create(osab_criar, batch_size=2000)
+                    LogImportacaoOSAB.objects.filter(id=log_id).update(
+                        mensagem=f'Salvando OSAB: {len(osab_criar)} novos registros...'
+                    )
+                    with transaction.atomic():
+                        with connection.cursor() as cursor:
+                            cursor.execute("SET LOCAL statement_timeout = '120000ms'")
+                        self._sincronizar_seq_osab()
+                        ImportacaoOsab.objects.bulk_create(osab_criar, batch_size=2000)
+
                 if osab_atualizar:
+                    LogImportacaoOSAB.objects.filter(id=log_id).update(
+                        mensagem=f'Atualizando OSAB: {len(osab_atualizar)} registros...'
+                    )
                     campos_osab = [f.name for f in ImportacaoOsab._meta.fields if f.name != 'id']
-                    ImportacaoOsab.objects.bulk_update(osab_atualizar, campos_osab, batch_size=2000)
+                    with transaction.atomic():
+                        with connection.cursor() as cursor:
+                            cursor.execute("SET LOCAL statement_timeout = '120000ms'")
+                        ImportacaoOsab.objects.bulk_update(osab_atualizar, campos_osab, batch_size=2000)
+
                 if vendas_atualizar:
+                    LogImportacaoOSAB.objects.filter(id=log_id).update(
+                        mensagem=f'Atualizando vendas CRM: {len(vendas_atualizar)} registros...'
+                    )
                     campos_venda = ['status_esteira', 'status_tratamento', 'data_instalacao', 'data_agendamento', 'forma_pagamento', 'motivo_pendencia', 'data_abertura']
-                    Venda.objects.bulk_update(vendas_atualizar, campos_venda, batch_size=2000)
+                    with transaction.atomic():
+                        with connection.cursor() as cursor:
+                            cursor.execute("SET LOCAL statement_timeout = '120000ms'")
+                        Venda.objects.bulk_update(vendas_atualizar, campos_venda, batch_size=2000)
+
                 if historicos_criar:
-                    self._sincronizar_seq_historico()
-                    HistoricoAlteracaoVenda.objects.bulk_create(historicos_criar, batch_size=2000)
+                    LogImportacaoOSAB.objects.filter(id=log_id).update(
+                        mensagem=f'Salvando histórico: {len(historicos_criar)} registros...'
+                    )
+                    with transaction.atomic():
+                        with connection.cursor() as cursor:
+                            cursor.execute("SET LOCAL statement_timeout = '120000ms'")
+                        self._sincronizar_seq_historico()
+                        HistoricoAlteracaoVenda.objects.bulk_create(historicos_criar, batch_size=2000)
+            except Exception as e:
+                log.status = 'ERRO'
+                log.mensagem_erro = f'Erro ao salvar no banco: {str(e)}'
+                log.finalizado_em = timezone.now()
+                log.calcular_duracao()
+                log.save()
+                return
 
             report["atualizados"] = len(vendas_atualizar)
             report["criados"] = len(osab_criar)
