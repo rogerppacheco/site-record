@@ -529,7 +529,7 @@
             `;
 
             logs.forEach(log => {
-                const statusBadge = getStatusBadge(log.status, log.status_display);
+                let statusBadge = getStatusBadge(log.status, log.status_display);
                 const duracao = log.duracao_segundos 
                     ? `${log.duracao_segundos}s` 
                     : (log.status === 'PROCESSANDO' ? '<i class="spinner-border spinner-border-sm"></i>' : '-');
@@ -537,6 +537,19 @@
                 const vendas = log.vendas_encontradas || 0;
                 const atualizadas = log.atualizados || 0;
                 const whatsapp = log.enviar_whatsapp ? '<i class="bi bi-whatsapp text-success" title="WhatsApp ativado"></i>' : '';
+                
+                // Status detalhado durante processamento
+                if (log.status === 'PROCESSANDO' && log.total_registros > 0) {
+                    const processadas = log.total_processadas || 0;
+                    const percent = Math.round((processadas / log.total_registros) * 100);
+                    if (log.mensagem && log.mensagem.includes('Salvando')) {
+                        statusBadge = `<span class="badge bg-warning"><i class="bi bi-hourglass-split"></i> ${log.mensagem}</span>`;
+                    } else if (processadas > 0) {
+                        statusBadge = `<span class="badge bg-info"><i class="bi bi-arrow-repeat"></i> Processando ${processadas}/${log.total_registros} (${percent}%)</span>`;
+                    } else if (log.mensagem) {
+                        statusBadge = `<span class="badge bg-info"><i class="bi bi-arrow-repeat"></i> ${log.mensagem}</span>`;
+                    }
+                }
                 
                 html += `
                     <tr>

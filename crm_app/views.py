@@ -2102,6 +2102,9 @@ class ImportacaoOsabView(APIView):
         
         try:
             log = LogImportacaoOSAB.objects.get(id=log_id)
+            LogImportacaoOSAB.objects.filter(id=log_id).update(
+                mensagem='Lendo arquivo OSAB...'
+            )
             
             # Ler DataFrame do conteúdo
             try:
@@ -2183,6 +2186,13 @@ class ImportacaoOsabView(APIView):
             
             df = df.replace({np.nan: None, pd.NaT: None})
 
+            total_registros = len(df)
+            LogImportacaoOSAB.objects.filter(id=log_id).update(
+                total_registros=total_registros,
+                total_processadas=0,
+                mensagem=f'Preparando dados... 0/{total_registros}'
+            )
+
             # --- PREPARAÇÃO DO BANCO DE DADOS ---
             status_esteira_map = {s.nome.upper(): s for s in StatusCRM.objects.filter(tipo='Esteira')}
             status_tratamento_map = {s.nome.upper(): s for s in StatusCRM.objects.filter(tipo='Tratamento')}
@@ -2261,6 +2271,7 @@ class ImportacaoOsabView(APIView):
 
             # --- LOOP PRINCIPAL ---
             records = df.to_dict('records')
+            progress_step = 5000
 
             for index, row in enumerate(records):
                 log_item = {
@@ -2469,7 +2480,18 @@ class ImportacaoOsabView(APIView):
                     report["erros"].append(f"L{index}: {ex}")
                     report["logs_detalhados"].append(log_item)
 
+                # Atualizar progresso periodicamente
+                if (index + 1) % progress_step == 0:
+                    LogImportacaoOSAB.objects.filter(id=log_id).update(
+                        total_processadas=index + 1,
+                        mensagem=f'Processando registros... {index + 1}/{total_registros}'
+                    )
+
             # --- 3. PERSISTÊNCIA ---
+            LogImportacaoOSAB.objects.filter(id=log_id).update(
+                total_processadas=total_registros,
+                mensagem='Salvando resultados no banco...'
+            )
             with transaction.atomic():
                 if osab_criar:
                     self._sincronizar_seq_osab()
