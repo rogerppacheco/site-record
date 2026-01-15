@@ -3795,6 +3795,27 @@ def listar_grupos_whatsapp_api(request):
     except Exception as e:
         logger.error(f"Erro view listar grupos: {e}")
         return Response({'error': str(e)}, status=500)
+
+
+class ViaCepProxyView(APIView):
+    """Proxy para consulta de CEP evitando CORS no frontend."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, cep):
+        cep_limpo = re.sub(r'\D', '', str(cep or ''))
+        if len(cep_limpo) != 8:
+            return Response({'error': 'CEP inválido.'}, status=400)
+
+        try:
+            import json
+            import urllib.request
+
+            url = f"https://viacep.com.br/ws/{cep_limpo}/json/"
+            with urllib.request.urlopen(url, timeout=8) as response:
+                data = json.loads(response.read().decode('utf-8'))
+            return Response(data)
+        except Exception as e:
+            return Response({'error': f'Erro ao consultar CEP: {str(e)}'}, status=502)
     
 
 @api_view(['GET'])
