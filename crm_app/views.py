@@ -5151,7 +5151,8 @@ class CdoiUpdateView(APIView):
 
 def page_cdoi_novo(request):
     """View simples para abrir a página no navegador"""
-    return render(request, 'cdoi_form.html')
+    can_config = is_member(request.user, ['Admin', 'Diretoria']) if request.user.is_authenticated else False
+    return render(request, 'cdoi_form.html', {'can_config': can_config})
 
 
 # =============================================================================
