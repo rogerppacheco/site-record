@@ -565,6 +565,7 @@
                             ${log.ja_corretos > 0 ? `<span class="badge bg-secondary">${log.ja_corretos} já corretos</span>` : ''}
                             ${whatsapp}
                             ${log.download_url ? `<a class="btn btn-sm btn-outline-primary ms-2" href="${log.download_url}" target="_blank">Baixar relatório</a>` : ''}
+                            ${log.status === 'PROCESSANDO' ? `<button class="btn btn-sm btn-outline-danger ms-2" onclick="cancelarImportacaoOSAB(${log.id})">Cancelar</button>` : ''}
                         </td>
                     </tr>
                 `;
@@ -603,6 +604,31 @@
                 clearInterval(autoRefreshInterval);
                 autoRefreshInterval = null;
                 console.log('Auto-refresh OSAB parado');
+            }
+        }
+
+        async function cancelarImportacaoOSAB(logId) {
+            if (!confirm('Deseja cancelar esta importação?')) return;
+            try {
+                const accessToken = localStorage.getItem('accessToken');
+                const response = await fetch(`/api/crm/logs-osab/${logId}/cancelar/`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || 'Falha ao cancelar importação.');
+                }
+
+                showAlert('Importação cancelada com sucesso.', 'success');
+                carregarHistoricoImportacoes();
+            } catch (error) {
+                console.error('Erro ao cancelar importação:', error);
+                showAlert(error.message || 'Erro ao cancelar importação.', 'danger');
             }
         }
 
