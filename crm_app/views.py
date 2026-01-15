@@ -2867,6 +2867,8 @@ class ImportarDFVView(APIView):
         """
         import logging
         import threading
+        import tempfile
+        import os
         
         logger = logging.getLogger(__name__)
         
@@ -2894,22 +2896,25 @@ class ImportarDFVView(APIView):
                 f"Arquivo: {file_obj.name}, Usuário: {request.user.username}"
             )
             
-            # Ler arquivo em chunks para evitar timeout durante o upload
-            # Isso permite que o Gunicorn processe enquanto o arquivo está sendo recebido
-            arquivo_bytes = b''
+            # Salvar arquivo em disco temporário para evitar uso excessivo de memória
             chunk_size = 1024 * 1024  # 1MB por chunk
-            
-            logger.debug(f"[DFV] Iniciando leitura do arquivo {file_obj.name} em chunks...")
-            while True:
-                chunk = file_obj.read(chunk_size)
-                if not chunk:
-                    break
-                arquivo_bytes += chunk
-            
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.csv')
+            temp_path = temp_file.name
+            total_bytes = 0
+
+            logger.debug(f"[DFV] Salvando arquivo {file_obj.name} em disco temporário...")
+            for chunk in file_obj.chunks(chunk_size):
+                temp_file.write(chunk)
+                total_bytes += len(chunk)
+            temp_file.close()
+
             logger.info(
-                f"[DFV] Arquivo completo lido: {file_obj.name} "
-                f"({len(arquivo_bytes) / (1024*1024):.2f} MB)"
+                f"[DFV] Arquivo salvo em disco: {file_obj.name} "
+                f"({total_bytes / (1024*1024):.2f} MB)"
             )
+
+            # Atualizar tamanho do arquivo no log
+            LogImportacaoDFV.objects.filter(id=log.id).update(tamanho_arquivo=total_bytes)
             
             # Iniciar processamento em thread background
             def processar_dfv_async():
@@ -2918,7 +2923,13 @@ class ImportarDFVView(APIView):
                     from .services.dfv_import_service import DFVImportService
                     
                     service = DFVImportService(log_id=log.id)
-                    service.process(arquivo_bytes, file_obj.name)
+                    service.process(None, file_obj.name, arquivo_path=temp_path)
+                finally:
+                    try:
+                        if os.path.exists(temp_path):
+                            os.remove(temp_path)
+                    except Exception as e:
+                        logger.warning(f"[DFV] Não foi possível remover arquivo temporário: {e}")
                     
                 except Exception as e:
                     logger.error(
