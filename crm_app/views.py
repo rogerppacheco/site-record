@@ -2883,6 +2883,18 @@ class ImportarDFVView(APIView):
             from .models import LogImportacaoDFV
             from django.utils import timezone
             
+            # Evitar múltiplas importações simultâneas (reduz lock e travamentos)
+            log_em_andamento = LogImportacaoDFV.objects.filter(status='PROCESSANDO').order_by('-iniciado_em').first()
+            if log_em_andamento:
+                return Response(
+                    {
+                        'error': 'Já existe uma importação DFV em andamento. Aguarde finalizar para enviar outro arquivo.',
+                        'log_id': log_em_andamento.id,
+                        'status': 'PROCESSANDO'
+                    },
+                    status=409
+                )
+            
             # Criar log de importação ANTES de ler o arquivo
             log = LogImportacaoDFV.objects.create(
                 nome_arquivo=file_obj.name,

@@ -955,10 +955,15 @@ class DFVImportService:
         inicio = timezone.now()
         erros_detalhados = []
         
+        lock_acquired = False
         try:
             # Atualizar status inicial
             LogImportacaoDFV.objects.filter(id=self.log_id).update(status='PROCESSANDO')
             logger.info(f"[DFV] Iniciando processamento - Log ID: {self.log_id}")
+            
+            # Garantir execução exclusiva da importação (Postgres)
+            self._acquire_db_lock()
+            lock_acquired = True
             
             # ETAPA 1: Validação
             self._validate_file(arquivo_bytes, arquivo_nome, arquivo_path)
@@ -1008,22 +1013,19 @@ class DFVImportService:
             # Liberar memória do DataFrame válido
             del df_valido
             
-            # ETAPA 8/9: Remoção de duplicados + criação de registros (com lock global)
-            self._acquire_db_lock()
-            try:
-                self._update_progress(message='Removendo registros duplicados...')
-                registros_removidos = self._remove_duplicates(cep_fachada_set)
-                
-                # Liberar memória do set
-                del cep_fachada_set
-                
-                self._update_progress(message='Criando registros no banco de dados...')
-                sucesso_count, erros_criacao = self._create_records(registros_para_criar)
-                
-                # Liberar memória da lista de objetos
-                del registros_para_criar
-            finally:
-                self._release_db_lock()
+            # ETAPA 8: Remoção de duplicados
+            self._update_progress(message='Removendo registros duplicados...')
+            registros_removidos = self._remove_duplicates(cep_fachada_set)
+            
+            # Liberar memória do set
+            del cep_fachada_set
+            
+            # ETAPA 9: Criação de registros
+            self._update_progress(message='Criando registros no banco de dados...')
+            sucesso_count, erros_criacao = self._create_records(registros_para_criar)
+            
+            # Liberar memória da lista de objetos
+            del registros_para_criar
             
             # ETAPA 10: Finalização
             self._finalize_log(
@@ -1050,6 +1052,9 @@ class DFVImportService:
             logger.error(f"[DFV] Erro crítico inesperado: {e}", exc_info=True)
             self._handle_error(f"Erro fatal: {str(e)}")
             raise DFVImportError(f"Erro crítico: {str(e)}")
+        finally:
+            if lock_acquired:
+                self._release_db_lock()
     
     def _handle_error(self, error_message: str) -> None:
         """
