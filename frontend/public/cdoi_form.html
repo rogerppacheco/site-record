@@ -381,6 +381,7 @@
             <ul class="nav nav-tabs mb-4" id="cdoiTabs" role="tablist">
                 <li class="nav-item"><button class="nav-link active" id="dashboard-tab" data-bs-toggle="tab" data-bs-target="#dashboard-content" type="button" onclick="carregarDashboardCdoi()"><i class="bi bi-speedometer2"></i> Dashboard</button></li>
                 <li class="nav-item"><button class="nav-link" id="nova-tab" data-bs-toggle="tab" data-bs-target="#nova-content" type="button"><i class="bi bi-plus-circle"></i> <span id="tab-titulo">Nova Solicitação</span></button></li>
+                <li class="nav-item"><button class="nav-link" id="config-tab" data-bs-toggle="tab" data-bs-target="#config-content" type="button" onclick="carregarConfiguracaoCdoi()"><i class="bi bi-gear"></i> Configuração</button></li>
                 <li class="nav-item"><button class="nav-link" id="lista-tab" data-bs-toggle="tab" data-bs-target="#lista-content" type="button" onclick="carregarMeusAcionamentos()"><i class="bi bi-list-ul"></i> Meus Acionamentos</button></li>
             </ul>
 
@@ -399,6 +400,31 @@
                     </div>
                     <hr>
                     <div id="dashboard-status" class="table-responsive"></div>
+                </div>
+            </div>
+        </div>
+        <div class="tab-pane fade" id="config-content">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between">
+                    <span>Configuração de Resumo (WhatsApp)</span>
+                    <button class="btn btn-sm btn-outline-primary" onclick="carregarConfiguracaoCdoi()">
+                        <i class="bi bi-arrow-clockwise"></i> Atualizar
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="inp_config_destinatarios" class="form-label">Destinatários padrão do resumo</label>
+                        <input type="text" id="inp_config_destinatarios" class="form-control" placeholder="Ex: 31999999999, 31988888888">
+                        <small class="text-muted">Informe números com DDD, separados por vírgula.</small>
+                    </div>
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" id="inp_config_ativo" checked>
+                        <label class="form-check-label" for="inp_config_ativo">Ativar envio para destinatários padrão</label>
+                    </div>
+                    <button class="btn btn-primary" type="button" onclick="salvarConfiguracaoCdoi()">
+                        <i class="bi bi-save"></i> Salvar configuração
+                    </button>
+                    <div id="config-feedback" class="form-text mt-2"></div>
                 </div>
             </div>
         </div>
@@ -525,11 +551,7 @@
                             </div>
                             <div class="col-md-6 file-input-group"><label>Carta Síndico *</label><input type="file" name="arquivo_carta" class="form-control" accept=".pdf,.jpg" required></div>
                             <div class="col-md-6 file-input-group"><label>Fotos Fachada *</label><input type="file" name="arquivo_fachada" class="form-control" accept="image/*" multiple required></div>
-                            <div class="col-md-12">
-                                <label>Destinatários extras (resumo)</label>
-                                <input type="text" name="destinatarios_resumo" id="inp_destinatarios_resumo" class="form-control" placeholder="Ex: 31999999999, 31988888888">
-                                <small class="text-muted">Telefones que também receberão o resumo via WhatsApp</small>
-                            </div>
+                            
                         </div>
 
                         <h6 class="text-primary fw-bold mb-3 border-bottom pb-2">Dados Técnicos</h6>
@@ -550,19 +572,30 @@
                             </div>
                         </div>
 
-                        <!-- Resumo dos Blocos Cadastrados (apenas em modo edição) -->
+                        <!-- Blocos Cadastrados (apenas em modo edição) -->
                         <div id="resumo-blocos-cadastrados" class="card bg-info bg-opacity-10 border-info mb-4" style="display: none;">
                             <div class="card-body">
                                 <h6 class="fw-bold text-info mb-3">
                                     <i class="bi bi-building"></i> Blocos Cadastrados
                                 </h6>
-                                <div id="conteudo-resumo-blocos" class="table-responsive">
-                                    <!-- Será preenchido via JavaScript -->
+                                <div class="row g-2 align-items-end mb-2">
+                                    <div class="col-md-3"><input type="text" id="edit_bloco_nome" class="form-control form-control-sm" placeholder="Nome Bloco"></div>
+                                    <div class="col-md-3"><input type="number" id="edit_bloco_andares" class="form-control form-control-sm" placeholder="Andares"></div>
+                                    <div class="col-md-3"><input type="number" id="edit_bloco_aptos" class="form-control form-control-sm" placeholder="Aptos/Andar"></div>
+                                    <div class="col-md-3"><button type="button" id="btn-bloco-salvar" class="btn btn-secondary btn-sm w-100" onclick="salvarBlocoEditado()">Adicionar</button></div>
                                 </div>
+                                <table class="table table-sm mb-0 bg-white text-center rounded border">
+                                    <thead class="table-info"><tr><th>Bloco</th><th>Andares</th><th>Aptos/Andar</th><th>Total HPs</th><th>Ações</th></tr></thead>
+                                    <tbody id="lista-blocos-cadastrados"></tbody>
+                                    <tfoot class="table-light">
+                                        <tr><td colspan="3" class="text-end fw-bold">Total Geral:</td><td id="total-hps-geral-edit" class="fw-bold">0</td><td></td></tr>
+                                        <tr><td colspan="3" class="text-end text-primary fw-bold">Pré-venda (10%):</td><td id="prevenda-calc-edit" class="text-primary fw-bold">0</td><td></td></tr>
+                                    </tfoot>
+                                </table>
                             </div>
                         </div>
 
-                        <div class="card bg-light border-0 mb-4">
+                        <div id="estrutura-blocos-novo" class="card bg-light border-0 mb-4">
                             <div class="card-body">
                                 <h6 class="fw-bold">Estrutura de Blocos</h6>
                                 <div class="row g-2 align-items-end mb-2">
@@ -624,6 +657,8 @@
 <script src="{% static 'js/menu.js' %}?v=7.0"></script>
 <script>
     let blocos = [];
+    let blocoEditIndex = null;
+    let regraCdoiConfig = null;
 
     // --- BLOCOS E PRÉ-VENDA ---
     function addBloco() {
@@ -635,24 +670,97 @@
         blocos.push({ nome, andares, aptos, total: andares * aptos });
         atualizarTabelaBlocos();
         document.getElementById('temp_bloco').value = '';
+        document.getElementById('temp_andares').value = '';
+        document.getElementById('temp_aptos').value = '';
     }
 
     function atualizarTabelaBlocos() {
-        const tbody = document.getElementById('lista-blocos'); tbody.innerHTML = '';
+        const tbody = document.getElementById('lista-blocos');
+        const tbodyEdit = document.getElementById('lista-blocos-cadastrados');
+        if (tbody) tbody.innerHTML = '';
+        if (tbodyEdit) tbodyEdit.innerHTML = '';
         let total = 0;
         blocos.forEach((b, i) => {
             total += b.total;
-            tbody.innerHTML += `<tr><td>${b.nome}</td><td>${b.andares}</td><td>${b.aptos}</td><td>${b.total}</td><td><i class="bi bi-trash text-danger" onclick="blocos.splice(${i},1);atualizarTabelaBlocos()"></i></td></tr>`;
+            if (tbody) {
+                tbody.innerHTML += `<tr><td>${b.nome}</td><td>${b.andares}</td><td>${b.aptos}</td><td>${b.total}</td><td><i class="bi bi-trash text-danger" onclick="removerBloco(${i})"></i></td></tr>`;
+            }
+            if (tbodyEdit) {
+                tbodyEdit.innerHTML += `<tr><td>${b.nome}</td><td>${b.andares}</td><td>${b.aptos}</td><td>${b.total}</td><td><i class="bi bi-pencil-square text-primary me-2" onclick="editarBloco(${i})"></i><i class="bi bi-trash text-danger" onclick="removerBloco(${i})"></i></td></tr>`;
+            }
         });
         
         // CÁLCULO DE PRÉ-VENDA (30%)
         const prevenda = Math.ceil(total * 0.1);
         
-        document.getElementById('total-hps-geral').innerText = total;
-        document.getElementById('prevenda-calc').innerText = prevenda;
+        const totalHpsEl = document.getElementById('total-hps-geral');
+        const prevendaEl = document.getElementById('prevenda-calc');
+        const totalHpsEditEl = document.getElementById('total-hps-geral-edit');
+        const prevendaEditEl = document.getElementById('prevenda-calc-edit');
+        if (totalHpsEl) totalHpsEl.innerText = total;
+        if (prevendaEl) prevendaEl.innerText = prevenda;
+        if (totalHpsEditEl) totalHpsEditEl.innerText = total;
+        if (prevendaEditEl) prevendaEditEl.innerText = prevenda;
         document.getElementById('input_total_hps').value = total;
         document.getElementById('input_prevenda').value = prevenda;
         document.getElementById('input_blocos_json').value = JSON.stringify(blocos);
+    }
+
+    function setModoEdicaoBlocos(isEdit) {
+        const resumo = document.getElementById('resumo-blocos-cadastrados');
+        const estrutura = document.getElementById('estrutura-blocos-novo');
+        if (resumo) resumo.style.display = isEdit ? 'block' : 'none';
+        if (estrutura) estrutura.style.display = isEdit ? 'none' : 'block';
+        if (!isEdit) {
+            blocoEditIndex = null;
+            limparInputsEdicaoBloco();
+            const btnSalvar = document.getElementById('btn-bloco-salvar');
+            if (btnSalvar) btnSalvar.innerText = 'Adicionar';
+        }
+    }
+
+    function limparInputsEdicaoBloco() {
+        const nome = document.getElementById('edit_bloco_nome');
+        const andares = document.getElementById('edit_bloco_andares');
+        const aptos = document.getElementById('edit_bloco_aptos');
+        if (nome) nome.value = '';
+        if (andares) andares.value = '';
+        if (aptos) aptos.value = '';
+    }
+
+    function salvarBlocoEditado() {
+        const nome = (document.getElementById('edit_bloco_nome').value || '').trim();
+        const andares = parseInt(document.getElementById('edit_bloco_andares').value) || 0;
+        const aptos = parseInt(document.getElementById('edit_bloco_aptos').value) || 0;
+        if (!nome || andares <= 0) return;
+
+        const total = andares * aptos;
+        if (blocoEditIndex !== null && blocos[blocoEditIndex]) {
+            blocos[blocoEditIndex] = { nome, andares, aptos, total };
+        } else {
+            blocos.push({ nome, andares, aptos, total });
+        }
+        blocoEditIndex = null;
+        limparInputsEdicaoBloco();
+        const btnSalvar = document.getElementById('btn-bloco-salvar');
+        if (btnSalvar) btnSalvar.innerText = 'Adicionar';
+        atualizarTabelaBlocos();
+    }
+
+    function editarBloco(index) {
+        const bloco = blocos[index];
+        if (!bloco) return;
+        blocoEditIndex = index;
+        document.getElementById('edit_bloco_nome').value = bloco.nome;
+        document.getElementById('edit_bloco_andares').value = bloco.andares;
+        document.getElementById('edit_bloco_aptos').value = bloco.aptos;
+        const btnSalvar = document.getElementById('btn-bloco-salvar');
+        if (btnSalvar) btnSalvar.innerText = 'Salvar edição';
+    }
+
+    function removerBloco(index) {
+        blocos.splice(index, 1);
+        atualizarTabelaBlocos();
     }
 
     // --- VALIDAÇÃO WHATSAPP ---
@@ -928,10 +1036,8 @@
                 console.log('[CDOI] Blocos retornados pela API:', d.blocos);
                 
                 blocos = d.blocos.map(b => ({ nome: b.nome, andares: b.andares, aptos: b.aptos, total: b.total }));
+                setModoEdicaoBlocos(true);
                 atualizarTabelaBlocos();
-                
-                // Mostrar resumo dos blocos cadastrados
-                mostrarResumoBlocos(d.blocos);
                 
                 new bootstrap.Tab(document.querySelector('#nova-tab')).show();
             })
@@ -951,60 +1057,15 @@
         document.querySelectorAll('.file-input-group').forEach(el => el.style.display = 'block');
         // Esconde o campo "Acionado por" no modo novo
         document.getElementById('div-criado-por').style.display = 'none';
-        // Esconde o resumo de blocos
-        document.getElementById('resumo-blocos-cadastrados').style.display = 'none';
+        // Esconde o resumo de blocos e mostra estrutura padrão
+        setModoEdicaoBlocos(false);
         blocos = []; atualizarTabelaBlocos();
     }
 
-    // Função para mostrar resumo dos blocos cadastrados
-    function mostrarResumoBlocos(blocosCadastrados) {
-        const resumoDiv = document.getElementById('resumo-blocos-cadastrados');
-        const conteudoDiv = document.getElementById('conteudo-resumo-blocos');
-        
-        if (!blocosCadastrados || blocosCadastrados.length === 0) {
-            resumoDiv.style.display = 'none';
-            return;
-        }
-        
-        let totalGeral = 0;
-        let html = `
-            <table class="table table-sm table-bordered mb-0">
-                <thead class="table-info">
-                    <tr>
-                        <th>Bloco</th>
-                        <th class="text-center">Andares</th>
-                        <th class="text-center">Aptos/Andar</th>
-                        <th class="text-center">Total HPs</th>
-                    </tr>
-                </thead>
-                <tbody>
-        `;
-        
-        blocosCadastrados.forEach(b => {
-            totalGeral += b.total || 0;
-            html += `
-                <tr>
-                    <td><strong>${b.nome || '-'}</strong></td>
-                    <td class="text-center">${b.andares || 0}</td>
-                    <td class="text-center">${b.aptos || 0}</td>
-                    <td class="text-center"><span class="badge bg-primary">${b.total || 0}</span></td>
-                </tr>
-            `;
-        });
-        
-        html += `
-                </tbody>
-                <tfoot class="table-light">
-                    <tr>
-                        <td colspan="3" class="text-end fw-bold">Total Geral:</td>
-                        <td class="text-center fw-bold"><span class="badge bg-success">${totalGeral}</span></td>
-                    </tr>
-                </tfoot>
-            </table>
-        `;
-        
-        conteudoDiv.innerHTML = html;
-        resumoDiv.style.display = 'block';
+    // Função mantida por compatibilidade
+    function mostrarResumoBlocos() {
+        setModoEdicaoBlocos(true);
+        atualizarTabelaBlocos();
     }
 
     // Função para copiar coordenadas
@@ -1084,6 +1145,9 @@
         const headers = {'Authorization': `Bearer ${localStorage.getItem('accessToken')}`};
         if(isEdit) headers['Content-Type'] = 'application/json';
 
+        const originalHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Enviando...';
         try {
             const res = await fetch(url, {
                 method: method,
@@ -1105,6 +1169,10 @@
             }
             else { alert(data.error || 'Erro ao salvar.'); }
         } catch(e) { alert('Erro de conexão.'); }
+        finally {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        }
     }
 
     // Modal Status
@@ -1254,6 +1322,80 @@
         });
     }
 
+    function parseDestinatarios(texto) {
+        return (texto || '')
+            .split(',')
+            .map(item => item.trim())
+            .filter(item => item.length > 0);
+    }
+
+    async function carregarConfiguracaoCdoi() {
+        const feedback = document.getElementById('config-feedback');
+        try {
+            if (feedback) feedback.textContent = 'Carregando configuração...';
+            const token = localStorage.getItem('accessToken');
+            const res = await fetch('/api/regras-automacao/', { headers: {'Authorization': `Bearer ${token}`} });
+            const data = await res.json();
+            const regras = Array.isArray(data) ? data : (data.results || []);
+            regraCdoiConfig = regras.find(r => r.evento_gatilho === 'NOVO_CDOI') || null;
+
+            const inputDest = document.getElementById('inp_config_destinatarios');
+            const inputAtivo = document.getElementById('inp_config_ativo');
+            if (regraCdoiConfig) {
+                const numeros = (regraCdoiConfig.destinos_numeros || []).join(', ');
+                if (inputDest) inputDest.value = numeros;
+                if (inputAtivo) inputAtivo.checked = !!regraCdoiConfig.ativo;
+                if (feedback) feedback.textContent = 'Configuração carregada.';
+            } else {
+                if (inputDest) inputDest.value = '';
+                if (inputAtivo) inputAtivo.checked = true;
+                if (feedback) feedback.textContent = 'Nenhuma configuração encontrada. Você pode criar uma nova.';
+            }
+        } catch (e) {
+            console.error('Erro ao carregar configuração CDOI:', e);
+            if (feedback) feedback.textContent = 'Erro ao carregar configuração.';
+        }
+    }
+
+    async function salvarConfiguracaoCdoi() {
+        const feedback = document.getElementById('config-feedback');
+        const inputDest = document.getElementById('inp_config_destinatarios');
+        const inputAtivo = document.getElementById('inp_config_ativo');
+        const numeros = parseDestinatarios(inputDest ? inputDest.value : '');
+        const ativo = inputAtivo ? inputAtivo.checked : true;
+
+        const payload = {
+            nome: regraCdoiConfig?.nome || 'CDOI - Resumo',
+            ativo: ativo,
+            evento_gatilho: 'NOVO_CDOI',
+            destinos_grupos: regraCdoiConfig?.destinos_grupos || [],
+            destinos_numeros: numeros,
+            template_mensagem: regraCdoiConfig?.template_mensagem || '🔔 *NOVO CDOI*\\nCliente: {cliente}\\nResp: {usuario}'
+        };
+
+        try {
+            if (feedback) feedback.textContent = 'Salvando...';
+            const token = localStorage.getItem('accessToken');
+            const url = regraCdoiConfig?.id ? `/api/regras-automacao/${regraCdoiConfig.id}/` : '/api/regras-automacao/';
+            const method = regraCdoiConfig?.id ? 'PATCH' : 'POST';
+            const res = await fetch(url, {
+                method,
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.detail || 'Erro ao salvar configuração');
+            regraCdoiConfig = data;
+            if (feedback) feedback.textContent = 'Configuração salva com sucesso.';
+        } catch (e) {
+            console.error('Erro ao salvar configuração CDOI:', e);
+            if (feedback) feedback.textContent = 'Erro ao salvar configuração.';
+        }
+    }
+
     async function carregarDashboardCdoi() {
         try {
             const token = localStorage.getItem('accessToken');
@@ -1314,6 +1456,7 @@
 
     document.addEventListener('DOMContentLoaded', function() {
         carregarDashboardCdoi();
+        setModoEdicaoBlocos(false);
     });
     
     // Expande o container quando a aba Meus Acionamentos está ativa

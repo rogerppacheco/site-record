@@ -311,7 +311,7 @@ from openpyxl.utils import get_column_letter
 
 
 # --- IMPORTS EXTRAS DO PROJETO ---
-from core.models import DiaFiscal
+from core.models import DiaFiscal, RegraAutomacao
 from core.validators import validar_cpf, validar_cnpj, validar_cpf_ou_cnpj
 from .whatsapp_service import WhatsAppService
 from xhtml2pdf import pisa
@@ -4660,6 +4660,14 @@ class CdoiCreateView(APIView):
                 f = files['arquivo_fachada']
                 link_fachada = uploader.upload_file(f, folder_name, f"FACHADA_{f.name}")
 
+            destinatarios_config = []
+            try:
+                regra = RegraAutomacao.objects.filter(evento_gatilho='NOVO_CDOI').first()
+                if regra and isinstance(regra.destinos_numeros, list):
+                    destinatarios_config = [str(x).strip() for x in regra.destinos_numeros if str(x).strip()]
+            except Exception:
+                destinatarios_config = []
+
             cdoi = CdoiSolicitacao.objects.create(
                 nome_condominio=nome_condominio,
                 nome_sindico=data.get('nome_sindico'),
@@ -4678,7 +4686,7 @@ class CdoiCreateView(APIView):
                 pre_venda_minima=data.get('prevenda_final') or 0,
                 link_carta_sindico=link_carta,
                 link_fotos_fachada=link_fachada,
-                destinatarios_resumo=data.get('destinatarios_resumo'),
+                destinatarios_resumo=",".join(destinatarios_config) if destinatarios_config else None,
                 criado_por=request.user,
                 status="SEM_TRATAMENTO" # Status inicial novo
             )
@@ -4776,8 +4784,11 @@ class CdoiCreateView(APIView):
                 if tel_user:
                     destinatarios.append(tel_user)
 
+                extras = []
+                if destinatarios_config:
+                    extras.extend(destinatarios_config)
                 extras_raw = data.get('destinatarios_resumo') or ''
-                extras = [t.strip() for t in re.split(r'[;,\\n]', str(extras_raw)) if t.strip()]
+                extras.extend([t.strip() for t in re.split(r'[;,\\n]', str(extras_raw)) if t.strip()])
                 for t in extras:
                     tel_extra = _limpar_tel(t)
                     if tel_extra and tel_extra not in destinatarios:
