@@ -2924,19 +2924,18 @@ class ImportarDFVView(APIView):
                     
                     service = DFVImportService(log_id=log.id)
                     service.process(None, file_obj.name, arquivo_path=temp_path)
-                finally:
-                    try:
-                        if os.path.exists(temp_path):
-                            os.remove(temp_path)
-                    except Exception as e:
-                        logger.warning(f"[DFV] Não foi possível remover arquivo temporário: {e}")
-                    
                 except Exception as e:
                     logger.error(
                         f"[DFV] Erro crítico no processamento assíncrono: {e}",
                         exc_info=True
                     )
                     # O serviço já atualiza o log em caso de erro
+                finally:
+                    try:
+                        if os.path.exists(temp_path):
+                            os.remove(temp_path)
+                    except Exception as e:
+                        logger.warning(f"[DFV] Não foi possível remover arquivo temporário: {e}")
             
             thread = threading.Thread(target=processar_dfv_async, daemon=True)
             thread.start()
