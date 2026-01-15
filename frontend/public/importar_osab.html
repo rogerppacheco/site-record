@@ -448,9 +448,9 @@
                 fileInput.value = '';
                 
                 // Reiniciar auto-refresh do histórico
-                if (refreshIntervalId) clearInterval(refreshIntervalId);
-                refreshIntervalId = setInterval(carregarHistoricoOSAB, 3000);
-                carregarHistoricoOSAB();
+                pararAutoRefresh();
+                iniciarAutoRefresh();
+                carregarHistoricoImportacoes();
             } else {
                 resultado.innerHTML = `
                     <div class="alert alert-danger alert-dismissible fade show" role="alert">
