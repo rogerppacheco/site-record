@@ -12,6 +12,7 @@ Este módulo implementa as melhores práticas de desenvolvimento:
 """
 
 import logging
+import os
 import re
 import traceback
 from typing import Dict, List, Tuple, Optional, Set
@@ -120,7 +121,7 @@ class DFVImportService:
             except Exception as e:
                 logger.error(f"[DFV] Erro ao atualizar progresso: {e}", exc_info=True)
     
-    def _validate_file(self, arquivo_bytes: bytes, arquivo_nome: str) -> None:
+    def _validate_file(self, arquivo_bytes: Optional[bytes], arquivo_nome: str, arquivo_path: Optional[str] = None) -> None:
         """
         Valida o arquivo antes do processamento.
         
@@ -131,19 +132,25 @@ class DFVImportService:
         Raises:
             DFVImportError: Se o arquivo for inválido
         """
-        if not arquivo_bytes:
+        if not arquivo_bytes and not arquivo_path:
             raise DFVImportError("Arquivo vazio")
         
         if not arquivo_nome.lower().endswith('.csv'):
             raise DFVImportError("Arquivo deve ter extensão .csv")
         
         # Validar tamanho mínimo (pelo menos alguns bytes)
-        if len(arquivo_bytes) < 100:
+        tamanho_bytes = 0
+        if arquivo_bytes:
+            tamanho_bytes = len(arquivo_bytes)
+        elif arquivo_path and os.path.exists(arquivo_path):
+            tamanho_bytes = os.path.getsize(arquivo_path)
+
+        if tamanho_bytes < 100:
             raise DFVImportError("Arquivo muito pequeno para ser válido")
         
-        logger.info(f"[DFV] Arquivo validado: {arquivo_nome} ({len(arquivo_bytes) / (1024*1024):.2f} MB)")
+        logger.info(f"[DFV] Arquivo validado: {arquivo_nome} ({tamanho_bytes / (1024*1024):.2f} MB)")
     
-    def _read_csv(self, arquivo_bytes: bytes) -> pd.DataFrame:
+    def _read_csv(self, arquivo_bytes: Optional[bytes], arquivo_path: Optional[str] = None) -> pd.DataFrame:
         """
         Lê o arquivo CSV com tratamento de encoding.
         
@@ -156,25 +163,40 @@ class DFVImportService:
         Raises:
             DFVImportError: Se não conseguir ler o arquivo
         """
-        arquivo_io = BytesIO(arquivo_bytes)
+        arquivo_io = None
+        if arquivo_bytes:
+            arquivo_io = BytesIO(arquivo_bytes)
         
         # Tentar UTF-8 primeiro
         encodings = ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252']
         
         for encoding in encodings:
             try:
-                arquivo_io.seek(0)
-                df = pd.read_csv(
-                    arquivo_io,
-                    sep=';',
-                    dtype=str,
-                    encoding=encoding,
-                    low_memory=False,
-                    on_bad_lines='skip',
-                    engine='c',
-                    memory_map=False,
-                    na_filter=False
-                )
+                if arquivo_path:
+                    df = pd.read_csv(
+                        arquivo_path,
+                        sep=';',
+                        dtype=str,
+                        encoding=encoding,
+                        low_memory=False,
+                        on_bad_lines='skip',
+                        engine='c',
+                        memory_map=False,
+                        na_filter=False
+                    )
+                else:
+                    arquivo_io.seek(0)
+                    df = pd.read_csv(
+                        arquivo_io,
+                        sep=';',
+                        dtype=str,
+                        encoding=encoding,
+                        low_memory=False,
+                        on_bad_lines='skip',
+                        engine='c',
+                        memory_map=False,
+                        na_filter=False
+                    )
                 logger.info(f"[DFV] Arquivo lido com sucesso usando encoding: {encoding}")
                 return df
             except UnicodeDecodeError:
@@ -862,7 +884,7 @@ class DFVImportService:
             f"duração={duracao_segundos}s"
         )
     
-    def process(self, arquivo_bytes: bytes, arquivo_nome: str) -> Dict:
+    def process(self, arquivo_bytes: Optional[bytes], arquivo_nome: str, arquivo_path: Optional[str] = None) -> Dict:
         """
         Processa a importação completa do arquivo DFV.
         
@@ -892,11 +914,11 @@ class DFVImportService:
             logger.info(f"[DFV] Iniciando processamento - Log ID: {self.log_id}")
             
             # ETAPA 1: Validação
-            self._validate_file(arquivo_bytes, arquivo_nome)
+            self._validate_file(arquivo_bytes, arquivo_nome, arquivo_path)
             
             # ETAPA 2: Leitura do CSV
             self._update_progress(message='Lendo arquivo CSV...')
-            df = self._read_csv(arquivo_bytes)
+            df = self._read_csv(arquivo_bytes, arquivo_path)
             
             # ETAPA 3: Normalização de colunas
             df = self._normalize_columns(df)
@@ -908,7 +930,7 @@ class DFVImportService:
                 total_registros=total_registros,
                 total_processadas=0,
                 sucesso=0,
-                tamanho_arquivo=len(arquivo_bytes)
+                tamanho_arquivo=len(arquivo_bytes) if arquivo_bytes else (os.path.getsize(arquivo_path) if arquivo_path else 0)
             )
             logger.info(f"[DFV] Total de registros no arquivo: {total_registros}")
             

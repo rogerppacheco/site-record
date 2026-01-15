@@ -261,6 +261,11 @@ NIO_STORAGE_STATE = os.path.join(BASE_DIR, '.playwright_state.json')
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
+# --- LIMITES DE UPLOAD ---
+# Ajuste para permitir arquivos grandes (ex: 200MB)
+DATA_UPLOAD_MAX_MEMORY_SIZE = 200 * 1024 * 1024  # 200MB
+FILE_UPLOAD_MAX_MEMORY_SIZE = 200 * 1024 * 1024  # 200MB
+
 # --- LOGGING PARA DEBUG NO HEROKU ---
 LOGGING = {
     'version': 1,
