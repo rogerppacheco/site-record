@@ -15,7 +15,7 @@ import logging
 import re
 import traceback
 from typing import Dict, List, Tuple, Optional, Set
-from io import BytesIO
+from io import BytesIO, StringIO
 from datetime import datetime, timedelta
 
 import pandas as pd
@@ -649,6 +649,27 @@ class DFVImportService:
                         for obj in batch
                     ]
 
+                    def _sanitize_copy_value(val):
+                        if val is None:
+                            return r'\N'
+                        text = str(val)
+                        text = text.replace('\t', ' ').replace('\n', ' ').replace('\r', ' ')
+                        return text
+
+                    def inserir_com_copy(valores):
+                        if not valores:
+                            return
+                        data = StringIO()
+                        for row in valores:
+                            data.write('\t'.join(_sanitize_copy_value(v) for v in row))
+                            data.write('\n')
+                        data.seek(0)
+                        with transaction.atomic():
+                            with connection.cursor() as cursor:
+                                cursor.execute("SET LOCAL statement_timeout = '60000ms'")
+                                sql = f"COPY {table_name} ({', '.join(columns)}) FROM STDIN WITH (FORMAT text)"
+                                cursor.copy_expert(sql, data)
+
                     def inserir_com_retry(valores, page_size, tentativas=3):
                         if not valores:
                             return
@@ -668,7 +689,11 @@ class DFVImportService:
                                     raise
 
                     try:
-                        inserir_com_retry(values, page_size=1000)
+                        try:
+                            inserir_com_copy(values)
+                        except Exception as e:
+                            logger.warning(f"[DFV] COPY falhou, fallback para INSERT em massa: {e}")
+                            inserir_com_retry(values, page_size=1000)
                         sucesso_count += len(batch)
                     except Exception:
                         # Fallback: dividir o lote e tentar novamente em partes menores
