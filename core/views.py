@@ -7,7 +7,7 @@ import calendar
 # DRF Imports
 from rest_framework import viewsets
 from rest_framework.authentication import SessionAuthentication, BasicAuthentication
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, BasePermission
 # --- IMPORTAÇÃO NECESSÁRIA PARA O JWT ---
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
@@ -21,12 +21,22 @@ class CsrfExemptSessionAuthentication(SessionAuthentication):
         return 
 
 # --- VIEWSET DA NOVA REGRA DE AUTOMAÇÃO ---
+class IsAdminDiretoria(BasePermission):
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+        if getattr(user, 'is_superuser', False):
+            return True
+        return user.groups.filter(name__in=['Admin', 'Diretoria']).exists()
+
+
 class RegraAutomacaoViewSet(viewsets.ModelViewSet):
     queryset = RegraAutomacao.objects.all()
     serializer_class = RegraAutomacaoSerializer
     # --- CORREÇÃO: Adicionado JWTAuthentication para aceitar o Token do Frontend ---
     authentication_classes = (CsrfExemptSessionAuthentication, BasicAuthentication, JWTAuthentication)
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdminDiretoria]
 
 # --- SUAS VIEWS DE TEMPLATE ---
 class IndexView(TemplateView):
