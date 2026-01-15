@@ -473,35 +473,44 @@ class DFVImportService:
                         sub_lote_num += 1
                         sub_batch = batch_cep_fachada[j:j + sub_batch_size]
 
+                        tamanhos_sub = [len(sub_batch), 50, 20, 10]
                         for tentativa in range(1, 4):
                             try:
-                                with transaction.atomic():
-                                    with connection.cursor() as cursor:
-                                        cursor.execute("SET LOCAL statement_timeout = '60000ms'")
-                                        cursor.execute(
-                                            """
-                                            CREATE TEMP TABLE IF NOT EXISTS dfv_dups_tmp (
-                                                cep text,
-                                                num_fachada text
-                                            ) ON COMMIT DROP
-                                            """
-                                        )
-                                        cursor.execute("TRUNCATE TABLE dfv_dups_tmp")
-                                        execute_values(
-                                            cursor,
-                                            "INSERT INTO dfv_dups_tmp (cep, num_fachada) VALUES %s",
-                                            sub_batch,
-                                            page_size=200
-                                        )
-                                        cursor.execute(
-                                            f"""
-                                            DELETE FROM {table_name} t
-                                            USING dfv_dups_tmp d
-                                            WHERE t.cep = d.cep AND t.num_fachada = d.num_fachada
-                                            """
-                                        )
-                                        count_deleted = cursor.rowcount or 0
-                                        registros_removidos += count_deleted
+                                for tamanho in tamanhos_sub:
+                                    partes = [
+                                        sub_batch[i:i + tamanho]
+                                        for i in range(0, len(sub_batch), tamanho)
+                                    ]
+                                    for parte in partes:
+                                        with transaction.atomic():
+                                            with connection.cursor() as cursor:
+                                                cursor.execute("SET LOCAL statement_timeout = '60000ms'")
+                                                cursor.execute(
+                                                    """
+                                                    CREATE TEMP TABLE IF NOT EXISTS dfv_dups_tmp (
+                                                        cep text,
+                                                        num_fachada text
+                                                    ) ON COMMIT DROP
+                                                    """
+                                                )
+                                                cursor.execute("TRUNCATE TABLE dfv_dups_tmp")
+                                                execute_values(
+                                                    cursor,
+                                                    "INSERT INTO dfv_dups_tmp (cep, num_fachada) VALUES %s",
+                                                    parte,
+                                                    page_size=200
+                                                )
+                                                cursor.execute(
+                                                    f"""
+                                                    DELETE FROM {table_name} t
+                                                    USING dfv_dups_tmp d
+                                                    WHERE t.cep = d.cep AND t.num_fachada = d.num_fachada
+                                                    """
+                                                )
+                                                count_deleted = cursor.rowcount or 0
+                                                registros_removidos += count_deleted
+                                    # se chegou aqui, deu certo com esse tamanho
+                                    break
                                 logger.debug(
                                     f"[DFV] Lote {lote_num}/{total_lotes}, sub-lote {sub_lote_num}: "
                                     f"deletados {count_deleted} registros (total: {registros_removidos})"
