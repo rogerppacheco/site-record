@@ -4966,6 +4966,16 @@ class CdoiUpdateView(APIView):
             return Response({"error": "Acesso negado."}, status=403)
 
         try:
+            def _to_int(value, default=0):
+                if value is None:
+                    return default
+                if isinstance(value, str) and not value.strip():
+                    return default
+                try:
+                    return int(value)
+                except (ValueError, TypeError):
+                    return default
+
             cdoi = CdoiSolicitacao.objects.get(pk=pk)
             data = request.data
             import logging
@@ -4980,41 +4990,34 @@ class CdoiUpdateView(APIView):
                 cdoi.nome_condominio = data.get('nome_condominio')
             
             # Atualizar blocos se fornecidos
-            if 'dados_blocos_json' in data:
-                blocos_json = data.get('dados_blocos_json')
-                if blocos_json:
-                    try:
-                        # Remove blocos antigos
-                        cdoi.blocos.all().delete()
-                        logger.info(f"[CDOI] Blocos antigos removidos para {cdoi.nome_condominio} (ID: {pk})")
-                        
-                        # Cria novos blocos
-                        blocos = json.loads(blocos_json)
-                        blocos_criados = 0
-                        for b in blocos:
-                            try:
-                                CdoiBloco.objects.create(
-                                    solicitacao=cdoi,
-                                    nome_bloco=b.get('nome', ''),
-                                    andares=int(b.get('andares', 0)),
-                                    unidades_por_andar=int(b.get('aptos', 0)),
-                                    total_hps_bloco=int(b.get('total', 0))
-                                )
-                                blocos_criados += 1
-                            except Exception as e_bloco:
-                                logger.error(f"[CDOI] Erro ao criar bloco na edicao: {e_bloco}")
-                        
-                        logger.info(f"[CDOI] {blocos_criados} blocos atualizados para {cdoi.nome_condominio} (ID: {pk})")
-                        
-                        # Atualiza total_hps e pre_venda se fornecidos
-                        if 'total_hps_final' in data:
-                            cdoi.total_hps = int(data.get('total_hps_final', 0))
-                        if 'prevenda_final' in data:
-                            cdoi.pre_venda_minima = int(data.get('prevenda_final', 0))
-                    except json.JSONDecodeError as e_json:
-                        logger.error(f"[CDOI] Erro ao decodificar JSON de blocos na edicao: {e_json}")
-                    except Exception as e_blocos:
-                        logger.error(f"[CDOI] Erro ao atualizar blocos: {e_blocos}", exc_info=True)
+            blocos_json = data.get('dados_blocos_json') or data.get('input_blocos_json')
+            if blocos_json:
+                try:
+                    # Remove blocos antigos
+                    cdoi.blocos.all().delete()
+                    logger.info(f"[CDOI] Blocos antigos removidos para {cdoi.nome_condominio} (ID: {pk})")
+                    
+                    # Cria novos blocos
+                    blocos = json.loads(blocos_json)
+                    blocos_criados = 0
+                    for b in blocos:
+                        try:
+                            CdoiBloco.objects.create(
+                                solicitacao=cdoi,
+                                nome_bloco=b.get('nome', ''),
+                                andares=_to_int(b.get('andares', 0)),
+                                unidades_por_andar=_to_int(b.get('aptos', 0)),
+                                total_hps_bloco=_to_int(b.get('total', 0))
+                            )
+                            blocos_criados += 1
+                        except Exception as e_bloco:
+                            logger.error(f"[CDOI] Erro ao criar bloco na edicao: {e_bloco}")
+                    
+                    logger.info(f"[CDOI] {blocos_criados} blocos atualizados para {cdoi.nome_condominio} (ID: {pk})")
+                except json.JSONDecodeError as e_json:
+                    logger.error(f"[CDOI] Erro ao decodificar JSON de blocos na edicao: {e_json}")
+                except Exception as e_blocos:
+                    logger.error(f"[CDOI] Erro ao atualizar blocos: {e_blocos}", exc_info=True)
             if data.get('cep'):
                 cdoi.cep = data.get('cep')
             if data.get('numero'):
@@ -5045,23 +5048,11 @@ class CdoiUpdateView(APIView):
                 except Usuario.DoesNotExist:
                     pass  # Ignora se usuário não existir
 
-            # Atualiza blocos apenas se fornecido
-            blocos_json = data.get('dados_blocos_json') or data.get('input_blocos_json')
-            if blocos_json:
-                import json as _json
-                try:
-                    blocos = _json.loads(blocos_json)
-                    cdoi.blocos.all().delete()
-                    for b in blocos:
-                        CdoiBloco.objects.create(
-                            solicitacao=cdoi,
-                            nome_bloco=b.get('nome'),
-                            andares=int(b.get('andares') or 0),
-                            unidades_por_andar=int(b.get('aptos') or 0),
-                            total_hps_bloco=int(b.get('total') or 0)
-                        )
-                except Exception as e:
-                    return Response({"error": f"Erro ao atualizar blocos: {e}"}, status=400)
+            # Atualiza total_hps e pre_venda se fornecidos
+            if 'total_hps_final' in data:
+                cdoi.total_hps = _to_int(data.get('total_hps_final'), cdoi.total_hps or 0)
+            if 'prevenda_final' in data:
+                cdoi.pre_venda_minima = _to_int(data.get('prevenda_final'), cdoi.pre_venda_minima or 0)
             
             cdoi.save()
             return Response({"mensagem": "Atualizado com sucesso!"})
