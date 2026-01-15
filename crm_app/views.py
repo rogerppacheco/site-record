@@ -2263,7 +2263,18 @@ class ImportacaoOsabView(APIView):
             records = df.to_dict('records')
 
             for index, row in enumerate(records):
-                log_item = {"linha": index + 2, "pedido": str(row.get('PEDIDO')), "status_osab": str(row.get('SITUACAO')), "resultado": "", "detalhe": ""}
+                log_item = {
+                    "linha": index + 2,
+                    "pedido": str(row.get('PEDIDO')),
+                    "status_osab": str(row.get('SITUACAO')),
+                    "dt_ref_planilha": row.get('DT_REF'),
+                    "dt_ref_crm": None,
+                    "consta_osab": "NAO",
+                    "consta_crm": "NAO",
+                    "resultado_osab": "",
+                    "resultado_crm": "",
+                    "detalhe": ""
+                }
                 try:
                     # A. ImportacaoOsab
                     dados_model = {}
@@ -2274,15 +2285,22 @@ class ImportacaoOsabView(APIView):
                     
                     doc_chave = dados_model.get('documento')
                     if not doc_chave: 
-                        log_item["resultado"] = "IGNORADO"; report["logs_detalhados"].append(log_item); continue
+                        log_item["resultado_osab"] = "IGNORADO"
+                        log_item["resultado_crm"] = "IGNORADO"
+                        report["logs_detalhados"].append(log_item)
+                        continue
 
                     if doc_chave in osab_existentes:
                         obj = osab_existentes[doc_chave]
                         dt_ref_nova = _normalize_dt_ref(dados_model.get('dt_ref'))
                         dt_ref_atual = _normalize_dt_ref(getattr(obj, 'dt_ref', None))
+                        log_item["consta_osab"] = "SIM"
+                        log_item["dt_ref_crm"] = dt_ref_atual
                         # Se a DT_REF nova não for mais recente, não atualiza nem altera a venda
                         if dt_ref_atual and (dt_ref_nova is None or dt_ref_nova <= dt_ref_atual):
-                            log_item["resultado"] = "IGNORADO_DT_REF_ANTIGA"
+                            log_item["resultado_osab"] = "IGNORADO_DT_REF_ANTIGA"
+                            log_item["resultado_crm"] = "IGNORADO_DT_REF_ANTIGA"
+                            log_item["detalhe"] = f"DT_REF planilha ({dt_ref_nova}) <= DT_REF CRM ({dt_ref_atual})"
                             report["ignorados_dt_ref"] += 1
                             report["logs_detalhados"].append(log_item)
                             continue
@@ -2292,15 +2310,24 @@ class ImportacaoOsabView(APIView):
                             if getattr(obj, k) != v:
                                 setattr(obj, k, v)
                                 mudou = True
-                        if mudou: osab_atualizar.append(obj)
+                        if mudou:
+                            osab_atualizar.append(obj)
+                            log_item["resultado_osab"] = "ATUALIZADO_OSAB"
+                        else:
+                            log_item["resultado_osab"] = "SEM_MUDANCA_OSAB"
                     else:
                         osab_criar.append(ImportacaoOsab(**dados_model))
+                        log_item["resultado_osab"] = "CRIADO_OSAB"
 
                     # B. Venda CRM
                     venda = vendas_map.get(doc_chave)
                     if not venda:
-                        log_item["resultado"] = "NAO_ENCONTRADO CRM"; report["logs_detalhados"].append(log_item); continue
+                        log_item["resultado_crm"] = "NAO_ENCONTRADO_CRM"
+                        log_item["consta_crm"] = "NAO"
+                        report["logs_detalhados"].append(log_item)
+                        continue
                     
+                    log_item["consta_crm"] = "SIM"
                     report["vendas_encontradas"] += 1
                     sit_osab_raw = str(row.get('SITUACAO', '')).strip().upper()
                     if sit_osab_raw in ["NONE", "NAN"]: sit_osab_raw = ""
@@ -2423,20 +2450,24 @@ class ImportacaoOsabView(APIView):
 
                     # Conclusão
                     if houve_alteracao:
-                        log_item["resultado"] = "ATUALIZAR"
+                        log_item["resultado_crm"] = "ATUALIZADO_CRM"
+                        log_item["detalhe"] = "; ".join([f"{k}: {v}" for k, v in detalhes_hist.items()])
                         vendas_atualizar.append(venda)
                         historicos_criar.append(HistoricoAlteracaoVenda(venda=venda, usuario=osab_bot, alteracoes=detalhes_hist))
                         if msg_whatsapp_desta_venda and flag_enviar_whatsapp:
                             fila_mensagens_whatsapp.append(msg_whatsapp_desta_venda)
                     else:
-                        log_item["resultado"] = "SEM_MUDANCA"
+                        log_item["resultado_crm"] = "SEM_MUDANCA_CRM"
                         report["ja_corretos"] += 1
                     
                     report["logs_detalhados"].append(log_item)
 
                 except Exception as ex:
-                    log_item["resultado"] = "ERRO"
+                    log_item["resultado_osab"] = log_item["resultado_osab"] or "ERRO"
+                    log_item["resultado_crm"] = log_item["resultado_crm"] or "ERRO"
+                    log_item["detalhe"] = str(ex)
                     report["erros"].append(f"L{index}: {ex}")
+                    report["logs_detalhados"].append(log_item)
 
             # --- 3. PERSISTÊNCIA ---
             with transaction.atomic():
@@ -6093,12 +6124,87 @@ class LogsImportacaoOSABView(APIView):
                 'mensagem_erro': log.mensagem_erro,
                 'usuario_nome': log.usuario.get_full_name() if log.usuario else 'Sistema',
                 'enviar_whatsapp': log.enviar_whatsapp,
+                'download_url': f"/api/crm/logs-osab/{log.id}/relatorio/",
             })
         
         return Response({
             'success': True,
             'logs': logs_data
         })
+
+
+class DownloadRelatorioOSABView(APIView):
+    """Gera relatório Excel da importação OSAB"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, log_id):
+        from io import BytesIO
+        from django.http import HttpResponse
+        from crm_app.models import LogImportacaoOSAB, ImportacaoOsab
+
+        log = LogImportacaoOSAB.objects.filter(id=log_id).first()
+        if not log:
+            return Response({'error': 'Log não encontrado.'}, status=404)
+
+        if not is_member(request.user, ['Admin', 'Diretoria']) and log.usuario != request.user:
+            return Response({'error': 'Sem permissão para acessar este relatório.'}, status=403)
+
+        report = log.detalhes_json or {}
+        logs = report.get('logs_detalhados') or []
+        if not logs:
+            return Response({'error': 'Relatório ainda não disponível.'}, status=404)
+
+        df = pd.DataFrame(logs)
+        colunas = [
+            'linha', 'pedido', 'status_osab', 'dt_ref_planilha', 'dt_ref_crm',
+            'consta_osab', 'consta_crm', 'resultado_osab', 'resultado_crm', 'detalhe'
+        ]
+        for col in colunas:
+            if col not in df.columns:
+                df[col] = ''
+        df = df[colunas]
+
+        resumo = [
+            {'metrica': 'Total registros planilha', 'valor': report.get('total_registros', len(df))},
+            {'metrica': 'Vendas encontradas CRM', 'valor': report.get('vendas_encontradas', 0)},
+            {'metrica': 'Atualizados CRM', 'valor': report.get('atualizados', 0)},
+            {'metrica': 'Criados OSAB', 'valor': report.get('criados', 0)},
+            {'metrica': 'Ignorados DT_REF', 'valor': report.get('ignorados_dt_ref', 0)},
+            {'metrica': 'Erros', 'valor': len(report.get('erros', []))},
+        ]
+        df_resumo = pd.DataFrame(resumo)
+        df_contagem_osab = df['resultado_osab'].value_counts().reset_index()
+        df_contagem_osab.columns = ['resultado_osab', 'quantidade']
+        df_contagem_crm = df['resultado_crm'].value_counts().reset_index()
+        df_contagem_crm.columns = ['resultado_crm', 'quantidade']
+
+        df_planilha_nao_crm = df[df['resultado_crm'] == 'NAO_ENCONTRADO_CRM'].copy()
+
+        pedidos_planilha = set(df['pedido'].dropna().astype(str))
+        qs_crm = ImportacaoOsab.objects.exclude(documento__in=pedidos_planilha).values(
+            'documento', 'dt_ref', 'uf', 'municipio', 'produto'
+        )
+        df_crm_nao_planilha = pd.DataFrame(list(qs_crm))
+        if df_crm_nao_planilha.empty:
+            df_crm_nao_planilha = pd.DataFrame(columns=['documento', 'dt_ref', 'uf', 'municipio', 'produto'])
+
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df_resumo.to_excel(writer, sheet_name='Resumo', index=False)
+            df_contagem_osab.to_excel(writer, sheet_name='Resumo_OSAB', index=False)
+            df_contagem_crm.to_excel(writer, sheet_name='Resumo_CRM', index=False)
+            df.to_excel(writer, sheet_name='Planilha_vs_CRM', index=False)
+            df_planilha_nao_crm.to_excel(writer, sheet_name='Planilha_nao_CRM', index=False)
+            df_crm_nao_planilha.to_excel(writer, sheet_name='CRM_nao_Planilha', index=False)
+
+        output.seek(0)
+        filename = f"Relatorio_OSAB_{log.id}_{log.nome_arquivo}".replace(' ', '_')
+        response = HttpResponse(
+            output.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = f'attachment; filename="{filename}.xlsx"'
+        return response
 
 
 class LogsImportacaoDFVView(APIView):
