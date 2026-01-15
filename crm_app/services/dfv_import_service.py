@@ -14,6 +14,7 @@ Este módulo implementa as melhores práticas de desenvolvimento:
 import logging
 import os
 import re
+import time
 import traceback
 from typing import Dict, List, Tuple, Optional, Set
 from io import BytesIO, StringIO
@@ -60,6 +61,9 @@ class DFVImportService:
     BATCH_SIZE_CREATE = 1_000  # Tamanho do lote para criação de registros
     PROGRESS_UPDATE_INTERVAL = 5  # Atualizar progresso a cada N chunks
     PREPARATION_PROGRESS_INTERVAL = 5_000  # Atualizar progresso a cada N registros durante preparação
+    DB_IMPORT_LOCK_KEY = 93142761  # Chave fixa para lock global de importação (PostgreSQL)
+    DB_IMPORT_LOCK_WAIT_SECONDS = 1800  # 30 minutos
+    DB_IMPORT_LOCK_POLL_SECONDS = 5
     
     # Colunas obrigatórias
     REQUIRED_COLUMNS = ['CEP', 'NUM_FACHADA']
@@ -120,6 +124,49 @@ class DFVImportService:
                 LogImportacaoDFV.objects.filter(id=self.log_id).update(**update_fields)
             except Exception as e:
                 logger.error(f"[DFV] Erro ao atualizar progresso: {e}", exc_info=True)
+
+    def _acquire_db_lock(self) -> None:
+        """
+        Garante que apenas uma importação DFV rode por vez no Postgres.
+        Evita contenção de locks durante remoção de duplicados/criação.
+        """
+        if connection.vendor != 'postgresql':
+            return
+
+        inicio = time.monotonic()
+        while True:
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT pg_try_advisory_lock(%s)", [self.DB_IMPORT_LOCK_KEY])
+                    locked = cursor.fetchone()[0]
+            except Exception as e:
+                logger.warning(f"[DFV] Não foi possível verificar lock de importação: {e}")
+                locked = False
+
+            if locked:
+                logger.info("[DFV] Lock global de importação adquirido")
+                return
+
+            # Atualiza o status enquanto aguarda na fila
+            self._update_progress(
+                message='Aguardando fila de importação... outro arquivo está em processamento.'
+            )
+            time.sleep(self.DB_IMPORT_LOCK_POLL_SECONDS)
+
+            if time.monotonic() - inicio > self.DB_IMPORT_LOCK_WAIT_SECONDS:
+                raise DFVImportError(
+                    "Outra importação está em andamento por muito tempo. Tente novamente mais tarde."
+                )
+
+    def _release_db_lock(self) -> None:
+        """Libera o lock global de importação no Postgres."""
+        if connection.vendor != 'postgresql':
+            return
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT pg_advisory_unlock(%s)", [self.DB_IMPORT_LOCK_KEY])
+        except Exception as e:
+            logger.warning(f"[DFV] Não foi possível liberar lock de importação: {e}")
     
     def _validate_file(self, arquivo_bytes: Optional[bytes], arquivo_nome: str, arquivo_path: Optional[str] = None) -> None:
         """
@@ -961,19 +1008,22 @@ class DFVImportService:
             # Liberar memória do DataFrame válido
             del df_valido
             
-            # ETAPA 8: Remoção de duplicados
-            self._update_progress(message='Removendo registros duplicados...')
-            registros_removidos = self._remove_duplicates(cep_fachada_set)
-            
-            # Liberar memória do set
-            del cep_fachada_set
-            
-            # ETAPA 9: Criação de registros
-            self._update_progress(message='Criando registros no banco de dados...')
-            sucesso_count, erros_criacao = self._create_records(registros_para_criar)
-            
-            # Liberar memória da lista de objetos
-            del registros_para_criar
+            # ETAPA 8/9: Remoção de duplicados + criação de registros (com lock global)
+            self._acquire_db_lock()
+            try:
+                self._update_progress(message='Removendo registros duplicados...')
+                registros_removidos = self._remove_duplicates(cep_fachada_set)
+                
+                # Liberar memória do set
+                del cep_fachada_set
+                
+                self._update_progress(message='Criando registros no banco de dados...')
+                sucesso_count, erros_criacao = self._create_records(registros_para_criar)
+                
+                # Liberar memória da lista de objetos
+                del registros_para_criar
+            finally:
+                self._release_db_lock()
             
             # ETAPA 10: Finalização
             self._finalize_log(
