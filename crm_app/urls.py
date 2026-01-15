@@ -35,7 +35,7 @@ from .views import (
     ReabrirPagamentoView,
     GerarRelatorioPDFView,
     EnviarExtratoEmailView,
-    ImportacaoOsabView, ImportacaoOsabDetailView, DownloadRelatorioOSABView,
+    ImportacaoOsabView, ImportacaoOsabDetailView, DownloadRelatorioOSABView, CancelarImportacaoOSABView,
     ImportacaoChurnView, ImportacaoChurnDetailView,
     ImportacaoCicloPagamentoView,
     PerformanceVendasView,
@@ -203,6 +203,7 @@ urlpatterns = [
     path('logs-fpd/', LogsImportacaoFPDView.as_view(), name='logs-fpd'),
     path('logs-osab/', LogsImportacaoOSABView.as_view(), name='logs-osab'),
     path('logs-osab/<int:log_id>/relatorio/', DownloadRelatorioOSABView.as_view(), name='logs-osab-relatorio'),
+    path('logs-osab/<int:log_id>/cancelar/', CancelarImportacaoOSABView.as_view(), name='logs-osab-cancelar'),
     path('logs-dfv/', LogsImportacaoDFVView.as_view(), name='logs-dfv'),
     
     # --- ROTAS EXTRAS ---

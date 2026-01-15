@@ -6229,6 +6229,34 @@ class DownloadRelatorioOSABView(APIView):
         return response
 
 
+class CancelarImportacaoOSABView(APIView):
+    """Cancela uma importação OSAB em processamento."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, log_id):
+        from django.utils import timezone
+        from crm_app.models import LogImportacaoOSAB
+
+        log = LogImportacaoOSAB.objects.filter(id=log_id).first()
+        if not log:
+            return Response({'error': 'Log não encontrado.'}, status=404)
+
+        if not is_member(request.user, ['Admin', 'Diretoria']) and log.usuario != request.user:
+            return Response({'error': 'Sem permissão para cancelar este log.'}, status=403)
+
+        if log.status != 'PROCESSANDO':
+            return Response({'error': 'A importação já foi finalizada.'}, status=400)
+
+        LogImportacaoOSAB.objects.filter(id=log_id).update(
+            status='ERRO',
+            mensagem_erro='Cancelado manualmente pelo usuário.',
+            finalizado_em=timezone.now()
+        )
+        log.calcular_duracao()
+
+        return Response({'success': True, 'message': 'Importação cancelada.'})
+
+
 class LogsImportacaoDFVView(APIView):
     """Lista logs de importações DFV"""
     permission_classes = [permissions.IsAuthenticated]
