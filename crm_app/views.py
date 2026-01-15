@@ -4637,6 +4637,7 @@ class CdoiCreateView(APIView):
 
     def post(self, request):
         try:
+            resumo_msg = None
             data = request.POST
             files = request.FILES
             
@@ -4677,6 +4678,7 @@ class CdoiCreateView(APIView):
                 pre_venda_minima=data.get('prevenda_final') or 0,
                 link_carta_sindico=link_carta,
                 link_fotos_fachada=link_fachada,
+                destinatarios_resumo=data.get('destinatarios_resumo'),
                 criado_por=request.user,
                 status="SEM_TRATAMENTO" # Status inicial novo
             )
@@ -4731,7 +4733,64 @@ class CdoiCreateView(APIView):
             except Exception as e_zap:
                 print(f"Erro ao enviar Zap CDOI: {e_zap}")
 
-            return Response({'mensagem': f'Solicitação enviada! ID: {cdoi.id}'}, status=200)
+            # Enviar resumo para acionador e destinatários extras
+            try:
+                def _limpar_tel(tel):
+                    tel_limpo = re.sub(r'\D', '', str(tel or ''))
+                    return tel_limpo if tel_limpo else None
+
+                blocos_data = []
+                if blocos_json:
+                    try:
+                        blocos_data = json.loads(blocos_json)
+                    except Exception:
+                        blocos_data = []
+
+                blocos_txt = "\n".join(
+                    [f"- {b.get('nome','')} | {b.get('andares','')} andares | {b.get('aptos','')} aptos/andar | {b.get('total','')} HPs"
+                     for b in blocos_data]
+                ) or "- (não informado)"
+
+                resumo = (
+                    f"✅ *Resumo CDOI*\n"
+                    f"ID: {cdoi.id}\n"
+                    f"Condomínio: {cdoi.nome_condominio}\n"
+                    f"CEP: {cdoi.cep}\n"
+                    f"Endereço: {cdoi.logradouro}, {cdoi.numero} - {cdoi.bairro}\n"
+                    f"Cidade/UF: {cdoi.cidade}-{cdoi.uf}\n"
+                    f"Infraestrutura: {cdoi.infraestrutura_tipo}\n"
+                    f"Shaft/DG: {'Sim' if cdoi.possui_shaft_dg else 'Não'}\n"
+                    f"Total HPs: {cdoi.total_hps}\n"
+                    f"Pré-venda (10%): {cdoi.pre_venda_minima}\n"
+                    f"Síndico: {cdoi.nome_sindico}\n"
+                    f"Contato: {cdoi.contato_sindico}\n"
+                    f"Latitude: {cdoi.latitude or '-'}\n"
+                    f"Longitude: {cdoi.longitude or '-'}\n"
+                    f"Blocos:\n{blocos_txt}"
+                )
+                resumo_msg = resumo
+
+                destinatarios = []
+                tel_user = getattr(request.user, 'tel_whatsapp', None)
+                tel_user = _limpar_tel(tel_user)
+                if tel_user:
+                    destinatarios.append(tel_user)
+
+                extras_raw = data.get('destinatarios_resumo') or ''
+                extras = [t.strip() for t in re.split(r'[;,\\n]', str(extras_raw)) if t.strip()]
+                for t in extras:
+                    tel_extra = _limpar_tel(t)
+                    if tel_extra and tel_extra not in destinatarios:
+                        destinatarios.append(tel_extra)
+
+                if destinatarios:
+                    svc = WhatsAppService()
+                    for tel in destinatarios:
+                        svc.enviar_mensagem_texto(tel, resumo)
+            except Exception as e_zap_resumo:
+                print(f"Erro ao enviar resumo CDOI: {e_zap_resumo}")
+
+            return Response({'mensagem': f'Solicitação enviada! ID: {cdoi.id}', 'resumo': resumo_msg}, status=200)
 
         except Exception as e:
             print(f"Erro CDOI: {e}")
@@ -4780,6 +4839,52 @@ class CdoiListView(APIView):
             })
         
         return Response(data)
+
+
+class CdoiDashboardView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from django.db.models import Sum
+
+        queryset = CdoiSolicitacao.objects.all()
+        total_acionamentos = queryset.count()
+        total_hps = queryset.aggregate(total=Sum('total_hps')).get('total') or 0
+        total_prevenda = queryset.aggregate(total=Sum('pre_venda_minima')).get('total') or 0
+
+        por_status = (
+            queryset.values('status')
+            .annotate(qtd=Count('id'))
+            .order_by('-qtd')
+        )
+
+        # Cruzar CEP + fachada (numero) com vendas
+        pares = []
+        for item in queryset.values('cep', 'numero'):
+            cep_limpo = re.sub(r'\D', '', str(item.get('cep') or ''))
+            numero = str(item.get('numero') or '').strip()
+            if cep_limpo and numero:
+                pares.append((cep_limpo, numero))
+
+        vendas_realizadas = 0
+        if pares:
+            ceps = list({p[0] for p in pares})
+            pares_set = set(pares)
+            vendas = Venda.objects.filter(cep__in=ceps).values('cep', 'numero_residencia')
+            for v in vendas:
+                cep_limpo = re.sub(r'\D', '', str(v.get('cep') or ''))
+                numero = str(v.get('numero_residencia') or '').strip()
+                if (cep_limpo, numero) in pares_set:
+                    vendas_realizadas += 1
+
+        return Response({
+            'success': True,
+            'total_acionamentos': total_acionamentos,
+            'total_hps': total_hps,
+            'total_prevenda': total_prevenda,
+            'vendas_realizadas': vendas_realizadas,
+            'por_status': list(por_status),
+        })
 
 # --- 3. EDIÇÃO DE STATUS (Apenas Gestão) ---
 class CdoiUpdateView(APIView):

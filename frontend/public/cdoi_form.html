@@ -379,15 +379,36 @@
             </div>
 
             <ul class="nav nav-tabs mb-4" id="cdoiTabs" role="tablist">
-                <li class="nav-item"><button class="nav-link active" id="nova-tab" data-bs-toggle="tab" data-bs-target="#nova-content" type="button"><i class="bi bi-plus-circle"></i> <span id="tab-titulo">Nova Solicitação</span></button></li>
+                <li class="nav-item"><button class="nav-link active" id="dashboard-tab" data-bs-toggle="tab" data-bs-target="#dashboard-content" type="button" onclick="carregarDashboardCdoi()"><i class="bi bi-speedometer2"></i> Dashboard</button></li>
+                <li class="nav-item"><button class="nav-link" id="nova-tab" data-bs-toggle="tab" data-bs-target="#nova-content" type="button"><i class="bi bi-plus-circle"></i> <span id="tab-titulo">Nova Solicitação</span></button></li>
                 <li class="nav-item"><button class="nav-link" id="lista-tab" data-bs-toggle="tab" data-bs-target="#lista-content" type="button" onclick="carregarMeusAcionamentos()"><i class="bi bi-list-ul"></i> Meus Acionamentos</button></li>
             </ul>
 
     <div class="tab-content">
-        <div class="tab-pane fade show active" id="nova-content">
+        <div class="tab-pane fade show active" id="dashboard-content">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between">
+                    <span>Dashboard CDOI</span>
+                    <button class="btn btn-sm btn-outline-primary" onclick="carregarDashboardCdoi()">
+                        <i class="bi bi-arrow-clockwise"></i> Atualizar
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3" id="dashboard-cards">
+                        <!-- Cards serão preenchidos via JS -->
+                    </div>
+                    <hr>
+                    <div id="dashboard-status" class="table-responsive"></div>
+                </div>
+            </div>
+        </div>
+        <div class="tab-pane fade" id="nova-content">
             <div class="card">
                 <div class="card-header d-flex justify-content-between">
                     <span>Dados do Condomínio</span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="copiarResumoSecao('condominio')">
+                        <i class="bi bi-clipboard"></i> Copiar
+                    </button>
                     <button id="btn-cancelar-edicao" class="btn btn-sm btn-outline-danger d-none" onclick="cancelarEdicao()">Cancelar Edição</button>
                 </div>
                 <div class="card-body">
@@ -431,7 +452,12 @@
                             </div>
                         </div>
 
-                        <h6 class="text-primary fw-bold mb-3 border-bottom pb-2">Contato e Síndico</h6>
+                        <h6 class="text-primary fw-bold mb-3 border-bottom pb-2 d-flex justify-content-between align-items-center">
+                            <span>Contato e Síndico</span>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="copiarResumoSecao('contato')">
+                                <i class="bi bi-clipboard"></i> Copiar
+                            </button>
+                        </h6>
                         <div class="row g-3 mb-4">
                             <div class="col-md-6"><label>Nome do Síndico *</label><input type="text" name="nome_sindico" id="inp_sindico" class="form-control" required></div>
                             <div class="col-md-6">
@@ -444,6 +470,11 @@
                             </div>
                             <div class="col-md-6 file-input-group"><label>Carta Síndico *</label><input type="file" name="arquivo_carta" class="form-control" accept=".pdf,.jpg" required></div>
                             <div class="col-md-6 file-input-group"><label>Fotos Fachada *</label><input type="file" name="arquivo_fachada" class="form-control" accept="image/*" multiple required></div>
+                            <div class="col-md-12">
+                                <label>Destinatários extras (resumo)</label>
+                                <input type="text" name="destinatarios_resumo" id="inp_destinatarios_resumo" class="form-control" placeholder="Ex: 31999999999, 31988888888">
+                                <small class="text-muted">Telefones que também receberão o resumo via WhatsApp</small>
+                            </div>
                         </div>
 
                         <h6 class="text-primary fw-bold mb-3 border-bottom pb-2">Dados Técnicos</h6>
@@ -500,6 +531,10 @@
                         <input type="hidden" name="prevenda_final" id="input_prevenda">
                         <input type="hidden" name="dados_blocos_json" id="input_blocos_json">
 
+                        <div id="resumoEnvio" class="alert alert-info d-none">
+                            <strong>Resumo enviado:</strong>
+                            <pre id="resumoEnvioTexto" class="mb-0" style="white-space: pre-wrap;"></pre>
+                        </div>
                         <div class="d-grid">
                             <button type="button" id="btn-submit" class="btn btn-success btn-lg" onclick="enviarFormulario(this)">
                                 <i class="bi bi-send-fill"></i> Enviar Solicitação
@@ -1000,8 +1035,20 @@
                 headers: headers,
                 body: isEdit ? JSON.stringify(dataJson) : formData
             });
-            if(res.ok) { alert('Salvo!'); cancelarEdicao(); if(isEdit) carregarMeusAcionamentos(); else window.location.reload(); }
-            else { alert('Erro ao salvar.'); }
+            const data = await res.json().catch(() => ({}));
+            if(res.ok) { 
+                const resumoDiv = document.getElementById('resumoEnvio');
+                const resumoTexto = document.getElementById('resumoEnvioTexto');
+                if (data.resumo && resumoDiv && resumoTexto) {
+                    resumoTexto.textContent = data.resumo;
+                    resumoDiv.classList.remove('d-none');
+                }
+                alert('Salvo!');
+                cancelarEdicao(); 
+                if(isEdit) carregarMeusAcionamentos(); 
+                else window.location.reload(); 
+            }
+            else { alert(data.error || 'Erro ao salvar.'); }
         } catch(e) { alert('Erro de conexão.'); }
     }
 
@@ -1128,6 +1175,96 @@
             lngInput.value = '';
         }
     }
+
+    function copiarResumoSecao(secao) {
+        let texto = '';
+        if (secao === 'condominio') {
+            texto =
+                `Condomínio: ${document.getElementById('inp_nome').value}\n` +
+                `CEP: ${document.getElementById('inp_cep').value}\n` +
+                `Endereço: ${document.getElementById('logradouro').value}, ${document.getElementById('inp_numero').value}\n` +
+                `Bairro: ${document.getElementById('bairro').value}\n` +
+                `Cidade/UF: ${document.getElementById('cidade_uf').value}\n` +
+                `Latitude: ${document.getElementById('inp_lat').value}\n` +
+                `Longitude: ${document.getElementById('inp_long').value}\n` +
+                `Infraestrutura: ${document.getElementById('inp_infra').value}\n` +
+                `Shaft/DG: ${document.getElementById('inp_shaft').checked ? 'Sim' : 'Não'}\n` +
+                `Total HPs: ${document.getElementById('input_total_hps').value}\n` +
+                `Pré-venda (10%): ${document.getElementById('input_prevenda').value}`;
+        } else if (secao === 'contato') {
+            texto =
+                `Síndico: ${document.getElementById('inp_sindico').value}\n` +
+                `Contato: ${document.getElementById('inp_contato').value}\n` +
+                `Destinatários extras: ${document.getElementById('inp_destinatarios_resumo').value}`;
+        }
+        navigator.clipboard.writeText(texto.trim()).then(() => {
+            showAlert('Conteúdo copiado!', 'success');
+        }).catch(() => {
+            alert('Erro ao copiar.');
+        });
+    }
+
+    async function carregarDashboardCdoi() {
+        try {
+            const token = localStorage.getItem('accessToken');
+            const res = await fetch('/api/crm/cdoi/dashboard/', { headers: {'Authorization': `Bearer ${token}`} });
+            const data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.error || 'Erro ao carregar dashboard');
+
+            const cards = document.getElementById('dashboard-cards');
+            cards.innerHTML = `
+                <div class="col-md-3">
+                    <div class="card border-0 bg-light">
+                        <div class="card-body">
+                            <div class="fw-bold text-muted">Acionamentos</div>
+                            <div class="fs-4">${data.total_acionamentos}</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card border-0 bg-light">
+                        <div class="card-body">
+                            <div class="fw-bold text-muted">HPs Total</div>
+                            <div class="fs-4">${data.total_hps}</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card border-0 bg-light">
+                        <div class="card-body">
+                            <div class="fw-bold text-muted">Pré-venda</div>
+                            <div class="fs-4">${data.total_prevenda}</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card border-0 bg-light">
+                        <div class="card-body">
+                            <div class="fw-bold text-muted">Vendas (CEP+Fachada)</div>
+                            <div class="fs-4">${data.vendas_realizadas}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            const statusDiv = document.getElementById('dashboard-status');
+            let statusHtml = `
+                <table class="table table-sm">
+                    <thead><tr><th>Status</th><th>Quantidade</th></tr></thead><tbody>
+            `;
+            (data.por_status || []).forEach(s => {
+                statusHtml += `<tr><td>${s.status}</td><td>${s.qtd}</td></tr>`;
+            });
+            statusHtml += '</tbody></table>';
+            statusDiv.innerHTML = statusHtml;
+        } catch (e) {
+            console.error('Erro dashboard CDOI:', e);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        carregarDashboardCdoi();
+    });
     
     // Expande o container quando a aba Meus Acionamentos está ativa
     document.getElementById('lista-tab').addEventListener('click', function() {

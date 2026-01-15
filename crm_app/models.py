@@ -583,6 +583,7 @@ class CdoiSolicitacao(models.Model):
     
     link_carta_sindico = models.URLField(max_length=500, blank=True, null=True)
     link_fotos_fachada = models.URLField(max_length=500, blank=True, null=True)
+    destinatarios_resumo = models.TextField(blank=True, null=True, help_text="Telefones extras para resumo")
 
     criado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     data_criacao = models.DateTimeField(auto_now_add=True)

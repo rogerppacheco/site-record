@@ -80,6 +80,7 @@ from .views import (
     # --- CDOI (Record Vertical) ---
     CdoiCreateView,  # Criação
     CdoiListView,    # Listagem (NOVO)
+    CdoiDashboardView,
     CdoiUpdateView,  # Edição/Status (NOVO)
     ViaCepProxyView,
     NominatimProxyView,
@@ -216,6 +217,7 @@ urlpatterns = [
     # --- CDOI (Record Vertical) ---
     path('cdoi/novo/', CdoiCreateView.as_view(), name='api-cdoi-novo'),
     path('cdoi/listar/', CdoiListView.as_view(), name='api-cdoi-listar'),
+    path('cdoi/dashboard/', CdoiDashboardView.as_view(), name='api-cdoi-dashboard'),
     path('cdoi/editar/<int:pk>/', CdoiUpdateView.as_view(), name='api-cdoi-editar'),
     path('cdoi/viacep/<str:cep>/', ViaCepProxyView.as_view(), name='api-cdoi-viacep'),
     path('cdoi/nominatim/', NominatimProxyView.as_view(), name='api-cdoi-nominatim'),
