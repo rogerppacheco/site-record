@@ -81,6 +81,7 @@ from .views import (
     CdoiCreateView,  # Criação
     CdoiListView,    # Listagem (NOVO)
     CdoiUpdateView,  # Edição/Status (NOVO)
+    ViaCepProxyView,
     page_cdoi_novo,  # Página HTML
     
     # --- BÔNUS M-10 & FPD ---
@@ -215,6 +216,7 @@ urlpatterns = [
     path('cdoi/novo/', CdoiCreateView.as_view(), name='api-cdoi-novo'),
     path('cdoi/listar/', CdoiListView.as_view(), name='api-cdoi-listar'),
     path('cdoi/editar/<int:pk>/', CdoiUpdateView.as_view(), name='api-cdoi-editar'),
+    path('cdoi/viacep/<str:cep>/', ViaCepProxyView.as_view(), name='api-cdoi-viacep'),
 
     # --- Integração Nio (dívidas/PIX/barras) ---
     path('nio/dividas/', NioDividasView.as_view(), name='nio-dividas'),

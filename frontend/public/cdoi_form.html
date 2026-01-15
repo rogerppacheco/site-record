@@ -969,6 +969,13 @@
 
     async function enviarFormulario(btn) {
         const form = document.getElementById('form-cdoi');
+        const criadoPorDiv = document.getElementById('div-criado-por');
+        const criadoPorInput = document.getElementById('inp_criado_por');
+        const criadoPorVisible = criadoPorDiv && criadoPorDiv.offsetParent !== null;
+        if (criadoPorInput) {
+            criadoPorInput.required = !!criadoPorVisible;
+            criadoPorInput.disabled = !criadoPorVisible;
+        }
         if(!form.checkValidity()) { form.reportValidity(); return; }
         
         const id = document.getElementById('edit_mode_id').value;
@@ -1017,8 +1024,17 @@
     }
     async function buscarCep(cep) { 
         try { 
-            const r=await fetch(`https://viacep.com.br/ws/${cep.replace(/\D/g,'')}/json/`); 
-            const d=await r.json(); 
+            const cepLimpo = (cep || '').replace(/\D/g,'');
+            if (cepLimpo.length !== 8) return;
+            const token = localStorage.getItem('accessToken');
+            const r = await fetch(`/api/crm/cdoi/viacep/${cepLimpo}/`, { 
+                headers: {'Authorization': `Bearer ${token}`} 
+            }); 
+            const d = await r.json(); 
+            if(!r.ok) {
+                console.error('Erro ao buscar CEP:', d);
+                return;
+            }
             if(!d.erro){ 
                 document.getElementById('logradouro').value=d.logradouro; 
                 document.getElementById('bairro').value=d.bairro; 
@@ -1028,7 +1044,9 @@
                 // Após buscar CEP, tenta buscar coordenadas se o número já estiver preenchido
                 setTimeout(() => buscarCoordenadas(), 500);
             } 
-        } catch(e){} 
+        } catch(e){ 
+            console.error('Erro ao buscar CEP:', e);
+        } 
     }
     
     // Debounce para evitar muitas chamadas durante digitação
