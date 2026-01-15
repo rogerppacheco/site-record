@@ -2245,8 +2245,19 @@ class ImportacaoOsabView(APIView):
             
             report = {
                 "status": "sucesso", "total_registros": len(df), "criados": 0, "atualizados": 0, 
-                "vendas_encontradas": 0, "ja_corretos": 0, "erros": [], "logs_detalhados": [], "arquivo_excel_b64": None
+                "vendas_encontradas": 0, "ja_corretos": 0, "erros": [], "logs_detalhados": [],
+                "ignorados_dt_ref": 0, "arquivo_excel_b64": None
             }
+
+            def _normalize_dt_ref(val):
+                import datetime as dt_sys
+                if val is None:
+                    return None
+                if isinstance(val, dt_sys.datetime):
+                    return val.date()
+                if isinstance(val, dt_sys.date):
+                    return val
+                return None
 
             # --- LOOP PRINCIPAL ---
             records = df.to_dict('records')
@@ -2267,6 +2278,15 @@ class ImportacaoOsabView(APIView):
 
                     if doc_chave in osab_existentes:
                         obj = osab_existentes[doc_chave]
+                        dt_ref_nova = _normalize_dt_ref(dados_model.get('dt_ref'))
+                        dt_ref_atual = _normalize_dt_ref(getattr(obj, 'dt_ref', None))
+                        # Se a DT_REF nova não for mais recente, não atualiza nem altera a venda
+                        if dt_ref_atual and (dt_ref_nova is None or dt_ref_nova <= dt_ref_atual):
+                            log_item["resultado"] = "IGNORADO_DT_REF_ANTIGA"
+                            report["ignorados_dt_ref"] += 1
+                            report["logs_detalhados"].append(log_item)
+                            continue
+
                         mudou = False
                         for k, v in dados_model.items():
                             if getattr(obj, k) != v:
