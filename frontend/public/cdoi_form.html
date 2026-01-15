@@ -406,9 +406,6 @@
             <div class="card">
                 <div class="card-header d-flex justify-content-between">
                     <span>Dados do Condomínio</span>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="copiarResumoSecao('condominio')">
-                        <i class="bi bi-clipboard"></i> Copiar
-                    </button>
                     <button id="btn-cancelar-edicao" class="btn btn-sm btn-outline-danger d-none" onclick="cancelarEdicao()">Cancelar Edição</button>
                 </div>
                 <div class="card-body">
@@ -424,12 +421,62 @@
                             </div>
                         </div>
                         <div class="row g-3 mb-4">
-                            <div class="col-md-6"><label>Nome do Condomínio *</label><input type="text" name="nome_condominio" id="inp_nome" class="form-control" required></div>
-                            <div class="col-md-3"><label>CEP *</label><input type="text" name="cep" id="inp_cep" class="form-control" required onblur="buscarCep(this.value)"></div>
-                            <div class="col-md-3"><label>Cidade/UF</label><input type="text" id="cidade_uf" class="form-control bg-light" readonly><input type="hidden" name="cidade" id="cidade"><input type="hidden" name="uf" id="uf"></div>
-                            <div class="col-md-5"><label>Logradouro</label><input type="text" name="logradouro" id="logradouro" class="form-control bg-light" readonly></div>
-                            <div class="col-md-2"><label>Número *</label><input type="text" name="numero" id="inp_numero" class="form-control" required onblur="buscarCoordenadas()" oninput="debounceBuscarCoordenadas()"></div>
-                            <div class="col-md-5"><label>Bairro</label><input type="text" name="bairro" id="bairro" class="form-control bg-light" readonly></div>
+                            <div class="col-md-6">
+                                <label>Nome do Condomínio *</label>
+                                <div class="input-group">
+                                    <input type="text" name="nome_condominio" id="inp_nome" class="form-control" required>
+                                    <button type="button" class="btn btn-outline-secondary" onclick="copiarCampo('inp_nome')" title="Copiar nome do condomínio">
+                                        <i class="bi bi-clipboard"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <label>CEP *</label>
+                                <div class="input-group">
+                                    <input type="text" name="cep" id="inp_cep" class="form-control" required onblur="buscarCep(this.value)">
+                                    <button type="button" class="btn btn-outline-secondary" onclick="copiarCampo('inp_cep')" title="Copiar CEP">
+                                        <i class="bi bi-clipboard"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <label>Cidade/UF</label>
+                                <div class="input-group">
+                                    <input type="text" id="cidade_uf" class="form-control bg-light" readonly>
+                                    <button type="button" class="btn btn-outline-secondary" onclick="copiarCampo('cidade_uf')" title="Copiar cidade/UF">
+                                        <i class="bi bi-clipboard"></i>
+                                    </button>
+                                </div>
+                                <input type="hidden" name="cidade" id="cidade">
+                                <input type="hidden" name="uf" id="uf">
+                            </div>
+                            <div class="col-md-5">
+                                <label>Logradouro</label>
+                                <div class="input-group">
+                                    <input type="text" name="logradouro" id="logradouro" class="form-control bg-light" readonly>
+                                    <button type="button" class="btn btn-outline-secondary" onclick="copiarCampo('logradouro')" title="Copiar logradouro">
+                                        <i class="bi bi-clipboard"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <label>Número *</label>
+                                <div class="input-group">
+                                    <input type="text" name="numero" id="inp_numero" class="form-control" required onblur="buscarCoordenadas()" oninput="debounceBuscarCoordenadas()">
+                                    <button type="button" class="btn btn-outline-secondary" onclick="copiarCampo('inp_numero')" title="Copiar número">
+                                        <i class="bi bi-clipboard"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="col-md-5">
+                                <label>Bairro</label>
+                                <div class="input-group">
+                                    <input type="text" name="bairro" id="bairro" class="form-control bg-light" readonly>
+                                    <button type="button" class="btn btn-outline-secondary" onclick="copiarCampo('bairro')" title="Copiar bairro">
+                                        <i class="bi bi-clipboard"></i>
+                                    </button>
+                                </div>
+                            </div>
                             <div class="col-md-3">
                                 <label>Latitude</label>
                                 <div class="input-group">
@@ -454,17 +501,25 @@
 
                         <h6 class="text-primary fw-bold mb-3 border-bottom pb-2 d-flex justify-content-between align-items-center">
                             <span>Contato e Síndico</span>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="copiarResumoSecao('contato')">
-                                <i class="bi bi-clipboard"></i> Copiar
-                            </button>
                         </h6>
                         <div class="row g-3 mb-4">
-                            <div class="col-md-6"><label>Nome do Síndico *</label><input type="text" name="nome_sindico" id="inp_sindico" class="form-control" required></div>
+                            <div class="col-md-6">
+                                <label>Nome do Síndico *</label>
+                                <div class="input-group">
+                                    <input type="text" name="nome_sindico" id="inp_sindico" class="form-control" required>
+                                    <button type="button" class="btn btn-outline-secondary" onclick="copiarCampo('inp_sindico')" title="Copiar nome do síndico">
+                                        <i class="bi bi-clipboard"></i>
+                                    </button>
+                                </div>
+                            </div>
                             <div class="col-md-6">
                                 <label>Contato (WhatsApp) *</label>
                                 <div class="input-group">
                                     <span class="input-group-text"><i class="bi bi-whatsapp"></i></span>
                                     <input type="text" name="contato" id="inp_contato" class="form-control" required onblur="validarWhatsapp(this)">
+                                    <button type="button" class="btn btn-outline-secondary" onclick="copiarCampo('inp_contato')" title="Copiar contato">
+                                        <i class="bi bi-clipboard"></i>
+                                    </button>
                                 </div>
                                 <div id="zap-feedback" class="form-text"></div>
                             </div>
@@ -1176,29 +1231,24 @@
         }
     }
 
-    function copiarResumoSecao(secao) {
-        let texto = '';
-        if (secao === 'condominio') {
-            texto =
-                `Condomínio: ${document.getElementById('inp_nome').value}\n` +
-                `CEP: ${document.getElementById('inp_cep').value}\n` +
-                `Endereço: ${document.getElementById('logradouro').value}, ${document.getElementById('inp_numero').value}\n` +
-                `Bairro: ${document.getElementById('bairro').value}\n` +
-                `Cidade/UF: ${document.getElementById('cidade_uf').value}\n` +
-                `Latitude: ${document.getElementById('inp_lat').value}\n` +
-                `Longitude: ${document.getElementById('inp_long').value}\n` +
-                `Infraestrutura: ${document.getElementById('inp_infra').value}\n` +
-                `Shaft/DG: ${document.getElementById('inp_shaft').checked ? 'Sim' : 'Não'}\n` +
-                `Total HPs: ${document.getElementById('input_total_hps').value}\n` +
-                `Pré-venda (10%): ${document.getElementById('input_prevenda').value}`;
-        } else if (secao === 'contato') {
-            texto =
-                `Síndico: ${document.getElementById('inp_sindico').value}\n` +
-                `Contato: ${document.getElementById('inp_contato').value}\n` +
-                `Destinatários extras: ${document.getElementById('inp_destinatarios_resumo').value}`;
+    function copiarCampo(inputId) {
+        const input = document.getElementById(inputId);
+        if (!input) return;
+        const valor = (input.value || '').trim();
+        if (!valor) {
+            if (typeof showAlert === 'function') {
+                showAlert('Campo vazio. Nada para copiar.', 'warning');
+            } else {
+                alert('Campo vazio. Nada para copiar.');
+            }
+            return;
         }
-        navigator.clipboard.writeText(texto.trim()).then(() => {
-            showAlert('Conteúdo copiado!', 'success');
+        navigator.clipboard.writeText(valor).then(() => {
+            if (typeof showAlert === 'function') {
+                showAlert('Copiado!', 'success');
+            } else {
+                alert('Copiado!');
+            }
         }).catch(() => {
             alert('Erro ao copiar.');
         });
