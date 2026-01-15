@@ -648,11 +648,45 @@ class DFVImportService:
                         )
                         for obj in batch
                     ]
-                    with transaction.atomic():
-                        with connection.cursor() as cursor:
-                            sql = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES %s"
-                            execute_values(cursor, sql, values, page_size=1000)
-                    sucesso_count += len(batch)
+
+                    def inserir_com_retry(valores, page_size, tentativas=3):
+                        if not valores:
+                            return
+                        for tentativa in range(1, tentativas + 1):
+                            try:
+                                with transaction.atomic():
+                                    with connection.cursor() as cursor:
+                                        cursor.execute("SET LOCAL statement_timeout = '60000ms'")
+                                        sql = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES %s"
+                                        execute_values(cursor, sql, valores, page_size=page_size)
+                                return
+                            except Exception as e:
+                                logger.warning(
+                                    f"[DFV] Erro no insert em massa (tentativa {tentativa}/{tentativas}): {e}"
+                                )
+                                if tentativa == tentativas:
+                                    raise
+
+                    try:
+                        inserir_com_retry(values, page_size=1000)
+                        sucesso_count += len(batch)
+                    except Exception:
+                        # Fallback: dividir o lote e tentar novamente em partes menores
+                        logger.warning(
+                            f"[DFV] Dividindo lote {batch_num} para inserção menor devido a falha."
+                        )
+                        sub_chunk_size = 200
+                        for k in range(0, len(values), sub_chunk_size):
+                            sub_values = values[k:k + sub_chunk_size]
+                            try:
+                                inserir_com_retry(sub_values, page_size=200, tentativas=2)
+                                sucesso_count += len(sub_values)
+                            except Exception as e:
+                                erros_count += len(sub_values)
+                                if len(erros_detalhados) < 100:
+                                    erros_detalhados.append(
+                                        f"Falha insert em massa (lote {batch_num}): {str(e)}"
+                                    )
                 else:
                     # Fallback: usar bulk_create padrão
                     with transaction.atomic():
