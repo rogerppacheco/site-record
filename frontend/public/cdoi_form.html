@@ -1081,13 +1081,11 @@
         lngInput.value = 'Buscando...';
         
         try {
-            // Usa Nominatim (OpenStreetMap) - API gratuita de geocodificação
-            const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(enderecoCompleto)}&limit=1&countrycodes=br`;
-            
-            const response = await fetch(url, {
-                headers: {
-                    'User-Agent': 'RecordPap/1.0' // Nominatim requer User-Agent
-                }
+            const token = localStorage.getItem('accessToken');
+            // Usa proxy no backend para evitar CORS
+            const url = `/api/crm/cdoi/nominatim/?q=${encodeURIComponent(enderecoCompleto)}`;
+            const response = await fetch(url, { 
+                headers: {'Authorization': `Bearer ${token}`} 
             });
             
             if (!response.ok) {
@@ -1103,11 +1101,9 @@
             } else {
                 // Tenta buscar apenas com CEP se não encontrou com endereço completo
                 if (cep && cep.length === 8) {
-                    const urlCep = `https://nominatim.openstreetmap.org/search?format=json&postalcode=${cep}&countrycodes=br&limit=1`;
-                    const responseCep = await fetch(urlCep, {
-                        headers: {
-                            'User-Agent': 'RecordPap/1.0'
-                        }
+                    const urlCep = `/api/crm/cdoi/nominatim/?postalcode=${cep}`;
+                    const responseCep = await fetch(urlCep, { 
+                        headers: {'Authorization': `Bearer ${token}`} 
                     });
                     
                     if (responseCep.ok) {
