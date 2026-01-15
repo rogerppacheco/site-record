@@ -3816,6 +3816,43 @@ class ViaCepProxyView(APIView):
             return Response(data)
         except Exception as e:
             return Response({'error': f'Erro ao consultar CEP: {str(e)}'}, status=502)
+
+
+class NominatimProxyView(APIView):
+    """Proxy para consulta Nominatim evitando CORS no frontend."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        try:
+            import json
+            import urllib.parse
+            import urllib.request
+
+            q = request.query_params.get('q')
+            postalcode = request.query_params.get('postalcode')
+            if not q and not postalcode:
+                return Response({'error': 'Parâmetro ausente.'}, status=400)
+
+            params = {
+                'format': 'json',
+                'limit': '1',
+                'countrycodes': 'br',
+            }
+            if q:
+                params['q'] = q
+            if postalcode:
+                params['postalcode'] = postalcode
+
+            url = f"https://nominatim.openstreetmap.org/search?{urllib.parse.urlencode(params)}"
+            req = urllib.request.Request(
+                url,
+                headers={'User-Agent': 'RecordPap/1.0'}
+            )
+            with urllib.request.urlopen(req, timeout=8) as response:
+                data = json.loads(response.read().decode('utf-8'))
+            return Response(data)
+        except Exception as e:
+            return Response({'error': f'Erro ao consultar Nominatim: {str(e)}'}, status=502)
     
 
 @api_view(['GET'])
