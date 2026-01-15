@@ -2029,6 +2029,21 @@ class ImportacaoOsabView(APIView):
         except Exception as e:
             print(f"Aviso: não foi possível sincronizar sequence do histórico: {e}")
 
+    def _sincronizar_seq_osab(self):
+        """Garante que a sequence da importação OSAB não esteja atrasada (evita PK duplicada)."""
+        try:
+            from django.db import connection
+            from django.db.models import Max
+
+            max_id = ImportacaoOsab.objects.aggregate(max_id=Max('id')).get('max_id') or 0
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT setval(pg_get_serial_sequence(%s, 'id'), %s, true);",
+                    ['crm_importacao_osab', max_id]
+                )
+        except Exception as e:
+            print(f"Aviso: não foi possível sincronizar sequence da OSAB: {e}")
+
     def post(self, request, *args, **kwargs):
         file_obj = request.FILES.get('file')
         if not file_obj: return Response({'error': 'Nenhum arquivo enviado.'}, status=400)
@@ -2405,7 +2420,9 @@ class ImportacaoOsabView(APIView):
 
             # --- 3. PERSISTÊNCIA ---
             with transaction.atomic():
-                if osab_criar: ImportacaoOsab.objects.bulk_create(osab_criar, batch_size=2000)
+                if osab_criar:
+                    self._sincronizar_seq_osab()
+                    ImportacaoOsab.objects.bulk_create(osab_criar, batch_size=2000)
                 if osab_atualizar:
                     campos_osab = [f.name for f in ImportacaoOsab._meta.fields if f.name != 'id']
                     ImportacaoOsab.objects.bulk_update(osab_atualizar, campos_osab, batch_size=2000)
