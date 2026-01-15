@@ -551,6 +551,7 @@
                             ${log.atualizados > 0 ? `<span class="badge bg-info">${log.atualizados} atualizados</span> ` : ''}
                             ${log.ja_corretos > 0 ? `<span class="badge bg-secondary">${log.ja_corretos} já corretos</span>` : ''}
                             ${whatsapp}
+                            ${log.download_url ? `<a class="btn btn-sm btn-outline-primary ms-2" href="${log.download_url}" target="_blank">Baixar relatório</a>` : ''}
                         </td>
                     </tr>
                 `;
