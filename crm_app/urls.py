@@ -82,6 +82,7 @@ from .views import (
     CdoiListView,    # Listagem (NOVO)
     CdoiUpdateView,  # Edição/Status (NOVO)
     ViaCepProxyView,
+    NominatimProxyView,
     page_cdoi_novo,  # Página HTML
     
     # --- BÔNUS M-10 & FPD ---
