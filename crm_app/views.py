@@ -7517,9 +7517,9 @@ class BuscarFaturaNioView(APIView):
                 'dados': dados
             })
             
-        except ImportError:
+        except ImportError as e:
             return Response({
-                'error': 'Selenium não instalado. Execute: pip install selenium'
+                'error': f'Playwright não instalado. Execute: pip install playwright && playwright install chromium. Erro: {str(e)}'
             }, status=500)
         except Exception as e:
             return Response({
