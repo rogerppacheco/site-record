@@ -533,8 +533,11 @@ def processar_webhook_whatsapp(data):
                             
                             resposta = _formatar_detalhes_fatura(invoice, cpf_limpo, incluir_pdf=True)
                             
-                            # Armazenar invoice para envio do PDF após a mensagem
-                            sessao.dados_temp = {'invoice_para_pdf': invoice}
+                            # Armazenar invoice para envio do PDF após a mensagem (só se houver PDF disponível)
+                            if invoice.get('pdf_path') or invoice.get('pdf_url'):
+                                sessao.dados_temp = {'invoice_para_pdf': invoice}
+                            else:
+                                sessao.dados_temp = {}
                             sessao.etapa = 'inicial'
                             sessao.save()
                         else:
@@ -674,8 +677,11 @@ def processar_webhook_whatsapp(data):
                         # Formatar resposta com detalhes completos
                         resposta = _formatar_detalhes_fatura(invoice, cpf, incluir_pdf=True)
                         
-                        # Armazenar invoice para envio do PDF após a mensagem
-                        sessao.dados_temp = {'invoice_para_pdf': invoice}
+                        # Armazenar invoice para envio do PDF após a mensagem (só se houver PDF disponível)
+                        if invoice.get('pdf_path') or invoice.get('pdf_url'):
+                            sessao.dados_temp = {'invoice_para_pdf': invoice}
+                        else:
+                            sessao.dados_temp = {}
                         sessao.etapa = 'inicial'
                         sessao.save()
             except Exception as e:

@@ -148,16 +148,27 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
             
             # 2. Preencher CPF e consultar
             logger.info(f"[PDF HUMANO] Passo 2: Preenchendo CPF e consultando...")
+            
+            # Aguardar um pouco mais para garantir que a página carregou completamente
+            page.wait_for_timeout(2000)
+            page.wait_for_load_state("domcontentloaded", timeout=10000)
+            
             logger.info(f"[PDF HUMANO] Tentando encontrar campo de CPF...")
             
             # Tentar vários seletores possíveis para o campo CPF
             campo_cpf = None
             seletores_cpf = [
+                'input[placeholder*="CPF" i]',  # case insensitive
+                'input[placeholder*="cpf" i]',
+                'input[name*="cpf" i]',
+                'input[name*="CPF" i]',
+                'input[id*="cpf" i]',
+                'input[id*="CPF" i]',
+                'input[class*="cpf" i]',
+                'input[class*="CPF" i]',
                 'input[type="text"]',
-                'input[placeholder*="CPF"]',
-                'input[name*="cpf"]',
-                'input[id*="cpf"]',
-                'input[class*="cpf"]',
+                'input[type="tel"]',
+                'input[type="number"]',
                 'input',
             ]
             
@@ -167,16 +178,20 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                     count = locator.count()
                     logger.debug(f"[PDF HUMANO] Seletor '{seletor}': encontrados {count} elementos")
                     if count > 0:
-                        # Verificar se está visível
+                        # Verificar se está visível e editável
                         try:
-                            if locator.is_visible(timeout=2000):
-                                campo_cpf = locator
-                                logger.info(f"[PDF HUMANO] ✅ Campo CPF encontrado com seletor: {seletor}")
-                                break
+                            if locator.is_visible(timeout=3000):
+                                # Verificar se é editável
+                                if locator.is_editable(timeout=2000):
+                                    campo_cpf = locator
+                                    logger.info(f"[PDF HUMANO] ✅ Campo CPF encontrado com seletor: {seletor}")
+                                    break
+                                else:
+                                    logger.debug(f"[PDF HUMANO] Seletor '{seletor}' encontrado mas não é editável")
                             else:
                                 logger.debug(f"[PDF HUMANO] Seletor '{seletor}' encontrado mas não está visível")
                         except Exception as e_vis:
-                            logger.debug(f"[PDF HUMANO] Erro ao verificar visibilidade do seletor '{seletor}': {e_vis}")
+                            logger.debug(f"[PDF HUMANO] Erro ao verificar visibilidade/editabilidade do seletor '{seletor}': {e_vis}")
                 except Exception as e:
                     logger.debug(f"[PDF HUMANO] Seletor '{seletor}' falhou: {e}")
                     continue
