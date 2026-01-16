@@ -32,6 +32,63 @@ def limpar_texto_cep_cpf(texto):
     return re.sub(r'[\s.\-/]', '', str(texto))
 
 
+def _formatar_status_portugues(status):
+    """Traduz status para português"""
+    status_upper = str(status).upper()
+    traducoes = {
+        'OVERDUE': 'Atrasado',
+        'PENDING': 'Pendente',
+        'EM ABERTO': 'Em Aberto',
+        'ABERTO': 'Em Aberto',
+        'OPEN': 'Em Aberto',
+        'VENCIDA': 'Vencida',
+        'VENCIDO': 'Vencido',
+        'LATE': 'Atrasado',
+        'PAID': 'Pago',
+        'PAGO': 'Pago',
+    }
+    return traducoes.get(status_upper, status)
+
+
+def _formatar_data_brasileira(data_str):
+    """Converte data de formato YYYYMMDD ou YYYY-MM-DD para dd/mm/aaaa"""
+    if not data_str:
+        return None
+    
+    try:
+        # Formato YYYYMMDD (ex: 20251230)
+        if isinstance(data_str, str) and len(data_str) == 8 and data_str.isdigit():
+            from datetime import datetime
+            data = datetime.strptime(data_str, '%Y%m%d')
+            return data.strftime('%d/%m/%Y')
+        
+        # Formato YYYY-MM-DD (ex: 2025-12-30)
+        elif isinstance(data_str, str) and '-' in data_str:
+            from datetime import datetime
+            data = datetime.strptime(data_str, '%Y-%m-%d')
+            return data.strftime('%d/%m/%Y')
+        
+        # Já está formatado ou é objeto date
+        elif hasattr(data_str, 'strftime'):
+            return data_str.strftime('%d/%m/%Y')
+        
+        # Tentar parsear outros formatos
+        else:
+            from datetime import datetime
+            # Tenta vários formatos comuns
+            for fmt in ['%Y-%m-%d', '%Y%m%d', '%d/%m/%Y', '%d-%m-%Y']:
+                try:
+                    data = datetime.strptime(str(data_str), fmt)
+                    return data.strftime('%d/%m/%Y')
+                except:
+                    continue
+            
+            return str(data_str)  # Retorna original se não conseguir converter
+    except Exception as e:
+        logger.warning(f"[Webhook] Erro ao formatar data {data_str}: {e}")
+        return str(data_str)
+
+
 def _formatar_detalhes_fatura(invoice, cpf, incluir_pdf=False):
     """
     Formata os detalhes de uma fatura para envio via WhatsApp.
@@ -47,23 +104,18 @@ def _formatar_detalhes_fatura(invoice, cpf, incluir_pdf=False):
         except:
             resposta_parts.append(f"💰 *Valor:* {valor}")
     
-    # Data de vencimento
+    # Data de vencimento (formatada em dd/mm/aaaa)
     data_vencimento = invoice.get('due_date_raw') or invoice.get('data_vencimento')
     if data_vencimento:
-        if isinstance(data_vencimento, str):
-            resposta_parts.append(f"📅 *Vencimento:* {data_vencimento}")
-        else:
-            from datetime import datetime
-            if hasattr(data_vencimento, 'strftime'):
-                resposta_parts.append(f"📅 *Vencimento:* {data_vencimento.strftime('%d/%m/%Y')}")
-            else:
-                resposta_parts.append(f"📅 *Vencimento:* {data_vencimento}")
+        data_formatada = _formatar_data_brasileira(data_vencimento)
+        resposta_parts.append(f"📅 *Vencimento:* {data_formatada}")
     
-    # Status
+    # Status (traduzido para português)
     status = invoice.get('status', '')
     if status:
-        emoji_status = "🔴" if status.upper() in ['ATRASADO', 'ATRASADA', 'VENCIDA', 'VENCIDO'] else "🟡"
-        resposta_parts.append(f"{emoji_status} *Status:* {status}")
+        status_pt = _formatar_status_portugues(status)
+        emoji_status = "🔴" if status.upper() in ['ATRASADO', 'ATRASADA', 'VENCIDA', 'VENCIDO', 'OVERDUE', 'LATE'] else "🟡"
+        resposta_parts.append(f"{emoji_status} *Status:* {status_pt}")
     
     # Mês de referência
     mes_ref = invoice.get('reference_month', '')
@@ -83,8 +135,11 @@ def _formatar_detalhes_fatura(invoice, cpf, incluir_pdf=False):
     # PDF (se solicitado e disponível)
     if incluir_pdf:
         pdf_url = invoice.get('pdf_url', '')
+        pdf_path = invoice.get('pdf_path', '')
         if pdf_url:
             resposta_parts.append(f"\n📎 *PDF:* {pdf_url}")
+        elif pdf_path:
+            resposta_parts.append(f"\n📎 *PDF:* Salvo em {pdf_path}")
         else:
             resposta_parts.append(f"\n⚠️ *PDF:* Não disponível no momento")
     
@@ -391,16 +446,28 @@ def processar_webhook_whatsapp(data):
                             except Exception as e:
                                 logger.warning(f"[Webhook] Erro ao buscar PDF via API para fatura única: {e}")
                             
-                            # Se não encontrou via API, tenta Playwright como fallback
-                            if not invoice.get('pdf_url'):
+                            # Se não encontrou via API, tenta baixar como humano (Playwright)
+                            if not invoice.get('pdf_url') and not invoice.get('pdf_path'):
                                 try:
-                                    from crm_app.services_nio import buscar_fatura_nio_por_cpf
-                                    dados_completos = buscar_fatura_nio_por_cpf(cpf_limpo, incluir_pdf=True)
-                                    if dados_completos and dados_completos.get('pdf_url'):
-                                        invoice['pdf_url'] = dados_completos['pdf_url']
-                                        logger.info(f"[Webhook] PDF encontrado via Playwright para fatura única: {dados_completos['pdf_url'][:100]}...")
+                                    # Importar função diretamente do módulo (função privada)
+                                    import crm_app.services_nio as nio_services
+                                    mes_ref = invoice.get('reference_month', '')
+                                    data_venc = invoice.get('due_date_raw') or invoice.get('data_vencimento', '')
+                                    
+                                    logger.info(f"[Webhook] Tentando baixar PDF como humano para fatura única...")
+                                    logger.info(f"[Webhook] Parâmetros: CPF={cpf_limpo}, mes_ref={mes_ref}, data_venc={data_venc}")
+                                    
+                                    pdf_path = nio_services._baixar_pdf_como_humano(cpf_limpo, mes_ref, data_venc)
+                                    
+                                    if pdf_path:
+                                        invoice['pdf_path'] = pdf_path
+                                        logger.info(f"[Webhook] ✅ PDF baixado com sucesso para fatura única: {pdf_path}")
+                                    else:
+                                        logger.warning(f"[Webhook] ⚠️ Falha ao baixar PDF como humano para fatura única - retornou None")
                                 except Exception as e:
-                                    logger.warning(f"[Webhook] Erro ao buscar PDF via Playwright para fatura única: {e}")
+                                    logger.error(f"[Webhook] ❌ Erro ao baixar PDF como humano para fatura única: {e}")
+                                    import traceback
+                                    traceback.print_exc()
                             
                             resposta = _formatar_detalhes_fatura(invoice, cpf_limpo, incluir_pdf=True)
                             sessao.etapa = 'inicial'
@@ -430,8 +497,12 @@ def processar_webhook_whatsapp(data):
                                 else:
                                     emoji = "⚪"
                                 
+                                # Formatar data e status
+                                data_venc_formatada = _formatar_data_brasileira(data_venc) or data_venc
+                                status_pt = _formatar_status_portugues(status)
+                                
                                 resposta_parts.append(
-                                    f"{emoji} *{idx}.* {valor_str} | Venc: {data_venc} | {status}"
+                                    f"{emoji} *{idx}.* {valor_str} | Venc: {data_venc_formatada} | {status_pt}"
                                 )
                                 if mes_ref:
                                     resposta_parts.append(f"   📅 Ref: {mes_ref}")
@@ -501,16 +572,28 @@ def processar_webhook_whatsapp(data):
                         except Exception as e:
                             logger.warning(f"[Webhook] Erro ao buscar PDF via API: {e}")
                         
-                        # Se não encontrou via API, tenta Playwright como fallback
-                        if not invoice.get('pdf_url'):
+                        # Se não encontrou via API, tenta baixar como humano (Playwright)
+                        if not invoice.get('pdf_url') and not invoice.get('pdf_path'):
                             try:
-                                from crm_app.services_nio import buscar_fatura_nio_por_cpf
-                                dados_completos = buscar_fatura_nio_por_cpf(cpf, incluir_pdf=True)
-                                if dados_completos and dados_completos.get('pdf_url'):
-                                    invoice['pdf_url'] = dados_completos['pdf_url']
-                                    logger.info(f"[Webhook] PDF encontrado via Playwright: {dados_completos['pdf_url'][:100]}...")
+                                # Importar função diretamente do módulo (função privada)
+                                import crm_app.services_nio as nio_services
+                                mes_ref = invoice.get('reference_month', '')
+                                data_venc = invoice.get('due_date_raw') or invoice.get('data_vencimento', '')
+                                
+                                logger.info(f"[Webhook] Tentando baixar PDF como humano...")
+                                logger.info(f"[Webhook] Parâmetros: CPF={cpf}, mes_ref={mes_ref}, data_venc={data_venc}")
+                                
+                                pdf_path = nio_services._baixar_pdf_como_humano(cpf, mes_ref, data_venc)
+                                
+                                if pdf_path:
+                                    invoice['pdf_path'] = pdf_path
+                                    logger.info(f"[Webhook] ✅ PDF baixado com sucesso: {pdf_path}")
+                                else:
+                                    logger.warning(f"[Webhook] ⚠️ Falha ao baixar PDF como humano - retornou None")
                             except Exception as e:
-                                logger.warning(f"[Webhook] Erro ao buscar PDF via Playwright: {e}")
+                                logger.error(f"[Webhook] ❌ Erro ao baixar PDF como humano: {e}")
+                                import traceback
+                                traceback.print_exc()
                         
                         # Formatar resposta com detalhes completos
                         resposta = _formatar_detalhes_fatura(invoice, cpf, incluir_pdf=True)
