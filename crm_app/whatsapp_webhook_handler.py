@@ -334,6 +334,21 @@ def processar_webhook_whatsapp(data):
             sessao.save()
             resposta = "💳 *CONSULTA DE FATURA NIO*\n\nPor favor, digite o CPF ou ID do cliente para buscar a fatura:"
         
+        elif mensagem_limpa in ['MENU', 'AJUDA', 'HELP', 'OPCOES', 'OPÇÕES', 'OPCOES', 'OPÇOES']:
+            logger.info(f"[Webhook] Comando MENU/AJUDA reconhecido!")
+            sessao.etapa = 'inicial'
+            sessao.dados_temp = {}
+            sessao.save()
+            resposta = (
+                "📋 *MENU*\n\n"
+                "Escolha uma opção:\n"
+                "• *Fachada* - Consultar fachadas por CEP\n"
+                "• *Viabilidade* - Consultar viabilidade por CEP e número\n"
+                "• *Status* - Consultar status de pedido\n"
+                "• *Fatura* - Consultar fatura por CPF"
+            )
+            logger.info(f"[Webhook] Resposta preparada para MENU/AJUDA")
+        
         # === PROCESSAMENTO POR ETAPA ===
         elif etapa_atual == 'fachada_cep':
             cep_limpo = limpar_texto_cep_cpf(mensagem_texto)
@@ -710,15 +725,14 @@ def processar_webhook_whatsapp(data):
                 # Pode ser um número de confirmação que não foi processado corretamente
                 resposta = None  # Não enviar resposta de erro
             elif etapa_atual == 'inicial' and mensagem_limpa not in ['FATURA', 'FACHADA', 'VIABILIDADE', 'STATUS', 'STAT', 'VIABIL', 'FACADA', 'FAT']:
-                # Só mostrar erro se realmente estiver tentando usar um comando
+                # Mostrar menu de ajuda
                 resposta = (
-                    "❓ *Comando não reconhecido*\n\n"
-                    "Comandos disponíveis:\n"
+                    "📋 *MENU*\n\n"
+                    "Escolha uma opção:\n"
                     "• *Fachada* - Consultar fachadas por CEP\n"
                     "• *Viabilidade* - Consultar viabilidade por CEP e número\n"
                     "• *Status* - Consultar status de pedido\n"
-                    "• *Fatura* - Consultar fatura por CPF\n\n"
-                    "Digite um dos comandos acima para começar."
+                    "• *Fatura* - Consultar fatura por CPF"
                 )
             else:
                 resposta = None  # Não enviar resposta se estiver em meio a um fluxo
