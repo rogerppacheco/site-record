@@ -21,16 +21,17 @@ NIO_BASE_URL = "https://servicos.niointernet.com.br/ajuda/servicos/segunda-via"
 DEFAULT_STORAGE_STATE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".playwright_state.json")
 
 
-def buscar_fatura_nio_por_cpf(cpf, incluir_pdf=True):
+def buscar_fatura_nio_por_cpf(cpf, incluir_pdf=True, mes_referencia=None):
     """
     Busca fatura no site da Nio Internet por CPF
     
     Args:
         cpf: CPF do cliente
         incluir_pdf: Se True, busca também o PDF (mais lento)
+        mes_referencia: Mês de referência da fatura (YYYYMM) para nomear o arquivo
     
     Returns:
-        dict com: valor, codigo_pix, codigo_barras, data_vencimento, pdf_url
+        dict com: valor, codigo_pix, codigo_barras, data_vencimento, pdf_url, pdf_path
         ou None se não encontrou
     """
     if not HAS_PLAYWRIGHT:
@@ -40,9 +41,177 @@ def buscar_fatura_nio_por_cpf(cpf, incluir_pdf=True):
         cpf_limpo = re.sub(r'\D', '', cpf or '')
         if not cpf_limpo:
             return None
-        return _buscar_fatura_playwright(cpf_limpo)
+        
+        resultado = _buscar_fatura_playwright(cpf_limpo)
+        
+        # Se precisa do PDF e ainda não tem, tenta baixar
+        if incluir_pdf and resultado and not resultado.get('pdf_url') and not resultado.get('pdf_path'):
+            pdf_path = _baixar_pdf_como_humano(cpf_limpo, mes_referencia, resultado.get('data_vencimento'))
+            if pdf_path:
+                resultado['pdf_path'] = pdf_path
+                print(f"✅ [PDF] Arquivo salvo em: {pdf_path}")
+        
+        return resultado
     except Exception as e:
         print(f"[ERRO] Falha ao buscar fatura: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
+def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
+    """
+    Replica o comportamento humano para baixar PDF:
+    1. Clica em "Gerar boleto"
+    2. Clica em "Download" ou "Baixar PDF"
+    3. Salva na pasta downloads com nome: CPF_mes_vencimento.pdf
+    
+    Returns:
+        Caminho do arquivo salvo ou None
+    """
+    if not HAS_PLAYWRIGHT:
+        return None
+    
+    try:
+        from playwright.sync_api import sync_playwright
+        
+        # Criar pasta downloads se não existir
+        downloads_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'downloads')
+        os.makedirs(downloads_dir, exist_ok=True)
+        
+        # Nome do arquivo: CPF_mes_vencimento.pdf
+        if mes_referencia:
+            nome_arquivo = f"{cpf}_{mes_referencia}.pdf"
+        elif data_vencimento:
+            # Converter data_vencimento para formato YYYYMM
+            if isinstance(data_vencimento, str):
+                try:
+                    from datetime import datetime
+                    if len(data_vencimento) == 8 and data_vencimento.isdigit():
+                        # Formato YYYYMMDD
+                        data = datetime.strptime(data_vencimento, '%Y%m%d')
+                        mes_ref = data.strftime('%Y%m')
+                    else:
+                        mes_ref = data_vencimento[:6] if len(data_vencimento) >= 6 else 'unknown'
+                except:
+                    mes_ref = 'unknown'
+            else:
+                mes_ref = data_vencimento.strftime('%Y%m') if hasattr(data_vencimento, 'strftime') else 'unknown'
+            nome_arquivo = f"{cpf}_{mes_ref}.pdf"
+        else:
+            from datetime import datetime
+            mes_ref = datetime.now().strftime('%Y%m')
+            nome_arquivo = f"{cpf}_{mes_ref}.pdf"
+        
+        caminho_completo = os.path.join(downloads_dir, nome_arquivo)
+        
+        print(f"🔍 [PDF HUMANO] Iniciando download como humano...")
+        print(f"📁 [PDF HUMANO] Arquivo será salvo em: {caminho_completo}")
+        
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            
+            state_path = DEFAULT_STORAGE_STATE if os.path.exists(DEFAULT_STORAGE_STATE) else None
+            context = browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                viewport={"width": 1280, "height": 800},
+                storage_state=state_path,
+                accept_downloads=True,
+            )
+            
+            page = context.new_page()
+            
+            # 1. Ir para página inicial
+            print(f"🔍 [PDF HUMANO] Passo 1: Navegando para página inicial...")
+            page.goto(NIO_BASE_URL, wait_until="networkidle", timeout=30000)
+            page.wait_for_timeout(1500)
+            
+            # 2. Preencher CPF e consultar
+            print(f"🔍 [PDF HUMANO] Passo 2: Preenchendo CPF e consultando...")
+            page.locator('input[type="text"]').first.fill(cpf)
+            page.locator('button:has-text("Consultar")').first.click()
+            page.wait_for_timeout(1500)
+            page.wait_for_load_state("networkidle", timeout=20000)
+            
+            # 3. Clicar em "ver detalhes" se existir
+            print(f"🔍 [PDF HUMANO] Passo 3: Verificando se precisa expandir detalhes...")
+            ver_detalhes = page.locator('text=/ver detalhes/i')
+            if ver_detalhes.count() > 0:
+                ver_detalhes.first.click()
+                page.wait_for_timeout(800)
+            
+            # 4. Clicar em "Pagar conta"
+            print(f"🔍 [PDF HUMANO] Passo 4: Clicando em 'Pagar conta'...")
+            pagar_btn = page.locator('button:has-text("Pagar conta")').first
+            pagar_btn.click()
+            page.wait_for_url('**/payment**', timeout=15000)
+            page.wait_for_timeout(1200)
+            
+            # 5. Clicar em "Gerar boleto" (como humano faria)
+            print(f"🔍 [PDF HUMANO] Passo 5: Clicando em 'Gerar boleto'...")
+            gerar_boleto = page.locator('div[data-context="btn_container_gerar-boleto"]').first
+            if gerar_boleto.count() == 0:
+                # Tentar outros seletores possíveis
+                gerar_boleto = page.locator('text=/gerar boleto/i').first
+            gerar_boleto.click()
+            page.wait_for_url('**/paymentbillet**', timeout=12000)
+            page.wait_for_timeout(1500)
+            
+            # 6. Aguardar download ao clicar em "Download" ou "Baixar PDF"
+            print(f"🔍 [PDF HUMANO] Passo 6: Clicando em 'Download' ou 'Baixar PDF'...")
+            
+            # Configurar download
+            with page.expect_download(timeout=15000) as download_info:
+                # Tentar vários seletores possíveis
+                download_btn = None
+                seletores = [
+                    'text="Baixar PDF"',
+                    'text="Download"',
+                    'text=/baixar/i',
+                    'text=/download/i',
+                    'a[href*=".pdf"]',
+                    'button:has-text("PDF")',
+                ]
+                
+                for seletor in seletores:
+                    try:
+                        btn = page.locator(seletor).first
+                        if btn.count() > 0:
+                            download_btn = btn
+                            print(f"✅ [PDF HUMANO] Encontrado botão com seletor: {seletor}")
+                            break
+                    except:
+                        continue
+                
+                if not download_btn:
+                    print(f"❌ [PDF HUMANO] Nenhum botão de download encontrado")
+                    browser.close()
+                    return None
+                
+                download_btn.click()
+            
+            # 7. Salvar arquivo
+            print(f"🔍 [PDF HUMANO] Passo 7: Salvando arquivo...")
+            download = download_info.value
+            
+            # Se já existe, remover
+            if os.path.exists(caminho_completo):
+                os.remove(caminho_completo)
+            
+            download.save_as(caminho_completo)
+            print(f"✅ [PDF HUMANO] Arquivo salvo com sucesso: {caminho_completo}")
+            
+            browser.close()
+            
+            # Verificar se arquivo foi salvo corretamente
+            if os.path.exists(caminho_completo) and os.path.getsize(caminho_completo) > 0:
+                return caminho_completo
+            else:
+                print(f"⚠️ [PDF HUMANO] Arquivo salvo mas está vazio ou não existe")
+                return None
+                
+    except Exception as e:
+        print(f"❌ [PDF HUMANO] Erro ao baixar PDF: {e}")
         import traceback
         traceback.print_exc()
         return None
