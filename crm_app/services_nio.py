@@ -5,8 +5,11 @@ Serviço para automação de consulta de faturas no site da Nio Internet
 
 import re
 import os
+import logging
 from datetime import datetime
 from decimal import Decimal
+
+logger = logging.getLogger(__name__)
 
 # Tentar importar Playwright
 try:
@@ -105,8 +108,9 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
         
         caminho_completo = os.path.join(downloads_dir, nome_arquivo)
         
-        print(f"🔍 [PDF HUMANO] Iniciando download como humano...")
-        print(f"📁 [PDF HUMANO] Arquivo será salvo em: {caminho_completo}")
+        logger.info(f"[PDF HUMANO] Iniciando download como humano para CPF: {cpf}")
+        logger.info(f"[PDF HUMANO] Arquivo será salvo em: {caminho_completo}")
+        logger.info(f"[PDF HUMANO] Parâmetros: mes_ref={mes_referencia}, data_venc={data_vencimento}")
         
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
@@ -122,21 +126,29 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
             page = context.new_page()
             
             # 1. Ir para página inicial
-            print(f"🔍 [PDF HUMANO] Passo 1: Navegando para página inicial...")
-            page.goto(NIO_BASE_URL, wait_until="networkidle", timeout=30000)
-            page.wait_for_timeout(2000)
+            logger.info(f"[PDF HUMANO] Passo 1: Navegando para {NIO_BASE_URL}")
+            try:
+                page.goto(NIO_BASE_URL, wait_until="networkidle", timeout=30000)
+                page.wait_for_timeout(2000)
+                logger.info(f"[PDF HUMANO] Página carregada com sucesso")
+            except Exception as e:
+                logger.error(f"[PDF HUMANO] Erro ao carregar página inicial: {e}")
+                import traceback
+                logger.error(f"[PDF HUMANO] Traceback: {traceback.format_exc()}")
+                browser.close()
+                return None
             
             # Debug: capturar screenshot e HTML para análise
             try:
                 screenshot_path = os.path.join(downloads_dir, f"debug_{cpf}_pagina_inicial.png")
                 page.screenshot(path=screenshot_path)
-                print(f"📸 [PDF HUMANO] Screenshot salvo: {screenshot_path}")
+                logger.info(f"[PDF HUMANO] Screenshot salvo: {screenshot_path}")
             except Exception as e:
-                print(f"⚠️ [PDF HUMANO] Erro ao salvar screenshot: {e}")
+                logger.warning(f"[PDF HUMANO] Erro ao salvar screenshot: {e}")
             
             # 2. Preencher CPF e consultar - tentar múltiplos seletores
-            print(f"🔍 [PDF HUMANO] Passo 2: Preenchendo CPF e consultando...")
-            print(f"🔍 [PDF HUMANO] Tentando encontrar campo de CPF...")
+            logger.info(f"[PDF HUMANO] Passo 2: Preenchendo CPF e consultando...")
+            logger.info(f"[PDF HUMANO] Tentando encontrar campo de CPF...")
             
             # Tentar vários seletores possíveis para o campo CPF
             campo_cpf = None
@@ -152,48 +164,72 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
             for seletor in seletores_cpf:
                 try:
                     locator = page.locator(seletor).first
-                    if locator.count() > 0:
+                    count = locator.count()
+                    logger.debug(f"[PDF HUMANO] Seletor '{seletor}': encontrados {count} elementos")
+                    if count > 0:
                         # Verificar se está visível
-                        if locator.is_visible(timeout=2000):
-                            campo_cpf = locator
-                            print(f"✅ [PDF HUMANO] Campo CPF encontrado com seletor: {seletor}")
-                            break
+                        try:
+                            if locator.is_visible(timeout=2000):
+                                campo_cpf = locator
+                                logger.info(f"[PDF HUMANO] ✅ Campo CPF encontrado com seletor: {seletor}")
+                                break
+                            else:
+                                logger.debug(f"[PDF HUMANO] Seletor '{seletor}' encontrado mas não está visível")
+                        except Exception as e_vis:
+                            logger.debug(f"[PDF HUMANO] Erro ao verificar visibilidade do seletor '{seletor}': {e_vis}")
                 except Exception as e:
-                    print(f"⚠️ [PDF HUMANO] Seletor {seletor} falhou: {e}")
+                    logger.debug(f"[PDF HUMANO] Seletor '{seletor}' falhou: {e}")
                     continue
             
             if not campo_cpf:
-                print(f"❌ [PDF HUMANO] Nenhum campo de CPF encontrado!")
+                logger.error(f"[PDF HUMANO] ❌ Nenhum campo de CPF encontrado após tentar {len(seletores_cpf)} seletores!")
                 # Salvar HTML para debug
                 try:
                     html_path = os.path.join(downloads_dir, f"debug_{cpf}_html.html")
                     with open(html_path, 'w', encoding='utf-8') as f:
                         f.write(page.content())
-                    print(f"📄 [PDF HUMANO] HTML salvo para debug: {html_path}")
-                except:
-                    pass
+                    logger.info(f"[PDF HUMANO] HTML salvo para debug: {html_path}")
+                except Exception as e_html:
+                    logger.warning(f"[PDF HUMANO] Erro ao salvar HTML: {e_html}")
                 browser.close()
                 return None
             
             # Preencher CPF
             try:
+                logger.info(f"[PDF HUMANO] Preenchendo campo CPF com: {cpf}")
                 campo_cpf.fill(cpf, timeout=10000)
-                print(f"✅ [PDF HUMANO] CPF preenchido com sucesso")
+                logger.info(f"[PDF HUMANO] ✅ CPF preenchido com sucesso")
             except Exception as e:
-                print(f"❌ [PDF HUMANO] Erro ao preencher CPF: {e}")
+                logger.error(f"[PDF HUMANO] ❌ Erro ao preencher CPF: {e}")
+                import traceback
+                logger.error(f"[PDF HUMANO] Traceback: {traceback.format_exc()}")
                 browser.close()
                 return None
             
             # Clicar em Consultar
             try:
+                logger.info(f"[PDF HUMANO] Procurando botão Consultar...")
                 btn_consultar = page.locator('button:has-text("Consultar")').first
-                if btn_consultar.count() == 0:
+                count = btn_consultar.count()
+                logger.debug(f"[PDF HUMANO] Botão 'Consultar' encontrado: {count} elementos")
+                if count == 0:
                     # Tentar outros seletores
+                    logger.info(f"[PDF HUMANO] Tentando seletor alternativo: button[type='submit']")
                     btn_consultar = page.locator('button[type="submit"]').first
-                btn_consultar.click(timeout=10000)
-                print(f"✅ [PDF HUMANO] Botão Consultar clicado")
+                    count = btn_consultar.count()
+                    logger.debug(f"[PDF HUMANO] Botão submit encontrado: {count} elementos")
+                
+                if count > 0:
+                    btn_consultar.click(timeout=10000)
+                    logger.info(f"[PDF HUMANO] ✅ Botão Consultar clicado")
+                else:
+                    logger.error(f"[PDF HUMANO] ❌ Nenhum botão Consultar encontrado!")
+                    browser.close()
+                    return None
             except Exception as e:
-                print(f"❌ [PDF HUMANO] Erro ao clicar em Consultar: {e}")
+                logger.error(f"[PDF HUMANO] ❌ Erro ao clicar em Consultar: {e}")
+                import traceback
+                logger.error(f"[PDF HUMANO] Traceback: {traceback.format_exc()}")
                 browser.close()
                 return None
             
@@ -201,31 +237,64 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
             page.wait_for_load_state("networkidle", timeout=20000)
             
             # 3. Clicar em "ver detalhes" se existir
-            print(f"🔍 [PDF HUMANO] Passo 3: Verificando se precisa expandir detalhes...")
-            ver_detalhes = page.locator('text=/ver detalhes/i')
-            if ver_detalhes.count() > 0:
-                ver_detalhes.first.click()
-                page.wait_for_timeout(800)
+            logger.info(f"[PDF HUMANO] Passo 3: Verificando se precisa expandir detalhes...")
+            try:
+                ver_detalhes = page.locator('text=/ver detalhes/i')
+                if ver_detalhes.count() > 0:
+                    ver_detalhes.first.click()
+                    page.wait_for_timeout(800)
+                    logger.info(f"[PDF HUMANO] Detalhes expandidos")
+            except Exception as e:
+                logger.debug(f"[PDF HUMANO] Não foi necessário expandir detalhes ou erro: {e}")
             
             # 4. Clicar em "Pagar conta"
-            print(f"🔍 [PDF HUMANO] Passo 4: Clicando em 'Pagar conta'...")
-            pagar_btn = page.locator('button:has-text("Pagar conta")').first
-            pagar_btn.click()
-            page.wait_for_url('**/payment**', timeout=15000)
-            page.wait_for_timeout(1200)
+            logger.info(f"[PDF HUMANO] Passo 4: Clicando em 'Pagar conta'...")
+            try:
+                pagar_btn = page.locator('button:has-text("Pagar conta")').first
+                if pagar_btn.count() == 0:
+                    logger.error(f"[PDF HUMANO] ❌ Botão 'Pagar conta' não encontrado!")
+                    browser.close()
+                    return None
+                pagar_btn.click()
+                page.wait_for_url('**/payment**', timeout=15000)
+                page.wait_for_timeout(1200)
+                logger.info(f"[PDF HUMANO] ✅ Navegou para página de pagamento")
+            except Exception as e:
+                logger.error(f"[PDF HUMANO] ❌ Erro ao clicar em 'Pagar conta': {e}")
+                import traceback
+                logger.error(f"[PDF HUMANO] Traceback: {traceback.format_exc()}")
+                browser.close()
+                return None
             
             # 5. Clicar em "Gerar boleto" (como humano faria)
-            print(f"🔍 [PDF HUMANO] Passo 5: Clicando em 'Gerar boleto'...")
-            gerar_boleto = page.locator('div[data-context="btn_container_gerar-boleto"]').first
-            if gerar_boleto.count() == 0:
-                # Tentar outros seletores possíveis
-                gerar_boleto = page.locator('text=/gerar boleto/i').first
-            gerar_boleto.click()
-            page.wait_for_url('**/paymentbillet**', timeout=12000)
-            page.wait_for_timeout(1500)
+            logger.info(f"[PDF HUMANO] Passo 5: Clicando em 'Gerar boleto'...")
+            try:
+                gerar_boleto = page.locator('div[data-context="btn_container_gerar-boleto"]').first
+                count = gerar_boleto.count()
+                if count == 0:
+                    # Tentar outros seletores possíveis
+                    logger.info(f"[PDF HUMANO] Tentando seletor alternativo para 'Gerar boleto'...")
+                    gerar_boleto = page.locator('text=/gerar boleto/i').first
+                    count = gerar_boleto.count()
+                
+                if count == 0:
+                    logger.error(f"[PDF HUMANO] ❌ Botão 'Gerar boleto' não encontrado!")
+                    browser.close()
+                    return None
+                
+                gerar_boleto.click()
+                page.wait_for_url('**/paymentbillet**', timeout=12000)
+                page.wait_for_timeout(1500)
+                logger.info(f"[PDF HUMANO] ✅ Navegou para página de boleto")
+            except Exception as e:
+                logger.error(f"[PDF HUMANO] ❌ Erro ao clicar em 'Gerar boleto': {e}")
+                import traceback
+                logger.error(f"[PDF HUMANO] Traceback: {traceback.format_exc()}")
+                browser.close()
+                return None
             
             # 6. Aguardar download ao clicar em "Download" ou "Baixar PDF"
-            print(f"🔍 [PDF HUMANO] Passo 6: Clicando em 'Download' ou 'Baixar PDF'...")
+            logger.info(f"[PDF HUMANO] Passo 6: Clicando em 'Download' ou 'Baixar PDF'...")
             
             # Configurar download
             with page.expect_download(timeout=15000) as download_info:
@@ -243,37 +312,55 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                 for seletor in seletores:
                     try:
                         btn = page.locator(seletor).first
-                        if btn.count() > 0:
+                        count = btn.count()
+                        if count > 0:
                             download_btn = btn
-                            print(f"✅ [PDF HUMANO] Encontrado botão com seletor: {seletor}")
+                            logger.info(f"[PDF HUMANO] ✅ Encontrado botão com seletor: {seletor}")
                             break
-                    except:
+                    except Exception as e_btn:
+                        logger.debug(f"[PDF HUMANO] Erro ao testar seletor '{seletor}': {e_btn}")
                         continue
                 
                 if not download_btn:
-                    print(f"❌ [PDF HUMANO] Nenhum botão de download encontrado")
+                    logger.error(f"[PDF HUMANO] ❌ Nenhum botão de download encontrado após tentar {len(seletores)} seletores")
                     browser.close()
                     return None
                 
+                logger.info(f"[PDF HUMANO] Clicando no botão de download...")
                 download_btn.click()
             
             # 7. Salvar arquivo
-            print(f"🔍 [PDF HUMANO] Passo 7: Salvando arquivo...")
-            download = download_info.value
+            logger.info(f"[PDF HUMANO] Passo 7: Aguardando download e salvando arquivo...")
+            try:
+                download = download_info.value
+                logger.info(f"[PDF HUMANO] Download iniciado, salvando arquivo...")
+            except Exception as e_download:
+                logger.error(f"[PDF HUMANO] ❌ Erro ao aguardar download: {e_download}")
+                import traceback
+                logger.error(f"[PDF HUMANO] Traceback: {traceback.format_exc()}")
+                browser.close()
+                return None
             
             # Se já existe, remover
             if os.path.exists(caminho_completo):
                 os.remove(caminho_completo)
             
-            download.save_as(caminho_completo)
-            print(f"✅ [PDF HUMANO] Arquivo salvo com sucesso: {caminho_completo}")
+            try:
+                download.save_as(caminho_completo)
+                logger.info(f"[PDF HUMANO] ✅ Arquivo salvo: {caminho_completo}")
+            except Exception as e_save:
+                logger.error(f"[PDF HUMANO] ❌ Erro ao salvar arquivo: {e_save}")
+                import traceback
+                logger.error(f"[PDF HUMANO] Traceback: {traceback.format_exc()}")
+                browser.close()
+                return None
             
             browser.close()
             
             # Verificar se arquivo foi salvo corretamente
             if os.path.exists(caminho_completo) and os.path.getsize(caminho_completo) > 0:
                 tamanho_kb = os.path.getsize(caminho_completo) / 1024
-                print(f"✅ [PDF HUMANO] Arquivo salvo com sucesso: {caminho_completo} ({tamanho_kb:.2f} KB)")
+                logger.info(f"[PDF HUMANO] ✅ Arquivo salvo com sucesso: {caminho_completo} ({tamanho_kb:.2f} KB)")
                 
                 # Tentar fazer upload para OneDrive
                 try:
@@ -291,13 +378,13 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                     
                     folder_name = f"Faturas_NIO/{ano}/{mes}"
                     
-                    print(f"☁️ [PDF HUMANO] Fazendo upload para OneDrive: {folder_name}/{nome_arquivo}")
+                    logger.info(f"[PDF HUMANO] ☁️ Fazendo upload para OneDrive: {folder_name}/{nome_arquivo}")
                     
                     with open(caminho_completo, 'rb') as f:
                         link_onedrive = uploader.upload_file(f, folder_name, nome_arquivo)
                     
                     if link_onedrive:
-                        print(f"✅ [PDF HUMANO] Upload OneDrive concluído: {link_onedrive}")
+                        logger.info(f"[PDF HUMANO] ✅ Upload OneDrive concluído: {link_onedrive}")
                         # Retornar tanto o caminho local quanto o link do OneDrive
                         return {
                             'local_path': caminho_completo,
@@ -305,14 +392,16 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                             'filename': nome_arquivo
                         }
                     else:
-                        print(f"⚠️ [PDF HUMANO] Upload OneDrive falhou, mas arquivo local salvo")
+                        logger.warning(f"[PDF HUMANO] ⚠️ Upload OneDrive falhou, mas arquivo local salvo")
                         return {
                             'local_path': caminho_completo,
                             'onedrive_url': None,
                             'filename': nome_arquivo
                         }
                 except Exception as e_onedrive:
-                    print(f"⚠️ [PDF HUMANO] Erro ao fazer upload OneDrive: {e_onedrive}")
+                    logger.warning(f"[PDF HUMANO] ⚠️ Erro ao fazer upload OneDrive: {e_onedrive}")
+                    import traceback
+                    logger.warning(f"[PDF HUMANO] Traceback OneDrive: {traceback.format_exc()}")
                     # Mesmo se OneDrive falhar, retornar o caminho local
                     return {
                         'local_path': caminho_completo,
@@ -320,13 +409,14 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                         'filename': nome_arquivo
                     }
             else:
-                print(f"⚠️ [PDF HUMANO] Arquivo salvo mas está vazio ou não existe")
+                logger.warning(f"[PDF HUMANO] ⚠️ Arquivo salvo mas está vazio ou não existe")
+                logger.warning(f"[PDF HUMANO] Existe: {os.path.exists(caminho_completo)}, Tamanho: {os.path.getsize(caminho_completo) if os.path.exists(caminho_completo) else 'N/A'}")
                 return None
                 
     except Exception as e:
-        print(f"❌ [PDF HUMANO] Erro ao baixar PDF: {e}")
+        logger.error(f"[PDF HUMANO] ❌ Erro ao baixar PDF: {e}")
         import traceback
-        traceback.print_exc()
+        logger.error(f"[PDF HUMANO] Traceback completo: {traceback.format_exc()}")
         
         # Salvar log de erro para debug
         try:
@@ -338,9 +428,9 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                 f.write(f"Erro: {str(e)}\n")
                 f.write(f"\nTraceback:\n")
                 traceback.print_exc(file=f)
-            print(f"📝 [PDF HUMANO] Log de erro salvo: {error_log_path}")
-        except:
-            pass
+            logger.info(f"[PDF HUMANO] 📝 Log de erro salvo: {error_log_path}")
+        except Exception as e_log:
+            logger.warning(f"[PDF HUMANO] Erro ao salvar log de erro: {e_log}")
         
         return None
 
