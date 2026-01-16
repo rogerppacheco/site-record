@@ -14,9 +14,15 @@ class CrmAppConfig(AppConfig):
         
         # Inicia o scheduler de tarefas automáticas
         # Previne inicialização dupla em reload do runserver
-        if os.environ.get('RUN_MAIN') == 'true' or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+        # Em produção (Gunicorn/Railway), sempre inicia
+        import sys
+        if os.environ.get('RUN_MAIN') == 'true' or os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or 'gunicorn' in sys.argv[0] or os.environ.get('RAILWAY_ENVIRONMENT'):
             try:
                 from crm_app.scheduler import init_scheduler
                 init_scheduler()
             except Exception as e:
-                print(f"⚠️  Erro ao iniciar scheduler: {str(e)}")
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"⚠️  Erro ao iniciar scheduler: {str(e)}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")

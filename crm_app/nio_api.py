@@ -198,13 +198,37 @@ def get_session_id(api_base: str, token: str, session: requests.Session) -> Opti
 
 
 def get_debts(api_base: str, token: str, session_id: str, cpf: str, offset: int, limit: int, session: requests.Session):
-    url = api_base.rstrip("/") + f"/debts/customers/{cpf}?offset={offset}&limit={limit}&origin=nio"
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    # Garantir que CPF contém apenas números
+    cpf_limpo = ''.join(filter(str.isdigit, str(cpf)))
+    if not cpf_limpo or len(cpf_limpo) < 11:
+        logger.error(f"[M10] CPF inválido após limpeza: {cpf} -> {cpf_limpo}")
+        raise ValueError(f"CPF inválido: {cpf}")
+    
+    url = api_base.rstrip("/") + f"/debts/customers/{cpf_limpo}?offset={offset}&limit={limit}&origin=nio"
     headers = {
         "Accept": "application/json",
         "Authorization": token,
         "Session-Id": session_id,
     }
+    
+    logger.debug(f"[M10] Requisição GET: {url}")
+    logger.debug(f"[M10] Headers: Authorization={token[:20]}..., Session-Id={session_id[:20]}...")
+    
     resp = session.get(url, headers=headers, timeout=30)
+    
+    # Log detalhado em caso de erro
+    if resp.status_code != 200:
+        logger.error(f"[M10] Erro {resp.status_code} na requisição: {url}")
+        logger.error(f"[M10] Response headers: {dict(resp.headers)}")
+        try:
+            error_body = resp.text[:500]  # Primeiros 500 chars
+            logger.error(f"[M10] Response body: {error_body}")
+        except:
+            pass
+    
     resp.raise_for_status()
     return resp.json()
 
