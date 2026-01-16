@@ -3,6 +3,50 @@
 Serviço para automação de consulta de faturas no site da Nio Internet
 """
 
+import re
+import os
+from datetime import datetime
+from decimal import Decimal
+
+# Tentar importar Playwright
+try:
+    from playwright.sync_api import sync_playwright
+    HAS_PLAYWRIGHT = True
+except ImportError:
+    HAS_PLAYWRIGHT = False
+    print("[AVISO] Playwright não instalado. Busca automática desabilitada.")
+
+# Configurações
+NIO_BASE_URL = "https://servicos.niointernet.com.br/ajuda/servicos/segunda-via"
+DEFAULT_STORAGE_STATE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".playwright_state.json")
+
+
+def buscar_fatura_nio_por_cpf(cpf, incluir_pdf=True):
+    """
+    Busca fatura no site da Nio Internet por CPF
+    
+    Args:
+        cpf: CPF do cliente
+        incluir_pdf: Se True, busca também o PDF (mais lento)
+    
+    Returns:
+        dict com: valor, codigo_pix, codigo_barras, data_vencimento, pdf_url
+        ou None se não encontrou
+    """
+    if not HAS_PLAYWRIGHT:
+        return None
+    
+    try:
+        cpf_limpo = re.sub(r'\D', '', cpf or '')
+        if not cpf_limpo:
+            return None
+        return _buscar_fatura_playwright(cpf_limpo)
+    except Exception as e:
+        print(f"[ERRO] Falha ao buscar fatura: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
 
 def buscar_todas_faturas_nio_por_cpf(cpf, incluir_pdf=True):
     """
@@ -20,13 +64,16 @@ def buscar_todas_faturas_nio_por_cpf(cpf, incluir_pdf=True):
     # Se precisa do PDF, usa Playwright direto (scraping completo)
     if incluir_pdf and HAS_PLAYWRIGHT:
         try:
-            print(f"🔍 [DEBUG] Buscando fatura via Playwright (com PDF) para CPF: {cpf_limpo}")
-            # Aqui deveria estar a chamada correta para buscar a fatura via Playwright
-            # Exemplo: return buscar_fatura_playwright(cpf_limpo)
-            pass  # TODO: Implementar chamada Playwright
+            resultado = _buscar_fatura_playwright(cpf_limpo)
+            return [resultado] if resultado else []
         except Exception as e:
             print(f"[ERRO] Falha ao buscar fatura via Playwright: {e}")
+            import traceback
+            traceback.print_exc()
             return []
+    return []
+
+
 def buscar_pdf_url_nio(cpf, debt_id, invoice_id, api_base, token, session_id):
     """
     Busca APENAS a URL do PDF usando Playwright com tokens da API.
