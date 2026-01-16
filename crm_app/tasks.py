@@ -14,7 +14,11 @@ def processar_envio_performance():
     minuto = agora.minute
     dia_sem = agora.weekday() # 0=Seg, 1=Ter, 2=Qua, 3=Qui, 4=Sex, 5=Sáb, 6=Dom
     
+    logger.info(f"📊 Verificando envios de Performance - {agora.strftime('%d/%m/%Y %H:%M:%S')} (Dia: {dia_sem}, Hora: {hora:02d}:{minuto:02d})")
+    
     regras = AgendamentoDisparo.objects.filter(ativo=True)
+    logger.info(f"📋 Encontradas {regras.count()} regra(s) de agendamento ativa(s)")
+    
     svc = WhatsAppService()
     User = get_user_model()
 
@@ -38,7 +42,7 @@ def processar_envio_performance():
             # Domingo: Não enviar (dia_sem == 6)
         
         elif regra.tipo == 'SEMANAL': # Ter/Qui/Sáb às 17h
-            if dia_sem in [1, 3, 5] and hora == 17:
+            if dia_sem in [1, 3, 5] and hora == 17 and minuto == 0:
                 if not regra.ultimo_disparo or regra.ultimo_disparo.date() != agora.date():
                     enviar = True
 
@@ -58,7 +62,7 @@ def processar_envio_performance():
                 ).filter(total__gt=0).order_by('username')  # Ordem alfabética
 
                 if not qs.exists():
-                    print(f"Sem vendas para regra {regra.nome}")
+                    logger.info(f"Sem vendas para regra {regra.nome} - pulando envio")
                     continue
 
                 # 2. Formatar para o Gerador de Imagem
@@ -97,11 +101,13 @@ def processar_envio_performance():
                     for dest in destinos:
                         svc.enviar_imagem_b64(dest, img_b64, caption=legenda)
                     
-                    print(f"✅ Enviado regra '{regra.nome}' com imagem.")
+                    logger.info(f"✅ Enviado regra '{regra.nome}' com imagem para {len(destinos)} destinatário(s)")
                     regra.ultimo_disparo = agora
                     regra.save()
                 else:
-                    print("Erro ao gerar imagem (Pillow).")
+                    logger.error(f"❌ Erro ao gerar imagem (Pillow) para regra '{regra.nome}'")
 
             except Exception as e:
-                logger.error(f"Erro no disparo {regra.nome}: {e}")
+                logger.error(f"❌ Erro no disparo da regra '{regra.nome}': {e}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
