@@ -595,7 +595,16 @@ def processar_webhook_whatsapp(data):
                     logger.error(f"[Webhook] Erro ao buscar faturas: {e}")
                     import traceback
                     traceback.print_exc()
-                    resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n❌ *ERRO*\n\nErro ao buscar faturas: {str(e)}"
+                    # Tratamento de erros mais específico
+                    erro_msg = str(e)
+                    if "400" in erro_msg or "Bad Request" in erro_msg:
+                        resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n❌ *ERRO*\n\nCPF não encontrado na base da Nio ou dados inválidos.\n\nVerifique se o CPF está correto e tente novamente."
+                    elif "401" in erro_msg or "Unauthorized" in erro_msg:
+                        resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n❌ *ERRO*\n\nErro de autenticação com a API da Nio.\n\nTente novamente em alguns instantes."
+                    elif "404" in erro_msg or "Not Found" in erro_msg:
+                        resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n❌ *FATURAS NÃO ENCONTRADAS*\n\nNão encontrei nenhuma fatura para este CPF."
+                    else:
+                        resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n❌ *ERRO*\n\nErro ao buscar faturas: {erro_msg}\n\nTente novamente em alguns instantes."
                     sessao.etapa = 'inicial'
                     sessao.dados_temp = {}
                     sessao.save()

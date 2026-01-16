@@ -91,6 +91,10 @@ scheduler = None
 def init_scheduler():
     """Inicializa o scheduler se ainda não estiver rodando"""
     global scheduler
-    if scheduler is None:
+    if scheduler is None or not scheduler.running:
+        logger.info("[SCHEDULER] Inicializando scheduler...")
         scheduler = start_scheduler()
+        logger.info(f"[SCHEDULER] Scheduler inicializado. Status: running={scheduler.running}")
+    else:
+        logger.info("[SCHEDULER] Scheduler já está rodando, pulando inicialização")
     return scheduler
