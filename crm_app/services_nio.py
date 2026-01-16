@@ -226,25 +226,39 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                 browser.close()
                 return None
             
-            # Clicar em Consultar - usando seletor correto: button.segunda-via__button
+            # Clicar em Consultar - tentar botão ou ícone de seta
             try:
-                logger.info(f"[PDF HUMANO] Procurando botão Consultar (button.segunda-via__button)...")
-                btn_consultar = page.locator('button.segunda-via__button[type="submit"]').first
-                count = btn_consultar.count()
-                logger.debug(f"[PDF HUMANO] Botão 'segunda-via__button' encontrado: {count} elementos")
+                logger.info(f"[PDF HUMANO] Procurando botão Consultar ou ícone de seta...")
+                btn_consultar = None
                 
-                if count == 0:
-                    # Tentar seletor alternativo
-                    logger.info(f"[PDF HUMANO] Tentando seletor alternativo: button[type='submit']")
-                    btn_consultar = page.locator('button[type="submit"]').first
-                    count = btn_consultar.count()
-                    logger.debug(f"[PDF HUMANO] Botão submit encontrado: {count} elementos")
+                # Tentar primeiro o botão
+                seletores_consultar = [
+                    'button.segunda-via__button[type="submit"]',  # Botão principal
+                    'button[type="submit"]',  # Botão submit genérico
+                    'img.segunda-via__icon-button[alt*="seta" i]',  # Ícone de seta por classe e alt
+                    'img[alt*="Ícone de seta" i]',  # Ícone de seta por alt text
+                    'img.segunda-via__icon-button',  # Ícone de seta por classe
+                    'img[src*="ArrowRigth.svg"]',  # Ícone de seta por src
+                ]
                 
-                if count > 0:
+                for seletor in seletores_consultar:
+                    try:
+                        btn = page.locator(seletor).first
+                        count = btn.count()
+                        if count > 0:
+                            if btn.is_visible(timeout=2000):
+                                btn_consultar = btn
+                                logger.info(f"[PDF HUMANO] Elemento Consultar encontrado com seletor: {seletor}")
+                                break
+                    except Exception as e_sel:
+                        logger.debug(f"[PDF HUMANO] Seletor '{seletor}' falhou: {e_sel}")
+                        continue
+                
+                if btn_consultar and btn_consultar.count() > 0:
                     btn_consultar.click(timeout=10000)
-                    logger.info(f"[PDF HUMANO] ✅ Botão Consultar clicado")
+                    logger.info(f"[PDF HUMANO] ✅ Botão/Ícone Consultar clicado")
                 else:
-                    logger.error(f"[PDF HUMANO] ❌ Nenhum botão Consultar encontrado!")
+                    logger.error(f"[PDF HUMANO] ❌ Nenhum botão/ícone Consultar encontrado após tentar {len(seletores_consultar)} seletores!")
                     browser.close()
                     return None
             except Exception as e:
@@ -273,45 +287,8 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
             except Exception as e:
                 logger.debug(f"[PDF HUMANO] Não foi necessário expandir detalhes ou erro: {e}")
             
-            # 4. Clicar em "Pagar conta" (OPCIONAL - pode não existir em todos os fluxos)
-            logger.info(f"[PDF HUMANO] Passo 4: Verificando se precisa clicar em 'Pagar conta'...")
-            try:
-                # Tentar vários seletores para "Pagar conta"
-                pagar_btn = None
-                seletores_pagar = [
-                    'button:has-text("Pagar conta")',
-                    'a:has-text("Pagar conta")',
-                    'button:has-text("Pagar")',
-                    'a:has-text("Pagar")',
-                    'button[class*="pagar" i]',
-                    'a[class*="pagar" i]',
-                    'button[id*="pagar" i]',
-                    'a[id*="pagar" i]',
-                ]
-                
-                for seletor in seletores_pagar:
-                    try:
-                        btn = page.locator(seletor).first
-                        if btn.count() > 0 and btn.is_visible(timeout=2000):
-                            pagar_btn = btn
-                            logger.info(f"[PDF HUMANO] Botão 'Pagar conta' encontrado com seletor: {seletor}")
-                            break
-                    except:
-                        continue
-                
-                if pagar_btn and pagar_btn.count() > 0:
-                    pagar_btn.click()
-                    page.wait_for_timeout(2000)  # Aguardar navegação
-                    page.wait_for_load_state("networkidle", timeout=10000)
-                    logger.info(f"[PDF HUMANO] ✅ Clicou em 'Pagar conta'")
-                else:
-                    logger.info(f"[PDF HUMANO] ⚠️ Botão 'Pagar conta' não encontrado - continuando sem ele (pode não ser necessário)")
-            except Exception as e:
-                logger.warning(f"[PDF HUMANO] ⚠️ Erro ao tentar clicar em 'Pagar conta' (continuando): {e}")
-                # Não falhar - pode não ser necessário
-            
-            # 5. Clicar em "Gerar boleto" - usando seletor correto: a#generate-boleto
-            logger.info(f"[PDF HUMANO] Passo 5: Clicando em 'Gerar boleto'...")
+            # 4. Clicar em "Gerar boleto" - usando seletor correto: a#generate-boleto
+            logger.info(f"[PDF HUMANO] Passo 4: Clicando em 'Gerar boleto'...")
             # Aguardar um pouco mais para garantir que a página carregou completamente
             page.wait_for_timeout(2000)
             page.wait_for_load_state("networkidle", timeout=10000)
@@ -368,9 +345,9 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                 browser.close()
                 return None
             
-            # 6. Clicar em "Download" - usando seletor correto: a#downloadInvoice
+            # 5. Clicar em "Download" - usando seletor correto: a#downloadInvoice
             # NOTA: Este botão abre o modal de impressão do navegador, não um download direto
-            logger.info(f"[PDF HUMANO] Passo 6: Clicando em 'Download' (abre modal de impressão)...")
+            logger.info(f"[PDF HUMANO] Passo 5: Clicando em 'Download' (abre modal de impressão)...")
             # Aguardar um pouco mais para garantir que a página carregou completamente
             page.wait_for_timeout(2000)
             page.wait_for_load_state("networkidle", timeout=10000)
