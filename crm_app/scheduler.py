@@ -1,9 +1,10 @@
 # crm_app/scheduler.py
 """
-Agendador de tarefas automáticas para busca de faturas
+Agendador de tarefas automáticas para busca de faturas e envio de performance
 """
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from django.conf import settings
 from django.core.management import call_command
 import logging
@@ -24,21 +25,49 @@ def buscar_faturas_automatico():
         logger.error(f"❌ Erro na busca automática: {str(e)}")
 
 
+def processar_envio_performance_agendado():
+    """
+    Processa envios programados do Painel de Performance
+    Verifica regras de agendamento e envia tabelas via WhatsApp
+    """
+    try:
+        logger.info("📊 Verificando envios programados de Performance...")
+        from crm_app.tasks import processar_envio_performance
+        processar_envio_performance()
+        logger.info("✅ Verificação de envios de Performance concluída!")
+    except Exception as e:
+        logger.error(f"❌ Erro ao processar envios de Performance: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+
+
 def start_scheduler():
     """
     Inicia o agendador de tarefas
-    Executa 1x por dia às 00:05 (meia-noite e cinco)
+    - Busca de faturas: 1x por dia às 00:05
+    - Envio de Performance: A cada minuto (verifica horários programados)
     """
-    logger.info("[OK] Agendador configurado para executar diariamente às 00:05")
+    logger.info("[OK] Iniciando agendador de tarefas...")
     
     scheduler = BackgroundScheduler()
     
-    # Agendamento para meia-noite e cinco (00:05)
+    # 1. Agendamento para busca de faturas - meia-noite e cinco (00:05)
     scheduler.add_job(
         buscar_faturas_automatico,
         trigger=CronTrigger.from_crontab('5 0 * * *'),  # Todo dia às 00:05
         id='buscar_faturas_diario',
         name='Busca automática de faturas Nio (00:05)',
+        replace_existing=True,
+        max_instances=1,  # Previne execuções simultâneas
+    )
+    
+    # 2. Agendamento para envio de Performance - a cada minuto
+    # A função processar_envio_performance() verifica internamente se é hora de enviar
+    scheduler.add_job(
+        processar_envio_performance_agendado,
+        trigger=IntervalTrigger(minutes=1),  # A cada minuto
+        id='processar_envio_performance',
+        name='Processar envios programados de Performance (a cada minuto)',
         replace_existing=True,
         max_instances=1,  # Previne execuções simultâneas
     )
