@@ -64,14 +64,169 @@ def buscar_todas_faturas_nio_por_cpf(cpf, incluir_pdf=True):
     # Se precisa do PDF, usa Playwright direto (scraping completo)
     if incluir_pdf and HAS_PLAYWRIGHT:
         try:
-            resultado = _buscar_fatura_playwright(cpf_limpo)
-            return [resultado] if resultado else []
+            resultado = _buscar_todas_faturas_playwright(cpf_limpo)
+            return resultado if resultado else []
         except Exception as e:
-            print(f"[ERRO] Falha ao buscar fatura via Playwright: {e}")
+            print(f"[ERRO] Falha ao buscar faturas via Playwright: {e}")
             import traceback
             traceback.print_exc()
             return []
     return []
+
+
+def _buscar_todas_faturas_playwright(cpf: str):
+    """
+    Busca TODAS as faturas (abertas e atrasadas) usando Playwright.
+    Extrai todas as faturas da página HTML antes de clicar em qualquer uma.
+    """
+    if not HAS_PLAYWRIGHT:
+        return []
+    
+    try:
+        from playwright.sync_api import sync_playwright
+        
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            
+            state_path = DEFAULT_STORAGE_STATE if os.path.exists(DEFAULT_STORAGE_STATE) else None
+            context = browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                viewport={"width": 1280, "height": 800},
+                storage_state=state_path,
+                accept_downloads=True,
+            )
+            
+            page = context.new_page()
+            page.goto(NIO_BASE_URL, wait_until="networkidle", timeout=30000)
+            page.wait_for_timeout(1500)
+            
+            # Preenche CPF e consulta
+            page.locator('input[type="text"]').first.fill(cpf)
+            page.locator('button:has-text("Consultar")').first.click()
+            page.wait_for_timeout(1500)
+            page.wait_for_load_state("networkidle", timeout=20000)
+            
+            # Verifica se tem "ver detalhes" e expande
+            ver_detalhes = page.locator('text=/ver detalhes/i')
+            if ver_detalhes.count() > 0:
+                ver_detalhes.first.click()
+                page.wait_for_timeout(800)
+            
+            # Captura HTML completo da página de resultados
+            html_resultado = page.content()
+            
+            # Extrai TODAS as faturas da tabela HTML
+            faturas = _extrair_todas_faturas_html(html_resultado)
+            
+            if not faturas:
+                print("[AVISO] Nenhuma fatura encontrada no HTML, tentando método alternativo...")
+                # Fallback: busca a primeira fatura normalmente
+                resultado = _buscar_fatura_playwright(cpf)
+                return [resultado] if resultado else []
+            
+            browser.close()
+            return faturas
+            
+    except Exception as e:
+        print(f"[ERRO] Falha ao buscar todas faturas: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
+
+
+def _extrair_todas_faturas_html(html: str):
+    """
+    Extrai todas as faturas do HTML da página de resultados da Nio.
+    Procura por padrões de tabela/listagem com status, valores e vencimentos.
+    """
+    import re
+    from bs4 import BeautifulSoup
+    
+    try:
+        from bs4 import BeautifulSoup
+    except ImportError:
+        print("[AVISO] BeautifulSoup não instalado. Instale: pip install beautifulsoup4")
+        return []
+    
+    faturas = []
+    
+    try:
+        soup = BeautifulSoup(html, 'html.parser')
+        
+        # Procurar por linhas de tabela ou cards de faturas
+        # Padrão comum: divs ou tr com classes relacionadas a "cobrança", "fatura", "invoice"
+        
+        # Tentar encontrar todas as linhas com status (Em aberto, Atrasado, etc)
+        status_pattern = re.compile(r'(Em aberto|Atrasado|Atrasada|Vencida|Vencido)', re.IGNORECASE)
+        
+        # Buscar valores monetários (R$)
+        valor_pattern = re.compile(r'R\$\s*(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2}))', re.IGNORECASE)
+        
+        # Buscar datas de vencimento
+        data_pattern = re.compile(r'(\d{2}/\d{2}/\d{4})')
+        
+        # Buscar elementos que podem conter faturas
+        # Pode ser tabelas (tr), divs com classes específicas, etc
+        elementos_fatura = soup.find_all(['tr', 'div'], class_=re.compile(r'(invoice|fatura|cobrança|bill)', re.IGNORECASE))
+        
+        # Se não encontrou por classe, tenta por texto que contenha "Cobrança"
+        if not elementos_fatura:
+            elementos_fatura = soup.find_all(string=re.compile(r'Cobrança|Fatura|Janeiro|Fevereiro|Março|Abril|Maio|Junho|Julho|Agosto|Setembro|Outubro|Novembro|Dezembro', re.IGNORECASE))
+            elementos_fatura = [elem.parent for elem in elementos_fatura if elem.parent]
+        
+        # Se ainda não encontrou, tenta buscar todos os elementos que contenham valores monetários
+        if not elementos_fatura:
+            elementos_com_valor = soup.find_all(string=valor_pattern)
+            elementos_fatura = [elem.parent for elem in elementos_com_valor if elem.parent]
+        
+        print(f"[DEBUG] Encontrados {len(elementos_fatura)} elementos candidatos a faturas")
+        
+        # Processar cada elemento encontrado
+        for i, elemento in enumerate(elementos_fatura[:10]):  # Limitar a 10 faturas
+            texto_elemento = elemento.get_text() if hasattr(elemento, 'get_text') else str(elemento)
+            
+            # Extrair dados
+            valor_match = valor_pattern.search(texto_elemento)
+            data_match = data_pattern.search(texto_elemento)
+            status_match = status_pattern.search(texto_elemento)
+            
+            valor = None
+            if valor_match:
+                try:
+                    valor_str = valor_match.group(1).replace('.', '').replace(',', '.')
+                    valor = Decimal(valor_str)
+                except:
+                    pass
+            
+            data_vencimento = None
+            if data_match:
+                try:
+                    data_vencimento = datetime.strptime(data_match.group(1), "%d/%m/%Y").date()
+                except:
+                    pass
+            
+            status = status_match.group(1) if status_match else None
+            
+            # Se encontrou pelo menos valor OU data, considera uma fatura
+            if valor or data_vencimento:
+                faturas.append({
+                    'valor': float(valor) if valor else None,
+                    'data_vencimento': data_vencimento.strftime('%Y-%m-%d') if data_vencimento else None,
+                    'status': status,
+                    'codigo_pix': None,  # Será preenchido ao clicar na fatura específica
+                    'codigo_barras': None,
+                    'pdf_url': None,
+                    'indice': i + 1,
+                })
+        
+        print(f"[DEBUG] Extraídas {len(faturas)} faturas do HTML")
+        return faturas
+        
+    except Exception as e:
+        print(f"[ERRO] Erro ao extrair faturas do HTML: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
 
 
 def buscar_pdf_url_nio(cpf, debt_id, invoice_id, api_base, token, session_id):
@@ -257,21 +412,98 @@ def _buscar_fatura_playwright(cpf: str):
             preferidos = [c for c in codigos if c.startswith('0339')]
             codigo_barras = preferidos[0] if preferidos else codigos[0]
 
-        # PDF - Captura o link quando abre o popup (na página do boleto)
+        # PDF - Múltiplas estratégias para capturar o PDF
         pdf_url = None
+        
+        # Estratégia 1: Procurar link direto na página HTML antes de clicar
         try:
-            print('🔍 [PDF] Tentando capturar link do PDF...')
-            with context.expect_page(timeout=10000) as popup_info:
-                page.locator('text="Baixar PDF"').first.click()
-            pdf_page = popup_info.value
-            pdf_page.wait_for_load_state('networkidle', timeout=5000)
-            pdf_url = pdf_page.url
-            print(f'✅ [PDF] Link capturado com sucesso: {pdf_url}')
-            pdf_page.close()
+            print('🔍 [PDF] Estratégia 1: Procurando link direto na página...')
+            html_boleto_check = page.content()
+            pdf_links = re.findall(r'https?://[^\s<>"\']+\.pdf', html_boleto_check, re.IGNORECASE)
+            if pdf_links:
+                pdf_url = pdf_links[0]
+                print(f'✅ [PDF] Link encontrado diretamente no HTML: {pdf_url[:100]}...')
         except Exception as e:
-            print(f'⚠️ [PDF] Erro ao capturar link do PDF: {e}')
-            import traceback
-            traceback.print_exc()
+            print(f'⚠️ [PDF] Estratégia 1 falhou: {e}')
+        
+        # Estratégia 2: Tentar capturar via download
+        if not pdf_url:
+            try:
+                print('🔍 [PDF] Estratégia 2: Tentando capturar via download...')
+                download_path = os.path.join(os.path.dirname(__file__), '..', '..', 'downloads')
+                os.makedirs(download_path, exist_ok=True)
+                
+                # Aguardar download ao clicar
+                with page.expect_download(timeout=10000) as download_info:
+                    page.locator('text="Baixar PDF"').first.click()
+                download = download_info.value
+                
+                # Salvar o arquivo
+                filename = download.suggested_filename or f"fatura_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+                filepath = os.path.join(download_path, filename)
+                download.save_as(filepath)
+                
+                # Se o arquivo foi baixado, podemos retornar o caminho ou fazer upload
+                # Por enquanto, vamos tentar extrair a URL do download se possível
+                print(f'✅ [PDF] Arquivo baixado: {filepath}')
+                # Nota: Neste caso, seria necessário fazer upload para um storage público
+                # Para agora, vamos continuar tentando outras estratégias
+                
+            except Exception as e:
+                print(f'⚠️ [PDF] Estratégia 2 falhou: {e}')
+        
+        # Estratégia 3: Tentar capturar via popup/aba (método original)
+        if not pdf_url:
+            try:
+                print('🔍 [PDF] Estratégia 3: Tentando capturar via popup...')
+                with context.expect_page(timeout=10000) as popup_info:
+                    page.locator('text="Baixar PDF"').first.click()
+                pdf_page = popup_info.value
+                pdf_page.wait_for_load_state('networkidle', timeout=5000)
+                pdf_url = pdf_page.url
+                
+                # Verificar se a URL realmente é um PDF
+                if pdf_url and (pdf_url.endswith('.pdf') or 'application/pdf' in pdf_page.url):
+                    print(f'✅ [PDF] Link capturado via popup: {pdf_url[:100]}...')
+                else:
+                    # Pode ser uma página intermediária, tentar encontrar o link do PDF
+                    html_pdf_page = pdf_page.content()
+                    pdf_links_page = re.findall(r'https?://[^\s<>"\']+\.pdf', html_pdf_page, re.IGNORECASE)
+                    if pdf_links_page:
+                        pdf_url = pdf_links_page[0]
+                        print(f'✅ [PDF] Link encontrado na página do popup: {pdf_url[:100]}...')
+                    else:
+                        pdf_url = None  # Não encontrou PDF válido
+                
+                pdf_page.close()
+            except Exception as e:
+                print(f'⚠️ [PDF] Estratégia 3 falhou: {e}')
+                import traceback
+                traceback.print_exc()
+        
+        # Estratégia 4: Tentar extrair de atributos href ou onclick
+        if not pdf_url:
+            try:
+                print('🔍 [PDF] Estratégia 4: Procurando em atributos HTML...')
+                btn_pdf = page.locator('text="Baixar PDF"').first
+                if btn_pdf.count() > 0:
+                    href = btn_pdf.get_attribute('href')
+                    onclick = btn_pdf.get_attribute('onclick')
+                    
+                    if href and '.pdf' in href.lower():
+                        pdf_url = href if href.startswith('http') else f"{page.url.rsplit('/', 1)[0]}/{href.lstrip('/')}"
+                        print(f'✅ [PDF] Link encontrado em href: {pdf_url[:100]}...')
+                    elif onclick:
+                        # Extrair URL do onclick (pode conter JavaScript)
+                        onclick_urls = re.findall(r'https?://[^\s\'"]+\.pdf', onclick, re.IGNORECASE)
+                        if onclick_urls:
+                            pdf_url = onclick_urls[0]
+                            print(f'✅ [PDF] Link encontrado em onclick: {pdf_url[:100]}...')
+            except Exception as e:
+                print(f'⚠️ [PDF] Estratégia 4 falhou: {e}')
+        
+        if not pdf_url:
+            print('⚠️ [PDF] Todas as estratégias falharam. PDF não capturado.')
 
         browser.close()
 

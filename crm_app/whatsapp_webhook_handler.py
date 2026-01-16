@@ -32,6 +32,65 @@ def limpar_texto_cep_cpf(texto):
     return re.sub(r'[\s.\-/]', '', str(texto))
 
 
+def _formatar_detalhes_fatura(invoice, cpf, incluir_pdf=False):
+    """
+    Formata os detalhes de uma fatura para envio via WhatsApp.
+    """
+    resposta_parts = [f"✅ *FATURA ENCONTRADA*\n"]
+    
+    # Valor
+    valor = invoice.get('amount', 0)
+    if valor:
+        try:
+            valor_formatado = float(valor) if valor else 0
+            resposta_parts.append(f"💰 *Valor:* R$ {valor_formatado:.2f}")
+        except:
+            resposta_parts.append(f"💰 *Valor:* {valor}")
+    
+    # Data de vencimento
+    data_vencimento = invoice.get('due_date_raw') or invoice.get('data_vencimento')
+    if data_vencimento:
+        if isinstance(data_vencimento, str):
+            resposta_parts.append(f"📅 *Vencimento:* {data_vencimento}")
+        else:
+            from datetime import datetime
+            if hasattr(data_vencimento, 'strftime'):
+                resposta_parts.append(f"📅 *Vencimento:* {data_vencimento.strftime('%d/%m/%Y')}")
+            else:
+                resposta_parts.append(f"📅 *Vencimento:* {data_vencimento}")
+    
+    # Status
+    status = invoice.get('status', '')
+    if status:
+        emoji_status = "🔴" if status.upper() in ['ATRASADO', 'ATRASADA', 'VENCIDA', 'VENCIDO'] else "🟡"
+        resposta_parts.append(f"{emoji_status} *Status:* {status}")
+    
+    # Mês de referência
+    mes_ref = invoice.get('reference_month', '')
+    if mes_ref:
+        resposta_parts.append(f"📆 *Referência:* {mes_ref}")
+    
+    # Código PIX
+    codigo_pix = invoice.get('pix', '') or invoice.get('codigo_pix', '')
+    if codigo_pix:
+        resposta_parts.append(f"\n💳 *PIX:*\n`{codigo_pix}`")
+    
+    # Código de barras
+    codigo_barras = invoice.get('barcode', '') or invoice.get('codigo_barras', '')
+    if codigo_barras:
+        resposta_parts.append(f"\n📄 *Código de Barras:*\n`{codigo_barras}`")
+    
+    # PDF (se solicitado e disponível)
+    if incluir_pdf:
+        pdf_url = invoice.get('pdf_url', '')
+        if pdf_url:
+            resposta_parts.append(f"\n📎 *PDF:* {pdf_url}")
+        else:
+            resposta_parts.append(f"\n⚠️ *PDF:* Não disponível no momento")
+    
+    return "\n".join(resposta_parts)
+
+
 def processar_webhook_whatsapp(data):
     """
     Processa mensagens recebidas do WhatsApp via webhook.
@@ -250,53 +309,112 @@ def processar_webhook_whatsapp(data):
         
         elif etapa_atual == 'fatura_cpf':
             cpf_limpo = limpar_texto_cep_cpf(mensagem_texto)
-            if not cpf_limpo:
-                resposta = "❌ CPF inválido. Por favor, digite o CPF (apenas números):"
+            if not cpf_limpo or len(cpf_limpo) < 11:
+                resposta = "❌ CPF inválido. Por favor, digite o CPF completo (apenas números):"
             else:
-                logger.info(f"[Webhook] Buscando fatura para CPF: {cpf_limpo}")
+                logger.info(f"[Webhook] Buscando TODAS as faturas para CPF: {cpf_limpo}")
                 try:
-                    resultado = consultar_dividas_nio(cpf_limpo, offset=0, limit=1, headless=True)
+                    # Buscar TODAS as faturas (aumentar limit para pegar todas)
+                    resultado = consultar_dividas_nio(cpf_limpo, offset=0, limit=20, headless=True)
                     invoices = resultado.get('invoices', [])
                     
                     if not invoices:
-                        resposta = f"🔎 Buscando fatura para o cliente {cpf_limpo}...\n\n❌ *FATURA NÃO ENCONTRADA*\n\nNão encontrei nenhuma fatura para este CPF."
+                        resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n❌ *FATURAS NÃO ENCONTRADAS*\n\nNão encontrei nenhuma fatura para este CPF."
+                        sessao.etapa = 'inicial'
+                        sessao.dados_temp = {}
+                        sessao.save()
                     else:
-                        invoice = invoices[0]
-                        valor = invoice.get('amount', 0)
-                        codigo_pix = invoice.get('pix', '') or invoice.get('codigo_pix', '')
-                        codigo_barras = invoice.get('barcode', '') or invoice.get('codigo_barras', '')
-                        data_vencimento = invoice.get('due_date_raw') or invoice.get('data_vencimento')
+                        # Separar faturas por status
+                        faturas_aberto = [inv for inv in invoices if inv.get('status', '').upper() in ['EM ABERTO', 'ABERTO', 'OPEN']]
+                        faturas_atrasadas = [inv for inv in invoices if inv.get('status', '').upper() in ['ATRASADO', 'ATRASADA', 'VENCIDA', 'VENCIDO', 'OVERDUE', 'LATE']]
+                        todas_faturas = faturas_atrasadas + faturas_aberto  # Atrasadas primeiro
                         
-                        resposta_parts = [f"🔎 Buscando fatura para o cliente {cpf_limpo}...\n\n✅ *Fatura encontrada:*"]
-                        
-                        if valor:
-                            # Formatar valor como float/Decimal
-                            try:
-                                valor_formatado = float(valor) if valor else 0
-                                resposta_parts.append(f"valor: {valor_formatado:.2f}")
-                            except:
-                                resposta_parts.append(f"valor: {valor}")
-                        if codigo_pix:
-                            resposta_parts.append(f"codigo_pix: {codigo_pix}")
-                        if codigo_barras:
-                            resposta_parts.append(f"codigo_barras: {codigo_barras}")
-                        if data_vencimento:
-                            if isinstance(data_vencimento, str):
-                                resposta_parts.append(f"data_vencimento: {data_vencimento}")
-                            else:
-                                from datetime import datetime
-                                if hasattr(data_vencimento, 'strftime'):
-                                    resposta_parts.append(f"data_vencimento: {data_vencimento.strftime('%Y-%m-%d')}")
+                        if len(todas_faturas) == 1:
+                            # Se só tem uma, mostra direto
+                            invoice = todas_faturas[0]
+                            resposta = _formatar_detalhes_fatura(invoice, cpf_limpo)
+                            sessao.etapa = 'inicial'
+                            sessao.dados_temp = {}
+                            sessao.save()
+                        else:
+                            # Lista todas e pede para escolher
+                            resposta_parts = [
+                                f"🔎 *FATURAS ENCONTRADAS* para CPF {cpf_limpo}:\n"
+                            ]
+                            
+                            for idx, inv in enumerate(todas_faturas, 1):
+                                valor = inv.get('amount', 0)
+                                status = inv.get('status', '')
+                                data_venc = inv.get('due_date_raw') or inv.get('data_vencimento', '')
+                                mes_ref = inv.get('reference_month', '')
+                                
+                                # Formatar valor
+                                valor_str = f"R$ {valor:.2f}" if isinstance(valor, (int, float)) else str(valor)
+                                
+                                # Ícone de status
+                                if status.upper() in ['ATRASADO', 'ATRASADA', 'VENCIDA', 'VENCIDO']:
+                                    emoji = "🔴"
+                                elif status.upper() in ['EM ABERTO', 'ABERTO']:
+                                    emoji = "🟡"
                                 else:
-                                    resposta_parts.append(f"data_vencimento: {data_vencimento}")
-                        
-                        resposta = "\n".join(resposta_parts)
+                                    emoji = "⚪"
+                                
+                                resposta_parts.append(
+                                    f"{emoji} *{idx}.* {valor_str} | Venc: {data_venc} | {status}"
+                                )
+                                if mes_ref:
+                                    resposta_parts.append(f"   📅 Ref: {mes_ref}")
+                            
+                            resposta_parts.append(
+                                f"\n📋 Digite o *NÚMERO* da fatura que deseja ver os detalhes (1 a {len(todas_faturas)}):"
+                            )
+                            
+                            resposta = "\n".join(resposta_parts)
+                            
+                            # Salvar faturas na sessão para recuperar depois
+                            sessao.etapa = 'fatura_selecionar'
+                            sessao.dados_temp = {
+                                'cpf': cpf_limpo,
+                                'faturas': todas_faturas,
+                                'token': resultado.get('token'),
+                                'api_base': resultado.get('api_base'),
+                                'session_id': resultado.get('session_id'),
+                            }
+                            sessao.save()
+                            
                 except Exception as e:
-                    logger.error(f"[Webhook] Erro ao buscar fatura: {e}")
+                    logger.error(f"[Webhook] Erro ao buscar faturas: {e}")
                     import traceback
                     traceback.print_exc()
-                    resposta = f"🔎 Buscando fatura para o cliente {cpf_limpo}...\n\n❌ *ERRO*\n\nErro ao buscar fatura: {str(e)}"
-                
+                    resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n❌ *ERRO*\n\nErro ao buscar faturas: {str(e)}"
+                    sessao.etapa = 'inicial'
+                    sessao.dados_temp = {}
+                    sessao.save()
+        
+        elif etapa_atual == 'fatura_selecionar':
+            try:
+                numero_escolhido = mensagem_texto.strip()
+                if not numero_escolhido.isdigit():
+                    resposta = "❌ Por favor, digite apenas o NÚMERO da fatura (ex: 1, 2, 3...):"
+                else:
+                    idx = int(numero_escolhido) - 1
+                    faturas = dados_temp.get('faturas', [])
+                    
+                    if idx < 0 or idx >= len(faturas):
+                        resposta = f"❌ Número inválido. Por favor, digite um número entre 1 e {len(faturas)}:"
+                    else:
+                        invoice = faturas[idx]
+                        cpf = dados_temp.get('cpf', '')
+                        
+                        # Formatar resposta com detalhes completos
+                        resposta = _formatar_detalhes_fatura(invoice, cpf, incluir_pdf=True)
+                        
+                        sessao.etapa = 'inicial'
+                        sessao.dados_temp = {}
+                        sessao.save()
+            except Exception as e:
+                logger.error(f"[Webhook] Erro ao processar seleção de fatura: {e}")
+                resposta = f"❌ Erro ao processar seleção: {str(e)}"
                 sessao.etapa = 'inicial'
                 sessao.dados_temp = {}
                 sessao.save()
