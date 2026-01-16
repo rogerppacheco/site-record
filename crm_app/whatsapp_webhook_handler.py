@@ -89,6 +89,48 @@ def _formatar_data_brasileira(data_str):
         return str(data_str)
 
 
+def _enviar_pdf_whatsapp(whatsapp_service, telefone, invoice):
+    """
+    Envia o PDF da fatura via WhatsApp se estiver disponível localmente.
+    Retorna True se enviou com sucesso, False caso contrário.
+    """
+    pdf_path = invoice.get('pdf_path', '')
+    pdf_filename = invoice.get('pdf_filename', 'fatura.pdf')
+    
+    if not pdf_path:
+        return False
+    
+    try:
+        import os
+        import base64
+        
+        # Verificar se o arquivo existe
+        if not os.path.exists(pdf_path):
+            logger.warning(f"[Webhook] PDF não encontrado no caminho: {pdf_path}")
+            return False
+        
+        # Ler arquivo e converter para base64
+        with open(pdf_path, 'rb') as f:
+            pdf_bytes = f.read()
+            pdf_base64 = base64.b64encode(pdf_bytes).decode('utf-8')
+        
+        # Enviar via WhatsApp
+        logger.info(f"[Webhook] Enviando PDF via WhatsApp: {pdf_filename} ({len(pdf_bytes)} bytes)")
+        sucesso = whatsapp_service.enviar_pdf_b64(telefone, pdf_base64, pdf_filename)
+        
+        if sucesso:
+            logger.info(f"[Webhook] ✅ PDF enviado com sucesso via WhatsApp: {pdf_filename}")
+        else:
+            logger.warning(f"[Webhook] ⚠️ Falha ao enviar PDF via WhatsApp: {pdf_filename}")
+        
+        return sucesso
+    except Exception as e:
+        logger.error(f"[Webhook] ❌ Erro ao enviar PDF via WhatsApp: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
 def _formatar_detalhes_fatura(invoice, cpf, incluir_pdf=False):
     """
     Formata os detalhes de uma fatura para envio via WhatsApp.
@@ -490,8 +532,10 @@ def processar_webhook_whatsapp(data):
                                     traceback.print_exc()
                             
                             resposta = _formatar_detalhes_fatura(invoice, cpf_limpo, incluir_pdf=True)
+                            
+                            # Armazenar invoice para envio do PDF após a mensagem
+                            sessao.dados_temp = {'invoice_para_pdf': invoice}
                             sessao.etapa = 'inicial'
-                            sessao.dados_temp = {}
                             sessao.save()
                         else:
                             # Lista todas e pede para escolher
@@ -630,8 +674,9 @@ def processar_webhook_whatsapp(data):
                         # Formatar resposta com detalhes completos
                         resposta = _formatar_detalhes_fatura(invoice, cpf, incluir_pdf=True)
                         
+                        # Armazenar invoice para envio do PDF após a mensagem
+                        sessao.dados_temp = {'invoice_para_pdf': invoice}
                         sessao.etapa = 'inicial'
-                        sessao.dados_temp = {}
                         sessao.save()
             except Exception as e:
                 logger.error(f"[Webhook] Erro ao processar seleção de fatura: {e}")
@@ -682,6 +727,16 @@ def processar_webhook_whatsapp(data):
                         logger.error(f"[Webhook] Erro ao enviar mensagem {idx+1}: {resultado}")
                 
                 logger.info(f"[Webhook] Resposta enviada para {telefone_formatado}")
+                
+                # Verificar se há PDF para enviar após a mensagem de texto
+                invoice_para_pdf = sessao.dados_temp.get('invoice_para_pdf') if sessao else None
+                if invoice_para_pdf:
+                    logger.info(f"[Webhook] PDF detectado, tentando enviar via WhatsApp...")
+                    _enviar_pdf_whatsapp(whatsapp_service, telefone_formatado, invoice_para_pdf)
+                    # Limpar dados temporários após enviar PDF
+                    if sessao:
+                        sessao.dados_temp = {}
+                        sessao.save()
             except Exception as e:
                 logger.error(f"[Webhook] Erro ao enviar resposta: {e}")
                 import traceback
