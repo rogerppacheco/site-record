@@ -124,13 +124,80 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
             # 1. Ir para página inicial
             print(f"🔍 [PDF HUMANO] Passo 1: Navegando para página inicial...")
             page.goto(NIO_BASE_URL, wait_until="networkidle", timeout=30000)
-            page.wait_for_timeout(1500)
+            page.wait_for_timeout(2000)
             
-            # 2. Preencher CPF e consultar
+            # Debug: capturar screenshot e HTML para análise
+            try:
+                screenshot_path = os.path.join(downloads_dir, f"debug_{cpf}_pagina_inicial.png")
+                page.screenshot(path=screenshot_path)
+                print(f"📸 [PDF HUMANO] Screenshot salvo: {screenshot_path}")
+            except Exception as e:
+                print(f"⚠️ [PDF HUMANO] Erro ao salvar screenshot: {e}")
+            
+            # 2. Preencher CPF e consultar - tentar múltiplos seletores
             print(f"🔍 [PDF HUMANO] Passo 2: Preenchendo CPF e consultando...")
-            page.locator('input[type="text"]').first.fill(cpf)
-            page.locator('button:has-text("Consultar")').first.click()
-            page.wait_for_timeout(1500)
+            print(f"🔍 [PDF HUMANO] Tentando encontrar campo de CPF...")
+            
+            # Tentar vários seletores possíveis para o campo CPF
+            campo_cpf = None
+            seletores_cpf = [
+                'input[type="text"]',
+                'input[placeholder*="CPF"]',
+                'input[name*="cpf"]',
+                'input[id*="cpf"]',
+                'input[class*="cpf"]',
+                'input',
+            ]
+            
+            for seletor in seletores_cpf:
+                try:
+                    locator = page.locator(seletor).first
+                    if locator.count() > 0:
+                        # Verificar se está visível
+                        if locator.is_visible(timeout=2000):
+                            campo_cpf = locator
+                            print(f"✅ [PDF HUMANO] Campo CPF encontrado com seletor: {seletor}")
+                            break
+                except Exception as e:
+                    print(f"⚠️ [PDF HUMANO] Seletor {seletor} falhou: {e}")
+                    continue
+            
+            if not campo_cpf:
+                print(f"❌ [PDF HUMANO] Nenhum campo de CPF encontrado!")
+                # Salvar HTML para debug
+                try:
+                    html_path = os.path.join(downloads_dir, f"debug_{cpf}_html.html")
+                    with open(html_path, 'w', encoding='utf-8') as f:
+                        f.write(page.content())
+                    print(f"📄 [PDF HUMANO] HTML salvo para debug: {html_path}")
+                except:
+                    pass
+                browser.close()
+                return None
+            
+            # Preencher CPF
+            try:
+                campo_cpf.fill(cpf, timeout=10000)
+                print(f"✅ [PDF HUMANO] CPF preenchido com sucesso")
+            except Exception as e:
+                print(f"❌ [PDF HUMANO] Erro ao preencher CPF: {e}")
+                browser.close()
+                return None
+            
+            # Clicar em Consultar
+            try:
+                btn_consultar = page.locator('button:has-text("Consultar")').first
+                if btn_consultar.count() == 0:
+                    # Tentar outros seletores
+                    btn_consultar = page.locator('button[type="submit"]').first
+                btn_consultar.click(timeout=10000)
+                print(f"✅ [PDF HUMANO] Botão Consultar clicado")
+            except Exception as e:
+                print(f"❌ [PDF HUMANO] Erro ao clicar em Consultar: {e}")
+                browser.close()
+                return None
+            
+            page.wait_for_timeout(2000)
             page.wait_for_load_state("networkidle", timeout=20000)
             
             # 3. Clicar em "ver detalhes" se existir
@@ -205,7 +272,53 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
             
             # Verificar se arquivo foi salvo corretamente
             if os.path.exists(caminho_completo) and os.path.getsize(caminho_completo) > 0:
-                return caminho_completo
+                tamanho_kb = os.path.getsize(caminho_completo) / 1024
+                print(f"✅ [PDF HUMANO] Arquivo salvo com sucesso: {caminho_completo} ({tamanho_kb:.2f} KB)")
+                
+                # Tentar fazer upload para OneDrive
+                try:
+                    from crm_app.onedrive_service import OneDriveUploader
+                    uploader = OneDriveUploader()
+                    
+                    # Criar pasta no OneDrive: Faturas_NIO/YYYY/MM
+                    from datetime import datetime
+                    if mes_referencia:
+                        ano = mes_referencia[:4]
+                        mes = mes_referencia[4:]
+                    else:
+                        ano = datetime.now().strftime('%Y')
+                        mes = datetime.now().strftime('%m')
+                    
+                    folder_name = f"Faturas_NIO/{ano}/{mes}"
+                    
+                    print(f"☁️ [PDF HUMANO] Fazendo upload para OneDrive: {folder_name}/{nome_arquivo}")
+                    
+                    with open(caminho_completo, 'rb') as f:
+                        link_onedrive = uploader.upload_file(f, folder_name, nome_arquivo)
+                    
+                    if link_onedrive:
+                        print(f"✅ [PDF HUMANO] Upload OneDrive concluído: {link_onedrive}")
+                        # Retornar tanto o caminho local quanto o link do OneDrive
+                        return {
+                            'local_path': caminho_completo,
+                            'onedrive_url': link_onedrive,
+                            'filename': nome_arquivo
+                        }
+                    else:
+                        print(f"⚠️ [PDF HUMANO] Upload OneDrive falhou, mas arquivo local salvo")
+                        return {
+                            'local_path': caminho_completo,
+                            'onedrive_url': None,
+                            'filename': nome_arquivo
+                        }
+                except Exception as e_onedrive:
+                    print(f"⚠️ [PDF HUMANO] Erro ao fazer upload OneDrive: {e_onedrive}")
+                    # Mesmo se OneDrive falhar, retornar o caminho local
+                    return {
+                        'local_path': caminho_completo,
+                        'onedrive_url': None,
+                        'filename': nome_arquivo
+                    }
             else:
                 print(f"⚠️ [PDF HUMANO] Arquivo salvo mas está vazio ou não existe")
                 return None
@@ -214,6 +327,21 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
         print(f"❌ [PDF HUMANO] Erro ao baixar PDF: {e}")
         import traceback
         traceback.print_exc()
+        
+        # Salvar log de erro para debug
+        try:
+            from datetime import datetime
+            error_log_path = os.path.join(downloads_dir, f"error_{cpf}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
+            with open(error_log_path, 'w', encoding='utf-8') as f:
+                f.write(f"Erro ao baixar PDF para CPF: {cpf}\n")
+                f.write(f"Data: {datetime.now().isoformat()}\n")
+                f.write(f"Erro: {str(e)}\n")
+                f.write(f"\nTraceback:\n")
+                traceback.print_exc(file=f)
+            print(f"📝 [PDF HUMANO] Log de erro salvo: {error_log_path}")
+        except:
+            pass
+        
         return None
 
 

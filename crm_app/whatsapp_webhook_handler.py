@@ -135,11 +135,19 @@ def _formatar_detalhes_fatura(invoice, cpf, incluir_pdf=False):
     # PDF (se solicitado e disponível)
     if incluir_pdf:
         pdf_url = invoice.get('pdf_url', '')
+        pdf_onedrive_url = invoice.get('pdf_onedrive_url', '')
         pdf_path = invoice.get('pdf_path', '')
-        if pdf_url:
+        pdf_filename = invoice.get('pdf_filename', '')
+        
+        if pdf_onedrive_url:
+            resposta_parts.append(f"\n📎 *PDF:* {pdf_onedrive_url}")
+            resposta_parts.append(f"   💾 Arquivo: {pdf_filename}")
+        elif pdf_url:
             resposta_parts.append(f"\n📎 *PDF:* {pdf_url}")
         elif pdf_path:
-            resposta_parts.append(f"\n📎 *PDF:* Salvo em {pdf_path}")
+            resposta_parts.append(f"\n📎 *PDF:* Salvo localmente em {pdf_path}")
+            if pdf_filename:
+                resposta_parts.append(f"   📄 Arquivo: {pdf_filename}")
         else:
             resposta_parts.append(f"\n⚠️ *PDF:* Não disponível no momento")
     
@@ -457,11 +465,23 @@ def processar_webhook_whatsapp(data):
                                     logger.info(f"[Webhook] Tentando baixar PDF como humano para fatura única...")
                                     logger.info(f"[Webhook] Parâmetros: CPF={cpf_limpo}, mes_ref={mes_ref}, data_venc={data_venc}")
                                     
-                                    pdf_path = nio_services._baixar_pdf_como_humano(cpf_limpo, mes_ref, data_venc)
+                                    pdf_result = nio_services._baixar_pdf_como_humano(cpf_limpo, mes_ref, data_venc)
                                     
-                                    if pdf_path:
-                                        invoice['pdf_path'] = pdf_path
-                                        logger.info(f"[Webhook] ✅ PDF baixado com sucesso para fatura única: {pdf_path}")
+                                    if pdf_result:
+                                        # pdf_result pode ser dict (com local_path e onedrive_url) ou string (caminho antigo)
+                                        if isinstance(pdf_result, dict):
+                                            invoice['pdf_path'] = pdf_result.get('local_path')
+                                            invoice['pdf_onedrive_url'] = pdf_result.get('onedrive_url')
+                                            invoice['pdf_filename'] = pdf_result.get('filename')
+                                            
+                                            if pdf_result.get('onedrive_url'):
+                                                logger.info(f"[Webhook] ✅ PDF baixado e enviado para OneDrive (fatura única): {pdf_result['onedrive_url']}")
+                                            else:
+                                                logger.info(f"[Webhook] ✅ PDF baixado localmente (fatura única): {pdf_result['local_path']}")
+                                        else:
+                                            # Compatibilidade com formato antigo (string)
+                                            invoice['pdf_path'] = pdf_result
+                                            logger.info(f"[Webhook] ✅ PDF baixado com sucesso para fatura única: {pdf_result}")
                                     else:
                                         logger.warning(f"[Webhook] ⚠️ Falha ao baixar PDF como humano para fatura única - retornou None")
                                 except Exception as e:
@@ -583,11 +603,23 @@ def processar_webhook_whatsapp(data):
                                 logger.info(f"[Webhook] Tentando baixar PDF como humano...")
                                 logger.info(f"[Webhook] Parâmetros: CPF={cpf}, mes_ref={mes_ref}, data_venc={data_venc}")
                                 
-                                pdf_path = nio_services._baixar_pdf_como_humano(cpf, mes_ref, data_venc)
+                                pdf_result = nio_services._baixar_pdf_como_humano(cpf, mes_ref, data_venc)
                                 
-                                if pdf_path:
-                                    invoice['pdf_path'] = pdf_path
-                                    logger.info(f"[Webhook] ✅ PDF baixado com sucesso: {pdf_path}")
+                                if pdf_result:
+                                    # pdf_result pode ser dict (com local_path e onedrive_url) ou string (caminho antigo)
+                                    if isinstance(pdf_result, dict):
+                                        invoice['pdf_path'] = pdf_result.get('local_path')
+                                        invoice['pdf_onedrive_url'] = pdf_result.get('onedrive_url')
+                                        invoice['pdf_filename'] = pdf_result.get('filename')
+                                        
+                                        if pdf_result.get('onedrive_url'):
+                                            logger.info(f"[Webhook] ✅ PDF baixado e enviado para OneDrive: {pdf_result['onedrive_url']}")
+                                        else:
+                                            logger.info(f"[Webhook] ✅ PDF baixado localmente: {pdf_result['local_path']}")
+                                    else:
+                                        # Compatibilidade com formato antigo (string)
+                                        invoice['pdf_path'] = pdf_result
+                                        logger.info(f"[Webhook] ✅ PDF baixado com sucesso: {pdf_result}")
                                 else:
                                     logger.warning(f"[Webhook] ⚠️ Falha ao baixar PDF como humano - retornou None")
                             except Exception as e:
