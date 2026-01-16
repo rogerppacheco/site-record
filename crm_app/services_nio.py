@@ -20,7 +20,7 @@ except ImportError:
     print("[AVISO] Playwright não instalado. Busca automática desabilitada.")
 
 # Configurações
-NIO_BASE_URL = "https://servicos.niointernet.com.br/ajuda/servicos/segunda-via"
+NIO_BASE_URL = "https://www.niointernet.com.br/ajuda/servicos/segunda-via/"
 DEFAULT_STORAGE_STATE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".playwright_state.json")
 
 
