@@ -314,9 +314,30 @@ def processar_webhook_whatsapp(data):
             else:
                 logger.info(f"[Webhook] Buscando TODAS as faturas para CPF: {cpf_limpo}")
                 try:
-                    # Buscar TODAS as faturas (aumentar limit para pegar todas)
-                    resultado = consultar_dividas_nio(cpf_limpo, offset=0, limit=20, headless=True)
-                    invoices = resultado.get('invoices', [])
+                    # Buscar TODAS as faturas - fazer múltiplas requisições se necessário
+                    todas_invoices = []
+                    offset = 0
+                    limit = 50  # Aumentar limite por requisição
+                    max_tentativas = 5  # Evitar loop infinito
+                    
+                    for tentativa in range(max_tentativas):
+                        resultado = consultar_dividas_nio(cpf_limpo, offset=offset, limit=limit, headless=True)
+                        invoices_lote = resultado.get('invoices', [])
+                        
+                        if not invoices_lote:
+                            break  # Não há mais faturas
+                        
+                        todas_invoices.extend(invoices_lote)
+                        
+                        # Se retornou menos que o limite, já pegou todas
+                        if len(invoices_lote) < limit:
+                            break
+                        
+                        offset += limit
+                        logger.info(f"[Webhook] Buscando mais faturas: offset={offset}, já encontradas={len(todas_invoices)}")
+                    
+                    invoices = todas_invoices
+                    logger.info(f"[Webhook] Total de faturas encontradas: {len(invoices)}")
                     
                     if not invoices:
                         resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n❌ *FATURAS NÃO ENCONTRADAS*\n\nNão encontrei nenhuma fatura para este CPF."
@@ -324,15 +345,64 @@ def processar_webhook_whatsapp(data):
                         sessao.dados_temp = {}
                         sessao.save()
                     else:
-                        # Separar faturas por status
-                        faturas_aberto = [inv for inv in invoices if inv.get('status', '').upper() in ['EM ABERTO', 'ABERTO', 'OPEN']]
-                        faturas_atrasadas = [inv for inv in invoices if inv.get('status', '').upper() in ['ATRASADO', 'ATRASADA', 'VENCIDA', 'VENCIDO', 'OVERDUE', 'LATE']]
-                        todas_faturas = faturas_atrasadas + faturas_aberto  # Atrasadas primeiro
+                        # Separar faturas por status (aceitar tanto uppercase quanto lowercase)
+                        # Status pode vir como "overdue", "OVERDUE", "em aberto", "EM ABERTO", etc
+                        todas_faturas = []
+                        faturas_atrasadas = []
+                        faturas_aberto = []
+                        outras = []
+                        
+                        for inv in invoices:
+                            status = str(inv.get('status', '')).upper()
+                            if status in ['ATRASADO', 'ATRASADA', 'VENCIDA', 'VENCIDO', 'OVERDUE', 'LATE']:
+                                faturas_atrasadas.append(inv)
+                            elif status in ['EM ABERTO', 'ABERTO', 'OPEN', 'PENDENTE']:
+                                faturas_aberto.append(inv)
+                            else:
+                                outras.append(inv)  # Incluir outras também
+                        
+                        # Ordenar: atrasadas primeiro, depois abertas, depois outras
+                        todas_faturas = faturas_atrasadas + faturas_aberto + outras
+                        
+                        logger.info(f"[Webhook] Faturas encontradas: {len(invoices)} total | {len(faturas_atrasadas)} atrasadas | {len(faturas_aberto)} em aberto | {len(outras)} outras")
                         
                         if len(todas_faturas) == 1:
-                            # Se só tem uma, mostra direto
+                            # Se só tem uma, mostra direto mas busca PDF também
                             invoice = todas_faturas[0]
-                            resposta = _formatar_detalhes_fatura(invoice, cpf_limpo)
+                            
+                            # Tentar buscar PDF via API primeiro (mais rápido)
+                            try:
+                                from crm_app.nio_api import get_invoice_pdf_url
+                                import requests
+                                session = requests.Session()
+                                pdf_url = get_invoice_pdf_url(
+                                    resultado.get('api_base', ''),
+                                    resultado.get('token', ''),
+                                    resultado.get('session_id', ''),
+                                    invoice.get('debt_id', ''),
+                                    invoice.get('invoice_id', ''),
+                                    cpf_limpo,
+                                    invoice.get('reference_month', ''),
+                                    session
+                                )
+                                if pdf_url:
+                                    invoice['pdf_url'] = pdf_url
+                                    logger.info(f"[Webhook] PDF encontrado via API para fatura única: {pdf_url[:100]}...")
+                            except Exception as e:
+                                logger.warning(f"[Webhook] Erro ao buscar PDF via API para fatura única: {e}")
+                            
+                            # Se não encontrou via API, tenta Playwright como fallback
+                            if not invoice.get('pdf_url'):
+                                try:
+                                    from crm_app.services_nio import buscar_fatura_nio_por_cpf
+                                    dados_completos = buscar_fatura_nio_por_cpf(cpf_limpo, incluir_pdf=True)
+                                    if dados_completos and dados_completos.get('pdf_url'):
+                                        invoice['pdf_url'] = dados_completos['pdf_url']
+                                        logger.info(f"[Webhook] PDF encontrado via Playwright para fatura única: {dados_completos['pdf_url'][:100]}...")
+                                except Exception as e:
+                                    logger.warning(f"[Webhook] Erro ao buscar PDF via Playwright para fatura única: {e}")
+                            
+                            resposta = _formatar_detalhes_fatura(invoice, cpf_limpo, incluir_pdf=True)
                             sessao.etapa = 'inicial'
                             sessao.dados_temp = {}
                             sessao.save()
@@ -351,10 +421,11 @@ def processar_webhook_whatsapp(data):
                                 # Formatar valor
                                 valor_str = f"R$ {valor:.2f}" if isinstance(valor, (int, float)) else str(valor)
                                 
-                                # Ícone de status
-                                if status.upper() in ['ATRASADO', 'ATRASADA', 'VENCIDA', 'VENCIDO']:
+                                # Ícone de status (aceitar lowercase também)
+                                status_upper = str(status).upper()
+                                if status_upper in ['ATRASADO', 'ATRASADA', 'VENCIDA', 'VENCIDO', 'OVERDUE', 'LATE']:
                                     emoji = "🔴"
-                                elif status.upper() in ['EM ABERTO', 'ABERTO']:
+                                elif status_upper in ['EM ABERTO', 'ABERTO', 'OPEN', 'PENDENTE']:
                                     emoji = "🟡"
                                 else:
                                     emoji = "⚪"
@@ -406,6 +477,41 @@ def processar_webhook_whatsapp(data):
                         invoice = faturas[idx]
                         cpf = dados_temp.get('cpf', '')
                         
+                        # Tentar buscar PDF via API primeiro (mais rápido)
+                        try:
+                            from crm_app.nio_api import get_invoice_pdf_url
+                            token = dados_temp.get('token')
+                            api_base = dados_temp.get('api_base')
+                            session_id = dados_temp.get('session_id')
+                            
+                            if token and api_base and session_id:
+                                import requests
+                                session = requests.Session()
+                                pdf_url = get_invoice_pdf_url(
+                                    api_base, token, session_id,
+                                    invoice.get('debt_id', ''),
+                                    invoice.get('invoice_id', ''),
+                                    cpf,
+                                    invoice.get('reference_month', ''),
+                                    session
+                                )
+                                if pdf_url:
+                                    invoice['pdf_url'] = pdf_url
+                                    logger.info(f"[Webhook] PDF encontrado via API: {pdf_url[:100]}...")
+                        except Exception as e:
+                            logger.warning(f"[Webhook] Erro ao buscar PDF via API: {e}")
+                        
+                        # Se não encontrou via API, tenta Playwright como fallback
+                        if not invoice.get('pdf_url'):
+                            try:
+                                from crm_app.services_nio import buscar_fatura_nio_por_cpf
+                                dados_completos = buscar_fatura_nio_por_cpf(cpf, incluir_pdf=True)
+                                if dados_completos and dados_completos.get('pdf_url'):
+                                    invoice['pdf_url'] = dados_completos['pdf_url']
+                                    logger.info(f"[Webhook] PDF encontrado via Playwright: {dados_completos['pdf_url'][:100]}...")
+                            except Exception as e:
+                                logger.warning(f"[Webhook] Erro ao buscar PDF via Playwright: {e}")
+                        
                         # Formatar resposta com detalhes completos
                         resposta = _formatar_detalhes_fatura(invoice, cpf, incluir_pdf=True)
                         
@@ -420,18 +526,29 @@ def processar_webhook_whatsapp(data):
                 sessao.save()
         
         else:
-            # Mensagem não reconhecida
-            resposta = (
-                "❓ *Comando não reconhecido*\n\n"
-                "Comandos disponíveis:\n"
-                "• *Fachada* - Consultar fachadas por CEP\n"
-                "• *Viabilidade* - Consultar viabilidade por CEP e número\n"
-                "• *Status* - Consultar status de pedido\n"
-                "• *Fatura* - Consultar fatura por CPF\n\n"
-                "Digite um dos comandos acima para começar."
-            )
+            # Mensagem não reconhecida - mas só mostrar se realmente for um comando novo
+            # Se a sessão acabou de mostrar uma fatura ou outro resultado, não mostrar erro imediatamente
+            # (pode ser uma resposta automática ou confirmação do usuário)
+            
+            # Ignorar mensagens muito curtas ou que parecem ser confirmações
+            if len(mensagem_texto.strip()) <= 2 and mensagem_texto.strip().isdigit():
+                # Pode ser um número de confirmação que não foi processado corretamente
+                resposta = None  # Não enviar resposta de erro
+            elif etapa_atual == 'inicial' and mensagem_limpa not in ['FATURA', 'FACHADA', 'VIABILIDADE', 'STATUS', 'STAT', 'VIABIL', 'FACADA', 'FAT']:
+                # Só mostrar erro se realmente estiver tentando usar um comando
+                resposta = (
+                    "❓ *Comando não reconhecido*\n\n"
+                    "Comandos disponíveis:\n"
+                    "• *Fachada* - Consultar fachadas por CEP\n"
+                    "• *Viabilidade* - Consultar viabilidade por CEP e número\n"
+                    "• *Status* - Consultar status de pedido\n"
+                    "• *Fatura* - Consultar fatura por CPF\n\n"
+                    "Digite um dos comandos acima para começar."
+                )
+            else:
+                resposta = None  # Não enviar resposta se estiver em meio a um fluxo
         
-        # Enviar resposta via WhatsApp
+        # Enviar resposta via WhatsApp (só se houver resposta para enviar)
         if resposta:
             try:
                 logger.info(f"[Webhook] Preparando para enviar resposta para {telefone_formatado}")
