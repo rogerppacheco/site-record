@@ -158,8 +158,13 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
             # Tentar vários seletores possíveis para o campo CPF
             campo_cpf = None
             seletores_cpf = [
+                '#cpf-cnpj',  # Seletor correto por ID
+                'input#cpf-cnpj',  # Input com ID específico
+                'input[name="cpf-cnpj"]',  # Por name attribute
+                'input.segunda-via__input',  # Por classe
                 'input[placeholder*="CPF" i]',  # case insensitive
                 'input[placeholder*="cpf" i]',
+                'input[placeholder*="CPF/CNPJ" i]',
                 'input[name*="cpf" i]',
                 'input[name*="CPF" i]',
                 'input[id*="cpf" i]',
