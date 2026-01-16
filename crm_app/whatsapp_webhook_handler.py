@@ -724,7 +724,7 @@ def processar_webhook_whatsapp(data):
             if len(mensagem_texto.strip()) <= 2 and mensagem_texto.strip().isdigit():
                 # Pode ser um número de confirmação que não foi processado corretamente
                 resposta = None  # Não enviar resposta de erro
-            elif etapa_atual == 'inicial' and mensagem_limpa not in ['FATURA', 'FACHADA', 'VIABILIDADE', 'STATUS', 'STAT', 'VIABIL', 'FACADA', 'FAT']:
+            elif etapa_atual == 'inicial' and mensagem_limpa not in ['FATURA', 'FACHADA', 'VIABILIDADE', 'STATUS', 'STAT', 'VIABIL', 'FACADA', 'FAT', 'MENU', 'AJUDA', 'HELP', 'OPCOES', 'OPÇÕES', 'OPCOES', 'OPÇOES']:
                 # Mostrar menu de ajuda
                 resposta = (
                     "📋 *MENU*\n\n"
