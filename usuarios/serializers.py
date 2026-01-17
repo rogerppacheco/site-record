@@ -244,11 +244,11 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         data['token'] = data.pop('access')
 
         user_profile = None
-        if self.user and hasattr(self.user, 'perfil'):
+        if self.user:
             try:
-                # Tenta acessar o perfil, mas não falha se a tabela não existir
+                # Tenta acessar o perfil, mas não falha se não existir
                 if self.user.perfil_id:  # Verifica se há um ID antes de acessar
-                    user_profile = self.user.perfil.nome if self.user.perfil else None
+                    user_profile = self.user.perfil.nome
             except Exception as e:
                 logger.warning(f"[LOGIN] Erro ao acessar perfil: {e}")
                 user_profile = None
