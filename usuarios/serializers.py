@@ -209,16 +209,27 @@ class UsuarioSerializer(serializers.ModelSerializer):
         
         try:
             group = Group.objects.get(id=group_id)
-            # Busca um Perfil com o mesmo nome do Group
+            # Busca um Perfil com o mesmo nome do Group (case-insensitive)
             try:
-                perfil = Perfil.objects.get(nome=group.name)
+                perfil = Perfil.objects.get(nome__iexact=group.name)
                 usuario.perfil = perfil
             except Perfil.DoesNotExist:
                 # Se não encontrar Perfil com esse nome, limpa o campo
                 usuario.perfil = None
+                # Log para debug
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Perfil '{group.name}' não encontrado para Group '{group.name}'. Campo perfil limpo.")
+            except Perfil.MultipleObjectsReturned:
+                # Se houver múltiplos perfis com o mesmo nome, pega o primeiro
+                perfil = Perfil.objects.filter(nome__iexact=group.name).first()
+                usuario.perfil = perfil
         except Group.DoesNotExist:
             # Se o Group não existir, limpa o perfil
             usuario.perfil = None
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Group com ID {group_id} não encontrado. Campo perfil limpo.")
 
 # --- SERIALIZER DE PERFIL DO USUÁRIO (LEITURA) ---
 
