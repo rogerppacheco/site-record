@@ -5870,13 +5870,14 @@ class PopularSafraM10View(APIView):
                 }
             )
 
-            # Busca Vendas com data_instalacao no mês de referência
+            # Busca Vendas com data_instalacao no mês de referência E status INSTALADA
             vendas = Venda.objects.filter(
                 data_instalacao__gte=data_inicio,
                 data_instalacao__lt=data_fim,
                 data_instalacao__isnull=False,
-                ativo=True
-            ).select_related('cliente', 'vendedor')
+                ativo=True,
+                status_esteira__nome__iexact='INSTALADA'
+            ).select_related('cliente', 'vendedor', 'status_esteira', 'plano')
 
             contratos_criados = 0
             contratos_duplicados = 0

@@ -50,6 +50,7 @@ def criar_contrato_m10_automatico(sender, instance, created, **kwargs):
     
     # Encontrar ou criar a SafraM10 do mês da instalação
     mes_referencia = instance.data_instalacao.replace(day=1)
+    safra_str = instance.data_instalacao.strftime('%Y-%m')
     
     safra_m10, created_safra = SafraM10.objects.get_or_create(
         mes_referencia=mes_referencia,
@@ -67,7 +68,7 @@ def criar_contrato_m10_automatico(sender, instance, created, **kwargs):
     try:
         contrato_m10 = ContratoM10.objects.create(
             numero_contrato=numero_contrato,
-            safra=safra_m10,
+            safra=safra_str,  # CharField, não objeto
             venda=instance,
             ordem_servico=instance.ordem_servico,
             cliente_nome=instance.cliente.nome_razao_social if instance.cliente else '',

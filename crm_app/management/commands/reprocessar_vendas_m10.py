@@ -12,14 +12,15 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         self.stdout.write("🔄 Iniciando reprocessamento de vendas instaladas...")
         
-        # Buscar todas as vendas instaladas ativas com OS
+        # Buscar todas as vendas INSTALADAS ativas com OS
         vendas = Venda.objects.filter(
             ativo=True,
             data_instalacao__isnull=False,
-            ordem_servico__isnull=False
+            ordem_servico__isnull=False,
+            status_esteira__nome__iexact='INSTALADA'
         ).exclude(
             ordem_servico=''
-        ).select_related('cliente', 'plano', 'vendedor')
+        ).select_related('cliente', 'plano', 'vendedor', 'status_esteira')
         
         total_vendas = vendas.count()
         self.stdout.write(f"📊 Total de vendas instaladas encontradas: {total_vendas}")
@@ -44,6 +45,7 @@ class Command(BaseCommand):
                 
                 # Encontrar ou criar a SafraM10 do mês da instalação
                 mes_referencia = venda.data_instalacao.replace(day=1)
+                safra_str = venda.data_instalacao.strftime('%Y-%m')
                 
                 safra_m10, created_safra = SafraM10.objects.get_or_create(
                     mes_referencia=mes_referencia,
@@ -63,7 +65,7 @@ class Command(BaseCommand):
                 
                 contrato_m10 = ContratoM10.objects.create(
                     numero_contrato=numero_contrato,
-                    safra=safra_m10,
+                    safra=safra_str,  # CharField, não objeto
                     venda=venda,
                     ordem_servico=venda.ordem_servico,
                     cliente_nome=venda.cliente.nome_razao_social if venda.cliente else '',
