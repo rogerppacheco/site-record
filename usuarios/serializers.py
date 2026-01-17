@@ -189,12 +189,16 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         try:
             if hasattr(user, 'perfil_id') and user.perfil_id:
                 user.perfil  # Tenta acessar para verificar se existe
-                token['perfil'] = user.perfil.nome if user.perfil else 'Vendedor'
+                perfil_nome = user.perfil.nome if user.perfil else 'Vendedor'
+                token['perfil'] = perfil_nome
+                token['user_role'] = perfil_nome  # Compatibilidade com frontend
             else:
                 token['perfil'] = 'Vendedor'
+                token['user_role'] = 'Vendedor'
         except Exception:
             # Se o perfil não existir (ID inválido), usa padrão
             token['perfil'] = 'Vendedor'
+            token['user_role'] = 'Vendedor'
         # Adiciona o primeiro grupo como perfil principal
         if user.groups.exists():
             token['grupo_principal'] = user.groups.first().name

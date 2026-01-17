@@ -718,6 +718,16 @@ class VendaViewSet(viewsets.ModelViewSet):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
         
+        # Verificar se a venda está travada para outro auditor
+        if instance.auditor_atual and instance.auditor_atual != request.user:
+            # Permitir edição apenas para supervisores/Diretoria/Admin/BackOffice
+            grupos_permitidos = ['Diretoria', 'Admin', 'BackOffice', 'Supervisor']
+            if not request.user.is_superuser and not is_member(request.user, grupos_permitidos):
+                return Response(
+                    {"detail": f"Esta venda está sendo auditada por {instance.auditor_atual.get_full_name() or instance.auditor_atual.username}. Você não tem permissão para editá-la."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
         # Validar CPF/CNPJ antes de processar
         if 'cliente_cpf_cnpj' in request.data:
             try:
