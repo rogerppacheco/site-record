@@ -34,6 +34,8 @@ class GrupoViewSet(viewsets.ModelViewSet):
 class PermissaoViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = PermissionSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None  # Desabilita paginação para retornar todas as permissões
+    
     def get_queryset(self):
         meus_apps = ['crm_app', 'usuarios', 'presenca', 'osab', 'relatorios']
         return Permission.objects.filter(content_type__app_label__in=meus_apps).order_by('content_type__model', 'codename')
