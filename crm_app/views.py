@@ -5548,11 +5548,20 @@ class SafraM10ListView(APIView):
     def get(self, request):
         safras = SafraM10.objects.all().order_by('-mes_referencia')
         data = []
+        # Mapeamento de meses em português
+        meses_pt = {
+            1: 'Janeiro', 2: 'Fevereiro', 3: 'Março', 4: 'Abril',
+            5: 'Maio', 6: 'Junho', 7: 'Julho', 8: 'Agosto',
+            9: 'Setembro', 10: 'Outubro', 11: 'Novembro', 12: 'Dezembro'
+        }
+        
         for s in safras:
+            mes_nome = meses_pt.get(s.mes_referencia.month, s.mes_referencia.strftime('%m'))
+            mes_formatado = f"{mes_nome}/{s.mes_referencia.year}"
             data.append({
                 'id': s.id,
                 'mes_referencia': s.mes_referencia.isoformat(),
-                'mes_referencia_formatado': s.mes_referencia.strftime('%B/%Y'),
+                'mes_referencia_formatado': mes_formatado,
                 'total_instalados': s.total_instalados,
                 'total_ativos': s.total_ativos,
                 'total_elegivel_bonus': s.total_elegivel_bonus,

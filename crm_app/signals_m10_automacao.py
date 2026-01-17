@@ -24,6 +24,7 @@ def criar_contrato_m10_automatico(sender, instance, created, **kwargs):
     """
     Quando uma Venda é criada ou atualizada com:
     - ativo = True
+    - status_esteira = INSTALADA
     - data_instalacao preenchida
     - ordem_servico preenchida
     
@@ -32,6 +33,10 @@ def criar_contrato_m10_automatico(sender, instance, created, **kwargs):
     
     # Verifica se a venda tem os dados mínimos para criar M-10
     if not instance.ativo or not instance.data_instalacao or not instance.ordem_servico:
+        return
+    
+    # Verifica se o status da esteira é INSTALADA
+    if not instance.status_esteira or instance.status_esteira.nome.upper() != 'INSTALADA':
         return
     
     # Verifica se já existe um contrato com esta OS (para evitar UNIQUE constraint)
