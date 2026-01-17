@@ -686,10 +686,15 @@
             try { 
                 const res = await apiFetch(API_PERMISSOES);
                 todasPermissoes = Array.isArray(res) ? res : (res?.results || []);
+                console.log('[DEBUG] Permissões carregadas:', todasPermissoes.length);
+                console.log('[DEBUG] Tipo da resposta:', Array.isArray(res) ? 'Array' : 'Object com results');
             } catch(e) { 
+                console.error('[DEBUG] Erro ao carregar permissões:', e);
                 container.innerHTML = 'Erro ao carregar permissões'; 
                 return; 
             } 
+        } else {
+            console.log('[DEBUG] Usando permissões do cache:', todasPermissoes.length);
         }
         
         // Adicionar listener para o filtro de busca
@@ -722,10 +727,11 @@
             return;
         }
         
+        console.log('[DEBUG] Renderizando permissões:', permissoesFiltradas.length, 'de', todasPermissoes.length, 'total');
         permissoesFiltradas.forEach(p => {
             const isChecked = permsAtuais.includes(p.id) ? 'checked' : '';
             const nomeFormatado = formatarNomePermissao(p.name || '');
-            container.innerHTML += `<div class="perm-item form-check"><input class="form-check-input" type="checkbox" value="${p.id}" id="perm-${p.id}" ${isChecked}><label class="form-check-label perm-label" for="perm-${p.id}">${nomeFormatado}</label></div>`;
+            container.innerHTML += `<div class="perm-item form-check"><input class="form-check-input" type="checkbox" value="${p.id}" id="perm-${p.id}" ${isChecked}><label class="form-check-label perm-label" for="perm-${p.id}" style="cursor: pointer;">${nomeFormatado}</label></div>`;
         });
     }
 
