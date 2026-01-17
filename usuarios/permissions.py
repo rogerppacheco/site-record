@@ -70,8 +70,8 @@ class VendaPermission(permissions.BasePermission):
         return True
 
     def has_object_permission(self, request, view, obj):
-        # 1. Superusers e Admins Totais
-        if request.user.is_superuser or request.user.groups.filter(name__in=['Diretoria', 'Admin']).exists():
+        # 1. Superusers e Admins Totais (incluindo BackOffice)
+        if request.user.is_superuser or request.user.groups.filter(name__in=['Diretoria', 'Admin', 'BackOffice']).exists():
             return True
 
         # 2. Métodos de Leitura (GET, HEAD, OPTIONS) são permitidos
