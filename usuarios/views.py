@@ -50,7 +50,15 @@ class PermissaoViewSet(viewsets.ReadOnlyModelViewSet):
         
         queryset = self.get_queryset()
         count = queryset.count()
-        logger.info(f"[PERMISSOES API] Total de permissões no queryset: {count}")
+        
+        # Log detalhado para debug
+        from django.contrib.contenttypes.models import ContentType
+        meus_apps = ['crm_app', 'usuarios', 'presenca', 'osab', 'relatorios']
+        for app in meus_apps:
+            app_count = queryset.filter(content_type__app_label=app).count()
+            logger.info(f"[PERMISSOES API DEBUG] {app}: {app_count} permissões")
+        
+        logger.info(f"[PERMISSOES API] Total de permissões no queryset: {count} (VERSÃO COM DEBUG DETALHADO)")
         
         serializer = self.get_serializer(queryset, many=True)
         data = serializer.data
