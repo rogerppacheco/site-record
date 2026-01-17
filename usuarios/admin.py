@@ -24,7 +24,7 @@ class CustomUserAdmin(UserAdmin):
     fieldsets = (
         (None, {'fields': ('username', 'password')}),
         ('Informações Pessoais', {'fields': ('first_name', 'last_name', 'email', 'cpf')}),
-        ('Função e Estrutura', {'fields': ('perfil', 'supervisor', 'canal')}),
+        ('Função e Estrutura', {'fields': ('supervisor', 'canal')}),
         ('Financeiro', {'fields': (
             'valor_almoco', 'valor_passagem', 'chave_pix', 'nome_da_conta'
         )}),
@@ -34,18 +34,19 @@ class CustomUserAdmin(UserAdmin):
         )}),
         ('Permissões', {
             'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions'),
+            'description': '⚠️ IMPORTANTE: O sistema usa Groups para definir perfis. Use o campo "Groups" acima para atribuir perfis (BackOffice, Diretoria, Supervisor, Vendedor). O campo "Perfil" foi removido porque o sistema usa Groups.'
         }),
         ('Datas Importantes', {'fields': ('last_login', 'date_joined')}),
     )
     
     add_fieldsets = UserAdmin.add_fieldsets + (
         ('Informações Adicionais', {
-            'fields': ('perfil', 'supervisor', 'canal', 'cpf'),
+            'fields': ('supervisor', 'canal', 'cpf'),
         }),
     )
 
-    list_display = ('username', 'email', 'first_name', 'last_name', 'is_staff', 'get_groups_display', 'perfil', 'canal')
-    list_filter = ('is_staff', 'is_superuser', 'is_active', 'groups', 'perfil', 'canal')
+    list_display = ('username', 'email', 'first_name', 'last_name', 'is_staff', 'get_groups_display', 'canal')
+    list_filter = ('is_staff', 'is_superuser', 'is_active', 'groups', 'canal')
     
     def get_groups_display(self, obj):
         """Mostra os grupos do usuário na listagem"""
