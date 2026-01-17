@@ -39,6 +39,15 @@ class PermissaoViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         meus_apps = ['crm_app', 'usuarios', 'presenca', 'osab', 'relatorios']
         return Permission.objects.filter(content_type__app_label__in=meus_apps).order_by('content_type__model', 'codename')
+    
+    def list(self, request, *args, **kwargs):
+        """
+        Sobrescreve o método list para garantir que todas as permissões sejam retornadas
+        sem paginação, mesmo que a paginação global esteja habilitada.
+        """
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
 class PerfilViewSet(viewsets.ModelViewSet):
     queryset = Perfil.objects.all().order_by('nome')
