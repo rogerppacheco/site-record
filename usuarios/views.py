@@ -45,33 +45,9 @@ class PermissaoViewSet(viewsets.ReadOnlyModelViewSet):
         Sobrescreve o método list para garantir que todas as permissões sejam retornadas
         sem paginação, mesmo que a paginação global esteja habilitada.
         """
-        import logging
-        logger = logging.getLogger(__name__)
-        
         queryset = self.get_queryset()
-        count = queryset.count()
-        
-        # Log detalhado para debug - testar query direta
-        from django.contrib.contenttypes.models import ContentType
-        from django.contrib.auth.models import Permission
-        meus_apps = ['crm_app', 'usuarios', 'presenca', 'osab', 'relatorios']
-        
-        # Testar query direta (sem usar o queryset filtrado)
-        for app in meus_apps:
-            direct_count = Permission.objects.filter(content_type__app_label=app).count()
-            queryset_count = queryset.filter(content_type__app_label=app).count()
-            logger.info(f"[PERMISSOES API DEBUG] {app}: queryset={queryset_count}, direto={direct_count}")
-        
-        # Log da SQL query
-        logger.info(f"[PERMISSOES API DEBUG] SQL: {str(queryset.query)}")
-        
-        logger.info(f"[PERMISSOES API] Total de permissões no queryset: {count}")
-        
         serializer = self.get_serializer(queryset, many=True)
-        data = serializer.data
-        logger.info(f"[PERMISSOES API] Total de permissões serializadas: {len(data)}")
-        
-        return Response(data)
+        return Response(serializer.data)
 
 class PerfilViewSet(viewsets.ModelViewSet):
     queryset = Perfil.objects.all().order_by('nome')
