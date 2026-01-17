@@ -14,6 +14,51 @@ from django.utils import timezone
 logger = logging.getLogger(__name__)
 
 
+def _registrar_estatistica(telefone, comando):
+    """
+    Registra uma estatística de mensagem enviada pelo bot
+    Tenta identificar o vendedor pelo telefone
+    """
+    try:
+        from crm_app.models import EstatisticaBotWhatsApp
+        from usuarios.models import Usuario
+        
+        # Tentar encontrar vendedor pelo telefone
+        vendedor = None
+        telefone_limpo = formatar_telefone(telefone)
+        
+        # Buscar vendedor pelo tel_whatsapp (formato pode variar)
+        # Tentar com e sem prefixo 55
+        telefones_variantes = [telefone_limpo]
+        if not telefone_limpo.startswith('55') and len(telefone_limpo) >= 10:
+            telefones_variantes.append('55' + telefone_limpo)
+        if telefone_limpo.startswith('55'):
+            telefones_variantes.append(telefone_limpo[2:])
+        
+        for tel_var in telefones_variantes:
+            try:
+                vendedor = Usuario.objects.filter(tel_whatsapp__icontains=tel_var).first()
+                if vendedor:
+                    break
+            except:
+                pass
+        
+        # Criar registro de estatística
+        EstatisticaBotWhatsApp.objects.create(
+            telefone=telefone,
+            vendedor=vendedor,
+            comando=comando
+        )
+        
+        if vendedor:
+            logger.debug(f"[Estatística] Registrado {comando} para vendedor {vendedor.username}")
+        else:
+            logger.debug(f"[Estatística] Registrado {comando} para telefone {telefone} (vendedor não identificado)")
+            
+    except Exception as e:
+        logger.error(f"[Estatística] Erro ao registrar estatística: {e}", exc_info=True)
+
+
 def formatar_telefone(telefone):
     """Normaliza telefone removendo caracteres não numéricos"""
     if not telefone:
@@ -313,6 +358,7 @@ def processar_webhook_whatsapp(data):
             sessao.save()
             resposta = "🏢 *CONSULTA MASSIVA (DFV)*\n\nEu vou listar todos os números viáveis de uma rua.\nPor favor, digite o CEP (somente números):"
             logger.info(f"[Webhook] Resposta preparada para FACHADA: {resposta[:50]}...")
+            _registrar_estatistica(telefone_formatado, 'FACHADA')
         
         elif 'VIABILIDADE' in mensagem_limpa or 'VIABIL' in mensagem_limpa:
             logger.info(f"[Webhook] Comando VIABILIDADE reconhecido!")
@@ -321,18 +367,21 @@ def processar_webhook_whatsapp(data):
             sessao.save()
             resposta = "🗺️ *CONSULTA VIABILIDADE (KMZ)*\n\nIdentifiquei que você quer consultar a mancha.\nPor favor, digite o CEP:"
             logger.info(f"[Webhook] Resposta preparada para VIABILIDADE: {resposta[:50]}...")
+            _registrar_estatistica(telefone_formatado, 'VIABILIDADE')
         
         elif mensagem_limpa in ['STATUS', 'STAT']:
             sessao.etapa = 'status_tipo'
             sessao.dados_temp = {}
             sessao.save()
             resposta = "📋 *CONSULTA DE STATUS*\n\nComo deseja pesquisar o pedido?\n\n1️⃣ Por CPF\n2️⃣ Por O.S (Ordem de Serviço)\n\nDigite o número da opção (1 ou 2):"
+            _registrar_estatistica(telefone_formatado, 'STATUS')
         
         elif mensagem_limpa in ['FATURA', 'FAT']:
             sessao.etapa = 'fatura_cpf'
             sessao.dados_temp = {}
             sessao.save()
             resposta = "💳 *CONSULTA DE FATURA NIO*\n\nPor favor, digite o CPF ou ID do cliente para buscar a fatura:"
+            _registrar_estatistica(telefone_formatado, 'FATURA')
         
         elif mensagem_limpa in ['MENU', 'AJUDA', 'HELP', 'OPCOES', 'OPÇÕES', 'OPCOES', 'OPÇOES']:
             logger.info(f"[Webhook] Comando MENU/AJUDA reconhecido!")

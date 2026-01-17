@@ -467,6 +467,35 @@ class SessaoWhatsapp(models.Model):
     def __str__(self):
         return f"{self.telefone} - {self.etapa}"
 
+class EstatisticaBotWhatsApp(models.Model):
+    """
+    Armazena estatísticas de mensagens enviadas pelo bot WhatsApp
+    """
+    COMANDO_CHOICES = [
+        ('FACHADA', 'Fachada'),
+        ('VIABILIDADE', 'Viabilidade'),
+        ('FATURA', 'Fatura'),
+        ('STATUS', 'Status'),
+    ]
+    
+    telefone = models.CharField(max_length=100, db_index=True, help_text="Telefone do usuário que recebeu a mensagem")
+    vendedor = models.ForeignKey(Usuario, on_delete=models.SET_NULL, null=True, blank=True, related_name='estatisticas_bot', db_index=True)
+    comando = models.CharField(max_length=20, choices=COMANDO_CHOICES, db_index=True)
+    data_envio = models.DateTimeField(auto_now_add=True, db_index=True)
+    
+    class Meta:
+        verbose_name = "Estatística Bot WhatsApp"
+        verbose_name_plural = "Estatísticas Bot WhatsApp"
+        indexes = [
+            models.Index(fields=['comando', 'data_envio']),
+            models.Index(fields=['vendedor', 'data_envio']),
+            models.Index(fields=['data_envio']),
+        ]
+    
+    def __str__(self):
+        vendedor_nome = self.vendedor.username if self.vendedor else "N/A"
+        return f"{self.comando} - {vendedor_nome} - {self.data_envio.strftime('%d/%m/%Y %H:%M')}"
+
 class DFV(models.Model):
     uf = models.CharField(max_length=2, null=True, blank=True)
     municipio = models.CharField(max_length=100, null=True, blank=True)
