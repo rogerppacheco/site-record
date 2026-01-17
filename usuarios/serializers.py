@@ -144,11 +144,12 @@ class UsuarioSerializer(serializers.ModelSerializer):
         if password:
             instance.set_password(password)
             instance.obriga_troca_senha = True
+        # Sincronizar campo perfil baseado no primeiro grupo (antes de salvar)
+        if groups:
+            self._sincronizar_perfil_do_group(instance, groups[0])
         instance.save()
         if groups:
             instance.groups.set(groups)
-            # Sincronizar campo perfil baseado no primeiro grupo
-            self._sincronizar_perfil_do_group(instance, groups[0] if groups else None)
         return instance
 
     def update(self, instance, validated_data):
