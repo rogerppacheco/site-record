@@ -426,7 +426,42 @@
         </div>
     </div>
 
-    <div class="modal fade" id="perfilModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="modal-perfil-titulo">Perfil</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="perfilForm"><input type="hidden" id="modal_perfil_id"><div class="mb-3"><label class="form-label fw-bold">Nome</label><input type="text" class="form-control" id="modal_perfil_nome" required></div><div class="mb-3"><label class="form-label fw-bold text-primary">Permissões</label><input type="text" id="filtro-permissoes" class="form-control form-control-sm mb-2" placeholder="Buscar..."><div id="lista-permissoes" class="perm-list"></div></div></form></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button type="button" class="btn btn-primary" onclick="salvarPerfil()">Salvar</button></div></div></div></div>
+    <div class="modal fade" id="perfilModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modal-perfil-titulo">Perfil</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="perfilForm">
+                        <input type="hidden" id="modal_perfil_id">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Nome</label>
+                            <input type="text" class="form-control" id="modal_perfil_nome" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold text-primary">Permissões</label>
+                            <input type="text" id="filtro-permissoes" class="form-control form-control-sm mb-2" placeholder="Buscar...">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <small class="text-muted" id="contador-permissoes-visiveis">0 permissões</small>
+                                <div>
+                                    <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none" onclick="marcarTodasPermissoes(true)">Marcar Todas</button>
+                                    <span class="text-muted mx-1">|</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-danger" onclick="marcarTodasPermissoes(false)">Desmarcar Todas</button>
+                                </div>
+                            </div>
+                            <div id="lista-permissoes" class="perm-list"></div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" onclick="salvarPerfil()">Salvar</button>
+                </div>
+            </div>
+        </div>
+    </div>
     <div class="modal fade" id="excluirPerfilModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Confirmar Exclusão</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>Excluir o perfil "<strong id="nome-perfil-excluir"></strong>"?</p><input type="hidden" id="id-perfil-excluir"></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button type="button" class="btn btn-danger" id="btn-confirmar-exclusao-perfil">Excluir</button></div></div></div></div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
@@ -712,6 +747,7 @@
         
         if (!Array.isArray(todasPermissoes)) {
             container.innerHTML = '<div class="text-danger">Erro: permissões não carregadas corretamente</div>';
+            atualizarContadorPermissoes(0);
             return;
         }
         
@@ -724,6 +760,7 @@
         
         if (permissoesFiltradas.length === 0) {
             container.innerHTML = '<div class="text-muted">Nenhuma permissão encontrada</div>';
+            atualizarContadorPermissoes(0);
             return;
         }
         
@@ -731,9 +768,36 @@
         permissoesFiltradas.forEach(p => {
             const isChecked = permsAtuais.includes(p.id) ? 'checked' : '';
             const nomeFormatado = formatarNomePermissao(p.name || '');
-            container.innerHTML += `<div class="perm-item form-check"><input class="form-check-input" type="checkbox" value="${p.id}" id="perm-${p.id}" ${isChecked}><label class="form-check-label perm-label" for="perm-${p.id}" style="cursor: pointer;">${nomeFormatado}</label></div>`;
+            container.innerHTML += `<div class="perm-item form-check"><input class="form-check-input perm-checkbox" type="checkbox" value="${p.id}" id="perm-${p.id}" ${isChecked}><label class="form-check-label perm-label" for="perm-${p.id}" style="cursor: pointer;">${nomeFormatado}</label></div>`;
         });
+        
+        atualizarContadorPermissoes(permissoesFiltradas.length);
     }
+    
+    function atualizarContadorPermissoes(total) {
+        const contador = document.getElementById('contador-permissoes-visiveis');
+        if (contador) {
+            const marcadas = document.querySelectorAll('#lista-permissoes input.perm-checkbox:checked').length;
+            contador.textContent = `${marcadas} de ${total} permissões selecionadas`;
+        }
+    }
+    
+    function marcarTodasPermissoes(marcar) {
+        const checkboxes = document.querySelectorAll('#lista-permissoes input.perm-checkbox');
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = marcar;
+        });
+        const total = checkboxes.length;
+        atualizarContadorPermissoes(total);
+    }
+    
+    // Event listener para atualizar contador quando checkboxes mudarem
+    document.addEventListener('change', (e) => {
+        if (e.target.classList.contains('perm-checkbox')) {
+            const total = document.querySelectorAll('#lista-permissoes input.perm-checkbox').length;
+            atualizarContadorPermissoes(total);
+        }
+    });
 
     window.editarPerfil = (grupo) => abrirModalPerfil(grupo);
     document.getElementById('btn-adicionar-perfil').onclick = () => abrirModalPerfil(null);
