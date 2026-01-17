@@ -687,15 +687,41 @@
                 return; 
             } 
         }
-        renderizarListaPermissoes(grupo ? grupo.permissions : []);
+        
+        // Adicionar listener para o filtro de busca
+        const filtroInput = document.getElementById('filtro-permissoes');
+        filtroInput.oninput = (e) => {
+            renderizarListaPermissoes(grupo ? grupo.permissions : [], e.target.value);
+        };
+        
+        renderizarListaPermissoes(grupo ? grupo.permissions : [], '');
     }
     
-    function renderizarListaPermissoes(permsAtuais) {
+    function renderizarListaPermissoes(permsAtuais, filtro = '') {
         const container = document.getElementById('lista-permissoes');
         container.innerHTML = '';
-        todasPermissoes.forEach(p => {
+        
+        if (!Array.isArray(todasPermissoes)) {
+            container.innerHTML = '<div class="text-danger">Erro: permissões não carregadas corretamente</div>';
+            return;
+        }
+        
+        const filtroLower = filtro.toLowerCase();
+        const permissoesFiltradas = todasPermissoes.filter(p => {
+            if (!p) return false;
+            const nomeFormatado = formatarNomePermissao(p.name || '');
+            return nomeFormatado.toLowerCase().includes(filtroLower);
+        });
+        
+        if (permissoesFiltradas.length === 0) {
+            container.innerHTML = '<div class="text-muted">Nenhuma permissão encontrada</div>';
+            return;
+        }
+        
+        permissoesFiltradas.forEach(p => {
             const isChecked = permsAtuais.includes(p.id) ? 'checked' : '';
-            container.innerHTML += `<div class="perm-item form-check"><input class="form-check-input" type="checkbox" value="${p.id}" id="perm-${p.id}" ${isChecked}><label class="form-check-label perm-label" for="perm-${p.id}">${formatarNomePermissao(p.name)}</label></div>`;
+            const nomeFormatado = formatarNomePermissao(p.name || '');
+            container.innerHTML += `<div class="perm-item form-check"><input class="form-check-input" type="checkbox" value="${p.id}" id="perm-${p.id}" ${isChecked}><label class="form-check-label perm-label" for="perm-${p.id}">${nomeFormatado}</label></div>`;
         });
     }
 
