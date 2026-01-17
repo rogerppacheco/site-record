@@ -178,14 +178,8 @@ class UsuarioSerializer(serializers.ModelSerializer):
         # Processar groups separadamente
         if groups is not None:
             instance.groups.set(groups)
-            # Sincronizar campo perfil baseado no primeiro grupo
-            try:
-                self._sincronizar_perfil_do_group(instance, groups[0] if groups else None)
-            except Exception as e:
-                # Se houver erro na sincronização, apenas loga e continua (não bloqueia)
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.warning(f"Erro ao sincronizar perfil do grupo: {e}")
+            # Sincronizar campo perfil baseado no primeiro grupo (sempre executa)
+            self._sincronizar_perfil_do_group(instance, groups[0] if groups else None)
             
         # Atualiza senha se fornecida
         if password:
