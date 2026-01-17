@@ -10,7 +10,9 @@ class PermissaoPerfilInline(admin.TabularInline):
 
 @admin.register(Perfil)
 class PerfilAdmin(admin.ModelAdmin):
-    list_display = ('nome',)
+    list_display = ('nome', 'cod_perfil')
+    list_filter = ('nome',)
+    search_fields = ('nome', 'cod_perfil')
     inlines = [PermissaoPerfilInline]
 
 class CustomUserAdmin(UserAdmin):
