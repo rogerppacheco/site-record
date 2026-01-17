@@ -7,6 +7,11 @@ from .models import Usuario, Perfil, PermissaoPerfil
 class PermissaoPerfilInline(admin.TabularInline):
     model = PermissaoPerfil
     extra = 1
+    fields = ('recurso', 'pode_ver', 'pode_criar', 'pode_editar', 'pode_excluir')
+    verbose_name = "Permissão"
+    verbose_name_plural = "Permissões"
+    can_delete = True
+    show_change_link = False
 
 @admin.register(Perfil)
 class PerfilAdmin(admin.ModelAdmin):
