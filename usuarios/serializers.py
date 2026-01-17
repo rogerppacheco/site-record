@@ -141,9 +141,16 @@ class UsuarioSerializer(serializers.ModelSerializer):
         password = validated_data.pop('password', None)
         groups = validated_data.pop('groups', [])
         
-        # Garantir que campos com default não sejam None
-        if 'meta_comissao' in validated_data and validated_data['meta_comissao'] is None:
-            validated_data['meta_comissao'] = 0
+        # Garantir que campos com default não sejam None ou string vazia
+        if 'meta_comissao' in validated_data:
+            if validated_data['meta_comissao'] is None or validated_data['meta_comissao'] == '':
+                validated_data['meta_comissao'] = 0
+            elif isinstance(validated_data['meta_comissao'], str):
+                # Converte string para int
+                try:
+                    validated_data['meta_comissao'] = int(validated_data['meta_comissao']) if validated_data['meta_comissao'] else 0
+                except (ValueError, TypeError):
+                    validated_data['meta_comissao'] = 0
         
         instance = self.Meta.model(**validated_data)
         if password:
