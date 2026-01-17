@@ -119,13 +119,21 @@ class UsuarioSerializer(serializers.ModelSerializer):
         """
         ret = super().to_representation(instance)
         
-        # Injeta os detalhes do perfil
-        if instance.perfil:
-            ret['perfil'] = PerfilSerializer(instance.perfil).data
+        # Injeta os detalhes do perfil (com tratamento de erro caso perfil não exista)
+        try:
+            if instance.perfil_id and instance.perfil:
+                ret['perfil'] = PerfilSerializer(instance.perfil).data
+        except Exception:
+            # Se o perfil não existir (ID inválido), não inclui no retorno
+            pass
         
         # Injeta os detalhes do supervisor (Líder)
-        if instance.supervisor:
-            ret['supervisor'] = UsuarioLiderSerializer(instance.supervisor).data
+        try:
+            if instance.supervisor_id and instance.supervisor:
+                ret['supervisor'] = UsuarioLiderSerializer(instance.supervisor).data
+        except Exception:
+            # Se o supervisor não existir, não inclui no retorno
+            pass
             
         return ret
 
