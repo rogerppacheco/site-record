@@ -155,13 +155,9 @@ class UsuarioSerializer(serializers.ModelSerializer):
         password = validated_data.pop('password', None)
         groups = validated_data.pop('groups', None)
         
-        # Atualiza campos normais
+        # Atualiza campos normais (groups já foi removido do validated_data)
         for attr, value in validated_data.items():
-            if attr == 'groups':
-                # Não processar aqui, processaremos depois
-                pass
-            else:
-                setattr(instance, attr, value)
+            setattr(instance, attr, value)
         
         # Processar groups separadamente
         if groups is not None:
