@@ -140,13 +140,24 @@ class UsuarioSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         password = validated_data.pop('password', None)
         groups = validated_data.pop('groups', [])
+        
+        # Garantir que campos com default não sejam None
+        if 'meta_comissao' in validated_data and validated_data['meta_comissao'] is None:
+            validated_data['meta_comissao'] = 0
+        
         instance = self.Meta.model(**validated_data)
         if password:
             instance.set_password(password)
             instance.obriga_troca_senha = True
         # Sincronizar campo perfil baseado no primeiro grupo (antes de salvar)
         if groups:
-            self._sincronizar_perfil_do_group(instance, groups[0])
+            try:
+                self._sincronizar_perfil_do_group(instance, groups[0])
+            except Exception as e:
+                # Se houver erro na sincronização, apenas loga e continua (não bloqueia)
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Erro ao sincronizar perfil do grupo: {e}")
         instance.save()
         if groups:
             instance.groups.set(groups)
