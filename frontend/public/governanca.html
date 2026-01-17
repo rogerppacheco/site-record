@@ -724,19 +724,31 @@
                 const res = await apiFetch(API_PERMISSOES);
                 let perms = Array.isArray(res) ? res : (res?.results || []);
                 
-                // Remover duplicatas baseado no ID (segurança extra caso distinct() não funcione)
+                // Remover duplicatas baseado no codename + name (mais robusto que apenas ID)
+                // Permissões com mesmo codename e name são consideradas duplicatas
                 const permsUnicas = [];
-                const idsVistos = new Set();
+                const chavesVistas = new Set();
                 perms.forEach(p => {
-                    if (p && p.id && !idsVistos.has(p.id)) {
-                        idsVistos.add(p.id);
+                    if (!p) return;
+                    // Criar chave única baseada em codename + name
+                    const codename = (p.codename || '').toLowerCase().trim();
+                    const name = (p.name || '').toLowerCase().trim();
+                    const chave = `${codename}|||${name}`;
+                    
+                    if (!chavesVistas.has(chave)) {
+                        chavesVistas.add(chave);
                         permsUnicas.push(p);
+                    } else {
+                        console.log('[DEBUG] Permissão duplicada removida:', p.codename, p.name);
                     }
                 });
                 todasPermissoes = permsUnicas;
                 
-                console.log('[DEBUG] Permissões carregadas:', todasPermissoes.length, '(após remover duplicatas)');
-                console.log('[DEBUG] Tipo da resposta:', Array.isArray(res) ? 'Array' : 'Object com results');
+                console.log('[DEBUG] Permissões carregadas:', todasPermissoes.length, '(após remover duplicatas por codename+name)');
+                console.log('[DEBUG] Permissões originais:', perms.length);
+                if (perms.length !== todasPermissoes.length) {
+                    console.log('[DEBUG] ⚠️', perms.length - todasPermissoes.length, 'permissões duplicadas foram removidas');
+                }
             } catch(e) { 
                 console.error('[DEBUG] Erro ao carregar permissões:', e);
                 container.innerHTML = 'Erro ao carregar permissões'; 
