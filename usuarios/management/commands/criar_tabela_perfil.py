@@ -36,9 +36,9 @@ class Command(BaseCommand):
                     );
                 """)
                 
-                # Criar indices
+                # Criar indices (usar IF NOT EXISTS para evitar erros)
                 cursor.execute("""
-                    CREATE INDEX "usuarios_perfil_nome_e44e3c8f_like" 
+                    CREATE INDEX IF NOT EXISTS "usuarios_perfil_nome_e44e3c8f_like" 
                     ON "usuarios_perfil" ("nome" varchar_pattern_ops);
                 """)
                 
