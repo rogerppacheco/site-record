@@ -167,6 +167,10 @@ class UsuarioSerializer(serializers.ModelSerializer):
         password = validated_data.pop('password', None)
         groups = validated_data.pop('groups', None)
         
+        # Garantir que campos com default não sejam None
+        if 'meta_comissao' in validated_data and validated_data['meta_comissao'] is None:
+            validated_data['meta_comissao'] = 0
+        
         # Atualiza campos normais (groups já foi removido do validated_data)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
@@ -175,7 +179,13 @@ class UsuarioSerializer(serializers.ModelSerializer):
         if groups is not None:
             instance.groups.set(groups)
             # Sincronizar campo perfil baseado no primeiro grupo
-            self._sincronizar_perfil_do_group(instance, groups[0] if groups else None)
+            try:
+                self._sincronizar_perfil_do_group(instance, groups[0] if groups else None)
+            except Exception as e:
+                # Se houver erro na sincronização, apenas loga e continua (não bloqueia)
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Erro ao sincronizar perfil do grupo: {e}")
             
         # Atualiza senha se fornecida
         if password:
