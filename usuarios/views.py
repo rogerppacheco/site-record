@@ -38,7 +38,7 @@ class PermissaoViewSet(viewsets.ReadOnlyModelViewSet):
     
     def get_queryset(self):
         meus_apps = ['crm_app', 'usuarios', 'presenca', 'osab', 'relatorios']
-        return Permission.objects.filter(content_type__app_label__in=meus_apps).order_by('content_type__model', 'codename')
+        return Permission.objects.filter(content_type__app_label__in=meus_apps).distinct().order_by('content_type__model', 'codename')
     
     def list(self, request, *args, **kwargs):
         """
