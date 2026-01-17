@@ -59,11 +59,7 @@ class Command(BaseCommand):
                         self.stdout.write("Corrigindo...")
                         
                         with transaction.atomic():
-                            # 3. Dropar a constraint antiga
-                            self.stdout.write(f"\n1. Removendo constraint '{constraint_name}'...")
-                            cursor.execute(f"ALTER TABLE usuarios_usuario DROP CONSTRAINT IF EXISTS {constraint_name};")
-                            
-                            # 4. Verificar se a tabela usuarios_perfil existe
+                            # 3. Verificar se a tabela usuarios_perfil existe
                             cursor.execute("""
                                 SELECT EXISTS (
                                     SELECT FROM information_schema.tables 
@@ -78,8 +74,26 @@ class Command(BaseCommand):
                                 self.stdout.write("Crie a tabela primeiro usando: python manage.py criar_tabela_perfil")
                                 return
                             
-                            # 5. Criar a constraint correta
-                            self.stdout.write("2. Criando constraint apontando para usuarios_perfil...")
+                            # 4. Limpar perfil_id inválidos (que apontam para IDs que não existem em usuarios_perfil)
+                            self.stdout.write("\n1. Limpando perfil_id inválidos...")
+                            cursor.execute("""
+                                UPDATE usuarios_usuario
+                                SET perfil_id = NULL
+                                WHERE perfil_id IS NOT NULL
+                                AND perfil_id NOT IN (SELECT id FROM usuarios_perfil);
+                            """)
+                            rows_afetadas = cursor.rowcount
+                            if rows_afetadas > 0:
+                                self.stdout.write(self.style.WARNING(f"   {rows_afetadas} usuário(s) tiveram perfil_id limpo (apontavam para IDs inexistentes)"))
+                            else:
+                                self.stdout.write("   Nenhum perfil_id inválido encontrado")
+                            
+                            # 5. Dropar a constraint antiga
+                            self.stdout.write(f"\n2. Removendo constraint '{constraint_name}'...")
+                            cursor.execute(f"ALTER TABLE usuarios_usuario DROP CONSTRAINT IF EXISTS {constraint_name};")
+                            
+                            # 6. Criar a constraint correta
+                            self.stdout.write("3. Criando constraint apontando para usuarios_perfil...")
                             new_constraint_name = 'usuarios_usuario_perfil_id_fk_usuarios_perfil'
                             cursor.execute(f"""
                                 ALTER TABLE usuarios_usuario
