@@ -45,9 +45,18 @@ class PermissaoViewSet(viewsets.ReadOnlyModelViewSet):
         Sobrescreve o método list para garantir que todas as permissões sejam retornadas
         sem paginação, mesmo que a paginação global esteja habilitada.
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        
         queryset = self.get_queryset()
+        count = queryset.count()
+        logger.info(f"[PERMISSOES API] Total de permissões no queryset: {count}")
+        
         serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
+        data = serializer.data
+        logger.info(f"[PERMISSOES API] Total de permissões serializadas: {len(data)}")
+        
+        return Response(data)
 
 class PerfilViewSet(viewsets.ModelViewSet):
     queryset = Perfil.objects.all().order_by('nome')
