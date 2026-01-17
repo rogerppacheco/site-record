@@ -14,6 +14,7 @@ from .views import (
     ClienteViewSet, 
     ComissaoOperadoraViewSet,
     ComunicadoViewSet,
+    EstatisticasBotWhatsAppView,
     LancamentoFinanceiroViewSet,
     GrupoDisparoViewSet,
 
@@ -192,6 +193,9 @@ urlpatterns = [
     # --- Performance ---
     path('relatorios/performance-vendas/', PerformanceVendasView.as_view(), name='performance-vendas'),
     path('performance-painel/', PainelPerformanceView.as_view(), name='api-performance-painel'),
+    
+    # --- Estatísticas Bot WhatsApp ---
+    path('estatisticas-bot/', EstatisticasBotWhatsAppView.as_view(), name='estatisticas-bot'),
     path('performance-painel/exportar/', ExportarPerformanceExcelView.as_view(), name='exportar-performance-excel'),
     path('performance-painel/enviar-whatsapp/', EnviarImagemPerformanceView.as_view(), name='enviar-performance-zap'),
     path('integracao/listar-grupos/', listar_grupos_whatsapp_api, name='listar-grupos-zapi'),

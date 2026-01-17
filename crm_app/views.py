@@ -340,7 +340,7 @@ from .models import (
     Campanha, ComissaoOperadora, Comunicado, AreaVenda,
     SessaoWhatsapp, DFV, GrupoDisparo, LancamentoFinanceiro,
     AgendamentoDisparo, ImportacaoAgendamento, ImportacaoRecompra,
-    LogImportacaoAgendamento
+    LogImportacaoAgendamento, EstatisticaBotWhatsApp
 )
 
 # Serializers do App
@@ -486,6 +486,96 @@ class ComunicadoViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(criado_por=self.request.user)
+
+class EstatisticasBotWhatsAppView(APIView):
+    """
+    API para buscar estatísticas do bot WhatsApp
+    Retorna contagem por comando e por vendedor
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request, *args, **kwargs):
+        from django.db.models import Count, Q
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        # Parâmetros opcionais de filtro
+        dias = request.query_params.get('dias', 30)  # Padrão: últimos 30 dias
+        try:
+            dias = int(dias)
+        except:
+            dias = 30
+        
+        data_inicio = timezone.now() - timedelta(days=dias)
+        
+        # Filtrar estatísticas do período
+        estatisticas = EstatisticaBotWhatsApp.objects.filter(
+            data_envio__gte=data_inicio
+        ).select_related('vendedor')
+        
+        # 1. Contagem por comando
+        por_comando = estatisticas.values('comando').annotate(
+            total=Count('id')
+        ).order_by('comando')
+        
+        comando_dict = {item['comando']: item['total'] for item in por_comando}
+        
+        # 2. Contagem por vendedor
+        por_vendedor = estatisticas.filter(
+            vendedor__isnull=False
+        ).values(
+            'vendedor__id', 
+            'vendedor__username',
+            'vendedor__first_name',
+            'vendedor__last_name'
+        ).annotate(
+            total=Count('id'),
+            fachada=Count('id', filter=Q(comando='FACHADA')),
+            viabilidade=Count('id', filter=Q(comando='VIABILIDADE')),
+            fatura=Count('id', filter=Q(comando='FATURA')),
+            status=Count('id', filter=Q(comando='STATUS'))
+        ).order_by('-total')
+        
+        vendedores_data = []
+        for item in por_vendedor:
+            nome_completo = item.get('vendedor__first_name', '') or ''
+            sobrenome = item.get('vendedor__last_name', '') or ''
+            if sobrenome:
+                nome_completo = f"{nome_completo} {sobrenome}".strip()
+            if not nome_completo:
+                nome_completo = item.get('vendedor__username', 'N/A')
+            
+            vendedores_data.append({
+                'vendedor_id': item['vendedor__id'],
+                'vendedor_nome': nome_completo,
+                'vendedor_username': item.get('vendedor__username', 'N/A'),
+                'total': item['total'],
+                'fachada': item['fachada'],
+                'viabilidade': item['viabilidade'],
+                'fatura': item['fatura'],
+                'status': item['status']
+            })
+        
+        # 3. Totais gerais
+        total_geral = estatisticas.count()
+        total_sem_vendedor = estatisticas.filter(vendedor__isnull=True).count()
+        
+        return Response({
+            'periodo_dias': dias,
+            'data_inicio': data_inicio.isoformat(),
+            'totais': {
+                'geral': total_geral,
+                'sem_vendedor': total_sem_vendedor,
+                'com_vendedor': total_geral - total_sem_vendedor
+            },
+            'por_comando': {
+                'FACHADA': comando_dict.get('FACHADA', 0),
+                'VIABILIDADE': comando_dict.get('VIABILIDADE', 0),
+                'FATURA': comando_dict.get('FATURA', 0),
+                'STATUS': comando_dict.get('STATUS', 0),
+            },
+            'por_vendedor': vendedores_data
+        })
 
 class VendaViewSet(viewsets.ModelViewSet):
     permission_classes = [VendaPermission]
