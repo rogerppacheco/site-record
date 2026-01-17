@@ -361,8 +361,15 @@ def is_member(user, groups):
         return True
     if user.groups.filter(name__in=groups).exists():
         return True
-    if hasattr(user, 'perfil') and user.perfil and user.perfil.nome in groups:
-        return True
+    # Verifica perfil com tratamento de erro (caso perfil não exista)
+    try:
+        if hasattr(user, 'perfil_id') and user.perfil_id:
+            perfil = user.perfil  # Acessa o perfil
+            if perfil and perfil.nome in groups:
+                return True
+    except Exception:
+        # Se houver erro ao acessar perfil (não existe, etc), ignora
+        pass
     return False
 
 def get_osab_bot_user():
