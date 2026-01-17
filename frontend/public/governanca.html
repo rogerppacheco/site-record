@@ -743,6 +743,43 @@
         renderizarListaPermissoes(grupo ? grupo.permissions : [], '');
     }
     
+    function obterTipoAcao(permissao) {
+        // Detecta o tipo de ação baseado no codename ou name
+        const codename = (permissao.codename || '').toLowerCase();
+        const name = (permissao.name || '').toLowerCase();
+        
+        if (codename.startsWith('add_') || name.includes('can add') || name.includes('adicionar')) {
+            return 'add';
+        }
+        if (codename.startsWith('change_') || name.includes('can change') || name.includes('editar')) {
+            return 'change';
+        }
+        if (codename.startsWith('delete_') || name.includes('can delete') || name.includes('excluir')) {
+            return 'delete';
+        }
+        if (codename.startsWith('view_') || name.includes('can view') || name.includes('visualizar')) {
+            return 'view';
+        }
+        // Permissões customizadas vão para 'view' por padrão
+        return 'view';
+    }
+    
+    function obterOrdemTipoAcao(tipo) {
+        // Ordem: Adicionar (1), Editar (2), Visualizar (3), Excluir (4)
+        const ordem = { 'add': 1, 'change': 2, 'view': 3, 'delete': 4 };
+        return ordem[tipo] || 5;
+    }
+    
+    function obterNomeTipoAcao(tipo) {
+        const nomes = {
+            'add': 'Adicionar',
+            'change': 'Editar',
+            'view': 'Visualizar',
+            'delete': 'Excluir'
+        };
+        return nomes[tipo] || tipo;
+    }
+    
     function renderizarListaPermissoes(permsAtuais, filtro = '') {
         const container = document.getElementById('lista-permissoes');
         container.innerHTML = '';
@@ -766,11 +803,44 @@
             return;
         }
         
-        console.log('[DEBUG] Renderizando permissões:', permissoesFiltradas.length, 'de', todasPermissoes.length, 'total');
+        // Agrupar por tipo de ação
+        const permissoesPorTipo = {};
         permissoesFiltradas.forEach(p => {
-            const isChecked = permsAtuais.includes(p.id) ? 'checked' : '';
-            const nomeFormatado = formatarNomePermissao(p.name || '');
-            container.innerHTML += `<div class="perm-item form-check"><input class="form-check-input perm-checkbox" type="checkbox" value="${p.id}" id="perm-${p.id}" ${isChecked}><label class="form-check-label perm-label" for="perm-${p.id}" style="cursor: pointer;">${nomeFormatado}</label></div>`;
+            const tipo = obterTipoAcao(p);
+            if (!permissoesPorTipo[tipo]) {
+                permissoesPorTipo[tipo] = [];
+            }
+            permissoesPorTipo[tipo].push(p);
+        });
+        
+        // Ordenar os tipos pela ordem definida
+        const tiposOrdenados = Object.keys(permissoesPorTipo).sort((a, b) => {
+            return obterOrdemTipoAcao(a) - obterOrdemTipoAcao(b);
+        });
+        
+        console.log('[DEBUG] Renderizando permissões:', permissoesFiltradas.length, 'de', todasPermissoes.length, 'total');
+        
+        // Renderizar por seção
+        tiposOrdenados.forEach(tipo => {
+            const permissoesDoTipo = permissoesPorTipo[tipo];
+            
+            // Ordenar alfabeticamente dentro de cada tipo
+            permissoesDoTipo.sort((a, b) => {
+                const nomeA = formatarNomePermissao(a.name || '').toLowerCase();
+                const nomeB = formatarNomePermissao(b.name || '').toLowerCase();
+                return nomeA.localeCompare(nomeB, 'pt-BR');
+            });
+            
+            // Adicionar cabeçalho da seção
+            const nomeTipo = obterNomeTipoAcao(tipo);
+            container.innerHTML += `<div class="perm-section-header">${nomeTipo}</div>`;
+            
+            // Renderizar permissões desta seção
+            permissoesDoTipo.forEach(p => {
+                const isChecked = permsAtuais.includes(p.id) ? 'checked' : '';
+                const nomeFormatado = formatarNomePermissao(p.name || '');
+                container.innerHTML += `<div class="perm-item form-check"><input class="form-check-input perm-checkbox" type="checkbox" value="${p.id}" id="perm-${p.id}" ${isChecked}><label class="form-check-label perm-label" for="perm-${p.id}" style="cursor: pointer;">${nomeFormatado}</label></div>`;
+            });
         });
         
         atualizarContadorPermissoes(permissoesFiltradas.length);
