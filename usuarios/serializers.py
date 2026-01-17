@@ -185,10 +185,15 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         token = super().get_token(user)
         token['username'] = user.username
         token['user_name'] = user.get_full_name() if hasattr(user, 'get_full_name') else user.username
-        # Adiciona o perfil legado
-        if hasattr(user, 'perfil') and user.perfil is not None:
-            token['perfil'] = user.perfil.nome
-        else:
+        # Adiciona o perfil legado (com tratamento de erro caso perfil não exista)
+        try:
+            if hasattr(user, 'perfil_id') and user.perfil_id:
+                user.perfil  # Tenta acessar para verificar se existe
+                token['perfil'] = user.perfil.nome if user.perfil else 'Vendedor'
+            else:
+                token['perfil'] = 'Vendedor'
+        except Exception:
+            # Se o perfil não existir (ID inválido), usa padrão
             token['perfil'] = 'Vendedor'
         # Adiciona o primeiro grupo como perfil principal
         if user.groups.exists():
