@@ -678,7 +678,15 @@
         const container = document.getElementById('lista-permissoes');
         container.innerHTML = 'Carregando...';
         perfilModal.show();
-        if (todasPermissoes.length === 0) { try { todasPermissoes = await apiFetch(API_PERMISSOES); } catch(e) { container.innerHTML = 'Erro'; return; } }
+        if (todasPermissoes.length === 0) { 
+            try { 
+                const res = await apiFetch(API_PERMISSOES);
+                todasPermissoes = Array.isArray(res) ? res : (res?.results || []);
+            } catch(e) { 
+                container.innerHTML = 'Erro ao carregar permissões'; 
+                return; 
+            } 
+        }
         renderizarListaPermissoes(grupo ? grupo.permissions : []);
     }
     
