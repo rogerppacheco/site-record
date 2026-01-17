@@ -722,8 +722,20 @@
         if (todasPermissoes.length === 0) { 
             try { 
                 const res = await apiFetch(API_PERMISSOES);
-                todasPermissoes = Array.isArray(res) ? res : (res?.results || []);
-                console.log('[DEBUG] Permissões carregadas:', todasPermissoes.length);
+                let perms = Array.isArray(res) ? res : (res?.results || []);
+                
+                // Remover duplicatas baseado no ID (segurança extra caso distinct() não funcione)
+                const permsUnicas = [];
+                const idsVistos = new Set();
+                perms.forEach(p => {
+                    if (p && p.id && !idsVistos.has(p.id)) {
+                        idsVistos.add(p.id);
+                        permsUnicas.push(p);
+                    }
+                });
+                todasPermissoes = permsUnicas;
+                
+                console.log('[DEBUG] Permissões carregadas:', todasPermissoes.length, '(após remover duplicatas)');
                 console.log('[DEBUG] Tipo da resposta:', Array.isArray(res) ? 'Array' : 'Object com results');
             } catch(e) { 
                 console.error('[DEBUG] Erro ao carregar permissões:', e);
