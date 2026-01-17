@@ -44,8 +44,15 @@ class CustomUserAdmin(UserAdmin):
         }),
     )
 
-    list_display = ('username', 'email', 'first_name', 'last_name', 'is_staff', 'perfil', 'canal')
+    list_display = ('username', 'email', 'first_name', 'last_name', 'is_staff', 'get_groups_display', 'perfil', 'canal')
     list_filter = ('is_staff', 'is_superuser', 'is_active', 'groups', 'perfil', 'canal')
+    
+    def get_groups_display(self, obj):
+        """Mostra os grupos do usuário na listagem"""
+        if obj.groups.exists():
+            return ', '.join([g.name for g in obj.groups.all()])
+        return '-'
+    get_groups_display.short_description = 'Groups (Perfil)'
 
 # ======================================================
 # --- CORREÇÃO APLICADA AQUI ---
