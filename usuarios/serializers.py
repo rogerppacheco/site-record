@@ -147,17 +147,27 @@ class UsuarioSerializer(serializers.ModelSerializer):
         instance.save()
         if groups:
             instance.groups.set(groups)
+            # Sincronizar campo perfil baseado no primeiro grupo
+            self._sincronizar_perfil_do_group(instance, groups[0] if groups else None)
         return instance
 
     def update(self, instance, validated_data):
         password = validated_data.pop('password', None)
+        groups = validated_data.pop('groups', None)
         
         # Atualiza campos normais
         for attr, value in validated_data.items():
             if attr == 'groups':
-                instance.groups.set(value)
+                # Não processar aqui, processaremos depois
+                pass
             else:
                 setattr(instance, attr, value)
+        
+        # Processar groups separadamente
+        if groups is not None:
+            instance.groups.set(groups)
+            # Sincronizar campo perfil baseado no primeiro grupo
+            self._sincronizar_perfil_do_group(instance, groups[0] if groups else None)
             
         # Atualiza senha se fornecida
         if password:
@@ -165,6 +175,32 @@ class UsuarioSerializer(serializers.ModelSerializer):
             
         instance.save()
         return instance
+    
+    def _sincronizar_perfil_do_group(self, usuario, group_id):
+        """
+        Sincroniza o campo perfil (ForeignKey) baseado no Group atribuído.
+        Busca um Perfil com nome igual ao nome do Group.
+        """
+        from django.contrib.auth.models import Group
+        from usuarios.models import Perfil
+        
+        if not group_id:
+            # Se não há grupo, limpa o perfil
+            usuario.perfil = None
+            return
+        
+        try:
+            group = Group.objects.get(id=group_id)
+            # Busca um Perfil com o mesmo nome do Group
+            try:
+                perfil = Perfil.objects.get(nome=group.name)
+                usuario.perfil = perfil
+            except Perfil.DoesNotExist:
+                # Se não encontrar Perfil com esse nome, limpa o campo
+                usuario.perfil = None
+        except Group.DoesNotExist:
+            # Se o Group não existir, limpa o perfil
+            usuario.perfil = None
 
 # --- SERIALIZER DE PERFIL DO USUÁRIO (LEITURA) ---
 
