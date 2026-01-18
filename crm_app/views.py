@@ -5670,6 +5670,11 @@ class ImportacaoAgendamentoView(APIView):
         try:
             log = LogImportacaoAgendamento.objects.get(id=log_id)
             
+            # Verificar se foi cancelado antes de começar
+            log.refresh_from_db()
+            if log.status == 'CANCELADO':
+                return
+            
             # Ler Excel/XLSB em memória (preservando zeros à esquerda em nr_ordem_venda)
             try:
                 file_buffer = BytesIO(file_content)
@@ -5784,6 +5789,17 @@ class ImportacaoAgendamentoView(APIView):
             erros = []
 
             for idx, row in df.iterrows():
+                # Verificar se foi cancelado (a cada 100 linhas para não sobrecarregar)
+                if idx % 100 == 0:
+                    log.refresh_from_db()
+                    if log.status == 'CANCELADO':
+                        # Marcar como cancelado e sair
+                        log.finalizado_em = timezone.now()
+                        log.calcular_duracao()
+                        log.mensagem_erro = 'Processo cancelado pelo usuário durante o processamento.'
+                        log.mensagem = f'Importação cancelada. {registros_criados} registros foram processados antes do cancelamento.'
+                        log.save()
+                        return
                 try:
                     # Construir dicionário de dados, mas evitando campos que contenham 'id' no nome
                     dados = {}
@@ -6583,7 +6599,10 @@ class ImportarFPDView(APIView):
             # Otimização: pre-carregar contratos em memória para evitar N queries
             # Criar dicionário com múltiplas variações de chaves para melhor matching
             contratos_dict = {}
-            contratos_list = list(ContratoM10.objects.all())
+            # Pre-carregar faturas para evitar N+1 queries
+            contratos_list = list(ContratoM10.objects.prefetch_related('faturas').all())
+            # Criar dicionário de faturas por contrato para acesso rápido
+            faturas_por_contrato = {}
             for c in contratos_list:
                 if c.ordem_servico:
                     os = str(c.ordem_servico).strip()
@@ -6600,6 +6619,9 @@ class ImportarFPDView(APIView):
                     for variacao in variacoes:
                         if variacao and variacao not in contratos_dict:
                             contratos_dict[variacao] = c
+                # Pre-carregar faturas do contrato em dicionário para acesso rápido
+                faturas_contrato = list(c.faturas.all())
+                faturas_por_contrato[c.id] = {f.numero_fatura: f for f in faturas_contrato}
             
             # Otimização: pre-carregar ImportacaoFPD em memória também
             # Indexar apenas por nr_ordem (atualizar registro existente com mesmo nr_ordem)
@@ -6704,12 +6726,8 @@ class ImportarFPDView(APIView):
                             vl_fatura_float = float(vl_fatura) if pd.notna(vl_fatura) else 0
                             nr_dias_atraso_int = int(nr_dias_atraso) if pd.notna(nr_dias_atraso) else 0
                         
-                            # Verificar se fatura já existe (lookup em memória via contrato)
-                            fatura_existente = None
-                            for f in contrato.faturas.all():
-                                if f.numero_fatura == 1:
-                                    fatura_existente = f
-                                    break
+                            # Verificar se fatura já existe (lookup em memória via dicionário pré-carregado)
+                            fatura_existente = faturas_por_contrato.get(contrato.id, {}).get(1)
                             
                             if fatura_existente:
                                 fatura_existente.numero_fatura_operadora = nr_fatura
@@ -7448,6 +7466,57 @@ class LogsImportacaoLegadoView(APIView):
             'success': True,
             'logs': logs_data
         })
+
+
+class CancelarImportacaoAgendamentoView(APIView):
+    """Cancela uma importação de Agendamento em andamento"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request, log_id):
+        try:
+            log = LogImportacaoAgendamento.objects.get(id=log_id)
+            
+            # Verificar se pode cancelar (apenas PROCESSANDO)
+            if log.status != 'PROCESSANDO':
+                return Response({
+                    'success': False,
+                    'error': f'Esta importação não pode ser cancelada. Status atual: {log.get_status_display()}'
+                }, status=400)
+            
+            # Marcar como cancelado
+            log.status = 'CANCELADO'
+            log.finalizado_em = timezone.now()
+            log.calcular_duracao()
+            log.mensagem_erro = 'Processo cancelado pelo usuário.'
+            log.mensagem = 'Importação cancelada pelo usuário antes da conclusão.'
+            log.save()
+            
+            # Mensagem informativa sobre o que pode ter acontecido
+            mensagem_info = (
+                "Importação cancelada. Possíveis motivos para processos travados:\n"
+                "- Arquivo muito grande pode demorar para processar\n"
+                "- Problemas de conexão com o banco de dados\n"
+                "- Erro não capturado no código de processamento\n"
+                "- Thread foi interrompida pelo servidor\n"
+                "- Processo lento devido a muitas operações no banco"
+            )
+            
+            return Response({
+                'success': True,
+                'message': 'Importação cancelada com sucesso.',
+                'info': mensagem_info
+            })
+            
+        except LogImportacaoAgendamento.DoesNotExist:
+            return Response({
+                'success': False,
+                'error': 'Log de importação não encontrado.'
+            }, status=404)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': f'Erro ao cancelar importação: {str(e)}'
+            }, status=500)
 
 
 class LogsImportacaoAgendamentoView(APIView):
