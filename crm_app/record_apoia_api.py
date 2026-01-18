@@ -56,11 +56,19 @@ class RecordApoiaUploadView(APIView):
                         usuario_upload=request.user
                     )
                     
+                    # Obter tamanho de forma segura
+                    tamanho = 0
+                    if record.arquivo:
+                        try:
+                            tamanho = record.arquivo.size
+                        except (FileNotFoundError, IOError, OSError, AttributeError):
+                            tamanho = 0
+                    
                     resultados.append({
                         'id': record.id,
                         'titulo': record.titulo,
                         'nome_original': record.nome_original,
-                        'tamanho': record.arquivo.size if record.arquivo else 0,
+                        'tamanho': tamanho,
                         'tipo': record.get_tipo_arquivo_display(),
                         'criado_em': record.data_upload.isoformat() if record.data_upload else None
                     })
@@ -120,8 +128,51 @@ class RecordApoiaListView(APIView):
             
             queryset = queryset.order_by('-data_upload')
             
+            # Importar settings para verificar caminho do arquivo
+            from django.conf import settings
+            
             arquivos = []
             for arq in queryset:
+                # Verificar se o arquivo existe antes de adicionar à lista
+                arquivo_existe = False
+                tamanho = 0
+                
+                if arq.arquivo and arq.arquivo.name:
+                    # Tentar verificar se o arquivo existe usando os.path.exists primeiro
+                    try:
+                        media_root = getattr(settings, 'MEDIA_ROOT', None)
+                        if media_root:
+                            caminho_completo = os.path.join(media_root, arq.arquivo.name)
+                            arquivo_existe = os.path.exists(caminho_completo)
+                        else:
+                            # Se não tiver MEDIA_ROOT, usar storage
+                            arquivo_existe = default_storage.exists(arq.arquivo.name)
+                        
+                        # Se existe, tentar obter tamanho
+                        if arquivo_existe:
+                            try:
+                                tamanho = arq.arquivo.size
+                            except (FileNotFoundError, IOError, OSError, AttributeError):
+                                # Arquivo pode ter sido removido entre a verificação e o acesso
+                                arquivo_existe = False
+                                tamanho = 0
+                    except Exception as e:
+                        # Erro ao verificar - considerar como não existente
+                        logger.warning(f"Erro ao verificar arquivo {arq.id}: {e}")
+                        arquivo_existe = False
+                        tamanho = 0
+                
+                # Só adicionar arquivos que existem fisicamente
+                if not arquivo_existe and arq.arquivo and arq.arquivo.name:
+                    # Arquivo não existe - marcar como inativo automaticamente
+                    try:
+                        arq.ativo = False
+                        arq.save(update_fields=['ativo'])
+                        logger.warning(f"Arquivo {arq.id} ({arq.titulo}) marcado como inativo - arquivo não encontrado no disco")
+                    except Exception as e:
+                        logger.error(f"Erro ao marcar arquivo {arq.id} como inativo: {e}")
+                    continue  # Pular este arquivo
+                
                 arquivos.append({
                     'id': arq.id,
                     'titulo': arq.titulo,
@@ -129,7 +180,7 @@ class RecordApoiaListView(APIView):
                     'categoria': arq.categoria,
                     'tags': arq.tags,
                     'tipo': arq.get_tipo_arquivo_display(),
-                    'tamanho': arq.arquivo.size if arq.arquivo else 0,
+                    'tamanho': tamanho,
                     'nome_original': arq.nome_original,
                     'downloads_count': arq.downloads_count,
                     'criado_em': arq.data_upload.isoformat() if arq.data_upload else None,
