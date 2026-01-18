@@ -55,6 +55,44 @@ class CustomUserAdmin(UserAdmin):
         return '-'
     get_groups_display.short_description = 'Groups (Perfil)'
 
+    def save_model(self, request, obj, form, change):
+        """Override para sincronizar perfil com groups quando salvar pelo Django admin"""
+        # Salva o modelo primeiro
+        super().save_model(request, obj, form, change)
+        
+        # Sincroniza o campo perfil baseado nos groups
+        # Se o usuário tem groups, usa o primeiro group para encontrar o perfil correspondente
+        if obj.groups.exists():
+            from usuarios.models import Perfil
+            first_group = obj.groups.first()
+            try:
+                perfil = Perfil.objects.get(nome__iexact=first_group.name)
+                if obj.perfil != perfil:
+                    obj.perfil = perfil
+                    obj.save(update_fields=['perfil'])
+            except Perfil.DoesNotExist:
+                # Se não encontrar perfil correspondente, limpa o campo
+                if obj.perfil:
+                    obj.perfil = None
+                    obj.save(update_fields=['perfil'])
+        else:
+            # Se não tem groups, limpa o perfil
+            if obj.perfil:
+                obj.perfil = None
+                obj.save(update_fields=['perfil'])
+        
+        # Sincroniza groups baseado no perfil (se perfil foi alterado diretamente)
+        # Se o perfil foi definido manualmente e não corresponde aos groups, adiciona o group correspondente
+        if obj.perfil:
+            from django.contrib.auth.models import Group
+            try:
+                group = Group.objects.get(name__iexact=obj.perfil.nome)
+                if not obj.groups.filter(id=group.id).exists():
+                    # Se o group correspondente não está nos groups do usuário, adiciona
+                    obj.groups.add(group)
+            except Group.DoesNotExist:
+                pass
+
 # ======================================================
 # --- CORREÇÃO APLICADA AQUI ---
 # A linha admin.site.unregister(Usuario) foi REMOVIDA.
