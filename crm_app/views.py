@@ -2258,6 +2258,15 @@ class ImportacaoOsabView(APIView):
     def _clean_key(self, key):
         if pd.isna(key) or key is None: return None
         return str(key).replace('.0', '').strip()
+    
+    def _normalize_pedido(self, pedido):
+        """Normaliza pedido: mantém valor exato da planilha, apenas remove espaços e .0 se for número float"""
+        if pd.isna(pedido) or pedido is None: return None
+        pedido_str = str(pedido).strip()
+        # Se terminar com .0 (conversão de float), remove apenas o .0, mas mantém zeros à esquerda
+        if pedido_str.endswith('.0'):
+            pedido_str = pedido_str[:-2]
+        return pedido_str
 
     def _normalize_text(self, text):
         if not text: return ""
@@ -2377,10 +2386,107 @@ class ImportacaoOsabView(APIView):
             # Ler DataFrame do conteúdo
             try:
                 file_buffer = BytesIO(file_content)
+                # Usar openpyxl para forçar leitura de PEDIDO como texto (preserva zeros mesmo se salvo como número)
                 if file_name.endswith('.xlsb'): 
-                    df = pd.read_excel(file_buffer, engine='pyxlsb')
-                elif file_name.endswith(('.xlsx', '.xls')): 
-                    df = pd.read_excel(file_buffer)
+                    # Para .xlsb, tentar usar dtype/converters para forçar PEDIDO como string
+                    # Primeiro ler uma amostra para descobrir nome da coluna
+                    file_buffer.seek(0)
+                    df_sample = pd.read_excel(file_buffer, engine='pyxlsb', nrows=1)
+                    file_buffer.seek(0)
+                    # Encontrar coluna que parece ser PEDIDO (case-insensitive, antes da normalização)
+                    pedido_col = None
+                    for col in df_sample.columns:
+                        col_normalizado = str(col).strip().upper().replace(' ', '_')
+                        if col_normalizado == 'PEDIDO':
+                            pedido_col = col  # Manter nome original da coluna
+                            break
+                    # Tentar usar dtype primeiro (se suportado), senão converters
+                    if pedido_col:
+                        try:
+                            # Tentar dtype primeiro (pyxlsb pode suportar em algumas versões)
+                            df = pd.read_excel(file_buffer, engine='pyxlsb', dtype={pedido_col: str})
+                        except (TypeError, ValueError):
+                            # Se dtype não funcionar, usar converters
+                            try:
+                                df = pd.read_excel(file_buffer, engine='pyxlsb', converters={pedido_col: lambda x: str(x) if pd.notna(x) else ''})
+                            except:
+                                # Se converters também falhar, ler normalmente
+                                df = pd.read_excel(file_buffer, engine='pyxlsb')
+                    else:
+                        df = pd.read_excel(file_buffer, engine='pyxlsb')
+                elif file_name.endswith('.xlsx'): 
+                    # Para .xlsx, usar openpyxl para forçar PEDIDO como texto
+                    try:
+                        from openpyxl import load_workbook
+                        file_buffer.seek(0)
+                        wb = load_workbook(file_buffer, data_only=False, read_only=True)
+                        ws = wb.active
+                        
+                        # Ler cabeçalhos
+                        headers = [cell.value for cell in ws[1]]
+                        # Encontrar índice da coluna PEDIDO
+                        pedido_idx = None
+                        for idx, header in enumerate(headers):
+                            if header and str(header).strip().upper().replace(' ', '_') == 'PEDIDO':
+                                pedido_idx = idx
+                                break
+                        
+                        # Ler dados: para PEDIDO, forçar como string (preserva zeros)
+                        data = []
+                        for row in ws.iter_rows(min_row=2, values_only=False):
+                            row_data = []
+                            for idx, cell in enumerate(row):
+                                if idx == pedido_idx and cell.value is not None:
+                                    # Para PEDIDO: sempre converter para string (preserva zeros à esquerda)
+                                    # Se célula tem formato texto (@) ou se é string, usar direto
+                                    if cell.data_type == 's':
+                                        row_data.append(str(cell.value))
+                                    else:
+                                        # Se for número, converter para string formatando sem perder zeros
+                                        # Usar internal_value se disponível, senão value
+                                        val = cell.value
+                                        # Formatar como string inteiro (sem decimais)
+                                        if isinstance(val, (int, float)):
+                                            # Para números, converter para int primeiro para evitar .0
+                                            if isinstance(val, float) and val.is_integer():
+                                                val = int(val)
+                                            row_data.append(str(val))
+                                        else:
+                                            row_data.append(str(val) if val is not None else '')
+                                else:
+                                    row_data.append(cell.value)
+                            data.append(row_data)
+                        
+                        wb.close()
+                        df = pd.DataFrame(data, columns=headers)
+                    except Exception as e:
+                        # Fallback para pandas normal se openpyxl falhar
+                        file_buffer.seek(0)
+                        df_sample = pd.read_excel(file_buffer, nrows=1)
+                        file_buffer.seek(0)
+                        pedido_col = None
+                        for col in df_sample.columns:
+                            if str(col).strip().upper().replace(' ', '_') == 'PEDIDO':
+                                pedido_col = col
+                                break
+                        if pedido_col:
+                            df = pd.read_excel(file_buffer, converters={pedido_col: lambda x: str(x) if pd.notna(x) else ''})
+                        else:
+                            df = pd.read_excel(file_buffer)
+                elif file_name.endswith('.xls'): 
+                    # Para .xls antigo, usar pandas normal com converters
+                    file_buffer.seek(0)
+                    df_sample = pd.read_excel(file_buffer, nrows=1)
+                    file_buffer.seek(0)
+                    pedido_col = None
+                    for col in df_sample.columns:
+                        if str(col).strip().upper().replace(' ', '_') == 'PEDIDO':
+                            pedido_col = col
+                            break
+                    if pedido_col:
+                        df = pd.read_excel(file_buffer, converters={pedido_col: lambda x: str(x) if pd.notna(x) else ''})
+                    else:
+                        df = pd.read_excel(file_buffer)
                 else: 
                     raise ValueError('Formato inválido')
             except Exception as e:
@@ -2393,6 +2499,61 @@ class ImportacaoOsabView(APIView):
 
                 # 1. Normalização dos nomes das colunas
             df.columns = [str(col).strip().upper().replace(' ', '_') for col in df.columns]
+            
+            # 1.1 Validação de tipos de colunas esperadas
+            colunas_esperadas_tipo = {
+                'PRODUTO': 'TEXTO',
+                'UF': 'TEXTO',
+                'DT_REF': 'DATA',
+                'PEDIDO': 'TEXTO',
+                'SEGMENTO': 'TEXTO',
+                'LOCALIDADE': 'TEXTO',
+                'CELULA': 'TEXTO',
+                'ID_BUNDLE': 'TEXTO',
+                'TELEFONE': 'NÚMERO',
+                'VELOCIDADE': 'TEXTO',
+                'MATRICULA_VENDEDOR': 'TEXTO',
+                'CLASSE_PRODUTO': 'TEXTO',
+                'NOME_CNAL': 'TEXTO',
+                'PDV_SAP': 'NÚMERO',
+                'DESCRICAO': 'TEXTO',
+                'DATA_ABERTURA': 'DATA E HORA',
+                'DATA_FECHAMENTO': 'DATA E HORA',
+                'SITUACAO': 'TEXTO',
+                'CLASSIFICACAO': 'TEXTO',
+                'DATA_AGENDAMENTO': 'DATA E HORA',
+                'COD_PENDENCIA': 'NÚMERO',
+                'DESC_PENDENCIA': 'TEXTO',
+                'NUMERO_BA': 'TEXTO',
+                'FG_VENDA_VALIDA': 'NÚMERO',
+                'DESC_MOTIVO_ORDEM': 'TEXTO',
+                'DESC_SUB_MOTIVO_ORDEM': 'TEXTO',
+                'MEIO_PAGAMENTO': 'TEXTO',
+                'CAMPANHA': 'TEXTO',
+                'FLG_MEI': 'TEXTO',
+                'NM_DIRETORIA': 'TEXTO',
+                'NM_REGIONAL': 'TEXTO',
+                'CD_REDE': 'NÚMERO',
+                'GP_CANAL': 'TEXTO',
+                'NM_PDV_REL': 'TEXTO',
+                'GERENCIA': 'TEXTO',
+                'NM_GC': 'TEXTO',
+                'NR_ORDEM_ORIGINAL': 'TEXTO',
+                'MOTIVO_CANCELAMENTO': 'TEXTO',
+                'SUBMOTIVO_CANCELAMENTO': 'TEXTO',
+            }
+            # Log de colunas faltantes (apenas informativo, não bloqueia importação)
+            colunas_faltantes = set(colunas_esperadas_tipo.keys()) - set(df.columns)
+            if colunas_faltantes:
+                log.mensagem_erro = f'Colunas esperadas não encontradas: {", ".join(sorted(colunas_faltantes))}. A importação continuará com as colunas disponíveis.'
+                log.save()
+            
+            # Garantir que PEDIDO seja tratado como string para preservar zeros à esquerda
+            if 'PEDIDO' in df.columns:
+                # Converter para string (já foi lido como texto via openpyxl se .xlsx)
+                df['PEDIDO'] = df['PEDIDO'].astype(str)
+                # Remover 'nan' string (valores nulos do pandas convertidos para string)
+                df['PEDIDO'] = df['PEDIDO'].replace('nan', '')
             
             # ==============================================================================
             # 2. PARSER DE DATA "INTELIGENTE" (Versão Corrigida para Conflito de Imports)
@@ -2477,20 +2638,44 @@ class ImportacaoOsabView(APIView):
             motivo_padrao_osab, _ = MotivoPendencia.objects.get_or_create(nome="VALIDAR OSAB", defaults={'tipo_pendencia': 'Operacional'})
             motivo_sem_agenda, _ = MotivoPendencia.objects.get_or_create(nome="APROVISIONAMENTO S/ DATA", defaults={'tipo_pendencia': 'Sistêmica'})
 
-            lista_pedidos_raw = df['PEDIDO'].dropna().astype(str).tolist() if 'PEDIDO' in df.columns else []
-            lista_pedidos_limpos = set(p.replace('.0', '').strip() for p in lista_pedidos_raw)
+            # Obter pedidos mantendo valor exato da planilha (já convertido para string na linha 2408)
+            lista_pedidos_raw = df['PEDIDO'].dropna().tolist() if 'PEDIDO' in df.columns else []
+            # Normalizar pedidos mantendo valor exato (apenas remover .0 se for float convertido)
+            lista_pedidos_limpos = set()
+            for p in lista_pedidos_raw:
+                p_str = str(p).strip()
+                if p_str and p_str != 'nan':
+                    # Se terminar com .0 (conversão de float para string), remove apenas o .0
+                    if p_str.endswith('.0'):
+                        p_str = p_str[:-2]
+                    if p_str:  # Garantir que não está vazio após processamento
+                        lista_pedidos_limpos.add(p_str)
 
             vendas_filtradas = Venda.objects.filter(
                 ativo=True, 
                 ordem_servico__in=lista_pedidos_limpos
             ).select_related('vendedor', 'status_esteira', 'status_tratamento')
             
-            vendas_map = {self._clean_key(v.ordem_servico): v for v in vendas_filtradas}
+            # Criar mapa usando pedido normalizado (mantém zeros à esquerda)
+            vendas_map = {}
+            for v in vendas_filtradas:
+                os_normalizado = self._normalize_pedido(v.ordem_servico)
+                if os_normalizado:
+                    vendas_map[os_normalizado] = v
+                # Também adicionar com a chave original para compatibilidade
+                if v.ordem_servico:
+                    vendas_map[v.ordem_servico] = v
             osab_bot = get_osab_bot_user()
 
-            osab_existentes = {
-                obj.documento: obj for obj in ImportacaoOsab.objects.filter(documento__in=lista_pedidos_limpos)
-            }
+            # Buscar OSAB existentes usando documentos normalizados
+            osab_existentes = {}
+            for obj in ImportacaoOsab.objects.filter(documento__in=lista_pedidos_limpos):
+                doc_normalizado = self._normalize_pedido(obj.documento)
+                if doc_normalizado:
+                    osab_existentes[doc_normalizado] = obj
+                # Também adicionar com documento original para compatibilidade
+                if obj.documento:
+                    osab_existentes[obj.documento] = obj
 
             osab_criar, osab_atualizar, vendas_atualizar, historicos_criar = [], [], [], []
             fila_mensagens_whatsapp = [] 
@@ -2559,7 +2744,9 @@ class ImportacaoOsabView(APIView):
                     dados_model = {}
                     for col_planilha, campo_model in coluna_map.items():
                         val = row.get(col_planilha)
-                        if col_planilha == 'PEDIDO': val = self._clean_key(val)
+                        if col_planilha == 'PEDIDO': 
+                            # Manter valor exato da planilha (já está como string preservando zeros)
+                            val = self._normalize_pedido(val)  # Apenas remove .0 se for float convertido
                         dados_model[campo_model] = val
                     
                     doc_chave = dados_model.get('documento')
@@ -2575,11 +2762,12 @@ class ImportacaoOsabView(APIView):
                         dt_ref_atual = _normalize_dt_ref(getattr(obj, 'dt_ref', None))
                         log_item["consta_osab"] = "SIM"
                         log_item["dt_ref_crm"] = self._serialize_date_for_json(dt_ref_atual)
-                        # Se a DT_REF nova não for mais recente, não atualiza nem altera a venda
-                        if dt_ref_atual and (dt_ref_nova is None or dt_ref_nova <= dt_ref_atual):
+                        # Se a DT_REF nova for mais antiga (menor que), não atualiza nem altera a venda
+                        # Se for igual ou maior, atualiza (permite atualização quando é igual)
+                        if dt_ref_atual and (dt_ref_nova is None or dt_ref_nova < dt_ref_atual):
                             log_item["resultado_osab"] = "IGNORADO_DT_REF_ANTIGA"
                             log_item["resultado_crm"] = "IGNORADO_DT_REF_ANTIGA"
-                            log_item["detalhe"] = f"DT_REF planilha ({dt_ref_nova}) <= DT_REF CRM ({dt_ref_atual})"
+                            log_item["detalhe"] = f"DT_REF planilha ({dt_ref_nova}) < DT_REF CRM ({dt_ref_atual})"
                             report["ignorados_dt_ref"] += 1
                             report["logs_detalhados"].append(log_item)
                             continue
@@ -6757,11 +6945,13 @@ class DownloadRelatorioOSABView(APIView):
             # Limpar nome do arquivo: remover extensões e caracteres especiais
             nome_limpo = log.nome_arquivo.rsplit('.', 1)[0]  # Remove extensão (.xlsb, .xlsx, etc)
             nome_limpo = nome_limpo.replace(' ', '_').replace('-', '_')
+            # Remover underscores repetidos e no final
+            import re
+            nome_limpo = re.sub(r'_+', '_', nome_limpo)  # Remove underscores repetidos
             nome_limpo = nome_limpo.rstrip('_')  # Remove underscores no final
             filename = f"Relatorio_OSAB_{log.id}_{nome_limpo}.xlsx"
-            # Garantir que filename não termina com underscore antes da extensão (proteção extra)
-            if filename.endswith('_.xlsx'):
-                filename = filename.replace('_.xlsx', '.xlsx')
+            # Garantir que filename não termina com underscore antes da extensão
+            filename = re.sub(r'_+\.xlsx$', '.xlsx', filename)  # Remove underscore(s) antes de .xlsx
             response = HttpResponse(
                 output.getvalue(),
                 content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -6773,6 +6963,223 @@ class DownloadRelatorioOSABView(APIView):
             logger = logging.getLogger(__name__)
             logger.error(f"Erro ao gerar relatório OSAB (log_id={log_id}): {str(e)}\n{traceback.format_exc()}")
             return Response({'error': f'Erro ao gerar relatório: {str(e)}'}, status=500)
+
+
+class AnaliseComparacaoOSABView(APIView):
+    """Análise comparativa entre planilha OSAB e banco de dados (sem importar)"""
+    permission_classes = [CheckAPIPermission]
+    resource_name = 'importacao_osab'
+    parser_classes = [MultiPartParser, FormParser]
+
+    def _clean_key(self, key):
+        import pandas as pd
+        if pd.isna(key) or key is None: return None
+        return str(key).replace('.0', '').strip()
+
+    def _normalize_dt_ref(self, val):
+        import datetime as dt_sys
+        if val is None:
+            return None
+        if isinstance(val, dt_sys.datetime):
+            return val.date()
+        if isinstance(val, dt_sys.date):
+            return val
+        return None
+
+    def post(self, request, *args, **kwargs):
+        file_obj = request.FILES.get('file')
+        if not file_obj:
+            return Response({'error': 'Nenhum arquivo enviado.'}, status=400)
+
+        try:
+            from io import BytesIO
+            from crm_app.models import ImportacaoOsab
+            import pandas as pd
+            import numpy as np
+
+            # Ler arquivo
+            file_buffer = BytesIO(file_obj.read())
+            file_name = file_obj.name
+            
+            if file_name.endswith('.xlsb'):
+                df = pd.read_excel(file_buffer, engine='pyxlsb')
+            elif file_name.endswith(('.xlsx', '.xls')):
+                df = pd.read_excel(file_buffer)
+            else:
+                return Response({'error': 'Formato inválido. Use .xlsx, .xls ou .xlsb'}, status=400)
+
+            # Normalizar colunas
+            df.columns = [str(col).strip().upper().replace(' ', '_') for col in df.columns]
+            
+            if 'PEDIDO' not in df.columns:
+                return Response({'error': 'Coluna PEDIDO não encontrada na planilha'}, status=400)
+
+            # Limpar pedidos
+            lista_pedidos_limpos = []
+            for p in df['PEDIDO'].dropna():
+                p_limpo = self._clean_key(p)
+                if p_limpo:
+                    lista_pedidos_limpos.append(p_limpo)
+
+            if not lista_pedidos_limpos:
+                return Response({'error': 'Nenhum pedido válido encontrado na planilha'}, status=400)
+
+            # Buscar registros no banco
+            osab_existentes = {
+                obj.documento: obj for obj in ImportacaoOsab.objects.filter(documento__in=lista_pedidos_limpos)
+            }
+
+            # Análise
+            total_planilha = len(df)
+            total_banco = len(osab_existentes)
+            
+            analise_detalhada = []
+            stats = {
+                'existe_banco': 0,
+                'nao_existe_banco': 0,
+                'dt_ref_planilha_none': 0,
+                'dt_ref_banco_none': 0,
+                'seria_ignorado': 0,
+                'seria_processado': 0,
+                'dt_ref_planilha_maior': 0,
+                'dt_ref_planilha_igual': 0,
+                'dt_ref_planilha_menor': 0,
+            }
+
+            # Processar parser de data (mesma lógica da importação)
+            def smart_date_parser(val):
+                import datetime as dt_sys
+                import pandas as pd
+                if val is None or pd.isna(val) or val == '':
+                    return None
+                if isinstance(val, (dt_sys.datetime, dt_sys.date, pd.Timestamp)):
+                    return val.date() if hasattr(val, 'date') else val
+                if isinstance(val, (float, int)):
+                    try:
+                        return (dt_sys.datetime(1899, 12, 30) + dt_sys.timedelta(days=float(val))).date()
+                    except:
+                        return None
+                s_val = str(val).strip()
+                import re
+                match_br = re.search(r'(\d{1,2})/(\d{1,2})/(\d{4})', s_val)
+                if match_br:
+                    d, m, y = match_br.groups()
+                    try:
+                        return dt_sys.date(int(y), int(m), int(d))
+                    except ValueError:
+                        pass
+                match_iso = re.search(r'(\d{4})-(\d{1,2})-(\d{1,2})', s_val)
+                if match_iso:
+                    y, m, d = match_iso.groups()
+                    try:
+                        return dt_sys.date(int(y), int(m), int(d))
+                    except ValueError:
+                        pass
+                return None
+
+            # Processar DT_REF da planilha
+            if 'DT_REF' in df.columns:
+                df['DT_REF_PARSED'] = df['DT_REF'].apply(smart_date_parser)
+            else:
+                df['DT_REF_PARSED'] = None
+
+            # Analisar cada linha
+            for index, row in df.iterrows():
+                pedido = self._clean_key(row.get('PEDIDO'))
+                if not pedido:
+                    continue
+
+                dt_ref_planilha = row.get('DT_REF_PARSED')
+                obj_banco = osab_existentes.get(pedido)
+                
+                item_analise = {
+                    'linha': index + 2,
+                    'pedido': pedido,
+                    'dt_ref_planilha': str(dt_ref_planilha) if dt_ref_planilha else None,
+                    'existe_banco': obj_banco is not None,
+                    'dt_ref_banco': str(obj_banco.dt_ref) if obj_banco and obj_banco.dt_ref else None,
+                    'seria_ignorado': False,
+                    'motivo': ''
+                }
+
+                if obj_banco:
+                    stats['existe_banco'] += 1
+                    dt_ref_banco = self._normalize_dt_ref(obj_banco.dt_ref)
+                    
+                    if dt_ref_banco is None:
+                        stats['dt_ref_banco_none'] += 1
+                    if dt_ref_planilha is None:
+                        stats['dt_ref_planilha_none'] += 1
+                    
+                    # Aplicar mesma lógica da importação
+                    if dt_ref_banco and (dt_ref_planilha is None or dt_ref_planilha <= dt_ref_banco):
+                        stats['seria_ignorado'] += 1
+                        item_analise['seria_ignorado'] = True
+                        if dt_ref_planilha is None:
+                            item_analise['motivo'] = 'DT_REF planilha é None'
+                        elif dt_ref_planilha <= dt_ref_banco:
+                            if dt_ref_planilha == dt_ref_banco:
+                                stats['dt_ref_planilha_igual'] += 1
+                                item_analise['motivo'] = f'DT_REF planilha ({dt_ref_planilha}) == DT_REF banco ({dt_ref_banco})'
+                            else:
+                                stats['dt_ref_planilha_menor'] += 1
+                                item_analise['motivo'] = f'DT_REF planilha ({dt_ref_planilha}) < DT_REF banco ({dt_ref_banco})'
+                    else:
+                        stats['seria_processado'] += 1
+                        if dt_ref_planilha and dt_ref_banco and dt_ref_planilha > dt_ref_banco:
+                            stats['dt_ref_planilha_maior'] += 1
+                            item_analise['motivo'] = f'DT_REF planilha ({dt_ref_planilha}) > DT_REF banco ({dt_ref_banco}) - SERIA PROCESSADO'
+                else:
+                    stats['nao_existe_banco'] += 1
+                    stats['seria_processado'] += 1
+                    item_analise['motivo'] = 'Não existe no banco - seria criado'
+
+                analise_detalhada.append(item_analise)
+
+            return Response({
+                'resumo': {
+                    'total_planilha': total_planilha,
+                    'total_banco': total_banco,
+                    'existe_banco': stats['existe_banco'],
+                    'nao_existe_banco': stats['nao_existe_banco'],
+                    'seria_ignorado': stats['seria_ignorado'],
+                    'seria_processado': stats['seria_processado'],
+                    'dt_ref_planilha_none': stats['dt_ref_planilha_none'],
+                    'dt_ref_banco_none': stats['dt_ref_banco_none'],
+                    'dt_ref_planilha_maior': stats['dt_ref_planilha_maior'],
+                    'dt_ref_planilha_igual': stats['dt_ref_planilha_igual'],
+                    'dt_ref_planilha_menor': stats['dt_ref_planilha_menor'],
+                },
+                'detalhes': analise_detalhada[:100],  # Limitar a 100 primeiros para não sobrecarregar
+                'total_detalhes': len(analise_detalhada)
+            })
+
+        except Exception as e:
+            import traceback
+            return Response({'error': f'Erro na análise: {str(e)}\n{traceback.format_exc()}'}, status=500)
+
+
+class LimparImportacaoOSABView(APIView):
+    """Limpa todos os registros da tabela ImportacaoOsab"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request):
+        from crm_app.models import ImportacaoOsab
+        from rest_framework.permissions import IsAdminUser
+        
+        # Apenas admin pode limpar
+        if not request.user.is_staff:
+            return Response({'error': 'Apenas administradores podem limpar a tabela OSAB.'}, status=403)
+        
+        try:
+            count = ImportacaoOsab.objects.count()
+            ImportacaoOsab.objects.all().delete()
+            return Response({
+                'mensagem': f'Tabela ImportacaoOsab limpa com sucesso.',
+                'registros_removidos': count
+            })
+        except Exception as e:
+            return Response({'error': f'Erro ao limpar tabela: {str(e)}'}, status=500)
 
 
 class CancelarImportacaoOSABView(APIView):
