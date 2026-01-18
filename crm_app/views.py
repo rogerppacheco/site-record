@@ -4803,7 +4803,7 @@ class ImportacaoLegadoView(APIView):
             
             # Ler Excel em memória com dtype=str para preservar zeros
             try:
-                df = pd.read_excel(io.BytesIO(file_content), dtype=str)
+                df = pd.read_excel(BytesIO(file_content), dtype=str)
             except Exception as e:
                 log.status = 'ERRO'
                 log.mensagem_erro = f'Erro ao ler Excel: {str(e)}'
@@ -5670,12 +5670,82 @@ class ImportacaoAgendamentoView(APIView):
         try:
             log = LogImportacaoAgendamento.objects.get(id=log_id)
             
-            # Ler Excel/XLSB em memória
+            # Ler Excel/XLSB em memória (preservando zeros à esquerda em nr_ordem_venda)
             try:
+                file_buffer = BytesIO(file_content)
                 if file_name.endswith('.xlsb'):
-                    df = pd.read_excel(io.BytesIO(file_content), engine='pyxlsb')
-                elif file_name.endswith(('.xlsx', '.xls')):
-                    df = pd.read_excel(io.BytesIO(file_content))
+                    # Para .xlsb, tentar usar dtype/converters para forçar nr_ordem_venda como string
+                    file_buffer.seek(0)
+                    df_sample = pd.read_excel(file_buffer, engine='pyxlsb', nrows=1)
+                    file_buffer.seek(0)
+                    # Encontrar coluna que parece ser NR_ORDEM_VENDA (case-insensitive, antes da normalização)
+                    nr_ordem_venda_col = None
+                    for col in df_sample.columns:
+                        col_normalizado = str(col).strip().upper().replace(' ', '_')
+                        if col_normalizado == 'NR_ORDEM_VENDA':
+                            nr_ordem_venda_col = col
+                            break
+                    # Tentar usar dtype primeiro (se suportado), senão converters
+                    if nr_ordem_venda_col:
+                        try:
+                            df = pd.read_excel(file_buffer, engine='pyxlsb', dtype={nr_ordem_venda_col: str})
+                        except (TypeError, ValueError):
+                            try:
+                                df = pd.read_excel(file_buffer, engine='pyxlsb', converters={nr_ordem_venda_col: lambda x: str(x) if pd.notna(x) else ''})
+                            except:
+                                df = pd.read_excel(file_buffer, engine='pyxlsb')
+                    else:
+                        df = pd.read_excel(file_buffer, engine='pyxlsb')
+                elif file_name.endswith('.xlsx'):
+                    # Para .xlsx, usar openpyxl para forçar nr_ordem_venda como texto
+                    try:
+                        from openpyxl import load_workbook
+                        file_buffer.seek(0)
+                        wb = load_workbook(file_buffer, data_only=False, read_only=True)
+                        ws = wb.active
+                        
+                        # Ler cabeçalhos
+                        headers = [cell.value for cell in ws[1]]
+                        # Encontrar índice da coluna NR_ORDEM_VENDA
+                        nr_ordem_venda_idx = None
+                        for idx, header in enumerate(headers):
+                            if header and str(header).strip().upper().replace(' ', '_') == 'NR_ORDEM_VENDA':
+                                nr_ordem_venda_idx = idx
+                                break
+                        
+                        # Ler dados: para NR_ORDEM_VENDA, forçar como string (preserva zeros)
+                        data = []
+                        for row in ws.iter_rows(min_row=2, values_only=False):
+                            row_data = []
+                            for idx, cell in enumerate(row):
+                                if idx == nr_ordem_venda_idx and cell.value is not None:
+                                    # Para NR_ORDEM_VENDA: sempre converter para string (preserva zeros à esquerda)
+                                    # Se célula tem formato texto (@) ou se é string, usar direto
+                                    if cell.data_type == 's':
+                                        row_data.append(str(cell.value))
+                                    else:
+                                        # Se for número, converter para string formatando sem perder zeros
+                                        val = cell.value
+                                        # Formatar como string inteiro (sem decimais)
+                                        if isinstance(val, (int, float)):
+                                            # Para números, converter para int primeiro para evitar .0
+                                            if isinstance(val, float) and val.is_integer():
+                                                val = int(val)
+                                            row_data.append(str(val))
+                                        else:
+                                            row_data.append(str(val) if val is not None else '')
+                                else:
+                                    row_data.append(cell.value)
+                            data.append(row_data)
+                        
+                        wb.close()
+                        df = pd.DataFrame(data, columns=headers)
+                    except Exception as e_openpyxl:
+                        # Se openpyxl falhar, ler normalmente
+                        file_buffer.seek(0)
+                        df = pd.read_excel(file_buffer)
+                elif file_name.endswith('.xls'):
+                    df = pd.read_excel(file_buffer)
                 else:
                     log.status = 'ERRO'
                     log.mensagem_erro = 'Formato inválido. Envie .xlsx, .xls ou .xlsb'
@@ -5737,19 +5807,72 @@ class ImportacaoAgendamentoView(APIView):
                         'nm_gc': str(row.get('nm_gc')) if pd.notna(row.get('nm_gc')) else None,
                     }
 
-                    # Campos de data
+                    # Campos de data - conversão melhorada para evitar datas inválidas
                     for campo in campos_data:
-                        if campo in df.columns and pd.notna(row[campo]):
-                            dados[campo] = row[campo].date() if isinstance(row[campo], pd.Timestamp) else None
+                        if campo in df.columns:
+                            valor = row[campo]
+                            # Verifica se é um Timestamp válido (não NaT)
+                            if isinstance(valor, pd.Timestamp) and pd.notna(valor):
+                                dados[campo] = valor.date()
+                            else:
+                                dados[campo] = None
 
-                    # Campos de datetime
+                    # Campos de datetime - conversão melhorada para evitar datas inválidas (1970-01-01)
                     for campo in campos_datetime:
-                        if campo in df.columns and pd.notna(row[campo]):
-                            dados[campo] = row[campo].to_pydatetime() if isinstance(row[campo], pd.Timestamp) else None
+                        if campo in df.columns:
+                            valor = row[campo]
+                            # Verifica se é um Timestamp válido (não NaT) antes de converter
+                            if isinstance(valor, pd.Timestamp) and pd.notna(valor):
+                                dt_obj = valor.to_pydatetime()
+                                # Validação adicional: não permitir datas muito antigas (antes de 1900)
+                                if dt_obj.year >= 1900:
+                                    dados[campo] = dt_obj
+                                else:
+                                    dados[campo] = None
+                            else:
+                                dados[campo] = None
 
-                    # Cria registro
-                    ImportacaoAgendamento.objects.create(**dados)
-                    registros_criados += 1
+                    # Garantir que 'id' não seja passado (proteção contra coluna 'id' na planilha)
+                    if 'id' in dados:
+                        del dados['id']
+                    
+                    # Normalizar nr_ordem_venda (remover espaços e garantir que não seja vazio)
+                    nr_ordem_venda_val = dados.get('nr_ordem_venda')
+                    if nr_ordem_venda_val:
+                        nr_ordem_venda_val = str(nr_ordem_venda_val).strip()
+                        if not nr_ordem_venda_val:
+                            nr_ordem_venda_val = None
+                        else:
+                            # Atualizar o valor normalizado no dicionário para garantir consistência
+                            dados['nr_ordem_venda'] = nr_ordem_venda_val
+                    
+                    # Lógica: Se nr_ordem_venda existir, SEMPRE atualizar (sem depender de comparação de datas)
+                    if nr_ordem_venda_val:
+                        try:
+                            # Buscar registro existente por nr_ordem_venda
+                            registro_existente = ImportacaoAgendamento.objects.filter(nr_ordem_venda=nr_ordem_venda_val).first()
+                            
+                            if registro_existente:
+                                # Sempre atualizar quando o registro existe
+                                for key, value in dados.items():
+                                    setattr(registro_existente, key, value)
+                                registro_existente.save()
+                                registros_atualizados += 1
+                            else:
+                                # Não existe, cria novo registro
+                                ImportacaoAgendamento.objects.create(**dados)
+                                registros_criados += 1
+                        except Exception as e_inner:
+                            # Se houver erro na busca/atualização, tenta criar normalmente
+                            try:
+                                ImportacaoAgendamento.objects.create(**dados)
+                                registros_criados += 1
+                            except:
+                                raise e_inner
+                    else:
+                        # Se não tem nr_ordem_venda, cria normalmente
+                        ImportacaoAgendamento.objects.create(**dados)
+                        registros_criados += 1
 
                 except Exception as e:
                     erros.append(f"Linha {idx + 2}: {str(e)}")
@@ -6458,10 +6581,32 @@ class ImportarFPDView(APIView):
             data_importacao_agora = timezone.now()
             
             # Otimização: pre-carregar contratos em memória para evitar N queries
-            contratos_dict = {c.ordem_servico: c for c in ContratoM10.objects.all()}
+            # Criar dicionário com múltiplas variações de chaves para melhor matching
+            contratos_dict = {}
+            contratos_list = list(ContratoM10.objects.all())
+            for c in contratos_list:
+                if c.ordem_servico:
+                    os = str(c.ordem_servico).strip()
+                    if not os:
+                        continue
+                    # Indexar por múltiplas variações para facilitar busca
+                    os_sem_zeros = os.lstrip('0') or '0'  # Proteger contra string vazia
+                    variacoes = [
+                        os,                          # Exato
+                        os_sem_zeros,                # Sem zeros à esquerda
+                        f'OS-{os}',                  # Com prefixo OS-
+                        f'OS-{os_sem_zeros}',        # Prefixo OS- sem zeros
+                    ]
+                    for variacao in variacoes:
+                        if variacao and variacao not in contratos_dict:
+                            contratos_dict[variacao] = c
             
             # Otimização: pre-carregar ImportacaoFPD em memória também
-            importacoes_dict = {(imp.nr_ordem, imp.nr_fatura): imp for imp in ImportacaoFPD.objects.all()}
+            # Indexar apenas por nr_ordem (atualizar registro existente com mesmo nr_ordem)
+            importacoes_dict = {}
+            for imp in ImportacaoFPD.objects.all().order_by('-atualizada_em'):
+                if imp.nr_ordem and imp.nr_ordem not in importacoes_dict:
+                    importacoes_dict[imp.nr_ordem] = imp
             
             # Listas para bulk operations (reduz queries drasticamente)
             faturas_para_criar = []
@@ -6482,18 +6627,29 @@ class ImportarFPDView(APIView):
                         
                         nr_ordem = str(nr_ordem_raw).strip()
                         
-                        # Se for número, adicionar zero à esquerda para padronizar em 8 dígitos
+                        # Se for número, remover ".0" se existir (vem do pandas quando lê números do Excel)
                         if nr_ordem.replace('.', '').replace('-', '').isdigit():
-                            # Remover ".0" se existir (vem do pandas quando lê números do Excel)
                             nr_ordem = nr_ordem.split('.')[0]
-                            nr_ordem = nr_ordem.zfill(8)  # Preenche com zeros à esquerda até 8 dígitos
                         
                         if not nr_ordem or nr_ordem == 'nan':
                             registros_pulados += 1
                             continue
 
-                        # Tenta encontrar contrato por ordem_servico (lookup em memória)
-                        contrato = contratos_dict.get(nr_ordem)
+                        # Tenta encontrar contrato por ordem_servico com variações (lookup em memória)
+                        # Tenta múltiplas variações para melhor matching
+                        contrato = None
+                        variacoes_nr_ordem = [
+                            nr_ordem,                          # Exato (como veio)
+                            nr_ordem.zfill(8),                # Com zeros à esquerda (8 dígitos)
+                            nr_ordem.lstrip('0') or '0',       # Sem zeros à esquerda
+                            f'OS-{nr_ordem}',                  # Com prefixo OS-
+                            f'OS-{nr_ordem.zfill(8)}',         # Prefixo OS- com zeros
+                            f'OS-{nr_ordem.lstrip("0") or "0"}', # Prefixo OS- sem zeros
+                        ]
+                        for variacao in variacoes_nr_ordem:
+                            if variacao in contratos_dict:
+                                contrato = contratos_dict[variacao]
+                                break
                         if contrato:
                             
                             # ID_CONTRATO e NR_FATURA já vêm como STRING do pandas (dtype=str)
@@ -6584,11 +6740,13 @@ class ImportarFPDView(APIView):
                                 ))
 
                             # Preparar ImportacaoFPD para bulk
-                            chave = (nr_ordem, nr_fatura)
-                            importacao_existente = importacoes_dict.get(chave)
+                            # Buscar por nr_ordem (atualizar se existir, criar se não existir)
+                            importacao_existente = importacoes_dict.get(nr_ordem)
                             
                             if importacao_existente:
+                                # Atualizar registro existente com novos dados da planilha
                                 importacao_existente.id_contrato = id_contrato
+                                importacao_existente.nr_fatura = nr_fatura  # Atualiza também o nr_fatura
                                 importacao_existente.dt_venc_orig = dt_venc_date
                                 importacao_existente.dt_pagamento = dt_pgto_date
                                 importacao_existente.nr_dias_atraso = nr_dias_atraso_int
@@ -6598,6 +6756,7 @@ class ImportarFPDView(APIView):
                                 importacoes_para_atualizar.append(importacao_existente)
                                 registros_atualizados += 1
                             else:
+                                # Criar novo registro
                                 importacoes_para_criar.append(ImportacaoFPD(
                                     nr_ordem=nr_ordem,
                                     nr_fatura=nr_fatura,
@@ -6653,11 +6812,13 @@ class ImportarFPDView(APIView):
                             nr_dias_atraso_int = int(nr_dias_atraso) if pd.notna(nr_dias_atraso) else 0
                         
                             # Preparar ImportacaoFPD sem contrato para bulk
-                            chave = (nr_ordem, nr_fatura)
-                            importacao_sem_contrato = importacoes_dict.get(chave)
+                            # Buscar por nr_ordem (atualizar se existir, criar se não existir)
+                            importacao_sem_contrato = importacoes_dict.get(nr_ordem)
                             
                             if importacao_sem_contrato:
+                                # Atualizar registro existente com novos dados da planilha
                                 importacao_sem_contrato.id_contrato = id_contrato
+                                importacao_sem_contrato.nr_fatura = nr_fatura  # Atualiza também o nr_fatura
                                 importacao_sem_contrato.dt_venc_orig = dt_venc_date
                                 importacao_sem_contrato.dt_pagamento = dt_pgto_date
                                 importacao_sem_contrato.nr_dias_atraso = nr_dias_atraso_int
@@ -6667,6 +6828,7 @@ class ImportarFPDView(APIView):
                                 importacoes_para_atualizar.append(importacao_sem_contrato)
                                 registros_nao_encontrados += 1
                             else:
+                                # Criar novo registro
                                 importacoes_para_criar.append(ImportacaoFPD(
                                     nr_ordem=nr_ordem,
                                     nr_fatura=nr_fatura,
@@ -6704,7 +6866,7 @@ class ImportarFPDView(APIView):
                     ImportacaoFPD.objects.bulk_create(importacoes_para_criar, batch_size=500)
                 if importacoes_para_atualizar:
                     ImportacaoFPD.objects.bulk_update(importacoes_para_atualizar, [
-                        'id_contrato', 'dt_venc_orig', 'dt_pagamento', 'nr_dias_atraso',
+                        'id_contrato', 'nr_fatura', 'dt_venc_orig', 'dt_pagamento', 'nr_dias_atraso',
                         'ds_status_fatura', 'vl_fatura', 'contrato_m10'
                     ], batch_size=500)
                 
@@ -6773,8 +6935,8 @@ class LogsImportacaoFPDView(APIView):
                 'nome_arquivo': log.nome_arquivo,
                 'status': log.status,
                 'status_display': log.get_status_display(),
-                'iniciado_em': log.iniciado_em.strftime('%d/%m/%Y %H:%M:%S') if log.iniciado_em else None,
-                'finalizado_em': log.finalizado_em.strftime('%d/%m/%Y %H:%M:%S') if log.finalizado_em else None,
+                'iniciado_em': log.iniciado_em.isoformat() if log.iniciado_em else None,
+                'finalizado_em': log.finalizado_em.isoformat() if log.finalizado_em else None,
                 'duracao_segundos': log.duracao_segundos,
                 'total_linhas': log.total_linhas,
                 'total_processadas': log.total_processadas,
@@ -7308,8 +7470,8 @@ class LogsImportacaoAgendamentoView(APIView):
                 'nome_arquivo': log.nome_arquivo,
                 'status': log.status,
                 'status_display': log.get_status_display(),
-                'iniciado_em': log.iniciado_em.strftime('%d/%m/%Y %H:%M:%S') if log.iniciado_em else None,
-                'finalizado_em': log.finalizado_em.strftime('%d/%m/%Y %H:%M:%S') if log.finalizado_em else None,
+                'iniciado_em': log.iniciado_em.isoformat() if log.iniciado_em else None,
+                'finalizado_em': log.finalizado_em.isoformat() if log.finalizado_em else None,
                 'duracao_segundos': log.duracao_segundos,
                 'total_linhas': log.total_linhas,
                 'total_processadas': log.total_processadas,
@@ -7319,6 +7481,7 @@ class LogsImportacaoAgendamentoView(APIView):
                 'erros_count': log.erros_count,
                 'mensagem': log.mensagem,
                 'mensagem_erro': log.mensagem_erro,
+                'usuario': log.usuario.username if log.usuario else 'Sistema',
                 'usuario_nome': log.usuario.get_full_name() if log.usuario else 'Sistema',
             })
         
@@ -7354,10 +7517,10 @@ class ImportarChurnView(APIView):
 
         try:
             if arquivo.name.endswith('.csv'):
-                df = pd.read_csv(arquivo, dtype={'NR_ORDEM': str})
+                df = pd.read_csv(arquivo, dtype={'PEDIDO': str, 'NR_ORDEM': str, 'NUMERO_PEDIDO': str})
             elif arquivo.name.endswith('.xlsb'):
                 try:
-                    df = pd.read_excel(arquivo, engine='pyxlsb', dtype={'NR_ORDEM': str})
+                    df = pd.read_excel(arquivo, engine='pyxlsb', dtype={'PEDIDO': str, 'NR_ORDEM': str, 'NUMERO_PEDIDO': str})
                 except Exception:
                     log.status = 'ERRO'
                     log.mensagem_erro = 'Formato .xlsb não suportado. Use .xlsx, .xls ou .csv'
@@ -7367,7 +7530,7 @@ class ImportarChurnView(APIView):
                         'error': 'Formato .xlsb não suportado. Use .xlsx, .xls ou .csv'
                     }, status=400)
             else:
-                df = pd.read_excel(arquivo, dtype={'NR_ORDEM': str})
+                df = pd.read_excel(arquivo, dtype={'PEDIDO': str, 'NR_ORDEM': str, 'NUMERO_PEDIDO': str})
 
             # Normalizar nomes das colunas
             df.columns = df.columns.str.strip().str.upper()
@@ -7376,7 +7539,8 @@ class ImportarChurnView(APIView):
             log.save()
 
             cancelados = 0
-            salvos_churn = 0
+            criados_churn = 0
+            atualizados_churn = 0
             reativados = 0
             nao_encontrados = 0
             erros = 0
@@ -7386,43 +7550,118 @@ class ImportarChurnView(APIView):
 
             for _, row in df.iterrows():
                 try:
-                    # Busca por O.S (NR_ORDEM na planilha de churn)
+                    # Busca por O.S - pode vir como NR_ORDEM ou NUMERO_PEDIDO
+                    # Prioridade: NR_ORDEM se existir, senão NUMERO_PEDIDO
                     nr_ordem_raw = row.get('NR_ORDEM', '')
                     if pd.isna(nr_ordem_raw) or str(nr_ordem_raw).strip() == '':
-                        continue
+                        # Tentar NUMERO_PEDIDO como fallback
+                        numero_pedido_raw = row.get('NUMERO_PEDIDO', '')
+                        if pd.notna(numero_pedido_raw) and str(numero_pedido_raw).strip():
+                            nr_ordem_raw = numero_pedido_raw
+                        else:
+                            continue  # Pula se não tiver nenhum dos dois
                     
                     nr_ordem = str(nr_ordem_raw).strip().zfill(8)  # Padronizar com 8 dígitos
                     ordens_no_churn.add(nr_ordem)
 
                     # Salvar registro na ImportacaoChurn
                     try:
-                        ImportacaoChurn.objects.update_or_create(
-                            numero_pedido=str(row.get('NUMERO_PEDIDO', '')) if pd.notna(row.get('NUMERO_PEDIDO')) else None,
-                            defaults={
-                                'nr_ordem': nr_ordem,
-                                'uf': str(row.get('UF', ''))[:2] if pd.notna(row.get('UF')) else None,
-                                'produto': str(row.get('PRODUTO', '')) if pd.notna(row.get('PRODUTO')) else None,
-                                'matricula_vendedor': str(row.get('MATRICULA_VENDEDOR', '')) if pd.notna(row.get('MATRICULA_VENDEDOR')) else None,
-                                'gv': str(row.get('GV', '')) if pd.notna(row.get('GV')) else None,
-                                'sap_principal_fim': str(row.get('SAP_PRINCIPAL_FIM', '')) if pd.notna(row.get('SAP_PRINCIPAL_FIM')) else None,
-                                'gestao': str(row.get('GESTAO', '')) if pd.notna(row.get('GESTAO')) else None,
-                                'st_regional': str(row.get('ST_REGIONAL', '')) if pd.notna(row.get('ST_REGIONAL')) else None,
-                                'gc': str(row.get('GC', '')) if pd.notna(row.get('GC')) else None,
-                                'dt_gross': pd.to_datetime(row.get('DT_GROSS')).date() if pd.notna(row.get('DT_GROSS')) else None,
-                                'anomes_gross': str(row.get('ANOMES_GROSS', '')) if pd.notna(row.get('ANOMES_GROSS')) else None,
-                                'dt_retirada': pd.to_datetime(row.get('DT_RETIRADA')).date() if pd.notna(row.get('DT_RETIRADA')) else None,
-                                'anomes_retirada': str(row.get('ANOMES_RETIRADA', '')) if pd.notna(row.get('ANOMES_RETIRADA')) else None,
-                                'grupo_unidade': str(row.get('GRUPO_UNIDADE', '')) if pd.notna(row.get('GRUPO_UNIDADE')) else None,
-                                'codigo_sap': str(row.get('CODIGO_SAP', '')) if pd.notna(row.get('CODIGO_SAP')) else None,
-                                'municipio': str(row.get('MUNICIPIO', '')) if pd.notna(row.get('MUNICIPIO')) else None,
-                                'tipo_retirada': str(row.get('TIPO_RETIRADA', '')) if pd.notna(row.get('TIPO_RETIRADA')) else None,
-                                'motivo_retirada': str(row.get('MOTIVO_RETIRADA', '')) if pd.notna(row.get('MOTIVO_RETIRADA')) else None,
-                                'submotivo_retirada': str(row.get('SUBMOTIVO_RETIRADA', '')) if pd.notna(row.get('SUBMOTIVO_RETIRADA')) else None,
-                                'classificacao': str(row.get('CLASSIFICACAO', '')) if pd.notna(row.get('CLASSIFICACAO')) else None,
-                                'desc_apelido': str(row.get('DESC_APELIDO', '')) if pd.notna(row.get('DESC_APELIDO')) else None,
-                            }
-                        )
-                        salvos_churn += 1
+                        # Usar PEDIDO como principal, com fallback para NUMERO_PEDIDO
+                        numero_pedido_raw = row.get('PEDIDO', '') or row.get('NUMERO_PEDIDO', '')
+                        numero_pedido_val = str(numero_pedido_raw).strip() if pd.notna(numero_pedido_raw) and str(numero_pedido_raw).strip() else None
+                        
+                        # Se numero_pedido for None, usar nr_ordem como chave alternativa
+                        # Mas como numero_pedido tem unique=True, não podemos usar None
+                        # Vamos usar uma chave composta ou tratar de outra forma
+                        if numero_pedido_val:
+                            obj, created = ImportacaoChurn.objects.update_or_create(
+                                numero_pedido=numero_pedido_val,
+                                defaults={
+                                    'nr_ordem': nr_ordem,
+                                    'uf': str(row.get('UF', ''))[:2] if pd.notna(row.get('UF')) else None,
+                                    'produto': str(row.get('PRODUTO', '')) if pd.notna(row.get('PRODUTO')) else None,
+                                    'matricula_vendedor': str(row.get('MATRICULA_VENDEDOR', '')) if pd.notna(row.get('MATRICULA_VENDEDOR')) else None,
+                                    'gv': str(row.get('GV', '')) if pd.notna(row.get('GV')) else None,
+                                    'sap_principal_fim': str(row.get('SAP_PRINCIPAL_FIM', '')) if pd.notna(row.get('SAP_PRINCIPAL_FIM')) else None,
+                                    'gestao': str(row.get('GESTAO', '')) if pd.notna(row.get('GESTAO')) else None,
+                                    'st_regional': str(row.get('ST_REGIONAL', '')) if pd.notna(row.get('ST_REGIONAL')) else None,
+                                    'gc': str(row.get('GC', '')) if pd.notna(row.get('GC')) else None,
+                                    'dt_gross': pd.to_datetime(row.get('DT_GROSS')).date() if pd.notna(row.get('DT_GROSS')) else None,
+                                    'anomes_gross': str(row.get('ANOMES_GROSS', '')) if pd.notna(row.get('ANOMES_GROSS')) else None,
+                                    'dt_retirada': pd.to_datetime(row.get('DT_RETIRADA')).date() if pd.notna(row.get('DT_RETIRADA')) else None,
+                                    'anomes_retirada': str(row.get('ANOMES_RETIRADA', '')) if pd.notna(row.get('ANOMES_RETIRADA')) else None,
+                                    'grupo_unidade': str(row.get('GRUPO_UNIDADE', '')) if pd.notna(row.get('GRUPO_UNIDADE')) else None,
+                                    'codigo_sap': str(row.get('CODIGO_SAP', '')) if pd.notna(row.get('CODIGO_SAP')) else None,
+                                    'municipio': str(row.get('MUNICIPIO', '')) if pd.notna(row.get('MUNICIPIO')) else None,
+                                    'tipo_retirada': str(row.get('TIPO_RETIRADA', '')) if pd.notna(row.get('TIPO_RETIRADA')) else None,
+                                    'motivo_retirada': str(row.get('MOTIVO_RETIRADA', '')) if pd.notna(row.get('MOTIVO_RETIRADA')) else None,
+                                    'submotivo_retirada': str(row.get('SUBMOTIVO_RETIRADA', '')) if pd.notna(row.get('SUBMOTIVO_RETIRADA')) else None,
+                                    'classificacao': str(row.get('CLASSIFICACAO', '')) if pd.notna(row.get('CLASSIFICACAO')) else None,
+                                    'desc_apelido': str(row.get('DESC_APELIDO', '')) if pd.notna(row.get('DESC_APELIDO')) else None,
+                                }
+                            )
+                            if created:
+                                criados_churn += 1
+                            else:
+                                atualizados_churn += 1
+                        else:
+                            # Se numero_pedido for None, usar nr_ordem como alternativa
+                            # Buscar por nr_ordem se numero_pedido não estiver disponível
+                            try:
+                                obj_existente = ImportacaoChurn.objects.get(nr_ordem=nr_ordem)
+                                # Atualizar campos
+                                for campo, valor in {
+                                    'uf': str(row.get('UF', ''))[:2] if pd.notna(row.get('UF')) else None,
+                                    'produto': str(row.get('PRODUTO', '')) if pd.notna(row.get('PRODUTO')) else None,
+                                    'matricula_vendedor': str(row.get('MATRICULA_VENDEDOR', '')) if pd.notna(row.get('MATRICULA_VENDEDOR')) else None,
+                                    'gv': str(row.get('GV', '')) if pd.notna(row.get('GV')) else None,
+                                    'sap_principal_fim': str(row.get('SAP_PRINCIPAL_FIM', '')) if pd.notna(row.get('SAP_PRINCIPAL_FIM')) else None,
+                                    'gestao': str(row.get('GESTAO', '')) if pd.notna(row.get('GESTAO')) else None,
+                                    'st_regional': str(row.get('ST_REGIONAL', '')) if pd.notna(row.get('ST_REGIONAL')) else None,
+                                    'gc': str(row.get('GC', '')) if pd.notna(row.get('GC')) else None,
+                                    'dt_gross': pd.to_datetime(row.get('DT_GROSS')).date() if pd.notna(row.get('DT_GROSS')) else None,
+                                    'anomes_gross': str(row.get('ANOMES_GROSS', '')) if pd.notna(row.get('ANOMES_GROSS')) else None,
+                                    'dt_retirada': pd.to_datetime(row.get('DT_RETIRADA')).date() if pd.notna(row.get('DT_RETIRADA')) else None,
+                                    'anomes_retirada': str(row.get('ANOMES_RETIRADA', '')) if pd.notna(row.get('ANOMES_RETIRADA')) else None,
+                                    'grupo_unidade': str(row.get('GRUPO_UNIDADE', '')) if pd.notna(row.get('GRUPO_UNIDADE')) else None,
+                                    'codigo_sap': str(row.get('CODIGO_SAP', '')) if pd.notna(row.get('CODIGO_SAP')) else None,
+                                    'municipio': str(row.get('MUNICIPIO', '')) if pd.notna(row.get('MUNICIPIO')) else None,
+                                    'tipo_retirada': str(row.get('TIPO_RETIRADA', '')) if pd.notna(row.get('TIPO_RETIRADA')) else None,
+                                    'motivo_retirada': str(row.get('MOTIVO_RETIRADA', '')) if pd.notna(row.get('MOTIVO_RETIRADA')) else None,
+                                    'submotivo_retirada': str(row.get('SUBMOTIVO_RETIRADA', '')) if pd.notna(row.get('SUBMOTIVO_RETIRADA')) else None,
+                                    'classificacao': str(row.get('CLASSIFICACAO', '')) if pd.notna(row.get('CLASSIFICACAO')) else None,
+                                    'desc_apelido': str(row.get('DESC_APELIDO', '')) if pd.notna(row.get('DESC_APELIDO')) else None,
+                                }.items():
+                                    setattr(obj_existente, campo, valor)
+                                obj_existente.save()
+                                atualizados_churn += 1
+                            except ImportacaoChurn.DoesNotExist:
+                                # Criar novo registro sem numero_pedido (permitido pelo modelo)
+                                ImportacaoChurn.objects.create(
+                                    numero_pedido=None,
+                                    nr_ordem=nr_ordem,
+                                    uf=str(row.get('UF', ''))[:2] if pd.notna(row.get('UF')) else None,
+                                    produto=str(row.get('PRODUTO', '')) if pd.notna(row.get('PRODUTO')) else None,
+                                    matricula_vendedor=str(row.get('MATRICULA_VENDEDOR', '')) if pd.notna(row.get('MATRICULA_VENDEDOR')) else None,
+                                    gv=str(row.get('GV', '')) if pd.notna(row.get('GV')) else None,
+                                    sap_principal_fim=str(row.get('SAP_PRINCIPAL_FIM', '')) if pd.notna(row.get('SAP_PRINCIPAL_FIM')) else None,
+                                    gestao=str(row.get('GESTAO', '')) if pd.notna(row.get('GESTAO')) else None,
+                                    st_regional=str(row.get('ST_REGIONAL', '')) if pd.notna(row.get('ST_REGIONAL')) else None,
+                                    gc=str(row.get('GC', '')) if pd.notna(row.get('GC')) else None,
+                                    dt_gross=pd.to_datetime(row.get('DT_GROSS')).date() if pd.notna(row.get('DT_GROSS')) else None,
+                                    anomes_gross=str(row.get('ANOMES_GROSS', '')) if pd.notna(row.get('ANOMES_GROSS')) else None,
+                                    dt_retirada=pd.to_datetime(row.get('DT_RETIRADA')).date() if pd.notna(row.get('DT_RETIRADA')) else None,
+                                    anomes_retirada=str(row.get('ANOMES_RETIRADA', '')) if pd.notna(row.get('ANOMES_RETIRADA')) else None,
+                                    grupo_unidade=str(row.get('GRUPO_UNIDADE', '')) if pd.notna(row.get('GRUPO_UNIDADE')) else None,
+                                    codigo_sap=str(row.get('CODIGO_SAP', '')) if pd.notna(row.get('CODIGO_SAP')) else None,
+                                    municipio=str(row.get('MUNICIPIO', '')) if pd.notna(row.get('MUNICIPIO')) else None,
+                                    tipo_retirada=str(row.get('TIPO_RETIRADA', '')) if pd.notna(row.get('TIPO_RETIRADA')) else None,
+                                    motivo_retirada=str(row.get('MOTIVO_RETIRADA', '')) if pd.notna(row.get('MOTIVO_RETIRADA')) else None,
+                                    submotivo_retirada=str(row.get('SUBMOTIVO_RETIRADA', '')) if pd.notna(row.get('SUBMOTIVO_RETIRADA')) else None,
+                                    classificacao=str(row.get('CLASSIFICACAO', '')) if pd.notna(row.get('CLASSIFICACAO')) else None,
+                                    desc_apelido=str(row.get('DESC_APELIDO', '')) if pd.notna(row.get('DESC_APELIDO')) else None,
+                                )
+                                criados_churn += 1
                     except Exception as e:
                         erros += 1
                         print(f"Erro ao salvar ImportacaoChurn: {e}")
@@ -7455,7 +7694,7 @@ class ImportarChurnView(APIView):
             fim = datetime.now()
             log.finalizado_em = fim
             log.duracao_segundos = int((fim - inicio).total_seconds())
-            log.total_processadas = salvos_churn
+            log.total_processadas = criados_churn + atualizados_churn
             log.total_erros = erros
             log.total_contratos_cancelados = cancelados
             log.total_contratos_reativados = reativados
@@ -7466,14 +7705,19 @@ class ImportarChurnView(APIView):
                 'cancelados': cancelados,
                 'reativados': reativados,
                 'nao_encontrados': nao_encontrados,
+                'criados_churn': criados_churn,
+                'atualizados_churn': atualizados_churn,
             }
             log.save()
 
             return Response({
-                'message': f'Base CHURN processada! {cancelados} contratos cancelados, {reativados} contratos reativados, {salvos_churn} registros salvos.',
+                'message': f'Base CHURN processada! {cancelados} contratos cancelados, {reativados} contratos reativados, {criados_churn + atualizados_churn} registros processados.',
+                'total_registros': log.total_linhas,
+                'criados': criados_churn,  # Registros criados na ImportacaoChurn
+                'atualizados': atualizados_churn,  # Registros atualizados na ImportacaoChurn
                 'cancelados': cancelados,
                 'reativados': reativados,
-                'salvos_churn': salvos_churn,
+                'salvos_churn': criados_churn + atualizados_churn,
                 'nao_encontrados': nao_encontrados,
                 'log_id': log.id,
             })

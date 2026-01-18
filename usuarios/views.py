@@ -206,6 +206,12 @@ class UsuarioViewSet(viewsets.ModelViewSet):
             return Response({'mensagem': 'Solicitação recebida.'})
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    @action(detail=False, methods=['get'])
+    def me(self, request):
+        """Retorna dados do usuário atual"""
+        serializer = UserProfileSerializer(request.user)
+        return Response(serializer.data)
+    
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated], url_path='definir-senha')
     def definir_nova_senha(self, request):
         serializer = TrocaSenhaSerializer(data=request.data)

@@ -617,8 +617,21 @@
                 const duracao = log.duracao_segundos 
                     ? `${log.duracao_segundos}s` 
                     : (log.status === 'PROCESSANDO' ? '<i class="spinner-border spinner-border-sm"></i>' : '-');
-                const iniciado = log.iniciado_em ? new Date(log.iniciado_em).toLocaleString('pt-BR') : '-';
-                const usuario = log.usuario || '-';
+                
+                // Formatar data de forma segura
+                let iniciado = '-';
+                if (log.iniciado_em) {
+                    try {
+                        const date = new Date(log.iniciado_em);
+                        if (!isNaN(date.getTime())) {
+                            iniciado = date.toLocaleString('pt-BR');
+                        }
+                    } catch (e) {
+                        console.error('Erro ao formatar data:', e, log.iniciado_em);
+                    }
+                }
+                
+                const usuario = log.usuario || log.usuario_nome || '-';
                 
                 // Métricas específicas do Agendamento
                 let metricas = [];
@@ -627,13 +640,26 @@
                 if (log.nao_encontrados > 0) metricas.push(`<span class="badge bg-warning">${log.nao_encontrados} não encontrados</span>`);
                 if (log.erros_count > 0) metricas.push(`<span class="badge bg-danger">${log.erros_count} erros</span>`);
                 
+                // Adicionar mensagem de erro se houver
+                let detalhesErro = '';
+                if (log.mensagem_erro) {
+                    // Limitar tamanho da mensagem para não quebrar o layout
+                    const mensagemLimpa = log.mensagem_erro.length > 200 
+                        ? log.mensagem_erro.substring(0, 200) + '...' 
+                        : log.mensagem_erro;
+                    detalhesErro = `<div class="text-danger small mt-1" style="max-width: 400px;" title="${log.mensagem_erro.replace(/"/g, '&quot;')}"><i class="bi bi-exclamation-triangle"></i> ${mensagemLimpa.replace(/\n/g, '<br>')}</div>`;
+                }
+                
                 html += `
                     <tr>
                         <td><small>${log.nome_arquivo || '-'}</small></td>
                         <td>${statusBadge}</td>
                         <td><small>${iniciado}</small></td>
                         <td>${duracao}</td>
-                        <td>${metricas.join(' ')}</td>
+                        <td>
+                            ${metricas.join(' ')}
+                            ${detalhesErro}
+                        </td>
                         <td><small>${usuario}</small></td>
                     </tr>
                 `;

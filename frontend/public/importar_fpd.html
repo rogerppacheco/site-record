@@ -650,7 +650,13 @@
                 const duracao = log.duracao_segundos 
                     ? `${log.duracao_segundos}s` 
                     : (log.status === 'PROCESSANDO' ? '<i class="spinner-border spinner-border-sm"></i>' : '-');
-                const iniciado = log.iniciado_em ? new Date(log.iniciado_em).toLocaleString('pt-BR') : '-';
+                let iniciado = '-';
+                if (log.iniciado_em) {
+                    const dataInicio = new Date(log.iniciado_em);
+                    if (!isNaN(dataInicio.getTime())) {
+                        iniciado = dataInicio.toLocaleString('pt-BR');
+                    }
+                }
                 const processadas = log.total_processadas || 0;
                 
                 html += `
