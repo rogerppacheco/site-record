@@ -2353,6 +2353,15 @@ class ImportacaoOsabView(APIView):
             'detalhes': 'O processamento está sendo executado em background. Atualize a página em alguns minutos para ver o resultado.',
         }, status=200)
 
+    def _serialize_date_for_json(self, value):
+        """Converte objetos date/datetime para string ISO para serialização JSON"""
+        from datetime import date, datetime
+        if value is None:
+            return None
+        if isinstance(value, (date, datetime)):
+            return value.isoformat()
+        return value
+
     def _processar_osab_interno(self, log_id, file_content, file_name, flag_enviar_whatsapp):
         """Processamento OSAB em background thread"""
         from io import BytesIO
@@ -2537,7 +2546,7 @@ class ImportacaoOsabView(APIView):
                     "linha": index + 2,
                     "pedido": str(row.get('PEDIDO')),
                     "status_osab": str(row.get('SITUACAO')),
-                    "dt_ref_planilha": row.get('DT_REF'),
+                    "dt_ref_planilha": self._serialize_date_for_json(row.get('DT_REF')),
                     "dt_ref_crm": None,
                     "consta_osab": "NAO",
                     "consta_crm": "NAO",
@@ -2565,7 +2574,7 @@ class ImportacaoOsabView(APIView):
                         dt_ref_nova = _normalize_dt_ref(dados_model.get('dt_ref'))
                         dt_ref_atual = _normalize_dt_ref(getattr(obj, 'dt_ref', None))
                         log_item["consta_osab"] = "SIM"
-                        log_item["dt_ref_crm"] = dt_ref_atual
+                        log_item["dt_ref_crm"] = self._serialize_date_for_json(dt_ref_atual)
                         # Se a DT_REF nova não for mais recente, não atualiza nem altera a venda
                         if dt_ref_atual and (dt_ref_nova is None or dt_ref_nova <= dt_ref_atual):
                             log_item["resultado_osab"] = "IGNORADO_DT_REF_ANTIGA"
@@ -6645,70 +6654,125 @@ class DownloadRelatorioOSABView(APIView):
         from io import BytesIO
         from django.http import HttpResponse
         from crm_app.models import LogImportacaoOSAB, ImportacaoOsab
+        import traceback
 
-        log = LogImportacaoOSAB.objects.filter(id=log_id).first()
-        if not log:
-            return Response({'error': 'Log não encontrado.'}, status=404)
+        try:
+            log = LogImportacaoOSAB.objects.filter(id=log_id).first()
+            if not log:
+                return Response({'error': 'Log não encontrado.'}, status=404)
 
-        if not is_member(request.user, ['Admin', 'Diretoria']) and log.usuario != request.user:
-            return Response({'error': 'Sem permissão para acessar este relatório.'}, status=403)
+            if not is_member(request.user, ['Admin', 'Diretoria']) and log.usuario != request.user:
+                return Response({'error': 'Sem permissão para acessar este relatório.'}, status=403)
 
-        report = log.detalhes_json or {}
-        logs = report.get('logs_detalhados') or []
-        if not logs:
-            return Response({'error': 'Relatório ainda não disponível.'}, status=404)
+            report = log.detalhes_json or {}
+            logs = report.get('logs_detalhados') or []
+            if not logs:
+                return Response({'error': 'Relatório ainda não disponível. O relatório será gerado após a conclusão da importação.'}, status=404)
 
-        df = pd.DataFrame(logs)
-        colunas = [
-            'linha', 'pedido', 'status_osab', 'dt_ref_planilha', 'dt_ref_crm',
-            'consta_osab', 'consta_crm', 'resultado_osab', 'resultado_crm', 'detalhe'
-        ]
-        for col in colunas:
-            if col not in df.columns:
-                df[col] = ''
-        df = df[colunas]
+            df = pd.DataFrame(logs)
+            
+            # Criar campo 'resultado' simplificado baseado no resultado_crm (prioritário)
+            if 'resultado_crm' in df.columns and 'resultado_osab' in df.columns:
+                # Usar resultado_crm como base, se vazio usar resultado_osab
+                df['resultado'] = df['resultado_crm'].fillna('')
+                mask_vazio = df['resultado'] == ''
+                df.loc[mask_vazio, 'resultado'] = df.loc[mask_vazio, 'resultado_osab'].fillna('')
+                # Simplificar alguns valores
+                df['resultado'] = df['resultado'].replace({
+                    'SEM_MUDANCA_CRM': 'SEM_MUDANCA',
+                    'ATUALIZADO_CRM': 'ATUALIZADO',
+                    'IGNORADO_DT_REF_ANTIGA': 'IGNORADO_DT_REF',
+                    'NAO_ENCONTRADO_CRM': 'NAO_ENCONTRADO_CRM',
+                })
+            elif 'resultado_crm' in df.columns:
+                df['resultado'] = df['resultado_crm'].fillna('')
+            elif 'resultado_osab' in df.columns:
+                df['resultado'] = df['resultado_osab'].fillna('')
+            else:
+                df['resultado'] = ''
+            
+            # Colunas simplificadas para o relatório principal
+            colunas_principais = [
+                'linha', 'pedido', 'status_osab', 'resultado', 'detalhe'
+            ]
+            
+            # Garantir que todas as colunas existam
+            for col in colunas_principais:
+                if col not in df.columns:
+                    df[col] = ''
+            
+            df_principal = df[colunas_principais].copy()
+            
+            # Colunas completas para análise (manter para outras abas)
+            colunas_completas = [
+                'linha', 'pedido', 'status_osab', 'dt_ref_planilha', 'dt_ref_crm',
+                'consta_osab', 'consta_crm', 'resultado_osab', 'resultado_crm', 'detalhe'
+            ]
+            for col in colunas_completas:
+                if col not in df.columns:
+                    df[col] = ''
+            df_completo = df[colunas_completas]
 
-        resumo = [
-            {'metrica': 'Total registros planilha', 'valor': report.get('total_registros', len(df))},
-            {'metrica': 'Vendas encontradas CRM', 'valor': report.get('vendas_encontradas', 0)},
-            {'metrica': 'Atualizados CRM', 'valor': report.get('atualizados', 0)},
-            {'metrica': 'Criados OSAB', 'valor': report.get('criados', 0)},
-            {'metrica': 'Ignorados DT_REF', 'valor': report.get('ignorados_dt_ref', 0)},
-            {'metrica': 'Erros', 'valor': len(report.get('erros', []))},
-        ]
-        df_resumo = pd.DataFrame(resumo)
-        df_contagem_osab = df['resultado_osab'].value_counts().reset_index()
-        df_contagem_osab.columns = ['resultado_osab', 'quantidade']
-        df_contagem_crm = df['resultado_crm'].value_counts().reset_index()
-        df_contagem_crm.columns = ['resultado_crm', 'quantidade']
+            resumo = [
+                {'metrica': 'Total registros planilha', 'valor': report.get('total_registros', len(df))},
+                {'metrica': 'Vendas encontradas CRM', 'valor': report.get('vendas_encontradas', 0)},
+                {'metrica': 'Atualizados CRM', 'valor': report.get('atualizados', 0)},
+                {'metrica': 'Criados OSAB', 'valor': report.get('criados', 0)},
+                {'metrica': 'Ignorados DT_REF', 'valor': report.get('ignorados_dt_ref', 0)},
+                {'metrica': 'Erros', 'valor': len(report.get('erros', []))},
+            ]
+            df_resumo = pd.DataFrame(resumo)
+            
+            # Tratar caso de DataFrame vazio
+            if len(df_completo) > 0:
+                df_contagem_osab = df_completo['resultado_osab'].value_counts().reset_index()
+                df_contagem_osab.columns = ['resultado_osab', 'quantidade']
+                df_contagem_resultado = df_principal['resultado'].value_counts().reset_index()
+                df_contagem_resultado.columns = ['resultado', 'quantidade']
+                df_planilha_nao_crm = df_completo[df_completo['resultado_crm'] == 'NAO_ENCONTRADO_CRM'].copy()
+            else:
+                df_contagem_osab = pd.DataFrame(columns=['resultado_osab', 'quantidade'])
+                df_contagem_resultado = pd.DataFrame(columns=['resultado', 'quantidade'])
+                df_planilha_nao_crm = pd.DataFrame(columns=colunas_completas)
 
-        df_planilha_nao_crm = df[df['resultado_crm'] == 'NAO_ENCONTRADO_CRM'].copy()
+            pedidos_planilha = set(df_principal['pedido'].dropna().astype(str)) if len(df_principal) > 0 else set()
+            qs_crm = ImportacaoOsab.objects.exclude(documento__in=pedidos_planilha).values(
+                'documento', 'dt_ref', 'uf', 'localidade', 'produto'
+            )
+            df_crm_nao_planilha = pd.DataFrame(list(qs_crm))
+            if df_crm_nao_planilha.empty:
+                df_crm_nao_planilha = pd.DataFrame(columns=['documento', 'dt_ref', 'uf', 'localidade', 'produto'])
 
-        pedidos_planilha = set(df['pedido'].dropna().astype(str))
-        qs_crm = ImportacaoOsab.objects.exclude(documento__in=pedidos_planilha).values(
-            'documento', 'dt_ref', 'uf', 'municipio', 'produto'
-        )
-        df_crm_nao_planilha = pd.DataFrame(list(qs_crm))
-        if df_crm_nao_planilha.empty:
-            df_crm_nao_planilha = pd.DataFrame(columns=['documento', 'dt_ref', 'uf', 'municipio', 'produto'])
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                df_resumo.to_excel(writer, sheet_name='Resumo', index=False)
+                df_contagem_resultado.to_excel(writer, sheet_name='Resumo_Resultados', index=False)
+                df_contagem_osab.to_excel(writer, sheet_name='Resumo_OSAB', index=False)
+                df_principal.to_excel(writer, sheet_name='Detalhado', index=False)  # Aba principal simplificada
+                df_completo.to_excel(writer, sheet_name='Completo', index=False)  # Aba com todos os campos
+                df_planilha_nao_crm.to_excel(writer, sheet_name='Planilha_nao_CRM', index=False)
+                df_crm_nao_planilha.to_excel(writer, sheet_name='CRM_nao_Planilha', index=False)
 
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df_resumo.to_excel(writer, sheet_name='Resumo', index=False)
-            df_contagem_osab.to_excel(writer, sheet_name='Resumo_OSAB', index=False)
-            df_contagem_crm.to_excel(writer, sheet_name='Resumo_CRM', index=False)
-            df.to_excel(writer, sheet_name='Planilha_vs_CRM', index=False)
-            df_planilha_nao_crm.to_excel(writer, sheet_name='Planilha_nao_CRM', index=False)
-            df_crm_nao_planilha.to_excel(writer, sheet_name='CRM_nao_Planilha', index=False)
-
-        output.seek(0)
-        filename = f"Relatorio_OSAB_{log.id}_{log.nome_arquivo}".replace(' ', '_')
-        response = HttpResponse(
-            output.getvalue(),
-            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        )
-        response['Content-Disposition'] = f'attachment; filename="{filename}.xlsx"'
-        return response
+            output.seek(0)
+            # Limpar nome do arquivo: remover extensões e caracteres especiais
+            nome_limpo = log.nome_arquivo.rsplit('.', 1)[0]  # Remove extensão (.xlsb, .xlsx, etc)
+            nome_limpo = nome_limpo.replace(' ', '_').replace('-', '_')
+            nome_limpo = nome_limpo.rstrip('_')  # Remove underscores no final
+            filename = f"Relatorio_OSAB_{log.id}_{nome_limpo}.xlsx"
+            # Garantir que filename não termina com underscore antes da extensão (proteção extra)
+            if filename.endswith('_.xlsx'):
+                filename = filename.replace('_.xlsx', '.xlsx')
+            response = HttpResponse(
+                output.getvalue(),
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return response
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Erro ao gerar relatório OSAB (log_id={log_id}): {str(e)}\n{traceback.format_exc()}")
+            return Response({'error': f'Erro ao gerar relatório: {str(e)}'}, status=500)
 
 
 class CancelarImportacaoOSABView(APIView):
