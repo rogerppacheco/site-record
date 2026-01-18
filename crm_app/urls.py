@@ -36,7 +36,7 @@ from .views import (
     ReabrirPagamentoView,
     GerarRelatorioPDFView,
     EnviarExtratoEmailView,
-    ImportacaoOsabView, ImportacaoOsabDetailView, DownloadRelatorioOSABView, CancelarImportacaoOSABView,
+    ImportacaoOsabView, ImportacaoOsabDetailView, DownloadRelatorioOSABView, CancelarImportacaoOSABView, AnaliseComparacaoOSABView, LimparImportacaoOSABView,
     ImportacaoChurnView, ImportacaoChurnDetailView,
     ImportacaoCicloPagamentoView,
     PerformanceVendasView,
@@ -171,6 +171,7 @@ urlpatterns = [
     # --- Importações ---
     path('import/osab/', ImportacaoOsabView.as_view(), name='importacao-osab'),
     path('import/osab/<int:pk>/', ImportacaoOsabDetailView.as_view(), name='importacao-osab-detail'),
+    path('import/osab/analise/', AnaliseComparacaoOSABView.as_view(), name='analise-osab'),
     path('import/churn/', ImportacaoChurnView.as_view(), name='importacao-churn'),
     path('import/churn/<int:pk>/', ImportacaoChurnDetailView.as_view(), name='importacao-churn-detail'),
     path('import/ciclo-pagamento/', ImportacaoCicloPagamentoView.as_view(), name='importacao-ciclo-pagamento'),
@@ -211,6 +212,7 @@ urlpatterns = [
     path('logs-osab/', LogsImportacaoOSABView.as_view(), name='logs-osab'),
     path('logs-osab/<int:log_id>/relatorio/', DownloadRelatorioOSABView.as_view(), name='logs-osab-relatorio'),
     path('logs-osab/<int:log_id>/cancelar/', CancelarImportacaoOSABView.as_view(), name='logs-osab-cancelar'),
+    path('import/osab/limpar/', LimparImportacaoOSABView.as_view(), name='limpar-osab'),
     path('logs-dfv/', LogsImportacaoDFVView.as_view(), name='logs-dfv'),
     
     # --- ROTAS EXTRAS ---
