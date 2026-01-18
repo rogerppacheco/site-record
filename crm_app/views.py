@@ -5785,27 +5785,18 @@ class ImportacaoAgendamentoView(APIView):
 
             for idx, row in df.iterrows():
                 try:
-                    dados = {
-                        'sg_uf': str(row.get('sg_uf')) if pd.notna(row.get('sg_uf')) else None,
-                        'nm_municipio': str(row.get('nm_municipio')) if pd.notna(row.get('nm_municipio')) else None,
-                        'indicador': str(row.get('indicador')) if pd.notna(row.get('indicador')) else None,
-                        'cd_nrba': str(row.get('cd_nrba')) if pd.notna(row.get('cd_nrba')) else None,
-                        'st_ba': str(row.get('st_ba')) if pd.notna(row.get('st_ba')) else None,
-                        'cd_encerramento': str(row.get('cd_encerramento')) if pd.notna(row.get('cd_encerramento')) else None,
-                        'desc_observacao': str(row.get('desc_observacao')) if pd.notna(row.get('desc_observacao')) else None,
-                        'desc_macro_atividade': str(row.get('desc_macro_atividade')) if pd.notna(row.get('desc_macro_atividade')) else None,
-                        'ds_atividade': str(row.get('ds_atividade')) if pd.notna(row.get('ds_atividade')) else None,
-                        'nr_ordem': str(row.get('nr_ordem')) if pd.notna(row.get('nr_ordem')) else None,
-                        'nr_ordem_venda': str(row.get('nr_ordem_venda')) if pd.notna(row.get('nr_ordem_venda')) else None,
-                        'anomes': str(row.get('anomes')) if pd.notna(row.get('anomes')) else None,
-                        'cd_sap_original': str(row.get('cd_sap_original')) if pd.notna(row.get('cd_sap_original')) else None,
-                        'cd_rede': str(row.get('cd_rede')) if pd.notna(row.get('cd_rede')) else None,
-                        'nm_pdv_rel': str(row.get('nm_pdv_rel')) if pd.notna(row.get('nm_pdv_rel')) else None,
-                        'rede': str(row.get('rede')) if pd.notna(row.get('rede')) else None,
-                        'gp_canal': str(row.get('gp_canal')) if pd.notna(row.get('gp_canal')) else None,
-                        'sg_gerencia': str(row.get('sg_gerencia')) if pd.notna(row.get('sg_gerencia')) else None,
-                        'nm_gc': str(row.get('nm_gc')) if pd.notna(row.get('nm_gc')) else None,
-                    }
+                    # Construir dicionário de dados, mas evitando campos que contenham 'id' no nome
+                    dados = {}
+                    campos_permitidos = [
+                        'sg_uf', 'nm_municipio', 'indicador', 'cd_nrba', 'st_ba', 'cd_encerramento',
+                        'desc_observacao', 'desc_macro_atividade', 'ds_atividade', 'nr_ordem', 
+                        'nr_ordem_venda', 'anomes', 'cd_sap_original', 'cd_rede', 'nm_pdv_rel',
+                        'rede', 'gp_canal', 'sg_gerencia', 'nm_gc'
+                    ]
+                    for campo in campos_permitidos:
+                        if campo in df.columns:
+                            valor = row.get(campo)
+                            dados[campo] = str(valor) if pd.notna(valor) else None
 
                     # Campos de data - conversão melhorada para evitar datas inválidas
                     for campo in campos_data:
@@ -5832,9 +5823,18 @@ class ImportacaoAgendamentoView(APIView):
                             else:
                                 dados[campo] = None
 
-                    # Garantir que 'id' não seja passado (proteção contra coluna 'id' na planilha)
-                    if 'id' in dados:
-                        del dados['id']
+                    # Garantir que campos de ID/chave primária não sejam passados (proteção contra coluna 'id' na planilha)
+                    # Remove qualquer campo relacionado a ID que possa existir na planilha (case-insensitive)
+                    campos_para_remover = ['id', 'pk', 'ID', 'PK', 'Id', 'Pk', 'iD', 'pK']
+                    for campo in campos_para_remover:
+                        if campo in dados:
+                            del dados[campo]
+                    
+                    # Remover também campos que são auto-gerados pelo Django
+                    campos_auto = {'id', 'criado_em', 'atualizado_em'}
+                    for campo_auto in campos_auto:
+                        if campo_auto in dados:
+                            del dados[campo_auto]
                     
                     # Normalizar nr_ordem_venda (remover espaços e garantir que não seja vazio)
                     nr_ordem_venda_val = dados.get('nr_ordem_venda')
