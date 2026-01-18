@@ -84,14 +84,16 @@ class UsuarioSerializer(serializers.ModelSerializer):
         return "-"
 
     def validate_meta_comissao(self, value):
-        """Valida e normaliza meta_comissao"""
+        """Valida e normaliza meta_comissao - aceita 0 como valor válido"""
         if value is None or value == '':
             return 0
         if isinstance(value, str):
             try:
-                return int(value) if value else 0
+                # Converte string para int, tratando "0" corretamente
+                return int(value)
             except (ValueError, TypeError):
                 return 0
+        # Aceita 0 como valor válido (0 é um número válido)
         return value if value is not None else 0
 
     class Meta:
@@ -156,9 +158,9 @@ class UsuarioSerializer(serializers.ModelSerializer):
             if validated_data['meta_comissao'] is None or validated_data['meta_comissao'] == '':
                 validated_data['meta_comissao'] = 0
             elif isinstance(validated_data['meta_comissao'], str):
-                # Converte string para int
+                # Converte string para int (aceita "0" como valor válido)
                 try:
-                    validated_data['meta_comissao'] = int(validated_data['meta_comissao']) if validated_data['meta_comissao'] else 0
+                    validated_data['meta_comissao'] = int(validated_data['meta_comissao'])
                 except (ValueError, TypeError):
                     validated_data['meta_comissao'] = 0
         
@@ -169,7 +171,10 @@ class UsuarioSerializer(serializers.ModelSerializer):
         # Sincronizar campo perfil baseado no primeiro grupo (antes de salvar)
         if groups:
             try:
-                self._sincronizar_perfil_do_group(instance, groups[0])
+                # Extrair o ID do grupo (pode ser um objeto Group ou um ID)
+                first_group = groups[0]
+                group_id = first_group.id if hasattr(first_group, 'id') else first_group
+                self._sincronizar_perfil_do_group(instance, group_id)
             except Exception as e:
                 # Se houver erro na sincronização, apenas loga e continua (não bloqueia)
                 import logging
@@ -189,9 +194,9 @@ class UsuarioSerializer(serializers.ModelSerializer):
             if validated_data['meta_comissao'] is None or validated_data['meta_comissao'] == '':
                 validated_data['meta_comissao'] = 0
             elif isinstance(validated_data['meta_comissao'], str):
-                # Converte string para int
+                # Converte string para int (aceita "0" como valor válido)
                 try:
-                    validated_data['meta_comissao'] = int(validated_data['meta_comissao']) if validated_data['meta_comissao'] else 0
+                    validated_data['meta_comissao'] = int(validated_data['meta_comissao'])
                 except (ValueError, TypeError):
                     validated_data['meta_comissao'] = 0
         
@@ -203,7 +208,14 @@ class UsuarioSerializer(serializers.ModelSerializer):
         if groups is not None:
             instance.groups.set(groups)
             # Sincronizar campo perfil baseado no primeiro grupo (sempre executa)
-            self._sincronizar_perfil_do_group(instance, groups[0] if groups else None)
+            # Extrair o ID do grupo (pode ser um objeto Group ou um ID)
+            first_group = groups[0] if groups else None
+            if first_group:
+                # Se for um objeto Group, pegar o ID; se já for ID, usar diretamente
+                group_id = first_group.id if hasattr(first_group, 'id') else first_group
+            else:
+                group_id = None
+            self._sincronizar_perfil_do_group(instance, group_id)
             
         # Atualiza senha se fornecida
         if password:
