@@ -791,23 +791,28 @@ def processar_webhook_whatsapp(data):
                                 sessao.save()
                         else:
                             # Múltiplos resultados - listar para escolher
+                            # Converter QuerySet para lista ANTES de usar
+                            arquivos_lista = list(arquivos)
+                            arquivos_ids_lista = [arq.id for arq in arquivos_lista]
+                            
                             resposta_parts = [f"📚 *MATERIAIS ENCONTRADOS* para \"{busca_texto}\":\n"]
-                            for idx, arq in enumerate(arquivos, 1):
+                            for idx, arq in enumerate(arquivos_lista, 1):
                                 resposta_parts.append(f"{idx}. {arq.titulo} ({arq.get_tipo_arquivo_display()})")
                                 if arq.descricao:
                                     desc_curta = arq.descricao[:50] + "..." if len(arq.descricao) > 50 else arq.descricao
                                     resposta_parts.append(f"   {desc_curta}")
                             
-                            resposta_parts.append(f"\n📋 Digite o *NÚMERO* do material desejado (1 a {arquivos.count()}):")
+                            resposta_parts.append(f"\n📋 Digite o *NÚMERO* do material desejado (1 a {len(arquivos_lista)}):")
                             resposta = "\n".join(resposta_parts)
                             
                             # Salvar arquivos na sessão
                             sessao.etapa = 'material_selecionar'
                             sessao.dados_temp = {
                                 'busca': busca_texto,
-                                'arquivos_ids': list(arquivos.values_list('id', flat=True))
+                                'arquivos_ids': arquivos_ids_lista
                             }
                             sessao.save()
+                            logger.info(f"[Webhook] Salvos {len(arquivos_ids_lista)} IDs de arquivos na sessão")
             except Exception as e:
                 logger.error(f"[Webhook] Erro ao buscar material: {e}")
                 import traceback
@@ -830,7 +835,13 @@ def processar_webhook_whatsapp(data):
                     idx = int(numero_escolhido) - 1
                     arquivos_ids = dados_temp.get('arquivos_ids', [])
                     
-                    if idx < 0 or idx >= len(arquivos_ids):
+                    if not arquivos_ids or len(arquivos_ids) == 0:
+                        logger.error(f"[Webhook] arquivos_ids está vazio na sessão! dados_temp: {dados_temp}")
+                        resposta = "❌ Erro: Lista de materiais não encontrada. Por favor, busque novamente."
+                        sessao.etapa = 'inicial'
+                        sessao.dados_temp = {}
+                        sessao.save()
+                    elif idx < 0 or idx >= len(arquivos_ids):
                         resposta = f"❌ Número inválido. Por favor, digite um número entre 1 e {len(arquivos_ids)}:"
                     else:
                         arquivo_id = arquivos_ids[idx]
@@ -1101,23 +1112,28 @@ def processar_webhook_whatsapp(data):
                                 resposta = f"❌ Erro ao processar arquivo: {str(e)}"
                         else:
                             # Múltiplos resultados - listar para escolher
+                            # Converter QuerySet para lista ANTES de usar
+                            arquivos_lista = list(arquivos)
+                            arquivos_ids_lista = [arq.id for arq in arquivos_lista]
+                            
                             resposta_parts = [f"📚 *MATERIAIS ENCONTRADOS* para \"{busca_texto}\":\n"]
-                            for idx, arq in enumerate(arquivos, 1):
+                            for idx, arq in enumerate(arquivos_lista, 1):
                                 resposta_parts.append(f"{idx}. {arq.titulo} ({arq.get_tipo_arquivo_display()})")
                                 if arq.descricao:
                                     desc_curta = arq.descricao[:50] + "..." if len(arq.descricao) > 50 else arq.descricao
                                     resposta_parts.append(f"   {desc_curta}")
                             
-                            resposta_parts.append(f"\n📋 Digite o *NÚMERO* do material desejado (1 a {arquivos.count()}):")
+                            resposta_parts.append(f"\n📋 Digite o *NÚMERO* do material desejado (1 a {len(arquivos_lista)}):")
                             resposta = "\n".join(resposta_parts)
                             
                             # Salvar arquivos na sessão
                             sessao.etapa = 'material_selecionar'
                             sessao.dados_temp = {
                                 'busca': busca_texto,
-                                'arquivos_ids': [arq.id for arq in arquivos]
+                                'arquivos_ids': arquivos_ids_lista
                             }
                             sessao.save()
+                            logger.info(f"[Webhook] Salvos {len(arquivos_ids_lista)} IDs de arquivos na sessão")
                         _registrar_estatistica(telefone_formatado, 'MATERIAL')
                     else:
                         # Nenhum material encontrado - não enviar resposta (não mostrar menu automaticamente)
