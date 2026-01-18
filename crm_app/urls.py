@@ -12,6 +12,7 @@ from .record_apoia_api import (
     RecordApoiaDownloadView,
     RecordApoiaDeleteView,
     RecordApoiaDiagnosticoView,
+    RecordApoiaCorrigirNomesView,
 )
 
 # IMPORTAÇÕES ESPECÍFICAS DE VIEWS
@@ -234,6 +235,7 @@ urlpatterns = [
     path('record-apoia/download/<int:arquivo_id>/', RecordApoiaDownloadView.as_view(), name='record-apoia-download'),
     path('record-apoia/delete/<int:arquivo_id>/', RecordApoiaDeleteView.as_view(), name='record-apoia-delete'),
     path('record-apoia/diagnostico/', RecordApoiaDiagnosticoView.as_view(), name='record-apoia-diagnostico'),
+    path('record-apoia/corrigir-nomes/', RecordApoiaCorrigirNomesView.as_view(), name='record-apoia-corrigir-nomes'),
     
     # --- ROTAS EXTRAS ---
     path('grupos-disparo-api/', listar_grupos_whatsapp_api, name='listar_grupos_api'),
