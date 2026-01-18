@@ -109,6 +109,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
             'password': {'write_only': True, 'required': False},
             'perfil': {'required': False, 'allow_null': True},
             'supervisor': {'required': False, 'allow_null': True},
+            'meta_comissao': {'required': False, 'allow_null': True},
         }
 
     def to_representation(self, instance):
