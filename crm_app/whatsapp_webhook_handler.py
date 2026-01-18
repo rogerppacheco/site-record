@@ -1063,33 +1063,39 @@ def processar_webhook_whatsapp(data):
                                             arquivo_b64 = base64.b64encode(arquivo_bytes).decode('utf-8')
                                             
                                             nome_arquivo = arquivo.nome_original
-                                    
-                                    # Preparar mensagem de resposta
-                                    if arquivo.tipo_arquivo == 'IMAGEM':
-                                        resposta = f"✅ *MATERIAL ENCONTRADO*\n\n📷 {arquivo.titulo}\n\nEnviando imagem..."
-                                        sessao.dados_temp = {
-                                            'material_para_envio': {
-                                                'tipo': 'IMAGEM',
-                                                'base64': arquivo_b64,
-                                                'nome': nome_arquivo,
-                                                'titulo': arquivo.titulo,
-                                                'descricao': arquivo.descricao
-                                            }
-                                        }
-                                    else:
-                                        resposta = f"✅ *MATERIAL ENCONTRADO*\n\n📄 {arquivo.titulo}\nTipo: {arquivo.get_tipo_arquivo_display()}\n\nEnviando arquivo..."
-                                        sessao.dados_temp = {
-                                            'material_para_envio': {
-                                                'tipo': 'DOCUMENTO',
-                                                'base64': arquivo_b64,
-                                                'nome': nome_arquivo,
-                                                'titulo': arquivo.titulo,
-                                                'tipo_display': arquivo.get_tipo_arquivo_display()
-                                            }
-                                        }
-                                    
-                                    sessao.etapa = 'inicial'
-                                    sessao.save()
+                                            
+                                            # Preparar mensagem de resposta
+                                            if arquivo.tipo_arquivo == 'IMAGEM':
+                                                resposta = f"✅ *MATERIAL ENCONTRADO*\n\n📷 {arquivo.titulo}\n\nEnviando imagem..."
+                                                sessao.dados_temp = {
+                                                    'material_para_envio': {
+                                                        'tipo': 'IMAGEM',
+                                                        'base64': arquivo_b64,
+                                                        'nome': nome_arquivo,
+                                                        'titulo': arquivo.titulo,
+                                                        'descricao': arquivo.descricao
+                                                    }
+                                                }
+                                            else:
+                                                resposta = f"✅ *MATERIAL ENCONTRADO*\n\n📄 {arquivo.titulo}\nTipo: {arquivo.get_tipo_arquivo_display()}\n\nEnviando arquivo..."
+                                                sessao.dados_temp = {
+                                                    'material_para_envio': {
+                                                        'tipo': 'DOCUMENTO',
+                                                        'base64': arquivo_b64,
+                                                        'nome': nome_arquivo,
+                                                        'titulo': arquivo.titulo,
+                                                        'tipo_display': arquivo.get_tipo_arquivo_display()
+                                                    }
+                                                }
+                                            
+                                            sessao.etapa = 'inicial'
+                                            sessao.save()
+                                        except (FileNotFoundError, IOError, OSError) as e:
+                                            logger.error(f"[Webhook] Erro ao ler arquivo {arquivo_field.name}: {e}")
+                                            resposta = f"❌ Erro ao acessar arquivo \"{arquivo.titulo}\": {str(e)}"
+                                            sessao.etapa = 'inicial'
+                                            sessao.dados_temp = {}
+                                            sessao.save()
                             except Exception as e:
                                 logger.error(f"[Webhook] Erro ao enviar arquivo por tag: {e}")
                                 resposta = f"❌ Erro ao processar arquivo: {str(e)}"

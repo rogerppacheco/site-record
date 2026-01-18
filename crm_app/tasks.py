@@ -98,12 +98,29 @@ def processar_envio_performance():
                     destinos = [d.strip() for d in regra.destinatarios.split(',') if d.strip()]
                     legenda = f"📊 *Atualização Automática* \n⏰ {agora.strftime('%H:%M')}"
                     
-                    for dest in destinos:
-                        svc.enviar_imagem_b64(dest, img_b64, caption=legenda)
+                    sucessos = 0
+                    falhas = 0
                     
-                    logger.info(f"✅ Enviado regra '{regra.nome}' com imagem para {len(destinos)} destinatário(s)")
-                    regra.ultimo_disparo = agora
-                    regra.save()
+                    for dest in destinos:
+                        try:
+                            resultado = svc.enviar_imagem_b64(dest, img_b64, caption=legenda)
+                            if resultado is not None:
+                                sucessos += 1
+                                logger.info(f"✅ Imagem enviada com sucesso para {dest}")
+                            else:
+                                falhas += 1
+                                logger.error(f"❌ Falha ao enviar imagem para {dest}: resposta None")
+                        except Exception as e:
+                            falhas += 1
+                            logger.error(f"❌ Erro ao enviar imagem para {dest}: {e}")
+                    
+                    # Só atualizar último_disparo se pelo menos um envio foi bem-sucedido
+                    if sucessos > 0:
+                        logger.info(f"✅ Enviado regra '{regra.nome}' com imagem para {sucessos}/{len(destinos)} destinatário(s) (falhas: {falhas})")
+                        regra.ultimo_disparo = agora
+                        regra.save()
+                    else:
+                        logger.error(f"❌ Nenhum envio bem-sucedido para regra '{regra.nome}' ({falhas} falha(s))")
                 else:
                     logger.error(f"❌ Erro ao gerar imagem (Pillow) para regra '{regra.nome}'")
 
