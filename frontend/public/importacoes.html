@@ -173,7 +173,10 @@
         }
 
         .validation-card.fpd { border-left-color: #4e73df; }
+        .validation-card.osab { border-left-color: #ffc107; }
         .validation-card.agendamento { border-left-color: #6f42c1; }
+        .validation-card.legado { border-left-color: #5a5c69; }
+        .validation-card.dfv { border-left-color: #28a745; }
         .validation-card.recompra { border-left-color: #0066cc; }
         .validation-card.churn { border-left-color: #e74a3b; }
 
@@ -522,40 +525,119 @@
                     </a>
                 `;
 
-                // Card Agendamento (placeholder - pode adicionar API depois)
+                // Card OSAB - FUNCIONAL
                 html += `
-                    <div class="validation-card agendamento" style="opacity: 0.7;">
+                    <a href="/validacao-osab/" class="validation-card osab" id="card-osab">
+                        <div class="validation-card-header">
+                            <h5 class="validation-card-title">
+                                <i class="bi bi-file-earmark-text me-2"></i>
+                                Importações OSAB
+                            </h5>
+                            <i class="bi bi-clipboard-check validation-card-icon"></i>
+                        </div>
+                        <p class="text-muted mb-3" style="font-size: 0.9rem;">Status de Pedidos</p>
+                        
+                        <div id="stats-osab" class="validation-stats">
+                            <div class="spinner-border spinner-border-sm text-warning" role="status"></div>
+                            <p style="font-size: 0.85rem; margin: 5px 0 0 0;">Carregando...</p>
+                        </div>
+                        
+                        <div class="btn-view-all mt-3">
+                            Ver Detalhes <i class="bi bi-arrow-right ms-1"></i>
+                        </div>
+                    </a>
+                `;
+
+                // Card Agendamento - FUNCIONAL
+                html += `
+                    <a href="/validacao-agendamento/" class="validation-card agendamento" id="card-agendamento">
                         <div class="validation-card-header">
                             <h5 class="validation-card-title">
                                 <i class="bi bi-calendar-check me-2"></i>
                                 Importações Agendamento
                             </h5>
-                            <i class="bi bi-clock-history validation-card-icon"></i>
+                            <i class="bi bi-clipboard-check validation-card-icon"></i>
                         </div>
                         <p class="text-muted mb-3" style="font-size: 0.9rem;">Futuros e Tarefas Fechadas</p>
                         
-                        <div class="empty-state" style="padding: 20px;">
-                            <p style="font-size: 0.85rem; margin: 0;">Sistema de validação em desenvolvimento</p>
+                        <div id="stats-agendamento" class="validation-stats">
+                            <div class="spinner-border spinner-border-sm" style="color: #6f42c1;" role="status"></div>
+                            <p style="font-size: 0.85rem; margin: 5px 0 0 0;">Carregando...</p>
                         </div>
-                    </div>
+                        
+                        <div class="btn-view-all mt-3">
+                            Ver Detalhes <i class="bi bi-arrow-right ms-1"></i>
+                        </div>
+                    </a>
                 `;
 
-                // Card Recompra (placeholder)
+                // Card Legado - FUNCIONAL
                 html += `
-                    <div class="validation-card recompra" style="opacity: 0.7;">
+                    <a href="/validacao-legado/" class="validation-card legado" id="card-legado">
+                        <div class="validation-card-header">
+                            <h5 class="validation-card-title">
+                                <i class="bi bi-archive me-2"></i>
+                                Importações Legado
+                            </h5>
+                            <i class="bi bi-clipboard-check validation-card-icon"></i>
+                        </div>
+                        <p class="text-muted mb-3" style="font-size: 0.9rem;">Vendas Antigas (Históricas)</p>
+                        
+                        <div id="stats-legado" class="validation-stats">
+                            <div class="spinner-border spinner-border-sm" style="color: #5a5c69;" role="status"></div>
+                            <p style="font-size: 0.85rem; margin: 5px 0 0 0;">Carregando...</p>
+                        </div>
+                        
+                        <div class="btn-view-all mt-3">
+                            Ver Detalhes <i class="bi bi-arrow-right ms-1"></i>
+                        </div>
+                    </a>
+                `;
+
+                // Card DFV - FUNCIONAL
+                html += `
+                    <a href="/validacao-dfv/" class="validation-card dfv" id="card-dfv">
+                        <div class="validation-card-header">
+                            <h5 class="validation-card-title">
+                                <i class="bi bi-file-earmark-spreadsheet me-2"></i>
+                                Importações DFV
+                            </h5>
+                            <i class="bi bi-clipboard-check validation-card-icon"></i>
+                        </div>
+                        <p class="text-muted mb-3" style="font-size: 0.9rem;">Faturamento e Vendas</p>
+                        
+                        <div id="stats-dfv" class="validation-stats">
+                            <div class="spinner-border spinner-border-sm" style="color: #28a745;" role="status"></div>
+                            <p style="font-size: 0.85rem; margin: 5px 0 0 0;">Carregando...</p>
+                        </div>
+                        
+                        <div class="btn-view-all mt-3">
+                            Ver Detalhes <i class="bi bi-arrow-right ms-1"></i>
+                        </div>
+                    </a>
+                `;
+
+                // Card Recompra - FUNCIONAL
+                html += `
+                    <a href="/validacao-recompra/" class="validation-card recompra" id="card-recompra">
                         <div class="validation-card-header">
                             <h5 class="validation-card-title">
                                 <i class="bi bi-arrow-repeat me-2"></i>
                                 Importações Recompra
                             </h5>
-                            <i class="bi bi-graph-up validation-card-icon"></i>
+                            <i class="bi bi-clipboard-check validation-card-icon"></i>
                         </div>
                         <p class="text-muted mb-3" style="font-size: 0.9rem;">Dados de Recompra</p>
                         
-                        <div class="empty-state" style="padding: 20px;">
-                            <p style="font-size: 0.85rem; margin: 0;">Sistema de validação em desenvolvimento</p>
+                        <div id="stats-recompra" class="validation-stats">
+                            <div class="spinner-border spinner-border-sm" style="color: #0066cc;" role="status"></div>
+                            <p style="font-size: 0.85rem; margin: 5px 0 0 0;">Carregando...</p>
                         </div>
-                    </div>
+                        
+                        <div class="btn-view-all mt-3">
+                            Ver Detalhes <i class="bi bi-arrow-right ms-1"></i>
+                        </div>
+                    </a>
                 `;
 
                 // Card Churn - FUNCIONAL
@@ -582,6 +664,351 @@
                 `;
 
                 container.innerHTML = html;
+
+                // Carregar estatísticas do OSAB
+                fetch('/api/crm/logs-osab/', {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(res => res.json())
+                .then(data => {
+                    const statsContainer = document.getElementById('stats-osab');
+                    if (data.success && data.logs && data.logs.length > 0) {
+                        const logs = data.logs;
+                        const totalImportacoes = logs.length;
+                        const totalSucesso = logs.filter(l => l.status === 'SUCESSO').length;
+                        const totalErro = logs.filter(l => l.status === 'ERRO').length;
+                        const totalParcial = logs.filter(l => l.status === 'PARCIAL').length;
+                        const totalRegistros = logs.reduce((sum, l) => sum + (l.total_registros || 0), 0);
+                        const totalCriados = logs.reduce((sum, l) => sum + (l.criados || 0), 0);
+                        
+                        statsContainer.innerHTML = `
+                            <div class="stat-item">
+                                <div class="stat-value">${totalImportacoes}</div>
+                                <div class="stat-label">Total</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value">${totalRegistros.toLocaleString('pt-BR')}</div>
+                                <div class="stat-label">Registros</div>
+                            </div>
+                        `;
+                        
+                        // Adicionar badges de status
+                        const cardOsab = document.getElementById('card-osab');
+                        const existingBadgesOsab = cardOsab.querySelector('.status-badges');
+                        if (existingBadgesOsab) existingBadgesOsab.remove();
+                        
+                        const badgesHtmlOsab = `
+                            <div class="status-badges">
+                                <span class="status-badge badge-success">
+                                    ✓ ${totalSucesso} Sucesso
+                                </span>
+                                <span class="status-badge badge-error">
+                                    ✗ ${totalErro} Erro
+                                </span>
+                                <span class="status-badge badge-partial">
+                                    ⚠ ${totalParcial} Parcial
+                                </span>
+                            </div>
+                        `;
+                        cardOsab.insertAdjacentHTML('beforeend', badgesHtmlOsab);
+                    } else {
+                        statsContainer.innerHTML = `
+                            <div class="stat-item">
+                                <div class="stat-value">0</div>
+                                <div class="stat-label">Total</div>
+                            </div>
+                        `;
+                    }
+                })
+                .catch(err => {
+                    console.error('Erro ao carregar stats OSAB:', err);
+                    const statsContainer = document.getElementById('stats-osab');
+                    statsContainer.innerHTML = `
+                        <div class="stat-item">
+                            <div class="stat-value">-</div>
+                            <div class="stat-label">Erro</div>
+                        </div>
+                    `;
+                });
+
+                // Carregar estatísticas do Agendamento
+                fetch('/api/crm/logs-agendamento/', {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(res => res.json())
+                .then(data => {
+                    const statsContainer = document.getElementById('stats-agendamento');
+                    if (data.success && data.logs && data.logs.length > 0) {
+                        const logs = data.logs;
+                        const totalImportacoes = logs.length;
+                        const totalSucesso = logs.filter(l => l.status === 'SUCESSO').length;
+                        const totalErro = logs.filter(l => l.status === 'ERRO').length;
+                        const totalParcial = logs.filter(l => l.status === 'PARCIAL').length;
+                        const totalRegistros = logs.reduce((sum, l) => sum + (l.total_linhas || 0), 0);
+                        const totalCriados = logs.reduce((sum, l) => sum + (l.agendamentos_criados || 0), 0);
+                        
+                        statsContainer.innerHTML = `
+                            <div class="stat-item">
+                                <div class="stat-value">${totalImportacoes}</div>
+                                <div class="stat-label">Total</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value">${totalRegistros.toLocaleString('pt-BR')}</div>
+                                <div class="stat-label">Registros</div>
+                            </div>
+                        `;
+                        
+                        // Adicionar badges de status
+                        const cardAgendamento = document.getElementById('card-agendamento');
+                        const existingBadgesAgendamento = cardAgendamento.querySelector('.status-badges');
+                        if (existingBadgesAgendamento) existingBadgesAgendamento.remove();
+                        
+                        const badgesHtmlAgendamento = `
+                            <div class="status-badges">
+                                <span class="status-badge badge-success">
+                                    ✓ ${totalSucesso} Sucesso
+                                </span>
+                                <span class="status-badge badge-error">
+                                    ✗ ${totalErro} Erro
+                                </span>
+                                <span class="status-badge badge-partial">
+                                    ⚠ ${totalParcial} Parcial
+                                </span>
+                            </div>
+                        `;
+                        cardAgendamento.insertAdjacentHTML('beforeend', badgesHtmlAgendamento);
+                    } else {
+                        statsContainer.innerHTML = `
+                            <div class="stat-item">
+                                <div class="stat-value">0</div>
+                                <div class="stat-label">Total</div>
+                            </div>
+                        `;
+                    }
+                })
+                .catch(err => {
+                    console.error('Erro ao carregar stats Agendamento:', err);
+                    const statsContainer = document.getElementById('stats-agendamento');
+                    statsContainer.innerHTML = `
+                        <div class="stat-item">
+                            <div class="stat-value">-</div>
+                            <div class="stat-label">Erro</div>
+                        </div>
+                    `;
+                });
+
+                // Carregar estatísticas do Legado
+                fetch('/api/crm/logs-legado/', {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(res => res.json())
+                .then(data => {
+                    const statsContainer = document.getElementById('stats-legado');
+                    if (data.success && data.logs && data.logs.length > 0) {
+                        const logs = data.logs;
+                        const totalImportacoes = logs.length;
+                        const totalSucesso = logs.filter(l => l.status === 'SUCESSO').length;
+                        const totalErro = logs.filter(l => l.status === 'ERRO').length;
+                        const totalParcial = logs.filter(l => l.status === 'PARCIAL').length;
+                        const totalLinhas = logs.reduce((sum, l) => sum + (l.total_linhas || 0), 0);
+                        const totalVendasCriadas = logs.reduce((sum, l) => sum + (l.vendas_criadas || 0), 0);
+                        
+                        statsContainer.innerHTML = `
+                            <div class="stat-item">
+                                <div class="stat-value">${totalImportacoes}</div>
+                                <div class="stat-label">Total</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value">${totalLinhas.toLocaleString('pt-BR')}</div>
+                                <div class="stat-label">Linhas</div>
+                            </div>
+                        `;
+                        
+                        // Adicionar badges de status
+                        const cardLegado = document.getElementById('card-legado');
+                        const existingBadgesLegado = cardLegado.querySelector('.status-badges');
+                        if (existingBadgesLegado) existingBadgesLegado.remove();
+                        
+                        const badgesHtmlLegado = `
+                            <div class="status-badges">
+                                <span class="status-badge badge-success">
+                                    ✓ ${totalSucesso} Sucesso
+                                </span>
+                                <span class="status-badge badge-error">
+                                    ✗ ${totalErro} Erro
+                                </span>
+                                <span class="status-badge badge-partial">
+                                    ⚠ ${totalParcial} Parcial
+                                </span>
+                            </div>
+                        `;
+                        cardLegado.insertAdjacentHTML('beforeend', badgesHtmlLegado);
+                    } else {
+                        statsContainer.innerHTML = `
+                            <div class="stat-item">
+                                <div class="stat-value">0</div>
+                                <div class="stat-label">Total</div>
+                            </div>
+                        `;
+                    }
+                })
+                .catch(err => {
+                    console.error('Erro ao carregar stats Legado:', err);
+                    const statsContainer = document.getElementById('stats-legado');
+                    statsContainer.innerHTML = `
+                        <div class="stat-item">
+                            <div class="stat-value">-</div>
+                            <div class="stat-label">Erro</div>
+                        </div>
+                    `;
+                });
+
+                // Carregar estatísticas do DFV
+                fetch('/api/crm/logs-dfv/', {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(res => res.json())
+                .then(data => {
+                    const statsContainer = document.getElementById('stats-dfv');
+                    if (data.success && data.logs && data.logs.length > 0) {
+                        const logs = data.logs;
+                        const totalImportacoes = logs.length;
+                        const totalSucesso = logs.filter(l => l.status === 'SUCESSO').length;
+                        const totalErro = logs.filter(l => l.status === 'ERRO').length;
+                        const totalParcial = logs.filter(l => l.status === 'PARCIAL').length;
+                        const totalRegistros = logs.reduce((sum, l) => sum + (l.total_registros || 0), 0);
+                        const totalValor = logs.reduce((sum, l) => sum + (parseFloat(l.total_valor_importado) || 0), 0);
+                        
+                        statsContainer.innerHTML = `
+                            <div class="stat-item">
+                                <div class="stat-value">${totalImportacoes}</div>
+                                <div class="stat-label">Total</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value">${totalRegistros.toLocaleString('pt-BR')}</div>
+                                <div class="stat-label">Registros</div>
+                            </div>
+                        `;
+                        
+                        // Adicionar badges de status
+                        const cardDfv = document.getElementById('card-dfv');
+                        const existingBadgesDfv = cardDfv.querySelector('.status-badges');
+                        if (existingBadgesDfv) existingBadgesDfv.remove();
+                        
+                        const badgesHtmlDfv = `
+                            <div class="status-badges">
+                                <span class="status-badge badge-success">
+                                    ✓ ${totalSucesso} Sucesso
+                                </span>
+                                <span class="status-badge badge-error">
+                                    ✗ ${totalErro} Erro
+                                </span>
+                                <span class="status-badge badge-partial">
+                                    ⚠ ${totalParcial} Parcial
+                                </span>
+                            </div>
+                        `;
+                        cardDfv.insertAdjacentHTML('beforeend', badgesHtmlDfv);
+                    } else {
+                        statsContainer.innerHTML = `
+                            <div class="stat-item">
+                                <div class="stat-value">0</div>
+                                <div class="stat-label">Total</div>
+                            </div>
+                        `;
+                    }
+                })
+                .catch(err => {
+                    console.error('Erro ao carregar stats DFV:', err);
+                    const statsContainer = document.getElementById('stats-dfv');
+                    statsContainer.innerHTML = `
+                        <div class="stat-item">
+                            <div class="stat-value">-</div>
+                            <div class="stat-label">Erro</div>
+                        </div>
+                    `;
+                });
+
+                // Carregar estatísticas do Recompra
+                fetch('/api/crm/logs-recompra/', {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(res => res.json())
+                .then(data => {
+                    const statsContainer = document.getElementById('stats-recompra');
+                    if (data.success && data.logs && data.logs.length > 0) {
+                        const logs = data.logs;
+                        const totalImportacoes = logs.length;
+                        const totalSucesso = logs.filter(l => l.status === 'SUCESSO').length;
+                        const totalErro = logs.filter(l => l.status === 'ERRO').length;
+                        const totalParcial = logs.filter(l => l.status === 'PARCIAL').length;
+                        const totalLinhas = logs.reduce((sum, l) => sum + (l.total_linhas || 0), 0);
+                        const totalCriados = logs.reduce((sum, l) => sum + (l.registros_criados || 0), 0);
+                        
+                        statsContainer.innerHTML = `
+                            <div class="stat-item">
+                                <div class="stat-value">${totalImportacoes}</div>
+                                <div class="stat-label">Total</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value">${totalLinhas.toLocaleString('pt-BR')}</div>
+                                <div class="stat-label">Linhas</div>
+                            </div>
+                        `;
+                        
+                        // Adicionar badges de status
+                        const cardRecompra = document.getElementById('card-recompra');
+                        const existingBadgesRecompra = cardRecompra.querySelector('.status-badges');
+                        if (existingBadgesRecompra) existingBadgesRecompra.remove();
+                        
+                        const badgesHtmlRecompra = `
+                            <div class="status-badges">
+                                <span class="status-badge badge-success">
+                                    ✓ ${totalSucesso} Sucesso
+                                </span>
+                                <span class="status-badge badge-error">
+                                    ✗ ${totalErro} Erro
+                                </span>
+                                <span class="status-badge badge-partial">
+                                    ⚠ ${totalParcial} Parcial
+                                </span>
+                            </div>
+                        `;
+                        cardRecompra.insertAdjacentHTML('beforeend', badgesHtmlRecompra);
+                    } else {
+                        statsContainer.innerHTML = `
+                            <div class="stat-item">
+                                <div class="stat-value">0</div>
+                                <div class="stat-label">Total</div>
+                            </div>
+                        `;
+                    }
+                })
+                .catch(err => {
+                    console.error('Erro ao carregar stats Recompra:', err);
+                    const statsContainer = document.getElementById('stats-recompra');
+                    statsContainer.innerHTML = `
+                        <div class="stat-item">
+                            <div class="stat-value">-</div>
+                            <div class="stat-label">Erro</div>
+                        </div>
+                    `;
+                });
 
                 // Carregar estatísticas do CHURN
                 fetch('/api/bonus-m10/logs-importacao-churn/', {
