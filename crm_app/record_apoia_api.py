@@ -6,7 +6,6 @@ from django.http import FileResponse, Http404
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 from .models import RecordApoia
-from .utils import is_member
 import os
 from django.db.models import Q
 
@@ -16,9 +15,7 @@ class RecordApoiaUploadView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        if not is_member(request.user):
-            return Response({'error': 'Acesso negado'}, status=403)
-        
+        # Record Apoia é acessível a todos os usuários autenticados
         try:
             arquivos = request.FILES.getlist('arquivo')
             if not arquivos:
@@ -65,7 +62,7 @@ class RecordApoiaUploadView(APIView):
                         'nome_original': record.nome_original,
                         'tamanho': record.arquivo.size if record.arquivo else 0,
                         'tipo': record.get_tipo_arquivo_display(),
-                        'criado_em': record.criado_em.isoformat()
+                        'criado_em': record.data_upload.isoformat() if record.data_upload else None
                     })
                 except Exception as e:
                     logger.error(f"Erro ao fazer upload de {arquivo.name}: {e}")
@@ -103,9 +100,7 @@ class RecordApoiaListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        if not is_member(request.user):
-            return Response({'error': 'Acesso negado'}, status=403)
-        
+        # Record Apoia é acessível a todos os usuários autenticados
         try:
             busca = request.query_params.get('busca', '').strip()
             categoria_filtro = request.query_params.get('categoria', '').strip()
@@ -123,7 +118,7 @@ class RecordApoiaListView(APIView):
             if categoria_filtro:
                 queryset = queryset.filter(categoria__iexact=categoria_filtro)
             
-            queryset = queryset.order_by('-criado_em')
+            queryset = queryset.order_by('-data_upload')
             
             arquivos = []
             for arq in queryset:
@@ -137,7 +132,7 @@ class RecordApoiaListView(APIView):
                     'tamanho': arq.arquivo.size if arq.arquivo else 0,
                     'nome_original': arq.nome_original,
                     'downloads_count': arq.downloads_count,
-                    'criado_em': arq.criado_em.isoformat(),
+                    'criado_em': arq.data_upload.isoformat() if arq.data_upload else None,
                     'usuario_upload': arq.usuario_upload.username if arq.usuario_upload else None,
                     'url_download': f"/api/record-apoia/{arq.id}/download/"
                 })
@@ -156,9 +151,7 @@ class RecordApoiaDownloadView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, arquivo_id):
-        if not is_member(request.user):
-            return Response({'error': 'Acesso negado'}, status=403)
-        
+        # Record Apoia é acessível a todos os usuários autenticados
         try:
             arquivo = RecordApoia.objects.get(id=arquivo_id, ativo=True)
             arquivo.downloads_count += 1
@@ -190,9 +183,7 @@ class RecordApoiaDeleteView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def delete(self, request, arquivo_id):
-        if not is_member(request.user):
-            return Response({'error': 'Acesso negado'}, status=403)
-        
+        # Record Apoia é acessível a todos os usuários autenticados
         try:
             arquivo = RecordApoia.objects.get(id=arquivo_id)
             
@@ -217,9 +208,7 @@ class RecordApoiaDiagnosticoView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        if not is_member(request.user):
-            return Response({'error': 'Acesso negado'}, status=403)
-        
+        # Record Apoia é acessível a todos os usuários autenticados
         try:
             from django.conf import settings
             import os
@@ -236,7 +225,6 @@ class RecordApoiaDiagnosticoView(APIView):
             }
             
             for arquivo in arquivos:
-                arquivo_path = None
                 existe_fisico = False
                 caminho_completo = None
                 
@@ -269,7 +257,7 @@ class RecordApoiaDiagnosticoView(APIView):
                             'nome_original': arquivo.nome_original,
                             'caminho_esperado': caminho_completo,
                             'caminho_relativo': caminho_relativo,
-                            'criado_em': arquivo.criado_em.isoformat()
+                            'criado_em': arquivo.data_upload.isoformat() if arquivo.data_upload else None
                         })
             
             diagnosticos['total_com_problema'] = len(diagnosticos['arquivos_com_problema'])
