@@ -180,8 +180,21 @@ class WhatsAppService:
     # 4. ENVIAR PDF (BASE64)
     # ---------------------------------------------------------
     def enviar_pdf_b64(self, telefone, base64_data, nome_arquivo="extrato.pdf"):
+        """
+        Envia documento (PDF, Word, Excel, etc) em Base64 via Z-API.
+        """
         url = f"{self.base_url}/send-document"
         telefone_limpo = self._formatar_telefone(telefone)
+        
+        logger.info(f"[WhatsAppService] Enviando documento para {telefone_limpo}")
+        logger.info(f"[WhatsAppService] Arquivo: {nome_arquivo}, Tamanho base64: {len(base64_data)} chars")
+        
+        # Z-API send-document geralmente aceita apenas base64 puro (sem prefixo data:)
+        # Remover prefixo se existir
+        if base64_data.startswith('data:'):
+            # Extrair apenas o base64 (depois do "base64,")
+            if 'base64,' in base64_data:
+                base64_data = base64_data.split('base64,', 1)[1]
         
         payload = {
             "phone": telefone_limpo,
@@ -189,8 +202,19 @@ class WhatsAppService:
             "fileName": nome_arquivo
         }
         
-        resp = self._send_request(url, payload)
-        return resp is not None
+        try:
+            resp = self._send_request(url, payload)
+            if resp:
+                logger.info(f"[WhatsAppService] ✅ Documento enviado com sucesso: {nome_arquivo}")
+                return True
+            else:
+                logger.error(f"[WhatsAppService] ❌ Erro ao enviar documento: resposta vazia")
+                return False
+        except Exception as e:
+            logger.error(f"[WhatsAppService] ❌ Erro ao enviar documento: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
 
     # ---------------------------------------------------------
     # 5. LISTAR GRUPOS (Z-API)

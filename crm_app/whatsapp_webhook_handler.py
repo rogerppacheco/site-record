@@ -722,6 +722,9 @@ def processar_webhook_whatsapp(data):
                                 arquivo_field = arquivo.arquivo
                                 if not arquivo_field:
                                     resposta = f"❌ Arquivo \"{arquivo.titulo}\" não encontrado."
+                                    sessao.etapa = 'inicial'
+                                    sessao.dados_temp = {}
+                                    sessao.save()
                                 else:
                                     arquivo_field.open('rb')
                                     arquivo_bytes = arquivo_field.read()
@@ -730,27 +733,38 @@ def processar_webhook_whatsapp(data):
                                     
                                     nome_arquivo = arquivo.nome_original
                                     
-                                    # Enviar arquivo conforme tipo
-                                    sucesso = True
+                                    # Preparar mensagem de resposta
                                     if arquivo.tipo_arquivo == 'IMAGEM':
-                                        # Enviar como imagem
-                                        caption = f"📷 {arquivo.titulo}"
-                                        if arquivo.descricao:
-                                            caption += f"\n{arquivo.descricao[:100]}"
-                                        resultado_img = whatsapp_service.enviar_imagem_b64(telefone_formatado, arquivo_b64, caption)
-                                        sucesso = resultado_img is not None
                                         resposta = f"✅ *MATERIAL ENCONTRADO*\n\n📷 {arquivo.titulo}\n\nEnviando imagem..."
+                                        # Armazenar dados do arquivo para envio após a mensagem
+                                        sessao.dados_temp = {
+                                            'material_para_envio': {
+                                                'tipo': 'IMAGEM',
+                                                'base64': arquivo_b64,
+                                                'nome': nome_arquivo,
+                                                'titulo': arquivo.titulo,
+                                                'descricao': arquivo.descricao
+                                            }
+                                        }
                                     else:
-                                        # Enviar como documento (PDF, Word, Excel, etc)
-                                        sucesso = whatsapp_service.enviar_pdf_b64(telefone_formatado, arquivo_b64, nome_arquivo)
                                         resposta = f"✅ *MATERIAL ENCONTRADO*\n\n📄 {arquivo.titulo}\nTipo: {arquivo.get_tipo_arquivo_display()}\n\nEnviando arquivo..."
-                                    
-                                    if not sucesso:
-                                        resposta += "\n\n⚠️ Erro ao enviar arquivo. Tente novamente."
+                                        # Armazenar dados do arquivo para envio após a mensagem
+                                        sessao.dados_temp = {
+                                            'material_para_envio': {
+                                                'tipo': 'DOCUMENTO',
+                                                'base64': arquivo_b64,
+                                                'nome': nome_arquivo,
+                                                'titulo': arquivo.titulo,
+                                                'tipo_display': arquivo.get_tipo_arquivo_display()
+                                            }
+                                        }
                                     
                                     sessao.etapa = 'inicial'
-                                    sessao.dados_temp = {}
                                     sessao.save()
+                                    
+                                    # Incrementar contador de downloads
+                                    arquivo.downloads_count += 1
+                                    arquivo.save(update_fields=['downloads_count'])
                             except Exception as e:
                                 logger.error(f"[Webhook] Erro ao enviar arquivo: {e}")
                                 resposta = f"❌ Erro ao processar arquivo: {str(e)}"
@@ -811,6 +825,9 @@ def processar_webhook_whatsapp(data):
                             arquivo_field = arquivo.arquivo
                             if not arquivo_field:
                                 resposta = f"❌ Arquivo \"{arquivo.titulo}\" não encontrado."
+                                sessao.etapa = 'inicial'
+                                sessao.dados_temp = {}
+                                sessao.save()
                             else:
                                 arquivo_field.open('rb')
                                 arquivo_bytes = arquivo_field.read()
@@ -819,27 +836,38 @@ def processar_webhook_whatsapp(data):
                                 
                                 nome_arquivo = arquivo.nome_original
                                 
-                                # Enviar arquivo conforme tipo
-                                sucesso = True
+                                # Preparar mensagem de resposta
                                 if arquivo.tipo_arquivo == 'IMAGEM':
-                                    # Enviar como imagem
-                                    caption = f"📷 {arquivo.titulo}"
-                                    if arquivo.descricao:
-                                        caption += f"\n{arquivo.descricao[:100]}"
-                                    resultado_img = whatsapp_service.enviar_imagem_b64(telefone_formatado, arquivo_b64, caption)
-                                    sucesso = resultado_img is not None
                                     resposta = f"✅ *MATERIAL SELECIONADO*\n\n📷 {arquivo.titulo}\n\nEnviando imagem..."
+                                    # Armazenar dados do arquivo para envio após a mensagem
+                                    sessao.dados_temp = {
+                                        'material_para_envio': {
+                                            'tipo': 'IMAGEM',
+                                            'base64': arquivo_b64,
+                                            'nome': nome_arquivo,
+                                            'titulo': arquivo.titulo,
+                                            'descricao': arquivo.descricao
+                                        }
+                                    }
                                 else:
-                                    # Enviar como documento
-                                    sucesso = whatsapp_service.enviar_pdf_b64(telefone_formatado, arquivo_b64, nome_arquivo)
                                     resposta = f"✅ *MATERIAL SELECIONADO*\n\n📄 {arquivo.titulo}\nTipo: {arquivo.get_tipo_arquivo_display()}\n\nEnviando arquivo..."
-                                
-                                if not sucesso:
-                                    resposta += "\n\n⚠️ Erro ao enviar arquivo. Tente novamente."
+                                    # Armazenar dados do arquivo para envio após a mensagem
+                                    sessao.dados_temp = {
+                                        'material_para_envio': {
+                                            'tipo': 'DOCUMENTO',
+                                            'base64': arquivo_b64,
+                                            'nome': nome_arquivo,
+                                            'titulo': arquivo.titulo,
+                                            'tipo_display': arquivo.get_tipo_arquivo_display()
+                                        }
+                                    }
                                 
                                 sessao.etapa = 'inicial'
-                                sessao.dados_temp = {}
                                 sessao.save()
+                                
+                                # Incrementar contador de downloads
+                                arquivo.downloads_count += 1
+                                arquivo.save(update_fields=['downloads_count'])
                         except Exception as e:
                             logger.error(f"[Webhook] Erro ao enviar arquivo selecionado: {e}")
                             import traceback
@@ -956,16 +984,101 @@ def processar_webhook_whatsapp(data):
                 # Pode ser um número de confirmação que não foi processado corretamente
                 resposta = None  # Não enviar resposta de erro
             elif etapa_atual == 'inicial' and mensagem_limpa not in ['FATURA', 'FACHADA', 'VIABILIDADE', 'STATUS', 'STAT', 'VIABIL', 'FACADA', 'FAT', 'MENU', 'AJUDA', 'HELP', 'OPCOES', 'OPÇÕES', 'OPCOES', 'OPÇOES', 'MATERIAL', 'MATERIAIS']:
-                # Mostrar menu de ajuda
-                resposta = (
-                    "📋 *MENU*\n\n"
-                    "Escolha uma opção:\n"
-                    "• *Fachada* - Consultar fachadas por CEP\n"
-                    "• *Viabilidade* - Consultar viabilidade por CEP e número\n"
-                    "• *Status* - Consultar status de pedido\n"
-                    "• *Fatura* - Consultar fatura por CPF\n"
-                    "• *Material* - Buscar materiais/documentos"
-                )
+                # Tentar buscar nas tags do Record Apoia antes de ignorar
+                from crm_app.models import RecordApoia
+                from django.db.models import Q
+                import base64
+                import os
+                
+                try:
+                    # Buscar materiais por tag/palavra-chave
+                    busca_texto = mensagem_texto.strip()
+                    arquivos = RecordApoia.objects.filter(
+                        ativo=True
+                    ).filter(
+                        Q(tags__icontains=busca_texto) |
+                        Q(titulo__icontains=busca_texto) |
+                        Q(descricao__icontains=busca_texto) |
+                        Q(categoria__icontains=busca_texto)
+                    )[:5]  # Limitar a 5 resultados
+                    
+                    if arquivos.exists():
+                        logger.info(f"[Webhook] Material encontrado via tag/palavra-chave: {busca_texto}")
+                        if arquivos.count() == 1:
+                            # Um único resultado - enviar diretamente
+                            arquivo = arquivos.first()
+                            arquivo.downloads_count += 1
+                            arquivo.save(update_fields=['downloads_count'])
+                            
+                            try:
+                                # Ler arquivo do FileField
+                                arquivo_field = arquivo.arquivo
+                                if not arquivo_field:
+                                    resposta = f"❌ Arquivo \"{arquivo.titulo}\" não encontrado."
+                                else:
+                                    arquivo_field.open('rb')
+                                    arquivo_bytes = arquivo_field.read()
+                                    arquivo_field.close()
+                                    arquivo_b64 = base64.b64encode(arquivo_bytes).decode('utf-8')
+                                    
+                                    nome_arquivo = arquivo.nome_original
+                                    
+                                    # Preparar mensagem de resposta
+                                    if arquivo.tipo_arquivo == 'IMAGEM':
+                                        resposta = f"✅ *MATERIAL ENCONTRADO*\n\n📷 {arquivo.titulo}\n\nEnviando imagem..."
+                                        sessao.dados_temp = {
+                                            'material_para_envio': {
+                                                'tipo': 'IMAGEM',
+                                                'base64': arquivo_b64,
+                                                'nome': nome_arquivo,
+                                                'titulo': arquivo.titulo,
+                                                'descricao': arquivo.descricao
+                                            }
+                                        }
+                                    else:
+                                        resposta = f"✅ *MATERIAL ENCONTRADO*\n\n📄 {arquivo.titulo}\nTipo: {arquivo.get_tipo_arquivo_display()}\n\nEnviando arquivo..."
+                                        sessao.dados_temp = {
+                                            'material_para_envio': {
+                                                'tipo': 'DOCUMENTO',
+                                                'base64': arquivo_b64,
+                                                'nome': nome_arquivo,
+                                                'titulo': arquivo.titulo,
+                                                'tipo_display': arquivo.get_tipo_arquivo_display()
+                                            }
+                                        }
+                                    
+                                    sessao.etapa = 'inicial'
+                                    sessao.save()
+                            except Exception as e:
+                                logger.error(f"[Webhook] Erro ao enviar arquivo por tag: {e}")
+                                resposta = f"❌ Erro ao processar arquivo: {str(e)}"
+                        else:
+                            # Múltiplos resultados - listar para escolher
+                            resposta_parts = [f"📚 *MATERIAIS ENCONTRADOS* para \"{busca_texto}\":\n"]
+                            for idx, arq in enumerate(arquivos, 1):
+                                resposta_parts.append(f"{idx}. {arq.titulo} ({arq.get_tipo_arquivo_display()})")
+                                if arq.descricao:
+                                    desc_curta = arq.descricao[:50] + "..." if len(arq.descricao) > 50 else arq.descricao
+                                    resposta_parts.append(f"   {desc_curta}")
+                            
+                            resposta_parts.append(f"\n📋 Digite o *NÚMERO* do material desejado (1 a {arquivos.count()}):")
+                            resposta = "\n".join(resposta_parts)
+                            
+                            # Salvar arquivos na sessão
+                            sessao.etapa = 'material_selecionar'
+                            sessao.dados_temp = {
+                                'busca': busca_texto,
+                                'arquivos_ids': [arq.id for arq in arquivos]
+                            }
+                            sessao.save()
+                        _registrar_estatistica(telefone_formatado, 'MATERIAL')
+                    else:
+                        # Nenhum material encontrado - não enviar resposta (não mostrar menu automaticamente)
+                        resposta = None
+                        logger.info(f"[Webhook] Nenhum material encontrado para '{busca_texto}' e não é comando conhecido. Ignorando mensagem.")
+                except Exception as e:
+                    logger.error(f"[Webhook] Erro ao buscar material por tag: {e}")
+                    resposta = None  # Não enviar resposta de erro
             else:
                 resposta = None  # Não enviar resposta se estiver em meio a um fluxo
         

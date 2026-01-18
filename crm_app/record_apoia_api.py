@@ -59,53 +59,90 @@ def sanitizar_nome_arquivo(nome):
 
 
 class RecordApoiaUploadView(APIView):
-    """Upload de arquivos para Record Apoia"""
+    """Upload de arquivos para Record Apoia (suporta múltiplos arquivos)"""
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
     
     def post(self, request):
-        arquivo = request.FILES.get('arquivo')
-        if not arquivo:
+        # Suporta tanto arquivo único quanto múltiplos arquivos
+        arquivos = request.FILES.getlist('arquivo')
+        if not arquivos:
             return Response({'error': 'Nenhum arquivo enviado'}, status=400)
         
-        erros = validar_arquivo(arquivo)
-        if erros:
-            return Response({'error': '; '.join(erros)}, status=400)
-        
-        titulo = request.data.get('titulo', arquivo.name)
+        # Metadados compartilhados (aplicados a todos os arquivos)
         descricao = request.data.get('descricao', '')
         categoria = request.data.get('categoria', '')
         tags = request.data.get('tags', '')
-        tipo_arquivo = request.data.get('tipo_arquivo') or detectar_tipo_arquivo(arquivo.name)
         
-        nome_original = sanitizar_nome_arquivo(arquivo.name)
+        resultados = []
+        erros = []
         
-        try:
-            record_apoia = RecordApoia.objects.create(
-                arquivo=arquivo,
-                nome_original=nome_original,
-                tipo_arquivo=tipo_arquivo,
-                tamanho_bytes=arquivo.size,
-                titulo=titulo[:255],
-                descricao=descricao,
-                categoria=categoria[:100] if categoria else None,
-                tags=tags[:500] if tags else None,
-                usuario_upload=request.user,
-                ativo=True
-            )
+        for idx, arquivo in enumerate(arquivos):
+            # Validar cada arquivo
+            erros_validacao = validar_arquivo(arquivo)
+            if erros_validacao:
+                erros.append({
+                    'arquivo': arquivo.name,
+                    'erro': '; '.join(erros_validacao)
+                })
+                continue
+            
+            # Título específico ou padrão para cada arquivo
+            titulo = request.data.get(f'titulo_{idx}') or request.data.get('titulo') or arquivo.name
+            tipo_arquivo = request.data.get('tipo_arquivo') or detectar_tipo_arquivo(arquivo.name)
+            nome_original = sanitizar_nome_arquivo(arquivo.name)
+            
+            try:
+                record_apoia = RecordApoia.objects.create(
+                    arquivo=arquivo,
+                    nome_original=nome_original,
+                    tipo_arquivo=tipo_arquivo,
+                    tamanho_bytes=arquivo.size,
+                    titulo=titulo[:255],
+                    descricao=descricao,
+                    categoria=categoria[:100] if categoria else None,
+                    tags=tags[:500] if tags else None,
+                    usuario_upload=request.user,
+                    ativo=True
+                )
+                
+                resultados.append({
+                    'id': record_apoia.id,
+                    'titulo': record_apoia.titulo,
+                    'nome_original': record_apoia.nome_original,
+                    'tipo_arquivo': record_apoia.tipo_arquivo,
+                    'tamanho': record_apoia.formatar_tamanho(),
+                    'url': record_apoia.arquivo.url,
+                    'success': True
+                })
+                
+            except Exception as e:
+                erros.append({
+                    'arquivo': arquivo.name,
+                    'erro': f'Erro ao salvar arquivo: {str(e)}'
+                })
+        
+        # Retornar resultado
+        if resultados:
+            mensagem = f'{len(resultados)} arquivo(s) enviado(s) com sucesso!'
+            if erros:
+                mensagem += f' ({len(erros)} erro(s))'
             
             return Response({
                 'success': True,
-                'id': record_apoia.id,
-                'titulo': record_apoia.titulo,
-                'tipo_arquivo': record_apoia.tipo_arquivo,
-                'tamanho': record_apoia.formatar_tamanho(),
-                'url': record_apoia.arquivo.url,
-                'message': 'Arquivo enviado com sucesso!'
-            }, status=201)
-            
-        except Exception as e:
-            return Response({'error': f'Erro ao salvar arquivo: {str(e)}'}, status=500)
+                'resultados': resultados,
+                'erros': erros if erros else None,
+                'total_enviados': len(resultados),
+                'total_erros': len(erros),
+                'message': mensagem
+            }, status=201 if not erros else 207)  # 207 Multi-Status se houver erros parciais
+        else:
+            # Nenhum arquivo foi enviado com sucesso
+            return Response({
+                'success': False,
+                'error': 'Nenhum arquivo pôde ser enviado',
+                'erros': erros
+            }, status=400)
 
 
 class RecordApoiaListView(APIView):
