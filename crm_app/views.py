@@ -339,8 +339,8 @@ from .models import (
     CicloPagamento, HistoricoAlteracaoVenda, PagamentoComissao,
     Campanha, ComissaoOperadora, Comunicado, AreaVenda,
     SessaoWhatsapp, DFV, GrupoDisparo, LancamentoFinanceiro,
-    AgendamentoDisparo, ImportacaoAgendamento, ImportacaoRecompra,
-    LogImportacaoAgendamento, EstatisticaBotWhatsApp
+    AgendamentoDisparo,     ImportacaoAgendamento, ImportacaoRecompra,
+    LogImportacaoAgendamento, LogImportacaoRecompra, EstatisticaBotWhatsApp
 )
 
 # Serializers do App
@@ -5932,102 +5932,154 @@ class ImportacaoRecompraView(APIView):
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request, *args, **kwargs):
+        from .models import ImportacaoRecompra, LogImportacaoRecompra
+        
         file_obj = request.FILES.get('arquivo')
         if not file_obj:
             return Response({'success': False, 'error': 'Arquivo não enviado'}, status=400)
 
-        try:
-            # Leitura do arquivo
-            if file_obj.name.endswith('.xlsb'):
-                df = pd.read_excel(file_obj, engine='pyxlsb')
-            elif file_obj.name.endswith(('.xlsx', '.xls')):
-                df = pd.read_excel(file_obj)
-            else:
-                return Response({'success': False, 'error': 'Formato inválido. Envie .xlsx, .xls ou .xlsb'}, status=400)
-        except Exception as e:
-            return Response({'success': False, 'error': f'Erro ao ler arquivo: {str(e)}'}, status=400)
+        # Criar log inicial
+        log = LogImportacaoRecompra.objects.create(
+            usuario=request.user,
+            nome_arquivo=file_obj.name,
+            status='PROCESSANDO',
+            tamanho_arquivo=file_obj.size
+        )
 
-        # Normaliza nomes das colunas
-        df.columns = [str(col).strip() for col in df.columns]
-
-        # Converte datas
-        campos_data = ['dt_venda_particao', 'dt_encerramento', 'dt_inicio_ativo']
-
-        for campo in campos_data:
-            if campo in df.columns:
-                df[campo] = pd.to_datetime(df[campo], errors='coerce')
-
-        # Mapa de colunas esperadas
-        coluna_map = {
-            'ds_anomes': 'ds_anomes',
-            'dt_venda_particao': 'dt_venda_particao',
-            'dt_encerramento': 'dt_encerramento',
-            'nr_ordem': 'nr_ordem',
-            'st_ordem': 'st_ordem',
-            'nm_seg': 'nm_seg',
-            'sg_uf': 'sg_uf',
-            'cd_sap_pdv': 'cd_sap_pdv',
-            'cd_tr_vdd': 'cd_tr_vdd',
-            'nr_cep': 'nr_cep',
-            'nm_municipio': 'nm_municipio',
-            'nm_bairro': 'nm_bairro',
-            'resultado': 'resultado',
-            'dt_inicio_ativo': 'dt_inicio_ativo',
-            'nr_cep_base': 'nr_cep_base',
-            'nr_complemento1_base': 'nr_complemento1_base',
-            'nr_complemento2_base': 'nr_complemento2_base',
-            'nr_complemento3_base': 'nr_complemento3_base',
-            'nm_diretoria': 'nm_diretoria',
-            'nm_regional': 'nm_regional',
-            'cd_rede': 'cd_rede',
-            'gp_canal': 'gp_canal',
-            'nm_pdv_rel': 'nm_pdv_rel',
-            'GERENCIA': 'GERENCIA',
-            'nm_gc': 'nm_gc',
-            'REDE': 'REDE',
-        }
-
-        # Processa linhas
-        registros_criados = 0
-        erros = []
-
-        for idx, row in df.iterrows():
-            try:
-                dados = {}
-                for col_arquivo, col_model in coluna_map.items():
-                    if col_arquivo in df.columns:
-                        valor = row.get(col_arquivo)
-                        
-                        # Tratar valores vazios
-                        if pd.isna(valor) or valor == '':
-                            dados[col_model] = None
-                        else:
-                            # Converter datas
-                            if col_model in campos_data:
-                                try:
-                                    dados[col_model] = pd.to_datetime(valor).date()
-                                except:
-                                    dados[col_model] = None
-                            else:
-                                dados[col_model] = str(valor).strip()
-                    else:
-                        dados[col_model] = None
-
-                # Cria registro
-                ImportacaoRecompra.objects.create(**dados)
-                registros_criados += 1
-
-            except Exception as e:
-                erros.append(f"Linha {idx + 2}: {str(e)}")
+        # Processar em thread background
+        file_content = file_obj.read()
+        file_name = file_obj.name
+        
+        def processar_recompra_async():
+            self._processar_recompra_interno(log.id, file_content, file_name)
+        
+        thread = threading.Thread(target=processar_recompra_async, daemon=True)
+        thread.start()
 
         return Response({
             'success': True,
-            'registros_criados': registros_criados,
-            'total_linhas': len(df),
-            'erros': erros[:10] if erros else [],
-            'arquivo': file_obj.name,
-            'data_importacao': timezone.now().strftime('%d/%m/%Y, %H:%M:%S')
-        }, status=200)
+            'log_id': log.id,
+            'message': 'Importação Recompra iniciada! O processamento continuará em segundo plano.',
+            'status': 'PROCESSANDO',
+            'background': True
+        })
+
+    def _processar_recompra_interno(self, log_id, file_content, file_name):
+        """Processa Recompra em background thread"""
+        from .models import ImportacaoRecompra, LogImportacaoRecompra
+        from django.utils import timezone
+        from io import BytesIO
+        
+        log = LogImportacaoRecompra.objects.get(id=log_id)
+        inicio = timezone.now()
+        
+        try:
+            # Ler arquivo
+            file_obj = BytesIO(file_content)
+            
+            if file_name.endswith('.xlsb'):
+                df = pd.read_excel(file_obj, engine='pyxlsb')
+            elif file_name.endswith(('.xlsx', '.xls')):
+                df = pd.read_excel(file_obj)
+            else:
+                raise ValueError('Formato inválido')
+
+            df.columns = [str(col).strip() for col in df.columns]
+            campos_data = ['dt_venda_particao', 'dt_encerramento', 'dt_inicio_ativo']
+
+            for campo in campos_data:
+                if campo in df.columns:
+                    df[campo] = pd.to_datetime(df[campo], errors='coerce')
+
+            coluna_map = {
+                'ds_anomes': 'ds_anomes',
+                'dt_venda_particao': 'dt_venda_particao',
+                'dt_encerramento': 'dt_encerramento',
+                'nr_ordem': 'nr_ordem',
+                'st_ordem': 'st_ordem',
+                'nm_seg': 'nm_seg',
+                'sg_uf': 'sg_uf',
+                'cd_sap_pdv': 'cd_sap_pdv',
+                'cd_tr_vdd': 'cd_tr_vdd',
+                'nr_cep': 'nr_cep',
+                'nm_municipio': 'nm_municipio',
+                'nm_bairro': 'nm_bairro',
+                'resultado': 'resultado',
+                'dt_inicio_ativo': 'dt_inicio_ativo',
+                'nr_cep_base': 'nr_cep_base',
+                'nr_complemento1_base': 'nr_complemento1_base',
+                'nr_complemento2_base': 'nr_complemento2_base',
+                'nr_complemento3_base': 'nr_complemento3_base',
+                'nm_diretoria': 'nm_diretoria',
+                'nm_regional': 'nm_regional',
+                'cd_rede': 'cd_rede',
+                'gp_canal': 'gp_canal',
+                'nm_pdv_rel': 'nm_pdv_rel',
+                'GERENCIA': 'GERENCIA',
+                'nm_gc': 'nm_gc',
+                'REDE': 'REDE',
+            }
+
+            registros_criados = 0
+            erros = []
+
+            for idx, row in df.iterrows():
+                try:
+                    dados = {}
+                    for col_arquivo, col_model in coluna_map.items():
+                        if col_arquivo in df.columns:
+                            valor = row.get(col_arquivo)
+                            if pd.isna(valor) or valor == '':
+                                dados[col_model] = None
+                            else:
+                                if col_model in campos_data:
+                                    try:
+                                        dados[col_model] = pd.to_datetime(valor).date()
+                                    except:
+                                        dados[col_model] = None
+                                else:
+                                    dados[col_model] = str(valor).strip()
+                        else:
+                            dados[col_model] = None
+
+                    ImportacaoRecompra.objects.create(**dados)
+                    registros_criados += 1
+
+                except Exception as e:
+                    erros.append(f"Linha {idx + 2}: {str(e)}")
+
+            # Atualizar log
+            log.total_linhas = len(df)
+            log.total_processadas = registros_criados
+            log.registros_criados = registros_criados
+            log.erros_count = len(erros)
+            log.finalizado_em = timezone.now()
+            
+            if erros:
+                log.status = 'PARCIAL' if registros_criados > 0 else 'ERRO'
+                log.mensagem_erro = '\n'.join(erros[:50])
+                log.mensagem = f'{registros_criados} registros importados, {len(erros)} erros'
+            else:
+                log.status = 'SUCESSO'
+                log.mensagem = f'{registros_criados} registros importados com sucesso!'
+            
+            log.calcular_duracao()
+            log.detalhes_json = {
+                'registros_criados': registros_criados,
+                'erros': erros[:100]
+            }
+            log.save()
+
+        except Exception as e:
+            try:
+                log.refresh_from_db()
+                log.status = 'ERRO'
+                log.mensagem_erro = str(e)
+                log.finalizado_em = timezone.now()
+                log.calcular_duracao()
+                log.save()
+            except:
+                pass
 
 
 # =============================================================================
@@ -6054,6 +6106,36 @@ def page_validacao_fpd(request):
 def page_validacao_churn(request):
     """View para renderizar a página de validação de importações CHURN"""
     return render(request, 'validacao-churn.html')
+
+
+def page_validacao_osab(request):
+    """View para renderizar a página de validação de importações OSAB"""
+    return render(request, 'validacao-osab.html')
+
+
+def page_validacao_agendamento(request):
+    """View para renderizar a página de validação de importações Agendamento"""
+    return render(request, 'validacao-agendamento.html')
+
+
+def page_validacao_legado(request):
+    """View para renderizar a página de validação de importações Legado"""
+    return render(request, 'validacao-legado.html')
+
+
+def page_validacao_dfv(request):
+    """View para renderizar a página de validação de importações DFV"""
+    return render(request, 'validacao-dfv.html')
+
+
+def page_validacao_recompra(request):
+    """View para renderizar a página de validação de importações Recompra"""
+    return render(request, 'validacao-recompra.html')
+
+
+def page_record_apoia(request):
+    """View para renderizar a página HTML do Record Apoia"""
+    return render(request, 'record_apoia.html')
 
 
 class SafraM10ListView(APIView):
@@ -7426,6 +7508,59 @@ class LogsImportacaoDFVView(APIView):
             'success': True,
             'logs': logs_data
         })
+
+
+class LogsImportacaoRecompraView(APIView):
+    """Lista logs de importações Recompra"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        from .models import LogImportacaoRecompra
+        from django.db import ProgrammingError
+        
+        try:
+            # Buscar últimos 20 logs
+            if is_member(request.user, ['Admin', 'Diretoria']):
+                logs = LogImportacaoRecompra.objects.all().order_by('-iniciado_em')[:20]
+            else:
+                logs = LogImportacaoRecompra.objects.filter(usuario=request.user).order_by('-iniciado_em')[:20]
+            
+            logs_data = []
+            for log in logs:
+                logs_data.append({
+                    'id': log.id,
+                    'nome_arquivo': log.nome_arquivo,
+                    'status': log.status,
+                    'status_display': log.get_status_display(),
+                    'iniciado_em': log.iniciado_em.isoformat() if log.iniciado_em else None,
+                    'finalizado_em': log.finalizado_em.isoformat() if log.finalizado_em else None,
+                    'duracao_segundos': log.duracao_segundos,
+                    'total_linhas': log.total_linhas,
+                    'total_processadas': log.total_processadas,
+                    'registros_criados': log.registros_criados,
+                    'erros_count': log.erros_count,
+                    'mensagem': log.mensagem,
+                    'mensagem_erro': log.mensagem_erro,
+                    'usuario_nome': log.usuario.get_full_name() if log.usuario else 'Sistema',
+                })
+            
+            return Response({
+                'success': True,
+                'logs': logs_data
+            })
+        except ProgrammingError as e:
+            # Tabela não existe ainda - migração não aplicada
+            return Response({
+                'success': False,
+                'error': 'Tabela não existe. Por favor, execute: python manage.py migrate',
+                'logs': []
+            }, status=503)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e),
+                'logs': []
+            }, status=500)
 
 
 class LogsImportacaoLegadoView(APIView):

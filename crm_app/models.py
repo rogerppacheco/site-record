@@ -1406,3 +1406,147 @@ class LogImportacaoDFV(models.Model):
     
     def __str__(self):
         return f"{self.nome_arquivo} - {self.status} ({self.iniciado_em.strftime('%d/%m/%Y %H:%M')})"
+
+
+class LogImportacaoRecompra(models.Model):
+    """Log de importações Recompra"""
+    
+    STATUS_CHOICES = [
+        ('PROCESSANDO', 'Processando'),
+        ('SUCESSO', 'Sucesso'),
+        ('ERRO', 'Erro'),
+        ('PARCIAL', 'Parcial'),
+    ]
+    
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    nome_arquivo = models.CharField(max_length=255)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES)
+    tamanho_arquivo = models.IntegerField(default=0, null=True, blank=True)
+    iniciado_em = models.DateTimeField(auto_now_add=True)
+    finalizado_em = models.DateTimeField(blank=True, null=True)
+    duracao_segundos = models.IntegerField(blank=True, null=True)
+    
+    # Métricas específicas Recompra
+    total_linhas = models.IntegerField(default=0)
+    total_processadas = models.IntegerField(default=0)
+    registros_criados = models.IntegerField(default=0)
+    erros_count = models.IntegerField(default=0)
+    
+    mensagem = models.TextField(blank=True, null=True)
+    mensagem_erro = models.TextField(blank=True, null=True)
+    detalhes_json = models.JSONField(default=dict, blank=True, null=True)
+    
+    class Meta:
+        verbose_name = "Log Importação Recompra"
+        verbose_name_plural = "Logs Importação Recompra"
+        ordering = ['-iniciado_em']
+    
+    def calcular_duracao(self):
+        """Calcula duração em segundos se finalizado"""
+        if self.finalizado_em and self.iniciado_em:
+            delta = self.finalizado_em - self.iniciado_em
+            self.duracao_segundos = int(delta.total_seconds())
+            self.save(update_fields=['duracao_segundos'])
+    
+    def __str__(self):
+        return f"{self.nome_arquivo} - {self.status} ({self.iniciado_em.strftime('%d/%m/%Y %H:%M')})"
+
+
+class RecordApoia(models.Model):
+    """Repositório de arquivos Record Apoia - Acesso público para todos os usuários"""
+    
+    TIPO_ARQUIVO_CHOICES = [
+        ('PDF', 'PDF'),
+        ('WORD', 'Word (DOC/DOCX)'),
+        ('EXCEL', 'Excel (XLS/XLSX)'),
+        ('IMAGEM', 'Imagem (JPG/PNG/GIF)'),
+        ('VIDEO', 'Vídeo (MP4/AVI/MOV)'),
+        ('OUTRO', 'Outro'),
+    ]
+    
+    # Dados do arquivo
+    arquivo = models.FileField(
+        upload_to='record_apoia/%Y/%m/%d/',
+        help_text='Arquivo a ser armazenado'
+    )
+    nome_original = models.CharField(
+        max_length=255,
+        help_text='Nome original do arquivo no upload'
+    )
+    tipo_arquivo = models.CharField(
+        max_length=20,
+        choices=TIPO_ARQUIVO_CHOICES,
+        help_text='Tipo/categoria do arquivo'
+    )
+    tamanho_bytes = models.BigIntegerField(
+        default=0,
+        help_text='Tamanho do arquivo em bytes'
+    )
+    
+    # Metadados e organização
+    titulo = models.CharField(
+        max_length=255,
+        help_text='Título/descrição do arquivo'
+    )
+    descricao = models.TextField(
+        blank=True,
+        null=True,
+        help_text='Descrição detalhada (opcional)'
+    )
+    categoria = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text='Categoria/tag para organização (ex: Manual, Treinamento, Documentação)'
+    )
+    tags = models.CharField(
+        max_length=500,
+        blank=True,
+        null=True,
+        help_text='Tags separadas por vírgula (ex: urgente, importante, tutorial)'
+    )
+    
+    # Controle
+    usuario_upload = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='arquivos_uploadados',
+        help_text='Usuário que fez o upload'
+    )
+    data_upload = models.DateTimeField(
+        auto_now_add=True,
+        help_text='Data e hora do upload'
+    )
+    downloads_count = models.IntegerField(
+        default=0,
+        help_text='Contador de downloads'
+    )
+    ativo = models.BooleanField(
+        default=True,
+        help_text='Se False, arquivo está oculto (soft delete)'
+    )
+    
+    class Meta:
+        verbose_name = "Arquivo Record Apoia"
+        verbose_name_plural = "Arquivos Record Apoia"
+        ordering = ['-data_upload']
+        indexes = [
+            models.Index(fields=['tipo_arquivo']),
+            models.Index(fields=['categoria']),
+            models.Index(fields=['data_upload']),
+            models.Index(fields=['ativo']),
+        ]
+    
+    def __str__(self):
+        return f"{self.titulo} ({self.get_tipo_arquivo_display()})"
+    
+    def formatar_tamanho(self):
+        """Retorna o tamanho formatado (KB, MB, GB)"""
+        tamanho = self.tamanho_bytes
+        for unidade in ['B', 'KB', 'MB', 'GB']:
+            if tamanho < 1024.0:
+                return f"{tamanho:.2f} {unidade}"
+            tamanho /= 1024.0
+        return f"{tamanho:.2f} TB"

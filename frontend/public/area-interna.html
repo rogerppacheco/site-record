@@ -90,6 +90,8 @@
         .icon-cdoi { background: -webkit-linear-gradient(45deg, #00c6ff, #0072ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
         /* Novo ícone para Bônus M-10 (Cofre de Porco) */
         .icon-bonus { background: -webkit-linear-gradient(45deg, #10b981, #059669); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        /* Ícone para Record Apoia (Pasta/Repositório) */
+        .icon-apoia { background: -webkit-linear-gradient(45deg, #17a2b8, #138496); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
 
     </style>
 </head>
@@ -161,6 +163,11 @@
             </a>
 
             <!-- R -->
+            <a href="/record-apoia/" class="app-card" id="card-apoia">
+                <i class="bi bi-folder-fill app-icon icon-apoia"></i>
+                <span class="app-title">Record Apoia</span>
+            </a>
+
             <a href="/record-informa/" class="app-card" id="card-informa">
                 <i class="bi bi-megaphone-fill app-icon icon-informa"></i>
                 <span class="app-title">Record Informa</span>
@@ -204,13 +211,13 @@
                 'Admin': 'all',
 
                 // Acesso Backoffice
-                'BackOffice': ['card-vendas', 'card-informa', 'card-esteira', 'card-auditoria', 'card-performance', 'card-importacoes', 'card-cdoi'],
+                'BackOffice': ['card-vendas', 'card-informa', 'card-esteira', 'card-auditoria', 'card-performance', 'card-importacoes', 'card-cdoi', 'card-apoia'],
 
                 // Acesso Supervisor
-                'Supervisor': ['card-vendas', 'card-presenca', 'card-cdoi'],
+                'Supervisor': ['card-vendas', 'card-presenca', 'card-cdoi', 'card-apoia'],
 
-                // Acesso Vendedor
-                'Vendedor': ['card-vendas', 'card-cdoi']
+                // Acesso Vendedor (Record Apoia disponível para todos)
+                'Vendedor': ['card-vendas', 'card-cdoi', 'card-apoia']
             };
 
             const cardsPermitidos = regras[userProfile] || regras['Vendedor']; // Fallback seguro

@@ -5,6 +5,14 @@ from rest_framework.routers import DefaultRouter
 # IMPORTAÇÃO DAS VIEWS DE AUTH (DO APP USUARIOS)
 from usuarios.views import LoginView, DefinirNovaSenhaView
 
+# Record Apoia APIs
+from .record_apoia_api import (
+    RecordApoiaUploadView,
+    RecordApoiaListView,
+    RecordApoiaDownloadView,
+    RecordApoiaDeleteView,
+)
+
 # IMPORTAÇÕES ESPECÍFICAS DE VIEWS
 from .views import (
         buscar_fatura_nio_bonus_m10,
@@ -49,6 +57,7 @@ from .views import (
     LogsImportacaoFPDView,
     LogsImportacaoOSABView,
     LogsImportacaoDFVView,
+    LogsImportacaoRecompraView,
     
     # NOVAS VIEWS (Mapas, ZAP, Performance)
     api_verificar_whatsapp,
@@ -216,6 +225,13 @@ urlpatterns = [
     path('logs-osab/<int:log_id>/cancelar/', CancelarImportacaoOSABView.as_view(), name='logs-osab-cancelar'),
     path('import/osab/limpar/', LimparImportacaoOSABView.as_view(), name='limpar-osab'),
     path('logs-dfv/', LogsImportacaoDFVView.as_view(), name='logs-dfv'),
+    path('logs-recompra/', LogsImportacaoRecompraView.as_view(), name='logs-recompra'),
+    
+    # --- RECORD APOIA (Repositório de Arquivos) ---
+    path('record-apoia/upload/', RecordApoiaUploadView.as_view(), name='record-apoia-upload'),
+    path('record-apoia/list/', RecordApoiaListView.as_view(), name='record-apoia-list'),
+    path('record-apoia/download/<int:arquivo_id>/', RecordApoiaDownloadView.as_view(), name='record-apoia-download'),
+    path('record-apoia/delete/<int:arquivo_id>/', RecordApoiaDeleteView.as_view(), name='record-apoia-delete'),
     
     # --- ROTAS EXTRAS ---
     path('grupos-disparo-api/', listar_grupos_whatsapp_api, name='listar_grupos_api'),

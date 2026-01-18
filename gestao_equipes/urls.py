@@ -15,6 +15,12 @@ from crm_app.views import (
     page_bonus_m10,
     page_validacao_fpd,
     page_validacao_churn,
+    page_validacao_osab,
+    page_validacao_agendamento,
+    page_validacao_legado,
+    page_validacao_dfv,
+    page_validacao_recompra,
+    page_record_apoia,
     listar_grupos_whatsapp_api,  # Importando a função de grupos
     SafraM10ListView,
     DashboardM10View,
@@ -105,6 +111,12 @@ urlpatterns = [
     path('importar-fpd/', TemplateView.as_view(template_name='importar_fpd.html'), name='importar_fpd'),
     path('validacao-fpd/', page_validacao_fpd, name='page_validacao_fpd'),
     path('validacao-churn/', page_validacao_churn, name='page_validacao_churn'),
+    path('validacao-osab/', page_validacao_osab, name='page_validacao_osab'),
+    path('validacao-agendamento/', page_validacao_agendamento, name='page_validacao_agendamento'),
+    path('validacao-legado/', page_validacao_legado, name='page_validacao_legado'),
+    path('validacao-dfv/', page_validacao_dfv, name='page_validacao_dfv'),
+    path('validacao-recompra/', page_validacao_recompra, name='page_validacao_recompra'),
+    path('record-apoia/', page_record_apoia, name='page_record_apoia'),
     
     # API Bônus M-10
     path('api/bonus-m10/safras/', SafraM10ListView.as_view(), name='api-bonus-m10-safras'),
