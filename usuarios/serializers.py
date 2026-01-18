@@ -288,20 +288,25 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         token = super().get_token(user)
         token['username'] = user.username
         token['user_name'] = user.get_full_name() if hasattr(user, 'get_full_name') else user.username
-        # Adiciona o perfil legado (com tratamento de erro caso perfil não exista)
-        perfil_nome = 'Vendedor'  # Padrão
-        try:
-            # Prioridade 1: Campo perfil do modelo Usuario
-            if hasattr(user, 'perfil_id') and user.perfil_id:
-                user.perfil  # Tenta acessar para verificar se existe
-                if user.perfil:
-                    perfil_nome = user.perfil.nome
-        except Exception:
-            pass
         
-        # Prioridade 2: Se não encontrou perfil, usa o primeiro Group como fallback
-        if perfil_nome == 'Vendedor' and user.groups.exists():
-            perfil_nome = user.groups.first().name
+        # Super usuários sempre recebem 'Admin' para acesso total
+        if user.is_superuser:
+            perfil_nome = 'Admin'
+        else:
+            # Adiciona o perfil legado (com tratamento de erro caso perfil não exista)
+            perfil_nome = 'Vendedor'  # Padrão
+            try:
+                # Prioridade 1: Campo perfil do modelo Usuario
+                if hasattr(user, 'perfil_id') and user.perfil_id:
+                    user.perfil  # Tenta acessar para verificar se existe
+                    if user.perfil:
+                        perfil_nome = user.perfil.nome
+            except Exception:
+                pass
+            
+            # Prioridade 2: Se não encontrou perfil, usa o primeiro Group como fallback
+            if perfil_nome == 'Vendedor' and user.groups.exists():
+                perfil_nome = user.groups.first().name
         
         token['perfil'] = perfil_nome
         token['user_role'] = perfil_nome  # Compatibilidade com frontend
