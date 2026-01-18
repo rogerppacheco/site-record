@@ -130,67 +130,116 @@ class RecordApoiaListView(APIView):
             
             # Importar settings para verificar caminho do arquivo
             from django.conf import settings
+            from django.utils import timezone
+            
+            # Função auxiliar para formatar tamanho
+            def formatar_tamanho_bytes(bytes_size):
+                if bytes_size == 0:
+                    return '0 Bytes'
+                k = 1024
+                sizes = ['Bytes', 'KB', 'MB', 'GB']
+                i = 0
+                size = float(bytes_size)
+                while size >= k and i < len(sizes) - 1:
+                    size /= k
+                    i += 1
+                return f"{round(size, 2)} {sizes[i]}"
             
             arquivos = []
             for arq in queryset:
-                # Verificar se o arquivo existe antes de adicionar à lista
-                arquivo_existe = False
-                tamanho = 0
-                
-                if arq.arquivo and arq.arquivo.name:
-                    # Tentar verificar se o arquivo existe usando os.path.exists primeiro
-                    try:
-                        media_root = getattr(settings, 'MEDIA_ROOT', None)
-                        if media_root:
-                            caminho_completo = os.path.join(media_root, arq.arquivo.name)
-                            arquivo_existe = os.path.exists(caminho_completo)
-                        else:
-                            # Se não tiver MEDIA_ROOT, usar storage
-                            arquivo_existe = default_storage.exists(arq.arquivo.name)
-                        
-                        # Se existe, tentar obter tamanho
-                        if arquivo_existe:
-                            try:
-                                tamanho = arq.arquivo.size
-                            except (FileNotFoundError, IOError, OSError, AttributeError):
-                                # Arquivo pode ter sido removido entre a verificação e o acesso
-                                arquivo_existe = False
-                                tamanho = 0
-                    except Exception as e:
-                        # Erro ao verificar - considerar como não existente
-                        logger.warning(f"Erro ao verificar arquivo {arq.id}: {e}")
-                        arquivo_existe = False
-                        tamanho = 0
-                
-                # Só adicionar arquivos que existem fisicamente
-                if not arquivo_existe and arq.arquivo and arq.arquivo.name:
-                    # Arquivo não existe - marcar como inativo automaticamente
-                    try:
-                        arq.ativo = False
-                        arq.save(update_fields=['ativo'])
-                        logger.warning(f"Arquivo {arq.id} ({arq.titulo}) marcado como inativo - arquivo não encontrado no disco")
-                    except Exception as e:
-                        logger.error(f"Erro ao marcar arquivo {arq.id} como inativo: {e}")
-                    continue  # Pular este arquivo
-                
-                arquivos.append({
-                    'id': arq.id,
-                    'titulo': arq.titulo,
-                    'descricao': arq.descricao,
-                    'categoria': arq.categoria,
-                    'tags': arq.tags,
-                    'tipo': arq.get_tipo_arquivo_display(),
-                    'tamanho': tamanho,
-                    'nome_original': arq.nome_original,
-                    'downloads_count': arq.downloads_count,
-                    'criado_em': arq.data_upload.isoformat() if arq.data_upload else None,
-                    'usuario_upload': arq.usuario_upload.username if arq.usuario_upload else None,
-                    'url_download': f"/api/record-apoia/{arq.id}/download/"
-                })
+                try:
+                    # Verificar se o arquivo existe antes de adicionar à lista
+                    arquivo_existe = False
+                    tamanho = 0
+                    
+                    if arq.arquivo and arq.arquivo.name:
+                        # Tentar verificar se o arquivo existe usando os.path.exists primeiro
+                        try:
+                            media_root = getattr(settings, 'MEDIA_ROOT', None)
+                            if media_root:
+                                caminho_completo = os.path.join(media_root, arq.arquivo.name)
+                                arquivo_existe = os.path.exists(caminho_completo)
+                            else:
+                                # Se não tiver MEDIA_ROOT, usar storage
+                                arquivo_existe = default_storage.exists(arq.arquivo.name)
+                            
+                            # Se existe, tentar obter tamanho
+                            if arquivo_existe:
+                                try:
+                                    tamanho = arq.arquivo.size
+                                except (FileNotFoundError, IOError, OSError, AttributeError) as size_error:
+                                    # Arquivo pode ter sido removido entre a verificação e o acesso
+                                    logger.warning(f"Arquivo {arq.id} existe mas erro ao obter tamanho: {size_error}")
+                                    arquivo_existe = False
+                                    tamanho = 0
+                        except Exception as check_error:
+                            # Erro ao verificar - considerar como não existente
+                            logger.warning(f"Erro ao verificar arquivo {arq.id}: {check_error}")
+                            arquivo_existe = False
+                            tamanho = 0
+                    
+                    # Só adicionar arquivos que existem fisicamente
+                    if arq.arquivo and arq.arquivo.name and not arquivo_existe:
+                        # Arquivo não existe - marcar como inativo automaticamente
+                        try:
+                            arq.ativo = False
+                            arq.save(update_fields=['ativo'])
+                            logger.warning(f"Arquivo {arq.id} ({arq.titulo}) marcado como inativo - arquivo não encontrado no disco")
+                        except Exception as deactivate_error:
+                            logger.error(f"Erro ao marcar arquivo {arq.id} como inativo: {deactivate_error}")
+                        continue  # Pular este arquivo
+                    
+                    # Se não tem arquivo definido, também pular (registro inválido)
+                    if not arq.arquivo or not arq.arquivo.name:
+                        continue
+                    
+                    # Formatar data
+                    data_upload_formatada = None
+                    if arq.data_upload:
+                        data_upload_local = timezone.localtime(arq.data_upload)
+                        data_upload_formatada = data_upload_local.strftime('%d/%m/%Y %H:%M')
+                    
+                    arquivos.append({
+                        'id': arq.id,
+                        'titulo': arq.titulo,
+                        'descricao': arq.descricao,
+                        'categoria': arq.categoria,
+                        'tags': arq.tags,
+                        'tipo_arquivo': arq.tipo_arquivo,  # Código do tipo (PDF, IMAGEM, etc.)
+                        'tipo_arquivo_display': arq.get_tipo_arquivo_display(),  # Nome formatado
+                        'tamanho_bytes': tamanho,  # Tamanho em bytes (para cálculos)
+                        'tamanho_formatado': formatar_tamanho_bytes(tamanho),  # Tamanho formatado
+                        'nome_original': arq.nome_original,
+                        'downloads_count': arq.downloads_count,
+                        'data_upload_formatada': data_upload_formatada,
+                        'criado_em': arq.data_upload.isoformat() if arq.data_upload else None,  # Mantido para compatibilidade
+                        'usuario_upload': arq.usuario_upload.username if arq.usuario_upload else None,
+                        'url_download': f"/api/crm/record-apoia/{arq.id}/download/"
+                    })
+                except Exception as process_error:
+                    # Erro ao processar um arquivo específico - logar e continuar
+                    logger.error(f"Erro ao processar arquivo {arq.id}: {process_error}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                    continue  # Pular este arquivo e continuar com os próximos
+            
+            # Calcular paginação
+            page = int(request.query_params.get('page', 1))
+            page_size = int(request.query_params.get('page_size', 20))
+            total = len(arquivos)
+            total_pages = (total + page_size - 1) // page_size if total > 0 else 1
+            
+            # Aplicar paginação
+            inicio = (page - 1) * page_size
+            fim = inicio + page_size
+            arquivos_paginados = arquivos[inicio:fim]
             
             return Response({
-                'total': len(arquivos),
-                'arquivos': arquivos
+                'success': True,
+                'total': total,
+                'arquivos': arquivos_paginados,
+                'page': page,
+                'total_pages': total_pages
             })
             
         except Exception as e:
