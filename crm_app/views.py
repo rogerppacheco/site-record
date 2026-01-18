@@ -2812,20 +2812,30 @@ class ImportacaoOsabView(APIView):
                 t.start()
                 print(f"Iniciado envio de {len(fila_mensagens_whatsapp)} mensagens em background.")
             
-            # Atualizar log com sucesso
-            log.status = 'SUCESSO'
-            log.total_registros = report['total_registros']
-            log.total_processadas = report['vendas_encontradas']
-            log.criados = report['criados']
-            log.atualizados = report['atualizados']
-            log.vendas_encontradas = report['vendas_encontradas']
-            log.ja_corretos = report['ja_corretos']
-            log.erros_count = len(report['erros'])
-            log.mensagem = f"Processados {report['total_registros']} registros. {report['atualizados']} atualizados."
-            log.detalhes_json = report
-            log.finalizado_em = timezone.now()
-            log.calcular_duracao()
-            log.save()
+            # Atualizar log com sucesso (usando update para garantir persistência)
+            finalizado_agora = timezone.now()
+            
+            # Calcular duração
+            log.refresh_from_db()
+            if log.iniciado_em:
+                duracao = int((finalizado_agora - log.iniciado_em).total_seconds())
+            else:
+                duracao = None
+            
+            LogImportacaoOSAB.objects.filter(id=log_id).update(
+                status='SUCESSO',
+                total_registros=report['total_registros'],
+                total_processadas=report['total_registros'],  # Total processadas deve ser total_registros
+                criados=report['criados'],
+                atualizados=report['atualizados'],
+                vendas_encontradas=report['vendas_encontradas'],
+                ja_corretos=report['ja_corretos'],
+                erros_count=len(report['erros']),
+                mensagem=f"Processados {report['total_registros']} registros. {report['atualizados']} atualizados.",
+                detalhes_json=report,
+                finalizado_em=finalizado_agora,
+                duracao_segundos=duracao
+            )
             
             print(f"✅ OSAB processado com sucesso - {report['atualizados']} vendas atualizadas")
 
