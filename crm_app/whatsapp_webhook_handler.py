@@ -720,51 +720,69 @@ def processar_webhook_whatsapp(data):
                             try:
                                 # Ler arquivo do FileField
                                 arquivo_field = arquivo.arquivo
-                                if not arquivo_field:
+                                if not arquivo_field or not arquivo_field.name:
                                     resposta = f"❌ Arquivo \"{arquivo.titulo}\" não encontrado."
                                     sessao.etapa = 'inicial'
                                     sessao.dados_temp = {}
                                     sessao.save()
                                 else:
-                                    arquivo_field.open('rb')
-                                    arquivo_bytes = arquivo_field.read()
-                                    arquivo_field.close()
-                                    arquivo_b64 = base64.b64encode(arquivo_bytes).decode('utf-8')
+                                    try:
+                                        # Usar storage para ler o arquivo (mais seguro)
+                                        from django.core.files.storage import default_storage
+                                        
+                                        if default_storage.exists(arquivo_field.name):
+                                            with default_storage.open(arquivo_field.name, 'rb') as f:
+                                                arquivo_bytes = f.read()
+                                            arquivo_b64 = base64.b64encode(arquivo_bytes).decode('utf-8')
+                                        else:
+                                            # Fallback: tentar abrir diretamente
+                                            arquivo_field.open('rb')
+                                            arquivo_bytes = arquivo_field.read()
+                                            arquivo_field.close()
+                                            arquivo_b64 = base64.b64encode(arquivo_bytes).decode('utf-8')
+                                    except (FileNotFoundError, IOError, OSError) as e:
+                                        logger.error(f"[Webhook] Erro ao ler arquivo {arquivo_field.name}: {e}")
+                                        resposta = f"❌ Erro ao acessar arquivo \"{arquivo.titulo}\": {str(e)}"
+                                        sessao.etapa = 'inicial'
+                                        sessao.dados_temp = {}
+                                        sessao.save()
+                                        arquivo_b64 = None
                                     
-                                    nome_arquivo = arquivo.nome_original
-                                    
-                                    # Preparar mensagem de resposta
-                                    if arquivo.tipo_arquivo == 'IMAGEM':
-                                        resposta = f"✅ *MATERIAL ENCONTRADO*\n\n📷 {arquivo.titulo}\n\nEnviando imagem..."
-                                        # Armazenar dados do arquivo para envio após a mensagem
-                                        sessao.dados_temp = {
-                                            'material_para_envio': {
-                                                'tipo': 'IMAGEM',
-                                                'base64': arquivo_b64,
-                                                'nome': nome_arquivo,
-                                                'titulo': arquivo.titulo,
-                                                'descricao': arquivo.descricao
+                                    if arquivo_b64:
+                                        nome_arquivo = arquivo.nome_original
+                                        
+                                        # Preparar mensagem de resposta
+                                        if arquivo.tipo_arquivo == 'IMAGEM':
+                                            resposta = f"✅ *MATERIAL ENCONTRADO*\n\n📷 {arquivo.titulo}\n\nEnviando imagem..."
+                                            # Armazenar dados do arquivo para envio após a mensagem
+                                            sessao.dados_temp = {
+                                                'material_para_envio': {
+                                                    'tipo': 'IMAGEM',
+                                                    'base64': arquivo_b64,
+                                                    'nome': nome_arquivo,
+                                                    'titulo': arquivo.titulo,
+                                                    'descricao': arquivo.descricao
+                                                }
                                             }
-                                        }
-                                    else:
-                                        resposta = f"✅ *MATERIAL ENCONTRADO*\n\n📄 {arquivo.titulo}\nTipo: {arquivo.get_tipo_arquivo_display()}\n\nEnviando arquivo..."
-                                        # Armazenar dados do arquivo para envio após a mensagem
-                                        sessao.dados_temp = {
-                                            'material_para_envio': {
-                                                'tipo': 'DOCUMENTO',
-                                                'base64': arquivo_b64,
-                                                'nome': nome_arquivo,
-                                                'titulo': arquivo.titulo,
-                                                'tipo_display': arquivo.get_tipo_arquivo_display()
+                                        else:
+                                            resposta = f"✅ *MATERIAL ENCONTRADO*\n\n📄 {arquivo.titulo}\nTipo: {arquivo.get_tipo_arquivo_display()}\n\nEnviando arquivo..."
+                                            # Armazenar dados do arquivo para envio após a mensagem
+                                            sessao.dados_temp = {
+                                                'material_para_envio': {
+                                                    'tipo': 'DOCUMENTO',
+                                                    'base64': arquivo_b64,
+                                                    'nome': nome_arquivo,
+                                                    'titulo': arquivo.titulo,
+                                                    'tipo_display': arquivo.get_tipo_arquivo_display()
+                                                }
                                             }
-                                        }
-                                    
-                                    sessao.etapa = 'inicial'
-                                    sessao.save()
-                                    
-                                    # Incrementar contador de downloads
-                                    arquivo.downloads_count += 1
-                                    arquivo.save(update_fields=['downloads_count'])
+                                        
+                                        sessao.etapa = 'inicial'
+                                        sessao.save()
+                                        
+                                        # Incrementar contador de downloads
+                                        arquivo.downloads_count += 1
+                                        arquivo.save(update_fields=['downloads_count'])
                             except Exception as e:
                                 logger.error(f"[Webhook] Erro ao enviar arquivo: {e}")
                                 resposta = f"❌ Erro ao processar arquivo: {str(e)}"
@@ -823,51 +841,69 @@ def processar_webhook_whatsapp(data):
                         try:
                             # Ler arquivo do FileField
                             arquivo_field = arquivo.arquivo
-                            if not arquivo_field:
+                            if not arquivo_field or not arquivo_field.name:
                                 resposta = f"❌ Arquivo \"{arquivo.titulo}\" não encontrado."
                                 sessao.etapa = 'inicial'
                                 sessao.dados_temp = {}
                                 sessao.save()
                             else:
-                                arquivo_field.open('rb')
-                                arquivo_bytes = arquivo_field.read()
-                                arquivo_field.close()
-                                arquivo_b64 = base64.b64encode(arquivo_bytes).decode('utf-8')
-                                
-                                nome_arquivo = arquivo.nome_original
-                                
-                                # Preparar mensagem de resposta
-                                if arquivo.tipo_arquivo == 'IMAGEM':
-                                    resposta = f"✅ *MATERIAL SELECIONADO*\n\n📷 {arquivo.titulo}\n\nEnviando imagem..."
-                                    # Armazenar dados do arquivo para envio após a mensagem
-                                    sessao.dados_temp = {
-                                        'material_para_envio': {
-                                            'tipo': 'IMAGEM',
-                                            'base64': arquivo_b64,
-                                            'nome': nome_arquivo,
-                                            'titulo': arquivo.titulo,
-                                            'descricao': arquivo.descricao
+                                try:
+                                    # Tentar ler o arquivo usando o método do FileField
+                                    try:
+                                        arquivo_field.open('rb')
+                                        arquivo_bytes = arquivo_field.read()
+                                        arquivo_field.close()
+                                    except (FileNotFoundError, IOError, OSError) as e:
+                                        logger.error(f"[Webhook] Erro ao ler arquivo (método 1) {arquivo_field.name}: {e}")
+                                        # Tentar usar storage como fallback
+                                        from django.core.files.storage import default_storage
+                                        if default_storage.exists(arquivo_field.name):
+                                            with default_storage.open(arquivo_field.name, 'rb') as f:
+                                                arquivo_bytes = f.read()
+                                        else:
+                                            raise e
+                                    
+                                    arquivo_b64 = base64.b64encode(arquivo_bytes).decode('utf-8')
+                                    nome_arquivo = arquivo.nome_original
+                                    
+                                    # Preparar mensagem de resposta
+                                    if arquivo.tipo_arquivo == 'IMAGEM':
+                                        resposta = f"✅ *MATERIAL SELECIONADO*\n\n📷 {arquivo.titulo}\n\nEnviando imagem..."
+                                        # Armazenar dados do arquivo para envio após a mensagem
+                                        sessao.dados_temp = {
+                                            'material_para_envio': {
+                                                'tipo': 'IMAGEM',
+                                                'base64': arquivo_b64,
+                                                'nome': nome_arquivo,
+                                                'titulo': arquivo.titulo,
+                                                'descricao': arquivo.descricao
+                                            }
                                         }
-                                    }
-                                else:
-                                    resposta = f"✅ *MATERIAL SELECIONADO*\n\n📄 {arquivo.titulo}\nTipo: {arquivo.get_tipo_arquivo_display()}\n\nEnviando arquivo..."
-                                    # Armazenar dados do arquivo para envio após a mensagem
-                                    sessao.dados_temp = {
-                                        'material_para_envio': {
-                                            'tipo': 'DOCUMENTO',
-                                            'base64': arquivo_b64,
-                                            'nome': nome_arquivo,
-                                            'titulo': arquivo.titulo,
-                                            'tipo_display': arquivo.get_tipo_arquivo_display()
+                                    else:
+                                        resposta = f"✅ *MATERIAL SELECIONADO*\n\n📄 {arquivo.titulo}\nTipo: {arquivo.get_tipo_arquivo_display()}\n\nEnviando arquivo..."
+                                        # Armazenar dados do arquivo para envio após a mensagem
+                                        sessao.dados_temp = {
+                                            'material_para_envio': {
+                                                'tipo': 'DOCUMENTO',
+                                                'base64': arquivo_b64,
+                                                'nome': nome_arquivo,
+                                                'titulo': arquivo.titulo,
+                                                'tipo_display': arquivo.get_tipo_arquivo_display()
+                                            }
                                         }
-                                    }
-                                
-                                sessao.etapa = 'inicial'
-                                sessao.save()
-                                
-                                # Incrementar contador de downloads
-                                arquivo.downloads_count += 1
-                                arquivo.save(update_fields=['downloads_count'])
+                                    
+                                    sessao.etapa = 'inicial'
+                                    sessao.save()
+                                    
+                                    # Incrementar contador de downloads
+                                    arquivo.downloads_count += 1
+                                    arquivo.save(update_fields=['downloads_count'])
+                                except (FileNotFoundError, IOError, OSError) as e:
+                                    logger.error(f"[Webhook] Erro ao acessar arquivo {arquivo_field.name if arquivo_field else 'N/A'}: {e}")
+                                    resposta = f"❌ Arquivo \"{arquivo.titulo}\" não encontrado no servidor. O arquivo pode ter sido removido ou há um problema no armazenamento."
+                                    sessao.etapa = 'inicial'
+                                    sessao.dados_temp = {}
+                                    sessao.save()
                         except Exception as e:
                             logger.error(f"[Webhook] Erro ao enviar arquivo selecionado: {e}")
                             import traceback
@@ -1016,12 +1052,17 @@ def processar_webhook_whatsapp(data):
                                 if not arquivo_field:
                                     resposta = f"❌ Arquivo \"{arquivo.titulo}\" não encontrado."
                                 else:
-                                    arquivo_field.open('rb')
-                                    arquivo_bytes = arquivo_field.read()
-                                    arquivo_field.close()
-                                    arquivo_b64 = base64.b64encode(arquivo_bytes).decode('utf-8')
-                                    
-                                    nome_arquivo = arquivo.nome_original
+                                    # Verificar se o arquivo existe
+                                    if not arquivo_field.name:
+                                        resposta = f"❌ Arquivo \"{arquivo.titulo}\" não tem nome de arquivo."
+                                    else:
+                                        try:
+                                            arquivo_field.open('rb')
+                                            arquivo_bytes = arquivo_field.read()
+                                            arquivo_field.close()
+                                            arquivo_b64 = base64.b64encode(arquivo_bytes).decode('utf-8')
+                                            
+                                            nome_arquivo = arquivo.nome_original
                                     
                                     # Preparar mensagem de resposta
                                     if arquivo.tipo_arquivo == 'IMAGEM':
