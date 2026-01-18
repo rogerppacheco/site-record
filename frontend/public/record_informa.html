@@ -218,12 +218,20 @@
         
         async function carregarComunicados() {
             try {
-                const res = await fetch(COMUNICADOS_URL, { headers: { 'Authorization': `Bearer ${token}` } });
-                const data = await res.json();
+                const res = await fetch(COMUNICADOS_URL + '?page_size=1000', { headers: { 'Authorization': `Bearer ${token}` } });
+                const responseData = await res.json();
                 const tbody = document.getElementById('lista-comunicados');
                 tbody.innerHTML = '';
                 
-                data.forEach(c => {
+                // Trata resposta paginada (results) ou array direto
+                const comunicados = Array.isArray(responseData) ? responseData : (responseData.results || []);
+                
+                if (comunicados.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">Nenhum comunicado encontrado.</td></tr>';
+                    return;
+                }
+                
+                comunicados.forEach(c => {
                     let badge = 'bg-secondary';
                     if(c.status === 'ENVIADO') badge = 'bg-success';
                     if(c.status === 'ERRO') badge = 'bg-danger';
@@ -241,7 +249,11 @@
                         </tr>
                     `;
                 });
-            } catch(e) { console.error(e); }
+            } catch(e) { 
+                console.error('Erro ao carregar comunicados:', e);
+                const tbody = document.getElementById('lista-comunicados');
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-4">Erro ao carregar comunicados.</td></tr>';
+            }
         }
 
         // Contador regressivo de logout
@@ -319,44 +331,57 @@
                 const res = await fetch(`${ESTATISTICAS_URL}?dias=${dias}`, { 
                     headers: { 'Authorization': `Bearer ${token}` } 
                 });
+                
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}`);
+                }
+                
                 const data = await res.json();
                 
-                // Atualizar cards por comando
-                document.getElementById('stat-fachada').textContent = data.por_comando.FACHADA || 0;
-                document.getElementById('stat-viabilidade').textContent = data.por_comando.VIABILIDADE || 0;
-                document.getElementById('stat-fatura').textContent = data.por_comando.FATURA || 0;
-                document.getElementById('stat-status').textContent = data.por_comando.STATUS || 0;
+                // Atualizar cards por comando (com verificação segura)
+                if (data.por_comando) {
+                    document.getElementById('stat-fachada').textContent = data.por_comando.FACHADA || 0;
+                    document.getElementById('stat-viabilidade').textContent = data.por_comando.VIABILIDADE || 0;
+                    document.getElementById('stat-fatura').textContent = data.por_comando.FATURA || 0;
+                    document.getElementById('stat-status').textContent = data.por_comando.STATUS || 0;
+                }
                 
-                // Atualizar tabela por vendedor
+                // Atualizar tabela por vendedor (com verificação segura)
                 const tbody = document.getElementById('lista-vendedores');
                 tbody.innerHTML = '';
                 
-                if (data.por_vendedor.length === 0) {
+                const vendedores = data.por_vendedor || [];
+                
+                if (vendedores.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">Nenhum dado encontrado para o período selecionado.</td></tr>';
                 } else {
-                    data.por_vendedor.forEach(v => {
+                    vendedores.forEach(v => {
                         tbody.innerHTML += `
                             <tr>
-                                <td class="fw-bold">${v.vendedor_nome}</td>
-                                <td class="text-center">${v.fachada}</td>
-                                <td class="text-center">${v.viabilidade}</td>
-                                <td class="text-center">${v.fatura}</td>
-                                <td class="text-center">${v.status}</td>
-                                <td class="text-center fw-bold">${v.total}</td>
+                                <td class="fw-bold">${v.vendedor_nome || v.vendedor_username || 'N/A'}</td>
+                                <td class="text-center">${v.fachada || 0}</td>
+                                <td class="text-center">${v.viabilidade || 0}</td>
+                                <td class="text-center">${v.fatura || 0}</td>
+                                <td class="text-center">${v.status || 0}</td>
+                                <td class="text-center fw-bold">${v.total || 0}</td>
                             </tr>
                         `;
                     });
                 }
                 
-                // Atualizar informação do período
-                const dataInicio = new Date(data.data_inicio);
-                document.getElementById('info-periodo').textContent = 
-                    `Período: ${dataInicio.toLocaleDateString('pt-BR')} até hoje | Total geral: ${data.totais.geral} mensagens`;
+                // Atualizar informação do período (com verificação segura)
+                if (data.data_inicio) {
+                    const dataInicio = new Date(data.data_inicio);
+                    const totalGeral = data.totais?.geral || 0;
+                    document.getElementById('info-periodo').textContent = 
+                        `Período: ${dataInicio.toLocaleDateString('pt-BR')} até hoje | Total geral: ${totalGeral} mensagens`;
+                }
                     
             } catch(e) { 
                 console.error('Erro ao carregar estatísticas:', e);
                 document.getElementById('lista-vendedores').innerHTML = 
                     '<tr><td colspan="6" class="text-center text-danger py-4">Erro ao carregar dados.</td></tr>';
+                document.getElementById('info-periodo').textContent = 'Erro ao carregar informações.';
             }
         }
 
