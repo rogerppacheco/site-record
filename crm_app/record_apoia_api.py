@@ -236,15 +236,15 @@ class RecordApoiaDiagnosticoView(APIView):
                         caminho_completo = os.path.join(media_root, caminho_relativo)
                         existe_fisico = os.path.exists(caminho_completo)
                         
-                        # Verificar pasta
+                        # Verificar pasta e listar arquivos reais
                         pasta = os.path.dirname(caminho_completo)
                         if pasta not in diagnosticos['pastas_verificadas']:
                             arquivos_reais = []
                             if os.path.exists(pasta):
                                 try:
                                     arquivos_reais = [f for f in os.listdir(pasta) if os.path.isfile(os.path.join(pasta, f))]
-                                except PermissionError:
-                                    arquivos_reais = []
+                                except (PermissionError, OSError) as e:
+                                    logger.warning(f"Erro ao listar pasta {pasta}: {e}")
                             
                             diagnosticos['pastas_verificadas'][pasta] = {
                                 'existe': os.path.exists(pasta),
@@ -274,6 +274,138 @@ class RecordApoiaDiagnosticoView(APIView):
             
         except Exception as e:
             logger.error(f"Erro no diagnóstico: {e}")
+            import traceback
+            return Response({
+                'error': str(e),
+                'traceback': traceback.format_exc()
+            }, status=500)
+
+
+class RecordApoiaCorrigirNomesView(APIView):
+    """
+    View para corrigir nomes de arquivos no banco que não correspondem aos arquivos no disco.
+    Tenta encontrar os arquivos reais e atualizar os registros.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        # Record Apoia é acessível a todos os usuários autenticados
+        try:
+            from django.conf import settings
+            import os
+            import re
+            
+            media_root = getattr(settings, 'MEDIA_ROOT', None)
+            if not media_root:
+                return Response({'error': 'MEDIA_ROOT não configurado'}, status=500)
+            
+            # Buscar todos os arquivos ativos
+            arquivos = RecordApoia.objects.filter(ativo=True)
+            
+            corrigidos = []
+            erros = []
+            
+            for arquivo in arquivos:
+                if not arquivo.arquivo or not arquivo.arquivo.name:
+                    continue
+                
+                caminho_relativo = arquivo.arquivo.name
+                pasta_relativa = os.path.dirname(caminho_relativo)
+                nome_arquivo_banco = os.path.basename(caminho_relativo)
+                nome_base = os.path.splitext(nome_arquivo_banco)[0]
+                extensao = os.path.splitext(nome_arquivo_banco)[1]
+                
+                # Remover sufixos do Django (padrão: _XXXXXXXXX onde X são letras/números)
+                nome_base_sem_sufixo = re.sub(r'_[A-Za-z0-9]{7,}$', '', nome_base)
+                
+                pasta_completa = os.path.join(media_root, pasta_relativa)
+                
+                if not os.path.exists(pasta_completa):
+                    erros.append({
+                        'id': arquivo.id,
+                        'titulo': arquivo.titulo,
+                        'erro': f'Pasta não existe: {pasta_completa}'
+                    })
+                    continue
+                
+                # Listar arquivos na pasta
+                try:
+                    arquivos_reais = [f for f in os.listdir(pasta_completa) if os.path.isfile(os.path.join(pasta_completa, f))]
+                except (PermissionError, OSError) as e:
+                    erros.append({
+                        'id': arquivo.id,
+                        'titulo': arquivo.titulo,
+                        'erro': f'Erro ao listar pasta: {str(e)}'
+                    })
+                    continue
+                
+                # Tentar encontrar arquivo correspondente
+                arquivo_encontrado = None
+                
+                # 1. Buscar pelo nome original (sem sufixo)
+                for arq_real in arquivos_reais:
+                    if os.path.splitext(arq_real)[0] == nome_base_sem_sufixo and os.path.splitext(arq_real)[1] == extensao:
+                        arquivo_encontrado = arq_real
+                        break
+                
+                # 2. Se não encontrou, buscar pelo nome original completo
+                if not arquivo_encontrado:
+                    for arq_real in arquivos_reais:
+                        if arq_real == arquivo.nome_original:
+                            arquivo_encontrado = arq_real
+                            break
+                
+                # 3. Se ainda não encontrou, buscar qualquer arquivo com extensão igual
+                if not arquivo_encontrado:
+                    for arq_real in arquivos_reais:
+                        if os.path.splitext(arq_real)[1] == extensao:
+                            # Se só tem um arquivo com essa extensão, usar ele
+                            arquivos_com_extensao = [a for a in arquivos_reais if os.path.splitext(a)[1] == extensao]
+                            if len(arquivos_com_extensao) == 1:
+                                arquivo_encontrado = arq_real
+                                break
+                
+                if arquivo_encontrado:
+                    novo_caminho_relativo = os.path.join(pasta_relativa, arquivo_encontrado).replace('\\', '/')
+                    
+                    # Atualizar o campo arquivo.name diretamente no banco
+                    from django.db import connection
+                    with connection.cursor() as cursor:
+                        cursor.execute(
+                            "UPDATE crm_app_recordapoia SET arquivo = %s WHERE id = %s",
+                            [novo_caminho_relativo, arquivo.id]
+                        )
+                    
+                    # Recarregar do banco
+                    arquivo.refresh_from_db()
+                    
+                    corrigidos.append({
+                        'id': arquivo.id,
+                        'titulo': arquivo.titulo,
+                        'nome_original': arquivo.nome_original,
+                        'caminho_anterior': caminho_relativo,
+                        'caminho_novo': novo_caminho_relativo,
+                        'arquivo_encontrado': arquivo_encontrado
+                    })
+                else:
+                    erros.append({
+                        'id': arquivo.id,
+                        'titulo': arquivo.titulo,
+                        'nome_original': arquivo.nome_original,
+                        'erro': 'Arquivo não encontrado na pasta',
+                        'arquivos_disponiveis': arquivos_reais
+                    })
+            
+            return Response({
+                'sucesso': True,
+                'corrigidos': corrigidos,
+                'total_corrigidos': len(corrigidos),
+                'erros': erros,
+                'total_erros': len(erros)
+            })
+            
+        except Exception as e:
+            logger.error(f"Erro ao corrigir nomes: {e}")
             import traceback
             return Response({
                 'error': str(e),
