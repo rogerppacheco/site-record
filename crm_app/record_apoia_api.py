@@ -239,9 +239,17 @@ class RecordApoiaDiagnosticoView(APIView):
                         # Verificar pasta
                         pasta = os.path.dirname(caminho_completo)
                         if pasta not in diagnosticos['pastas_verificadas']:
+                            arquivos_reais = []
+                            if os.path.exists(pasta):
+                                try:
+                                    arquivos_reais = [f for f in os.listdir(pasta) if os.path.isfile(os.path.join(pasta, f))]
+                                except PermissionError:
+                                    arquivos_reais = []
+                            
                             diagnosticos['pastas_verificadas'][pasta] = {
                                 'existe': os.path.exists(pasta),
-                                'arquivos_na_pasta': len([f for f in os.listdir(pasta) if os.path.isfile(os.path.join(pasta, f))]) if os.path.exists(pasta) else 0
+                                'arquivos_na_pasta': len(arquivos_reais),
+                                'lista_arquivos': arquivos_reais  # Lista completa dos arquivos encontrados
                             }
                     else:
                         # Tentar usar storage
