@@ -168,18 +168,26 @@ class UsuarioSerializer(serializers.ModelSerializer):
         if password:
             instance.set_password(password)
             instance.obriga_troca_senha = True
-        # Sincronizar campo perfil baseado no primeiro grupo (antes de salvar)
-        if groups:
+        
+        # Se perfil foi definido, sincroniza grupo baseado no perfil (perfil é fonte de verdade)
+        if 'perfil' in validated_data and validated_data.get('perfil'):
             try:
-                # Extrair o ID do grupo (pode ser um objeto Group ou um ID)
+                self._sincronizar_grupo_do_perfil(instance)
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Erro ao sincronizar grupo do perfil: {e}")
+        # Se não tem perfil mas tem groups, sincroniza perfil baseado no grupo
+        elif groups:
+            try:
                 first_group = groups[0]
                 group_id = first_group.id if hasattr(first_group, 'id') else first_group
                 self._sincronizar_perfil_do_group(instance, group_id)
             except Exception as e:
-                # Se houver erro na sincronização, apenas loga e continua (não bloqueia)
                 import logging
                 logger = logging.getLogger(__name__)
                 logger.warning(f"Erro ao sincronizar perfil do grupo: {e}")
+        
         instance.save()
         if groups:
             instance.groups.set(groups)
@@ -200,18 +208,23 @@ class UsuarioSerializer(serializers.ModelSerializer):
                 except (ValueError, TypeError):
                     validated_data['meta_comissao'] = 0
         
+        # Captura o perfil antes de atualizar (para verificar se mudou)
+        perfil_anterior = instance.perfil
+        perfil_alterado = 'perfil' in validated_data
+        
         # Atualiza campos normais (groups já foi removido do validated_data)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         
-        # Processar groups separadamente
-        if groups is not None:
+        # Se o perfil foi alterado, sincroniza o grupo baseado no perfil (perfil é fonte de verdade)
+        if perfil_alterado:
+            self._sincronizar_grupo_do_perfil(instance)
+        # Se groups foi alterado (mas perfil não), sincroniza perfil baseado no grupo
+        elif groups is not None:
             instance.groups.set(groups)
-            # Sincronizar campo perfil baseado no primeiro grupo (sempre executa)
-            # Extrair o ID do grupo (pode ser um objeto Group ou um ID)
+            # Sincronizar campo perfil baseado no primeiro grupo
             first_group = groups[0] if groups else None
             if first_group:
-                # Se for um objeto Group, pegar o ID; se já for ID, usar diretamente
                 group_id = first_group.id if hasattr(first_group, 'id') else first_group
             else:
                 group_id = None
@@ -223,6 +236,26 @@ class UsuarioSerializer(serializers.ModelSerializer):
             
         instance.save()
         return instance
+    
+    def _sincronizar_grupo_do_perfil(self, usuario):
+        """
+        Sincroniza os grupos baseado no perfil (perfil é a fonte de verdade).
+        Define apenas o grupo correspondente ao perfil, removendo outros.
+        """
+        from django.contrib.auth.models import Group
+        
+        if usuario.perfil:
+            try:
+                # Busca o grupo com o mesmo nome do perfil
+                group = Group.objects.get(name__iexact=usuario.perfil.nome)
+                # Define apenas este grupo (remove outros e adiciona este)
+                usuario.groups.set([group])
+            except Group.DoesNotExist:
+                # Se não encontrar grupo correspondente, limpa os grupos
+                usuario.groups.clear()
+        else:
+            # Se perfil está vazio, limpa os grupos
+            usuario.groups.clear()
     
     def _sincronizar_perfil_do_group(self, usuario, group_id):
         """
