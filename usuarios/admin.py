@@ -57,41 +57,37 @@ class CustomUserAdmin(UserAdmin):
 
     def save_model(self, request, obj, form, change):
         """Override para sincronizar perfil com groups quando salvar pelo Django admin"""
+        # Captura o perfil que foi escolhido no formulário ANTES de salvar
+        perfil_escolhido = None
+        if 'perfil' in form.cleaned_data:
+            perfil_escolhido = form.cleaned_data.get('perfil')
+        
         # Salva o modelo primeiro
         super().save_model(request, obj, form, change)
         
-        # Sincroniza o campo perfil baseado nos groups
-        # Se o usuário tem groups, usa o primeiro group para encontrar o perfil correspondente
-        if obj.groups.exists():
-            from usuarios.models import Perfil
-            first_group = obj.groups.first()
-            try:
-                perfil = Perfil.objects.get(nome__iexact=first_group.name)
-                if obj.perfil != perfil:
-                    obj.perfil = perfil
-                    obj.save(update_fields=['perfil'])
-            except Perfil.DoesNotExist:
-                # Se não encontrar perfil correspondente, limpa o campo
-                if obj.perfil:
-                    obj.perfil = None
-                    obj.save(update_fields=['perfil'])
-        else:
-            # Se não tem groups, limpa o perfil
-            if obj.perfil:
-                obj.perfil = None
-                obj.save(update_fields=['perfil'])
-        
-        # Sincroniza groups baseado no perfil (se perfil foi alterado diretamente)
-        # Se o perfil foi definido manualmente e não corresponde aos groups, adiciona o group correspondente
-        if obj.perfil:
+        # Se o usuário escolheu um perfil diretamente no formulário, prioriza isso
+        if perfil_escolhido:
             from django.contrib.auth.models import Group
+            # Sincroniza groups baseado no perfil escolhido
             try:
-                group = Group.objects.get(name__iexact=obj.perfil.nome)
+                group = Group.objects.get(name__iexact=perfil_escolhido.nome)
                 if not obj.groups.filter(id=group.id).exists():
-                    # Se o group correspondente não está nos groups do usuário, adiciona
                     obj.groups.add(group)
             except Group.DoesNotExist:
                 pass
+        else:
+            # Se não escolheu perfil diretamente, sincroniza perfil baseado nos groups
+            if obj.groups.exists():
+                from usuarios.models import Perfil
+                first_group = obj.groups.first()
+                try:
+                    perfil = Perfil.objects.get(nome__iexact=first_group.name)
+                    if obj.perfil != perfil:
+                        obj.perfil = perfil
+                        obj.save(update_fields=['perfil'])
+                except Perfil.DoesNotExist:
+                    # Se não encontrar perfil correspondente, mantém o que está (não limpa)
+                    pass
 
 # ======================================================
 # --- CORREÇÃO APLICADA AQUI ---
