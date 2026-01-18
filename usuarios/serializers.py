@@ -83,7 +83,16 @@ class UsuarioSerializer(serializers.ModelSerializer):
             return nome if nome else obj.supervisor.username
         return "-"
 
-    # ...existing code...
+    def validate_meta_comissao(self, value):
+        """Valida e normaliza meta_comissao"""
+        if value is None or value == '':
+            return 0
+        if isinstance(value, str):
+            try:
+                return int(value) if value else 0
+            except (ValueError, TypeError):
+                return 0
+        return value if value is not None else 0
 
     class Meta:
         model = Usuario
