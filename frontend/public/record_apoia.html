@@ -210,23 +210,23 @@
             <h5 class="fw-bold mb-4"><i class="bi bi-cloud-arrow-up text-primary me-2"></i>Enviar Novo Arquivo</h5>
             
             <div class="upload-zone" id="uploadZone">
-                <input type="file" id="fileInput" style="display: none;" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.webp,.bmp,.mp4,.avi,.mov,.wmv,.mkv,.webm,.txt,.zip,.rar,.7z">
+                <input type="file" id="fileInput" style="display: none;" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.webp,.bmp,.mp4,.avi,.mov,.wmv,.mkv,.webm,.txt,.zip,.rar,.7z">
                 <i class="bi bi-cloud-arrow-up"></i>
-                <h5 class="text-dark">Arraste o arquivo aqui</h5>
-                <p class="text-muted">ou clique para selecionar</p>
-                <p class="text-muted mb-0"><small>Tamanho máximo: 500 MB</small></p>
+                <h5 class="text-dark">Arraste os arquivos aqui</h5>
+                <p class="text-muted">ou clique para selecionar (múltiplos arquivos permitidos)</p>
+                <p class="text-muted mb-0"><small>Tamanho máximo por arquivo: 500 MB</small></p>
             </div>
 
             <div id="fileInfo" class="mt-3" style="display: none;">
-                <div class="alert alert-info d-flex align-items-center justify-content-between">
-                    <div>
-                        <i class="bi bi-file-earmark-check me-2"></i>
-                        <strong id="fileName"></strong>
-                        <span class="ms-2 text-muted">(<span id="fileSize"></span>)</span>
+                <div class="alert alert-info">
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <strong><i class="bi bi-files me-2"></i>Arquivos selecionados:</strong>
+                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="limparArquivo()">
+                            <i class="bi bi-x-circle me-1"></i>Limpar
+                        </button>
                     </div>
-                    <button class="btn btn-sm btn-outline-secondary" onclick="limparArquivo()">
-                        <i class="bi bi-x"></i>
-                    </button>
+                    <div id="fileList" class="mt-2"></div>
+                    <div class="mt-2"><small class="text-muted">Total: <span id="fileCount">0</span> arquivo(s) - <span id="totalSize">0</span></small></div>
                 </div>
             </div>
 
@@ -251,7 +251,7 @@
                 </div>
                 <div class="text-center">
                     <button type="submit" class="btn btn-primary btn-lg" id="btnUpload">
-                        <i class="bi bi-upload me-2"></i>Enviar Arquivo
+                        <i class="bi bi-upload me-2"></i>Enviar Arquivo(s)
                     </button>
                 </div>
             </form>
@@ -333,7 +333,7 @@
     <script src="{% static 'js/menu.js' %}?v=7.0"></script>
     <script>
         const API_BASE_URL = window.location.origin;
-        let selectedFile = null;
+        let selectedFiles = []; // Array de arquivos selecionados
         let currentPage = 1;
         let categoriasDisponiveis = [];
 
@@ -361,34 +361,135 @@
         uploadZone.addEventListener('drop', (e) => {
             e.preventDefault();
             uploadZone.classList.remove('dragging');
-            const file = e.dataTransfer.files[0];
-            if (file) selecionarArquivo(file);
+            const files = Array.from(e.dataTransfer.files);
+            if (files.length > 0) {
+                selecionarArquivos(files);
+            }
         });
 
         fileInput.addEventListener('change', (e) => {
             if (e.target.files.length > 0) {
-                selecionarArquivo(e.target.files[0]);
+                selecionarArquivos(Array.from(e.target.files));
             }
         });
 
-        function selecionarArquivo(file) {
-            // Validar tamanho (500 MB)
-            const maxSize = 500 * 1024 * 1024;
-            if (file.size > maxSize) {
-                alert(`Arquivo muito grande! Tamanho máximo: 500 MB`);
-                return;
+        function selecionarArquivos(files) {
+            const maxSize = 500 * 1024 * 1024; // 500 MB por arquivo
+            const arquivosValidos = [];
+            const erros = [];
+
+            files.forEach(file => {
+                if (file.size > maxSize) {
+                    erros.push(`${file.name}: Arquivo muito grande (máximo 500 MB)`);
+                } else {
+                    arquivosValidos.push(file);
+                }
+            });
+
+            if (erros.length > 0) {
+                alert('Alguns arquivos foram rejeitados:\n\n' + erros.join('\n'));
             }
 
-            selectedFile = file;
-            document.getElementById('fileName').textContent = file.name;
-            document.getElementById('fileSize').textContent = formatarTamanho(file.size);
-            document.getElementById('fileInfo').style.display = 'block';
-            document.getElementById('titulo').value = file.name;
-            uploadForm.style.display = 'block';
+            if (arquivosValidos.length > 0) {
+                selectedFiles = arquivosValidos;
+                atualizarListaArquivos();
+                document.getElementById('fileInfo').style.display = 'block';
+                uploadForm.style.display = 'block';
+                
+                // Preencher título automaticamente se apenas um arquivo e campo vazio
+                if (selectedFiles.length === 1 && !document.getElementById('titulo').value) {
+                    document.getElementById('titulo').value = selectedFiles[0].name;
+                }
+            }
+        }
+
+        function atualizarListaArquivos() {
+            const fileList = document.getElementById('fileList');
+            const fileCount = document.getElementById('fileCount');
+            const totalSize = document.getElementById('totalSize');
+            
+            fileCount.textContent = selectedFiles.length;
+            
+            let html = '';
+            let tamanhoTotal = 0;
+            
+            selectedFiles.forEach((file, index) => {
+                tamanhoTotal += file.size;
+                const ext = file.name.split('.').pop().toLowerCase();
+                const isImagem = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext);
+                const isVideo = ['mp4', 'avi', 'mov', 'wmv', 'mkv', 'webm'].includes(ext);
+                const isPDF = ext === 'pdf';
+                
+                html += `
+                    <div class="d-flex align-items-start py-2 border-bottom" data-file-index="${index}">
+                        <div class="flex-grow-1">
+                            <div class="d-flex align-items-center">
+                                <i class="bi bi-file-earmark me-2"></i>
+                                <span class="fw-semibold">${file.name}</span>
+                                <small class="text-muted ms-2">(${formatarTamanho(file.size)})</small>
+                            </div>
+                            <div class="mt-2 preview-container" id="preview-${index}" style="display: none;">
+                                <!-- Preview será inserido aqui -->
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            fileList.innerHTML = html;
+            totalSize.textContent = formatarTamanho(tamanhoTotal);
+            
+            // Gerar previews para cada arquivo
+            selectedFiles.forEach((file, index) => {
+                gerarPreview(file, index);
+            });
+        }
+
+        function gerarPreview(file, index) {
+            const previewContainer = document.getElementById(`preview-${index}`);
+            if (!previewContainer) return;
+            
+            const ext = file.name.split('.').pop().toLowerCase();
+            const isImagem = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext);
+            const isVideo = ['mp4', 'avi', 'mov', 'wmv', 'mkv', 'webm'].includes(ext);
+            const isPDF = ext === 'pdf';
+            
+            if (isImagem) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    previewContainer.style.display = 'block';
+                    previewContainer.innerHTML = `
+                        <img src="${e.target.result}" alt="Preview" class="img-thumbnail" style="max-width: 200px; max-height: 150px; object-fit: contain; background: #f8f9fa;">
+                    `;
+                };
+                reader.readAsDataURL(file);
+            } else if (isVideo) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    previewContainer.style.display = 'block';
+                    previewContainer.innerHTML = `
+                        <video src="${e.target.result}" controls class="img-thumbnail" style="max-width: 300px; max-height: 200px; background: #000;">
+                            Seu navegador não suporta a tag de vídeo.
+                        </video>
+                    `;
+                };
+                reader.readAsDataURL(file);
+                } else if (isPDF) {
+                previewContainer.style.display = 'block';
+                previewContainer.innerHTML = `
+                    <div class="alert alert-light border p-2 mb-0 d-flex align-items-center">
+                        <i class="bi bi-file-pdf text-danger fs-4 me-2"></i>
+                        <div>
+                            <small class="fw-semibold d-block">Arquivo PDF</small>
+                            <small class="text-muted">Preview disponível após o upload</small>
+                        </div>
+                    </div>
+                `;
+            }
         }
 
         function limparArquivo() {
-            selectedFile = null;
+            selectedFiles = [];
             fileInput.value = '';
             document.getElementById('fileInfo').style.display = 'none';
             uploadForm.style.display = 'none';
@@ -407,21 +508,32 @@
         document.getElementById('uploadForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             
-            if (!selectedFile) {
-                alert('Por favor, selecione um arquivo');
+            if (!selectedFiles || selectedFiles.length === 0) {
+                alert('Por favor, selecione pelo menos um arquivo');
                 return;
             }
 
             const formData = new FormData();
-            formData.append('arquivo', selectedFile);
-            formData.append('titulo', document.getElementById('titulo').value);
+            
+            // Adicionar todos os arquivos (mesmo nome 'arquivo' para múltiplos)
+            selectedFiles.forEach(file => {
+                formData.append('arquivo', file);
+            });
+            
+            // Metadados compartilhados para todos os arquivos
+            const tituloBase = document.getElementById('titulo').value.trim();
             formData.append('descricao', document.getElementById('descricao').value);
             formData.append('categoria', document.getElementById('categoria').value);
             formData.append('tags', document.getElementById('tags').value);
+            
+            // Se há título, usar como base (a API usa nome do arquivo se não houver título específico)
+            if (tituloBase) {
+                formData.append('titulo', tituloBase);
+            }
 
             const btnUpload = document.getElementById('btnUpload');
             btnUpload.disabled = true;
-            btnUpload.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Enviando...';
+            btnUpload.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>Enviando ${selectedFiles.length} arquivo(s)...`;
 
             try {
                 const token = localStorage.getItem('accessToken');
@@ -436,10 +548,22 @@
                 const data = await response.json();
 
                 if (response.ok && data.success) {
+                    let mensagem = data.message || `${data.total_enviados} arquivo(s) enviado(s) com sucesso!`;
+                    let tipoAlerta = 'success';
+                    
+                    if (data.total_erros > 0) {
+                        tipoAlerta = 'warning';
+                        mensagem += `<br><small>${data.total_erros} arquivo(s) com erro:</small><ul class="mb-0 mt-2">`;
+                        data.erros.forEach(erro => {
+                            mensagem += `<li><small>${erro.arquivo}: ${erro.erro}</small></li>`;
+                        });
+                        mensagem += '</ul>';
+                    }
+                    
                     document.getElementById('uploadResult').innerHTML = `
-                        <div class="alert alert-success alert-dismissible fade show">
-                            <i class="bi bi-check-circle me-2"></i>
-                            <strong>Sucesso!</strong> ${data.message}
+                        <div class="alert alert-${tipoAlerta} alert-dismissible fade show">
+                            <i class="bi bi-${tipoAlerta === 'success' ? 'check-circle' : 'exclamation-triangle'} me-2"></i>
+                            <strong>${tipoAlerta === 'success' ? 'Sucesso!' : 'Aviso!'}</strong> ${mensagem}
                             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                         </div>
                     `;
@@ -448,7 +572,15 @@
                     limparArquivo();
                     carregarArquivos();
                 } else {
-                    throw new Error(data.error || 'Erro ao enviar arquivo');
+                    let erroMsg = data.error || 'Erro ao enviar arquivo(s)';
+                    if (data.erros && data.erros.length > 0) {
+                        erroMsg += '<br><ul class="mb-0 mt-2">';
+                        data.erros.forEach(erro => {
+                            erroMsg += `<li><small>${erro.arquivo}: ${erro.erro}</small></li>`;
+                        });
+                        erroMsg += '</ul>';
+                    }
+                    throw new Error(erroMsg);
                 }
             } catch (error) {
                 document.getElementById('uploadResult').innerHTML = `
@@ -461,7 +593,7 @@
                 document.getElementById('uploadResult').style.display = 'block';
             } finally {
                 btnUpload.disabled = false;
-                btnUpload.innerHTML = '<i class="bi bi-upload me-2"></i>Enviar Arquivo';
+                btnUpload.innerHTML = '<i class="bi bi-upload me-2"></i>Enviar Arquivo(s)';
             }
         });
 
