@@ -1,264 +1,285 @@
-"""
-APIs para Record Apoia - Repositório de Arquivos
-"""
-import os
-import re
-from django.http import FileResponse
+import logging
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import permissions
-from rest_framework.parsers import MultiPartParser, FormParser
-from django.db.models import Q
+from django.http import FileResponse, Http404
+from django.core.files.storage import default_storage
+from django.core.files.base import ContentFile
 from .models import RecordApoia
+from .utils import is_member
+import os
+from django.db.models import Q
 
-# Validações de segurança
-ALLOWED_EXTENSIONS = {
-    'PDF': ['.pdf'],
-    'WORD': ['.doc', '.docx'],
-    'EXCEL': ['.xls', '.xlsx'],
-    'IMAGEM': ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'],
-    'VIDEO': ['.mp4', '.avi', '.mov', '.wmv', '.mkv', '.webm'],
-    'OUTRO': ['.txt', '.zip', '.rar', '.7z']
-}
-
-MAX_FILE_SIZE = 500 * 1024 * 1024  # 500 MB
-
-
-def detectar_tipo_arquivo(filename):
-    """Detecta o tipo de arquivo baseado na extensão"""
-    ext = os.path.splitext(filename)[1].lower()
-    
-    for tipo, extensoes in ALLOWED_EXTENSIONS.items():
-        if ext in extensoes:
-            return tipo
-    return 'OUTRO'
-
-
-def validar_arquivo(file_obj):
-    """Valida arquivo antes do upload"""
-    errors = []
-    
-    # Validar tamanho
-    if file_obj.size > MAX_FILE_SIZE:
-        errors.append(f'Arquivo muito grande. Tamanho máximo: {MAX_FILE_SIZE / (1024*1024):.0f} MB')
-    
-    # Validar extensão
-    ext = os.path.splitext(file_obj.name)[1].lower()
-    todas_extensoes = [ext for exts in ALLOWED_EXTENSIONS.values() for ext in exts]
-    if ext not in todas_extensoes:
-        errors.append(f'Extensão não permitida: {ext}')
-    
-    return errors
-
-
-def sanitizar_nome_arquivo(nome):
-    """Remove caracteres perigosos do nome do arquivo"""
-    nome = re.sub(r'[^\w\s\.-]', '', nome)
-    nome = re.sub(r'\s+', ' ', nome)
-    return nome.strip()
-
+logger = logging.getLogger(__name__)
 
 class RecordApoiaUploadView(APIView):
-    """Upload de arquivos para Record Apoia (suporta múltiplos arquivos)"""
     permission_classes = [permissions.IsAuthenticated]
-    parser_classes = [MultiPartParser, FormParser]
-    
+
     def post(self, request):
-        # Suporta tanto arquivo único quanto múltiplos arquivos
-        arquivos = request.FILES.getlist('arquivo')
-        if not arquivos:
-            return Response({'error': 'Nenhum arquivo enviado'}, status=400)
-        
-        # Metadados compartilhados (aplicados a todos os arquivos)
-        descricao = request.data.get('descricao', '')
-        categoria = request.data.get('categoria', '')
-        tags = request.data.get('tags', '')
-        
-        resultados = []
-        erros = []
-        
-        for idx, arquivo in enumerate(arquivos):
-            # Validar cada arquivo
-            erros_validacao = validar_arquivo(arquivo)
-            if erros_validacao:
-                erros.append({
-                    'arquivo': arquivo.name,
-                    'erro': '; '.join(erros_validacao)
-                })
-                continue
-            
-            # Título específico ou padrão para cada arquivo
-            titulo = request.data.get(f'titulo_{idx}') or request.data.get('titulo') or arquivo.name
-            tipo_arquivo = request.data.get('tipo_arquivo') or detectar_tipo_arquivo(arquivo.name)
-            nome_original = sanitizar_nome_arquivo(arquivo.name)
-            
-            try:
-                record_apoia = RecordApoia.objects.create(
-                    arquivo=arquivo,
-                    nome_original=nome_original,
-                    tipo_arquivo=tipo_arquivo,
-                    tamanho_bytes=arquivo.size,
-                    titulo=titulo[:255],
-                    descricao=descricao,
-                    categoria=categoria[:100] if categoria else None,
-                    tags=tags[:500] if tags else None,
-                    usuario_upload=request.user,
-                    ativo=True
-                )
-                
-                resultados.append({
-                    'id': record_apoia.id,
-                    'titulo': record_apoia.titulo,
-                    'nome_original': record_apoia.nome_original,
-                    'tipo_arquivo': record_apoia.tipo_arquivo,
-                    'tamanho': record_apoia.formatar_tamanho(),
-                    'url': record_apoia.arquivo.url,
-                    'success': True
-                })
-                
-            except Exception as e:
-                erros.append({
-                    'arquivo': arquivo.name,
-                    'erro': f'Erro ao salvar arquivo: {str(e)}'
-                })
-        
-        # Retornar resultado
-        if resultados:
-            mensagem = f'{len(resultados)} arquivo(s) enviado(s) com sucesso!'
-            if erros:
-                mensagem += f' ({len(erros)} erro(s))'
-            
-            return Response({
-                'success': True,
-                'resultados': resultados,
-                'erros': erros if erros else None,
-                'total_enviados': len(resultados),
-                'total_erros': len(erros),
-                'message': mensagem
-            }, status=201 if not erros else 207)  # 207 Multi-Status se houver erros parciais
-        else:
-            # Nenhum arquivo foi enviado com sucesso
-            return Response({
-                'success': False,
-                'error': 'Nenhum arquivo pôde ser enviado',
-                'erros': erros
-            }, status=400)
-
-
-class RecordApoiaListView(APIView):
-    """Lista arquivos do Record Apoia com filtros e busca"""
-    permission_classes = [permissions.IsAuthenticated]
-    
-    def get(self, request):
-        tipo_arquivo = request.GET.get('tipo_arquivo')
-        categoria = request.GET.get('categoria')
-        busca = request.GET.get('busca', '').strip()
-        
-        queryset = RecordApoia.objects.filter(ativo=True)
-        
-        if tipo_arquivo:
-            queryset = queryset.filter(tipo_arquivo=tipo_arquivo)
-        
-        if categoria:
-            queryset = queryset.filter(categoria__icontains=categoria)
-        
-        if busca:
-            queryset = queryset.filter(
-                Q(titulo__icontains=busca) |
-                Q(descricao__icontains=busca) |
-                Q(nome_original__icontains=busca) |
-                Q(tags__icontains=busca)
-            )
-        
-        page = int(request.GET.get('page', 1))
-        page_size = int(request.GET.get('page_size', 20))
-        start = (page - 1) * page_size
-        end = start + page_size
-        
-        total = queryset.count()
-        arquivos = queryset[start:end]
-        
-        dados = []
-        for arquivo in arquivos:
-            dados.append({
-                'id': arquivo.id,
-                'titulo': arquivo.titulo,
-                'descricao': arquivo.descricao,
-                'nome_original': arquivo.nome_original,
-                'tipo_arquivo': arquivo.tipo_arquivo,
-                'tipo_arquivo_display': arquivo.get_tipo_arquivo_display(),
-                'categoria': arquivo.categoria,
-                'tags': arquivo.tags,
-                'tamanho_bytes': arquivo.tamanho_bytes,
-                'tamanho_formatado': arquivo.formatar_tamanho(),
-                'downloads_count': arquivo.downloads_count,
-                'data_upload': arquivo.data_upload.isoformat() if arquivo.data_upload else None,
-                'data_upload_formatada': arquivo.data_upload.strftime('%d/%m/%Y %H:%M') if arquivo.data_upload else None,
-                'usuario_upload': arquivo.usuario_upload.get_full_name() if arquivo.usuario_upload else 'Sistema',
-                'url': arquivo.arquivo.url if arquivo.arquivo else None,
-            })
-        
-        categorias = RecordApoia.objects.filter(ativo=True).exclude(categoria__isnull=True).exclude(categoria='').values_list('categoria', flat=True).distinct()
-        tipos = RecordApoia.objects.filter(ativo=True).values_list('tipo_arquivo', flat=True).distinct()
-        
-        return Response({
-            'success': True,
-            'arquivos': dados,
-            'total': total,
-            'page': page,
-            'page_size': page_size,
-            'total_pages': (total + page_size - 1) // page_size,
-            'categorias': list(categorias),
-            'tipos': list(tipos),
-        })
-
-
-class RecordApoiaDownloadView(APIView):
-    """Download de arquivo do Record Apoia"""
-    permission_classes = [permissions.IsAuthenticated]
-    
-    def get(self, request, arquivo_id):
-        try:
-            record_apoia = RecordApoia.objects.get(id=arquivo_id, ativo=True)
-            
-            record_apoia.downloads_count += 1
-            record_apoia.save(update_fields=['downloads_count'])
-            
-            arquivo = record_apoia.arquivo
-            if not arquivo:
-                return Response({'error': 'Arquivo não encontrado'}, status=404)
-            
-            response = FileResponse(arquivo.open('rb'), content_type='application/octet-stream')
-            response['Content-Disposition'] = f'attachment; filename="{record_apoia.nome_original}"'
-            return response
-            
-        except RecordApoia.DoesNotExist:
-            return Response({'error': 'Arquivo não encontrado'}, status=404)
-        except Exception as e:
-            return Response({'error': f'Erro ao baixar arquivo: {str(e)}'}, status=500)
-
-
-class RecordApoiaDeleteView(APIView):
-    """Soft delete de arquivo (apenas Admin/Diretoria)"""
-    permission_classes = [permissions.IsAuthenticated]
-    
-    def delete(self, request, arquivo_id):
-        from crm_app.views import is_member
-        
-        if not is_member(request.user, ['Admin', 'Diretoria']):
+        if not is_member(request.user):
             return Response({'error': 'Acesso negado'}, status=403)
         
         try:
-            record_apoia = RecordApoia.objects.get(id=arquivo_id)
-            record_apoia.ativo = False
-            record_apoia.save(update_fields=['ativo'])
+            arquivos = request.FILES.getlist('arquivo')
+            if not arquivos:
+                return Response({'error': 'Nenhum arquivo enviado'}, status=400)
+            
+            titulo = request.data.get('titulo', '').strip()
+            descricao = request.data.get('descricao', '').strip()
+            categoria = request.data.get('categoria', '').strip()
+            tags = request.data.get('tags', '').strip()
+            
+            resultados = []
+            erros = []
+            
+            for arquivo in arquivos:
+                try:
+                    # Validar arquivo
+                    if arquivo.size > 100 * 1024 * 1024:  # 100MB
+                        erros.append({
+                            'arquivo': arquivo.name,
+                            'erro': 'Arquivo muito grande (máximo 100MB)'
+                        })
+                        continue
+                    
+                    # Usar o título fornecido ou o nome do arquivo
+                    titulo_arquivo = titulo if titulo else arquivo.name
+                    if len(arquivos) > 1 and titulo:
+                        # Se múltiplos arquivos e título fornecido, usar título + nome do arquivo
+                        titulo_arquivo = f"{titulo} - {arquivo.name}"
+                    
+                    # Criar registro
+                    record = RecordApoia.objects.create(
+                        titulo=titulo_arquivo,
+                        descricao=descricao,
+                        categoria=categoria,
+                        tags=tags,
+                        arquivo=arquivo,
+                        nome_original=arquivo.name,
+                        usuario_upload=request.user
+                    )
+                    
+                    resultados.append({
+                        'id': record.id,
+                        'titulo': record.titulo,
+                        'nome_original': record.nome_original,
+                        'tamanho': record.arquivo.size if record.arquivo else 0,
+                        'tipo': record.get_tipo_arquivo_display(),
+                        'criado_em': record.criado_em.isoformat()
+                    })
+                except Exception as e:
+                    logger.error(f"Erro ao fazer upload de {arquivo.name}: {e}")
+                    erros.append({
+                        'arquivo': arquivo.name,
+                        'erro': str(e)
+                    })
+            
+            if resultados and not erros:
+                return Response({
+                    'sucesso': True,
+                    'resultados': resultados,
+                    'total': len(resultados)
+                }, status=201)
+            elif resultados and erros:
+                return Response({
+                    'sucesso': True,
+                    'resultados': resultados,
+                    'erros': erros,
+                    'total': len(resultados),
+                    'total_erros': len(erros)
+                }, status=207)  # Multi-Status
+            else:
+                return Response({
+                    'sucesso': False,
+                    'erros': erros
+                }, status=400)
+                
+        except Exception as e:
+            logger.error(f"Erro no upload: {e}")
+            return Response({'error': str(e)}, status=500)
+
+
+class RecordApoiaListView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if not is_member(request.user):
+            return Response({'error': 'Acesso negado'}, status=403)
+        
+        try:
+            busca = request.query_params.get('busca', '').strip()
+            categoria_filtro = request.query_params.get('categoria', '').strip()
+            
+            queryset = RecordApoia.objects.filter(ativo=True)
+            
+            if busca:
+                queryset = queryset.filter(
+                    Q(titulo__icontains=busca) |
+                    Q(descricao__icontains=busca) |
+                    Q(tags__icontains=busca) |
+                    Q(categoria__icontains=busca)
+                )
+            
+            if categoria_filtro:
+                queryset = queryset.filter(categoria__iexact=categoria_filtro)
+            
+            queryset = queryset.order_by('-criado_em')
+            
+            arquivos = []
+            for arq in queryset:
+                arquivos.append({
+                    'id': arq.id,
+                    'titulo': arq.titulo,
+                    'descricao': arq.descricao,
+                    'categoria': arq.categoria,
+                    'tags': arq.tags,
+                    'tipo': arq.get_tipo_arquivo_display(),
+                    'tamanho': arq.arquivo.size if arq.arquivo else 0,
+                    'nome_original': arq.nome_original,
+                    'downloads_count': arq.downloads_count,
+                    'criado_em': arq.criado_em.isoformat(),
+                    'usuario_upload': arq.usuario_upload.username if arq.usuario_upload else None,
+                    'url_download': f"/api/record-apoia/{arq.id}/download/"
+                })
             
             return Response({
-                'success': True,
-                'message': 'Arquivo removido com sucesso'
+                'total': len(arquivos),
+                'arquivos': arquivos
             })
+            
+        except Exception as e:
+            logger.error(f"Erro ao listar arquivos: {e}")
+            return Response({'error': str(e)}, status=500)
+
+
+class RecordApoiaDownloadView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, arquivo_id):
+        if not is_member(request.user):
+            return Response({'error': 'Acesso negado'}, status=403)
+        
+        try:
+            arquivo = RecordApoia.objects.get(id=arquivo_id, ativo=True)
+            arquivo.downloads_count += 1
+            arquivo.save(update_fields=['downloads_count'])
+            
+            if not arquivo.arquivo:
+                return Response({'error': 'Arquivo não encontrado'}, status=404)
+            
+            # Tentar abrir o arquivo
+            try:
+                arquivo.arquivo.open('rb')
+                return FileResponse(arquivo.arquivo.open('rb'), as_attachment=True, filename=arquivo.nome_original)
+            except (FileNotFoundError, IOError, OSError) as e:
+                logger.error(f"Erro ao abrir arquivo {arquivo.arquivo.name}: {e}")
+                # Tentar usar storage
+                if default_storage.exists(arquivo.arquivo.name):
+                    return FileResponse(default_storage.open(arquivo.arquivo.name, 'rb'), as_attachment=True, filename=arquivo.nome_original)
+                else:
+                    return Response({'error': f'Arquivo físico não encontrado: {arquivo.arquivo.name}'}, status=404)
+                    
+        except RecordApoia.DoesNotExist:
+            return Response({'error': 'Arquivo não encontrado'}, status=404)
+        except Exception as e:
+            logger.error(f"Erro no download: {e}")
+            return Response({'error': str(e)}, status=500)
+
+
+class RecordApoiaDeleteView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def delete(self, request, arquivo_id):
+        if not is_member(request.user):
+            return Response({'error': 'Acesso negado'}, status=403)
+        
+        try:
+            arquivo = RecordApoia.objects.get(id=arquivo_id)
+            
+            # Marcar como inativo (soft delete)
+            arquivo.ativo = False
+            arquivo.save()
+            
+            return Response({'sucesso': True, 'mensagem': 'Arquivo removido com sucesso'})
             
         except RecordApoia.DoesNotExist:
             return Response({'error': 'Arquivo não encontrado'}, status=404)
         except Exception as e:
-            return Response({'error': f'Erro ao remover arquivo: {str(e)}'}, status=500)
+            logger.error(f"Erro ao deletar: {e}")
+            return Response({'error': str(e)}, status=500)
+
+
+class RecordApoiaDiagnosticoView(APIView):
+    """
+    View para diagnosticar problemas com arquivos do Record Apoia.
+    Verifica se os arquivos físicos existem no servidor.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if not is_member(request.user):
+            return Response({'error': 'Acesso negado'}, status=403)
+        
+        try:
+            from django.conf import settings
+            import os
+            
+            # Buscar todos os arquivos ativos
+            arquivos = RecordApoia.objects.filter(ativo=True)
+            
+            diagnosticos = {
+                'total_arquivos': arquivos.count(),
+                'arquivos_com_problema': [],
+                'arquivos_ok': 0,
+                'pastas_verificadas': {},
+                'media_root': getattr(settings, 'MEDIA_ROOT', 'Não configurado')
+            }
+            
+            for arquivo in arquivos:
+                arquivo_path = None
+                existe_fisico = False
+                caminho_completo = None
+                
+                if arquivo.arquivo and arquivo.arquivo.name:
+                    caminho_relativo = arquivo.arquivo.name
+                    media_root = getattr(settings, 'MEDIA_ROOT', None)
+                    
+                    if media_root:
+                        caminho_completo = os.path.join(media_root, caminho_relativo)
+                        existe_fisico = os.path.exists(caminho_completo)
+                        
+                        # Verificar pasta
+                        pasta = os.path.dirname(caminho_completo)
+                        if pasta not in diagnosticos['pastas_verificadas']:
+                            diagnosticos['pastas_verificadas'][pasta] = {
+                                'existe': os.path.exists(pasta),
+                                'arquivos_na_pasta': len([f for f in os.listdir(pasta) if os.path.isfile(os.path.join(pasta, f))]) if os.path.exists(pasta) else 0
+                            }
+                    else:
+                        # Tentar usar storage
+                        existe_fisico = default_storage.exists(caminho_relativo)
+                        caminho_completo = caminho_relativo
+                    
+                    if existe_fisico:
+                        diagnosticos['arquivos_ok'] += 1
+                    else:
+                        diagnosticos['arquivos_com_problema'].append({
+                            'id': arquivo.id,
+                            'titulo': arquivo.titulo,
+                            'nome_original': arquivo.nome_original,
+                            'caminho_esperado': caminho_completo,
+                            'caminho_relativo': caminho_relativo,
+                            'criado_em': arquivo.criado_em.isoformat()
+                        })
+            
+            diagnosticos['total_com_problema'] = len(diagnosticos['arquivos_com_problema'])
+            
+            return Response(diagnosticos)
+            
+        except Exception as e:
+            logger.error(f"Erro no diagnóstico: {e}")
+            import traceback
+            return Response({
+                'error': str(e),
+                'traceback': traceback.format_exc()
+            }, status=500)
