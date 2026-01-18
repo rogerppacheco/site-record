@@ -491,8 +491,148 @@ class ComunicadoViewSet(viewsets.ModelViewSet):
     serializer_class = ComunicadoSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def _processar_envio_comunicado(self, comunicado):
+        """
+        Processa e envia um comunicado via WhatsApp.
+        Mapeia perfis para grupos do WhatsApp.
+        """
+        from django.utils import timezone
+        from datetime import datetime, date, time
+        
+        try:
+            whatsapp_service = WhatsAppService()
+            
+            # Verificar se é envio imediato (data/hora atual ou passada)
+            agora = timezone.now()
+            data_envio = comunicado.data_programada
+            hora_envio = comunicado.hora_programada
+            
+            # Combinar data e hora para comparação
+            if isinstance(hora_envio, time):
+                datetime_envio = datetime.combine(data_envio, hora_envio)
+                if timezone.is_naive(datetime_envio):
+                    from django.utils import timezone as tz
+                    datetime_envio = tz.make_aware(datetime_envio)
+            else:
+                datetime_envio = agora  # Se não tiver hora, considera agora
+            
+            # Se a data/hora programada já passou ou é agora, processa imediatamente
+            enviar_agora = datetime_envio <= agora
+            
+            if not enviar_agora:
+                # Agendado para o futuro, não processa ainda
+                return False
+            
+            # Mapear perfil para grupos do WhatsApp
+            from django.db.models import Q
+            
+            # Buscar grupos ativos no banco
+            if comunicado.perfil_destino == 'TODOS':
+                # Para TODOS, buscar todos os grupos ativos
+                grupos_ativos = GrupoDisparo.objects.filter(ativo=True)
+            else:
+                # Para perfis específicos, buscar grupos que contenham o nome do perfil no nome
+                # Mapeamento: perfil_destino -> termos de busca
+                perfil_termos = {
+                    'DIRETORIA': ['Diretoria', 'diretor'],
+                    'BACKOFFICE': ['BackOffice', 'Back Office', 'backoffice'],
+                    'SUPERVISOR': ['Supervisor', 'supervisor'],
+                    'VENDEDOR': ['Vendedor', 'vendedor'],
+                }
+                
+                termos = perfil_termos.get(comunicado.perfil_destino, [comunicado.perfil_destino])
+                
+                # Criar filtro: ativo=True AND (nome contém termo1 OU nome contém termo2 OU ...)
+                filtro_nome = Q()
+                for termo in termos:
+                    filtro_nome |= Q(nome__icontains=termo)
+                
+                grupos_ativos = GrupoDisparo.objects.filter(Q(ativo=True) & filtro_nome)
+            
+            grupos_ids = list(grupos_ativos.values_list('chat_id', flat=True))
+            
+            if not grupos_ids:
+                logger.warning(f"Nenhum grupo encontrado para perfil {comunicado.perfil_destino}")
+                comunicado.status = 'ERRO'
+                comunicado.save()
+                return False
+            
+            # Enviar para cada grupo
+            sucesso_total = True
+            for grupo_id in grupos_ids:
+                try:
+                    resultado, resposta = whatsapp_service.enviar_mensagem_texto(grupo_id, comunicado.mensagem)
+                    if not resultado:
+                        sucesso_total = False
+                        logger.error(f"Erro ao enviar comunicado {comunicado.id} para grupo {grupo_id}")
+                except Exception as e:
+                    sucesso_total = False
+                    logger.error(f"Exceção ao enviar comunicado {comunicado.id} para grupo {grupo_id}: {e}")
+            
+            # Atualizar status
+            if sucesso_total:
+                comunicado.status = 'ENVIADO'
+                comunicado.save()
+                return True
+            else:
+                comunicado.status = 'ERRO'
+                comunicado.save()
+                return False
+                
+        except Exception as e:
+            logger.error(f"Erro ao processar comunicado {comunicado.id}: {e}")
+            import traceback
+            traceback.print_exc()
+            comunicado.status = 'ERRO'
+            comunicado.save()
+            return False
+
     def perform_create(self, serializer):
-        serializer.save(criado_por=self.request.user)
+        from django.utils import timezone
+        from datetime import datetime, date, time
+        
+        comunicado = serializer.save(criado_por=self.request.user)
+        
+        # Se for envio imediato (data/hora atual ou passada), processa agora
+        agora = timezone.now()
+        data_envio = comunicado.data_programada
+        hora_envio = comunicado.hora_programada
+        
+        if isinstance(hora_envio, time):
+            datetime_envio = datetime.combine(data_envio, hora_envio)
+            if timezone.is_naive(datetime_envio):
+                from django.utils import timezone as tz
+                datetime_envio = tz.make_aware(datetime_envio)
+        else:
+            datetime_envio = agora
+        
+        # Se a data/hora programada já passou ou é agora, processa imediatamente
+        if datetime_envio <= agora:
+            # Processar em thread para não bloquear a resposta
+            import threading
+            thread = threading.Thread(target=self._processar_envio_comunicado, args=(comunicado,))
+            thread.daemon = True
+            thread.start()
+
+    @action(detail=True, methods=['post'], url_path='enviar-agora', permission_classes=[permissions.IsAuthenticated])
+    def enviar_agora(self, request, pk=None):
+        """
+        Action para processar e enviar um comunicado pendente imediatamente
+        """
+        comunicado = self.get_object()
+        
+        if comunicado.status == 'ENVIADO':
+            return Response({"detail": "Comunicado já foi enviado."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if comunicado.status == 'CANCELADO':
+            return Response({"detail": "Comunicado foi cancelado e não pode ser enviado."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        sucesso = self._processar_envio_comunicado(comunicado)
+        
+        if sucesso:
+            return Response({"detail": "Comunicado enviado com sucesso!", "status": comunicado.status})
+        else:
+            return Response({"detail": "Erro ao enviar comunicado. Verifique os logs.", "status": comunicado.status}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class EstatisticasBotWhatsAppView(APIView):
     """
@@ -502,87 +642,99 @@ class EstatisticasBotWhatsAppView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     
     def get(self, request, *args, **kwargs):
-        from django.db.models import Count, Q
-        from django.utils import timezone
-        from datetime import timedelta
-        
-        # Parâmetros opcionais de filtro
-        dias = request.query_params.get('dias', 30)  # Padrão: últimos 30 dias
         try:
-            dias = int(dias)
-        except:
-            dias = 30
-        
-        data_inicio = timezone.now() - timedelta(days=dias)
-        
-        # Filtrar estatísticas do período
-        estatisticas = EstatisticaBotWhatsApp.objects.filter(
-            data_envio__gte=data_inicio
-        ).select_related('vendedor')
-        
-        # 1. Contagem por comando
-        por_comando = estatisticas.values('comando').annotate(
-            total=Count('id')
-        ).order_by('comando')
-        
-        comando_dict = {item['comando']: item['total'] for item in por_comando}
-        
-        # 2. Contagem por vendedor
-        por_vendedor = estatisticas.filter(
-            vendedor__isnull=False
-        ).values(
-            'vendedor__id', 
-            'vendedor__username',
-            'vendedor__first_name',
-            'vendedor__last_name'
-        ).annotate(
-            total=Count('id'),
-            fachada=Count('id', filter=Q(comando='FACHADA')),
-            viabilidade=Count('id', filter=Q(comando='VIABILIDADE')),
-            fatura=Count('id', filter=Q(comando='FATURA')),
-            status=Count('id', filter=Q(comando='STATUS'))
-        ).order_by('-total')
-        
-        vendedores_data = []
-        for item in por_vendedor:
-            nome_completo = item.get('vendedor__first_name', '') or ''
-            sobrenome = item.get('vendedor__last_name', '') or ''
-            if sobrenome:
-                nome_completo = f"{nome_completo} {sobrenome}".strip()
-            if not nome_completo:
-                nome_completo = item.get('vendedor__username', 'N/A')
+            from django.db.models import Count, Q
+            from django.utils import timezone
+            from datetime import timedelta
             
-            vendedores_data.append({
-                'vendedor_id': item['vendedor__id'],
-                'vendedor_nome': nome_completo,
-                'vendedor_username': item.get('vendedor__username', 'N/A'),
-                'total': item['total'],
-                'fachada': item['fachada'],
-                'viabilidade': item['viabilidade'],
-                'fatura': item['fatura'],
-                'status': item['status']
+            # Parâmetros opcionais de filtro
+            dias = request.query_params.get('dias', 30)  # Padrão: últimos 30 dias
+            try:
+                dias = int(dias)
+            except:
+                dias = 30
+            
+            data_inicio = timezone.now() - timedelta(days=dias)
+            
+            # Filtrar estatísticas do período
+            estatisticas = EstatisticaBotWhatsApp.objects.filter(
+                data_envio__gte=data_inicio
+            ).select_related('vendedor')
+            
+            # 1. Contagem por comando
+            por_comando = estatisticas.values('comando').annotate(
+                total=Count('id')
+            ).order_by('comando')
+            
+            comando_dict = {item['comando']: item['total'] for item in por_comando}
+            
+            # 2. Contagem por vendedor
+            por_vendedor = estatisticas.filter(
+                vendedor__isnull=False
+            ).values(
+                'vendedor__id', 
+                'vendedor__username',
+                'vendedor__first_name',
+                'vendedor__last_name'
+            ).annotate(
+                total=Count('id'),
+                fachada=Count('id', filter=Q(comando='FACHADA')),
+                viabilidade=Count('id', filter=Q(comando='VIABILIDADE')),
+                fatura=Count('id', filter=Q(comando='FATURA')),
+                status=Count('id', filter=Q(comando='STATUS'))
+            ).order_by('-total')
+            
+            vendedores_data = []
+            for item in por_vendedor:
+                nome_completo = item.get('vendedor__first_name', '') or ''
+                sobrenome = item.get('vendedor__last_name', '') or ''
+                if sobrenome:
+                    nome_completo = f"{nome_completo} {sobrenome}".strip()
+                if not nome_completo:
+                    nome_completo = item.get('vendedor__username', 'N/A')
+                
+                vendedores_data.append({
+                    'vendedor_id': item['vendedor__id'],
+                    'vendedor_nome': nome_completo,
+                    'vendedor_username': item.get('vendedor__username', 'N/A'),
+                    'total': item['total'],
+                    'fachada': item['fachada'],
+                    'viabilidade': item['viabilidade'],
+                    'fatura': item['fatura'],
+                    'status': item['status']
+                })
+            
+            # 3. Totais gerais
+            total_geral = estatisticas.count()
+            total_sem_vendedor = estatisticas.filter(vendedor__isnull=True).count()
+            
+            return Response({
+                'periodo_dias': dias,
+                'data_inicio': data_inicio.isoformat(),
+                'totais': {
+                    'geral': total_geral,
+                    'sem_vendedor': total_sem_vendedor,
+                    'com_vendedor': total_geral - total_sem_vendedor
+                },
+                'por_comando': {
+                    'FACHADA': comando_dict.get('FACHADA', 0),
+                    'VIABILIDADE': comando_dict.get('VIABILIDADE', 0),
+                    'FATURA': comando_dict.get('FATURA', 0),
+                    'STATUS': comando_dict.get('STATUS', 0),
+                },
+                'por_vendedor': vendedores_data
             })
-        
-        # 3. Totais gerais
-        total_geral = estatisticas.count()
-        total_sem_vendedor = estatisticas.filter(vendedor__isnull=True).count()
-        
-        return Response({
-            'periodo_dias': dias,
-            'data_inicio': data_inicio.isoformat(),
-            'totais': {
-                'geral': total_geral,
-                'sem_vendedor': total_sem_vendedor,
-                'com_vendedor': total_geral - total_sem_vendedor
-            },
-            'por_comando': {
-                'FACHADA': comando_dict.get('FACHADA', 0),
-                'VIABILIDADE': comando_dict.get('VIABILIDADE', 0),
-                'FATURA': comando_dict.get('FATURA', 0),
-                'STATUS': comando_dict.get('STATUS', 0),
-            },
-            'por_vendedor': vendedores_data
-        })
+        except Exception as e:
+            logger.error(f"Erro ao buscar estatísticas do bot WhatsApp: {e}")
+            import traceback
+            traceback.print_exc()
+            return Response({
+                'periodo_dias': 30,
+                'data_inicio': None,
+                'totais': {'geral': 0, 'sem_vendedor': 0, 'com_vendedor': 0},
+                'por_comando': {'FACHADA': 0, 'VIABILIDADE': 0, 'FATURA': 0, 'STATUS': 0},
+                'por_vendedor': []
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class VendaViewSet(viewsets.ModelViewSet):
     permission_classes = [VendaPermission]
