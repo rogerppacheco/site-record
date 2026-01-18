@@ -45,6 +45,7 @@ from .views import (
     ImportacaoRecompraView,
     LogsImportacaoLegadoView,
     LogsImportacaoAgendamentoView,
+    CancelarImportacaoAgendamentoView,
     LogsImportacaoFPDView,
     LogsImportacaoOSABView,
     LogsImportacaoDFVView,
@@ -208,6 +209,7 @@ urlpatterns = [
     # --- Logs de Importações ---
     path('logs-legado/', LogsImportacaoLegadoView.as_view(), name='logs-legado'),
     path('logs-agendamento/', LogsImportacaoAgendamentoView.as_view(), name='logs-agendamento'),
+    path('logs-agendamento/<int:log_id>/cancelar/', CancelarImportacaoAgendamentoView.as_view(), name='logs-agendamento-cancelar'),
     path('logs-fpd/', LogsImportacaoFPDView.as_view(), name='logs-fpd'),
     path('logs-osab/', LogsImportacaoOSABView.as_view(), name='logs-osab'),
     path('logs-osab/<int:log_id>/relatorio/', DownloadRelatorioOSABView.as_view(), name='logs-osab-relatorio'),

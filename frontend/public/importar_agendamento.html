@@ -607,6 +607,7 @@
                             <th>Duração</th>
                             <th>Métricas</th>
                             <th>Usuário</th>
+                            <th>Ações</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -650,6 +651,16 @@
                     detalhesErro = `<div class="text-danger small mt-1" style="max-width: 400px;" title="${log.mensagem_erro.replace(/"/g, '&quot;')}"><i class="bi bi-exclamation-triangle"></i> ${mensagemLimpa.replace(/\n/g, '<br>')}</div>`;
                 }
                 
+                // Botão cancelar (apenas para status PROCESSANDO)
+                let acoes = '';
+                if (log.status === 'PROCESSANDO') {
+                    acoes = `<button class="btn btn-sm btn-danger" onclick="cancelarImportacao(${log.id})" title="Cancelar importação">
+                        <i class="bi bi-x-circle"></i> Cancelar
+                    </button>`;
+                } else {
+                    acoes = '-';
+                }
+                
                 html += `
                     <tr>
                         <td><small>${log.nome_arquivo || '-'}</small></td>
@@ -661,7 +672,9 @@
                             ${detalhesErro}
                         </td>
                         <td><small>${usuario}</small></td>
+                        <td>${acoes}</td>
                     </tr>
+                    ${detalhesErro ? `<tr><td colspan="7">${detalhesErro}</td></tr>` : ''}
                 `;
             });
 
@@ -673,12 +686,49 @@
             container.innerHTML = html;
         }
 
+        async function cancelarImportacao(logId) {
+            if (!confirm('Tem certeza que deseja cancelar esta importação?')) {
+                return;
+            }
+            
+            try {
+                const token = localStorage.getItem('accessToken');
+                const response = await fetch(`/api/crm/logs-agendamento/${logId}/cancelar/`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Mostrar mensagem informativa
+                    let mensagem = data.message || 'Importação cancelada com sucesso.';
+                    if (data.info) {
+                        mensagem += '\n\n' + data.info;
+                    }
+                    alert(mensagem);
+                    
+                    // Recarregar histórico
+                    carregarHistoricoImportacoes();
+                } else {
+                    alert('Erro ao cancelar: ' + (data.error || 'Erro desconhecido'));
+                }
+            } catch (error) {
+                console.error('Erro ao cancelar importação:', error);
+                alert('Erro ao cancelar importação. Tente novamente.');
+            }
+        }
+        
         function getStatusBadge(status, display) {
             const badges = {
                 'PROCESSANDO': '<span class="badge bg-info"><i class="spinner-border spinner-border-sm me-1"></i> Processando</span>',
                 'SUCESSO': '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i> Sucesso</span>',
                 'ERRO': '<span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i> Erro</span>',
-                'PARCIAL': '<span class="badge bg-warning"><i class="bi bi-exclamation-triangle me-1"></i> Parcial</span>'
+                'PARCIAL': '<span class="badge bg-warning"><i class="bi bi-exclamation-triangle me-1"></i> Parcial</span>',
+                'CANCELADO': '<span class="badge bg-secondary"><i class="bi bi-x-circle me-1"></i> Cancelado</span>'
             };
             return badges[status] || `<span class="badge bg-secondary">${display}</span>`;
         }
