@@ -1542,6 +1542,49 @@ class RecordApoia(models.Model):
     def __str__(self):
         return f"{self.titulo} ({self.get_tipo_arquivo_display()})"
     
+    def save(self, *args, **kwargs):
+        """Determina automaticamente o tipo_arquivo baseado na extensão do arquivo"""
+        if not self.tipo_arquivo or self.tipo_arquivo == '':
+            if self.arquivo and self.arquivo.name:
+                ext = self.arquivo.name.split('.')[-1].lower()
+                if ext in ['pdf']:
+                    self.tipo_arquivo = 'PDF'
+                elif ext in ['doc', 'docx']:
+                    self.tipo_arquivo = 'WORD'
+                elif ext in ['xls', 'xlsx']:
+                    self.tipo_arquivo = 'EXCEL'
+                elif ext in ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp']:
+                    self.tipo_arquivo = 'IMAGEM'
+                elif ext in ['mp4', 'avi', 'mov', 'wmv', 'mkv', 'webm']:
+                    self.tipo_arquivo = 'VIDEO'
+                else:
+                    self.tipo_arquivo = 'OUTRO'
+            elif self.nome_original:
+                ext = self.nome_original.split('.')[-1].lower()
+                if ext in ['pdf']:
+                    self.tipo_arquivo = 'PDF'
+                elif ext in ['doc', 'docx']:
+                    self.tipo_arquivo = 'WORD'
+                elif ext in ['xls', 'xlsx']:
+                    self.tipo_arquivo = 'EXCEL'
+                elif ext in ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp']:
+                    self.tipo_arquivo = 'IMAGEM'
+                elif ext in ['mp4', 'avi', 'mov', 'wmv', 'mkv', 'webm']:
+                    self.tipo_arquivo = 'VIDEO'
+                else:
+                    self.tipo_arquivo = 'OUTRO'
+            else:
+                self.tipo_arquivo = 'OUTRO'
+        
+        # Atualizar tamanho_bytes se necessário
+        if self.arquivo:
+            try:
+                self.tamanho_bytes = self.arquivo.size
+            except (FileNotFoundError, IOError, OSError, AttributeError):
+                pass  # Manter valor atual se não conseguir ler
+        
+        super().save(*args, **kwargs)
+    
     def formatar_tamanho(self):
         """Retorna o tamanho formatado (KB, MB, GB)"""
         tamanho = self.tamanho_bytes
