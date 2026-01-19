@@ -279,6 +279,72 @@ class RecordApoiaDownloadView(APIView):
             return Response({'error': str(e)}, status=500)
 
 
+class RecordApoiaUpdateView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request, arquivo_id):
+        """Atualiza metadados do arquivo (título, descrição, categoria, tags)"""
+        try:
+            arquivo = RecordApoia.objects.get(id=arquivo_id)
+            
+            # Atualizar campos permitidos
+            if 'titulo' in request.data:
+                arquivo.titulo = request.data['titulo'].strip()
+            if 'descricao' in request.data:
+                arquivo.descricao = request.data['descricao'].strip() or None
+            if 'categoria' in request.data:
+                arquivo.categoria = request.data['categoria'].strip() or None
+            if 'tags' in request.data:
+                arquivo.tags = request.data['tags'].strip() or None
+            
+            arquivo.save()
+            
+            return Response({
+                'sucesso': True,
+                'mensagem': 'Arquivo atualizado com sucesso',
+                'arquivo': {
+                    'id': arquivo.id,
+                    'titulo': arquivo.titulo,
+                    'descricao': arquivo.descricao,
+                    'categoria': arquivo.categoria,
+                    'tags': arquivo.tags
+                }
+            })
+            
+        except RecordApoia.DoesNotExist:
+            return Response({'error': 'Arquivo não encontrado'}, status=404)
+        except Exception as e:
+            logger.error(f"Erro ao atualizar: {e}")
+            return Response({'error': str(e)}, status=500)
+
+
+class RecordApoiaToggleActiveView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request, arquivo_id):
+        """Inativa ou ativa um arquivo (toggle do campo ativo)"""
+        try:
+            arquivo = RecordApoia.objects.get(id=arquivo_id)
+            
+            # Alternar estado ativo
+            arquivo.ativo = not arquivo.ativo
+            arquivo.save()
+            
+            acao = 'ativado' if arquivo.ativo else 'inativado'
+            
+            return Response({
+                'sucesso': True,
+                'mensagem': f'Arquivo {acao} com sucesso',
+                'ativo': arquivo.ativo
+            })
+            
+        except RecordApoia.DoesNotExist:
+            return Response({'error': 'Arquivo não encontrado'}, status=404)
+        except Exception as e:
+            logger.error(f"Erro ao alterar status: {e}")
+            return Response({'error': str(e)}, status=500)
+
+
 class RecordApoiaDeleteView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 

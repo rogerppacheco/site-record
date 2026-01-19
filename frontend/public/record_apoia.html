@@ -328,6 +328,45 @@
         </div>
     </main>
 
+    <!-- Modal de Edição -->
+    <div class="modal fade" id="modalEditarArquivo" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>Editar Arquivo</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="formEditarArquivo">
+                        <input type="hidden" id="editarArquivoId">
+                        <div class="mb-3">
+                            <label class="form-label">Título <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="editarTitulo" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Descrição</label>
+                            <textarea class="form-control" id="editarDescricao" rows="3"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Categoria</label>
+                            <input type="text" class="form-control" id="editarCategoria">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Tags</label>
+                            <input type="text" class="form-control" id="editarTags" placeholder="ex: urgente, importante, tutorial (separadas por vírgula)">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" onclick="salvarEdicaoArquivo()">
+                        <i class="bi bi-save me-2"></i>Salvar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{% static 'js/auth.js' %}?v=7.0"></script>
     <script src="{% static 'js/menu.js' %}?v=7.0"></script>
@@ -640,7 +679,9 @@
 
                     // Renderizar arquivos
                     if (data.arquivos && data.arquivos.length > 0) {
-                        listaArquivos.innerHTML = data.arquivos.map(arquivo => criarCardArquivo(arquivo)).join('');
+                        // Armazenar dados dos arquivos globalmente para acesso nas funções
+                        window.arquivosCache = data.arquivos;
+                        listaArquivos.innerHTML = data.arquivos.map((arquivo, index) => criarCardArquivo(arquivo, index)).join('');
                         atualizarEstatisticas(data.arquivos);
                         atualizarPaginacao(data.page, data.total_pages);
                         document.getElementById('contadorArquivos').textContent = `${data.total} arquivo(s) encontrado(s)`;
@@ -667,7 +708,7 @@
             }
         }
 
-        function criarCardArquivo(arquivo) {
+        function criarCardArquivo(arquivo, index) {
             const tipoIcone = {
                 'PDF': 'bi-file-earmark-pdf',
                 'WORD': 'bi-file-earmark-word',
@@ -688,6 +729,9 @@
 
             const icon = tipoIcone[arquivo.tipo_arquivo] || 'bi-file-earmark';
             const classe = tipoClasse[arquivo.tipo_arquivo] || 'outro';
+            
+            // Assumir que arquivos retornados pela API estão ativos (a API filtra ativo=True)
+            const arquivoAtivo = arquivo.ativo !== undefined ? arquivo.ativo : true;
 
             return `
                 <div class="file-card">
@@ -706,10 +750,27 @@
                             </div>
                             ${arquivo.tags ? `<div class="mt-2"><small class="text-muted">Tags: ${arquivo.tags}</small></div>` : ''}
                         </div>
-                        <div>
+                        <div class="d-flex gap-2">
                             <button class="btn btn-download" onclick="baixarArquivo(${arquivo.id})">
                                 <i class="bi bi-download me-2"></i>Download
                             </button>
+                            <div class="btn-group">
+                                <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <i class="bi bi-three-dots-vertical"></i>
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end">
+                                    <li><a class="dropdown-item" href="#" onclick="editarArquivo(${arquivo.id}); return false;">
+                                        <i class="bi bi-pencil me-2"></i>Editar
+                                    </a></li>
+                                    <li><a class="dropdown-item" href="#" onclick="toggleAtivoArquivo(${arquivo.id}); return false;">
+                                        <i class="bi bi-eye${arquivoAtivo ? '-slash' : ''} me-2"></i>${arquivoAtivo ? 'Inativar' : 'Ativar'}
+                                    </a></li>
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li><a class="dropdown-item text-danger" href="#" onclick="excluirArquivo(${arquivo.id}); return false;">
+                                        <i class="bi bi-trash me-2"></i>Excluir
+                                    </a></li>
+                                </ul>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -819,6 +880,154 @@
                 carregarArquivos(1);
             }, 500);
         });
+
+        // Funções de ação
+        function editarArquivo(id) {
+            // Buscar dados do arquivo no cache ou na lista atual
+            const arquivo = window.arquivosCache ? window.arquivosCache.find(a => a.id === id) : null;
+            
+            if (!arquivo) {
+                alert('Erro: Dados do arquivo não encontrados');
+                return;
+            }
+            
+            document.getElementById('editarArquivoId').value = id;
+            document.getElementById('editarTitulo').value = arquivo.titulo || '';
+            document.getElementById('editarDescricao').value = arquivo.descricao || '';
+            document.getElementById('editarCategoria').value = arquivo.categoria || '';
+            document.getElementById('editarTags').value = arquivo.tags || '';
+            
+            const modal = new bootstrap.Modal(document.getElementById('modalEditarArquivo'));
+            modal.show();
+        }
+
+        async function salvarEdicaoArquivo() {
+            const id = document.getElementById('editarArquivoId').value;
+            const titulo = document.getElementById('editarTitulo').value.trim();
+            const descricao = document.getElementById('editarDescricao').value.trim();
+            const categoria = document.getElementById('editarCategoria').value.trim();
+            const tags = document.getElementById('editarTags').value.trim();
+
+            if (!titulo) {
+                alert('Título é obrigatório');
+                return;
+            }
+
+            try {
+                const token = localStorage.getItem('accessToken');
+                const response = await fetch(`${API_BASE_URL}/api/crm/record-apoia/update/${id}/`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        titulo: titulo,
+                        descricao: descricao || null,
+                        categoria: categoria || null,
+                        tags: tags || null
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.sucesso) {
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('modalEditarArquivo'));
+                    modal.hide();
+                    carregarArquivos(currentPage);
+                    
+                    // Mostrar mensagem de sucesso
+                    document.getElementById('uploadResult').innerHTML = `
+                        <div class="alert alert-success alert-dismissible fade show">
+                            <i class="bi bi-check-circle me-2"></i>
+                            <strong>Sucesso!</strong> Arquivo atualizado com sucesso!
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    `;
+                    document.getElementById('uploadResult').style.display = 'block';
+                } else {
+                    throw new Error(data.error || 'Erro ao atualizar arquivo');
+                }
+            } catch (error) {
+                alert('Erro ao atualizar arquivo: ' + error.message);
+            }
+        }
+
+        async function toggleAtivoArquivo(id) {
+            if (!confirm('Deseja alterar o status deste arquivo?')) {
+                return;
+            }
+
+            try {
+                const token = localStorage.getItem('accessToken');
+                const response = await fetch(`${API_BASE_URL}/api/crm/record-apoia/toggle-active/${id}/`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.sucesso) {
+                    carregarArquivos(currentPage);
+                    
+                    document.getElementById('uploadResult').innerHTML = `
+                        <div class="alert alert-success alert-dismissible fade show">
+                            <i class="bi bi-check-circle me-2"></i>
+                            <strong>Sucesso!</strong> ${data.mensagem}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    `;
+                    document.getElementById('uploadResult').style.display = 'block';
+                } else {
+                    throw new Error(data.error || 'Erro ao alterar status do arquivo');
+                }
+            } catch (error) {
+                alert('Erro ao alterar status: ' + error.message);
+            }
+        }
+
+        async function excluirArquivo(id) {
+            // Buscar título do arquivo no cache
+            const arquivo = window.arquivosCache ? window.arquivosCache.find(a => a.id === id) : null;
+            const titulo = arquivo ? arquivo.titulo : 'este arquivo';
+            
+            if (!confirm(`Tem certeza que deseja excluir o arquivo "${titulo}"?\n\nEsta ação não pode ser desfeita.`)) {
+                return;
+            }
+
+            try {
+                const token = localStorage.getItem('accessToken');
+                const response = await fetch(`${API_BASE_URL}/api/crm/record-apoia/delete/${id}/`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.sucesso) {
+                    carregarArquivos(currentPage);
+                    
+                    document.getElementById('uploadResult').innerHTML = `
+                        <div class="alert alert-success alert-dismissible fade show">
+                            <i class="bi bi-check-circle me-2"></i>
+                            <strong>Sucesso!</strong> ${data.mensagem}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    `;
+                    document.getElementById('uploadResult').style.display = 'block';
+                } else {
+                    throw new Error(data.error || 'Erro ao excluir arquivo');
+                }
+            } catch (error) {
+                alert('Erro ao excluir arquivo: ' + error.message);
+            }
+        }
 
         // Carregar arquivos ao iniciar
         carregarArquivos(1);

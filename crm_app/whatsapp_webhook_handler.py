@@ -753,6 +753,8 @@ def processar_webhook_whatsapp(data):
                                     sessao.dados_temp = {}
                                     sessao.save()
                                 else:
+                                    arquivo_bytes = None
+                                    arquivo_b64 = None
                                     try:
                                         # Usar storage para ler o arquivo (mais seguro)
                                         from django.core.files.storage import default_storage
@@ -792,16 +794,57 @@ def processar_webhook_whatsapp(data):
                                                 }
                                             }
                                         else:
+                                            # DOCUMENTO: Verificar se é grande e fazer upload para OneDrive se necessário
+                                            tamanho_bytes = len(arquivo_bytes) if arquivo_bytes else (len(arquivo_b64) * 3 // 4)
+                                            tamanho_mb = tamanho_bytes / (1024 * 1024)
+                                            
+                                            pdf_url = None
+                                            usar_url = tamanho_mb > 5  # Usar URL se arquivo > 5MB
+                                            
+                                            if usar_url:
+                                                logger.info(f"[Webhook] Arquivo grande ({tamanho_mb:.2f} MB), fazendo upload para OneDrive...")
+                                                try:
+                                                    from crm_app.onedrive_service import OneDriveUploader
+                                                    from io import BytesIO
+                                                    
+                                                    # Criar objeto file-like do arquivo_bytes
+                                                    file_obj = BytesIO(arquivo_bytes) if arquivo_bytes else BytesIO(base64.b64decode(arquivo_b64))
+                                                    
+                                                    # Fazer upload para OneDrive
+                                                    onedrive = OneDriveUploader()
+                                                    pdf_url = onedrive.upload_file_and_get_download_url(
+                                                        file_obj, 
+                                                        folder_name='WhatsApp_Materiais',
+                                                        filename=nome_arquivo
+                                                    )
+                                                    
+                                                    logger.info(f"[Webhook] ✅ Upload para OneDrive concluído: {pdf_url}")
+                                                    print(f"[Webhook] ✅ Upload OneDrive: {pdf_url}")
+                                                except Exception as e:
+                                                    logger.error(f"[Webhook] ❌ Erro ao fazer upload para OneDrive: {e}")
+                                                    logger.warning(f"[Webhook] ⚠️ Continuando com base64 como fallback")
+                                                    print(f"[Webhook] ❌ Erro OneDrive: {e}, usando base64")
+                                                    pdf_url = None
+                                            
                                             resposta = f"✅ *MATERIAL ENCONTRADO*\n\n📄 {arquivo.titulo}\nTipo: {arquivo.get_tipo_arquivo_display()}\n\nEnviando arquivo..."
                                             # Armazenar dados do arquivo para envio após a mensagem
+                                            material_data = {
+                                                'tipo': 'DOCUMENTO',
+                                                'nome': nome_arquivo,
+                                                'titulo': arquivo.titulo,
+                                                'tipo_display': arquivo.get_tipo_arquivo_display()
+                                            }
+                                            
+                                            # Adicionar URL se disponível (preferível), senão base64
+                                            if pdf_url:
+                                                material_data['url'] = pdf_url
+                                                logger.info(f"[Webhook] Material preparado com URL (OneDrive)")
+                                            else:
+                                                material_data['base64'] = arquivo_b64
+                                                logger.info(f"[Webhook] Material preparado com base64")
+                                            
                                             sessao.dados_temp = {
-                                                'material_para_envio': {
-                                                    'tipo': 'DOCUMENTO',
-                                                    'base64': arquivo_b64,
-                                                    'nome': nome_arquivo,
-                                                    'titulo': arquivo.titulo,
-                                                    'tipo_display': arquivo.get_tipo_arquivo_display()
-                                                }
+                                                'material_para_envio': material_data
                                             }
                                         
                                         sessao.etapa = 'inicial'
@@ -936,16 +979,57 @@ def processar_webhook_whatsapp(data):
                                             }
                                         }
                                     else:
+                                        # DOCUMENTO: Verificar se é grande e fazer upload para OneDrive se necessário
+                                        tamanho_bytes = len(arquivo_bytes) if arquivo_bytes else (len(arquivo_b64) * 3 // 4)
+                                        tamanho_mb = tamanho_bytes / (1024 * 1024)
+                                        
+                                        pdf_url = None
+                                        usar_url = tamanho_mb > 5  # Usar URL se arquivo > 5MB
+                                        
+                                        if usar_url:
+                                            logger.info(f"[Webhook] Arquivo grande ({tamanho_mb:.2f} MB), fazendo upload para OneDrive...")
+                                            try:
+                                                from crm_app.onedrive_service import OneDriveUploader
+                                                from io import BytesIO
+                                                
+                                                # Criar objeto file-like do arquivo_bytes
+                                                file_obj = BytesIO(arquivo_bytes) if arquivo_bytes else BytesIO(base64.b64decode(arquivo_b64))
+                                                
+                                                # Fazer upload para OneDrive
+                                                onedrive = OneDriveUploader()
+                                                pdf_url = onedrive.upload_file_and_get_download_url(
+                                                    file_obj, 
+                                                    folder_name='WhatsApp_Materiais',
+                                                    filename=nome_arquivo
+                                                )
+                                                
+                                                logger.info(f"[Webhook] ✅ Upload para OneDrive concluído: {pdf_url}")
+                                                print(f"[Webhook] ✅ Upload OneDrive: {pdf_url}")
+                                            except Exception as e:
+                                                logger.error(f"[Webhook] ❌ Erro ao fazer upload para OneDrive: {e}")
+                                                logger.warning(f"[Webhook] ⚠️ Continuando com base64 como fallback")
+                                                print(f"[Webhook] ❌ Erro OneDrive: {e}, usando base64")
+                                                pdf_url = None
+                                        
                                         resposta = f"✅ *MATERIAL SELECIONADO*\n\n📄 {arquivo.titulo}\nTipo: {arquivo.get_tipo_arquivo_display()}\n\nEnviando arquivo..."
                                         # Armazenar dados do arquivo para envio após a mensagem
+                                        material_data = {
+                                            'tipo': 'DOCUMENTO',
+                                            'nome': nome_arquivo,
+                                            'titulo': arquivo.titulo,
+                                            'tipo_display': arquivo.get_tipo_arquivo_display()
+                                        }
+                                        
+                                        # Adicionar URL se disponível (preferível), senão base64
+                                        if pdf_url:
+                                            material_data['url'] = pdf_url
+                                            logger.info(f"[Webhook] Material preparado com URL (OneDrive)")
+                                        else:
+                                            material_data['base64'] = arquivo_b64
+                                            logger.info(f"[Webhook] Material preparado com base64")
+                                        
                                         sessao.dados_temp = {
-                                            'material_para_envio': {
-                                                'tipo': 'DOCUMENTO',
-                                                'base64': arquivo_b64,
-                                                'nome': nome_arquivo,
-                                                'titulo': arquivo.titulo,
-                                                'tipo_display': arquivo.get_tipo_arquivo_display()
-                                            }
+                                            'material_para_envio': material_data
                                         }
                                     
                                     sessao.etapa = 'inicial'
@@ -1133,15 +1217,57 @@ def processar_webhook_whatsapp(data):
                                                     }
                                                 }
                                             else:
+                                                # DOCUMENTO: Verificar se é grande e fazer upload para OneDrive se necessário
+                                                tamanho_bytes = len(arquivo_bytes) if arquivo_bytes else (len(arquivo_b64) * 3 // 4)
+                                                tamanho_mb = tamanho_bytes / (1024 * 1024)
+                                                
+                                                pdf_url = None
+                                                usar_url = tamanho_mb > 5  # Usar URL se arquivo > 5MB
+                                                
+                                                if usar_url:
+                                                    logger.info(f"[Webhook] Arquivo grande ({tamanho_mb:.2f} MB), fazendo upload para OneDrive...")
+                                                    try:
+                                                        from crm_app.onedrive_service import OneDriveUploader
+                                                        from io import BytesIO
+                                                        
+                                                        # Criar objeto file-like do arquivo_bytes
+                                                        file_obj = BytesIO(arquivo_bytes) if arquivo_bytes else BytesIO(base64.b64decode(arquivo_b64))
+                                                        
+                                                        # Fazer upload para OneDrive
+                                                        onedrive = OneDriveUploader()
+                                                        pdf_url = onedrive.upload_file_and_get_download_url(
+                                                            file_obj, 
+                                                            folder_name='WhatsApp_Materiais',
+                                                            filename=nome_arquivo
+                                                        )
+                                                        
+                                                        logger.info(f"[Webhook] ✅ Upload para OneDrive concluído: {pdf_url}")
+                                                        print(f"[Webhook] ✅ Upload OneDrive: {pdf_url}")
+                                                    except Exception as e:
+                                                        logger.error(f"[Webhook] ❌ Erro ao fazer upload para OneDrive: {e}")
+                                                        logger.warning(f"[Webhook] ⚠️ Continuando com base64 como fallback")
+                                                        print(f"[Webhook] ❌ Erro OneDrive: {e}, usando base64")
+                                                        pdf_url = None
+                                                
                                                 resposta = f"✅ *MATERIAL ENCONTRADO*\n\n📄 {arquivo.titulo}\nTipo: {arquivo.get_tipo_arquivo_display()}\n\nEnviando arquivo..."
+                                                # Armazenar dados do arquivo para envio após a mensagem
+                                                material_data = {
+                                                    'tipo': 'DOCUMENTO',
+                                                    'nome': nome_arquivo,
+                                                    'titulo': arquivo.titulo,
+                                                    'tipo_display': arquivo.get_tipo_arquivo_display()
+                                                }
+                                                
+                                                # Adicionar URL se disponível (preferível), senão base64
+                                                if pdf_url:
+                                                    material_data['url'] = pdf_url
+                                                    logger.info(f"[Webhook] Material preparado com URL (OneDrive)")
+                                                else:
+                                                    material_data['base64'] = arquivo_b64
+                                                    logger.info(f"[Webhook] Material preparado com base64")
+                                                
                                                 sessao.dados_temp = {
-                                                    'material_para_envio': {
-                                                        'tipo': 'DOCUMENTO',
-                                                        'base64': arquivo_b64,
-                                                        'nome': nome_arquivo,
-                                                        'titulo': arquivo.titulo,
-                                                        'tipo_display': arquivo.get_tipo_arquivo_display()
-                                                    }
+                                                    'material_para_envio': material_data
                                                 }
                                             
                                             sessao.etapa = 'inicial'
@@ -1240,12 +1366,26 @@ def processar_webhook_whatsapp(data):
                                 logger.info(f"[Webhook] 📄 Preparando envio de DOCUMENTO")
                                 logger.info(f"[Webhook] Nome: {material_para_envio.get('nome', 'N/A')}")
                                 logger.info(f"[Webhook] Tipo: {material_para_envio.get('tipo', 'N/A')}")
-                                base64_data = material_para_envio.get('base64', '')
-                                logger.info(f"[Webhook] Base64 disponível: {bool(base64_data)}")
-                                logger.info(f"[Webhook] Tamanho base64: {len(base64_data) if base64_data else 0} chars")
-                                print(f"[Webhook] Enviando documento: {material_para_envio.get('nome')}, base64 size: {len(base64_data) if base64_data else 0}")
                                 
-                                sucesso = whatsapp_service.enviar_pdf_b64(telefone_formatado, material_para_envio['base64'], material_para_envio['nome'])
+                                # Verificar se tem URL (preferível para arquivos grandes)
+                                pdf_url = material_para_envio.get('url')
+                                base64_data = material_para_envio.get('base64', '')
+                                
+                                if pdf_url:
+                                    logger.info(f"[Webhook] URL disponível: {pdf_url}")
+                                    logger.info(f"[Webhook] Enviando documento via URL (recomendado para arquivos grandes)")
+                                    print(f"[Webhook] Enviando documento via URL: {material_para_envio.get('nome')}")
+                                    sucesso = whatsapp_service.enviar_pdf_url(telefone_formatado, pdf_url, material_para_envio['nome'])
+                                elif base64_data:
+                                    logger.info(f"[Webhook] Base64 disponível: {bool(base64_data)}")
+                                    logger.info(f"[Webhook] Tamanho base64: {len(base64_data)} chars")
+                                    print(f"[Webhook] Enviando documento via base64: {material_para_envio.get('nome')}, base64 size: {len(base64_data)}")
+                                    sucesso = whatsapp_service.enviar_pdf_b64(telefone_formatado, base64_data, material_para_envio['nome'])
+                                else:
+                                    logger.error(f"[Webhook] ❌ Nenhum dado disponível (nem URL nem base64)")
+                                    print(f"[Webhook] ❌ ERRO: Nenhum dado disponível para envio")
+                                    sucesso = False
+                                
                                 if sucesso:
                                     logger.info(f"[Webhook] ✅ Documento enviado com sucesso: {material_para_envio['nome']}")
                                     print(f"[Webhook] ✅ Documento enviado: {material_para_envio['nome']}")

@@ -11,6 +11,8 @@ from .record_apoia_api import (
     RecordApoiaListView,
     RecordApoiaDownloadView,
     RecordApoiaDeleteView,
+    RecordApoiaUpdateView,
+    RecordApoiaToggleActiveView,
     RecordApoiaDiagnosticoView,
     RecordApoiaCorrigirNomesView,
 )
@@ -233,6 +235,8 @@ urlpatterns = [
     path('record-apoia/upload/', RecordApoiaUploadView.as_view(), name='record-apoia-upload'),
     path('record-apoia/list/', RecordApoiaListView.as_view(), name='record-apoia-list'),
     path('record-apoia/download/<int:arquivo_id>/', RecordApoiaDownloadView.as_view(), name='record-apoia-download'),
+    path('record-apoia/update/<int:arquivo_id>/', RecordApoiaUpdateView.as_view(), name='record-apoia-update'),
+    path('record-apoia/toggle-active/<int:arquivo_id>/', RecordApoiaToggleActiveView.as_view(), name='record-apoia-toggle-active'),
     path('record-apoia/delete/<int:arquivo_id>/', RecordApoiaDeleteView.as_view(), name='record-apoia-delete'),
     path('record-apoia/diagnostico/', RecordApoiaDiagnosticoView.as_view(), name='record-apoia-diagnostico'),
     path('record-apoia/corrigir-nomes/', RecordApoiaCorrigirNomesView.as_view(), name='record-apoia-corrigir-nomes'),
