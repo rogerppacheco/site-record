@@ -15,6 +15,7 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "gestao_equipes.settings")
 django.setup()
 
 from crm_app.models import RecordApoia
+from django.db.models import Q
 
 def buscar_panfleto():
     """Busca arquivos com PANFLETO no título ou nome"""
@@ -58,9 +59,9 @@ def remover_panfleto(confirmar=True):
     
     if confirmar:
         print("\n⚠️  ATENÇÃO: Esta operação irá REMOVER DEFINITIVAMENTE do banco de dados!")
-        resposta = input(f"Deseja remover {len(arquivos)} arquivo(s)? (digite 'SIM' para confirmar): ")
+        resposta = input(f"Deseja remover {len(arquivos)} arquivo(s)? (digite 'SIM' para confirmar): ").strip().upper()
         if resposta != 'SIM':
-            print("❌ Operação cancelada.")
+            print(f"❌ Operação cancelada. (Resposta recebida: '{resposta}')")
             return
     
     from django.db import transaction
@@ -86,17 +87,17 @@ if __name__ == "__main__":
     print("SCRIPT DE LIMPEZA - PANFLETO_NIO.pdf")
     print("=" * 60)
     
-    # Primeiro, apenas buscar e mostrar
-    arquivos = buscar_panfleto()
-    
-    if arquivos:
-        print("\n" + "=" * 60)
-        print("Para remover os arquivos, execute:")
-        print("  python scripts/limpar_panfleto_nio.py --remover")
-        print("=" * 60)
-        
-        # Se passar --remover, remove
-        if '--remover' in sys.argv:
-            remover_panfleto(confirmar=True)
+    # Se passar --remover, remove direto (sem buscar duas vezes)
+    if '--remover' in sys.argv:
+        remover_panfleto(confirmar=True)
     else:
-        print("\n✅ Nenhum arquivo para remover.")
+        # Primeiro, apenas buscar e mostrar
+        arquivos = buscar_panfleto()
+        
+        if arquivos:
+            print("\n" + "=" * 60)
+            print("Para remover os arquivos, execute:")
+            print("  railway run python scripts/limpar_panfleto_nio.py --remover")
+            print("=" * 60)
+        else:
+            print("\n✅ Nenhum arquivo para remover.")
