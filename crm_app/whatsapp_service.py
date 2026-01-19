@@ -216,8 +216,81 @@ class WhatsAppService:
         return self.enviar_imagem_b64(telefone, img_b64, caption)
 
     # ---------------------------------------------------------
-    # 4. ENVIAR PDF (BASE64)
+    # 4. ENVIAR PDF (BASE64 OU URL)
     # ---------------------------------------------------------
+    def enviar_pdf_url(self, telefone, pdf_url, nome_arquivo="extrato.pdf"):
+        """
+        Envia documento (PDF, Word, Excel, etc) via URL pública usando Z-API.
+        Z-API requer: /send-document/{extension}
+        Recomendado para arquivos grandes (>5MB).
+        """
+        # Extrair extensão do arquivo para incluir na URL (ex: pdf, docx, xlsx)
+        extensao = 'pdf'  # padrão
+        if '.' in nome_arquivo:
+            extensao = nome_arquivo.split('.')[-1].lower()
+        
+        url = f"{self.base_url}/send-document/{extensao}"
+        telefone_limpo = self._formatar_telefone(telefone)
+        
+        logger.info(f"[WhatsAppService] 📄 INICIANDO ENVIO DE PDF VIA URL")
+        logger.info(f"[WhatsAppService] Telefone: {telefone} -> Formatado: {telefone_limpo}")
+        logger.info(f"[WhatsAppService] Arquivo: {nome_arquivo}")
+        logger.info(f"[WhatsAppService] URL do PDF: {pdf_url}")
+        print(f"[PDF-ENVIO] Enviando PDF via URL: {nome_arquivo} para {telefone_limpo}")
+        print(f"[PDF-ENVIO] URL: {pdf_url}")
+        
+        payload = {
+            "phone": telefone_limpo,
+            "document": pdf_url,  # Z-API aceita URL ou base64
+            "fileName": nome_arquivo
+        }
+        
+        logger.info(f"[WhatsAppService] Payload preparado:")
+        logger.info(f"[WhatsAppService]   - phone: {telefone_limpo}")
+        logger.info(f"[WhatsAppService]   - fileName: {nome_arquivo}")
+        logger.info(f"[WhatsAppService]   - document (URL): {pdf_url}")
+        logger.info(f"[WhatsAppService] URL completa: {url}")
+        logger.info(f"[WhatsAppService] Extensão usada: {extensao}")
+        print(f"[PDF-ENVIO] Enviando requisição para: {url}")
+        print(f"[PDF-ENVIO] Extensão: {extensao}, Payload: phone={telefone_limpo}, fileName={nome_arquivo}, document={pdf_url}")
+        
+        try:
+            resp = self._send_request(url, payload)
+            logger.info(f"[WhatsAppService] Resposta recebida do _send_request: {resp}")
+            print(f"[PDF-ENVIO] Resposta da API: {resp}")
+            
+            if resp:
+                # Verificar se a resposta contém erro
+                if isinstance(resp, dict) and resp.get('error'):
+                    erro_msg = resp.get('message', resp.get('error', 'Erro desconhecido'))
+                    logger.error(f"[WhatsAppService] ❌ Erro da API Z-API: {erro_msg}")
+                    logger.error(f"[WhatsAppService] Resposta completa: {resp}")
+                    print(f"[PDF-ENVIO] ❌ ERRO DA API: {erro_msg}")
+                    return False
+                
+                # Verificar se tem campos de sucesso (messageId, zaapId, id)
+                if isinstance(resp, dict) and (resp.get('messageId') or resp.get('zaapId') or resp.get('id')):
+                    logger.info(f"[WhatsAppService] ✅ Documento enviado com sucesso via URL: {nome_arquivo}")
+                    logger.info(f"[WhatsAppService] MessageId: {resp.get('messageId', 'N/A')}")
+                    print(f"[PDF-ENVIO] ✅ SUCESSO: Documento enviado via URL (MessageId: {resp.get('messageId', 'N/A')})")
+                    return True
+                else:
+                    logger.warning(f"[WhatsAppService] ⚠️ Resposta inesperada: {resp}")
+                    print(f"[PDF-ENVIO] ⚠️ AVISO: Resposta inesperada")
+                    return False
+            else:
+                logger.error(f"[WhatsAppService] ❌ Erro ao enviar documento: resposta vazia ou None")
+                print(f"[PDF-ENVIO] ❌ ERRO: Resposta vazia ou None")
+                return False
+        except Exception as e:
+            logger.error(f"[WhatsAppService] ❌ Erro ao enviar documento via URL: {type(e).__name__}: {e}")
+            print(f"[PDF-ENVIO] ❌ EXCEÇÃO: {type(e).__name__}: {e}")
+            import traceback
+            tb_str = traceback.format_exc()
+            logger.error(f"[WhatsAppService] Traceback completo:\n{tb_str}")
+            print(f"[PDF-ENVIO] Traceback: {tb_str}")
+            return False
+    
     def enviar_pdf_b64(self, telefone, base64_data, nome_arquivo="extrato.pdf"):
         """
         Envia documento (PDF, Word, Excel, etc) em Base64 via Z-API.
