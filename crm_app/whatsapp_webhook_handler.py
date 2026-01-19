@@ -1188,10 +1188,12 @@ def processar_webhook_whatsapp(data):
                 if sessao:
                     invoice_para_pdf = sessao.dados_temp.get('invoice_para_pdf')
                     material_para_envio = sessao.dados_temp.get('material_para_envio')
+                    arquivo_enviado = False
                     
                     if invoice_para_pdf:
                         logger.info(f"[Webhook] PDF detectado, tentando enviar via WhatsApp...")
                         _enviar_pdf_whatsapp(whatsapp_service, telefone_formatado, invoice_para_pdf)
+                        arquivo_enviado = True
                     
                     elif material_para_envio:
                         logger.info(f"[Webhook] Material detectado, tentando enviar via WhatsApp...")
@@ -1204,12 +1206,14 @@ def processar_webhook_whatsapp(data):
                                 resultado_img = whatsapp_service.enviar_imagem_b64(telefone_formatado, material_para_envio['base64'], caption)
                                 if resultado_img:
                                     logger.info(f"[Webhook] ✅ Imagem enviada com sucesso: {material_para_envio['nome']}")
+                                    arquivo_enviado = True
                                 else:
                                     logger.error(f"[Webhook] ❌ Falha ao enviar imagem: {material_para_envio['nome']}")
                             else:  # DOCUMENTO
                                 sucesso = whatsapp_service.enviar_pdf_b64(telefone_formatado, material_para_envio['base64'], material_para_envio['nome'])
                                 if sucesso:
                                     logger.info(f"[Webhook] ✅ Documento enviado com sucesso: {material_para_envio['nome']}")
+                                    arquivo_enviado = True
                                 else:
                                     logger.error(f"[Webhook] ❌ Falha ao enviar documento: {material_para_envio['nome']}")
                         except Exception as e:
@@ -1217,10 +1221,12 @@ def processar_webhook_whatsapp(data):
                             import traceback
                             traceback.print_exc()
                     
-                    # Limpar dados temporários após enviar arquivo
-                    if sessao.dados_temp:
+                    # Limpar dados temporários APENAS se arquivo foi enviado E não estamos na etapa material_selecionar
+                    # (precisamos manter arquivos_ids na etapa material_selecionar para o usuário escolher)
+                    if arquivo_enviado and sessao.etapa != 'material_selecionar':
                         sessao.dados_temp = {}
-                        sessao.save()
+                        sessao.save(update_fields=['dados_temp'])
+                        logger.info(f"[Webhook] Dados temporários limpos após envio de arquivo")
             except Exception as e:
                 logger.error(f"[Webhook] Erro ao enviar resposta: {e}")
                 import traceback
