@@ -586,15 +586,20 @@
 
                 const data = await response.json();
 
-                if (response.ok && data.success) {
-                    let mensagem = data.message || `${data.total_enviados} arquivo(s) enviado(s) com sucesso!`;
+                // A API retorna 'sucesso' (português), não 'success' (inglês)
+                if (response.ok && (data.success || data.sucesso)) {
+                    const totalEnviados = data.total || data.total_enviados || (data.resultados ? data.resultados.length : 0);
+                    const totalErros = data.total_erros || (data.erros ? data.erros.length : 0);
+                    
+                    let mensagem = data.message || data.mensagem || `${totalEnviados} arquivo(s) enviado(s) com sucesso!`;
                     let tipoAlerta = 'success';
                     
-                    if (data.total_erros > 0) {
+                    if (totalErros > 0) {
                         tipoAlerta = 'warning';
-                        mensagem += `<br><small>${data.total_erros} arquivo(s) com erro:</small><ul class="mb-0 mt-2">`;
-                        data.erros.forEach(erro => {
-                            mensagem += `<li><small>${erro.arquivo}: ${erro.erro}</small></li>`;
+                        mensagem += `<br><small>${totalErros} arquivo(s) com erro:</small><ul class="mb-0 mt-2">`;
+                        const erros = data.erros || [];
+                        erros.forEach(erro => {
+                            mensagem += `<li><small>${erro.arquivo || erro.nome || 'Arquivo'}: ${erro.erro || erro.mensagem || 'Erro desconhecido'}</small></li>`;
                         });
                         mensagem += '</ul>';
                     }
