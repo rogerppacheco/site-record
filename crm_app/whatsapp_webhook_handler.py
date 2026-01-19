@@ -805,15 +805,21 @@ def processar_webhook_whatsapp(data):
                             resposta_parts.append(f"\n📋 Digite o *NÚMERO* do material desejado (1 a {len(arquivos_lista)}):")
                             resposta = "\n".join(resposta_parts)
                             
-                            # Salvar arquivos na sessão
-                            sessao.etapa = 'material_selecionar'
-                            sessao.dados_temp = {
+                            # Salvar arquivos na sessão usando update() para garantir persistência
+                            dados_para_salvar = {
                                 'busca': busca_texto,
                                 'arquivos_ids': arquivos_ids_lista
                             }
-                            sessao.save()
+                            from crm_app.models import SessaoWhatsapp
+                            SessaoWhatsapp.objects.filter(id=sessao.id).update(
+                                etapa='material_selecionar',
+                                dados_temp=dados_para_salvar
+                            )
+                            # Recarregar sessão após update
+                            sessao.refresh_from_db()
                             logger.info(f"[Webhook] Salvos {len(arquivos_ids_lista)} IDs de arquivos na sessão: {arquivos_ids_lista}")
                             logger.info(f"[Webhook] Sessão salva - etapa: {sessao.etapa}, dados_temp: {sessao.dados_temp}")
+                            logger.info(f"[Webhook] Verificação pós-save - sessao.id: {sessao.id}, dados_temp verificado: {sessao.dados_temp}")
             except Exception as e:
                 logger.error(f"[Webhook] Erro ao buscar material: {e}")
                 import traceback
@@ -833,19 +839,32 @@ def processar_webhook_whatsapp(data):
                     import os
                     import base64
                     
-                    # Recarregar sessão do banco para garantir dados mais recentes
-                    sessao.refresh_from_db()
-                    dados_temp_atualizado = sessao.dados_temp or {}
+                    # Buscar sessão diretamente do banco para garantir dados mais recentes
+                    from crm_app.models import SessaoWhatsapp
+                    sessao_atualizada = SessaoWhatsapp.objects.get(id=sessao.id)
+                    dados_temp_atualizado = sessao_atualizada.dados_temp or {}
+                    
+                    logger.info(f"[Webhook] DEBUG material_selecionar - sessao.id: {sessao_atualizada.id}, etapa: {sessao_atualizada.etapa}")
+                    logger.info(f"[Webhook] DEBUG material_selecionar - dados_temp do banco: {dados_temp_atualizado}")
+                    logger.info(f"[Webhook] DEBUG material_selecionar - tipo de dados_temp: {type(dados_temp_atualizado)}")
                     
                     idx = int(numero_escolhido) - 1
                     arquivos_ids = dados_temp_atualizado.get('arquivos_ids', [])
                     
                     if not arquivos_ids or len(arquivos_ids) == 0:
-                        logger.error(f"[Webhook] arquivos_ids está vazio na sessão! dados_temp: {dados_temp_atualizado}, sessao.id: {sessao.id}")
+                        logger.error(f"[Webhook] arquivos_ids está vazio na sessão! dados_temp: {dados_temp_atualizado}, sessao.id: {sessao_atualizada.id}")
+                        logger.error(f"[Webhook] DEBUG - Tentando buscar sessão completa do banco novamente...")
+                        # Última tentativa: buscar sessão completa novamente
+                        try:
+                            sessao_db = SessaoWhatsapp.objects.values('dados_temp', 'etapa').get(id=sessao_atualizada.id)
+                            logger.error(f"[Webhook] DEBUG - dados_temp do values(): {sessao_db.get('dados_temp')}, etapa: {sessao_db.get('etapa')}")
+                        except Exception as db_error:
+                            logger.error(f"[Webhook] DEBUG - Erro ao buscar do banco: {db_error}")
+                        
                         resposta = "❌ Erro: Lista de materiais não encontrada. Por favor, busque novamente."
-                        sessao.etapa = 'inicial'
-                        sessao.dados_temp = {}
-                        sessao.save()
+                        sessao_atualizada.etapa = 'inicial'
+                        sessao_atualizada.dados_temp = {}
+                        sessao_atualizada.save()
                     elif idx < 0 or idx >= len(arquivos_ids):
                         resposta = f"❌ Número inválido. Por favor, digite um número entre 1 e {len(arquivos_ids)}:"
                     else:
@@ -1131,15 +1150,21 @@ def processar_webhook_whatsapp(data):
                             resposta_parts.append(f"\n📋 Digite o *NÚMERO* do material desejado (1 a {len(arquivos_lista)}):")
                             resposta = "\n".join(resposta_parts)
                             
-                            # Salvar arquivos na sessão
-                            sessao.etapa = 'material_selecionar'
-                            sessao.dados_temp = {
+                            # Salvar arquivos na sessão usando update() para garantir persistência
+                            dados_para_salvar = {
                                 'busca': busca_texto,
                                 'arquivos_ids': arquivos_ids_lista
                             }
-                            sessao.save()
+                            from crm_app.models import SessaoWhatsapp
+                            SessaoWhatsapp.objects.filter(id=sessao.id).update(
+                                etapa='material_selecionar',
+                                dados_temp=dados_para_salvar
+                            )
+                            # Recarregar sessão após update
+                            sessao.refresh_from_db()
                             logger.info(f"[Webhook] Salvos {len(arquivos_ids_lista)} IDs de arquivos na sessão: {arquivos_ids_lista}")
                             logger.info(f"[Webhook] Sessão salva - etapa: {sessao.etapa}, dados_temp: {sessao.dados_temp}")
+                            logger.info(f"[Webhook] Verificação pós-save - sessao.id: {sessao.id}, dados_temp verificado: {sessao.dados_temp}")
                         _registrar_estatistica(telefone_formatado, 'MATERIAL')
                     else:
                         # Nenhum material encontrado - não enviar resposta (não mostrar menu automaticamente)
