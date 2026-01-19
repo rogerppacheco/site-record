@@ -812,7 +812,8 @@ def processar_webhook_whatsapp(data):
                                 'arquivos_ids': arquivos_ids_lista
                             }
                             sessao.save()
-                            logger.info(f"[Webhook] Salvos {len(arquivos_ids_lista)} IDs de arquivos na sessão")
+                            logger.info(f"[Webhook] Salvos {len(arquivos_ids_lista)} IDs de arquivos na sessão: {arquivos_ids_lista}")
+                            logger.info(f"[Webhook] Sessão salva - etapa: {sessao.etapa}, dados_temp: {sessao.dados_temp}")
             except Exception as e:
                 logger.error(f"[Webhook] Erro ao buscar material: {e}")
                 import traceback
@@ -832,11 +833,15 @@ def processar_webhook_whatsapp(data):
                     import os
                     import base64
                     
+                    # Recarregar sessão do banco para garantir dados mais recentes
+                    sessao.refresh_from_db()
+                    dados_temp_atualizado = sessao.dados_temp or {}
+                    
                     idx = int(numero_escolhido) - 1
-                    arquivos_ids = dados_temp.get('arquivos_ids', [])
+                    arquivos_ids = dados_temp_atualizado.get('arquivos_ids', [])
                     
                     if not arquivos_ids or len(arquivos_ids) == 0:
-                        logger.error(f"[Webhook] arquivos_ids está vazio na sessão! dados_temp: {dados_temp}")
+                        logger.error(f"[Webhook] arquivos_ids está vazio na sessão! dados_temp: {dados_temp_atualizado}, sessao.id: {sessao.id}")
                         resposta = "❌ Erro: Lista de materiais não encontrada. Por favor, busque novamente."
                         sessao.etapa = 'inicial'
                         sessao.dados_temp = {}
@@ -1133,7 +1138,8 @@ def processar_webhook_whatsapp(data):
                                 'arquivos_ids': arquivos_ids_lista
                             }
                             sessao.save()
-                            logger.info(f"[Webhook] Salvos {len(arquivos_ids_lista)} IDs de arquivos na sessão")
+                            logger.info(f"[Webhook] Salvos {len(arquivos_ids_lista)} IDs de arquivos na sessão: {arquivos_ids_lista}")
+                            logger.info(f"[Webhook] Sessão salva - etapa: {sessao.etapa}, dados_temp: {sessao.dados_temp}")
                         _registrar_estatistica(telefone_formatado, 'MATERIAL')
                     else:
                         # Nenhum material encontrado - não enviar resposta (não mostrar menu automaticamente)
