@@ -284,9 +284,9 @@ class RecordApoiaDownloadView(APIView):
             
             # Tentar abrir o arquivo
             try:
-                arquivo.arquivo.open('rb')
+                file_handle = arquivo.arquivo.open('rb')
                 file_response = FileResponse(
-                    arquivo.arquivo.open('rb'), 
+                    file_handle, 
                     as_attachment=not is_preview,  # Se for preview, não força download
                     filename=arquivo.nome_original
                 )
