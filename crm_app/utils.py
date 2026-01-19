@@ -445,32 +445,104 @@ def consultar_previsao_agendamento(numero_pedido):
         )
 
 
-def consultar_andamento_agendamentos():
+def consultar_andamento_agendamentos(telefone_vendedor=None):
     """
-    Busca todos os agendamentos do dia atual com horários de execução real definidos.
+    Busca agendamentos do dia atual com horários de execução real definidos.
+    Se telefone_vendedor for fornecido, filtra apenas agendamentos do vendedor.
+    Para Diretoria, Admin e BackOffice, mostra todos os agendamentos.
     Retorna mensagem formatada com os clientes e intervalos de horário.
     """
     from .models import ImportacaoAgendamento, Venda
+    from django.contrib.auth import get_user_model
     from django.utils import timezone
     from django.db.models import Q
     
+    # Importar is_member (definida em outro arquivo, geralmente em views.py ou utils.py)
+    try:
+        from crm_app.views import is_member
+    except ImportError:
+        # Fallback: função simples para verificar grupos
+        def is_member(user, grupos):
+            if not user or not user.groups.exists():
+                return False
+            grupos_user = [g.name for g in user.groups.all()]
+            return any(grupo in grupos_user for grupo in grupos)
+    
+    User = get_user_model()
     hoje = timezone.now().date()
     
+    # Se telefone fornecido, buscar vendedor
+    vendedor = None
+    mostrar_todos = False
+    if telefone_vendedor:
+        # Limpar telefone (remover caracteres não numéricos)
+        telefone_limpo = "".join(filter(str.isdigit, str(telefone_vendedor)))
+        # Tentar buscar com e sem código 55
+        if telefone_limpo.startswith('55'):
+            telefone_limpo_sem_55 = telefone_limpo[2:]
+        else:
+            telefone_limpo_sem_55 = telefone_limpo
+        
+        vendedor = User.objects.filter(
+            Q(tel_whatsapp=telefone_limpo) | 
+            Q(tel_whatsapp=telefone_limpo_sem_55) |
+            Q(tel_whatsapp=f"55{telefone_limpo_sem_55}")
+        ).first()
+        
+        if not vendedor:
+            return (
+                "📅 *AGENDAMENTOS DO DIA*\n\n"
+                f"❌ Vendedor não encontrado para o número {telefone_vendedor}.\n"
+                "Verifique se o número está cadastrado no sistema."
+            )
+        
+        # Verificar se é Diretoria, Admin ou BackOffice
+        grupos_gestao = ['Diretoria', 'Admin', 'BackOffice']
+        mostrar_todos = is_member(vendedor, grupos_gestao)
+    
     # Buscar agendamentos do dia com horários de execução real preenchidos
-    agendamentos = ImportacaoAgendamento.objects.filter(
+    agendamentos_qs = ImportacaoAgendamento.objects.filter(
         dt_agendamento=hoje,
         dt_inicio_execucao_real__isnull=False,
         dt_fim_execucao_real__isnull=False
-    ).order_by('dt_inicio_execucao_real')
+    )
+    
+    # Se vendedor especificado e NÃO for gestão, filtrar apenas suas vendas
+    if vendedor and not mostrar_todos:
+        # Buscar ordens_servico das vendas desse vendedor
+        vendas_vendedor = Venda.objects.filter(
+            vendedor=vendedor,
+            ativo=True,
+            ordem_servico__isnull=False
+        ).exclude(ordem_servico='').values_list('ordem_servico', flat=True)
+        
+        ordens_list = list(vendas_vendedor)
+        
+        if not ordens_list:
+            return (
+                "📅 *AGENDAMENTOS DO DIA*\n\n"
+                f"❌ Não há agendamentos para hoje ({hoje.strftime('%d/%m/%Y')}) "
+                f"relacionados às suas vendas."
+            )
+        
+        # Filtrar agendamentos cujo nr_ordem_venda está nas ordens do vendedor
+        agendamentos_qs = agendamentos_qs.filter(
+            Q(nr_ordem_venda__in=ordens_list) | Q(nr_ordem__in=ordens_list)
+        )
+    
+    agendamentos = agendamentos_qs.order_by('dt_inicio_execucao_real')
     
     if not agendamentos.exists():
-        return (
-            "📅 *AGENDAMENTOS DO DIA*\n\n"
-            f"❌ Não há agendamentos para hoje ({hoje.strftime('%d/%m/%Y')}) com horários de execução definidos."
-        )
+        msg_base = f"📅 *AGENDAMENTOS DO DIA*\n\n"
+        if vendedor:
+            msg_base += f"Vendedor: {vendedor.username}\n\n"
+        msg_base += f"❌ Não há agendamentos para hoje ({hoje.strftime('%d/%m/%Y')}) com horários de execução definidos."
+        return msg_base
     
     mensagens = []
     mensagens.append(f"📅 *AGENDAMENTOS DO DIA*\n\nData: {hoje.strftime('%d/%m/%Y')}\n")
+    if vendedor:
+        mensagens.append(f"Vendedor: *{vendedor.username}*\n")
     mensagens.append(f"Total: {agendamentos.count()} agendamento(s)\n")
     mensagens.append("=" * 30 + "\n")
     
