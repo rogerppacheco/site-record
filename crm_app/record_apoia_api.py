@@ -98,20 +98,21 @@ class RecordApoiaUploadView(APIView):
             if resultados and not erros:
                 return Response({
                     'sucesso': True,
-                    'resultados': resultados,
-                    'total': len(resultados)
-                }, status=201)
-            elif resultados and erros:
+                    'message': f'{len(resultados)} arquivo(s) enviado(s) com sucesso',
+                    'resultados': resultados
+                })
+            elif resultados:
                 return Response({
                     'sucesso': True,
+                    'message': f'{len(resultados)} arquivo(s) enviado(s), {len(erros)} erro(s)',
                     'resultados': resultados,
                     'erros': erros,
-                    'total': len(resultados),
+                    'total_enviados': len(resultados),
                     'total_erros': len(erros)
                 }, status=207)  # Multi-Status
             else:
                 return Response({
-                    'sucesso': False,
+                    'error': 'Nenhum arquivo foi enviado com sucesso',
                     'erros': erros
                 }, status=400)
                 
@@ -209,145 +210,78 @@ class RecordApoiaListView(APIView):
                     # Formatar data
                     data_upload_formatada = None
                     if arq.data_upload:
-                        data_upload_local = timezone.localtime(arq.data_upload)
-                        data_upload_formatada = data_upload_local.strftime('%d/%m/%Y %H:%M')
+                        data_upload_formatada = timezone.localtime(arq.data_upload).strftime('%d/%m/%Y %H:%M')
                     
                     arquivos.append({
                         'id': arq.id,
                         'titulo': arq.titulo,
-                        'descricao': arq.descricao,
-                        'categoria': arq.categoria,
-                        'tags': arq.tags,
-                        'tipo_arquivo': arq.tipo_arquivo,  # Código do tipo (PDF, IMAGEM, etc.)
-                        'tipo_arquivo_display': arq.get_tipo_arquivo_display(),  # Nome formatado
-                        'tamanho_bytes': tamanho,  # Tamanho em bytes (para cálculos)
-                        'tamanho_formatado': formatar_tamanho_bytes(tamanho),  # Tamanho formatado
-                        'nome_original': arq.nome_original,
-                        'downloads_count': arq.downloads_count,
-                        'data_upload_formatada': data_upload_formatada,
-                        'criado_em': arq.data_upload.isoformat() if arq.data_upload else None,  # Mantido para compatibilidade
-                        'usuario_upload': arq.usuario_upload.username if arq.usuario_upload else None,
-                        'url_download': f"/api/crm/record-apoia/{arq.id}/download/"
+                        'descricao': arq.descricao or '',
+                        'categoria': arq.categoria or '',
+                        'tags': arq.tags or '',
+                        'tipo_arquivo': arq.tipo_arquivo,
+                        'tipo_arquivo_display': arq.get_tipo_arquivo_display(),
+                        'tamanho_bytes': tamanho,
+                        'tamanho_formatado': formatar_tamanho_bytes(tamanho),
+                        'data_upload': data_upload_formatada,
+                        'downloads_count': arq.downloads_count or 0,
+                        'usuario_upload': arq.usuario_upload.username if arq.usuario_upload else 'Desconhecido'
                     })
-                except Exception as process_error:
-                    # Erro ao processar um arquivo específico - logar e continuar
-                    logger.error(f"Erro ao processar arquivo {arq.id}: {process_error}")
-                    import traceback
-                    logger.error(traceback.format_exc())
-                    continue  # Pular este arquivo e continuar com os próximos
+                except Exception as e:
+                    logger.error(f"Erro ao processar arquivo {arq.id}: {e}")
+                    continue
             
-            # Calcular paginação
+            # Obter categorias únicas para filtros
+            categorias = RecordApoia.objects.filter(ativo=True).exclude(categoria__isnull=True).exclude(categoria='').values_list('categoria', flat=True).distinct()
+            categorias = sorted(set(categorias))
+            
+            # Paginação simples
             page = int(request.query_params.get('page', 1))
             page_size = int(request.query_params.get('page_size', 20))
             total = len(arquivos)
-            total_pages = (total + page_size - 1) // page_size if total > 0 else 1
-            
-            # Aplicar paginação
-            inicio = (page - 1) * page_size
-            fim = inicio + page_size
-            arquivos_paginados = arquivos[inicio:fim]
+            start = (page - 1) * page_size
+            end = start + page_size
+            arquivos_paginados = arquivos[start:end]
             
             return Response({
                 'success': True,
-                'total': total,
                 'arquivos': arquivos_paginados,
+                'total': total,
                 'page': page,
-                'total_pages': total_pages
+                'page_size': page_size,
+                'total_pages': (total + page_size - 1) // page_size,
+                'categorias': categorias
             })
             
         except Exception as e:
-            logger.error(f"Erro ao listar arquivos: {e}")
-            return Response({'error': str(e)}, status=500)
+            logger.error(f"Erro na listagem: {e}")
+            import traceback
+            return Response({
+                'error': str(e),
+                'traceback': traceback.format_exc()
+            }, status=500)
 
 
-class RecordApoiaDownloadView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request, arquivo_id):
-        # Record Apoia é acessível a todos os usuários autenticados
-        try:
-            arquivo = RecordApoia.objects.get(id=arquivo_id, ativo=True)
-            
-            # Verificar se é preview (query param preview=true)
-            is_preview = request.query_params.get('preview', 'false').lower() == 'true'
-            
-            # Incrementar contador apenas se não for preview
-            if not is_preview:
-                arquivo.downloads_count += 1
-                arquivo.save(update_fields=['downloads_count'])
-            
-            if not arquivo.arquivo:
-                return Response({'error': 'Arquivo não encontrado'}, status=404)
-            
-            # Tentar abrir o arquivo
-            try:
-                file_handle = arquivo.arquivo.open('rb')
-                file_response = FileResponse(
-                    file_handle, 
-                    as_attachment=not is_preview,  # Se for preview, não força download
-                    filename=arquivo.nome_original
-                )
-                # Para imagens em preview, definir content-type apropriado
-                if is_preview and arquivo.tipo_arquivo == 'IMAGEM':
-                    ext = arquivo.nome_original.split('.')[-1].lower()
-                    content_types = {
-                        'jpg': 'image/jpeg',
-                        'jpeg': 'image/jpeg',
-                        'png': 'image/png',
-                        'gif': 'image/gif',
-                        'webp': 'image/webp',
-                        'bmp': 'image/bmp'
-                    }
-                    file_response['Content-Type'] = content_types.get(ext, 'image/jpeg')
-                return file_response
-            except (FileNotFoundError, IOError, OSError) as e:
-                logger.error(f"Erro ao abrir arquivo {arquivo.arquivo.name}: {e}")
-                # Tentar usar storage
-                if default_storage.exists(arquivo.arquivo.name):
-                    file_response = FileResponse(
-                        default_storage.open(arquivo.arquivo.name, 'rb'), 
-                        as_attachment=not is_preview,
-                        filename=arquivo.nome_original
-                    )
-                    if is_preview and arquivo.tipo_arquivo == 'IMAGEM':
-                        ext = arquivo.nome_original.split('.')[-1].lower()
-                        content_types = {
-                            'jpg': 'image/jpeg',
-                            'jpeg': 'image/jpeg',
-                            'png': 'image/png',
-                            'gif': 'image/gif',
-                            'webp': 'image/webp',
-                            'bmp': 'image/bmp'
-                        }
-                        file_response['Content-Type'] = content_types.get(ext, 'image/jpeg')
-                    return file_response
-                else:
-                    return Response({'error': f'Arquivo físico não encontrado: {arquivo.arquivo.name}'}, status=404)
-                    
-        except RecordApoia.DoesNotExist:
-            return Response({'error': 'Arquivo não encontrado'}, status=404)
-        except Exception as e:
-            logger.error(f"Erro no download: {e}")
-            return Response({'error': str(e)}, status=500)
-
-
-class RecordApoiaUpdateView(APIView):
+class RecordApoiaEditView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def patch(self, request, arquivo_id):
-        """Atualiza metadados do arquivo (título, descrição, categoria, tags)"""
+        # Record Apoia é acessível a todos os usuários autenticados
         try:
             arquivo = RecordApoia.objects.get(id=arquivo_id)
             
-            # Atualizar campos permitidos
-            if 'titulo' in request.data:
-                arquivo.titulo = request.data['titulo'].strip()
-            if 'descricao' in request.data:
-                arquivo.descricao = request.data['descricao'].strip() or None
-            if 'categoria' in request.data:
-                arquivo.categoria = request.data['categoria'].strip() or None
-            if 'tags' in request.data:
-                arquivo.tags = request.data['tags'].strip() or None
+            titulo = request.data.get('titulo', '').strip()
+            descricao = request.data.get('descricao', '').strip()
+            categoria = request.data.get('categoria', '').strip()
+            tags = request.data.get('tags', '').strip()
+            
+            if titulo:
+                arquivo.titulo = titulo
+            if descricao is not None:
+                arquivo.descricao = descricao
+            if categoria is not None:
+                arquivo.categoria = categoria
+            if tags is not None:
+                arquivo.tags = tags
             
             arquivo.save()
             
@@ -366,7 +300,7 @@ class RecordApoiaUpdateView(APIView):
         except RecordApoia.DoesNotExist:
             return Response({'error': 'Arquivo não encontrado'}, status=404)
         except Exception as e:
-            logger.error(f"Erro ao atualizar: {e}")
+            logger.error(f"Erro ao editar: {e}")
             return Response({'error': str(e)}, status=500)
 
 
@@ -404,6 +338,16 @@ class RecordApoiaDeleteView(APIView):
         # Record Apoia é acessível a todos os usuários autenticados
         try:
             arquivo = RecordApoia.objects.get(id=arquivo_id)
+            
+            # Deletar arquivo físico do disco (se existir)
+            if arquivo.arquivo and arquivo.arquivo.name:
+                try:
+                    # Tentar deletar usando o storage do Django
+                    arquivo.arquivo.delete(save=False)
+                    logger.info(f"Arquivo físico deletado: {arquivo.arquivo.name}")
+                except Exception as delete_file_error:
+                    # Se não conseguir deletar o arquivo físico, apenas logar o erro mas continuar
+                    logger.warning(f"Erro ao deletar arquivo físico {arquivo.arquivo.name}: {delete_file_error}")
             
             # Marcar como inativo (soft delete)
             arquivo.ativo = False
@@ -507,6 +451,7 @@ class RecordApoiaBuscarView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        # Record Apoia é acessível a todos os usuários autenticados
         try:
             busca = request.query_params.get('busca', '').strip()
             incluir_inativos = request.query_params.get('incluir_inativos', 'false').lower() == 'true'
@@ -526,41 +471,101 @@ class RecordApoiaBuscarView(APIView):
             )
             
             arquivos = []
-            for arq in queryset:
-                # Determinar tipo do arquivo
-                tipo = 'OUTRO'
-                if arq.nome_original:
-                    ext = arq.nome_original.split('.')[-1].lower()
-                    if ext in ['pdf']:
-                        tipo = 'PDF'
-                    elif ext in ['doc', 'docx']:
-                        tipo = 'WORD'
-                    elif ext in ['xls', 'xlsx']:
-                        tipo = 'EXCEL'
-                    elif ext in ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp']:
-                        tipo = 'IMAGEM'
-                    elif ext in ['mp4', 'avi', 'mov', 'wmv', 'mkv', 'webm']:
-                        tipo = 'VIDEO'
-                
+            for arq in queryset[:50]:  # Limitar a 50 resultados
                 arquivos.append({
                     'id': arq.id,
                     'titulo': arq.titulo,
                     'nome_original': arq.nome_original,
                     'ativo': arq.ativo,
-                    'data_upload': arq.data_upload.isoformat() if arq.data_upload else None,
-                    'arquivo_path': arq.arquivo.name if arq.arquivo else None,
-                    'tamanho_bytes': arq.tamanho_bytes,
-                    'tipo_arquivo': tipo
+                    'data_upload': arq.data_upload.isoformat() if arq.data_upload else None
                 })
             
             return Response({
                 'success': True,
-                'total': len(arquivos),
-                'arquivos': arquivos
+                'arquivos': arquivos,
+                'total': len(arquivos)
             })
             
         except Exception as e:
-            logger.error(f"Erro ao buscar arquivos: {e}")
+            logger.error(f"Erro na busca: {e}")
+            return Response({'error': str(e)}, status=500)
+
+
+class RecordApoiaAdminOrfaosView(APIView):
+    """
+    View administrativa para listar arquivos órfãos:
+    - Arquivos inativos que ainda têm arquivo no disco (podem ser limpos)
+    - Arquivos ativos que não têm arquivo no disco (registros órfãos)
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        # Apenas para administradores
+        try:
+            from crm_app.views import is_member
+        except ImportError:
+            return Response({'error': 'Função is_member não encontrada'}, status=500)
+        
+        user = request.user
+        if not is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
+            return Response({'error': 'Acesso negado. Apenas administradores podem acessar esta página.'}, status=403)
+        
+        try:
+            from django.conf import settings
+            import os
+            from django.utils import timezone
+            
+            inativos_com_arquivo = []
+            ativos_sem_arquivo = []
+            
+            # Buscar todos os arquivos
+            todos_arquivos = RecordApoia.objects.all()
+            
+            for arquivo in todos_arquivos:
+                arquivo_existe = False
+                caminho_completo = None
+                
+                if arquivo.arquivo and arquivo.arquivo.name:
+                    media_root = getattr(settings, 'MEDIA_ROOT', None)
+                    if media_root:
+                        caminho_completo = os.path.join(media_root, arquivo.arquivo.name)
+                        arquivo_existe = os.path.exists(caminho_completo)
+                    else:
+                        arquivo_existe = default_storage.exists(arquivo.arquivo.name)
+                
+                # Arquivos inativos que ainda têm arquivo no disco
+                if not arquivo.ativo and arquivo_existe:
+                    inativos_com_arquivo.append({
+                        'id': arquivo.id,
+                        'titulo': arquivo.titulo,
+                        'nome_original': arquivo.nome_original,
+                        'caminho': arquivo.arquivo.name if arquivo.arquivo else None,
+                        'data_upload': timezone.localtime(arquivo.data_upload).strftime('%d/%m/%Y %H:%M') if arquivo.data_upload else None,
+                        'tipo': arquivo.get_tipo_arquivo_display(),
+                        'tamanho_bytes': arquivo.tamanho_bytes or 0
+                    })
+                
+                # Arquivos ativos que não têm arquivo no disco
+                if arquivo.ativo and not arquivo_existe and arquivo.arquivo and arquivo.arquivo.name:
+                    ativos_sem_arquivo.append({
+                        'id': arquivo.id,
+                        'titulo': arquivo.titulo,
+                        'nome_original': arquivo.nome_original,
+                        'caminho_esperado': caminho_completo,
+                        'data_upload': timezone.localtime(arquivo.data_upload).strftime('%d/%m/%Y %H:%M') if arquivo.data_upload else None,
+                        'tipo': arquivo.get_tipo_arquivo_display()
+                    })
+            
+            return Response({
+                'success': True,
+                'inativos_com_arquivo': inativos_com_arquivo,
+                'ativos_sem_arquivo': ativos_sem_arquivo,
+                'total_inativos_com_arquivo': len(inativos_com_arquivo),
+                'total_ativos_sem_arquivo': len(ativos_sem_arquivo)
+            })
+            
+        except Exception as e:
+            logger.error(f"Erro ao listar arquivos órfãos: {e}")
             import traceback
             return Response({
                 'error': str(e),
@@ -568,133 +573,160 @@ class RecordApoiaBuscarView(APIView):
             }, status=500)
 
 
-class RecordApoiaCorrigirNomesView(APIView):
+class RecordApoiaAdminLimparOrfaosView(APIView):
     """
-    View para corrigir nomes de arquivos no banco que não correspondem aos arquivos no disco.
-    Tenta encontrar os arquivos reais e atualizar os registros.
+    View administrativa para limpar arquivos órfãos:
+    - Deletar arquivos físicos de registros inativos
+    - Deletar registros ativos que não têm arquivo no disco
     """
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        # Record Apoia é acessível a todos os usuários autenticados
+        # Apenas para administradores
+        try:
+            from crm_app.views import is_member
+        except ImportError:
+            return Response({'error': 'Função is_member não encontrada'}, status=500)
+        
+        user = request.user
+        if not is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
+            return Response({'error': 'Acesso negado. Apenas administradores podem executar esta ação.'}, status=403)
+        
         try:
             from django.conf import settings
             import os
-            import re
             
-            media_root = getattr(settings, 'MEDIA_ROOT', None)
-            if not media_root:
-                return Response({'error': 'MEDIA_ROOT não configurado'}, status=500)
+            tipo_limpeza = request.data.get('tipo', 'todos')  # 'inativos', 'sem_arquivo', 'todos'
             
-            # Buscar todos os arquivos ativos
-            arquivos = RecordApoia.objects.filter(ativo=True)
-            
-            corrigidos = []
+            limpos = []
             erros = []
             
-            for arquivo in arquivos:
-                if not arquivo.arquivo or not arquivo.arquivo.name:
-                    continue
-                
-                caminho_relativo = arquivo.arquivo.name
-                pasta_relativa = os.path.dirname(caminho_relativo)
-                nome_arquivo_banco = os.path.basename(caminho_relativo)
-                nome_base = os.path.splitext(nome_arquivo_banco)[0]
-                extensao = os.path.splitext(nome_arquivo_banco)[1]
-                
-                # Remover sufixos do Django (padrão: _XXXXXXXXX onde X são letras/números)
-                nome_base_sem_sufixo = re.sub(r'_[A-Za-z0-9]{7,}$', '', nome_base)
-                
-                pasta_completa = os.path.join(media_root, pasta_relativa)
-                
-                if not os.path.exists(pasta_completa):
-                    erros.append({
-                        'id': arquivo.id,
-                        'titulo': arquivo.titulo,
-                        'erro': f'Pasta não existe: {pasta_completa}'
-                    })
-                    continue
-                
-                # Listar arquivos na pasta
-                try:
-                    arquivos_reais = [f for f in os.listdir(pasta_completa) if os.path.isfile(os.path.join(pasta_completa, f))]
-                except (PermissionError, OSError) as e:
-                    erros.append({
-                        'id': arquivo.id,
-                        'titulo': arquivo.titulo,
-                        'erro': f'Erro ao listar pasta: {str(e)}'
-                    })
-                    continue
-                
-                # Tentar encontrar arquivo correspondente
-                arquivo_encontrado = None
-                
-                # 1. Buscar pelo nome original (sem sufixo)
-                for arq_real in arquivos_reais:
-                    if os.path.splitext(arq_real)[0] == nome_base_sem_sufixo and os.path.splitext(arq_real)[1] == extensao:
-                        arquivo_encontrado = arq_real
-                        break
-                
-                # 2. Se não encontrou, buscar pelo nome original completo
-                if not arquivo_encontrado:
-                    for arq_real in arquivos_reais:
-                        if arq_real == arquivo.nome_original:
-                            arquivo_encontrado = arq_real
-                            break
-                
-                # 3. Se ainda não encontrou, buscar qualquer arquivo com extensão igual
-                if not arquivo_encontrado:
-                    for arq_real in arquivos_reais:
-                        if os.path.splitext(arq_real)[1] == extensao:
-                            # Se só tem um arquivo com essa extensão, usar ele
-                            arquivos_com_extensao = [a for a in arquivos_reais if os.path.splitext(a)[1] == extensao]
-                            if len(arquivos_com_extensao) == 1:
-                                arquivo_encontrado = arq_real
-                                break
-                
-                if arquivo_encontrado:
-                    novo_caminho_relativo = os.path.join(pasta_relativa, arquivo_encontrado).replace('\\', '/')
-                    
-                    # Atualizar o campo arquivo.name diretamente no banco
-                    from django.db import connection
-                    with connection.cursor() as cursor:
-                        cursor.execute(
-                            "UPDATE crm_app_recordapoia SET arquivo = %s WHERE id = %s",
-                            [novo_caminho_relativo, arquivo.id]
-                        )
-                    
-                    # Recarregar do banco
-                    arquivo.refresh_from_db()
-                    
-                    corrigidos.append({
-                        'id': arquivo.id,
-                        'titulo': arquivo.titulo,
-                        'nome_original': arquivo.nome_original,
-                        'caminho_anterior': caminho_relativo,
-                        'caminho_novo': novo_caminho_relativo,
-                        'arquivo_encontrado': arquivo_encontrado
-                    })
-                else:
-                    erros.append({
-                        'id': arquivo.id,
-                        'titulo': arquivo.titulo,
-                        'nome_original': arquivo.nome_original,
-                        'erro': 'Arquivo não encontrado na pasta',
-                        'arquivos_disponiveis': arquivos_reais
-                    })
+            if tipo_limpeza in ['inativos', 'todos']:
+                # Limpar arquivos físicos de registros inativos
+                inativos = RecordApoia.objects.filter(ativo=False)
+                for arquivo in inativos:
+                    if arquivo.arquivo and arquivo.arquivo.name:
+                        try:
+                            media_root = getattr(settings, 'MEDIA_ROOT', None)
+                            if media_root:
+                                caminho_completo = os.path.join(media_root, arquivo.arquivo.name)
+                                if os.path.exists(caminho_completo):
+                                    os.remove(caminho_completo)
+                                    limpos.append({
+                                        'id': arquivo.id,
+                                        'titulo': arquivo.titulo,
+                                        'acao': 'arquivo_fisico_deletado'
+                                    })
+                                    logger.info(f"Arquivo físico deletado: {caminho_completo}")
+                        except Exception as e:
+                            erros.append({
+                                'id': arquivo.id,
+                                'titulo': arquivo.titulo,
+                                'erro': str(e)
+                            })
+                            logger.error(f"Erro ao deletar arquivo físico {arquivo.arquivo.name}: {e}")
+            
+            if tipo_limpeza in ['sem_arquivo', 'todos']:
+                # Deletar registros ativos que não têm arquivo no disco
+                todos_ativos = RecordApoia.objects.filter(ativo=True)
+                for arquivo in todos_ativos:
+                    if arquivo.arquivo and arquivo.arquivo.name:
+                        arquivo_existe = False
+                        media_root = getattr(settings, 'MEDIA_ROOT', None)
+                        if media_root:
+                            caminho_completo = os.path.join(media_root, arquivo.arquivo.name)
+                            arquivo_existe = os.path.exists(caminho_completo)
+                        else:
+                            arquivo_existe = default_storage.exists(arquivo.arquivo.name)
+                        
+                        if not arquivo_existe:
+                            try:
+                                limpos.append({
+                                    'id': arquivo.id,
+                                    'titulo': arquivo.titulo,
+                                    'acao': 'registro_deletado'
+                                })
+                                arquivo.delete()  # Hard delete do registro
+                                logger.info(f"Registro órfão deletado: {arquivo.id} - {arquivo.titulo}")
+                            except Exception as e:
+                                erros.append({
+                                    'id': arquivo.id,
+                                    'titulo': arquivo.titulo,
+                                    'erro': str(e)
+                                })
+                                logger.error(f"Erro ao deletar registro {arquivo.id}: {e}")
             
             return Response({
-                'sucesso': True,
-                'corrigidos': corrigidos,
-                'total_corrigidos': len(corrigidos),
+                'success': True,
+                'mensagem': f'{len(limpos)} item(s) limpo(s)',
+                'limpos': limpos,
+                'total_limpos': len(limpos),
                 'erros': erros,
                 'total_erros': len(erros)
             })
             
         except Exception as e:
-            logger.error(f"Erro ao corrigir nomes: {e}")
+            logger.error(f"Erro ao limpar arquivos órfãos: {e}")
             import traceback
             return Response({
                 'error': str(e),
                 'traceback': traceback.format_exc()
             }, status=500)
+
+
+class RecordApoiaDownloadView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, arquivo_id):
+        # Record Apoia é acessível a todos os usuários autenticados
+        try:
+            arquivo = RecordApoia.objects.get(id=arquivo_id, ativo=True)
+            
+            if not arquivo.arquivo or not arquivo.arquivo.name:
+                return Response({'error': 'Arquivo não encontrado no servidor'}, status=404)
+            
+            # Verificar se é preview (não incrementa download)
+            is_preview = request.query_params.get('preview', 'false').lower() == 'true'
+            
+            if not is_preview:
+                # Incrementar contador de downloads
+                arquivo.downloads_count = (arquivo.downloads_count or 0) + 1
+                arquivo.save(update_fields=['downloads_count'])
+            
+            try:
+                # Abrir arquivo uma única vez
+                file_handle = arquivo.arquivo.open('rb')
+                file_response = FileResponse(
+                    file_handle,
+                    as_attachment=not is_preview,
+                    filename=arquivo.nome_original
+                )
+                
+                # Para imagens em preview, definir content-type apropriado
+                if is_preview and arquivo.tipo_arquivo == 'IMAGEM':
+                    ext = arquivo.nome_original.split('.')[-1].lower() if arquivo.nome_original else ''
+                    content_types = {
+                        'jpg': 'image/jpeg',
+                        'jpeg': 'image/jpeg',
+                        'png': 'image/png',
+                        'gif': 'image/gif',
+                        'webp': 'image/webp',
+                        'bmp': 'image/bmp'
+                    }
+                    if ext in content_types:
+                        file_response['Content-Type'] = content_types[ext]
+                
+                return file_response
+                
+            except FileNotFoundError:
+                logger.error(f"Arquivo não encontrado no disco: {arquivo.arquivo.name}")
+                return Response({'error': 'Arquivo não encontrado no disco'}, status=404)
+            except Exception as e:
+                logger.error(f"Erro ao abrir arquivo: {e}")
+                return Response({'error': f'Erro ao acessar arquivo: {str(e)}'}, status=500)
+            
+        except RecordApoia.DoesNotExist:
+            return Response({'error': 'Arquivo não encontrado'}, status=404)
+        except Exception as e:
+            logger.error(f"Erro ao fazer download: {e}")
+            return Response({'error': str(e)}, status=500)
