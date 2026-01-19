@@ -70,10 +70,13 @@ class WhatsAppService:
                 print(f"[Z-API] Payload: {payload}")
 
         try:
+            # Timeout maior para documentos (arquivos grandes podem demorar mais)
+            timeout_val = 60 if 'send-document' in url else (15 if method == 'GET' else 30)
+            
             if method == 'GET':
-                response = requests.get(url, headers=self._get_headers(), timeout=15)
+                response = requests.get(url, headers=self._get_headers(), timeout=timeout_val)
             else:
-                response = requests.post(url, json=payload, headers=self._get_headers(), timeout=30)
+                response = requests.post(url, json=payload, headers=self._get_headers(), timeout=timeout_val)
             
             logger.info(f"[Z-API] Status Code: {response.status_code}")
             logger.info(f"[Z-API] Response Headers: {dict(response.headers)}")
@@ -237,11 +240,10 @@ class WhatsAppService:
         tamanho_mb = (len(base64_data) * 3 / 4) / (1024 * 1024)
         logger.info(f"[WhatsAppService] Tamanho aproximado do arquivo: {tamanho_mb:.2f} MB")
         
-        # Avisar se arquivo muito grande (WhatsApp limita a 16MB, mas Z-API pode ter limite menor)
-        if tamanho_mb > 15:
-            logger.warning(f"[WhatsAppService] ⚠️ Arquivo muito grande ({tamanho_mb:.2f} MB). Pode falhar no envio.")
-        elif tamanho_mb > 10:
-            logger.warning(f"[WhatsAppService] ⚠️ Arquivo grande ({tamanho_mb:.2f} MB). Pode ter problemas de timeout.")
+        # Avisar se arquivo muito grande (WhatsApp limita a 100MB, mas Z-API pode ter limite menor para base64)
+        if tamanho_mb > 10:
+            logger.warning(f"[WhatsAppService] ⚠️ Arquivo grande ({tamanho_mb:.2f} MB). Z-API pode ter limitações para base64 grande.")
+            logger.warning(f"[WhatsAppService] ⚠️ Se falhar, considere usar URL pública ao invés de base64.")
         
         logger.info(f"[WhatsAppService] Primeiros 100 chars base64: {base64_data[:100]}...")
         print(f"[PDF-ENVIO] Iniciando envio de PDF: {nome_arquivo} para {telefone_limpo}")
@@ -293,7 +295,15 @@ class WhatsAppService:
                     erro_msg = resp.get('message', resp.get('error', 'Erro desconhecido'))
                     logger.error(f"[WhatsAppService] ❌ Erro da API Z-API: {erro_msg}")
                     logger.error(f"[WhatsAppService] Resposta completa: {resp}")
+                    logger.error(f"[WhatsAppService] Arquivo: {nome_arquivo}, Tamanho: {tamanho_mb:.2f} MB")
+                    
+                    # Mensagem específica para erro de base64 não lido
+                    if 'Base64' in erro_msg or 'could not be read' in erro_msg:
+                        logger.error(f"[WhatsAppService] 💡 SUGESTÃO: Este erro geralmente ocorre com arquivos grandes (>5MB).")
+                        logger.error(f"[WhatsAppService] 💡 Considere usar URL pública ao invés de base64 para arquivos grandes.")
+                    
                     print(f"[PDF-ENVIO] ❌ ERRO DA API: {erro_msg}")
+                    print(f"[PDF-ENVIO] Arquivo: {nome_arquivo}, Tamanho: {tamanho_mb:.2f} MB")
                     return False
                 
                 # Verificar se tem campos de sucesso (messageId, zaapId, id)
