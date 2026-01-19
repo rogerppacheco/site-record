@@ -291,7 +291,8 @@ def processar_webhook_whatsapp(data):
     from crm_app.utils import (
         listar_fachadas_dfv,
         consultar_viabilidade_kmz,
-        consultar_status_venda
+        consultar_status_venda,
+        consultar_andamento_agendamentos
     )
     from crm_app.nio_api import consultar_dividas_nio
     
@@ -431,7 +432,8 @@ def processar_webhook_whatsapp(data):
                 "• *Viabilidade* - Consultar viabilidade por CEP e número\n"
                 "• *Status* - Consultar status de pedido\n"
                 "• *Fatura* - Consultar fatura por CPF\n"
-                "• *Material* - Buscar materiais/documentos"
+                "• *Material* - Buscar materiais/documentos\n"
+                "• *Andamento* - Ver agendamentos do dia"
             )
             logger.info(f"[Webhook] Resposta preparada para MENU/AJUDA")
         
