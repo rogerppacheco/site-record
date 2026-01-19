@@ -142,7 +142,15 @@ def _enviar_pdf_whatsapp(whatsapp_service, telefone, invoice):
     pdf_path = invoice.get('pdf_path', '')
     pdf_filename = invoice.get('pdf_filename', 'fatura.pdf')
     
+    logger.info(f"[Webhook] 📄 _enviar_pdf_whatsapp chamado")
+    logger.info(f"[Webhook] PDF path: {pdf_path}")
+    logger.info(f"[Webhook] PDF filename: {pdf_filename}")
+    logger.info(f"[Webhook] Telefone: {telefone}")
+    print(f"[Webhook] Iniciando _enviar_pdf_whatsapp: path={pdf_path}, filename={pdf_filename}")
+    
     if not pdf_path:
+        logger.warning(f"[Webhook] ⚠️ PDF path vazio, não é possível enviar")
+        print(f"[Webhook] ⚠️ PDF path vazio")
         return False
     
     try:
@@ -151,26 +159,45 @@ def _enviar_pdf_whatsapp(whatsapp_service, telefone, invoice):
         
         # Verificar se o arquivo existe
         if not os.path.exists(pdf_path):
-            logger.warning(f"[Webhook] PDF não encontrado no caminho: {pdf_path}")
+            logger.warning(f"[Webhook] ❌ PDF não encontrado no caminho: {pdf_path}")
+            print(f"[Webhook] ❌ Arquivo não existe: {pdf_path}")
             return False
+        
+        logger.info(f"[Webhook] ✅ Arquivo PDF encontrado, lendo...")
+        print(f"[Webhook] Arquivo encontrado, tamanho: {os.path.getsize(pdf_path)} bytes")
         
         # Ler arquivo e converter para base64
         with open(pdf_path, 'rb') as f:
             pdf_bytes = f.read()
             pdf_base64 = base64.b64encode(pdf_bytes).decode('utf-8')
         
+        logger.info(f"[Webhook] PDF lido e convertido para base64")
+        logger.info(f"[Webhook] Tamanho original: {len(pdf_bytes)} bytes")
+        logger.info(f"[Webhook] Tamanho base64: {len(pdf_base64)} chars")
+        print(f"[Webhook] PDF convertido: {len(pdf_bytes)} bytes -> {len(pdf_base64)} chars base64")
+        
         # Enviar via WhatsApp
         logger.info(f"[Webhook] Enviando PDF via WhatsApp: {pdf_filename} ({len(pdf_bytes)} bytes)")
+        print(f"[Webhook] Chamando enviar_pdf_b64...")
         sucesso = whatsapp_service.enviar_pdf_b64(telefone, pdf_base64, pdf_filename)
         
         if sucesso:
             logger.info(f"[Webhook] ✅ PDF enviado com sucesso via WhatsApp: {pdf_filename}")
+            print(f"[Webhook] ✅ PDF enviado com sucesso")
         else:
             logger.warning(f"[Webhook] ⚠️ Falha ao enviar PDF via WhatsApp: {pdf_filename}")
+            print(f"[Webhook] ⚠️ Falha ao enviar PDF")
         
         return sucesso
+    except FileNotFoundError as fnfe:
+        logger.error(f"[Webhook] ❌ Arquivo não encontrado: {fnfe}")
+        print(f"[Webhook] ❌ FILE NOT FOUND: {fnfe}")
+        import traceback
+        traceback.print_exc()
+        return False
     except Exception as e:
-        logger.error(f"[Webhook] ❌ Erro ao enviar PDF via WhatsApp: {e}")
+        logger.error(f"[Webhook] ❌ Erro ao enviar PDF via WhatsApp: {type(e).__name__}: {e}")
+        print(f"[Webhook] ❌ EXCEÇÃO: {type(e).__name__}: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -1210,12 +1237,22 @@ def processar_webhook_whatsapp(data):
                                 else:
                                     logger.error(f"[Webhook] ❌ Falha ao enviar imagem: {material_para_envio['nome']}")
                             else:  # DOCUMENTO
+                                logger.info(f"[Webhook] 📄 Preparando envio de DOCUMENTO")
+                                logger.info(f"[Webhook] Nome: {material_para_envio.get('nome', 'N/A')}")
+                                logger.info(f"[Webhook] Tipo: {material_para_envio.get('tipo', 'N/A')}")
+                                base64_data = material_para_envio.get('base64', '')
+                                logger.info(f"[Webhook] Base64 disponível: {bool(base64_data)}")
+                                logger.info(f"[Webhook] Tamanho base64: {len(base64_data) if base64_data else 0} chars")
+                                print(f"[Webhook] Enviando documento: {material_para_envio.get('nome')}, base64 size: {len(base64_data) if base64_data else 0}")
+                                
                                 sucesso = whatsapp_service.enviar_pdf_b64(telefone_formatado, material_para_envio['base64'], material_para_envio['nome'])
                                 if sucesso:
                                     logger.info(f"[Webhook] ✅ Documento enviado com sucesso: {material_para_envio['nome']}")
+                                    print(f"[Webhook] ✅ Documento enviado: {material_para_envio['nome']}")
                                     arquivo_enviado = True
                                 else:
                                     logger.error(f"[Webhook] ❌ Falha ao enviar documento: {material_para_envio['nome']}")
+                                    print(f"[Webhook] ❌ Falha ao enviar documento: {material_para_envio['nome']}")
                         except Exception as e:
                             logger.error(f"[Webhook] ❌ Erro ao enviar material: {e}")
                             import traceback

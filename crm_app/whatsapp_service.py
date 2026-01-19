@@ -56,8 +56,18 @@ class WhatsAppService:
         # LOG DETALHADO PARA DEBUG
         logger.info(f"[Z-API] Método: {method}, URL: {url}")
         logger.info(f"[Z-API] Headers: {self._get_headers()}")
+        
         if payload:
-            logger.info(f"[Z-API] Payload: {payload}")
+            # Para documentos, não logar o base64 completo (muito grande)
+            if 'document' in payload and isinstance(payload.get('document'), str):
+                payload_log = payload.copy()
+                doc_size = len(payload['document'])
+                payload_log['document'] = f"[BASE64: {doc_size} chars] {payload['document'][:50]}..."
+                logger.info(f"[Z-API] Payload: {payload_log}")
+                print(f"[Z-API] Payload: phone={payload.get('phone')}, fileName={payload.get('fileName')}, document size={doc_size} chars")
+            else:
+                logger.info(f"[Z-API] Payload: {payload}")
+                print(f"[Z-API] Payload: {payload}")
 
         try:
             if method == 'GET':
@@ -66,27 +76,48 @@ class WhatsAppService:
                 response = requests.post(url, json=payload, headers=self._get_headers(), timeout=30)
             
             logger.info(f"[Z-API] Status Code: {response.status_code}")
-            logger.info(f"[Z-API] Response Text: {response.text[:500]}...")
+            logger.info(f"[Z-API] Response Headers: {dict(response.headers)}")
+            logger.info(f"[Z-API] Response Text (primeiros 500 chars): {response.text[:500]}...")
+            print(f"[Z-API] Status: {response.status_code}, Response length: {len(response.text)} chars")
             
             if response.status_code not in [200, 201]:
-                logger.error(f"[Z-API] Erro {response.status_code}: {response.text}")
+                logger.error(f"[Z-API] ❌ Erro HTTP {response.status_code}")
+                logger.error(f"[Z-API] Response completa: {response.text}")
+                print(f"[Z-API] ❌ ERRO HTTP {response.status_code}: {response.text[:200]}")
                 return None
             
             try:
                 json_response = response.json()
-                logger.info(f"[Z-API] JSON Response: {json_response}")
+                logger.info(f"[Z-API] ✅ JSON Response: {json_response}")
+                print(f"[Z-API] ✅ Resposta JSON: {json_response}")
                 return json_response
-            except ValueError:
-                logger.warning(f"[Z-API] Resposta não é JSON, retornando texto: {response.text[:200]}")
+            except ValueError as ve:
+                logger.warning(f"[Z-API] ⚠️ Resposta não é JSON (ValueError: {ve})")
+                logger.warning(f"[Z-API] Response text (primeiros 200 chars): {response.text[:200]}")
+                print(f"[Z-API] ⚠️ Resposta não é JSON: {response.text[:200]}")
                 return response.text
 
+        except requests.exceptions.Timeout as te:
+            logger.error(f"[Z-API] ❌ Timeout Error: {te}")
+            print(f"[Z-API] ❌ TIMEOUT: {te}")
+            import traceback
+            traceback.print_exc()
+            return None
+        except requests.exceptions.ConnectionError as ce:
+            logger.error(f"[Z-API] ❌ Connection Error: {ce}")
+            print(f"[Z-API] ❌ CONEXÃO: {ce}")
+            import traceback
+            traceback.print_exc()
+            return None
         except requests.exceptions.RequestException as e:
-            logger.error(f"[Z-API] Connection Error: {e}")
+            logger.error(f"[Z-API] ❌ Request Exception: {type(e).__name__}: {e}")
+            print(f"[Z-API] ❌ REQUEST EXCEPTION: {type(e).__name__}: {e}")
             import traceback
             traceback.print_exc()
             return None
         except Exception as e:
-            logger.error(f"[Z-API] Generic Error: {e}")
+            logger.error(f"[Z-API] ❌ Generic Error: {type(e).__name__}: {e}")
+            print(f"[Z-API] ❌ ERRO GENÉRICO: {type(e).__name__}: {e}")
             import traceback
             traceback.print_exc()
             return None
@@ -186,15 +217,33 @@ class WhatsAppService:
         url = f"{self.base_url}/send-document"
         telefone_limpo = self._formatar_telefone(telefone)
         
-        logger.info(f"[WhatsAppService] Enviando documento para {telefone_limpo}")
-        logger.info(f"[WhatsAppService] Arquivo: {nome_arquivo}, Tamanho base64: {len(base64_data)} chars")
+        logger.info(f"[WhatsAppService] 📄 INICIANDO ENVIO DE PDF")
+        logger.info(f"[WhatsAppService] Telefone: {telefone} -> Formatado: {telefone_limpo}")
+        logger.info(f"[WhatsAppService] Arquivo: {nome_arquivo}")
+        logger.info(f"[WhatsAppService] Tamanho base64 original: {len(base64_data)} chars")
+        logger.info(f"[WhatsAppService] Primeiros 100 chars base64: {base64_data[:100]}...")
+        print(f"[PDF-ENVIO] Iniciando envio de PDF: {nome_arquivo} para {telefone_limpo}")
+        print(f"[PDF-ENVIO] Tamanho base64: {len(base64_data)} chars")
         
         # Z-API send-document geralmente aceita apenas base64 puro (sem prefixo data:)
         # Remover prefixo se existir
+        base64_original = base64_data
         if base64_data.startswith('data:'):
+            logger.info(f"[WhatsAppService] ⚠️ Base64 contém prefixo 'data:', removendo...")
             # Extrair apenas o base64 (depois do "base64,")
             if 'base64,' in base64_data:
                 base64_data = base64_data.split('base64,', 1)[1]
+                logger.info(f"[WhatsAppService] Base64 após remoção do prefixo: {len(base64_data)} chars")
+        
+        # Validar base64
+        try:
+            import base64 as b64_module
+            # Tentar decodificar para validar
+            b64_module.b64decode(base64_data[:100])  # Testar apenas os primeiros chars
+            logger.info(f"[WhatsAppService] ✅ Base64 válido (teste de decodificação)")
+        except Exception as e:
+            logger.error(f"[WhatsAppService] ❌ Base64 inválido: {e}")
+            print(f"[PDF-ENVIO] ERRO: Base64 inválido - {e}")
         
         payload = {
             "phone": telefone_limpo,
@@ -202,18 +251,36 @@ class WhatsAppService:
             "fileName": nome_arquivo
         }
         
+        logger.info(f"[WhatsAppService] Payload preparado:")
+        logger.info(f"[WhatsAppService]   - phone: {telefone_limpo}")
+        logger.info(f"[WhatsAppService]   - fileName: {nome_arquivo}")
+        logger.info(f"[WhatsAppService]   - document (tamanho): {len(base64_data)} chars")
+        logger.info(f"[WhatsAppService] URL: {url}")
+        print(f"[PDF-ENVIO] Enviando requisição para: {url}")
+        print(f"[PDF-ENVIO] Payload size: phone={telefone_limpo}, fileName={nome_arquivo}, document={len(base64_data)} chars")
+        
         try:
             resp = self._send_request(url, payload)
+            logger.info(f"[WhatsAppService] Resposta recebida do _send_request: {resp}")
+            print(f"[PDF-ENVIO] Resposta da API: {resp}")
+            
             if resp:
                 logger.info(f"[WhatsAppService] ✅ Documento enviado com sucesso: {nome_arquivo}")
+                print(f"[PDF-ENVIO] ✅ SUCESSO: Documento enviado")
                 return True
             else:
-                logger.error(f"[WhatsAppService] ❌ Erro ao enviar documento: resposta vazia")
+                logger.error(f"[WhatsAppService] ❌ Erro ao enviar documento: resposta vazia ou None")
+                logger.error(f"[WhatsAppService] Tipo da resposta: {type(resp)}")
+                print(f"[PDF-ENVIO] ❌ ERRO: Resposta vazia ou None")
                 return False
         except Exception as e:
             logger.error(f"[WhatsAppService] ❌ Erro ao enviar documento: {e}")
+            logger.error(f"[WhatsAppService] Tipo do erro: {type(e).__name__}")
             import traceback
-            traceback.print_exc()
+            tb_str = traceback.format_exc()
+            logger.error(f"[WhatsAppService] Traceback completo:\n{tb_str}")
+            print(f"[PDF-ENVIO] ❌ EXCEÇÃO: {type(e).__name__}: {e}")
+            print(f"[PDF-ENVIO] Traceback: {tb_str}")
             return False
 
     # ---------------------------------------------------------
