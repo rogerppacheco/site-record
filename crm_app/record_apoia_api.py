@@ -447,6 +447,75 @@ class RecordApoiaDiagnosticoView(APIView):
             }, status=500)
 
 
+class RecordApoiaBuscarView(APIView):
+    """
+    View para buscar arquivos específicos no Record Apoia (incluindo inativos).
+    Útil para encontrar e limpar arquivos problemáticos.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        try:
+            busca = request.query_params.get('busca', '').strip()
+            incluir_inativos = request.query_params.get('incluir_inativos', 'false').lower() == 'true'
+            
+            if not busca:
+                return Response({'error': 'Parâmetro "busca" é obrigatório'}, status=400)
+            
+            queryset = RecordApoia.objects.all()
+            
+            if not incluir_inativos:
+                queryset = queryset.filter(ativo=True)
+            
+            # Buscar por título ou nome original
+            from django.db.models import Q
+            queryset = queryset.filter(
+                Q(titulo__icontains=busca) | Q(nome_original__icontains=busca)
+            )
+            
+            arquivos = []
+            for arq in queryset:
+                # Determinar tipo do arquivo
+                tipo = 'OUTRO'
+                if arq.nome_original:
+                    ext = arq.nome_original.split('.')[-1].lower()
+                    if ext in ['pdf']:
+                        tipo = 'PDF'
+                    elif ext in ['doc', 'docx']:
+                        tipo = 'WORD'
+                    elif ext in ['xls', 'xlsx']:
+                        tipo = 'EXCEL'
+                    elif ext in ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp']:
+                        tipo = 'IMAGEM'
+                    elif ext in ['mp4', 'avi', 'mov', 'wmv', 'mkv', 'webm']:
+                        tipo = 'VIDEO'
+                
+                arquivos.append({
+                    'id': arq.id,
+                    'titulo': arq.titulo,
+                    'nome_original': arq.nome_original,
+                    'ativo': arq.ativo,
+                    'data_upload': arq.data_upload.isoformat() if arq.data_upload else None,
+                    'arquivo_path': arq.arquivo.name if arq.arquivo else None,
+                    'tamanho_bytes': arq.tamanho_bytes,
+                    'tipo_arquivo': tipo
+                })
+            
+            return Response({
+                'success': True,
+                'total': len(arquivos),
+                'arquivos': arquivos
+            })
+            
+        except Exception as e:
+            logger.error(f"Erro ao buscar arquivos: {e}")
+            import traceback
+            return Response({
+                'error': str(e),
+                'traceback': traceback.format_exc()
+            }, status=500)
+
+
 class RecordApoiaCorrigirNomesView(APIView):
     """
     View para corrigir nomes de arquivos no banco que não correspondem aos arquivos no disco.
