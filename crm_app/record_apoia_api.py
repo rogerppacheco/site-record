@@ -195,14 +195,11 @@ class RecordApoiaListView(APIView):
                             tamanho = 0
                     
                     # Só adicionar arquivos que existem fisicamente
+                    # IMPORTANTE: Não desativar automaticamente - apenas pular da listagem
+                    # O arquivo pode estar temporariamente indisponível (deploy, storage, etc)
                     if arq.arquivo and arq.arquivo.name and not arquivo_existe:
-                        # Arquivo não existe - marcar como inativo automaticamente
-                        try:
-                            arq.ativo = False
-                            arq.save(update_fields=['ativo'])
-                            logger.warning(f"Arquivo {arq.id} ({arq.titulo}) marcado como inativo - arquivo não encontrado no disco")
-                        except Exception as deactivate_error:
-                            logger.error(f"Erro ao marcar arquivo {arq.id} como inativo: {deactivate_error}")
+                        # Arquivo não existe no disco - apenas pular da listagem (não desativar)
+                        logger.warning(f"Arquivo {arq.id} ({arq.titulo}) não encontrado no disco - pulando da listagem (mantendo ativo no banco)")
                         continue  # Pular este arquivo
                     
                     # Se não tem arquivo definido, também pular (registro inválido)
