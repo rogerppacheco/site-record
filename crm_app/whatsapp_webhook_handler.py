@@ -425,7 +425,7 @@ def processar_webhook_whatsapp(data):
             sessao.etapa = 'inicial'
             sessao.dados_temp = {}
             sessao.save()
-            resposta = consultar_andamento_agendamentos()
+            resposta = consultar_andamento_agendamentos(telefone_formatado)
             logger.info(f"[Webhook] Resposta preparada para ANDAMENTO")
             _registrar_estatistica(telefone_formatado, 'ANDAMENTO')
         
