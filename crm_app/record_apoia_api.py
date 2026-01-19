@@ -45,6 +45,21 @@ class RecordApoiaUploadView(APIView):
                         # Se múltiplos arquivos e título fornecido, usar título + nome do arquivo
                         titulo_arquivo = f"{titulo} - {arquivo.name}"
                     
+                    # Determinar tipo_arquivo baseado na extensão
+                    tipo_arquivo = 'OUTRO'
+                    if arquivo.name:
+                        ext = arquivo.name.split('.')[-1].lower()
+                        if ext in ['pdf']:
+                            tipo_arquivo = 'PDF'
+                        elif ext in ['doc', 'docx']:
+                            tipo_arquivo = 'WORD'
+                        elif ext in ['xls', 'xlsx']:
+                            tipo_arquivo = 'EXCEL'
+                        elif ext in ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp']:
+                            tipo_arquivo = 'IMAGEM'
+                        elif ext in ['mp4', 'avi', 'mov', 'wmv', 'mkv', 'webm']:
+                            tipo_arquivo = 'VIDEO'
+                    
                     # Criar registro
                     record = RecordApoia.objects.create(
                         titulo=titulo_arquivo,
@@ -53,6 +68,7 @@ class RecordApoiaUploadView(APIView):
                         tags=tags,
                         arquivo=arquivo,
                         nome_original=arquivo.name,
+                        tipo_arquivo=tipo_arquivo,
                         usuario_upload=request.user
                     )
                     
@@ -254,8 +270,14 @@ class RecordApoiaDownloadView(APIView):
         # Record Apoia é acessível a todos os usuários autenticados
         try:
             arquivo = RecordApoia.objects.get(id=arquivo_id, ativo=True)
-            arquivo.downloads_count += 1
-            arquivo.save(update_fields=['downloads_count'])
+            
+            # Verificar se é preview (query param preview=true)
+            is_preview = request.query_params.get('preview', 'false').lower() == 'true'
+            
+            # Incrementar contador apenas se não for preview
+            if not is_preview:
+                arquivo.downloads_count += 1
+                arquivo.save(update_fields=['downloads_count'])
             
             if not arquivo.arquivo:
                 return Response({'error': 'Arquivo não encontrado'}, status=404)
@@ -263,12 +285,45 @@ class RecordApoiaDownloadView(APIView):
             # Tentar abrir o arquivo
             try:
                 arquivo.arquivo.open('rb')
-                return FileResponse(arquivo.arquivo.open('rb'), as_attachment=True, filename=arquivo.nome_original)
+                file_response = FileResponse(
+                    arquivo.arquivo.open('rb'), 
+                    as_attachment=not is_preview,  # Se for preview, não força download
+                    filename=arquivo.nome_original
+                )
+                # Para imagens em preview, definir content-type apropriado
+                if is_preview and arquivo.tipo_arquivo == 'IMAGEM':
+                    ext = arquivo.nome_original.split('.')[-1].lower()
+                    content_types = {
+                        'jpg': 'image/jpeg',
+                        'jpeg': 'image/jpeg',
+                        'png': 'image/png',
+                        'gif': 'image/gif',
+                        'webp': 'image/webp',
+                        'bmp': 'image/bmp'
+                    }
+                    file_response['Content-Type'] = content_types.get(ext, 'image/jpeg')
+                return file_response
             except (FileNotFoundError, IOError, OSError) as e:
                 logger.error(f"Erro ao abrir arquivo {arquivo.arquivo.name}: {e}")
                 # Tentar usar storage
                 if default_storage.exists(arquivo.arquivo.name):
-                    return FileResponse(default_storage.open(arquivo.arquivo.name, 'rb'), as_attachment=True, filename=arquivo.nome_original)
+                    file_response = FileResponse(
+                        default_storage.open(arquivo.arquivo.name, 'rb'), 
+                        as_attachment=not is_preview,
+                        filename=arquivo.nome_original
+                    )
+                    if is_preview and arquivo.tipo_arquivo == 'IMAGEM':
+                        ext = arquivo.nome_original.split('.')[-1].lower()
+                        content_types = {
+                            'jpg': 'image/jpeg',
+                            'jpeg': 'image/jpeg',
+                            'png': 'image/png',
+                            'gif': 'image/gif',
+                            'webp': 'image/webp',
+                            'bmp': 'image/bmp'
+                        }
+                        file_response['Content-Type'] = content_types.get(ext, 'image/jpeg')
+                    return file_response
                 else:
                     return Response({'error': f'Arquivo físico não encontrado: {arquivo.arquivo.name}'}, status=404)
                     

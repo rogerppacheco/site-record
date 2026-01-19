@@ -180,6 +180,56 @@
             margin-bottom: 20px;
             opacity: 0.3;
         }
+
+        /* Preview/Hover */
+        .file-preview-container {
+            position: relative;
+            display: inline-block;
+        }
+
+        .file-preview-tooltip {
+            visibility: hidden;
+            opacity: 0;
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            margin-bottom: 10px;
+            background-color: white;
+            border: 2px solid #4e73df;
+            border-radius: 8px;
+            padding: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 1000;
+            width: 300px;
+            transition: opacity 0.3s, visibility 0.3s;
+            pointer-events: none;
+        }
+
+        .file-preview-container:hover .file-preview-tooltip {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        .file-preview-tooltip img {
+            max-width: 100%;
+            max-height: 300px;
+            display: block;
+            border-radius: 4px;
+        }
+
+        .file-preview-tooltip .preview-info {
+            margin-top: 8px;
+            font-size: 0.75rem;
+            color: #5a5c69;
+            text-align: center;
+        }
+
+        .file-preview-icon {
+            cursor: help;
+            color: #4e73df;
+            margin-left: 5px;
+        }
     </style>
 </head>
 <body>
@@ -743,11 +793,22 @@
                     <div class="d-flex align-items-start">
                         <i class="bi ${icon} file-type-icon ${classe}"></i>
                         <div class="flex-grow-1">
-                            <h6 class="fw-bold mb-2">${arquivo.titulo}</h6>
+                            <div class="file-preview-container">
+                                <h6 class="fw-bold mb-2">
+                                    ${arquivo.titulo}
+                                    ${arquivo.tipo_arquivo === 'IMAGEM' ? `<i class="bi bi-eye file-preview-icon" title="Passe o mouse para prévia"></i>` : ''}
+                                </h6>
+                                ${arquivo.tipo_arquivo === 'IMAGEM' ? `
+                                <div class="file-preview-tooltip">
+                                    <img src="${API_BASE_URL}/api/crm/record-apoia/download/${arquivo.id}/?preview=true" alt="${arquivo.titulo}" onerror="this.parentElement.style.display='none'">
+                                    <div class="preview-info">${arquivo.titulo}</div>
+                                </div>
+                                ` : ''}
+                            </div>
                             ${arquivo.descricao ? `<p class="text-muted mb-2">${arquivo.descricao}</p>` : ''}
                             <div class="file-meta mb-2">
                                 ${arquivo.categoria ? `<span class="badge-categoria">${arquivo.categoria}</span>` : ''}
-                                <span class="badge-tipo">${arquivo.tipo_arquivo_display}</span>
+                                <span class="badge-tipo">${arquivo.tipo_arquivo_display || 'Não especificado'}</span>
                                 <span class="ms-2"><i class="bi bi-hdd me-1"></i>${arquivo.tamanho_formatado}</span>
                                 <span class="ms-2"><i class="bi bi-download me-1"></i>${arquivo.downloads_count} downloads</span>
                                 <span class="ms-2"><i class="bi bi-calendar me-1"></i>${arquivo.data_upload_formatada}</span>
