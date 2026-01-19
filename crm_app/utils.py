@@ -443,3 +443,68 @@ def consultar_previsao_agendamento(numero_pedido):
             f"• Se o pedido já foi agendado\n"
             f"• Se foi importado na última base"
         )
+
+
+def consultar_andamento_agendamentos():
+    """
+    Busca todos os agendamentos do dia atual com horários de execução real definidos.
+    Retorna mensagem formatada com os clientes e intervalos de horário.
+    """
+    from .models import ImportacaoAgendamento, Venda
+    from django.utils import timezone
+    from django.db.models import Q
+    
+    hoje = timezone.now().date()
+    
+    # Buscar agendamentos do dia com horários de execução real preenchidos
+    agendamentos = ImportacaoAgendamento.objects.filter(
+        dt_agendamento=hoje,
+        dt_inicio_execucao_real__isnull=False,
+        dt_fim_execucao_real__isnull=False
+    ).order_by('dt_inicio_execucao_real')
+    
+    if not agendamentos.exists():
+        return (
+            "📅 *AGENDAMENTOS DO DIA*\n\n"
+            f"❌ Não há agendamentos para hoje ({hoje.strftime('%d/%m/%Y')}) com horários de execução definidos."
+        )
+    
+    mensagens = []
+    mensagens.append(f"📅 *AGENDAMENTOS DO DIA*\n\nData: {hoje.strftime('%d/%m/%Y')}\n")
+    mensagens.append(f"Total: {agendamentos.count()} agendamento(s)\n")
+    mensagens.append("=" * 30 + "\n")
+    
+    for idx, agend in enumerate(agendamentos, 1):
+        # Tentar encontrar a venda relacionada
+        cliente_nome = "Cliente não identificado"
+        os_num = agend.nr_ordem_venda or agend.nr_ordem or "N/A"
+        
+        if agend.nr_ordem_venda:
+            # Buscar venda por ordem_servico
+            venda = Venda.objects.filter(
+                ordem_servico=agend.nr_ordem_venda,
+                ativo=True
+            ).select_related('cliente').first()
+            
+            if venda and venda.cliente:
+                cliente_nome = venda.cliente.nome_razao_social or cliente_nome
+        
+        # Formatar horários
+        inicio_fmt = agend.dt_inicio_execucao_real.strftime('%H:%M')
+        fim_fmt = agend.dt_fim_execucao_real.strftime('%H:%M')
+        intervalo = f"{inicio_fmt} - {fim_fmt}"
+        
+        # Informações adicionais
+        municipio = agend.nm_municipio or ""
+        atividade = agend.ds_atividade or "Instalação"
+        
+        mensagens.append(f"{idx}. *{cliente_nome}*\n")
+        mensagens.append(f"   🔢 O.S: {os_num}\n")
+        mensagens.append(f"   ⏰ Horário: {intervalo}\n")
+        if municipio:
+            mensagens.append(f"   📍 Local: {municipio}\n")
+        if atividade:
+            mensagens.append(f"   🔧 Atividade: {atividade}\n")
+        mensagens.append("\n")
+    
+    return "".join(mensagens).strip()
