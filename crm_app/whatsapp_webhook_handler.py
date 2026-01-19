@@ -420,6 +420,15 @@ def processar_webhook_whatsapp(data):
             logger.info(f"[Webhook] Resposta preparada para MATERIAL")
             _registrar_estatistica(telefone_formatado, 'MATERIAL')
         
+        elif mensagem_limpa in ['ANDAMENTO', 'ANDAMENTOS']:
+            logger.info(f"[Webhook] Comando ANDAMENTO reconhecido!")
+            sessao.etapa = 'inicial'
+            sessao.dados_temp = {}
+            sessao.save()
+            resposta = consultar_andamento_agendamentos()
+            logger.info(f"[Webhook] Resposta preparada para ANDAMENTO")
+            _registrar_estatistica(telefone_formatado, 'ANDAMENTO')
+        
         elif mensagem_limpa in ['MENU', 'AJUDA', 'HELP', 'OPCOES', 'OPÇÕES', 'OPCOES', 'OPÇOES']:
             logger.info(f"[Webhook] Comando MENU/AJUDA reconhecido!")
             sessao.etapa = 'inicial'
