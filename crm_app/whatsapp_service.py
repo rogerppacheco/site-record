@@ -84,7 +84,12 @@ class WhatsAppService:
                 logger.error(f"[Z-API] ❌ Erro HTTP {response.status_code}")
                 logger.error(f"[Z-API] Response completa: {response.text}")
                 print(f"[Z-API] ❌ ERRO HTTP {response.status_code}: {response.text[:200]}")
-                return None
+                # Tentar parsear JSON mesmo com erro para retornar a mensagem de erro
+                try:
+                    error_json = response.json()
+                    return error_json  # Retornar o erro como dict para tratamento
+                except:
+                    return None
             
             try:
                 json_response = response.json()
@@ -213,17 +218,34 @@ class WhatsAppService:
     def enviar_pdf_b64(self, telefone, base64_data, nome_arquivo="extrato.pdf"):
         """
         Envia documento (PDF, Word, Excel, etc) em Base64 via Z-API.
+        Z-API requer: /send-document/{extension}
         """
-        url = f"{self.base_url}/send-document"
+        # Extrair extensão do arquivo para incluir na URL (ex: pdf, docx, xlsx)
+        extensao = 'pdf'  # padrão
+        if '.' in nome_arquivo:
+            extensao = nome_arquivo.split('.')[-1].lower()
+        
+        url = f"{self.base_url}/send-document/{extensao}"
         telefone_limpo = self._formatar_telefone(telefone)
         
         logger.info(f"[WhatsAppService] 📄 INICIANDO ENVIO DE PDF")
         logger.info(f"[WhatsAppService] Telefone: {telefone} -> Formatado: {telefone_limpo}")
         logger.info(f"[WhatsAppService] Arquivo: {nome_arquivo}")
         logger.info(f"[WhatsAppService] Tamanho base64 original: {len(base64_data)} chars")
+        
+        # Calcular tamanho aproximado em MB (base64 tem ~33% de overhead)
+        tamanho_mb = (len(base64_data) * 3 / 4) / (1024 * 1024)
+        logger.info(f"[WhatsAppService] Tamanho aproximado do arquivo: {tamanho_mb:.2f} MB")
+        
+        # Avisar se arquivo muito grande (WhatsApp limita a 16MB, mas Z-API pode ter limite menor)
+        if tamanho_mb > 15:
+            logger.warning(f"[WhatsAppService] ⚠️ Arquivo muito grande ({tamanho_mb:.2f} MB). Pode falhar no envio.")
+        elif tamanho_mb > 10:
+            logger.warning(f"[WhatsAppService] ⚠️ Arquivo grande ({tamanho_mb:.2f} MB). Pode ter problemas de timeout.")
+        
         logger.info(f"[WhatsAppService] Primeiros 100 chars base64: {base64_data[:100]}...")
         print(f"[PDF-ENVIO] Iniciando envio de PDF: {nome_arquivo} para {telefone_limpo}")
-        print(f"[PDF-ENVIO] Tamanho base64: {len(base64_data)} chars")
+        print(f"[PDF-ENVIO] Tamanho base64: {len(base64_data)} chars (~{tamanho_mb:.2f} MB)")
         
         # Z-API send-document geralmente aceita apenas base64 puro (sem prefixo data:)
         # Remover prefixo se existir
@@ -255,9 +277,10 @@ class WhatsAppService:
         logger.info(f"[WhatsAppService]   - phone: {telefone_limpo}")
         logger.info(f"[WhatsAppService]   - fileName: {nome_arquivo}")
         logger.info(f"[WhatsAppService]   - document (tamanho): {len(base64_data)} chars")
-        logger.info(f"[WhatsAppService] URL: {url}")
+        logger.info(f"[WhatsAppService] URL completa: {url}")
+        logger.info(f"[WhatsAppService] Extensão usada: {extensao}")
         print(f"[PDF-ENVIO] Enviando requisição para: {url}")
-        print(f"[PDF-ENVIO] Payload size: phone={telefone_limpo}, fileName={nome_arquivo}, document={len(base64_data)} chars")
+        print(f"[PDF-ENVIO] Extensão: {extensao}, Payload size: phone={telefone_limpo}, fileName={nome_arquivo}, document={len(base64_data)} chars")
         
         try:
             resp = self._send_request(url, payload)
@@ -265,9 +288,25 @@ class WhatsAppService:
             print(f"[PDF-ENVIO] Resposta da API: {resp}")
             
             if resp:
-                logger.info(f"[WhatsAppService] ✅ Documento enviado com sucesso: {nome_arquivo}")
-                print(f"[PDF-ENVIO] ✅ SUCESSO: Documento enviado")
-                return True
+                # Verificar se a resposta contém erro
+                if isinstance(resp, dict) and resp.get('error'):
+                    erro_msg = resp.get('message', resp.get('error', 'Erro desconhecido'))
+                    logger.error(f"[WhatsAppService] ❌ Erro da API Z-API: {erro_msg}")
+                    logger.error(f"[WhatsAppService] Resposta completa: {resp}")
+                    print(f"[PDF-ENVIO] ❌ ERRO DA API: {erro_msg}")
+                    return False
+                
+                # Verificar se tem campos de sucesso (messageId, zaapId, id)
+                if isinstance(resp, dict) and (resp.get('messageId') or resp.get('zaapId') or resp.get('id')):
+                    logger.info(f"[WhatsAppService] ✅ Documento enviado com sucesso: {nome_arquivo}")
+                    logger.info(f"[WhatsAppService] MessageId: {resp.get('messageId', 'N/A')}")
+                    print(f"[PDF-ENVIO] ✅ SUCESSO: Documento enviado (MessageId: {resp.get('messageId', 'N/A')})")
+                    return True
+                else:
+                    # Resposta não tem erro, mas também não tem indicadores de sucesso
+                    logger.warning(f"[WhatsAppService] ⚠️ Resposta inesperada: {resp}")
+                    print(f"[PDF-ENVIO] ⚠️ AVISO: Resposta inesperada")
+                    return False
             else:
                 logger.error(f"[WhatsAppService] ❌ Erro ao enviar documento: resposta vazia ou None")
                 logger.error(f"[WhatsAppService] Tipo da resposta: {type(resp)}")
