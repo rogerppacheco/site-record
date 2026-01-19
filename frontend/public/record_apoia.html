@@ -358,6 +358,25 @@
             </div>
         </div>
 
+        <!-- Seção de Administração (apenas para administradores) -->
+        <div class="filters-section" id="secaoAdmin" style="display: none;">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="fw-bold mb-0"><i class="bi bi-shield-check text-warning me-2"></i>Administração - Arquivos Órfãos</h5>
+                <button class="btn btn-sm btn-warning" onclick="carregarOrfaos()">
+                    <i class="bi bi-arrow-clockwise me-1"></i>Atualizar
+                </button>
+            </div>
+            <div class="alert alert-info mb-3">
+                <small>
+                    <strong>Arquivos órfãos:</strong> Registros no banco que não correspondem a arquivos no disco, ou arquivos físicos de registros inativos.
+                </small>
+            </div>
+            <div id="orfaosConteudo" class="text-center py-3">
+                <div class="spinner-border text-primary spinner-border-sm"></div>
+                <small class="d-block mt-2 text-muted">Carregando...</small>
+            </div>
+        </div>
+
         <!-- Lista de Arquivos -->
         <div class="file-list-section">
             <div class="d-flex justify-content-between align-items-center mb-4">
@@ -1095,8 +1114,170 @@
             }
         }
 
+        // Verificar se é administrador e mostrar seção de admin
+        async function verificarAdmin() {
+            try {
+                const token = localStorage.getItem('accessToken');
+                const res = await fetch(`${API_BASE_URL}/api/usuarios/me/`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if (res.ok) {
+                    const user = await res.json();
+                    let gruposNomes = [];
+                    if (user.groups && Array.isArray(user.groups)) {
+                        gruposNomes = user.groups.map(g => {
+                            if (typeof g === 'string') return g;
+                            if (g.name) return g.name;
+                            return null;
+                        }).filter(Boolean);
+                    }
+                    
+                    const isAdmin = gruposNomes.some(g => 
+                        ['Diretoria', 'Admin', 'BackOffice'].includes(g)
+                    );
+                    
+                    if (isAdmin) {
+                        document.getElementById('secaoAdmin').style.display = 'block';
+                        carregarOrfaos();
+                    }
+                }
+            } catch (e) {
+                console.error('Erro ao verificar permissões:', e);
+            }
+        }
+
+        // Carregar arquivos órfãos
+        async function carregarOrfaos() {
+            const conteudo = document.getElementById('orfaosConteudo');
+            conteudo.innerHTML = '<div class="spinner-border text-primary spinner-border-sm"></div><small class="d-block mt-2 text-muted">Carregando...</small>';
+            
+            try {
+                const token = localStorage.getItem('accessToken');
+                const response = await fetch(`${API_BASE_URL}/api/crm/record-apoia/admin/orfaos/`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.status === 403) {
+                    conteudo.innerHTML = '<div class="alert alert-warning mb-0"><small>Acesso negado. Apenas administradores podem acessar esta seção.</small></div>';
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    const totalInativos = data.total_inativos_com_arquivo || 0;
+                    const totalSemArquivo = data.total_ativos_sem_arquivo || 0;
+                    
+                    if (totalInativos === 0 && totalSemArquivo === 0) {
+                        conteudo.innerHTML = '<div class="alert alert-success mb-0"><small><i class="bi bi-check-circle me-1"></i>Nenhum arquivo órfão encontrado!</small></div>';
+                    } else {
+                        let html = '<div class="row g-3">';
+                        
+                        if (totalInativos > 0) {
+                            html += `
+                                <div class="col-md-6">
+                                    <div class="card border-warning">
+                                        <div class="card-body">
+                                            <h6 class="card-title text-warning"><i class="bi bi-file-x me-2"></i>Inativos com Arquivo</h6>
+                                            <p class="card-text"><strong>${totalInativos}</strong> arquivo(s) inativo(s) que ainda existem no disco</p>
+                                            <button class="btn btn-sm btn-warning" onclick="limparOrfaos('inativos')">
+                                                <i class="bi bi-trash me-1"></i>Limpar Arquivos Físicos
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        }
+                        
+                        if (totalSemArquivo > 0) {
+                            html += `
+                                <div class="col-md-6">
+                                    <div class="card border-danger">
+                                        <div class="card-body">
+                                            <h6 class="card-title text-danger"><i class="bi bi-file-earmark-x me-2"></i>Ativos sem Arquivo</h6>
+                                            <p class="card-text"><strong>${totalSemArquivo}</strong> registro(s) no banco sem arquivo no disco</p>
+                                            <button class="btn btn-sm btn-danger" onclick="limparOrfaos('sem_arquivo')">
+                                                <i class="bi bi-trash me-1"></i>Limpar Registros
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        }
+                        
+                        html += '</div>';
+                        
+                        if (totalInativos > 0 || totalSemArquivo > 0) {
+                            html += `
+                                <div class="mt-3 text-center">
+                                    <button class="btn btn-danger" onclick="limparOrfaos('todos')">
+                                        <i class="bi bi-trash-fill me-2"></i>Limpar Todos
+                                    </button>
+                                </div>
+                            `;
+                        }
+                        
+                        conteudo.innerHTML = html;
+                    }
+                } else {
+                    throw new Error(data.error || 'Erro ao carregar arquivos órfãos');
+                }
+            } catch (error) {
+                conteudo.innerHTML = `
+                    <div class="alert alert-danger mb-0">
+                        <small>Erro: ${error.message}</small>
+                    </div>
+                `;
+            }
+        }
+
+        // Limpar arquivos órfãos
+        async function limparOrfaos(tipo) {
+            const tipos = {
+                'inativos': 'arquivos físicos de registros inativos',
+                'sem_arquivo': 'registros ativos sem arquivo no disco',
+                'todos': 'todos os arquivos órfãos'
+            };
+            
+            const confirmacao = confirm(
+                `Tem certeza que deseja limpar ${tipos[tipo] || 'os arquivos órfãos'}?\n\n` +
+                `Esta ação não pode ser desfeita.`
+            );
+            
+            if (!confirmacao) return;
+            
+            try {
+                const token = localStorage.getItem('accessToken');
+                const response = await fetch(`${API_BASE_URL}/api/crm/record-apoia/admin/limpar-orfaos/`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ tipo: tipo })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    alert(`${data.mensagem}\n\n${data.total_limpos} item(s) limpo(s).`);
+                    carregarOrfaos();
+                    carregarArquivos(currentPage); // Recarregar lista principal
+                } else {
+                    throw new Error(data.error || 'Erro ao limpar arquivos órfãos');
+                }
+            } catch (error) {
+                alert('Erro ao limpar arquivos órfãos: ' + error.message);
+            }
+        }
+
         // Carregar arquivos ao iniciar
         carregarArquivos(1);
+        verificarAdmin();
     </script>
 </body>
 </html>
