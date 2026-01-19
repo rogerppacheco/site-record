@@ -805,21 +805,15 @@ def processar_webhook_whatsapp(data):
                             resposta_parts.append(f"\n📋 Digite o *NÚMERO* do material desejado (1 a {len(arquivos_lista)}):")
                             resposta = "\n".join(resposta_parts)
                             
-                            # Salvar arquivos na sessão usando update() para garantir persistência
-                            dados_para_salvar = {
+                            # Salvar arquivos na sessão usando save() com update_fields
+                            sessao.etapa = 'material_selecionar'
+                            sessao.dados_temp = {
                                 'busca': busca_texto,
                                 'arquivos_ids': arquivos_ids_lista
                             }
-                            from crm_app.models import SessaoWhatsapp
-                            SessaoWhatsapp.objects.filter(id=sessao.id).update(
-                                etapa='material_selecionar',
-                                dados_temp=dados_para_salvar
-                            )
-                            # Recarregar sessão após update
-                            sessao.refresh_from_db()
+                            sessao.save(update_fields=['etapa', 'dados_temp'])
                             logger.info(f"[Webhook] Salvos {len(arquivos_ids_lista)} IDs de arquivos na sessão: {arquivos_ids_lista}")
                             logger.info(f"[Webhook] Sessão salva - etapa: {sessao.etapa}, dados_temp: {sessao.dados_temp}")
-                            logger.info(f"[Webhook] Verificação pós-save - sessao.id: {sessao.id}, dados_temp verificado: {sessao.dados_temp}")
             except Exception as e:
                 logger.error(f"[Webhook] Erro ao buscar material: {e}")
                 import traceback
@@ -1150,21 +1144,15 @@ def processar_webhook_whatsapp(data):
                             resposta_parts.append(f"\n📋 Digite o *NÚMERO* do material desejado (1 a {len(arquivos_lista)}):")
                             resposta = "\n".join(resposta_parts)
                             
-                            # Salvar arquivos na sessão usando update() para garantir persistência
-                            dados_para_salvar = {
+                            # Salvar arquivos na sessão
+                            sessao.etapa = 'material_selecionar'
+                            sessao.dados_temp = {
                                 'busca': busca_texto,
                                 'arquivos_ids': arquivos_ids_lista
                             }
-                            from crm_app.models import SessaoWhatsapp
-                            SessaoWhatsapp.objects.filter(id=sessao.id).update(
-                                etapa='material_selecionar',
-                                dados_temp=dados_para_salvar
-                            )
-                            # Recarregar sessão após update
-                            sessao.refresh_from_db()
+                            sessao.save(update_fields=['etapa', 'dados_temp'])
                             logger.info(f"[Webhook] Salvos {len(arquivos_ids_lista)} IDs de arquivos na sessão: {arquivos_ids_lista}")
                             logger.info(f"[Webhook] Sessão salva - etapa: {sessao.etapa}, dados_temp: {sessao.dados_temp}")
-                            logger.info(f"[Webhook] Verificação pós-save - sessao.id: {sessao.id}, dados_temp verificado: {sessao.dados_temp}")
                         _registrar_estatistica(telefone_formatado, 'MATERIAL')
                     else:
                         # Nenhum material encontrado - não enviar resposta (não mostrar menu automaticamente)
