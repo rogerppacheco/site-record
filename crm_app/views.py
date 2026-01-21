@@ -5370,6 +5370,7 @@ class CdoiListView(APIView):
                 'observacao': item.observacao or "",
                 'data': item.data_criacao.strftime('%d/%m/%Y'),
                 'link_fotos_fachada': item.link_fotos_fachada or "",
+                'link_carta_sindico': item.link_carta_sindico or "",
                 'can_edit': eh_gestao, # Flag para o frontend saber se libera edição
                 'criado_por_id': item.criado_por.id if item.criado_por else None,
                 'criado_por_nome': criado_por_nome
