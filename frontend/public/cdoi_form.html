@@ -1019,8 +1019,17 @@
                 document.getElementById('btn-submit').classList.replace('btn-success', 'btn-warning');
                 document.getElementById('btn-cancelar-edicao').classList.remove('d-none');
                 
-                document.querySelectorAll('.file-input-group').forEach(el => el.style.display = 'none');
+                // Mostra campos de arquivo no modo edição (mas torná-los opcionais)
+                document.querySelectorAll('.file-input-group').forEach(el => el.style.display = 'block');
                 document.querySelectorAll('.file-input-group input').forEach(el => el.required = false);
+                
+                // Atualiza labels para indicar que é opcional em edição
+                document.querySelectorAll('.file-input-group label').forEach(label => {
+                    const text = label.textContent;
+                    if (!text.includes('(Opcional)')) {
+                        label.textContent = text.replace('*', '') + ' (Opcional)';
+                    }
+                });
 
                 document.getElementById('inp_nome').value = d.nome_condominio;
                 document.getElementById('inp_cep').value = d.cep;
@@ -1063,6 +1072,14 @@
         document.getElementById('btn-submit').classList.replace('btn-warning', 'btn-success');
         document.getElementById('btn-cancelar-edicao').classList.add('d-none');
         document.querySelectorAll('.file-input-group').forEach(el => el.style.display = 'block');
+        document.querySelectorAll('.file-input-group input').forEach(el => el.required = true);
+        // Restaura labels originais
+        document.querySelectorAll('.file-input-group label').forEach(label => {
+            const text = label.textContent;
+            if (text.includes('(Opcional)')) {
+                label.textContent = text.replace(' (Opcional)', ' *');
+            }
+        });
         // Esconde o campo "Acionado por" no modo novo
         document.getElementById('div-criado-por').style.display = 'none';
         // Esconde o resumo de blocos e mostra estrutura padrão
@@ -1151,7 +1168,13 @@
         const url = isEdit ? `/api/crm/cdoi/editar/${id}/` : '/api/crm/cdoi/novo/';
         const method = isEdit ? 'PATCH' : 'POST'; // Usa PATCH para edição conforme a view
         const headers = {'Authorization': `Bearer ${localStorage.getItem('accessToken')}`};
-        if(isEdit) headers['Content-Type'] = 'application/json';
+        
+        // Verifica se há arquivos para upload em modo edição
+        const temArquivos = isEdit && (formData.get('arquivo_carta') || formData.get('arquivo_fachada'));
+        if(isEdit && !temArquivos) {
+            // Se não há arquivos, envia como JSON
+            headers['Content-Type'] = 'application/json';
+        }
 
         const originalHtml = btn.innerHTML;
         btn.disabled = true;
@@ -1160,7 +1183,7 @@
             const res = await fetch(url, {
                 method: method,
                 headers: headers,
-                body: isEdit ? JSON.stringify(dataJson) : formData
+                body: (isEdit && !temArquivos) ? JSON.stringify(dataJson) : formData
             });
             const data = await res.json().catch(() => ({}));
             if(res.ok) { 

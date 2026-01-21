@@ -8,6 +8,7 @@ import os
 import logging
 from datetime import datetime
 from decimal import Decimal
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
@@ -20,21 +21,24 @@ except ImportError:
     print("[AVISO] Playwright não instalado. Busca automática desabilitada.")
 
 # Configurações
-NIO_BASE_URL = "https://www.niointernet.com.br/ajuda/servicos/segunda-via/"
+NIO_BASE_URL = "https://www.niointernet.com.br/ajuda/servicos/segunda-via/"  # Plano A
+NIO_NEGOCIA_URL = "https://negociacao.niointernet.com.br/negociar"  # Plano B
 DEFAULT_STORAGE_STATE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".playwright_state.json")
 
 
-def buscar_fatura_nio_por_cpf(cpf, incluir_pdf=True, mes_referencia=None):
+def buscar_fatura_nio_por_cpf(cpf, incluir_pdf=True, mes_referencia=None, numero_contrato=None, usar_plano_b=True):
     """
-    Busca fatura no site da Nio Internet por CPF
+    Busca fatura no site da Nio Internet por CPF com múltiplos métodos (Plano A e Plano B)
     
     Args:
         cpf: CPF do cliente
         incluir_pdf: Se True, busca também o PDF (mais lento)
         mes_referencia: Mês de referência da fatura (YYYYMM) para nomear o arquivo
-    
+        numero_contrato: Número do contrato para validação no método Nio Negocia (opcional)
+        usar_plano_b: Se True, tenta método Nio Negocia se Plano A falhar
+        
     Returns:
-        dict com: valor, codigo_pix, codigo_barras, data_vencimento, pdf_url, pdf_path
+        dict com: valor, codigo_pix, codigo_barras, data_vencimento, pdf_url, pdf_path, metodo_usado
         ou None se não encontrou
     """
     if not HAS_PLAYWRIGHT:
@@ -45,18 +49,65 @@ def buscar_fatura_nio_por_cpf(cpf, incluir_pdf=True, mes_referencia=None):
         if not cpf_limpo:
             return None
         
-        resultado = _buscar_fatura_playwright(cpf_limpo)
+        # PLANO A: Método atual (Segunda Via)
+        logger.info(f"[BUSCA FATURA] Tentando Plano A (Segunda Via) para CPF: {cpf_limpo}")
+        try:
+            resultado = _buscar_fatura_playwright(cpf_limpo)
+            
+            # Se precisa do PDF e ainda não tem, tenta baixar
+            if incluir_pdf and resultado and not resultado.get('pdf_url') and not resultado.get('pdf_path'):
+                pdf_path = _baixar_pdf_como_humano(cpf_limpo, mes_referencia, resultado.get('data_vencimento'))
+                if pdf_path:
+                    if isinstance(pdf_path, dict):
+                        resultado['pdf_path'] = pdf_path.get('local_path')
+                        resultado['pdf_url'] = pdf_path.get('onedrive_url') or pdf_path.get('local_path')
+                    else:
+                        resultado['pdf_path'] = pdf_path
+                    logger.info(f"✅ [PDF] Arquivo salvo em: {pdf_path if isinstance(pdf_path, str) else pdf_path.get('local_path')}")
+            
+            # Verificar se resultado é válido ou se não há dívidas
+            if resultado and resultado.get('sem_dividas'):
+                logger.info(f"[BUSCA FATURA] ℹ️ Plano A (Segunda Via) - Sem dívidas para este CPF")
+                resultado['metodo_usado'] = 'segunda_via'
+                return resultado
+            elif resultado and (resultado.get('valor') or resultado.get('codigo_pix') or resultado.get('codigo_barras')):
+                resultado['metodo_usado'] = 'segunda_via'
+                logger.info(f"[BUSCA FATURA] ✅ Plano A (Segunda Via) sucedeu")
+                return resultado
+            else:
+                logger.warning(f"[BUSCA FATURA] ⚠️ Plano A (Segunda Via) não retornou dados válidos")
+        except Exception as e:
+            logger.warning(f"[BUSCA FATURA] ⚠️ Plano A (Segunda Via) falhou: {e}")
+            import traceback
+            logger.debug(f"[BUSCA FATURA] Traceback Plano A: {traceback.format_exc()}")
         
-        # Se precisa do PDF e ainda não tem, tenta baixar
-        if incluir_pdf and resultado and not resultado.get('pdf_url') and not resultado.get('pdf_path'):
-            pdf_path = _baixar_pdf_como_humano(cpf_limpo, mes_referencia, resultado.get('data_vencimento'))
-            if pdf_path:
-                resultado['pdf_path'] = pdf_path
-                print(f"✅ [PDF] Arquivo salvo em: {pdf_path}")
+        # PLANO B: Método Nio Negocia (se habilitado)
+        if usar_plano_b:
+            logger.info(f"[BUSCA FATURA] Tentando Plano B (Nio Negocia) para CPF: {cpf_limpo}")
+            try:
+                resultado_b = _buscar_fatura_nio_negocia(
+                    cpf_limpo,
+                    numero_contrato=numero_contrato,
+                    incluir_pdf=incluir_pdf,
+                    mes_referencia=mes_referencia
+                )
+                
+                if resultado_b and (resultado_b.get('valor') or resultado_b.get('codigo_pix') or resultado_b.get('codigo_barras')):
+                    resultado_b['metodo_usado'] = 'nio_negocia'
+                    logger.info(f"[BUSCA FATURA] ✅ Plano B (Nio Negocia) sucedeu")
+                    return resultado_b
+                else:
+                    logger.warning(f"[BUSCA FATURA] ⚠️ Plano B (Nio Negocia) não retornou dados válidos")
+            except Exception as e:
+                logger.warning(f"[BUSCA FATURA] ⚠️ Plano B (Nio Negocia) falhou: {e}")
+                import traceback
+                logger.debug(f"[BUSCA FATURA] Traceback Plano B: {traceback.format_exc()}")
         
-        return resultado
+        logger.error(f"[BUSCA FATURA] ❌ Todos os métodos falharam para CPF: {cpf_limpo}")
+        return None
+        
     except Exception as e:
-        print(f"[ERRO] Falha ao buscar fatura: {e}")
+        logger.error(f"[BUSCA FATURA] Erro geral: {e}")
         import traceback
         traceback.print_exc()
         return None
@@ -807,18 +858,122 @@ def _buscar_fatura_playwright(cpf: str):
         )
 
         page = context.new_page()
+        logger.info(f'[PLANO A] Navegando para {NIO_BASE_URL}')
         page.goto(NIO_BASE_URL, wait_until="networkidle", timeout=30000)
         page.wait_for_timeout(1500)
 
-        page.locator('input[type="text"]').first.fill(cpf)
-        page.locator('button:has-text("Consultar")').first.click()
+        # Preencher CPF
+        logger.info(f'[PLANO A] Preenchendo CPF: {cpf}')
+        input_cpf = page.locator('input[type="text"]').first
+        if input_cpf.count() == 0:
+            logger.error('[PLANO A] ❌ Campo de CPF não encontrado!')
+            # Capturar screenshot para debug
+            try:
+                screenshot_path = os.path.join(os.path.dirname(__file__), '..', '..', 'debug_plano_a_no_input.png')
+                page.screenshot(path=screenshot_path, full_page=True)
+                logger.error(f'[PLANO A] Screenshot salvo em: {screenshot_path}')
+            except:
+                pass
+            browser.close()
+            return {'valor': None, 'codigo_pix': None, 'codigo_barras': None, 'data_vencimento': None, 'pdf_url': None}
+        
+        input_cpf.fill(cpf)
+        logger.info(f'[PLANO A] CPF preenchido com sucesso')
+        page.wait_for_timeout(500)
+        
+        # Verificar se botão "Consultar" existe
+        logger.info(f'[PLANO A] Procurando botão "Consultar"...')
+        btn_consultar = page.locator('button:has-text("Consultar")').first
+        btn_count = btn_consultar.count()
+        
+        if btn_count == 0:
+            logger.error('[PLANO A] ❌ Botão "Consultar" não encontrado!')
+            # Tentar outros seletores
+            logger.info('[PLANO A] Tentando seletores alternativos...')
+            alternativas = [
+                'button:has-text("CONSULTAR")',
+                'button[type="submit"]',
+                'input[type="submit"]',
+                'button.btn',
+                'button',
+            ]
+            encontrado = False
+            for sel in alternativas:
+                alt_btn = page.locator(sel).first
+                if alt_btn.count() > 0:
+                    logger.info(f'[PLANO A] ✅ Botão encontrado com seletor alternativo: {sel}')
+                    alt_btn.click(timeout=10000)
+                    encontrado = True
+                    break
+            
+            if not encontrado:
+                # Capturar screenshot e HTML para debug
+                try:
+                    screenshot_path = os.path.join(os.path.dirname(__file__), '..', '..', 'debug_plano_a_no_button.png')
+                    page.screenshot(path=screenshot_path, full_page=True)
+                    logger.error(f'[PLANO A] Screenshot salvo em: {screenshot_path}')
+                    
+                    html_path = os.path.join(os.path.dirname(__file__), '..', '..', 'debug_plano_a_html.html')
+                    with open(html_path, 'w', encoding='utf-8') as f:
+                        f.write(page.content())
+                    logger.error(f'[PLANO A] HTML salvo em: {html_path}')
+                except Exception as e:
+                    logger.error(f'[PLANO A] Erro ao salvar debug: {e}')
+                
+                browser.close()
+                return {'valor': None, 'codigo_pix': None, 'codigo_barras': None, 'data_vencimento': None, 'pdf_url': None}
+        else:
+            logger.info(f'[PLANO A] ✅ Botão "Consultar" encontrado, clicando...')
+            btn_consultar.click(timeout=10000)
+        
         page.wait_for_timeout(1500)
+        logger.info('[PLANO A] Aguardando carregamento da página após consulta...')
         page.wait_for_load_state("networkidle", timeout=20000)
+        logger.info('[PLANO A] Página carregada após consulta')
 
+        # Verificar se há resultados ou erro na página
+        page_url = page.url
+        logger.info(f'[PLANO A] URL após consulta: {page_url}')
+        html_apos_consulta = page.content()
+        
+        # Verificar se há mensagem de erro ou "não encontrado"
+        html_lower = html_apos_consulta.lower()
+        mensagens_nao_encontrado = [
+            'não encontrado',
+            'sem faturas',
+            'nenhuma fatura',
+            'não há faturas',
+            'não existem faturas',
+            'sem débitos',
+            'não possui'
+        ]
+        
+        tem_mensagem_nao_encontrado = any(msg in html_lower for msg in mensagens_nao_encontrado)
+        
+        if tem_mensagem_nao_encontrado:
+            logger.warning('[PLANO A] ⚠️ Mensagem de "não encontrado" detectada na página')
+            browser.close()
+            return {
+                'valor': None,
+                'codigo_pix': None,
+                'codigo_barras': None,
+                'data_vencimento': None,
+                'pdf_url': None,
+                'sem_dividas': True,
+                'mensagem': 'Não foram encontradas faturas para este CPF'
+            }
+        
         ver_detalhes = page.locator('text=/ver detalhes/i').first
-        if ver_detalhes.count() > 0:
+        ver_detalhes_count = ver_detalhes.count()
+        logger.info(f'[PLANO A] Verificando "ver detalhes": encontrados {ver_detalhes_count} elementos')
+        
+        if ver_detalhes_count > 0:
+            logger.info('[PLANO A] Clicando em "ver detalhes"...')
             ver_detalhes.click()
             page.wait_for_timeout(800)
+            logger.info('[PLANO A] "Ver detalhes" expandido')
+        else:
+            logger.warning('[PLANO A] ⚠️ Link "ver detalhes" não encontrado - pode não haver faturas ou já estar expandido')
 
         html_expandido = page.content()
         vencimento = None
@@ -826,11 +981,69 @@ def _buscar_fatura_playwright(cpf: str):
         if m:
             try:
                 vencimento = datetime.strptime(m.group(1), "%d/%m/%Y").date()
+                logger.info(f'[PLANO A] Data de vencimento encontrada: {vencimento}')
             except Exception:
                 pass
+        else:
+            logger.warning('[PLANO A] ⚠️ Data de vencimento não encontrada no HTML')
 
+        logger.info('[PLANO A] Procurando botão "Pagar conta"...')
         pagar_btn = page.locator('button:has-text("Pagar conta")').first
-        pagar_btn.click()
+        pagar_btn_count = pagar_btn.count()
+        logger.info(f'[PLANO A] Botão "Pagar conta": encontrados {pagar_btn_count} elementos')
+        
+        if pagar_btn_count == 0:
+            logger.error('[PLANO A] ❌ Botão "Pagar conta" não encontrado!')
+            # Tentar seletores alternativos
+            logger.info('[PLANO A] Tentando seletores alternativos para "Pagar conta"...')
+            alternativas_pagar = [
+                'button:has-text("Pagar")',
+                'a:has-text("Pagar conta")',
+                'button[type="button"]:has-text("Pagar")',
+                '*[role="button"]:has-text("Pagar")',
+            ]
+            encontrado_pagar = False
+            for sel in alternativas_pagar:
+                alt_btn = page.locator(sel).first
+                if alt_btn.count() > 0:
+                    logger.info(f'[PLANO A] ✅ Botão "Pagar" encontrado com seletor alternativo: {sel}')
+                    pagar_btn = alt_btn
+                    encontrado_pagar = True
+                    break
+            
+            if not encontrado_pagar:
+                # Capturar screenshot e HTML para debug
+                try:
+                    downloads_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'downloads')
+                    os.makedirs(downloads_dir, exist_ok=True)
+                    
+                    screenshot_path = os.path.join(downloads_dir, f'debug_plano_a_no_pagar_{cpf}.png')
+                    page.screenshot(path=screenshot_path, full_page=True)
+                    logger.error(f'[PLANO A] Screenshot salvo em: {screenshot_path}')
+                    
+                    html_path = os.path.join(downloads_dir, f'debug_plano_a_no_pagar_{cpf}.html')
+                    with open(html_path, 'w', encoding='utf-8') as f:
+                        f.write(page.content())
+                    logger.error(f'[PLANO A] HTML salvo em: {html_path}')
+                except Exception as e:
+                    logger.error(f'[PLANO A] Erro ao salvar debug: {e}')
+                
+                # Se não encontrou "Pagar conta", provavelmente não há faturas
+                logger.warning('[PLANO A] ⚠️ Parece que não há faturas para este CPF (botões não encontrados)')
+                browser.close()
+                return {
+                    'valor': None,
+                    'codigo_pix': None,
+                    'codigo_barras': None,
+                    'data_vencimento': vencimento,
+                    'pdf_url': None,
+                    'sem_dividas': True,  # Indica que não há faturas
+                    'mensagem': 'Não foram encontradas faturas para este CPF'
+                }
+        else:
+            logger.info('[PLANO A] ✅ Botão "Pagar conta" encontrado, clicando...')
+        
+        pagar_btn.click(timeout=15000)
         page.wait_for_url('**/payment**', timeout=15000)
         page.wait_for_timeout(1200)
 
@@ -874,22 +1087,23 @@ def _buscar_fatura_playwright(cpf: str):
 
         # PDF - Múltiplas estratégias para capturar o PDF
         pdf_url = None
+        pdf_path = None
         
         # Estratégia 1: Procurar link direto na página HTML antes de clicar
         try:
-            print('🔍 [PDF] Estratégia 1: Procurando link direto na página...')
+            logger.info('[PDF] Estratégia 1: Procurando link direto na página...')
             html_boleto_check = page.content()
-            pdf_links = re.findall(r'https?://[^\s<>"\']+\.pdf', html_boleto_check, re.IGNORECASE)
+            pdf_links = re.findall(r'https?://[^\s<>"\']+\.pdf[^\s<>"\']*', html_boleto_check, re.IGNORECASE)
             if pdf_links:
                 pdf_url = pdf_links[0]
-                print(f'✅ [PDF] Link encontrado diretamente no HTML: {pdf_url[:100]}...')
+                logger.info(f'[PDF] ✅ Link encontrado diretamente no HTML: {pdf_url[:100]}...')
         except Exception as e:
-            print(f'⚠️ [PDF] Estratégia 1 falhou: {e}')
+            logger.debug(f'[PDF] Estratégia 1 falhou: {e}')
         
-        # Estratégia 2: Tentar capturar via download
-        if not pdf_url:
+        # Estratégia 2: Tentar capturar via download direto
+        if not pdf_url and not pdf_path:
             try:
-                print('🔍 [PDF] Estratégia 2: Tentando capturar via download...')
+                logger.info('[PDF] Estratégia 2: Tentando capturar via download direto...')
                 download_path = os.path.join(os.path.dirname(__file__), '..', '..', 'downloads')
                 os.makedirs(download_path, exist_ok=True)
                 
@@ -899,23 +1113,48 @@ def _buscar_fatura_playwright(cpf: str):
                 download = download_info.value
                 
                 # Salvar o arquivo
-                filename = download.suggested_filename or f"fatura_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+                filename = download.suggested_filename or f"fatura_{cpf}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
                 filepath = os.path.join(download_path, filename)
                 download.save_as(filepath)
                 
-                # Se o arquivo foi baixado, podemos retornar o caminho ou fazer upload
-                # Por enquanto, vamos tentar extrair a URL do download se possível
-                print(f'✅ [PDF] Arquivo baixado: {filepath}')
-                # Nota: Neste caso, seria necessário fazer upload para um storage público
-                # Para agora, vamos continuar tentando outras estratégias
+                # Verificar se arquivo foi salvo corretamente
+                if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
+                    pdf_path = filepath
+                    logger.info(f'[PDF] ✅ Arquivo baixado com sucesso: {filepath} ({os.path.getsize(filepath)} bytes)')
+                    
+                    # Tentar fazer upload para OneDrive para ter URL pública
+                    try:
+                        from crm_app.onedrive_service import OneDriveUploader
+                        uploader = OneDriveUploader()
+                        
+                        # Criar pasta no OneDrive: Faturas_NIO/YYYY/MM
+                        from datetime import datetime
+                        ano = datetime.now().strftime('%Y')
+                        mes = datetime.now().strftime('%m')
+                        folder_name = f"Faturas_NIO/{ano}/{mes}"
+                        
+                        logger.info(f'[PDF] ☁️ Fazendo upload para OneDrive: {folder_name}/{filename}')
+                        with open(filepath, 'rb') as f:
+                            link_onedrive = uploader.upload_file(f, folder_name, filename)
+                        
+                        if link_onedrive:
+                            pdf_url = link_onedrive
+                            logger.info(f'[PDF] ✅ Upload OneDrive concluído: {link_onedrive}')
+                        else:
+                            logger.warning('[PDF] ⚠️ Upload OneDrive falhou, mas arquivo local salvo')
+                    except Exception as e_onedrive:
+                        logger.warning(f'[PDF] ⚠️ Erro ao fazer upload OneDrive: {e_onedrive}')
+                        # Mesmo se OneDrive falhar, o arquivo local está disponível
+                else:
+                    logger.warning(f'[PDF] ⚠️ Arquivo baixado mas está vazio ou não existe: {filepath}')
                 
             except Exception as e:
-                print(f'⚠️ [PDF] Estratégia 2 falhou: {e}')
+                logger.debug(f'[PDF] Estratégia 2 falhou: {e}')
         
         # Estratégia 3: Tentar capturar via popup/aba (método original)
-        if not pdf_url:
+        if not pdf_url and not pdf_path:
             try:
-                print('🔍 [PDF] Estratégia 3: Tentando capturar via popup...')
+                logger.info('[PDF] Estratégia 3: Tentando capturar via popup...')
                 with context.expect_page(timeout=10000) as popup_info:
                     page.locator('text="Baixar PDF"').first.click()
                 pdf_page = popup_info.value
@@ -923,28 +1162,28 @@ def _buscar_fatura_playwright(cpf: str):
                 pdf_url = pdf_page.url
                 
                 # Verificar se a URL realmente é um PDF
-                if pdf_url and (pdf_url.endswith('.pdf') or 'application/pdf' in pdf_page.url):
-                    print(f'✅ [PDF] Link capturado via popup: {pdf_url[:100]}...')
+                if pdf_url and (pdf_url.endswith('.pdf') or 'application/pdf' in pdf_page.url or '.pdf' in pdf_url.lower()):
+                    logger.info(f'[PDF] ✅ Link capturado via popup: {pdf_url[:100]}...')
                 else:
                     # Pode ser uma página intermediária, tentar encontrar o link do PDF
                     html_pdf_page = pdf_page.content()
-                    pdf_links_page = re.findall(r'https?://[^\s<>"\']+\.pdf', html_pdf_page, re.IGNORECASE)
+                    pdf_links_page = re.findall(r'https?://[^\s<>"\']+\.pdf[^\s<>"\']*', html_pdf_page, re.IGNORECASE)
                     if pdf_links_page:
                         pdf_url = pdf_links_page[0]
-                        print(f'✅ [PDF] Link encontrado na página do popup: {pdf_url[:100]}...')
+                        logger.info(f'[PDF] ✅ Link encontrado na página do popup: {pdf_url[:100]}...')
                     else:
                         pdf_url = None  # Não encontrou PDF válido
                 
                 pdf_page.close()
             except Exception as e:
-                print(f'⚠️ [PDF] Estratégia 3 falhou: {e}')
+                logger.debug(f'[PDF] Estratégia 3 falhou: {e}')
                 import traceback
-                traceback.print_exc()
+                logger.debug(f'[PDF] Traceback Estratégia 3: {traceback.format_exc()}')
         
         # Estratégia 4: Tentar extrair de atributos href ou onclick
-        if not pdf_url:
+        if not pdf_url and not pdf_path:
             try:
-                print('🔍 [PDF] Estratégia 4: Procurando em atributos HTML...')
+                logger.info('[PDF] Estratégia 4: Procurando em atributos HTML...')
                 btn_pdf = page.locator('text="Baixar PDF"').first
                 if btn_pdf.count() > 0:
                     href = btn_pdf.get_attribute('href')
@@ -952,25 +1191,490 @@ def _buscar_fatura_playwright(cpf: str):
                     
                     if href and '.pdf' in href.lower():
                         pdf_url = href if href.startswith('http') else f"{page.url.rsplit('/', 1)[0]}/{href.lstrip('/')}"
-                        print(f'✅ [PDF] Link encontrado em href: {pdf_url[:100]}...')
+                        logger.info(f'[PDF] ✅ Link encontrado em href: {pdf_url[:100]}...')
                     elif onclick:
                         # Extrair URL do onclick (pode conter JavaScript)
-                        onclick_urls = re.findall(r'https?://[^\s\'"]+\.pdf', onclick, re.IGNORECASE)
+                        onclick_urls = re.findall(r'https?://[^\s\'"]+\.pdf[^\s\'"]*', onclick, re.IGNORECASE)
                         if onclick_urls:
                             pdf_url = onclick_urls[0]
-                            print(f'✅ [PDF] Link encontrado em onclick: {pdf_url[:100]}...')
+                            logger.info(f'[PDF] ✅ Link encontrado em onclick: {pdf_url[:100]}...')
             except Exception as e:
-                print(f'⚠️ [PDF] Estratégia 4 falhou: {e}')
+                logger.debug(f'[PDF] Estratégia 4 falhou: {e}')
         
-        if not pdf_url:
-            print('⚠️ [PDF] Todas as estratégias falharam. PDF não capturado.')
+        if not pdf_url and not pdf_path:
+            logger.warning('[PDF] ⚠️ Todas as estratégias falharam. PDF não capturado.')
 
         browser.close()
 
-        return {
+        resultado = {
             'valor': valor,
             'codigo_pix': codigo_pix,
             'codigo_barras': codigo_barras,
             'data_vencimento': vencimento,
             'pdf_url': pdf_url,
         }
+        
+        # Adicionar pdf_path e pdf_filename se foi baixado
+        if pdf_path:
+            resultado['pdf_path'] = pdf_path
+            # Extrair nome do arquivo do caminho (os já está importado no topo do arquivo)
+            resultado['pdf_filename'] = os.path.basename(pdf_path)
+            logger.info(f'[PDF] ✅ PDF path adicionado ao resultado: {pdf_path}')
+            logger.info(f'[PDF] ✅ PDF filename: {resultado["pdf_filename"]}')
+        
+        return resultado
+
+
+def _validar_contrato_masked(masked_contrato: str, contrato_completo: str) -> bool:
+    """
+    Valida se o contrato mascarado (ex: "02****90") corresponde ao contrato completo.
+    Compara os 2 primeiros e 2 últimos dígitos.
+    """
+    if not masked_contrato or not contrato_completo:
+        return False
+    
+    masked_limpo = re.sub(r'[^0-9*]', '', masked_contrato)
+    completo_limpo = re.sub(r'\D', '', str(contrato_completo))
+    
+    if '*' not in masked_limpo:
+        return masked_limpo == completo_limpo
+    
+    partes = masked_limpo.split('*')
+    if len(partes) < 2:
+        return False
+    
+    inicio_masked = partes[0][:2] if len(partes[0]) >= 2 else partes[0]
+    fim_masked = partes[-1][-2:] if len(partes[-1]) >= 2 else partes[-1]
+    
+    if len(completo_limpo) < 4:
+        return False
+    
+    inicio_completo = completo_limpo[:2]
+    fim_completo = completo_limpo[-2:]
+    
+    return inicio_masked == inicio_completo and fim_masked == fim_completo
+
+
+def _buscar_fatura_nio_negocia(
+    cpf: str, 
+    numero_contrato=None,
+    incluir_pdf=True,
+    mes_referencia=None
+):
+    """
+    Busca fatura via Nio Negocia (Plano B)
+    Implementa os 12 passos descritos pelo usuário.
+    
+    Args:
+        cpf: CPF do cliente
+        numero_contrato: Número do contrato para validação (opcional)
+        incluir_pdf: Se True, tenta baixar PDF
+        mes_referencia: Mês de referência para nomear arquivo
+        
+    Returns:
+        dict com: valor, codigo_pix, codigo_barras, data_vencimento, pdf_url
+        ou None se falhou
+    """
+    if not HAS_PLAYWRIGHT:
+        logger.warning("[NIO NEGOCIA] Playwright não disponível")
+        return None
+    
+    try:
+        from crm_app.recaptcha_solver import RecaptchaSolver
+        
+        cpf_limpo = re.sub(r'\D', '', cpf or '')
+        if not cpf_limpo:
+            return None
+        
+        logger.info(f"[NIO NEGOCIA] Iniciando busca para CPF: {cpf_limpo}")
+        
+        # Inicializar solver de captcha
+        captcha_api_key = getattr(settings, 'CAPTCHA_API_KEY', None) or os.getenv('CAPTCHA_API_KEY')
+        solver = RecaptchaSolver(api_key=captcha_api_key) if captcha_api_key else None
+        
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            
+            state_path = DEFAULT_STORAGE_STATE if os.path.exists(DEFAULT_STORAGE_STATE) else None
+            context = browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                viewport={"width": 1280, "height": 800},
+                storage_state=state_path,
+                accept_downloads=True,
+            )
+            
+            page = context.new_page()
+            
+            # PASSO 1: Acessar site
+            logger.info(f"[NIO NEGOCIA] Passo 1: Acessando {NIO_NEGOCIA_URL}")
+            try:
+                page.goto(NIO_NEGOCIA_URL, wait_until="networkidle", timeout=30000)
+                page.wait_for_timeout(2000)
+            except Exception as e:
+                logger.error(f"[NIO NEGOCIA] Erro ao acessar site: {e}")
+                browser.close()
+                return None
+            
+            # PASSO 2: Informar CPF/CNPJ
+            logger.info(f"[NIO NEGOCIA] Passo 2: Preenchendo CPF")
+            campo_cpf = None
+            seletores_cpf = [
+                '#inputId',
+                'input#inputId',
+                'input.sc-kvZOFW.dXumbB',
+                'input[type="text"]',
+            ]
+            
+            for seletor in seletores_cpf:
+                try:
+                    locator = page.locator(seletor).first
+                    if locator.count() > 0 and locator.is_visible(timeout=3000):
+                        campo_cpf = locator
+                        break
+                except:
+                    continue
+            
+            if not campo_cpf:
+                logger.error("[NIO NEGOCIA] Campo CPF não encontrado")
+                browser.close()
+                return None
+            
+            try:
+                campo_cpf.fill(cpf_limpo)
+                page.wait_for_timeout(1000)
+            except Exception as e:
+                logger.error(f"[NIO NEGOCIA] Erro ao preencher CPF: {e}")
+                browser.close()
+                return None
+            
+            # PASSO 3: Resolver reCAPTCHA
+            logger.info(f"[NIO NEGOCIA] Passo 3: Resolvendo reCAPTCHA")
+            if solver:
+                try:
+                    site_key = page.evaluate("() => document.querySelector('[data-sitekey]')?.getAttribute('data-sitekey') || document.querySelector('.g-recaptcha')?.getAttribute('data-sitekey') || null")
+                    if site_key:
+                        logger.info(f"[NIO NEGOCIA] Site key encontrada: {site_key[:20]}...")
+                        token = solver.solve_recaptcha_v2(site_key, NIO_NEGOCIA_URL)
+                        if token:
+                            page.evaluate(f"""
+                                (t) => {{
+                                    const selectors = [
+                                        'textarea[name="g-recaptcha-response"]',
+                                        '#g-recaptcha-response',
+                                        'input[name="g-recaptcha-response"]'
+                                    ];
+                                    for (const sel of selectors) {{
+                                        const el = document.querySelector(sel);
+                                        if (el) {{
+                                            el.value = t;
+                                            el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                                            el.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                                        }}
+                                    }}
+                                    if (window.grecaptcha && window.grecaptcha.getResponse) {{
+                                        try {{ window.grecaptcha.getResponse = () => t; }} catch (e) {{}}
+                                    }}
+                                }}
+                            """, token)
+                            page.wait_for_timeout(2000)
+                            logger.info("[NIO NEGOCIA] reCAPTCHA resolvido")
+                except Exception as e:
+                    logger.warning(f"[NIO NEGOCIA] Erro ao resolver reCAPTCHA: {e}")
+            
+            # PASSO 4: Clicar em "Consultar dívidas"
+            logger.info(f"[NIO NEGOCIA] Passo 4: Clicando em Consultar dívidas")
+            btn_consultar = None
+            seletores_consultar = [
+                'button:has-text("Consultar dívidas")',
+                'span.sc-gqPbQI.faIpbA:has-text("Consultar dívidas")',
+                'span:has-text("Consultar dívidas")',
+                'button.sc-EHOje.btbnVF',
+            ]
+            
+            for seletor in seletores_consultar:
+                try:
+                    locator = page.locator(seletor).first
+                    if locator.count() > 0 and locator.is_visible(timeout=3000):
+                        btn_consultar = locator
+                        break
+                except:
+                    continue
+            
+            if not btn_consultar:
+                logger.error("[NIO NEGOCIA] Botão Consultar dívidas não encontrado")
+                browser.close()
+                return None
+            
+            try:
+                btn_consultar.click()
+                page.wait_for_timeout(3000)
+                page.wait_for_load_state("networkidle", timeout=15000)
+            except Exception as e:
+                logger.error(f"[NIO NEGOCIA] Erro ao clicar em Consultar dívidas: {e}")
+                browser.close()
+                return None
+            
+            # PASSO 5: Validar contrato e clicar em "Ver detalhes"
+            logger.info(f"[NIO NEGOCIA] Passo 5: Verificando contrato e detalhes")
+            
+            # Verificar se há contrato mascarado e validar se necessário
+            if numero_contrato:
+                try:
+                    html_content = page.content()
+                    masked_pattern = re.search(r'(\d{2}\*{2,}\d{2})', html_content)
+                    if masked_pattern:
+                        contrato_masked = masked_pattern.group(1)
+                        if not _validar_contrato_masked(contrato_masked, numero_contrato):
+                            logger.warning(f"[NIO NEGOCIA] Contrato não corresponde: {contrato_masked} vs {numero_contrato}")
+                            browser.close()
+                            return None
+                except Exception as e:
+                    logger.warning(f"[NIO NEGOCIA] Erro ao validar contrato: {e}")
+            
+            # Clicar em "Ver detalhes"
+            ver_detalhes = None
+            seletores_detalhes = [
+                'p.sc-htpNat.lpefcL:has-text("Ver detalhes")',
+                'p:has-text("Ver detalhes")',
+                'text=/ver detalhes/i',
+            ]
+            
+            for seletor in seletores_detalhes:
+                try:
+                    locator = page.locator(seletor).first
+                    if locator.count() > 0:
+                        ver_detalhes = locator
+                        break
+                except:
+                    continue
+            
+            if ver_detalhes:
+                try:
+                    ver_detalhes.click()
+                    page.wait_for_timeout(2000)
+                    page.wait_for_load_state("networkidle", timeout=10000)
+                    logger.info("[NIO NEGOCIA] Detalhes expandidos")
+                except Exception as e:
+                    logger.warning(f"[NIO NEGOCIA] Erro ao clicar em Ver detalhes: {e}")
+            
+            # PASSO 6: Extrair dados da lista (Valor, Mês/Ano, Vencimento, Status)
+            logger.info(f"[NIO NEGOCIA] Passo 6: Extraindo dados da lista")
+            html_lista = page.content()
+            
+            # Extrair valores
+            valor = None
+            valor_matches = re.findall(r'R\$\s*(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2}))', html_lista, re.IGNORECASE)
+            if valor_matches:
+                try:
+                    valor_str = valor_matches[0].replace('.', '').replace(',', '.')
+                    valor = Decimal(valor_str)
+                except:
+                    pass
+            
+            # Extrair data de vencimento
+            data_vencimento = None
+            data_matches = re.findall(r'(\d{2}/\d{2}/\d{4})', html_lista)
+            if data_matches:
+                try:
+                    data_vencimento = datetime.strptime(data_matches[0], "%d/%m/%Y").date()
+                except:
+                    pass
+            
+            # PASSO 7: Clicar em "Pagar contas"
+            logger.info(f"[NIO NEGOCIA] Passo 7: Clicando em Pagar contas")
+            btn_pagar = None
+            seletores_pagar = [
+                'button.sc-EHOje.btbnVF:has-text("Pagar contas")',
+                'button:has-text("Pagar contas")',
+                'button[data-context*="pagar"]',
+            ]
+            
+            for seletor in seletores_pagar:
+                try:
+                    locator = page.locator(seletor).first
+                    if locator.count() > 0:
+                        btn_pagar = locator
+                        break
+                except:
+                    continue
+            
+            if not btn_pagar:
+                logger.error("[NIO NEGOCIA] Botão Pagar contas não encontrado")
+                browser.close()
+                return None
+            
+            try:
+                btn_pagar.click()
+                page.wait_for_timeout(2000)
+                page.wait_for_load_state("networkidle", timeout=10000)
+            except Exception as e:
+                logger.error(f"[NIO NEGOCIA] Erro ao clicar em Pagar contas: {e}")
+                browser.close()
+                return None
+            
+            # PASSO 8: Obter PIX primeiro
+            logger.info(f"[NIO NEGOCIA] Passo 8: Obtendo código PIX")
+            codigo_pix = None
+            
+            # Clicar em "Pagar com Pix"
+            btn_pix = None
+            seletores_pix = [
+                'p.sc-htpNat.leGWMc:has-text("Pagar com Pix")',
+                'p:has-text("Pagar com Pix")',
+                'text=/pagar com pix/i',
+            ]
+            
+            for seletor in seletores_pix:
+                try:
+                    locator = page.locator(seletor).first
+                    if locator.count() > 0:
+                        btn_pix = locator
+                        break
+                except:
+                    continue
+            
+            if btn_pix:
+                try:
+                    btn_pix.click()
+                    page.wait_for_timeout(2000)
+                    page.wait_for_load_state("networkidle", timeout=10000)
+                    
+                    html_pix = page.content()
+                    # Buscar código PIX
+                    pix_matches = re.findall(r'00020126[0-9a-zA-Z]{100,}', html_pix)
+                    if not pix_matches:
+                        pix_matches = re.findall(r'[a-zA-Z0-9]{80,150}', html_pix)
+                    
+                    if pix_matches:
+                        codigo_pix = pix_matches[0]
+                        logger.info("[NIO NEGOCIA] Código PIX obtido")
+                    
+                    # Voltar para página de pagamento
+                    btn_voltar = page.locator('text=/voltar ao início/i').first
+                    if btn_voltar.count() > 0:
+                        btn_voltar.click()
+                        page.wait_for_timeout(2000)
+                        page.wait_for_load_state("networkidle", timeout=10000)
+                    
+                    # Clicar novamente em "Pagar contas"
+                    btn_pagar.click()
+                    page.wait_for_timeout(2000)
+                    page.wait_for_load_state("networkidle", timeout=10000)
+                except Exception as e:
+                    logger.warning(f"[NIO NEGOCIA] Erro ao obter PIX: {e}")
+            
+            # PASSO 9: Obter código de barras e PDF
+            logger.info(f"[NIO NEGOCIA] Passo 9: Obtendo código de barras e PDF")
+            codigo_barras = None
+            pdf_url = None
+            
+            # Clicar em "Gerar boleto"
+            btn_boleto = None
+            seletores_boleto = [
+                'p.sc-htpNat.leGWMc:has-text("Gerar Boleto")',
+                'p:has-text("Gerar Boleto")',
+                'p:has-text("Gerar boleto")',
+                'text=/gerar boleto/i',
+            ]
+            
+            for seletor in seletores_boleto:
+                try:
+                    locator = page.locator(seletor).first
+                    if locator.count() > 0:
+                        btn_boleto = locator
+                        break
+                except:
+                    continue
+            
+            if btn_boleto:
+                try:
+                    btn_boleto.click()
+                    page.wait_for_timeout(2000)
+                    page.wait_for_load_state("networkidle", timeout=10000)
+                    
+                    html_boleto = page.content()
+                    
+                    # Extrair código de barras
+                    codigos = re.findall(r'\b(\d{44,50})\b', html_boleto)
+                    if codigos:
+                        preferidos = [c for c in codigos if c.startswith('0339')]
+                        codigo_barras = preferidos[0] if preferidos else codigos[0]
+                        logger.info("[NIO NEGOCIA] Código de barras obtido")
+                    
+                    # PASSO 10-12: Baixar PDF
+                    if incluir_pdf:
+                        logger.info(f"[NIO NEGOCIA] Passo 10-12: Baixar PDF")
+                        try:
+                            # Múltiplas estratégias para capturar PDF
+                            pdf_url = None
+                            
+                            # Estratégia 1: Procurar link direto no HTML
+                            pdf_links = re.findall(r'https?://[^\s<>"\']+\.pdf[^\s<>"\']*', html_boleto, re.IGNORECASE)
+                            if pdf_links:
+                                pdf_url = pdf_links[0]
+                                logger.info(f"[NIO NEGOCIA] PDF URL encontrada no HTML: {pdf_url[:100]}...")
+                            
+                            # Estratégia 2: Esperar download direto
+                            if not pdf_url:
+                                try:
+                                    downloads_dir = os.path.join(
+                                        os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
+                                        'downloads'
+                                    )
+                                    os.makedirs(downloads_dir, exist_ok=True)
+                                    
+                                    nome_arquivo = f"{cpf_limpo}_{mes_referencia or datetime.now().strftime('%Y%m')}.pdf"
+                                    caminho_pdf = os.path.join(downloads_dir, nome_arquivo)
+                                    
+                                    with page.expect_download(timeout=10000) as download_info:
+                                        btn_baixar_pdf = page.locator('p.sc-htpNat.kOdFoh:has-text("Baixar PDF")').first
+                                        if btn_baixar_pdf.count() > 0:
+                                            btn_baixar_pdf.click()
+                                    download = download_info.value
+                                    download.save_as(caminho_pdf)
+                                    logger.info(f"[NIO NEGOCIA] PDF baixado: {caminho_pdf}")
+                                    pdf_url = caminho_pdf
+                                except Exception as e:
+                                    logger.debug(f"[NIO NEGOCIA] Estratégia download direto falhou: {e}")
+                                    
+                                    # Estratégia 3: Capturar via popup/aba
+                                    try:
+                                        with context.expect_page(timeout=10000) as popup_info:
+                                            btn_baixar_pdf = page.locator('p.sc-htpNat.kOdFoh:has-text("Baixar PDF")').first
+                                            if btn_baixar_pdf.count() > 0:
+                                                btn_baixar_pdf.click()
+                                        pdf_page = popup_info.value
+                                        pdf_page.wait_for_load_state('networkidle', timeout=5000)
+                                        pdf_url = pdf_page.url
+                                        pdf_page.close()
+                                        logger.info(f"[NIO NEGOCIA] PDF URL capturada via popup: {pdf_url[:100]}...")
+                                    except Exception as e2:
+                                        logger.warning(f"[NIO NEGOCIA] Erro ao baixar PDF: {e2}")
+                        except Exception as e:
+                            logger.warning(f"[NIO NEGOCIA] Erro ao processar PDF: {e}")
+                except Exception as e:
+                    logger.warning(f"[NIO NEGOCIA] Erro ao gerar boleto: {e}")
+            
+            browser.close()
+            
+            # Retornar resultado
+            resultado = {
+                'valor': float(valor) if valor else None,
+                'codigo_pix': codigo_pix,
+                'codigo_barras': codigo_barras,
+                'data_vencimento': data_vencimento,
+                'pdf_url': pdf_url,
+            }
+            
+            if resultado.get('valor') or resultado.get('codigo_pix') or resultado.get('codigo_barras'):
+                logger.info(f"[NIO NEGOCIA] Busca concluída com sucesso")
+                return resultado
+            else:
+                logger.warning(f"[NIO NEGOCIA] Busca concluída mas sem dados válidos")
+                return None
+            
+    except Exception as e:
+        logger.error(f"[NIO NEGOCIA] Erro: {e}")
+        import traceback
+        logger.error(f"[NIO NEGOCIA] Traceback: {traceback.format_exc()}")
+        return None
