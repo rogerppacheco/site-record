@@ -500,6 +500,32 @@ class MotivoPendenciaListCreateView(generics.ListCreateAPIView):
     queryset = MotivoPendencia.objects.all().order_by('nome')
     serializer_class = MotivoPendenciaSerializer
     permission_classes = [permissions.IsAuthenticated]
+    
+    def perform_create(self, serializer):
+        """
+        Sobrescreve perform_create para tratar erro de sequência dessincronizada.
+        Se ocorrer erro de chave única, tenta corrigir a sequência e recriar.
+        """
+        from django.db import connection
+        try:
+            serializer.save()
+        except IntegrityError as e:
+            # Se for erro de sequência (chave primária duplicada)
+            if 'pkey' in str(e) or 'unique constraint' in str(e).lower():
+                # Tenta corrigir a sequência
+                table_name = MotivoPendencia._meta.db_table
+                with connection.cursor() as cursor:
+                    cursor.execute(f"SELECT COALESCE(MAX(id), 0) FROM {table_name};")
+                    max_id = cursor.fetchone()[0]
+                    cursor.execute(f"SELECT pg_get_serial_sequence('{table_name}', 'id');")
+                    seq_name = cursor.fetchone()[0]
+                    if seq_name:
+                        cursor.execute(f"SELECT setval(%s, %s, true);", [seq_name, max_id])
+                # Tenta salvar novamente
+                serializer.save()
+            else:
+                # Se for outro tipo de IntegrityError, re-lança
+                raise
 
 class MotivoPendenciaDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = MotivoPendencia.objects.all().order_by('nome')
