@@ -500,6 +500,7 @@ class MotivoPendenciaListCreateView(generics.ListCreateAPIView):
     queryset = MotivoPendencia.objects.all().order_by('nome')
     serializer_class = MotivoPendenciaSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None  # Desabilita paginação - retorna todos os resultados
     
     def perform_create(self, serializer):
         """
