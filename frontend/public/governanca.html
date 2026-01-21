@@ -1821,41 +1821,50 @@
         } catch(error) {
             let mensagem = 'Erro ao salvar motivo de pendência.';
             try {
-                // A apiFetch pode retornar errorData como JSON stringificado ou como objeto
-                let errorData = error.message;
-                try {
-                    errorData = JSON.parse(error.message);
-                } catch(e) {
-                    // Se não conseguir fazer parse, tenta usar a mensagem diretamente
-                    if (typeof errorData === 'string' && errorData.length > 0) {
-                        mensagem = errorData;
+                let errorData = null;
+                const errorMessage = error.message || '';
+                
+                // Tenta parsear o erro como JSON
+                if (errorMessage.startsWith('{') || errorMessage.startsWith('[')) {
+                    try {
+                        errorData = JSON.parse(errorMessage);
+                    } catch(e) {
+                        // Não é JSON válido, continua
                     }
-                    throw new Error('Não é JSON');
                 }
                 
-                // Se chegou aqui, errorData é um objeto
-                if (errorData.nome && Array.isArray(errorData.nome)) {
-                    mensagem = errorData.nome[0];
-                } else if (errorData.detail) {
-                    mensagem = errorData.detail;
-                } else if (typeof errorData === 'object') {
-                    const mensagens = [];
-                    for (const [key, value] of Object.entries(errorData)) {
-                        if (Array.isArray(value)) {
-                            mensagens.push(value.join(', '));
-                        } else if (typeof value === 'string') {
-                            mensagens.push(value);
+                // Se conseguiu parsear como objeto
+                if (errorData && typeof errorData === 'object') {
+                    // Prioriza mensagens de validação por campo
+                    if (errorData.nome && Array.isArray(errorData.nome) && errorData.nome.length > 0) {
+                        mensagem = errorData.nome[0];
+                    } else if (errorData.tipo_pendencia && Array.isArray(errorData.tipo_pendencia) && errorData.tipo_pendencia.length > 0) {
+                        mensagem = errorData.tipo_pendencia[0];
+                    } else if (errorData.detail) {
+                        mensagem = errorData.detail;
+                    } else if (errorData.error) {
+                        mensagem = errorData.error;
+                    } else {
+                        // Tenta extrair qualquer mensagem do objeto
+                        const mensagens = [];
+                        for (const [key, value] of Object.entries(errorData)) {
+                            if (Array.isArray(value) && value.length > 0) {
+                                mensagens.push(value[0]);
+                            } else if (typeof value === 'string' && value) {
+                                mensagens.push(value);
+                            }
+                        }
+                        if (mensagens.length > 0) {
+                            mensagem = mensagens[0];
                         }
                     }
-                    if (mensagens.length > 0) {
-                        mensagem = mensagens.join('\n');
-                    }
+                } else if (errorMessage && errorMessage.length > 0) {
+                    // Se não é JSON, usa a mensagem diretamente
+                    mensagem = errorMessage;
                 }
             } catch(e) {
-                // Se falhar tudo, usa a mensagem original do erro
-                if (error && error.message) {
-                    mensagem = error.message;
-                }
+                // Se falhar tudo, usa a mensagem padrão ou original
+                console.error('Erro ao processar erro:', e, error);
             }
             alert(mensagem);
         }
