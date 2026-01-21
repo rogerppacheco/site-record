@@ -1809,14 +1809,56 @@
     };
     document.getElementById('form-pendencia').onsubmit = async(e) => {
         e.preventDefault();
-        const id = document.getElementById('pendencia_id').value;
-        const body = { nome: document.getElementById('pendencia_nome').value, tipo_pendencia: document.getElementById('pendencia_tipo').value };
-        if(id) {
-            await apiFetch(`/crm/motivos-pendencia/${id}/`, {method:'PATCH', body: JSON.stringify(body)});
-        } else {
-            await apiFetch('/crm/motivos-pendencia/', {method:'POST', body: JSON.stringify(body)});
+        try {
+            const id = document.getElementById('pendencia_id').value;
+            const body = { nome: document.getElementById('pendencia_nome').value, tipo_pendencia: document.getElementById('pendencia_tipo').value };
+            if(id) {
+                await apiFetch(`/crm/motivos-pendencia/${id}/`, {method:'PATCH', body: JSON.stringify(body)});
+            } else {
+                await apiFetch('/crm/motivos-pendencia/', {method:'POST', body: JSON.stringify(body)});
+            }
+            document.getElementById('form-pendencia').reset(); carregarMotivosPendencia();
+        } catch(error) {
+            let mensagem = 'Erro ao salvar motivo de pendência.';
+            try {
+                // A apiFetch pode retornar errorData como JSON stringificado ou como objeto
+                let errorData = error.message;
+                try {
+                    errorData = JSON.parse(error.message);
+                } catch(e) {
+                    // Se não conseguir fazer parse, tenta usar a mensagem diretamente
+                    if (typeof errorData === 'string' && errorData.length > 0) {
+                        mensagem = errorData;
+                    }
+                    throw new Error('Não é JSON');
+                }
+                
+                // Se chegou aqui, errorData é um objeto
+                if (errorData.nome && Array.isArray(errorData.nome)) {
+                    mensagem = errorData.nome[0];
+                } else if (errorData.detail) {
+                    mensagem = errorData.detail;
+                } else if (typeof errorData === 'object') {
+                    const mensagens = [];
+                    for (const [key, value] of Object.entries(errorData)) {
+                        if (Array.isArray(value)) {
+                            mensagens.push(value.join(', '));
+                        } else if (typeof value === 'string') {
+                            mensagens.push(value);
+                        }
+                    }
+                    if (mensagens.length > 0) {
+                        mensagem = mensagens.join('\n');
+                    }
+                }
+            } catch(e) {
+                // Se falhar tudo, usa a mensagem original do erro
+                if (error && error.message) {
+                    mensagem = error.message;
+                }
+            }
+            alert(mensagem);
         }
-        document.getElementById('form-pendencia').reset(); carregarMotivosPendencia();
     };
     window.excluirPendencia = async(id)=>{ if(confirm('Excluir?')) { await apiFetch(`/crm/motivos-pendencia/${id}/`, {method:'DELETE'}); carregarMotivosPendencia(); } };
 
