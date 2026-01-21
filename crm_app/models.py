@@ -62,6 +62,7 @@ class MotivoPendencia(models.Model):
         db_table = 'crm_motivo_pendencia'
         verbose_name = "Motivo de Pendência"
         verbose_name_plural = "Motivos de Pendência"
+        ordering = ['nome']
 
 class RegraComissao(models.Model):
     TIPO_VENDA_CHOICES = [('PAP', 'PAP'), ('TELAG', 'TELAG')]

@@ -122,6 +122,17 @@ class MotivoPendenciaSerializer(serializers.ModelSerializer):
     class Meta:
         model = MotivoPendencia
         fields = '__all__'
+    
+    def validate_nome(self, value):
+        # Verifica se já existe um motivo com o mesmo nome (case-insensitive)
+        # Exclui a instância atual se estiver editando
+        queryset = MotivoPendencia.objects.filter(nome__iexact=value)
+        if self.instance:
+            queryset = queryset.exclude(pk=self.instance.pk)
+        
+        if queryset.exists():
+            raise serializers.ValidationError("Já existe um motivo de pendência cadastrado com este nome.")
+        return value
 
 class RegraComissaoSerializer(serializers.ModelSerializer):
     consultor_nome = serializers.CharField(source='consultor.get_full_name', read_only=True)
@@ -324,7 +335,7 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
     status_tratamento = serializers.PrimaryKeyRelatedField(queryset=StatusCRM.objects.filter(tipo='Tratamento'), required=False, allow_null=True)
     status_esteira = serializers.PrimaryKeyRelatedField(queryset=StatusCRM.objects.filter(tipo='Esteira'), required=False, allow_null=True)
     status_comissionamento = serializers.PrimaryKeyRelatedField(queryset=StatusCRM.objects.filter(tipo='Comissionamento'), required=False, allow_null=True)
-    motivo_pendencia = serializers.PrimaryKeyRelatedField(queryset=MotivoPendencia.objects.all(), required=False, allow_null=True)
+    motivo_pendencia = serializers.PrimaryKeyRelatedField(queryset=MotivoPendencia.objects.all().order_by('nome'), required=False, allow_null=True)
     # ------------------------------------------------------------------------------------
 
     class Meta:

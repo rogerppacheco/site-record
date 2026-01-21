@@ -239,24 +239,57 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 @permission_classes([AllowAny])
 def buscar_fatura_nio_bonus_m10(request):
     cpf = request.data.get("cpf")
+    contrato_id = request.data.get("contrato_id")
+    numero_fatura = request.data.get("numero_fatura")
+    
     if not cpf:
         return Response({"error": "CPF não informado."}, status=400)
+    
     try:
         from crm_app.services_nio import buscar_fatura_nio_por_cpf
-        resultado = buscar_fatura_nio_por_cpf(cpf, incluir_pdf=True)
-        if resultado and resultado.get('valor'):
-            return Response({
+        
+        # Obter número do contrato se contrato_id foi fornecido
+        numero_contrato = None
+        if contrato_id:
+            try:
+                from crm_app.models import ContratoM10
+                contrato = ContratoM10.objects.filter(id=contrato_id).first()
+                if contrato:
+                    # Usar numero_contrato_definitivo se disponível, senão numero_contrato
+                    numero_contrato = contrato.numero_contrato_definitivo or contrato.numero_contrato
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Erro ao buscar contrato {contrato_id}: {e}")
+        
+        # Buscar fatura com plano B habilitado
+        resultado = buscar_fatura_nio_por_cpf(
+            cpf, 
+            incluir_pdf=True,
+            numero_contrato=numero_contrato,
+            usar_plano_b=True  # Habilitar método Nio Negocia como fallback
+        )
+        
+        if resultado and (resultado.get('valor') or resultado.get('codigo_pix') or resultado.get('codigo_barras')):
+            response_data = {
                 "success": True,
                 "valor": resultado.get('valor'),
                 "codigo_pix": resultado.get('codigo_pix'),
                 "codigo_barras": resultado.get('codigo_barras'),
-                "data_vencimento": resultado.get('data_vencimento'),
-                "pdf_url": resultado.get('pdf_url'),
-                "pdf_salvo": resultado.get('pdf_salvo')
-            })
+                "data_vencimento": resultado.get('data_vencimento').strftime('%Y-%m-%d') if resultado.get('data_vencimento') else None,
+                "pdf_url": resultado.get('pdf_url') or resultado.get('pdf_path'),
+                "metodo_usado": resultado.get('metodo_usado', 'desconhecido')
+            }
+            return Response(response_data)
         else:
-            return Response({"success": False, "message": "Não foi possível buscar a fatura. Verifique o CPF ou tente novamente."}, status=404)
+            return Response({
+                "success": False, 
+                "message": "Não foi possível buscar a fatura. Verifique o CPF ou tente novamente."
+            }, status=404)
     except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.exception(f"Erro ao buscar fatura: {e}")
         return Response({"success": False, "message": str(e)}, status=500)
 import logging
 import pandas as pd
@@ -464,12 +497,12 @@ class StatusCRMDetailView(generics.RetrieveUpdateDestroyAPIView):
     resource_name = 'statuscrm'
 
 class MotivoPendenciaListCreateView(generics.ListCreateAPIView):
-    queryset = MotivoPendencia.objects.all()
+    queryset = MotivoPendencia.objects.all().order_by('nome')
     serializer_class = MotivoPendenciaSerializer
     permission_classes = [permissions.IsAuthenticated]
 
 class MotivoPendenciaDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = MotivoPendencia.objects.all()
+    queryset = MotivoPendencia.objects.all().order_by('nome')
     serializer_class = MotivoPendenciaSerializer
     permission_classes = [CheckAPIPermission]
     resource_name = 'motivopendencia'
