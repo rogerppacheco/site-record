@@ -791,7 +791,7 @@
     // --- CRUD ---
     async function carregarMeusAcionamentos() {
         const tbody = document.getElementById('tbody-acionamentos');
-        tbody.innerHTML = '<tr><td colspan="11">Carregando...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="12">Carregando...</td></tr>';
         const res = await fetch('/api/crm/cdoi/listar/', { headers: {'Authorization': `Bearer ${localStorage.getItem('accessToken')}`} });
         const lista = await res.json();
         tbody.innerHTML = '';
@@ -807,21 +807,24 @@
             const totalHps = i.total_hps || 0;
             const prevenda = i.prevenda || 0;
             
-            // Coluna de imagem com preview e link
-            let imagemHtml = '';
-            if (i.link_fotos_fachada) {
-                imagemHtml = `
-                    <span class="image-preview-icon" onclick="window.open('${i.link_fotos_fachada}', '_blank')">
-                        <i class="bi bi-image"></i>
-                        <div class="image-tooltip">
-                            <img src="${i.link_fotos_fachada}" alt="Foto Fachada" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'200\' height=\'200\'%3E%3Crect fill=\'%23ddd\' width=\'200\' height=\'200\'/%3E%3Ctext x=\'50%25\' y=\'50%25\' dominant-baseline=\'middle\' text-anchor=\'middle\' font-family=\'sans-serif\' font-size=\'16\' fill=\'%23999\'%3ESem imagem%3C/text%3E%3C/svg%3E'">
-                        </div>
-                    </span>
-                `;
-            } else {
-                imagemHtml = '<i class="bi bi-image no-image-icon"></i>';
+            // Função helper para criar HTML de imagem
+            function criarImagemHtml(link, alt) {
+                if (link) {
+                    return `
+                        <span class="image-preview-icon" onclick="window.open('${link}', '_blank')">
+                            <i class="bi bi-image"></i>
+                            <div class="image-tooltip">
+                                <img src="${link}" alt="${alt}" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'200\' height=\'200\'%3E%3Crect fill=\'%23ddd\' width=\'200\' height=\'200\'/%3E%3Ctext x=\'50%25\' y=\'50%25\' dominant-baseline=\'middle\' text-anchor=\'middle\' font-family=\'sans-serif\' font-size=\'16\' fill=\'%23999\'%3ESem imagem%3C/text%3E%3C/svg%3E'">
+                            </div>
+                        </span>
+                    `;
+                } else {
+                    return '<i class="bi bi-image no-image-icon"></i>';
+                }
             }
             
+            const fotoFachadaHtml = criarImagemHtml(i.link_fotos_fachada, 'Foto Fachada');
+            const fotoAutorizacaoHtml = criarImagemHtml(i.link_carta_sindico, 'Foto Autorização');
             const acionadoPor = i.criado_por_nome || '-';
             
             tbody.innerHTML += `<tr>
@@ -832,7 +835,8 @@
                 <td>${telefone}</td>
                 <td class="text-center"><span class="badge bg-primary">${totalHps}</span></td>
                 <td class="text-center"><span class="badge bg-success">${prevenda}</span></td>
-                <td class="text-center">${imagemHtml}</td>
+                <td class="text-center">${fotoFachadaHtml}</td>
+                <td class="text-center">${fotoAutorizacaoHtml}</td>
                 <td><span class="badge status-badge status-${i.status_cod}">${i.status}</span></td>
                 <td><small>${acionadoPor}</small></td>
                 <td class="text-end">${btns}</td>
