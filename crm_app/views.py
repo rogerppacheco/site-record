@@ -5427,6 +5427,7 @@ class CdoiDashboardView(APIView):
 # --- 3. EDIÇÃO DE STATUS (Apenas Gestão) ---
 class CdoiUpdateView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
 
     def get(self, request, pk):
         user = request.user
@@ -5482,6 +5483,8 @@ class CdoiUpdateView(APIView):
                 'blocos': blocos,
                 'criado_por_id': cdoi.criado_por.id if cdoi.criado_por else None,
                 'criado_por_nome': criado_por_nome,
+                'link_fotos_fachada': cdoi.link_fotos_fachada or '',
+                'link_carta_sindico': cdoi.link_carta_sindico or '',
             }
             return Response(data)
         except CdoiSolicitacao.DoesNotExist:
@@ -5504,9 +5507,29 @@ class CdoiUpdateView(APIView):
                     return default
 
             cdoi = CdoiSolicitacao.objects.get(pk=pk)
-            data = request.data
+            data = request.POST
+            files = request.FILES
             import logging
             logger = logging.getLogger(__name__)
+
+            # Processar upload de arquivos se fornecidos
+            if files:
+                from crm_app.onedrive_service import OneDriveUploader
+                uploader = OneDriveUploader()
+                clean_name = str(cdoi.nome_condominio).replace('/', '-').strip()
+                folder_name = f"{clean_name}_{cdoi.cep or ''}"
+                
+                if 'arquivo_carta' in files:
+                    f = files['arquivo_carta']
+                    link_carta = uploader.upload_file(f, folder_name, f"CARTA_{f.name}")
+                    cdoi.link_carta_sindico = link_carta
+                    logger.info(f"[CDOI] Arquivo carta atualizado para {cdoi.nome_condominio} (ID: {pk})")
+                
+                if 'arquivo_fachada' in files:
+                    f = files['arquivo_fachada']
+                    link_fachada = uploader.upload_file(f, folder_name, f"FACHADA_{f.name}")
+                    cdoi.link_fotos_fachada = link_fachada
+                    logger.info(f"[CDOI] Arquivo fachada atualizado para {cdoi.nome_condominio} (ID: {pk})")
 
             # Campos pontuais
             if data.get('status'):
