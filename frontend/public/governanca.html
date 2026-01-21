@@ -1793,7 +1793,8 @@
 
     let listaPendenciasGlobal = [];
     async function carregarMotivosPendencia() {
-        const res = await apiFetch('/crm/motivos-pendencia/');
+        // Força trazer todos os motivos (até 1000, suficiente para todas as pendências)
+        const res = await apiFetch('/crm/motivos-pendencia/?page_size=1000');
         const lista = Array.isArray(res) ? res : (res?.results || []);
         listaPendenciasGlobal = lista;
         const tbody = document.getElementById('lista-pendencias'); tbody.innerHTML = '';
