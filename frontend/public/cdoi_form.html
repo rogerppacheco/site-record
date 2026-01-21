@@ -553,8 +553,38 @@
                                 </div>
                                 <div id="zap-feedback" class="form-text"></div>
                             </div>
-                            <div class="col-md-6 file-input-group"><label>Carta Síndico *</label><input type="file" name="arquivo_carta" class="form-control" accept=".pdf,.jpg" required></div>
-                            <div class="col-md-6 file-input-group"><label>Fotos Fachada *</label><input type="file" name="arquivo_fachada" class="form-control" accept="image/*" multiple required></div>
+                            <div class="col-md-6 file-input-group">
+                                <label>Carta Síndico (Autorização) *</label>
+                                <div id="preview-carta-container" class="mb-2" style="display: none;">
+                                    <div class="alert alert-info d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>Foto atual:</strong>
+                                            <a id="link-carta-atual" href="#" target="_blank" class="ms-2">
+                                                <i class="bi bi-file-pdf"></i> Ver arquivo atual
+                                            </a>
+                                        </div>
+                                        <small class="text-muted">Selecione novo arquivo para substituir</small>
+                                    </div>
+                                </div>
+                                <input type="file" name="arquivo_carta" id="input-arquivo-carta" class="form-control" accept=".pdf,.jpg,.jpeg,.png" required>
+                                <small class="text-muted">Formato: PDF, JPG, PNG</small>
+                            </div>
+                            <div class="col-md-6 file-input-group">
+                                <label>Fotos Fachada *</label>
+                                <div id="preview-fachada-container" class="mb-2" style="display: none;">
+                                    <div class="alert alert-info d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>Foto atual:</strong>
+                                            <a id="link-fachada-atual" href="#" target="_blank" class="ms-2">
+                                                <i class="bi bi-image"></i> Ver foto atual
+                                            </a>
+                                        </div>
+                                        <small class="text-muted">Selecione novo arquivo para substituir</small>
+                                    </div>
+                                </div>
+                                <input type="file" name="arquivo_fachada" id="input-arquivo-fachada" class="form-control" accept="image/*" multiple required>
+                                <small class="text-muted">Formato: JPG, PNG (múltiplas imagens permitidas)</small>
+                            </div>
                             
                         </div>
 
@@ -1030,6 +1060,34 @@
                         label.textContent = text.replace('*', '') + ' (Opcional)';
                     }
                 });
+                
+                // Exibe fotos atuais se existirem
+                const previewCartaContainer = document.getElementById('preview-carta-container');
+                const linkCartaAtual = document.getElementById('link-carta-atual');
+                const previewFachadaContainer = document.getElementById('preview-fachada-container');
+                const linkFachadaAtual = document.getElementById('link-fachada-atual');
+                
+                // Foto de autorização (carta)
+                if (d.link_carta_sindico) {
+                    if (previewCartaContainer) previewCartaContainer.style.display = 'block';
+                    if (linkCartaAtual) {
+                        linkCartaAtual.href = d.link_carta_sindico;
+                        linkCartaAtual.innerHTML = '<i class="bi bi-file-pdf"></i> Ver autorização atual';
+                    }
+                } else {
+                    if (previewCartaContainer) previewCartaContainer.style.display = 'none';
+                }
+                
+                // Foto de fachada
+                if (d.link_fotos_fachada) {
+                    if (previewFachadaContainer) previewFachadaContainer.style.display = 'block';
+                    if (linkFachadaAtual) {
+                        linkFachadaAtual.href = d.link_fotos_fachada;
+                        linkFachadaAtual.innerHTML = '<i class="bi bi-image"></i> Ver foto de fachada atual';
+                    }
+                } else {
+                    if (previewFachadaContainer) previewFachadaContainer.style.display = 'none';
+                }
 
                 document.getElementById('inp_nome').value = d.nome_condominio;
                 document.getElementById('inp_cep').value = d.cep;
@@ -1080,6 +1138,11 @@
                 label.textContent = text.replace(' (Opcional)', ' *');
             }
         });
+        // Esconde previews das fotos
+        const previewCartaContainer = document.getElementById('preview-carta-container');
+        const previewFachadaContainer = document.getElementById('preview-fachada-container');
+        if (previewCartaContainer) previewCartaContainer.style.display = 'none';
+        if (previewFachadaContainer) previewFachadaContainer.style.display = 'none';
         // Esconde o campo "Acionado por" no modo novo
         document.getElementById('div-criado-por').style.display = 'none';
         // Esconde o resumo de blocos e mostra estrutura padrão
