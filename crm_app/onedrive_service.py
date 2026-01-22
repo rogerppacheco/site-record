@@ -116,28 +116,52 @@ class OneDriveUploader:
                 share_link = share_data.get('link', {}).get('webUrl')
                 
                 if share_link:
-                    # 3. Obter downloadUrl usando o share link
-                    # Converter share link para encoded format
-                    import base64
-                    encoded_url = base64.b64encode(share_link.encode()).decode().rstrip('=').replace('/', '_').replace('+', '-')
-                    share_id = f"u!{encoded_url}"
+                    # 3. Tentar obter downloadUrl usando o share link (método 1)
+                    try:
+                        import base64
+                        encoded_url = base64.b64encode(share_link.encode()).decode().rstrip('=').replace('/', '_').replace('+', '-')
+                        share_id = f"u!{encoded_url}"
+                        
+                        download_info_url = f"{self.base_url}/shares/{share_id}/driveItem?$select=@microsoft.graph.downloadUrl,name"
+                        download_headers = {'Authorization': f'Bearer {token}'}
+                        
+                        logger.info(f"[OneDrive] Tentando obter downloadUrl via share link (método 1)")
+                        download_resp = requests.get(download_info_url, headers=download_headers)
+                        
+                        if download_resp.status_code == 200:
+                            download_data = download_resp.json()
+                            download_url = download_data.get('@microsoft.graph.downloadUrl')
+                            if download_url:
+                                logger.info(f"[OneDrive] ✅ DownloadUrl obtido com sucesso (método 1)")
+                                return download_url
+                    except Exception as e:
+                        logger.warning(f"[OneDrive] Método 1 falhou: {e}")
                     
-                    # Buscar downloadUrl
-                    download_info_url = f"{self.base_url}/shares/{share_id}/driveItem?$select=@microsoft.graph.downloadUrl,name"
-                    download_headers = {'Authorization': f'Bearer {token}'}
+                    # 4. Tentar obter downloadUrl diretamente do item (método 2)
+                    try:
+                        direct_url = f"{self.base_url}/me/drive/items/{item_id}?$select=@microsoft.graph.downloadUrl,name"
+                        direct_headers = {'Authorization': f'Bearer {token}'}
+                        
+                        logger.info(f"[OneDrive] Tentando obter downloadUrl diretamente do item (método 2)")
+                        direct_resp = requests.get(direct_url, headers=direct_headers)
+                        
+                        if direct_resp.status_code == 200:
+                            direct_data = direct_resp.json()
+                            download_url = direct_data.get('@microsoft.graph.downloadUrl')
+                            if download_url:
+                                logger.info(f"[OneDrive] ✅ DownloadUrl obtido com sucesso (método 2)")
+                                return download_url
+                    except Exception as e:
+                        logger.warning(f"[OneDrive] Método 2 falhou: {e}")
                     
-                    logger.info(f"[OneDrive] Obtendo downloadUrl do item compartilhado")
-                    download_resp = requests.get(download_info_url, headers=download_headers)
-                    
-                    if download_resp.status_code == 200:
-                        download_data = download_resp.json()
-                        download_url = download_data.get('@microsoft.graph.downloadUrl')
-                        if download_url:
-                            logger.info(f"[OneDrive] ✅ DownloadUrl obtido com sucesso")
-                            return download_url
-                    
-                    # Não usar share_link como fallback (não funciona como src de imagem devido a CORS)
-                    logger.warning(f"[OneDrive] ⚠️ Não conseguiu downloadUrl, mas share_link disponível (não será usado)")
+                    # 5. Tentar construir URL de download manualmente usando o item_id
+                    try:
+                        # Para arquivos compartilhados, podemos tentar usar a URL de conteúdo diretamente
+                        manual_url = f"{self.base_url}/me/drive/items/{item_id}/content"
+                        # Mas isso não funciona como src de imagem... então vamos tentar o endpoint de thumbnail ou download
+                        logger.warning(f"[OneDrive] ⚠️ Tentativas anteriores falharam, mas item_id existe: {item_id}")
+                    except Exception as e:
+                        logger.warning(f"[OneDrive] Método 3 falhou: {e}")
             
             # Não usar webUrl como fallback (não funciona como src de imagem)
             logger.error(f"[OneDrive] ❌ Não foi possível obter downloadUrl válido. Upload feito, mas URL não compatível com tags <img>")
