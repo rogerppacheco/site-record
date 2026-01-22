@@ -5753,6 +5753,56 @@ class GerarLinkPublicoPreVendaView(APIView):
                 clean_name = acionamento.nome_condominio.replace('/', '-').strip()
                 folder_name = f"PREVENDAS_{clean_name}"
                 f = request.FILES['imagem_banner']
+                # Processar imagem: redimensionar e comprimir antes do upload
+                try:
+                    from PIL import Image
+                    import io
+                    from django.core.files.uploadedfile import InMemoryUploadedFile
+                    import sys
+                    
+                    # Ler imagem
+                    img = Image.open(f)
+                    
+                    # Converter para RGB se necessário (para remover transparência de PNG)
+                    if img.mode in ('RGBA', 'LA', 'P'):
+                        background = Image.new('RGB', img.size, (255, 255, 255))
+                        if img.mode == 'P':
+                            img = img.convert('RGBA')
+                        background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+                        img = background
+                    
+                    # Redimensionar se muito grande (máximo 1200px de largura, mantém proporção)
+                    MAX_WIDTH = 1200
+                    if img.width > MAX_WIDTH:
+                        ratio = MAX_WIDTH / img.width
+                        new_height = int(img.height * ratio)
+                        try:
+                            img = img.resize((MAX_WIDTH, new_height), Image.Resampling.LANCZOS)
+                        except AttributeError:
+                            # Compatibilidade com versões antigas do Pillow
+                            img = img.resize((MAX_WIDTH, new_height), Image.LANCZOS)
+                    
+                    # Salvar em buffer com compressão
+                    output = io.BytesIO()
+                    img.save(output, format='JPEG', quality=85, optimize=True)
+                    output.seek(0)
+                    
+                    # Criar novo arquivo em memória
+                    filename = f.name.rsplit('.', 1)[0] + '.jpg'  # Mudar extensão para .jpg
+                    f_processed = InMemoryUploadedFile(
+                        output, None, filename, 'image/jpeg', sys.getsizeof(output), None
+                    )
+                    f = f_processed
+                except ImportError:
+                    # Se PIL não estiver disponível, usar imagem original
+                    import logging
+                    logger_prevenda = logging.getLogger(__name__)
+                    logger_prevenda.warning("[Pré-venda] Pillow não disponível, usando imagem original sem processamento")
+                except Exception as e:
+                    import logging
+                    logger_prevenda = logging.getLogger(__name__)
+                    logger_prevenda.warning(f"[Pré-venda] Erro ao processar imagem: {e}, usando original")
+                
                 # Usa upload_file_and_get_download_url para obter URL de download direto (funciona melhor em mobile)
                 try:
                     import logging
