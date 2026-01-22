@@ -5758,11 +5758,11 @@ class GerarLinkPublicoPreVendaView(APIView):
                     import logging
                     logger_prevenda = logging.getLogger(__name__)
                     imagem_banner = uploader.upload_file_and_get_download_url(f, folder_name, f"BANNER_{f.name}")
-                    # Valida se a URL é válida (não é SharePoint que causa CORS)
-                    if imagem_banner and ('sharepoint.com' in imagem_banner.lower() or 'onedrive.live.com' in imagem_banner.lower()):
-                        logger_prevenda.error(f"[Pré-venda] URL inválida (SharePoint): {imagem_banner[:100]}")
-                        return Response({'error': 'Não foi possível obter URL de download válida. Tente novamente.'}, status=500)
-                    logger_prevenda.info(f"[Pré-venda] Banner uploaded com sucesso")
+                    # Valida se a URL parece ser uma URL de download direto (não SharePoint webUrl)
+                    if imagem_banner and ('sharepoint.com/_layouts' in imagem_banner.lower() or 'onedrive.live.com' in imagem_banner.lower()):
+                        logger_prevenda.warning(f"[Pré-venda] URL parece ser SharePoint webUrl (pode causar CORS): {imagem_banner[:100]}")
+                        # Não rejeitar, mas avisar - pode funcionar em alguns casos
+                    logger_prevenda.info(f"[Pré-venda] Banner uploaded com sucesso: {imagem_banner[:80] if imagem_banner else 'None'}...")
                 except Exception as e:
                     import logging
                     logger_prevenda = logging.getLogger(__name__)
