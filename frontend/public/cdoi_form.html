@@ -745,8 +745,8 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
-                <button type="button" class="btn btn-success" onclick="salvarLinkPreVenda()">
-                    <i class="bi bi-save"></i> Salvar/Gerar Link
+                <button type="button" class="btn btn-success" id="btn-salvar-link-prevenda" onclick="salvarLinkPreVenda()">
+                    <i class="bi bi-save"></i> <span id="btn-salvar-link-text">Salvar/Gerar Link</span>
                 </button>
             </div>
         </div>
@@ -1710,12 +1710,25 @@
     async function salvarLinkPreVenda() {
         if (!cdoiIdLinkAtual) return;
         
+        const btn = document.getElementById('btn-salvar-link-prevenda');
+        const btnText = document.getElementById('btn-salvar-link-text');
+        const originalHtml = btn.innerHTML;
+        const originalText = btnText.textContent;
+        
+        // Desabilita botão e mostra feedback
+        btn.disabled = true;
+        const spinnerHtml = '<span class="spinner-border spinner-border-sm me-2"></span>';
+        btnText.textContent = 'Gerando link...';
+        btn.innerHTML = spinnerHtml + '<span id="btn-salvar-link-text">Gerando link...</span>';
+        
         const formData = new FormData();
         const imagemFile = document.getElementById('link-imagem-file').files[0];
         const imagemUrl = document.getElementById('link-imagem-url').value.trim();
         
         if (imagemFile) {
             formData.append('imagem_banner', imagemFile);
+            const btnTextInner = document.getElementById('btn-salvar-link-text');
+            if (btnTextInner) btnTextInner.textContent = 'Enviando imagem...';
         } else if (imagemUrl) {
             formData.append('imagem_banner_url', imagemUrl);
         }
@@ -1741,6 +1754,10 @@
         } catch (e) {
             console.error('Erro:', e);
             alert('Erro de conexão ao gerar link.');
+        } finally {
+            // Restaura botão
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
         }
     }
     
