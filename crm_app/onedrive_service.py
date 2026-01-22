@@ -113,7 +113,9 @@ class OneDriveUploader:
             
             if share_resp.status_code == 200:
                 share_data = share_resp.json()
+                logger.info(f"[OneDrive] Share data keys: {list(share_data.keys())}")
                 share_link = share_data.get('link', {}).get('webUrl')
+                logger.info(f"[OneDrive] Share link obtido: {share_link[:100] if share_link else 'None'}...")
                 
                 if share_link:
                     # 3. Tentar obter downloadUrl usando o share link (método 1)
@@ -122,20 +124,44 @@ class OneDriveUploader:
                         encoded_url = base64.b64encode(share_link.encode()).decode().rstrip('=').replace('/', '_').replace('+', '-')
                         share_id = f"u!{encoded_url}"
                         
-                        download_info_url = f"{self.base_url}/shares/{share_id}/driveItem?$select=@microsoft.graph.downloadUrl,name"
+                        # Método 1: Seguir redirect do endpoint /content para obter URL final
+                        content_url = f"{self.base_url}/shares/{share_id}/driveItem/content"
+                        content_headers = {'Authorization': f'Bearer {token}'}
+                        
+                        logger.info(f"[OneDrive] Tentando obter URL via /content seguindo redirect (método 1)")
+                        # Usar GET com allow_redirects=False para capturar o Location header
+                        content_resp = requests.get(content_url, headers=content_headers, allow_redirects=False, timeout=30)
+                        
+                        # Se recebeu redirect, pegar a URL do header Location
+                        if content_resp.status_code in [302, 307, 308]:
+                            download_url = content_resp.headers.get('Location')
+                            if download_url:
+                                logger.info(f"[OneDrive] ✅ DownloadUrl obtido via redirect Location (método 1): {download_url[:80]}...")
+                                return download_url
+                        
+                        # Se não foi redirect, tentar com allow_redirects=True
+                        content_resp2 = requests.head(content_url, headers=content_headers, allow_redirects=True, timeout=30)
+                        if content_resp2.status_code in [200, 302, 307, 308]:
+                            download_url = content_resp2.url
+                            if download_url and download_url != content_url:
+                                logger.info(f"[OneDrive] ✅ DownloadUrl obtido via redirect final (método 1): {download_url[:80]}...")
+                                return download_url
+                        
+                        # Método 2: Tentar endpoint alternativo sem $select
+                        download_info_url = f"{self.base_url}/shares/{share_id}/driveItem"
                         download_headers = {'Authorization': f'Bearer {token}'}
                         
-                        logger.info(f"[OneDrive] Tentando obter downloadUrl via share link (método 1)")
+                        logger.info(f"[OneDrive] Tentando obter downloadUrl via driveItem completo (método 2)")
                         download_resp = requests.get(download_info_url, headers=download_headers)
                         
                         if download_resp.status_code == 200:
                             download_data = download_resp.json()
                             download_url = download_data.get('@microsoft.graph.downloadUrl')
                             if download_url:
-                                logger.info(f"[OneDrive] ✅ DownloadUrl obtido com sucesso (método 1)")
+                                logger.info(f"[OneDrive] ✅ DownloadUrl obtido com sucesso (método 2): {download_url[:80]}...")
                                 return download_url
                     except Exception as e:
-                        logger.warning(f"[OneDrive] Método 1 falhou: {e}")
+                        logger.error(f"[OneDrive] Método share link falhou: {e}", exc_info=True)
                     
                     # 4. Tentar obter downloadUrl diretamente do item (método 2)
                     try:

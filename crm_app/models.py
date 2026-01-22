@@ -638,7 +638,7 @@ class LinkPublicoPreVenda(models.Model):
     """Link público único gerado para cada acionamento CDOI"""
     codigo_unico = models.CharField(max_length=50, unique=True, db_index=True, verbose_name="Código Único")
     acionamento = models.ForeignKey('CdoiSolicitacao', on_delete=models.CASCADE, related_name='links_prevenda', verbose_name="Acionamento CDOI")
-    imagem_banner = models.URLField(max_length=500, blank=True, null=True, verbose_name="URL da Imagem/Banner")
+    imagem_banner = models.URLField(max_length=2000, blank=True, null=True, verbose_name="URL da Imagem/Banner")
     criado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, verbose_name="Criado por")
     data_criacao = models.DateTimeField(auto_now_add=True, verbose_name="Data de Criação")
     ativo = models.BooleanField(default=True, verbose_name="Link Ativo")
