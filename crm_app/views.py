@@ -5743,16 +5743,6 @@ class GerarLinkPublicoPreVendaView(APIView):
                 ativo=True
             ).first()
             
-            if link_existente:
-                # Se já existe, retorna o link existente
-                url_publica = link_existente.get_url_publica(request)
-                return Response({
-                    'mensagem': 'Link já existe para este acionamento',
-                    'link': url_publica,
-                    'codigo': link_existente.codigo_unico,
-                    'id': link_existente.id
-                }, status=200)
-            
             # Upload de imagem/banner se fornecido
             imagem_banner = None
             if 'imagem_banner' in request.FILES:
@@ -5761,9 +5751,23 @@ class GerarLinkPublicoPreVendaView(APIView):
                 clean_name = acionamento.nome_condominio.replace('/', '-').strip()
                 folder_name = f"PREVENDAS_{clean_name}"
                 f = request.FILES['imagem_banner']
-                imagem_banner = uploader.upload_file(f, folder_name, f"BANNER_{f.name}")
+                # Usa upload_file_and_get_download_url para obter URL de download direto (funciona melhor em mobile)
+                imagem_banner = uploader.upload_file_and_get_download_url(f, folder_name, f"BANNER_{f.name}")
             elif request.POST.get('imagem_banner_url'):
                 imagem_banner = request.POST.get('imagem_banner_url').strip()
+            
+            if link_existente:
+                # Se já existe, atualiza a imagem se fornecida
+                if imagem_banner:
+                    link_existente.imagem_banner = imagem_banner
+                    link_existente.save(update_fields=['imagem_banner'])
+                url_publica = link_existente.get_url_publica(request)
+                return Response({
+                    'mensagem': 'Link já existe para este acionamento' + (' (imagem atualizada)' if imagem_banner else ''),
+                    'link': url_publica,
+                    'codigo': link_existente.codigo_unico,
+                    'id': link_existente.id
+                }, status=200)
             
             # Cria novo link público
             link_publico = LinkPublicoPreVenda.objects.create(
