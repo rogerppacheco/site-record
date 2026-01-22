@@ -326,7 +326,7 @@ from django.core.mail import EmailMultiAlternatives
 from django.utils.html import strip_tags
 from django.contrib.staticfiles import finders
 from django.core.exceptions import ValidationError
-from .models import CdoiSolicitacao, CdoiBloco
+from .models import CdoiSolicitacao, CdoiBloco, PreVenda, LinkPublicoPreVenda
 from .onedrive_service import OneDriveUploader
 
 # Importar mapeamento de status FPD
@@ -5694,6 +5694,212 @@ def page_cdoi_novo(request):
     """View simples para abrir a página no navegador"""
     can_config = is_member(request.user, ['Admin', 'Diretoria']) if request.user.is_authenticated else False
     return render(request, 'cdoi_form.html', {'can_config': can_config})
+
+
+def prevenda_publica_landing(request, codigo):
+    """View pública para renderizar a landing page de pré-vendas"""
+    try:
+        link_publico = LinkPublicoPreVenda.objects.select_related('acionamento').get(
+            codigo_unico=codigo,
+            ativo=True
+        )
+        
+        # Gera URL completa para QR Code
+        url_completa = link_publico.get_url_publica(request)
+        
+        context = {
+            'link': link_publico,
+            'acionamento': link_publico.acionamento,
+            'url_completa': url_completa,
+            'codigo': codigo
+        }
+        
+        return render(request, 'prevenda_publica.html', context)
+        
+    except LinkPublicoPreVenda.DoesNotExist:
+        from django.http import HttpResponseNotFound
+        return HttpResponseNotFound('<h1>Link não encontrado ou inativo</h1>')
+
+
+# =============================================================================
+# PRÉ-VENDAS (Formulário Simples)
+# =============================================================================
+
+# --- NOVAS VIEWS PARA PRÉ-VENDAS PÚBLICAS ---
+
+class GerarLinkPublicoPreVendaView(APIView):
+    """API para gerar/criar link público único por acionamento CDOI"""
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, cdoi_id):
+        try:
+            # Busca o acionamento CDOI
+            acionamento = CdoiSolicitacao.objects.get(pk=cdoi_id)
+            
+            # Verifica se já existe um link ativo para este acionamento
+            link_existente = LinkPublicoPreVenda.objects.filter(
+                acionamento=acionamento,
+                ativo=True
+            ).first()
+            
+            if link_existente:
+                # Se já existe, retorna o link existente
+                url_publica = link_existente.get_url_publica(request)
+                return Response({
+                    'mensagem': 'Link já existe para este acionamento',
+                    'link': url_publica,
+                    'codigo': link_existente.codigo_unico,
+                    'id': link_existente.id
+                }, status=200)
+            
+            # Upload de imagem/banner se fornecido
+            imagem_banner = None
+            if 'imagem_banner' in request.FILES:
+                from crm_app.onedrive_service import OneDriveUploader
+                uploader = OneDriveUploader()
+                clean_name = acionamento.nome_condominio.replace('/', '-').strip()
+                folder_name = f"PREVENDAS_{clean_name}"
+                f = request.FILES['imagem_banner']
+                imagem_banner = uploader.upload_file(f, folder_name, f"BANNER_{f.name}")
+            elif request.POST.get('imagem_banner_url'):
+                imagem_banner = request.POST.get('imagem_banner_url').strip()
+            
+            # Cria novo link público
+            link_publico = LinkPublicoPreVenda.objects.create(
+                acionamento=acionamento,
+                imagem_banner=imagem_banner,
+                criado_por=request.user
+            )
+            
+            url_publica = link_publico.get_url_publica(request)
+            
+            return Response({
+                'mensagem': 'Link público criado com sucesso!',
+                'link': url_publica,
+                'codigo': link_publico.codigo_unico,
+                'id': link_publico.id
+            }, status=201)
+            
+        except CdoiSolicitacao.DoesNotExist:
+            return Response({"error": "Acionamento CDOI não encontrado."}, status=404)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Erro ao gerar link público: {e}", exc_info=True)
+            return Response({'error': f"Erro ao processar: {str(e)}"}, status=500)
+
+
+class PreVendaPublicaFormView(APIView):
+    """API PÚBLICA (sem autenticação) para receber formulário da landing page"""
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, codigo):
+        try:
+            # Busca o link público pelo código
+            link_publico = LinkPublicoPreVenda.objects.get(codigo_unico=codigo, ativo=True)
+            
+            data = request.data
+            
+            nome_cliente = data.get('nome_cliente', '').strip()
+            telefone_whatsapp = data.get('telefone_whatsapp', '').strip()
+            email = data.get('email', '').strip()
+            bloco = data.get('bloco', '').strip()
+            apartamento = data.get('apartamento', '').strip()
+            
+            # Validações
+            if not nome_cliente:
+                return Response({"error": "Nome é obrigatório."}, status=400)
+            if not telefone_whatsapp:
+                return Response({"error": "Telefone/WhatsApp é obrigatório."}, status=400)
+            
+            # Obtém IP de origem
+            x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+            if x_forwarded_for:
+                ip_origem = x_forwarded_for.split(',')[0]
+            else:
+                ip_origem = request.META.get('REMOTE_ADDR')
+            
+            # Cria a pré-venda
+            prevenda = PreVenda.objects.create(
+                link_publico=link_publico,
+                nome_cliente=nome_cliente,
+                telefone_whatsapp=telefone_whatsapp,
+                email=email if email else None,
+                bloco=bloco if bloco else None,
+                apartamento=apartamento if apartamento else None,
+                ip_origem=ip_origem
+            )
+            
+            return Response({
+                'mensagem': 'Cadastro realizado com sucesso! Entraremos em contato em breve.',
+                'id': prevenda.id
+            }, status=201)
+            
+        except LinkPublicoPreVenda.DoesNotExist:
+            return Response({"error": "Link não encontrado ou inativo."}, status=404)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Erro ao processar pré-venda pública: {e}", exc_info=True)
+            return Response({'error': f"Erro ao processar: {str(e)}"}, status=500)
+
+
+class PreVendasPorAcionamentoView(APIView):
+    """API para listar pré-vendas de um acionamento CDOI específico"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, cdoi_id):
+        try:
+            acionamento = CdoiSolicitacao.objects.get(pk=cdoi_id)
+            
+            # Busca o link público do acionamento
+            link_publico = LinkPublicoPreVenda.objects.filter(
+                acionamento=acionamento,
+                ativo=True
+            ).first()
+            
+            if not link_publico:
+                return Response({
+                    'prevendas': [],
+                    'total': 0,
+                    'link_existe': False
+                })
+            
+            # Busca todas as pré-vendas do link
+            prevendas = PreVenda.objects.filter(
+                link_publico=link_publico
+            ).order_by('-data_cadastro')
+            
+            data = []
+            for item in prevendas:
+                data.append({
+                    'id': item.id,
+                    'nome_cliente': item.nome_cliente,
+                    'telefone_whatsapp': item.telefone_whatsapp,
+                    'email': item.email or '',
+                    'bloco': item.bloco or '',
+                    'apartamento': item.apartamento or '',
+                    'data_cadastro': item.data_cadastro.strftime('%d/%m/%Y %H:%M')
+                })
+            
+            return Response({
+                'prevendas': data,
+                'total': len(data),
+                'link_existe': True,
+                'link_codigo': link_publico.codigo_unico,
+                'link_url': link_publico.get_url_publica(request)
+            })
+            
+        except CdoiSolicitacao.DoesNotExist:
+            return Response({"error": "Acionamento não encontrado."}, status=404)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Erro ao listar pré-vendas do acionamento: {e}", exc_info=True)
+            return Response({'error': str(e)}, status=500)
+
+
 
 
 # =============================================================================

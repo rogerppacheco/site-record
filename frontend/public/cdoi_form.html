@@ -199,11 +199,16 @@
         /* Colunas de badges e ícones mais estreitas */
         #lista-content .table th:nth-child(6),
         #lista-content .table th:nth-child(7),
-        #lista-content .table th:nth-child(8),
         #lista-content .table td:nth-child(6),
-        #lista-content .table td:nth-child(7),
-        #lista-content .table td:nth-child(8) {
+        #lista-content .table td:nth-child(7) {
             width: 80px;
+            text-align: center;
+        }
+        
+        /* Coluna de Fotos (condensada) */
+        #lista-content .table th:nth-child(8),
+        #lista-content .table td:nth-child(8) {
+            width: 120px;
             text-align: center;
         }
         
@@ -217,6 +222,28 @@
         #lista-content .table th:nth-child(1),
         #lista-content .table td:nth-child(1) {
             width: 50px;
+        }
+        
+        /* Coluna de Ações - mais compacta */
+        #lista-content .table th:nth-child(11),
+        #lista-content .table td:nth-child(11) {
+            width: 180px;
+            min-width: 180px;
+            max-width: 180px;
+            text-align: center;
+            white-space: nowrap;
+        }
+        
+        /* Botões de ação mais compactos */
+        #lista-content .table td:nth-child(11) .btn {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+            margin: 0 2px;
+        }
+        
+        /* Estilo para as fotos na coluna condensada */
+        #lista-content .table td:nth-child(8) .image-preview-icon {
+            margin: 0;
         }
 
         #lista-content .table th {
@@ -295,7 +322,7 @@
         
         #lista-content .table-responsive tbody td:last-child {
             border-bottom: 1px solid var(--cor-borda) !important;
-            text-align: right !important;
+            text-align: center !important;
         }
 
         /* Extra: força tabela clássica também para .table dentro de #lista-content */
@@ -675,16 +702,98 @@
                 </div>
                 <div class="card-body p-0 table-responsive">
                     <table class="table table-hover align-middle mb-0">
-                        <thead class="table-light"><tr><th>ID</th><th>Condomínio</th><th>Endereço</th><th>Síndico</th><th>Telefone</th><th>Total HPs</th><th>Pré-vendas</th><th>Foto Fachada</th><th>Foto Autorização</th><th>Status</th><th>Acionado por</th><th>Ações</th></tr></thead>
+                        <thead class="table-light"><tr><th>ID</th><th>Condomínio</th><th>Endereço</th><th>Síndico</th><th>Telefone</th><th>Total HPs</th><th>Pré-vendas</th><th>Fotos</th><th>Status</th><th>Acionado por</th><th>Ações</th></tr></thead>
                         <tbody id="tbody-acionamentos"></tbody>
                     </table>
                 </div>
             </div>
         </div>
+
     </div>
 </div>
 
 <div class="modal fade" id="modalStatus" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Atualizar Status</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><input type="hidden" id="st-id"><label>Novo Status</label><select id="st-val" class="form-select mb-2"><option value="SEM_TRATAMENTO">Sem tratamento</option><option value="EM_CADASTRO">Em cadastro</option><option value="EM_PROJETO">Em Projeto</option><option value="EM_EXECUCAO">Em Execução</option><option value="CONCLUIDA">Concluída</option><option value="CANCELADA">Cancelada</option><option value="ARQUIVADA">Arquivada</option></select><label>Obs</label><textarea id="st-obs" class="form-control"></textarea></div><div class="modal-footer"><button onclick="salvarStatus()" class="btn btn-primary">Salvar</button></div></div></div></div>
+
+<div class="modal fade" id="modalLinkPreVenda" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title"><i class="bi bi-link-45deg"></i> Link de Pré-venda</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">URL do Link:</label>
+                    <div class="input-group">
+                        <input type="text" id="link-prevenda-url" class="form-control" readonly>
+                        <button class="btn btn-outline-secondary" onclick="copiarLinkPreVenda()" title="Copiar link">
+                            <i class="bi bi-clipboard"></i> Copiar
+                        </button>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Imagem/Banner (Opcional - URL ou Upload):</label>
+                    <input type="url" id="link-imagem-url" class="form-control mb-2" placeholder="Cole aqui a URL da imagem">
+                    <input type="file" id="link-imagem-file" class="form-control" accept="image/*">
+                    <small class="text-muted">Ou faça upload de uma imagem para o banner da landing page</small>
+                </div>
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> <strong>Como usar:</strong><br>
+                    Compartilhe este link em grupos de WhatsApp, Instagram ou Facebook. 
+                    Quando os clientes acessarem, poderão se cadastrar para pré-venda.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                <button type="button" class="btn btn-success" onclick="salvarLinkPreVenda()">
+                    <i class="bi bi-save"></i> Salvar/Gerar Link
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modalPreVendas" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title"><i class="bi bi-people"></i> Pré-vendas do Acionamento</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="prevendas-loading" class="text-center p-4">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Carregando...</span>
+                    </div>
+                </div>
+                <div id="prevendas-content" style="display: none;">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Data</th>
+                                    <th>Nome</th>
+                                    <th>WhatsApp</th>
+                                    <th>E-mail</th>
+                                    <th>Bloco</th>
+                                    <th>Apartamento</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbody-prevendas-modal"></tbody>
+                        </table>
+                    </div>
+                    <div id="prevendas-empty" class="text-center text-muted p-4" style="display: none;">
+                        <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+                        <p class="mt-3">Nenhuma pré-venda cadastrada ainda.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="{% static 'js/auth.js' %}?v=7.0"></script>
@@ -821,15 +930,18 @@
     // --- CRUD ---
     async function carregarMeusAcionamentos() {
         const tbody = document.getElementById('tbody-acionamentos');
-        tbody.innerHTML = '<tr><td colspan="12">Carregando...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11">Carregando...</td></tr>';
         const res = await fetch('/api/crm/cdoi/listar/', { headers: {'Authorization': `Bearer ${localStorage.getItem('accessToken')}`} });
         const lista = await res.json();
         tbody.innerHTML = '';
         lista.forEach(i => {
-            let btns = '';
-            btns += `<button class="btn btn-sm btn-editar me-1" onclick='editarTudo(${i.id})'>✏️ Editar</button>`;
-            if (i.can_edit) btns += `<button class="btn btn-sm btn-outline-info me-1" onclick='modalStatus(${i.id}, "${i.status_cod}", "${i.observacao}")'>🔄 Status</button>`;
-            btns += `<button class="btn btn-sm btn-excluir" onclick='excluir(${i.id})'>🗑️</button>`;
+            let btns = '<div class="d-flex gap-1 justify-content-center">';
+            btns += `<button class="btn btn-sm btn-editar" onclick='editarTudo(${i.id})' title="Editar"><i class="bi bi-pencil-square"></i></button>`;
+            if (i.can_edit) btns += `<button class="btn btn-sm btn-outline-info" onclick='modalStatus(${i.id}, "${i.status_cod}", "${i.observacao}")' title="Atualizar Status"><i class="bi bi-arrow-repeat"></i></button>`;
+            btns += `<button class="btn btn-sm btn-success" onclick='gerarLinkPreVenda(${i.id})' title="Gerar Link de Pré-venda"><i class="bi bi-link-45deg"></i></button>`;
+            btns += `<button class="btn btn-sm btn-info" onclick='verPreVendas(${i.id})' title="Ver Pré-vendas"><i class="bi bi-people"></i></button>`;
+            btns += `<button class="btn btn-sm btn-excluir" onclick='excluir(${i.id})' title="Excluir"><i class="bi bi-trash"></i></button>`;
+            btns += '</div>';
             
             const endereco = `${i.logradouro || ''}, ${i.numero || ''} - ${i.bairro || ''}`;
             const telefone = i.contato || '-';
@@ -857,6 +969,9 @@
             const fotoAutorizacaoHtml = criarImagemHtml(i.link_carta_sindico, 'Foto Autorização');
             const acionadoPor = i.criado_por_nome || '-';
             
+            // Combina as duas fotos em uma única célula
+            const fotosHtml = `<div class="d-flex gap-2 justify-content-center align-items-center">${fotoFachadaHtml}${fotoAutorizacaoHtml}</div>`;
+            
             tbody.innerHTML += `<tr>
                 <td>#${i.id}</td>
                 <td><strong>${i.nome}</strong><br><small class="text-muted">${i.cidade}</small></td>
@@ -865,11 +980,10 @@
                 <td>${telefone}</td>
                 <td class="text-center"><span class="badge bg-primary">${totalHps}</span></td>
                 <td class="text-center"><span class="badge bg-success">${prevenda}</span></td>
-                <td class="text-center">${fotoFachadaHtml}</td>
-                <td class="text-center">${fotoAutorizacaoHtml}</td>
+                <td class="text-center">${fotosHtml}</td>
                 <td><span class="badge status-badge status-${i.status_cod}">${i.status}</span></td>
                 <td><small>${acionadoPor}</small></td>
-                <td class="text-end">${btns}</td>
+                <td>${btns}</td>
             </tr>`;
         });
     }
@@ -1565,6 +1679,132 @@
             document.querySelector('.system-container').style.maxWidth = '1400px';
         }, 50);
     });
+    
+    // --- PRÉ-VENDAS PÚBLICAS (Nova abordagem com links públicos) ---
+    let cdoiIdLinkAtual = null;
+    
+    async function gerarLinkPreVenda(cdoiId) {
+        cdoiIdLinkAtual = cdoiId;
+        const modal = new bootstrap.Modal(document.getElementById('modalLinkPreVenda'));
+        document.getElementById('link-prevenda-url').value = '';
+        document.getElementById('link-imagem-url').value = '';
+        document.getElementById('link-imagem-file').value = '';
+        modal.show();
+        
+        // Verifica se já existe link
+        try {
+            const token = localStorage.getItem('accessToken');
+            const res = await fetch(`/api/crm/prevenda/por-cdoi/${cdoiId}/`, {
+                headers: {'Authorization': `Bearer ${token}`}
+            });
+            const data = await res.json();
+            
+            if (data.link_existe && data.link_url) {
+                document.getElementById('link-prevenda-url').value = data.link_url;
+            }
+        } catch (e) {
+            console.error('Erro ao verificar link existente:', e);
+        }
+    }
+    
+    async function salvarLinkPreVenda() {
+        if (!cdoiIdLinkAtual) return;
+        
+        const formData = new FormData();
+        const imagemFile = document.getElementById('link-imagem-file').files[0];
+        const imagemUrl = document.getElementById('link-imagem-url').value.trim();
+        
+        if (imagemFile) {
+            formData.append('imagem_banner', imagemFile);
+        } else if (imagemUrl) {
+            formData.append('imagem_banner_url', imagemUrl);
+        }
+        
+        try {
+            const token = localStorage.getItem('accessToken');
+            const url = `/api/crm/prevenda/gerar-link/${cdoiIdLinkAtual}/`;
+            const options = {
+                method: 'POST',
+                headers: {'Authorization': `Bearer ${token}`},
+                body: formData
+            };
+            
+            const res = await fetch(url, options);
+            const data = await res.json();
+            
+            if (res.ok) {
+                document.getElementById('link-prevenda-url').value = data.link;
+                alert('Link gerado/carregado com sucesso!');
+            } else {
+                alert(data.error || 'Erro ao gerar link.');
+            }
+        } catch (e) {
+            console.error('Erro:', e);
+            alert('Erro de conexão ao gerar link.');
+        }
+    }
+    
+    function copiarLinkPreVenda() {
+        const input = document.getElementById('link-prevenda-url');
+        if (!input.value) {
+            alert('Nenhum link disponível. Gere o link primeiro.');
+            return;
+        }
+        input.select();
+        document.execCommand('copy');
+        alert('Link copiado!');
+    }
+    
+    async function verPreVendas(cdoiId) {
+        const modal = new bootstrap.Modal(document.getElementById('modalPreVendas'));
+        const loading = document.getElementById('prevendas-loading');
+        const content = document.getElementById('prevendas-content');
+        const empty = document.getElementById('prevendas-empty');
+        const tbody = document.getElementById('tbody-prevendas-modal');
+        
+        loading.style.display = 'block';
+        content.style.display = 'none';
+        empty.style.display = 'none';
+        tbody.innerHTML = '';
+        modal.show();
+        
+        try {
+            const token = localStorage.getItem('accessToken');
+            const res = await fetch(`/api/crm/prevenda/por-cdoi/${cdoiId}/`, {
+                headers: {'Authorization': `Bearer ${token}`}
+            });
+            const data = await res.json();
+            
+            loading.style.display = 'none';
+            
+            if (data.total === 0) {
+                empty.style.display = 'block';
+                content.style.display = 'none';
+            } else {
+                content.style.display = 'block';
+                empty.style.display = 'none';
+                tbody.innerHTML = '';
+                
+                data.prevendas.forEach(p => {
+                    tbody.innerHTML += `
+                        <tr>
+                            <td><small>${p.data_cadastro}</small></td>
+                            <td><strong>${p.nome_cliente}</strong></td>
+                            <td><a href="https://wa.me/55${p.telefone_whatsapp.replace(/\D/g, '')}" target="_blank" class="text-success"><i class="bi bi-whatsapp"></i> ${p.telefone_whatsapp}</a></td>
+                            <td>${p.email || '-'}</td>
+                            <td>${p.bloco || '-'}</td>
+                            <td>${p.apartamento || '-'}</td>
+                        </tr>
+                    `;
+                });
+            }
+        } catch (e) {
+            console.error('Erro:', e);
+            loading.style.display = 'none';
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Erro ao carregar pré-vendas.</td></tr>';
+            content.style.display = 'block';
+        }
+    }
 </script>
         </div>
     </main>

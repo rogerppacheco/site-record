@@ -103,6 +103,12 @@ from .views import (
     NominatimProxyView,
     page_cdoi_novo,  # Página HTML
     
+    # --- PRÉ-VENDAS PÚBLICAS ---
+    GerarLinkPublicoPreVendaView,
+    PreVendaPublicaFormView,
+    PreVendasPorAcionamentoView,
+    prevenda_publica_landing,
+    
     # --- BÔNUS M-10 & FPD ---
     SafraM10ListView,
     DashboardM10View,
@@ -257,6 +263,11 @@ urlpatterns = [
     path('cdoi/editar/<int:pk>/', CdoiUpdateView.as_view(), name='api-cdoi-editar'),
     path('cdoi/viacep/<str:cep>/', ViaCepProxyView.as_view(), name='api-cdoi-viacep'),
     path('cdoi/nominatim/', NominatimProxyView.as_view(), name='api-cdoi-nominatim'),
+    
+    # --- PRÉ-VENDAS PÚBLICAS ---
+    path('prevenda/gerar-link/<int:cdoi_id>/', GerarLinkPublicoPreVendaView.as_view(), name='api-prevenda-gerar-link'),
+    path('prevenda/publica/<str:codigo>/', PreVendaPublicaFormView.as_view(), name='api-prevenda-publica-form'),
+    path('prevenda/por-cdoi/<int:cdoi_id>/', PreVendasPorAcionamentoView.as_view(), name='api-prevenda-por-cdoi'),
 
     # --- Integração Nio (dívidas/PIX/barras) ---
     path('nio/dividas/', NioDividasView.as_view(), name='nio-dividas'),

@@ -5,6 +5,7 @@ from usuarios.models import Usuario
 from django.conf import settings
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
+import uuid
 
 class Operadora(models.Model):
     nome = models.CharField(max_length=100, unique=True)
@@ -631,6 +632,63 @@ class CdoiBloco(models.Model):
     andares = models.IntegerField()
     unidades_por_andar = models.IntegerField()
     total_hps_bloco = models.IntegerField()
+
+
+class LinkPublicoPreVenda(models.Model):
+    """Link público único gerado para cada acionamento CDOI"""
+    codigo_unico = models.CharField(max_length=50, unique=True, db_index=True, verbose_name="Código Único")
+    acionamento = models.ForeignKey('CdoiSolicitacao', on_delete=models.CASCADE, related_name='links_prevenda', verbose_name="Acionamento CDOI")
+    imagem_banner = models.URLField(max_length=500, blank=True, null=True, verbose_name="URL da Imagem/Banner")
+    criado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, verbose_name="Criado por")
+    data_criacao = models.DateTimeField(auto_now_add=True, verbose_name="Data de Criação")
+    ativo = models.BooleanField(default=True, verbose_name="Link Ativo")
+    
+    class Meta:
+        verbose_name = "Link Público Pré-venda"
+        verbose_name_plural = "Links Públicos Pré-vendas"
+        ordering = ['-data_criacao']
+    
+    def save(self, *args, **kwargs):
+        if not self.codigo_unico:
+            self.codigo_unico = str(uuid.uuid4()).replace('-', '')[:20]
+        super().save(*args, **kwargs)
+    
+    def __str__(self):
+        return f"Link {self.codigo_unico} - {self.acionamento.nome_condominio}"
+    
+    def get_url_publica(self, request=None):
+        """Retorna a URL completa do link público"""
+        if request:
+            base_url = request.build_absolute_uri('/')[:-1]
+        else:
+            from django.conf import settings
+            base_url = getattr(settings, 'SITE_URL', 'https://www.recordpap.com.br')
+        return f"{base_url}/prevenda-publica/{self.codigo_unico}/"
+
+
+class PreVenda(models.Model):
+    """Pré-vendas coletadas através dos links públicos"""
+    link_publico = models.ForeignKey(LinkPublicoPreVenda, on_delete=models.CASCADE, related_name='prevendas', verbose_name="Link Público")
+    nome_cliente = models.CharField(max_length=255, verbose_name="Nome do Cliente")
+    telefone_whatsapp = models.CharField(max_length=20, verbose_name="Telefone/WhatsApp")
+    email = models.EmailField(blank=True, null=True, verbose_name="E-mail")
+    bloco = models.CharField(max_length=100, blank=True, null=True, verbose_name="Bloco")
+    apartamento = models.CharField(max_length=50, blank=True, null=True, verbose_name="Apartamento")
+    data_cadastro = models.DateTimeField(auto_now_add=True, verbose_name="Data de Cadastro")
+    ip_origem = models.GenericIPAddressField(blank=True, null=True, verbose_name="IP de Origem")
+    
+    class Meta:
+        verbose_name = "Pré-venda"
+        verbose_name_plural = "Pré-vendas"
+        ordering = ['-data_cadastro']
+    
+    def __str__(self):
+        return f"{self.nome_cliente} - {self.telefone_whatsapp} ({self.link_publico.acionamento.nome_condominio})"
+    
+    @property
+    def acionamento_cdoi(self):
+        """Retorna o acionamento CDOI vinculado"""
+        return self.link_publico.acionamento
 
 
 # =============================================================================

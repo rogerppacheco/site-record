@@ -12,6 +12,7 @@ from core.views import calendario_fiscal_view, RegraAutomacaoViewSet
 from crm_app.views import (
     page_painel_performance, 
     page_cdoi_novo,
+    prevenda_publica_landing,
     page_bonus_m10,
     page_validacao_fpd,
     page_validacao_churn,
@@ -105,6 +106,7 @@ urlpatterns = [
 
     # --- NOVO: RECORD VERTICAL (CDOI) ---
     path('cdoi-novo/', page_cdoi_novo, name='page_cdoi_novo'),
+    path('prevenda-publica/<str:codigo>/', prevenda_publica_landing, name='prevenda-publica'),
 
     # --- NOVO: BÔNUS M-10 & FPD ---
     path('bonus-m10/', page_bonus_m10, name='page_bonus_m10'),
