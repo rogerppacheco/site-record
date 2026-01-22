@@ -36,6 +36,35 @@
             max-height: 300px;
             object-fit: cover;
             margin-bottom: 1rem;
+            display: block;
+            height: auto;
+            background-color: #f8f9fa;
+        }
+        
+        /* Melhorias para mobile */
+        @media (max-width: 768px) {
+            .banner-image {
+                max-height: 200px;
+            }
+            .container-main {
+                padding: 1rem 0.5rem;
+            }
+            .form-section {
+                padding: 1.5rem;
+            }
+            .card-header-landing {
+                padding: 1.5rem 1rem;
+            }
+            .card-header-landing h1 {
+                font-size: 1.5rem;
+            }
+        }
+        
+        /* Container do banner para melhor controle */
+        .banner-container {
+            width: 100%;
+            overflow: hidden;
+            background-color: #f8f9fa;
         }
         .form-section {
             padding: 2rem;
@@ -69,7 +98,11 @@
             </div>
             
             {% if link.imagem_banner %}
-            <img src="{{ link.imagem_banner }}" alt="Banner" class="banner-image">
+            <div class="banner-container">
+                <img src="{{ link.imagem_banner }}" alt="Banner promocional" class="banner-image" 
+                     crossorigin="anonymous"
+                     onerror="console.error('Erro ao carregar banner:', this.src); this.style.display='none';">
+            </div>
             {% endif %}
             
             <div class="form-section">
