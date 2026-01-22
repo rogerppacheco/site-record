@@ -93,9 +93,9 @@ class OneDriveUploader:
             item_id = upload_data.get('id')
             
             if not item_id:
-                # Fallback: retornar webUrl se não conseguir item_id
-                logger.warning(f"[OneDrive] Não conseguiu item_id, usando webUrl como fallback")
-                return upload_data.get('webUrl')
+                # Não retornar webUrl (não funciona como src de imagem)
+                logger.error(f"[OneDrive] ❌ Não conseguiu item_id após upload")
+                raise Exception("Não foi possível obter ID do arquivo após upload. Tente novamente.")
             
             # 2. Criar link compartilhado público (anônimo)
             share_url = f"{self.base_url}/me/drive/items/{item_id}/createLink"
@@ -136,13 +136,14 @@ class OneDriveUploader:
                             logger.info(f"[OneDrive] ✅ DownloadUrl obtido com sucesso")
                             return download_url
                     
-                    # Fallback: usar share_link direto (pode funcionar)
-                    logger.warning(f"[OneDrive] Não conseguiu downloadUrl, usando share_link")
-                    return share_link
+                    # Não usar share_link como fallback (não funciona como src de imagem devido a CORS)
+                    logger.warning(f"[OneDrive] ⚠️ Não conseguiu downloadUrl, mas share_link disponível (não será usado)")
             
-            # Fallback final: usar webUrl
-            logger.warning(f"[OneDrive] Não conseguiu criar link compartilhado, usando webUrl")
-            return upload_data.get('webUrl')
+            # Não usar webUrl como fallback (não funciona como src de imagem)
+            logger.error(f"[OneDrive] ❌ Não foi possível obter downloadUrl válido. Upload feito, mas URL não compatível com tags <img>")
+            # Retorna None para indicar que não conseguiu URL válida
+            # O código que chama deve tratar isso
+            raise Exception("Não foi possível obter URL de download direto. Tente novamente.")
             
         except Exception as e:
             logger.error(f"[OneDrive] ❌ Erro ao fazer upload e obter downloadUrl: {e}")

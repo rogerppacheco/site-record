@@ -5747,12 +5747,27 @@ class GerarLinkPublicoPreVendaView(APIView):
             imagem_banner = None
             if 'imagem_banner' in request.FILES:
                 from crm_app.onedrive_service import OneDriveUploader
+                import logging
+                logger = logging.getLogger(__name__)
                 uploader = OneDriveUploader()
                 clean_name = acionamento.nome_condominio.replace('/', '-').strip()
                 folder_name = f"PREVENDAS_{clean_name}"
                 f = request.FILES['imagem_banner']
                 # Usa upload_file_and_get_download_url para obter URL de download direto (funciona melhor em mobile)
-                imagem_banner = uploader.upload_file_and_get_download_url(f, folder_name, f"BANNER_{f.name}")
+                try:
+                    import logging
+                    logger_prevenda = logging.getLogger(__name__)
+                    imagem_banner = uploader.upload_file_and_get_download_url(f, folder_name, f"BANNER_{f.name}")
+                    # Valida se a URL é válida (não é SharePoint que causa CORS)
+                    if imagem_banner and ('sharepoint.com' in imagem_banner.lower() or 'onedrive.live.com' in imagem_banner.lower()):
+                        logger_prevenda.error(f"[Pré-venda] URL inválida (SharePoint): {imagem_banner[:100]}")
+                        return Response({'error': 'Não foi possível obter URL de download válida. Tente novamente.'}, status=500)
+                    logger_prevenda.info(f"[Pré-venda] Banner uploaded com sucesso")
+                except Exception as e:
+                    import logging
+                    logger_prevenda = logging.getLogger(__name__)
+                    logger_prevenda.error(f"[Pré-venda] Erro ao fazer upload do banner: {e}")
+                    return Response({'error': f'Erro ao fazer upload da imagem: {str(e)}'}, status=500)
             elif request.POST.get('imagem_banner_url'):
                 imagem_banner = request.POST.get('imagem_banner_url').strip()
             
