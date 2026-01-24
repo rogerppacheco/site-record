@@ -21,6 +21,8 @@ from .record_apoia_api import (
 
 # IMPORTAÇÕES ESPECÍFICAS DE VIEWS
 from .views import (
+    listar_screenshots_debug,
+    baixar_screenshot_debug,
         buscar_fatura_nio_bonus_m10,
     duplicar_venda,
     # ViewSets
@@ -222,6 +224,10 @@ urlpatterns = [
     path('performance-painel/exportar/', ExportarPerformanceExcelView.as_view(), name='exportar-performance-excel'),
     path('performance-painel/enviar-whatsapp/', EnviarImagemPerformanceView.as_view(), name='enviar-performance-zap'),
     path('integracao/listar-grupos/', listar_grupos_whatsapp_api, name='listar-grupos-zapi'),
+    
+    # --- Debug Screenshots (Nio Negocia) ---
+    path('debug/screenshots/', listar_screenshots_debug, name='listar-screenshots-debug'),
+    path('debug/screenshots/<str:nome_arquivo>/', baixar_screenshot_debug, name='baixar-screenshot-debug'),
     path('verificar-permissao-gestao/', VerificarPermissaoGestaoView.as_view(), name='verificar-permissao-gestao'),
     path('import/legado/', ImportacaoLegadoView.as_view(), name='importacao-legado'),
     path('import/agendamento/', ImportacaoAgendamentoView.as_view(), name='importacao-agendamento'),
