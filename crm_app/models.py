@@ -121,6 +121,7 @@ class Venda(models.Model):
     # --------------------------------------------
 
     forma_entrada = models.CharField(max_length=10, choices=[('APP', 'APP'), ('SEM_APP', 'SEM_APP')], default='APP')
+    tem_fixo = models.BooleanField(default=False, verbose_name="Tem Fixo")
     
     nome_mae = models.CharField(max_length=255, blank=True, null=True)
     data_nascimento = models.DateField(blank=True, null=True)
