@@ -358,9 +358,76 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
             except Exception as e:
                 logger.debug(f"[PDF HUMANO] Não foi necessário expandir detalhes ou erro: {e}")
             
-            # 4. Clicar em "Gerar boleto" - usando seletor correto: a#generate-boleto
-            print(f"[DEBUG PDF DOWNLOAD] 📍 PASSO 4: Clicando em 'Gerar boleto'...")
-            logger.info(f"[PDF HUMANO] Passo 4: Clicando em 'Gerar boleto'...")
+            # PASSO 1 (NOVO): Clicar em "Boleto" primeiro (antes de "Gerar boleto")
+            print(f"[DEBUG PDF DOWNLOAD] 📍 PASSO 1: Clicando em 'Boleto'...")
+            logger.info(f"[PDF HUMANO] Passo 1: Clicando em 'Boleto'...")
+            page.wait_for_timeout(2000)
+            page.wait_for_load_state("networkidle", timeout=10000)
+            
+            try:
+                boleto_option = None
+                seletores_boleto = [
+                    'div.desktop-payment__item-button-text:has-text("Boleto")',  # Seletor exato fornecido pelo usuário
+                    'div.desktop-payment__item-button-text span.desktop-payment__item-title:has-text("Boleto")',
+                    'div[class*="desktop-payment__item-button-text"]:has-text("Boleto")',
+                    'span.desktop-payment__item-title:has-text("Boleto")',
+                    'div:has-text("Boleto"):has-text("Confirmação em até 1 dia útil")',  # Mais específico
+                ]
+                
+                print(f"[DEBUG PDF DOWNLOAD] 🔍 Tentando {len(seletores_boleto)} seletores para 'Boleto'...")
+                logger.info(f"[PDF HUMANO] Tentando {len(seletores_boleto)} seletores para encontrar opção 'Boleto'...")
+                
+                for idx, seletor in enumerate(seletores_boleto, 1):
+                    try:
+                        print(f"[DEBUG PDF DOWNLOAD]   [{idx}/{len(seletores_boleto)}] Tentando: {seletor}")
+                        btn = page.locator(seletor).first
+                        count = btn.count()
+                        print(f"[DEBUG PDF DOWNLOAD]     Encontrados: {count} elementos")
+                        
+                        if count > 0:
+                            try:
+                                btn.scroll_into_view_if_needed(timeout=2000)
+                                page.wait_for_timeout(500)
+                            except:
+                                pass
+                            
+                            if btn.is_visible(timeout=5000):
+                                boleto_option = btn
+                                print(f"[DEBUG PDF DOWNLOAD] ✅ Opção 'Boleto' encontrada com seletor: {seletor}")
+                                logger.info(f"[PDF HUMANO] Opção 'Boleto' encontrada com seletor: {seletor}")
+                                break
+                            else:
+                                print(f"[DEBUG PDF DOWNLOAD]     Elemento encontrado mas não está visível")
+                        else:
+                            print(f"[DEBUG PDF DOWNLOAD]     Nenhum elemento encontrado")
+                    except Exception as e_sel:
+                        print(f"[DEBUG PDF DOWNLOAD]     Erro: {e_sel}")
+                        logger.debug(f"[PDF HUMANO] Seletor '{seletor}' falhou: {e_sel}")
+                        continue
+                
+                if boleto_option and boleto_option.count() > 0:
+                    try:
+                        boleto_option.scroll_into_view_if_needed(timeout=3000)
+                        page.wait_for_timeout(1000)
+                    except:
+                        pass
+                    
+                    print(f"[DEBUG PDF DOWNLOAD] 🖱️ Clicando na opção 'Boleto'...")
+                    boleto_option.click(timeout=10000)
+                    page.wait_for_timeout(2000)
+                    page.wait_for_load_state("networkidle", timeout=10000)
+                    print(f"[DEBUG PDF DOWNLOAD] ✅ PASSO 1: Clicou em 'Boleto'")
+                    logger.info(f"[PDF HUMANO] ✅ Clicou em 'Boleto'")
+                else:
+                    print(f"[DEBUG PDF DOWNLOAD] ⚠️ PASSO 1: Opção 'Boleto' não encontrada, continuando mesmo assim...")
+                    logger.warning(f"[PDF HUMANO] ⚠️ Opção 'Boleto' não encontrada, continuando mesmo assim...")
+            except Exception as e:
+                print(f"[DEBUG PDF DOWNLOAD] ⚠️ PASSO 1: Erro ao clicar em 'Boleto': {e}, continuando mesmo assim...")
+                logger.warning(f"[PDF HUMANO] ⚠️ Erro ao clicar em 'Boleto': {e}, continuando mesmo assim...")
+            
+            # PASSO 2: Clicar em "Gerar boleto" - usando seletor correto: a#desktop-generate-boleto
+            print(f"[DEBUG PDF DOWNLOAD] 📍 PASSO 2: Clicando em 'Gerar boleto'...")
+            logger.info(f"[PDF HUMANO] Passo 2: Clicando em 'Gerar boleto'...")
             # Aguardar um pouco mais para garantir que a página carregou completamente
             page.wait_for_timeout(3000)  # Aumentado de 2000 para 3000
             page.wait_for_load_state("networkidle", timeout=15000)  # Aumentado de 10000 para 15000
@@ -368,19 +435,19 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
             try:
                 gerar_boleto = None
                 seletores_gerar = [
-                    'div[data-context="btn_container_gerar-boleto"]',  # Seletor do test_nio_completo.py
-                    'a#generate-boleto',  # Seletor principal por ID
-                    'a[id="generate-boleto"]',
+                    'a#desktop-generate-boleto',  # Seletor exato fornecido pelo usuário
+                    'a[id="desktop-generate-boleto"]',
+                    'a.scheduled-payment__button.action-button#desktop-generate-boleto',
+                    'a.scheduled-payment__button.action-button:has-text("Gerar boleto")',
                     'a.scheduled-payment__button:has-text("Gerar boleto")',
                     'a:has-text("Gerar boleto")',
                     'a:has-text("Gerar Boleto")',  # Com B maiúsculo
                     'button:has-text("Gerar boleto")',
                     'button:has-text("Gerar Boleto")',  # Com B maiúsculo
+                    'div[data-context="btn_container_gerar-boleto"]',  # Seletor do test_nio_completo.py
                     'p:text-is("Gerar Boleto")',  # Seletor alternativo
                     'a[class*="scheduled-payment__button"]',
                     'a[href*="boleto"]',
-                    'div[class*="gerar"]',  # Qualquer div com "gerar" na classe
-                    'div[class*="boleto"]',  # Qualquer div com "boleto" na classe
                 ]
                 
                 print(f"[DEBUG PDF DOWNLOAD] 🔍 Tentando {len(seletores_gerar)} seletores para 'Gerar boleto'...")
@@ -416,7 +483,7 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                         continue
                 
                 if not gerar_boleto or gerar_boleto.count() == 0:
-                    print(f"[DEBUG PDF DOWNLOAD] ❌ PASSO 4: Botão 'Gerar boleto' não encontrado após tentar {len(seletores_gerar)} seletores!")
+                    print(f"[DEBUG PDF DOWNLOAD] ❌ PASSO 2: Botão 'Gerar boleto' não encontrado após tentar {len(seletores_gerar)} seletores!")
                     logger.error(f"[PDF HUMANO] ❌ Botão 'Gerar boleto' não encontrado após tentar {len(seletores_gerar)} seletores!")
                     
                     # Tentar buscar qualquer elemento com texto "gerar" ou "boleto" (case insensitive)
@@ -468,10 +535,10 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                 gerar_boleto.click(timeout=10000)
                 page.wait_for_timeout(3000)  # Aumentado de 2000 para 3000
                 page.wait_for_load_state("networkidle", timeout=15000)  # Aumentado de 10000 para 15000
-                print(f"[DEBUG PDF DOWNLOAD] ✅ PASSO 4: Clicou em 'Gerar boleto'")
+                print(f"[DEBUG PDF DOWNLOAD] ✅ PASSO 2: Clicou em 'Gerar boleto'")
                 logger.info(f"[PDF HUMANO] ✅ Clicou em 'Gerar boleto'")
             except Exception as e:
-                print(f"[DEBUG PDF DOWNLOAD] ❌ PASSO 4: Erro ao clicar em 'Gerar boleto': {e}")
+                print(f"[DEBUG PDF DOWNLOAD] ❌ PASSO 2: Erro ao clicar em 'Gerar boleto': {e}")
                 logger.error(f"[PDF HUMANO] ❌ Erro ao clicar em 'Gerar boleto': {e}")
                 import traceback
                 tb = traceback.format_exc()
@@ -481,9 +548,9 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                 print(f"[DEBUG PDF DOWNLOAD] 🎉 RETORNANDO: None (erro)")
                 return None
             
-            # 5. Clicar em "Download" ou gerar PDF diretamente
-            print(f"[DEBUG PDF DOWNLOAD] 📍 PASSO 5: Tentando baixar PDF...")
-            logger.info(f"[PDF HUMANO] Passo 5: Clicando em 'Download' ou gerando PDF diretamente...")
+            # PASSO 3: Clicar em "Download" - usando seletor correto: a#downloadInvoice
+            print(f"[DEBUG PDF DOWNLOAD] 📍 PASSO 3: Clicando em 'Download'...")
+            logger.info(f"[PDF HUMANO] Passo 3: Clicando em 'Download'...")
             # Aguardar um pouco mais para garantir que a página carregou completamente
             page.wait_for_timeout(3000)  # Aumentado de 2000 para 3000
             page.wait_for_load_state("networkidle", timeout=15000)  # Aumentado de 10000 para 15000
@@ -491,8 +558,9 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
             try:
                 download_btn = None
                 seletores_download = [
-                    'a#downloadInvoice',  # Seletor principal por ID
+                    'a#downloadInvoice',  # Seletor exato fornecido pelo usuário
                     'a[id="downloadInvoice"]',
+                    'a.scheduled-payment__button--outline#downloadInvoice',
                     'a.scheduled-payment__button--outline:has-text("Download")',
                     'a:has-text("Download")',
                     'a:has-text("Baixar PDF")',  # Texto alternativo
@@ -592,7 +660,7 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                 logger.info(f"[PDF HUMANO] ✅ PDF gerado e salvo: {caminho_completo}")
                 
             except Exception as e_download:
-                print(f"[DEBUG PDF DOWNLOAD] ❌ PASSO 5: Erro ao processar download: {e_download}")
+                print(f"[DEBUG PDF DOWNLOAD] ❌ PASSO 3: Erro ao processar download: {e_download}")
                 logger.error(f"[PDF HUMANO] ❌ Erro ao processar download: {e_download}")
                 import traceback
                 tb = traceback.format_exc()
