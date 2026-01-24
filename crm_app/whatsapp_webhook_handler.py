@@ -239,12 +239,16 @@ def _formatar_detalhes_fatura(invoice, cpf, incluir_pdf=False):
     # Código PIX
     codigo_pix = invoice.get('pix', '') or invoice.get('codigo_pix', '')
     if codigo_pix:
-        resposta_parts.append(f"\n💳 *PIX:*\n`{codigo_pix}`")
+        # Remover backticks do início e fim do código PIX se existirem
+        codigo_pix_limpo = codigo_pix.strip('`').strip()
+        resposta_parts.append(f"\n💳 *PIX:*\n{codigo_pix_limpo}")
     
     # Código de barras
     codigo_barras = invoice.get('barcode', '') or invoice.get('codigo_barras', '')
     if codigo_barras:
-        resposta_parts.append(f"\n📄 *Código de Barras:*\n`{codigo_barras}`")
+        # Remover backticks do início e fim do código de barras se existirem
+        codigo_barras_limpo = codigo_barras.strip('`').strip()
+        resposta_parts.append(f"\n📄 *Código de Barras:*\n{codigo_barras_limpo}")
     
     # PDF (se solicitado e disponível)
     if incluir_pdf:
