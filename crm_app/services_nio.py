@@ -895,12 +895,41 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                     except Exception as e_debug:
                         logger.warning(f"[PDF HUMANO] Erro ao salvar debug: {e_debug}")
                 
-                # Aguardar página estar completamente carregada antes de gerar PDF
+                # Aguardar página estar completamente carregada E dados aparecerem antes de gerar PDF
                 print(f"[DEBUG PDF DOWNLOAD] ⏳ Aguardando página estar completamente carregada...")
                 logger.info(f"[PDF HUMANO] Aguardando página estar completamente carregada...")
-                page.wait_for_load_state("networkidle", timeout=10000)
-                page.wait_for_load_state("domcontentloaded", timeout=10000)
-                page.wait_for_timeout(2000)  # Aguardar mais 2 segundos para garantir renderização completa
+                page.wait_for_load_state("networkidle", timeout=15000)
+                page.wait_for_load_state("domcontentloaded", timeout=15000)
+                page.wait_for_timeout(5000)  # Aguardar 5 segundos para garantir renderização completa dos dados
+                
+                # Aguardar que elementos específicos apareçam (valor, código de barras)
+                print(f"[DEBUG PDF DOWNLOAD] 🔍 Aguardando elementos da fatura aparecerem...")
+                logger.info(f"[PDF HUMANO] Aguardando elementos da fatura aparecerem...")
+                try:
+                    # Tentar encontrar elementos que indicam que os dados carregaram
+                    # Procurar por padrões de valor monetário ou código de barras no DOM
+                    max_tentativas = 10
+                    dados_encontrados = False
+                    for tentativa in range(max_tentativas):
+                        page_content = page.evaluate("() => document.body.innerText || ''")
+                        # Verificar se tem valor monetário E código de barras
+                        valores = re.findall(r'R\$\s*[\d.,]+', page_content)
+                        codigos = re.findall(r'\d{40,50}', page_content)
+                        if valores and codigos:
+                            print(f"[DEBUG PDF DOWNLOAD] ✅ Dados encontrados na tentativa {tentativa + 1}: {len(valores)} valores, {len(codigos)} códigos")
+                            logger.info(f"[PDF HUMANO] ✅ Dados encontrados na tentativa {tentativa + 1}")
+                            dados_encontrados = True
+                            break
+                        else:
+                            print(f"[DEBUG PDF DOWNLOAD] ⏳ Tentativa {tentativa + 1}/{max_tentativas}: aguardando dados... (valores={len(valores)}, codigos={len(codigos)})")
+                            page.wait_for_timeout(1000)  # Aguardar 1 segundo entre tentativas
+                    
+                    if not dados_encontrados:
+                        print(f"[DEBUG PDF DOWNLOAD] ⚠️ Dados não encontrados após {max_tentativas} tentativas, continuando mesmo assim...")
+                        logger.warning(f"[PDF HUMANO] ⚠️ Dados não encontrados após {max_tentativas} tentativas")
+                except Exception as e_espera:
+                    print(f"[DEBUG PDF DOWNLOAD] ⚠️ Erro ao aguardar dados: {e_espera}, continuando...")
+                    logger.warning(f"[PDF HUMANO] ⚠️ Erro ao aguardar dados: {e_espera}")
                 
                 # Verificar se há conteúdo CORRETO na página antes de gerar PDF
                 # Validar que a página tem os dados da fatura (valor, código de barras, etc)

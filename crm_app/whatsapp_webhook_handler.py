@@ -1522,8 +1522,9 @@ def processar_webhook_whatsapp(data):
                         
                         # IMPORTANTE: Limpar resposta para não enviar mensagem duplicada
                         resposta = None
-                        print(f"[DEBUG PDF] ✅ PDF e mensagem enviados, resposta limpa (None)")
-                        logger.info(f"[DEBUG PDF] ✅ PDF e mensagem enviados, resposta limpa (None)")
+                        pdf_enviado_com_caption = True  # Garantir que está marcado
+                        print(f"[DEBUG PDF] ✅ PDF e mensagem enviados, resposta limpa (None), pdf_enviado_com_caption={pdf_enviado_com_caption}")
+                        logger.info(f"[DEBUG PDF] ✅ PDF e mensagem enviados, resposta limpa (None), pdf_enviado_com_caption={pdf_enviado_com_caption}")
                     else:
                         # Se PDF não foi enviado, manter resposta para enviar normalmente
                         print(f"[DEBUG PDF] ⚠️ PDF não foi enviado, resposta será enviada normalmente")
@@ -1569,7 +1570,10 @@ def processar_webhook_whatsapp(data):
                     traceback.print_exc()
         
         # DEPOIS: Enviar resposta via WhatsApp (só se houver resposta para enviar E PDF não foi enviado com caption)
-        if resposta and not pdf_enviado_com_caption:
+        # IMPORTANTE: Verificar se resposta não é None, não está vazia e se PDF não foi enviado com caption
+        if resposta and resposta.strip() and not pdf_enviado_com_caption:
+            print(f"[DEBUG] Enviando resposta final: resposta não é None={resposta is not None}, pdf_enviado_com_caption={pdf_enviado_com_caption}")
+            logger.info(f"[Webhook] Enviando resposta final: pdf_enviado_com_caption={pdf_enviado_com_caption}")
             try:
                 logger.info(f"[Webhook] Preparando para enviar resposta para {telefone_formatado}")
                 logger.info(f"[Webhook] Resposta a ser enviada: {resposta[:100]}...")
