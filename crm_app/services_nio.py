@@ -902,23 +902,76 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                 page.wait_for_load_state("domcontentloaded", timeout=10000)
                 page.wait_for_timeout(2000)  # Aguardar mais 2 segundos para garantir renderização completa
                 
-                # Verificar se há conteúdo na página antes de gerar PDF
+                # Verificar se há conteúdo CORRETO na página antes de gerar PDF
+                # Validar que a página tem os dados da fatura (valor, código de barras, etc)
+                print(f"[DEBUG PDF DOWNLOAD] 🔍 Validando conteúdo da página antes de gerar PDF...")
+                logger.info(f"[PDF HUMANO] Validando conteúdo da página antes de gerar PDF...")
                 try:
                     page_content = page.evaluate("() => document.body.innerText")
                     if not page_content or len(page_content.strip()) < 50:
-                        print(f"[DEBUG PDF DOWNLOAD] ⚠️ Página parece vazia ou com pouco conteúdo: {len(page_content) if page_content else 0} caracteres")
-                        logger.warning(f"[PDF HUMANO] ⚠️ Página parece vazia ou com pouco conteúdo")
+                        print(f"[DEBUG PDF DOWNLOAD] ❌ Página vazia ou com pouco conteúdo: {len(page_content) if page_content else 0} caracteres")
+                        logger.error(f"[PDF HUMANO] ❌ Página vazia ou com pouco conteúdo")
+                        browser.close()
+                        return None
+                    
+                    # Verificar se a página contém dados da fatura correta
+                    # Procurar por indicadores de que é a fatura correta:
+                    # - Valor (R$ 130,00 ou similar)
+                    # - Código de barras
+                    # - Data de vencimento
+                    valor_encontrado = False
+                    codigo_barras_encontrado = False
+                    
+                    # Verificar se tem o valor esperado (R$ 130,00 ou similar)
+                    # Procurar por padrões de valor monetário
+                    valores = re.findall(r'R\$\s*[\d.,]+', page_content)
+                    if valores:
+                        print(f"[DEBUG PDF DOWNLOAD] ✅ Valores encontrados na página: {valores[:5]}")
+                        logger.info(f"[PDF HUMANO] Valores encontrados na página: {valores[:5]}")
+                        valor_encontrado = True
+                    else:
+                        print(f"[DEBUG PDF DOWNLOAD] ⚠️ Nenhum valor monetário encontrado na página")
+                        logger.warning(f"[PDF HUMANO] ⚠️ Nenhum valor monetário encontrado na página")
+                    
+                    # Verificar se tem código de barras (padrão: números longos)
+                    codigos_barras = re.findall(r'\d{40,50}', page_content)  # Códigos de barras têm 44-48 dígitos
+                    if codigos_barras:
+                        print(f"[DEBUG PDF DOWNLOAD] ✅ Códigos de barras encontrados: {len(codigos_barras)}")
+                        logger.info(f"[PDF HUMANO] Códigos de barras encontrados: {len(codigos_barras)}")
+                        codigo_barras_encontrado = True
+                    else:
+                        print(f"[DEBUG PDF DOWNLOAD] ⚠️ Nenhum código de barras encontrado na página")
+                        logger.warning(f"[PDF HUMANO] ⚠️ Nenhum código de barras encontrado na página")
+                    
+                    # Se não encontrou dados essenciais, pode estar na página errada
+                    if not valor_encontrado or not codigo_barras_encontrado:
+                        print(f"[DEBUG PDF DOWNLOAD] ⚠️ Página pode não ter dados da fatura correta (valor={valor_encontrado}, codigo_barras={codigo_barras_encontrado})")
+                        logger.warning(f"[PDF HUMANO] ⚠️ Página pode não ter dados da fatura correta")
                         # Capturar screenshot para debug
                         try:
-                            screenshot_path = os.path.join(downloads_dir, f"debug_{cpf}_pagina_vazia_antes_pdf.png")
+                            screenshot_path = os.path.join(downloads_dir, f"debug_{cpf}_pagina_sem_dados_antes_pdf.png")
                             page.screenshot(path=screenshot_path, full_page=True)
-                            print(f"[DEBUG PDF DOWNLOAD] 📸 Screenshot da página vazia: {screenshot_path}")
-                            logger.info(f"[PDF HUMANO] Screenshot da página vazia: {screenshot_path}")
+                            print(f"[DEBUG PDF DOWNLOAD] 📸 Screenshot da página sem dados: {screenshot_path}")
+                            logger.info(f"[PDF HUMANO] Screenshot da página sem dados: {screenshot_path}")
+                            
+                            html_path = os.path.join(downloads_dir, f"debug_{cpf}_pagina_sem_dados.html")
+                            with open(html_path, 'w', encoding='utf-8') as f:
+                                f.write(page.content())
+                            print(f"[DEBUG PDF DOWNLOAD] 📄 HTML salvo: {html_path}")
+                            logger.info(f"[PDF HUMANO] HTML salvo: {html_path}")
                         except:
                             pass
+                        
+                        # Continuar mesmo assim, mas avisar
+                        print(f"[DEBUG PDF DOWNLOAD] ⚠️ Continuando mesmo sem validação completa...")
+                        logger.warning(f"[PDF HUMANO] ⚠️ Continuando mesmo sem validação completa...")
+                    else:
+                        print(f"[DEBUG PDF DOWNLOAD] ✅ Página contém dados da fatura (valor e código de barras encontrados)")
+                        logger.info(f"[PDF HUMANO] ✅ Página contém dados da fatura")
+                        
                 except Exception as e_check:
-                    print(f"[DEBUG PDF DOWNLOAD] ⚠️ Erro ao verificar conteúdo da página: {e_check}")
-                    logger.warning(f"[PDF HUMANO] Erro ao verificar conteúdo da página: {e_check}")
+                    print(f"[DEBUG PDF DOWNLOAD] ⚠️ Erro ao validar conteúdo da página: {e_check}")
+                    logger.warning(f"[PDF HUMANO] Erro ao validar conteúdo da página: {e_check}")
                 
                 # Usar a API de impressão do Playwright para gerar PDF diretamente
                 print(f"[DEBUG PDF DOWNLOAD] 📄 Gerando PDF via API de impressão do navegador...")

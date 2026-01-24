@@ -279,24 +279,11 @@ def _formatar_detalhes_fatura(invoice, cpf, incluir_pdf=False):
         codigo_barras_limpo = codigo_barras.strip('`').strip()
         resposta_parts.append(f"\n📄 *Código de Barras:*\n{codigo_barras_limpo}")
     
-    # PDF (se solicitado e disponível)
-    if incluir_pdf:
-        pdf_url = invoice.get('pdf_url', '')
-        pdf_onedrive_url = invoice.get('pdf_onedrive_url', '')
-        pdf_path = invoice.get('pdf_path', '')
-        pdf_filename = invoice.get('pdf_filename', '')
-        
-        if pdf_onedrive_url:
-            resposta_parts.append(f"\n📎 *PDF:* {pdf_onedrive_url}")
-            resposta_parts.append(f"   💾 Arquivo: {pdf_filename}")
-        elif pdf_url:
-            resposta_parts.append(f"\n📎 *PDF:* {pdf_url}")
-        elif pdf_path:
-            resposta_parts.append(f"\n📎 *PDF:* Salvo localmente em {pdf_path}")
-            if pdf_filename:
-                resposta_parts.append(f"   📄 Arquivo: {pdf_filename}")
-        else:
-            resposta_parts.append(f"\n⚠️ *PDF:* Não disponível no momento")
+    # PDF (não incluir link na mensagem - será enviado como anexo)
+    # O PDF será enviado separadamente como anexo, então não precisamos incluir o link na mensagem
+    # if incluir_pdf:
+    #     # Removido: não incluir link do PDF na mensagem
+    #     pass
     
     return "\n".join(resposta_parts)
 
@@ -1533,10 +1520,14 @@ def processar_webhook_whatsapp(data):
                             print(f"[DEBUG PDF] ❌ Exceção ao enviar mensagem após PDF: {e_msg}")
                             logger.error(f"[DEBUG PDF] ❌ Exceção ao enviar mensagem após PDF: {e_msg}")
                         
-                        # Não enviar mensagem de texto novamente
-                        resposta = None  # Limpar resposta para não enviar mensagem duplicada
-                        print(f"[DEBUG PDF] ✅ PDF e mensagem enviados, resposta será omitida")
-                        logger.info(f"[DEBUG PDF] ✅ PDF e mensagem enviados, resposta será omitida")
+                        # IMPORTANTE: Limpar resposta para não enviar mensagem duplicada
+                        resposta = None
+                        print(f"[DEBUG PDF] ✅ PDF e mensagem enviados, resposta limpa (None)")
+                        logger.info(f"[DEBUG PDF] ✅ PDF e mensagem enviados, resposta limpa (None)")
+                    else:
+                        # Se PDF não foi enviado, manter resposta para enviar normalmente
+                        print(f"[DEBUG PDF] ⚠️ PDF não foi enviado, resposta será enviada normalmente")
+                        logger.warning(f"[DEBUG PDF] ⚠️ PDF não foi enviado, resposta será enviada normalmente")
                     
             elif material_para_envio:
                 logger.info(f"[Webhook] Material detectado, enviando ANTES da mensagem...")
