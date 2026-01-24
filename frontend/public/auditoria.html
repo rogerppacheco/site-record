@@ -52,6 +52,28 @@
         .script-title + .script-text { margin-bottom: 10px; }
         .text-end.mt-4 { margin-top: 12px !important; }
         .btn.btn-lg { padding: 10px 18px; }
+        
+        /* Otimização específica para seção Oferta & Pagto */
+        #pills-oferta .form-label { font-size: 0.8rem; margin-bottom: 4px; }
+        #pills-oferta .form-label i { margin-right: 4px; color: var(--cor-primaria, #0d6efd); }
+        #pills-oferta #audit-tem-fixo-display { padding: 0; border: 1px solid #ced4da; }
+        
+        /* Cards de script otimizados - máximo uso horizontal, mínimo scroll */
+        #pills-oferta .script-text { font-size: 0.8rem; line-height: 1.25; margin-bottom: 0; }
+        #pills-oferta .bg-light.border { border-color: #dee2e6 !important; }
+        #pills-oferta .row.g-2 { row-gap: 3px; column-gap: 5px; margin-bottom: 4px !important; }
+        #pills-oferta .row.g-3 { row-gap: 4px; column-gap: 6px; margin-bottom: 6px !important; }
+        #pills-oferta h6 { font-size: 0.8rem; margin-bottom: 4px; }
+        #pills-oferta .p-2 { padding: 5px 8px !important; }
+        #pills-oferta .p-3 { padding: 6px 10px !important; }
+        #pills-oferta .mb-2 { margin-bottom: 4px !important; }
+        #pills-oferta .mb-3 { margin-bottom: 6px !important; }
+        #pills-oferta .script-section { padding: 6px 10px; }
+        #pills-oferta .border.rounded { border-radius: 4px !important; }
+        #pills-oferta .text-muted { font-size: 0.75rem; }
+        #pills-oferta .form-label { margin-bottom: 2px !important; }
+        #pills-oferta hr { margin: 6px 0 !important; }
+        #pills-oferta [style*="margin-top: 28px"] { margin-top: 28px !important; }
     </style>
 </head>
 <body>
@@ -240,21 +262,84 @@
                                 <div class="tab-pane fade" id="pills-oferta" role="tabpanel">
                                     <div class="script-section">
                                         <div class="script-title">Informações do Plano e Pagamento</div>
-                                        <div class="row g-3 p-3 bg-light rounded border mb-3">
-                                            <div class="col-12 text-muted fw-bold small text-uppercase mb-1">Confirme os dados do sistema:</div>
-                                            <div class="col-md-6"><label class="form-label small">Plano Contratado</label><select class="form-select form-control-script" id="audit-plano" onchange="atualizarTextoPlano()"></select></div>
-                                            <div class="col-md-6"><label class="form-label small">Forma de Pagamento</label><select class="form-select form-control-script" id="audit-pagamento" onchange="atualizarTextoPlano()"></select></div>
+                                        <div class="p-2 bg-light rounded border mb-2">
+                                            <div class="text-muted fw-bold small text-uppercase mb-2">Confirme os dados do sistema:</div>
+                                            <div class="row g-1" style="margin: 0;">
+                                                <div class="col-4" style="padding: 0 4px;">
+                                                    <label class="form-label" style="font-size: 0.7rem; margin-bottom: 2px; font-weight: 600;"><i class="bi bi-wifi"></i> Plano Contratado</label>
+                                                    <select class="form-select form-control-script" id="audit-plano" onchange="atualizarTextoPlano()" style="font-size: 0.8rem; padding: 2px 6px; height: 30px;"></select>
+                                                </div>
+                                                <div class="col-4" style="padding: 0 4px;">
+                                                    <label class="form-label" style="font-size: 0.7rem; margin-bottom: 2px; font-weight: 600;"><i class="bi bi-credit-card"></i> Forma de Pagamento</label>
+                                                    <select class="form-select form-control-script" id="audit-pagamento" onchange="atualizarTextoPlano()" style="font-size: 0.8rem; padding: 2px 6px; height: 30px;"></select>
+                                                </div>
+                                                <div class="col-4" style="padding: 0 4px;">
+                                                    <label class="form-label" style="font-size: 0.7rem; margin-bottom: 2px; font-weight: 600;"><i class="bi bi-telephone"></i> Telefone Fixo</label>
+                                                    <div class="form-control form-control-script bg-white d-flex align-items-center justify-content-center" id="audit-tem-fixo-display" style="min-height: 30px; height: 30px; border: 1px solid #ced4da; padding: 0;"><span class="text-muted" style="font-size: 0.75rem;">Carregando...</span></div>
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div class="p-3 bg-primary-subtle border border-primary rounded mb-3"><p class="script-text mb-0">"O plano que você contratou foi o <strong class="text-primary text-uppercase" id="txt-plano-nome">...</strong> com o valor de <strong class="text-success" id="txt-plano-valor">R$ ...</strong> e a forma de pagamento foi <strong class="text-dark text-uppercase" id="txt-pagamento-nome">...</strong>."</p></div>
-                                        <p class="script-text">"O valor mensal será fixo até <strong>janeiro de 2028</strong>."</p>
-                                        <p class="script-text">"A fidelidade do plano é de 12 meses. Você está ciente do valor contratado, do plano e da fidelidade mencionada?"</p>
-                                        <p class="script-text small text-muted">(Informar taxa de habilitação proporcional em caso de cancelamento em 12 meses)</p>
-                                        <hr>
-                                        <div id="script-pagamento-cartao" style="display:none;"><h6 class="fw-bold text-primary">SCRIPT CARTÃO DE CRÉDITO</h6><ul class="list-group mb-3"><li class="list-group-item">"É importante verificar se você possui limite disponível."</li><li class="list-group-item">"Você terá até 24h para preencher o link com os dados do cartão."</li><li class="list-group-item">"Após o cadastro, é feita uma pré-reserva. No dia da instalação, essa pré-reserva vira cobrança."</li><li class="list-group-item">"A data de vencimento será a mesma da fatura do seu cartão."</li></ul></div>
-                                        <div id="script-pagamento-dacc" style="display:none;"><h6 class="fw-bold text-primary">SCRIPT DÉBITO EM CONTA (DACC)</h6><ul class="list-group mb-3"><li class="list-group-item">"Por favor, confirme: Banco, Agência e Conta."</li><li class="list-group-item fw-bold text-danger">"Se for Banco do Brasil, Santander ou Nubank, você precisa entrar no app do banco e autorizar o débito."</li><li class="list-group-item">"O primeiro pagamento será por BOLETO (vencimento para 25 dias após instalação). O débito automático inicia no 2º mês."</li></ul></div>
-                                        <div id="script-pagamento-boleto" style="display:none;"><h6 class="fw-bold text-primary">SCRIPT BOLETO</h6><ul class="list-group mb-3"><li class="list-group-item">"No dia da instalação, você receberá o boleto por WhatsApp, com vencimento para 25 dias após a instalação."</li></ul></div>
-                                        <p class="script-text mt-3 fw-bold">"Importante: Não há como escolher ou mudar a data de vencimento; ela é definida pela data da instalação."</p>
-                                        <div class="text-end mt-4"><button class="btn btn-primary" onclick="proximaAba('pills-finalizacao-tab')">Próximo <i class="bi bi-arrow-right"></i></button></div>
+                                        <div class="p-2 bg-primary-subtle border border-primary rounded mb-2"><p class="script-text mb-0 small">"O plano que você contratou foi o <strong class="text-primary text-uppercase" id="txt-plano-nome">...</strong> com o valor de <strong class="text-success" id="txt-plano-valor">R$ ...</strong> e a forma de pagamento foi <strong class="text-dark text-uppercase" id="txt-pagamento-nome">...</strong>."</p></div>
+                                        
+                                        <div class="row g-2 mb-2">
+                                            <div class="col-lg-6 col-md-6">
+                                                <div class="p-2 bg-light border rounded">
+                                                    <p class="script-text mb-0 small"><strong>Valor Fixo:</strong> "O valor mensal será fixo até <strong>janeiro de 2028</strong>."</p>
+                                                </div>
+                                            </div>
+                                            <div class="col-lg-6 col-md-6">
+                                                <div class="p-2 bg-light border rounded">
+                                                    <p class="script-text mb-0 small"><strong>Fidelidade:</strong> "A fidelidade do plano é de 12 meses. Você está ciente do valor contratado, do plano e da fidelidade mencionada?" <span class="text-muted">(Informar taxa de habilitação proporcional em caso de cancelamento em 12 meses)</span></p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div id="script-pagamento-cartao" style="display:none;">
+                                            <div class="row g-2 mb-2 align-items-start">
+                                                <div class="col-lg-3 col-md-6">
+                                                    <h6 class="fw-bold text-primary mb-1 small"><i class="bi bi-credit-card"></i> SCRIPT CARTÃO</h6>
+                                                    <div class="p-2 bg-light border rounded"><p class="script-text small mb-0">"É importante verificar se você possui limite disponível."</p></div>
+                                                </div>
+                                                <div class="col-lg-3 col-md-6">
+                                                    <div class="p-2 bg-light border rounded" style="margin-top: 28px;"><p class="script-text small mb-0">"Você terá até 24h para preencher o link com os dados do cartão."</p></div>
+                                                </div>
+                                                <div class="col-lg-3 col-md-6">
+                                                    <div class="p-2 bg-light border rounded" style="margin-top: 28px;"><p class="script-text small mb-0">"Após o cadastro, é feita uma pré-reserva. No dia da instalação, essa pré-reserva vira cobrança."</p></div>
+                                                </div>
+                                                <div class="col-lg-3 col-md-6">
+                                                    <div class="p-2 bg-light border rounded" style="margin-top: 28px;"><p class="script-text small mb-0">"A data de vencimento será a mesma da fatura do seu cartão."</p></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div id="script-pagamento-dacc" style="display:none;">
+                                            <div class="row g-2 mb-2 align-items-start">
+                                                <div class="col-lg-4 col-md-6">
+                                                    <h6 class="fw-bold text-primary mb-1 small"><i class="bi bi-bank"></i> SCRIPT DACC</h6>
+                                                    <div class="p-2 bg-light border rounded"><p class="script-text small mb-0">"Por favor, confirme: Banco, Agência e Conta."</p></div>
+                                                </div>
+                                                <div class="col-lg-4 col-md-6">
+                                                    <div class="p-2 bg-danger-subtle border border-danger rounded" style="margin-top: 28px;"><p class="script-text small fw-bold text-danger mb-0">"Se for Banco do Brasil, Santander ou Nubank, você precisa entrar no app do banco e autorizar o débito."</p></div>
+                                                </div>
+                                                <div class="col-lg-4 col-md-12">
+                                                    <div class="p-2 bg-light border rounded" style="margin-top: 28px;"><p class="script-text small mb-0">"O primeiro pagamento será por BOLETO (vencimento para 25 dias após instalação). O débito automático inicia no 2º mês."</p></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div id="script-pagamento-boleto" style="display:none;">
+                                            <div class="row g-2 mb-2">
+                                                <div class="col-12">
+                                                    <h6 class="fw-bold text-primary mb-1 small d-inline-block me-2"><i class="bi bi-receipt"></i> SCRIPT BOLETO</h6>
+                                                    <div class="p-2 bg-light border rounded d-inline-block" style="width: calc(100% - 120px);"><p class="script-text small mb-0">"No dia da instalação, você receberá o boleto por WhatsApp, com vencimento para 25 dias após a instalação."</p></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="p-2 bg-warning-subtle border border-warning rounded mb-2">
+                                            <p class="script-text mb-0 small fw-bold text-dark"><i class="bi bi-exclamation-triangle-fill text-warning"></i> "Importante: Não há como escolher ou mudar a data de vencimento; ela é definida pela data da instalação."</p>
+                                        </div>
+                                        <div class="text-end mt-2"><button class="btn btn-primary btn-sm" onclick="proximaAba('pills-finalizacao-tab')">Próximo <i class="bi bi-arrow-right"></i></button></div>
                                     </div>
                                 </div>
 
@@ -635,6 +720,15 @@
                 $('#audit-uf').val(v.estado || ''); $('#audit-ref').val(v.ponto_referencia || '');
                 if(v.plano) $('#audit-plano').val(v.plano.id || v.plano); if(v.forma_pagamento) $('#audit-pagamento').val(v.forma_pagamento.id || v.forma_pagamento);
                 $('#audit-data-agendamento').val(v.data_agendamento || ''); $('#audit-turno-agendamento').val(v.periodo_agendamento || ''); $('#script-obs-venda').val(v.observacoes || '');
+                
+                // Exibir informação de telefone fixo
+                const temFixo = v.tem_fixo === true || v.tem_fixo === 'true' || v.tem_fixo === 1;
+                const fixoDisplay = $('#audit-tem-fixo-display');
+                if (temFixo) {
+                    fixoDisplay.html('<span style="font-size: 0.8rem; font-weight: 600; color: #198754;">Sim</span>');
+                } else {
+                    fixoDisplay.html('<span style="font-size: 0.8rem; font-weight: 600; color: #6c757d;">Não</span>');
+                }
                 
                 $('#repro-data').val(v.data_abertura ? v.data_abertura.split('T')[0] : '');
 
