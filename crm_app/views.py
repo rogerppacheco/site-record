@@ -9335,38 +9335,71 @@ def listar_screenshots_debug(request):
         base_dir = Path(__file__).parent.parent.parent
         downloads_dir = base_dir / 'downloads'
         
+        # Debug: informações sobre o diretório
+        debug_info = {
+            'base_dir': str(base_dir),
+            'downloads_dir': str(downloads_dir),
+            'downloads_exists': downloads_dir.exists(),
+            'downloads_is_dir': downloads_dir.is_dir() if downloads_dir.exists() else False,
+        }
+        
         screenshots = []
+        todos_arquivos = []
         
         if downloads_dir.exists():
+            # Listar TODOS os arquivos na pasta downloads para debug
+            try:
+                todos_arquivos = [f.name for f in downloads_dir.iterdir() if f.is_file()]
+                debug_info['total_arquivos_downloads'] = len(todos_arquivos)
+                debug_info['arquivos_encontrados'] = todos_arquivos[:20]  # Primeiros 20
+            except Exception as e_list:
+                debug_info['erro_listar'] = str(e_list)
+            
             # Buscar screenshots do Nio Negocia
-            for file in downloads_dir.glob('debug_nio_negocia_*.png'):
-                screenshots.append({
-                    'nome': file.name,
-                    'tamanho': file.stat().st_size,
-                    'data_modificacao': datetime.fromtimestamp(file.stat().st_mtime).isoformat(),
-                    'url': f"/api/crm/debug/screenshots/{file.name}/"
-                })
+            try:
+                for file in downloads_dir.glob('debug_nio_negocia_*.png'):
+                    screenshots.append({
+                        'nome': file.name,
+                        'tamanho': file.stat().st_size,
+                        'data_modificacao': datetime.fromtimestamp(file.stat().st_mtime).isoformat(),
+                        'url': f"/api/crm/debug/screenshots/{file.name}/"
+                    })
+            except Exception as e_png:
+                debug_info['erro_buscar_png'] = str(e_png)
             
             # Buscar HTMLs de debug também
-            for file in downloads_dir.glob('debug_nio_negocia_*.html'):
-                screenshots.append({
-                    'nome': file.name,
-                    'tamanho': file.stat().st_size,
-                    'data_modificacao': datetime.fromtimestamp(file.stat().st_mtime).isoformat(),
-                    'url': f"/api/crm/debug/screenshots/{file.name}/"
-                })
+            try:
+                for file in downloads_dir.glob('debug_nio_negocia_*.html'):
+                    screenshots.append({
+                        'nome': file.name,
+                        'tamanho': file.stat().st_size,
+                        'data_modificacao': datetime.fromtimestamp(file.stat().st_mtime).isoformat(),
+                        'url': f"/api/crm/debug/screenshots/{file.name}/"
+                    })
+            except Exception as e_html:
+                debug_info['erro_buscar_html'] = str(e_html)
+        else:
+            # Tentar criar a pasta se não existir
+            try:
+                downloads_dir.mkdir(parents=True, exist_ok=True)
+                debug_info['pasta_criada'] = True
+            except Exception as e_mkdir:
+                debug_info['erro_criar_pasta'] = str(e_mkdir)
         
         # Ordenar por data de modificação (mais recentes primeiro)
         screenshots.sort(key=lambda x: x['data_modificacao'], reverse=True)
         
         return JsonResponse({
             'total': len(screenshots),
-            'screenshots': screenshots
+            'screenshots': screenshots,
+            'debug': debug_info  # Adicionar informações de debug
         })
     
     except Exception as e:
+        import traceback
         return JsonResponse({
             'erro': str(e),
+            'traceback': traceback.format_exc(),
             'total': 0,
             'screenshots': []
         }, status=500)
