@@ -182,7 +182,6 @@ def _enviar_pdf_whatsapp(whatsapp_service, telefone, invoice, caption=None):
         return False
     
     try:
-        import os
         import base64
         
         # Verificar se o arquivo existe
@@ -861,7 +860,6 @@ def processar_webhook_whatsapp(data):
                     logger.info(f"[Webhook] Buscando materiais com tag: {busca_texto}")
                     from crm_app.models import RecordApoia
                     from django.db.models import Q
-                    import os
                     import base64
                     
                     # Buscar arquivos que contenham a tag na busca (case-insensitive, busca parcial)
@@ -1042,7 +1040,6 @@ def processar_webhook_whatsapp(data):
                     resposta = "❌ Por favor, digite apenas o NÚMERO do material (ex: 1, 2, 3...):"
                 else:
                     from crm_app.models import RecordApoia
-                    import os
                     import base64
                     
                     # Buscar sessão diretamente do banco para garantir dados mais recentes
@@ -1306,8 +1303,6 @@ def processar_webhook_whatsapp(data):
                 from crm_app.models import RecordApoia
                 from django.db.models import Q
                 import base64
-                import os
-                
                 try:
                     # Buscar materiais por tag/palavra-chave
                     busca_texto = mensagem_texto.strip()
