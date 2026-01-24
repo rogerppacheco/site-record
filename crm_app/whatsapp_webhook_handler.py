@@ -7,6 +7,7 @@ Handler para processar mensagens do WhatsApp e executar comandos:
 - Fatura
 """
 import re
+import os
 import logging
 from datetime import datetime
 from django.utils import timezone
@@ -1450,7 +1451,94 @@ def processar_webhook_whatsapp(data):
             else:
                 resposta = None  # Não enviar resposta se estiver em meio a um fluxo
         
-        # Enviar resposta via WhatsApp (só se houver resposta para enviar)
+        # PRIMEIRO: Enviar PDF ANTES da mensagem de texto (para aparecer na mesma mensagem)
+        arquivo_enviado = False
+        if sessao:
+            invoice_para_pdf = sessao.dados_temp.get('invoice_para_pdf')
+            material_para_envio = sessao.dados_temp.get('material_para_envio')
+            
+            if invoice_para_pdf:
+                print(f"[DEBUG PDF] 🔍 ETAPA 5: PDF detectado na sessão, enviando ANTES da mensagem...")
+                print(f"[DEBUG PDF] invoice_para_pdf keys: {list(invoice_para_pdf.keys())}")
+                print(f"[DEBUG PDF] pdf_path={invoice_para_pdf.get('pdf_path')}")
+                print(f"[DEBUG PDF] pdf_url={invoice_para_pdf.get('pdf_url')}")
+                print(f"[DEBUG PDF] pdf_onedrive_url={invoice_para_pdf.get('pdf_onedrive_url')}")
+                logger.info(f"[DEBUG PDF] 🔍 ETAPA 5: PDF detectado, enviando ANTES da mensagem de texto...")
+                logger.info(f"[DEBUG PDF] invoice_para_pdf keys: {list(invoice_para_pdf.keys())}")
+                logger.info(f"[DEBUG PDF] pdf_path={invoice_para_pdf.get('pdf_path')}, pdf_url={invoice_para_pdf.get('pdf_url')}, pdf_onedrive_url={invoice_para_pdf.get('pdf_onedrive_url')}")
+                
+                # VALIDAÇÃO: Verificar se PDF existe e não está vazio antes de enviar
+                pdf_path = invoice_para_pdf.get('pdf_path')
+                if pdf_path and os.path.exists(pdf_path):
+                    tamanho = os.path.getsize(pdf_path)
+                    print(f"[DEBUG PDF] 📊 Validando PDF antes de enviar: {pdf_path}, tamanho: {tamanho} bytes")
+                    logger.info(f"[DEBUG PDF] 📊 Validando PDF antes de enviar: {pdf_path}, tamanho: {tamanho} bytes")
+                    
+                    if tamanho < 100:
+                        print(f"[DEBUG PDF] ❌ PDF muito pequeno ({tamanho} bytes), provavelmente vazio")
+                        logger.error(f"[DEBUG PDF] ❌ PDF muito pequeno ({tamanho} bytes), provavelmente vazio")
+                        # Remover PDF inválido da sessão
+                        invoice_para_pdf.pop('pdf_path', None)
+                    else:
+                        # Verificar cabeçalho PDF
+                        try:
+                            with open(pdf_path, 'rb') as f:
+                                header = f.read(4)
+                                if not header.startswith(b'%PDF'):
+                                    print(f"[DEBUG PDF] ❌ PDF não tem cabeçalho válido")
+                                    logger.error(f"[DEBUG PDF] ❌ PDF não tem cabeçalho válido")
+                                    invoice_para_pdf.pop('pdf_path', None)
+                        except Exception as e_val:
+                            print(f"[DEBUG PDF] ❌ Erro ao validar PDF: {e_val}")
+                            logger.error(f"[DEBUG PDF] ❌ Erro ao validar PDF: {e_val}")
+                            invoice_para_pdf.pop('pdf_path', None)
+                
+                resultado_envio = _enviar_pdf_whatsapp(whatsapp_service, telefone_formatado, invoice_para_pdf)
+                print(f"[DEBUG PDF] Resultado do envio: {resultado_envio}")
+                logger.info(f"[DEBUG PDF] Resultado do envio: {resultado_envio}")
+                if resultado_envio:
+                    arquivo_enviado = True
+                    
+            elif material_para_envio:
+                logger.info(f"[Webhook] Material detectado, enviando ANTES da mensagem...")
+                try:
+                    import base64
+                    if material_para_envio['tipo'] == 'IMAGEM':
+                        caption = f"📷 {material_para_envio['titulo']}"
+                        if material_para_envio.get('descricao'):
+                            caption += f"\n{material_para_envio['descricao'][:100]}"
+                        resultado_img = whatsapp_service.enviar_imagem_b64(telefone_formatado, material_para_envio['base64'], caption)
+                        if resultado_img:
+                            logger.info(f"[Webhook] ✅ Imagem enviada com sucesso: {material_para_envio['nome']}")
+                            arquivo_enviado = True
+                        else:
+                            logger.error(f"[Webhook] ❌ Falha ao enviar imagem: {material_para_envio['nome']}")
+                    else:  # DOCUMENTO
+                        logger.info(f"[Webhook] 📄 Preparando envio de DOCUMENTO")
+                        pdf_url = material_para_envio.get('url')
+                        base64_data = material_para_envio.get('base64', '')
+                        
+                        if pdf_url:
+                            logger.info(f"[Webhook] Enviando documento via URL")
+                            sucesso = whatsapp_service.enviar_pdf_url(telefone_formatado, pdf_url, material_para_envio['nome'])
+                        elif base64_data:
+                            logger.info(f"[Webhook] Enviando documento via base64")
+                            sucesso = whatsapp_service.enviar_pdf_b64(telefone_formatado, base64_data, material_para_envio['nome'])
+                        else:
+                            logger.error(f"[Webhook] ❌ Nenhum dado disponível")
+                            sucesso = False
+                        
+                        if sucesso:
+                            logger.info(f"[Webhook] ✅ Documento enviado com sucesso: {material_para_envio['nome']}")
+                            arquivo_enviado = True
+                        else:
+                            logger.error(f"[Webhook] ❌ Falha ao enviar documento: {material_para_envio['nome']}")
+                except Exception as e:
+                    logger.error(f"[Webhook] ❌ Erro ao enviar material: {e}")
+                    import traceback
+                    traceback.print_exc()
+        
+        # DEPOIS: Enviar resposta via WhatsApp (só se houver resposta para enviar)
         if resposta:
             try:
                 logger.info(f"[Webhook] Preparando para enviar resposta para {telefone_formatado}")
@@ -1470,83 +1558,12 @@ def processar_webhook_whatsapp(data):
                 
                 logger.info(f"[Webhook] Resposta enviada para {telefone_formatado}")
                 
-                # Verificar se há arquivo para enviar após a mensagem de texto
-                if sessao:
-                    invoice_para_pdf = sessao.dados_temp.get('invoice_para_pdf')
-                    material_para_envio = sessao.dados_temp.get('material_para_envio')
-                    arquivo_enviado = False
-                    
-                    if invoice_para_pdf:
-                        print(f"[DEBUG PDF] 🔍 ETAPA 5: PDF detectado na sessão, iniciando envio...")
-                        print(f"[DEBUG PDF] invoice_para_pdf keys: {list(invoice_para_pdf.keys())}")
-                        print(f"[DEBUG PDF] pdf_path={invoice_para_pdf.get('pdf_path')}")
-                        print(f"[DEBUG PDF] pdf_url={invoice_para_pdf.get('pdf_url')}")
-                        print(f"[DEBUG PDF] pdf_onedrive_url={invoice_para_pdf.get('pdf_onedrive_url')}")
-                        logger.info(f"[DEBUG PDF] 🔍 ETAPA 5: PDF detectado, tentando enviar via WhatsApp...")
-                        logger.info(f"[DEBUG PDF] invoice_para_pdf keys: {list(invoice_para_pdf.keys())}")
-                        logger.info(f"[DEBUG PDF] pdf_path={invoice_para_pdf.get('pdf_path')}, pdf_url={invoice_para_pdf.get('pdf_url')}, pdf_onedrive_url={invoice_para_pdf.get('pdf_onedrive_url')}")
-                        
-                        resultado_envio = _enviar_pdf_whatsapp(whatsapp_service, telefone_formatado, invoice_para_pdf)
-                        print(f"[DEBUG PDF] Resultado do envio: {resultado_envio}")
-                        logger.info(f"[DEBUG PDF] Resultado do envio: {resultado_envio}")
-                        arquivo_enviado = True
-                    
-                    elif material_para_envio:
-                        logger.info(f"[Webhook] Material detectado, tentando enviar via WhatsApp...")
-                        try:
-                            import base64
-                            if material_para_envio['tipo'] == 'IMAGEM':
-                                caption = f"📷 {material_para_envio['titulo']}"
-                                if material_para_envio.get('descricao'):
-                                    caption += f"\n{material_para_envio['descricao'][:100]}"
-                                resultado_img = whatsapp_service.enviar_imagem_b64(telefone_formatado, material_para_envio['base64'], caption)
-                                if resultado_img:
-                                    logger.info(f"[Webhook] ✅ Imagem enviada com sucesso: {material_para_envio['nome']}")
-                                    arquivo_enviado = True
-                                else:
-                                    logger.error(f"[Webhook] ❌ Falha ao enviar imagem: {material_para_envio['nome']}")
-                            else:  # DOCUMENTO
-                                logger.info(f"[Webhook] 📄 Preparando envio de DOCUMENTO")
-                                logger.info(f"[Webhook] Nome: {material_para_envio.get('nome', 'N/A')}")
-                                logger.info(f"[Webhook] Tipo: {material_para_envio.get('tipo', 'N/A')}")
-                                
-                                # Verificar se tem URL (preferível para arquivos grandes)
-                                pdf_url = material_para_envio.get('url')
-                                base64_data = material_para_envio.get('base64', '')
-                                
-                                if pdf_url:
-                                    logger.info(f"[Webhook] URL disponível: {pdf_url}")
-                                    logger.info(f"[Webhook] Enviando documento via URL (recomendado para arquivos grandes)")
-                                    print(f"[Webhook] Enviando documento via URL: {material_para_envio.get('nome')}")
-                                    sucesso = whatsapp_service.enviar_pdf_url(telefone_formatado, pdf_url, material_para_envio['nome'])
-                                elif base64_data:
-                                    logger.info(f"[Webhook] Base64 disponível: {bool(base64_data)}")
-                                    logger.info(f"[Webhook] Tamanho base64: {len(base64_data)} chars")
-                                    print(f"[Webhook] Enviando documento via base64: {material_para_envio.get('nome')}, base64 size: {len(base64_data)}")
-                                    sucesso = whatsapp_service.enviar_pdf_b64(telefone_formatado, base64_data, material_para_envio['nome'])
-                                else:
-                                    logger.error(f"[Webhook] ❌ Nenhum dado disponível (nem URL nem base64)")
-                                    print(f"[Webhook] ❌ ERRO: Nenhum dado disponível para envio")
-                                    sucesso = False
-                                
-                                if sucesso:
-                                    logger.info(f"[Webhook] ✅ Documento enviado com sucesso: {material_para_envio['nome']}")
-                                    print(f"[Webhook] ✅ Documento enviado: {material_para_envio['nome']}")
-                                    arquivo_enviado = True
-                                else:
-                                    logger.error(f"[Webhook] ❌ Falha ao enviar documento: {material_para_envio['nome']}")
-                                    print(f"[Webhook] ❌ Falha ao enviar documento: {material_para_envio['nome']}")
-                        except Exception as e:
-                            logger.error(f"[Webhook] ❌ Erro ao enviar material: {e}")
-                            import traceback
-                            traceback.print_exc()
-                    
-                    # Limpar dados temporários APENAS se arquivo foi enviado E não estamos na etapa material_selecionar
-                    # (precisamos manter arquivos_ids na etapa material_selecionar para o usuário escolher)
-                    if arquivo_enviado and sessao.etapa != 'material_selecionar':
-                        sessao.dados_temp = {}
-                        sessao.save(update_fields=['dados_temp'])
-                        logger.info(f"[Webhook] Dados temporários limpos após envio de arquivo")
+                # Limpar dados temporários APENAS se arquivo foi enviado E não estamos na etapa material_selecionar
+                # (precisamos manter arquivos_ids na etapa material_selecionar para o usuário escolher)
+                if arquivo_enviado and sessao and sessao.etapa != 'material_selecionar':
+                    sessao.dados_temp = {}
+                    sessao.save(update_fields=['dados_temp'])
+                    logger.info(f"[Webhook] Dados temporários limpos após envio de arquivo")
             except Exception as e:
                 logger.error(f"[Webhook] Erro ao enviar resposta: {e}")
                 import traceback

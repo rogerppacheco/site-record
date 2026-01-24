@@ -895,6 +895,31 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                     except Exception as e_debug:
                         logger.warning(f"[PDF HUMANO] Erro ao salvar debug: {e_debug}")
                 
+                # Aguardar página estar completamente carregada antes de gerar PDF
+                print(f"[DEBUG PDF DOWNLOAD] ⏳ Aguardando página estar completamente carregada...")
+                logger.info(f"[PDF HUMANO] Aguardando página estar completamente carregada...")
+                page.wait_for_load_state("networkidle", timeout=10000)
+                page.wait_for_load_state("domcontentloaded", timeout=10000)
+                page.wait_for_timeout(2000)  # Aguardar mais 2 segundos para garantir renderização completa
+                
+                # Verificar se há conteúdo na página antes de gerar PDF
+                try:
+                    page_content = page.evaluate("() => document.body.innerText")
+                    if not page_content or len(page_content.strip()) < 50:
+                        print(f"[DEBUG PDF DOWNLOAD] ⚠️ Página parece vazia ou com pouco conteúdo: {len(page_content) if page_content else 0} caracteres")
+                        logger.warning(f"[PDF HUMANO] ⚠️ Página parece vazia ou com pouco conteúdo")
+                        # Capturar screenshot para debug
+                        try:
+                            screenshot_path = os.path.join(downloads_dir, f"debug_{cpf}_pagina_vazia_antes_pdf.png")
+                            page.screenshot(path=screenshot_path, full_page=True)
+                            print(f"[DEBUG PDF DOWNLOAD] 📸 Screenshot da página vazia: {screenshot_path}")
+                            logger.info(f"[PDF HUMANO] Screenshot da página vazia: {screenshot_path}")
+                        except:
+                            pass
+                except Exception as e_check:
+                    print(f"[DEBUG PDF DOWNLOAD] ⚠️ Erro ao verificar conteúdo da página: {e_check}")
+                    logger.warning(f"[PDF HUMANO] Erro ao verificar conteúdo da página: {e_check}")
+                
                 # Usar a API de impressão do Playwright para gerar PDF diretamente
                 print(f"[DEBUG PDF DOWNLOAD] 📄 Gerando PDF via API de impressão do navegador...")
                 logger.info(f"[PDF HUMANO] Gerando PDF via API de impressão do navegador...")
@@ -904,8 +929,22 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                     margin={'top': '0.5cm', 'right': '0.5cm', 'bottom': '0.5cm', 'left': '0.5cm'}
                 )
                 
-                print(f"[DEBUG PDF DOWNLOAD] ✅ PDF gerado: {len(pdf_bytes)} bytes")
-                logger.info(f"[PDF HUMANO] ✅ PDF gerado: {len(pdf_bytes)} bytes")
+                # VALIDAÇÃO: Verificar se PDF não está vazio e tem estrutura válida
+                if not pdf_bytes or len(pdf_bytes) < 100:
+                    print(f"[DEBUG PDF DOWNLOAD] ❌ PDF gerado está vazio ou muito pequeno: {len(pdf_bytes) if pdf_bytes else 0} bytes")
+                    logger.error(f"[PDF HUMANO] ❌ PDF gerado está vazio ou muito pequeno: {len(pdf_bytes) if pdf_bytes else 0} bytes")
+                    browser.close()
+                    return None
+                
+                # Verificar se começa com cabeçalho PDF válido
+                if not pdf_bytes.startswith(b'%PDF'):
+                    print(f"[DEBUG PDF DOWNLOAD] ❌ PDF não tem cabeçalho válido (não começa com %PDF)")
+                    logger.error(f"[PDF HUMANO] ❌ PDF não tem cabeçalho válido")
+                    browser.close()
+                    return None
+                
+                print(f"[DEBUG PDF DOWNLOAD] ✅ PDF gerado e validado: {len(pdf_bytes)} bytes")
+                logger.info(f"[PDF HUMANO] ✅ PDF gerado e validado: {len(pdf_bytes)} bytes")
                 
                 # Salvar PDF
                 if os.path.exists(caminho_completo):
@@ -914,8 +953,20 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                 with open(caminho_completo, 'wb') as f:
                     f.write(pdf_bytes)
                 
-                print(f"[DEBUG PDF DOWNLOAD] ✅ PDF salvo em: {caminho_completo}")
-                logger.info(f"[PDF HUMANO] ✅ PDF gerado e salvo: {caminho_completo}")
+                # VALIDAÇÃO: Verificar se arquivo foi salvo corretamente
+                if not os.path.exists(caminho_completo):
+                    print(f"[DEBUG PDF DOWNLOAD] ❌ Erro: Arquivo não foi salvo em {caminho_completo}")
+                    logger.error(f"[PDF HUMANO] ❌ Erro: Arquivo não foi salvo")
+                    browser.close()
+                    return None
+                
+                tamanho_salvo = os.path.getsize(caminho_completo)
+                if tamanho_salvo != len(pdf_bytes):
+                    print(f"[DEBUG PDF DOWNLOAD] ⚠️ Tamanho do arquivo salvo ({tamanho_salvo}) diferente do PDF gerado ({len(pdf_bytes)})")
+                    logger.warning(f"[PDF HUMANO] ⚠️ Tamanho do arquivo salvo diferente do PDF gerado")
+                
+                print(f"[DEBUG PDF DOWNLOAD] ✅ PDF salvo e validado em: {caminho_completo} ({tamanho_salvo} bytes)")
+                logger.info(f"[PDF HUMANO] ✅ PDF gerado e salvo: {caminho_completo} ({tamanho_salvo} bytes)")
                 
             except Exception as e_download:
                 print(f"[DEBUG PDF DOWNLOAD] ❌ PASSO 3: Erro ao processar download: {e_download}")
