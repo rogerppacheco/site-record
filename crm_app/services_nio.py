@@ -925,8 +925,24 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                             page.wait_for_timeout(1000)  # Aguardar 1 segundo entre tentativas
                     
                     if not dados_encontrados:
-                        print(f"[DEBUG PDF DOWNLOAD] ⚠️ Dados não encontrados após {max_tentativas} tentativas, continuando mesmo assim...")
-                        logger.warning(f"[PDF HUMANO] ⚠️ Dados não encontrados após {max_tentativas} tentativas")
+                        print(f"[DEBUG PDF DOWNLOAD] ❌ Dados não encontrados após {max_tentativas} tentativas - NÃO GERANDO PDF")
+                        logger.error(f"[PDF HUMANO] ❌ Dados não encontrados após {max_tentativas} tentativas - NÃO GERANDO PDF")
+                        # Capturar screenshot e HTML para debug
+                        try:
+                            screenshot_path = os.path.join(downloads_dir, f"debug_{cpf}_dados_nao_encontrados_apos_tentativas.png")
+                            page.screenshot(path=screenshot_path, full_page=True)
+                            print(f"[DEBUG PDF DOWNLOAD] 📸 Screenshot: {screenshot_path}")
+                            logger.info(f"[PDF HUMANO] Screenshot: {screenshot_path}")
+                            
+                            html_path = os.path.join(downloads_dir, f"debug_{cpf}_dados_nao_encontrados.html")
+                            with open(html_path, 'w', encoding='utf-8') as f:
+                                f.write(page.content())
+                            print(f"[DEBUG PDF DOWNLOAD] 📄 HTML: {html_path}")
+                            logger.info(f"[PDF HUMANO] HTML: {html_path}")
+                        except:
+                            pass
+                        browser.close()
+                        return None
                 except Exception as e_espera:
                     print(f"[DEBUG PDF DOWNLOAD] ⚠️ Erro ao aguardar dados: {e_espera}, continuando...")
                     logger.warning(f"[PDF HUMANO] ⚠️ Erro ao aguardar dados: {e_espera}")
@@ -991,9 +1007,16 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                         except:
                             pass
                         
-                        # Continuar mesmo assim, mas avisar
-                        print(f"[DEBUG PDF DOWNLOAD] ⚠️ Continuando mesmo sem validação completa...")
-                        logger.warning(f"[PDF HUMANO] ⚠️ Continuando mesmo sem validação completa...")
+                        # CRÍTICO: Não gerar PDF se não encontrou código de barras após todas as tentativas
+                        # O código de barras é essencial para validar que é a fatura correta
+                        if not codigo_barras_encontrado:
+                            print(f"[DEBUG PDF DOWNLOAD] ❌ CÓDIGO DE BARRAS NÃO ENCONTRADO após validação - NÃO GERANDO PDF")
+                            logger.error(f"[PDF HUMANO] ❌ CÓDIGO DE BARRAS NÃO ENCONTRADO - NÃO GERANDO PDF")
+                            browser.close()
+                            return None
+                        else:
+                            print(f"[DEBUG PDF DOWNLOAD] ⚠️ Valor não encontrado mas código de barras sim, continuando...")
+                            logger.warning(f"[PDF HUMANO] ⚠️ Valor não encontrado mas código de barras sim, continuando...")
                     else:
                         print(f"[DEBUG PDF DOWNLOAD] ✅ Página contém dados da fatura (valor e código de barras encontrados)")
                         logger.info(f"[PDF HUMANO] ✅ Página contém dados da fatura")
@@ -1001,6 +1024,29 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                 except Exception as e_check:
                     print(f"[DEBUG PDF DOWNLOAD] ⚠️ Erro ao validar conteúdo da página: {e_check}")
                     logger.warning(f"[PDF HUMANO] Erro ao validar conteúdo da página: {e_check}")
+                
+                # VALIDAÇÃO FINAL: Verificar novamente se código de barras está presente antes de gerar PDF
+                print(f"[DEBUG PDF DOWNLOAD] 🔍 VALIDAÇÃO FINAL: Verificando código de barras antes de gerar PDF...")
+                logger.info(f"[PDF HUMANO] VALIDAÇÃO FINAL: Verificando código de barras antes de gerar PDF...")
+                try:
+                    page_content_final = page.evaluate("() => document.body.innerText || ''")
+                    codigos_final = re.findall(r'\d{40,50}', page_content_final)
+                    valores_final = re.findall(r'R\$\s*[\d.,]+', page_content_final)
+                    
+                    print(f"[DEBUG PDF DOWNLOAD] 📊 Validação final: valores={len(valores_final)}, codigos={len(codigos_final)}")
+                    logger.info(f"[PDF HUMANO] Validação final: valores={len(valores_final)}, codigos={len(codigos_final)}")
+                    
+                    if not codigos_final:
+                        print(f"[DEBUG PDF DOWNLOAD] ❌ CÓDIGO DE BARRAS NÃO ENCONTRADO na validação final - NÃO GERANDO PDF")
+                        logger.error(f"[PDF HUMANO] ❌ CÓDIGO DE BARRAS NÃO ENCONTRADO na validação final - NÃO GERANDO PDF")
+                        browser.close()
+                        return None
+                    
+                    print(f"[DEBUG PDF DOWNLOAD] ✅ Código de barras confirmado na validação final: {len(codigos_final)} encontrado(s)")
+                    logger.info(f"[PDF HUMANO] ✅ Código de barras confirmado na validação final")
+                except Exception as e_val_final:
+                    print(f"[DEBUG PDF DOWNLOAD] ⚠️ Erro na validação final: {e_val_final}, continuando...")
+                    logger.warning(f"[PDF HUMANO] ⚠️ Erro na validação final: {e_val_final}")
                 
                 # Usar a API de impressão do Playwright para gerar PDF diretamente
                 print(f"[DEBUG PDF DOWNLOAD] 📄 Gerando PDF via API de impressão do navegador...")
