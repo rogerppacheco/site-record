@@ -1522,10 +1522,26 @@ def processar_webhook_whatsapp(data):
                     if resultado_envio:
                         arquivo_enviado = True
                         pdf_enviado_com_caption = True
-                        # Não enviar mensagem de texto separada se PDF foi enviado com caption
-                        resposta = None  # Limpar resposta para não enviar mensagem separada
-                        print(f"[DEBUG PDF] ✅ PDF enviado com caption, mensagem de texto será omitida")
-                        logger.info(f"[DEBUG PDF] ✅ PDF enviado com caption, mensagem de texto será omitida")
+                        # Enviar mensagem imediatamente após o PDF para aparecer junto
+                        # (Z-API pode não suportar caption diretamente, então enviamos como mensagem separada)
+                        print(f"[DEBUG PDF] 📨 Enviando mensagem imediatamente após PDF para aparecer junto...")
+                        logger.info(f"[DEBUG PDF] 📨 Enviando mensagem imediatamente após PDF")
+                        try:
+                            sucesso_msg, resultado_msg = whatsapp_service.enviar_mensagem_texto(telefone_formatado, resposta)
+                            if sucesso_msg:
+                                print(f"[DEBUG PDF] ✅ Mensagem enviada após PDF")
+                                logger.info(f"[DEBUG PDF] ✅ Mensagem enviada após PDF")
+                            else:
+                                print(f"[DEBUG PDF] ⚠️ Erro ao enviar mensagem após PDF: {resultado_msg}")
+                                logger.warning(f"[DEBUG PDF] ⚠️ Erro ao enviar mensagem após PDF: {resultado_msg}")
+                        except Exception as e_msg:
+                            print(f"[DEBUG PDF] ❌ Exceção ao enviar mensagem após PDF: {e_msg}")
+                            logger.error(f"[DEBUG PDF] ❌ Exceção ao enviar mensagem após PDF: {e_msg}")
+                        
+                        # Não enviar mensagem de texto novamente
+                        resposta = None  # Limpar resposta para não enviar mensagem duplicada
+                        print(f"[DEBUG PDF] ✅ PDF e mensagem enviados, resposta será omitida")
+                        logger.info(f"[DEBUG PDF] ✅ PDF e mensagem enviados, resposta será omitida")
                     
             elif material_para_envio:
                 logger.info(f"[Webhook] Material detectado, enviando ANTES da mensagem...")

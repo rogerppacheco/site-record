@@ -292,28 +292,12 @@ class WhatsAppService:
                     logger.info(f"[WhatsAppService] MessageId: {message_id}")
                     print(f"[PDF-ENVIO] ✅ SUCESSO: Documento enviado via URL (MessageId: {message_id})")
                     
-                    # Se caption foi fornecido mas não foi incluído no envio, tentar editar a mensagem
-                    # ou enviar como mensagem separada (Z-API pode não suportar caption direto)
-                    if caption and not resp.get('caption'):
-                        logger.info(f"[WhatsAppService] Caption não foi aplicado, tentando editar mensagem...")
-                        # Z-API permite editar caption usando editDocumentMessageId
-                        try:
-                            edit_url = f"{self.base_url}/edit-document-message"
-                            edit_payload = {
-                                "messageId": message_id,
-                                "caption": caption
-                            }
-                            edit_resp = self._send_request(edit_url, edit_payload)
-                            if edit_resp and not edit_resp.get('error'):
-                                logger.info(f"[WhatsAppService] ✅ Caption editado com sucesso")
-                            else:
-                                logger.warning(f"[WhatsAppService] ⚠️ Não foi possível editar caption, enviando mensagem separada...")
-                                # Enviar mensagem de texto separada
-                                self.enviar_mensagem_texto(telefone, caption)
-                        except Exception as e_edit:
-                            logger.warning(f"[WhatsAppService] ⚠️ Erro ao editar caption: {e_edit}, enviando mensagem separada...")
-                            # Enviar mensagem de texto separada como fallback
-                            self.enviar_mensagem_texto(telefone, caption)
+                    # Se caption foi fornecido, retornar para que seja enviado imediatamente após
+                    # (Z-API pode não suportar caption diretamente no envio)
+                    if caption:
+                        logger.info(f"[WhatsAppService] Caption fornecido, será retornado para envio imediato após PDF")
+                        # O caption será enviado pelo webhook_handler imediatamente após o PDF
+                        # para aparecer junto na mesma conversa
                     
                     return True
                 else:
@@ -441,28 +425,12 @@ class WhatsAppService:
                     logger.info(f"[WhatsAppService] MessageId: {message_id}")
                     print(f"[PDF-ENVIO] ✅ SUCESSO: Documento enviado (MessageId: {message_id})")
                     
-                    # Se caption foi fornecido mas não foi incluído no envio, tentar editar a mensagem
-                    # ou enviar como mensagem separada (Z-API pode não suportar caption direto)
-                    if caption and not resp.get('caption'):
-                        logger.info(f"[WhatsAppService] Caption não foi aplicado, tentando editar mensagem...")
-                        # Z-API permite editar caption usando editDocumentMessageId
-                        try:
-                            edit_url = f"{self.base_url}/edit-document-message"
-                            edit_payload = {
-                                "messageId": message_id,
-                                "caption": caption
-                            }
-                            edit_resp = self._send_request(edit_url, edit_payload)
-                            if edit_resp and not edit_resp.get('error'):
-                                logger.info(f"[WhatsAppService] ✅ Caption editado com sucesso")
-                            else:
-                                logger.warning(f"[WhatsAppService] ⚠️ Não foi possível editar caption, enviando mensagem separada...")
-                                # Enviar mensagem de texto separada
-                                self.enviar_mensagem_texto(telefone, caption)
-                        except Exception as e_edit:
-                            logger.warning(f"[WhatsAppService] ⚠️ Erro ao editar caption: {e_edit}, enviando mensagem separada...")
-                            # Enviar mensagem de texto separada como fallback
-                            self.enviar_mensagem_texto(telefone, caption)
+                    # Se caption foi fornecido, retornar para que seja enviado imediatamente após
+                    # (Z-API pode não suportar caption diretamente no envio)
+                    if caption:
+                        logger.info(f"[WhatsAppService] Caption fornecido, será retornado para envio imediato após PDF")
+                        # O caption será enviado pelo webhook_handler imediatamente após o PDF
+                        # para aparecer junto na mesma conversa
                     
                     return True
                 else:
