@@ -526,8 +526,19 @@ def processar_webhook_whatsapp(data):
         
         elif etapa_atual == 'fatura_cpf':
             cpf_limpo = limpar_texto_cep_cpf(mensagem_texto)
-            if not cpf_limpo or len(cpf_limpo) < 11:
-                resposta = "❌ CPF inválido. Por favor, digite o CPF completo (apenas números):"
+            
+            # Validar CPF com algoritmo de dígito verificador
+            cpf_valido = False
+            if cpf_limpo and len(cpf_limpo) == 11 and cpf_limpo.isdigit():
+                try:
+                    from core.validators import validar_cpf
+                    validar_cpf(cpf_limpo)  # Lança ValidationError se inválido
+                    cpf_valido = True
+                except Exception:
+                    cpf_valido = False
+            
+            if not cpf_valido:
+                resposta = "❌ CPF inválido. Por favor, digite um CPF válido (apenas números):"
             else:
                 logger.info(f"[Webhook] Buscando TODAS as faturas para CPF: {cpf_limpo}")
                 try:
@@ -557,7 +568,10 @@ def processar_webhook_whatsapp(data):
                     logger.info(f"[Webhook] Total de faturas encontradas: {len(invoices)}")
                     
                     if not invoices:
-                        resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n❌ *FATURAS NÃO ENCONTRADAS*\n\nNão encontrei nenhuma fatura para este CPF."
+                        # Quando a API retorna 200 mas sem faturas (caso do site que mostra "0 contas pra pagar")
+                        # Formatar CPF para exibição (XXX.XXX.XXX-XX)
+                        cpf_formatado = f"{cpf_limpo[:3]}.XXX.XXX-{cpf_limpo[-2:]}"
+                        resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n✅ *CPF: {cpf_formatado}*\n\nOlá Cliente, você tem *0 contas* pra pagar.\n\nEste CPF não possui faturas em aberto no momento."
                         sessao.etapa = 'inicial'
                         sessao.dados_temp = {}
                         sessao.save()
@@ -709,12 +723,38 @@ def processar_webhook_whatsapp(data):
                     traceback.print_exc()
                     # Tratamento de erros mais específico
                     erro_msg = str(e)
+                    
+                    # Verificar se o CPF é válido usando algoritmo de dígito verificador
+                    cpf_valido_algoritmo = False
+                    if cpf_limpo and len(cpf_limpo) == 11 and cpf_limpo.isdigit():
+                        try:
+                            from core.validators import validar_cpf
+                            validar_cpf(cpf_limpo)  # Lança ValidationError se inválido
+                            cpf_valido_algoritmo = True
+                        except Exception:
+                            cpf_valido_algoritmo = False
+                    
+                    # Formatar CPF para exibição (XXX.XXX.XXX-XX)
+                    cpf_formatado = f"{cpf_limpo[:3]}.XXX.XXX-{cpf_limpo[-2:]}" if cpf_limpo and len(cpf_limpo) >= 11 else cpf_limpo
+                    
                     if "400" in erro_msg or "Bad Request" in erro_msg:
-                        resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n❌ *ERRO*\n\nCPF não encontrado na base da Nio ou dados inválidos.\n\nVerifique se o CPF está correto e tente novamente."
+                        # Erro 400: Pode ser CPF inválido OU CPF válido mas não encontrado na base
+                        # Se o CPF passou na validação do algoritmo, provavelmente existe mas não tem faturas
+                        if cpf_valido_algoritmo:
+                            # CPF válido mas API retornou 400 - provavelmente não tem faturas ou não está na base
+                            resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n✅ *CPF: {cpf_formatado}*\n\nOlá Cliente, você tem *0 contas* pra pagar.\n\nEste CPF não possui faturas em aberto no momento."
+                        else:
+                            # CPF inválido ou não encontrado
+                            resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n❌ *ERRO*\n\nCPF não encontrado na base da Nio ou dados inválidos.\n\nVerifique se o CPF está correto e tente novamente."
                     elif "401" in erro_msg or "Unauthorized" in erro_msg:
                         resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n❌ *ERRO*\n\nErro de autenticação com a API da Nio.\n\nTente novamente em alguns instantes."
                     elif "404" in erro_msg or "Not Found" in erro_msg:
-                        resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n❌ *FATURAS NÃO ENCONTRADAS*\n\nNão encontrei nenhuma fatura para este CPF."
+                        # Erro 404: Recurso não encontrado
+                        # Se o CPF é válido, pode ser que não tenha faturas
+                        if cpf_valido_algoritmo:
+                            resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n✅ *CPF: {cpf_formatado}*\n\nOlá Cliente, você tem *0 contas* pra pagar.\n\nEste CPF não possui faturas em aberto no momento."
+                        else:
+                            resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n❌ *FATURAS NÃO ENCONTRADAS*\n\nNão encontrei nenhuma fatura para este CPF."
                     else:
                         resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n❌ *ERRO*\n\nErro ao buscar faturas: {erro_msg}\n\nTente novamente em alguns instantes."
                     sessao.etapa = 'inicial'
