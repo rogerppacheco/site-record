@@ -218,11 +218,17 @@ class WhatsAppService:
     # ---------------------------------------------------------
     # 4. ENVIAR PDF (BASE64 OU URL)
     # ---------------------------------------------------------
-    def enviar_pdf_url(self, telefone, pdf_url, nome_arquivo="extrato.pdf"):
+    def enviar_pdf_url(self, telefone, pdf_url, nome_arquivo="extrato.pdf", caption=None):
         """
         Envia documento (PDF, Word, Excel, etc) via URL pública usando Z-API.
         Z-API requer: /send-document/{extension}
         Recomendado para arquivos grandes (>5MB).
+        
+        Args:
+            telefone: Número do destinatário
+            pdf_url: URL pública do PDF
+            nome_arquivo: Nome do arquivo
+            caption: Mensagem de legenda (opcional, será enviada como mensagem separada se não suportado)
         """
         # Extrair extensão do arquivo para incluir na URL (ex: pdf, docx, xlsx)
         extensao = 'pdf'  # padrão
@@ -236,14 +242,25 @@ class WhatsAppService:
         logger.info(f"[WhatsAppService] Telefone: {telefone} -> Formatado: {telefone_limpo}")
         logger.info(f"[WhatsAppService] Arquivo: {nome_arquivo}")
         logger.info(f"[WhatsAppService] URL do PDF: {pdf_url}")
+        if caption:
+            logger.info(f"[WhatsAppService] Caption: {caption[:100]}...")
         print(f"[PDF-ENVIO] Enviando PDF via URL: {nome_arquivo} para {telefone_limpo}")
         print(f"[PDF-ENVIO] URL: {pdf_url}")
+        if caption:
+            print(f"[PDF-ENVIO] Caption: {caption[:100]}...")
         
         payload = {
             "phone": telefone_limpo,
             "document": pdf_url,  # Z-API aceita URL ou base64
             "fileName": nome_arquivo
         }
+        
+        # Tentar adicionar caption (Z-API pode não suportar diretamente, mas vamos tentar)
+        # Se não funcionar, enviaremos a mensagem separadamente após o envio
+        if caption:
+            # Algumas APIs aceitam "caption" ou "message" como parâmetro
+            payload["caption"] = caption
+            logger.info(f"[WhatsAppService] Adicionando caption ao payload")
         
         logger.info(f"[WhatsAppService] Payload preparado:")
         logger.info(f"[WhatsAppService]   - phone: {telefone_limpo}")
@@ -270,9 +287,34 @@ class WhatsAppService:
                 
                 # Verificar se tem campos de sucesso (messageId, zaapId, id)
                 if isinstance(resp, dict) and (resp.get('messageId') or resp.get('zaapId') or resp.get('id')):
+                    message_id = resp.get('messageId') or resp.get('zaapId') or resp.get('id')
                     logger.info(f"[WhatsAppService] ✅ Documento enviado com sucesso via URL: {nome_arquivo}")
-                    logger.info(f"[WhatsAppService] MessageId: {resp.get('messageId', 'N/A')}")
-                    print(f"[PDF-ENVIO] ✅ SUCESSO: Documento enviado via URL (MessageId: {resp.get('messageId', 'N/A')})")
+                    logger.info(f"[WhatsAppService] MessageId: {message_id}")
+                    print(f"[PDF-ENVIO] ✅ SUCESSO: Documento enviado via URL (MessageId: {message_id})")
+                    
+                    # Se caption foi fornecido mas não foi incluído no envio, tentar editar a mensagem
+                    # ou enviar como mensagem separada (Z-API pode não suportar caption direto)
+                    if caption and not resp.get('caption'):
+                        logger.info(f"[WhatsAppService] Caption não foi aplicado, tentando editar mensagem...")
+                        # Z-API permite editar caption usando editDocumentMessageId
+                        try:
+                            edit_url = f"{self.base_url}/edit-document-message"
+                            edit_payload = {
+                                "messageId": message_id,
+                                "caption": caption
+                            }
+                            edit_resp = self._send_request(edit_url, edit_payload)
+                            if edit_resp and not edit_resp.get('error'):
+                                logger.info(f"[WhatsAppService] ✅ Caption editado com sucesso")
+                            else:
+                                logger.warning(f"[WhatsAppService] ⚠️ Não foi possível editar caption, enviando mensagem separada...")
+                                # Enviar mensagem de texto separada
+                                self.enviar_mensagem_texto(telefone, caption)
+                        except Exception as e_edit:
+                            logger.warning(f"[WhatsAppService] ⚠️ Erro ao editar caption: {e_edit}, enviando mensagem separada...")
+                            # Enviar mensagem de texto separada como fallback
+                            self.enviar_mensagem_texto(telefone, caption)
+                    
                     return True
                 else:
                     logger.warning(f"[WhatsAppService] ⚠️ Resposta inesperada: {resp}")
@@ -291,10 +333,16 @@ class WhatsAppService:
             print(f"[PDF-ENVIO] Traceback: {tb_str}")
             return False
     
-    def enviar_pdf_b64(self, telefone, base64_data, nome_arquivo="extrato.pdf"):
+    def enviar_pdf_b64(self, telefone, base64_data, nome_arquivo="extrato.pdf", caption=None):
         """
         Envia documento (PDF, Word, Excel, etc) em Base64 via Z-API.
         Z-API requer: /send-document/{extension}
+        
+        Args:
+            telefone: Número do destinatário
+            base64_data: PDF em base64
+            nome_arquivo: Nome do arquivo
+            caption: Mensagem de legenda (opcional, será enviada como mensagem separada se não suportado)
         """
         # Extrair extensão do arquivo para incluir na URL (ex: pdf, docx, xlsx)
         extensao = 'pdf'  # padrão
@@ -308,6 +356,8 @@ class WhatsAppService:
         logger.info(f"[WhatsAppService] Telefone: {telefone} -> Formatado: {telefone_limpo}")
         logger.info(f"[WhatsAppService] Arquivo: {nome_arquivo}")
         logger.info(f"[WhatsAppService] Tamanho base64 original: {len(base64_data)} chars")
+        if caption:
+            logger.info(f"[WhatsAppService] Caption: {caption[:100]}...")
         
         # Calcular tamanho aproximado em MB (base64 tem ~33% de overhead)
         tamanho_mb = (len(base64_data) * 3 / 4) / (1024 * 1024)
@@ -348,6 +398,11 @@ class WhatsAppService:
             "fileName": nome_arquivo
         }
         
+        # Tentar adicionar caption (Z-API pode não suportar diretamente, mas vamos tentar)
+        if caption:
+            payload["caption"] = caption
+            logger.info(f"[WhatsAppService] Adicionando caption ao payload")
+        
         logger.info(f"[WhatsAppService] Payload preparado:")
         logger.info(f"[WhatsAppService]   - phone: {telefone_limpo}")
         logger.info(f"[WhatsAppService]   - fileName: {nome_arquivo}")
@@ -381,9 +436,34 @@ class WhatsAppService:
                 
                 # Verificar se tem campos de sucesso (messageId, zaapId, id)
                 if isinstance(resp, dict) and (resp.get('messageId') or resp.get('zaapId') or resp.get('id')):
+                    message_id = resp.get('messageId') or resp.get('zaapId') or resp.get('id')
                     logger.info(f"[WhatsAppService] ✅ Documento enviado com sucesso: {nome_arquivo}")
-                    logger.info(f"[WhatsAppService] MessageId: {resp.get('messageId', 'N/A')}")
-                    print(f"[PDF-ENVIO] ✅ SUCESSO: Documento enviado (MessageId: {resp.get('messageId', 'N/A')})")
+                    logger.info(f"[WhatsAppService] MessageId: {message_id}")
+                    print(f"[PDF-ENVIO] ✅ SUCESSO: Documento enviado (MessageId: {message_id})")
+                    
+                    # Se caption foi fornecido mas não foi incluído no envio, tentar editar a mensagem
+                    # ou enviar como mensagem separada (Z-API pode não suportar caption direto)
+                    if caption and not resp.get('caption'):
+                        logger.info(f"[WhatsAppService] Caption não foi aplicado, tentando editar mensagem...")
+                        # Z-API permite editar caption usando editDocumentMessageId
+                        try:
+                            edit_url = f"{self.base_url}/edit-document-message"
+                            edit_payload = {
+                                "messageId": message_id,
+                                "caption": caption
+                            }
+                            edit_resp = self._send_request(edit_url, edit_payload)
+                            if edit_resp and not edit_resp.get('error'):
+                                logger.info(f"[WhatsAppService] ✅ Caption editado com sucesso")
+                            else:
+                                logger.warning(f"[WhatsAppService] ⚠️ Não foi possível editar caption, enviando mensagem separada...")
+                                # Enviar mensagem de texto separada
+                                self.enviar_mensagem_texto(telefone, caption)
+                        except Exception as e_edit:
+                            logger.warning(f"[WhatsAppService] ⚠️ Erro ao editar caption: {e_edit}, enviando mensagem separada...")
+                            # Enviar mensagem de texto separada como fallback
+                            self.enviar_mensagem_texto(telefone, caption)
+                    
                     return True
                 else:
                     # Resposta não tem erro, mas também não tem indicadores de sucesso
