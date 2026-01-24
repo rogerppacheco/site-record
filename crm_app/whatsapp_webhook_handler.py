@@ -623,38 +623,75 @@ def processar_webhook_whatsapp(data):
                             invoice = todas_faturas[0]
                             
                             # Tentar buscar PDF via API primeiro (mais rápido)
+                            print(f"[DEBUG PDF] 🔍 ETAPA 1: Tentando buscar PDF via API...")
+                            logger.info(f"[DEBUG PDF] 🔍 ETAPA 1: Tentando buscar PDF via API para fatura única")
+                            logger.info(f"[DEBUG PDF] Parâmetros: debt_id={invoice.get('debt_id')}, invoice_id={invoice.get('invoice_id')}, cpf={cpf_limpo}, ref={invoice.get('reference_month')}")
+                            print(f"[DEBUG PDF] debt_id={invoice.get('debt_id')}, invoice_id={invoice.get('invoice_id')}, cpf={cpf_limpo}")
+                            
                             try:
                                 from crm_app.nio_api import get_invoice_pdf_url
                                 import requests
                                 session = requests.Session()
+                                
+                                api_base = resultado.get('api_base', '')
+                                token = resultado.get('token', '')
+                                session_id = resultado.get('session_id', '')
+                                
+                                print(f"[DEBUG PDF] api_base={api_base}, token={'SIM' if token else 'NÃO'}, session_id={'SIM' if session_id else 'NÃO'}")
+                                logger.info(f"[DEBUG PDF] api_base={api_base}, token presente={bool(token)}, session_id presente={bool(session_id)}")
+                                
                                 pdf_url = get_invoice_pdf_url(
-                                    resultado.get('api_base', ''),
-                                    resultado.get('token', ''),
-                                    resultado.get('session_id', ''),
+                                    api_base,
+                                    token,
+                                    session_id,
                                     invoice.get('debt_id', ''),
                                     invoice.get('invoice_id', ''),
                                     cpf_limpo,
                                     invoice.get('reference_month', ''),
                                     session
                                 )
+                                
+                                print(f"[DEBUG PDF] Resultado get_invoice_pdf_url: {pdf_url}")
+                                logger.info(f"[DEBUG PDF] Resultado get_invoice_pdf_url: {pdf_url}")
+                                
                                 if pdf_url:
                                     invoice['pdf_url'] = pdf_url
-                                    logger.info(f"[Webhook] PDF encontrado via API para fatura única: {pdf_url[:100]}...")
+                                    print(f"[DEBUG PDF] ✅ PDF encontrado via API: {pdf_url[:100]}...")
+                                    logger.info(f"[DEBUG PDF] ✅ PDF encontrado via API para fatura única: {pdf_url[:100]}...")
+                                else:
+                                    print(f"[DEBUG PDF] ❌ PDF não encontrado via API (retornou None)")
+                                    logger.warning(f"[DEBUG PDF] ❌ PDF não encontrado via API (retornou None)")
                             except Exception as e:
-                                logger.warning(f"[Webhook] Erro ao buscar PDF via API para fatura única: {e}")
+                                print(f"[DEBUG PDF] ❌ ERRO ao buscar PDF via API: {type(e).__name__}: {e}")
+                                logger.warning(f"[DEBUG PDF] ❌ Erro ao buscar PDF via API para fatura única: {e}")
+                                import traceback
+                                logger.error(f"[DEBUG PDF] Traceback: {traceback.format_exc()}")
+                                print(f"[DEBUG PDF] Traceback: {traceback.format_exc()}")
                             
                             # Se não encontrou via API, tenta baixar como humano (Playwright)
+                            print(f"[DEBUG PDF] 🔍 ETAPA 2: Verificando se precisa baixar via Playwright...")
+                            print(f"[DEBUG PDF] invoice.get('pdf_url')={invoice.get('pdf_url')}")
+                            print(f"[DEBUG PDF] invoice.get('pdf_path')={invoice.get('pdf_path')}")
+                            logger.info(f"[DEBUG PDF] Verificando necessidade de download via Playwright: pdf_url={bool(invoice.get('pdf_url'))}, pdf_path={bool(invoice.get('pdf_path'))}")
+                            
                             if not invoice.get('pdf_url') and not invoice.get('pdf_path'):
+                                print(f"[DEBUG PDF] 🔍 ETAPA 3: Iniciando download via Playwright...")
+                                logger.info(f"[DEBUG PDF] 🔍 ETAPA 3: Tentando baixar PDF como humano para fatura única...")
+                                
                                 try:
                                     # Importar função diretamente do módulo (função privada)
                                     import crm_app.services_nio as nio_services
                                     mes_ref = invoice.get('reference_month', '')
                                     data_venc = invoice.get('due_date_raw') or invoice.get('data_vencimento', '')
                                     
-                                    logger.info(f"[Webhook] Tentando baixar PDF como humano para fatura única...")
-                                    logger.info(f"[Webhook] Parâmetros: CPF={cpf_limpo}, mes_ref={mes_ref}, data_venc={data_venc}")
+                                    print(f"[DEBUG PDF] Parâmetros Playwright: CPF={cpf_limpo}, mes_ref={mes_ref}, data_venc={data_venc}")
+                                    logger.info(f"[DEBUG PDF] Parâmetros: CPF={cpf_limpo}, mes_ref={mes_ref}, data_venc={data_venc}")
                                     
                                     pdf_result = nio_services._baixar_pdf_como_humano(cpf_limpo, mes_ref, data_venc)
+                                    
+                                    print(f"[DEBUG PDF] Resultado _baixar_pdf_como_humano: {pdf_result}")
+                                    print(f"[DEBUG PDF] Tipo do resultado: {type(pdf_result)}")
+                                    logger.info(f"[DEBUG PDF] Resultado _baixar_pdf_como_humano: {pdf_result}, tipo: {type(pdf_result)}")
                                     
                                     if pdf_result:
                                         # pdf_result pode ser dict (com local_path e onedrive_url) ou string (caminho antigo)
@@ -663,28 +700,58 @@ def processar_webhook_whatsapp(data):
                                             invoice['pdf_onedrive_url'] = pdf_result.get('onedrive_url')
                                             invoice['pdf_filename'] = pdf_result.get('filename')
                                             
+                                            print(f"[DEBUG PDF] ✅ PDF baixado (dict): local_path={pdf_result.get('local_path')}, onedrive_url={pdf_result.get('onedrive_url')}")
+                                            logger.info(f"[DEBUG PDF] ✅ PDF baixado (dict): local_path={pdf_result.get('local_path')}, onedrive_url={pdf_result.get('onedrive_url')}")
+                                            
                                             if pdf_result.get('onedrive_url'):
-                                                logger.info(f"[Webhook] ✅ PDF baixado e enviado para OneDrive (fatura única): {pdf_result['onedrive_url']}")
+                                                print(f"[DEBUG PDF] ✅ PDF enviado para OneDrive: {pdf_result['onedrive_url']}")
+                                                logger.info(f"[DEBUG PDF] ✅ PDF baixado e enviado para OneDrive (fatura única): {pdf_result['onedrive_url']}")
                                             else:
-                                                logger.info(f"[Webhook] ✅ PDF baixado localmente (fatura única): {pdf_result['local_path']}")
+                                                print(f"[DEBUG PDF] ✅ PDF baixado localmente: {pdf_result['local_path']}")
+                                                logger.info(f"[DEBUG PDF] ✅ PDF baixado localmente (fatura única): {pdf_result['local_path']}")
                                         else:
                                             # Compatibilidade com formato antigo (string)
                                             invoice['pdf_path'] = pdf_result
-                                            logger.info(f"[Webhook] ✅ PDF baixado com sucesso para fatura única: {pdf_result}")
+                                            print(f"[DEBUG PDF] ✅ PDF baixado (string): {pdf_result}")
+                                            logger.info(f"[DEBUG PDF] ✅ PDF baixado com sucesso para fatura única: {pdf_result}")
                                     else:
-                                        logger.warning(f"[Webhook] ⚠️ Falha ao baixar PDF como humano para fatura única - retornou None")
+                                        print(f"[DEBUG PDF] ❌ Falha ao baixar PDF - retornou None")
+                                        logger.warning(f"[DEBUG PDF] ❌ Falha ao baixar PDF como humano para fatura única - retornou None")
                                 except Exception as e:
-                                    logger.error(f"[Webhook] ❌ Erro ao baixar PDF como humano para fatura única: {e}")
+                                    print(f"[DEBUG PDF] ❌ ERRO ao baixar PDF: {type(e).__name__}: {e}")
+                                    logger.error(f"[DEBUG PDF] ❌ Erro ao baixar PDF como humano para fatura única: {e}")
                                     import traceback
-                                    traceback.print_exc()
+                                    tb = traceback.format_exc()
+                                    logger.error(f"[DEBUG PDF] Traceback completo:\n{tb}")
+                                    print(f"[DEBUG PDF] Traceback completo:\n{tb}")
+                            else:
+                                print(f"[DEBUG PDF] ⏭️ Pulando download via Playwright - PDF já disponível")
+                                logger.info(f"[DEBUG PDF] ⏭️ Pulando download via Playwright - PDF já disponível")
                             
                             resposta = _formatar_detalhes_fatura(invoice, cpf_limpo, incluir_pdf=True)
                             
                             # Armazenar invoice para envio do PDF após a mensagem (só se houver PDF disponível)
-                            if invoice.get('pdf_path') or invoice.get('pdf_url'):
+                            print(f"[DEBUG PDF] 🔍 ETAPA 4: Verificando se PDF está disponível para envio...")
+                            print(f"[DEBUG PDF] invoice.get('pdf_path')={invoice.get('pdf_path')}")
+                            print(f"[DEBUG PDF] invoice.get('pdf_url')={invoice.get('pdf_url')}")
+                            print(f"[DEBUG PDF] invoice.get('pdf_onedrive_url')={invoice.get('pdf_onedrive_url')}")
+                            logger.info(f"[DEBUG PDF] Verificando disponibilidade de PDF: pdf_path={bool(invoice.get('pdf_path'))}, pdf_url={bool(invoice.get('pdf_url'))}, pdf_onedrive_url={bool(invoice.get('pdf_onedrive_url'))}")
+                            
+                            if invoice.get('pdf_path') or invoice.get('pdf_url') or invoice.get('pdf_onedrive_url'):
+                                # Se tem pdf_onedrive_url, usar como pdf_url
+                                if invoice.get('pdf_onedrive_url') and not invoice.get('pdf_url'):
+                                    invoice['pdf_url'] = invoice.get('pdf_onedrive_url')
+                                    print(f"[DEBUG PDF] ✅ Usando pdf_onedrive_url como pdf_url: {invoice['pdf_url']}")
+                                    logger.info(f"[DEBUG PDF] ✅ Usando pdf_onedrive_url como pdf_url")
+                                
                                 sessao.dados_temp = {'invoice_para_pdf': invoice}
+                                print(f"[DEBUG PDF] ✅ PDF disponível - salvo na sessão para envio")
+                                logger.info(f"[DEBUG PDF] ✅ PDF disponível - salvo na sessão para envio")
                             else:
                                 sessao.dados_temp = {}
+                                print(f"[DEBUG PDF] ❌ PDF NÃO disponível - sessão limpa")
+                                logger.warning(f"[DEBUG PDF] ❌ PDF NÃO disponível - sessão limpa")
+                            
                             sessao.etapa = 'inicial'
                             sessao.save()
                         else:
@@ -1410,8 +1477,18 @@ def processar_webhook_whatsapp(data):
                     arquivo_enviado = False
                     
                     if invoice_para_pdf:
-                        logger.info(f"[Webhook] PDF detectado, tentando enviar via WhatsApp...")
-                        _enviar_pdf_whatsapp(whatsapp_service, telefone_formatado, invoice_para_pdf)
+                        print(f"[DEBUG PDF] 🔍 ETAPA 5: PDF detectado na sessão, iniciando envio...")
+                        print(f"[DEBUG PDF] invoice_para_pdf keys: {list(invoice_para_pdf.keys())}")
+                        print(f"[DEBUG PDF] pdf_path={invoice_para_pdf.get('pdf_path')}")
+                        print(f"[DEBUG PDF] pdf_url={invoice_para_pdf.get('pdf_url')}")
+                        print(f"[DEBUG PDF] pdf_onedrive_url={invoice_para_pdf.get('pdf_onedrive_url')}")
+                        logger.info(f"[DEBUG PDF] 🔍 ETAPA 5: PDF detectado, tentando enviar via WhatsApp...")
+                        logger.info(f"[DEBUG PDF] invoice_para_pdf keys: {list(invoice_para_pdf.keys())}")
+                        logger.info(f"[DEBUG PDF] pdf_path={invoice_para_pdf.get('pdf_path')}, pdf_url={invoice_para_pdf.get('pdf_url')}, pdf_onedrive_url={invoice_para_pdf.get('pdf_onedrive_url')}")
+                        
+                        resultado_envio = _enviar_pdf_whatsapp(whatsapp_service, telefone_formatado, invoice_para_pdf)
+                        print(f"[DEBUG PDF] Resultado do envio: {resultado_envio}")
+                        logger.info(f"[DEBUG PDF] Resultado do envio: {resultado_envio}")
                         arquivo_enviado = True
                     
                     elif material_para_envio:

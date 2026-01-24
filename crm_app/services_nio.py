@@ -159,9 +159,15 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
         
         caminho_completo = os.path.join(downloads_dir, nome_arquivo)
         
+        print(f"[DEBUG PDF DOWNLOAD] 🚀 INICIANDO download como humano para CPF: {cpf}")
+        print(f"[DEBUG PDF DOWNLOAD] 📁 Arquivo será salvo em: {caminho_completo}")
+        print(f"[DEBUG PDF DOWNLOAD] 📋 Parâmetros: mes_ref={mes_referencia}, data_venc={data_vencimento}")
         logger.info(f"[PDF HUMANO] Iniciando download como humano para CPF: {cpf}")
         logger.info(f"[PDF HUMANO] Arquivo será salvo em: {caminho_completo}")
         logger.info(f"[PDF HUMANO] Parâmetros: mes_ref={mes_referencia}, data_venc={data_vencimento}")
+        
+        print(f"[DEBUG PDF DOWNLOAD] 🌐 Iniciando Playwright (headless=True)...")
+        logger.info(f"[PDF HUMANO] Iniciando Playwright...")
         
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
@@ -177,15 +183,20 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
             page = context.new_page()
             
             # 1. Ir para página inicial
+            print(f"[DEBUG PDF DOWNLOAD] 📍 PASSO 1: Navegando para {NIO_BASE_URL}")
             logger.info(f"[PDF HUMANO] Passo 1: Navegando para {NIO_BASE_URL}")
             try:
                 page.goto(NIO_BASE_URL, wait_until="networkidle", timeout=30000)
                 page.wait_for_timeout(2000)
+                print(f"[DEBUG PDF DOWNLOAD] ✅ PASSO 1: Página carregada com sucesso")
                 logger.info(f"[PDF HUMANO] Página carregada com sucesso")
             except Exception as e:
+                print(f"[DEBUG PDF DOWNLOAD] ❌ PASSO 1: Erro ao carregar página: {e}")
                 logger.error(f"[PDF HUMANO] Erro ao carregar página inicial: {e}")
                 import traceback
-                logger.error(f"[PDF HUMANO] Traceback: {traceback.format_exc()}")
+                tb = traceback.format_exc()
+                logger.error(f"[PDF HUMANO] Traceback: {tb}")
+                print(f"[DEBUG PDF DOWNLOAD] Traceback: {tb}")
                 browser.close()
                 return None
             
@@ -198,12 +209,14 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                 logger.warning(f"[PDF HUMANO] Erro ao salvar screenshot: {e}")
             
             # 2. Preencher CPF e consultar
+            print(f"[DEBUG PDF DOWNLOAD] 📍 PASSO 2: Preenchendo CPF e consultando...")
             logger.info(f"[PDF HUMANO] Passo 2: Preenchendo CPF e consultando...")
             
             # Aguardar um pouco mais para garantir que a página carregou completamente
             page.wait_for_timeout(2000)
             page.wait_for_load_state("domcontentloaded", timeout=10000)
             
+            print(f"[DEBUG PDF DOWNLOAD] 🔍 Tentando encontrar campo de CPF...")
             logger.info(f"[PDF HUMANO] Tentando encontrar campo de CPF...")
             
             # Tentar vários seletores possíveis para o campo CPF
@@ -253,12 +266,14 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                     continue
             
             if not campo_cpf:
+                print(f"[DEBUG PDF DOWNLOAD] ❌ PASSO 2: Nenhum campo de CPF encontrado após tentar {len(seletores_cpf)} seletores!")
                 logger.error(f"[PDF HUMANO] ❌ Nenhum campo de CPF encontrado após tentar {len(seletores_cpf)} seletores!")
                 # Salvar HTML para debug
                 try:
                     html_path = os.path.join(downloads_dir, f"debug_{cpf}_html.html")
                     with open(html_path, 'w', encoding='utf-8') as f:
                         f.write(page.content())
+                    print(f"[DEBUG PDF DOWNLOAD] 💾 HTML salvo para debug: {html_path}")
                     logger.info(f"[PDF HUMANO] HTML salvo para debug: {html_path}")
                 except Exception as e_html:
                     logger.warning(f"[PDF HUMANO] Erro ao salvar HTML: {e_html}")
@@ -267,13 +282,18 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
             
             # Preencher CPF
             try:
+                print(f"[DEBUG PDF DOWNLOAD] ✍️ Preenchendo campo CPF com: {cpf}")
                 logger.info(f"[PDF HUMANO] Preenchendo campo CPF com: {cpf}")
                 campo_cpf.fill(cpf, timeout=10000)
+                print(f"[DEBUG PDF DOWNLOAD] ✅ CPF preenchido com sucesso")
                 logger.info(f"[PDF HUMANO] ✅ CPF preenchido com sucesso")
             except Exception as e:
+                print(f"[DEBUG PDF DOWNLOAD] ❌ Erro ao preencher CPF: {e}")
                 logger.error(f"[PDF HUMANO] ❌ Erro ao preencher CPF: {e}")
                 import traceback
-                logger.error(f"[PDF HUMANO] Traceback: {traceback.format_exc()}")
+                tb = traceback.format_exc()
+                logger.error(f"[PDF HUMANO] Traceback: {tb}")
+                print(f"[DEBUG PDF DOWNLOAD] Traceback: {tb}")
                 browser.close()
                 return None
             
@@ -482,11 +502,21 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
             browser.close()
             
             # Verificar se arquivo foi salvo corretamente
+            print(f"[DEBUG PDF DOWNLOAD] 📍 PASSO 7: Verificando arquivo salvo...")
+            print(f"[DEBUG PDF DOWNLOAD] Caminho: {caminho_completo}")
+            print(f"[DEBUG PDF DOWNLOAD] Existe: {os.path.exists(caminho_completo)}")
+            
+            if os.path.exists(caminho_completo):
+                tamanho = os.path.getsize(caminho_completo)
+                print(f"[DEBUG PDF DOWNLOAD] Tamanho: {tamanho} bytes ({tamanho/1024:.2f} KB)")
+            
             if os.path.exists(caminho_completo) and os.path.getsize(caminho_completo) > 0:
                 tamanho_kb = os.path.getsize(caminho_completo) / 1024
+                print(f"[DEBUG PDF DOWNLOAD] ✅ Arquivo salvo com sucesso: {caminho_completo} ({tamanho_kb:.2f} KB)")
                 logger.info(f"[PDF HUMANO] ✅ Arquivo salvo com sucesso: {caminho_completo} ({tamanho_kb:.2f} KB)")
                 
                 # Tentar fazer upload para OneDrive
+                print(f"[DEBUG PDF DOWNLOAD] ☁️ Tentando fazer upload para OneDrive...")
                 try:
                     from crm_app.onedrive_service import OneDriveUploader
                     uploader = OneDriveUploader()
@@ -502,45 +532,62 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                     
                     folder_name = f"Faturas_NIO/{ano}/{mes}"
                     
+                    print(f"[DEBUG PDF DOWNLOAD] 📁 Pasta OneDrive: {folder_name}/{nome_arquivo}")
                     logger.info(f"[PDF HUMANO] ☁️ Fazendo upload para OneDrive: {folder_name}/{nome_arquivo}")
                     
                     with open(caminho_completo, 'rb') as f:
                         link_onedrive = uploader.upload_file(f, folder_name, nome_arquivo)
                     
                     if link_onedrive:
+                        print(f"[DEBUG PDF DOWNLOAD] ✅ Upload OneDrive concluído: {link_onedrive}")
                         logger.info(f"[PDF HUMANO] ✅ Upload OneDrive concluído: {link_onedrive}")
-                        # Retornar tanto o caminho local quanto o link do OneDrive
-                        return {
+                        resultado = {
                             'local_path': caminho_completo,
                             'onedrive_url': link_onedrive,
                             'filename': nome_arquivo
                         }
+                        print(f"[DEBUG PDF DOWNLOAD] 🎉 RETORNANDO: {resultado}")
+                        return resultado
                     else:
+                        print(f"[DEBUG PDF DOWNLOAD] ⚠️ Upload OneDrive falhou, mas arquivo local salvo")
                         logger.warning(f"[PDF HUMANO] ⚠️ Upload OneDrive falhou, mas arquivo local salvo")
-                        return {
+                        resultado = {
                             'local_path': caminho_completo,
                             'onedrive_url': None,
                             'filename': nome_arquivo
                         }
+                        print(f"[DEBUG PDF DOWNLOAD] 🎉 RETORNANDO (sem OneDrive): {resultado}")
+                        return resultado
                 except Exception as e_onedrive:
+                    print(f"[DEBUG PDF DOWNLOAD] ❌ Erro ao fazer upload OneDrive: {e_onedrive}")
                     logger.warning(f"[PDF HUMANO] ⚠️ Erro ao fazer upload OneDrive: {e_onedrive}")
                     import traceback
-                    logger.warning(f"[PDF HUMANO] Traceback OneDrive: {traceback.format_exc()}")
+                    tb = traceback.format_exc()
+                    logger.warning(f"[PDF HUMANO] Traceback OneDrive: {tb}")
+                    print(f"[DEBUG PDF DOWNLOAD] Traceback OneDrive: {tb}")
                     # Mesmo se OneDrive falhar, retornar o caminho local
-                    return {
+                    resultado = {
                         'local_path': caminho_completo,
                         'onedrive_url': None,
                         'filename': nome_arquivo
                     }
+                    print(f"[DEBUG PDF DOWNLOAD] 🎉 RETORNANDO (após erro OneDrive): {resultado}")
+                    return resultado
             else:
+                print(f"[DEBUG PDF DOWNLOAD] ❌ Arquivo salvo mas está vazio ou não existe")
+                print(f"[DEBUG PDF DOWNLOAD] Existe: {os.path.exists(caminho_completo)}, Tamanho: {os.path.getsize(caminho_completo) if os.path.exists(caminho_completo) else 'N/A'}")
                 logger.warning(f"[PDF HUMANO] ⚠️ Arquivo salvo mas está vazio ou não existe")
                 logger.warning(f"[PDF HUMANO] Existe: {os.path.exists(caminho_completo)}, Tamanho: {os.path.getsize(caminho_completo) if os.path.exists(caminho_completo) else 'N/A'}")
+                print(f"[DEBUG PDF DOWNLOAD] 🎉 RETORNANDO: None")
                 return None
                 
     except Exception as e:
+        print(f"[DEBUG PDF DOWNLOAD] ❌ ERRO GERAL ao baixar PDF: {type(e).__name__}: {e}")
         logger.error(f"[PDF HUMANO] ❌ Erro ao baixar PDF: {e}")
         import traceback
-        logger.error(f"[PDF HUMANO] Traceback completo: {traceback.format_exc()}")
+        tb = traceback.format_exc()
+        logger.error(f"[PDF HUMANO] Traceback completo: {tb}")
+        print(f"[DEBUG PDF DOWNLOAD] Traceback completo: {tb}")
         
         # Salvar log de erro para debug
         try:
@@ -552,10 +599,12 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                 f.write(f"Erro: {str(e)}\n")
                 f.write(f"\nTraceback:\n")
                 traceback.print_exc(file=f)
+            print(f"[DEBUG PDF DOWNLOAD] 📝 Log de erro salvo: {error_log_path}")
             logger.info(f"[PDF HUMANO] 📝 Log de erro salvo: {error_log_path}")
         except Exception as e_log:
             logger.warning(f"[PDF HUMANO] Erro ao salvar log de erro: {e_log}")
         
+        print(f"[DEBUG PDF DOWNLOAD] 🎉 RETORNANDO: None (erro)")
         return None
 
 
