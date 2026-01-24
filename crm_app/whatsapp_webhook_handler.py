@@ -682,7 +682,21 @@ def processar_webhook_whatsapp(data):
                                     print(f"[DEBUG PDF] Parâmetros Playwright: CPF={cpf_limpo}, mes_ref={mes_ref}, data_venc={data_venc}")
                                     logger.info(f"[DEBUG PDF] Parâmetros: CPF={cpf_limpo}, mes_ref={mes_ref}, data_venc={data_venc}")
                                     
+                                    # Marcar que está processando PDF para evitar webhooks duplicados
+                                    if sessao:
+                                        sessao.dados_temp['processando_pdf'] = True
+                                        sessao.save(update_fields=['dados_temp', 'updated_at'])
+                                        print(f"[DEBUG PDF] 🔒 Marcado processando_pdf=True para evitar duplicação")
+                                        logger.info(f"[DEBUG PDF] 🔒 Marcado processando_pdf=True")
+                                    
                                     pdf_result = nio_services._baixar_pdf_como_humano(cpf_limpo, mes_ref, data_venc)
+                                    
+                                    # Remover flag de processamento após concluir
+                                    if sessao:
+                                        sessao.dados_temp.pop('processando_pdf', None)
+                                        sessao.save(update_fields=['dados_temp', 'updated_at'])
+                                        print(f"[DEBUG PDF] 🔓 Removido processando_pdf após download")
+                                        logger.info(f"[DEBUG PDF] 🔓 Removido processando_pdf após download")
                                     
                                     print(f"[DEBUG PDF] Resultado _baixar_pdf_como_humano: {pdf_result}")
                                     print(f"[DEBUG PDF] Tipo do resultado: {type(pdf_result)}")
@@ -1235,7 +1249,21 @@ def processar_webhook_whatsapp(data):
                                 logger.info(f"[Webhook] Tentando baixar PDF como humano...")
                                 logger.info(f"[Webhook] Parâmetros: CPF={cpf}, mes_ref={mes_ref}, data_venc={data_venc}")
                                 
+                                # Marcar que está processando PDF para evitar webhooks duplicados
+                                if sessao:
+                                    sessao.dados_temp['processando_pdf'] = True
+                                    sessao.save(update_fields=['dados_temp', 'updated_at'])
+                                    print(f"[DEBUG PDF] 🔒 Marcado processando_pdf=True para evitar duplicação")
+                                    logger.info(f"[DEBUG PDF] 🔒 Marcado processando_pdf=True")
+                                
                                 pdf_result = nio_services._baixar_pdf_como_humano(cpf, mes_ref, data_venc)
+                                
+                                # Remover flag de processamento após concluir
+                                if sessao:
+                                    sessao.dados_temp.pop('processando_pdf', None)
+                                    sessao.save(update_fields=['dados_temp', 'updated_at'])
+                                    print(f"[DEBUG PDF] 🔓 Removido processando_pdf após download")
+                                    logger.info(f"[DEBUG PDF] 🔓 Removido processando_pdf após download")
                                 
                                 if pdf_result:
                                     # pdf_result pode ser dict (com local_path e onedrive_url) ou string (caminho antigo)
@@ -1440,6 +1468,20 @@ def processar_webhook_whatsapp(data):
                     resposta = None  # Não enviar resposta de erro
             else:
                 resposta = None  # Não enviar resposta se estiver em meio a um fluxo
+        
+        # PRIMEIRO: Verificar se já há um processamento em andamento para evitar duplicação
+        if sessao and sessao.dados_temp.get('processando_pdf'):
+            tempo_processamento = timezone.now() - sessao.updated_at
+            if tempo_processamento.total_seconds() < 300:  # Menos de 5 minutos
+                print(f"[DEBUG] ⚠️ Processamento de PDF já em andamento para {telefone_formatado} (há {tempo_processamento.total_seconds():.1f}s), ignorando webhook duplicado")
+                logger.warning(f"[Webhook] Processamento de PDF já em andamento para {telefone_formatado} (há {tempo_processamento.total_seconds():.1f}s), ignorando webhook duplicado")
+                return {'status': 'ok', 'mensagem': 'Processamento em andamento'}
+            else:
+                # Se passou mais de 5 minutos, limpar a flag (pode ter travado)
+                print(f"[DEBUG] ⚠️ Flag processando_pdf antiga (há {tempo_processamento.total_seconds():.1f}s), limpando...")
+                logger.warning(f"[Webhook] Flag processando_pdf antiga (há {tempo_processamento.total_seconds():.1f}s), limpando...")
+                sessao.dados_temp.pop('processando_pdf', None)
+                sessao.save(update_fields=['dados_temp', 'updated_at'])
         
         # PRIMEIRO: Verificar se há PDF para enviar e preparar caption com a resposta
         arquivo_enviado = False
