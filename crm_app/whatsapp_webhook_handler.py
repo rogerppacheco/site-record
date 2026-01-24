@@ -136,21 +136,42 @@ def _formatar_data_brasileira(data_str):
 
 def _enviar_pdf_whatsapp(whatsapp_service, telefone, invoice):
     """
-    Envia o PDF da fatura via WhatsApp se estiver disponível localmente.
+    Envia o PDF da fatura via WhatsApp se estiver disponível (localmente ou via URL).
     Retorna True se enviou com sucesso, False caso contrário.
     """
     pdf_path = invoice.get('pdf_path', '')
+    pdf_url = invoice.get('pdf_url', '') or invoice.get('pdf_onedrive_url', '')
     pdf_filename = invoice.get('pdf_filename', 'fatura.pdf')
     
     logger.info(f"[Webhook] 📄 _enviar_pdf_whatsapp chamado")
     logger.info(f"[Webhook] PDF path: {pdf_path}")
+    logger.info(f"[Webhook] PDF URL: {pdf_url}")
     logger.info(f"[Webhook] PDF filename: {pdf_filename}")
     logger.info(f"[Webhook] Telefone: {telefone}")
-    print(f"[Webhook] Iniciando _enviar_pdf_whatsapp: path={pdf_path}, filename={pdf_filename}")
+    print(f"[Webhook] Iniciando _enviar_pdf_whatsapp: path={pdf_path}, url={pdf_url}, filename={pdf_filename}")
     
+    # Prioridade 1: Tentar enviar via URL (mais rápido e eficiente)
+    if pdf_url:
+        logger.info(f"[Webhook] 📎 Tentando enviar PDF via URL: {pdf_url}")
+        print(f"[Webhook] Enviando PDF via URL: {pdf_url}")
+        try:
+            sucesso = whatsapp_service.enviar_pdf_url(telefone, pdf_url, pdf_filename)
+            if sucesso:
+                logger.info(f"[Webhook] ✅ PDF enviado com sucesso via URL: {pdf_filename}")
+                print(f"[Webhook] ✅ PDF enviado com sucesso via URL")
+                return True
+            else:
+                logger.warning(f"[Webhook] ⚠️ Falha ao enviar PDF via URL, tentando método local...")
+                print(f"[Webhook] ⚠️ Falha via URL, tentando local...")
+        except Exception as e:
+            logger.error(f"[Webhook] ❌ Erro ao enviar PDF via URL: {type(e).__name__}: {e}")
+            print(f"[Webhook] ❌ Erro via URL: {e}")
+            # Continuar para tentar método local
+    
+    # Prioridade 2: Tentar enviar via arquivo local (base64)
     if not pdf_path:
-        logger.warning(f"[Webhook] ⚠️ PDF path vazio, não é possível enviar")
-        print(f"[Webhook] ⚠️ PDF path vazio")
+        logger.warning(f"[Webhook] ⚠️ PDF path vazio e URL não disponível, não é possível enviar")
+        print(f"[Webhook] ⚠️ PDF path vazio e URL não disponível")
         return False
     
     try:
@@ -177,7 +198,7 @@ def _enviar_pdf_whatsapp(whatsapp_service, telefone, invoice):
         print(f"[Webhook] PDF convertido: {len(pdf_bytes)} bytes -> {len(pdf_base64)} chars base64")
         
         # Enviar via WhatsApp
-        logger.info(f"[Webhook] Enviando PDF via WhatsApp: {pdf_filename} ({len(pdf_bytes)} bytes)")
+        logger.info(f"[Webhook] Enviando PDF via WhatsApp (base64): {pdf_filename} ({len(pdf_bytes)} bytes)")
         print(f"[Webhook] Chamando enviar_pdf_b64...")
         sucesso = whatsapp_service.enviar_pdf_b64(telefone, pdf_base64, pdf_filename)
         
