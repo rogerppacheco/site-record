@@ -2346,13 +2346,40 @@ def _buscar_fatura_nio_negocia(
             valor = None
             valor_matches = []
             
-            # Padrão 1: R$ 1.234,56
-            valor_matches.extend(re.findall(r'R\$\s*(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2}))', html_lista, re.IGNORECASE))
-            # Padrão 2: 1234,56 (sem R$)
-            valor_matches.extend(re.findall(r'(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\s*(?:reais|R\$|RS)', texto_visivel or '', re.IGNORECASE))
-            # Padrão 3: Buscar em texto visível também
+            # Normalizar HTML: substituir &nbsp; e outras entidades por espaços
+            html_normalizado = html_lista.replace('&nbsp;', ' ').replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
+            
+            # Padrão 1: R$ seguido de espaços/&nbsp; e valor (ex: R$  &nbsp;130,00 ou R$ 130,00)
+            # Aceita valores com ou sem separador de milhares
+            valor_matches.extend(re.findall(r'R\$\s+(?:&nbsp;)?\s*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})', html_normalizado, re.IGNORECASE))
+            valor_matches.extend(re.findall(r'R\$\s+(?:&nbsp;)?\s*(\d+[.,]\d{2})', html_normalizado, re.IGNORECASE))
+            
+            # Padrão 2: Buscar diretamente no texto visível (já normalizado pelo innerText)
             if texto_visivel:
-                valor_matches.extend(re.findall(r'R\$\s*(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2}))', texto_visivel, re.IGNORECASE))
+                # Padrão para valores com R$ no texto visível
+                valor_matches.extend(re.findall(r'R\$\s*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})', texto_visivel, re.IGNORECASE))
+                valor_matches.extend(re.findall(r'R\$\s*(\d+[.,]\d{2})', texto_visivel, re.IGNORECASE))
+                # Padrão para "Valor da dívida: R$ 130,00"
+                valor_matches.extend(re.findall(r'[Vv]alor[^:]*:\s*R\$\s*(\d+[.,]\d{2})', texto_visivel, re.IGNORECASE))
+            
+            # Padrão 3: Tentar extrair via JavaScript dos elementos específicos
+            try:
+                valor_js = page.evaluate("""
+                    () => {
+                        // Procurar por elementos que contenham "Valor da dívida" ou valores monetários
+                        const textos = Array.from(document.querySelectorAll('p, span, div')).map(el => el.innerText);
+                        for (let texto of textos) {
+                            const match = texto.match(/R\\$\\s*(\\d+[.,]\\d{2})/i);
+                            if (match) return match[1];
+                        }
+                        return null;
+                    }
+                """)
+                if valor_js:
+                    valor_matches.append(valor_js)
+                    print(f"[DEBUG NIO NEGOCIA] Valor encontrado via JavaScript: {valor_js}")
+            except Exception as e_js:
+                print(f"[DEBUG NIO NEGOCIA] Erro ao extrair valor via JS: {e_js}")
             
             # Remover duplicatas mantendo ordem
             valor_matches = list(dict.fromkeys(valor_matches))
@@ -2378,11 +2405,36 @@ def _buscar_fatura_nio_negocia(
             data_vencimento = None
             data_matches = []
             
-            # Padrão 1: DD/MM/YYYY
-            data_matches.extend(re.findall(r'(\d{2}/\d{2}/\d{4})', html_lista))
+            # Normalizar HTML para busca
+            html_normalizado = html_lista.replace('&nbsp;', ' ').replace('&amp;', '&')
+            
+            # Padrão 1: DD/MM/YYYY no HTML normalizado
+            data_matches.extend(re.findall(r'(\d{2}/\d{2}/\d{4})', html_normalizado))
+            
             # Padrão 2: Buscar em texto visível também
             if texto_visivel:
                 data_matches.extend(re.findall(r'(\d{2}/\d{2}/\d{4})', texto_visivel))
+                # Padrão específico para "Vencimento: 27/01/2026"
+                data_matches.extend(re.findall(r'[Vv]encimento[^:]*:\s*(\d{2}/\d{2}/\d{4})', texto_visivel, re.IGNORECASE))
+            
+            # Padrão 3: Tentar extrair via JavaScript dos elementos específicos
+            try:
+                data_js = page.evaluate("""
+                    () => {
+                        // Procurar por elementos que contenham "Vencimento" ou datas
+                        const textos = Array.from(document.querySelectorAll('p, span, div')).map(el => el.innerText);
+                        for (let texto of textos) {
+                            const match = texto.match(/(\\d{2}\\/\\d{2}\\/\\d{4})/);
+                            if (match) return match[1];
+                        }
+                        return null;
+                    }
+                """)
+                if data_js:
+                    data_matches.append(data_js)
+                    print(f"[DEBUG NIO NEGOCIA] Data encontrada via JavaScript: {data_js}")
+            except Exception as e_js:
+                print(f"[DEBUG NIO NEGOCIA] Erro ao extrair data via JS: {e_js}")
             
             # Remover duplicatas mantendo ordem
             data_matches = list(dict.fromkeys(data_matches))
@@ -2426,6 +2478,17 @@ def _buscar_fatura_nio_negocia(
             except:
                 pass
             
+            # Verificar se há elementos colapsáveis e expandir se necessário
+            try:
+                # Procurar por elementos com "Ocultar detalhes" ou "Ver detalhes" e clicar para expandir
+                btn_expandir = page.locator('p:has-text("Ocultar detalhes"), p:has-text("Ver detalhes")').first
+                if btn_expandir.is_visible(timeout=2000):
+                    btn_expandir.click()
+                    page.wait_for_timeout(1000)
+                    print(f"[DEBUG NIO NEGOCIA] Elemento colapsável expandido")
+            except:
+                pass
+            
             btn_pagar = None
             # Priorizar seletores mais específicos primeiro
             seletores_pagar = [
@@ -2447,11 +2510,37 @@ def _buscar_fatura_nio_negocia(
                 'div:has-text("Pagar conta")',
             ]
             
+            # Tentar também buscar via JavaScript
+            try:
+                btn_js = page.evaluate("""
+                    () => {
+                        // Buscar botão por data-context
+                        const btn = document.querySelector('button[data-context="btn_lista-dividas_pagar-conta"]');
+                        if (btn && btn.offsetParent !== null) return 'button[data-context="btn_lista-dividas_pagar-conta"]';
+                        
+                        // Buscar por texto
+                        const botoes = Array.from(document.querySelectorAll('button'));
+                        for (let b of botoes) {
+                            if (b.innerText && b.innerText.includes('Pagar conta') && b.offsetParent !== null) {
+                                return 'button:has-text("Pagar conta")';
+                            }
+                        }
+                        return null;
+                    }
+                """)
+                if btn_js:
+                    print(f"[DEBUG NIO NEGOCIA] Botão encontrado via JavaScript com seletor: {btn_js}")
+            except Exception as e_js:
+                print(f"[DEBUG NIO NEGOCIA] Erro ao buscar botão via JS: {e_js}")
+            
             for seletor in seletores_pagar:
                 try:
                     locator = page.locator(seletor).first
-                    if locator.count() > 0:
+                    count = locator.count()
+                    print(f"[DEBUG NIO NEGOCIA] Seletor '{seletor}': {count} elemento(s) encontrado(s)")
+                    if count > 0:
                         is_visible = locator.is_visible(timeout=2000)
+                        print(f"[DEBUG NIO NEGOCIA] Seletor '{seletor}': visível={is_visible}")
                         if is_visible:
                             btn_pagar = locator
                             texto_botao = locator.inner_text() if locator else "N/A"
