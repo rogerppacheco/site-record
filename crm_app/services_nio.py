@@ -2303,7 +2303,33 @@ def _buscar_fatura_nio_negocia(
             # PASSO 6: Extrair dados da lista (Valor, Mês/Ano, Vencimento, Status)
             logger.info(f"[NIO NEGOCIA] Passo 6: Extraindo dados da lista")
             print(f"[DEBUG NIO NEGOCIA] Passo 6: Extraindo dados da lista...")
+            
+            # Aguardar mais tempo para página carregar completamente (dados podem vir via JS)
+            try:
+                page.wait_for_timeout(5000)  # Aguardar 5 segundos adicionais
+                page.wait_for_load_state("networkidle", timeout=15000)
+                print(f"[DEBUG NIO NEGOCIA] Página aguardada para carregar dados")
+            except:
+                print(f"[DEBUG NIO NEGOCIA] ⚠️ Timeout ao aguardar página carregar")
+            
+            # Obter tanto HTML quanto texto visível (innerText via JS)
             html_lista = page.content()
+            texto_visivel = page.evaluate("() => document.body.innerText")
+            
+            # Verificar se há mensagens de erro na página
+            mensagens_erro = []
+            if texto_visivel:
+                texto_lower = texto_visivel.lower()
+                if 'não encontrado' in texto_lower or 'não encontrada' in texto_lower:
+                    mensagens_erro.append("Mensagem 'não encontrado' na página")
+                if 'erro' in texto_lower:
+                    mensagens_erro.append("Palavra 'erro' encontrada na página")
+                if 'sem dívidas' in texto_lower or 'sem dividas' in texto_lower:
+                    mensagens_erro.append("Mensagem 'sem dívidas' na página")
+            
+            if mensagens_erro:
+                print(f"[DEBUG NIO NEGOCIA] ⚠️ Mensagens de erro detectadas: {mensagens_erro}")
+                logger.warning(f"[NIO NEGOCIA] Mensagens de erro detectadas: {mensagens_erro}")
             
             # Capturar screenshot para debug
             try:
@@ -2316,11 +2342,25 @@ def _buscar_fatura_nio_negocia(
             except:
                 pass
             
-            # Extrair valores
+            # Extrair valores - tentar múltiplos padrões
             valor = None
-            valor_matches = re.findall(r'R\$\s*(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2}))', html_lista, re.IGNORECASE)
+            valor_matches = []
+            
+            # Padrão 1: R$ 1.234,56
+            valor_matches.extend(re.findall(r'R\$\s*(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2}))', html_lista, re.IGNORECASE))
+            # Padrão 2: 1234,56 (sem R$)
+            valor_matches.extend(re.findall(r'(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\s*(?:reais|R\$|RS)', texto_visivel or '', re.IGNORECASE))
+            # Padrão 3: Buscar em texto visível também
+            if texto_visivel:
+                valor_matches.extend(re.findall(r'R\$\s*(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2}))', texto_visivel, re.IGNORECASE))
+            
+            # Remover duplicatas mantendo ordem
+            valor_matches = list(dict.fromkeys(valor_matches))
+            
             print(f"[DEBUG NIO NEGOCIA] Valores encontrados na página: {valor_matches}")
+            print(f"[DEBUG NIO NEGOCIA] Texto visível (primeiros 500 chars): {texto_visivel[:500] if texto_visivel else 'N/A'}")
             logger.info(f"[NIO NEGOCIA] Valores encontrados: {valor_matches}")
+            
             if valor_matches:
                 try:
                     valor_str = valor_matches[0].replace('.', '').replace(',', '.')
@@ -2330,12 +2370,26 @@ def _buscar_fatura_nio_negocia(
                 except Exception as e_val:
                     print(f"[DEBUG NIO NEGOCIA] ⚠️ Erro ao converter valor: {e_val}")
                     logger.warning(f"[NIO NEGOCIA] Erro ao converter valor: {e_val}")
+            else:
+                print(f"[DEBUG NIO NEGOCIA] ⚠️ Nenhum valor encontrado na página")
+                logger.warning(f"[NIO NEGOCIA] Nenhum valor encontrado na página")
             
-            # Extrair data de vencimento
+            # Extrair data de vencimento - tentar múltiplos padrões
             data_vencimento = None
-            data_matches = re.findall(r'(\d{2}/\d{2}/\d{4})', html_lista)
+            data_matches = []
+            
+            # Padrão 1: DD/MM/YYYY
+            data_matches.extend(re.findall(r'(\d{2}/\d{2}/\d{4})', html_lista))
+            # Padrão 2: Buscar em texto visível também
+            if texto_visivel:
+                data_matches.extend(re.findall(r'(\d{2}/\d{2}/\d{4})', texto_visivel))
+            
+            # Remover duplicatas mantendo ordem
+            data_matches = list(dict.fromkeys(data_matches))
+            
             print(f"[DEBUG NIO NEGOCIA] Datas encontradas na página: {data_matches}")
             logger.info(f"[NIO NEGOCIA] Datas encontradas: {data_matches}")
+            
             if data_matches:
                 try:
                     data_vencimento = datetime.strptime(data_matches[0], "%d/%m/%Y").date()
@@ -2344,10 +2398,14 @@ def _buscar_fatura_nio_negocia(
                 except Exception as e_data:
                     print(f"[DEBUG NIO NEGOCIA] ⚠️ Erro ao converter data: {e_data}")
                     logger.warning(f"[NIO NEGOCIA] Erro ao converter data: {e_data}")
+            else:
+                print(f"[DEBUG NIO NEGOCIA] ⚠️ Nenhuma data encontrada na página")
+                logger.warning(f"[NIO NEGOCIA] Nenhuma data encontrada na página")
             
-            # PASSO 7: Clicar em "Pagar contas"
-            logger.info(f"[NIO NEGOCIA] Passo 7: Clicando em Pagar contas")
-            print(f"[DEBUG NIO NEGOCIA] Passo 7: Procurando botão 'Pagar contas'...")
+            # PASSO 7: Clicar em "Pagar conta" (SINGULAR - não "Pagar contas")
+            # O botão real tem: data-context="btn_lista-dividas_pagar-conta" e texto "Pagar conta"
+            logger.info(f"[NIO NEGOCIA] Passo 7: Clicando em Pagar conta")
+            print(f"[DEBUG NIO NEGOCIA] Passo 7: Procurando botão 'Pagar conta' (SINGULAR)...")
             
             # Aguardar página carregar completamente após clicar em "Consultar dívidas"
             try:
@@ -2361,23 +2419,32 @@ def _buscar_fatura_nio_negocia(
             try:
                 downloads_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'downloads')
                 os.makedirs(downloads_dir, exist_ok=True)
-                screenshot_path = os.path.join(downloads_dir, f"debug_nio_negocia_antes_pagar_contas_{cpf_limpo}.png")
+                screenshot_path = os.path.join(downloads_dir, f"debug_nio_negocia_antes_pagar_conta_{cpf_limpo}.png")
                 page.screenshot(path=screenshot_path, full_page=True)
-                print(f"[DEBUG NIO NEGOCIA] 📸 Screenshot antes de procurar 'Pagar contas': {screenshot_path}")
-                logger.info(f"[NIO NEGOCIA] Screenshot antes de procurar 'Pagar contas': {screenshot_path}")
+                print(f"[DEBUG NIO NEGOCIA] 📸 Screenshot antes de procurar 'Pagar conta': {screenshot_path}")
+                logger.info(f"[NIO NEGOCIA] Screenshot antes de procurar 'Pagar conta': {screenshot_path}")
             except:
                 pass
             
             btn_pagar = None
+            # Priorizar seletores mais específicos primeiro
             seletores_pagar = [
-                'button.sc-EHOje.btbnVF:has-text("Pagar contas")',
-                'button:has-text("Pagar contas")',
-                'button:has-text("Pagar")',
+                # Seletor mais específico: data-context exato
+                'button[data-context="btn_lista-dividas_pagar-conta"]',
+                # Seletor por data-context parcial
+                'button[data-context*="pagar-conta"]',
                 'button[data-context*="pagar"]',
-                'button[data-context*="Pagar"]',
-                'span:has-text("Pagar contas")',
-                'a:has-text("Pagar contas")',
-                'div:has-text("Pagar contas")',
+                # Seletor por classe e texto (SINGULAR)
+                'button.sc-EHOje.btbnVF:has-text("Pagar conta")',
+                'button.sc-EHOje.btbnVF',
+                # Seletores por texto (SINGULAR primeiro, depois plural como fallback)
+                'button:has-text("Pagar conta")',
+                'button:has-text("Pagar contas")',  # Fallback para plural
+                'button:has-text("Pagar")',
+                # Outros seletores genéricos
+                'span:has-text("Pagar conta")',
+                'a:has-text("Pagar conta")',
+                'div:has-text("Pagar conta")',
             ]
             
             for seletor in seletores_pagar:
@@ -2387,21 +2454,23 @@ def _buscar_fatura_nio_negocia(
                         is_visible = locator.is_visible(timeout=2000)
                         if is_visible:
                             btn_pagar = locator
-                            print(f"[DEBUG NIO NEGOCIA] ✅ Botão 'Pagar contas' encontrado com seletor: {seletor}")
-                            logger.info(f"[NIO NEGOCIA] Botão 'Pagar contas' encontrado com seletor: {seletor}")
+                            texto_botao = locator.inner_text() if locator else "N/A"
+                            print(f"[DEBUG NIO NEGOCIA] ✅ Botão 'Pagar conta' encontrado com seletor: {seletor}")
+                            print(f"[DEBUG NIO NEGOCIA] Texto do botão encontrado: '{texto_botao}'")
+                            logger.info(f"[NIO NEGOCIA] Botão 'Pagar conta' encontrado com seletor: {seletor}, texto: '{texto_botao}'")
                             break
                 except Exception as e_sel:
-                    print(f"[DEBUG NIO NEGOCIA] Seletor {seletor} falhou: {e_sel}")
+                    print(f"[DEBUG NIO NEGOCIA] Seletor '{seletor}' falhou: {e_sel}")
                     continue
             
             if not btn_pagar:
-                logger.error("[NIO NEGOCIA] Botão Pagar contas não encontrado")
-                print(f"[DEBUG NIO NEGOCIA] ❌ Botão 'Pagar contas' não encontrado")
+                logger.error("[NIO NEGOCIA] Botão Pagar conta não encontrado")
+                print(f"[DEBUG NIO NEGOCIA] ❌ Botão 'Pagar conta' não encontrado")
                 # Capturar HTML para debug
                 try:
                     downloads_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'downloads')
                     os.makedirs(downloads_dir, exist_ok=True)
-                    html_path = os.path.join(downloads_dir, f"debug_nio_negocia_sem_pagar_contas_{cpf_limpo}.html")
+                    html_path = os.path.join(downloads_dir, f"debug_nio_negocia_sem_pagar_conta_{cpf_limpo}.html")
                     with open(html_path, 'w', encoding='utf-8') as f:
                         f.write(page.content())
                     print(f"[DEBUG NIO NEGOCIA] 📄 HTML salvo: {html_path}")
@@ -2416,7 +2485,7 @@ def _buscar_fatura_nio_negocia(
                 page.wait_for_timeout(2000)
                 page.wait_for_load_state("networkidle", timeout=10000)
             except Exception as e:
-                logger.error(f"[NIO NEGOCIA] Erro ao clicar em Pagar contas: {e}")
+                logger.error(f"[NIO NEGOCIA] Erro ao clicar em Pagar conta: {e}")
                 browser.close()
                 return None
             
@@ -2464,7 +2533,7 @@ def _buscar_fatura_nio_negocia(
                         page.wait_for_timeout(2000)
                         page.wait_for_load_state("networkidle", timeout=10000)
                     
-                    # Clicar novamente em "Pagar contas"
+                    # Clicar novamente em "Pagar conta"
                     btn_pagar.click()
                     page.wait_for_timeout(2000)
                     page.wait_for_load_state("networkidle", timeout=10000)
