@@ -2316,6 +2316,14 @@ def _buscar_fatura_nio_negocia(
             html_lista = page.content()
             texto_visivel = page.evaluate("() => document.body.innerText")
             
+            # Log detalhado do texto visível para debug
+            if texto_visivel:
+                print(f"[DEBUG NIO NEGOCIA] Texto visível completo (primeiros 1000 chars): {texto_visivel[:1000]}")
+                logger.info(f"[NIO NEGOCIA] Texto visível (primeiros 500 chars): {texto_visivel[:500]}")
+            else:
+                print(f"[DEBUG NIO NEGOCIA] ⚠️ Texto visível está vazio!")
+                logger.warning(f"[NIO NEGOCIA] Texto visível está vazio!")
+            
             # Verificar se há mensagens de erro na página
             mensagens_erro = []
             if texto_visivel:
@@ -2366,20 +2374,33 @@ def _buscar_fatura_nio_negocia(
             try:
                 valor_js = page.evaluate("""
                     () => {
-                        // Procurar por elementos que contenham "Valor da dívida" ou valores monetários
-                        const textos = Array.from(document.querySelectorAll('p, span, div')).map(el => el.innerText);
-                        for (let texto of textos) {
-                            const match = texto.match(/R\\$\\s*(\\d+[.,]\\d{2})/i);
-                            if (match) return match[1];
+                        // Buscar diretamente no texto que contém "Valor da dívida"
+                        const elementos = Array.from(document.querySelectorAll('p, span, div'));
+                        for (let el of elementos) {
+                            const texto = el.innerText || el.textContent || '';
+                            // Procurar por "Valor da dívida: R$ 130,00" ou similar
+                            if (texto.includes('Valor') && texto.includes('dívida')) {
+                                const match = texto.match(/R\\$\\s*[&nbsp;\\s]*(\\d+[.,]\\d{2})/i);
+                                if (match) {
+                                    return match[1].replace(/&nbsp;/g, '').trim();
+                                }
+                            }
+                            // Procurar por qualquer R$ seguido de número
+                            const match = texto.match(/R\\$\\s*[&nbsp;\\s]*(\\d+[.,]\\d{2})/i);
+                            if (match && texto.length < 200) { // Evitar pegar valores muito longos
+                                return match[1].replace(/&nbsp;/g, '').trim();
+                            }
                         }
                         return null;
                     }
                 """)
                 if valor_js:
                     valor_matches.append(valor_js)
-                    print(f"[DEBUG NIO NEGOCIA] Valor encontrado via JavaScript: {valor_js}")
+                    print(f"[DEBUG NIO NEGOCIA] ✅ Valor encontrado via JavaScript: {valor_js}")
+                    logger.info(f"[NIO NEGOCIA] Valor encontrado via JavaScript: {valor_js}")
             except Exception as e_js:
                 print(f"[DEBUG NIO NEGOCIA] Erro ao extrair valor via JS: {e_js}")
+                logger.warning(f"[NIO NEGOCIA] Erro ao extrair valor via JS: {e_js}")
             
             # Remover duplicatas mantendo ordem
             valor_matches = list(dict.fromkeys(valor_matches))
@@ -2421,20 +2442,35 @@ def _buscar_fatura_nio_negocia(
             try:
                 data_js = page.evaluate("""
                     () => {
-                        // Procurar por elementos que contenham "Vencimento" ou datas
-                        const textos = Array.from(document.querySelectorAll('p, span, div')).map(el => el.innerText);
-                        for (let texto of textos) {
+                        // Buscar diretamente no texto que contém "Vencimento"
+                        const elementos = Array.from(document.querySelectorAll('p, span, div'));
+                        for (let el of elementos) {
+                            const texto = el.innerText || el.textContent || '';
+                            // Procurar por "Vencimento: 27/01/2026" ou similar
+                            if (texto.includes('Vencimento') || texto.includes('vencimento')) {
+                                const match = texto.match(/(\\d{2}\\/\\d{2}\\/\\d{4})/);
+                                if (match) return match[1];
+                            }
+                        }
+                        // Se não encontrou com "Vencimento", procurar qualquer data no formato DD/MM/YYYY
+                        const elementos2 = Array.from(document.querySelectorAll('p, span, div'));
+                        for (let el of elementos2) {
+                            const texto = el.innerText || el.textContent || '';
                             const match = texto.match(/(\\d{2}\\/\\d{2}\\/\\d{4})/);
-                            if (match) return match[1];
+                            if (match && texto.length < 200) { // Evitar pegar datas muito longas
+                                return match[1];
+                            }
                         }
                         return null;
                     }
                 """)
                 if data_js:
                     data_matches.append(data_js)
-                    print(f"[DEBUG NIO NEGOCIA] Data encontrada via JavaScript: {data_js}")
+                    print(f"[DEBUG NIO NEGOCIA] ✅ Data encontrada via JavaScript: {data_js}")
+                    logger.info(f"[NIO NEGOCIA] Data encontrada via JavaScript: {data_js}")
             except Exception as e_js:
                 print(f"[DEBUG NIO NEGOCIA] Erro ao extrair data via JS: {e_js}")
+                logger.warning(f"[NIO NEGOCIA] Erro ao extrair data via JS: {e_js}")
             
             # Remover duplicatas mantendo ordem
             data_matches = list(dict.fromkeys(data_matches))
@@ -2510,46 +2546,86 @@ def _buscar_fatura_nio_negocia(
                 'div:has-text("Pagar conta")',
             ]
             
-            # Tentar também buscar via JavaScript
+            # Tentar também buscar via JavaScript e clicar diretamente se encontrar
             try:
-                btn_js = page.evaluate("""
+                btn_info = page.evaluate("""
                     () => {
                         // Buscar botão por data-context
                         const btn = document.querySelector('button[data-context="btn_lista-dividas_pagar-conta"]');
-                        if (btn && btn.offsetParent !== null) return 'button[data-context="btn_lista-dividas_pagar-conta"]';
+                        if (btn) {
+                            const rect = btn.getBoundingClientRect();
+                            return {
+                                encontrado: true,
+                                visivel: btn.offsetParent !== null,
+                                texto: btn.innerText || btn.textContent || '',
+                                dataContext: btn.getAttribute('data-context'),
+                                classes: btn.className,
+                                posicao: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+                            };
+                        }
                         
-                        // Buscar por texto
+                        // Buscar por texto "Pagar conta"
                         const botoes = Array.from(document.querySelectorAll('button'));
                         for (let b of botoes) {
-                            if (b.innerText && b.innerText.includes('Pagar conta') && b.offsetParent !== null) {
-                                return 'button:has-text("Pagar conta")';
+                            const texto = b.innerText || b.textContent || '';
+                            if (texto.includes('Pagar conta') || texto.includes('Pagar contas')) {
+                                const rect = b.getBoundingClientRect();
+                                return {
+                                    encontrado: true,
+                                    visivel: b.offsetParent !== null,
+                                    texto: texto,
+                                    dataContext: b.getAttribute('data-context'),
+                                    classes: b.className,
+                                    posicao: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+                                };
                             }
                         }
-                        return null;
+                        return { encontrado: false };
                     }
                 """)
-                if btn_js:
-                    print(f"[DEBUG NIO NEGOCIA] Botão encontrado via JavaScript com seletor: {btn_js}")
+                if btn_info and btn_info.get('encontrado'):
+                    print(f"[DEBUG NIO NEGOCIA] Botão encontrado via JavaScript:")
+                    print(f"  - Visível: {btn_info.get('visivel')}")
+                    print(f"  - Texto: '{btn_info.get('texto')}'")
+                    print(f"  - data-context: {btn_info.get('dataContext')}")
+                    print(f"  - Classes: {btn_info.get('classes')}")
+                    logger.info(f"[NIO NEGOCIA] Botão encontrado via JS: visível={btn_info.get('visivel')}, texto='{btn_info.get('texto')}'")
             except Exception as e_js:
                 print(f"[DEBUG NIO NEGOCIA] Erro ao buscar botão via JS: {e_js}")
+                logger.warning(f"[NIO NEGOCIA] Erro ao buscar botão via JS: {e_js}")
             
             for seletor in seletores_pagar:
                 try:
                     locator = page.locator(seletor).first
                     count = locator.count()
                     print(f"[DEBUG NIO NEGOCIA] Seletor '{seletor}': {count} elemento(s) encontrado(s)")
+                    logger.info(f"[NIO NEGOCIA] Seletor '{seletor}': {count} elemento(s)")
                     if count > 0:
-                        is_visible = locator.is_visible(timeout=2000)
-                        print(f"[DEBUG NIO NEGOCIA] Seletor '{seletor}': visível={is_visible}")
-                        if is_visible:
-                            btn_pagar = locator
-                            texto_botao = locator.inner_text() if locator else "N/A"
-                            print(f"[DEBUG NIO NEGOCIA] ✅ Botão 'Pagar conta' encontrado com seletor: {seletor}")
-                            print(f"[DEBUG NIO NEGOCIA] Texto do botão encontrado: '{texto_botao}'")
-                            logger.info(f"[NIO NEGOCIA] Botão 'Pagar conta' encontrado com seletor: {seletor}, texto: '{texto_botao}'")
-                            break
+                        try:
+                            is_visible = locator.is_visible(timeout=2000)
+                            print(f"[DEBUG NIO NEGOCIA] Seletor '{seletor}': visível={is_visible}")
+                            if is_visible:
+                                btn_pagar = locator
+                                texto_botao = locator.inner_text() if locator else "N/A"
+                                print(f"[DEBUG NIO NEGOCIA] ✅ Botão 'Pagar conta' encontrado com seletor: {seletor}")
+                                print(f"[DEBUG NIO NEGOCIA] Texto do botão encontrado: '{texto_botao}'")
+                                logger.info(f"[NIO NEGOCIA] Botão 'Pagar conta' encontrado com seletor: {seletor}, texto: '{texto_botao}'")
+                                break
+                        except Exception as e_vis:
+                            print(f"[DEBUG NIO NEGOCIA] Erro ao verificar visibilidade do seletor '{seletor}': {e_vis}")
+                            # Tentar mesmo assim se encontrou o elemento
+                            if count > 0:
+                                try:
+                                    btn_pagar = locator
+                                    texto_botao = locator.inner_text() if locator else "N/A"
+                                    print(f"[DEBUG NIO NEGOCIA] ✅ Botão 'Pagar conta' encontrado (sem verificar visibilidade) com seletor: {seletor}")
+                                    logger.info(f"[NIO NEGOCIA] Botão encontrado (sem verificar visibilidade) com seletor: {seletor}")
+                                    break
+                                except:
+                                    pass
                 except Exception as e_sel:
                     print(f"[DEBUG NIO NEGOCIA] Seletor '{seletor}' falhou: {e_sel}")
+                    logger.debug(f"[NIO NEGOCIA] Seletor '{seletor}' falhou: {e_sel}")
                     continue
             
             if not btn_pagar:
