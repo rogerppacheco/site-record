@@ -275,7 +275,7 @@ class VendaDetailSerializer(serializers.ModelSerializer):
             'ponto_referencia', 'observacoes', 'ordem_servico', 'data_abertura',
             'data_agendamento', 'periodo_agendamento', 'data_instalacao', 'antecipou_instalacao',
             'data_pagamento', 'valor_pago', 'cpf_representante_legal', 'nome_representante_legal', 
-            'forma_entrada', 'historico_alteracoes', 'data_criacao', 'data_ultima_alteracao'
+            'forma_entrada', 'tem_fixo', 'historico_alteracoes', 'data_criacao', 'data_ultima_alteracao'
         ]
 
 class VendaCreateSerializer(serializers.ModelSerializer):
@@ -289,6 +289,48 @@ class VendaCreateSerializer(serializers.ModelSerializer):
     
     telefone1 = serializers.CharField(max_length=20, required=True)
     telefone2 = serializers.CharField(max_length=20, required=True)
+    
+    def validate_telefone1(self, value):
+        """Valida Telefone 1: DDD válido no Brasil e 11 dígitos"""
+        import re
+        telefone_limpo = re.sub(r'\D', '', value)
+        
+        # Verifica se tem 11 dígitos
+        if len(telefone_limpo) != 11:
+            raise serializers.ValidationError("O telefone deve ter 11 dígitos (DDD + número).")
+        
+        # Extrai DDD (2 primeiros dígitos)
+        ddd = telefone_limpo[:2]
+        ddd_num = int(ddd)
+        
+        # DDDs válidos no Brasil (lista oficial)
+        ddd_validos = [11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 24, 27, 28, 31, 32, 33, 34, 35, 37, 38, 41, 42, 43, 44, 45, 46, 47, 48, 49, 51, 52, 53, 54, 61, 62, 63, 64, 65, 66, 67, 68, 69, 71, 73, 74, 75, 79, 81, 82, 83, 84, 85, 86, 87, 88, 89, 91, 92, 93, 94, 95, 96, 97, 98, 99]
+        
+        if ddd_num not in ddd_validos:
+            raise serializers.ValidationError("DDD inválido. Informe um DDD válido do Brasil (não aceita código 55).")
+        
+        return value
+    
+    def validate_telefone2(self, value):
+        """Valida Telefone 2: DDD válido no Brasil e 11 dígitos"""
+        import re
+        telefone_limpo = re.sub(r'\D', '', value)
+        
+        # Verifica se tem 11 dígitos
+        if len(telefone_limpo) != 11:
+            raise serializers.ValidationError("O telefone deve ter 11 dígitos (DDD + número).")
+        
+        # Extrai DDD (2 primeiros dígitos)
+        ddd = telefone_limpo[:2]
+        ddd_num = int(ddd)
+        
+        # DDDs válidos no Brasil (lista oficial)
+        ddd_validos = [11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 24, 27, 28, 31, 32, 33, 34, 35, 37, 38, 41, 42, 43, 44, 45, 46, 47, 48, 49, 51, 52, 53, 54, 61, 62, 63, 64, 65, 66, 67, 68, 69, 71, 73, 74, 75, 79, 81, 82, 83, 84, 85, 86, 87, 88, 89, 91, 92, 93, 94, 95, 96, 97, 98, 99]
+        
+        if ddd_num not in ddd_validos:
+            raise serializers.ValidationError("DDD inválido. Informe um DDD válido do Brasil (não aceita código 55).")
+        
+        return value
     
     # Campos de endereço opcionais no Serializer
     cep = serializers.CharField(required=False, allow_blank=True)
@@ -311,7 +353,7 @@ class VendaCreateSerializer(serializers.ModelSerializer):
             'cliente_cpf_cnpj', 'cliente_nome_razao_social', 'cliente_email',
             'nome_mae', 'data_nascimento', 'forma_pagamento', 'plano', 'cep',
             'logradouro', 'numero_residencia', 'complemento', 'bairro', 'cidade', 'estado',
-            'forma_entrada', 'telefone1', 'telefone2', 'cpf_representante_legal',
+            'forma_entrada', 'tem_fixo', 'telefone1', 'telefone2', 'cpf_representante_legal',
             'nome_representante_legal', 'ponto_referencia', 'observacoes'
         ]
 
@@ -437,9 +479,22 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
 
     def validate_telefone(self, value, field_name):
         if not value: return value
-        pattern = re.compile(r'^\(?([1-9]{2})\)? ?(9[1-9][0-9]{3}|[2-5][0-9]{3})\-?[0-9]{4}$')
-        if not pattern.match(str(value)):
-            pass
+        telefone_limpo = re.sub(r'\D', '', str(value))
+        
+        # Verifica se tem 11 dígitos
+        if len(telefone_limpo) != 11:
+            raise serializers.ValidationError(f"{field_name}: O telefone deve ter 11 dígitos (DDD + número).")
+        
+        # Extrai DDD (2 primeiros dígitos)
+        ddd = telefone_limpo[:2]
+        ddd_num = int(ddd)
+        
+        # DDDs válidos no Brasil (lista oficial)
+        ddd_validos = [11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 24, 27, 28, 31, 32, 33, 34, 35, 37, 38, 41, 42, 43, 44, 45, 46, 47, 48, 49, 51, 52, 53, 54, 61, 62, 63, 64, 65, 66, 67, 68, 69, 71, 73, 74, 75, 79, 81, 82, 83, 84, 85, 86, 87, 88, 89, 91, 92, 93, 94, 95, 96, 97, 98, 99]
+        
+        if ddd_num not in ddd_validos:
+            raise serializers.ValidationError(f"{field_name}: DDD inválido. Informe um DDD válido do Brasil (não aceita código 55).")
+        
         return value
     def validate_telefone1(self, value): return self.validate_telefone(value, "Telefone 1")
     def validate_telefone2(self, value): return self.validate_telefone(value, "Telefone 2")

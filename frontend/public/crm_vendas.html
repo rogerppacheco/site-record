@@ -206,18 +206,37 @@
                             <button type="button" class="btn-close position-absolute top-0 end-0 m-3" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
                         <div class="card-body p-5">
-                            <div class="row g-4">
-                                <div class="col-6">
-                                    <button onclick="selecionarOrigem('APP')" class="btn btn-outline-primary w-100 btn-origem">
-                                        <i class="bi bi-phone"></i>
-                                        <span>Via APP</span>
-                                    </button>
+                            <div id="opcoes-origem">
+                                <div class="row g-4">
+                                    <div class="col-6">
+                                        <button onclick="selecionarOrigem('APP')" class="btn btn-outline-primary w-100 btn-origem">
+                                            <i class="bi bi-phone"></i>
+                                            <span>Via APP</span>
+                                        </button>
+                                    </div>
+                                    <div class="col-6">
+                                        <button onclick="selecionarOrigem('SEM_APP')" class="btn btn-outline-secondary w-100 btn-origem">
+                                            <i class="bi bi-journal-x"></i>
+                                            <span>Sem APP</span>
+                                        </button>
+                                    </div>
                                 </div>
-                                <div class="col-6">
-                                    <button onclick="selecionarOrigem('SEM_APP')" class="btn btn-outline-secondary w-100 btn-origem">
-                                        <i class="bi bi-journal-x"></i>
-                                        <span>Sem APP</span>
-                                    </button>
+                            </div>
+                            <div id="opcoes-fixo" style="display: none;">
+                                <p class="text-muted small mb-3 text-center">A venda terá telefone fixo?</p>
+                                <div class="row g-4">
+                                    <div class="col-6">
+                                        <button onclick="selecionarFixo(true)" class="btn btn-outline-success w-100">
+                                            <i class="bi bi-check-circle"></i>
+                                            <span>Sim, tem fixo</span>
+                                        </button>
+                                    </div>
+                                    <div class="col-6">
+                                        <button onclick="selecionarFixo(false)" class="btn btn-outline-danger w-100">
+                                            <i class="bi bi-x-circle"></i>
+                                            <span>Não tem fixo</span>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -284,7 +303,8 @@
                 <div class="modal-header"><h5 class="modal-title fw-bold" id="titulo-modal-venda">Registrar Venda</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
                     <form id="form-nova-venda">
-                        <input type="hidden" name="forma_entrada" id="input-forma-entrada"><input type="hidden" id="id-venda-edicao"> 
+                        <input type="hidden" name="forma_entrada" id="input-forma-entrada"><input type="hidden" id="id-venda-edicao">
+                        <input type="hidden" name="tem_fixo" id="input-tem-fixo" value="false"> 
                         <h6 class="text-primary border-bottom pb-2 mb-3">Dados do Cliente</h6>
                         <div class="row g-3">
                             <div class="col-12 col-md-6 position-relative">
@@ -309,8 +329,8 @@
                             
                             <div class="col-12 col-md-6">
                                 <div class="row g-2">
-                                    <div class="col-6"><label>Telefone 1 (WhatsApp) <span class="text-danger">*</span></label><input type="text" class="form-control" id="input-telefone" name="telefone1" required onblur="verificarWhatsApp(this)" oninput="validarTelefonesDiferentes()"><div id="feedback-whatsapp" class="form-text mt-1" style="font-size: 0.8rem; min-height: 1.2em;"></div></div>
-                                    <div class="col-6"><label>Telefone 2 <span class="text-danger">*</span></label><input type="text" class="form-control" id="input-telefone2" name="telefone2" required oninput="validarTelefonesDiferentes()"><div id="feedback-telefone2" class="form-text mt-1" style="font-size: 0.8rem; min-height: 1.2em;"></div></div>
+                                    <div class="col-6"><label>Telefone 1 (WhatsApp) <span class="text-danger">*</span></label><input type="text" class="form-control" id="input-telefone" name="telefone1" required onblur="validarTelefone(this, 'feedback-whatsapp', true)" oninput="validarTelefonesDiferentes()" placeholder="(00) 00000-0000" maxlength="15"><div id="feedback-whatsapp" class="form-text mt-1" style="font-size: 0.8rem; min-height: 1.2em;"></div></div>
+                                    <div class="col-6"><label>Telefone 2 <span class="text-danger">*</span></label><input type="text" class="form-control" id="input-telefone2" name="telefone2" required onblur="validarTelefone(this, 'feedback-telefone2', false)" oninput="validarTelefonesDiferentes()" placeholder="(00) 00000-0000" maxlength="15"><div id="feedback-telefone2" class="form-text mt-1" style="font-size: 0.8rem; min-height: 1.2em;"></div></div>
                                 </div>
                             </div>
                         </div>
@@ -389,6 +409,18 @@
                     document.body.classList.remove('modal-open');
                     document.body.style.paddingRight = '';
                     document.body.style.overflow = '';
+                    // Reset do modal de origem
+                    document.getElementById('opcoes-origem').style.display = 'block';
+                    document.getElementById('opcoes-fixo').style.display = 'none';
+                });
+                
+                // Reset ao abrir o modal
+                modalOrigemEl.addEventListener('show.bs.modal', function () {
+                    document.getElementById('opcoes-origem').style.display = 'block';
+                    document.getElementById('opcoes-fixo').style.display = 'none';
+                    origemCadastroAtual = '';
+                    document.getElementById('input-forma-entrada').value = '';
+                    document.getElementById('input-tem-fixo').value = 'false';
                 });
             }
             
@@ -419,6 +451,28 @@
                 e.target.classList.remove('is-invalid'); 
             });
             inputCpf.addEventListener('blur', validarCpfCnpjInput);
+            
+            // Máscara para telefones
+            const inputTelefone1 = document.getElementById('input-telefone');
+            const inputTelefone2 = document.getElementById('input-telefone2');
+            
+            function aplicarMascaraTelefone(input) {
+                input.addEventListener('input', function(e) {
+                    let valor = e.target.value.replace(/\D/g, '');
+                    if (valor.length <= 11) {
+                        if (valor.length <= 2) {
+                            e.target.value = valor ? `(${valor}` : '';
+                        } else if (valor.length <= 7) {
+                            e.target.value = `(${valor.substring(0, 2)}) ${valor.substring(2)}`;
+                        } else {
+                            e.target.value = `(${valor.substring(0, 2)}) ${valor.substring(2, 7)}-${valor.substring(7, 11)}`;
+                        }
+                    }
+                });
+            }
+            
+            if (inputTelefone1) aplicarMascaraTelefone(inputTelefone1);
+            if (inputTelefone2) aplicarMascaraTelefone(inputTelefone2);
 
             document.getElementById('input-cpf-rep').addEventListener('input', function(e) { 
                 clearTimeout(debounceRepTimer); 
@@ -1019,8 +1073,18 @@
         function selecionarOrigem(tipo) {
             origemCadastroAtual = tipo; 
             document.getElementById('input-forma-entrada').value = tipo;
+            
+            // Mostra pergunta sobre fixo
+            document.getElementById('opcoes-origem').style.display = 'none';
+            document.getElementById('opcoes-fixo').style.display = 'block';
+        }
+        
+        function selecionarFixo(temFixo) {
+            document.getElementById('input-tem-fixo').value = temFixo ? 'true' : 'false';
+            
             const badge = document.getElementById('badge-origem');
             if(badge) {
+                const tipo = origemCadastroAtual;
                 badge.textContent = (tipo === 'APP') ? 'Via APP' : 'Sem APP';
                 badge.className = (tipo === 'APP') ? 'badge bg-primary ms-2' : 'badge bg-secondary ms-2';
             }
@@ -1040,7 +1104,7 @@
                 'input-nome-mae', 'input-data-nascimento', 'input-email' 
             ];
 
-            if (tipo === 'APP') {
+            if (origemCadastroAtual === 'APP') {
                 if(containerDadosVenda) containerDadosVenda.style.display = 'none';
                 if(containerEndereco) containerEndereco.style.display = 'none';
                 if(headerDadosVenda) headerDadosVenda.style.display = 'none';
@@ -1306,6 +1370,7 @@
                 document.getElementById('titulo-modal-venda').textContent = `Editar Venda #${id}`;
                 document.getElementById('id-venda-edicao').value = id;
                 document.getElementById('input-forma-entrada').value = venda.forma_entrada || 'SEM_APP';
+                document.getElementById('input-tem-fixo').value = venda.tem_fixo ? 'true' : 'false';
 
 
                 // Exibe todos os campos apenas dentro do modal de edição, sem afetar abas globais
@@ -1436,6 +1501,9 @@
             } else {
                 data.reemissao = false;
             }
+            
+            // Converter tem_fixo para boolean
+            data.tem_fixo = data.tem_fixo === 'true' || data.tem_fixo === true;
             
             if (origemCadastroAtual === 'SEM_APP') {
                 if(!data.plano || !data.forma_pagamento || !data.cep || !data.logradouro) {
@@ -1602,6 +1670,56 @@
                     feedbackDiv.innerHTML = '<span class="text-warning small">Não foi possível verificar (offline).</span>';
                 }
             }
+        }
+        
+        function validarTelefone(input, feedbackId, isWhatsApp) {
+            const telefone = input.value.replace(/\D/g, '');
+            const feedbackDiv = document.getElementById(feedbackId);
+            
+            // Validação básica: deve ter 11 dígitos
+            if (telefone.length !== 11) {
+                input.classList.add('is-invalid');
+                input.classList.remove('is-valid');
+                if(feedbackDiv) {
+                    feedbackDiv.innerHTML = '<span class="text-danger fw-bold small"><i class="bi bi-x-circle"></i> O telefone deve ter 11 dígitos (DDD + número).</span>';
+                }
+                return false;
+            }
+            
+            // Extrai DDD (2 primeiros dígitos)
+            const ddd = telefone.substring(0, 2);
+            
+            // DDDs válidos no Brasil (lista oficial)
+            const dddValidos = [11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 24, 27, 28, 31, 32, 33, 34, 35, 37, 38, 41, 42, 43, 44, 45, 46, 47, 48, 49, 51, 52, 53, 54, 61, 62, 63, 64, 65, 66, 67, 68, 69, 71, 73, 74, 75, 79, 81, 82, 83, 84, 85, 86, 87, 88, 89, 91, 92, 93, 94, 95, 96, 97, 98, 99];
+            const dddNum = parseInt(ddd);
+            
+            if (!dddValidos.includes(dddNum)) {
+                input.classList.add('is-invalid');
+                input.classList.remove('is-valid');
+                if(feedbackDiv) {
+                    feedbackDiv.innerHTML = '<span class="text-danger fw-bold small"><i class="bi bi-x-circle"></i> DDD inválido. Informe um DDD válido do Brasil (não aceita código 55).</span>';
+                }
+                return false;
+            }
+            
+            // Formata o telefone se ainda não estiver formatado
+            const telefoneFormatado = `(${ddd}) ${telefone.substring(2, 7)}-${telefone.substring(7)}`;
+            if (input.value !== telefoneFormatado) {
+                input.value = telefoneFormatado;
+            }
+            
+            // Se for WhatsApp, verifica também
+            if (isWhatsApp) {
+                verificarWhatsApp(input);
+            } else {
+                input.classList.add('is-valid');
+                input.classList.remove('is-invalid');
+                if(feedbackDiv) {
+                    feedbackDiv.innerHTML = '<span class="text-success fw-bold small"><i class="bi bi-check-circle"></i> Telefone válido!</span>';
+                }
+            }
+            
+            return true;
         }
         
         async function verificarWhatsApp(input) {
