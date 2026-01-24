@@ -350,19 +350,32 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                 if count > 0:
                     logger.info(f"[PDF HUMANO] Encontrado 'Ver detalhes', clicando...")
                     ver_detalhes.click()
-                    page.wait_for_timeout(2000)  # Aguardar mais tempo para carregar
-                    page.wait_for_load_state("networkidle", timeout=10000)
+                    page.wait_for_timeout(3000)  # Aumentado de 2000 para 3000
+                    page.wait_for_load_state("networkidle", timeout=15000)  # Aumentado de 10000 para 15000
                     logger.info(f"[PDF HUMANO] ✅ Detalhes expandidos")
                 else:
                     logger.debug(f"[PDF HUMANO] Não foi necessário expandir detalhes (não encontrado)")
             except Exception as e:
                 logger.debug(f"[PDF HUMANO] Não foi necessário expandir detalhes ou erro: {e}")
             
+            # Aguardar modal "Escolha como pagar" aparecer
+            print(f"[DEBUG PDF DOWNLOAD] ⏳ Aguardando modal 'Escolha como pagar' aparecer...")
+            logger.info(f"[PDF HUMANO] Aguardando modal 'Escolha como pagar' aparecer...")
+            try:
+                # Aguardar até que o modal apareça (verificar por elementos característicos do modal)
+                page.wait_for_selector('div.desktop-payment__item-button-text, a#desktop-generate-boleto, div[class*="payment"]', timeout=15000, state='visible')
+                page.wait_for_timeout(2000)  # Aguardar animação do modal
+                print(f"[DEBUG PDF DOWNLOAD] ✅ Modal apareceu")
+                logger.info(f"[PDF HUMANO] ✅ Modal 'Escolha como pagar' apareceu")
+            except Exception as e:
+                print(f"[DEBUG PDF DOWNLOAD] ⚠️ Modal pode não ter aparecido, continuando mesmo assim: {e}")
+                logger.warning(f"[PDF HUMANO] ⚠️ Modal pode não ter aparecido, continuando mesmo assim: {e}")
+                page.wait_for_timeout(3000)  # Aguardar um pouco mais
+            
             # PASSO 1 (NOVO): Clicar em "Boleto" primeiro (antes de "Gerar boleto")
             print(f"[DEBUG PDF DOWNLOAD] 📍 PASSO 1: Clicando em 'Boleto'...")
             logger.info(f"[PDF HUMANO] Passo 1: Clicando em 'Boleto'...")
-            page.wait_for_timeout(2000)
-            page.wait_for_load_state("networkidle", timeout=10000)
+            page.wait_for_timeout(1000)
             
             try:
                 boleto_option = None
@@ -391,13 +404,21 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                             except:
                                 pass
                             
-                            if btn.is_visible(timeout=5000):
+                            # Tentar aguardar elemento ficar visível
+                            try:
+                                btn.wait_for(state='visible', timeout=5000)
                                 boleto_option = btn
-                                print(f"[DEBUG PDF DOWNLOAD] ✅ Opção 'Boleto' encontrada com seletor: {seletor}")
-                                logger.info(f"[PDF HUMANO] Opção 'Boleto' encontrada com seletor: {seletor}")
+                                print(f"[DEBUG PDF DOWNLOAD] ✅ Opção 'Boleto' encontrada e visível com seletor: {seletor}")
+                                logger.info(f"[PDF HUMANO] Opção 'Boleto' encontrada e visível com seletor: {seletor}")
                                 break
-                            else:
-                                print(f"[DEBUG PDF DOWNLOAD]     Elemento encontrado mas não está visível")
+                            except:
+                                # Se não ficou visível, tentar usar force=True como último recurso
+                                if idx == len(seletores_boleto):  # Último seletor
+                                    print(f"[DEBUG PDF DOWNLOAD]     Elemento encontrado mas não visível, tentando force=True...")
+                                    boleto_option = btn
+                                    break
+                                else:
+                                    print(f"[DEBUG PDF DOWNLOAD]     Elemento encontrado mas não está visível")
                         else:
                             print(f"[DEBUG PDF DOWNLOAD]     Nenhum elemento encontrado")
                     except Exception as e_sel:
@@ -413,7 +434,14 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                         pass
                     
                     print(f"[DEBUG PDF DOWNLOAD] 🖱️ Clicando na opção 'Boleto'...")
-                    boleto_option.click(timeout=10000)
+                    try:
+                        # Tentar clicar normalmente primeiro
+                        boleto_option.click(timeout=10000, force=False)
+                    except:
+                        # Se falhar, tentar com force=True
+                        print(f"[DEBUG PDF DOWNLOAD]     Tentando com force=True...")
+                        boleto_option.click(timeout=10000, force=True)
+                    
                     page.wait_for_timeout(2000)
                     page.wait_for_load_state("networkidle", timeout=10000)
                     print(f"[DEBUG PDF DOWNLOAD] ✅ PASSO 1: Clicou em 'Boleto'")
@@ -468,13 +496,21 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                             except:
                                 pass
                             
-                            if btn.is_visible(timeout=5000):  # Aumentado de 3000 para 5000
+                            # Tentar aguardar elemento ficar visível
+                            try:
+                                btn.wait_for(state='visible', timeout=5000)
                                 gerar_boleto = btn
-                                print(f"[DEBUG PDF DOWNLOAD] ✅ Botão encontrado com seletor: {seletor}")
-                                logger.info(f"[PDF HUMANO] Botão 'Gerar boleto' encontrado com seletor: {seletor}")
+                                print(f"[DEBUG PDF DOWNLOAD] ✅ Botão encontrado e visível com seletor: {seletor}")
+                                logger.info(f"[PDF HUMANO] Botão 'Gerar boleto' encontrado e visível com seletor: {seletor}")
                                 break
-                            else:
-                                print(f"[DEBUG PDF DOWNLOAD]     Elemento encontrado mas não está visível")
+                            except:
+                                # Se não ficou visível, usar o elemento mesmo assim (vamos tentar force=True depois)
+                                if idx == len(seletores_gerar):  # Último seletor
+                                    print(f"[DEBUG PDF DOWNLOAD]     Elemento encontrado mas não visível, será usado com force=True")
+                                    gerar_boleto = btn
+                                    break
+                                else:
+                                    print(f"[DEBUG PDF DOWNLOAD]     Elemento encontrado mas não está visível")
                         else:
                             print(f"[DEBUG PDF DOWNLOAD]     Nenhum elemento encontrado")
                     except Exception as e_sel:
@@ -532,7 +568,15 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                     pass
                 
                 print(f"[DEBUG PDF DOWNLOAD] 🖱️ Clicando no botão 'Gerar boleto'...")
-                gerar_boleto.click(timeout=10000)
+                try:
+                    # Tentar clicar normalmente primeiro
+                    gerar_boleto.click(timeout=10000, force=False)
+                except Exception as e_click:
+                    # Se falhar porque não está visível, tentar com force=True
+                    print(f"[DEBUG PDF DOWNLOAD]     Clique normal falhou ({e_click}), tentando com force=True...")
+                    logger.warning(f"[PDF HUMANO] Clique normal falhou, tentando com force=True: {e_click}")
+                    gerar_boleto.click(timeout=10000, force=True)
+                
                 page.wait_for_timeout(3000)  # Aumentado de 2000 para 3000
                 page.wait_for_load_state("networkidle", timeout=15000)  # Aumentado de 10000 para 15000
                 print(f"[DEBUG PDF DOWNLOAD] ✅ PASSO 2: Clicou em 'Gerar boleto'")
@@ -589,13 +633,21 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                             except:
                                 pass
                             
-                            if btn.is_visible(timeout=5000):  # Aumentado de 3000 para 5000
+                            # Tentar aguardar elemento ficar visível
+                            try:
+                                btn.wait_for(state='visible', timeout=5000)
                                 download_btn = btn
-                                print(f"[DEBUG PDF DOWNLOAD] ✅ Botão encontrado com seletor: {seletor}")
-                                logger.info(f"[PDF HUMANO] Botão 'Download' encontrado com seletor: {seletor}")
+                                print(f"[DEBUG PDF DOWNLOAD] ✅ Botão encontrado e visível com seletor: {seletor}")
+                                logger.info(f"[PDF HUMANO] Botão 'Download' encontrado e visível com seletor: {seletor}")
                                 break
-                            else:
-                                print(f"[DEBUG PDF DOWNLOAD]     Elemento encontrado mas não está visível")
+                            except:
+                                # Se não ficou visível, usar o elemento mesmo assim (vamos tentar force=True depois)
+                                if idx == len(seletores_download):  # Último seletor
+                                    print(f"[DEBUG PDF DOWNLOAD]     Elemento encontrado mas não visível, será usado com force=True")
+                                    download_btn = btn
+                                    break
+                                else:
+                                    print(f"[DEBUG PDF DOWNLOAD]     Elemento encontrado mas não está visível")
                         else:
                             print(f"[DEBUG PDF DOWNLOAD]     Nenhum elemento encontrado")
                     except Exception as e_sel:
@@ -618,7 +670,14 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                     # Vamos usar a API de impressão do Playwright para salvar como PDF
                     print(f"[DEBUG PDF DOWNLOAD] 🖱️ Clicando no botão Download...")
                     logger.info(f"[PDF HUMANO] Clicando no botão Download (abrirá modal de impressão)...")
-                    download_btn.click(timeout=10000)
+                    try:
+                        # Tentar clicar normalmente primeiro
+                        download_btn.click(timeout=10000, force=False)
+                    except Exception as e_click:
+                        # Se falhar porque não está visível, tentar com force=True
+                        print(f"[DEBUG PDF DOWNLOAD]     Clique normal falhou ({e_click}), tentando com force=True...")
+                        logger.warning(f"[PDF HUMANO] Clique normal falhou, tentando com force=True: {e_click}")
+                        download_btn.click(timeout=10000, force=True)
                     page.wait_for_timeout(3000)  # Aguardar modal abrir (aumentado de 2000)
                 else:
                     print(f"[DEBUG PDF DOWNLOAD] ⚠️ Botão Download não encontrado, tentando gerar PDF diretamente da página...")
