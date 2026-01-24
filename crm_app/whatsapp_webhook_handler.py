@@ -431,6 +431,13 @@ def processar_webhook_whatsapp(data):
             resposta = "💳 *CONSULTA DE FATURA NIO*\n\nPor favor, digite o CPF ou ID do cliente para buscar a fatura:"
             _registrar_estatistica(telefone_formatado, 'FATURA')
         
+        elif 'FATURA NEGOCIA' in mensagem_limpa or 'FATURANEGOCIA' in mensagem_limpa.replace(' ', ''):
+            sessao.etapa = 'fatura_negocia_cpf'
+            sessao.dados_temp = {}
+            sessao.save()
+            resposta = "💳 *CONSULTA DE FATURA NIO (PLANO B - NEGOCIA)*\n\nPor favor, digite o CPF ou ID do cliente para buscar a fatura via Nio Negocia:"
+            _registrar_estatistica(telefone_formatado, 'FATURA_NEGOCIA')
+        
         elif mensagem_limpa in ['MATERIAL', 'MATERIAIS']:
             logger.info(f"[Webhook] Comando MATERIAL reconhecido!")
             sessao.etapa = 'material_buscar'
@@ -848,6 +855,87 @@ def processar_webhook_whatsapp(data):
                             resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n❌ *FATURAS NÃO ENCONTRADAS*\n\nNão encontrei nenhuma fatura para este CPF."
                     else:
                         resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n❌ *ERRO*\n\nErro ao buscar faturas: {erro_msg}\n\nTente novamente em alguns instantes."
+                    sessao.etapa = 'inicial'
+                    sessao.dados_temp = {}
+                    sessao.save()
+        
+        elif etapa_atual == 'fatura_negocia_cpf':
+            cpf_limpo = limpar_texto_cep_cpf(mensagem_texto)
+            
+            # Validar apenas formato básico (11 dígitos)
+            cpf_valido = cpf_limpo and len(cpf_limpo) == 11 and cpf_limpo.isdigit()
+            
+            if not cpf_valido:
+                resposta = "❌ CPF inválido. Por favor, digite o CPF completo (11 dígitos, apenas números):"
+            else:
+                logger.info(f"[Webhook] Buscando fatura via PLANO B (Nio Negocia) para CPF: {cpf_limpo}")
+                try:
+                    # Importar função do Plano B diretamente
+                    import crm_app.services_nio as nio_services
+                    
+                    # Chamar diretamente o Plano B (sem tentar Plano A)
+                    resultado_plano_b = nio_services._buscar_fatura_nio_negocia(
+                        cpf_limpo,
+                        numero_contrato=None,  # Pode ser passado depois se necessário
+                        incluir_pdf=True,
+                        mes_referencia=None
+                    )
+                    
+                    if resultado_plano_b and (resultado_plano_b.get('valor') or resultado_plano_b.get('codigo_pix') or resultado_plano_b.get('codigo_barras')):
+                        # Formatar como invoice para usar a função de formatação existente
+                        # Converter data_vencimento para string se for date object
+                        data_venc = resultado_plano_b.get('data_vencimento')
+                        if data_venc and hasattr(data_venc, 'strftime'):
+                            # Se for date object, converter para string YYYYMMDD
+                            data_venc_str = data_venc.strftime('%Y%m%d')
+                        else:
+                            data_venc_str = data_venc
+                        
+                        invoice = {
+                            'amount': resultado_plano_b.get('valor'),  # Campo esperado pela função de formatação
+                            'valor': resultado_plano_b.get('valor'),  # Backup
+                            'pix': resultado_plano_b.get('codigo_pix'),  # Campo esperado pela função de formatação
+                            'codigo_pix': resultado_plano_b.get('codigo_pix'),  # Backup
+                            'barcode': resultado_plano_b.get('codigo_barras'),  # Campo esperado pela função de formatação
+                            'codigo_barras': resultado_plano_b.get('codigo_barras'),  # Backup
+                            'data_vencimento': data_venc_str,  # String formatada
+                            'due_date_raw': data_venc_str,  # Campo esperado pela função de formatação
+                            'pdf_url': resultado_plano_b.get('pdf_url'),
+                            'pdf_path': resultado_plano_b.get('pdf_path'),
+                            'status': 'Pendente',
+                            'reference_month': None,
+                            'metodo_usado': 'nio_negocia'
+                        }
+                        
+                        # Formatar resposta
+                        resposta = _formatar_detalhes_fatura(invoice, cpf_limpo, incluir_pdf=True)
+                        
+                        # Adicionar informação sobre o método usado
+                        resposta += f"\n\n🔧 *Método:* Plano B (Nio Negocia)"
+                        
+                        # Armazenar invoice para envio do PDF após a mensagem (só se houver PDF disponível)
+                        if invoice.get('pdf_path') or invoice.get('pdf_url'):
+                            sessao.dados_temp = {'invoice_para_pdf': invoice}
+                        else:
+                            sessao.dados_temp = {}
+                        sessao.etapa = 'inicial'
+                        sessao.save()
+                        
+                        logger.info(f"[Webhook] ✅ Plano B (Nio Negocia) retornou dados válidos")
+                    else:
+                        # Formatar CPF para exibição
+                        cpf_formatado = f"{cpf_limpo[:3]}.XXX.XXX-{cpf_limpo[-2:]}"
+                        resposta = f"🔎 Buscando faturas via Plano B (Nio Negocia) para o cliente {cpf_limpo}...\n\n❌ *CPF: {cpf_formatado}*\n\nNão foi possível encontrar faturas usando o método Nio Negocia.\n\nTente usar o comando *Fatura* para buscar pelo método padrão."
+                        sessao.etapa = 'inicial'
+                        sessao.dados_temp = {}
+                        sessao.save()
+                        logger.warning(f"[Webhook] ⚠️ Plano B (Nio Negocia) não retornou dados válidos")
+                        
+                except Exception as e:
+                    logger.error(f"[Webhook] ❌ Erro ao buscar fatura via Plano B (Nio Negocia): {e}")
+                    import traceback
+                    traceback.print_exc()
+                    resposta = f"❌ Erro ao buscar fatura via Plano B (Nio Negocia): {str(e)}\n\nTente novamente ou use o comando *Fatura* para buscar pelo método padrão."
                     sessao.etapa = 'inicial'
                     sessao.dados_temp = {}
                     sessao.save()
@@ -1313,7 +1401,7 @@ def processar_webhook_whatsapp(data):
             if len(mensagem_texto.strip()) <= 2 and mensagem_texto.strip().isdigit():
                 # Pode ser um número de confirmação que não foi processado corretamente
                 resposta = None  # Não enviar resposta de erro
-            elif etapa_atual == 'inicial' and mensagem_limpa not in ['FATURA', 'FACHADA', 'VIABILIDADE', 'STATUS', 'STAT', 'VIABIL', 'FACADA', 'FAT', 'MENU', 'AJUDA', 'HELP', 'OPCOES', 'OPÇÕES', 'OPCOES', 'OPÇOES', 'MATERIAL', 'MATERIAIS']:
+            elif etapa_atual == 'inicial' and mensagem_limpa not in ['FATURA', 'FATURA NEGOCIA', 'FATURANEGOCIA', 'FACHADA', 'VIABILIDADE', 'STATUS', 'STAT', 'VIABIL', 'FACADA', 'FAT', 'MENU', 'AJUDA', 'HELP', 'OPCOES', 'OPÇÕES', 'OPCOES', 'OPÇOES', 'MATERIAL', 'MATERIAIS']:
                 # Tentar buscar nas tags do Record Apoia antes de ignorar
                 from crm_app.models import RecordApoia
                 from django.db.models import Q
