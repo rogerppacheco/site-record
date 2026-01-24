@@ -2009,13 +2009,17 @@ def _buscar_fatura_nio_negocia(
             
             # PASSO 3: Resolver reCAPTCHA
             logger.info(f"[NIO NEGOCIA] Passo 3: Resolvendo reCAPTCHA")
+            recaptcha_resolvido = False
             if solver:
                 try:
                     site_key = page.evaluate("() => document.querySelector('[data-sitekey]')?.getAttribute('data-sitekey') || document.querySelector('.g-recaptcha')?.getAttribute('data-sitekey') || null")
                     if site_key:
                         logger.info(f"[NIO NEGOCIA] Site key encontrada: {site_key[:20]}...")
+                        print(f"[DEBUG NIO NEGOCIA] Site key: {site_key}")
                         token = solver.solve_recaptcha_v2(site_key, NIO_NEGOCIA_URL)
                         if token:
+                            print(f"[DEBUG NIO NEGOCIA] Token reCAPTCHA obtido: {token[:50]}...")
+                            logger.info(f"[NIO NEGOCIA] Token reCAPTCHA obtido")
                             page.evaluate(f"""
                                 (t) => {{
                                     const selectors = [
@@ -2037,12 +2041,47 @@ def _buscar_fatura_nio_negocia(
                                 }}
                             """, token)
                             page.wait_for_timeout(2000)
-                            logger.info("[NIO NEGOCIA] reCAPTCHA resolvido")
+                            
+                            # Verificar se o reCAPTCHA foi realmente resolvido
+                            recaptcha_verificado = page.evaluate("""
+                                () => {
+                                    const textarea = document.querySelector('textarea[name="g-recaptcha-response"]');
+                                    if (textarea && textarea.value && textarea.value.length > 50) {
+                                        return true;
+                                    }
+                                    if (window.grecaptcha && window.grecaptcha.getResponse) {
+                                        const response = window.grecaptcha.getResponse();
+                                        return response && response.length > 50;
+                                    }
+                                    return false;
+                                }
+                            """)
+                            
+                            if recaptcha_verificado:
+                                logger.info("[NIO NEGOCIA] ✅ reCAPTCHA resolvido e verificado")
+                                print(f"[DEBUG NIO NEGOCIA] ✅ reCAPTCHA resolvido e verificado")
+                                recaptcha_resolvido = True
+                            else:
+                                logger.warning("[NIO NEGOCIA] ⚠️ reCAPTCHA token injetado mas não verificado")
+                                print(f"[DEBUG NIO NEGOCIA] ⚠️ reCAPTCHA token injetado mas não verificado")
+                        else:
+                            logger.warning("[NIO NEGOCIA] ⚠️ Não foi possível obter token do reCAPTCHA")
+                            print(f"[DEBUG NIO NEGOCIA] ⚠️ Não foi possível obter token do reCAPTCHA")
+                    else:
+                        logger.info("[NIO NEGOCIA] ℹ️ Site key não encontrada (pode não ter reCAPTCHA)")
+                        print(f"[DEBUG NIO NEGOCIA] ℹ️ Site key não encontrada")
                 except Exception as e:
                     logger.warning(f"[NIO NEGOCIA] Erro ao resolver reCAPTCHA: {e}")
+                    print(f"[DEBUG NIO NEGOCIA] ❌ Erro ao resolver reCAPTCHA: {e}")
+                    import traceback
+                    traceback.print_exc()
+            else:
+                logger.warning("[NIO NEGOCIA] ⚠️ Solver de reCAPTCHA não disponível (CAPTCHA_API_KEY não configurada)")
+                print(f"[DEBUG NIO NEGOCIA] ⚠️ Solver de reCAPTCHA não disponível")
             
             # PASSO 4: Clicar em "Consultar dívidas"
             logger.info(f"[NIO NEGOCIA] Passo 4: Clicando em Consultar dívidas")
+            print(f"[DEBUG NIO NEGOCIA] Passo 4: Procurando botão 'Consultar dívidas'...")
             btn_consultar = None
             seletores_consultar = [
                 'button:has-text("Consultar dívidas")',
@@ -2056,21 +2095,119 @@ def _buscar_fatura_nio_negocia(
                     locator = page.locator(seletor).first
                     if locator.count() > 0 and locator.is_visible(timeout=3000):
                         btn_consultar = locator
+                        print(f"[DEBUG NIO NEGOCIA] ✅ Botão encontrado com seletor: {seletor}")
+                        logger.info(f"[NIO NEGOCIA] Botão encontrado com seletor: {seletor}")
                         break
-                except:
+                except Exception as e_sel:
+                    print(f"[DEBUG NIO NEGOCIA] Seletor {seletor} falhou: {e_sel}")
                     continue
             
             if not btn_consultar:
                 logger.error("[NIO NEGOCIA] Botão Consultar dívidas não encontrado")
+                print(f"[DEBUG NIO NEGOCIA] ❌ Botão não encontrado")
+                # Capturar screenshot para debug
+                try:
+                    downloads_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'downloads')
+                    os.makedirs(downloads_dir, exist_ok=True)
+                    screenshot_path = os.path.join(downloads_dir, f"debug_nio_negocia_botao_nao_encontrado_{cpf_limpo}.png")
+                    page.screenshot(path=screenshot_path, full_page=True)
+                    print(f"[DEBUG NIO NEGOCIA] 📸 Screenshot salvo: {screenshot_path}")
+                    logger.info(f"[NIO NEGOCIA] Screenshot salvo: {screenshot_path}")
+                except:
+                    pass
                 browser.close()
                 return None
             
+            # Verificar estado do botão antes de clicar
+            is_enabled = False
+            is_visible = False
             try:
-                btn_consultar.click()
+                is_enabled = btn_consultar.is_enabled(timeout=1000)
+                is_visible = btn_consultar.is_visible(timeout=1000)
+                print(f"[DEBUG NIO NEGOCIA] Estado do botão: enabled={is_enabled}, visible={is_visible}")
+                logger.info(f"[NIO NEGOCIA] Estado do botão: enabled={is_enabled}, visible={is_visible}")
+                
+                # Se o botão está desabilitado, aguardar até ficar habilitado (pode ser que o reCAPTCHA ainda esteja validando)
+                if not is_enabled:
+                    print(f"[DEBUG NIO NEGOCIA] ⏳ Botão desabilitado, aguardando até ficar habilitado...")
+                    logger.info(f"[NIO NEGOCIA] Botão desabilitado, aguardando até ficar habilitado...")
+                    
+                    # Aguardar até 30 segundos para o botão ficar habilitado
+                    max_espera = 30
+                    for tentativa in range(max_espera):
+                        try:
+                            if btn_consultar.is_enabled(timeout=1000):
+                                print(f"[DEBUG NIO NEGOCIA] ✅ Botão habilitado após {tentativa + 1} segundos")
+                                logger.info(f"[NIO NEGOCIA] Botão habilitado após {tentativa + 1} segundos")
+                                is_enabled = True
+                                break
+                        except:
+                            pass
+                        page.wait_for_timeout(1000)
+                    
+                    if not is_enabled:
+                        print(f"[DEBUG NIO NEGOCIA] ⚠️ Botão ainda desabilitado após {max_espera} segundos")
+                        logger.warning(f"[NIO NEGOCIA] Botão ainda desabilitado após {max_espera} segundos")
+                        
+                        # Capturar screenshot para debug
+                        try:
+                            downloads_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'downloads')
+                            os.makedirs(downloads_dir, exist_ok=True)
+                            screenshot_path = os.path.join(downloads_dir, f"debug_nio_negocia_botao_desabilitado_{cpf_limpo}.png")
+                            page.screenshot(path=screenshot_path, full_page=True)
+                            print(f"[DEBUG NIO NEGOCIA] 📸 Screenshot do botão desabilitado: {screenshot_path}")
+                            logger.info(f"[NIO NEGOCIA] Screenshot do botão desabilitado: {screenshot_path}")
+                            
+                            # Verificar estado do reCAPTCHA
+                            recaptcha_status = page.evaluate("""
+                                () => {
+                                    const textarea = document.querySelector('textarea[name="g-recaptcha-response"]');
+                                    const has_value = textarea && textarea.value && textarea.value.length > 50;
+                                    const grecaptcha_response = window.grecaptcha && window.grecaptcha.getResponse ? window.grecaptcha.getResponse() : null;
+                                    return {
+                                        has_textarea: !!textarea,
+                                        has_value: has_value,
+                                        value_length: textarea ? textarea.value.length : 0,
+                                        grecaptcha_response: grecaptcha_response ? grecaptcha_response.substring(0, 50) + '...' : null
+                                    };
+                                }
+                            """)
+                            print(f"[DEBUG NIO NEGOCIA] Estado do reCAPTCHA: {recaptcha_status}")
+                            logger.info(f"[NIO NEGOCIA] Estado do reCAPTCHA: {recaptcha_status}")
+                        except Exception as e_debug:
+                            print(f"[DEBUG NIO NEGOCIA] Erro ao capturar debug: {e_debug}")
+                            logger.warning(f"[NIO NEGOCIA] Erro ao capturar debug: {e_debug}")
+            except Exception as e_check:
+                print(f"[DEBUG NIO NEGOCIA] ⚠️ Erro ao verificar estado do botão: {e_check}")
+                logger.warning(f"[NIO NEGOCIA] Erro ao verificar estado do botão: {e_check}")
+            
+            # Tentar clicar no botão (com force se necessário)
+            try:
+                if is_enabled:
+                    print(f"[DEBUG NIO NEGOCIA] 🖱️ Clicando no botão (habilitado)...")
+                    btn_consultar.click()
+                else:
+                    print(f"[DEBUG NIO NEGOCIA] 🖱️ Tentando clicar com force=True (botão desabilitado)...")
+                    logger.warning(f"[NIO NEGOCIA] Tentando clicar com force=True")
+                    btn_consultar.click(force=True)
+                
                 page.wait_for_timeout(3000)
                 page.wait_for_load_state("networkidle", timeout=15000)
+                print(f"[DEBUG NIO NEGOCIA] ✅ Clique realizado com sucesso")
+                logger.info(f"[NIO NEGOCIA] Clique realizado com sucesso")
             except Exception as e:
                 logger.error(f"[NIO NEGOCIA] Erro ao clicar em Consultar dívidas: {e}")
+                print(f"[DEBUG NIO NEGOCIA] ❌ Erro ao clicar: {e}")
+                # Capturar screenshot antes de fechar
+                try:
+                    downloads_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'downloads')
+                    os.makedirs(downloads_dir, exist_ok=True)
+                    screenshot_path = os.path.join(downloads_dir, f"debug_nio_negocia_erro_clique_{cpf_limpo}.png")
+                    page.screenshot(path=screenshot_path, full_page=True)
+                    print(f"[DEBUG NIO NEGOCIA] 📸 Screenshot do erro: {screenshot_path}")
+                    logger.info(f"[NIO NEGOCIA] Screenshot do erro: {screenshot_path}")
+                except:
+                    pass
                 browser.close()
                 return None
             
