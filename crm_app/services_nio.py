@@ -359,69 +359,134 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                 logger.debug(f"[PDF HUMANO] Não foi necessário expandir detalhes ou erro: {e}")
             
             # 4. Clicar em "Gerar boleto" - usando seletor correto: a#generate-boleto
+            print(f"[DEBUG PDF DOWNLOAD] 📍 PASSO 4: Clicando em 'Gerar boleto'...")
             logger.info(f"[PDF HUMANO] Passo 4: Clicando em 'Gerar boleto'...")
             # Aguardar um pouco mais para garantir que a página carregou completamente
-            page.wait_for_timeout(2000)
-            page.wait_for_load_state("networkidle", timeout=10000)
+            page.wait_for_timeout(3000)  # Aumentado de 2000 para 3000
+            page.wait_for_load_state("networkidle", timeout=15000)  # Aumentado de 10000 para 15000
             
             try:
                 gerar_boleto = None
                 seletores_gerar = [
+                    'div[data-context="btn_container_gerar-boleto"]',  # Seletor do test_nio_completo.py
                     'a#generate-boleto',  # Seletor principal por ID
                     'a[id="generate-boleto"]',
                     'a.scheduled-payment__button:has-text("Gerar boleto")',
                     'a:has-text("Gerar boleto")',
+                    'a:has-text("Gerar Boleto")',  # Com B maiúsculo
                     'button:has-text("Gerar boleto")',
+                    'button:has-text("Gerar Boleto")',  # Com B maiúsculo
+                    'p:text-is("Gerar Boleto")',  # Seletor alternativo
                     'a[class*="scheduled-payment__button"]',
                     'a[href*="boleto"]',
+                    'div[class*="gerar"]',  # Qualquer div com "gerar" na classe
+                    'div[class*="boleto"]',  # Qualquer div com "boleto" na classe
                 ]
                 
-                for seletor in seletores_gerar:
+                print(f"[DEBUG PDF DOWNLOAD] 🔍 Tentando {len(seletores_gerar)} seletores para 'Gerar boleto'...")
+                logger.info(f"[PDF HUMANO] Tentando {len(seletores_gerar)} seletores para encontrar botão 'Gerar boleto'...")
+                
+                for idx, seletor in enumerate(seletores_gerar, 1):
                     try:
+                        print(f"[DEBUG PDF DOWNLOAD]   [{idx}/{len(seletores_gerar)}] Tentando: {seletor}")
                         btn = page.locator(seletor).first
                         count = btn.count()
+                        print(f"[DEBUG PDF DOWNLOAD]     Encontrados: {count} elementos")
+                        
                         if count > 0:
-                            if btn.is_visible(timeout=3000):
+                            # Tentar scroll para o elemento se necessário
+                            try:
+                                btn.scroll_into_view_if_needed(timeout=2000)
+                                page.wait_for_timeout(500)
+                            except:
+                                pass
+                            
+                            if btn.is_visible(timeout=5000):  # Aumentado de 3000 para 5000
                                 gerar_boleto = btn
+                                print(f"[DEBUG PDF DOWNLOAD] ✅ Botão encontrado com seletor: {seletor}")
                                 logger.info(f"[PDF HUMANO] Botão 'Gerar boleto' encontrado com seletor: {seletor}")
                                 break
+                            else:
+                                print(f"[DEBUG PDF DOWNLOAD]     Elemento encontrado mas não está visível")
+                        else:
+                            print(f"[DEBUG PDF DOWNLOAD]     Nenhum elemento encontrado")
                     except Exception as e_sel:
+                        print(f"[DEBUG PDF DOWNLOAD]     Erro: {e_sel}")
                         logger.debug(f"[PDF HUMANO] Seletor '{seletor}' falhou: {e_sel}")
                         continue
                 
                 if not gerar_boleto or gerar_boleto.count() == 0:
+                    print(f"[DEBUG PDF DOWNLOAD] ❌ PASSO 4: Botão 'Gerar boleto' não encontrado após tentar {len(seletores_gerar)} seletores!")
                     logger.error(f"[PDF HUMANO] ❌ Botão 'Gerar boleto' não encontrado após tentar {len(seletores_gerar)} seletores!")
-                    # Salvar screenshot e HTML para debug
+                    
+                    # Tentar buscar qualquer elemento com texto "gerar" ou "boleto" (case insensitive)
+                    print(f"[DEBUG PDF DOWNLOAD] 🔍 Tentando busca alternativa por texto...")
                     try:
-                        screenshot_path = os.path.join(downloads_dir, f"debug_{cpf}_gerar_boleto_nao_encontrado.png")
-                        page.screenshot(path=screenshot_path)
-                        logger.info(f"[PDF HUMANO] Screenshot salvo: {screenshot_path}")
-                        html_path = os.path.join(downloads_dir, f"debug_{cpf}_gerar_boleto_html.html")
-                        with open(html_path, 'w', encoding='utf-8') as f:
-                            f.write(page.content())
-                        logger.info(f"[PDF HUMANO] HTML salvo: {html_path}")
-                    except Exception as e_debug:
-                        logger.warning(f"[PDF HUMANO] Erro ao salvar debug: {e_debug}")
-                    browser.close()
-                    return None
+                        # Buscar por texto usando XPath (case insensitive)
+                        elementos_texto = page.locator('xpath=//*[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "gerar") and contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "boleto")]').first
+                        if elementos_texto.count() > 0:
+                            print(f"[DEBUG PDF DOWNLOAD] ✅ Encontrado elemento por texto!")
+                            gerar_boleto = elementos_texto
+                            # Tentar encontrar o elemento clicável (pai com cursor pointer ou link)
+                            try:
+                                parent_clickable = elementos_texto.locator('xpath=ancestor::div[contains(@style, "cursor: pointer")] | ancestor::a | ancestor::button').first
+                                if parent_clickable.count() > 0:
+                                    gerar_boleto = parent_clickable
+                                    print(f"[DEBUG PDF DOWNLOAD] ✅ Elemento clicável encontrado!")
+                            except:
+                                pass
+                    except Exception as e_alt:
+                        print(f"[DEBUG PDF DOWNLOAD]     Busca alternativa falhou: {e_alt}")
+                        logger.debug(f"[PDF HUMANO] Busca alternativa falhou: {e_alt}")
+                    
+                    if not gerar_boleto or gerar_boleto.count() == 0:
+                        # Salvar screenshot e HTML para debug
+                        try:
+                            screenshot_path = os.path.join(downloads_dir, f"debug_{cpf}_gerar_boleto_nao_encontrado.png")
+                            page.screenshot(path=screenshot_path, full_page=True)
+                            print(f"[DEBUG PDF DOWNLOAD] 💾 Screenshot salvo: {screenshot_path}")
+                            logger.info(f"[PDF HUMANO] Screenshot salvo: {screenshot_path}")
+                            html_path = os.path.join(downloads_dir, f"debug_{cpf}_gerar_boleto_html.html")
+                            with open(html_path, 'w', encoding='utf-8') as f:
+                                f.write(page.content())
+                            print(f"[DEBUG PDF DOWNLOAD] 💾 HTML salvo: {html_path}")
+                            logger.info(f"[PDF HUMANO] HTML salvo: {html_path}")
+                        except Exception as e_debug:
+                            logger.warning(f"[PDF HUMANO] Erro ao salvar debug: {e_debug}")
+                        browser.close()
+                        print(f"[DEBUG PDF DOWNLOAD] 🎉 RETORNANDO: None (botão não encontrado)")
+                        return None
                 
-                gerar_boleto.click()
-                page.wait_for_timeout(2000)  # Aguardar carregamento
-                page.wait_for_load_state("networkidle", timeout=10000)
+                # Scroll para o botão antes de clicar
+                try:
+                    gerar_boleto.scroll_into_view_if_needed(timeout=3000)
+                    page.wait_for_timeout(1000)
+                except:
+                    pass
+                
+                print(f"[DEBUG PDF DOWNLOAD] 🖱️ Clicando no botão 'Gerar boleto'...")
+                gerar_boleto.click(timeout=10000)
+                page.wait_for_timeout(3000)  # Aumentado de 2000 para 3000
+                page.wait_for_load_state("networkidle", timeout=15000)  # Aumentado de 10000 para 15000
+                print(f"[DEBUG PDF DOWNLOAD] ✅ PASSO 4: Clicou em 'Gerar boleto'")
                 logger.info(f"[PDF HUMANO] ✅ Clicou em 'Gerar boleto'")
             except Exception as e:
+                print(f"[DEBUG PDF DOWNLOAD] ❌ PASSO 4: Erro ao clicar em 'Gerar boleto': {e}")
                 logger.error(f"[PDF HUMANO] ❌ Erro ao clicar em 'Gerar boleto': {e}")
                 import traceback
-                logger.error(f"[PDF HUMANO] Traceback: {traceback.format_exc()}")
+                tb = traceback.format_exc()
+                logger.error(f"[PDF HUMANO] Traceback: {tb}")
+                print(f"[DEBUG PDF DOWNLOAD] Traceback: {tb}")
                 browser.close()
+                print(f"[DEBUG PDF DOWNLOAD] 🎉 RETORNANDO: None (erro)")
                 return None
             
-            # 5. Clicar em "Download" - usando seletor correto: a#downloadInvoice
-            # NOTA: Este botão abre o modal de impressão do navegador, não um download direto
-            logger.info(f"[PDF HUMANO] Passo 5: Clicando em 'Download' (abre modal de impressão)...")
+            # 5. Clicar em "Download" ou gerar PDF diretamente
+            print(f"[DEBUG PDF DOWNLOAD] 📍 PASSO 5: Tentando baixar PDF...")
+            logger.info(f"[PDF HUMANO] Passo 5: Clicando em 'Download' ou gerando PDF diretamente...")
             # Aguardar um pouco mais para garantir que a página carregou completamente
-            page.wait_for_timeout(2000)
-            page.wait_for_load_state("networkidle", timeout=10000)
+            page.wait_for_timeout(3000)  # Aumentado de 2000 para 3000
+            page.wait_for_load_state("networkidle", timeout=15000)  # Aumentado de 10000 para 15000
             
             try:
                 download_btn = None
@@ -430,55 +495,91 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                     'a[id="downloadInvoice"]',
                     'a.scheduled-payment__button--outline:has-text("Download")',
                     'a:has-text("Download")',
+                    'a:has-text("Baixar PDF")',  # Texto alternativo
                     'button:has-text("Download")',
+                    'button:has-text("Baixar PDF")',  # Texto alternativo
                     'a[class*="scheduled-payment__button--outline"]',
                     'a[href*="download"]',
+                    'text="Baixar PDF"',  # Seletor de texto
                 ]
                 
-                for seletor in seletores_download:
+                print(f"[DEBUG PDF DOWNLOAD] 🔍 Tentando {len(seletores_download)} seletores para 'Download'...")
+                logger.info(f"[PDF HUMANO] Tentando {len(seletores_download)} seletores para encontrar botão 'Download'...")
+                
+                for idx, seletor in enumerate(seletores_download, 1):
                     try:
+                        print(f"[DEBUG PDF DOWNLOAD]   [{idx}/{len(seletores_download)}] Tentando: {seletor}")
                         btn = page.locator(seletor).first
                         count = btn.count()
+                        print(f"[DEBUG PDF DOWNLOAD]     Encontrados: {count} elementos")
+                        
                         if count > 0:
-                            if btn.is_visible(timeout=3000):
+                            # Tentar scroll para o elemento se necessário
+                            try:
+                                btn.scroll_into_view_if_needed(timeout=2000)
+                                page.wait_for_timeout(500)
+                            except:
+                                pass
+                            
+                            if btn.is_visible(timeout=5000):  # Aumentado de 3000 para 5000
                                 download_btn = btn
+                                print(f"[DEBUG PDF DOWNLOAD] ✅ Botão encontrado com seletor: {seletor}")
                                 logger.info(f"[PDF HUMANO] Botão 'Download' encontrado com seletor: {seletor}")
                                 break
+                            else:
+                                print(f"[DEBUG PDF DOWNLOAD]     Elemento encontrado mas não está visível")
+                        else:
+                            print(f"[DEBUG PDF DOWNLOAD]     Nenhum elemento encontrado")
                     except Exception as e_sel:
+                        print(f"[DEBUG PDF DOWNLOAD]     Erro: {e_sel}")
                         logger.debug(f"[PDF HUMANO] Seletor '{seletor}' falhou: {e_sel}")
                         continue
                 
-                if not download_btn or download_btn.count() == 0:
-                    logger.error(f"[PDF HUMANO] ❌ Botão 'Download' não encontrado após tentar {len(seletores_download)} seletores!")
+                if download_btn and download_btn.count() > 0:
+                    print(f"[DEBUG PDF DOWNLOAD] ✅ Botão Download encontrado")
+                    logger.info(f"[PDF HUMANO] ✅ Botão Download encontrado")
+                    
+                    # Scroll para o botão antes de clicar
+                    try:
+                        download_btn.scroll_into_view_if_needed(timeout=3000)
+                        page.wait_for_timeout(1000)
+                    except:
+                        pass
+                    
+                    # O botão abre o modal de impressão do navegador
+                    # Vamos usar a API de impressão do Playwright para salvar como PDF
+                    print(f"[DEBUG PDF DOWNLOAD] 🖱️ Clicando no botão Download...")
+                    logger.info(f"[PDF HUMANO] Clicando no botão Download (abrirá modal de impressão)...")
+                    download_btn.click(timeout=10000)
+                    page.wait_for_timeout(3000)  # Aguardar modal abrir (aumentado de 2000)
+                else:
+                    print(f"[DEBUG PDF DOWNLOAD] ⚠️ Botão Download não encontrado, tentando gerar PDF diretamente da página...")
+                    logger.warning(f"[PDF HUMANO] ⚠️ Botão 'Download' não encontrado, tentando gerar PDF diretamente da página atual...")
                     # Salvar screenshot e HTML para debug
                     try:
                         screenshot_path = os.path.join(downloads_dir, f"debug_{cpf}_download_nao_encontrado.png")
-                        page.screenshot(path=screenshot_path)
+                        page.screenshot(path=screenshot_path, full_page=True)
+                        print(f"[DEBUG PDF DOWNLOAD] 💾 Screenshot salvo: {screenshot_path}")
                         logger.info(f"[PDF HUMANO] Screenshot salvo: {screenshot_path}")
                         html_path = os.path.join(downloads_dir, f"debug_{cpf}_download_html.html")
                         with open(html_path, 'w', encoding='utf-8') as f:
                             f.write(page.content())
+                        print(f"[DEBUG PDF DOWNLOAD] 💾 HTML salvo: {html_path}")
                         logger.info(f"[PDF HUMANO] HTML salvo: {html_path}")
                     except Exception as e_debug:
                         logger.warning(f"[PDF HUMANO] Erro ao salvar debug: {e_debug}")
-                    browser.close()
-                    return None
-                
-                logger.info(f"[PDF HUMANO] ✅ Botão Download encontrado")
-                
-                # O botão abre o modal de impressão do navegador
-                # Vamos usar a API de impressão do Playwright para salvar como PDF
-                logger.info(f"[PDF HUMANO] Clicando no botão Download (abrirá modal de impressão)...")
-                download_btn.click()
-                page.wait_for_timeout(2000)  # Aguardar modal abrir
                 
                 # Usar a API de impressão do Playwright para gerar PDF diretamente
+                print(f"[DEBUG PDF DOWNLOAD] 📄 Gerando PDF via API de impressão do navegador...")
                 logger.info(f"[PDF HUMANO] Gerando PDF via API de impressão do navegador...")
                 pdf_bytes = page.pdf(
                     format='A4',
                     print_background=True,
                     margin={'top': '0.5cm', 'right': '0.5cm', 'bottom': '0.5cm', 'left': '0.5cm'}
                 )
+                
+                print(f"[DEBUG PDF DOWNLOAD] ✅ PDF gerado: {len(pdf_bytes)} bytes")
+                logger.info(f"[PDF HUMANO] ✅ PDF gerado: {len(pdf_bytes)} bytes")
                 
                 # Salvar PDF
                 if os.path.exists(caminho_completo):
@@ -487,13 +588,18 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                 with open(caminho_completo, 'wb') as f:
                     f.write(pdf_bytes)
                 
+                print(f"[DEBUG PDF DOWNLOAD] ✅ PDF salvo em: {caminho_completo}")
                 logger.info(f"[PDF HUMANO] ✅ PDF gerado e salvo: {caminho_completo}")
                 
             except Exception as e_download:
+                print(f"[DEBUG PDF DOWNLOAD] ❌ PASSO 5: Erro ao processar download: {e_download}")
                 logger.error(f"[PDF HUMANO] ❌ Erro ao processar download: {e_download}")
                 import traceback
-                logger.error(f"[PDF HUMANO] Traceback: {traceback.format_exc()}")
+                tb = traceback.format_exc()
+                logger.error(f"[PDF HUMANO] Traceback: {tb}")
+                print(f"[DEBUG PDF DOWNLOAD] Traceback: {tb}")
                 browser.close()
+                print(f"[DEBUG PDF DOWNLOAD] 🎉 RETORNANDO: None (erro)")
                 return None
             
             # 7. Verificar se arquivo foi salvo (já foi salvo no passo 6)
