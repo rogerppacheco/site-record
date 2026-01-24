@@ -2012,7 +2012,53 @@ def _buscar_fatura_nio_negocia(
             recaptcha_resolvido = False
             if solver:
                 try:
-                    site_key = page.evaluate("() => document.querySelector('[data-sitekey]')?.getAttribute('data-sitekey') || document.querySelector('.g-recaptcha')?.getAttribute('data-sitekey') || null")
+                    # Tentar múltiplas formas de encontrar a site key do reCAPTCHA
+                    site_key = page.evaluate("""
+                        () => {
+                            // Tentar vários seletores e atributos
+                            const selectors = [
+                                '[data-sitekey]',
+                                '.g-recaptcha',
+                                'div[data-sitekey]',
+                                'iframe[src*="recaptcha"]',
+                                '#recaptcha',
+                                '.recaptcha'
+                            ];
+                            
+                            for (const sel of selectors) {
+                                const el = document.querySelector(sel);
+                                if (el) {
+                                    const key = el.getAttribute('data-sitekey') || 
+                                               el.getAttribute('data-site-key') ||
+                                               (el.querySelector('[data-sitekey]')?.getAttribute('data-sitekey'));
+                                    if (key) return key;
+                                }
+                            }
+                            
+                            // Tentar encontrar no iframe do reCAPTCHA
+                            const iframe = document.querySelector('iframe[src*="recaptcha"]');
+                            if (iframe) {
+                                const src = iframe.src;
+                                const match = src.match(/[?&]k=([^&]+)/);
+                                if (match) return match[1];
+                            }
+                            
+                            // Tentar encontrar no script
+                            const scripts = Array.from(document.querySelectorAll('script'));
+                            for (const script of scripts) {
+                                if (script.src && script.src.includes('recaptcha')) {
+                                    const match = script.src.match(/[?&]render=([^&]+)/);
+                                    if (match) return match[1];
+                                }
+                                if (script.innerHTML && script.innerHTML.includes('sitekey')) {
+                                    const match = script.innerHTML.match(/sitekey['"]\\s*[:=]\\s*['"]([^'"]+)['"]/);
+                                    if (match) return match[1];
+                                }
+                            }
+                            
+                            return null;
+                        }
+                    """)
                     if site_key:
                         logger.info(f"[NIO NEGOCIA] Site key encontrada: {site_key[:20]}...")
                         print(f"[DEBUG NIO NEGOCIA] Site key: {site_key}")
@@ -2256,47 +2302,112 @@ def _buscar_fatura_nio_negocia(
             
             # PASSO 6: Extrair dados da lista (Valor, Mês/Ano, Vencimento, Status)
             logger.info(f"[NIO NEGOCIA] Passo 6: Extraindo dados da lista")
+            print(f"[DEBUG NIO NEGOCIA] Passo 6: Extraindo dados da lista...")
             html_lista = page.content()
+            
+            # Capturar screenshot para debug
+            try:
+                downloads_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'downloads')
+                os.makedirs(downloads_dir, exist_ok=True)
+                screenshot_path = os.path.join(downloads_dir, f"debug_nio_negocia_extraindo_dados_{cpf_limpo}.png")
+                page.screenshot(path=screenshot_path, full_page=True)
+                print(f"[DEBUG NIO NEGOCIA] 📸 Screenshot para extração de dados: {screenshot_path}")
+                logger.info(f"[NIO NEGOCIA] Screenshot para extração de dados: {screenshot_path}")
+            except:
+                pass
             
             # Extrair valores
             valor = None
             valor_matches = re.findall(r'R\$\s*(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2}))', html_lista, re.IGNORECASE)
+            print(f"[DEBUG NIO NEGOCIA] Valores encontrados na página: {valor_matches}")
+            logger.info(f"[NIO NEGOCIA] Valores encontrados: {valor_matches}")
             if valor_matches:
                 try:
                     valor_str = valor_matches[0].replace('.', '').replace(',', '.')
                     valor = Decimal(valor_str)
-                except:
-                    pass
+                    print(f"[DEBUG NIO NEGOCIA] ✅ Valor extraído: R$ {valor}")
+                    logger.info(f"[NIO NEGOCIA] Valor extraído: R$ {valor}")
+                except Exception as e_val:
+                    print(f"[DEBUG NIO NEGOCIA] ⚠️ Erro ao converter valor: {e_val}")
+                    logger.warning(f"[NIO NEGOCIA] Erro ao converter valor: {e_val}")
             
             # Extrair data de vencimento
             data_vencimento = None
             data_matches = re.findall(r'(\d{2}/\d{2}/\d{4})', html_lista)
+            print(f"[DEBUG NIO NEGOCIA] Datas encontradas na página: {data_matches}")
+            logger.info(f"[NIO NEGOCIA] Datas encontradas: {data_matches}")
             if data_matches:
                 try:
                     data_vencimento = datetime.strptime(data_matches[0], "%d/%m/%Y").date()
-                except:
-                    pass
+                    print(f"[DEBUG NIO NEGOCIA] ✅ Data extraída: {data_vencimento}")
+                    logger.info(f"[NIO NEGOCIA] Data extraída: {data_vencimento}")
+                except Exception as e_data:
+                    print(f"[DEBUG NIO NEGOCIA] ⚠️ Erro ao converter data: {e_data}")
+                    logger.warning(f"[NIO NEGOCIA] Erro ao converter data: {e_data}")
             
             # PASSO 7: Clicar em "Pagar contas"
             logger.info(f"[NIO NEGOCIA] Passo 7: Clicando em Pagar contas")
+            print(f"[DEBUG NIO NEGOCIA] Passo 7: Procurando botão 'Pagar contas'...")
+            
+            # Aguardar página carregar completamente após clicar em "Consultar dívidas"
+            try:
+                page.wait_for_load_state("networkidle", timeout=10000)
+                page.wait_for_timeout(2000)
+                print(f"[DEBUG NIO NEGOCIA] Página aguardada após 'Consultar dívidas'")
+            except:
+                print(f"[DEBUG NIO NEGOCIA] ⚠️ Timeout ao aguardar página carregar")
+            
+            # Capturar screenshot para debug antes de procurar botão
+            try:
+                downloads_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'downloads')
+                os.makedirs(downloads_dir, exist_ok=True)
+                screenshot_path = os.path.join(downloads_dir, f"debug_nio_negocia_antes_pagar_contas_{cpf_limpo}.png")
+                page.screenshot(path=screenshot_path, full_page=True)
+                print(f"[DEBUG NIO NEGOCIA] 📸 Screenshot antes de procurar 'Pagar contas': {screenshot_path}")
+                logger.info(f"[NIO NEGOCIA] Screenshot antes de procurar 'Pagar contas': {screenshot_path}")
+            except:
+                pass
+            
             btn_pagar = None
             seletores_pagar = [
                 'button.sc-EHOje.btbnVF:has-text("Pagar contas")',
                 'button:has-text("Pagar contas")',
+                'button:has-text("Pagar")',
                 'button[data-context*="pagar"]',
+                'button[data-context*="Pagar"]',
+                'span:has-text("Pagar contas")',
+                'a:has-text("Pagar contas")',
+                'div:has-text("Pagar contas")',
             ]
             
             for seletor in seletores_pagar:
                 try:
                     locator = page.locator(seletor).first
                     if locator.count() > 0:
-                        btn_pagar = locator
-                        break
-                except:
+                        is_visible = locator.is_visible(timeout=2000)
+                        if is_visible:
+                            btn_pagar = locator
+                            print(f"[DEBUG NIO NEGOCIA] ✅ Botão 'Pagar contas' encontrado com seletor: {seletor}")
+                            logger.info(f"[NIO NEGOCIA] Botão 'Pagar contas' encontrado com seletor: {seletor}")
+                            break
+                except Exception as e_sel:
+                    print(f"[DEBUG NIO NEGOCIA] Seletor {seletor} falhou: {e_sel}")
                     continue
             
             if not btn_pagar:
                 logger.error("[NIO NEGOCIA] Botão Pagar contas não encontrado")
+                print(f"[DEBUG NIO NEGOCIA] ❌ Botão 'Pagar contas' não encontrado")
+                # Capturar HTML para debug
+                try:
+                    downloads_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'downloads')
+                    os.makedirs(downloads_dir, exist_ok=True)
+                    html_path = os.path.join(downloads_dir, f"debug_nio_negocia_sem_pagar_contas_{cpf_limpo}.html")
+                    with open(html_path, 'w', encoding='utf-8') as f:
+                        f.write(page.content())
+                    print(f"[DEBUG NIO NEGOCIA] 📄 HTML salvo: {html_path}")
+                    logger.info(f"[NIO NEGOCIA] HTML salvo: {html_path}")
+                except:
+                    pass
                 browser.close()
                 return None
             
