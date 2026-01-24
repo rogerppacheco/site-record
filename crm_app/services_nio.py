@@ -350,20 +350,116 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                 if count > 0:
                     logger.info(f"[PDF HUMANO] Encontrado 'Ver detalhes', clicando...")
                     ver_detalhes.click()
-                    page.wait_for_timeout(3000)  # Aumentado de 2000 para 3000
-                    page.wait_for_load_state("networkidle", timeout=15000)  # Aumentado de 10000 para 15000
+                    page.wait_for_timeout(5000)  # Aumentado para 5 segundos
+                    page.wait_for_load_state("networkidle", timeout=20000)  # Aumentado para 20 segundos
                     logger.info(f"[PDF HUMANO] ✅ Detalhes expandidos")
+                    
+                    # DIAGNÓSTICO: Capturar screenshot e HTML após expandir detalhes
+                    try:
+                        screenshot_path = os.path.join(downloads_dir, f"debug_{cpf}_apos_ver_detalhes.png")
+                        page.screenshot(path=screenshot_path, full_page=True)
+                        print(f"[DEBUG PDF DOWNLOAD] 📸 Screenshot após 'Ver detalhes': {screenshot_path}")
+                        logger.info(f"[PDF HUMANO] Screenshot após 'Ver detalhes': {screenshot_path}")
+                        
+                        html_path = os.path.join(downloads_dir, f"debug_{cpf}_apos_ver_detalhes.html")
+                        with open(html_path, 'w', encoding='utf-8') as f:
+                            f.write(page.content())
+                        print(f"[DEBUG PDF DOWNLOAD] 📄 HTML após 'Ver detalhes': {html_path}")
+                        logger.info(f"[PDF HUMANO] HTML após 'Ver detalhes': {html_path}")
+                    except Exception as e_debug:
+                        logger.warning(f"[PDF HUMANO] Erro ao salvar debug após 'Ver detalhes': {e_debug}")
                 else:
                     logger.debug(f"[PDF HUMANO] Não foi necessário expandir detalhes (não encontrado)")
             except Exception as e:
                 logger.debug(f"[PDF HUMANO] Não foi necessário expandir detalhes ou erro: {e}")
+            
+            # DIAGNÓSTICO: Verificar estado do modal via JavaScript
+            print(f"[DEBUG PDF DOWNLOAD] 🔍 Investigando estado do modal via JavaScript...")
+            logger.info(f"[PDF HUMANO] Investigando estado do modal via JavaScript...")
+            try:
+                modal_info = page.evaluate("""
+                    () => {
+                        const info = {
+                            modalExists: false,
+                            modalVisible: false,
+                            boletoExists: false,
+                            boletoVisible: false,
+                            gerarBoletoExists: false,
+                            gerarBoletoVisible: false,
+                            allElements: []
+                        };
+                        
+                        // Verificar modal
+                        const modal = document.querySelector('div[class*="payment"], div.desktop-payment__item-button-text');
+                        if (modal) {
+                            info.modalExists = true;
+                            const style = window.getComputedStyle(modal);
+                            info.modalVisible = style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+                        }
+                        
+                        // Verificar opção Boleto
+                        const boleto = document.querySelector('div.desktop-payment__item-button-text:has-text("Boleto"), div:has-text("Boleto")');
+                        if (boleto) {
+                            info.boletoExists = true;
+                            const style = window.getComputedStyle(boleto);
+                            info.boletoVisible = style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+                        }
+                        
+                        // Verificar botão Gerar boleto
+                        const gerarBoleto = document.querySelector('a#desktop-generate-boleto, a#generate-boleto');
+                        if (gerarBoleto) {
+                            info.gerarBoletoExists = true;
+                            const style = window.getComputedStyle(gerarBoleto);
+                            info.gerarBoletoVisible = style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+                        }
+                        
+                        // Listar todos os elementos relacionados
+                        const allPayment = document.querySelectorAll('div[class*="payment"], a[id*="boleto"], a[id*="Boleto"]');
+                        allPayment.forEach(el => {
+                            const style = window.getComputedStyle(el);
+                            info.allElements.push({
+                                tag: el.tagName,
+                                id: el.id,
+                                classes: el.className,
+                                text: el.textContent?.substring(0, 50),
+                                visible: style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0',
+                                display: style.display,
+                                visibility: style.visibility,
+                                opacity: style.opacity
+                            });
+                        });
+                        
+                        return info;
+                    }
+                """)
+                print(f"[DEBUG PDF DOWNLOAD] 📊 Estado do modal: {modal_info}")
+                logger.info(f"[PDF HUMANO] Estado do modal: {modal_info}")
+                
+                # Se modal existe mas não está visível, tentar forçar visibilidade
+                if modal_info.get('modalExists') and not modal_info.get('modalVisible'):
+                    print(f"[DEBUG PDF DOWNLOAD] 🔧 Modal existe mas não está visível, tentando forçar visibilidade...")
+                    logger.warning(f"[PDF HUMANO] Modal existe mas não está visível, tentando forçar visibilidade...")
+                    page.evaluate("""
+                        () => {
+                            const modal = document.querySelector('div[class*="payment"], div.desktop-payment__item-button-text');
+                            if (modal) {
+                                modal.style.display = 'block';
+                                modal.style.visibility = 'visible';
+                                modal.style.opacity = '1';
+                            }
+                        }
+                    """)
+                    page.wait_for_timeout(2000)
+            except Exception as e_js:
+                print(f"[DEBUG PDF DOWNLOAD] ⚠️ Erro ao investigar modal via JS: {e_js}")
+                logger.warning(f"[PDF HUMANO] Erro ao investigar modal via JS: {e_js}")
             
             # Aguardar modal "Escolha como pagar" aparecer
             print(f"[DEBUG PDF DOWNLOAD] ⏳ Aguardando modal 'Escolha como pagar' aparecer...")
             logger.info(f"[PDF HUMANO] Aguardando modal 'Escolha como pagar' aparecer...")
             try:
                 # Aguardar até que o modal apareça (verificar por elementos característicos do modal)
-                page.wait_for_selector('div.desktop-payment__item-button-text, a#desktop-generate-boleto, div[class*="payment"]', timeout=15000, state='visible')
+                page.wait_for_selector('div.desktop-payment__item-button-text, a#desktop-generate-boleto, div[class*="payment"]', timeout=10000, state='visible')
                 page.wait_for_timeout(2000)  # Aguardar animação do modal
                 print(f"[DEBUG PDF DOWNLOAD] ✅ Modal apareceu")
                 logger.info(f"[PDF HUMANO] ✅ Modal 'Escolha como pagar' apareceu")
@@ -436,21 +532,59 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                         pass
                     
                     print(f"[DEBUG PDF DOWNLOAD] 🖱️ Clicando na opção 'Boleto'...")
+                    clicked = False
                     try:
                         # Tentar clicar normalmente primeiro
                         boleto_option.click(timeout=10000, force=False)
-                    except:
-                        # Se falhar, tentar com force=True
-                        print(f"[DEBUG PDF DOWNLOAD]     Tentando com force=True...")
-                        boleto_option.click(timeout=10000, force=True)
+                        clicked = True
+                    except Exception as e1:
+                        print(f"[DEBUG PDF DOWNLOAD]     Clique normal falhou: {e1}")
+                        try:
+                            # Se falhar, tentar com force=True
+                            print(f"[DEBUG PDF DOWNLOAD]     Tentando com force=True...")
+                            boleto_option.click(timeout=10000, force=True)
+                            clicked = True
+                        except Exception as e2:
+                            print(f"[DEBUG PDF DOWNLOAD]     Clique com force=True também falhou: {e2}")
+                            # Último recurso: clicar via JavaScript
+                            try:
+                                print(f"[DEBUG PDF DOWNLOAD]     Tentando clicar via JavaScript...")
+                                page.evaluate("""
+                                    () => {
+                                        const boleto = document.querySelector('div.desktop-payment__item-button-text:has-text("Boleto"), div:has-text("Boleto")');
+                                        if (boleto) {
+                                            boleto.click();
+                                            return true;
+                                        }
+                                        return false;
+                                    }
+                                """)
+                                clicked = True
+                                print(f"[DEBUG PDF DOWNLOAD]     ✅ Clicado via JavaScript")
+                            except Exception as e3:
+                                print(f"[DEBUG PDF DOWNLOAD]     ❌ Clique via JavaScript também falhou: {e3}")
+                                logger.error(f"[PDF HUMANO] Todos os métodos de clique falharam: {e1}, {e2}, {e3}")
                     
-                    page.wait_for_timeout(2000)
-                    page.wait_for_load_state("networkidle", timeout=10000)
-                    print(f"[DEBUG PDF DOWNLOAD] ✅ PASSO 1: Clicou em 'Boleto'")
-                    logger.info(f"[PDF HUMANO] ✅ Clicou em 'Boleto'")
+                    if clicked:
+                        page.wait_for_timeout(2000)
+                        page.wait_for_load_state("networkidle", timeout=10000)
+                        print(f"[DEBUG PDF DOWNLOAD] ✅ PASSO 1: Clicou em 'Boleto'")
+                        logger.info(f"[PDF HUMANO] ✅ Clicou em 'Boleto'")
+                    else:
+                        print(f"[DEBUG PDF DOWNLOAD] ⚠️ PASSO 1: Não conseguiu clicar em 'Boleto'")
+                        logger.warning(f"[PDF HUMANO] ⚠️ Não conseguiu clicar em 'Boleto'")
                 else:
-                    print(f"[DEBUG PDF DOWNLOAD] ⚠️ PASSO 1: Opção 'Boleto' não encontrada, continuando mesmo assim...")
-                    logger.warning(f"[PDF HUMANO] ⚠️ Opção 'Boleto' não encontrada, continuando mesmo assim...")
+                    print(f"[DEBUG PDF DOWNLOAD] ⚠️ PASSO 1: Opção 'Boleto' não encontrada")
+                    logger.warning(f"[PDF HUMANO] ⚠️ Opção 'Boleto' não encontrada")
+                    
+                    # DIAGNÓSTICO: Capturar screenshot e HTML quando não encontra
+                    try:
+                        screenshot_path = os.path.join(downloads_dir, f"debug_{cpf}_boleto_nao_encontrado.png")
+                        page.screenshot(path=screenshot_path, full_page=True)
+                        print(f"[DEBUG PDF DOWNLOAD] 📸 Screenshot (Boleto não encontrado): {screenshot_path}")
+                        logger.info(f"[PDF HUMANO] Screenshot (Boleto não encontrado): {screenshot_path}")
+                    except Exception as e_debug:
+                        logger.warning(f"[PDF HUMANO] Erro ao salvar screenshot: {e_debug}")
             except Exception as e:
                 print(f"[DEBUG PDF DOWNLOAD] ⚠️ PASSO 1: Erro ao clicar em 'Boleto': {e}, continuando mesmo assim...")
                 logger.warning(f"[PDF HUMANO] ⚠️ Erro ao clicar em 'Boleto': {e}, continuando mesmo assim...")
@@ -572,19 +706,48 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                     pass
                 
                 print(f"[DEBUG PDF DOWNLOAD] 🖱️ Clicando no botão 'Gerar boleto'...")
+                clicked = False
                 try:
                     # Tentar clicar normalmente primeiro
                     gerar_boleto.click(timeout=10000, force=False)
+                    clicked = True
                 except Exception as e_click:
-                    # Se falhar porque não está visível, tentar com force=True
-                    print(f"[DEBUG PDF DOWNLOAD]     Clique normal falhou ({e_click}), tentando com force=True...")
-                    logger.warning(f"[PDF HUMANO] Clique normal falhou, tentando com force=True: {e_click}")
-                    gerar_boleto.click(timeout=10000, force=True)
+                    print(f"[DEBUG PDF DOWNLOAD]     Clique normal falhou: {e_click}")
+                    try:
+                        # Se falhar porque não está visível, tentar com force=True
+                        print(f"[DEBUG PDF DOWNLOAD]     Tentando com force=True...")
+                        logger.warning(f"[PDF HUMANO] Clique normal falhou, tentando com force=True: {e_click}")
+                        gerar_boleto.click(timeout=10000, force=True)
+                        clicked = True
+                    except Exception as e2:
+                        print(f"[DEBUG PDF DOWNLOAD]     Clique com force=True também falhou: {e2}")
+                        # Último recurso: clicar via JavaScript
+                        try:
+                            print(f"[DEBUG PDF DOWNLOAD]     Tentando clicar via JavaScript...")
+                            page.evaluate("""
+                                () => {
+                                    const btn = document.querySelector('a#desktop-generate-boleto, a#generate-boleto');
+                                    if (btn) {
+                                        btn.click();
+                                        return true;
+                                    }
+                                    return false;
+                                }
+                            """)
+                            clicked = True
+                            print(f"[DEBUG PDF DOWNLOAD]     ✅ Clicado via JavaScript")
+                        except Exception as e3:
+                            print(f"[DEBUG PDF DOWNLOAD]     ❌ Clique via JavaScript também falhou: {e3}")
+                            logger.error(f"[PDF HUMANO] Todos os métodos de clique falharam: {e_click}, {e2}, {e3}")
                 
-                page.wait_for_timeout(3000)  # Aumentado de 2000 para 3000
-                page.wait_for_load_state("networkidle", timeout=15000)  # Aumentado de 10000 para 15000
-                print(f"[DEBUG PDF DOWNLOAD] ✅ PASSO 2: Clicou em 'Gerar boleto'")
-                logger.info(f"[PDF HUMANO] ✅ Clicou em 'Gerar boleto'")
+                if clicked:
+                    page.wait_for_timeout(3000)  # Aumentado de 2000 para 3000
+                    page.wait_for_load_state("networkidle", timeout=15000)  # Aumentado de 10000 para 15000
+                    print(f"[DEBUG PDF DOWNLOAD] ✅ PASSO 2: Clicou em 'Gerar boleto'")
+                    logger.info(f"[PDF HUMANO] ✅ Clicou em 'Gerar boleto'")
+                else:
+                    print(f"[DEBUG PDF DOWNLOAD] ⚠️ PASSO 2: Não conseguiu clicar em 'Gerar boleto'")
+                    logger.error(f"[PDF HUMANO] ⚠️ Não conseguiu clicar em 'Gerar boleto'")
             except Exception as e:
                 print(f"[DEBUG PDF DOWNLOAD] ❌ PASSO 2: Erro ao clicar em 'Gerar boleto': {e}")
                 logger.error(f"[PDF HUMANO] ❌ Erro ao clicar em 'Gerar boleto': {e}")
@@ -676,15 +839,45 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                     # Vamos usar a API de impressão do Playwright para salvar como PDF
                     print(f"[DEBUG PDF DOWNLOAD] 🖱️ Clicando no botão Download...")
                     logger.info(f"[PDF HUMANO] Clicando no botão Download (abrirá modal de impressão)...")
+                    clicked = False
                     try:
                         # Tentar clicar normalmente primeiro
                         download_btn.click(timeout=10000, force=False)
+                        clicked = True
                     except Exception as e_click:
-                        # Se falhar porque não está visível, tentar com force=True
-                        print(f"[DEBUG PDF DOWNLOAD]     Clique normal falhou ({e_click}), tentando com force=True...")
-                        logger.warning(f"[PDF HUMANO] Clique normal falhou, tentando com force=True: {e_click}")
-                        download_btn.click(timeout=10000, force=True)
-                    page.wait_for_timeout(3000)  # Aguardar modal abrir (aumentado de 2000)
+                        print(f"[DEBUG PDF DOWNLOAD]     Clique normal falhou: {e_click}")
+                        try:
+                            # Se falhar porque não está visível, tentar com force=True
+                            print(f"[DEBUG PDF DOWNLOAD]     Tentando com force=True...")
+                            logger.warning(f"[PDF HUMANO] Clique normal falhou, tentando com force=True: {e_click}")
+                            download_btn.click(timeout=10000, force=True)
+                            clicked = True
+                        except Exception as e2:
+                            print(f"[DEBUG PDF DOWNLOAD]     Clique com force=True também falhou: {e2}")
+                            # Último recurso: clicar via JavaScript
+                            try:
+                                print(f"[DEBUG PDF DOWNLOAD]     Tentando clicar via JavaScript...")
+                                page.evaluate("""
+                                    () => {
+                                        const btn = document.querySelector('a#downloadInvoice, a[id="downloadInvoice"]');
+                                        if (btn) {
+                                            btn.click();
+                                            return true;
+                                        }
+                                        return false;
+                                    }
+                                """)
+                                clicked = True
+                                print(f"[DEBUG PDF DOWNLOAD]     ✅ Clicado via JavaScript")
+                            except Exception as e3:
+                                print(f"[DEBUG PDF DOWNLOAD]     ❌ Clique via JavaScript também falhou: {e3}")
+                                logger.error(f"[PDF HUMANO] Todos os métodos de clique falharam: {e_click}, {e2}, {e3}")
+                    
+                    if clicked:
+                        page.wait_for_timeout(3000)  # Aguardar modal abrir (aumentado de 2000)
+                    else:
+                        print(f"[DEBUG PDF DOWNLOAD] ⚠️ Não conseguiu clicar em Download, tentando gerar PDF diretamente...")
+                        logger.warning(f"[PDF HUMANO] ⚠️ Não conseguiu clicar em Download, tentando gerar PDF diretamente...")
                 else:
                     print(f"[DEBUG PDF DOWNLOAD] ⚠️ Botão Download não encontrado, tentando gerar PDF diretamente da página...")
                     logger.warning(f"[PDF HUMANO] ⚠️ Botão 'Download' não encontrado, tentando gerar PDF diretamente da página atual...")
