@@ -527,18 +527,14 @@ def processar_webhook_whatsapp(data):
         elif etapa_atual == 'fatura_cpf':
             cpf_limpo = limpar_texto_cep_cpf(mensagem_texto)
             
-            # Validar CPF com algoritmo de dígito verificador
-            cpf_valido = False
-            if cpf_limpo and len(cpf_limpo) == 11 and cpf_limpo.isdigit():
-                try:
-                    from core.validators import validar_cpf
-                    validar_cpf(cpf_limpo)  # Lança ValidationError se inválido
-                    cpf_valido = True
-                except Exception:
-                    cpf_valido = False
+            # Validar apenas formato básico (11 dígitos)
+            # A API da Nio é quem valida se o CPF existe na base deles
+            # Não validamos dígito verificador aqui porque o site da Nio aceita CPFs
+            # que podem não passar na validação rigorosa mas existem na base deles
+            cpf_valido = cpf_limpo and len(cpf_limpo) == 11 and cpf_limpo.isdigit()
             
             if not cpf_valido:
-                resposta = "❌ CPF inválido. Por favor, digite um CPF válido (apenas números):"
+                resposta = "❌ CPF inválido. Por favor, digite o CPF completo (11 dígitos, apenas números):"
             else:
                 logger.info(f"[Webhook] Buscando TODAS as faturas para CPF: {cpf_limpo}")
                 try:
@@ -724,34 +720,28 @@ def processar_webhook_whatsapp(data):
                     # Tratamento de erros mais específico
                     erro_msg = str(e)
                     
-                    # Verificar se o CPF é válido usando algoritmo de dígito verificador
-                    cpf_valido_algoritmo = False
-                    if cpf_limpo and len(cpf_limpo) == 11 and cpf_limpo.isdigit():
-                        try:
-                            from core.validators import validar_cpf
-                            validar_cpf(cpf_limpo)  # Lança ValidationError se inválido
-                            cpf_valido_algoritmo = True
-                        except Exception:
-                            cpf_valido_algoritmo = False
+                    # Verificar apenas formato básico (11 dígitos)
+                    # A API da Nio é quem valida se o CPF existe na base deles
+                    cpf_formato_valido = cpf_limpo and len(cpf_limpo) == 11 and cpf_limpo.isdigit()
                     
                     # Formatar CPF para exibição (XXX.XXX.XXX-XX)
-                    cpf_formatado = f"{cpf_limpo[:3]}.XXX.XXX-{cpf_limpo[-2:]}" if cpf_limpo and len(cpf_limpo) >= 11 else cpf_limpo
+                    cpf_formatado = f"{cpf_limpo[:3]}.XXX.XXX-{cpf_limpo[-2:]}" if cpf_formato_valido else cpf_limpo
                     
                     if "400" in erro_msg or "Bad Request" in erro_msg:
-                        # Erro 400: Pode ser CPF inválido OU CPF válido mas não encontrado na base
-                        # Se o CPF passou na validação do algoritmo, provavelmente existe mas não tem faturas
-                        if cpf_valido_algoritmo:
-                            # CPF válido mas API retornou 400 - provavelmente não tem faturas ou não está na base
+                        # Erro 400: Pode ser CPF não encontrado na base OU formato inválido
+                        # Se o formato está correto, provavelmente existe mas não tem faturas
+                        if cpf_formato_valido:
+                            # CPF com formato válido mas API retornou 400 - provavelmente não tem faturas
                             resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n✅ *CPF: {cpf_formatado}*\n\nOlá Cliente, você tem *0 contas* pra pagar.\n\nEste CPF não possui faturas em aberto no momento."
                         else:
-                            # CPF inválido ou não encontrado
+                            # Formato inválido
                             resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n❌ *ERRO*\n\nCPF não encontrado na base da Nio ou dados inválidos.\n\nVerifique se o CPF está correto e tente novamente."
                     elif "401" in erro_msg or "Unauthorized" in erro_msg:
                         resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n❌ *ERRO*\n\nErro de autenticação com a API da Nio.\n\nTente novamente em alguns instantes."
                     elif "404" in erro_msg or "Not Found" in erro_msg:
                         # Erro 404: Recurso não encontrado
-                        # Se o CPF é válido, pode ser que não tenha faturas
-                        if cpf_valido_algoritmo:
+                        # Se o formato está correto, pode ser que não tenha faturas
+                        if cpf_formato_valido:
                             resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n✅ *CPF: {cpf_formatado}*\n\nOlá Cliente, você tem *0 contas* pra pagar.\n\nEste CPF não possui faturas em aberto no momento."
                         else:
                             resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n❌ *FATURAS NÃO ENCONTRADAS*\n\nNão encontrei nenhuma fatura para este CPF."
