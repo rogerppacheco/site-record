@@ -404,21 +404,23 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                             except:
                                 pass
                             
-                            # Tentar aguardar elemento ficar visível
+                            # Verificar se está visível, se não, usar force=True
                             try:
-                                btn.wait_for(state='visible', timeout=5000)
-                                boleto_option = btn
-                                print(f"[DEBUG PDF DOWNLOAD] ✅ Opção 'Boleto' encontrada e visível com seletor: {seletor}")
-                                logger.info(f"[PDF HUMANO] Opção 'Boleto' encontrada e visível com seletor: {seletor}")
-                                break
-                            except:
-                                # Se não ficou visível, tentar usar force=True como último recurso
-                                if idx == len(seletores_boleto):  # Último seletor
-                                    print(f"[DEBUG PDF DOWNLOAD]     Elemento encontrado mas não visível, tentando force=True...")
+                                if btn.is_visible(timeout=2000):
                                     boleto_option = btn
+                                    print(f"[DEBUG PDF DOWNLOAD] ✅ Opção 'Boleto' encontrada e visível com seletor: {seletor}")
+                                    logger.info(f"[PDF HUMANO] Opção 'Boleto' encontrada e visível com seletor: {seletor}")
                                     break
                                 else:
-                                    print(f"[DEBUG PDF DOWNLOAD]     Elemento encontrado mas não está visível")
+                                    # Elemento existe mas não está visível, vamos usar force=True
+                                    boleto_option = btn
+                                    print(f"[DEBUG PDF DOWNLOAD]     Elemento encontrado mas não visível, será usado com force=True")
+                                    break
+                            except:
+                                # Se verificação falhar, usar mesmo assim com force=True
+                                boleto_option = btn
+                                print(f"[DEBUG PDF DOWNLOAD]     Elemento encontrado, será usado com force=True")
+                                break
                         else:
                             print(f"[DEBUG PDF DOWNLOAD]     Nenhum elemento encontrado")
                     except Exception as e_sel:
@@ -496,21 +498,23 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                             except:
                                 pass
                             
-                            # Tentar aguardar elemento ficar visível
+                            # Verificar se está visível, se não, usar force=True
                             try:
-                                btn.wait_for(state='visible', timeout=5000)
-                                gerar_boleto = btn
-                                print(f"[DEBUG PDF DOWNLOAD] ✅ Botão encontrado e visível com seletor: {seletor}")
-                                logger.info(f"[PDF HUMANO] Botão 'Gerar boleto' encontrado e visível com seletor: {seletor}")
-                                break
-                            except:
-                                # Se não ficou visível, usar o elemento mesmo assim (vamos tentar force=True depois)
-                                if idx == len(seletores_gerar):  # Último seletor
-                                    print(f"[DEBUG PDF DOWNLOAD]     Elemento encontrado mas não visível, será usado com force=True")
+                                if btn.is_visible(timeout=2000):
                                     gerar_boleto = btn
+                                    print(f"[DEBUG PDF DOWNLOAD] ✅ Botão encontrado e visível com seletor: {seletor}")
+                                    logger.info(f"[PDF HUMANO] Botão 'Gerar boleto' encontrado e visível com seletor: {seletor}")
                                     break
                                 else:
-                                    print(f"[DEBUG PDF DOWNLOAD]     Elemento encontrado mas não está visível")
+                                    # Elemento existe mas não está visível, vamos usar force=True
+                                    gerar_boleto = btn
+                                    print(f"[DEBUG PDF DOWNLOAD]     Elemento encontrado mas não visível, será usado com force=True")
+                                    break
+                            except:
+                                # Se verificação falhar, usar mesmo assim com force=True
+                                gerar_boleto = btn
+                                print(f"[DEBUG PDF DOWNLOAD]     Elemento encontrado, será usado com force=True")
+                                break
                         else:
                             print(f"[DEBUG PDF DOWNLOAD]     Nenhum elemento encontrado")
                     except Exception as e_sel:
@@ -633,21 +637,23 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                             except:
                                 pass
                             
-                            # Tentar aguardar elemento ficar visível
+                            # Verificar se está visível, se não, usar force=True
                             try:
-                                btn.wait_for(state='visible', timeout=5000)
-                                download_btn = btn
-                                print(f"[DEBUG PDF DOWNLOAD] ✅ Botão encontrado e visível com seletor: {seletor}")
-                                logger.info(f"[PDF HUMANO] Botão 'Download' encontrado e visível com seletor: {seletor}")
-                                break
-                            except:
-                                # Se não ficou visível, usar o elemento mesmo assim (vamos tentar force=True depois)
-                                if idx == len(seletores_download):  # Último seletor
-                                    print(f"[DEBUG PDF DOWNLOAD]     Elemento encontrado mas não visível, será usado com force=True")
+                                if btn.is_visible(timeout=2000):
                                     download_btn = btn
+                                    print(f"[DEBUG PDF DOWNLOAD] ✅ Botão encontrado e visível com seletor: {seletor}")
+                                    logger.info(f"[PDF HUMANO] Botão 'Download' encontrado e visível com seletor: {seletor}")
                                     break
                                 else:
-                                    print(f"[DEBUG PDF DOWNLOAD]     Elemento encontrado mas não está visível")
+                                    # Elemento existe mas não está visível, vamos usar force=True
+                                    download_btn = btn
+                                    print(f"[DEBUG PDF DOWNLOAD]     Elemento encontrado mas não visível, será usado com force=True")
+                                    break
+                            except:
+                                # Se verificação falhar, usar mesmo assim com force=True
+                                download_btn = btn
+                                print(f"[DEBUG PDF DOWNLOAD]     Elemento encontrado, será usado com force=True")
+                                break
                         else:
                             print(f"[DEBUG PDF DOWNLOAD]     Nenhum elemento encontrado")
                     except Exception as e_sel:
