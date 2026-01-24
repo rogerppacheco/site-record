@@ -801,6 +801,42 @@
                 nome_representante_legal: $('#audit-nome-rep').val()
             };
         }
+
+        async function salvarRascunhoAuditoria(dadosAdicionais = {}) {
+            const d = coletarDadosAuditoria();
+            const rascunho = {
+                cliente_email: d.cliente_email || null,
+                cliente_nome_razao_social: d.cliente_nome || null,
+                cliente_cpf_cnpj: d.cliente_cpf || null,
+                observacoes: d.observacoes || null,
+                nome_mae: d.nome_mae || null,
+                data_nascimento: d.data_nascimento || null,
+                telefone1: d.telefone1 || null,
+                telefone2: d.telefone2 || null,
+                cep: d.cep || null,
+                logradouro: d.logradouro || null,
+                numero_residencia: d.numero || null,
+                complemento: d.complemento || null,
+                bairro: d.bairro || null,
+                cidade: d.cidade || null,
+                estado: d.estado || null,
+                ponto_referencia: d.referencia || null,
+                plano: d.plano || null,
+                forma_pagamento: d.forma_pagamento || null,
+                data_agendamento: d.data_agendamento || null,
+                periodo_agendamento: d.periodo_agendamento || null,
+                cpf_representante_legal: d.cpf_representante_legal || null,
+                nome_representante_legal: d.nome_representante_legal || null,
+                ...dadosAdicionais
+            };
+            Object.keys(rascunho).forEach(key => { if (rascunho[key] === "") rascunho[key] = null; });
+            
+            try {
+                await apiFetch(`${API_BASE}/${vendaEmAuditoria.id}/`, { method: 'PATCH', body: JSON.stringify(rascunho) });
+            } catch (e) {
+                console.error("Erro ao salvar rascunho:", e);
+            }
+        }
         
         function validarAuditoriaCompleta() {
             const cep = $('#audit-cep').val();
@@ -825,10 +861,12 @@
             return true;
         }
 
-        function finalizarComoAuditada() { 
+        async function finalizarComoAuditada() { 
             if(!validarAuditoriaCompleta()) return;
             if(!validarChecklist()) return;
             if(!confirm("Aprovar venda como AUDITADA?")) return; 
+            $('#loadingOverlay').show();
+            await salvarRascunhoAuditoria();
             enviarFinalizacao('AUDITADA', $('#script-obs-venda').val(), coletarDadosAuditoria()); 
         }
 
@@ -855,35 +893,45 @@
             modalReprovacao.show();
         }
 
-        function confirmarReprovacao() {
+        async function confirmarReprovacao() {
             const stId = $('#repro-status').val(); const obs = $('#repro-obs').val(); const stText = $('#repro-status option:selected').text().toUpperCase();
             if(!stId || !obs) { alert('Selecione status e motivo.'); return; }
+            $('#loadingOverlay').show();
             if (stText.includes('AGUARDANDO PAGAMENTO')) {
                 const os = $('#repro-os').val(), dt = $('#repro-data').val(), tr = $('#repro-turno').val();
-                if (!os || !dt || !tr) { alert('O.S, Data e Turno obrigatórios.'); return; }
-                $('#loadingOverlay').show();
-                apiFetch(`${API_BASE}/${vendaEmAuditoria.id}/`, { method: 'PATCH', body: JSON.stringify({ ordem_servico: os, data_agendamento: dt, periodo_agendamento: tr }) })
-                .then(() => { const d = coletarDadosAuditoria(); d.data_agendamento = dt; d.periodo_agendamento = tr; return enviarFinalizacao(stId, obs, d, true); })
-                .catch(e => { alert('Erro: ' + e.message); $('#loadingOverlay').hide(); });
-            } else { $('#loadingOverlay').show(); enviarFinalizacao(stId, obs, coletarDadosAuditoria(), true); }
+                if (!os || !dt || !tr) { alert('O.S, Data e Turno obrigatórios.'); $('#loadingOverlay').hide(); return; }
+                await salvarRascunhoAuditoria({ ordem_servico: os, data_agendamento: dt, periodo_agendamento: tr });
+                const d = coletarDadosAuditoria(); d.data_agendamento = dt; d.periodo_agendamento = tr;
+                enviarFinalizacao(stId, obs, d, true);
+            } else {
+                await salvarRascunhoAuditoria();
+                enviarFinalizacao(stId, obs, coletarDadosAuditoria(), true);
+            }
         }
 
-        function salvarAgendamentoFinal() {
+        async function salvarAgendamentoFinal() {
             const os = $('#agenda-os').val(), dt = $('#agenda-data-final').val(), tr = $('#agenda-turno-final').val();
             const obs = $('#agenda-obs').val();
             if(!os || !dt || !tr) { alert('Preencha tudo.'); return; }
             $('#loadingOverlay').show();
-            apiFetch(`${API_AUX}/status/?tipo=Esteira`).then(res => {
+            try {
+                const res = await apiFetch(`${API_AUX}/status/?tipo=Esteira`);
                 const lista = Array.isArray(res) ? res : (res.results || []);
-                const st = lista.find(s => s.nome.toUpperCase() === 'AGENDADO'); if(!st) throw new Error("Status AGENDADO sumiu.");
-                return apiFetch(`${API_BASE}/${vendaEmAuditoria.id}/`, { method: 'PATCH', body: JSON.stringify({ ordem_servico: os, data_agendamento: dt, periodo_agendamento: tr, status_esteira: st.id }) });
-            }).then(() => {
+                const st = lista.find(s => s.nome.toUpperCase() === 'AGENDADO'); 
+                if(!st) throw new Error("Status AGENDADO sumiu.");
+                
+                // Salva rascunho com todos os dados antes de finalizar
+                await salvarRascunhoAuditoria({ ordem_servico: os, data_agendamento: dt, periodo_agendamento: tr, status_esteira: st.id });
+                
                 const d = coletarDadosAuditoria(); 
                 d.data_agendamento = dt; 
                 d.periodo_agendamento = tr;
                 d.observacoes = obs;
-                return enviarFinalizacao('CADASTRADA', obs, d, false, true);
-            }).catch(e => { alert('Erro: ' + e.message); $('#loadingOverlay').hide(); });
+                enviarFinalizacao('CADASTRADA', obs, d, false, true);
+            } catch(e) { 
+                alert('Erro: ' + e.message); 
+                $('#loadingOverlay').hide(); 
+            }
         }
 
         function enviarFinalizacao(st, obs, dados, fechaRep=false, abreZap=false) {
