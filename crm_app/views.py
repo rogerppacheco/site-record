@@ -9311,3 +9311,112 @@ class NioDividasView(APIView):
                 "count": len(result.get("invoices", [])),
             },
         })
+
+
+# ============================================================================
+# ENDPOINTS DE DEBUG - SCREENSHOTS
+# ============================================================================
+
+from django.http import FileResponse, JsonResponse, Http404
+from pathlib import Path
+import os
+from datetime import datetime
+from rest_framework.permissions import AllowAny
+
+@api_view(['GET'])
+@permission_classes([AllowAny])  # Temporariamente AllowAny para debug - depois mudar para IsAuthenticated
+def listar_screenshots_debug(request):
+    """
+    Lista todos os screenshots de debug do Plano B (Nio Negocia)
+    GET /api/crm/debug/screenshots/
+    """
+    try:
+        # Caminho para a pasta downloads (raiz do projeto)
+        base_dir = Path(__file__).parent.parent.parent
+        downloads_dir = base_dir / 'downloads'
+        
+        screenshots = []
+        
+        if downloads_dir.exists():
+            # Buscar screenshots do Nio Negocia
+            for file in downloads_dir.glob('debug_nio_negocia_*.png'):
+                screenshots.append({
+                    'nome': file.name,
+                    'tamanho': file.stat().st_size,
+                    'data_modificacao': datetime.fromtimestamp(file.stat().st_mtime).isoformat(),
+                    'url': f"/api/crm/debug/screenshots/{file.name}/"
+                })
+            
+            # Buscar HTMLs de debug também
+            for file in downloads_dir.glob('debug_nio_negocia_*.html'):
+                screenshots.append({
+                    'nome': file.name,
+                    'tamanho': file.stat().st_size,
+                    'data_modificacao': datetime.fromtimestamp(file.stat().st_mtime).isoformat(),
+                    'url': f"/api/crm/debug/screenshots/{file.name}/"
+                })
+        
+        # Ordenar por data de modificação (mais recentes primeiro)
+        screenshots.sort(key=lambda x: x['data_modificacao'], reverse=True)
+        
+        return JsonResponse({
+            'total': len(screenshots),
+            'screenshots': screenshots
+        })
+    
+    except Exception as e:
+        return JsonResponse({
+            'erro': str(e),
+            'total': 0,
+            'screenshots': []
+        }, status=500)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])  # Temporariamente AllowAny para debug - depois mudar para IsAuthenticated
+def baixar_screenshot_debug(request, nome_arquivo):
+    """
+    Baixa um screenshot específico de debug
+    GET /api/crm/debug/screenshots/<nome_arquivo>/
+    """
+    try:
+        # Validar nome do arquivo (segurança)
+        if not nome_arquivo.startswith('debug_nio_negocia_'):
+            return JsonResponse({
+                'erro': 'Nome de arquivo inválido. Apenas screenshots de debug do Nio Negocia são permitidos.'
+            }, status=400)
+        
+        # Caminho para a pasta downloads
+        base_dir = Path(__file__).parent.parent.parent
+        downloads_dir = base_dir / 'downloads'
+        arquivo = downloads_dir / nome_arquivo
+        
+        if not arquivo.exists():
+            return JsonResponse({
+                'erro': 'Arquivo não encontrado'
+            }, status=404)
+        
+        # Determinar content-type baseado na extensão
+        if nome_arquivo.endswith('.png'):
+            content_type = 'image/png'
+        elif nome_arquivo.endswith('.html'):
+            content_type = 'text/html'
+        else:
+            content_type = 'application/octet-stream'
+        
+        # Retornar arquivo
+        return FileResponse(
+            open(arquivo, 'rb'),
+            content_type=content_type,
+            as_attachment=True,
+            filename=nome_arquivo
+        )
+    
+    except FileNotFoundError:
+        return JsonResponse({
+            'erro': 'Arquivo não encontrado'
+        }, status=404)
+    except Exception as e:
+        return JsonResponse({
+            'erro': str(e)
+        }, status=500)
