@@ -186,7 +186,7 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
             print(f"[DEBUG PDF DOWNLOAD] 📍 PASSO 1: Navegando para {NIO_BASE_URL}")
             logger.info(f"[PDF HUMANO] Passo 1: Navegando para {NIO_BASE_URL}")
             try:
-                page.goto(NIO_BASE_URL, wait_until="networkidle", timeout=30000)
+                page.goto(NIO_BASE_URL, wait_until="load", timeout=60000)
                 page.wait_for_timeout(2000)
                 print(f"[DEBUG PDF DOWNLOAD] ✅ PASSO 1: Página carregada com sucesso")
                 logger.info(f"[PDF HUMANO] Página carregada com sucesso")
@@ -1348,7 +1348,7 @@ def _buscar_todas_faturas_negocia_playwright(cpf: str):
             
             # Aguardar página carregar com as faturas
             page.wait_for_timeout(3000)
-            page.wait_for_load_state("networkidle", timeout=30000)
+            page.wait_for_load_state("load", timeout=30000)
             
             # Capturar HTML completo
             html_resultado = page.content()
@@ -1406,7 +1406,7 @@ def _buscar_todas_faturas_playwright(cpf: str):
             )
             
             page = context.new_page()
-            page.goto(NIO_BASE_URL, wait_until="networkidle", timeout=30000)
+            page.goto(NIO_BASE_URL, wait_until="load", timeout=60000)
             page.wait_for_timeout(2000)
             
             # Preenche CPF
@@ -1437,7 +1437,7 @@ def _buscar_todas_faturas_playwright(cpf: str):
                     raise
             
             page.wait_for_timeout(3000)
-            page.wait_for_load_state("networkidle", timeout=30000)
+            page.wait_for_load_state("load", timeout=30000)
             
             # Verificar se chegou na página de resultados (tem "você tem X contas" ou tabela de faturas)
             try:
@@ -1858,7 +1858,7 @@ def buscar_pdf_url_nio(cpf, debt_id, invoice_id, api_base, token, session_id):
             
             # Vai para a página inicial
             print(f"🔍 [PDF] Navegando para página inicial...")
-            page.goto(f"{NIO_BASE_URL}/negociar", wait_until="networkidle", timeout=15000)
+            page.goto(f"{NIO_BASE_URL}/negociar", wait_until="load", timeout=45000)
             page.wait_for_timeout(1000)
             
             # Injeta os tokens da API no localStorage
@@ -1870,7 +1870,7 @@ def buscar_pdf_url_nio(cpf, debt_id, invoice_id, api_base, token, session_id):
             """)
             
             # Recarrega para aplicar os tokens
-            page.reload(wait_until="networkidle", timeout=10000)
+            page.reload(wait_until="load", timeout=15000)
             page.wait_for_timeout(1500)
             
             # Preenche o CPF e consulta
@@ -1881,7 +1881,7 @@ def buscar_pdf_url_nio(cpf, debt_id, invoice_id, api_base, token, session_id):
             # O botão pode estar habilitado agora por causa dos tokens
             page.locator('button:has-text("Consultar")').first.click(timeout=10000)
             page.wait_for_timeout(2000)
-            page.wait_for_load_state("networkidle", timeout=15000)
+            page.wait_for_load_state("load", timeout=20000)
             
             # Clica em "ver detalhes" se existir
             ver_detalhes = page.locator('text=/ver detalhes/i').first
@@ -1937,7 +1937,9 @@ def _buscar_fatura_playwright(cpf: str):
 
         page = context.new_page()
         logger.info(f'[PLANO A] Navegando para {NIO_BASE_URL}')
-        page.goto(NIO_BASE_URL, wait_until="networkidle", timeout=30000)
+        # Usar "load" em vez de "networkidle": o site da Nio tem recursos contínuos (analytics, etc.)
+        # que impedem networkidle, causando timeout. "load" espera o DOM + recursos principais.
+        page.goto(NIO_BASE_URL, wait_until="load", timeout=60000)
         page.wait_for_timeout(1500)
 
         # Preencher CPF
@@ -2006,7 +2008,7 @@ def _buscar_fatura_playwright(cpf: str):
         
         page.wait_for_timeout(1500)
         logger.info('[PLANO A] Aguardando carregamento da página após consulta...')
-        page.wait_for_load_state("networkidle", timeout=20000)
+        page.wait_for_load_state("load", timeout=25000)
         logger.info('[PLANO A] Página carregada após consulta')
 
         # Verificar se há resultados ou erro na página
