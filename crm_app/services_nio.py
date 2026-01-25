@@ -2237,27 +2237,56 @@ def _buscar_fatura_nio_negocia(
                     logger.warning(f"[NIO NEGOCIA] Tentando clicar com force=True")
                     btn_consultar.click(force=True)
                 
-                # Aguardar navegação ou mudança na página
-                try:
-                    # Verificar se a URL mudou (pode navegar para /debtslist)
-                    page.wait_for_url("**/debtslist**", timeout=10000)
-                    print(f"[DEBUG NIO NEGOCIA] ✅ Navegação detectada para: {page.url}")
-                    logger.info(f"[NIO NEGOCIA] Navegação detectada para: {page.url}")
-                except:
-                    # Se não navegou, aguardar mudança no conteúdo
-                    print(f"[DEBUG NIO NEGOCIA] Aguardando mudança no conteúdo da página...")
-                    try:
-                        # Aguardar até que apareça algum elemento indicativo da lista de dívidas
-                        page.wait_for_selector('button[data-context*="pagar"], button:has-text("Pagar"), div:has-text("Valor"), div:has-text("Vencimento")', timeout=15000)
-                        print(f"[DEBUG NIO NEGOCIA] ✅ Elementos da lista de dívidas detectados")
-                        logger.info(f"[NIO NEGOCIA] Elementos da lista de dívidas detectados")
-                    except:
-                        print(f"[DEBUG NIO NEGOCIA] ⚠️ Timeout aguardando elementos da lista")
-                        logger.warning(f"[NIO NEGOCIA] Timeout aguardando elementos da lista")
+                # Aguardar navegação ou mudança na página (SPA pode não mudar URL)
+                print(f"[DEBUG NIO NEGOCIA] Aguardando conteúdo carregar após clique...")
+                logger.info(f"[NIO NEGOCIA] Aguardando conteúdo após clique")
                 
-                page.wait_for_timeout(5000)  # Aguardar mais 5 segundos para garantir renderização
+                # Aguardar mudança no DOM - verificar se novos elementos aparecem
+                try:
+                    # Aguardar até que apareça algum elemento indicativo da lista de dívidas
+                    # Usar wait_for_function para verificar se o conteúdo mudou
+                    page.wait_for_function("""
+                        () => {
+                            // Verificar se há botões com data-context contendo "pagar"
+                            const btnPagar = document.querySelector('button[data-context*="pagar"]');
+                            if (btnPagar) return true;
+                            
+                            // Verificar se há elementos com valores monetários
+                            const elementos = Array.from(document.querySelectorAll('*'));
+                            for (let el of elementos) {
+                                const texto = el.innerText || el.textContent || '';
+                                if (texto.match(/R\\$\\s*\\d+[.,]\\d{2}/i) && texto.length < 200) {
+                                    return true;
+                                }
+                            }
+                            
+                            // Verificar se há datas
+                            for (let el of elementos) {
+                                const texto = el.innerText || el.textContent || '';
+                                if (texto.match(/\\d{2}\\/\\d{2}\\/\\d{4}/) && texto.length < 200) {
+                                    return true;
+                                }
+                            }
+                            
+                            return false;
+                        }
+                    """, timeout=20000)
+                    print(f"[DEBUG NIO NEGOCIA] ✅ Conteúdo da lista detectado via JavaScript")
+                    logger.info(f"[NIO NEGOCIA] Conteúdo da lista detectado")
+                except Exception as e_wait:
+                    print(f"[DEBUG NIO NEGOCIA] ⚠️ Timeout aguardando conteúdo: {e_wait}")
+                    logger.warning(f"[NIO NEGOCIA] Timeout aguardando conteúdo: {e_wait}")
+                
+                # Aguardar mais tempo para garantir renderização completa
+                page.wait_for_timeout(5000)  # Aguardar mais 5 segundos
                 page.wait_for_load_state("networkidle", timeout=20000)
                 page.wait_for_load_state("domcontentloaded", timeout=20000)
+                
+                # Verificar URL novamente
+                url_apos_clique = page.url
+                print(f"[DEBUG NIO NEGOCIA] URL após clique: {url_apos_clique}")
+                logger.info(f"[NIO NEGOCIA] URL após clique: {url_apos_clique}")
+                
                 print(f"[DEBUG NIO NEGOCIA] ✅ Clique realizado e página aguardada")
                 logger.info(f"[NIO NEGOCIA] Clique realizado e página aguardada")
             except Exception as e:
@@ -2396,24 +2425,40 @@ def _buscar_fatura_nio_negocia(
                     }
                 """)
                 
+                # Log detalhado dos elementos encontrados
+                logger.info(f"[NIO NEGOCIA] Debug elementos: {len(elementos_info.get('botoes', []))} botões, {len(elementos_info.get('elementos_com_data_context', []))} com data-context")
+                
+                # Print detalhado (pode não aparecer no log do Railway, mas útil para debug local)
                 print(f"[DEBUG NIO NEGOCIA] ========== DEBUG: ELEMENTOS DA PÁGINA ==========")
                 print(f"[DEBUG NIO NEGOCIA] URL: {elementos_info.get('url')}")
                 print(f"[DEBUG NIO NEGOCIA] Título: {elementos_info.get('titulo')}")
                 print(f"[DEBUG NIO NEGOCIA] Total de botões: {len(elementos_info.get('botoes', []))}")
-                print(f"[DEBUG NIO NEGOCIA] Botões encontrados:")
-                for btn in elementos_info.get('botoes', [])[:10]:  # Mostrar apenas os primeiros 10
-                    print(f"  - [{btn.get('index')}] Texto: '{btn.get('texto')}', data-context: {btn.get('dataContext')}, visível: {btn.get('visivel')}")
+                
+                # Log detalhado de cada botão encontrado
+                for btn in elementos_info.get('botoes', []):
+                    btn_info = f"[{btn.get('index')}] Texto: '{btn.get('texto')}', data-context: {btn.get('dataContext')}, visível: {btn.get('visivel')}, classes: {btn.get('classes')}"
+                    print(f"[DEBUG NIO NEGOCIA] Botão: {btn_info}")
+                    logger.info(f"[NIO NEGOCIA] Botão: {btn_info}")
+                
                 print(f"[DEBUG NIO NEGOCIA] Elementos com data-context: {len(elementos_info.get('elementos_com_data_context', []))}")
-                for el in elementos_info.get('elementos_com_data_context', [])[:5]:
-                    print(f"  - {el.get('tag')}: data-context='{el.get('dataContext')}', texto='{el.get('texto')[:50]}'")
+                for el in elementos_info.get('elementos_com_data_context', []):
+                    el_info = f"{el.get('tag')}: data-context='{el.get('dataContext')}', texto='{el.get('texto')[:50]}'"
+                    print(f"[DEBUG NIO NEGOCIA]   - {el_info}")
+                    logger.info(f"[NIO NEGOCIA] Elemento data-context: {el_info}")
+                
                 print(f"[DEBUG NIO NEGOCIA] Elementos com valores (R$): {len(elementos_info.get('elementos_com_valor', []))}")
                 for el in elementos_info.get('elementos_com_valor', [])[:5]:
-                    print(f"  - {el.get('tag')}: '{el.get('texto')[:80]}'")
+                    el_info = f"{el.get('tag')}: '{el.get('texto')[:80]}'"
+                    print(f"[DEBUG NIO NEGOCIA]   - {el_info}")
+                    logger.info(f"[NIO NEGOCIA] Elemento com valor: {el_info}")
+                
                 print(f"[DEBUG NIO NEGOCIA] Elementos com datas: {len(elementos_info.get('elementos_com_data', []))}")
                 for el in elementos_info.get('elementos_com_data', [])[:5]:
-                    print(f"  - {el.get('tag')}: '{el.get('texto')[:80]}'")
+                    el_info = f"{el.get('tag')}: '{el.get('texto')[:80]}'"
+                    print(f"[DEBUG NIO NEGOCIA]   - {el_info}")
+                    logger.info(f"[NIO NEGOCIA] Elemento com data: {el_info}")
+                
                 print(f"[DEBUG NIO NEGOCIA] =================================================")
-                logger.info(f"[NIO NEGOCIA] Debug elementos: {len(elementos_info.get('botoes', []))} botões, {len(elementos_info.get('elementos_com_data_context', []))} com data-context")
             except Exception as e_debug:
                 print(f"[DEBUG NIO NEGOCIA] Erro ao listar elementos: {e_debug}")
                 logger.warning(f"[NIO NEGOCIA] Erro ao listar elementos: {e_debug}")
