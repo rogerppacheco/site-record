@@ -187,9 +187,14 @@
                                 </div>
                                 <div class="col-lg-3 col-md-6">
                                     <label class="form-label fw-bold">Ações em Lote</label>
-                                    <button class="btn btn-success w-100" onclick="buscarFaturasSafra()">
-                                        <i class="bi bi-cloud-arrow-down"></i> Buscar Faturas da Safra
-                                    </button>
+                                    <div class="d-flex gap-1 flex-wrap">
+                                        <button class="btn btn-success flex-grow-1" onclick="buscarFaturasSafra()" title="Buscar faturas Nio dos contratos da safra">
+                                            <i class="bi bi-cloud-arrow-down"></i> Buscar Faturas
+                                        </button>
+                                        <button class="btn btn-outline-success" onclick="popularSafra()" title="Criar ContratoM10 a partir das vendas INSTALADA com data_instalacao no mês">
+                                            <i class="bi bi-plus-circle"></i> Popular Safra
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -200,6 +205,7 @@
                         <div>
                             <strong>Importações:</strong> Para importar bases FPD ou Churn, acesse a 
                             <a href="/importacoes/" class="alert-link fw-bold">Central de Importações</a>.
+                            <br><strong>Poucos contratos na safra?</strong> Use <strong>Popular Safra</strong> para criar ContratoM10 a partir das vendas INSTALADA com data de instalação no mês.
                         </div>
                     </div>
 
@@ -549,7 +555,8 @@
                 const safras = await res.json();
                 safras.forEach(s => {
                     const label = formatSafraLabel(s.mes_referencia, s.mes_referencia_formatado);
-                    select.insertAdjacentHTML('beforeend', `<option value="${s.id}">${label}</option>`);
+                    const mesRef = (s.mes_referencia || '').slice(0, 7);
+                    select.insertAdjacentHTML('beforeend', `<option value="${s.id}" data-mes="${mesRef}">${label}</option>`);
                 });
                 const defaultValue = current || (safras[0] ? String(safras[0].id) : '');
                 if (defaultValue) {
@@ -939,6 +946,33 @@
             } catch (error) {
                 console.error('Erro ao exportar', error);
                 alert('Erro ao exportar dados.');
+            }
+        }
+
+        async function popularSafra() {
+            const sel = document.getElementById('filtro-safra');
+            const safraId = sel.value;
+            const opt = sel.selectedOptions[0];
+            const mesRef = opt && opt.getAttribute('data-mes');
+            if (!safraId || !mesRef) {
+                alert('Selecione uma safra primeiro.');
+                return;
+            }
+            if (!confirm('Popular safra ' + mesRef + '? Serão criados ContratoM10 para vendas INSTALADA com data_instalacao neste mês. Pode levar alguns segundos.')) return;
+            try {
+                const res = await fetch('/api/bonus-m10/safras/criar/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ mes_referencia: mesRef })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    alert('Safra populada. Criados: ' + (data.contratos_criados || 0) + ' | Já existiam: ' + (data.contratos_duplicados || 0) + ' | Total na safra: ' + (data.total_contratos_safra || 0));
+                    carregarDadosM10();
+                } else alert(data.error || 'Erro ao popular safra.');
+            } catch (e) {
+                console.error(e);
+                alert('Erro ao popular safra.');
             }
         }
 

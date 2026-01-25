@@ -6918,6 +6918,8 @@ class PopularSafraM10View(APIView):
                 }
             )
 
+            safra_str = mes_referencia  # YYYY-MM, usado para contagens e filtros
+
             # Busca Vendas com data_instalacao no mês de referência E status INSTALADA
             vendas = Venda.objects.filter(
                 data_instalacao__gte=data_inicio,
@@ -6931,29 +6933,25 @@ class PopularSafraM10View(APIView):
             contratos_duplicados = 0
 
             for venda in vendas:
-                # Usa ordem_servico como número de contrato único
                 numero_contrato = venda.ordem_servico or f"VENDA_{venda.id}"
-                
-                # Verifica se já existe contrato com este O.S
-                contrato_existe = ContratoM10.objects.filter(
-                    ordem_servico=venda.ordem_servico
-                ).exists() if venda.ordem_servico else False
+                # Evita duplicata: por O.S. ou por numero_contrato (VENDA_X quando sem O.S.)
+                if venda.ordem_servico:
+                    contrato_existe = ContratoM10.objects.filter(ordem_servico=venda.ordem_servico).exists()
+                else:
+                    contrato_existe = ContratoM10.objects.filter(numero_contrato=numero_contrato).exists()
 
                 if contrato_existe:
                     contratos_duplicados += 1
                     continue
 
-                # Calcula safra como string YYYY-MM
-                safra_str = venda.data_instalacao.strftime('%Y-%m')
-
-                # Cria novo ContratoM10
+                # Cria novo ContratoM10 (safra = mês da instalação)
                 contrato = ContratoM10.objects.create(
                     safra=safra_str,
                     venda=venda,
                     numero_contrato=numero_contrato,
                     ordem_servico=venda.ordem_servico,
-                    cliente_nome=venda.cliente.nome_razao_social,
-                    cpf_cliente=venda.cliente.cpf_cnpj,
+                    cliente_nome=venda.cliente.nome_razao_social if venda.cliente else 'N/D',
+                    cpf_cliente=venda.cliente.cpf_cnpj if venda.cliente else '',
                     vendedor=venda.vendedor,
                     data_instalacao=venda.data_instalacao,
                     plano_original=venda.plano.nome if venda.plano else 'N/D',
@@ -6964,12 +6962,19 @@ class PopularSafraM10View(APIView):
                 )
                 contratos_criados += 1
 
-            # Conta total de contratos criados nesta safra (usando CharField safra)
-            total_contratos_safra = ContratoM10.objects.filter(safra=safra_str).count()
-            
-            # Atualiza contagens na Safra M10 (tabela histórica)
+            # Conta por data_instalacao no mês (igual ao dashboard)
+            total_contratos_safra = ContratoM10.objects.filter(
+                data_instalacao__gte=data_inicio,
+                data_instalacao__lt=data_fim,
+            ).count()
+            total_ativos = ContratoM10.objects.filter(
+                data_instalacao__gte=data_inicio,
+                data_instalacao__lt=data_fim,
+                status_contrato='ATIVO',
+            ).count()
+
             safra.total_instalados = total_contratos_safra
-            safra.total_ativos = ContratoM10.objects.filter(safra=safra_str, status_contrato='ATIVO').count()
+            safra.total_ativos = total_ativos
             safra.save()
 
             return Response({

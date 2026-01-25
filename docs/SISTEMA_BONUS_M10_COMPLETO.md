@@ -298,6 +298,26 @@ Valor = Elegíveis × R$ 150,00
 
 ## 🐛 TROUBLESHOOTING
 
+### **Poucos contratos na safra (ex.: 14 em vez de 895)**
+O M-10 considera **data de instalação** no mês e só inclui vendas **INSTALADA** com **ContratoM10** criado.
+
+**1. Analisar em produção:**
+```bash
+python manage.py analise_m10_producao 2025-07
+python manage.py analise_m10_producao 2025-07 --json
+```
+O comando mostra: vendas com `data_instalacao` no mês (qualquer status e por status), INSTALADA com/sem O.S., ContratoM10 no mês, quem falta.
+
+**2. Se houver muitos por `data_criacao` e poucos por `data_instalacao`:**
+- Use `scripts/corrigir_data_venda_legado.py --atualizar-instalacao` (e o CSV com DATA_VENDA + OS) para alinhar `data_instalacao` à data da venda.
+
+**3. Criar ContratoM10 faltantes:**
+- **Na interface:** Bônus M-10 → selecione a safra → **Popular Safra**. Cria ContratoM10 para vendas INSTALADA com `data_instalacao` no mês.
+- **Ou:** `python manage.py reprocessar_vendas_m10` (considera todas as INSTALADA com O.S., não só o mês).
+
+**4. Garantir safra no dropdown:**  
+Se o mês não aparecer em "Safra", popular essa safra via API `POST /api/bonus-m10/safras/criar/` com `{"mes_referencia": "2025-07"}` (ou use Popular Safra após criar a safra no admin).
+
 ### **Erro: "Safra não encontrada"**
 **Solução:** Criar safra no admin Django primeiro
 
