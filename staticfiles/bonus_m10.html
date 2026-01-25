@@ -916,7 +916,7 @@
                 alert('✅ Campos preenchidos com os dados da Nio. Revise e salve.');
             } catch (error) {
                 console.error('Erro ao buscar fatura automaticamente:', error);
-                alert(`❌ ${error.message}\n\nVerifique se:\n- O CPF está correto\n- Cookies da Nio não expiraram (renovar .playwright_state.json)\n- Existe fatura disponível na Nio`);
+                alert(`❌ ${error.message}\n\nVerifique se:\n- O CPF está correto\n- Existe fatura disponível na Nio`);
             } finally {
                 btnBuscar.disabled = false;
                 btnBuscar.innerHTML = '<i class="bi bi-cloud-download"></i> Buscar Automaticamente (Nio)';
