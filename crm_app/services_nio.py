@@ -2328,6 +2328,96 @@ def _buscar_fatura_nio_negocia(
             print(f"[DEBUG NIO NEGOCIA] URL atual: {url_atual}")
             logger.info(f"[NIO NEGOCIA] URL atual: {url_atual}")
             
+            # DEBUG: Listar TODOS os elementos da página para identificar seletores corretos
+            try:
+                elementos_info = page.evaluate("""
+                    () => {
+                        const info = {
+                            url: window.location.href,
+                            titulo: document.title,
+                            botoes: [],
+                            elementos_com_texto: [],
+                            elementos_com_data_context: [],
+                            elementos_com_valor: [],
+                            elementos_com_data: []
+                        };
+                        
+                        // Listar todos os botões
+                        document.querySelectorAll('button').forEach((btn, idx) => {
+                            const rect = btn.getBoundingClientRect();
+                            info.botoes.push({
+                                index: idx,
+                                texto: btn.innerText || btn.textContent || '',
+                                dataContext: btn.getAttribute('data-context'),
+                                classes: btn.className,
+                                id: btn.id,
+                                visivel: btn.offsetParent !== null,
+                                posicao: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+                            });
+                        });
+                        
+                        // Listar elementos com data-context
+                        document.querySelectorAll('[data-context]').forEach((el, idx) => {
+                            info.elementos_com_data_context.push({
+                                tag: el.tagName,
+                                dataContext: el.getAttribute('data-context'),
+                                texto: el.innerText || el.textContent || '',
+                                classes: el.className
+                            });
+                        });
+                        
+                        // Listar elementos que contêm "R$" ou valores monetários
+                        document.querySelectorAll('*').forEach((el) => {
+                            const texto = el.innerText || el.textContent || '';
+                            if (texto.match(/R\\$\\s*\\d+[.,]\\d{2}/i)) {
+                                info.elementos_com_valor.push({
+                                    tag: el.tagName,
+                                    texto: texto.substring(0, 100),
+                                    classes: el.className,
+                                    id: el.id
+                                });
+                            }
+                        });
+                        
+                        // Listar elementos que contêm datas
+                        document.querySelectorAll('*').forEach((el) => {
+                            const texto = el.innerText || el.textContent || '';
+                            if (texto.match(/\\d{2}\\/\\d{2}\\/\\d{4}/)) {
+                                info.elementos_com_data.push({
+                                    tag: el.tagName,
+                                    texto: texto.substring(0, 100),
+                                    classes: el.className,
+                                    id: el.id
+                                });
+                            }
+                        });
+                        
+                        return info;
+                    }
+                """)
+                
+                print(f"[DEBUG NIO NEGOCIA] ========== DEBUG: ELEMENTOS DA PÁGINA ==========")
+                print(f"[DEBUG NIO NEGOCIA] URL: {elementos_info.get('url')}")
+                print(f"[DEBUG NIO NEGOCIA] Título: {elementos_info.get('titulo')}")
+                print(f"[DEBUG NIO NEGOCIA] Total de botões: {len(elementos_info.get('botoes', []))}")
+                print(f"[DEBUG NIO NEGOCIA] Botões encontrados:")
+                for btn in elementos_info.get('botoes', [])[:10]:  # Mostrar apenas os primeiros 10
+                    print(f"  - [{btn.get('index')}] Texto: '{btn.get('texto')}', data-context: {btn.get('dataContext')}, visível: {btn.get('visivel')}")
+                print(f"[DEBUG NIO NEGOCIA] Elementos com data-context: {len(elementos_info.get('elementos_com_data_context', []))}")
+                for el in elementos_info.get('elementos_com_data_context', [])[:5]:
+                    print(f"  - {el.get('tag')}: data-context='{el.get('dataContext')}', texto='{el.get('texto')[:50]}'")
+                print(f"[DEBUG NIO NEGOCIA] Elementos com valores (R$): {len(elementos_info.get('elementos_com_valor', []))}")
+                for el in elementos_info.get('elementos_com_valor', [])[:5]:
+                    print(f"  - {el.get('tag')}: '{el.get('texto')[:80]}'")
+                print(f"[DEBUG NIO NEGOCIA] Elementos com datas: {len(elementos_info.get('elementos_com_data', []))}")
+                for el in elementos_info.get('elementos_com_data', [])[:5]:
+                    print(f"  - {el.get('tag')}: '{el.get('texto')[:80]}'")
+                print(f"[DEBUG NIO NEGOCIA] =================================================")
+                logger.info(f"[NIO NEGOCIA] Debug elementos: {len(elementos_info.get('botoes', []))} botões, {len(elementos_info.get('elementos_com_data_context', []))} com data-context")
+            except Exception as e_debug:
+                print(f"[DEBUG NIO NEGOCIA] Erro ao listar elementos: {e_debug}")
+                logger.warning(f"[NIO NEGOCIA] Erro ao listar elementos: {e_debug}")
+            
             # Aguardar mais tempo para página carregar completamente (dados podem vir via JS)
             try:
                 # Aguardar elementos específicos da lista de dívidas aparecerem
