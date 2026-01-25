@@ -2235,6 +2235,26 @@ def _buscar_fatura_nio_negocia(
                 else:
                     print(f"[DEBUG NIO NEGOCIA] 🖱️ Tentando clicar com force=True (botão desabilitado)...")
                     logger.warning(f"[NIO NEGOCIA] Tentando clicar com force=True")
+                    
+                    # Verificar reCAPTCHA antes de clicar com force
+                    recaptcha_antes_clique = page.evaluate("""
+                        () => {
+                            const textarea = document.querySelector('textarea[name="g-recaptcha-response"]');
+                            let grecaptcha_response = null;
+                            try {
+                                if (window.grecaptcha && window.grecaptcha.getResponse) {
+                                    grecaptcha_response = window.grecaptcha.getResponse();
+                                }
+                            } catch(e) {}
+                            return {
+                                textarea_value: textarea ? textarea.value.length : 0,
+                                grecaptcha_response: grecaptcha_response ? grecaptcha_response.length : 0
+                            };
+                        }
+                    """)
+                    print(f"[DEBUG NIO NEGOCIA] Estado do reCAPTCHA antes do clique: {recaptcha_antes_clique}")
+                    logger.info(f"[NIO NEGOCIA] reCAPTCHA antes do clique: {recaptcha_antes_clique}")
+                    
                     btn_consultar.click(force=True)
                 
                 # Aguardar navegação ou mudança na página (SPA pode não mudar URL)
@@ -2313,21 +2333,44 @@ def _buscar_fatura_nio_negocia(
                                 const elementos = Array.from(document.querySelectorAll('*'));
                                 for (let el of elementos) {
                                     const texto = el.innerText || el.textContent || '';
-                                    if (texto.toLowerCase().includes('erro') || 
-                                        texto.toLowerCase().includes('error') ||
-                                        texto.toLowerCase().includes('não encontrado') ||
-                                        texto.toLowerCase().includes('sem dívidas')) {
-                                        erros.push(texto.substring(0, 100));
+                                    const textoLower = texto.toLowerCase();
+                                    if (textoLower.includes('erro') || 
+                                        textoLower.includes('error') ||
+                                        textoLower.includes('não encontrado') ||
+                                        textoLower.includes('sem dívidas') ||
+                                        textoLower.includes('cpf inválido') ||
+                                        textoLower.includes('inválido') ||
+                                        textoLower.includes('não encontramos') ||
+                                        textoLower.includes('tente novamente')) {
+                                        erros.push({
+                                            texto: texto.substring(0, 200),
+                                            tag: el.tagName,
+                                            classes: el.className
+                                        });
                                     }
                                 }
+                                
+                                // Verificar também no console do navegador
+                                const consoleErrors = [];
+                                if (window.console && window.console.error) {
+                                    // Não podemos acessar histórico do console, mas podemos verificar elementos de erro
+                                }
+                                
                                 return erros;
                             }
                         """)
                         if erros:
-                            print(f"[DEBUG NIO NEGOCIA] Possíveis erros encontrados: {erros}")
-                            logger.warning(f"[NIO NEGOCIA] Possíveis erros: {erros}")
-                    except:
-                        pass
+                            print(f"[DEBUG NIO NEGOCIA] ⚠️ Possíveis erros encontrados na página: {len(erros)}")
+                            logger.warning(f"[NIO NEGOCIA] Possíveis erros encontrados: {len(erros)}")
+                            for idx, erro in enumerate(erros[:5], 1):  # Mostrar apenas os primeiros 5
+                                print(f"[DEBUG NIO NEGOCIA]   Erro {idx}: {erro.get('texto', '')[:100]} (tag: {erro.get('tag', '')}, classes: {erro.get('classes', '')[:50]})")
+                                logger.warning(f"[NIO NEGOCIA] Erro {idx}: {erro.get('texto', '')[:100]}")
+                        else:
+                            print(f"[DEBUG NIO NEGOCIA] ✅ Nenhuma mensagem de erro encontrada na página")
+                            logger.info(f"[NIO NEGOCIA] Nenhuma mensagem de erro encontrada")
+                    except Exception as e_erro:
+                        print(f"[DEBUG NIO NEGOCIA] Erro ao verificar erros na página: {e_erro}")
+                        logger.warning(f"[NIO NEGOCIA] Erro ao verificar erros: {e_erro}")
                 
                 # Aguardar mais tempo para garantir renderização completa
                 page.wait_for_timeout(5000)  # Aguardar mais 5 segundos
