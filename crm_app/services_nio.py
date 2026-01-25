@@ -1247,19 +1247,145 @@ def buscar_todas_faturas_nio_por_cpf(cpf, incluir_pdf=True):
     # Se precisa do PDF, usa Playwright direto (scraping completo)
     if incluir_pdf and HAS_PLAYWRIGHT:
         try:
+            # Primeiro tenta página de negociação (mostra todas as faturas diretamente)
+            resultado = _buscar_todas_faturas_negocia_playwright(cpf_limpo)
+            if resultado:
+                logger.info(f"[BUSCA TODAS FATURAS] ✅ Encontradas {len(resultado)} faturas via Nio Negocia")
+                return resultado
+            
+            # Fallback: tenta página de Segunda Via
+            logger.info(f"[BUSCA TODAS FATURAS] Tentando página de Segunda Via como fallback...")
             resultado = _buscar_todas_faturas_playwright(cpf_limpo)
             return resultado if resultado else []
         except Exception as e:
-            print(f"[ERRO] Falha ao buscar faturas via Playwright: {e}")
+            logger.error(f"[ERRO] Falha ao buscar faturas via Playwright: {e}")
             import traceback
             traceback.print_exc()
             return []
     return []
 
 
+def _buscar_todas_faturas_negocia_playwright(cpf: str):
+    """
+    Busca TODAS as faturas na página de negociação (Nio Negocia).
+    A página de negociação mostra todas as faturas diretamente após consultar o CPF.
+    """
+    if not HAS_PLAYWRIGHT:
+        return []
+    
+    try:
+        from playwright.sync_api import sync_playwright
+        from crm_app.recaptcha_solver import RecaptchaSolver
+        
+        logger.info(f"[NIO NEGOCIA TODAS] Buscando todas faturas para CPF: {cpf}")
+        
+        # Inicializar solver de captcha
+        captcha_api_key = getattr(settings, 'CAPTCHA_API_KEY', None) or os.getenv('CAPTCHA_API_KEY')
+        solver = RecaptchaSolver(api_key=captcha_api_key) if captcha_api_key else None
+        
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            
+            state_path = DEFAULT_STORAGE_STATE if os.path.exists(DEFAULT_STORAGE_STATE) else None
+            context = browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                viewport={"width": 1280, "height": 800},
+                storage_state=state_path,
+                accept_downloads=True,
+            )
+            
+            page = context.new_page()
+            page.goto(NIO_NEGOCIA_URL, wait_until="networkidle", timeout=30000)
+            page.wait_for_timeout(2000)
+            
+            # Preencher CPF
+            campo_cpf = page.locator('#inputId').first
+            campo_cpf.wait_for(state="visible", timeout=10000)
+            campo_cpf.fill(cpf)
+            page.wait_for_timeout(1000)
+            
+            # Resolver reCAPTCHA se necessário
+            if solver:
+                try:
+                    site_key = page.evaluate("""
+                        () => {
+                            const el = document.querySelector('[data-sitekey]');
+                            return el ? el.getAttribute('data-sitekey') : null;
+                        }
+                    """)
+                    if site_key:
+                        token = solver.solve_recaptcha_v2(site_key, NIO_NEGOCIA_URL)
+                        if token:
+                            page.evaluate(f"""
+                                (t) => {{
+                                    const textarea = document.querySelector('textarea[name="g-recaptcha-response"]');
+                                    if (textarea) {{
+                                        textarea.value = t;
+                                        textarea.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                                    }}
+                                    if (window.grecaptcha && window.grecaptcha.getResponse) {{
+                                        window.grecaptcha.getResponse = function() {{ return t; }};
+                                    }}
+                                }}
+                            """, token)
+                            page.wait_for_timeout(2000)
+                except Exception as e:
+                    logger.warning(f"[NIO NEGOCIA TODAS] Erro ao resolver reCAPTCHA: {e}")
+            
+            # Clicar em "Consultar dívidas"
+            botao_consultar = page.locator('button:has-text("Consultar dívidas")').first
+            try:
+                botao_consultar.wait_for(state="visible", timeout=10000)
+                # Aguardar botão ficar habilitado
+                for tentativa in range(10):
+                    if botao_consultar.is_enabled():
+                        break
+                    page.wait_for_timeout(1000)
+                botao_consultar.click(timeout=30000)
+            except Exception as e:
+                logger.warning(f"[NIO NEGOCIA TODAS] Erro ao clicar: {e}, tentando com force=True")
+                botao_consultar.click(force=True, timeout=30000)
+            
+            # Aguardar página carregar com as faturas
+            page.wait_for_timeout(3000)
+            page.wait_for_load_state("networkidle", timeout=30000)
+            
+            # Capturar HTML completo
+            html_resultado = page.content()
+            
+            # Salvar HTML para debug se necessário
+            try:
+                downloads_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'downloads')
+                os.makedirs(downloads_dir, exist_ok=True)
+                html_debug_path = os.path.join(downloads_dir, f"debug_negocia_todas_{cpf}.html")
+                with open(html_debug_path, 'w', encoding='utf-8') as f:
+                    f.write(html_resultado)
+                logger.info(f"[NIO NEGOCIA TODAS] HTML salvo para debug: {html_debug_path}")
+            except Exception as e:
+                logger.warning(f"[NIO NEGOCIA TODAS] Erro ao salvar HTML: {e}")
+            
+            # Extrair todas as faturas do HTML
+            faturas = _extrair_todas_faturas_negocia_html(html_resultado)
+            
+            browser.close()
+            
+            if faturas:
+                logger.info(f"[NIO NEGOCIA TODAS] ✅ Encontradas {len(faturas)} faturas")
+                return faturas
+            else:
+                logger.warning(f"[NIO NEGOCIA TODAS] ⚠️ Nenhuma fatura encontrada no HTML. Verifique: {html_debug_path if 'html_debug_path' in locals() else 'N/A'}")
+                return []
+            
+    except Exception as e:
+        logger.error(f"[NIO NEGOCIA TODAS] Erro: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
+
+
 def _buscar_todas_faturas_playwright(cpf: str):
     """
-    Busca TODAS as faturas (abertas e atrasadas) usando Playwright.
+    Busca TODAS as faturas (abertas e atrasadas) usando Playwright na página de Segunda Via.
     Extrai todas as faturas da página HTML antes de clicar em qualquer uma.
     """
     if not HAS_PLAYWRIGHT:
@@ -1341,9 +1467,190 @@ def _buscar_todas_faturas_playwright(cpf: str):
         return []
 
 
+def _extrair_todas_faturas_negocia_html(html: str):
+    """
+    Extrai todas as faturas do HTML da página de negociação (Nio Negocia).
+    A página mostra cards com: "Cobrança de Janeiro", "Cobrança de Dezembro", etc.
+    """
+    import re
+    from bs4 import BeautifulSoup
+    
+    try:
+        from bs4 import BeautifulSoup
+    except ImportError:
+        logger.warning("[AVISO] BeautifulSoup não instalado. Instale: pip install beautifulsoup4")
+        return []
+    
+    faturas = []
+    
+    try:
+        soup = BeautifulSoup(html, 'html.parser')
+        
+        # Padrões de busca
+        status_pattern = re.compile(r'(Em aberto|Atrasado|Atrasada|Vencida|Vencido)', re.IGNORECASE)
+        valor_pattern = re.compile(r'R\$\s*(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2}))', re.IGNORECASE)
+        data_pattern = re.compile(r'(\d{2}/\d{2}/\d{4})')
+        cobranca_pattern = re.compile(r'Cobrança de (Janeiro|Fevereiro|Março|Abril|Maio|Junho|Julho|Agosto|Setembro|Outubro|Novembro|Dezembro)', re.IGNORECASE)
+        
+        # Verificar se está na página de negociação (tem "você tem X contas" ou "Olá")
+        texto_pagina = soup.get_text()
+        is_negocia_page = ('você tem' in texto_pagina.lower() and 'contas' in texto_pagina.lower()) or \
+                          ('olá' in texto_pagina.lower() and 'contas' in texto_pagina.lower())
+        
+        if is_negocia_page:
+            logger.info("[NIO NEGOCIA TODAS] Página de negociação detectada")
+            
+            # Buscar todos os elementos que contêm "Cobrança de"
+            elementos_cobranca = soup.find_all(string=cobranca_pattern)
+            
+            # Se não encontrou por texto direto, busca por elementos próximos
+            if not elementos_cobranca:
+                # Buscar divs/cards que podem conter faturas
+                # A estrutura pode ser: divs com classes específicas ou elementos próximos a "Cobrança"
+                elementos_cobranca = soup.find_all(string=re.compile(r'Cobrança', re.IGNORECASE))
+            
+            logger.info(f"[NIO NEGOCIA TODAS] Encontrados {len(elementos_cobranca)} elementos com 'Cobrança'")
+        else:
+            logger.warning("[NIO NEGOCIA TODAS] ⚠️ Página de negociação não detectada. Tentando extrair mesmo assim...")
+            elementos_cobranca = []
+        
+        # Buscar todos os valores monetários e datas na página (sempre)
+        todos_valores = valor_pattern.findall(texto_pagina)
+        todas_datas = data_pattern.findall(texto_pagina)
+        
+        logger.info(f"[NIO NEGOCIA TODAS] Encontrados {len(todos_valores)} valores e {len(todas_datas)} datas na página")
+        
+        # Se não encontrou elementos com "Cobrança", buscar por padrões alternativos
+        if not elementos_cobranca:
+            # Buscar por divs que contenham valores monetários
+            elementos_com_valor = soup.find_all(string=valor_pattern)
+            elementos_cobranca = [elem.parent for elem in elementos_com_valor if elem.parent]
+            logger.info(f"[NIO NEGOCIA TODAS] Buscando por elementos com valores: {len(elementos_cobranca)} encontrados")
+        
+        # Buscar elementos que contêm "Cobrança de" e extrair dados próximos
+        if elementos_cobranca:
+            for elem_texto in elementos_cobranca:
+                # Subir na hierarquia até encontrar um container que tenha valor, data e status
+                container = elem_texto.parent
+                fatura_encontrada = False
+                
+                for nivel in range(8):  # Subir até 8 níveis para encontrar o card completo
+                    if container is None:
+                        break
+                    
+                    texto_container = container.get_text()
+                    
+                    # Verificar se este container tem todos os dados necessários
+                    tem_valor = bool(valor_pattern.search(texto_container))
+                    tem_data = bool(data_pattern.search(texto_container))
+                    
+                    if tem_valor and tem_data:
+                        # Extrair dados deste container
+                        valor_match = valor_pattern.search(texto_container)
+                        data_match = data_pattern.search(texto_container)
+                        status_match = status_pattern.search(texto_container)
+                        cobranca_match = cobranca_pattern.search(texto_container)
+                        
+                        valor = None
+                        if valor_match:
+                            try:
+                                valor_str = valor_match.group(1).replace('.', '').replace(',', '.')
+                                valor = Decimal(valor_str)
+                            except:
+                                pass
+                        
+                        data_vencimento = None
+                        if data_match:
+                            try:
+                                data_vencimento = datetime.strptime(data_match.group(1), "%d/%m/%Y").date()
+                            except:
+                                pass
+                        
+                        status = status_match.group(1) if status_match else None
+                        mes_cobranca = cobranca_match.group(1) if cobranca_match else None
+                        
+                        # Adicionar fatura se tiver valor e data (evitar duplicatas)
+                        if valor and data_vencimento:
+                            # Verificar se já não existe uma fatura com mesma data e valor
+                            duplicata = False
+                            for f_existente in faturas:
+                                if (f_existente.get('data_vencimento') == data_vencimento.strftime('%Y-%m-%d') and
+                                    abs(f_existente.get('valor', 0) - float(valor)) < 0.01):
+                                    duplicata = True
+                                    break
+                            
+                            if not duplicata:
+                                faturas.append({
+                                    'valor': float(valor),
+                                    'data_vencimento': data_vencimento.strftime('%Y-%m-%d'),
+                                    'status': status,
+                                    'mes_cobranca': mes_cobranca,
+                                    'codigo_pix': None,
+                                    'codigo_barras': None,
+                                    'pdf_url': None,
+                                })
+                                logger.info(f"[NIO NEGOCIA TODAS] ✅ Fatura extraída: {mes_cobranca} - R$ {valor} - Venc: {data_vencimento} - Status: {status}")
+                                fatura_encontrada = True
+                                break  # Encontrou esta fatura, passar para a próxima
+                    
+                    container = container.parent if container else None
+                
+                if not fatura_encontrada:
+                    logger.warning(f"[NIO NEGOCIA TODAS] ⚠️ Elemento 'Cobrança' encontrado mas não foi possível extrair dados completos")
+        
+        # Se ainda não encontrou faturas, tentar método alternativo: buscar por padrão de valores e datas próximos
+        if not faturas and len(todos_valores) > 0 and len(todas_datas) > 0:
+                logger.info(f"[NIO NEGOCIA TODAS] Tentando método alternativo: combinar valores e datas")
+                # Combinar valores e datas que estão próximos no HTML
+                for valor_str in todos_valores[:10]:  # Limitar a 10
+                    try:
+                        valor_float = float(valor_str.replace('.', '').replace(',', '.'))
+                        # Buscar data mais próxima deste valor no HTML
+                        for data_str in todas_datas[:10]:
+                            try:
+                                data_obj = datetime.strptime(data_str, "%d/%m/%Y").date()
+                                # Verificar se valor e data estão próximos no HTML (dentro de 500 caracteres)
+                                valor_pos = texto_pagina.find(f"R$ {valor_str}")
+                                data_pos = texto_pagina.find(data_str)
+                                if valor_pos != -1 and data_pos != -1 and abs(valor_pos - data_pos) < 500:
+                                    # Verificar se já não existe
+                                    duplicata = False
+                                    for f_existente in faturas:
+                                        if (f_existente.get('data_vencimento') == data_obj.strftime('%Y-%m-%d') and
+                                            abs(f_existente.get('valor', 0) - valor_float) < 0.01):
+                                            duplicata = True
+                                            break
+                                    
+                                    if not duplicata:
+                                        faturas.append({
+                                            'valor': valor_float,
+                                            'data_vencimento': data_obj.strftime('%Y-%m-%d'),
+                                            'status': None,
+                                            'mes_cobranca': None,
+                                            'codigo_pix': None,
+                                            'codigo_barras': None,
+                                            'pdf_url': None,
+                                        })
+                                        logger.info(f"[NIO NEGOCIA TODAS] ✅ Fatura extraída (método alternativo): R$ {valor_float} - Venc: {data_obj}")
+                                        break
+                            except:
+                                continue
+                    except:
+                        continue
+        
+        logger.info(f"[NIO NEGOCIA TODAS] Total extraído: {len(faturas)} faturas")
+        return faturas
+        
+    except Exception as e:
+        logger.error(f"[NIO NEGOCIA TODAS] Erro ao extrair faturas: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
+
+
 def _extrair_todas_faturas_html(html: str):
     """
-    Extrai todas as faturas do HTML da página de resultados da Nio.
+    Extrai todas as faturas do HTML da página de resultados da Nio (Segunda Via).
     Procura por padrões de tabela/listagem com status, valores e vencimentos.
     """
     import re
