@@ -2081,25 +2081,95 @@ def _buscar_fatura_nio_negocia(
                                             el.dispatchEvent(new Event('change', {{ bubbles: true }}));
                                         }}
                                     }}
-                                    if (window.grecaptcha && window.grecaptcha.getResponse) {{
-                                        try {{ window.grecaptcha.getResponse = () => t; }} catch (e) {{}}
+                                    // Tentar múltiplas formas de fazer o grecaptcha.getResponse() retornar o valor
+                                    if (window.grecaptcha) {{
+                                        try {{
+                                            // Método 1: Sobrescrever getResponse
+                                            if (window.grecaptcha.getResponse) {{
+                                                window.grecaptcha.getResponse = function() {{
+                                                    return t;
+                                                }};
+                                            }}
+                                            
+                                            // Método 2: Tentar definir diretamente
+                                            if (window.grecaptcha.response !== undefined) {{
+                                                window.grecaptcha.response = t;
+                                            }}
+                                            
+                                            // Método 3: Disparar evento customizado
+                                            window.dispatchEvent(new CustomEvent('recaptcha-success', {{ detail: {{ response: t }} }}));
+                                        }} catch (e) {{
+                                            console.log('Erro ao configurar grecaptcha:', e);
+                                        }}
                                     }}
                                 }}
                             """, token)
+                            
+                            # Aguardar e verificar se o grecaptcha.getResponse() agora retorna o valor
                             page.wait_for_timeout(2000)
+                            
+                            # Verificar se o grecaptcha.getResponse() está funcionando
+                            grecaptcha_check = page.evaluate("""
+                                () => {
+                                    if (window.grecaptcha && window.grecaptcha.getResponse) {
+                                        try {
+                                            const response = window.grecaptcha.getResponse();
+                                            return {
+                                                has_response: !!response,
+                                                response_length: response ? response.length : 0,
+                                                response_preview: response ? response.substring(0, 50) + '...' : null
+                                            };
+                                        } catch(e) {
+                                            return { error: e.message };
+                                        }
+                                    }
+                                    return { error: 'grecaptcha.getResponse não existe' };
+                                }
+                            """)
+                            print(f"[DEBUG NIO NEGOCIA] Verificação grecaptcha.getResponse() após injeção: {grecaptcha_check}")
+                            logger.info(f"[NIO NEGOCIA] grecaptcha.getResponse() após injeção: {grecaptcha_check}")
+                            
+                            # Se ainda não funcionou, tentar mais uma vez com mais tempo
+                            if not grecaptcha_check.get('has_response') or grecaptcha_check.get('response_length', 0) < 50:
+                                print(f"[DEBUG NIO NEGOCIA] ⚠️ grecaptcha.getResponse() ainda não retorna valor, aguardando mais...")
+                                logger.warning(f"[NIO NEGOCIA] grecaptcha.getResponse() ainda não retorna valor")
+                                page.wait_for_timeout(3000)
+                                
+                                # Verificar novamente
+                                grecaptcha_check2 = page.evaluate("""
+                                    () => {
+                                        if (window.grecaptcha && window.grecaptcha.getResponse) {
+                                            try {
+                                                const response = window.grecaptcha.getResponse();
+                                                return {
+                                                    has_response: !!response,
+                                                    response_length: response ? response.length : 0
+                                                };
+                                            } catch(e) {
+                                                return { error: e.message };
+                                            }
+                                        }
+                                        return { error: 'grecaptcha.getResponse não existe' };
+                                    }
+                                """)
+                                print(f"[DEBUG NIO NEGOCIA] Verificação grecaptcha.getResponse() após aguardar: {grecaptcha_check2}")
+                                logger.info(f"[NIO NEGOCIA] grecaptcha.getResponse() após aguardar: {grecaptcha_check2}")
                             
                             # Verificar se o reCAPTCHA foi realmente resolvido
                             recaptcha_verificado = page.evaluate("""
                                 () => {
                                     const textarea = document.querySelector('textarea[name="g-recaptcha-response"]');
-                                    if (textarea && textarea.value && textarea.value.length > 50) {
-                                        return true;
-                                    }
+                                    const has_textarea_value = textarea && textarea.value && textarea.value.length > 50;
+                                    
+                                    let has_grecaptcha_response = false;
                                     if (window.grecaptcha && window.grecaptcha.getResponse) {
-                                        const response = window.grecaptcha.getResponse();
-                                        return response && response.length > 50;
+                                        try {
+                                            const response = window.grecaptcha.getResponse();
+                                            has_grecaptcha_response = response && response.length > 50;
+                                        } catch(e) {}
                                     }
-                                    return false;
+                                    
+                                    return has_textarea_value || has_grecaptcha_response;
                                 }
                             """)
                             
