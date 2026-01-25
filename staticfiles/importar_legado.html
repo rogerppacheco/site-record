@@ -404,7 +404,7 @@
                 let html = `
                     <div class="alert alert-success alert-dismissible fade show" role="alert">
                         <h5 class="alert-heading"><i class="bi bi-check-circle"></i> Importação Concluída!</h5>
-                        <p class="mb-2"><strong>${data.mensagem}</strong></p>
+                        <p class="mb-2"><strong>${data.message || data.mensagem || 'Processamento iniciado! Acompanhe o progresso no histórico.'}</strong></p>
                 `;
 
                 if (data.erros && data.erros.length > 0) {
@@ -514,8 +514,8 @@
                 const duracao = log.duracao_segundos 
                     ? `${log.duracao_segundos}s` 
                     : (log.status === 'PROCESSANDO' ? '<i class="spinner-border spinner-border-sm"></i>' : '-');
-                const iniciado = log.iniciado_em ? new Date(log.iniciado_em).toLocaleString('pt-BR') : '-';
-                const usuario = log.usuario || '-';
+                const iniciado = (log.iniciado_em && String(log.iniciado_em).trim()) ? log.iniciado_em : '-';
+                const usuario = log.usuario_nome || log.usuario || '-';
                 
                 // Métricas específicas do Legado
                 let metricas = [];
