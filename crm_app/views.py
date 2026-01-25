@@ -6920,14 +6920,17 @@ class PopularSafraM10View(APIView):
 
             safra_str = mes_referencia  # YYYY-MM, usado para contagens e filtros
 
-            # Busca Vendas com data_instalacao no mês de referência E status INSTALADA
+            # Busca Vendas com data_instalacao no mês de referência E status INSTALADA.
+            # Ordena por data_criacao (mais antiga primeiro): quando a mesma O.S. tem várias vendas
+            # (ex.: criada junho vs julho, ambas instaladas em julho), preferimos a de criação
+            # fora do mês, que antes ficava "não considerada".
             vendas = Venda.objects.filter(
                 data_instalacao__gte=data_inicio,
                 data_instalacao__lt=data_fim,
                 data_instalacao__isnull=False,
                 ativo=True,
                 status_esteira__nome__iexact='INSTALADA'
-            ).select_related('cliente', 'vendedor', 'status_esteira', 'plano')
+            ).order_by('data_criacao').select_related('cliente', 'vendedor', 'status_esteira', 'plano')
 
             contratos_criados = 0
             contratos_duplicados = 0

@@ -305,8 +305,9 @@ O M-10 considera **data de instalação** no mês e só inclui vendas **INSTALAD
 ```bash
 python manage.py analise_m10_producao 2025-07
 python manage.py analise_m10_producao 2025-07 --json
+python manage.py analise_m10_producao 2025-07 --os-duplicadas   # detalhe O.S. compartilhadas
 ```
-O comando mostra: vendas com `data_instalacao` no mês (qualquer status e por status), INSTALADA com/sem O.S., ContratoM10 no mês, quem falta.
+O comando mostra: vendas com `data_instalacao` no mês (qualquer status e por status), INSTALADA com/sem O.S., **data_criacao no mês vs fora do mês**, ContratoM10 no mês, **não consideradas por O.S. duplicada** e **O.S. duplicadas**, quem falta.
 
 **2. Se houver muitos por `data_criacao` e poucos por `data_instalacao`:**
 - Use `scripts/corrigir_data_venda_legado.py --atualizar-instalacao` (e o CSV com DATA_VENDA + OS) para alinhar `data_instalacao` à data da venda.
@@ -317,6 +318,20 @@ O comando mostra: vendas com `data_instalacao` no mês (qualquer status e por st
 
 **4. Garantir safra no dropdown:**  
 Se o mês não aparecer em "Safra", popular essa safra via API `POST /api/bonus-m10/safras/criar/` com `{"mes_referencia": "2025-07"}` (ou use Popular Safra após criar a safra no admin).
+
+### **Vendas com data_criacao fora do mês "não consideradas" (ex.: 41 criadas em junho, instaladas em julho)**
+O M-10 filtra **só por data_instalacao**; não exclui por data_criacao. O que pode ocorrer:
+
+- **O.S. duplicada:** mesma O.S., várias vendas (ex.: uma criada em junho, outra em julho, ambas instaladas em julho). Só existe **1 ContratoM10 por O.S.** (regra do modelo). Uma venda fica "não considerada" (sem contrato próprio).
+- **Popular Safra** agora ordena por `data_criacao` (mais antiga primeiro), preferindo a venda criada **fora do mês** quando há duplicata.
+
+**Re-vincular contratos já populados:**  
+Se a safra foi populada antes dessa alteração e as "não consideradas" são as de data_criacao fora do mês, use:
+```bash
+python manage.py revincular_m10_safra 2025-07 --dry-run   # simular
+python manage.py revincular_m10_safra 2025-07             # aplicar
+```
+Isso atualiza o `venda` do ContratoM10 para a venda com **data_criacao** mais antiga quando a mesma O.S. tem várias vendas na safra.
 
 ### **Erro: "Safra não encontrada"**
 **Solução:** Criar safra no admin Django primeiro
