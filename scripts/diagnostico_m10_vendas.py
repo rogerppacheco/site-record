@@ -99,7 +99,13 @@ def run(mes_ref, data_inicio=None, data_fim=None, por_status=False):
     print('  Total:', crm_instalados)
     print()
 
-    # ---- 3. Contagem estilo M-10: INSTALADA + data_instalacao no mês da safra ----
+    # ---- 3. Vendas com data_instalacao no mês (qualquer status) ----
+    vendas_mes_qualquer = base.filter(data_instalacao__gte=inicio_m10, data_instalacao__lt=fim_m10)
+    total_mes_qualquer = vendas_mes_qualquer.count()
+    print('Vendas com data_instalacao no mês (qualquer status):', total_mes_qualquer)
+    print()
+
+    # ---- 4. Contagem estilo M-10: INSTALADA + data_instalacao no mês da safra ----
     q_m10 = Q(data_instalacao__gte=inicio_m10, data_instalacao__lt=fim_m10)
     vendas_m10 = base.filter(status_esteira=status_instalada).filter(q_m10)
     total_m10_vendas = vendas_m10.count()
@@ -112,14 +118,17 @@ def run(mes_ref, data_inicio=None, data_fim=None, por_status=False):
     print('  Sem O.S.:   ', sem_os)
     print()
 
-    # ---- 4. ContratoM10 na safra ----
-    contratos_safra = ContratoM10.objects.filter(safra=safra_str)
+    # ---- 5. ContratoM10 na safra (por data_instalacao, igual ao dashboard) ----
+    contratos_safra = ContratoM10.objects.filter(
+        data_instalacao__gte=inicio_m10,
+        data_instalacao__lt=fim_m10,
+    )
     total_m10 = contratos_safra.count()
-    print('Bônus M-10 (safra {}):  ContratoM10 com safra = {}'.format(mes_ref, safra_str))
+    print('Bônus M-10 (safra {}):  ContratoM10 com data_instalacao no mês'.format(mes_ref))
     print('  Total contratos:', total_m10)
     print()
 
-    # ---- 5. Diferença CRM vs M-10 ----
+    # ---- 6. Diferença CRM vs M-10 ----
     print('--- DIFERENÇA CRM vs M-10 ---')
     diff = crm_instalados - total_m10
     if diff > 0:
@@ -134,12 +143,18 @@ def run(mes_ref, data_inicio=None, data_fim=None, por_status=False):
         print('Contagens iguais.')
     print()
 
-    # ---- 6. Quem falta no M-10 (tem data_instalacao no mês, INSTALADA, mas sem contrato) ----
+    # ---- 7. Quem falta no M-10 (tem data_instalacao no mês, INSTALADA, mas sem contrato) ----
     print('--- FALTANDO NO M-10 (INSTALADA + data_instalacao no mês, sem ContratoM10) ---')
-    os_com_contrato = set(contratos_safra.values_list('ordem_servico', flat=True))
+    os_com_contrato = set(
+        contratos_safra.exclude(ordem_servico__isnull=True).exclude(ordem_servico='')
+        .values_list('ordem_servico', flat=True)
+    )
+    venda_ids_com_contrato = set(contratos_safra.exclude(venda_id__isnull=True).values_list('venda_id', flat=True))
     faltando = []
     for v in vendas_m10.only('id', 'ordem_servico', 'data_criacao', 'data_instalacao'):
-        if not v.ordem_servico or not v.ordem_servico.strip():
+        if v.id in venda_ids_com_contrato:
+            continue
+        if not v.ordem_servico or not str(v.ordem_servico).strip():
             faltando.append((v, 'sem O.S.'))
         elif v.ordem_servico not in os_com_contrato:
             faltando.append((v, 'sem contrato'))
@@ -153,7 +168,7 @@ def run(mes_ref, data_inicio=None, data_fim=None, por_status=False):
         print('  ... e mais', len(faltando) - 30)
     print()
 
-    # ---- 7. No CRM mas data_instalacao fora do mês (ou null) ----
+    # ---- 8. No CRM mas data_instalacao fora do mês (ou null) ----
     print('--- NO CRM "Instalados" MAS data_instalacao FORA do mês (ou vazia) ---')
     no_crm_fora_m10 = base.filter(
         status_esteira=status_instalada
@@ -171,7 +186,7 @@ def run(mes_ref, data_inicio=None, data_fim=None, por_status=False):
         print('  ... e mais', n_fora - 20)
     print()
 
-    # ---- 8. O.S. duplicadas (mesma O.S., mais de uma venda INSTALADA no mês) ----
+    # ---- 9. O.S. duplicadas (mesma O.S., mais de uma venda INSTALADA no mês) ----
     duplicadas = (
         vendas_m10.exclude(ordem_servico__isnull=True)
         .exclude(ordem_servico='')
