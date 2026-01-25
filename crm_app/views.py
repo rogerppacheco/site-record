@@ -9176,9 +9176,49 @@ class BuscarFaturasSafraView(APIView):
             "numero_fatura": 1   # Opcional: buscar apenas esta fatura
         }
         """
-        from datetime import date, timedelta
-        from crm_app.services_nio import buscar_todas_faturas_nio_por_cpf
-        
+        import re
+        import requests
+        from datetime import date, timedelta, datetime as dt
+        from crm_app.nio_api import consultar_dividas_nio, get_invoice_pdf_url
+
+        def _api_to_faturas_nio(api_result, cpf_limpo, incluir_pdf=True):
+            """Converte retorno da API Nio para lista de dicts (data_vencimento, valor, codigo_pix, codigo_barras, pdf_url)."""
+            invoices = api_result.get('invoices') or []
+            out = []
+            sess = requests.Session() if incluir_pdf else None
+            for inv in invoices:
+                due = inv.get('due_date_raw') or inv.get('data_vencimento')
+                data_vencimento = None
+                if due:
+                    if hasattr(due, 'strftime'):
+                        data_vencimento = due
+                    elif isinstance(due, str) and len(due) >= 8:
+                        try:
+                            s = due[:10].replace('/', '-')
+                            if '-' in s:
+                                data_vencimento = dt.strptime(s, '%Y-%m-%d').date()
+                            elif due[:8].isdigit():
+                                data_vencimento = dt.strptime(due[:8], '%Y%m%d').date()
+                        except Exception:
+                            pass
+                valor = inv.get('amount')
+                codigo_pix = inv.get('pix') or inv.get('codigo_pix')
+                codigo_barras = inv.get('barcode') or inv.get('codigo_barras')
+                pdf_url = None
+                if incluir_pdf and api_result.get('token') and api_result.get('api_base') and api_result.get('session_id') and sess:
+                    pdf_url = get_invoice_pdf_url(
+                        api_result['api_base'], api_result['token'], api_result['session_id'],
+                        inv.get('debt_id', ''), str(inv.get('invoice_id', '')), cpf_limpo,
+                        inv.get('reference_month', '') or '', sess)
+                out.append({
+                    'data_vencimento': data_vencimento,
+                    'valor': valor,
+                    'codigo_pix': codigo_pix,
+                    'codigo_barras': codigo_barras,
+                    'pdf_url': pdf_url,
+                })
+            return out
+
         safra_str = request.data.get('safra')
         safra_id = request.data.get('safra_id')
         numero_fatura_filtro = request.data.get('numero_fatura')
@@ -9250,11 +9290,20 @@ class BuscarFaturasSafraView(APIView):
                 if not faturas_disponiveis:
                     continue
                 
-                # Busca TODAS as faturas disponíveis no Nio para fazer matching por vencimento
-                # incluir_pdf=True força uso do Playwright para capturar o link do PDF
+                # Busca faturas no Nio via API (mesma do WhatsApp). Matching por vencimento.
                 try:
-                    faturas_nio = buscar_todas_faturas_nio_por_cpf(contrato.cpf_cliente, incluir_pdf=True)
-                    
+                    cpf_limpo = re.sub(r'\D', '', str(contrato.cpf_cliente))
+                    if not cpf_limpo or len(cpf_limpo) < 11:
+                        resultados['erros'] += 1
+                        resultados['detalhes'].append({
+                            'contrato': contrato.numero_contrato,
+                            'status': 'cpf_invalido',
+                            'mensagem': 'CPF inválido'
+                        })
+                        continue
+                    api_result = consultar_dividas_nio(cpf_limpo, offset=0, limit=50, headless=True)
+                    faturas_nio = _api_to_faturas_nio(api_result, cpf_limpo, incluir_pdf=True)
+
                     if not faturas_nio:
                         resultados['detalhes'].append({
                             'contrato': contrato.numero_contrato,
