@@ -1105,39 +1105,50 @@
                 const res = await fetch(`/api/crm/analise-buscas/?${params}`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
-                const data = await res.json();
-                
-                // Atualizar cards de estatísticas
-                atualizarCardsAnalise(data.estatisticas_gerais);
-                
-                // Atualizar gráfico
-                atualizarGraficoPerformance(data.performance_diaria);
-                
-                // Atualizar tabelas
-                atualizarTabelaExecucoes(data.execucoes_recentes);
-                atualizarTabelaProblemas(data.faturas_problema);
-                atualizarTabelaPorTipo(data.por_tipo_busca);
-                atualizarTabelaLentas(data.faturas_lentas);
-                
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    const msg = res.status === 401
+                        ? 'Sessão expirada. Renove o token ou faça login novamente.'
+                        : (data.detail || 'Erro ao carregar dados de análise.');
+                    alert(msg);
+                    return;
+                }
+                const stats = data.estatisticas_gerais || {};
+                const perf = data.performance_diaria || [];
+                const recentes = data.execucoes_recentes || [];
+                const problemas = data.faturas_problema || [];
+                const porTipo = data.por_tipo_busca || [];
+                const lentas = data.faturas_lentas || [];
+
+                atualizarCardsAnalise(stats);
+                atualizarGraficoPerformance(perf);
+                atualizarTabelaExecucoes(recentes);
+                atualizarTabelaProblemas(problemas);
+                atualizarTabelaPorTipo(porTipo);
+                atualizarTabelaLentas(lentas);
             } catch (error) {
                 console.error('Erro ao carregar análise:', error);
-                alert('Erro ao carregar dados de análise');
+                alert('Erro ao carregar dados de análise.');
             }
         }
 
         function atualizarCardsAnalise(stats) {
-            document.getElementById('analise-total-buscas').textContent = stats.total_execucoes || 0;
-            document.getElementById('analise-periodo').textContent = `últimos ${stats.periodo_dias} dias`;
-            document.getElementById('analise-taxa-sucesso').textContent = `${stats.taxa_sucesso || 0}%`;
-            document.getElementById('analise-faturas-sucesso').textContent = `${stats.total_sucesso || 0} faturas`;
-            
-            const tempoMedio = stats.tempo_medio ? parseFloat(stats.tempo_medio).toFixed(3) : 0;
-            document.getElementById('analise-tempo-medio').textContent = `${tempoMedio}s`;
-            document.getElementById('analise-com-erro').textContent = stats.total_erros || 0;
+            if (!stats || typeof stats !== 'object') return;
+            const el = (id) => document.getElementById(id);
+            if (el('analise-total-buscas')) el('analise-total-buscas').textContent = stats.total_execucoes ?? 0;
+            if (el('analise-periodo')) el('analise-periodo').textContent = `últimos ${stats.periodo_dias ?? 30} dias`;
+            if (el('analise-taxa-sucesso')) el('analise-taxa-sucesso').textContent = `${stats.taxa_sucesso ?? 0}%`;
+            if (el('analise-faturas-sucesso')) el('analise-faturas-sucesso').textContent = `${stats.total_sucesso ?? 0} faturas`;
+            const tempoMedio = stats.tempo_medio != null ? parseFloat(stats.tempo_medio).toFixed(3) : '0';
+            if (el('analise-tempo-medio')) el('analise-tempo-medio').textContent = `${tempoMedio}s`;
+            if (el('analise-com-erro')) el('analise-com-erro').textContent = stats.total_erros ?? 0;
         }
 
         function atualizarGraficoPerformance(performanceDiaria) {
-            const ctx = document.getElementById('chartPerformance').getContext('2d');
+            performanceDiaria = performanceDiaria || [];
+            const canvas = document.getElementById('chartPerformance');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
             
             // Destruir gráfico anterior se existir
             if (chartPerformance) {

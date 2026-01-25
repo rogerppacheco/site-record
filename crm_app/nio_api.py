@@ -1,10 +1,13 @@
 import base64
 import hashlib
 import json
+import logging
 import os
 from typing import Dict, Optional
 
 import requests
+
+logger = logging.getLogger(__name__)
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -271,39 +274,38 @@ def get_invoice_pdf_url(api_base: str, token: str, session_id: str, debt_id: str
         for endpoint in endpoints:
             url = api_base.rstrip("/") + endpoint
             try:
-                print(f"🔍 [PDF API] Tentando: {url}")
+                logger.debug("[PDF API] Tentando: %s", url)
                 resp = session.get(url, headers=headers, timeout=10, allow_redirects=True)
-                print(f"📊 [PDF API] Status: {resp.status_code}, Content-Type: {resp.headers.get('content-type', 'N/A')}")
-                
+                logger.debug("[PDF API] Status: %s, Content-Type: %s", resp.status_code, resp.headers.get("content-type", "N/A"))
+
                 # Se retornou JSON com URL do PDF
-                if resp.status_code == 200 and 'application/json' in resp.headers.get('content-type', ''):
+                if resp.status_code == 200 and "application/json" in resp.headers.get("content-type", ""):
                     data = resp.json()
-                    print(f"📄 [PDF API] JSON response: {data}")
-                    if data.get('url') or data.get('pdf_url') or data.get('download_url'):
-                        pdf_url = data.get('url') or data.get('pdf_url') or data.get('download_url')
-                        print(f"✅ [PDF API] URL obtida via JSON: {pdf_url[:80]}...")
+                    logger.debug("[PDF API] JSON response: %s", data)
+                    if data.get("url") or data.get("pdf_url") or data.get("download_url"):
+                        pdf_url = data.get("url") or data.get("pdf_url") or data.get("download_url")
+                        logger.info("[PDF API] URL obtida via JSON: %s...", (pdf_url or "")[:80])
                         return pdf_url
-                
+
                 # Se retornou redirect para S3
-                elif resp.status_code in [200, 302, 301]:
-                    print(f"🔗 [PDF API] Final URL: {resp.url}")
-                    if 's3' in resp.url and '.pdf' in resp.url:
-                        print(f"✅ [PDF API] URL obtida via redirect: {resp.url[:80]}...")
+                elif resp.status_code in (200, 302, 301):
+                    logger.debug("[PDF API] Final URL: %s", resp.url)
+                    if "s3" in resp.url and ".pdf" in resp.url:
+                        logger.info("[PDF API] URL obtida via redirect: %s...", resp.url[:80])
                         return resp.url
-                
-                # Log do conteúdo se for texto curto
+
                 if len(resp.text) < 500:
-                    print(f"📝 [PDF API] Response: {resp.text[:200]}")
-                        
+                    logger.debug("[PDF API] Response: %s", resp.text[:200])
+
             except Exception as e:
-                print(f"❌ [PDF API] Erro no endpoint {endpoint}: {e}")
-                continue  # Tenta próximo endpoint
-        
-        print(f"⚠️ [PDF API] Nenhum endpoint retornou PDF válido")
+                logger.debug("[PDF API] Erro no endpoint %s: %s", endpoint, e)
+                continue
+
+        logger.debug("[PDF API] Nenhum endpoint retornou PDF válido")
         return None
-        
+
     except Exception as e:
-        print(f"⚠️ [PDF API] Erro ao buscar URL do PDF: {e}")
+        logger.debug("[PDF API] Erro ao buscar URL do PDF: %s", e)
         return None
 
 

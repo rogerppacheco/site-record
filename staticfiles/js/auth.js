@@ -573,6 +573,17 @@ function iniciarMonitoramentoToken() {
     tokenMonitorInterval = setInterval(atualizarDisplay, 1000);
 }
 
+function isAccessTokenValid() {
+    try {
+        const token = localStorage.getItem('accessToken');
+        if (!token) return false;
+        const payload = jwt_decode(token);
+        return payload && payload.exp && payload.exp > Math.floor(Date.now() / 1000);
+    } catch {
+        return false;
+    }
+}
+
 async function renovarTokenManual() {
     const indicator = document.getElementById('token-indicator');
     const timeDisplay = document.getElementById('token-time');
@@ -593,16 +604,34 @@ async function renovarTokenManual() {
         await renovarTokenAPI();
         timeDisplay.textContent = 'Renovado!';
         if (timeDisplayModal) timeDisplayModal.textContent = 'Renovado!';
-        
         setTimeout(() => {
             indicator.style.opacity = '1';
             if (indicatorModal) indicatorModal.style.opacity = '1';
         }, 1000);
     } catch (e) {
-        timeDisplay.textContent = 'Erro!';
-        if (timeDisplayModal) timeDisplayModal.textContent = 'Erro!';
-        alert('Erro ao renovar token. Faça login novamente.');
-        
+        if (isAccessTokenValid()) {
+            timeDisplay.textContent = 'Tente nov.';
+            if (timeDisplayModal) timeDisplayModal.textContent = 'Tente nov.';
+            if (window.showAlert) {
+                window.showAlert('Não foi possível renovar. Tente novamente em instantes.', 'warning');
+            } else {
+                alert('Não foi possível renovar. Tente novamente em instantes.');
+            }
+        } else {
+            timeDisplay.textContent = 'Sessão expirada';
+            if (timeDisplayModal) timeDisplayModal.textContent = 'Sessão expirada';
+            if (window.showAlert) {
+                window.showAlert('Erro ao renovar token. Faça login novamente.', 'warning');
+            } else {
+                alert('Erro ao renovar token. Faça login novamente.');
+            }
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('refreshToken');
+            localStorage.removeItem('user_profile');
+            localStorage.removeItem('user_permissions');
+            localStorage.removeItem('last_login');
+            setTimeout(() => { window.location.href = '/'; }, 1500);
+        }
         setTimeout(() => {
             indicator.style.opacity = '1';
             if (indicatorModal) indicatorModal.style.opacity = '1';
@@ -633,7 +662,11 @@ async function renovarTokenAPI() {
     });
 
     if (!response.ok) {
-        throw new Error('Falha ao renovar token');
+        const errorData = await response.json().catch(() => ({}));
+        const detail = errorData.detail || 'Falha ao renovar token';
+        const err = new Error(detail);
+        err.status = response.status;
+        throw err;
     }
 
     const data = await response.json();

@@ -9302,7 +9302,9 @@ class BuscarFaturasSafraView(APIView):
                         })
                         continue
                     api_result = consultar_dividas_nio(cpf_limpo, offset=0, limit=50, headless=True)
-                    faturas_nio = _api_to_faturas_nio(api_result, cpf_limpo, incluir_pdf=True)
+                    # PDF desativado na safra: API Nio /invoices/.../download e /pdf retornam 500.
+                    # Valor, PIX e código de barras seguem sendo atualizados.
+                    faturas_nio = _api_to_faturas_nio(api_result, cpf_limpo, incluir_pdf=False)
 
                     if not faturas_nio:
                         resultados['detalhes'].append({
