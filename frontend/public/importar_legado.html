@@ -158,12 +158,51 @@
         <div class="info-card">
             <h5 class="text-secondary mb-3"><i class="bi bi-info-circle"></i> Instruções</h5>
             <ul class="mb-0">
-                <li>Esta ferramenta permite importar vendas histórias de sistemas antigos</li>
+                <li>Esta ferramenta permite importar vendas históricas de sistemas antigos</li>
                 <li>O arquivo deve estar em formato <strong>Excel (.xlsx, .xls)</strong></li>
+                <li>Use a planilha modelo para garantir os nomes das colunas (veja lista abaixo)</li>
                 <li>Status será identificado automaticamente (Instalada, Pendente, Cancelada, Agendada)</li>
                 <li>CEP e Número bastam para completar endereço automaticamente</li>
                 <li>Sem envio de notificações automáticas ao vendedor nesta importação</li>
             </ul>
+        </div>
+
+        <!-- Colunas do modelo -->
+        <div class="info-card">
+            <h5 class="text-secondary mb-3"><i class="bi bi-table"></i> Colunas do modelo (planilha)</h5>
+            <p class="text-muted small mb-2">Obrigatórias para cada linha: <strong>CPF_CNPJ_CLIENTE</strong>, <strong>NOME_CLIENTE</strong>. Demais colunas opcionais, mas recomendadas para montar a base completa.</p>
+            <div class="row small">
+                <div class="col-md-4">
+                    <strong>Venda / datas</strong>
+                    <ul class="mb-0 ps-3">
+                        <li>DATA_VENDA</li>
+                        <li>DATA_ABERTURA <span class="badge bg-success">data abertura O.S.</span></li>
+                        <li>DATA_INSTALACAO</li>
+                        <li>OS (ordem de serviço)</li>
+                        <li>LOGIN_VENDEDOR, NOME_PLANO, FORMA_PAGAMENTO</li>
+                    </ul>
+                </div>
+                <div class="col-md-4">
+                    <strong>Status / trâmite</strong>
+                    <ul class="mb-0 ps-3">
+                        <li>STATUS_ESTEIRA, STATUS_TRATAMENTO</li>
+                        <li>MOTIVO_PENDENCIA</li>
+                        <li>DATA_AGENDAMENTO, PERIODO_AGENDAMENTO</li>
+                    </ul>
+                </div>
+                <div class="col-md-4">
+                    <strong>Cliente / endereço</strong>
+                    <ul class="mb-0 ps-3">
+                        <li>CPF_CNPJ_CLIENTE, NOME_CLIENTE</li>
+                        <li>DATA_NASCIMENTO, NOME_MAE</li>
+                        <li>TELEFONE_1, TELEFONE_2, EMAIL_CLIENTE</li>
+                        <li>CEP, NUMERO, COMPLEMENTO, PONTO_REFERENCIA</li>
+                        <li>LOGRADOURO, BAIRRO, CIDADE, UF</li>
+                        <li>OBSERVACOES</li>
+                    </ul>
+                </div>
+            </div>
+            <p class="text-muted small mt-2 mb-0">Datas: <code>DD/MM/AAAA</code> ou <code>DD/MM/AAAA HH:MM</code> (DATA_ABERTURA aceita hora).</p>
         </div>
 
         <!-- Seção de Download do Modelo -->
@@ -257,7 +296,7 @@
                 const url = window.URL.createObjectURL(blob);
                 const link = document.createElement('a');
                 link.href = url;
-                link.setAttribute('download', 'modelo_legado_v2.xlsx');
+                link.setAttribute('download', 'modelo_legado_v5.xlsx');
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);

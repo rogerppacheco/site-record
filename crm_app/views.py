@@ -4796,6 +4796,7 @@ class ImportacaoLegadoView(APIView):
         headers = {
             # DADOS DA VENDA
             'DATA_VENDA': ['01/01/2024'],
+            'DATA_ABERTURA': ['01/01/2024 08:00'],
             'DATA_INSTALACAO': ['05/01/2024'],
             'LOGIN_VENDEDOR': ['joao.silva'],
             'NOME_PLANO': ['Internet 600 Mega'],
@@ -4846,7 +4847,7 @@ class ImportacaoLegadoView(APIView):
 
         output.seek(0)
         response = HttpResponse(output, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        response['Content-Disposition'] = 'attachment; filename="modelo_legado_v4.xlsx"'
+        response['Content-Disposition'] = 'attachment; filename="modelo_legado_v5.xlsx"'
         return response
 
     # --- 2. IMPORTAÇÃO E PROCESSAMENTO (POST) - ASYNC ---
@@ -4953,7 +4954,21 @@ class ImportacaoLegadoView(APIView):
                 if 'TARDE' in v: return 'TARDE'
                 if 'NOITE' in v: return 'NOITE'
                 return None
-            
+
+            def parse_dt_time(val):
+                """Retorna datetime timezone-aware ou None. Aceita 'DD/MM/YYYY' ou 'DD/MM/YYYY HH:MM'."""
+                if not val: return None
+                try:
+                    dt = pd.to_datetime(val, dayfirst=True, errors='coerce')
+                    if pd.isna(dt): return None
+                    if hasattr(dt, 'to_pydatetime'):
+                        dt = dt.to_pydatetime()
+                    if timezone.is_naive(dt):
+                        dt = timezone.make_aware(dt)
+                    return dt
+                except Exception:
+                    return None
+
             def consultar_cep_otimizado(cep_input):
                 if not cep_input: return {}
                 cep_limpo = str(cep_input).replace('-', '').replace('.', '').strip()
@@ -5062,6 +5077,7 @@ class ImportacaoLegadoView(APIView):
                     dt_venda = parse_dt(row.get('DATA_VENDA'))
                     if not dt_venda: dt_venda = timezone.now().date()
 
+                    dt_abertura = parse_dt_time(row.get('DATA_ABERTURA'))
                     dt_inst = parse_dt(row.get('DATA_INSTALACAO'))
                     dt_agend = parse_dt(row.get('DATA_AGENDAMENTO'))
 
@@ -5101,6 +5117,7 @@ class ImportacaoLegadoView(APIView):
                         motivo_pendencia=motivo_pend,
                         
                         data_pedido=dt_venda,
+                        data_abertura=dt_abertura,
                         data_instalacao=dt_inst,
                         data_agendamento=dt_agend,
                         periodo_agendamento=parse_periodo(row.get('PERIODO_AGENDAMENTO')),
@@ -9302,6 +9319,17 @@ class BuscarFaturasSafraView(APIView):
                         })
                         continue
                     api_result = consultar_dividas_nio(cpf_limpo, offset=0, limit=50, headless=True)
+                    if api_result.get('erro_400'):
+                        resultados['erros'] += 1
+                        msg = api_result.get('detail') or 'CPF não encontrado ou inválido na base Nio (API 400)'
+                        if isinstance(msg, dict):
+                            msg = msg.get('message') or msg.get('detail') or str(msg)[:150]
+                        resultados['detalhes'].append({
+                            'contrato': contrato.numero_contrato,
+                            'status': 'erro_400_nio',
+                            'mensagem': msg[:200] if isinstance(msg, str) else str(msg)[:200]
+                        })
+                        continue
                     # PDF desativado na safra: API Nio /invoices/.../download e /pdf retornam 500.
                     # Valor, PIX e código de barras seguem sendo atualizados.
                     faturas_nio = _api_to_faturas_nio(api_result, cpf_limpo, incluir_pdf=False)

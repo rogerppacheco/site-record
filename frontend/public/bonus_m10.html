@@ -1051,8 +1051,8 @@
                                             <ul class="list-group">
                                                 ${resumo.detalhes.slice(0, 50).map(d => `
                                                     <li class="list-group-item ${
-                                                        d.status === 'sucesso' ? 'list-group-item-success' :
-                                                        d.status === 'nao_disponivel' ? 'list-group-item-warning' :
+                                                        d.status === 'atualizado' || d.status === 'sucesso' || d.status === 'sem_alteracao' ? 'list-group-item-success' :
+                                                        d.status === 'nao_disponivel' || d.status === 'sem_dividas_nio' || d.status === 'sem_match' || d.status === 'erro_400_nio' ? 'list-group-item-warning' :
                                                         'list-group-item-danger'
                                                     }">
                                                         <strong>${d.contrato}</strong>
