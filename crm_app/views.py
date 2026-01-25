@@ -235,62 +235,101 @@ def duplicar_venda(request):
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 # --- NOVO ENDPOINT: Buscar Fatura NIO para Bonus M-10 ---
+# Plano A = mesma consulta do WhatsApp: consultar_dividas_nio (API /params + REST). Sem Playwright.
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def buscar_fatura_nio_bonus_m10(request):
+    import logging
+    import re
+    import requests
+    from datetime import datetime
+
+    logger = logging.getLogger(__name__)
     cpf = request.data.get("cpf")
-    contrato_id = request.data.get("contrato_id")
-    numero_fatura = request.data.get("numero_fatura")
-    
+
     if not cpf:
         return Response({"error": "CPF não informado."}, status=400)
-    
-    try:
-        from crm_app.services_nio import buscar_fatura_nio_por_cpf
-        
-        # Obter número do contrato se contrato_id foi fornecido
-        numero_contrato = None
-        if contrato_id:
+
+    cpf_limpo = re.sub(r"\D", "", str(cpf))
+    if not cpf_limpo or len(cpf_limpo) < 11:
+        return Response({"error": "CPF inválido."}, status=400)
+
+    def _fmt_date(val):
+        if val is None:
+            return None
+        if hasattr(val, "strftime"):
+            return val.strftime("%Y-%m-%d")
+        s = str(val).strip()
+        if not s:
+            return None
+        for fmt in ("%Y-%m-%d", "%Y%m%d", "%d/%m/%Y"):
             try:
-                from crm_app.models import ContratoM10
-                contrato = ContratoM10.objects.filter(id=contrato_id).first()
-                if contrato:
-                    # Usar numero_contrato_definitivo se disponível, senão numero_contrato
-                    numero_contrato = contrato.numero_contrato_definitivo or contrato.numero_contrato
-            except Exception as e:
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.warning(f"Erro ao buscar contrato {contrato_id}: {e}")
-        
-        # Buscar fatura com plano B habilitado
-        resultado = buscar_fatura_nio_por_cpf(
-            cpf, 
-            incluir_pdf=True,
-            numero_contrato=numero_contrato,
-            usar_plano_b=True  # Habilitar método Nio Negocia como fallback
-        )
-        
-        if resultado and (resultado.get('valor') or resultado.get('codigo_pix') or resultado.get('codigo_barras')):
-            response_data = {
-                "success": True,
-                "valor": resultado.get('valor'),
-                "codigo_pix": resultado.get('codigo_pix'),
-                "codigo_barras": resultado.get('codigo_barras'),
-                "data_vencimento": resultado.get('data_vencimento').strftime('%Y-%m-%d') if resultado.get('data_vencimento') else None,
-                "pdf_url": resultado.get('pdf_url') or resultado.get('pdf_path'),
-                "metodo_usado": resultado.get('metodo_usado', 'desconhecido')
-            }
-            return Response(response_data)
-        else:
+                return datetime.strptime(s[:10], fmt).strftime("%Y-%m-%d")
+            except Exception:
+                continue
+        return None
+
+    try:
+        from crm_app.nio_api import consultar_dividas_nio, get_invoice_pdf_url
+
+        api_result = consultar_dividas_nio(cpf_limpo, offset=0, limit=50, headless=True)
+        invoices = api_result.get("invoices") or []
+
+        if not invoices:
             return Response({
-                "success": False, 
-                "message": "Não foi possível buscar a fatura. Verifique o CPF ou tente novamente."
+                "success": False,
+                "message": "Nenhuma fatura encontrada para este CPF.",
             }, status=404)
+
+        inv = invoices[0]
+        valor = inv.get("amount")
+        codigo_pix = inv.get("pix") or inv.get("codigo_pix")
+        codigo_barras = inv.get("barcode") or inv.get("codigo_barras")
+        due = inv.get("due_date_raw") or inv.get("data_vencimento")
+        data_vencimento = None
+        if due:
+            if hasattr(due, "strftime"):
+                data_vencimento = due
+            elif isinstance(due, str) and len(due) >= 8:
+                try:
+                    s = due[:10].replace("/", "-")
+                    if "-" in s:
+                        data_vencimento = datetime.strptime(s, "%Y-%m-%d").date()
+                    elif due[:8].isdigit():
+                        data_vencimento = datetime.strptime(due[:8], "%Y%m%d").date()
+                except Exception:
+                    pass
+
+        pdf_url = None
+        if api_result.get("token") and api_result.get("api_base") and api_result.get("session_id"):
+            sess = requests.Session()
+            pdf_url = get_invoice_pdf_url(
+                api_result["api_base"],
+                api_result["token"],
+                api_result["session_id"],
+                inv.get("debt_id", ""),
+                str(inv.get("invoice_id", "")),
+                cpf_limpo,
+                inv.get("reference_month", "") or "",
+                sess,
+            )
+
+        dv = data_vencimento
+        return Response({
+            "success": True,
+            "valor": valor,
+            "codigo_pix": codigo_pix,
+            "codigo_barras": codigo_barras,
+            "data_vencimento": dv.strftime("%Y-%m-%d") if hasattr(dv, "strftime") else _fmt_date(dv),
+            "pdf_url": pdf_url,
+            "metodo_usado": "api_nio",
+        })
     except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.exception(f"Erro ao buscar fatura: {e}")
-        return Response({"success": False, "message": str(e)}, status=500)
+        logger.exception(f"[Bonus M-10] Erro ao buscar fatura (Plano A / API Nio): {e}")
+        return Response({
+            "success": False,
+            "message": "Não foi possível buscar a fatura. Verifique o CPF ou tente novamente.",
+        }, status=500)
 import logging
 import pandas as pd
 import numpy as np
