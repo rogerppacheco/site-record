@@ -2241,21 +2241,36 @@ def _buscar_fatura_nio_negocia(
                 print(f"[DEBUG NIO NEGOCIA] Aguardando conteúdo carregar após clique...")
                 logger.info(f"[NIO NEGOCIA] Aguardando conteúdo após clique")
                 
+                # Aguardar um pouco para o clique ser processado
+                page.wait_for_timeout(2000)
+                
+                # Verificar se houve mudança na URL primeiro
+                url_antes = page.url
+                print(f"[DEBUG NIO NEGOCIA] URL antes de aguardar: {url_antes}")
+                logger.info(f"[NIO NEGOCIA] URL antes de aguardar: {url_antes}")
+                
                 # Aguardar mudança no DOM - verificar se novos elementos aparecem
                 try:
                     # Aguardar até que apareça algum elemento indicativo da lista de dívidas
                     # Usar wait_for_function para verificar se o conteúdo mudou
+                    print(f"[DEBUG NIO NEGOCIA] Iniciando wait_for_function para detectar conteúdo...")
+                    logger.info(f"[NIO NEGOCIA] Iniciando wait_for_function")
+                    
                     page.wait_for_function("""
                         () => {
                             // Verificar se há botões com data-context contendo "pagar"
                             const btnPagar = document.querySelector('button[data-context*="pagar"]');
-                            if (btnPagar) return true;
+                            if (btnPagar) {
+                                console.log('[DEBUG] Botão pagar encontrado!');
+                                return true;
+                            }
                             
                             // Verificar se há elementos com valores monetários
                             const elementos = Array.from(document.querySelectorAll('*'));
                             for (let el of elementos) {
                                 const texto = el.innerText || el.textContent || '';
                                 if (texto.match(/R\\$\\s*\\d+[.,]\\d{2}/i) && texto.length < 200) {
+                                    console.log('[DEBUG] Valor encontrado:', texto.substring(0, 50));
                                     return true;
                                 }
                             }
@@ -2264,18 +2279,55 @@ def _buscar_fatura_nio_negocia(
                             for (let el of elementos) {
                                 const texto = el.innerText || el.textContent || '';
                                 if (texto.match(/\\d{2}\\/\\d{2}\\/\\d{4}/) && texto.length < 200) {
+                                    console.log('[DEBUG] Data encontrada:', texto.substring(0, 50));
                                     return true;
                                 }
                             }
                             
+                            // Verificar se a URL mudou
+                            if (window.location.href.includes('debtslist')) {
+                                console.log('[DEBUG] URL contém debtslist');
+                                return true;
+                            }
+                            
                             return false;
                         }
-                    """, timeout=20000)
+                    """, timeout=30000)
                     print(f"[DEBUG NIO NEGOCIA] ✅ Conteúdo da lista detectado via JavaScript")
                     logger.info(f"[NIO NEGOCIA] Conteúdo da lista detectado")
                 except Exception as e_wait:
                     print(f"[DEBUG NIO NEGOCIA] ⚠️ Timeout aguardando conteúdo: {e_wait}")
                     logger.warning(f"[NIO NEGOCIA] Timeout aguardando conteúdo: {e_wait}")
+                    
+                    # Verificar o estado atual da página após timeout
+                    url_apos_timeout = page.url
+                    print(f"[DEBUG NIO NEGOCIA] URL após timeout: {url_apos_timeout}")
+                    logger.warning(f"[NIO NEGOCIA] URL após timeout: {url_apos_timeout}")
+                    
+                    # Tentar verificar se há algum erro na página
+                    try:
+                        erros = page.evaluate("""
+                            () => {
+                                const erros = [];
+                                // Verificar se há mensagens de erro
+                                const elementos = Array.from(document.querySelectorAll('*'));
+                                for (let el of elementos) {
+                                    const texto = el.innerText || el.textContent || '';
+                                    if (texto.toLowerCase().includes('erro') || 
+                                        texto.toLowerCase().includes('error') ||
+                                        texto.toLowerCase().includes('não encontrado') ||
+                                        texto.toLowerCase().includes('sem dívidas')) {
+                                        erros.push(texto.substring(0, 100));
+                                    }
+                                }
+                                return erros;
+                            }
+                        """)
+                        if erros:
+                            print(f"[DEBUG NIO NEGOCIA] Possíveis erros encontrados: {erros}")
+                            logger.warning(f"[NIO NEGOCIA] Possíveis erros: {erros}")
+                    except:
+                        pass
                 
                 # Aguardar mais tempo para garantir renderização completa
                 page.wait_for_timeout(5000)  # Aguardar mais 5 segundos
