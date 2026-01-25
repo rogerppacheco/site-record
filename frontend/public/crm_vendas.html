@@ -1149,7 +1149,9 @@
                     document.getElementById('barra-filtros').style.display = 'none'; 
                     document.getElementById('aviso-filtro-bloqueado').classList.remove('d-none'); 
                 }
-                if (userProfile === 'Diretoria') { document.getElementById('btn-exportar-excel').classList.remove('d-none'); }
+                if (['Diretoria', 'Admin', 'BackOffice'].includes(userProfile)) {
+                    document.getElementById('btn-exportar-excel').classList.remove('d-none');
+                }
             } catch(e) {}
         }
 
@@ -1239,14 +1241,31 @@
         }
 
         function exportarExcelDiretoria() {
-            if(!confirm("Deseja baixar a base completa de vendas em Excel?")) return;
+            if(!confirm("Deseja baixar a base completa de vendas em Excel (todas as vendas ativas, com Data Criação e Data Instalação)?")) return;
             const btn = document.getElementById('btn-exportar-excel');
             const originalText = btn.innerHTML;
             btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Gerando...'; btn.disabled = true;
-            fetch(`${apiUrl}/api/crm/vendas/exportar-excel/`, { method: 'GET', headers: { 'Authorization': 'Bearer ' + localStorage.getItem('accessToken') } })
-            .then(response => { if (response.status === 403) throw new Error("Acesso Negado: Apenas Diretoria."); if (!response.ok) throw new Error("Erro ao gerar arquivo."); return response.blob(); })
-            .then(blob => { const url = window.URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `Base_Vendas_${new Date().toISOString().slice(0,10)}.xlsx`; document.body.appendChild(a); a.click(); a.remove(); })
-            .catch(err => { alert(err.message); }).finally(() => { btn.innerHTML = originalText; btn.disabled = false; });
+            fetch(`${apiUrl}/api/crm/vendas/exportar-excel/?base_completa=1`, { method: 'GET', headers: { 'Authorization': 'Bearer ' + localStorage.getItem('accessToken') } })
+            .then(response => {
+                if (response.status === 403) throw new Error("Acesso negado. Apenas Diretoria, Admin ou BackOffice.");
+                if (!response.ok) throw new Error("Erro ao gerar arquivo.");
+                const cd = response.headers.get('Content-Disposition');
+                const m = cd && /filename="([^"]+)"/.exec(cd);
+                const filename = (m && m[1]) ? m[1] : `Base_Vendas_Completa_${new Date().toISOString().slice(0,10)}.xlsx`;
+                return response.blob().then(blob => ({ blob, filename }));
+            })
+            .then(({ blob, filename }) => {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+            })
+            .catch(err => { alert(err.message); })
+            .finally(() => { btn.innerHTML = originalText; btn.disabled = false; });
         }
 
         function preencherFormularioCliente(cliente, lock = false) { 
