@@ -222,17 +222,26 @@ def get_debts(api_base: str, token: str, session_id: str, cpf: str, offset: int,
     
     resp = session.get(url, headers=headers, timeout=30)
     
-    # Log detalhado em caso de erro
+    if resp.status_code == 400:
+        logger.warning(f"[M10] API Nio 400 para CPF (não encontrado ou inválido): {url}")
+        try:
+            body = resp.json()
+            detail = body.get("message") or body.get("detail") or body.get("error") or str(body)[:200]
+        except Exception:
+            detail = resp.text[:200] if resp.text else "Bad Request"
+        if isinstance(detail, dict):
+            detail = str(detail)[:200]
+        return {"debts": [], "erro_400": True, "detail": detail}
+    
     if resp.status_code != 200:
         logger.error(f"[M10] Erro {resp.status_code} na requisição: {url}")
         logger.error(f"[M10] Response headers: {dict(resp.headers)}")
         try:
-            error_body = resp.text[:500]  # Primeiros 500 chars
-            logger.error(f"[M10] Response body: {error_body}")
-        except:
+            logger.error(f"[M10] Response body: {resp.text[:500]}")
+        except Exception:
             pass
+        resp.raise_for_status()
     
-    resp.raise_for_status()
     return resp.json()
 
 
@@ -358,11 +367,20 @@ def consultar_dividas_nio(cpf: str, offset: int = 0, limit: int = 10, storage_st
 
         data = get_debts(api_url, token, session_id, cpf, offset, limit, session)
         logger.info(f"[M10] Dados recebidos: {data}")
+        if data.get("erro_400"):
+            return {
+                "token": None,
+                "api_base": api_url,
+                "session_id": None,
+                "invoices": [],
+                "raw": data,
+                "erro_400": True,
+                "detail": data.get("detail", "CPF não encontrado ou inválido na base Nio"),
+            }
         invoices = []
         for debt in data.get("debts", []):
             for inv in debt.get("invoices", []) or []:
                 invoices.append(_map_invoice(inv, debt))
-
         logger.info(f"[M10] Faturas mapeadas: {len(invoices)}")
         return {
             "token": token,
