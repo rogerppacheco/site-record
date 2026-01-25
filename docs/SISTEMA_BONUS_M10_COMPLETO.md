@@ -15,6 +15,11 @@ Sistema completo para controlar pagamentos de bônus baseado nas 10 primeiras fa
 
 ### 1. **BANCO DE DADOS (Models)** ✅
 
+#### **Regra de Safra e Filtro por Mês**
+- **Safra** = mês da **data de instalação** (não da data da venda).
+- Ao filtrar pelo mês selecionado, **devem aparecer todos** os contratos cuja `data_instalacao` está naquele mês.
+- O dashboard, vendedores e "Buscar faturas da safra" filtram por `data_instalacao` no intervalo do mês (início até fim exclusivo).
+
 #### **SafraM10**
 Agrupa contratos por safra (mês de instalação)
 - `mes_referencia` - Mês/ano da safra

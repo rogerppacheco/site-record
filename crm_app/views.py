@@ -334,6 +334,7 @@ import logging
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta, date
+from dateutil.relativedelta import relativedelta
 from collections import defaultdict
 from operator import itemgetter
 import base64
@@ -6605,17 +6606,46 @@ def _map_status_fpd(status_raw: str) -> str:
     return mapping.get(key, status_raw.replace('_', ' '))
 
 
+def _safra_to_data_range(safra_param):
+    """Converte parâmetro safra (ID SafraM10 ou YYYY-MM) em (data_inicio, data_fim) do mês.
+    data_fim é exclusivo (primeiro dia do mês seguinte). Retorna (None, None) se inválido.
+    """
+    if not safra_param:
+        return None, None
+    try:
+        pk = int(safra_param)
+        s = SafraM10.objects.filter(pk=pk).first()
+        if s:
+            di = s.mes_referencia
+            df = di + relativedelta(months=1)
+            return di, df
+    except (ValueError, TypeError):
+        pass
+    if isinstance(safra_param, str) and len(safra_param) == 7 and safra_param[4] == '-':
+        try:
+            ano, mes = int(safra_param[:4]), int(safra_param[5:7])
+            di = date(ano, mes, 1)
+            df = di + relativedelta(months=1)
+            return di, df
+        except (ValueError, TypeError):
+            pass
+    return None, None
+
+
 class VendedoresM10View(APIView):
     """Lista vendedores que têm contratos na M-10 (opcionalmente filtrado por safra)."""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        safra = request.GET.get('safra')
+        safra_param = request.GET.get('safra')
         queryset = ContratoM10.objects.select_related('vendedor').filter(vendedor__isnull=False)
-        if safra:
-            # safra pode ser ID do SafraM10 ou string YYYY-MM
-            # Tenta primeiro como string diretamente
-            queryset = queryset.filter(safra=safra)
+        if safra_param:
+            data_inicio, data_fim = _safra_to_data_range(safra_param)
+            if data_inicio is not None and data_fim is not None:
+                queryset = queryset.filter(
+                    data_instalacao__gte=data_inicio,
+                    data_instalacao__lt=data_fim,
+                )
 
         # Deduplica por vendedor_id para evitar repetição na lista
         vistos = {}
@@ -6648,11 +6678,15 @@ class DashboardM10View(APIView):
             except SafraM10.DoesNotExist:
                 return Response({'error': 'Safra não encontrada'}, status=404)
 
-            # Converte safra_id para string YYYY-MM para filtro
-            safra_str = safra.mes_referencia.strftime('%Y-%m')
-            
-            # Filtros - agora safra é CharField YYYY-MM
-            queryset = ContratoM10.objects.filter(safra=safra_str).select_related('vendedor')
+            # Regra: safra = mês da data de instalação. Ao filtrar pelo mês selecionado,
+            # exibir todos os contratos cuja data_instalacao está naquele mês.
+            data_inicio = safra.mes_referencia
+            data_fim = data_inicio + relativedelta(months=1)
+
+            queryset = ContratoM10.objects.filter(
+                data_instalacao__gte=data_inicio,
+                data_instalacao__lt=data_fim,
+            ).select_related('vendedor')
             
             vendedor = request.GET.get('vendedor')
             if vendedor:
@@ -9241,25 +9275,20 @@ class BuscarFaturasSafraView(APIView):
         safra_str = request.data.get('safra')
         safra_id = request.data.get('safra_id')
         numero_fatura_filtro = request.data.get('numero_fatura')
-        
+
         if not safra_str and not safra_id:
             return Response({'error': 'Informe a safra (YYYY-MM) ou safra_id'}, status=400)
-        
+
         try:
-            # Buscar contratos da safra
-            if safra_id:
-                try:
-                    safra = SafraM10.objects.get(id=safra_id)
-                    safra_str = safra.mes_referencia.strftime('%Y-%m')
-                except SafraM10.DoesNotExist:
-                    return Response({'error': 'Safra não encontrada'}, status=404)
-            
-            if not safra_str:
-                return Response({'error': 'Safra inválida'}, status=400)
-            
-            # Filtrar por safra (CharField YYYY-MM)
+            # Regra: safra = mês da data de instalação. Buscar contratos com data_instalacao no mês.
+            param = safra_id or safra_str
+            data_inicio, data_fim = _safra_to_data_range(param)
+            if data_inicio is None or data_fim is None:
+                return Response({'error': 'Safra inválida. Use safra_id ou safra (YYYY-MM).'}, status=400)
+
             contratos = ContratoM10.objects.filter(
-                safra=safra_str,
+                data_instalacao__gte=data_inicio,
+                data_instalacao__lt=data_fim,
                 status_contrato='ATIVO'
             )
             
