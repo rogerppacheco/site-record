@@ -2237,10 +2237,29 @@ def _buscar_fatura_nio_negocia(
                     logger.warning(f"[NIO NEGOCIA] Tentando clicar com force=True")
                     btn_consultar.click(force=True)
                 
-                page.wait_for_timeout(3000)
-                page.wait_for_load_state("networkidle", timeout=15000)
-                print(f"[DEBUG NIO NEGOCIA] ✅ Clique realizado com sucesso")
-                logger.info(f"[NIO NEGOCIA] Clique realizado com sucesso")
+                # Aguardar navegação ou mudança na página
+                try:
+                    # Verificar se a URL mudou (pode navegar para /debtslist)
+                    page.wait_for_url("**/debtslist**", timeout=10000)
+                    print(f"[DEBUG NIO NEGOCIA] ✅ Navegação detectada para: {page.url}")
+                    logger.info(f"[NIO NEGOCIA] Navegação detectada para: {page.url}")
+                except:
+                    # Se não navegou, aguardar mudança no conteúdo
+                    print(f"[DEBUG NIO NEGOCIA] Aguardando mudança no conteúdo da página...")
+                    try:
+                        # Aguardar até que apareça algum elemento indicativo da lista de dívidas
+                        page.wait_for_selector('button[data-context*="pagar"], button:has-text("Pagar"), div:has-text("Valor"), div:has-text("Vencimento")', timeout=15000)
+                        print(f"[DEBUG NIO NEGOCIA] ✅ Elementos da lista de dívidas detectados")
+                        logger.info(f"[NIO NEGOCIA] Elementos da lista de dívidas detectados")
+                    except:
+                        print(f"[DEBUG NIO NEGOCIA] ⚠️ Timeout aguardando elementos da lista")
+                        logger.warning(f"[NIO NEGOCIA] Timeout aguardando elementos da lista")
+                
+                page.wait_for_timeout(5000)  # Aguardar mais 5 segundos para garantir renderização
+                page.wait_for_load_state("networkidle", timeout=20000)
+                page.wait_for_load_state("domcontentloaded", timeout=20000)
+                print(f"[DEBUG NIO NEGOCIA] ✅ Clique realizado e página aguardada")
+                logger.info(f"[NIO NEGOCIA] Clique realizado e página aguardada")
             except Exception as e:
                 logger.error(f"[NIO NEGOCIA] Erro ao clicar em Consultar dívidas: {e}")
                 print(f"[DEBUG NIO NEGOCIA] ❌ Erro ao clicar: {e}")
@@ -2304,17 +2323,44 @@ def _buscar_fatura_nio_negocia(
             logger.info(f"[NIO NEGOCIA] Passo 6: Extraindo dados da lista")
             print(f"[DEBUG NIO NEGOCIA] Passo 6: Extraindo dados da lista...")
             
+            # Verificar URL atual
+            url_atual = page.url
+            print(f"[DEBUG NIO NEGOCIA] URL atual: {url_atual}")
+            logger.info(f"[NIO NEGOCIA] URL atual: {url_atual}")
+            
             # Aguardar mais tempo para página carregar completamente (dados podem vir via JS)
             try:
+                # Aguardar elementos específicos da lista de dívidas aparecerem
+                print(f"[DEBUG NIO NEGOCIA] Aguardando elementos da lista de dívidas...")
+                try:
+                    # Tentar aguardar por qualquer elemento que indique que a lista carregou
+                    page.wait_for_selector('button[data-context*="pagar"], button:has-text("Pagar"), div:has-text("Valor"), div:has-text("Vencimento"), div:has-text("R$")', timeout=20000, state="visible")
+                    print(f"[DEBUG NIO NEGOCIA] ✅ Elementos da lista detectados")
+                    logger.info(f"[NIO NEGOCIA] Elementos da lista detectados")
+                except Exception as e_sel:
+                    print(f"[DEBUG NIO NEGOCIA] ⚠️ Não encontrou elementos específicos: {e_sel}")
+                    logger.warning(f"[NIO NEGOCIA] Não encontrou elementos específicos: {e_sel}")
+                
                 page.wait_for_timeout(5000)  # Aguardar 5 segundos adicionais
-                page.wait_for_load_state("networkidle", timeout=15000)
+                page.wait_for_load_state("networkidle", timeout=20000)
+                page.wait_for_load_state("domcontentloaded", timeout=20000)
                 print(f"[DEBUG NIO NEGOCIA] Página aguardada para carregar dados")
-            except:
-                print(f"[DEBUG NIO NEGOCIA] ⚠️ Timeout ao aguardar página carregar")
+            except Exception as e_wait:
+                print(f"[DEBUG NIO NEGOCIA] ⚠️ Timeout ao aguardar página carregar: {e_wait}")
+                logger.warning(f"[NIO NEGOCIA] Timeout ao aguardar página carregar: {e_wait}")
             
             # Obter tanto HTML quanto texto visível (innerText via JS)
             html_lista = page.content()
             texto_visivel = page.evaluate("() => document.body.innerText")
+            
+            # Verificar se o texto visível contém dados esperados
+            if texto_visivel and len(texto_visivel) < 200:
+                print(f"[DEBUG NIO NEGOCIA] ⚠️ Texto visível muito curto ({len(texto_visivel)} chars), pode estar na página errada")
+                logger.warning(f"[NIO NEGOCIA] Texto visível muito curto ({len(texto_visivel)} chars)")
+                # Tentar aguardar mais um pouco
+                page.wait_for_timeout(5000)
+                texto_visivel = page.evaluate("() => document.body.innerText")
+                html_lista = page.content()
             
             # Log detalhado do texto visível para debug
             if texto_visivel:
