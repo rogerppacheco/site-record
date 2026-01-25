@@ -397,8 +397,16 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                             info.modalVisible = style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
                         }
                         
-                        // Verificar opção Boleto
-                        const boleto = document.querySelector('div.desktop-payment__item-button-text:has-text("Boleto"), div:has-text("Boleto")');
+                        // Verificar opção Boleto (buscar por texto, querySelector não suporta :has-text)
+                        const divs = Array.from(document.querySelectorAll('div.desktop-payment__item-button-text, div'));
+                        let boleto = null;
+                        for (let d of divs) {
+                            const texto = (d.innerText || d.textContent || '').trim();
+                            if (texto.includes('Boleto')) {
+                                boleto = d;
+                                break;
+                            }
+                        }
                         if (boleto) {
                             info.boletoExists = true;
                             const style = window.getComputedStyle(boleto);
@@ -551,10 +559,14 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                                 print(f"[DEBUG PDF DOWNLOAD]     Tentando clicar via JavaScript...")
                                 page.evaluate("""
                                     () => {
-                                        const boleto = document.querySelector('div.desktop-payment__item-button-text:has-text("Boleto"), div:has-text("Boleto")');
-                                        if (boleto) {
-                                            boleto.click();
-                                            return true;
+                                        // Buscar por texto (querySelector não suporta :has-text)
+                                        const divs = Array.from(document.querySelectorAll('div.desktop-payment__item-button-text, div'));
+                                        for (let d of divs) {
+                                            const texto = (d.innerText || d.textContent || '').trim();
+                                            if (texto.includes('Boleto')) {
+                                                d.click();
+                                                return true;
+                                            }
                                         }
                                         return false;
                                     }
@@ -1269,13 +1281,37 @@ def _buscar_todas_faturas_playwright(cpf: str):
             
             page = context.new_page()
             page.goto(NIO_BASE_URL, wait_until="networkidle", timeout=30000)
-            page.wait_for_timeout(1500)
+            page.wait_for_timeout(2000)
             
-            # Preenche CPF e consulta
-            page.locator('input[type="text"]').first.fill(cpf)
-            page.locator('button:has-text("Consultar")').first.click()
-            page.wait_for_timeout(1500)
-            page.wait_for_load_state("networkidle", timeout=20000)
+            # Preenche CPF
+            input_cpf = page.locator('input[type="text"]').first
+            input_cpf.wait_for(state="visible", timeout=10000)
+            input_cpf.fill(cpf)
+            page.wait_for_timeout(500)
+            
+            # Aguarda o botão "Consultar" aparecer e ficar clicável
+            botao_consultar = page.locator('button:has-text("Consultar")').first
+            try:
+                botao_consultar.wait_for(state="visible", timeout=10000)
+                # Verifica se o botão está habilitado
+                for tentativa in range(5):
+                    if botao_consultar.is_enabled():
+                        break
+                    page.wait_for_timeout(1000)
+                botao_consultar.click(timeout=30000)
+            except Exception as e:
+                logger.warning(f"[NIO] Erro ao clicar no botão Consultar: {e}")
+                # Tenta seletor alternativo
+                try:
+                    botao_alt = page.locator('button').filter(has_text="Consultar").first
+                    botao_alt.wait_for(state="visible", timeout=5000)
+                    botao_alt.click(timeout=30000)
+                except Exception as e2:
+                    logger.error(f"[NIO] Erro ao clicar no botão (tentativa alternativa): {e2}")
+                    raise
+            
+            page.wait_for_timeout(2000)
+            page.wait_for_load_state("networkidle", timeout=30000)
             
             # Verifica se tem "ver detalhes" e expande
             ver_detalhes = page.locator('text=/ver detalhes/i')
@@ -2290,7 +2326,16 @@ def _buscar_fatura_nio_negocia(
                                     }
                                     
                                     // Verificar também se o botão está habilitado (indicador de que o reCAPTCHA foi aceito)
-                                    const btn = document.querySelector('button:has-text("Consultar dívidas")');
+                                    // Buscar botão por texto (querySelector não suporta :has-text)
+                                    const botoes = Array.from(document.querySelectorAll('button'));
+                                    let btn = null;
+                                    for (let b of botoes) {
+                                        const texto = (b.innerText || b.textContent || '').trim();
+                                        if (texto.includes('Consultar dívidas') || texto.includes('Consultar')) {
+                                            btn = b;
+                                            break;
+                                        }
+                                    }
                                     const btn_enabled = btn && !btn.hasAttribute('disabled');
                                     
                                     return {
