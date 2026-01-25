@@ -5169,6 +5169,7 @@ class ImportacaoLegadoView(APIView):
                 'vendas_criadas': vendas_criadas,
                 'erros': logs_erro[:100]
             }
+            log.calcular_duracao()
             log.save()
 
         except Exception as e:
@@ -5177,6 +5178,7 @@ class ImportacaoLegadoView(APIView):
                 log.status = 'ERRO'
                 log.mensagem_erro = str(e)
                 log.finalizado_em = timezone.now()
+                log.calcular_duracao()
                 log.save()
             except:
                 pass
