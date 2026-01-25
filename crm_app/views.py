@@ -412,7 +412,7 @@ from .models import (
     Campanha, ComissaoOperadora, Comunicado, AreaVenda,
     SessaoWhatsapp, DFV, GrupoDisparo, LancamentoFinanceiro,
     AgendamentoDisparo,     ImportacaoAgendamento, ImportacaoRecompra,
-    LogImportacaoAgendamento, LogImportacaoRecompra, EstatisticaBotWhatsApp
+    LogImportacaoAgendamento, LogImportacaoLegado, LogImportacaoRecompra, EstatisticaBotWhatsApp
 )
 
 # Serializers do App
