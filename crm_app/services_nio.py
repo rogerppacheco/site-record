@@ -1436,19 +1436,35 @@ def _buscar_todas_faturas_playwright(cpf: str):
                     logger.error(f"[NIO] Erro ao clicar no botão (tentativa alternativa): {e2}")
                     raise
             
-            page.wait_for_timeout(2000)
+            page.wait_for_timeout(3000)
             page.wait_for_load_state("networkidle", timeout=30000)
             
-            # Verifica se tem "ver detalhes" e expande
-            ver_detalhes = page.locator('text=/ver detalhes/i')
-            if ver_detalhes.count() > 0:
-                ver_detalhes.first.click()
-                page.wait_for_timeout(800)
+            # Verificar se chegou na página de resultados (tem "você tem X contas" ou tabela de faturas)
+            try:
+                # Aguardar até que apareça a tabela ou mensagem de contas
+                page.wait_for_selector('text=/você tem|contas pra pagar|Cobrança.*Valor.*Vencimento/i', timeout=10000)
+                logger.info("[SEGUNDA VIA] Página de resultados detectada")
+            except:
+                logger.warning("[SEGUNDA VIA] Timeout aguardando página de resultados, continuando mesmo assim...")
             
-            # Captura HTML completo da página de resultados
+            # Aguardar um pouco mais para garantir que a tabela está renderizada
+            page.wait_for_timeout(2000)
+            
+            # Captura HTML completo da página de resultados (ANTES de clicar em "ver detalhes")
             html_resultado = page.content()
             
-            # Extrai TODAS as faturas da tabela HTML
+            # Salvar HTML para debug
+            try:
+                downloads_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'downloads')
+                os.makedirs(downloads_dir, exist_ok=True)
+                html_debug_path = os.path.join(downloads_dir, f"debug_segunda_via_todas_{cpf}.html")
+                with open(html_debug_path, 'w', encoding='utf-8') as f:
+                    f.write(html_resultado)
+                logger.info(f"[SEGUNDA VIA] HTML salvo para debug: {html_debug_path}")
+            except Exception as e:
+                logger.warning(f"[SEGUNDA VIA] Erro ao salvar HTML: {e}")
+            
+            # Extrai TODAS as faturas da tabela HTML (sem precisar clicar em "ver detalhes")
             faturas = _extrair_todas_faturas_html(html_resultado)
             
             if not faturas:
@@ -1651,7 +1667,7 @@ def _extrair_todas_faturas_negocia_html(html: str):
 def _extrair_todas_faturas_html(html: str):
     """
     Extrai todas as faturas do HTML da página de resultados da Nio (Segunda Via).
-    Procura por padrões de tabela/listagem com status, valores e vencimentos.
+    A página mostra uma tabela com colunas: Cobrança, Valor, Vencimento, Status, Ver detalhes
     """
     import re
     from bs4 import BeautifulSoup
@@ -1659,7 +1675,7 @@ def _extrair_todas_faturas_html(html: str):
     try:
         from bs4 import BeautifulSoup
     except ImportError:
-        print("[AVISO] BeautifulSoup não instalado. Instale: pip install beautifulsoup4")
+        logger.warning("[AVISO] BeautifulSoup não instalado. Instale: pip install beautifulsoup4")
         return []
     
     faturas = []
@@ -1667,77 +1683,136 @@ def _extrair_todas_faturas_html(html: str):
     try:
         soup = BeautifulSoup(html, 'html.parser')
         
-        # Procurar por linhas de tabela ou cards de faturas
-        # Padrão comum: divs ou tr com classes relacionadas a "cobrança", "fatura", "invoice"
-        
-        # Tentar encontrar todas as linhas com status (Em aberto, Atrasado, etc)
-        status_pattern = re.compile(r'(Em aberto|Atrasado|Atrasada|Vencida|Vencido)', re.IGNORECASE)
-        
-        # Buscar valores monetários (R$)
+        # Padrões de busca
+        status_pattern = re.compile(r'(Em aberto|Atrasado|Atrasada|Vencida|Vencido|Agendada|Agendado)', re.IGNORECASE)
         valor_pattern = re.compile(r'R\$\s*(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2}))', re.IGNORECASE)
+        # Padrão para "Vence dia DD/MM/YYYY" ou apenas "DD/MM/YYYY"
+        data_pattern = re.compile(r'(?:Vence dia\s+)?(\d{2}/\d{2}/\d{4})', re.IGNORECASE)
         
-        # Buscar datas de vencimento
-        data_pattern = re.compile(r'(\d{2}/\d{2}/\d{4})')
+        logger.info("[SEGUNDA VIA] Procurando faturas na tabela...")
         
-        # Buscar elementos que podem conter faturas
-        # Pode ser tabelas (tr), divs com classes específicas, etc
-        elementos_fatura = soup.find_all(['tr', 'div'], class_=re.compile(r'(invoice|fatura|cobrança|bill)', re.IGNORECASE))
+        # Método 1: Procurar por linhas de tabela (tr) que contenham valores e datas
+        linhas_tabela = soup.find_all('tr')
+        logger.info(f"[SEGUNDA VIA] Encontradas {len(linhas_tabela)} linhas de tabela")
         
-        # Se não encontrou por classe, tenta por texto que contenha "Cobrança"
-        if not elementos_fatura:
-            elementos_fatura = soup.find_all(string=re.compile(r'Cobrança|Fatura|Janeiro|Fevereiro|Março|Abril|Maio|Junho|Julho|Agosto|Setembro|Outubro|Novembro|Dezembro', re.IGNORECASE))
-            elementos_fatura = [elem.parent for elem in elementos_fatura if elem.parent]
-        
-        # Se ainda não encontrou, tenta buscar todos os elementos que contenham valores monetários
-        if not elementos_fatura:
-            elementos_com_valor = soup.find_all(string=valor_pattern)
-            elementos_fatura = [elem.parent for elem in elementos_com_valor if elem.parent]
-        
-        print(f"[DEBUG] Encontrados {len(elementos_fatura)} elementos candidatos a faturas")
-        
-        # Processar cada elemento encontrado
-        for i, elemento in enumerate(elementos_fatura[:10]):  # Limitar a 10 faturas
-            texto_elemento = elemento.get_text() if hasattr(elemento, 'get_text') else str(elemento)
+        for linha in linhas_tabela:
+            texto_linha = linha.get_text()
             
-            # Extrair dados
-            valor_match = valor_pattern.search(texto_elemento)
-            data_match = data_pattern.search(texto_elemento)
-            status_match = status_pattern.search(texto_elemento)
+            # Verificar se a linha tem valor e data (características de uma fatura)
+            tem_valor = bool(valor_pattern.search(texto_linha))
+            tem_data = bool(data_pattern.search(texto_linha))
+            tem_status = bool(status_pattern.search(texto_linha))
             
-            valor = None
-            if valor_match:
+            # Se tem valor e data, é provavelmente uma linha de fatura
+            if tem_valor and tem_data:
+                # Extrair dados
+                valor_match = valor_pattern.search(texto_linha)
+                data_match = data_pattern.search(texto_linha)
+                status_match = status_pattern.search(texto_linha)
+                
+                valor = None
+                if valor_match:
+                    try:
+                        valor_str = valor_match.group(1).replace('.', '').replace(',', '.')
+                        valor = Decimal(valor_str)
+                    except:
+                        pass
+                
+                data_vencimento = None
+                if data_match:
+                    try:
+                        data_vencimento = datetime.strptime(data_match.group(1), "%d/%m/%Y").date()
+                    except:
+                        pass
+                
+                status = status_match.group(1) if status_match else None
+                
+                # Extrair nome da cobrança (primeira célula da linha)
+                nome_cobranca = None
+                primeira_celula = linha.find(['td', 'th'])
+                if primeira_celula:
+                    nome_cobranca = primeira_celula.get_text(strip=True)
+                
+                # Verificar se já não existe uma fatura com mesma data e valor (evitar duplicatas)
+                duplicata = False
+                for f_existente in faturas:
+                    if (f_existente.get('data_vencimento') == data_vencimento.strftime('%Y-%m-%d') if data_vencimento else None and
+                        abs(f_existente.get('valor', 0) - float(valor)) < 0.01 if valor else False):
+                        duplicata = True
+                        break
+                
+                if valor and data_vencimento and not duplicata:
+                    faturas.append({
+                        'valor': float(valor),
+                        'data_vencimento': data_vencimento.strftime('%Y-%m-%d'),
+                        'status': status,
+                        'nome_cobranca': nome_cobranca,
+                        'codigo_pix': None,
+                        'codigo_barras': None,
+                        'pdf_url': None,
+                    })
+                    logger.info(f"[SEGUNDA VIA] ✅ Fatura extraída: {nome_cobranca} - R$ {valor} - Venc: {data_vencimento} - Status: {status}")
+        
+        # Método 2: Se não encontrou na tabela, tentar método alternativo (buscar por padrões no texto)
+        if not faturas:
+            logger.info("[SEGUNDA VIA] Nenhuma fatura encontrada na tabela, tentando método alternativo...")
+            
+            texto_pagina = soup.get_text()
+            
+            # Buscar todos os valores e datas na página
+            todos_valores = valor_pattern.findall(texto_pagina)
+            todas_datas = data_pattern.findall(texto_pagina)
+            
+            logger.info(f"[SEGUNDA VIA] Encontrados {len(todos_valores)} valores e {len(todas_datas)} datas na página")
+            
+            # Combinar valores e datas que estão próximos no texto (dentro de 200 caracteres)
+            for valor_str in todos_valores[:20]:  # Limitar a 20
                 try:
-                    valor_str = valor_match.group(1).replace('.', '').replace(',', '.')
-                    valor = Decimal(valor_str)
+                    valor_float = float(valor_str.replace('.', '').replace(',', '.'))
+                    
+                    # Buscar data mais próxima deste valor
+                    valor_pos = texto_pagina.find(f"R$ {valor_str}")
+                    if valor_pos == -1:
+                        valor_pos = texto_pagina.find(valor_str)
+                    
+                    if valor_pos != -1:
+                        # Procurar data próxima (dentro de 200 caracteres)
+                        for data_str in todas_datas[:20]:
+                            try:
+                                data_obj = datetime.strptime(data_str, "%d/%m/%Y").date()
+                                data_pos = texto_pagina.find(data_str, max(0, valor_pos - 200))
+                                
+                                if data_pos != -1 and abs(valor_pos - data_pos) < 200:
+                                    # Verificar se já não existe
+                                    duplicata = False
+                                    for f_existente in faturas:
+                                        if (f_existente.get('data_vencimento') == data_obj.strftime('%Y-%m-%d') and
+                                            abs(f_existente.get('valor', 0) - valor_float) < 0.01):
+                                            duplicata = True
+                                            break
+                                    
+                                    if not duplicata:
+                                        faturas.append({
+                                            'valor': valor_float,
+                                            'data_vencimento': data_obj.strftime('%Y-%m-%d'),
+                                            'status': None,
+                                            'nome_cobranca': None,
+                                            'codigo_pix': None,
+                                            'codigo_barras': None,
+                                            'pdf_url': None,
+                                        })
+                                        logger.info(f"[SEGUNDA VIA] ✅ Fatura extraída (método alternativo): R$ {valor_float} - Venc: {data_obj}")
+                                        break
+                            except:
+                                continue
                 except:
-                    pass
-            
-            data_vencimento = None
-            if data_match:
-                try:
-                    data_vencimento = datetime.strptime(data_match.group(1), "%d/%m/%Y").date()
-                except:
-                    pass
-            
-            status = status_match.group(1) if status_match else None
-            
-            # Se encontrou pelo menos valor OU data, considera uma fatura
-            if valor or data_vencimento:
-                faturas.append({
-                    'valor': float(valor) if valor else None,
-                    'data_vencimento': data_vencimento.strftime('%Y-%m-%d') if data_vencimento else None,
-                    'status': status,
-                    'codigo_pix': None,  # Será preenchido ao clicar na fatura específica
-                    'codigo_barras': None,
-                    'pdf_url': None,
-                    'indice': i + 1,
-                })
+                    continue
         
-        print(f"[DEBUG] Extraídas {len(faturas)} faturas do HTML")
+        logger.info(f"[SEGUNDA VIA] Total extraído: {len(faturas)} faturas")
         return faturas
         
     except Exception as e:
-        print(f"[ERRO] Erro ao extrair faturas do HTML: {e}")
+        logger.error(f"[SEGUNDA VIA] Erro ao extrair faturas: {e}")
         import traceback
         traceback.print_exc()
         return []
