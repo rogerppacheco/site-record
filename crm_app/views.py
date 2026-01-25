@@ -9036,26 +9036,67 @@ class BuscarFaturaNioView(APIView):
                 pass
         
         try:
-            from crm_app.services_nio import buscar_fatura_nio_por_cpf
-            
-            # Busca dados no site da Nio (com PDF se solicitado)
-            incluir_pdf = request.data.get('incluir_pdf', True)  # Por padrão busca o PDF
-            dados = buscar_fatura_nio_por_cpf(cpf, incluir_pdf=incluir_pdf)
-            
-            if not dados:
-                return Response({
-                    'error': 'Não foi possível buscar a fatura. Verifique o CPF ou tente novamente.'
-                }, status=404)
-            
-            # Se retornou indicação de CPF sem dívidas
-            if dados.get('sem_dividas'):
+            # Plano A = mesma consulta do WhatsApp: API Nio (consultar_dividas_nio). Sem Playwright.
+            import re
+            import requests
+            from crm_app.nio_api import consultar_dividas_nio, get_invoice_pdf_url
+
+            cpf_limpo = re.sub(r'\D', '', str(cpf))
+            if not cpf_limpo or len(cpf_limpo) < 11:
+                return Response({'error': 'CPF inválido'}, status=400)
+
+            api_result = consultar_dividas_nio(cpf_limpo, offset=0, limit=50, headless=True)
+            invoices = api_result.get('invoices') or []
+
+            if not invoices:
                 return Response({
                     'success': True,
                     'sem_dividas': True,
-                    'mensagem': dados.get('mensagem', 'CPF sem dívidas no momento.')
+                    'mensagem': 'CPF sem dívidas no momento.'
                 }, status=200)
-            
-            # Se não encontrou nenhum dado válido
+
+            inv = invoices[0]
+            valor = inv.get('amount')
+            codigo_pix = inv.get('pix') or inv.get('codigo_pix')
+            codigo_barras = inv.get('barcode') or inv.get('codigo_barras')
+            due = inv.get('due_date_raw') or inv.get('data_vencimento')
+            data_vencimento = None
+            if due:
+                if hasattr(due, 'strftime'):
+                    data_vencimento = due
+                elif isinstance(due, str) and len(due) >= 8:
+                    try:
+                        from datetime import datetime as dt
+                        s = due[:10].replace('/', '-')
+                        if '-' in s:
+                            data_vencimento = dt.strptime(s, '%Y-%m-%d').date()
+                        elif due[:8].isdigit():
+                            data_vencimento = dt.strptime(due[:8], '%Y%m%d').date()
+                    except Exception:
+                        pass
+
+            pdf_url = None
+            if api_result.get('token') and api_result.get('api_base') and api_result.get('session_id'):
+                sess = requests.Session()
+                pdf_url = get_invoice_pdf_url(
+                    api_result['api_base'],
+                    api_result['token'],
+                    api_result['session_id'],
+                    inv.get('debt_id', ''),
+                    str(inv.get('invoice_id', '')),
+                    cpf_limpo,
+                    inv.get('reference_month', '') or '',
+                    sess,
+                )
+
+            dados = {
+                'valor': valor,
+                'codigo_pix': codigo_pix,
+                'codigo_barras': codigo_barras,
+                'data_vencimento': data_vencimento,
+                'pdf_url': pdf_url,
+            }
+
             if not any([dados.get('valor'), dados.get('codigo_pix'), dados.get('codigo_barras')]):
                 return Response({
                     'error': 'Fatura encontrada mas sem dados disponíveis. Preencha manualmente.'
@@ -9113,13 +9154,11 @@ class BuscarFaturaNioView(APIView):
                 'dados': dados
             })
             
-        except ImportError as e:
-            return Response({
-                'error': f'Playwright não instalado. Execute: pip install playwright && playwright install chromium. Erro: {str(e)}'
-            }, status=500)
         except Exception as e:
+            import logging
+            logging.getLogger(__name__).exception('BuscarFaturaNioView: erro ao buscar fatura (API Nio)')
             return Response({
-                'error': f'Erro ao buscar fatura: {str(e)}'
+                'error': f'Não foi possível buscar a fatura. Verifique o CPF ou tente novamente.'
             }, status=500)
 
 
