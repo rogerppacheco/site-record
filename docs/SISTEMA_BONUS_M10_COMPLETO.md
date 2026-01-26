@@ -187,10 +187,11 @@ Colunas lidas:
 
 ### **4. Importar Base Churn:**
 ```
-1. Clicar em "Importar Churn"
-2. Selecionar arquivo com cancelamentos
-3. Sistema atualiza status automaticamente
+1. Clicar em "Importar Churn" na página do Bônus M-10 (/bonus-m10/)
+2. Selecionar arquivo com cancelamentos (NR_ORDEM ou NUMERO_PEDIDO = O.S.)
+3. Sistema atualiza ContratoM10 (CANCELADO) automaticamente
 ```
+**Importante:** Use o **Importar Churn do Bônus M-10**. O import genérico (/import/churn/) só grava em `ImportacaoChurn` e **não** atualiza o M-10. Se a base já foi importada pelo fluxo genérico, use `python manage.py sync_m10_da_base_churn` (ver Troubleshooting).
 
 ### **5. Ver Relatórios:**
 ```
@@ -332,6 +333,29 @@ python manage.py revincular_m10_safra 2025-07 --dry-run   # simular
 python manage.py revincular_m10_safra 2025-07             # aplicar
 ```
 Isso atualiza o `venda` do ContratoM10 para a venda com **data_criacao** mais antiga quando a mesma O.S. tem várias vendas na safra.
+
+### **Churn na base mas M-10 não mostra cancelados (ex.: 377 de jul/25)**
+Existem **dois fluxos** de importação de churn:
+
+1. **`/import/churn/`** (ImportacaoChurnView)  
+   - Usado na tela "Importar Churn" genérica (planilha Excel/CSV).  
+   - Grava **apenas** em `ImportacaoChurn`. **Não atualiza** `ContratoM10`.  
+   - Comissionamento e validações usam essa base (cruzamento por `numero_pedido` = O.S.).
+
+2. **`/api/bonus-m10/importar-churn/`** (ImportarChurnView)  
+   - Usado na tela **Bônus M-10** → "Importar Churn".  
+   - Grava em `ImportacaoChurn` **e** marca `ContratoM10` como CANCELADO (cruzamento por O.S.).
+
+**Se o churn foi importado só pelo fluxo 1**, os 377 (ou quantos forem) ficam em `ImportacaoChurn`, mas o M-10 continua mostrando os contratos como ATIVO.
+
+**Solução – sincronizar M-10 a partir da base churn já importada:**
+```bash
+python manage.py sync_m10_da_base_churn --anomes 202507 --dry-run   # simular (só jul/25)
+python manage.py sync_m10_da_base_churn --anomes 202507             # aplicar
+```
+Sem `--anomes`: processa **todo** o churn em `ImportacaoChurn`. O comando usa `nr_ordem` ou `numero_pedido` para achar o `ContratoM10`, marca como CANCELADO e recalcula `total_ativos` das safras afetadas.
+
+**Para próximas importações:** usar o "Importar Churn" **dentro do Bônus M-10** (/bonus-m10/), ou continuar importando pelo fluxo genérico e rodar `sync_m10_da_base_churn` depois.
 
 ### **Erro: "Safra não encontrada"**
 **Solução:** Criar safra no admin Django primeiro
