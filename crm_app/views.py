@@ -1394,12 +1394,11 @@ class VendaViewSet(viewsets.ModelViewSet):
             vendas = self.filter_queryset(self.get_queryset())
 
         headers = [
-            'ID', 'Reemissão', 'Data Criação', 'Data Criação (data)', 'Data Abertura (OS)', 'Vendedor', 'Supervisor', 'Canal',
+            'ID', 'Reemissão', 'Data Criação', 'Data Abertura (OS)', 'Vendedor', 'Supervisor', 'Canal',
             'Cliente', 'CPF/CNPJ', 'Telefone 1', 'Telefone 2', 'Email',
             'Plano', 'Valor', 'Forma Pagamento',
             'Status Esteira', 'Status Tratamento', 'Status Comissionamento',
-            'OS', 'Data Agendamento', 'Turno',
-            'Data Instalação', 'Data Instalação (YYYY-MM-DD)',
+            'OS', 'Data Agendamento', 'Turno', 'Data Instalação',
             'Motivo Pendência', 'Observações',
             'CEP', 'Logradouro', 'Número', 'Complemento', 'Bairro', 'Cidade', 'UF', 'Ponto Ref.'
         ]
@@ -1410,16 +1409,13 @@ class VendaViewSet(viewsets.ModelViewSet):
             canal_venda = getattr(v.vendedor, 'canal', '-') if v.vendedor else '-'
             from django.utils import timezone
             dt_criacao = timezone.localtime(v.data_criacao).strftime('%d/%m/%Y %H:%M') if v.data_criacao else '-'
-            dt_criacao_data = v.data_criacao.date().strftime('%Y-%m-%d') if v.data_criacao else '-'
             dt_abertura = timezone.localtime(v.data_abertura).strftime('%d/%m/%Y %H:%M') if v.data_abertura else '-'
             dt_agendamento = v.data_agendamento.strftime('%d/%m/%Y') if v.data_agendamento else '-'
             dt_instalacao = v.data_instalacao.strftime('%d/%m/%Y') if v.data_instalacao else '-'
-            dt_instalacao_iso = v.data_instalacao.strftime('%Y-%m-%d') if v.data_instalacao else ''
             data.append([
                 v.id,
                 'Sim' if getattr(v, 'reemissao', False) else 'Não',
                 dt_criacao,
-                dt_criacao_data,
                 dt_abertura,
                 v.vendedor.username if v.vendedor else '-',
                 sup_nome,
@@ -1439,7 +1435,6 @@ class VendaViewSet(viewsets.ModelViewSet):
                 dt_agendamento,
                 v.get_periodo_agendamento_display() or '-',
                 dt_instalacao,
-                dt_instalacao_iso,
                 v.motivo_pendencia.nome if v.motivo_pendencia else '-',
                 v.observacoes or '-',
                 v.cep or '-',
