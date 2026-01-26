@@ -355,6 +355,8 @@ python manage.py sync_m10_da_base_churn --anomes 202507             # aplicar
 ```
 Sem `--anomes`: processa **todo** o churn em `ImportacaoChurn`. O comando usa `nr_ordem` ou `numero_pedido` para achar o `ContratoM10`, marca como CANCELADO e recalcula `total_ativos` das safras afetadas.
 
+**Filtro por safra (mês de instalação):** O `--anomes` filtra por **`anomes_gross`** (mês da instalação), **não** por `anomes_retirada` (mês do cancelamento). A safra M-10 é pelo mês de instalação; a planilha churn deve ter `ANOMES_GROSS` = data de instalação preenchido. Use `--consultar` para listar churns no filtro sem alterar nada: `python manage.py sync_m10_da_base_churn --anomes 202507 --consultar`.
+
 **Para próximas importações:** usar o "Importar Churn" **dentro do Bônus M-10** (/bonus-m10/), ou continuar importando pelo fluxo genérico e rodar `sync_m10_da_base_churn` depois.
 
 ### **Erro: "Safra não encontrada"**

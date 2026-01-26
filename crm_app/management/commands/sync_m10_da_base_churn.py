@@ -6,15 +6,19 @@ vão só para ImportacaoChurn; o M-10 NÃO é atualizado. Apenas o upload pela t
 "Importar Churn" do Bônus M-10 (/api/bonus-m10/importar-churn/) atualiza ContratoM10.
 
 Este comando lê os registros em ImportacaoChurn (opcionalmente filtrados por
-anomes_retirada, ex.: jul/25) e marca os ContratoM10 correspondentes como CANCELADO.
+anomes_gross = mês da instalação/safra, ex.: 202507 para jul/25) e marca os
+ContratoM10 correspondentes como CANCELADO.
 
-O.S.: usa nr_ordem ou numero_pedido do churn (nessa ordem). O cruzamento com
-Comissionamento usa numero_pedido = ordem_servico da venda.
+IMPORTANTE: Filtrar por ANOMES_GROSS (data de instalação), NÃO por anomes_retirada.
+A safra M-10 é pelo mês de instalação; anomes_retirada é quando cancelou.
+
+O.S.: usa nr_ordem ou numero_pedido do churn (nessa ordem).
 
 Uso:
   python manage.py sync_m10_da_base_churn
   python manage.py sync_m10_da_base_churn --anomes 202507
   python manage.py sync_m10_da_base_churn --anomes 202507 --dry-run
+  python manage.py sync_m10_da_base_churn --anomes 202507 --consultar   # listar sem alterar
 """
 from datetime import datetime
 
@@ -71,27 +75,51 @@ class Command(BaseCommand):
             '--anomes',
             type=str,
             default=None,
-            help='Filtrar churn por anomes_retirada (ex.: 202507 para jul/25)',
+            help='Filtrar churn por anomes_gross = mes da instalacao/safra (ex.: 202507)',
         )
         parser.add_argument('--dry-run', action='store_true', help='Apenas simular, não alterar')
+        parser.add_argument(
+            '--consultar',
+            action='store_true',
+            help='Só listar quantos churns tem no filtro e exemplos de nr_ordem (não atualiza)',
+        )
 
     def handle(self, *args, **options):
         anomes = options.get('anomes')
         dry_run = options.get('dry_run', False)
+        consultar = options.get('consultar', False)
 
         qs = ImportacaoChurn.objects.all().order_by('id')
         if anomes:
-            anomes = str(anomes).strip()
+            anomes = str(anomes).strip().replace('-', '').replace('/', '')
             if len(anomes) != 6:
                 self.stdout.write(self.style.ERROR('Use --anomes AAAAMM (ex.: 202507)'))
                 return
-            qs = qs.filter(anomes_retirada=anomes)
-            self.stdout.write('Churn filtrado por anomes_retirada={}'.format(anomes))
+            from django.db.models import Q
+            qs = qs.filter(
+                Q(anomes_gross=anomes) |
+                Q(anomes_gross='{}-{}'.format(anomes[:4], anomes[4:6]))
+            )
+            self.stdout.write('Churn filtrado por anomes_gross={} (mes instalacao)'.format(anomes))
 
         total = qs.count()
         self.stdout.write('Registros em ImportacaoChurn: {}'.format(total))
+
+        if consultar:
+            self.stdout.write('(modo --consultar: apenas listagem)')
+            if total == 0:
+                self.stdout.write('Nenhum churn no filtro. Verifique se a planilha tem ANOMES_GROSS e se foi importada.')
+                return
+            amostra = list(qs.values_list('nr_ordem', 'anomes_gross', 'anomes_retirada')[:20])
+            self.stdout.write('Exemplos (nr_ordem, anomes_gross, anomes_retirada):')
+            for nr, ag, ar in amostra:
+                self.stdout.write('  {} | gross={} | retirada={}'.format(nr or '-', ag or '-', ar or '-'))
+            if total > 20:
+                self.stdout.write('  ... e mais {}'.format(total - 20))
+            return
+
         if total == 0:
-            self.stdout.write('Nenhum registro para processar.')
+            self.stdout.write('Nenhum registro para processar. Use --consultar para ver o que ha no filtro.')
             return
 
         cancelados = 0
