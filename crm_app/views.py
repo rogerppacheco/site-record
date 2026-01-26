@@ -3165,6 +3165,26 @@ class ImportacaoOsabDetailView(generics.RetrieveUpdateAPIView):
     serializer_class = ImportacaoOsabSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+def _normalizar_anomes_gross(val):
+    """Normaliza ANOMES_GROSS para formato AAAAMM (ex.: '2025-07' -> '202507')"""
+    if not val or pd.isna(val):
+        return None
+    s = str(val).strip()
+    if not s or s.lower() in ('nan', 'none', ''):
+        return None
+    # Remover separadores comuns
+    s = s.replace('-', '').replace('/', '').replace(' ', '')
+    # Se tem formato de data completa (YYYY-MM-DD), pegar só YYYYMM
+    if len(s) >= 6 and s[:4].isdigit():
+        if len(s) >= 8:  # YYYYMMDD ou YYYYMMDDHH...
+            return s[:6]  # Pega YYYYMM
+        elif len(s) == 6 and s.isdigit():
+            return s  # Já está no formato AAAAMM
+        elif len(s) == 7 and s[4] in ('-', '/'):  # YYYY-MM ou YYYY/MM
+            return s[:4] + s[5:7]
+    return s[:6] if len(s) >= 6 else None
+
+
 class ImportacaoChurnView(APIView):
     permission_classes = [CheckAPIPermission]
     resource_name = 'importacao_churn'
@@ -3193,31 +3213,59 @@ class ImportacaoChurnView(APIView):
         df = df.replace({np.nan: None, pd.NaT: None})
         df.rename(columns=coluna_map, inplace=True)
         
+        # Normalizar anomes_gross para formato AAAAMM
+        if 'anomes_gross' in df.columns:
+            df['anomes_gross'] = df['anomes_gross'].apply(_normalizar_anomes_gross)
+        
         # Bulk operations optimization
         criados, atualizados, erros = 0, 0, []
         fields = {f.name for f in ImportacaoChurn._meta.get_fields() if f.name != 'id'}
         
         # Separar registros para criar e atualizar
+        # Buscar existentes por numero_pedido OU nr_ordem
         pedidos_df = [row.get('numero_pedido') for _, row in df.iterrows() if row.get('numero_pedido')]
-        existentes = {obj.numero_pedido: obj for obj in ImportacaoChurn.objects.filter(numero_pedido__in=pedidos_df)}
+        nr_ordens_df = [row.get('nr_ordem') for _, row in df.iterrows() if row.get('nr_ordem')]
+        
+        existentes_pedido = {obj.numero_pedido: obj for obj in ImportacaoChurn.objects.filter(numero_pedido__in=pedidos_df) if obj.numero_pedido}
+        existentes_nr_ordem = {obj.nr_ordem: obj for obj in ImportacaoChurn.objects.filter(nr_ordem__in=nr_ordens_df) if obj.nr_ordem}
         
         to_create = []
         to_update = []
+        linhas_ignoradas = 0
+        motivo_ignoradas = []
         
         for idx, row in df.iterrows():
             data = row.to_dict()
             pedido = data.get('numero_pedido')
-            if not pedido: continue
+            nr_ordem_val = data.get('nr_ordem')
+            
+            # Se não tem pedido nem nr_ordem, não tem como identificar unicamente
+            if not pedido and not nr_ordem_val:
+                linhas_ignoradas += 1
+                motivo_ignoradas.append(f"Linha {idx+2}: sem numero_pedido e sem nr_ordem")
+                continue
             
             filtered_data = {k: v for k, v in data.items() if k in fields}
             
             try:
-                if pedido in existentes:
-                    obj = existentes[pedido]
+                obj_existente = None
+                chave_usada = None
+                
+                # Prioridade: buscar por numero_pedido, depois por nr_ordem
+                if pedido and pedido in existentes_pedido:
+                    obj_existente = existentes_pedido[pedido]
+                    chave_usada = 'numero_pedido'
+                elif nr_ordem_val and nr_ordem_val in existentes_nr_ordem:
+                    obj_existente = existentes_nr_ordem[nr_ordem_val]
+                    chave_usada = 'nr_ordem'
+                
+                if obj_existente:
+                    # Atualizar existente
                     for k, v in filtered_data.items():
-                        setattr(obj, k, v)
-                    to_update.append(obj)
+                        setattr(obj_existente, k, v)
+                    to_update.append(obj_existente)
                 else:
+                    # Criar novo (pode ter numero_pedido=None se só tiver nr_ordem)
                     to_create.append(ImportacaoChurn(**filtered_data))
             except Exception as e:
                 erros.append(f"Linha {idx+2}: {e}")
@@ -3231,7 +3279,15 @@ class ImportacaoChurnView(APIView):
                 ImportacaoChurn.objects.bulk_update(to_update, list(fields), batch_size=1000)
                 atualizados = len(to_update)
         
-        return Response({'status': 'sucesso', 'total_registros': len(df), 'criados': criados, 'atualizados': atualizados, 'erros': erros}, status=200)
+        return Response({
+            'status': 'sucesso',
+            'total_registros': len(df),
+            'criados': criados,
+            'atualizados': atualizados,
+            'linhas_ignoradas': linhas_ignoradas,
+            'motivo_ignoradas': motivo_ignoradas[:10] if len(motivo_ignoradas) > 10 else motivo_ignoradas,  # Limitar a 10 exemplos
+            'erros': erros
+        }, status=200)
 
 class ImportacaoChurnDetailView(generics.RetrieveUpdateAPIView):
     queryset = ImportacaoChurn.objects.all()
@@ -8258,7 +8314,7 @@ class ImportarChurnView(APIView):
                                     'st_regional': str(row.get('ST_REGIONAL', '')) if pd.notna(row.get('ST_REGIONAL')) else None,
                                     'gc': str(row.get('GC', '')) if pd.notna(row.get('GC')) else None,
                                     'dt_gross': pd.to_datetime(row.get('DT_GROSS')).date() if pd.notna(row.get('DT_GROSS')) else None,
-                                    'anomes_gross': str(row.get('ANOMES_GROSS', '')) if pd.notna(row.get('ANOMES_GROSS')) else None,
+                                    'anomes_gross': _normalizar_anomes_gross(row.get('ANOMES_GROSS', '')),
                                     'dt_retirada': pd.to_datetime(row.get('DT_RETIRADA')).date() if pd.notna(row.get('DT_RETIRADA')) else None,
                                     'anomes_retirada': str(row.get('ANOMES_RETIRADA', '')) if pd.notna(row.get('ANOMES_RETIRADA')) else None,
                                     'grupo_unidade': str(row.get('GRUPO_UNIDADE', '')) if pd.notna(row.get('GRUPO_UNIDADE')) else None,
@@ -8291,7 +8347,7 @@ class ImportarChurnView(APIView):
                                     'st_regional': str(row.get('ST_REGIONAL', '')) if pd.notna(row.get('ST_REGIONAL')) else None,
                                     'gc': str(row.get('GC', '')) if pd.notna(row.get('GC')) else None,
                                     'dt_gross': pd.to_datetime(row.get('DT_GROSS')).date() if pd.notna(row.get('DT_GROSS')) else None,
-                                    'anomes_gross': str(row.get('ANOMES_GROSS', '')) if pd.notna(row.get('ANOMES_GROSS')) else None,
+                                    'anomes_gross': _normalizar_anomes_gross(row.get('ANOMES_GROSS', '')),
                                     'dt_retirada': pd.to_datetime(row.get('DT_RETIRADA')).date() if pd.notna(row.get('DT_RETIRADA')) else None,
                                     'anomes_retirada': str(row.get('ANOMES_RETIRADA', '')) if pd.notna(row.get('ANOMES_RETIRADA')) else None,
                                     'grupo_unidade': str(row.get('GRUPO_UNIDADE', '')) if pd.notna(row.get('GRUPO_UNIDADE')) else None,
@@ -8320,7 +8376,7 @@ class ImportarChurnView(APIView):
                                     st_regional=str(row.get('ST_REGIONAL', '')) if pd.notna(row.get('ST_REGIONAL')) else None,
                                     gc=str(row.get('GC', '')) if pd.notna(row.get('GC')) else None,
                                     dt_gross=pd.to_datetime(row.get('DT_GROSS')).date() if pd.notna(row.get('DT_GROSS')) else None,
-                                    anomes_gross=str(row.get('ANOMES_GROSS', '')) if pd.notna(row.get('ANOMES_GROSS')) else None,
+                                    anomes_gross=_normalizar_anomes_gross(row.get('ANOMES_GROSS', '')),
                                     dt_retirada=pd.to_datetime(row.get('DT_RETIRADA')).date() if pd.notna(row.get('DT_RETIRADA')) else None,
                                     anomes_retirada=str(row.get('ANOMES_RETIRADA', '')) if pd.notna(row.get('ANOMES_RETIRADA')) else None,
                                     grupo_unidade=str(row.get('GRUPO_UNIDADE', '')) if pd.notna(row.get('GRUPO_UNIDADE')) else None,
@@ -8626,6 +8682,86 @@ class BuscarOSFPDView(APIView):
             'total': len(dados),
             'valor_total': str(valor_total),
             'os': nr_ordem,
+            'registros': dados,
+        })
+
+
+class BuscarOSChurnView(APIView):
+    """Busca por O.S específica na ImportacaoChurn"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request, *args, **kwargs):
+        """GET /api/bonus-m10/buscar-os-churn/?os=05444203"""
+        nr_ordem = request.query_params.get('os', '').strip()
+        
+        if not nr_ordem:
+            return Response({'error': 'Parâmetro os é obrigatório'}, status=400)
+        
+        from .models import ImportacaoChurn, ContratoM10
+        
+        # Normalizar O.S para busca (tentar variações)
+        os_variants = [nr_ordem]
+        if nr_ordem.isdigit():
+            os_variants.append(nr_ordem.zfill(8))
+            os_variants.append(nr_ordem.lstrip('0') or '0')
+        if '-' in nr_ordem:
+            part = nr_ordem.split('-', 1)[1].strip()
+            if part:
+                os_variants.append(part)
+                if part.isdigit():
+                    os_variants.append(part.zfill(8))
+        
+        # Buscar registros com a O.S (qualquer variação)
+        from django.db.models import Q
+        q_filter = Q()
+        for variant in os_variants:
+            q_filter |= Q(nr_ordem=variant) | Q(numero_pedido=variant)
+        
+        registros = ImportacaoChurn.objects.filter(q_filter).order_by('-id')
+        
+        dados = []
+        for imp in registros:
+            # Buscar ContratoM10 relacionado
+            contrato_m10 = None
+            try:
+                # Tentar encontrar por ordem_servico (com variações)
+                for variant in os_variants:
+                    c = ContratoM10.objects.filter(ordem_servico=variant).first()
+                    if c:
+                        contrato_m10 = {
+                            'id': c.id,
+                            'numero_contrato': c.numero_contrato,
+                            'cliente_nome': c.cliente_nome,
+                            'status_contrato': c.status_contrato,
+                            'data_instalacao': c.data_instalacao.isoformat() if c.data_instalacao else None,
+                            'safra': c.safra,
+                        }
+                        break
+            except Exception:
+                pass
+            
+            dados.append({
+                'id': imp.id,
+                'nr_ordem': imp.nr_ordem,
+                'numero_pedido': imp.numero_pedido,
+                'uf': imp.uf,
+                'municipio': imp.municipio,
+                'produto': imp.produto,
+                'dt_gross': imp.dt_gross.isoformat() if imp.dt_gross else None,
+                'anomes_gross': imp.anomes_gross,
+                'dt_retirada': imp.dt_retirada.isoformat() if imp.dt_retirada else None,
+                'anomes_retirada': imp.anomes_retirada,
+                'tipo_retirada': imp.tipo_retirada,
+                'motivo_retirada': imp.motivo_retirada,
+                'submotivo_retirada': imp.submotivo_retirada,
+                'classificacao': imp.classificacao,
+                'contrato_m10': contrato_m10,
+            })
+        
+        return Response({
+            'total': len(dados),
+            'os': nr_ordem,
+            'variantes_tentadas': list(set(os_variants)),
             'registros': dados,
         })
 

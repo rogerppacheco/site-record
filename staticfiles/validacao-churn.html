@@ -841,31 +841,72 @@
                 }
 
                 const data = await response.json();
-                console.log(`✅ Encontrados ${data.total} registros para O.S ${nr_ordem}`);
+                console.log(`✅ Encontrados ${data.total} registros para O.S ${nr_ordem}`, data);
                 
                 // Mostrar resultados
                 if (data.total === 0) {
-                    alert(`Nenhum registro encontrado para O.S: ${nr_ordem}`);
+                    alert(`❌ Nenhum registro encontrado para O.S: ${nr_ordem}\n\nVariantes tentadas: ${data.variantes_tentadas?.join(', ') || nr_ordem}`);
                 } else {
-                    alert(`✅ Encontrados ${data.total} registros para O.S ${nr_ordem}\n\nValor total: ${data.valor_total}`);
-                    
                     // Mostrar em tabela temporária
                     const tbody = document.getElementById('logsTableBody');
                     tbody.innerHTML = `
                         <tr>
-                            <td colspan="100%" class="text-center p-4">
-                                <h6>Registros encontrados para O.S: ${nr_ordem}</h6>
-                                <div style="max-height: 400px; overflow-y: auto; text-align: left;">
-                                    ${data.registros.map(reg => `
-                                        <div class="border-bottom p-2" style="font-size: 0.9rem;">
-                                            <strong>Fatura:</strong> ${reg.nr_fatura}<br>
-                                            <strong>Vencimento:</strong> ${new Date(reg.dt_venc_orig).toLocaleDateString('pt-BR')}<br>
-                                            <strong>Valor:</strong> R$ ${parseFloat(reg.vl_fatura).toLocaleString('pt-BR', {minimumFractionDigits: 2})}<br>
-                                            <strong>Status:</strong> ${reg.ds_status_fatura}<br>
-                                            ${reg.contrato_m10 ? `<strong>Contrato M10:</strong> ${reg.contrato_m10}` : '<span style="color: orange;">⚠️ Sem vínculo M10</span>'}
-                                        </div>
-                                    `).join('')}
+                            <td colspan="11" class="p-4">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <h6 class="mb-0">
+                                        <i class="bi bi-search me-2"></i>
+                                        ${data.total} registro(s) encontrado(s) para O.S: <strong>${nr_ordem}</strong>
+                                    </h6>
+                                    <button class="btn btn-sm btn-secondary" onclick="carregarDados()">
+                                        <i class="bi bi-arrow-left me-1"></i>Voltar
+                                    </button>
                                 </div>
+                                <div style="max-height: 500px; overflow-y: auto;">
+                                    <table class="table table-sm table-bordered">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>ID</th>
+                                                <th>NR_ORDEM</th>
+                                                <th>NUMERO_PEDIDO</th>
+                                                <th>UF</th>
+                                                <th>Município</th>
+                                                <th>ANOMES_GROSS</th>
+                                                <th>DT_RETIRADA</th>
+                                                <th>ANOMES_RETIRADA</th>
+                                                <th>Motivo Retirada</th>
+                                                <th>Contrato M-10</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${data.registros.map(reg => `
+                                                <tr>
+                                                    <td>${reg.id}</td>
+                                                    <td><code>${reg.nr_ordem || '-'}</code></td>
+                                                    <td><code>${reg.numero_pedido || '-'}</code></td>
+                                                    <td>${reg.uf || '-'}</td>
+                                                    <td>${reg.municipio || '-'}</td>
+                                                    <td><strong>${reg.anomes_gross || '<span class="text-danger">NULL</span>'}</strong></td>
+                                                    <td>${reg.dt_retirada ? new Date(reg.dt_retirada).toLocaleDateString('pt-BR') : '-'}</td>
+                                                    <td>${reg.anomes_retirada || '-'}</td>
+                                                    <td>${reg.motivo_retirada || '-'}</td>
+                                                    <td>
+                                                        ${reg.contrato_m10 ? `
+                                                            <span class="badge bg-success">${reg.contrato_m10.status_contrato}</span><br>
+                                                            <small>${reg.contrato_m10.cliente_nome}</small><br>
+                                                            <small>Safra: ${reg.contrato_m10.safra || '-'}</small>
+                                                        ` : '<span class="text-warning">⚠️ Sem vínculo</span>'}
+                                                    </td>
+                                                </tr>
+                                            `).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                ${data.variantes_tentadas && data.variantes_tentadas.length > 1 ? `
+                                    <div class="mt-2 small text-muted">
+                                        <i class="bi bi-info-circle me-1"></i>
+                                        Variantes tentadas: ${data.variantes_tentadas.join(', ')}
+                                    </div>
+                                ` : ''}
                             </td>
                         </tr>
                     `;

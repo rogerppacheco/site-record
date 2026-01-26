@@ -38,6 +38,7 @@ from crm_app.views import (
     DadosFPDView,
     ListarImportacoesFPDView,
     BuscarOSFPDView,
+    BuscarOSChurnView,
     ListarLogsImportacaoFPDView,
     ListarLogsImportacaoChurnView,
     FaturaM10ListView,
@@ -136,6 +137,7 @@ urlpatterns = [
     path('api/bonus-m10/dados-fpd/', DadosFPDView.as_view(), name='api-bonus-m10-dados-fpd'),
     path('api/bonus-m10/importacoes-fpd/', ListarImportacoesFPDView.as_view(), name='api-bonus-m10-importacoes-fpd'),
     path('api/bonus-m10/buscar-os-fpd/', BuscarOSFPDView.as_view(), name='api-bonus-m10-buscar-os-fpd'),
+    path('api/bonus-m10/buscar-os-churn/', BuscarOSChurnView.as_view(), name='api-bonus-m10-buscar-os-churn'),
     path('api/bonus-m10/logs-importacao-fpd/', ListarLogsImportacaoFPDView.as_view(), name='api-bonus-m10-logs-importacao-fpd'),
     path('api/bonus-m10/logs-importacao-churn/', ListarLogsImportacaoChurnView.as_view(), name='api-bonus-m10-logs-importacao-churn'),
     
