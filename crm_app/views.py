@@ -1120,13 +1120,29 @@ class VendaViewSet(viewsets.ModelViewSet):
         try:
             with transaction.atomic():
                 if dados_edicao:
-                    cli_updates = {}
-                    if 'cliente_nome' in dados_edicao: cli_updates['nome_razao_social'] = dados_edicao['cliente_nome'].upper()
-                    if 'cliente_cpf' in dados_edicao: cli_updates['cpf_cnpj'] = re.sub(r'\D', '', dados_edicao['cliente_cpf'])
-                    if 'cliente_email' in dados_edicao: cli_updates['email'] = dados_edicao['cliente_email']
+                    novo_cpf = None
+                    if 'cliente_cpf' in dados_edicao:
+                        novo_cpf = re.sub(r'\D', '', dados_edicao['cliente_cpf'])
                     
-                    if cli_updates:
-                        for k, v in cli_updates.items(): setattr(venda.cliente, k, v)
+                    # Se o CPF foi alterado, verifica se já existe outro cliente com esse CPF
+                    if novo_cpf and novo_cpf != venda.cliente.cpf_cnpj:
+                        cliente_existente = Cliente.objects.filter(cpf_cnpj=novo_cpf).first()
+                        if cliente_existente:
+                            # Se existe, vincula a venda a esse cliente e atualiza os dados
+                            venda.cliente = cliente_existente
+                            if 'cliente_nome' in dados_edicao: cliente_existente.nome_razao_social = dados_edicao['cliente_nome'].upper()
+                            if 'cliente_email' in dados_edicao: cliente_existente.email = dados_edicao['cliente_email']
+                            cliente_existente.save()
+                        else:
+                            # Se não existe, atualiza o cliente atual normalmente
+                            venda.cliente.cpf_cnpj = novo_cpf
+                            if 'cliente_nome' in dados_edicao: venda.cliente.nome_razao_social = dados_edicao['cliente_nome'].upper()
+                            if 'cliente_email' in dados_edicao: venda.cliente.email = dados_edicao['cliente_email']
+                            venda.cliente.save()
+                    else:
+                        # CPF não mudou ou não foi enviado, apenas atualiza nome/email do cliente atual
+                        if 'cliente_nome' in dados_edicao: venda.cliente.nome_razao_social = dados_edicao['cliente_nome'].upper()
+                        if 'cliente_email' in dados_edicao: venda.cliente.email = dados_edicao['cliente_email']
                         venda.cliente.save()
 
                     if 'nome_mae' in dados_edicao: venda.nome_mae = (dados_edicao['nome_mae'] or '').upper()
