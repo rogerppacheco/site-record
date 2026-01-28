@@ -6,6 +6,7 @@ Serviço para automação de consulta de faturas no site da Nio Internet
 import re
 import os
 import logging
+import threading
 from datetime import datetime
 from decimal import Decimal
 from django.conf import settings
@@ -24,6 +25,35 @@ except ImportError:
 NIO_BASE_URL = "https://www.niointernet.com.br/ajuda/servicos/segunda-via/"  # Plano A
 NIO_NEGOCIA_URL = "https://negociacao.niointernet.com.br/negociar"  # Plano B
 DEFAULT_STORAGE_STATE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".playwright_state.json")
+
+# =============================================================================
+# SEMÁFORO PARA LIMITAR PLAYWRIGHTS SIMULTÂNEOS
+# =============================================================================
+# Limita a quantidade de instâncias de Playwright rodando ao mesmo tempo.
+# Isso evita que o servidor trave por excesso de memória/CPU.
+# Valor 2 = permite até 2 Playwrights simultâneos (bom equilíbrio entre performance e segurança)
+
+_playwright_semaphore = threading.Semaphore(2)  # Máximo 2 Playwrights simultâneos
+_playwright_count = 0  # Contador para debug
+_playwright_count_lock = threading.Lock()
+
+
+def _acquire_playwright_slot():
+    """Adquire um slot para rodar Playwright (aguarda se limite atingido)"""
+    global _playwright_count
+    _playwright_semaphore.acquire()
+    with _playwright_count_lock:
+        _playwright_count += 1
+        logger.info(f"[PLAYWRIGHT] 🔒 Slot adquirido. Playwrights ativos: {_playwright_count}/2")
+
+
+def _release_playwright_slot():
+    """Libera o slot do Playwright"""
+    global _playwright_count
+    with _playwright_count_lock:
+        _playwright_count -= 1
+        logger.info(f"[PLAYWRIGHT] 🔓 Slot liberado. Playwrights ativos: {_playwright_count}/2")
+    _playwright_semaphore.release()
 
 
 def buscar_fatura_nio_por_cpf(cpf, incluir_pdf=True, mes_referencia=None, numero_contrato=None, usar_plano_b=True):
@@ -159,17 +189,13 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
         
         caminho_completo = os.path.join(downloads_dir, nome_arquivo)
         
-        print(f"[DEBUG PDF DOWNLOAD] 🚀 INICIANDO download como humano para CPF: {cpf}")
-        print(f"[DEBUG PDF DOWNLOAD] 📁 Arquivo será salvo em: {caminho_completo}")
-        print(f"[DEBUG PDF DOWNLOAD] 📋 Parâmetros: mes_ref={mes_referencia}, data_venc={data_vencimento}")
-        logger.info(f"[PDF HUMANO] Iniciando download como humano para CPF: {cpf}")
-        logger.info(f"[PDF HUMANO] Arquivo será salvo em: {caminho_completo}")
-        logger.info(f"[PDF HUMANO] Parâmetros: mes_ref={mes_referencia}, data_venc={data_vencimento}")
+        logger.info(f"[PDF HUMANO] Iniciando download para CPF: {cpf}")
+        logger.info(f"[PDF HUMANO] Arquivo: {caminho_completo}")
         
-        print(f"[DEBUG PDF DOWNLOAD] 🌐 Iniciando Playwright (headless=True)...")
-        logger.info(f"[PDF HUMANO] Iniciando Playwright...")
-        
-        with sync_playwright() as p:
+        # USAR SEMÁFORO - limita Playwrights simultâneos para evitar travamento
+        _acquire_playwright_slot()
+        try:
+            with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             
             state_path = DEFAULT_STORAGE_STATE if os.path.exists(DEFAULT_STORAGE_STATE) else None
@@ -1204,30 +1230,18 @@ def _baixar_pdf_como_humano(cpf, mes_referencia=None, data_vencimento=None):
                 print(f"[DEBUG PDF DOWNLOAD] 🎉 RETORNANDO: None")
                 return None
                 
+        except Exception as e:
+            logger.error(f"[PDF HUMANO] ❌ Erro ao baixar PDF: {e}")
+            import traceback
+            tb = traceback.format_exc()
+            logger.error(f"[PDF HUMANO] Traceback: {tb}")
+            return None
+        finally:
+            # SEMPRE liberar o slot do semáforo
+            _release_playwright_slot()
+    
     except Exception as e:
-        print(f"[DEBUG PDF DOWNLOAD] ❌ ERRO GERAL ao baixar PDF: {type(e).__name__}: {e}")
-        logger.error(f"[PDF HUMANO] ❌ Erro ao baixar PDF: {e}")
-        import traceback
-        tb = traceback.format_exc()
-        logger.error(f"[PDF HUMANO] Traceback completo: {tb}")
-        print(f"[DEBUG PDF DOWNLOAD] Traceback completo: {tb}")
-        
-        # Salvar log de erro para debug
-        try:
-            from datetime import datetime
-            error_log_path = os.path.join(downloads_dir, f"error_{cpf}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
-            with open(error_log_path, 'w', encoding='utf-8') as f:
-                f.write(f"Erro ao baixar PDF para CPF: {cpf}\n")
-                f.write(f"Data: {datetime.now().isoformat()}\n")
-                f.write(f"Erro: {str(e)}\n")
-                f.write(f"\nTraceback:\n")
-                traceback.print_exc(file=f)
-            print(f"[DEBUG PDF DOWNLOAD] 📝 Log de erro salvo: {error_log_path}")
-            logger.info(f"[PDF HUMANO] 📝 Log de erro salvo: {error_log_path}")
-        except Exception as e_log:
-            logger.warning(f"[PDF HUMANO] Erro ao salvar log de erro: {e_log}")
-        
-        print(f"[DEBUG PDF DOWNLOAD] 🎉 RETORNANDO: None (erro)")
+        logger.error(f"[PDF HUMANO] ❌ Erro geral: {e}")
         return None
 
 
@@ -1273,6 +1287,8 @@ def _buscar_todas_faturas_negocia_playwright(cpf: str):
     if not HAS_PLAYWRIGHT:
         return []
     
+    # USAR SEMÁFORO - limita Playwrights simultâneos para evitar travamento
+    _acquire_playwright_slot()
     try:
         from playwright.sync_api import sync_playwright
         from crm_app.recaptcha_solver import RecaptchaSolver
@@ -1381,6 +1397,9 @@ def _buscar_todas_faturas_negocia_playwright(cpf: str):
         import traceback
         traceback.print_exc()
         return []
+    finally:
+        # SEMPRE liberar o slot do semáforo
+        _release_playwright_slot()
 
 
 def _buscar_todas_faturas_playwright(cpf: str):
@@ -1391,6 +1410,8 @@ def _buscar_todas_faturas_playwright(cpf: str):
     if not HAS_PLAYWRIGHT:
         return []
     
+    # USAR SEMÁFORO - limita Playwrights simultâneos para evitar travamento
+    _acquire_playwright_slot()
     try:
         from playwright.sync_api import sync_playwright
         
@@ -1481,6 +1502,9 @@ def _buscar_todas_faturas_playwright(cpf: str):
         import traceback
         traceback.print_exc()
         return []
+    finally:
+        # SEMPRE liberar o slot do semáforo
+        _release_playwright_slot()
 
 
 def _extrair_todas_faturas_negocia_html(html: str):
@@ -1924,7 +1948,10 @@ def buscar_pdf_url_nio(cpf, debt_id, invoice_id, api_base, token, session_id):
 
 def _buscar_fatura_playwright(cpf: str):
     """Fluxo headless replicando o script test_nio_completo.py"""
-    with sync_playwright() as p:
+    # USAR SEMÁFORO - limita Playwrights simultâneos para evitar travamento
+    _acquire_playwright_slot()
+    try:
+        with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
 
         state_path = DEFAULT_STORAGE_STATE if os.path.exists(DEFAULT_STORAGE_STATE) else None
@@ -2303,6 +2330,9 @@ def _buscar_fatura_playwright(cpf: str):
             logger.info(f'[PDF] ✅ PDF filename: {resultado["pdf_filename"]}')
         
         return resultado
+    finally:
+        # SEMPRE liberar o slot do semáforo
+        _release_playwright_slot()
 
 
 def _validar_contrato_masked(masked_contrato: str, contrato_completo: str) -> bool:

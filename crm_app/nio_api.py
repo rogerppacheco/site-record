@@ -3,6 +3,8 @@ import hashlib
 import json
 import logging
 import os
+import threading
+import time
 from typing import Dict, Optional
 
 import requests
@@ -20,6 +22,92 @@ PARAMS_URL = "https://negociacao.niointernet.com.br/negociar/params"
 SITE_URL = "https://negociacao.niointernet.com.br/negociar"
 KEY_STRING = "TZkScM94x4Hvggpt"
 DEFAULT_STORAGE_STATE = getattr(settings, "NIO_STORAGE_STATE", os.path.join(settings.BASE_DIR, ".playwright_state.json"))
+
+# =============================================================================
+# CACHE DE TOKEN + LOCK PARA EVITAR MÚLTIPLOS PLAYWRIGHTS
+# =============================================================================
+# Este cache evita que múltiplas requisições simultâneas abram várias
+# instâncias do Playwright ao mesmo tempo, o que causava travamento do servidor.
+
+_token_cache = {
+    "params": None,           # Dados do token (token, apiServerUrl)
+    "timestamp": 0,           # Quando foi obtido
+    "expires_in": 1800,       # Validade em segundos (30 minutos)
+}
+_token_lock = threading.Lock()  # Lock para garantir apenas 1 Playwright por vez
+
+
+def get_cached_params(headless: bool = True, storage_state: Optional[str] = None, force_refresh: bool = False) -> Optional[dict]:
+    """
+    Obtém os parâmetros (token/apiServerUrl) usando cache inteligente.
+    
+    - Se o cache estiver válido, retorna imediatamente (sem Playwright)
+    - Se o cache expirou, apenas UMA thread busca novo token (outras aguardam)
+    - Isso evita múltiplos Playwrights rodando simultaneamente
+    
+    Args:
+        headless: Se True, roda Playwright em modo headless
+        storage_state: Caminho para arquivo de estado do Playwright
+        force_refresh: Se True, ignora cache e busca novo token
+    
+    Returns:
+        dict com token e apiServerUrl, ou None se falhar
+    """
+    global _token_cache
+    
+    current_time = time.time()
+    
+    # 1. Verificar se cache está válido (sem lock - leitura rápida)
+    if not force_refresh:
+        cache_age = current_time - _token_cache["timestamp"]
+        if _token_cache["params"] and cache_age < _token_cache["expires_in"]:
+            logger.info(f"[NIO CACHE] ✅ Usando token do cache (idade: {cache_age:.0f}s)")
+            return _token_cache["params"]
+    
+    # 2. Cache expirado ou vazio - precisamos buscar novo token
+    # Usar lock para garantir que apenas uma thread busca
+    with _token_lock:
+        # Re-verificar cache dentro do lock (outra thread pode ter atualizado)
+        current_time = time.time()
+        cache_age = current_time - _token_cache["timestamp"]
+        if not force_refresh and _token_cache["params"] and cache_age < _token_cache["expires_in"]:
+            logger.info(f"[NIO CACHE] ✅ Token atualizado por outra thread (idade: {cache_age:.0f}s)")
+            return _token_cache["params"]
+        
+        logger.info("[NIO CACHE] 🔄 Cache expirado/vazio. Buscando novo token...")
+        
+        # 3. Tentar via requests primeiro (mais rápido, sem Playwright)
+        session = requests.Session()
+        params = fetch_params_requests(session)
+        
+        if params:
+            logger.info("[NIO CACHE] ✅ Token obtido via requests (sem Playwright)")
+        else:
+            # 4. Fallback: usar Playwright (apenas esta thread, outras aguardam)
+            logger.info("[NIO CACHE] ⚠️ Requests falhou. Usando Playwright (apenas 1 instância)...")
+            params = fetch_params_playwright(headless=headless, storage_state=storage_state)
+            
+            if params:
+                logger.info("[NIO CACHE] ✅ Token obtido via Playwright")
+            else:
+                logger.error("[NIO CACHE] ❌ Falha ao obter token (requests e Playwright falharam)")
+                return None
+        
+        # 5. Atualizar cache
+        _token_cache["params"] = params
+        _token_cache["timestamp"] = time.time()
+        logger.info(f"[NIO CACHE] 💾 Token salvo no cache (válido por {_token_cache['expires_in']}s)")
+        
+        return params
+
+
+def invalidate_token_cache():
+    """Invalida o cache de token (útil quando token expira no meio de uma operação)"""
+    global _token_cache
+    with _token_lock:
+        _token_cache["params"] = None
+        _token_cache["timestamp"] = 0
+        logger.info("[NIO CACHE] 🗑️ Cache invalidado")
 
 
 def decrypt_params(enc_b64: str) -> dict:
@@ -337,17 +425,23 @@ def _map_invoice(invoice: Dict, debt: Dict) -> Dict:
 
 
 def consultar_dividas_nio(cpf: str, offset: int = 0, limit: int = 10, storage_state: Optional[str] = None, headless: bool = True) -> Dict:
+    """
+    Consulta dívidas no Nio usando cache de token para evitar múltiplos Playwrights.
+    
+    O cache garante que:
+    - Se o token estiver válido, usa direto (sem abrir Playwright)
+    - Se precisar renovar, apenas UMA instância do Playwright é aberta
+    - Outras requisições aguardam e usam o token renovado
+    """
     import logging
     logger = logging.getLogger(__name__)
     logger.info(f"[M10] Iniciando consulta NIO para CPF: {cpf}")
     session = requests.Session()
 
     try:
-        params = fetch_params_requests(session)
-        logger.info(f"[M10] Params via requests: {params}")
-        if not params:
-            params = fetch_params_playwright(headless=headless, storage_state=storage_state)
-            logger.info(f"[M10] Params via playwright: {params}")
+        # USAR CACHE DE TOKEN - evita múltiplos Playwrights simultâneos
+        params = get_cached_params(headless=headless, storage_state=storage_state)
+        
         if not params:
             logger.error("[M10] Falha ao obter token/apiServerUrl (possível bloqueio/captcha). Rode headful para renovar cookies.")
             raise RuntimeError("Falha ao obter token/apiServerUrl (possível bloqueio/captcha). Rode headful para renovar cookies.")
