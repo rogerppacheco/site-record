@@ -604,9 +604,15 @@
 
         function confirmarClienteExistente() { modalAviso.hide(); }
 
+
+        // Bloqueia apenas CPF e Nome, mantendo telefones editáveis
         function alternarBloqueioCampos(bloquear) {
-            const ids = ['input-nome', 'input-email', 'input-telefone', 'input-telefone2', 'input-nome-mae', 'input-data-nascimento'];
-            ids.forEach(id => { const el = document.getElementById(id); if (el) el.readOnly = bloquear; });
+            const idsBloquear = ['input-nome', 'input-cpf'];
+            idsBloquear.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.readOnly = bloquear;
+            });
+            // Telefones continuam editáveis
         }
 
         function limparCamposCliente() {
