@@ -295,71 +295,111 @@ def _formatar_detalhes_fatura(invoice, cpf, incluir_pdf=False):
 def _iniciar_fluxo_venda(telefone: str, sessao) -> str:
     """
     Inicia o fluxo de venda via WhatsApp.
-    Verifica se o vendedor está autorizado.
+    Verifica se o usuário está autorizado (qualquer perfil com autorização).
     
     Args:
-        telefone: Número do telefone do vendedor
+        telefone: Número do telefone do usuário
         sessao: Sessão do WhatsApp
         
     Returns:
         Mensagem de resposta
     """
     from usuarios.models import Usuario
+    from django.db.models import Q
     
-    # Buscar vendedor pelo telefone
-    telefone_limpo = formatar_telefone(telefone)
-    vendedor = None
+    # Limpar telefone - remover tudo que não for número
+    telefone_limpo = re.sub(r'\D', '', telefone)
+    logger.info(f"[VENDA] Buscando usuário para telefone: {telefone} -> limpo: {telefone_limpo}")
     
-    # Tentar diferentes formatos de telefone
-    telefones_variantes = [telefone_limpo]
+    usuario = None
+    
+    # Criar variantes do telefone para busca
+    telefones_variantes = set()
+    telefones_variantes.add(telefone_limpo)
+    
+    # Sem DDI (55)
+    if telefone_limpo.startswith('55') and len(telefone_limpo) > 11:
+        telefones_variantes.add(telefone_limpo[2:])  # Remove 55
+    
+    # Com DDI (55)
     if not telefone_limpo.startswith('55') and len(telefone_limpo) >= 10:
-        telefones_variantes.append('55' + telefone_limpo)
-    if telefone_limpo.startswith('55'):
-        telefones_variantes.append(telefone_limpo[2:])
+        telefones_variantes.add('55' + telefone_limpo)
     
+    # Últimos 8 e 9 dígitos (número local)
+    if len(telefone_limpo) >= 8:
+        telefones_variantes.add(telefone_limpo[-8:])
+    if len(telefone_limpo) >= 9:
+        telefones_variantes.add(telefone_limpo[-9:])
+    
+    logger.info(f"[VENDA] Variantes de telefone para busca: {telefones_variantes}")
+    
+    # Buscar usuário ativo com qualquer uma das variantes
     for tel_var in telefones_variantes:
-        vendedor = Usuario.objects.filter(tel_whatsapp__icontains=tel_var, is_active=True).first()
-        if vendedor:
+        # Buscar onde o campo tel_whatsapp contenha os dígitos
+        usuarios_encontrados = Usuario.objects.filter(
+            is_active=True
+        ).extra(
+            where=["REPLACE(REPLACE(REPLACE(REPLACE(tel_whatsapp, '-', ''), ' ', ''), '(', ''), ')', '') LIKE %s"],
+            params=[f'%{tel_var}%']
+        )
+        
+        if usuarios_encontrados.exists():
+            usuario = usuarios_encontrados.first()
+            logger.info(f"[VENDA] Usuário encontrado: {usuario.username} (ID: {usuario.id})")
             break
     
-    if not vendedor:
+    # Fallback: busca simples por contains
+    if not usuario:
+        for tel_var in telefones_variantes:
+            usuario = Usuario.objects.filter(
+                tel_whatsapp__icontains=tel_var, 
+                is_active=True
+            ).first()
+            if usuario:
+                logger.info(f"[VENDA] Usuário encontrado (fallback): {usuario.username}")
+                break
+    
+    if not usuario:
+        logger.warning(f"[VENDA] Nenhum usuário encontrado para telefone: {telefone_limpo}")
         return (
             "❌ *ACESSO NEGADO*\n\n"
-            "Seu número não está cadastrado como vendedor no sistema.\n"
-            "Entre em contato com seu supervisor para liberar o acesso."
+            "Seu número não está cadastrado no sistema.\n"
+            "Verifique se o campo WhatsApp está preenchido no seu cadastro."
         )
     
     # Verificar se está autorizado para venda sem auditoria
-    if not getattr(vendedor, 'autorizar_venda_sem_auditoria', False):
+    if not getattr(usuario, 'autorizar_venda_sem_auditoria', False):
+        logger.warning(f"[VENDA] Usuário {usuario.username} não está autorizado (autorizar_venda_sem_auditoria=False)")
         return (
             "❌ *ACESSO NEGADO*\n\n"
             "Você não está autorizado a realizar vendas pelo WhatsApp.\n"
-            "Solicite autorização ao seu supervisor."
+            "Solicite que marquem a opção 'Autorizar venda sem auditoria' no seu cadastro."
         )
     
     # Verificar se tem matrícula e senha PAP
-    if not vendedor.matricula_pap or not vendedor.senha_pap:
+    if not usuario.matricula_pap or not usuario.senha_pap:
+        logger.warning(f"[VENDA] Usuário {usuario.username} sem matrícula/senha PAP")
         return (
             "⚠️ *CONFIGURAÇÃO INCOMPLETA*\n\n"
             "Sua matrícula ou senha PAP não estão configuradas.\n"
-            "Entre em contato com seu supervisor para configurar."
+            "Preencha os campos 'Matrícula PAP' e 'Senha PAP' no seu cadastro."
         )
     
     # Iniciar fluxo de venda
     sessao.etapa = 'venda_confirmar_matricula'
     sessao.dados_temp = {
-        'vendedor_id': vendedor.id,
-        'vendedor_nome': vendedor.get_full_name() or vendedor.username,
-        'matricula_pap': vendedor.matricula_pap,
+        'vendedor_id': usuario.id,
+        'vendedor_nome': usuario.get_full_name() or usuario.username,
+        'matricula_pap': usuario.matricula_pap,
     }
     sessao.save()
     
-    logger.info(f"[VENDA] Iniciando fluxo para vendedor {vendedor.username}")
+    logger.info(f"[VENDA] Iniciando fluxo para usuário {usuario.username} (perfil: {usuario.perfil})")
     
     return (
         f"🛒 *NOVA VENDA - PAP NIO*\n\n"
-        f"Olá, {vendedor.first_name or vendedor.username}!\n\n"
-        f"Sua matrícula PAP: *{vendedor.matricula_pap}*\n\n"
+        f"Olá, {usuario.first_name or usuario.username}!\n\n"
+        f"Sua matrícula PAP: *{usuario.matricula_pap}*\n\n"
         f"Confirma que deseja iniciar uma nova venda?\n\n"
         f"Digite *SIM* para continuar ou *CANCELAR* para sair."
     )
