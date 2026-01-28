@@ -288,6 +288,655 @@ def _formatar_detalhes_fatura(invoice, cpf, incluir_pdf=False):
     return "\n".join(resposta_parts)
 
 
+# =============================================================================
+# FUNÇÕES PARA FLUXO DE VENDA VIA WHATSAPP
+# =============================================================================
+
+def _iniciar_fluxo_venda(telefone: str, sessao) -> str:
+    """
+    Inicia o fluxo de venda via WhatsApp.
+    Verifica se o vendedor está autorizado.
+    
+    Args:
+        telefone: Número do telefone do vendedor
+        sessao: Sessão do WhatsApp
+        
+    Returns:
+        Mensagem de resposta
+    """
+    from usuarios.models import Usuario
+    
+    # Buscar vendedor pelo telefone
+    telefone_limpo = formatar_telefone(telefone)
+    vendedor = None
+    
+    # Tentar diferentes formatos de telefone
+    telefones_variantes = [telefone_limpo]
+    if not telefone_limpo.startswith('55') and len(telefone_limpo) >= 10:
+        telefones_variantes.append('55' + telefone_limpo)
+    if telefone_limpo.startswith('55'):
+        telefones_variantes.append(telefone_limpo[2:])
+    
+    for tel_var in telefones_variantes:
+        vendedor = Usuario.objects.filter(tel_whatsapp__icontains=tel_var, is_active=True).first()
+        if vendedor:
+            break
+    
+    if not vendedor:
+        return (
+            "❌ *ACESSO NEGADO*\n\n"
+            "Seu número não está cadastrado como vendedor no sistema.\n"
+            "Entre em contato com seu supervisor para liberar o acesso."
+        )
+    
+    # Verificar se está autorizado para venda sem auditoria
+    if not getattr(vendedor, 'autorizar_venda_sem_auditoria', False):
+        return (
+            "❌ *ACESSO NEGADO*\n\n"
+            "Você não está autorizado a realizar vendas pelo WhatsApp.\n"
+            "Solicite autorização ao seu supervisor."
+        )
+    
+    # Verificar se tem matrícula e senha PAP
+    if not vendedor.matricula_pap or not vendedor.senha_pap:
+        return (
+            "⚠️ *CONFIGURAÇÃO INCOMPLETA*\n\n"
+            "Sua matrícula ou senha PAP não estão configuradas.\n"
+            "Entre em contato com seu supervisor para configurar."
+        )
+    
+    # Iniciar fluxo de venda
+    sessao.etapa = 'venda_confirmar_matricula'
+    sessao.dados_temp = {
+        'vendedor_id': vendedor.id,
+        'vendedor_nome': vendedor.get_full_name() or vendedor.username,
+        'matricula_pap': vendedor.matricula_pap,
+    }
+    sessao.save()
+    
+    logger.info(f"[VENDA] Iniciando fluxo para vendedor {vendedor.username}")
+    
+    return (
+        f"🛒 *NOVA VENDA - PAP NIO*\n\n"
+        f"Olá, {vendedor.first_name or vendedor.username}!\n\n"
+        f"Sua matrícula PAP: *{vendedor.matricula_pap}*\n\n"
+        f"Confirma que deseja iniciar uma nova venda?\n\n"
+        f"Digite *SIM* para continuar ou *CANCELAR* para sair."
+    )
+
+
+def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> str:
+    """
+    Processa as etapas do fluxo de venda.
+    
+    Args:
+        telefone: Número do telefone
+        mensagem: Mensagem recebida
+        sessao: Sessão do WhatsApp
+        etapa: Etapa atual
+        
+    Returns:
+        Mensagem de resposta
+    """
+    from usuarios.models import Usuario
+    from crm_app.services_pap_nio import (
+        PAPNioAutomation, 
+        obter_sessao_venda, 
+        criar_sessao_venda,
+        atualizar_sessao_venda,
+        encerrar_sessao_venda
+    )
+    
+    dados = sessao.dados_temp or {}
+    mensagem_limpa = mensagem.strip().upper()
+    
+    # Comando para cancelar em qualquer etapa
+    if mensagem_limpa in ['CANCELAR', 'SAIR', 'PARAR']:
+        encerrar_sessao_venda(telefone)
+        sessao.etapa = 'inicial'
+        sessao.dados_temp = {}
+        sessao.save()
+        return "❌ Venda cancelada. Digite *VENDER* para iniciar novamente."
+    
+    # --- ETAPA: Confirmar matrícula ---
+    if etapa == 'venda_confirmar_matricula':
+        if mensagem_limpa == 'SIM':
+            sessao.etapa = 'venda_cep'
+            sessao.save()
+            return (
+                "📍 *ETAPA 1: ENDEREÇO*\n\n"
+                "Digite o *CEP* do endereço de instalação:"
+            )
+        else:
+            sessao.etapa = 'inicial'
+            sessao.dados_temp = {}
+            sessao.save()
+            return "❌ Venda cancelada. Digite *VENDER* para iniciar novamente."
+    
+    # --- ETAPA: CEP ---
+    elif etapa == 'venda_cep':
+        cep_limpo = limpar_texto_cep_cpf(mensagem)
+        if not cep_limpo or len(cep_limpo) < 8:
+            return "❌ CEP inválido. Digite o CEP completo (8 dígitos):"
+        
+        dados['cep'] = cep_limpo
+        sessao.dados_temp = dados
+        sessao.etapa = 'venda_numero'
+        sessao.save()
+        
+        return (
+            f"✅ CEP: *{cep_limpo}*\n\n"
+            f"Agora digite o *número* do endereço:\n"
+            f"(ou digite *SN* se não houver número)"
+        )
+    
+    # --- ETAPA: Número ---
+    elif etapa == 'venda_numero':
+        numero = mensagem.strip()
+        if mensagem_limpa == 'SN':
+            numero = 'S/N'
+        
+        dados['numero'] = numero
+        sessao.dados_temp = dados
+        sessao.etapa = 'venda_referencia'
+        sessao.save()
+        
+        return (
+            f"✅ Número: *{numero}*\n\n"
+            f"Digite uma *referência* do endereço:\n"
+            f"(ex: Próximo ao mercado, casa azul, etc.)"
+        )
+    
+    # --- ETAPA: Referência ---
+    elif etapa == 'venda_referencia':
+        referencia = mensagem.strip()
+        if len(referencia) < 3:
+            return "❌ Referência muito curta. Digite uma referência mais detalhada:"
+        
+        dados['referencia'] = referencia
+        sessao.dados_temp = dados
+        sessao.etapa = 'venda_cpf'
+        sessao.save()
+        
+        return (
+            f"✅ Referência: *{referencia}*\n\n"
+            f"📋 *ETAPA 2: CLIENTE*\n\n"
+            f"Digite o *CPF* do cliente:"
+        )
+    
+    # --- ETAPA: CPF ---
+    elif etapa == 'venda_cpf':
+        cpf_limpo = limpar_texto_cep_cpf(mensagem)
+        if not cpf_limpo or len(cpf_limpo) != 11:
+            return "❌ CPF inválido. Digite o CPF completo (11 dígitos):"
+        
+        dados['cpf_cliente'] = cpf_limpo
+        sessao.dados_temp = dados
+        sessao.etapa = 'venda_celular'
+        sessao.save()
+        
+        return (
+            f"✅ CPF: *{cpf_limpo[:3]}.{cpf_limpo[3:6]}.{cpf_limpo[6:9]}-{cpf_limpo[9:]}*\n\n"
+            f"📱 *ETAPA 3: CONTATO*\n\n"
+            f"Digite o *celular principal* do cliente (com DDD):"
+        )
+    
+    # --- ETAPA: Celular ---
+    elif etapa == 'venda_celular':
+        celular_limpo = limpar_texto_cep_cpf(mensagem)
+        if not celular_limpo or len(celular_limpo) < 10:
+            return "❌ Celular inválido. Digite o celular com DDD (10 ou 11 dígitos):"
+        
+        dados['celular'] = celular_limpo
+        sessao.dados_temp = dados
+        sessao.etapa = 'venda_email'
+        sessao.save()
+        
+        return (
+            f"✅ Celular: *({celular_limpo[:2]}) {celular_limpo[2:7]}-{celular_limpo[7:]}*\n\n"
+            f"📧 Digite o *e-mail* do cliente:"
+        )
+    
+    # --- ETAPA: Email ---
+    elif etapa == 'venda_email':
+        email = mensagem.strip().lower()
+        if '@' not in email or '.' not in email:
+            return "❌ E-mail inválido. Digite um e-mail válido:"
+        
+        dados['email'] = email
+        sessao.dados_temp = dados
+        sessao.etapa = 'venda_forma_pagamento'
+        sessao.save()
+        
+        return (
+            f"✅ E-mail: *{email}*\n\n"
+            f"💳 *ETAPA 4: PAGAMENTO*\n\n"
+            f"Escolha a forma de pagamento:\n\n"
+            f"1️⃣ Boleto\n"
+            f"2️⃣ Cartão de Crédito\n"
+            f"3️⃣ Débito em Conta\n\n"
+            f"Digite o número da opção:"
+        )
+    
+    # --- ETAPA: Forma de Pagamento ---
+    elif etapa == 'venda_forma_pagamento':
+        formas = {'1': 'boleto', '2': 'cartao', '3': 'debito'}
+        if mensagem_limpa not in formas:
+            return "❌ Opção inválida. Digite 1, 2 ou 3:"
+        
+        dados['forma_pagamento'] = formas[mensagem_limpa]
+        sessao.dados_temp = dados
+        sessao.etapa = 'venda_plano'
+        sessao.save()
+        
+        forma_nome = {'boleto': 'Boleto', 'cartao': 'Cartão de Crédito', 'debito': 'Débito em Conta'}
+        
+        return (
+            f"✅ Pagamento: *{forma_nome[formas[mensagem_limpa]]}*\n\n"
+            f"📦 *ETAPA 5: PLANO*\n\n"
+            f"Escolha o plano:\n\n"
+            f"1️⃣ Nio Fibra Ultra 1 Giga - R$ 160,00/mês\n"
+            f"2️⃣ Nio Fibra Super 700 Mega - R$ 130,00/mês\n"
+            f"3️⃣ Nio Fibra Essencial 500 Mega - R$ 100,00/mês\n\n"
+            f"Digite o número da opção:"
+        )
+    
+    # --- ETAPA: Plano ---
+    elif etapa == 'venda_plano':
+        planos = {'1': '1giga', '2': '700mega', '3': '500mega'}
+        if mensagem_limpa not in planos:
+            return "❌ Opção inválida. Digite 1, 2 ou 3:"
+        
+        dados['plano'] = planos[mensagem_limpa]
+        sessao.dados_temp = dados
+        sessao.etapa = 'venda_turno'
+        sessao.save()
+        
+        plano_nome = {
+            '1giga': 'Nio Fibra Ultra 1 Giga - R$ 160,00/mês',
+            '700mega': 'Nio Fibra Super 700 Mega - R$ 130,00/mês',
+            '500mega': 'Nio Fibra Essencial 500 Mega - R$ 100,00/mês'
+        }
+        
+        return (
+            f"✅ Plano: *{plano_nome[planos[mensagem_limpa]]}*\n\n"
+            f"🕐 *ETAPA 6: AGENDAMENTO*\n\n"
+            f"Qual turno de preferência para instalação?\n\n"
+            f"1️⃣ Manhã\n"
+            f"2️⃣ Tarde\n\n"
+            f"Digite o número da opção:"
+        )
+    
+    # --- ETAPA: Turno ---
+    elif etapa == 'venda_turno':
+        turnos = {'1': 'manha', '2': 'tarde'}
+        if mensagem_limpa not in turnos:
+            return "❌ Opção inválida. Digite 1 ou 2:"
+        
+        dados['turno'] = turnos[mensagem_limpa]
+        sessao.dados_temp = dados
+        sessao.etapa = 'venda_confirmar'
+        sessao.save()
+        
+        turno_nome = {'manha': 'Manhã', 'tarde': 'Tarde'}
+        plano_nome = {
+            '1giga': 'Nio Fibra Ultra 1 Giga - R$ 160,00/mês',
+            '700mega': 'Nio Fibra Super 700 Mega - R$ 130,00/mês',
+            '500mega': 'Nio Fibra Essencial 500 Mega - R$ 100,00/mês'
+        }
+        forma_nome = {'boleto': 'Boleto', 'cartao': 'Cartão de Crédito', 'debito': 'Débito em Conta'}
+        
+        cpf = dados.get('cpf_cliente', '')
+        celular = dados.get('celular', '')
+        
+        return (
+            f"✅ Turno: *{turno_nome[turnos[mensagem_limpa]]}*\n\n"
+            f"📋 *RESUMO DA VENDA*\n\n"
+            f"📍 *Endereço:*\n"
+            f"CEP: {dados.get('cep', '')}\n"
+            f"Número: {dados.get('numero', '')}\n"
+            f"Referência: {dados.get('referencia', '')}\n\n"
+            f"👤 *Cliente:*\n"
+            f"CPF: {cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}\n"
+            f"Celular: ({celular[:2]}) {celular[2:7]}-{celular[7:]}\n"
+            f"E-mail: {dados.get('email', '')}\n\n"
+            f"💳 *Pagamento:* {forma_nome.get(dados.get('forma_pagamento', ''), '')}\n"
+            f"📦 *Plano:* {plano_nome.get(dados.get('plano', ''), '')}\n"
+            f"🕐 *Turno:* {turno_nome[turnos[mensagem_limpa]]}\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━━\n"
+            f"✅ Confirma a venda?\n\n"
+            f"Digite *CONFIRMAR* para enviar ao PAP\n"
+            f"Digite *CANCELAR* para desistir"
+        )
+    
+    # --- ETAPA: Confirmar Venda ---
+    elif etapa == 'venda_confirmar':
+        if mensagem_limpa != 'CONFIRMAR':
+            if mensagem_limpa == 'CANCELAR':
+                sessao.etapa = 'inicial'
+                sessao.dados_temp = {}
+                sessao.save()
+                return "❌ Venda cancelada. Digite *VENDER* para iniciar novamente."
+            return "Digite *CONFIRMAR* para enviar a venda ou *CANCELAR* para desistir:"
+        
+        # Iniciar automação PAP
+        sessao.etapa = 'venda_processando'
+        sessao.save()
+        
+        return _executar_venda_pap(telefone, sessao, dados)
+    
+    # --- ETAPA: Processando (aguardando biometria) ---
+    elif etapa == 'venda_aguardando_biometria':
+        if mensagem_limpa in ['VERIFICAR', 'STATUS']:
+            return _verificar_biometria_venda(telefone, sessao, dados)
+        return (
+            "⏳ *AGUARDANDO BIOMETRIA*\n\n"
+            "O cliente precisa completar a biometria via WhatsApp.\n\n"
+            "Quando o cliente completar, digite *VERIFICAR* para continuar.\n"
+            "Ou digite *CANCELAR* para desistir."
+        )
+    
+    return "❓ Etapa não reconhecida. Digite *VENDER* para iniciar novamente."
+
+
+def _executar_venda_pap(telefone: str, sessao, dados: dict) -> str:
+    """
+    Executa a venda no sistema PAP via automação.
+    
+    Args:
+        telefone: Número do telefone
+        sessao: Sessão do WhatsApp
+        dados: Dados da venda coletados
+        
+    Returns:
+        Mensagem de resposta
+    """
+    from usuarios.models import Usuario
+    from crm_app.services_pap_nio import PAPNioAutomation
+    
+    try:
+        # Buscar vendedor
+        vendedor_id = dados.get('vendedor_id')
+        vendedor = Usuario.objects.get(id=vendedor_id)
+        
+        logger.info(f"[VENDA PAP] Iniciando automação para {vendedor.username}")
+        
+        # Criar automação
+        automacao = PAPNioAutomation(
+            matricula_pap=vendedor.matricula_pap,
+            senha_pap=vendedor.senha_pap,
+            vendedor_nome=vendedor.get_full_name() or vendedor.username
+        )
+        
+        # Etapa 0: Iniciar sessão
+        sucesso, msg = automacao.iniciar_sessao()
+        if not sucesso:
+            automacao._fechar_sessao()
+            sessao.etapa = 'inicial'
+            sessao.dados_temp = {}
+            sessao.save()
+            return f"❌ *ERRO NO LOGIN PAP*\n\n{msg}\n\nTente novamente mais tarde."
+        
+        # Etapa 1: Iniciar novo pedido
+        sucesso, msg = automacao.iniciar_novo_pedido(vendedor.matricula_pap)
+        if not sucesso:
+            automacao._fechar_sessao()
+            sessao.etapa = 'inicial'
+            sessao.dados_temp = {}
+            sessao.save()
+            return f"❌ *ERRO NA ETAPA 1*\n\n{msg}"
+        
+        # Etapa 2: Viabilidade
+        sucesso, msg, enderecos = automacao.etapa2_viabilidade(
+            dados.get('cep', ''),
+            dados.get('numero', ''),
+            dados.get('referencia', '')
+        )
+        if not sucesso:
+            automacao._fechar_sessao()
+            sessao.etapa = 'inicial'
+            sessao.dados_temp = {}
+            sessao.save()
+            return f"❌ *ERRO NA VIABILIDADE*\n\n{msg}"
+        
+        # Se múltiplos endereços, guardar para seleção
+        if enderecos:
+            dados['enderecos_disponiveis'] = enderecos
+            dados['automacao_ativa'] = True
+            sessao.etapa = 'venda_selecionar_endereco'
+            sessao.dados_temp = dados
+            sessao.save()
+            
+            enderecos_texto = "\n".join([f"{e['indice']}. {e['texto']}" for e in enderecos])
+            return (
+                f"📍 *MÚLTIPLOS ENDEREÇOS ENCONTRADOS*\n\n"
+                f"{enderecos_texto}\n\n"
+                f"Digite o número do endereço correto:"
+            )
+        
+        # Etapa 3: Cadastro do cliente
+        sucesso, msg, cliente = automacao.etapa3_cadastro_cliente(dados.get('cpf_cliente', ''))
+        if not sucesso:
+            automacao._fechar_sessao()
+            sessao.etapa = 'inicial'
+            sessao.dados_temp = {}
+            sessao.save()
+            return f"❌ *ERRO NO CADASTRO DO CLIENTE*\n\n{msg}"
+        
+        # Etapa 4: Contato
+        sucesso, msg, credito = automacao.etapa4_contato(
+            dados.get('celular', ''),
+            dados.get('email', '')
+        )
+        if not sucesso:
+            automacao._fechar_sessao()
+            sessao.etapa = 'inicial'
+            sessao.dados_temp = {}
+            sessao.save()
+            return f"❌ *ERRO NA ANÁLISE DE CRÉDITO*\n\n{msg}"
+        
+        # Etapa 5: Pagamento e Plano
+        sucesso, msg = automacao.etapa5_pagamento_plano(
+            dados.get('forma_pagamento', 'boleto'),
+            dados.get('plano', '500mega')
+        )
+        if not sucesso:
+            automacao._fechar_sessao()
+            sessao.etapa = 'inicial'
+            sessao.dados_temp = {}
+            sessao.save()
+            return f"❌ *ERRO NA SELEÇÃO DE PLANO*\n\n{msg}"
+        
+        # Etapa 6: Verificar biometria
+        sucesso, msg, biometria_ok = automacao.etapa6_verificar_biometria()
+        
+        if not biometria_ok:
+            # Biometria pendente - aguardar
+            dados['automacao_instancia'] = automacao  # Manter automação ativa
+            sessao.etapa = 'venda_aguardando_biometria'
+            sessao.dados_temp = dados
+            sessao.save()
+            
+            return (
+                f"⏳ *AGUARDANDO BIOMETRIA*\n\n"
+                f"O link de biometria foi enviado ao cliente via WhatsApp pela Nio.\n\n"
+                f"Quando o cliente completar a biometria, digite *VERIFICAR*.\n\n"
+                f"Ou digite *CANCELAR* para desistir."
+            )
+        
+        # Etapa 7: Abrir OS
+        sucesso, msg, numero_os = automacao.etapa7_abrir_os(
+            turno=dados.get('turno', 'manha')
+        )
+        
+        automacao._fechar_sessao()
+        
+        if not sucesso:
+            sessao.etapa = 'inicial'
+            sessao.dados_temp = {}
+            sessao.save()
+            return f"❌ *ERRO AO ABRIR O.S.*\n\n{msg}"
+        
+        # SUCESSO! Cadastrar no CRM
+        _cadastrar_venda_crm(dados, numero_os, vendedor)
+        
+        sessao.etapa = 'inicial'
+        sessao.dados_temp = {}
+        sessao.save()
+        
+        return (
+            f"🎉 *VENDA CONCLUÍDA COM SUCESSO!*\n\n"
+            f"📋 Número do Pedido: *{numero_os or 'N/A'}*\n\n"
+            f"A venda foi registrada no CRM.\n\n"
+            f"Digite *VENDER* para iniciar uma nova venda."
+        )
+        
+    except Exception as e:
+        logger.exception(f"[VENDA PAP] Erro na execução: {e}")
+        sessao.etapa = 'inicial'
+        sessao.dados_temp = {}
+        sessao.save()
+        return f"❌ *ERRO INESPERADO*\n\n{str(e)}\n\nTente novamente mais tarde."
+
+
+def _verificar_biometria_venda(telefone: str, sessao, dados: dict) -> str:
+    """
+    Verifica o status da biometria e continua a venda se aprovada.
+    """
+    automacao = dados.get('automacao_instancia')
+    
+    if not automacao:
+        sessao.etapa = 'inicial'
+        sessao.dados_temp = {}
+        sessao.save()
+        return "❌ Sessão expirada. Digite *VENDER* para iniciar novamente."
+    
+    try:
+        # Verificar biometria
+        sucesso, msg, biometria_ok = automacao.etapa6_verificar_biometria()
+        
+        if not biometria_ok:
+            return (
+                f"⏳ *BIOMETRIA AINDA PENDENTE*\n\n"
+                f"{msg}\n\n"
+                f"Aguarde o cliente completar e digite *VERIFICAR* novamente.\n"
+                f"Ou digite *CANCELAR* para desistir."
+            )
+        
+        # Biometria OK - Abrir OS
+        sucesso, msg, numero_os = automacao.etapa7_abrir_os(
+            turno=dados.get('turno', 'manha')
+        )
+        
+        automacao._fechar_sessao()
+        
+        if not sucesso:
+            sessao.etapa = 'inicial'
+            sessao.dados_temp = {}
+            sessao.save()
+            return f"❌ *ERRO AO ABRIR O.S.*\n\n{msg}"
+        
+        # SUCESSO! Cadastrar no CRM
+        from usuarios.models import Usuario
+        vendedor = Usuario.objects.get(id=dados.get('vendedor_id'))
+        _cadastrar_venda_crm(dados, numero_os, vendedor)
+        
+        sessao.etapa = 'inicial'
+        sessao.dados_temp = {}
+        sessao.save()
+        
+        return (
+            f"🎉 *VENDA CONCLUÍDA COM SUCESSO!*\n\n"
+            f"📋 Número do Pedido: *{numero_os or 'N/A'}*\n\n"
+            f"A venda foi registrada no CRM.\n\n"
+            f"Digite *VENDER* para iniciar uma nova venda."
+        )
+        
+    except Exception as e:
+        logger.exception(f"[VENDA PAP] Erro ao verificar biometria: {e}")
+        sessao.etapa = 'inicial'
+        sessao.dados_temp = {}
+        sessao.save()
+        return f"❌ *ERRO*\n\n{str(e)}\n\nDigite *VENDER* para iniciar novamente."
+
+
+def _cadastrar_venda_crm(dados: dict, numero_os: str, vendedor) -> bool:
+    """
+    Cadastra a venda no CRM após conclusão no PAP.
+    
+    Args:
+        dados: Dados da venda
+        numero_os: Número da O.S.
+        vendedor: Usuário vendedor
+        
+    Returns:
+        True se cadastrou com sucesso
+    """
+    try:
+        from crm_app.models import Venda, Cliente, Plano, FormaPagamento, StatusEsteira
+        from django.utils import timezone
+        
+        logger.info(f"[CRM] Cadastrando venda - OS: {numero_os}")
+        
+        # Buscar ou criar cliente
+        cpf = dados.get('cpf_cliente', '')
+        cliente, created = Cliente.objects.get_or_create(
+            cpf_cnpj=cpf,
+            defaults={
+                'nome_razao_social': dados.get('nome_cliente', f'Cliente {cpf}'),
+                'telefone1': dados.get('celular', ''),
+                'email': dados.get('email', ''),
+            }
+        )
+        
+        if not created and not cliente.email:
+            cliente.email = dados.get('email', '')
+            cliente.save()
+        
+        # Buscar plano
+        plano_map = {
+            '1giga': 'Nio Fibra Ultra 1 Giga',
+            '700mega': 'Nio Fibra Super 700 Mega',
+            '500mega': 'Nio Fibra Essencial 500 Mega',
+        }
+        plano_nome = plano_map.get(dados.get('plano', ''), 'Nio Fibra Essencial 500 Mega')
+        plano = Plano.objects.filter(nome__icontains=plano_nome.split()[2] if len(plano_nome.split()) > 2 else plano_nome).first()
+        
+        # Buscar forma de pagamento
+        forma_map = {
+            'boleto': 'Boleto',
+            'cartao': 'Cartão',
+            'debito': 'Débito',
+        }
+        forma_nome = forma_map.get(dados.get('forma_pagamento', ''), 'Boleto')
+        forma_pagamento = FormaPagamento.objects.filter(nome__icontains=forma_nome).first()
+        
+        # Buscar status
+        status_agendada = StatusEsteira.objects.filter(nome__icontains='AGENDAD').first()
+        
+        # Criar venda
+        venda = Venda.objects.create(
+            cliente=cliente,
+            vendedor=vendedor,
+            plano=plano,
+            forma_pagamento=forma_pagamento,
+            status_esteira=status_agendada,
+            ordem_servico=numero_os,
+            cep=dados.get('cep', ''),
+            numero=dados.get('numero', ''),
+            referencia=dados.get('referencia', ''),
+            observacao=f"Venda realizada via WhatsApp Bot em {timezone.now().strftime('%d/%m/%Y %H:%M')}",
+            ativo=True,
+        )
+        
+        logger.info(f"[CRM] Venda cadastrada com sucesso! ID: {venda.id}")
+        return True
+        
+    except Exception as e:
+        logger.exception(f"[CRM] Erro ao cadastrar venda: {e}")
+        return False
+
+
 def processar_webhook_whatsapp(data):
     """
     Processa mensagens recebidas do WhatsApp via webhook.
@@ -456,6 +1105,12 @@ def processar_webhook_whatsapp(data):
             logger.info(f"[Webhook] Resposta preparada para ANDAMENTO")
             _registrar_estatistica(telefone_formatado, 'ANDAMENTO')
         
+        elif mensagem_limpa in ['VENDER', 'VENDA', 'NOVA VENDA']:
+            logger.info(f"[Webhook] Comando VENDER reconhecido!")
+            # Verificar se vendedor está autorizado
+            resposta = _iniciar_fluxo_venda(telefone_formatado, sessao)
+            _registrar_estatistica(telefone_formatado, 'VENDER')
+        
         elif mensagem_limpa in ['MENU', 'AJUDA', 'HELP', 'OPCOES', 'OPÇÕES', 'OPCOES', 'OPÇOES']:
             logger.info(f"[Webhook] Comando MENU/AJUDA reconhecido!")
             sessao.etapa = 'inicial'
@@ -469,7 +1124,8 @@ def processar_webhook_whatsapp(data):
                 "• *Status* - Consultar status de pedido\n"
                 "• *Fatura* - Consultar fatura por CPF\n"
                 "• *Material* - Buscar materiais/documentos\n"
-                "• *Andamento* - Ver agendamentos do dia"
+                "• *Andamento* - Ver agendamentos do dia\n"
+                "• *Vender* - Realizar venda pelo WhatsApp 🆕"
             )
             logger.info(f"[Webhook] Resposta preparada para MENU/AJUDA")
         
@@ -1392,6 +2048,11 @@ def processar_webhook_whatsapp(data):
                 sessao.dados_temp = {}
                 sessao.save()
         
+        # === PROCESSAMENTO DE ETAPAS DE VENDA ===
+        elif etapa_atual.startswith('venda_'):
+            logger.info(f"[Webhook] Processando etapa de venda: {etapa_atual}")
+            resposta = _processar_etapa_venda(telefone_formatado, mensagem_texto, sessao, etapa_atual)
+        
         else:
             # Mensagem não reconhecida - mas só mostrar se realmente for um comando novo
             # Se a sessão acabou de mostrar uma fatura ou outro resultado, não mostrar erro imediatamente
@@ -1401,7 +2062,7 @@ def processar_webhook_whatsapp(data):
             if len(mensagem_texto.strip()) <= 2 and mensagem_texto.strip().isdigit():
                 # Pode ser um número de confirmação que não foi processado corretamente
                 resposta = None  # Não enviar resposta de erro
-            elif etapa_atual == 'inicial' and mensagem_limpa not in ['FATURA', 'FATURA NEGOCIA', 'FATURANEGOCIA', 'FACHADA', 'VIABILIDADE', 'STATUS', 'STAT', 'VIABIL', 'FACADA', 'FAT', 'MENU', 'AJUDA', 'HELP', 'OPCOES', 'OPÇÕES', 'OPCOES', 'OPÇOES', 'MATERIAL', 'MATERIAIS']:
+            elif etapa_atual == 'inicial' and mensagem_limpa not in ['FATURA', 'FATURA NEGOCIA', 'FATURANEGOCIA', 'FACHADA', 'VIABILIDADE', 'STATUS', 'STAT', 'VIABIL', 'FACADA', 'FAT', 'MENU', 'AJUDA', 'HELP', 'OPCOES', 'OPÇÕES', 'OPCOES', 'OPÇOES', 'MATERIAL', 'MATERIAIS', 'VENDER', 'VENDA', 'NOVA VENDA']:
                 # Tentar buscar nas tags do Record Apoia antes de ignorar
                 from crm_app.models import RecordApoia
                 from django.db.models import Q
