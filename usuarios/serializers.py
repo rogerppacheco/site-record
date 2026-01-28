@@ -112,6 +112,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
             'canal',
             'cluster',
             'participa_controle_presenca',
+            'autorizar_venda_sem_auditoria',
             'tel_whatsapp',
             'obriga_troca_senha',
             'password'
