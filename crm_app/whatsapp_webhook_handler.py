@@ -681,7 +681,7 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
 
 def _executar_venda_pap(telefone: str, sessao, dados: dict) -> str:
     """
-    Executa a venda no sistema PAP via automação.
+    Executa a venda no sistema PAP via automação em background.
     
     Args:
         telefone: Número do telefone
@@ -691,40 +691,114 @@ def _executar_venda_pap(telefone: str, sessao, dados: dict) -> str:
     Returns:
         Mensagem de resposta
     """
+    import threading
+    from usuarios.models import Usuario
+    
+    # Salvar estado ANTES de iniciar a thread (evita conflito async)
+    sessao.etapa = 'venda_processando'
+    sessao.save()
+    
+    # Buscar vendedor antes de entrar na thread
+    vendedor_id = dados.get('vendedor_id')
+    try:
+        vendedor = Usuario.objects.get(id=vendedor_id)
+        vendedor_matricula = vendedor.matricula_pap
+        vendedor_senha = vendedor.senha_pap
+        vendedor_nome = vendedor.get_full_name() or vendedor.username
+    except Usuario.DoesNotExist:
+        sessao.etapa = 'inicial'
+        sessao.dados_temp = {}
+        sessao.save()
+        return "❌ *ERRO*\n\nUsuário não encontrado."
+    
+    # Iniciar automação em thread separada
+    def executar_em_background():
+        _executar_venda_pap_background(
+            telefone, 
+            sessao.id,  # Passar ID ao invés do objeto
+            dados, 
+            vendedor_id,
+            vendedor_matricula,
+            vendedor_senha,
+            vendedor_nome
+        )
+    
+    thread = threading.Thread(target=executar_em_background, daemon=True)
+    thread.start()
+    
+    return (
+        "⏳ *PROCESSANDO VENDA...*\n\n"
+        "Estou acessando o sistema PAP Nio para registrar sua venda.\n"
+        "Isso pode levar alguns segundos.\n\n"
+        "Aguarde a confirmação..."
+    )
+
+
+def _executar_venda_pap_background(
+    telefone: str, 
+    sessao_id: int, 
+    dados: dict, 
+    vendedor_id: int,
+    vendedor_matricula: str,
+    vendedor_senha: str,
+    vendedor_nome: str
+):
+    """
+    Executa a automação PAP em background (thread separada).
+    Envia resultado via WhatsApp quando terminar.
+    """
+    import django
+    django.setup()  # Garantir que Django está configurado na thread
+    
+    from crm_app.models import SessaoWhatsapp
     from usuarios.models import Usuario
     from crm_app.services_pap_nio import PAPNioAutomation
+    from crm_app.whatsapp_service import WhatsAppService
+    
+    whatsapp = WhatsAppService()
+    
+    def enviar_resultado(mensagem: str):
+        """Envia mensagem de resultado para o usuário"""
+        try:
+            whatsapp.enviar_mensagem_texto(telefone, mensagem)
+        except Exception as e:
+            logger.error(f"[VENDA PAP] Erro ao enviar resultado: {e}")
+    
+    def resetar_sessao():
+        """Reseta a sessão do WhatsApp"""
+        try:
+            sessao = SessaoWhatsapp.objects.get(id=sessao_id)
+            sessao.etapa = 'inicial'
+            sessao.dados_temp = {}
+            sessao.save()
+        except Exception as e:
+            logger.error(f"[VENDA PAP] Erro ao resetar sessão: {e}")
     
     try:
-        # Buscar vendedor
-        vendedor_id = dados.get('vendedor_id')
-        vendedor = Usuario.objects.get(id=vendedor_id)
-        
-        logger.info(f"[VENDA PAP] Iniciando automação para {vendedor.username}")
+        logger.info(f"[VENDA PAP] Iniciando automação em background para {vendedor_nome}")
         
         # Criar automação
         automacao = PAPNioAutomation(
-            matricula_pap=vendedor.matricula_pap,
-            senha_pap=vendedor.senha_pap,
-            vendedor_nome=vendedor.get_full_name() or vendedor.username
+            matricula_pap=vendedor_matricula,
+            senha_pap=vendedor_senha,
+            vendedor_nome=vendedor_nome
         )
         
         # Etapa 0: Iniciar sessão
         sucesso, msg = automacao.iniciar_sessao()
         if not sucesso:
             automacao._fechar_sessao()
-            sessao.etapa = 'inicial'
-            sessao.dados_temp = {}
-            sessao.save()
-            return f"❌ *ERRO NO LOGIN PAP*\n\n{msg}\n\nTente novamente mais tarde."
+            resetar_sessao()
+            enviar_resultado(f"❌ *ERRO NO LOGIN PAP*\n\n{msg}\n\nDigite *VENDER* para tentar novamente.")
+            return
         
         # Etapa 1: Iniciar novo pedido
-        sucesso, msg = automacao.iniciar_novo_pedido(vendedor.matricula_pap)
+        sucesso, msg = automacao.iniciar_novo_pedido(vendedor_matricula)
         if not sucesso:
             automacao._fechar_sessao()
-            sessao.etapa = 'inicial'
-            sessao.dados_temp = {}
-            sessao.save()
-            return f"❌ *ERRO NA ETAPA 1*\n\n{msg}"
+            resetar_sessao()
+            enviar_resultado(f"❌ *ERRO NA ETAPA 1*\n\n{msg}\n\nDigite *VENDER* para tentar novamente.")
+            return
         
         # Etapa 2: Viabilidade
         sucesso, msg, enderecos = automacao.etapa2_viabilidade(
@@ -734,34 +808,17 @@ def _executar_venda_pap(telefone: str, sessao, dados: dict) -> str:
         )
         if not sucesso:
             automacao._fechar_sessao()
-            sessao.etapa = 'inicial'
-            sessao.dados_temp = {}
-            sessao.save()
-            return f"❌ *ERRO NA VIABILIDADE*\n\n{msg}"
-        
-        # Se múltiplos endereços, guardar para seleção
-        if enderecos:
-            dados['enderecos_disponiveis'] = enderecos
-            dados['automacao_ativa'] = True
-            sessao.etapa = 'venda_selecionar_endereco'
-            sessao.dados_temp = dados
-            sessao.save()
-            
-            enderecos_texto = "\n".join([f"{e['indice']}. {e['texto']}" for e in enderecos])
-            return (
-                f"📍 *MÚLTIPLOS ENDEREÇOS ENCONTRADOS*\n\n"
-                f"{enderecos_texto}\n\n"
-                f"Digite o número do endereço correto:"
-            )
+            resetar_sessao()
+            enviar_resultado(f"❌ *ERRO NA VIABILIDADE*\n\n{msg}\n\nDigite *VENDER* para tentar novamente.")
+            return
         
         # Etapa 3: Cadastro do cliente
         sucesso, msg, cliente = automacao.etapa3_cadastro_cliente(dados.get('cpf_cliente', ''))
         if not sucesso:
             automacao._fechar_sessao()
-            sessao.etapa = 'inicial'
-            sessao.dados_temp = {}
-            sessao.save()
-            return f"❌ *ERRO NO CADASTRO DO CLIENTE*\n\n{msg}"
+            resetar_sessao()
+            enviar_resultado(f"❌ *ERRO NO CADASTRO*\n\n{msg}\n\nDigite *VENDER* para tentar novamente.")
+            return
         
         # Etapa 4: Contato
         sucesso, msg, credito = automacao.etapa4_contato(
@@ -770,10 +827,9 @@ def _executar_venda_pap(telefone: str, sessao, dados: dict) -> str:
         )
         if not sucesso:
             automacao._fechar_sessao()
-            sessao.etapa = 'inicial'
-            sessao.dados_temp = {}
-            sessao.save()
-            return f"❌ *ERRO NA ANÁLISE DE CRÉDITO*\n\n{msg}"
+            resetar_sessao()
+            enviar_resultado(f"❌ *ERRO NA ANÁLISE DE CRÉDITO*\n\n{msg}\n\nDigite *VENDER* para tentar novamente.")
+            return
         
         # Etapa 5: Pagamento e Plano
         sucesso, msg = automacao.etapa5_pagamento_plano(
@@ -782,27 +838,23 @@ def _executar_venda_pap(telefone: str, sessao, dados: dict) -> str:
         )
         if not sucesso:
             automacao._fechar_sessao()
-            sessao.etapa = 'inicial'
-            sessao.dados_temp = {}
-            sessao.save()
-            return f"❌ *ERRO NA SELEÇÃO DE PLANO*\n\n{msg}"
+            resetar_sessao()
+            enviar_resultado(f"❌ *ERRO NA SELEÇÃO DE PLANO*\n\n{msg}\n\nDigite *VENDER* para tentar novamente.")
+            return
         
         # Etapa 6: Verificar biometria
         sucesso, msg, biometria_ok = automacao.etapa6_verificar_biometria()
         
         if not biometria_ok:
-            # Biometria pendente - aguardar
-            dados['automacao_instancia'] = automacao  # Manter automação ativa
-            sessao.etapa = 'venda_aguardando_biometria'
-            sessao.dados_temp = dados
-            sessao.save()
-            
-            return (
+            # Biometria pendente - informar usuário
+            automacao._fechar_sessao()
+            resetar_sessao()
+            enviar_resultado(
                 f"⏳ *AGUARDANDO BIOMETRIA*\n\n"
-                f"O link de biometria foi enviado ao cliente via WhatsApp pela Nio.\n\n"
-                f"Quando o cliente completar a biometria, digite *VERIFICAR*.\n\n"
-                f"Ou digite *CANCELAR* para desistir."
+                f"O link de biometria foi enviado ao cliente pela Nio.\n\n"
+                f"Quando a biometria for aprovada, digite *VENDER* novamente para continuar."
             )
+            return
         
         # Etapa 7: Abrir OS
         sucesso, msg, numero_os = automacao.etapa7_abrir_os(
@@ -812,19 +864,20 @@ def _executar_venda_pap(telefone: str, sessao, dados: dict) -> str:
         automacao._fechar_sessao()
         
         if not sucesso:
-            sessao.etapa = 'inicial'
-            sessao.dados_temp = {}
-            sessao.save()
-            return f"❌ *ERRO AO ABRIR O.S.*\n\n{msg}"
+            resetar_sessao()
+            enviar_resultado(f"❌ *ERRO AO ABRIR O.S.*\n\n{msg}\n\nDigite *VENDER* para tentar novamente.")
+            return
         
         # SUCESSO! Cadastrar no CRM
-        _cadastrar_venda_crm(dados, numero_os, vendedor)
+        try:
+            vendedor = Usuario.objects.get(id=vendedor_id)
+            _cadastrar_venda_crm(dados, numero_os, vendedor)
+        except Exception as e:
+            logger.error(f"[VENDA PAP] Erro ao cadastrar no CRM: {e}")
         
-        sessao.etapa = 'inicial'
-        sessao.dados_temp = {}
-        sessao.save()
+        resetar_sessao()
         
-        return (
+        enviar_resultado(
             f"🎉 *VENDA CONCLUÍDA COM SUCESSO!*\n\n"
             f"📋 Número do Pedido: *{numero_os or 'N/A'}*\n\n"
             f"A venda foi registrada no CRM.\n\n"
@@ -832,11 +885,9 @@ def _executar_venda_pap(telefone: str, sessao, dados: dict) -> str:
         )
         
     except Exception as e:
-        logger.exception(f"[VENDA PAP] Erro na execução: {e}")
-        sessao.etapa = 'inicial'
-        sessao.dados_temp = {}
-        sessao.save()
-        return f"❌ *ERRO INESPERADO*\n\n{str(e)}\n\nTente novamente mais tarde."
+        logger.exception(f"[VENDA PAP] Erro na execução em background: {e}")
+        resetar_sessao()
+        enviar_resultado(f"❌ *ERRO INESPERADO*\n\n{str(e)}\n\nDigite *VENDER* para tentar novamente.")
 
 
 def _verificar_biometria_venda(telefone: str, sessao, dados: dict) -> str:
