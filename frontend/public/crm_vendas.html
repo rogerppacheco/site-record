@@ -1281,6 +1281,11 @@
                 const el = document.getElementById(id);
                 if (!el) return;
                 el.value = valor || '';
+                // Telefones nunca ficam readOnly
+                if (id === 'input-telefone' || id === 'input-telefone2') {
+                    el.readOnly = false;
+                    return;
+                }
                 if (lock) {
                     if (valor && String(valor).trim() !== '') {
                         el.readOnly = true;
