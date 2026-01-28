@@ -93,6 +93,10 @@
                         <i class="bi bi-whatsapp"></i> WPP ON
                     </button>
 
+                    <button onclick="exportarAgendamentosDia()" class="btn btn-outline-success fw-bold shadow-sm" title="Baixar planilha de agendamentos do dia para envio à operadora">
+                        <i class="bi bi-file-earmark-excel"></i> Exportar Agendados Hoje
+                    </button>
+
                     <button onclick="carregarVendas()" class="btn btn-outline-primary fw-bold shadow-sm">
                         <i class="bi bi-arrow-clockwise"></i> Atualizar Lista
                     </button>
@@ -345,6 +349,66 @@
             if (!dataIso) return '-';
             const [ano, mes, dia] = dataIso.split('-');
             return `${dia}/${mes}/${ano}`;
+        }
+
+        async function exportarAgendamentosDia() {
+            // Exporta planilha de agendamentos do dia para envio à operadora
+            try {
+                const token = localStorage.getItem('accessToken');
+                if (!token) {
+                    alert('Você precisa estar logado para exportar.');
+                    return;
+                }
+
+                // Data de hoje no formato YYYY-MM-DD
+                const hoje = new Date();
+                const dataStr = hoje.toISOString().split('T')[0];
+
+                // Feedback visual
+                const btn = event.target.closest('button');
+                const textoOriginal = btn.innerHTML;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Gerando...';
+                btn.disabled = true;
+
+                // Faz a requisição para baixar o arquivo
+                const response = await fetch(`/api/crm/esteira/exportar-agendamentos/?data=${dataStr}`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (!response.ok) {
+                    const erro = await response.text();
+                    throw new Error(erro || 'Erro ao exportar');
+                }
+
+                // Converte a resposta em blob e faz download
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `agendamentos_operadora_${dataStr.replace(/-/g, '')}.xlsx`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+
+                // Restaura botão
+                btn.innerHTML = textoOriginal;
+                btn.disabled = false;
+
+            } catch (error) {
+                console.error('Erro ao exportar agendamentos:', error);
+                alert('Erro ao exportar: ' + error.message);
+                
+                // Restaura botão em caso de erro
+                const btn = event.target.closest('button');
+                if (btn) {
+                    btn.innerHTML = '<i class="bi bi-file-earmark-excel"></i> Exportar Agendados Hoje';
+                    btn.disabled = false;
+                }
+            }
         }
 
         function calcularContadores(vendasLista) {
