@@ -1453,10 +1453,10 @@
                     }
                     if(btnSalvar) btnSalvar.disabled = false; 
                 } else {
-                    input.classList.add('is-invalid'); input.classList.remove('is-valid');
-                    if(feedbackDiv) feedbackDiv.innerHTML = '<span class="text-danger fw-bold small"><i class="bi bi-x-circle"></i> Este número NÃO possui WhatsApp.</span>';
-                    if(btnSalvar) btnSalvar.disabled = true;
-                    alert("Atenção: O número informado não possui WhatsApp válido. Verifique se digitou corretamente.");
+                    // Número não encontrado no WhatsApp - mostrar aviso mas PERMITIR salvar
+                    input.classList.remove('is-valid', 'is-invalid');
+                    if(feedbackDiv) feedbackDiv.innerHTML = '<span class="text-warning fw-bold small"><i class="bi bi-exclamation-triangle"></i> WhatsApp não confirmado. Verifique o número, mas você pode salvar.</span>';
+                    if(btnSalvar) btnSalvar.disabled = false;
                 }
             } catch (error) {
                 console.error("Erro verificação WhatsApp:", error);
