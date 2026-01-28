@@ -153,6 +153,17 @@ class WhatsAppService:
         data = self._send_request(url, method='GET')
         
         if isinstance(data, dict):
+            # Verificar se a resposta contém erro da Z-API
+            # Ex: {"message":"Whatsapp did not respond","error":"Bad Request","statusCode":400}
+            if 'error' in data or data.get('statusCode', 200) != 200:
+                erro_msg = data.get('message', data.get('error', 'Erro desconhecido'))
+                logger.warning(f"[Z-API] ⚠️ Erro ao verificar número {telefone_limpo}: {erro_msg}")
+                print(f"Z-API Erro: {telefone_limpo} - {erro_msg}")
+                # Retorna None para indicar que não foi possível verificar
+                # A view tratará isso como "não bloquear o cadastro"
+                return None
+            
+            # Resposta normal com o campo 'exists'
             exists = data.get('exists', False)
             print(f"Z-API Sucesso: {telefone_limpo} existe? {exists}")
             return exists

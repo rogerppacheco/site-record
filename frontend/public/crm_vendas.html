@@ -1756,8 +1756,14 @@
                 const data = await apiFetch(`/crm/verificar-zap/${telefone}/`, { method: 'GET' });
                 
                 if (data && (data.whatsapp_valido || data.exists || data.possui_whatsapp)) {
-                    input.classList.add('is-valid'); input.classList.remove('is-invalid');
-                    if(feedbackDiv) feedbackDiv.innerHTML = '<span class="text-success fw-bold small"><i class="bi bi-whatsapp"></i> WhatsApp Confirmado!</span>';
+                    // Se tem aviso, significa que não conseguiu verificar mas permite salvar
+                    if (data.aviso) {
+                        input.classList.remove('is-valid', 'is-invalid');
+                        if(feedbackDiv) feedbackDiv.innerHTML = '<span class="text-warning fw-bold small"><i class="bi bi-exclamation-triangle"></i> Não foi possível verificar WhatsApp (timeout). Você pode salvar.</span>';
+                    } else {
+                        input.classList.add('is-valid'); input.classList.remove('is-invalid');
+                        if(feedbackDiv) feedbackDiv.innerHTML = '<span class="text-success fw-bold small"><i class="bi bi-whatsapp"></i> WhatsApp Confirmado!</span>';
+                    }
                     if(btnSalvar) btnSalvar.disabled = false; 
                 } else {
                     input.classList.add('is-invalid'); input.classList.remove('is-valid');
