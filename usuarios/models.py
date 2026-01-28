@@ -95,6 +95,13 @@ class Usuario(AbstractUser):
         help_text="Se marcado, o usuário deverá trocar a senha no próximo login."
     )
 
+    # --- AUTOMAÇÃO PAP ---
+    autorizar_venda_sem_auditoria = models.BooleanField(
+        default=False,
+        verbose_name="Autorizar venda sem auditoria?",
+        help_text="Se marcado, o vendedor pode realizar vendas pelo WhatsApp usando automação do PAP."
+    )
+
     class Meta(AbstractUser.Meta):
         pass
 
