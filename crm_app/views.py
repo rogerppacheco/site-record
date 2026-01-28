@@ -3,11 +3,35 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework import permissions
 from rest_framework.response import Response
 
-# Endpoint de teste (e-mail)
+# Endpoint de validação de e-mail
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def api_verificar_email(request, email=None):
-    return Response({"status": "ok", "email": email})
+    """
+    Valida se um e-mail tem formato correto.
+    Retorna {"valido": true/false, "mensagem": "..."}
+    """
+    import re
+    
+    if not email or not email.strip():
+        return Response({"valido": False, "mensagem": "E-mail não informado"})
+    
+    email = email.strip().lower()
+    
+    # Regex para validação de e-mail (padrão RFC 5322 simplificado)
+    email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    
+    if not re.match(email_regex, email):
+        return Response({"valido": False, "mensagem": "Formato de e-mail inválido"})
+    
+    # Lista de domínios comuns conhecidos (opcional: pode adicionar mais validações)
+    dominios_suspeitos = ['teste.com', 'test.com', 'exemplo.com', 'example.com']
+    dominio = email.split('@')[-1]
+    
+    if dominio in dominios_suspeitos:
+        return Response({"valido": False, "mensagem": f"Domínio '{dominio}' não é aceito"})
+    
+    return Response({"valido": True, "mensagem": "E-mail válido", "email": email})
 
 # Endpoint de validação WhatsApp
 @api_view(['GET'])
