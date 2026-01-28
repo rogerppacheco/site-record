@@ -414,7 +414,7 @@ from .whatsapp_service import WhatsAppService
 from xhtml2pdf import pisa
 from usuarios.permissions import CheckAPIPermission, VendaPermission
 import openpyxl 
-from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from .models import GrupoDisparo
 from .serializers import GrupoDisparoSerializer
 from .models import LancamentoFinanceiro
@@ -8614,6 +8614,109 @@ class ExportarM10View(APIView):
         # Retorna arquivo
         response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         response['Content-Disposition'] = f'attachment; filename=bonus_m10_{datetime.now().strftime("%Y%m%d")}.xlsx'
+        wb.save(response)
+        return response
+
+
+class ExportarAgendamentosDiaView(APIView):
+    """Exporta agendamentos do dia para envio à operadora"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from django.utils import timezone
+        from datetime import date
+        
+        # Data para filtrar (padrão: hoje)
+        data_str = request.query_params.get('data')
+        if data_str:
+            try:
+                data_filtro = datetime.strptime(data_str, '%Y-%m-%d').date()
+            except ValueError:
+                data_filtro = date.today()
+        else:
+            data_filtro = date.today()
+        
+        # Busca vendas agendadas para a data
+        vendas = Venda.objects.filter(
+            data_agendamento=data_filtro,
+            status_esteira__nome__icontains='AGENDADO'
+        ).select_related('cliente', 'vendedor', 'plano')
+        
+        # Cria workbook
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Agendamentos"
+
+        # Cabeçalhos conforme modelo
+        headers = [
+            'Parceiro',
+            'Pedido',
+            'UF',
+            'Cidade',
+            'Data/Período de agendamento',
+            'Contato parceiro',
+            'Contato cliente 1',
+            'Contato cliente 2',
+            'Contato cliente 3'
+        ]
+        ws.append(headers)
+
+        # Estilo cabeçalho
+        header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF")
+        for cell in ws[1]:
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        # Dados
+        for v in vendas:
+            # Formata data e período
+            if v.data_agendamento:
+                data_fmt = v.data_agendamento.strftime('%d/%m/%Y')
+                periodo = v.periodo_agendamento or ''
+                data_periodo = f"{data_fmt} - {periodo}" if periodo else data_fmt
+            else:
+                data_periodo = ''
+            
+            # Formata telefones (remove formatação, mantém apenas números)
+            tel1 = re.sub(r'\D', '', v.telefone1 or '') if v.telefone1 else ''
+            tel2 = re.sub(r'\D', '', v.telefone2 or '') if v.telefone2 else ''
+            
+            ws.append([
+                'Record',                          # Parceiro (fixo)
+                v.ordem_servico or '',             # Pedido (O.S)
+                (v.estado or '').upper()[:2],      # UF
+                (v.cidade or '').upper(),          # Cidade
+                data_periodo,                      # Data/Período de agendamento
+                '3198224-3410',                    # Contato parceiro (fixo)
+                tel1,                              # Contato cliente 1
+                tel2,                              # Contato cliente 2
+                ''                                 # Contato cliente 3 (vazio)
+            ])
+
+        # Ajusta largura das colunas
+        column_widths = [12, 15, 6, 25, 25, 15, 15, 15, 15]
+        for i, width in enumerate(column_widths, 1):
+            ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
+
+        # Borda fina para todas as células com dados
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        for row in ws.iter_rows(min_row=1, max_row=ws.max_row, max_col=len(headers)):
+            for cell in row:
+                cell.border = thin_border
+                if cell.row > 1:  # Dados (não cabeçalho)
+                    cell.alignment = Alignment(horizontal="left", vertical="center")
+
+        # Retorna arquivo
+        data_arquivo = data_filtro.strftime("%Y%m%d")
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = f'attachment; filename=agendamentos_operadora_{data_arquivo}.xlsx'
         wb.save(response)
         return response
 

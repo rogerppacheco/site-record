@@ -120,6 +120,7 @@ from .views import (
     ImportarChurnView,
     AtualizarFaturasView,
     ExportarM10View,
+    ExportarAgendamentosDiaView,
     page_bonus_m10,
     NioDividasView,
 )
@@ -223,6 +224,9 @@ urlpatterns = [
     path('estatisticas-bot/', EstatisticasBotWhatsAppView.as_view(), name='estatisticas-bot'),
     path('performance-painel/exportar/', ExportarPerformanceExcelView.as_view(), name='exportar-performance-excel'),
     path('performance-painel/enviar-whatsapp/', EnviarImagemPerformanceView.as_view(), name='enviar-performance-zap'),
+    
+    # --- Exportação Agendamentos do Dia (Esteira) ---
+    path('esteira/exportar-agendamentos/', ExportarAgendamentosDiaView.as_view(), name='exportar-agendamentos-dia'),
     path('integracao/listar-grupos/', listar_grupos_whatsapp_api, name='listar-grupos-zapi'),
     
     # --- Debug Screenshots (Nio Negocia) ---
