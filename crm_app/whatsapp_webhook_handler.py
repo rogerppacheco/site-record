@@ -441,9 +441,38 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
     # --- ETAPA: Confirmar matrícula ---
     if etapa == 'venda_confirmar_matricula':
         if mensagem_limpa == 'SIM':
+            # Realizar login no PAP Nio antes de prosseguir
+            vendedor_matricula = dados.get('matricula_pap')
+            vendedor_nome = dados.get('vendedor_nome')
+            vendedor_id = dados.get('vendedor_id')
+            from usuarios.models import Usuario
+            from crm_app.services_pap_nio import PAPNioAutomation
+            try:
+                vendedor = Usuario.objects.get(id=vendedor_id)
+                vendedor_senha = vendedor.senha_pap
+            except Exception as e:
+                sessao.etapa = 'inicial'
+                sessao.dados_temp = {}
+                sessao.save()
+                return f"❌ Erro ao localizar vendedor: {e}\nVenda cancelada. Digite *VENDER* para iniciar novamente."
+
+            automacao = PAPNioAutomation(
+                matricula_pap=vendedor_matricula,
+                senha_pap=vendedor_senha,
+                vendedor_nome=vendedor_nome
+            )
+            sucesso, msg = automacao.iniciar_sessao()
+            if not sucesso:
+                sessao.etapa = 'inicial'
+                sessao.dados_temp = {}
+                sessao.save()
+                return f"❌ *ERRO NO LOGIN PAP*\n\n{msg}\n\nVenda cancelada. Digite *VENDER* para tentar novamente."
+
+            # Login bem-sucedido, prossegue para o CEP
             sessao.etapa = 'venda_cep'
             sessao.save()
             return (
+                "✅ Login no PAP realizado com sucesso!\n\n"
                 "📍 *ETAPA 1: ENDEREÇO*\n\n"
                 "Digite o *CEP* do endereço de instalação:"
             )
