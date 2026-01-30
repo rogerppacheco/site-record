@@ -1247,47 +1247,39 @@ def processar_webhook_whatsapp(data):
             logger.info(f"[Webhook] Comando FACHADA reconhecido!")
             sessao.etapa = 'fachada_cep'
             sessao.dados_temp = {}
-            sessao.save()
-            resposta = "🏢 *CONSULTA MASSIVA (DFV)*\n\nEu vou listar todos os números viáveis de uma rua.\nPor favor, digite o CEP (somente números):"
-            logger.info(f"[Webhook] Resposta preparada para FACHADA: {resposta[:50]}...")
-            _registrar_estatistica(telefone_formatado, 'FACHADA')
-        
-        elif 'VIABILIDADE' in mensagem_limpa or 'VIABIL' in mensagem_limpa:
-            logger.info(f"[Webhook] Comando VIABILIDADE reconhecido!")
-            sessao.etapa = 'viabilidade_cep'
-            sessao.dados_temp = {}
-            sessao.save()
-            resposta = "🗺️ *CONSULTA VIABILIDADE (KMZ)*\n\nIdentifiquei que você quer consultar a mancha.\nPor favor, digite o CEP:"
-            logger.info(f"[Webhook] Resposta preparada para VIABILIDADE: {resposta[:50]}...")
-            _registrar_estatistica(telefone_formatado, 'VIABILIDADE')
-        
-        elif mensagem_limpa in ['STATUS', 'STAT']:
-            sessao.etapa = 'status_tipo'
-            sessao.dados_temp = {}
-            sessao.save()
-            resposta = "📋 *CONSULTA DE STATUS*\n\nComo deseja pesquisar o pedido?\n\n1️⃣ Por CPF\n2️⃣ Por O.S (Ordem de Serviço)\n\nDigite o número da opção (1 ou 2):"
-            _registrar_estatistica(telefone_formatado, 'STATUS')
-        
-        elif mensagem_limpa in ['FATURA', 'FAT']:
-            sessao.etapa = 'fatura_cpf'
-            sessao.dados_temp = {}
-            sessao.save()
-            resposta = "💳 *CONSULTA DE FATURA NIO*\n\nPor favor, digite o CPF ou ID do cliente para buscar a fatura:"
-            _registrar_estatistica(telefone_formatado, 'FATURA')
-        
-        elif 'FATURA NEGOCIA' in mensagem_limpa or 'FATURANEGOCIA' in mensagem_limpa.replace(' ', ''):
-            sessao.etapa = 'fatura_negocia_cpf'
-            sessao.dados_temp = {}
-            sessao.save()
-            resposta = "💳 *CONSULTA DE FATURA NIO (PLANO B - NEGOCIA)*\n\nPor favor, digite o CPF ou ID do cliente para buscar a fatura via Nio Negocia:"
-            _registrar_estatistica(telefone_formatado, 'FATURA_NEGOCIA')
-        
-        elif mensagem_limpa in ['MATERIAL', 'MATERIAIS']:
-            logger.info(f"[Webhook] Comando MATERIAL reconhecido!")
-            sessao.etapa = 'material_buscar'
-            sessao.dados_temp = {}
-            sessao.save()
-            resposta = "📚 *MATERIAIS*\n\nQual material você precisa?\n\nDigite uma palavra-chave ou tag para buscar (ex: manual, treinamento, tutorial):"
+            try:
+                # Identificar comando ou processar resposta
+                resposta = None
+                logger.info(f"[Webhook] Verificando comando. Mensagem limpa: '{mensagem_limpa}'")
+                logger.info(f"[Webhook] Mensagem original: '{mensagem_texto}'")
+                logger.info(f"[Webhook] Etapa atual: {etapa_atual}")
+                mensagem_sem_acentos = mensagem_limpa.replace('Á', 'A').replace('É', 'E').replace('Í', 'I').replace('Ó', 'O').replace('Ú', 'U')
+                # ...existing code...
+                elif etapa_atual == 'material_buscar':
+                    try:
+                        busca_texto = mensagem_texto.strip()
+                        if not busca_texto or len(busca_texto) < 2:
+                            resposta = "❌ Por favor, digite pelo menos 2 caracteres para buscar:"
+                        else:
+                            logger.info(f"[Webhook] Buscando materiais com tag: {busca_texto}")
+                    except Exception as e:
+                        logger.error(f"[Webhook] Erro ao buscar materiais: {e}")
+                        import traceback
+                        tb = traceback.format_exc()
+                        logger.error(f"[Webhook] Traceback ao buscar materiais:\n{tb}")
+                        resposta = f"❌ Erro ao buscar materiais: {str(e)}"
+                        sessao.etapa = 'inicial'
+                        sessao.dados_temp = {}
+                        sessao.save()
+                # ...existing code...
+                return {'status': 'ok', 'mensagem': resposta}
+            except Exception as e:
+                logger.error(f"[Webhook] ERRO GLOBAL: {e}", exc_info=True)
+                import traceback
+                tb = traceback.format_exc()
+                logger.error(f"[Webhook] Traceback completo:\n{tb}")
+                # Adiciona resposta mais detalhada para facilitar debug
+                return {'status': 'erro', 'mensagem': f'Erro global: {str(e)}', 'traceback': tb}
             logger.info(f"[Webhook] Resposta preparada para MATERIAL")
             _registrar_estatistica(telefone_formatado, 'MATERIAL')
         
