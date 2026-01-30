@@ -480,19 +480,19 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
                     senha_pap=vendedor_senha,
                     vendedor_nome=vendedor_nome
                 )
-                                        try:
-                                            sessao.save()
-                                            sessao.etapa = 'inicial'
-                                            sessao.dados_temp = {}
-                                            sessao.save()
-                                            vendedor = Usuario.objects.get(id=vendedor_id)
-                                            vendedor_senha = vendedor.senha_pap
-                                        except Exception as e:
-                                            WhatsAppService().enviar_mensagem_texto(
-                                                telefone_envio,
-                                                f"❌ Erro ao localizar vendedor: {e}\nVenda cancelada. Digite *VENDER* para iniciar novamente."
-                                            )
-                                            return
+                try:
+                    sessao.save()
+                    sessao.etapa = 'inicial'
+                    sessao.dados_temp = {}
+                    sessao.save()
+                    vendedor = Usuario.objects.get(id=vendedor_id)
+                    vendedor_senha = vendedor.senha_pap
+                except Exception as e:
+                    WhatsAppService().enviar_mensagem_texto(
+                        telefone_envio,
+                        f"❌ Erro ao localizar vendedor: {e}\nVenda cancelada. Digite *VENDER* para iniciar novamente."
+                    )
+                    return
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 loop.run_until_complete(sync_to_async(sessao.save, thread_sensitive=True)())
