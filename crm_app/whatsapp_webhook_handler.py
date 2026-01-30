@@ -468,7 +468,11 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
                     # Resetar sessão
                     sessao.etapa = 'inicial'
                     sessao.dados_temp = {}
-                    sync_to_async(sessao.save, thread_sensitive=True).run()
+                    import asyncio
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(sync_to_async(sessao.save, thread_sensitive=True)())
+                    loop.close()
                     return
 
                 automacao = PAPNioAutomation(
@@ -484,12 +488,20 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
                     )
                     sessao.etapa = 'inicial'
                     sessao.dados_temp = {}
-                    sync_to_async(sessao.save, thread_sensitive=True).run()
+                    import asyncio
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(sync_to_async(sessao.save, thread_sensitive=True)())
+                    loop.close()
                     return
 
                 # Login bem-sucedido, prossegue para o CEP
                 sessao.etapa = 'venda_cep'
-                sync_to_async(sessao.save, thread_sensitive=True).run()
+                import asyncio
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(sync_to_async(sessao.save, thread_sensitive=True)())
+                loop.close()
                 WhatsAppService().enviar_mensagem_texto(
                     telefone_envio,
                     "✅ Login no PAP realizado com sucesso!\n\n"
