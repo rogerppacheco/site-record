@@ -1243,6 +1243,33 @@ def processar_webhook_whatsapp(data):
         # Verificação mais flexível - aceita comandos com ou sem acentuação, maiúsculas/minúsculas
         mensagem_sem_acentos = mensagem_limpa.replace('Á', 'A').replace('É', 'E').replace('Í', 'I').replace('Ó', 'O').replace('Ú', 'U')
         
+        # Comando FATURA
+        if mensagem_limpa in ['FATURA', 'FATURAS']:
+            logger.info(f"[Webhook] Comando FATURA reconhecido!")
+            sessao.etapa = 'fatura_cpf'
+            sessao.dados_temp = {}
+            sessao.save()
+            resposta = "Por favor, digite o CPF do titular da fatura (apenas números):"
+            return {'status': 'ok', 'mensagem': resposta}
+
+        # Comando VIABILIDADE
+        if mensagem_limpa in ['VIABILIDADE', 'VIABILIDADES']:
+            logger.info(f"[Webhook] Comando VIABILIDADE reconhecido!")
+            sessao.etapa = 'viabilidade_cep'
+            sessao.dados_temp = {}
+            sessao.save()
+            resposta = "Por favor, digite o CEP do endereço para consulta de viabilidade (apenas números):"
+            return {'status': 'ok', 'mensagem': resposta}
+
+        # Comando STATUS
+        if mensagem_limpa in ['STATUS', 'SITUACAO', 'SITUAÇÃO']:
+            logger.info(f"[Webhook] Comando STATUS reconhecido!")
+            sessao.etapa = 'status_tipo'
+            sessao.dados_temp = {}
+            sessao.save()
+            resposta = ("Para consultar o status do pedido, escolha uma opção:\n"
+                        "1️⃣ CPF\n2️⃣ OS (Ordem de Serviço)\n\nDigite 1 para CPF ou 2 para O.S:")
+            return {'status': 'ok', 'mensagem': resposta}
         if 'FACHADA' in mensagem_limpa or 'FACADA' in mensagem_limpa:
             logger.info(f"[Webhook] Comando FACHADA reconhecido!")
             sessao.etapa = 'fachada_cep'
