@@ -1247,41 +1247,13 @@ def processar_webhook_whatsapp(data):
             logger.info(f"[Webhook] Comando FACHADA reconhecido!")
             sessao.etapa = 'fachada_cep'
             sessao.dados_temp = {}
-            try:
-                # Identificar comando ou processar resposta
-                resposta = None
-                logger.info(f"[Webhook] Verificando comando. Mensagem limpa: '{mensagem_limpa}'")
-                logger.info(f"[Webhook] Mensagem original: '{mensagem_texto}'")
-                logger.info(f"[Webhook] Etapa atual: {etapa_atual}")
-                mensagem_sem_acentos = mensagem_limpa.replace('Á', 'A').replace('É', 'E').replace('Í', 'I').replace('Ó', 'O').replace('Ú', 'U')
-                # ...existing code...
-                elif etapa_atual == 'material_buscar':
-                    try:
-                        busca_texto = mensagem_texto.strip()
-                        if not busca_texto or len(busca_texto) < 2:
-                            resposta = "❌ Por favor, digite pelo menos 2 caracteres para buscar:"
-                        else:
-                            logger.info(f"[Webhook] Buscando materiais com tag: {busca_texto}")
-                    except Exception as e:
-                        logger.error(f"[Webhook] Erro ao buscar materiais: {e}")
-                        import traceback
-                        tb = traceback.format_exc()
-                        logger.error(f"[Webhook] Traceback ao buscar materiais:\n{tb}")
-                        resposta = f"❌ Erro ao buscar materiais: {str(e)}"
-                        sessao.etapa = 'inicial'
-                        sessao.dados_temp = {}
-                        sessao.save()
-                # ...existing code...
-                return {'status': 'ok', 'mensagem': resposta}
-            except Exception as e:
-                logger.error(f"[Webhook] ERRO GLOBAL: {e}", exc_info=True)
-                import traceback
-                tb = traceback.format_exc()
-                logger.error(f"[Webhook] Traceback completo:\n{tb}")
-                # Adiciona resposta mais detalhada para facilitar debug
-                return {'status': 'erro', 'mensagem': f'Erro global: {str(e)}', 'traceback': tb}
-            logger.info(f"[Webhook] Resposta preparada para MATERIAL")
-            _registrar_estatistica(telefone_formatado, 'MATERIAL')
+            resposta = None
+            logger.info(f"[Webhook] Verificando comando. Mensagem limpa: '{mensagem_limpa}'")
+            logger.info(f"[Webhook] Mensagem original: '{mensagem_texto}'")
+            logger.info(f"[Webhook] Etapa atual: {etapa_atual}")
+            mensagem_sem_acentos = mensagem_limpa.replace('Á', 'A').replace('É', 'E').replace('Í', 'I').replace('Ó', 'O').replace('Ú', 'U')
+            # ...existing code...
+            return {'status': 'ok', 'mensagem': resposta}
         
         elif mensagem_limpa in ['ANDAMENTO', 'ANDAMENTOS']:
             logger.info(f"[Webhook] Comando ANDAMENTO reconhecido!")
@@ -1318,6 +1290,26 @@ def processar_webhook_whatsapp(data):
         
         # === PROCESSAMENTO POR ETAPA ===
         elif etapa_atual == 'fachada_cep':
+            # ...processamento fachada_cep...
+            pass
+        elif etapa_atual == 'material_buscar':
+            try:
+                busca_texto = mensagem_texto.strip()
+                if not busca_texto or len(busca_texto) < 2:
+                    resposta = "❌ Por favor, digite pelo menos 2 caracteres para buscar:"
+                else:
+                    logger.info(f"[Webhook] Buscando materiais com tag: {busca_texto}")
+                    # Aqui deve entrar a lógica de busca de materiais
+            except Exception as e:
+                logger.error(f"[Webhook] Erro ao buscar materiais: {e}")
+                import traceback
+                tb = traceback.format_exc()
+                logger.error(f"[Webhook] Traceback ao buscar materiais:\n{tb}")
+                resposta = f"❌ Erro ao buscar materiais: {str(e)}"
+                sessao.etapa = 'inicial'
+                sessao.dados_temp = {}
+                sessao.save()
+            return {'status': 'ok', 'mensagem': resposta}
             cep_limpo = limpar_texto_cep_cpf(mensagem_texto)
             if not cep_limpo or len(cep_limpo) < 8:
                 resposta = "❌ CEP inválido. Por favor, digite o CEP completo (somente números):"
