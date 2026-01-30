@@ -454,6 +454,7 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
                 from crm_app.services_pap_nio import PAPNioAutomation
                 from crm_app.whatsapp_service import WhatsAppService
                 from django.db import close_old_connections
+                from asgiref.sync import sync_to_async
                 close_old_connections()
                 try:
                     vendedor = Usuario.objects.get(id=vendedor_id)
@@ -467,7 +468,7 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
                     # Resetar sessão
                     sessao.etapa = 'inicial'
                     sessao.dados_temp = {}
-                    sessao.save()
+                    sync_to_async(sessao.save, thread_sensitive=True)()
                     return
 
                 automacao = PAPNioAutomation(
@@ -483,12 +484,12 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
                     )
                     sessao.etapa = 'inicial'
                     sessao.dados_temp = {}
-                    sessao.save()
+                    sync_to_async(sessao.save, thread_sensitive=True)()
                     return
 
                 # Login bem-sucedido, prossegue para o CEP
                 sessao.etapa = 'venda_cep'
-                sessao.save()
+                sync_to_async(sessao.save, thread_sensitive=True)()
                 WhatsAppService().enviar_mensagem_texto(
                     telefone_envio,
                     "✅ Login no PAP realizado com sucesso!\n\n"
