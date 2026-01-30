@@ -453,8 +453,8 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
                 from usuarios.models import Usuario
                 from crm_app.services_pap_nio import PAPNioAutomation
                 from crm_app.whatsapp_service import WhatsAppService
-                import django
-                django.db.close_old_connections()
+                from django.db import close_old_connections
+                close_old_connections()
                 try:
                     vendedor = Usuario.objects.get(id=vendedor_id)
                     vendedor_senha = vendedor.senha_pap
