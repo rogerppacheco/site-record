@@ -426,6 +426,7 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
         atualizar_sessao_venda,
         encerrar_sessao_venda
     )
+    import threading
     
     dados = sessao.dados_temp or {}
     mensagem_limpa = mensagem.strip().upper()
