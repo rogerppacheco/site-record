@@ -441,41 +441,65 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
     # --- ETAPA: Confirmar matrícula ---
     if etapa == 'venda_confirmar_matricula':
         if mensagem_limpa == 'SIM':
-            # Realizar login no PAP Nio antes de prosseguir
+            # Executar login em uma thread para evitar problemas de contexto assíncrono
             vendedor_matricula = dados.get('matricula_pap')
             vendedor_nome = dados.get('vendedor_nome')
             vendedor_id = dados.get('vendedor_id')
-            from usuarios.models import Usuario
-            from crm_app.services_pap_nio import PAPNioAutomation
-            try:
-                vendedor = Usuario.objects.get(id=vendedor_id)
-                vendedor_senha = vendedor.senha_pap
-            except Exception as e:
-                sessao.etapa = 'inicial'
-                sessao.dados_temp = {}
-                sessao.save()
-                return f"❌ Erro ao localizar vendedor: {e}\nVenda cancelada. Digite *VENDER* para iniciar novamente."
+            telefone_envio = telefone
 
-            automacao = PAPNioAutomation(
-                matricula_pap=vendedor_matricula,
-                senha_pap=vendedor_senha,
-                vendedor_nome=vendedor_nome
-            )
-            sucesso, msg = automacao.iniciar_sessao()
-            if not sucesso:
-                sessao.etapa = 'inicial'
-                sessao.dados_temp = {}
-                sessao.save()
-                return f"❌ *ERRO NO LOGIN PAP*\n\n{msg}\n\nVenda cancelada. Digite *VENDER* para tentar novamente."
+            def login_pap_thread():
+                import threading
+                from usuarios.models import Usuario
+                from crm_app.services_pap_nio import PAPNioAutomation
+                from crm_app.whatsapp_service import WhatsAppService
+                import django
+                django.db.close_old_connections()
+                try:
+                    vendedor = Usuario.objects.get(id=vendedor_id)
+                    vendedor_senha = vendedor.senha_pap
+                except Exception as e:
+                    # Enviar mensagem de erro ao usuário
+                    WhatsAppService().enviar_mensagem_texto(
+                        telefone_envio,
+                        f"❌ Erro ao localizar vendedor: {e}\nVenda cancelada. Digite *VENDER* para iniciar novamente."
+                    )
+                    # Resetar sessão
+                    sessao.etapa = 'inicial'
+                    sessao.dados_temp = {}
+                    sessao.save()
+                    return
 
-            # Login bem-sucedido, prossegue para o CEP
-            sessao.etapa = 'venda_cep'
-            sessao.save()
-            return (
-                "✅ Login no PAP realizado com sucesso!\n\n"
-                "📍 *ETAPA 1: ENDEREÇO*\n\n"
-                "Digite o *CEP* do endereço de instalação:"
-            )
+                automacao = PAPNioAutomation(
+                    matricula_pap=vendedor_matricula,
+                    senha_pap=vendedor_senha,
+                    vendedor_nome=vendedor_nome
+                )
+                sucesso, msg = automacao.iniciar_sessao()
+                if not sucesso:
+                    WhatsAppService().enviar_mensagem_texto(
+                        telefone_envio,
+                        f"❌ *ERRO NO LOGIN PAP*\n\n{msg}\n\nVenda cancelada. Digite *VENDER* para tentar novamente."
+                    )
+                    sessao.etapa = 'inicial'
+                    sessao.dados_temp = {}
+                    sessao.save()
+                    return
+
+                # Login bem-sucedido, prossegue para o CEP
+                sessao.etapa = 'venda_cep'
+                sessao.save()
+                WhatsAppService().enviar_mensagem_texto(
+                    telefone_envio,
+                    "✅ Login no PAP realizado com sucesso!\n\n"
+                    "📍 *ETAPA 1: ENDEREÇO*\n\n"
+                    "Digite o *CEP* do endereço de instalação:"
+                )
+
+            # Mensagem imediata para o usuário
+            resposta = "⏳ Realizando login no PAP... Aguarde alguns instantes. Você receberá uma mensagem assim que o login for concluído."
+            thread = threading.Thread(target=login_pap_thread)
+            thread.start()
+            return resposta
         else:
             sessao.etapa = 'inicial'
             sessao.dados_temp = {}
@@ -521,17 +545,59 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
         referencia = mensagem.strip()
         if len(referencia) < 3:
             return "❌ Referência muito curta. Digite uma referência mais detalhada:"
-        
+
         dados['referencia'] = referencia
         sessao.dados_temp = dados
-        sessao.etapa = 'venda_cpf'
         sessao.save()
-        
-        return (
-            f"✅ Referência: *{referencia}*\n\n"
-            f"📋 *ETAPA 2: CLIENTE*\n\n"
-            f"Digite o *CPF* do cliente:"
-        )
+
+        # Consultar viabilidade no PAP Nio
+        from crm_app.services_pap_nio import PAPNioAutomation
+        from crm_app.whatsapp_service import WhatsAppService
+        import threading
+
+        def consultar_viabilidade_thread():
+            import django
+            django.db.close_old_connections()
+            try:
+                automacao = PAPNioAutomation(
+                    matricula_pap=dados.get('matricula_pap'),
+                    senha_pap=None,  # Não precisa senha, pois já está logado
+                    vendedor_nome=dados.get('vendedor_nome')
+                )
+                # Reutilizar sessão já logada se possível (ajuste se necessário)
+                sucesso, msg, _ = automacao.etapa2_viabilidade(
+                    cep=dados.get('cep'),
+                    numero=dados.get('numero'),
+                    referencia=referencia
+                )
+                if sucesso:
+                    sessao.etapa = 'venda_cpf'
+                    sessao.save()
+                    WhatsAppService().enviar_mensagem_texto(
+                        telefone,
+                        "✅ Endereço disponível para instalação!\n\n📋 *ETAPA 2: CLIENTE*\n\nDigite o *CPF* do cliente:"
+                    )
+                else:
+                    sessao.etapa = 'inicial'
+                    sessao.dados_temp = {}
+                    sessao.save()
+                    WhatsAppService().enviar_mensagem_texto(
+                        telefone,
+                        f"❌ Endereço indisponível para instalação. Motivo: {msg}\n\nVenda cancelada. Digite *VENDER* para tentar novamente."
+                    )
+            except Exception as e:
+                sessao.etapa = 'inicial'
+                sessao.dados_temp = {}
+                sessao.save()
+                WhatsAppService().enviar_mensagem_texto(
+                    telefone,
+                    f"❌ Erro ao consultar viabilidade: {e}\n\nVenda cancelada. Digite *VENDER* para tentar novamente."
+                )
+
+        resposta = "⏳ Consultando viabilidade do endereço... Aguarde alguns instantes. Você receberá a resposta em seguida."
+        thread = threading.Thread(target=consultar_viabilidade_thread)
+        thread.start()
+        return resposta
     
     # --- ETAPA: CPF ---
     elif etapa == 'venda_cpf':
