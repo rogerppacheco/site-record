@@ -480,24 +480,19 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
                     senha_pap=vendedor_senha,
                     vendedor_nome=vendedor_nome
                 )
-                sucesso, msg = automacao.iniciar_sessao()
-                if not sucesso:
-                    WhatsAppService().enviar_mensagem_texto(
-                        telefone_envio,
-                        f"❌ *ERRO NO LOGIN PAP*\n\n{msg}\n\nVenda cancelada. Digite *VENDER* para tentar novamente."
-                    )
-                    sessao.etapa = 'inicial'
-                    sessao.dados_temp = {}
-                    import asyncio
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    loop.run_until_complete(sync_to_async(sessao.save, thread_sensitive=True)())
-                    loop.close()
-                    return
-
-                # Login bem-sucedido, prossegue para o CEP
-                sessao.etapa = 'venda_cep'
-                import asyncio
+                                        try:
+                                            sessao.save()
+                                            sessao.etapa = 'inicial'
+                                            sessao.dados_temp = {}
+                                            sessao.save()
+                                            vendedor = Usuario.objects.get(id=vendedor_id)
+                                            vendedor_senha = vendedor.senha_pap
+                                        except Exception as e:
+                                            WhatsAppService().enviar_mensagem_texto(
+                                                telefone_envio,
+                                                f"❌ Erro ao localizar vendedor: {e}\nVenda cancelada. Digite *VENDER* para iniciar novamente."
+                                            )
+                                            return
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 loop.run_until_complete(sync_to_async(sessao.save, thread_sensitive=True)())
