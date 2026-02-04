@@ -1232,6 +1232,15 @@ def processar_webhook_whatsapp(data):
     etapa_atual = sessao.etapa
     dados_temp = sessao.dados_temp or {}
     
+    def _enviar_resposta_e_retornar(resposta_texto):
+        """Envia a mensagem ao usuário via Z-API e retorna o resultado para a API."""
+        if resposta_texto and str(resposta_texto).strip():
+            try:
+                whatsapp_service.enviar_mensagem_texto(telefone_formatado, resposta_texto)
+            except Exception as e:
+                logger.exception(f"[Webhook] Erro ao enviar mensagem ao usuário: {e}")
+        return {'status': 'ok', 'mensagem': resposta_texto or 'Processado com sucesso'}
+
     try:
         # Identificar comando ou processar resposta
         resposta = None
@@ -1251,7 +1260,7 @@ def processar_webhook_whatsapp(data):
             sessao.dados_temp = {}
             sessao.save()
             resposta = "Por favor, digite o CPF do titular da fatura (apenas números):"
-            return {'status': 'ok', 'mensagem': resposta}
+            return _enviar_resposta_e_retornar(resposta)
 
         # Comando VIABILIDADE
         if mensagem_limpa in ['VIABILIDADE', 'VIABILIDADES']:
@@ -1260,7 +1269,7 @@ def processar_webhook_whatsapp(data):
             sessao.dados_temp = {}
             sessao.save()
             resposta = "Por favor, digite o CEP do endereço para consulta de viabilidade (apenas números):"
-            return {'status': 'ok', 'mensagem': resposta}
+            return _enviar_resposta_e_retornar(resposta)
 
         # Comando STATUS
         if mensagem_limpa in ['STATUS', 'SITUACAO', 'SITUAÇÃO']:
@@ -1270,14 +1279,14 @@ def processar_webhook_whatsapp(data):
             sessao.save()
             resposta = ("Para consultar o status do pedido, escolha uma opção:\n"
                         "1️⃣ CPF\n2️⃣ OS (Ordem de Serviço)\n\nDigite 1 para CPF ou 2 para O.S:")
-            return {'status': 'ok', 'mensagem': resposta}
+            return _enviar_resposta_e_retornar(resposta)
         if 'FACHADA' in mensagem_limpa or 'FACADA' in mensagem_limpa:
             logger.info(f"[Webhook] Comando FACHADA reconhecido!")
             sessao.etapa = 'fachada_cep'
             sessao.dados_temp = {}
             sessao.save()
             resposta = "Por favor, digite o CEP para consultar fachadas (apenas números):"
-            return {'status': 'ok', 'mensagem': resposta}
+            return _enviar_resposta_e_retornar(resposta)
 
         # Comando MATERIAL
         if mensagem_limpa in ['MATERIAL', 'MATERIAIS']:
@@ -1286,7 +1295,7 @@ def processar_webhook_whatsapp(data):
             sessao.dados_temp = {}
             sessao.save()
             resposta = "Digite a palavra-chave para buscar materiais ou documentos (ex: boleto, contrato, instalacao):"
-            return {'status': 'ok', 'mensagem': resposta}
+            return _enviar_resposta_e_retornar(resposta)
         
         elif mensagem_limpa in ['ANDAMENTO', 'ANDAMENTOS']:
             logger.info(f"[Webhook] Comando ANDAMENTO reconhecido!")
@@ -1297,7 +1306,7 @@ def processar_webhook_whatsapp(data):
             _registrar_estatistica(telefone_formatado, 'ANDAMENTO')
             if resposta is None:
                 resposta = "Nenhum agendamento encontrado para hoje."
-            return {'status': 'ok', 'mensagem': resposta}
+            return _enviar_resposta_e_retornar(resposta)
         
         elif mensagem_limpa in ['VENDER', 'VENDA', 'NOVA VENDA']:
             logger.info(f"[Webhook] Comando VENDER reconhecido!")
@@ -1305,7 +1314,7 @@ def processar_webhook_whatsapp(data):
             _registrar_estatistica(telefone_formatado, 'VENDER')
             if not resposta:
                 resposta = "Não foi possível iniciar o fluxo de venda. Tente novamente."
-            return {'status': 'ok', 'mensagem': resposta}
+            return _enviar_resposta_e_retornar(resposta)
         
         elif mensagem_limpa in ['MENU', 'AJUDA', 'HELP', 'OPCOES', 'OPÇÕES', 'OPCOES', 'OPÇOES']:
             logger.info(f"[Webhook] Comando MENU/AJUDA reconhecido!")
@@ -1323,7 +1332,7 @@ def processar_webhook_whatsapp(data):
                 "• *Andamento* - Ver agendamentos do dia\n"
                 "• *Vender* - Realizar venda pelo WhatsApp 🆕"
             )
-            return {'status': 'ok', 'mensagem': resposta}
+            return _enviar_resposta_e_retornar(resposta)
         
         # === PROCESSAMENTO POR ETAPA ===
         elif etapa_atual == 'fachada_cep':
@@ -1340,7 +1349,7 @@ def processar_webhook_whatsapp(data):
                 sessao.etapa = 'inicial'
                 sessao.dados_temp = {}
                 sessao.save()
-            return {'status': 'ok', 'mensagem': resposta}
+            return _enviar_resposta_e_retornar(resposta)
         
         elif etapa_atual == 'viabilidade_cep':
             cep_limpo = limpar_texto_cep_cpf(mensagem_texto)
