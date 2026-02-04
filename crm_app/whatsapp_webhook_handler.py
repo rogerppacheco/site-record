@@ -1227,6 +1227,7 @@ def processar_webhook_whatsapp(data):
         if tempo_decorrido.total_seconds() > 1800:  # 30 minutos
             sessao.etapa = 'inicial'
             sessao.dados_temp = {}
+            sessao.save()
     
     etapa_atual = sessao.etapa
     dados_temp = sessao.dados_temp or {}
@@ -1274,12 +1275,17 @@ def processar_webhook_whatsapp(data):
             logger.info(f"[Webhook] Comando FACHADA reconhecido!")
             sessao.etapa = 'fachada_cep'
             sessao.dados_temp = {}
-            resposta = None
-            logger.info(f"[Webhook] Verificando comando. Mensagem limpa: '{mensagem_limpa}'")
-            logger.info(f"[Webhook] Mensagem original: '{mensagem_texto}'")
-            logger.info(f"[Webhook] Etapa atual: {etapa_atual}")
-            mensagem_sem_acentos = mensagem_limpa.replace('Á', 'A').replace('É', 'E').replace('Í', 'I').replace('Ó', 'O').replace('Ú', 'U')
-            # ...existing code...
+            sessao.save()
+            resposta = "Por favor, digite o CEP para consultar fachadas (apenas números):"
+            return {'status': 'ok', 'mensagem': resposta}
+
+        # Comando MATERIAL
+        if mensagem_limpa in ['MATERIAL', 'MATERIAIS']:
+            logger.info(f"[Webhook] Comando MATERIAL reconhecido!")
+            sessao.etapa = 'material_buscar'
+            sessao.dados_temp = {}
+            sessao.save()
+            resposta = "Digite a palavra-chave para buscar materiais ou documentos (ex: boleto, contrato, instalacao):"
             return {'status': 'ok', 'mensagem': resposta}
         
         elif mensagem_limpa in ['ANDAMENTO', 'ANDAMENTOS']:
@@ -1288,14 +1294,18 @@ def processar_webhook_whatsapp(data):
             sessao.dados_temp = {}
             sessao.save()
             resposta = consultar_andamento_agendamentos(telefone_formatado)
-            logger.info(f"[Webhook] Resposta preparada para ANDAMENTO")
             _registrar_estatistica(telefone_formatado, 'ANDAMENTO')
+            if resposta is None:
+                resposta = "Nenhum agendamento encontrado para hoje."
+            return {'status': 'ok', 'mensagem': resposta}
         
         elif mensagem_limpa in ['VENDER', 'VENDA', 'NOVA VENDA']:
             logger.info(f"[Webhook] Comando VENDER reconhecido!")
-            # Verificar se vendedor está autorizado
             resposta = _iniciar_fluxo_venda(telefone_formatado, sessao)
             _registrar_estatistica(telefone_formatado, 'VENDER')
+            if not resposta:
+                resposta = "Não foi possível iniciar o fluxo de venda. Tente novamente."
+            return {'status': 'ok', 'mensagem': resposta}
         
         elif mensagem_limpa in ['MENU', 'AJUDA', 'HELP', 'OPCOES', 'OPÇÕES', 'OPCOES', 'OPÇOES']:
             logger.info(f"[Webhook] Comando MENU/AJUDA reconhecido!")
@@ -1313,30 +1323,10 @@ def processar_webhook_whatsapp(data):
                 "• *Andamento* - Ver agendamentos do dia\n"
                 "• *Vender* - Realizar venda pelo WhatsApp 🆕"
             )
-            logger.info(f"[Webhook] Resposta preparada para MENU/AJUDA")
+            return {'status': 'ok', 'mensagem': resposta}
         
         # === PROCESSAMENTO POR ETAPA ===
         elif etapa_atual == 'fachada_cep':
-            # ...processamento fachada_cep...
-            pass
-        elif etapa_atual == 'material_buscar':
-            try:
-                busca_texto = mensagem_texto.strip()
-                if not busca_texto or len(busca_texto) < 2:
-                    resposta = "❌ Por favor, digite pelo menos 2 caracteres para buscar:"
-                else:
-                    logger.info(f"[Webhook] Buscando materiais com tag: {busca_texto}")
-                    # Aqui deve entrar a lógica de busca de materiais
-            except Exception as e:
-                logger.error(f"[Webhook] Erro ao buscar materiais: {e}")
-                import traceback
-                tb = traceback.format_exc()
-                logger.error(f"[Webhook] Traceback ao buscar materiais:\n{tb}")
-                resposta = f"❌ Erro ao buscar materiais: {str(e)}"
-                sessao.etapa = 'inicial'
-                sessao.dados_temp = {}
-                sessao.save()
-            return {'status': 'ok', 'mensagem': resposta}
             cep_limpo = limpar_texto_cep_cpf(mensagem_texto)
             if not cep_limpo or len(cep_limpo) < 8:
                 resposta = "❌ CEP inválido. Por favor, digite o CEP completo (somente números):"
@@ -1344,13 +1334,13 @@ def processar_webhook_whatsapp(data):
                 logger.info(f"[Webhook] Buscando fachadas para CEP: {cep_limpo}")
                 resposta_lista = listar_fachadas_dfv(cep_limpo)
                 if isinstance(resposta_lista, list):
-                    # listar_fachadas_dfv retorna lista de strings (mensagens divididas)
                     resposta = "🔎 Buscando todas as fachadas no DFV...\n\n" + "\n".join(resposta_lista)
                 else:
                     resposta = f"🔎 Buscando todas as fachadas no DFV...\n\n{resposta_lista}"
                 sessao.etapa = 'inicial'
                 sessao.dados_temp = {}
                 sessao.save()
+            return {'status': 'ok', 'mensagem': resposta}
         
         elif etapa_atual == 'viabilidade_cep':
             cep_limpo = limpar_texto_cep_cpf(mensagem_texto)
