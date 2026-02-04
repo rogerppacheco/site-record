@@ -171,6 +171,14 @@ class UsuarioViewSet(viewsets.ModelViewSet):
         self.perform_update(serializer)
         return Response(serializer.data)
 
+    @action(detail=True, methods=['put'], url_path='reativar')
+    def reativar(self, request, pk=None):
+        """Reativa um usuário inativo (is_active=True)."""
+        usuario = self.get_object()
+        usuario.is_active = True
+        usuario.save()
+        return Response({'status': 'reativado'}, status=status.HTTP_200_OK)
+
     @action(detail=False, methods=['get'])
     def lideres(self, request):
         usuarios = Usuario.objects.filter(is_active=True).values('id', 'username', 'first_name', 'last_name')
