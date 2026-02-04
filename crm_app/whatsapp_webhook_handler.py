@@ -1165,6 +1165,14 @@ def processar_webhook_whatsapp(data):
     logger.info(f"[Webhook] Tipo do payload: {type(data)}")
     logger.info(f"[Webhook] Chaves disponíveis: {list(data.keys()) if isinstance(data, dict) else 'N/A'}")
     
+    # Ignorar mensagens enviadas pelo próprio bot (evita eco e resposta duplicada)
+    from_me = data.get('fromMe') or data.get('isFromMe') or data.get('from_me')
+    if not from_me and isinstance(data.get('message'), dict):
+        from_me = data['message'].get('fromMe') or data['message'].get('isFromMe') or data['message'].get('from_me')
+    if from_me:
+        logger.info("[Webhook] Ignorando mensagem do próprio bot (fromMe=True)")
+        return {'status': 'ok', 'mensagem': 'Ignorando mensagem do próprio bot'}
+    
     # Extrair telefone e mensagem do payload
     telefone = data.get('phone') or data.get('from') or data.get('phoneNumber') or data.get('phone_number')
     mensagem_texto = ""
@@ -1196,6 +1204,9 @@ def processar_webhook_whatsapp(data):
         mensagem_texto = mensagem_texto.get('message') or mensagem_texto.get('text') or mensagem_texto.get('body') or str(mensagem_texto)
     elif not isinstance(mensagem_texto, str):
         mensagem_texto = str(mensagem_texto) if mensagem_texto else ""
+    
+    # Normalizar: ignorar mensagens vazias ou só espaços (evita processar eventos sem texto)
+    mensagem_texto = (mensagem_texto or "").strip()
     
     logger.info(f"[Webhook] Telefone extraído: {telefone}")
     logger.info(f"[Webhook] Mensagem extraída: {mensagem_texto}")
@@ -1986,7 +1997,9 @@ def processar_webhook_whatsapp(data):
         elif etapa_atual == 'material_selecionar':
             try:
                 numero_escolhido = mensagem_texto.strip()
-                if not numero_escolhido.isdigit():
+                if not numero_escolhido:
+                    resposta = None  # Mensagem vazia: não enviar erro
+                elif not numero_escolhido.isdigit():
                     resposta = "❌ Por favor, digite apenas o NÚMERO do material (ex: 1, 2, 3...):"
                 else:
                     from crm_app.models import RecordApoia
@@ -2151,7 +2164,9 @@ def processar_webhook_whatsapp(data):
         elif etapa_atual == 'fatura_selecionar':
             try:
                 numero_escolhido = mensagem_texto.strip()
-                if not numero_escolhido.isdigit():
+                if not numero_escolhido:
+                    resposta = None  # Mensagem vazia: não enviar erro para não duplicar
+                elif not numero_escolhido.isdigit():
                     resposta = "❌ Por favor, digite apenas o NÚMERO da fatura (ex: 1, 2, 3...):"
                 else:
                     idx = int(numero_escolhido) - 1
@@ -2259,23 +2274,13 @@ def processar_webhook_whatsapp(data):
             resposta = _processar_etapa_venda(telefone_formatado, mensagem_texto, sessao, etapa_atual)
         
         else:
-            # Se não reconheceu comando, nem encontrou material, nem está em fluxo, exibe o MENU automaticamente
+            # Menu só aparece quando o usuário pede (MENU/AJUDA). Mensagem não reconhecida não exibe menu.
             if len(mensagem_texto.strip()) <= 2 and mensagem_texto.strip().isdigit():
                 resposta = None  # Não enviar resposta de erro para confirmações numéricas
             elif etapa_atual == 'inicial':
-                # Exibir o menu principal para qualquer mensagem não reconhecida
-                logger.info(f"[Webhook] Mensagem não reconhecida, enviando MENU automaticamente.")
-                resposta = (
-                    "📋 *MENU*\n\n"
-                    "Escolha uma opção:\n"
-                    "• *Fachada* - Consultar fachadas por CEP\n"
-                    "• *Viabilidade* - Consultar viabilidade por CEP e número\n"
-                    "• *Status* - Consultar status de pedido\n"
-                    "• *Fatura* - Consultar fatura por CPF\n"
-                    "• *Material* - Buscar materiais/documentos\n"
-                    "• *Andamento* - Ver agendamentos do dia\n"
-                    "• *Vender* - Realizar venda pelo WhatsApp 🆕"
-                )
+                # Não enviar menu automático; apenas dica curta para digitar MENU
+                logger.info(f"[Webhook] Mensagem não reconhecida (inicial), enviando dica para digitar MENU.")
+                resposta = "Não entendi. Digite *MENU* para ver as opções."
                 sessao.etapa = 'inicial'
                 sessao.dados_temp = {}
                 sessao.save()
