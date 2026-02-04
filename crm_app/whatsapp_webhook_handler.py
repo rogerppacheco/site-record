@@ -2032,7 +2032,9 @@ def processar_webhook_whatsapp(data):
                         sessao_atualizada.dados_temp = {}
                         sessao_atualizada.save()
                     elif idx < 0 or idx >= len(arquivos_ids):
-                        resposta = f"❌ Número inválido. Por favor, digite um número entre 1 e {len(arquivos_ids)}:"
+                        # Não responder: evita mensagem fantasma (webhook duplicado)
+                        logger.info(f"[Webhook] material_selecionar: número fora do intervalo ({numero_escolhido}), ignorando sem resposta.")
+                        resposta = None
                     else:
                         arquivo_id = arquivos_ids[idx]
                         arquivo = RecordApoia.objects.get(id=arquivo_id, ativo=True)
@@ -2173,7 +2175,9 @@ def processar_webhook_whatsapp(data):
                     faturas = dados_temp.get('faturas', [])
                     
                     if idx < 0 or idx >= len(faturas):
-                        resposta = f"❌ Número inválido. Por favor, digite um número entre 1 e {len(faturas)}:"
+                        # Não responder: evita mensagem fantasma (webhook duplicado com 0, 3, etc.)
+                        logger.info(f"[Webhook] fatura_selecionar: número fora do intervalo ({numero_escolhido}), ignorando sem resposta.")
+                        resposta = None
                     else:
                         invoice = faturas[idx]
                         cpf = dados_temp.get('cpf', '')
