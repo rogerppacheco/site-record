@@ -2278,18 +2278,11 @@ def processar_webhook_whatsapp(data):
             resposta = _processar_etapa_venda(telefone_formatado, mensagem_texto, sessao, etapa_atual)
         
         else:
-            # Menu só aparece quando o usuário pede (MENU/AJUDA). Mensagem não reconhecida não exibe menu.
-            if len(mensagem_texto.strip()) <= 2 and mensagem_texto.strip().isdigit():
-                resposta = None  # Não enviar resposta de erro para confirmações numéricas
-            elif etapa_atual == 'inicial':
-                # Não enviar menu automático; apenas dica curta para digitar MENU
-                logger.info(f"[Webhook] Mensagem não reconhecida (inicial), enviando dica para digitar MENU.")
-                resposta = "Não entendi. Digite *MENU* para ver as opções."
-                sessao.etapa = 'inicial'
-                sessao.dados_temp = {}
-                sessao.save()
-            else:
-                resposta = None  # Não enviar resposta se estiver em meio a um fluxo
+            # Menu só aparece quando o usuário pede (MENU/AJUDA). Mensagem não reconhecida não gera resposta.
+            resposta = None
+            sessao.etapa = 'inicial'
+            sessao.dados_temp = {}
+            sessao.save()
         
         # PRIMEIRO: Verificar se já há um processamento em andamento para evitar duplicação
         if sessao and sessao.dados_temp.get('processando_pdf'):
