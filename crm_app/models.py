@@ -122,6 +122,11 @@ class Venda(models.Model):
 
     forma_entrada = models.CharField(max_length=10, choices=[('APP', 'APP'), ('SEM_APP', 'SEM_APP')], default='APP')
     tem_fixo = models.BooleanField(default=False, verbose_name="Tem Fixo")
+    # Débito em conta (DACC)
+    banco_dacc = models.CharField(max_length=100, blank=True, null=True, verbose_name="Banco DACC")
+    agencia_dacc = models.CharField(max_length=20, blank=True, null=True, verbose_name="Agência DACC")
+    conta_dacc = models.CharField(max_length=20, blank=True, null=True, verbose_name="Conta DACC")
+    digito_dacc = models.CharField(max_length=5, blank=True, null=True, verbose_name="Dígito DACC")
     
     nome_mae = models.CharField(max_length=255, blank=True, null=True)
     data_nascimento = models.DateField(blank=True, null=True)
@@ -469,6 +474,51 @@ class SessaoWhatsapp(models.Model):
 
     def __str__(self):
         return f"{self.telefone} - {self.etapa}"
+
+
+class PapBoEmUso(models.Model):
+    """
+    Controla qual usuário BackOffice está em uso pela automação PAP.
+    Vendedores com autorizar_venda_sem_auditoria usam logins de BO (pool),
+    pois não conseguem vender pelo site pap.niointernet.com.br.
+    """
+    bo_usuario = models.ForeignKey(
+        Usuario,
+        on_delete=models.CASCADE,
+        related_name='pap_sessoes_em_uso',
+        help_text="Usuário BackOffice cujo login está em uso"
+    )
+    vendedor_telefone = models.CharField(max_length=100, db_index=True)
+    locked_at = models.DateTimeField(auto_now_add=True)
+    sessao_whatsapp_id = models.IntegerField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'crm_pap_bo_em_uso'
+        verbose_name = "PAP BO em Uso"
+        verbose_name_plural = "PAP BOs em Uso"
+
+    def __str__(self):
+        return f"BO {self.bo_usuario.username} em uso por {self.vendedor_telefone}"
+
+
+class PapConfirmacaoCliente(models.Model):
+    """
+    Pendência de confirmação "Sim" do cliente no fluxo PAP.
+    Usado para compartilhar estado entre terminal (testar_pap_terminal) e webhook:
+    terminal registra ao enviar resumo; webhook marca confirmado ao receber "Sim".
+    """
+    celular_cliente = models.CharField(max_length=20, db_index=True)
+    confirmado = models.BooleanField(default=False)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'crm_pap_confirmacao_cliente'
+        verbose_name = "PAP Confirmação Cliente"
+        ordering = ['-criado_em']
+
+    def __str__(self):
+        return f"{self.celular_cliente} - {'OK' if self.confirmado else 'pendente'}"
+
 
 class EstatisticaBotWhatsApp(models.Model):
     """
