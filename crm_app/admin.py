@@ -1,5 +1,9 @@
 from django.contrib import admin
-from .models import SafraM10, ContratoM10, FaturaM10, HistoricoBuscaFatura, ImportacaoAgendamento, ImportacaoRecompra, ImportacaoFPD, LogImportacaoFPD, ImportacaoChurn, LogImportacaoChurn
+from .models import (
+    SafraM10, ContratoM10, FaturaM10, HistoricoBuscaFatura,
+    ImportacaoAgendamento, ImportacaoRecompra, ImportacaoFPD, LogImportacaoFPD,
+    ImportacaoChurn, LogImportacaoChurn, PapBoEmUso,
+)
 
 
 @admin.register(SafraM10)
@@ -253,3 +257,10 @@ class HistoricoBuscaFaturaAdmin(admin.ModelAdmin):
         return f'<span class="badge bg-{color}">{obj.get_status_display()}</span>'
     status_badge.short_description = 'Status'
     status_badge.allow_tags = True
+
+
+@admin.register(PapBoEmUso)
+class PapBoEmUsoAdmin(admin.ModelAdmin):
+    list_display = ('bo_usuario', 'vendedor_telefone', 'locked_at', 'sessao_whatsapp_id')
+    list_filter = ('locked_at',)
+    search_fields = ('vendedor_telefone', 'bo_usuario__username')
