@@ -571,6 +571,10 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
                 sucesso_login, _ = automacao.iniciar_sessao()
                 if not sucesso_login:
                     automacao._fechar_sessao()
+                    liberar_bo(bo_id, telefone)
+                    sessao.etapa = 'inicial'
+                    sessao.dados_temp = {}
+                    sessao.save()
                     WhatsAppService().enviar_mensagem_texto(
                         telefone,
                         "❌ Erro ao acessar PAP. Digite *VENDER* para tentar novamente."
@@ -579,6 +583,10 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
                 sucesso_novo, _ = automacao.iniciar_novo_pedido(vendedor_matricula)
                 if not sucesso_novo:
                     automacao._fechar_sessao()
+                    liberar_bo(bo_id, telefone)
+                    sessao.etapa = 'inicial'
+                    sessao.dados_temp = {}
+                    sessao.save()
                     WhatsAppService().enviar_mensagem_texto(
                         telefone,
                         "❌ Erro ao iniciar pedido. Digite *VENDER* para tentar novamente."

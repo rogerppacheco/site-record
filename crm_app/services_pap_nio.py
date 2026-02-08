@@ -337,7 +337,7 @@ class PAPNioAutomation:
             # Navegar para o PAP
             self.page.goto(PAP_LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
             self.page.wait_for_timeout(3000)
-            self.page.wait_for_load_state("networkidle", timeout=15000)
+            self.page.wait_for_load_state("networkidle", timeout=30000)
             
             # Verificar se precisa fazer login (URL ou formulário de login visível)
             current_url = self.page.url
