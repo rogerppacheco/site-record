@@ -8,6 +8,7 @@ Handler para processar mensagens do WhatsApp e executar comandos:
 """
 import re
 import os
+import queue
 import logging
 import threading
 from datetime import datetime
@@ -23,6 +24,11 @@ _pending_lock = threading.Lock()
 # Automações PAP em andamento (agendamento - usuário seleciona dia/período via mensagem)
 _automacoes_pap_ativas = {}  # sessao_id -> {automacao, dados, vendedor_id, bo_usuario_id, telefone}
 _automacoes_lock = threading.Lock()
+
+# Worker threads PAP: a automação Playwright deve ser usada na MESMA thread onde foi criada.
+# Cada sessão tem uma fila de comandos; o worker processa e envia respostas via WhatsApp.
+_pap_worker_queues = {}  # sessao_id -> queue.Queue()
+_pap_worker_lock = threading.Lock()
 
 
 def _registrar_estatistica(telefone, comando):
@@ -622,6 +628,17 @@ def _processar_viabilidade_selecionar_endereco(telefone: str, sessao, dados: dic
         sessao.save()
         return "❌ Sessão expirada. Digite *VENDER* para iniciar novamente."
     
+    cmd_queue = ctx.get('cmd_queue')
+    if cmd_queue:
+        cmd_queue.put({
+            'action': 'selecionar_endereco',
+            'idx': idx,
+            'cep': dados.get('cep', ''),
+            'numero': dados.get('numero', ''),
+            'referencia': dados.get('referencia', ''),
+        })
+        return "⏳ Processando endereço... Aguarde alguns instantes."
+    
     automacao = ctx['automacao']
     cep, numero, ref = dados.get('cep', ''), dados.get('numero', ''), dados.get('referencia', '')
     sucesso, msg = automacao.etapa2_selecionar_endereco_instalacao(idx)
@@ -683,21 +700,7 @@ def _processar_viabilidade_selecionar_complemento(telefone: str, sessao, dados: 
         return "❌ Cancelado. Digite *VENDER* para iniciar novamente."
     
     escolha = mensagem.strip().upper()
-    if escolha in ("0", "SEM", "SEM COMPLEMENTO", "NAO", "NÃO", "N"):
-        sucesso, msg = None, None
-        with _automacoes_lock:
-            ctx = _automacoes_pap_ativas.get(sessao.id)
-        if ctx:
-            sucesso, msg = ctx['automacao'].etapa2_selecionar_sem_complemento()
-    elif escolha.isdigit():
-        idx = int(escolha)
-        with _automacoes_lock:
-            ctx = _automacoes_pap_ativas.get(sessao.id)
-        if ctx:
-            sucesso, msg = ctx['automacao'].etapa2_selecionar_complemento(idx)
-        else:
-            sucesso, msg = False, "Sessão expirada"
-    else:
+    if escolha not in ("0", "SEM", "SEM COMPLEMENTO", "NAO", "NÃO", "N") and not escolha.isdigit():
         lista = dados.get('viabilidade_lista_complementos', [])
         linha = "\n".join(f"  {p['indice']} - {p['texto']}" for p in lista)
         return f"❌ Digite *0* ou *SEM COMPLEMENTO*, ou o número do complemento (ex: 1)\n\n{linha}"
@@ -709,6 +712,21 @@ def _processar_viabilidade_selecionar_complemento(telefone: str, sessao, dados: 
         sessao.dados_temp = {}
         sessao.save()
         return "❌ Sessão expirada. Digite *VENDER* para iniciar novamente."
+    
+    cmd_queue = ctx.get('cmd_queue')
+    if cmd_queue:
+        cmd_queue.put({
+            'action': 'selecionar_complemento',
+            'escolha': mensagem.strip(),
+            'cep': dados.get('cep', ''),
+            'numero': dados.get('numero', ''),
+        })
+        return "⏳ Processando complemento... Aguarde alguns instantes."
+    
+    if escolha in ("0", "SEM", "SEM COMPLEMENTO", "NAO", "NÃO", "N"):
+        sucesso, msg = ctx['automacao'].etapa2_selecionar_sem_complemento()
+    else:
+        sucesso, msg = ctx['automacao'].etapa2_selecionar_complemento(int(escolha))
     
     automacao = ctx['automacao']
     if not sucesso:
@@ -772,6 +790,13 @@ def _processar_viabilidade_posse(telefone: str, sessao, dados: dict, mensagem_li
         sessao.save()
         return "❌ Sessão expirada. Digite *VENDER* para iniciar novamente."
     
+    cmd_queue = ctx.get('cmd_queue')
+    if cmd_queue:
+        cmd_queue.put({
+            'action': 'modal_posse_voltar',
+            'cep_novo': cep_novo,
+        })
+        return "⏳ Processando... Aguarde alguns instantes."
     ok, _ = ctx['automacao'].etapa2_modal_posse_clicar_consultar_outro()
     if not ok:
         return f"⚠️ Erro ao voltar à consulta.\n\nDigite outro CEP ou *CONCLUIR*."
@@ -804,6 +829,13 @@ def _processar_viabilidade_indisponivel(telefone: str, sessao, dados: dict, mens
         sessao.save()
         return "❌ Sessão expirada. Digite *VENDER* para iniciar novamente."
     
+    cmd_queue = ctx.get('cmd_queue')
+    if cmd_queue:
+        cmd_queue.put({
+            'action': 'modal_indisponivel_voltar',
+            'cep_novo': cep_novo,
+        })
+        return "⏳ Processando... Aguarde alguns instantes."
     ok, _ = ctx['automacao'].etapa2_modal_indisponivel_clicar_voltar()
     if not ok:
         return f"⚠️ Erro ao voltar à consulta.\n\nDigite outro CEP ou *CONCLUIR*."
@@ -1053,6 +1085,15 @@ def _encerrar_automacao_pap(sessao_id: int, bo_usuario_id, telefone: str):
     """Encerra automação PAP (agendamento, viabilidade ou crédito) e libera o BO."""
     from crm_app.pool_bo_pap import liberar_bo
     with _automacoes_lock:
+        ctx = _automacoes_pap_ativas.get(sessao_id)
+    if ctx:
+        q = ctx.get('cmd_queue')
+        if q:
+            try:
+                q.put({'action': 'STOP'})
+            except Exception:
+                pass
+    with _automacoes_lock:
         ctx = _automacoes_pap_ativas.pop(sessao_id, None)
     if ctx:
         try:
@@ -1213,7 +1254,6 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
 
         def _executar_ops_django_sync(func):
             """Executa operações Django em thread limpa (evita SynchronousOnlyOperation após Playwright)."""
-            import queue
             q = queue.Queue()
             def run():
                 try:
@@ -1231,8 +1271,349 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
                 if exc:
                     raise exc
 
-        def consultar_viabilidade_thread():
+        def _pap_worker_loop(cmd_queue, sessao_id, telefone, bo_id):
+            """Loop do worker: processa comandos na mesma thread da automação (evita 'cannot switch to different thread')."""
+            from crm_app.models import SessaoWhatsapp
+            while True:
+                try:
+                    cmd = cmd_queue.get(timeout=600)  # 10 min sem comando = encerra
+                except queue.Empty:
+                    break
+                if cmd.get('action') == 'STOP':
+                    break
+                try:
+                    with _automacoes_lock:
+                        ctx = _automacoes_pap_ativas.get(sessao_id)
+                    if not ctx:
+                        break
+                    automacao = ctx['automacao']
+                    dados = ctx.get('dados', {})
+                    action = cmd.get('action')
+                    if action == 'etapa3':
+                        cpf = cmd.get('cpf', '')
+                        sucesso, msg, _ = automacao.etapa3_cadastro_cliente(cpf)
+                        sess = SessaoWhatsapp.objects.get(id=sessao_id)
+                        if sucesso:
+                            dados = sess.dados_temp or {}
+                            dados['cpf_cliente'] = cpf
+                            sess.etapa = 'venda_celular'
+                            sess.dados_temp = dados
+                            sess.save()
+                            with _automacoes_lock:
+                                if sessao_id in _automacoes_pap_ativas:
+                                    _automacoes_pap_ativas[sessao_id]['dados'] = dados
+                            WhatsAppService().enviar_mensagem_texto(
+                                telefone,
+                                f"✅ {msg}\n\n📱 *ETAPA 3: CONTATO*\n\nDigite o *celular principal* do cliente (com DDD):"
+                            )
+                        else:
+                            WhatsAppService().enviar_mensagem_texto(
+                                telefone,
+                                f"❌ Cadastro: {msg}\n\nDigite outro CPF ou *CANCELAR*."
+                            )
+                    elif action == 'etapa4':
+                        celular = cmd.get('celular', '')
+                        email = cmd.get('email', '')
+                        celular_sec = cmd.get('celular_sec') or None
+                        sucesso, msg, _ = automacao.etapa4_contato(celular, email, celular_secundario=celular_sec)
+                        sess = SessaoWhatsapp.objects.get(id=sessao_id)
+                        dados = sess.dados_temp or {}
+                        dados['email'] = email
+                        with _automacoes_lock:
+                            if sessao_id in _automacoes_pap_ativas:
+                                _automacoes_pap_ativas[sessao_id]['dados'] = dados
+                        if not sucesso:
+                            if msg in ("TELEFONE_REJEITADO", "CELULAR_INVALIDO"):
+                                sess.etapa = 'venda_corrigir_celular'
+                                sess.dados_temp = dados
+                                sess.save()
+                                WhatsAppService().enviar_mensagem_texto(telefone, "⚠️ O número excede repetições ou é inválido. Digite outro celular com DDD:")
+                            elif msg in ("EMAIL_REJEITADO", "EMAIL_INVALIDO"):
+                                sess.etapa = 'venda_corrigir_email'
+                                sess.dados_temp = dados
+                                sess.save()
+                                WhatsAppService().enviar_mensagem_texto(telefone, "⚠️ E-mail já usado ou inválido. Digite outro e-mail:")
+                            elif msg == "CREDITO_NEGADO":
+                                sess.etapa = 'venda_corrigir_cpf'
+                                sess.dados_temp = dados
+                                sess.save()
+                                WhatsAppService().enviar_mensagem_texto(telefone, "❌ Crédito negado para este CPF.\n\nDigite outro CPF para tentar, ou *CANCELAR*:")
+                            else:
+                                WhatsAppService().enviar_mensagem_texto(telefone, f"❌ {msg}\n\nDigite *CANCELAR* para sair.")
+                        else:
+                            sess.etapa = 'venda_forma_pagamento'
+                            sess.dados_temp = dados
+                            sess.save()
+                            WhatsAppService().enviar_mensagem_texto(
+                                telefone,
+                                "✅ Crédito aprovado!\n\n💳 *ETAPA 4: PAGAMENTO*\n\n"
+                                "Escolha a forma de pagamento:\n\n1️⃣ Boleto\n2️⃣ Cartão de Crédito\n3️⃣ Débito em Conta\n\nDigite o número da opção:"
+                            )
+                    elif action == 'etapa5_forma':
+                        forma = cmd.get('forma', 'boleto')
+                        sucesso, msg = automacao.etapa5_selecionar_forma_pagamento(forma)
+                        sess = SessaoWhatsapp.objects.get(id=sessao_id)
+                        dados = sess.dados_temp or {}
+                        dados['forma_pagamento'] = forma
+                        with _automacoes_lock:
+                            if sessao_id in _automacoes_pap_ativas:
+                                _automacoes_pap_ativas[sessao_id]['dados'] = dados
+                        if not sucesso:
+                            WhatsAppService().enviar_mensagem_texto(telefone, f"❌ Forma de pagamento: {msg}\n\nDigite 1, 2 ou 3:")
+                        else:
+                            if forma == 'debito':
+                                sess.etapa = 'venda_debito_banco'
+                                sess.dados_temp = dados
+                                sess.save()
+                                WhatsAppService().enviar_mensagem_texto(
+                                    telefone,
+                                    "✅ Pagamento: *Débito em Conta*\n\n"
+                                    "🏦 Banco: 1=Itaú 2=Banrisul 3=Santander 4=BB 5=Bradesco 6=Nubank\n\nDigite o número do banco:"
+                                )
+                            else:
+                                sess.etapa = 'venda_plano'
+                                sess.dados_temp = dados
+                                sess.save()
+                                forma_nome = {'boleto': 'Boleto', 'cartao': 'Cartão de Crédito'}
+                                WhatsAppService().enviar_mensagem_texto(
+                                    telefone,
+                                    f"✅ Pagamento: *{forma_nome.get(forma, forma)}*\n\n"
+                                    "📦 *ETAPA 5: PLANO*\n\nEscolha o plano:\n\n1️⃣ Nio Fibra Ultra 1 Giga - R$ 160,00/mês\n"
+                                    "2️⃣ Nio Fibra Super 700 Mega - R$ 130,00/mês\n3️⃣ Nio Fibra Essencial 500 Mega - R$ 100,00/mês\n\nDigite o número:"
+                                )
+                    elif action == 'etapa5_debito':
+                        sucesso, msg = automacao.etapa5_preencher_debito(
+                            cmd.get('banco', ''), cmd.get('agencia', ''),
+                            cmd.get('conta', ''), cmd.get('digito', ''),
+                        )
+                        sess = SessaoWhatsapp.objects.get(id=sessao_id)
+                        dados = sess.dados_temp or {}
+                        with _automacoes_lock:
+                            if sessao_id in _automacoes_pap_ativas:
+                                _automacoes_pap_ativas[sessao_id]['dados'] = dados
+                        if not sucesso:
+                            WhatsAppService().enviar_mensagem_texto(telefone, f"❌ Débito: {msg}\n\nDigite novamente o dígito:")
+                        else:
+                            sess.etapa = 'venda_plano'
+                            sess.save()
+                            WhatsAppService().enviar_mensagem_texto(
+                                telefone,
+                                "✅ Débito preenchido!\n\n📦 *ETAPA 5: PLANO*\n\nEscolha o plano:\n\n1️⃣ Nio Fibra Ultra 1 Giga - R$ 160,00/mês\n2️⃣ Nio Fibra Super 700 Mega - R$ 130,00/mês\n3️⃣ Nio Fibra Essencial 500 Mega - R$ 100,00/mês\n\nDigite o número:"
+                            )
+                    elif action == 'etapa5_plano':
+                        plano = cmd.get('plano', '500mega')
+                        sucesso, msg = automacao.etapa5_selecionar_plano(plano)
+                        sess = SessaoWhatsapp.objects.get(id=sessao_id)
+                        dados = sess.dados_temp or {}
+                        dados['plano'] = plano
+                        with _automacoes_lock:
+                            if sessao_id in _automacoes_pap_ativas:
+                                _automacoes_pap_ativas[sessao_id]['dados'] = dados
+                        if not sucesso:
+                            WhatsAppService().enviar_mensagem_texto(telefone, f"❌ Plano: {msg}\n\nDigite 1, 2 ou 3:")
+                        else:
+                            sess.etapa = 'venda_fixo'
+                            sess.dados_temp = dados
+                            sess.save()
+                            WhatsAppService().enviar_mensagem_texto(telefone, "✅ Plano selecionado!\n\n📞 Tem *Fixo* (R$ 30/mês)?\n\n1️⃣ Sim\n2️⃣ Não\n\nDigite o número:")
+                    elif action == 'etapa5_fixo':
+                        tem_fixo = cmd.get('tem_fixo', False)
+                        sucesso, msg = automacao.etapa5_selecionar_fixo(tem_fixo)
+                        sess = SessaoWhatsapp.objects.get(id=sessao_id)
+                        dados = sess.dados_temp or {}
+                        dados['tem_fixo'] = tem_fixo
+                        with _automacoes_lock:
+                            if sessao_id in _automacoes_pap_ativas:
+                                _automacoes_pap_ativas[sessao_id]['dados'] = dados
+                        if not sucesso:
+                            WhatsAppService().enviar_mensagem_texto(telefone, f"❌ Fixo: {msg}\n\nDigite 1 ou 2:")
+                        else:
+                            sess.etapa = 'venda_streaming'
+                            sess.dados_temp = dados
+                            sess.save()
+                            WhatsAppService().enviar_mensagem_texto(telefone, "✅ Fixo registrado!\n\n📺 Quer *Streaming* (R$ 15/mês)?\n\n1️⃣ Sim\n2️⃣ Não\n\nDigite o número:")
+                    elif action == 'etapa5_streaming_avancar':
+                        tem_stream = cmd.get('tem_streaming', False)
+                        streaming_opcoes = cmd.get('streaming_opcoes', '')
+                        plano = cmd.get('plano', '500mega')
+                        sess = SessaoWhatsapp.objects.get(id=sessao_id)
+                        dados = sess.dados_temp or {}
+                        dados['tem_streaming'] = tem_stream
+                        dados['streaming_opcoes'] = streaming_opcoes
+                        sucesso, msg = automacao.etapa5_selecionar_streaming(tem_stream, streaming_opcoes, plano)
+                        if not sucesso:
+                            WhatsAppService().enviar_mensagem_texto(telefone, f"❌ Streaming: {msg}\n\nDigite 1 ou 2:")
+                        else:
+                            sucesso2, msg2 = automacao.etapa5_clicar_avancar()
+                            if not sucesso2:
+                                _encerrar_automacao_pap(sessao_id, dados.get('bo_usuario_id'), telefone)
+                                sess = SessaoWhatsapp.objects.get(id=sessao_id)
+                                sess.etapa = 'inicial'
+                                sess.dados_temp = {}
+                                sess.save()
+                                WhatsAppService().enviar_mensagem_texto(telefone, f"❌ Erro ao avançar: {msg2}\n\nDigite *VENDER* para tentar novamente.")
+                            else:
+                                def enviar(m):
+                                    try:
+                                        WhatsAppService().enviar_mensagem_texto(telefone, m)
+                                    except Exception as e:
+                                        logger.error(f"[VENDA PAP] Erro ao enviar: {e}")
+                                def resetar():
+                                    try:
+                                        sess = SessaoWhatsapp.objects.get(id=sessao_id)
+                                        sess.etapa = 'inicial'
+                                        sess.dados_temp = {}
+                                        sess.save()
+                                    except Exception:
+                                        pass
+                                    liberar_bo(dados.get('bo_usuario_id'), telefone)
+                                from crm_app.pool_bo_pap import liberar_bo
+                                _executar_venda_pap_etapa6_em_diante(
+                                    telefone, sessao_id, dados, automacao,
+                                    ctx.get('vendedor_matricula') or dados.get('matricula_pap'),
+                                    ctx.get('vendedor_id') or dados.get('vendedor_id'),
+                                    ctx.get('vendedor_nome') or dados.get('vendedor_nome', ''),
+                                    dados.get('bo_usuario_id'),
+                                    enviar, resetar,
+                                )
+                    elif action == 'selecionar_endereco':
+                        idx = cmd.get('idx', 1)
+                        cep, numero, ref = cmd.get('cep', ''), cmd.get('numero', ''), cmd.get('referencia', '')
+                        sucesso, msg = automacao.etapa2_selecionar_endereco_instalacao(idx)
+                        sess = SessaoWhatsapp.objects.get(id=sessao_id)
+                        dados = sess.dados_temp or {}
+                        if not sucesso:
+                            WhatsAppService().enviar_mensagem_texto(telefone, f"❌ {msg}\n\nDigite outro número ou *CANCELAR*.")
+                        else:
+                            sucesso2, msg2, extra2 = automacao.etapa2_preencher_referencia_e_continuar(cep, numero, ref)
+                            if not sucesso2:
+                                if extra2 == "POSSE_ENCONTRADA":
+                                    sess.etapa = 'venda_posse_consultar_outro'
+                                    sess.save()
+                                    WhatsAppService().enviar_mensagem_texto(telefone, msg2 + "\n\nDigite outro *CEP* (8 dígitos) ou *CONCLUIR* para sair.")
+                                elif extra2 == "INDISPONIVEL_TECNICO":
+                                    sess.etapa = 'venda_indisponivel_voltar'
+                                    sess.save()
+                                    WhatsAppService().enviar_mensagem_texto(telefone, msg2 + "\n\nDigite outro *CEP* (8 dígitos) ou *CONCLUIR* para sair.")
+                                else:
+                                    _encerrar_automacao_pap(sessao_id, dados.get('bo_usuario_id'), telefone)
+                                    sess.etapa = 'inicial'
+                                    sess.dados_temp = {}
+                                    sess.save()
+                                    WhatsAppService().enviar_mensagem_texto(telefone, f"❌ {msg2}\n\nDigite *VENDER* para tentar novamente.")
+                            elif isinstance(extra2, dict) and extra2.get('_codigo') == 'COMPLEMENTOS':
+                                with _automacoes_lock:
+                                    ctx_up = _automacoes_pap_ativas.get(sessao_id) or {}
+                                    ctx_up['phase'] = 'viabilidade_complemento'
+                                    ctx_up['dados'] = dados
+                                    ctx_up['cmd_queue'] = cmd_queue
+                                    _automacoes_pap_ativas[sessao_id] = ctx_up
+                                lista = extra2.get('lista', [])
+                                sess.etapa = 'venda_selecionar_complemento'
+                                sess.dados_temp = {**dados, 'viabilidade_lista_complementos': lista}
+                                sess.save()
+                                linha = "\n".join(f"  {p['indice']} - {p['texto']}" for p in lista)
+                                WhatsAppService().enviar_mensagem_texto(telefone, f"📋 *Complementos encontrados:*\n\n{linha}\n\nDigite *0* ou *SEM COMPLEMENTO* se não tiver, ou o *número* do complemento (ex: 1, 2, 3):")
+                            else:
+                                with _automacoes_lock:
+                                    _automacoes_pap_ativas[sessao_id] = {
+                                        'automacao': automacao, 'phase': 'venda',
+                                        'dados': dados, 'bo_usuario_id': dados.get('bo_usuario_id'), 'telefone': telefone,
+                                        'vendedor_id': dados.get('vendedor_id'), 'vendedor_matricula': dados.get('matricula_pap'),
+                                        'vendedor_nome': dados.get('vendedor_nome', ''), 'cmd_queue': cmd_queue,
+                                    }
+                                sess.etapa = 'venda_cpf'
+                                sess.dados_temp = dados
+                                sess.save()
+                                protocolo = automacao.dados_pedido.get('protocolo', '')
+                                msg_ok = "✅ Endereço disponível!" + (f"\n📋 Protocolo: {protocolo}" if protocolo else "")
+                                WhatsAppService().enviar_mensagem_texto(telefone, msg_ok + "\n\n📋 *ETAPA 2: CLIENTE*\n\nDigite o *CPF* do cliente:")
+                    elif action == 'modal_posse_voltar':
+                        cep_novo = cmd.get('cep_novo', '')
+                        automacao.etapa2_modal_posse_clicar_consultar_outro()
+                        sess = SessaoWhatsapp.objects.get(id=sessao_id)
+                        dados = sess.dados_temp or {}
+                        dados['cep'] = cep_novo
+                        sess.etapa = 'venda_numero'
+                        sess.dados_temp = dados
+                        sess.save()
+                        with _automacoes_lock:
+                            if sessao_id in _automacoes_pap_ativas:
+                                _automacoes_pap_ativas[sessao_id]['dados'] = dados
+                        WhatsAppService().enviar_mensagem_texto(telefone, f"✅ CEP: *{cep_novo}*\n\nDigite o *número* do endereço:\n(ou digite *SN* se não houver número)")
+                    elif action == 'modal_indisponivel_voltar':
+                        cep_novo = cmd.get('cep_novo', '')
+                        automacao.etapa2_modal_indisponivel_clicar_voltar()
+                        sess = SessaoWhatsapp.objects.get(id=sessao_id)
+                        dados = sess.dados_temp or {}
+                        dados['cep'] = cep_novo
+                        sess.etapa = 'venda_numero'
+                        sess.dados_temp = dados
+                        sess.save()
+                        with _automacoes_lock:
+                            if sessao_id in _automacoes_pap_ativas:
+                                _automacoes_pap_ativas[sessao_id]['dados'] = dados
+                        WhatsAppService().enviar_mensagem_texto(telefone, f"✅ CEP: *{cep_novo}*\n\nDigite o *número* do endereço:\n(ou digite *SN* se não houver número)")
+                    elif action == 'selecionar_complemento':
+                        escolha = cmd.get('escolha', '')  # '0' ou 'sem' ou número
+                        cep, numero = cmd.get('cep', ''), cmd.get('numero', '')
+                        sess = SessaoWhatsapp.objects.get(id=sessao_id)
+                        dados = sess.dados_temp or {}
+                        if escolha.upper() in ("0", "SEM", "SEM COMPLEMENTO", "NAO", "NÃO", "N"):
+                            sucesso, msg = automacao.etapa2_selecionar_sem_complemento()
+                        elif escolha.isdigit():
+                            sucesso, msg = automacao.etapa2_selecionar_complemento(int(escolha))
+                        else:
+                            sucesso, msg = False, "Opção inválida"
+                        if not sucesso:
+                            lista = dados.get('viabilidade_lista_complementos', [])
+                            linha = "\n".join(f"  {p['indice']} - {p['texto']}" for p in lista)
+                            WhatsAppService().enviar_mensagem_texto(telefone, f"❌ {msg}\n\nDigite *0* ou *SEM COMPLEMENTO*, ou o número (ex: 1)\n\n{linha}")
+                        else:
+                            sucesso2, msg2, extra2 = automacao.etapa2_clicar_avancar_apos_complemento(cep, numero)
+                            if not sucesso2:
+                                if extra2 == "POSSE_ENCONTRADA":
+                                    sess.etapa = 'venda_posse_consultar_outro'
+                                    sess.save()
+                                    WhatsAppService().enviar_mensagem_texto(telefone, msg2 + "\n\nDigite outro *CEP* (8 dígitos) ou *CONCLUIR* para sair.")
+                                elif extra2 == "INDISPONIVEL_TECNICO":
+                                    sess.etapa = 'venda_indisponivel_voltar'
+                                    sess.save()
+                                    WhatsAppService().enviar_mensagem_texto(telefone, msg2 + "\n\nDigite outro *CEP* (8 dígitos) ou *CONCLUIR* para sair.")
+                                else:
+                                    _encerrar_automacao_pap(sessao_id, dados.get('bo_usuario_id'), telefone)
+                                    sess.etapa = 'inicial'
+                                    sess.dados_temp = {}
+                                    sess.save()
+                                    WhatsAppService().enviar_mensagem_texto(telefone, f"❌ {msg2}\n\nDigite *VENDER* para tentar novamente.")
+                            else:
+                                with _automacoes_lock:
+                                    _automacoes_pap_ativas[sessao_id] = {
+                                        'automacao': automacao, 'phase': 'venda',
+                                        'dados': dados, 'bo_usuario_id': dados.get('bo_usuario_id'), 'telefone': telefone,
+                                        'vendedor_id': dados.get('vendedor_id'), 'vendedor_matricula': dados.get('matricula_pap'),
+                                        'vendedor_nome': dados.get('vendedor_nome', ''), 'cmd_queue': cmd_queue,
+                                    }
+                                sess.etapa = 'venda_cpf'
+                                sess.dados_temp = dados
+                                sess.save()
+                                protocolo = automacao.dados_pedido.get('protocolo', '')
+                                msg_ok = "✅ Endereço disponível!" + (f"\n📋 Protocolo: {protocolo}" if protocolo else "")
+                                WhatsAppService().enviar_mensagem_texto(telefone, msg_ok + "\n\n📋 *ETAPA 2: CLIENTE*\n\nDigite o *CPF* do cliente:")
+                except Exception as e:
+                    logger.exception(f"[PAP Worker] Erro ao processar comando: {e}")
+                    try:
+                        WhatsAppService().enviar_mensagem_texto(
+                            telefone,
+                            f"❌ Erro: {e}\n\nDigite *VENDER* para tentar novamente."
+                        )
+                    except Exception:
+                        pass
+
+        def consultar_viabilidade_thread(cmd_queue):
+            """Executa viabilidade e, se automação ativa, entra no loop do worker (mesma thread = sem erro Playwright)."""
             import django
+            from crm_app.models import SessaoWhatsapp
             django.db.close_old_connections()
             bo_id = dados.get('bo_usuario_id')
             if not bo_id:
@@ -1294,6 +1675,7 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
                             'dados': dados, 'bo_usuario_id': bo_id, 'telefone': telefone,
                             'vendedor_id': dados.get('vendedor_id'), 'vendedor_matricula': dados.get('matricula_pap'),
                             'vendedor_nome': dados.get('vendedor_nome', ''),
+                            'cmd_queue': cmd_queue,
                         }
                     protocolo = automacao.dados_pedido.get('protocolo', '')
                     msg_viab = "✅ Endereço disponível para instalação!"
@@ -1306,10 +1688,11 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
                         sessao.save()
                         WhatsAppService().enviar_mensagem_texto(telefone, msg_viab)
                     _executar_ops_django_sync(_ok_viabilidade)
+                    _pap_worker_loop(cmd_queue, sessao.id, telefone, bo_id)
                 elif isinstance(extra, dict) and extra.get('_codigo') == 'MULTIPLOS_ENDERECOS':
                     lista = extra.get('lista', [])
                     with _automacoes_lock:
-                        _automacoes_pap_ativas[sessao.id] = {'automacao': automacao, 'phase': 'viabilidade_endereco', 'bo_usuario_id': bo_id, 'telefone': telefone}
+                        _automacoes_pap_ativas[sessao.id] = {'automacao': automacao, 'phase': 'viabilidade_endereco', 'bo_usuario_id': bo_id, 'telefone': telefone, 'cmd_queue': cmd_queue}
                     sessao.etapa = 'venda_selecionar_endereco'
                     sessao.dados_temp = {**dados, 'viabilidade_lista_enderecos': lista}
                     linha = "\n".join(f"  {p['indice']} - {p['texto']}" for p in lista)
@@ -1319,10 +1702,11 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
                         sessao.save()
                         WhatsAppService().enviar_mensagem_texto(telefone, msg_multi)
                     _executar_ops_django_sync(_multi_enderecos)
+                    _pap_worker_loop(cmd_queue, sessao.id, telefone, bo_id)
                 elif isinstance(extra, dict) and extra.get('_codigo') == 'COMPLEMENTOS':
                     lista = extra.get('lista', [])
                     with _automacoes_lock:
-                        _automacoes_pap_ativas[sessao.id] = {'automacao': automacao, 'phase': 'viabilidade_complemento', 'bo_usuario_id': bo_id, 'telefone': telefone}
+                        _automacoes_pap_ativas[sessao.id] = {'automacao': automacao, 'phase': 'viabilidade_complemento', 'bo_usuario_id': bo_id, 'telefone': telefone, 'cmd_queue': cmd_queue}
                     sessao.etapa = 'venda_selecionar_complemento'
                     sessao.dados_temp = {**dados, 'viabilidade_lista_complementos': lista}
                     linha = "\n".join(f"  {p['indice']} - {p['texto']}" for p in lista)
@@ -1332,9 +1716,10 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
                         sessao.save()
                         WhatsAppService().enviar_mensagem_texto(telefone, msg_comp)
                     _executar_ops_django_sync(_complementos)
+                    _pap_worker_loop(cmd_queue, sessao.id, telefone, bo_id)
                 elif extra == "POSSE_ENCONTRADA":
                     with _automacoes_lock:
-                        _automacoes_pap_ativas[sessao.id] = {'automacao': automacao, 'phase': 'viabilidade_posse', 'bo_usuario_id': bo_id, 'telefone': telefone}
+                        _automacoes_pap_ativas[sessao.id] = {'automacao': automacao, 'phase': 'viabilidade_posse', 'bo_usuario_id': bo_id, 'telefone': telefone, 'cmd_queue': cmd_queue}
                     sessao.etapa = 'venda_posse_consultar_outro'
                     sessao.dados_temp = dados
                     msg_posse = msg + "\n\nDigite outro *CEP* (8 dígitos) ou *CONCLUIR* para sair."
@@ -1343,9 +1728,10 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
                         sessao.save()
                         WhatsAppService().enviar_mensagem_texto(telefone, msg_posse)
                     _executar_ops_django_sync(_posse)
+                    _pap_worker_loop(cmd_queue, sessao.id, telefone, bo_id)
                 elif extra == "INDISPONIVEL_TECNICO":
                     with _automacoes_lock:
-                        _automacoes_pap_ativas[sessao.id] = {'automacao': automacao, 'phase': 'viabilidade_indisponivel', 'bo_usuario_id': bo_id, 'telefone': telefone}
+                        _automacoes_pap_ativas[sessao.id] = {'automacao': automacao, 'phase': 'viabilidade_indisponivel', 'bo_usuario_id': bo_id, 'telefone': telefone, 'cmd_queue': cmd_queue}
                     sessao.etapa = 'venda_indisponivel_voltar'
                     sessao.dados_temp = dados
                     msg_indisp = msg + "\n\nDigite outro *CEP* (8 dígitos) ou *CONCLUIR* para sair."
@@ -1354,6 +1740,7 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
                         sessao.save()
                         WhatsAppService().enviar_mensagem_texto(telefone, msg_indisp)
                     _executar_ops_django_sync(_indisponivel)
+                    _pap_worker_loop(cmd_queue, sessao.id, telefone, bo_id)
                 else:
                     automacao._fechar_sessao()
                     texto = f"❌ Endereço indisponível. Motivo: {msg}\n\nDigite *VENDER* para tentar novamente."
@@ -1375,8 +1762,15 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
                     WhatsAppService().enviar_mensagem_texto(telefone, err_msg)
                 _executar_ops_django_sync(_except_handler)
 
+        # Fila de comandos para o worker (evita "cannot switch to a different thread")
+        cmd_queue = queue.Queue()
+
+        def _run_viabilidade_e_worker():
+            consultar_viabilidade_thread(cmd_queue)
+
         resposta = "⏳ Consultando viabilidade do endereço... Aguarde alguns instantes. Você receberá a resposta em seguida."
-        thread = threading.Thread(target=consultar_viabilidade_thread)
+        thread = threading.Thread(target=_run_viabilidade_e_worker)
+        thread.daemon = True
         thread.start()
         return resposta
     
@@ -1412,11 +1806,15 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
             sessao.save()
             return "❌ Sessão expirada. Digite *VENDER* para iniciar novamente."
         
+        cmd_queue = ctx.get('cmd_queue')
+        if cmd_queue:
+            cmd_queue.put({'action': 'etapa3', 'cpf': cpf_limpo})
+            return "⏳ Consultando cadastro do cliente... Aguarde alguns instantes. Você receberá a resposta em seguida."
+        # Fallback se não houver fila (sessão antiga)
         automacao = ctx['automacao']
         sucesso, msg, _ = automacao.etapa3_cadastro_cliente(cpf_limpo)
         if not sucesso:
             return f"❌ Cadastro: {msg}\n\nDigite outro CPF ou *CANCELAR*."
-        
         dados['cpf_cliente'] = cpf_limpo
         sessao.dados_temp = dados
         sessao.etapa = 'venda_celular'
@@ -1424,12 +1822,7 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
         with _automacoes_lock:
             if sessao.id in _automacoes_pap_ativas:
                 _automacoes_pap_ativas[sessao.id]['dados'] = dados
-        
-        return (
-            f"✅ {msg}\n\n"
-            f"📱 *ETAPA 3: CONTATO*\n\n"
-            f"Digite o *celular principal* do cliente (com DDD):"
-        )
+        return f"✅ {msg}\n\n📱 *ETAPA 3: CONTATO*\n\nDigite o *celular principal* do cliente (com DDD):"
     
     # --- ETAPA: Celular ---
     elif etapa == 'venda_celular':
@@ -1482,6 +1875,15 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
             sessao.save()
             return "❌ Sessão expirada. Digite *VENDER* para iniciar novamente."
         
+        cmd_queue = ctx.get('cmd_queue')
+        if cmd_queue:
+            cmd_queue.put({
+                'action': 'etapa4',
+                'celular': dados.get('celular', ''),
+                'email': email,
+                'celular_sec': dados.get('celular_sec', '') or None,
+            })
+            return "⏳ Consultando crédito... Aguarde alguns instantes. Você receberá a resposta em seguida."
         automacao = ctx['automacao']
         celular_sec = dados.get('celular_sec', '') or None
         sucesso, msg, _ = automacao.etapa4_contato(
@@ -1509,13 +1911,11 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
                 sessao.save()
                 return "❌ Crédito negado para este CPF.\n\nDigite outro CPF para tentar, ou *CANCELAR*:"
             return f"❌ {msg}\n\nDigite *CANCELAR* para sair."
-        
         sessao.etapa = 'venda_forma_pagamento'
         sessao.save()
         with _automacoes_lock:
             if sessao.id in _automacoes_pap_ativas:
                 _automacoes_pap_ativas[sessao.id]['dados'] = dados
-        
         return (
             f"✅ Crédito aprovado!\n\n"
             f"💳 *ETAPA 4: PAGAMENTO*\n\n"
@@ -1541,10 +1941,13 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
             sessao.save()
             return "❌ Sessão expirada. Digite *VENDER* para iniciar novamente."
         
+        cmd_queue = ctx.get('cmd_queue')
+        if cmd_queue:
+            cmd_queue.put({'action': 'etapa5_forma', 'forma': forma})
+            return "⏳ Processando forma de pagamento... Aguarde alguns instantes."
         sucesso, msg = ctx['automacao'].etapa5_selecionar_forma_pagamento(forma)
         if not sucesso:
             return f"❌ Forma de pagamento: {msg}\n\nDigite 1, 2 ou 3:"
-        
         dados['forma_pagamento'] = forma
         sessao.dados_temp = dados
         if forma == 'debito':
@@ -1555,7 +1958,6 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
         with _automacoes_lock:
             if sessao.id in _automacoes_pap_ativas:
                 _automacoes_pap_ativas[sessao.id]['dados'] = dados
-        
         forma_nome = {'boleto': 'Boleto', 'cartao': 'Cartão de Crédito', 'debito': 'Débito em Conta'}
         if forma == 'debito':
             return (
@@ -1615,6 +2017,17 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
             sessao.save()
             return "❌ Sessão expirada. Digite *VENDER* para iniciar novamente."
         
+        cmd_queue = ctx.get('cmd_queue')
+        if cmd_queue:
+            cmd_queue.put({
+                'action': 'etapa5_debito',
+                'banco': dados.get('banco', ''),
+                'agencia': dados.get('agencia', ''),
+                'conta': dados.get('conta', ''),
+                'digito': dados.get('digito', ''),
+            })
+            return "⏳ Processando débito... Aguarde alguns instantes."
+        
         sucesso, msg = ctx['automacao'].etapa5_preencher_debito(
             dados.get('banco', ''),
             dados.get('agencia', ''),
@@ -1655,6 +2068,11 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
             sessao.save()
             return "❌ Sessão expirada. Digite *VENDER* para iniciar novamente."
         
+        cmd_queue = ctx.get('cmd_queue')
+        if cmd_queue:
+            cmd_queue.put({'action': 'etapa5_plano', 'plano': plano})
+            return "⏳ Processando plano... Aguarde alguns instantes."
+        
         sucesso, msg = ctx['automacao'].etapa5_selecionar_plano(plano)
         if not sucesso:
             return f"❌ Plano: {msg}\n\nDigite 1, 2 ou 3:"
@@ -1692,6 +2110,11 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
             sessao.dados_temp = {}
             sessao.save()
             return "❌ Sessão expirada. Digite *VENDER* para iniciar novamente."
+        
+        cmd_queue = ctx.get('cmd_queue')
+        if cmd_queue:
+            cmd_queue.put({'action': 'etapa5_fixo', 'tem_fixo': tem_fixo})
+            return "⏳ Processando... Aguarde alguns instantes."
         
         sucesso, msg = ctx['automacao'].etapa5_selecionar_fixo(tem_fixo)
         if not sucesso:
@@ -1744,6 +2167,16 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
             sessao.dados_temp = {}
             sessao.save()
             return "❌ Sessão expirada. Digite *VENDER* para iniciar novamente."
+        
+        cmd_queue = ctx.get('cmd_queue')
+        if cmd_queue:
+            cmd_queue.put({
+                'action': 'etapa5_streaming_avancar',
+                'tem_streaming': False,
+                'streaming_opcoes': '',
+                'plano': dados.get('plano', '500mega'),
+            })
+            return "⏳ Processando e enviando resumo... Aguarde alguns instantes."
         
         automacao = ctx['automacao']
         plano = dados.get('plano', '500mega')
@@ -1808,6 +2241,16 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
             sessao.dados_temp = {}
             sessao.save()
             return "❌ Sessão expirada. Digite *VENDER* para iniciar novamente."
+        
+        cmd_queue = ctx.get('cmd_queue')
+        if cmd_queue:
+            cmd_queue.put({
+                'action': 'etapa5_streaming_avancar',
+                'tem_streaming': True,
+                'streaming_opcoes': streaming_opcoes,
+                'plano': dados.get('plano', '500mega'),
+            })
+            return "⏳ Processando e enviando resumo... Aguarde alguns instantes."
         
         automacao = ctx['automacao']
         plano = dados.get('plano', '500mega')
