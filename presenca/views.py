@@ -21,7 +21,8 @@ class MotivoViewSet(viewsets.ModelViewSet):
 class PresencaViewSet(viewsets.ModelViewSet):
     serializer_class = PresencaSerializer
     permission_classes = [IsAuthenticated]
-    resource_name = 'presenca' 
+    resource_name = 'presenca'
+    pagination_class = None  # Retorna todos os registros do dia para exibição correta (evita bug visual para Diretoria/Admin) 
 
     def get_queryset(self):
         user = self.request.user

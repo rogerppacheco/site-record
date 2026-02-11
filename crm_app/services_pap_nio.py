@@ -200,7 +200,7 @@ class PAPNioAutomation:
         os.makedirs(STORAGE_STATE_DIR, exist_ok=True)
 
     def _capture_screenshot(self, step_name: str) -> None:
-        """Se PAP_CAPTURE_SCREENSHOTS estiver ativo, salva screenshot em downloads/pap_venda_*.png."""
+        """Se PAP_CAPTURE_SCREENSHOTS estiver ativo, salva screenshot em downloads/pap_venda_*.png e opcionalmente no OneDrive."""
         if not self.capture_screenshots or not self.page:
             return
         try:
@@ -217,6 +217,17 @@ class PAPNioAutomation:
             filepath = os.path.join(downloads_dir, filename)
             self.page.screenshot(path=filepath, full_page=False)
             logger.info(f"[PAP] Screenshot salvo: {filename}")
+            # Enviar para OneDrive se configurado (mesma conta das outras ferramentas)
+            if getattr(settings, 'PAP_SCREENSHOTS_ONEDRIVE', False):
+                try:
+                    from crm_app.onedrive_service import OneDriveUploader
+                    folder = getattr(settings, 'PAP_ONEDRIVE_FOLDER', 'PAP_Screenshots')
+                    with open(filepath, 'rb') as f:
+                        uploader = OneDriveUploader()
+                        web_url = uploader.upload_file(f, folder, filename)
+                    logger.info(f"[PAP] Screenshot enviado ao OneDrive: {web_url or filename}")
+                except Exception as e_od:
+                    logger.warning(f"[PAP] Erro ao enviar screenshot ao OneDrive: {e_od}")
         except Exception as e:
             logger.warning(f"[PAP] Erro ao salvar screenshot: {e}")
     
