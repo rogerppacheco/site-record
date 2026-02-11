@@ -49,6 +49,33 @@ class Presenca(models.Model):
         estado = "Presente" if self.status else f"Ausente ({self.motivo})"
         return f"{self.colaborador.username} - {self.data} - {estado}"
 
+class ConfirmacaoPresencaDia(models.Model):
+    """
+    Confirmação do dia de presença via selfie com o time.
+    O supervisor/líder tira uma foto (câmera ao vivo) com data e local; a imagem é salva no OneDrive por data.
+    """
+    data = models.DateField(db_index=True)
+    supervisor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='confirmacoes_presenca_dia'
+    )
+    foto_url = models.URLField(max_length=500, blank=True)  # URL da selfie no OneDrive
+    latitude = models.DecimalField(max_digits=12, decimal_places=8, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=12, decimal_places=8, null=True, blank=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Confirmação de presença (selfie do dia)"
+        verbose_name_plural = "Confirmações de presença (selfies)"
+        # Um supervisor pode ter apenas uma confirmação por data (ou permitir várias; ajuste conforme regra)
+        unique_together = [['data', 'supervisor']]
+        ordering = ['-data', '-criado_em']
+
+    def __str__(self):
+        return f"{self.data} - {self.supervisor.username}"
+
+
 class DiaNaoUtil(models.Model):
     data = models.DateField(unique=True)
     descricao = models.CharField(max_length=255)

@@ -286,6 +286,8 @@ PAP_CAPTURE_SCREENSHOTS = config('PAP_CAPTURE_SCREENSHOTS', default=False, cast=
 PAP_SCREENSHOTS_ONEDRIVE = config('PAP_SCREENSHOTS_ONEDRIVE', default=False, cast=lambda v: str(v).lower() in ('true', '1', 'yes'))
 # Pasta no OneDrive (dentro de MS_DRIVE_FOLDER_ROOT). Ex: PAP_Screenshots → CDOI_Record_Vertical/PAP_Screenshots/
 PAP_ONEDRIVE_FOLDER = config('PAP_ONEDRIVE_FOLDER', default='PAP_Screenshots')
+# Pasta no OneDrive para selfies de confirmação de presença (por data: Presenca_Selfies/YYYY-MM-DD/)
+PRESENCA_ONEDRIVE_FOLDER = config('PRESENCA_ONEDRIVE_FOLDER', default='Presenca_Selfies')
 
 LOGGING = {
     'version': 1,
