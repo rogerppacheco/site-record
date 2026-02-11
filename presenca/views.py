@@ -8,8 +8,13 @@ from django.db import IntegrityError, transaction
 import pandas as pd
 from datetime import datetime, timedelta, date
 
-from .models import MotivoAusencia, Presenca, DiaNaoUtil
-from .serializers import MotivoAusenciaSerializer, PresencaSerializer, DiaNaoUtilSerializer
+from django.conf import settings as django_settings
+
+from .models import MotivoAusencia, Presenca, DiaNaoUtil, ConfirmacaoPresencaDia
+from .serializers import (
+    MotivoAusenciaSerializer, PresencaSerializer, DiaNaoUtilSerializer,
+    ConfirmacaoPresencaDiaSerializer,
+)
 from usuarios.models import Usuario
 from usuarios.serializers import UsuarioSerializer
 
@@ -172,6 +177,141 @@ class TodosUsuariosListView(generics.ListAPIView):
             .order_by('first_name')
         print(f"[DEBUG TodosUsuariosListView] queryset type: {type(qs)}, count: {qs.count()}")
         return qs
+
+
+# =========================================================================
+# CONFIRMAÇÃO DO DIA COM SELFIE (upload OneDrive por data)
+# =========================================================================
+
+def _usuario_pode_confirmar_presenca(user):
+    """Supervisor (tem liderados), Diretoria, Admin ou BackOffice podem confirmar."""
+    if user.is_superuser:
+        return True
+    if user.groups.filter(name__in=['Diretoria', 'Admin', 'BackOffice']).exists():
+        return True
+    if hasattr(user, 'liderados') and user.liderados.exists():
+        return True
+    return False
+
+
+class ConfirmacaoPresencaDiaView(APIView):
+    """
+    GET: ?data=YYYY-MM-DD → retorna a confirmação (selfie) daquele dia para o supervisor/equipe.
+    POST: multipart/form-data com foto, data, latitude (opc), longitude (opc).
+          Faz upload da foto para OneDrive em Presenca_Selfies/YYYY-MM-DD/ e salva o registro.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        data_str = request.query_params.get('data')
+        if not data_str:
+            return Response({'detail': 'Parâmetro data (YYYY-MM-DD) é obrigatório.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            data_dia = datetime.strptime(data_str, '%Y-%m-%d').date()
+        except ValueError:
+            return Response({'detail': 'Data inválida. Use YYYY-MM-DD.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = request.user
+        # Ver confirmações do dia: do próprio usuário (supervisor) ou de supervisores da equipe
+        qs = ConfirmacaoPresencaDia.objects.filter(data=data_dia)
+        if not (user.is_superuser or user.groups.filter(name__in=['Diretoria', 'Admin', 'BackOffice']).exists()):
+            qs = qs.filter(supervisor=user)
+        conf = qs.first()
+        if not conf:
+            return Response({'confirmado': False, 'detalhe': None})
+        serializer = ConfirmacaoPresencaDiaSerializer(conf)
+        return Response({'confirmado': True, 'detalhe': serializer.data})
+
+    def post(self, request):
+        if not _usuario_pode_confirmar_presenca(request.user):
+            return Response({'detail': 'Sem permissão para confirmar presença do dia.'}, status=status.HTTP_403_FORBIDDEN)
+
+        foto = request.FILES.get('foto')
+        data_str = request.data.get('data') or request.POST.get('data')
+        if not foto or not data_str:
+            return Response(
+                {'detail': 'Envie a foto (foto) e a data (data, YYYY-MM-DD).'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            data_dia = datetime.strptime(data_str.strip(), '%Y-%m-%d').date()
+        except ValueError:
+            return Response({'detail': 'Data inválida. Use YYYY-MM-DD.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        lat = request.data.get('latitude') or request.POST.get('latitude')
+        lng = request.data.get('longitude') or request.POST.get('longitude')
+        if lat is not None and lat != '':
+            try:
+                lat = float(lat)
+            except (TypeError, ValueError):
+                lat = None
+        else:
+            lat = None
+        if lng is not None and lng != '':
+            try:
+                lng = float(lng)
+            except (TypeError, ValueError):
+                lng = None
+        else:
+            lng = None
+
+        # Nome do arquivo: único por data e supervisor
+        now = datetime.now()
+        nome_arquivo = f"equipe_{request.user.username}_{data_dia}_{now.strftime('%H-%M')}.jpg"
+        pasta_base = getattr(django_settings, 'PRESENCA_ONEDRIVE_FOLDER', 'Presenca_Selfies')
+        folder_name = f"{pasta_base}/{data_dia}"
+
+        # Ler bytes da foto uma vez (para OneDrive e para envio WhatsApp)
+        import io
+        import base64
+        foto_bytes = foto.read()
+        foto_io = io.BytesIO(foto_bytes)
+
+        try:
+            from crm_app.onedrive_service import OneDriveUploader
+            uploader = OneDriveUploader()
+            foto_url = uploader.upload_file(foto_io, folder_name, nome_arquivo)
+        except Exception as e:
+            return Response(
+                {'detail': f'Erro ao enviar foto para o OneDrive: {str(e)}'},
+                status=status.HTTP_502_BAD_GATEWAY
+            )
+
+        conf, created = ConfirmacaoPresencaDia.objects.update_or_create(
+            data=data_dia,
+            supervisor=request.user,
+            defaults={
+                'foto_url': foto_url,
+                'latitude': lat,
+                'longitude': lng,
+            }
+        )
+
+        # Enviar a selfie como IMAGEM no WhatsApp para usuários perfil Diretoria (silencioso)
+        try:
+            diretores = Usuario.objects.filter(
+                groups__name='Diretoria',
+                is_active=True
+            ).exclude(tel_whatsapp__isnull=True).exclude(tel_whatsapp='').distinct()
+            if diretores.exists():
+                from crm_app.whatsapp_service import WhatsAppService
+                svc = WhatsAppService()
+                data_fmt = data_dia.strftime('%d/%m/%Y')
+                caption = f"Presença do dia {data_fmt} - supervisor: {request.user.username}"
+                img_b64 = base64.b64encode(foto_bytes).decode('utf-8')
+                for user in diretores:
+                    try:
+                        tel = (user.tel_whatsapp or '').replace(' ', '').replace('-', '').replace('(', '').replace(')', '')
+                        if tel:
+                            svc.enviar_imagem_b64(tel, img_b64, caption=caption)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        serializer = ConfirmacaoPresencaDiaSerializer(conf)
+        return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
 
 # =========================================================================
 # RELATÓRIOS FINANCEIROS (CORRIGIDO)

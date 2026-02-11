@@ -1,8 +1,9 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
-    MotivoViewSet, PresencaViewSet, DiaNaoUtilViewSet, 
+    MotivoViewSet, PresencaViewSet, DiaNaoUtilViewSet,
     MinhaEquipeListView, TodosUsuariosListView,
+    ConfirmacaoPresencaDiaView,
     RelatorioFinanceiroView, ExportarRelatorioFinanceiroExcelView
 )
 
@@ -16,8 +17,9 @@ urlpatterns = [
     path('', include(router.urls)),
     path('minha-equipe/', MinhaEquipeListView.as_view(), name='minha-equipe'),
     path('todos-usuarios/', TodosUsuariosListView.as_view(), name='todos-usuarios'),
-    
-    # Novas rotas financeiras
+    path('confirmacao-dia/', ConfirmacaoPresencaDiaView.as_view(), name='confirmacao-dia'),
+
+    # Rotas financeiras
     path('relatorio-financeiro/', RelatorioFinanceiroView.as_view(), name='relatorio-financeiro'),
     path('relatorio-financeiro/excel/', ExportarRelatorioFinanceiroExcelView.as_view(), name='relatorio-financeiro-excel'),
 ]

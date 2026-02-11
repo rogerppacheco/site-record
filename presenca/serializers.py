@@ -1,7 +1,7 @@
 
 from rest_framework import serializers
 from usuarios.models import Usuario
-from .models import MotivoAusencia, Presenca, DiaNaoUtil
+from .models import MotivoAusencia, Presenca, DiaNaoUtil, ConfirmacaoPresencaDia
 
 # Serializer leve para presença
 class UsuarioPresencaSerializer(serializers.ModelSerializer):
@@ -35,3 +35,12 @@ class PresencaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Presenca
         fields = '__all__'
+
+
+class ConfirmacaoPresencaDiaSerializer(serializers.ModelSerializer):
+    supervisor_username = serializers.CharField(source='supervisor.username', read_only=True)
+
+    class Meta:
+        model = ConfirmacaoPresencaDia
+        fields = ['id', 'data', 'supervisor', 'supervisor_username', 'foto_url', 'latitude', 'longitude', 'criado_em']
+        read_only_fields = ['supervisor', 'foto_url', 'criado_em']

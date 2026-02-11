@@ -119,6 +119,19 @@
             display: none !important;
         }
 
+        /* --- MODAL SELFIE CONFIRMAÇÃO DO DIA --- */
+        #camera-preview, #selfie-preview-img {
+            width: 100%;
+            max-height: 60vh;
+            object-fit: contain;
+            background: #000;
+            border-radius: 8px;
+        }
+        #selfie-canvas { display: none; }
+        .selfie-step { display: none; }
+        .selfie-step.active { display: block; }
+        #selfie-status { font-size: 0.9rem; color: #6c757d; }
+
         /* --- RESPONSIVIDADE --- */
         @media (max-width: 768px) {
             .system-container {
@@ -183,6 +196,14 @@
                     <a class="nav-link" onclick="switchTab('todos-usuarios', this)">Todos os Usuários</a>
                 </li>
             </ul>
+
+            <!-- Badge "Dia confirmado com selfie" + link "Ver foto": só para Diretoria/Admin (foto não aparece para outros) -->
+            <div id="container-confirmacao-dia" class="mb-3 restricted-access" style="display: none;">
+                <div id="badge-dia-confirmado" class="d-flex align-items-center gap-2" style="display: none;">
+                    <span class="badge bg-success fs-6"><i class="bi bi-check-circle-fill"></i> Dia confirmado com selfie</span>
+                    <a id="link-ver-foto" href="#" target="_blank" rel="noopener" class="btn btn-sm btn-outline-success">Ver foto</a>
+                </div>
+            </div>
             
             <div id="grid-colaboradores" class="row g-3 justify-content-center">
                 <div class="col-12 text-center py-5">
@@ -219,6 +240,43 @@
         </div>
     </div>
 
+    <!-- Modal: Selfie para confirmar presença do dia (câmera ao vivo, sem upload de arquivo) -->
+    <div class="modal fade" id="modal-selfie" tabindex="-1" aria-labelledby="modal-selfie-title" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" id="modal-selfie-title"><i class="bi bi-camera-fill"></i> Tirar selfie e desbloquear lista</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar" id="modal-selfie-close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">Tire uma selfie com o time. A foto deve ser tirada agora (câmera ao vivo). Data e local serão marcados na imagem.</p>
+                    <div id="selfie-status" class="mb-2"></div>
+
+                    <!-- Etapa 1: Câmera ao vivo -->
+                    <div id="selfie-step-camera" class="selfie-step active">
+                        <video id="camera-preview" autoplay playsinline muted></video>
+                        <div class="mt-3 d-flex gap-2 flex-wrap">
+                            <button type="button" class="btn btn-success" id="btn-tirar-foto"><i class="bi bi-camera"></i> Tirar foto</button>
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        </div>
+                    </div>
+
+                    <!-- Etapa 2: Preview da foto com data/local (antes de enviar) -->
+                    <div id="selfie-step-preview" class="selfie-step">
+                        <img id="selfie-preview-img" alt="Preview da selfie" />
+                        <div class="mt-3 d-flex gap-2 flex-wrap">
+                            <button type="button" class="btn btn-primary" id="btn-enviar-selfie"><i class="bi bi-send"></i> Confirmar e enviar</button>
+                            <button type="button" class="btn btn-outline-secondary" id="btn-tirar-outra">Tirar outra</button>
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        </div>
+                    </div>
+
+                    <canvas id="selfie-canvas"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="{% static 'js/auth.js' %}?v=7.0"></script>
     <script src="{% static 'js/menu.js' %}?v=7.0"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
@@ -238,6 +296,8 @@
 
         // Lógica de Permissão para Visualizar Botões de Edição
         const isGestorSupremo = isSuperuser || userRole === 'Diretoria' || userRole === 'Admin';
+        // Pode confirmar presença do dia com selfie: supervisor (Minha Equipe) ou gestor
+        const podeConfirmarDia = isGestorSupremo || userRole === 'Supervisor';
 
         if (userRole === 'Vendedor' && !isSuperuser) {
             alert('Acesso restrito a gestores.');
@@ -246,8 +306,14 @@
         
         const API_MOTIVOS = '/api/presenca/motivos/';
         const API_REGISTROS = '/api/presenca/registros/';
+        const API_CONFIRMACAO_DIA = '/api/presenca/confirmacao-dia/';
 
         let motivosDisponiveis = [];
+        let cameraStreamSelfie = null;
+        let selfieBlobCapturado = null;
+        let selfieLat = null;
+        let selfieLng = null;
+        let selfieEndereco = null;  // endereço completo (reverse geocoding)
         let activeTab = 'minha-equipe';
         let modalAusencia;
 
@@ -286,6 +352,7 @@
 
             carregarMotivos();
             carregarDadosIniciais();
+            setupSelfieModalHandlers();
         });
 
         window.switchTab = function(tabName, element) {
@@ -293,6 +360,220 @@
             document.querySelectorAll('.nav-link').forEach(btn => btn.classList.remove('active'));
             element.classList.add('active');
             carregarDadosIniciais();
+        }
+
+        function atualizarVisibilidadeConfirmacaoDia() {
+            const container = document.getElementById('container-confirmacao-dia');
+            if (!container) return;
+            // Barra com "Dia confirmado" + "Ver foto" só para Diretoria/Admin (foto não deve aparecer para outros)
+            const isDiretoriaOrAdmin = (userRole === 'Diretoria' || userRole === 'Admin' || isSuperuser);
+            if (activeTab === 'minha-equipe' && isDiretoriaOrAdmin) {
+                container.classList.remove('restricted-access');
+                container.style.display = 'block';
+            } else {
+                container.style.display = 'none';
+            }
+        }
+
+        async function carregarStatusConfirmacaoDia() {
+            const data = document.getElementById('data-presenca').value;
+            if (!data) return;
+            const badgeEl = document.getElementById('badge-dia-confirmado');
+            const linkEl = document.getElementById('link-ver-foto');
+            const isDiretoriaOrAdmin = (userRole === 'Diretoria' || userRole === 'Admin' || isSuperuser);
+            try {
+                const res = await apiClient.get(`${API_CONFIRMACAO_DIA}?data=${data}`);
+                // Badge + link "Ver foto" só para Diretoria/Admin (foto não deve aparecer para outros)
+                if (res.data && res.data.confirmado && res.data.detalhe && isDiretoriaOrAdmin) {
+                    badgeEl.style.display = 'flex';
+                    if (res.data.detalhe.foto_url && linkEl) {
+                        linkEl.href = res.data.detalhe.foto_url;
+                        linkEl.style.display = 'inline-block';
+                    }
+                } else {
+                    badgeEl.style.display = 'none';
+                    if (linkEl) linkEl.style.display = 'none';
+                }
+            } catch (e) {
+                badgeEl.style.display = 'none';
+                if (linkEl) linkEl.style.display = 'none';
+            }
+        }
+
+        function pararCameraSelfie() {
+            if (cameraStreamSelfie) {
+                cameraStreamSelfie.getTracks().forEach(t => t.stop());
+                cameraStreamSelfie = null;
+            }
+        }
+
+        window.abrirModalSelfie = async function() {
+            const modal = document.getElementById('modal-selfie');
+            const video = document.getElementById('camera-preview');
+            const stepCamera = document.getElementById('selfie-step-camera');
+            const stepPreview = document.getElementById('selfie-step-preview');
+            const statusEl = document.getElementById('selfie-status');
+            selfieBlobCapturado = null;
+            selfieLat = null;
+            selfieLng = null;
+            selfieEndereco = null;
+            stepCamera.classList.add('active');
+            stepPreview.classList.remove('active');
+            document.getElementById('selfie-preview-img').src = '';
+            statusEl.textContent = 'Solicitando permissão da câmera e localização...';
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+                cameraStreamSelfie = stream;
+                video.srcObject = stream;
+                statusEl.textContent = 'Câmera ativa. Obtenção de localização em segundo plano.';
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                        selfieLat = pos.coords.latitude;
+                        selfieLng = pos.coords.longitude;
+                        statusEl.textContent = 'Câmera ativa. Obtendo endereço... Clique em "Tirar foto".';
+                        // Reverse geocoding para endereço completo (Nominatim exige User-Agent)
+                        fetch(`https://nominatim.openstreetmap.org/reverse?lat=${selfieLat}&lon=${selfieLng}&format=json&addressdetails=1`, {
+                            headers: { 'Accept': 'application/json', 'User-Agent': 'PresencaRecord/1.0' }
+                        }).then(r => r.json()).then(data => {
+                            if (data) {
+                                const addr = data.address;
+                                if (addr) {
+                                    const partes = [];
+                                    if (addr.road) partes.push(addr.road + (addr.house_number ? ' ' + addr.house_number : ''));
+                                    else if (addr.pedestrian) partes.push(addr.pedestrian);
+                                    if (addr.neighbourhood && !partes.includes(addr.neighbourhood)) partes.push(addr.neighbourhood);
+                                    if (addr.suburb && !partes.includes(addr.suburb)) partes.push(addr.suburb);
+                                    const cidade = addr.city || addr.town || addr.village || addr.municipality || addr.county;
+                                    if (cidade) partes.push(cidade);
+                                    if (addr.state) partes.push(addr.state);
+                                    if (addr.postcode) partes.push(addr.postcode);
+                                    if (addr.country) partes.push(addr.country);
+                                    selfieEndereco = partes.filter(Boolean).join(', ');
+                                }
+                                if (!selfieEndereco && data.display_name) selfieEndereco = data.display_name;
+                                statusEl.textContent = selfieEndereco ? 'Câmera ativa. Endereço obtido. Clique em "Tirar foto".' : 'Câmera ativa. Local obtido. Clique em "Tirar foto".';
+                            }
+                        }).catch(() => {
+                            statusEl.textContent = 'Câmera ativa. Local obtido. Clique em "Tirar foto".';
+                        });
+                    },
+                    () => { statusEl.textContent = 'Câmera ativa. Local indisponível (opcional). Clique em "Tirar foto".'; },
+                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                );
+            } catch (err) {
+                statusEl.textContent = 'Erro: não foi possível acessar a câmera. ' + (err.message || '');
+                return;
+            }
+
+            const modalBs = new bootstrap.Modal(modal);
+            modalBs.show();
+            modal.addEventListener('hidden.bs.modal', function onHidden() {
+                modal.removeEventListener('hidden.bs.modal', onHidden);
+                pararCameraSelfie();
+                video.srcObject = null;
+            }, { once: true });
+        };
+
+        function setupSelfieModalHandlers() {
+            const modal = document.getElementById('modal-selfie');
+            const video = document.getElementById('camera-preview');
+            const canvas = document.getElementById('selfie-canvas');
+            const ctx = canvas.getContext('2d');
+            const stepCamera = document.getElementById('selfie-step-camera');
+            const stepPreview = document.getElementById('selfie-step-preview');
+            const previewImg = document.getElementById('selfie-preview-img');
+
+            document.getElementById('btn-tirar-foto').addEventListener('click', function() {
+                if (!video.srcObject || video.readyState < 2) return;
+                const w = video.videoWidth;
+                const h = video.videoHeight;
+                canvas.width = w;
+                canvas.height = h;
+                ctx.drawImage(video, 0, 0);
+                const now = new Date();
+                const dataStr = now.toLocaleDateString('pt-BR') + ' ' + now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                let localStr = 'Local indisponível';
+                if (selfieEndereco) {
+                    localStr = selfieEndereco;
+                } else if (selfieLat != null && selfieLng != null) {
+                    localStr = selfieLat.toFixed(5) + ', ' + selfieLng.toFixed(5);
+                }
+                ctx.font = '600 14px Arial';
+                const maxW = w - 20;
+                const lineH = 18;
+                function wrapText(text, maxWidth) {
+                    const words = text.split(/\s+/);
+                    const lines = [];
+                    let cur = '';
+                    for (const wd of words) {
+                        const test = cur ? cur + ' ' + wd : wd;
+                        if (ctx.measureText(test).width > maxWidth && cur) {
+                            lines.push(cur);
+                            cur = wd;
+                        } else cur = test;
+                    }
+                    if (cur) lines.push(cur);
+                    return lines;
+                }
+                const localLines = wrapText('Local: ' + localStr, maxW);
+                const barH = 20 + lineH * (1 + localLines.length);
+                ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                ctx.fillRect(0, h - barH, w, barH);
+                ctx.fillStyle = '#fff';
+                ctx.fillText('Data: ' + dataStr, 10, h - barH + 16);
+                localLines.forEach((line, i) => {
+                    ctx.fillText(line, 10, h - barH + 16 + lineH * (i + 1));
+                });
+                canvas.toBlob(function(blob) {
+                    if (!blob) return;
+                    selfieBlobCapturado = blob;
+                    previewImg.src = canvas.toDataURL('image/jpeg', 0.9);
+                    stepCamera.classList.remove('active');
+                    stepPreview.classList.add('active');
+                }, 'image/jpeg', 0.9);
+            });
+
+            document.getElementById('btn-tirar-outra').addEventListener('click', function() {
+                stepPreview.classList.remove('active');
+                stepCamera.classList.add('active');
+                previewImg.src = '';
+                selfieBlobCapturado = null;
+            });
+
+            document.getElementById('btn-enviar-selfie').addEventListener('click', async function() {
+                if (!selfieBlobCapturado) return;
+                const data = document.getElementById('data-presenca').value;
+                const btn = this;
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Enviando...';
+                const formData = new FormData();
+                formData.append('foto', selfieBlobCapturado, 'selfie.jpg');
+                formData.append('data', data);
+                if (selfieLat != null) formData.append('latitude', selfieLat);
+                if (selfieLng != null) formData.append('longitude', selfieLng);
+                try {
+                    const token = localStorage.getItem('accessToken');
+                    const res = await fetch(API_CONFIRMACAO_DIA, {
+                        method: 'POST',
+                        headers: { 'Authorization': 'Bearer ' + token },
+                        body: formData
+                    });
+                    if (!res.ok) {
+                        const err = await res.json().catch(() => ({}));
+                        throw new Error(err.detail || 'Erro ao enviar');
+                    }
+                    bootstrap.Modal.getInstance(modal).hide();
+                    pararCameraSelfie();
+                    carregarStatusConfirmacaoDia();
+                    carregarDadosIniciais(); // Desbloqueia e mostra a lista de usuários para confirmar presença
+                    alert('Presença do dia confirmada com selfie. Agora confirme quem está presente.');
+                } catch (e) {
+                    alert('Erro ao enviar: ' + (e.message || e));
+                }
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-send"></i> Confirmar e enviar';
+            });
         }
 
         async function carregarMotivos() {
@@ -317,6 +598,33 @@
             const data = document.getElementById('data-presenca').value;
             const grid = document.getElementById('grid-colaboradores');
             grid.innerHTML = '<div class="col-12 text-center py-5"><div class="spinner-border text-primary"></div><p class="mt-2">Carregando...</p></div>';
+
+            // Na aba Minha Equipe, só mostra a lista de usuários DEPOIS que a selfie do dia foi salva
+            if (activeTab === 'minha-equipe' && podeConfirmarDia) {
+                try {
+                    const confRes = await apiClient.get(`${API_CONFIRMACAO_DIA}?data=${data}`);
+                    if (!confRes.data || !confRes.data.confirmado) {
+                        atualizarVisibilidadeConfirmacaoDia();
+                        grid.innerHTML = `
+                            <div class="col-12 text-center py-5">
+                                <div class="alert alert-info d-inline-block text-start">
+                                    <h5 class="alert-heading"><i class="bi bi-camera-fill"></i> Primeiro passo</h5>
+                                    <p class="mb-0">Tire a selfie com o time para desbloquear a lista e confirmar a presença do dia.</p>
+                                </div>
+                                <div class="mt-4">
+                                    <button type="button" class="btn btn-primary btn-lg" onclick="abrirModalSelfie()">
+                                        <i class="bi bi-camera-fill"></i> Tirar selfie e desbloquear lista
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                        carregarStatusConfirmacaoDia();
+                        return;
+                    }
+                } catch (e) {
+                    // Erro na API: mostra lista mesmo assim para não travar
+                }
+            }
 
             const equipeEndpoint = (activeTab === 'todos-usuarios')
                 ? '/api/presenca/todos-usuarios/?participa_controle_presenca=true'
@@ -380,6 +688,8 @@
 
                 if(Array.isArray(equipe)) {
                     renderizarCards(equipe, presencasDoDia || []);
+                    atualizarVisibilidadeConfirmacaoDia();
+                    carregarStatusConfirmacaoDia();
                 } else if (equipe && equipe.detail) {
                     grid.innerHTML = `<div class="col-12 text-center text-danger py-4">Erro ao carregar equipe: ${equipe.detail}</div>`;
                 } else {
