@@ -142,7 +142,15 @@ class PAPNioAutomation:
     Cada instância representa uma sessão de venda.
     """
     
-    def __init__(self, matricula_pap: str, senha_pap: str, vendedor_nome: str = None, headless: bool = True):
+    def __init__(
+        self,
+        matricula_pap: str,
+        senha_pap: str,
+        vendedor_nome: str = None,
+        headless: bool = True,
+        capture_screenshots: bool = None,
+        run_id: str = None,
+    ):
         """
         Inicializa a automação PAP.
         
@@ -151,11 +159,21 @@ class PAPNioAutomation:
             senha_pap: Senha + OTP do PAP
             vendedor_nome: Nome do vendedor (para logs)
             headless: Se False, abre o navegador visível (para testes)
+            capture_screenshots: Se True, salva screenshot em cada etapa (produção). None = usa settings.PAP_CAPTURE_SCREENSHOTS
+            run_id: Identificador da sessão (ex: sessao_id) para nomear os arquivos de screenshot
         """
         self.matricula_pap = matricula_pap
         self.senha_pap = senha_pap
         self.vendedor_nome = vendedor_nome or matricula_pap
         self.headless = headless
+        if capture_screenshots is None:
+            try:
+                from django.conf import settings
+                capture_screenshots = getattr(settings, 'PAP_CAPTURE_SCREENSHOTS', False)
+            except Exception:
+                capture_screenshots = False
+        self.capture_screenshots = capture_screenshots
+        self.run_id = run_id or str(int(time.time()))
         
         self.playwright = None  # sync_playwright instance; precisa .stop() para encerrar event loop
         self.browser: Optional[Browser] = None
@@ -180,6 +198,27 @@ class PAPNioAutomation:
     def _garantir_diretorio_sessoes(self):
         """Garante que o diretório de sessões existe"""
         os.makedirs(STORAGE_STATE_DIR, exist_ok=True)
+
+    def _capture_screenshot(self, step_name: str) -> None:
+        """Se PAP_CAPTURE_SCREENSHOTS estiver ativo, salva screenshot em downloads/pap_venda_*.png."""
+        if not self.capture_screenshots or not self.page:
+            return
+        try:
+            from django.conf import settings
+            base_dir = getattr(settings, 'BASE_DIR', None)
+            if not base_dir:
+                return
+            downloads_dir = os.path.join(base_dir, 'downloads')
+            os.makedirs(downloads_dir, exist_ok=True)
+            safe_run = str(self.run_id).replace(os.sep, '_').replace('..', '_')[:50]
+            safe_step = re.sub(r'[^\w\-]', '_', step_name)[:40]
+            ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"pap_venda_{safe_run}_{safe_step}_{ts}.png"
+            filepath = os.path.join(downloads_dir, filename)
+            self.page.screenshot(path=filepath, full_page=False)
+            logger.info(f"[PAP] Screenshot salvo: {filename}")
+        except Exception as e:
+            logger.warning(f"[PAP] Erro ao salvar screenshot: {e}")
     
     def _set_valor_react(self, selector: str, valor: str) -> bool:
         """
@@ -354,7 +393,8 @@ class PAPNioAutomation:
                     return False, msg
             
             self.logado = True
-            
+            self._capture_screenshot("01_login_ok")
+
             # Salvar estado da sessão
             try:
                 self.context.storage_state(path=self.storage_state_path)
@@ -599,22 +639,31 @@ class PAPNioAutomation:
             self.page.wait_for_timeout(500)
             
             # 4b. Verificar múltiplos endereços (dropdown "Endereço de instalação")
-            inp_end_inst = self.page.query_selector(end_inst_sel)
-            if inp_end_inst:
+            for end_sel in [
+                end_inst_sel,
+                'input[placeholder="Endereço de instalação"]',
+                'input[placeholder*="ndereço de instalação"]',
+                'input[placeholder*="Endereço"]',
+            ]:
+                inp_end_inst = self.page.query_selector(end_sel)
+                if not inp_end_inst:
+                    continue
                 try:
                     inp_end_inst.click()
-                    self.page.wait_for_timeout(600)
+                    self.page.wait_for_timeout(1000)
                     for sel_ul in [
                         'input[placeholder="Endereço de instalação"] ~ ul li',
+                        'input[placeholder*="Endereço"] ~ ul li',
+                        '[role="listbox"] li', '[role="option"]',
                         'ul.sc-fQkuQJ.cUdcXF li', 'ul[class*="fQkuQJ"] li',
                         'ul[class*="cUdcXF"] li', 'ul li.sc-epGmkI',
+                        'ul[class*="dropdown"] li', 'ul[class*="menu"] li',
                     ]:
                         lis = [el for el in self.page.query_selector_all(sel_ul) if el.is_visible()]
-                        # Filtrar: endereços têm formato "Rua X, 123 - Bairro, Cidade - MG" (contém " - " e UF)
                         enderecos = []
                         for li in lis:
                             txt = (li.inner_text() or "").strip()
-                            if len(txt) > 20 and (" - " in txt or ", " in txt) and any(u in txt.upper() for u in ["MG", "SP", "RJ", "BA", "PR", "RS", "SC", "DF", "ES", "GO"]):
+                            if len(txt) > 15 and (" - " in txt or ", " in txt) and any(u in txt.upper() for u in ["MG", "SP", "RJ", "BA", "PR", "RS", "SC", "DF", "ES", "GO"]):
                                 enderecos.append({'indice': len(enderecos) + 1, 'texto': txt})
                         if len(enderecos) >= 2:
                             self.dados_pedido['cep'] = cep
@@ -627,7 +676,11 @@ class PAPNioAutomation:
                                     li.click()
                                     self.page.wait_for_timeout(400)
                                     break
-                        break
+                        if enderecos or lis:
+                            break
+                    else:
+                        self.page.wait_for_timeout(500)
+                    break
                 except Exception:
                     pass
             
@@ -964,10 +1017,12 @@ class PAPNioAutomation:
                 btn_cont = self.page.query_selector('button:has-text("Continuar")')
                 if btn_cont:
                     btn_cont.click()
+                    # Aguardar tela de cadastro do cliente (CPF) carregar; timeout maior para rede lenta
                     try:
-                        self.page.wait_for_selector('input[name="documento"]', state="visible", timeout=10000)
+                        self.page.wait_for_selector('input[name="documento"]', state="visible", timeout=20000)
                     except Exception:
-                        self.page.wait_for_timeout(2000)
+                        self.page.wait_for_timeout(3000)
+                self._capture_screenshot("02_viabilidade_disponivel")
                 self.etapa_atual = 2
                 self.dados_pedido['cep'] = cep
                 self.dados_pedido['numero'] = numero
@@ -991,14 +1046,25 @@ class PAPNioAutomation:
             btn_avancar = self.page.query_selector('button:has-text("Avançar"):not([disabled])')
             if btn_avancar:
                 btn_avancar.click()
+                self.page.wait_for_timeout(1500)
             
-            # Aguardar campo CPF/CNPJ (documento) aparecer
-            cpf_selector = SELETORES['etapa3']['cpf']
-            try:
-                self.page.wait_for_selector(cpf_selector, state="visible", timeout=10000)
-            except Exception:
+            # Aguardar campo CPF/CNPJ (documento) aparecer - timeout alto (rede/React podem demorar)
+            cpf_selector = None
+            for sel in [
+                SELETORES['etapa3']['cpf'],
+                'input[name="documento"]',
+                'input[name=documento]',
+                'input[placeholder*="CPF"], input[placeholder*="cpf"], input[placeholder*="ocumento"]',
+            ]:
+                try:
+                    self.page.wait_for_selector(sel, state="visible", timeout=20000)
+                    cpf_selector = sel
+                    break
+                except Exception:
+                    continue
+            if not cpf_selector:
                 cpf_selector = 'input[name=documento]'
-                self.page.wait_for_selector(cpf_selector, state="visible", timeout=5000)
+                self.page.wait_for_selector(cpf_selector, state="visible", timeout=15000)
             
             # Preencher CPF/CNPJ (apenas dígitos)
             cpf_limpo = re.sub(r'\D', '', cpf)
@@ -1025,6 +1091,7 @@ class PAPNioAutomation:
             if self._fechar_modal_erro_ops():
                 return False, "CPF não encontrado ou inválido.", None
             
+            self._capture_screenshot("03_cpf_cliente_ok")
             # Extrair dados do cliente (nome, nome_mae, data_nascimento para CRM)
             dados_cliente = {}
             nome_elem = self.page.query_selector(SELETORES['etapa3']['nome_cliente'])

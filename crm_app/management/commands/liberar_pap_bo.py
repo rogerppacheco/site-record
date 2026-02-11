@@ -4,14 +4,20 @@ Comando para liberar manualmente BOs PAP travados (PapBoEmUso).
 Use quando uma sessão de venda falhou e o BO ficou marcado como "em uso"
 sem ser liberado (ex: timeout ao acessar PAP, crash, etc).
 
+Quando a limpeza roda:
+- Automático: a cada tentativa de VENDER, locks com mais de 30 min são removidos.
+- Manual: use este comando para liberar agora.
+
 Exemplos:
+  python manage.py liberar_pap_bo --listar          # exibe BOs em uso
+  python manage.py liberar_pap_bo --expirados       # remove só locks > 30 min
   python manage.py liberar_pap_bo --telefone=553188804000
-  python manage.py liberar_pap_bo --todos
-  python manage.py liberar_pap_bo --listar  # apenas exibe os BOs em uso
+  python manage.py liberar_pap_bo --todos           # libera TODOS os BOs
 """
 from django.core.management.base import BaseCommand
 
 from crm_app.models import PapBoEmUso
+from crm_app.pool_bo_pap import limpar_sessoes_expiradas
 
 
 class Command(BaseCommand):
@@ -29,6 +35,11 @@ class Command(BaseCommand):
             help='Libera TODOS os BOs atualmente em uso',
         )
         parser.add_argument(
+            '--expirados',
+            action='store_true',
+            help='Remove apenas locks com mais de 30 minutos (mesma regra automática)',
+        )
+        parser.add_argument(
             '--listar',
             action='store_true',
             help='Lista os BOs em uso sem liberar',
@@ -43,11 +54,13 @@ class Command(BaseCommand):
             self._liberar_por_telefone(options['telefone'])
         elif options['todos']:
             self._liberar_todos()
+        elif options['expirados']:
+            self._liberar_expirados()
         else:
             self.stdout.write(
                 self.style.WARNING(
-                    'Use --telefone=NNNN, --todos ou --listar. '
-                    'Exemplo: liberar_pap_bo --telefone=553188804000'
+                    'Use --listar, --expirados, --telefone=NNNN ou --todos. '
+                    'Exemplo: liberar_pap_bo --todos  (libera todos agora)'
                 )
             )
 
@@ -72,6 +85,13 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.WARNING(f'Nenhum BO encontrado para telefone {telefone}')
             )
+
+    def _liberar_expirados(self):
+        n = limpar_sessoes_expiradas()
+        if n > 0:
+            self.stdout.write(self.style.SUCCESS(f'Liberados {n} BO(s) expirado(s) (> 30 min).'))
+        else:
+            self.stdout.write(self.style.SUCCESS('Nenhum lock expirado para remover.'))
 
     def _liberar_todos(self):
         total = PapBoEmUso.objects.count()

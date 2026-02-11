@@ -20,6 +20,23 @@ Vendedores (perfil Vendedor) não conseguem realizar vendas pelo site [pap.nioin
 - **Timeout:** locks com mais de 30 minutos são liberados automaticamente (sessões travadas)
 - **Mensagem quando todos ocupados:** "TODOS OS ACESSOS BACKOFFICE ESTÃO EM USO - Aguarde alguns minutos"
 
+## Quando as sessões são limpas
+
+1. **Automático (a cada VENDER)**  
+   Ao chamar `obter_login_bo()` (quando o vendedor confirma com SIM), o sistema remove **locks com mais de 30 minutos**. Ou seja: toda vez que alguém tenta VENDER, locks expirados são limpos antes de ver se há BO livre.
+
+2. **Manual (comando)**  
+   Use quando quiser liberar **agora** sem esperar 30 min ou quando todos os BOs estão ocupados e você quer liberar todos:
+   ```bash
+   python manage.py liberar_pap_bo --listar      # ver quem está usando
+   python manage.py liberar_pap_bo --expirados    # remove só locks > 30 min
+   python manage.py liberar_pap_bo --todos        # libera TODOS os BOs
+   python manage.py liberar_pap_bo --telefone=553188804000  # libera um vendedor
+   ```
+
+3. **Função em código**  
+   - `crm_app.pool_bo_pap.limpar_sessoes_expiradas()` — remove locks > 30 min e retorna quantos foram removidos (pode ser chamada em cron ou em tarefas periódicas).
+
 ## Requisitos
 
 ### Vendedor (com autorizar_venda_sem_auditoria)

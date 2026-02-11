@@ -9849,6 +9849,17 @@ def listar_screenshots_debug(request):
                     })
             except Exception as e_png:
                 debug_info['erro_buscar_png'] = str(e_png)
+            # Screenshots da automação PAP (produção)
+            try:
+                for file in downloads_dir.glob('pap_venda_*.png'):
+                    screenshots.append({
+                        'nome': file.name,
+                        'tamanho': file.stat().st_size,
+                        'data_modificacao': datetime.fromtimestamp(file.stat().st_mtime).isoformat(),
+                        'url': f"/api/crm/debug/screenshots/{file.name}/"
+                    })
+            except Exception as e_pap:
+                debug_info['erro_buscar_pap'] = str(e_pap)
             
             # Buscar HTMLs de debug também
             try:
@@ -9896,10 +9907,12 @@ def baixar_screenshot_debug(request, nome_arquivo):
     GET /api/crm/debug/screenshots/<nome_arquivo>/
     """
     try:
-        # Validar nome do arquivo (segurança)
-        if not nome_arquivo.startswith('debug_nio_negocia_'):
+        # Validar nome do arquivo (segurança: sem path traversal, apenas prefixos permitidos)
+        if '/' in nome_arquivo or '\\' in nome_arquivo or '..' in nome_arquivo:
+            return JsonResponse({'erro': 'Nome de arquivo inválido.'}, status=400)
+        if not (nome_arquivo.startswith('debug_nio_negocia_') or nome_arquivo.startswith('pap_venda_')):
             return JsonResponse({
-                'erro': 'Nome de arquivo inválido. Apenas screenshots de debug do Nio Negocia são permitidos.'
+                'erro': 'Nome de arquivo inválido. Apenas screenshots de debug (Nio Negocia ou PAP venda) são permitidos.'
             }, status=400)
         
         # Caminho para a pasta downloads
