@@ -9814,8 +9814,8 @@ def listar_screenshots_debug(request):
     GET /api/crm/debug/screenshots/
     """
     try:
-        # Caminho para a pasta downloads (raiz do projeto)
-        base_dir = Path(__file__).parent.parent.parent
+        # Caminho para a pasta downloads: usar settings.BASE_DIR (em produção Path(__file__) pode ser /)
+        base_dir = Path(settings.BASE_DIR)
         downloads_dir = base_dir / 'downloads'
         
         # Debug: informações sobre o diretório
@@ -9915,8 +9915,8 @@ def baixar_screenshot_debug(request, nome_arquivo):
                 'erro': 'Nome de arquivo inválido. Apenas screenshots de debug (Nio Negocia ou PAP venda) são permitidos.'
             }, status=400)
         
-        # Caminho para a pasta downloads
-        base_dir = Path(__file__).parent.parent.parent
+        # Caminho para a pasta downloads (usar settings.BASE_DIR para produção)
+        base_dir = Path(settings.BASE_DIR)
         downloads_dir = base_dir / 'downloads'
         arquivo = downloads_dir / nome_arquivo
         

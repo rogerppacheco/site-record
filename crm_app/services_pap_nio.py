@@ -371,6 +371,8 @@ class PAPNioAutomation:
             )
             
             self.page = self.context.new_page()
+            # Timeout padrão alto para evitar "Timeout 5000ms" em produção (rede/React lentos)
+            self.page.set_default_timeout(25000)
             self.sessao_iniciada = True
             
             # Navegar para o PAP
