@@ -80,7 +80,15 @@ Em produção não há tela, então não dá para "abrir o navegador" no servido
 2. A automação salva imagens em `downloads/` como `pap_venda_{sessao_id}_{etapa}_{timestamp}.png` (etapas: `01_login_ok`, `02_viabilidade_disponivel`, `03_cpf_cliente_ok`, etc.).
 3. **Ver os screenshots:** em produção acesse `GET /api/crm/debug/screenshots/` para listar e `GET /api/crm/debug/screenshots/{nome_arquivo}/` para baixar.
 
-**Nota:** Em plataformas como Railway a pasta `downloads/` pode ser efêmera; para guardar por mais tempo, considere storage externo (S3, etc.).
+### Salvar no OneDrive (junto com as outras ferramentas)
+
+Se você já usa OneDrive no projeto (MS_CLIENT_ID, MS_REFRESH_TOKEN, etc.), pode enviar os screenshots para a mesma conta:
+
+1. **Variáveis de ambiente:** `PAP_CAPTURE_SCREENSHOTS=true` e `PAP_SCREENSHOTS_ONEDRIVE=true`
+2. Opcional: `PAP_ONEDRIVE_FOLDER=NomeDaPasta` (padrão: `PAP_Screenshots`). Os arquivos ficam em `{MS_DRIVE_FOLDER_ROOT}/{PAP_ONEDRIVE_FOLDER}/`, por exemplo `CDOI_Record_Vertical/PAP_Screenshots/`.
+3. Cada screenshot continua sendo salvo em `downloads/` e também é enviado ao OneDrive; assim você vê tudo no mesmo lugar das outras ferramentas e não perde os arquivos se o servidor reiniciar.
+
+**Nota:** Em plataformas como Railway a pasta `downloads/` pode ser efêmera; com OneDrive ativo os screenshots ficam guardados no drive.
 
 ---
 

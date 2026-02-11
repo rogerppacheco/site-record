@@ -280,6 +280,13 @@ PAP_HEADLESS = config('PAP_HEADLESS', default=True, cast=lambda v: str(v).lower(
 # Variável de ambiente: PAP_CAPTURE_SCREENSHOTS=true
 PAP_CAPTURE_SCREENSHOTS = config('PAP_CAPTURE_SCREENSHOTS', default=False, cast=lambda v: str(v).lower() in ('true', '1', 'yes'))
 
+# PAP_SCREENSHOTS_ONEDRIVE: Se True, além de salvar em downloads/, envia cada screenshot para o OneDrive
+# (mesma conta configurada em MS_CLIENT_ID / MS_REFRESH_TOKEN, pasta em MS_DRIVE_FOLDER_ROOT).
+# Variável de ambiente: PAP_SCREENSHOTS_ONEDRIVE=true
+PAP_SCREENSHOTS_ONEDRIVE = config('PAP_SCREENSHOTS_ONEDRIVE', default=False, cast=lambda v: str(v).lower() in ('true', '1', 'yes'))
+# Pasta no OneDrive (dentro de MS_DRIVE_FOLDER_ROOT). Ex: PAP_Screenshots → CDOI_Record_Vertical/PAP_Screenshots/
+PAP_ONEDRIVE_FOLDER = config('PAP_ONEDRIVE_FOLDER', default='PAP_Screenshots')
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
