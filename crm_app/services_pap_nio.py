@@ -199,11 +199,19 @@ class PAPNioAutomation:
         """Garante que o diretório de sessões existe"""
         os.makedirs(STORAGE_STATE_DIR, exist_ok=True)
 
-    def _capture_screenshot(self, step_name: str) -> None:
-        """Se PAP_CAPTURE_SCREENSHOTS estiver ativo, salva screenshot em downloads/pap_venda_*.png e opcionalmente no OneDrive."""
+    def _capture_screenshot(self, step_name: str, wait_selector: str = None, wait_timeout_ms: int = 15000) -> None:
+        """Se PAP_CAPTURE_SCREENSHOTS estiver ativo, espera a tela ficar pronta, depois salva screenshot e opcionalmente envia ao OneDrive."""
         if not self.capture_screenshots or not self.page:
             return
         try:
+            # Esperar elemento indicar que a tela está pronta (evita print do loading/spinner)
+            if wait_selector:
+                try:
+                    self.page.wait_for_selector(wait_selector, state="visible", timeout=wait_timeout_ms)
+                except Exception:
+                    pass
+            # Pequena pausa para a UI terminar de pintar (React/animations)
+            self.page.wait_for_timeout(1500)
             from django.conf import settings
             base_dir = getattr(settings, 'BASE_DIR', None)
             if not base_dir:
@@ -406,7 +414,12 @@ class PAPNioAutomation:
                     return False, msg
             
             self.logado = True
-            self._capture_screenshot("01_login_ok")
+            # Screenshot só depois da primeira tela do PAP carregar (evita print do spinner)
+            self._capture_screenshot(
+                "01_login_ok",
+                wait_selector=f"{SELETORES['etapa1']['matricula_vendedor']}, button:has-text('Avançar')",
+                wait_timeout_ms=15000,
+            )
 
             # Salvar estado da sessão
             try:
@@ -1035,7 +1048,7 @@ class PAPNioAutomation:
                         self.page.wait_for_selector('input[name="documento"]', state="visible", timeout=20000)
                     except Exception:
                         self.page.wait_for_timeout(3000)
-                self._capture_screenshot("02_viabilidade_disponivel")
+                self._capture_screenshot("02_viabilidade_disponivel", wait_selector='input[name="documento"]', wait_timeout_ms=5000)
                 self.etapa_atual = 2
                 self.dados_pedido['cep'] = cep
                 self.dados_pedido['numero'] = numero
@@ -1104,7 +1117,7 @@ class PAPNioAutomation:
             if self._fechar_modal_erro_ops():
                 return False, "CPF não encontrado ou inválido.", None
             
-            self._capture_screenshot("03_cpf_cliente_ok")
+            self._capture_screenshot("03_cpf_cliente_ok", wait_selector='button:has-text("Avançar"):not([disabled])', wait_timeout_ms=5000)
             # Extrair dados do cliente (nome, nome_mae, data_nascimento para CRM)
             dados_cliente = {}
             nome_elem = self.page.query_selector(SELETORES['etapa3']['nome_cliente'])
