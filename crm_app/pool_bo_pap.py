@@ -28,6 +28,16 @@ def _limpar_locks_expirados():
     deletados = PapBoEmUso.objects.filter(locked_at__lt=limite).delete()
     if deletados[0] > 0:
         logger.info(f"[POOL BO] Liberados {deletados[0]} lock(s) expirado(s)")
+    return deletados[0]
+
+
+def limpar_sessoes_expiradas():
+    """
+    Limpa sessões BO (PapBoEmUso) com mais de LOCK_TIMEOUT_MINUTOS.
+    Chamada automaticamente em obter_login_bo(); pode ser usada em cron ou manualmente.
+    Retorna o número de registros removidos.
+    """
+    return _limpar_locks_expirados()
 
 
 def obter_login_bo(

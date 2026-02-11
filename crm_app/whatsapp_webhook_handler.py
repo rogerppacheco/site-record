@@ -1687,10 +1687,14 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
             try:
                 bo = Usuario.objects.get(id=bo_id)
                 vendedor_matricula = dados.get('matricula_pap')
+                from django.conf import settings
+                headless = getattr(settings, 'PAP_HEADLESS', True)
                 automacao = PAPNioAutomation(
                     matricula_pap=bo.matricula_pap,
                     senha_pap=bo.senha_pap,
                     vendedor_nome=dados.get('vendedor_nome', ''),
+                    headless=headless,
+                    run_id=str(sessao.id),
                 )
                 sucesso_login, _ = automacao.iniciar_sessao()
                 if not sucesso_login:
@@ -2612,10 +2616,14 @@ def _executar_venda_pap_background(
     try:
         logger.info(f"[VENDA PAP] Iniciando automação em background para {vendedor_nome} (BO id={bo_usuario_id})")
 
+        from django.conf import settings
+        headless = getattr(settings, 'PAP_HEADLESS', True)
         automacao = PAPNioAutomation(
             matricula_pap=bo_matricula,
             senha_pap=bo_senha,
             vendedor_nome=vendedor_nome,
+            headless=headless,
+            run_id=str(sessao_id),
         )
         
         # Etapa 0: Iniciar sessão

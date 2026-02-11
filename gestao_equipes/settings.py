@@ -267,6 +267,19 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 200 * 1024 * 1024  # 200MB
 FILE_UPLOAD_MAX_MEMORY_SIZE = 200 * 1024 * 1024  # 200MB
 
 # --- LOGGING PARA DEBUG NO HEROKU ---
+# ==============================================================================
+# AUTOMAÇÃO PAP (VENDER NO WHATSAPP)
+# ==============================================================================
+# PAP_HEADLESS: Se True (padrão), o navegador roda em segundo plano (produção).
+# Se False, o navegador abre na tela para você ver cada etapa (só use em teste local).
+# Variável de ambiente: PAP_HEADLESS=false para ver o navegador.
+PAP_HEADLESS = config('PAP_HEADLESS', default=True, cast=lambda v: str(v).lower() not in ('false', '0', 'no'))
+
+# PAP_CAPTURE_SCREENSHOTS: Se True, salva screenshot em cada etapa da venda PAP (em produção).
+# Os arquivos ficam em downloads/pap_venda_*.png e podem ser vistos em /api/crm/debug/screenshots/
+# Variável de ambiente: PAP_CAPTURE_SCREENSHOTS=true
+PAP_CAPTURE_SCREENSHOTS = config('PAP_CAPTURE_SCREENSHOTS', default=False, cast=lambda v: str(v).lower() in ('true', '1', 'yes'))
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
