@@ -239,6 +239,23 @@
                                     </div>
                                 </div>
                             </div>
+                            <div id="opcoes-gerada-os" style="display: none;">
+                                <p class="text-muted small mb-3 text-center">Gerada O.S automática?</p>
+                                <div class="row g-4">
+                                    <div class="col-6">
+                                        <button onclick="selecionarGeradaOs(true)" class="btn btn-outline-success w-100">
+                                            <i class="bi bi-check-circle"></i>
+                                            <span>Sim</span>
+                                        </button>
+                                    </div>
+                                    <div class="col-6">
+                                        <button onclick="selecionarGeradaOs(false)" class="btn btn-outline-danger w-100">
+                                            <i class="bi bi-x-circle"></i>
+                                            <span>Não</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -304,7 +321,8 @@
                 <div class="modal-body">
                     <form id="form-nova-venda">
                         <input type="hidden" name="forma_entrada" id="input-forma-entrada"><input type="hidden" id="id-venda-edicao">
-                        <input type="hidden" name="tem_fixo" id="input-tem-fixo" value="false"> 
+                        <input type="hidden" name="tem_fixo" id="input-tem-fixo" value="false">
+                        <input type="hidden" name="gerada_os_automatica" id="input-gerada-os-automatica" value="false"> 
                         <h6 class="text-primary border-bottom pb-2 mb-3">Dados do Cliente</h6>
                         <div class="row g-3">
                             <div class="col-12 col-md-6 position-relative">
@@ -343,6 +361,17 @@
                             <div class="col-12 col-md-6 d-none" id="container-status-gestao"><label class="fw-bold text-secondary">Status Tratamento</label><select class="form-select" name="status_tratamento" id="select-status-tratamento"></select></div>
                             <div class="col-12 col-md-6 d-none" id="container-status-esteira"><label class="fw-bold text-success">Status Esteira</label><select class="form-select border-success" name="status_esteira" id="select-status-esteira"></select></div>
                             <div class="col-12 col-md-6 d-none" id="container-vendedor-modal"><label class="fw-bold text-secondary">Vendedor (Responsável)</label><select class="form-select" name="vendedor" id="select-vendedor-modal"></select></div>
+                            <div class="col-12 d-none" id="container-gerada-os-auto">
+                                <label class="fw-bold text-secondary">Gerada O.S automática?</label>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="radio" id="gerada-os-sim" value="true" onchange="document.getElementById('input-gerada-os-automatica').value='true'">
+                                    <label class="form-check-label" for="gerada-os-sim">Sim</label>
+                                </div>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="radio" id="gerada-os-nao" value="false" checked onchange="document.getElementById('input-gerada-os-automatica').value='false'">
+                                    <label class="form-check-label" for="gerada-os-nao">Não</label>
+                                </div>
+                            </div>
                             <div class="col-12"><label>Observações</label><textarea class="form-control" name="observacoes" id="input-observacoes" rows="2" oninput="this.value = this.value.toUpperCase()"></textarea></div>
                         </div>
                         
@@ -394,6 +423,7 @@
         let vendaReemissaoId = null;
         let clienteTemp = null, debounceTimer, debounceRepTimer, viewAtual = 'minhas_vendas', userProfile = null;
         let dadosMixCache = null;
+        let vendedoresCache = [];
         let dashboardDataCache = {}; 
         let statusEsteiraAtual = ''; 
         let origemCadastroAtual = ''; 
@@ -418,9 +448,11 @@
                 modalOrigemEl.addEventListener('show.bs.modal', function () {
                     document.getElementById('opcoes-origem').style.display = 'block';
                     document.getElementById('opcoes-fixo').style.display = 'none';
+                    document.getElementById('opcoes-gerada-os').style.display = 'none';
                     origemCadastroAtual = '';
                     document.getElementById('input-forma-entrada').value = '';
                     document.getElementById('input-tem-fixo').value = 'false';
+                    document.getElementById('input-gerada-os-automatica').value = 'false';
                 });
             }
             
@@ -430,6 +462,9 @@
             modalMix = new bootstrap.Modal(document.getElementById('modalMix'));
             modalCep = new bootstrap.Modal(document.getElementById('modal-cep-nao-encontrado'));
             modalReemissao = new bootstrap.Modal(document.getElementById('modal-reemissao'));
+            
+            document.getElementById('modal-nova-venda')?.addEventListener('show.bs.modal', atualizarVisibilidadeGeradaOs);
+            document.getElementById('select-vendedor-modal')?.addEventListener('change', atualizarVisibilidadeGeradaOs);
             
             const hoje = new Date();
             document.getElementById('filtro-inicio').valueAsDate = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
@@ -679,6 +714,7 @@
         async function carregarVendedores() {
             try {
                 const vendedores = await apiFetch('/crm/lista-vendedores/');
+                vendedoresCache = vendedores || [];
                 const selectFiltro = document.getElementById('filtro-vendedor');
                 const selectModal = document.getElementById('select-vendedor-modal'); 
                 selectFiltro.innerHTML = '<option value="">Todos</option>';
@@ -690,6 +726,34 @@
                     });
                 }
             } catch(e) { console.error('Erro ao carregar vendedores', e); }
+        }
+
+        function atualizarVisibilidadeGeradaOs() {
+            const container = document.getElementById('container-gerada-os-auto');
+            if (!container) return;
+            const idEdicao = document.getElementById('id-venda-edicao')?.value;
+            // No create, o valor vem do modal-origem; no edit, mostramos o container se o vendedor tiver permissão
+            if (!idEdicao) {
+                container.classList.add('d-none');
+                return;
+            }
+            let mostrar = false;
+            try {
+                const selVend = document.getElementById('select-vendedor-modal');
+                const vid = selVend ? selVend.value : '';
+                const v = vendedoresCache.find(x => String(x.id) === String(vid));
+                mostrar = !!(v && v.autorizar_venda_automatica);
+                if (!mostrar && selVend && !vid) {
+                    const payload = jwt_decode(localStorage.getItem('accessToken') || '');
+                    mostrar = !!payload.autorizar_venda_automatica;
+                }
+            } catch(e) {}
+            container.classList.toggle('d-none', !mostrar);
+            if (!mostrar) {
+                const radioNao = document.getElementById('gerada-os-nao');
+                if (radioNao) radioNao.checked = true;
+                document.getElementById('input-gerada-os-automatica').value = 'false';
+            }
         }
 
         // =========================================================================
@@ -1095,6 +1159,27 @@
                 badge.className = (tipo === 'APP') ? 'badge bg-primary ms-2' : 'badge bg-secondary ms-2';
             }
 
+            let mostrarGeradaOs = false;
+            try {
+                const payload = jwt_decode(localStorage.getItem('accessToken') || '');
+                mostrarGeradaOs = !!payload.autorizar_venda_automatica;
+            } catch(e) {}
+
+            if (mostrarGeradaOs) {
+                document.getElementById('opcoes-fixo').style.display = 'none';
+                document.getElementById('opcoes-gerada-os').style.display = 'block';
+            } else {
+                document.getElementById('input-gerada-os-automatica').value = 'false';
+                abrirFormularioVenda();
+            }
+        }
+
+        function selecionarGeradaOs(valor) {
+            document.getElementById('input-gerada-os-automatica').value = valor ? 'true' : 'false';
+            abrirFormularioVenda();
+        }
+
+        function abrirFormularioVenda() {
             const containerDadosVenda = document.querySelector('form h6:nth-of-type(2)').nextElementSibling; 
             const containerEndereco = document.querySelector('form h6:nth-of-type(3)').nextElementSibling; 
             const headerDadosVenda = document.querySelector('form h6:nth-of-type(2)');
@@ -1456,6 +1541,20 @@
                 preencherSelectQuandoPronto('select-status-tratamento', venda.status_tratamento?.id || venda.status_tratamento || '');
                 preencherSelectQuandoPronto('select-vendedor-modal', venda.vendedor?.id || venda.vendedor || '');
 
+                // Gerada O.S automática (edição)
+                const divGeradaOs = document.getElementById('container-gerada-os-auto');
+                const vendedorTemPermissao = venda.vendedor_detalhes?.autorizar_venda_automatica || vendedoresCache.find(x => String(x.id) === String(venda.vendedor?.id || venda.vendedor))?.autorizar_venda_automatica;
+                const inputGeradaOs = document.getElementById('input-gerada-os-automatica');
+                if (divGeradaOs && inputGeradaOs) {
+                    divGeradaOs.classList.toggle('d-none', !vendedorTemPermissao);
+                    const isSim = venda.gerada_os_automatica === true || venda.gerada_os_automatica === 'true';
+                    inputGeradaOs.value = isSim ? 'true' : 'false';
+                    if (vendedorTemPermissao) {
+                        document.getElementById('gerada-os-sim').checked = isSim;
+                        document.getElementById('gerada-os-nao').checked = !isSim;
+                    }
+                }
+
                 let obs = venda.observacoes;
                 if (obs === undefined || obs === null || obs === 'NONE' || obs === 'None') obs = '';
                 document.getElementById('input-observacoes').value = obs;
@@ -1534,6 +1633,8 @@
             
             // Converter tem_fixo para boolean
             data.tem_fixo = data.tem_fixo === 'true' || data.tem_fixo === true;
+            // Converter gerada_os_automatica para boolean
+            data.gerada_os_automatica = data.gerada_os_automatica === 'true' || data.gerada_os_automatica === true;
             
             if (origemCadastroAtual === 'SEM_APP') {
                 if(!data.plano || !data.forma_pagamento || !data.cep || !data.logradouro) {

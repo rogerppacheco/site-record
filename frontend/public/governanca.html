@@ -362,11 +362,18 @@
                                             <input class="form-check-input" type="checkbox" id="participa_controle_presenca">
                                             <label class="form-check-label fw-bold" for="participa_controle_presenca">Participa Controle Presença?</label>
                                         </div>
-                                        <div class="form-check form-switch">
+                                        <div class="form-check form-switch mb-2">
                                             <input class="form-check-input" type="checkbox" id="autorizar_venda_sem_auditoria">
                                             <label class="form-check-label fw-bold" for="autorizar_venda_sem_auditoria">
                                                 Autorizar venda sem auditoria?
                                                 <small class="text-muted d-block">Permite realizar vendas pelo WhatsApp Bot</small>
+                                            </label>
+                                        </div>
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="autorizar_venda_automatica">
+                                            <label class="form-check-label fw-bold" for="autorizar_venda_automatica">
+                                                Autorizar venda Automática
+                                                <small class="text-muted d-block">Permite informar se a O.S. foi gerada automaticamente ao cadastrar vendas</small>
                                             </label>
                                         </div>
                                     </div>
@@ -1535,6 +1542,7 @@
             document.getElementById('user_cluster').value = user.cluster || '';
             document.getElementById('participa_controle_presenca').checked = user.participa_controle_presenca;
             document.getElementById('autorizar_venda_sem_auditoria').checked = user.autorizar_venda_sem_auditoria || false;
+            document.getElementById('autorizar_venda_automatica').checked = user.autorizar_venda_automatica || false;
             ['valor_almoco', 'valor_passagem', 'chave_pix', 'nome_da_conta', 'meta_comissao', 'desconto_boleto', 'desconto_inclusao_viabilidade', 'desconto_instalacao_antecipada', 'adiantamento_cnpj', 'desconto_inss_fixo'].forEach(id => { document.getElementById(id).value = user[id] || ''; });
         }
         
@@ -1673,7 +1681,8 @@
             adiantamento_cnpj: cleanValue(document.getElementById('adiantamento_cnpj').value, true),
             desconto_inss_fixo: cleanValue(document.getElementById('desconto_inss_fixo').value, true),
             participa_controle_presenca: document.getElementById('participa_controle_presenca').checked,
-            autorizar_venda_sem_auditoria: document.getElementById('autorizar_venda_sem_auditoria').checked
+            autorizar_venda_sem_auditoria: document.getElementById('autorizar_venda_sem_auditoria').checked,
+            autorizar_venda_automatica: document.getElementById('autorizar_venda_automatica').checked
         };
         
         const senha = document.getElementById('senha').value;

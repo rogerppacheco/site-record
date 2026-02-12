@@ -228,7 +228,7 @@ class VendaSerializer(serializers.ModelSerializer):
             'periodo_agendamento', 'data_instalacao', 'antecipou_instalacao',
             'ponto_referencia', 'observacoes', 'data_pagamento', 'valor_pago',
             'auditor_atual', 'auditor_atual_nome', 'auditor_atual_id',
-            'nome_editor', 'data_ultima_alteracao'
+            'nome_editor', 'data_ultima_alteracao', 'gerada_os_automatica'
         ]
 
     def get_auditor_atual_nome(self, obj):
@@ -275,7 +275,8 @@ class VendaDetailSerializer(serializers.ModelSerializer):
             'ponto_referencia', 'observacoes', 'ordem_servico', 'data_abertura',
             'data_agendamento', 'periodo_agendamento', 'data_instalacao', 'antecipou_instalacao',
             'data_pagamento', 'valor_pago', 'cpf_representante_legal', 'nome_representante_legal', 
-            'forma_entrada', 'tem_fixo', 'historico_alteracoes', 'data_criacao', 'data_ultima_alteracao'
+            'forma_entrada', 'tem_fixo', 'historico_alteracoes', 'data_criacao', 'data_ultima_alteracao',
+            'gerada_os_automatica'
         ]
 
 class VendaCreateSerializer(serializers.ModelSerializer):
@@ -346,6 +347,8 @@ class VendaCreateSerializer(serializers.ModelSerializer):
     nome_mae = serializers.CharField(max_length=255, required=False, allow_blank=True)
     data_nascimento = serializers.DateField(required=False, allow_null=True)
     observacoes = serializers.CharField(required=False, allow_blank=True)
+    gerada_os_automatica = serializers.BooleanField(required=False, default=False)
+    vendedor = serializers.PrimaryKeyRelatedField(queryset=Usuario.objects.all(), required=False, allow_null=True)
 
     class Meta:
         model = Venda
@@ -354,7 +357,8 @@ class VendaCreateSerializer(serializers.ModelSerializer):
             'nome_mae', 'data_nascimento', 'forma_pagamento', 'plano', 'cep',
             'logradouro', 'numero_residencia', 'complemento', 'bairro', 'cidade', 'estado',
             'forma_entrada', 'tem_fixo', 'telefone1', 'telefone2', 'cpf_representante_legal',
-            'nome_representante_legal', 'ponto_referencia', 'observacoes'
+            'nome_representante_legal', 'ponto_referencia', 'observacoes',
+            'gerada_os_automatica', 'vendedor'
         ]
 
     def validate(self, data):

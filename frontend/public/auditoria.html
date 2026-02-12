@@ -145,6 +145,7 @@
                 
                 <div class="modal-body p-0 d-flex flex-column">
                     <input type="hidden" id="auditoria_id_venda">
+                    <div id="alerta-gerada-os-automatica" class="alert alert-info mx-4 mt-3 mb-0 py-2" role="alert" style="display: none;"></div>
                     
                     <div class="bg-white border-bottom py-3 px-4 shadow-sm">
                         <ul class="nav nav-pills nav-fill" id="pills-tab" role="tablist">
@@ -749,6 +750,18 @@
                 $('.nav-link').removeClass('active'); $('.tab-pane').removeClass('show active');
                 $('#pills-identidade-tab').addClass('active'); $('#pills-identidade').addClass('show active');
                 modalAuditoria.show();
+
+                // Alerta quando venda foi gerada com O.S. automática (vendedor já abriu o pedido)
+                const geradaOsAuto = v.gerada_os_automatica === true || v.gerada_os_automatica === 'true';
+                const alertaOsAuto = document.getElementById('alerta-gerada-os-automatica');
+                if (alertaOsAuto) {
+                    if (geradaOsAuto) {
+                        alertaOsAuto.style.display = 'block';
+                        alertaOsAuto.innerHTML = '<i class="bi bi-info-circle-fill me-2"></i><strong>Vendedor já abriu o pedido.</strong> Realizar apenas auditoria e registrar a venda.';
+                    } else {
+                        alertaOsAuto.style.display = 'none';
+                    }
+                }
             }).catch(e => { console.error(e); $('#loadingOverlay').hide(); alert('Erro ao abrir venda.'); });
         }
 

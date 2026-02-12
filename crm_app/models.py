@@ -172,6 +172,12 @@ class Venda(models.Model):
         db_index=True
     )
 
+    gerada_os_automatica = models.BooleanField(
+        default=False,
+        verbose_name="Gerada O.S. automática",
+        help_text="Se a venda foi gerada com O.S. automática (vendedor já abriu o pedido)."
+    )
+
     # --- CAMPOS PARA CONTROLE DE DESCONTOS ---
     flag_adiant_cnpj = models.BooleanField(default=False, verbose_name="Adiant. CNPJ Processado")
     flag_desc_boleto = models.BooleanField(default=False, verbose_name="Desc. Boleto Processado")

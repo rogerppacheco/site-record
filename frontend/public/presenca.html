@@ -199,9 +199,10 @@
 
             <!-- Badge "Dia confirmado com selfie" + link "Ver foto": só para Diretoria/Admin (foto não aparece para outros) -->
             <div id="container-confirmacao-dia" class="mb-3 restricted-access" style="display: none;">
-                <div id="badge-dia-confirmado" class="d-flex align-items-center gap-2" style="display: none;">
+                <div id="badge-dia-confirmado" class="d-flex align-items-center gap-2 flex-wrap" style="display: none;">
                     <span class="badge bg-success fs-6"><i class="bi bi-check-circle-fill"></i> Dia confirmado com selfie</span>
                     <a id="link-ver-foto" href="#" target="_blank" rel="noopener" class="btn btn-sm btn-outline-success">Ver foto</a>
+                    <button type="button" id="btn-excluir-foto" class="btn btn-sm btn-outline-danger" title="Excluir foto (apenas Diretoria/Admin)"><i class="bi bi-trash"></i> Excluir foto</button>
                 </div>
             </div>
             
@@ -353,6 +354,24 @@
             carregarMotivos();
             carregarDadosIniciais();
             setupSelfieModalHandlers();
+
+            document.getElementById('btn-excluir-foto')?.addEventListener('click', async function() {
+                if (!confirm('Excluir a foto deste dia? A lista ficará bloqueada até tirar uma nova selfie.')) return;
+                const data = document.getElementById('data-presenca').value;
+                if (!data) return;
+                const btn = this;
+                btn.disabled = true;
+                try {
+                    const res = await apiClient.delete(`${API_CONFIRMACAO_DIA}?data=${data}`);
+                    document.getElementById('badge-dia-confirmado').style.display = 'none';
+                    carregarStatusConfirmacaoDia();
+                    carregarDadosIniciais();
+                    alert('Foto excluída.');
+                } catch (e) {
+                    alert('Erro ao excluir: ' + (e.message || ''));
+                }
+                btn.disabled = false;
+            });
         });
 
         window.switchTab = function(tabName, element) {

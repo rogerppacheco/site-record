@@ -101,6 +101,11 @@ class Usuario(AbstractUser):
         verbose_name="Autorizar venda sem auditoria?",
         help_text="Se marcado, o vendedor pode realizar vendas pelo WhatsApp usando automação do PAP."
     )
+    autorizar_venda_automatica = models.BooleanField(
+        default=False,
+        verbose_name="Autorizar venda Automática",
+        help_text="Se marcado, o vendedor poderá informar se a O.S. foi gerada automaticamente ao cadastrar vendas."
+    )
 
     class Meta(AbstractUser.Meta):
         pass
