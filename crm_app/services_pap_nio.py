@@ -188,7 +188,8 @@ class PAPNioAutomation:
         # Estado da sessão
         self.logado = False
         self.sessao_iniciada = False
-        
+        self._trace_started = False  # Trace Playwright para inspecionar cliques em produção
+
         # Storage state para manter cookies
         self.storage_state_path = os.path.join(
             STORAGE_STATE_DIR, 
@@ -238,7 +239,33 @@ class PAPNioAutomation:
                     logger.warning(f"[PAP] Erro ao enviar screenshot ao OneDrive: {e_od}")
         except Exception as e:
             logger.warning(f"[PAP] Erro ao salvar screenshot: {e}")
-    
+
+    def _highlight_element(self, selector_or_element, duration_ms: int = 800) -> None:
+        """
+        Destaca visualmente um elemento (outline vermelho) antes de um clique, para debug.
+        Se capture_screenshots estiver ativo, tira screenshot após highlight para ver onde vai clicar.
+        """
+        if not self.page:
+            return
+        try:
+            el = selector_or_element if hasattr(selector_or_element, 'evaluate') else self.page.query_selector(selector_or_element)
+            if not el:
+                return
+            el.evaluate("""el => {
+                el.dataset._pap_original_outline = el.style.outline || '';
+                el.style.outline = '3px solid red';
+                el.style.outlineOffset = '2px';
+            }""")
+            self.page.wait_for_timeout(duration_ms)
+            if self.capture_screenshots:
+                self._capture_screenshot("_highlight_clique", wait_selector=None, wait_timeout_ms=0)
+            el.evaluate("""el => {
+                el.style.outline = el.dataset._pap_original_outline || '';
+                el.style.outlineOffset = '';
+            }""")
+        except Exception as e:
+            logger.debug(f"[PAP] Highlight ignorado: {e}")
+
     def _set_valor_react(self, selector: str, valor: str) -> bool:
         """
         Define valor em campo React de forma que o estado seja atualizado.
@@ -393,7 +420,16 @@ class PAPNioAutomation:
             # Timeout padrão alto para evitar "Timeout 5000ms" em produção (rede/React lentos)
             self.page.set_default_timeout(25000)
             self.sessao_iniciada = True
-            
+
+            # Trace: grava todas as ações para inspecionar no Playwright Trace Viewer (ver onde os cliques foram feitos)
+            if self.capture_screenshots:
+                try:
+                    self.context.tracing.start(screenshots=True, snapshots=True, sources=True)
+                    self._trace_started = True
+                    logger.info("[PAP] Trace iniciado (gravação de ações para debug)")
+                except Exception as e:
+                    logger.warning(f"[PAP] Trace não iniciado: {e}")
+
             # Navegar para o PAP
             self.page.goto(PAP_LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
             self.page.wait_for_timeout(3000)
@@ -518,6 +554,40 @@ class PAPNioAutomation:
         
         return False, "Falha no login após múltiplas tentativas."
     
+    def _clicar_menu_novo_pedido(self) -> bool:
+        """
+        Clica no item do menu lateral "Novo Pedido" (fallback quando goto não abre o formulário).
+        Retorna True se encontrou e clicou, False caso contrário.
+        """
+        seletores_menu = [
+            'a[href*="novo-pedido"]',
+            'a:has-text("Novo Pedido")',
+            '[href*="novo-pedido"]',
+            'nav a:has-text("Novo Pedido")',
+            'a:has-text("Novo pedido")',
+            'div:has-text("Novo Pedido")',
+            "//a[contains(@href,'novo-pedido')]",
+            "//*[contains(text(),'Novo Pedido') and (self::a or self::button or ancestor::a)]",
+        ]
+        for sel in seletores_menu:
+            try:
+                if sel.startswith("//"):
+                    el = self.page.query_selector(f"xpath={sel}")
+                else:
+                    el = self.page.query_selector(sel)
+                if el and el.is_visible():
+                    logger.info(f"[PAP] Fallback: clicando no menu 'Novo Pedido' (seletor: {sel[:50]}...)")
+                    if self.capture_screenshots:
+                        self._highlight_element(el, duration_ms=500)
+                    el.click()
+                    self.page.wait_for_timeout(3000)
+                    self.page.wait_for_load_state("domcontentloaded", timeout=10000)
+                    return True
+            except Exception as e:
+                logger.debug(f"[PAP] Menu Novo Pedido seletor {sel[:30]}: {e}")
+                continue
+        return False
+
     def iniciar_novo_pedido(self, matricula_vendedor: str) -> Tuple[bool, str]:
         """
         Inicia um novo pedido (Etapa 1).
@@ -530,6 +600,10 @@ class PAPNioAutomation:
         """
         try:
             logger.info(f"[PAP] Iniciando novo pedido - Vendedor: {matricula_vendedor}")
+
+            # Screenshot do estado atual (ex.: tela de auditoria) antes de navegar
+            if self.capture_screenshots:
+                self._capture_screenshot("01a_antes_novo_pedido", wait_selector=None, wait_timeout_ms=0)
             
             # Navegar para Novo Pedido
             try:
@@ -564,21 +638,49 @@ class PAPNioAutomation:
             if "pap.niointernet.com.br" not in url_atual:
                 logger.warning(f"[PAP] URL atual: {url_atual}")
                 return False, f"Não foi possível acessar a página de novo pedido. URL: {url_atual[:80]}..."
+
+            if self.capture_screenshots:
+                self._capture_screenshot("01b_apos_goto_novo_pedido", wait_selector=None, wait_timeout_ms=2000)
             
-            # Aguardar campo matrícula ou página de novo pedido
+            # Aguardar campo matrícula ou página de novo pedido (timeout menor para tentar fallback)
+            matricula_visivel = False
             try:
-                self.page.wait_for_selector(SELETORES['etapa1']['matricula_vendedor'], state="visible", timeout=15000)
+                self.page.wait_for_selector(SELETORES['etapa1']['matricula_vendedor'], state="visible", timeout=10000)
+                matricula_visivel = True
             except Exception:
-                # Tentar seletores alternativos
                 for sel in ['input[placeholder*="matrícula"]', 'input[placeholder*="matricula"]', 'input[id*="vendedor"]']:
                     try:
-                        self.page.wait_for_selector(sel, state="visible", timeout=5000)
+                        self.page.wait_for_selector(sel, state="visible", timeout=3000)
+                        matricula_visivel = True
                         break
                     except Exception:
                         continue
+
+            # Fallback: se não apareceu o formulário de novo pedido, clicar no menu "Novo Pedido"
+            if not matricula_visivel:
+                logger.warning("[PAP] Campo matrícula não encontrado após goto. Tentando clicar no menu 'Novo Pedido'...")
+                if self._clicar_menu_novo_pedido():
+                    if self.capture_screenshots:
+                        self._capture_screenshot("01c_apos_clique_menu_novo_pedido", wait_selector=None, wait_timeout_ms=2000)
+                    try:
+                        self.page.wait_for_selector(SELETORES['etapa1']['matricula_vendedor'], state="visible", timeout=12000)
+                    except Exception:
+                        for sel in ['input[placeholder*="matrícula"]', 'input[placeholder*="matricula"]', 'input[id*="vendedor"]']:
+                            try:
+                                self.page.wait_for_selector(sel, state="visible", timeout=5000)
+                                break
+                            except Exception:
+                                continue
+                else:
+                    return False, "Não foi possível acessar a página de novo pedido (campo matrícula não encontrado e menu 'Novo Pedido' não clicável)."
             
-            # Campo de matrícula do vendedor
-            matricula_input = self.page.query_selector(SELETORES['etapa1']['matricula_vendedor'])
+            # Campo de matrícula do vendedor (tentar seletor principal e alternativos)
+            matricula_input = (
+                self.page.query_selector(SELETORES['etapa1']['matricula_vendedor']) or
+                self.page.query_selector('input[placeholder*="matrícula"]') or
+                self.page.query_selector('input[placeholder*="matricula"]') or
+                self.page.query_selector('input[id*="vendedor"]')
+            )
             if matricula_input:
                 # Focar no campo para abrir lista
                 matricula_input.click()
@@ -602,11 +704,15 @@ class PAPNioAutomation:
             btn_avancar = self.page.query_selector('button:has-text("Avançar"):not([disabled])')
             if not btn_avancar:
                 return False, "Não foi possível selecionar o vendedor. Verifique a matrícula."
+            if self.capture_screenshots:
+                self._highlight_element(btn_avancar, duration_ms=400)
             btn_avancar.click()
             self.page.wait_for_selector(SELETORES['etapa2']['cep'], state="visible", timeout=10000)
             self._extrair_protocolo_pedido()
             self.etapa_atual = 1
             self.dados_pedido['matricula_vendedor'] = matricula_vendedor
+            if self.capture_screenshots:
+                self._capture_screenshot("01d_etapa1_concluida", wait_selector=SELETORES['etapa2']['cep'], wait_timeout_ms=5000)
             return True, "Etapa 1 concluída! Vendedor selecionado."
                 
         except Exception as e:
@@ -2148,6 +2254,22 @@ class PAPNioAutomation:
         if not self.sessao_iniciada:
             return
         try:
+            # Salvar trace antes de fechar (permite ver cada clique no https://trace.playwright.dev)
+            if getattr(self, '_trace_started', False) and self.context:
+                try:
+                    from django.conf import settings as _st
+                    base_dir = getattr(_st, 'BASE_DIR', None)
+                    if base_dir:
+                        downloads_dir = os.path.join(base_dir, 'downloads')
+                        os.makedirs(downloads_dir, exist_ok=True)
+                        safe_run = str(self.run_id).replace(os.sep, '_').replace('..', '_')[:50]
+                        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+                        trace_path = os.path.join(downloads_dir, f"pap_trace_{safe_run}_{ts}.zip")
+                        self.context.tracing.stop(path=trace_path)
+                        logger.info(f"[PAP] Trace salvo: {os.path.basename(trace_path)} (abrir em https://trace.playwright.dev)")
+                except Exception as e:
+                    logger.warning(f"[PAP] Erro ao salvar trace: {e}")
+                self._trace_started = False
             if self.page:
                 self._clicar_sair()
             if self.context:
@@ -2155,7 +2277,7 @@ class PAPNioAutomation:
                     self.context.storage_state(path=self.storage_state_path)
                 except:
                     pass
-            
+
             if self.page:
                 self.page.close()
             if self.context:

@@ -9849,6 +9849,7 @@ def listar_screenshots_debug(request):
                 for file in downloads_dir.glob('debug_nio_negocia_*.png'):
                     screenshots.append({
                         'nome': file.name,
+                        'tipo': 'screenshot',
                         'tamanho': file.stat().st_size,
                         'data_modificacao': datetime.fromtimestamp(file.stat().st_mtime).isoformat(),
                         'url': f"/api/crm/debug/screenshots/{file.name}/"
@@ -9860,18 +9861,33 @@ def listar_screenshots_debug(request):
                 for file in downloads_dir.glob('pap_venda_*.png'):
                     screenshots.append({
                         'nome': file.name,
+                        'tipo': 'screenshot',
                         'tamanho': file.stat().st_size,
                         'data_modificacao': datetime.fromtimestamp(file.stat().st_mtime).isoformat(),
                         'url': f"/api/crm/debug/screenshots/{file.name}/"
                     })
             except Exception as e_pap:
                 debug_info['erro_buscar_pap'] = str(e_pap)
-            
+
+            # Traces da automação PAP (ver cada clique em https://trace.playwright.dev)
+            try:
+                for file in downloads_dir.glob('pap_trace_*.zip'):
+                    screenshots.append({
+                        'nome': file.name,
+                        'tipo': 'trace',
+                        'tamanho': file.stat().st_size,
+                        'data_modificacao': datetime.fromtimestamp(file.stat().st_mtime).isoformat(),
+                        'url': f"/api/crm/debug/screenshots/{file.name}/"
+                    })
+            except Exception as e_trace:
+                debug_info['erro_buscar_trace'] = str(e_trace)
+
             # Buscar HTMLs de debug também
             try:
                 for file in downloads_dir.glob('debug_nio_negocia_*.html'):
                     screenshots.append({
                         'nome': file.name,
+                        'tipo': 'html',
                         'tamanho': file.stat().st_size,
                         'data_modificacao': datetime.fromtimestamp(file.stat().st_mtime).isoformat(),
                         'url': f"/api/crm/debug/screenshots/{file.name}/"
@@ -9916,9 +9932,9 @@ def baixar_screenshot_debug(request, nome_arquivo):
         # Validar nome do arquivo (segurança: sem path traversal, apenas prefixos permitidos)
         if '/' in nome_arquivo or '\\' in nome_arquivo or '..' in nome_arquivo:
             return JsonResponse({'erro': 'Nome de arquivo inválido.'}, status=400)
-        if not (nome_arquivo.startswith('debug_nio_negocia_') or nome_arquivo.startswith('pap_venda_')):
+        if not (nome_arquivo.startswith('debug_nio_negocia_') or nome_arquivo.startswith('pap_venda_') or nome_arquivo.startswith('pap_trace_')):
             return JsonResponse({
-                'erro': 'Nome de arquivo inválido. Apenas screenshots de debug (Nio Negocia ou PAP venda) são permitidos.'
+                'erro': 'Nome de arquivo inválido. Apenas screenshots (Nio Negocia, PAP venda) ou traces PAP (pap_trace_*.zip) são permitidos.'
             }, status=400)
         
         # Caminho para a pasta downloads (usar settings.BASE_DIR para produção)
@@ -9936,6 +9952,8 @@ def baixar_screenshot_debug(request, nome_arquivo):
             content_type = 'image/png'
         elif nome_arquivo.endswith('.html'):
             content_type = 'text/html'
+        elif nome_arquivo.endswith('.zip'):
+            content_type = 'application/zip'
         else:
             content_type = 'application/octet-stream'
         
