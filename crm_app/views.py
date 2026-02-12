@@ -1263,7 +1263,13 @@ class VendaViewSet(viewsets.ModelViewSet):
         if not status_inicial:
             status_inicial = StatusCRM.objects.filter(tipo__iexact="Tratamento").first()
 
-        serializer.save(vendedor=self.request.user, cliente=cliente, status_tratamento=status_inicial)
+        vendedor = self.request.user
+        vendedor_data = serializer.validated_data.pop('vendedor', None)
+        if vendedor_data and is_member(self.request.user, ['Diretoria', 'Admin', 'BackOffice', 'Supervisor']):
+            vendedor = vendedor_data
+        gerada_os = serializer.validated_data.pop('gerada_os_automatica', False)
+
+        serializer.save(vendedor=vendedor, cliente=cliente, status_tratamento=status_inicial, gerada_os_automatica=gerada_os)
 
     def perform_update(self, serializer):
         venda_antes = self.get_object()
@@ -1775,7 +1781,7 @@ class ListaVendedoresView(APIView):
 
     def get(self, request):
         User = get_user_model()
-        vendedores = User.objects.filter(is_active=True).values('id', 'username').order_by('username')
+        vendedores = User.objects.filter(is_active=True).values('id', 'username', 'autorizar_venda_automatica').order_by('username')
         return Response(list(vendedores))
 
 # Em site-record/crm_app/views.py

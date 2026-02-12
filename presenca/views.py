@@ -312,6 +312,22 @@ class ConfirmacaoPresencaDiaView(APIView):
         serializer = ConfirmacaoPresencaDiaSerializer(conf)
         return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
+    def delete(self, request):
+        """DELETE: ?data=YYYY-MM-DD - Exclui a confirmação (selfie) do dia. Apenas Diretoria/Admin."""
+        if not request.user.is_superuser and not request.user.groups.filter(name__in=['Diretoria', 'Admin']).exists():
+            return Response({'detail': 'Apenas Diretoria ou Admin podem excluir a foto.'}, status=status.HTTP_403_FORBIDDEN)
+
+        data_str = request.query_params.get('data')
+        if not data_str:
+            return Response({'detail': 'Parâmetro data (YYYY-MM-DD) é obrigatório.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            data_dia = datetime.strptime(data_str, '%Y-%m-%d').date()
+        except ValueError:
+            return Response({'detail': 'Data inválida. Use YYYY-MM-DD.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        deleted, _ = ConfirmacaoPresencaDia.objects.filter(data=data_dia).delete()
+        return Response({'detail': 'Foto excluída.'}, status=status.HTTP_200_OK)
+
 
 # =========================================================================
 # RELATÓRIOS FINANCEIROS (CORRIGIDO)

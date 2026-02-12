@@ -113,6 +113,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
             'cluster',
             'participa_controle_presenca',
             'autorizar_venda_sem_auditoria',
+            'autorizar_venda_automatica',
             'tel_whatsapp',
             'obriga_troca_senha',
             'password'
@@ -350,6 +351,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             token['grupo_principal'] = user.groups.first().name
         # --- SEGURANÇA: Adiciona flag no Token ---
         token['obriga_troca_senha'] = user.obriga_troca_senha
+        token['autorizar_venda_automatica'] = getattr(user, 'autorizar_venda_automatica', False)
         return token
 
     def validate(self, attrs):
