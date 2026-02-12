@@ -516,18 +516,32 @@ class PAPNioAutomation:
                     btn.click()
                 else:
                     self.page.click(SELETORES['login']['btn_login'])
-                
+
+                # Aguardar a página reagir (redirecionamento ou mensagem de erro)
+                self.page.wait_for_timeout(4000)
+
+                # Validar: se aparecer "Login failed, please try again" (ou similar), não avançar
+                if self._pagina_tem_erro_login():
+                    logger.warning("[PAP] Login falhou: mensagem de erro detectada na tela.")
+                    return False, "Login falhou. Verifique matrícula, senha e OTP (se exigido). Tente novamente."
+
                 # Aguardar redirecionamento para PAP (pode haver múltiplos redirects via SSO)
                 try:
                     self.page.wait_for_url(
                         lambda url: "pap.niointernet.com.br" in url and "login" not in url.lower(),
-                        timeout=25000
+                        timeout=22000
                     )
+                    # Nova checagem: às vezes o redirect mostra PAP mas ainda com iframe de erro
+                    if self._pagina_tem_erro_login():
+                        return False, "Login falhou. Verifique matrícula, senha e OTP (se exigido). Tente novamente."
                     logger.info(f"[PAP] Login bem-sucedido para {self.matricula_pap}")
                     return True, "Login realizado com sucesso!"
                 except Exception:
                     current_url = self.page.url
-                    pagina = self.page.content().lower()
+                    pagina = (self.page.content() or "").lower()
+                    # Se a tela mostra erro de login, falhar de forma clara
+                    if self._pagina_tem_erro_login():
+                        return False, "Login falhou. Verifique matrícula, senha e OTP (se exigido). Tente novamente."
                     # Sucesso mesmo com exceção (ex: timeout no wait mas URL já correta)
                     if "pap.niointernet.com.br" in current_url and "login" not in current_url.lower():
                         return True, "Login realizado com sucesso!"
@@ -553,7 +567,36 @@ class PAPNioAutomation:
                 return False, f"Erro no login: {str(e)}"
         
         return False, "Falha no login após múltiplas tentativas."
-    
+
+    def _pagina_tem_erro_login(self) -> bool:
+        """
+        Verifica se a página exibe mensagem de erro de login (ex.: "Login failed, please try again.").
+        Retorna True se o erro estiver presente, para não avançar como se o login tivesse sucesso.
+        """
+        if not self.page:
+            return False
+        try:
+            content = (self.page.content() or "").lower()
+            url = (self.page.url or "").lower()
+            # Textos que indicam falha de login (inglês e português)
+            if "login failed" in content or "please try again" in content:
+                logger.warning("[PAP] Mensagem de erro de login detectada (Login failed / please try again).")
+                return True
+            if "login falhou" in content or "tente novamente" in content:
+                logger.warning("[PAP] Mensagem de erro de login detectada (pt).")
+                return True
+            if "credenciais inválidas" in content or "invalid credentials" in content:
+                logger.warning("[PAP] Mensagem de erro de login detectada (credenciais).")
+                return True
+            # Se ainda estamos em página de login após o clique, e há indicação de erro
+            if ("login" in url or "vtal.com" in url) and ("error" in content or "alert" in content):
+                if "failed" in content or "falhou" in content or "inválid" in content:
+                    return True
+            return False
+        except Exception as e:
+            logger.debug(f"[PAP] Verificação de erro de login: {e}")
+            return False
+
     def _clicar_menu_novo_pedido(self) -> bool:
         """
         Clica no item do menu lateral "Novo Pedido" (fallback quando goto não abre o formulário).
@@ -718,7 +761,33 @@ class PAPNioAutomation:
         except Exception as e:
             logger.error(f"[PAP] Erro na Etapa 1: {e}")
             return False, f"Erro na Etapa 1: {str(e)}"
-    
+
+    def validar_tela_pronta_para_cep(self, timeout_ms: int = 8000) -> Tuple[bool, str]:
+        """
+        Verifica se a página está na etapa correta para digitar CEP (tela de novo pedido - etapa endereço).
+        Só retorna True se o campo CEP ou o formulário de viabilidade estiver visível.
+        """
+        if not self.page:
+            return False, "Sessão não está aberta."
+        try:
+            cep_sel = (
+                self.page.query_selector(SELETORES['etapa2']['cep']) or
+                self.page.query_selector('input[placeholder=" "]') or
+                self.page.query_selector('input[type="number"]') or
+                self.page.query_selector('button:has-text("Buscar")')
+            )
+            if cep_sel and cep_sel.is_visible():
+                logger.info("[PAP] Tela validada: formulário de CEP/endereço visível.")
+                return True, "Tela pronta para CEP."
+            self.page.wait_for_timeout(2000)
+            cep_sel = self.page.query_selector(SELETORES['etapa2']['cep']) or self.page.query_selector('button:has-text("Buscar")')
+            if cep_sel and cep_sel.is_visible():
+                return True, "Tela pronta para CEP."
+            return False, "Tela de endereço (CEP) não está visível. A página pode não ter carregado corretamente."
+        except Exception as e:
+            logger.warning(f"[PAP] Validação da tela CEP: {e}")
+            return False, f"Não foi possível validar a tela: {str(e)}"
+
     def etapa2_viabilidade(self, cep: str, numero: str, referencia: str) -> Tuple[bool, str, Optional[list]]:
         """
         Etapa 2: Consulta de viabilidade.
