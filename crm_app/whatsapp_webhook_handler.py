@@ -1268,8 +1268,14 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
                         )
                         return
                     # Se o usuário cancelou enquanto conectava, não registrar nem pedir CEP
-                    sess.refresh_from_db()
-                    if sess.etapa != 'venda_aguardando_pap':
+                    # (verificação em thread: usar re-query para evitar SynchronousOnlyOperation no refresh_from_db)
+                    etapa_atual = "venda_aguardando_pap"
+                    try:
+                        s = SessaoWhatsapp.objects.using("default").get(pk=sessao.id)
+                        etapa_atual = s.etapa or etapa_atual
+                    except Exception as _e:
+                        logger.warning("[VENDER] Não foi possível verificar etapa (thread): %s", _e)
+                    if etapa_atual != "venda_aguardando_pap":
                         automacao._fechar_sessao()
                         liberar_bo(bo_id, telefone)
                         return
@@ -1298,18 +1304,27 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
                             automacao._fechar_sessao()  # salva trace (pap_trace_*.zip) mesmo quando falha
                         except Exception:
                             pass
+                    bo_id_liberar = None
                     try:
-                        sess = SessaoWhatsapp.objects.get(id=sessao.id)
-                        liberar_bo((sess.dados_temp or {}).get('bo_usuario_id'), telefone)
-                        sess.etapa = 'inicial'
-                        sess.dados_temp = {}
-                        sess.save()
+                        s = SessaoWhatsapp.objects.using("default").get(pk=sessao.id)
+                        bo_id_liberar = (s.dados_temp or {}).get("bo_usuario_id")
+                        s.etapa = "inicial"
+                        s.dados_temp = {}
+                        s.save(update_fields=["etapa", "dados_temp"])
+                    except Exception as db_err:
+                        logger.warning("[VENDER] Erro ao resetar sessão no except: %s", db_err)
+                    if bo_id_liberar:
+                        try:
+                            liberar_bo(bo_id_liberar, telefone)
+                        except Exception:
+                            pass
+                    try:
+                        WhatsAppService().enviar_mensagem_texto(
+                            telefone,
+                            f"❌ Erro ao conectar ao PAP: {e}\n\nDigite *VENDER* para tentar novamente."
+                        )
                     except Exception:
                         pass
-                    WhatsAppService().enviar_mensagem_texto(
-                        telefone,
-                        f"❌ Erro ao conectar ao PAP: {e}\n\nDigite *VENDER* para tentar novamente."
-                    )
 
             t = threading.Thread(target=_thread_login_novo_pedido_e_worker)
             t.daemon = True
