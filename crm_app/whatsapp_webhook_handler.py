@@ -1202,7 +1202,9 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
                 from crm_app.services_pap_nio import PAPNioAutomation
                 from crm_app.pool_bo_pap import liberar_bo
                 from django.conf import settings
+                automacao = None  # para poder fechar e salvar trace no except
                 try:
+                    logger.info("[VENDER] Thread login/novo pedido iniciada para sessao_id=%s", sessao.id)
                     sess = SessaoWhatsapp.objects.get(id=sessao.id)
                     dados_t = sess.dados_temp or {}
                     bo_id = dados_t.get('bo_usuario_id')
@@ -1216,13 +1218,15 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
                     vendedor_matricula = dados_t.get('matricula_pap')
                     headless = getattr(settings, 'PAP_HEADLESS', True)
                     capture_screenshots = getattr(settings, 'PAP_CAPTURE_SCREENSHOTS', False)
+                    # Na thread de login sempre gravar trace (pap_trace_*.zip) para poder debugar falhas
+                    gravar_trace = True
                     automacao = PAPNioAutomation(
                         matricula_pap=bo.matricula_pap,
                         senha_pap=bo.senha_pap,
                         vendedor_nome=dados_t.get('vendedor_nome', ''),
                         headless=headless,
                         run_id=str(sess.id),
-                        capture_screenshots=capture_screenshots,
+                        capture_screenshots=capture_screenshots or gravar_trace,
                     )
                     # 1) Login
                     sucesso_login, msg_login = automacao.iniciar_sessao()
@@ -1289,6 +1293,11 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str) -> 
                     _pap_worker_loop(cmd_queue, sess.id, telefone, bo_id)
                 except Exception as e:
                     logger.exception("[VENDER] Erro na thread login/novo pedido")
+                    if automacao is not None:
+                        try:
+                            automacao._fechar_sessao()  # salva trace (pap_trace_*.zip) mesmo quando falha
+                        except Exception:
+                            pass
                     try:
                         sess = SessaoWhatsapp.objects.get(id=sessao.id)
                         liberar_bo((sess.dados_temp or {}).get('bo_usuario_id'), telefone)
