@@ -512,9 +512,19 @@ class PapConfirmacaoCliente(models.Model):
     Pendência de confirmação "Sim" do cliente no fluxo PAP.
     Usado para compartilhar estado entre terminal (testar_pap_terminal) e webhook:
     terminal registra ao enviar resumo; webhook marca confirmado ao receber "Sim".
+    sessao_id vincula a confirmação à sessão atual, evitando falso positivo com "Sim" de testes anteriores.
     """
     celular_cliente = models.CharField(max_length=20, db_index=True)
     confirmado = models.BooleanField(default=False)
+    sessao = models.ForeignKey(
+        'SessaoWhatsapp',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_column='sessao_id',
+        db_index=True,
+        related_name='pap_confirmacoes',
+    )
     criado_em = models.DateTimeField(auto_now_add=True)
 
     class Meta:

@@ -869,7 +869,8 @@ class PAPNioAutomation:
                         if len(enderecos) >= 2:
                             self.dados_pedido['cep'] = cep
                             self.dados_pedido['numero'] = str(numero)
-                            return True, "Múltiplos endereços. Escolha um:", {'_codigo': 'MULTIPLOS_ENDERECOS', 'lista': enderecos}
+                            # Viabilidade não concluída: usuário precisa escolher o endereço
+                            return False, "Múltiplos endereços. Escolha um:", {'_codigo': 'MULTIPLOS_ENDERECOS', 'lista': enderecos}
                         elif len(enderecos) == 1:
                             target_txt = enderecos[0]['texto']
                             for li in lis:
@@ -903,29 +904,47 @@ class PAPNioAutomation:
                         continue
 
             # 5. Preencher Referência (obrigatório) - usar fill para disparar eventos
+            ref_preenchido = False
             ref_input = self.page.query_selector(ref_selector)
-            if ref_input:
+            if ref_input and ref_input.is_visible():
                 ref_input.click()
+                self.page.wait_for_timeout(200)
                 ref_input.fill(referencia)
                 self.page.keyboard.press("Tab")
-            else:
-                # Fallback: get_by_label ou buscar input com placeholder/label Referência
-                try:
-                    ref_loc = self.page.get_by_label("Referência", exact=False)
-                    if ref_loc.count() > 0:
-                        ref_loc.first.click()
-                        ref_loc.first.fill(referencia)
-                        self.page.keyboard.press("Tab")
-                except Exception:
-                    for inp in self.page.query_selector_all('input:not([disabled]):not([type="hidden"]), textarea:not([disabled])'):
-                        ph = (inp.get_attribute("placeholder") or "")
-                        name = (inp.get_attribute("name") or "")
-                        id_attr = (inp.get_attribute("id") or "")
-                        if "referência" in ph.lower() or "referencia" in ph.lower() or "referencia" in name.lower() or "referencia" in id_attr.lower():
-                            inp.click()
-                            inp.fill(referencia)
+                ref_preenchido = True
+                logger.info(f"[PAP] Referência preenchida (seletor): {referencia!r}")
+            if not ref_preenchido:
+                # Fallback: label "Referência (Obrigatório)" ou "Referência"
+                for label_text in ["Referência (Obrigatório)", "Referência", "referência", "Ponto de referência"]:
+                    try:
+                        ref_loc = self.page.get_by_label(label_text, exact=False)
+                        if ref_loc.count() > 0:
+                            ref_loc.first.click()
+                            self.page.wait_for_timeout(200)
+                            ref_loc.first.fill(referencia)
                             self.page.keyboard.press("Tab")
+                            ref_preenchido = True
+                            logger.info(f"[PAP] Referência preenchida (label {label_text!r}): {referencia!r}")
                             break
+                    except Exception:
+                        continue
+            if not ref_preenchido:
+                for inp in self.page.query_selector_all('input:not([disabled]):not([type="hidden"]), textarea:not([disabled])'):
+                    if not inp.is_visible():
+                        continue
+                    ph = (inp.get_attribute("placeholder") or "")
+                    name = (inp.get_attribute("name") or "")
+                    id_attr = (inp.get_attribute("id") or "")
+                    if "referência" in ph.lower() or "referencia" in ph.lower() or "referencia" in name.lower() or "referencia" in id_attr.lower():
+                        inp.click()
+                        self.page.wait_for_timeout(200)
+                        inp.fill(referencia)
+                        self.page.keyboard.press("Tab")
+                        ref_preenchido = True
+                        logger.info(f"[PAP] Referência preenchida (fallback input): {referencia!r}")
+                        break
+            if not ref_preenchido:
+                logger.warning("[PAP] Campo Referência não encontrado ou não preenchido - botão Avançar pode permanecer desabilitado")
 
             self.page.wait_for_timeout(1500)
 
@@ -1136,24 +1155,90 @@ class PAPNioAutomation:
         Retorno igual a etapa2_viabilidade: (sucesso, msg, extra) com extra podendo ser COMPLEMENTOS, POSSE_ENCONTRADA, etc.
         """
         try:
+            # Esperar formulário estabilizar após seleção do endereço (evita preencher durante validação/piscar da página)
+            self.page.wait_for_timeout(1200)
             ref_selector = SELETORES['etapa2']['referencia']
             try:
                 self.page.wait_for_selector(ref_selector, state="visible", timeout=8000)
             except Exception:
                 ref_selector = 'input[name="referencia"]'
-                self.page.wait_for_selector(ref_selector, state="visible", timeout=5000)
+                try:
+                    self.page.wait_for_selector(ref_selector, state="visible", timeout=5000)
+                except Exception:
+                    for sel in ['input[placeholder*="eferência"]', 'textarea[placeholder*="eferência"]', 'input[id*="referencia"]', 'textarea[id*="referencia"]']:
+                        try:
+                            self.page.wait_for_selector(sel, state="visible", timeout=2000)
+                            ref_selector = sel
+                            break
+                        except Exception:
+                            continue
+            ref_preenchido = False
             ref_input = self.page.query_selector(ref_selector)
-            if ref_input:
+            if ref_input and ref_input.is_visible():
                 ref_input.click()
+                self.page.wait_for_timeout(200)
                 ref_input.fill(referencia)
                 self.page.keyboard.press("Tab")
-            else:
-                ref_loc = self.page.get_by_label("Referência", exact=False)
-                if ref_loc.count() > 0:
-                    ref_loc.first.click()
-                    ref_loc.first.fill(referencia)
-                    self.page.keyboard.press("Tab")
-            self.page.wait_for_timeout(800)
+                ref_preenchido = True
+                logger.info(f"[PAP] Referência preenchida (seleção endereço): {referencia!r}")
+            if not ref_preenchido:
+                for label_text in ["Referência (Obrigatório)", "Referência", "referência", "Ponto de referência"]:
+                    try:
+                        ref_loc = self.page.get_by_label(label_text, exact=False)
+                        if ref_loc.count() > 0:
+                            ref_loc.first.click()
+                            self.page.wait_for_timeout(200)
+                            ref_loc.first.fill(referencia)
+                            self.page.keyboard.press("Tab")
+                            ref_preenchido = True
+                            logger.info(f"[PAP] Referência preenchida (label {label_text!r}, seleção endereço): {referencia!r}")
+                            break
+                    except Exception:
+                        continue
+            if not ref_preenchido:
+                for inp in self.page.query_selector_all('input:not([disabled]):not([type="hidden"]), textarea:not([disabled])'):
+                    if not inp.is_visible():
+                        continue
+                    ph = (inp.get_attribute("placeholder") or "")
+                    name = (inp.get_attribute("name") or "")
+                    id_attr = (inp.get_attribute("id") or "")
+                    if "referência" in ph.lower() or "referencia" in ph.lower() or "referencia" in name.lower() or "referencia" in id_attr.lower():
+                        inp.click()
+                        self.page.wait_for_timeout(200)
+                        inp.fill(referencia)
+                        self.page.keyboard.press("Tab")
+                        ref_preenchido = True
+                        logger.info(f"[PAP] Referência preenchida (fallback input, seleção endereço): {referencia!r}")
+                        break
+            if not ref_preenchido:
+                logger.warning("[PAP] Campo Referência não encontrado em etapa2_preencher_referencia_e_continuar - botão Avançar pode permanecer desabilitado")
+            # Garantir que o valor foi realmente preenchido (página pode ter limpado por validação)
+            if referencia and ref_preenchido:
+                self.page.wait_for_timeout(400)
+                try:
+                    inp_check = (
+                        self.page.query_selector(ref_selector)
+                        or self.page.query_selector('input[name="referencia"]')
+                        or self.page.query_selector('input[placeholder*="eferência"]')
+                        or self.page.query_selector('textarea[name="referencia"]')
+                    )
+                    if inp_check and inp_check.is_visible():
+                        val = (inp_check.input_value() or "").strip()
+                        if not val:
+                            logger.info("[PAP] Campo referência estava vazio após fill; tentando preencher novamente.")
+                            inp_check.click()
+                            self.page.wait_for_timeout(200)
+                            inp_check.fill(referencia)
+                            self.page.keyboard.press("Tab")
+                            self.page.wait_for_timeout(400)
+                except Exception as e:
+                    logger.debug("[PAP] Verificação do valor da referência: %s", e)
+            # Esperar rede/página estabilizar antes de Avançar (reduz efeito de validação que desabilita o botão)
+            try:
+                self.page.wait_for_load_state("networkidle", timeout=2000)
+            except Exception:
+                self.page.wait_for_timeout(500)
+            self.page.wait_for_timeout(400)
             # Verificar complementos
             inp_complemento = self.page.query_selector('input[placeholder*="omplemento"], input[placeholder*="Complemento"]')
             if inp_complemento:
@@ -1187,6 +1272,11 @@ class PAPNioAutomation:
     def _etapa2_clicar_avancar_e_tratar_modal(self, cep: str, numero: str, referencia: str) -> Tuple[bool, str, Optional[list]]:
         """Clica Avançar e trata modal de viabilidade (Disponível, Posse, Indisponível)."""
         try:
+            # Aguardar o botão Avançar habilitar (front pode depender de blur/validação)
+            try:
+                self.page.wait_for_selector('button:has-text("Avançar"):not([disabled])', state="visible", timeout=4000)
+            except Exception:
+                pass
             btn = self.page.query_selector('button:has-text("Avançar"):not([disabled])')
             if not btn:
                 return False, "Botão Avançar não habilitou.", None
@@ -1394,6 +1484,13 @@ class PAPNioAutomation:
             
             # Verificar se o sistema exibiu "Celular inválido" (principal ou secundário)
             if "celular inválido" in self.page.content().lower():
+                try:
+                    inp_sec = self.page.query_selector('input#contatoSecundario, input[name="contatoSecundario"]')
+                    if inp_sec and inp_sec.is_visible():
+                        inp_sec.fill('')
+                        self.page.wait_for_timeout(200)
+                except Exception:
+                    pass
                 return False, "CELULAR_INVALIDO", None
             
             # Verificar modal "Atenção!" (email já usado ou inválido) - pode aparecer ao validar
@@ -1431,6 +1528,14 @@ class PAPNioAutomation:
                         btn_ok.click()
                         self.page.wait_for_timeout(500)
                     if "excede" in pagina or "repetições" in pagina:
+                        # Limpar campo celular secundário para a próxima tentativa (evita valor rejeitado permanecer)
+                        try:
+                            inp_sec = self.page.query_selector('input#contatoSecundario, input[name="contatoSecundario"]')
+                            if inp_sec and inp_sec.is_visible():
+                                inp_sec.fill('')
+                                self.page.wait_for_timeout(200)
+                        except Exception:
+                            pass
                         return False, "TELEFONE_REJEITADO", None
                     if "email" in pagina and ("usado" in pagina or "pedido anterior" in pagina):
                         return False, "EMAIL_REJEITADO", None
@@ -1934,24 +2039,27 @@ class PAPNioAutomation:
     def etapa6_verificar_biometria(self, consultar_primeiro: bool = False) -> Tuple[bool, str, bool]:
         """
         Etapa 6: Verificar status da biometria.
-        
+
+        Fonte da verdade: (1) botão "Abrir OS" habilitado = biometria aprovada;
+        (2) estar na tela Etapa 6 (Resumo) sem indicação de biometria pendente no contexto da biometria.
+
         Args:
             consultar_primeiro: Se True, clica em "Consultar Biometria" antes de verificar (para atualizar status)
-        
+
         Returns:
             Tuple (sucesso, mensagem, biometria_aprovada)
         """
         try:
             logger.info("[PAP] Etapa 6 - Verificando biometria")
-            
+
             # Aguardar spinner desaparecer (bloqueia cliques)
             try:
                 self.page.wait_for_selector('div.spinner', state="hidden", timeout=10000)
             except Exception:
                 self.page.wait_for_timeout(2000)
-            
+
             self.page.wait_for_load_state("networkidle", timeout=8000)
-            
+
             # Se solicitado, clicar em Consultar Biometria para atualizar status
             if consultar_primeiro:
                 self.etapa6_consultar_biometria()
@@ -1960,7 +2068,7 @@ class PAPNioAutomation:
                     self.page.wait_for_selector('div.spinner', state="hidden", timeout=10000)
                 except Exception:
                     self.page.wait_for_timeout(2000)
-            
+
             # Avançar se ainda houver botão Avançar (transição etapa 5 -> 6)
             btn_avancar = self.page.query_selector('button:has-text("Avançar"):not([disabled])')
             if btn_avancar:
@@ -1974,30 +2082,50 @@ class PAPNioAutomation:
                     self.page.wait_for_load_state("networkidle", timeout=8000)
                 except Exception:
                     pass
-            
-            # Verificar status da biometria
-            pagina_texto = (self.page.content() or "").lower()
-            span_biometria = self.page.query_selector('span:has-text("Biometria")')
-            status_biometria = (span_biometria.inner_text() or "").lower() if span_biometria else ""
-            
-            biometria_pendente = (
-                'pendente' in pagina_texto or
-                'pendente' in status_biometria or
-                'aguardando' in pagina_texto or
-                'em análise' in pagina_texto
+
+            # 1) Botão "Abrir OS" habilitado = biometria aprovada (não validar como se ainda estivesse na Etapa 5)
+            btn_abrir_os = self.page.query_selector(
+                'button:has-text("Abrir OS"):not([disabled]), '
+                'button:has-text("Abrir O.S"):not([disabled]), '
+                'button:has-text("Abrir O.S."):not([disabled])'
             )
-            
-            # Verificar se botão Abrir OS está disponível (não disabled) = biometria aprovada
-            btn_abrir_os = self.page.query_selector('button:has-text("Abrir OS"):not([disabled]), button:has-text("Abrir O.S"):not([disabled])')
-            
             if btn_abrir_os:
                 self.etapa_atual = 6
                 return True, "Biometria APROVADA! Pronto para abrir O.S.", True
-            elif biometria_pendente:
+
+            # 2) Restringir "pendente" ao contexto da biometria (evitar falso "pendente" em texto da tela Resumo)
+            span_biometria = self.page.query_selector('span:has-text("Biometria")')
+            contexto_biometria = ""
+            if span_biometria:
+                try:
+                    # Texto da linha/célula ou do container que contém o label Biometria
+                    contexto_biometria = (
+                        span_biometria.evaluate(
+                            "el => (el.closest('tr') || el.closest('div'))?.innerText || el.innerText || ''"
+                        ) or ""
+                    ).lower()
+                except Exception:
+                    contexto_biometria = (span_biometria.inner_text() or "").lower()
+            biometria_pendente = (
+                'pendente' in contexto_biometria
+                or 'aguardando' in contexto_biometria
+                or 'em análise' in contexto_biometria
+            )
+
+            # 3) Fallback: estar na Etapa 6 (Resumo) sem pendente no contexto da biometria = aprovada
+            pagina_texto = (self.page.content() or "").lower()
+            na_etapa_resumo = bool(
+                'resumo' in pagina_texto
+                or self.page.query_selector('h2:has-text("Resumo"), h3:has-text("Resumo"), [class*="resumo"]')
+            )
+            if na_etapa_resumo and not biometria_pendente:
+                self.etapa_atual = 6
+                return True, "Biometria APROVADA (Etapa Resumo). Pronto para abrir O.S.", True
+
+            if biometria_pendente:
                 return True, "Biometria PENDENTE. Peça ao cliente para realizar a biometria e digite CONSULTAR para verificar novamente.", False
-            else:
-                return False, "Biometria não aprovada ou não disponível.", False
-                
+            return False, "Biometria não aprovada ou não disponível.", False
+
         except Exception as e:
             logger.error(f"[PAP] Erro na Etapa 6: {e}")
             return False, f"Erro na Etapa 6: {str(e)}", False
