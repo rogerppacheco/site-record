@@ -247,18 +247,44 @@ def listar_fachadas_dfv(cep):
 
     return split_message(mensagem)
 
+def _cep_numero_viavel_no_dfv(cep_limpo, numero):
+    """Retorna True se o CEP+número consta na base DFV como viável (fallback quando o mapa não localiza)."""
+    if not cep_limpo or not numero:
+        return False
+    num_str = str(numero).strip()
+    # Busca exata (391) ou só o número antes de parênteses (391 (BL 2) -> 391)
+    num_limpo = num_str.split("(")[0].strip() if "(" in num_str else num_str
+    if not num_limpo.isdigit():
+        return False
+    existe = DFV.objects.filter(
+        cep=cep_limpo,
+        num_fachada=num_limpo
+    ).filter(
+        Q(tipo_viabilidade__icontains='VIAVEL') | Q(tipo_viabilidade__icontains='VIÁVEL')
+    ).exists()
+    return existe
+
+
 def consultar_viabilidade_kmz(cep, numero):
     """
-    Lógica Completa: CEP+Num -> Lat/Lng -> Verifica Polígono
+    Lógica: CEP+Num -> Lat/Lng -> Verifica Polígono (KMZ).
+    Se a geolocalização falhar, consulta a base DFV (fachadas); se o número estiver viável no DFV, retorna viável.
     """
     cep_limpo = limpar_texto(cep)
     print(f"\n🔎 BUSCA KMZ (GEO) -> CEP: {cep_limpo} | NUM: {numero}")
 
     # 1. Obter Coordenadas
     geo_data = buscar_coordenadas_viacep_nominatim(cep_limpo, numero)
-    
+
     if not geo_data:
-        return "❌ *ENDEREÇO NÃO LOCALIZADO*\nNão conseguimos converter esse CEP e número em coordenadas GPS. Tente enviar a localização (pino)."
+        # Fallback: verificar se CEP+número consta no DFV (base de fachadas viáveis)
+        if _cep_numero_viavel_no_dfv(cep_limpo, numero):
+            return (
+                "✅ *VIABILIDADE TÉCNICA (DFV)*\n\n"
+                "O endereço não foi localizado no mapa (KMZ), mas o número consta na base de fachadas como *viável*.\n\n"
+                "⚠️ _Sujeito a vistoria técnica local._"
+            )
+        return "❌ *ENDEREÇO NÃO LOCALIZADO*\nNão conseguimos converter esse CEP e número em coordenadas GPS. Tente enviar a localização (pino) ou use o comando *Fachada* para ver os números viáveis do CEP."
 
     cliente_lat = geo_data['lat']
     cliente_lng = geo_data['lng']

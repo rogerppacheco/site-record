@@ -150,7 +150,7 @@
                     <div class="card-body p-0">
                         <div class="table-responsive">
                             <table class="table table-hover align-middle mb-0" id="tabela-usuarios">
-                                <thead class="table-light"><tr id="user-list-header"><th style="width: 40px;"><input type="checkbox" id="check-all" onclick="toggleTodos(this)"></th><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Canal</th> <th>Líder</th><th class="text-end">Ações</th></tr></thead>
+                                <thead class="table-light"><tr id="user-list-header"><th style="width: 40px;"><input type="checkbox" id="check-all" onclick="toggleTodos(this)"></th><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Matr. PAP</th><th>Canal</th><th>Líder</th><th class="text-end">Ações</th></tr></thead>
                                 <tbody id="user-list-body"></tbody>
                             </table>
                         </div>
@@ -306,7 +306,8 @@
                                     </div>
                                     <div class="col-lg-3 col-md-6">
                                         <label class="form-label fw-bold">Senha PAP</label>
-                                        <input type="text" class="form-control" id="senha_pap">
+                                        <input type="password" class="form-control" id="senha_pap" placeholder="Deixe em branco para manter" autocomplete="new-password">
+                                        <small class="text-muted form-text">Exibida como •••••• por segurança</small>
                                     </div>
                                     <div class="col-lg-3 col-md-6">
                                         <label class="form-label fw-bold">WhatsApp</label>
@@ -1130,7 +1131,7 @@
                 renderizarControlesPaginacao(status);
             }, 200);
         } catch (e) {
-            document.getElementById('user-list-body').innerHTML = `<tr><td colspan="7">Erro: ${e.message}</td></tr>`;
+            document.getElementById('user-list-body').innerHTML = `<tr><td colspan="8">Erro: ${e.message}</td></tr>`;
         }
     }
 
@@ -1289,17 +1290,17 @@
 
         // Otimizar renderização do header
         headerRow.innerHTML = isAtivos
-            ? `<th style="width: 40px;"><input type="checkbox" id="check-all" onclick="toggleTodos(this)"></th><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Canal</th><th>Líder</th><th class="text-end">Ações</th>`
-            : `<th>Nome</th><th>E-mail</th><th>Perfil</th><th>Canal</th><th class="text-end">Ações</th>`;
+            ? `<th style="width: 40px;"><input type="checkbox" id="check-all" onclick="toggleTodos(this)"></th><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Matr. PAP</th><th>Canal</th><th>Líder</th><th class="text-end">Ações</th>`
+            : `<th>Nome</th><th>E-mail</th><th>Perfil</th><th>Matr. PAP</th><th>Canal</th><th class="text-end">Ações</th>`;
 
         if (!lista.length) {
-            userListBody.innerHTML = '<tr><td colspan="7">Nenhum usuário.</td></tr>';
+            userListBody.innerHTML = '<tr><td colspan="8">Nenhum usuário.</td></tr>';
             return;
         }
 
         // Otimizar renderização usando documentFragment
         const fragment = document.createDocumentFragment();
-        const colunas = isAtivos ? 7 : 5;
+        const colunas = isAtivos ? 8 : 6;
 
         lista.forEach(user => {
             const row = document.createElement('tr');
@@ -1340,6 +1341,12 @@
 
             perfilCell.textContent = perfilNome;
             row.appendChild(perfilCell);
+
+            // Matrícula PAP
+            const matriculaCell = document.createElement('td');
+            matriculaCell.textContent = user.matricula_pap || '-';
+            matriculaCell.title = user.matricula_pap ? `Matrícula PAP: ${user.matricula_pap}` : '';
+            row.appendChild(matriculaCell);
 
             // Canal
             const canalCell = document.createElement('td');
@@ -1434,6 +1441,7 @@
             const username = (user.username || '').toLowerCase();
             const email = (user.email || '').toLowerCase();
             const cpf = (user.cpf || '').toLowerCase();
+            const matriculaPap = (user.matricula_pap || '').toLowerCase();
             const perfilNome = (user.perfil_nome || '').toLowerCase();
             
             // Buscar nome do supervisor
@@ -1452,6 +1460,7 @@
                    username.includes(termoBusca) ||
                    email.includes(termoBusca) ||
                    cpf.includes(termoBusca) ||
+                   matriculaPap.includes(termoBusca) ||
                    perfilNome.includes(termoBusca) ||
                    supervisorNome.includes(termoBusca);
         });
@@ -1483,7 +1492,7 @@
             console.log(`Busca realizada: ${totalFiltrados} usuário(s) encontrado(s) para "${termoBusca}"`);
         } catch (e) {
             console.error('Erro ao filtrar usuários:', e);
-            document.getElementById('user-list-body').innerHTML = `<tr><td colspan="7">Erro ao filtrar: ${e.message}</td></tr>`;
+            document.getElementById('user-list-body').innerHTML = `<tr><td colspan="8">Erro ao filtrar: ${e.message}</td></tr>`;
         }
     }
 
@@ -1503,8 +1512,6 @@
     };
 
     async function abrirModalUsuario(user = null) {
-            document.getElementById('matricula_pap').value = user ? user.matricula_pap || '' : '';
-            document.getElementById('senha_pap').value = user ? user.senha_pap || '' : '';
         console.log('Abrindo modal de usuário...');
         document.getElementById('user-form').reset();
         document.getElementById('user_id').value = user ? user.id : '';
@@ -1543,8 +1550,15 @@
             document.getElementById('participa_controle_presenca').checked = user.participa_controle_presenca;
             document.getElementById('autorizar_venda_sem_auditoria').checked = user.autorizar_venda_sem_auditoria || false;
             document.getElementById('autorizar_venda_automatica').checked = user.autorizar_venda_automatica || false;
+            document.getElementById('matricula_pap').value = user.matricula_pap || '';
             ['valor_almoco', 'valor_passagem', 'chave_pix', 'nome_da_conta', 'meta_comissao', 'desconto_boleto', 'desconto_inclusao_viabilidade', 'desconto_instalacao_antecipada', 'adiantamento_cnpj', 'desconto_inss_fixo'].forEach(id => { document.getElementById(id).value = user[id] || ''; });
+        } else {
+            document.getElementById('matricula_pap').value = '';
         }
+        // Senha PAP: nunca preencher valor (segurança); placeholder indica se já está cadastrada
+        const senhaPapInput = document.getElementById('senha_pap');
+        senhaPapInput.value = '';
+        senhaPapInput.placeholder = (user && user.senha_pap) ? '•••••• (preenchida)' : 'Deixe em branco para manter';
         
         // Pequeno delay para garantir que os selects foram populados
         setTimeout(() => {
@@ -1639,10 +1653,10 @@
     }
 
     userForm.addEventListener('submit', async function(e) {
-            const matricula_pap = document.getElementById('matricula_pap').value;
-            const senha_pap = document.getElementById('senha_pap').value;
         e.preventDefault();
         const id = document.getElementById('user_id').value;
+        const matricula_pap = document.getElementById('matricula_pap').value;
+        const senha_pap = document.getElementById('senha_pap').value;
         const nomeCompleto = document.getElementById('nome_completo').value.trim();
         const parts = nomeCompleto.split(' ');
         
@@ -1658,8 +1672,7 @@
         
         const supervisorValue = document.getElementById('supervisor_id').value;
         const body = {
-                        matricula_pap: cleanValue(matricula_pap),
-                        senha_pap: cleanValue(senha_pap),
+            matricula_pap: cleanValue(matricula_pap),
             first_name: parts.shift() || '',
             last_name: parts.join(' ') || '',
             cpf: cleanValue(document.getElementById('cpf').value),
@@ -1684,6 +1697,11 @@
             autorizar_venda_sem_auditoria: document.getElementById('autorizar_venda_sem_auditoria').checked,
             autorizar_venda_automatica: document.getElementById('autorizar_venda_automatica').checked
         };
+        
+        // Senha PAP: só enviar se preenchida (ao editar, vazio = manter a atual)
+        if (senha_pap && senha_pap.trim()) {
+            body.senha_pap = senha_pap.trim();
+        }
         
         const senha = document.getElementById('senha').value;
         if (senha && senha.trim()) {

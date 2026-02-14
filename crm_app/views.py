@@ -141,28 +141,36 @@ class WebhookWhatsAppView(APIView):
 
     def post(self, request, *args, **kwargs):
         """
-        Endpoint para receber eventos do WhatsApp e processar fluxos:
-        - Fachada: Consulta fachadas por CEP (DFV)
-        - Viabilidade: Consulta viabilidade por CEP e número (KMZ)
-        - Fatura: Consulta fatura por CPF (Nio API)
-        - Status: Consulta status de venda por CPF ou OS
+        Endpoint para receber eventos do WhatsApp e processar fluxos.
+        Sempre retorna uma resposta HTTP para evitar 502 (ngrok/Z-API).
         """
         import logging
         logger_webhook = logging.getLogger(__name__)
-        
-        from crm_app.whatsapp_webhook_handler import processar_webhook_whatsapp
-        
-        data = request.data
-        logger_webhook.info(f"[WebhookWhatsAppView] Recebido POST com dados: {data}")
+        print("[WEBHOOK] >>> POST /api/crm/webhook-whatsapp/ recebido <<<", flush=True)
+        logger_webhook.info("[WebhookWhatsAppView] POST recebido (início)")
         
         try:
+            data = request.data
+            if isinstance(request.data, dict):
+                data = request.data
+            else:
+                try:
+                    import json
+                    data = json.loads(request.body) if request.body else {}
+                except Exception:
+                    data = {}
+            logger_webhook.info(f"[WebhookWhatsAppView] Dados recebidos (keys): {list(data.keys()) if isinstance(data, dict) else type(data)}")
+        except Exception as e:
+            logger_webhook.exception(f"[WebhookWhatsAppView] Erro ao ler request.data: {e}")
+            return Response({'status': 'ok', 'mensagem': 'Payload inválido'}, status=200)
+        
+        try:
+            from crm_app.whatsapp_webhook_handler import processar_webhook_whatsapp
             resultado = processar_webhook_whatsapp(data)
-            logger_webhook.info(f"[WebhookWhatsAppView] Resultado do processamento: {resultado}")
+            logger_webhook.info(f"[WebhookWhatsAppView] Resultado: {resultado.get('status', '?')}")
             return Response(resultado, status=200 if resultado.get('status') == 'ok' else 500)
         except Exception as e:
-            import logging
-            logger_webhook = logging.getLogger(__name__)
-            logger_webhook.exception(f"[WebhookWhatsAppView] Erro: {e}")
+            logger_webhook.exception(f"[WebhookWhatsAppView] Erro no processamento: {e}")
             return Response({'status': 'erro', 'mensagem': str(e)}, status=500)
 # Endpoint para duplicar venda (Reemissão)
 from rest_framework.decorators import api_view, permission_classes
