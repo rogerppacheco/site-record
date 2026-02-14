@@ -2851,29 +2851,27 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
         sessao.save()
         return (
             f"✅ Celular: *({celular_limpo[:2]}) {celular_limpo[2:7]}-{celular_limpo[7:]}*\n\n"
-            f"📱 Celular secundário (opcional - digite *PULAR* para pular):"
+            f"📱 Digite o *celular secundário* do cliente (com DDD):"
         )
     
-    # --- ETAPA: Celular secundário ---
+    # --- ETAPA: Celular secundário (obrigatório) ---
     elif etapa == 'venda_celular_sec':
-        celular_sec = ""
-        if mensagem_limpa not in ("PULAR", "P"):
-            celular_sec = limpar_texto_cep_cpf(mensagem)
-            if celular_sec and len(celular_sec) < 10:
-                return "❌ Celular inválido. Digite um número válido ou *PULAR*:"
-            sec_dig = _normalizar_celular_digitos(celular_sec)
-            principal_dig = _normalizar_celular_digitos(dados.get('celular', ''))
-            if sec_dig and sec_dig == principal_dig:
-                return "⚠️ O celular secundário não pode ser igual ao principal. Digite outro número ou *PULAR*:"
-            rejeitados = dados.get('celulares_rejeitados') or []
-            if sec_dig and sec_dig in rejeitados:
-                return "⚠️ Este número já foi recusado pelo sistema. Digite outro celular secundário ou *PULAR*:"
+        celular_sec = limpar_texto_cep_cpf(mensagem)
+        if not celular_sec or len(celular_sec) < 10:
+            return "❌ Celular inválido. Digite o celular secundário com DDD (10 ou 11 dígitos):"
+        sec_dig = _normalizar_celular_digitos(celular_sec)
+        principal_dig = _normalizar_celular_digitos(dados.get('celular', ''))
+        if sec_dig == principal_dig:
+            return "⚠️ O celular secundário não pode ser igual ao principal. Digite outro número:"
+        rejeitados = dados.get('celulares_rejeitados') or []
+        if sec_dig and sec_dig in rejeitados:
+            return "⚠️ Este número já foi recusado pelo sistema. Digite outro celular secundário:"
         dados['celular_sec'] = celular_sec
         sessao.dados_temp = dados
         sessao.etapa = 'venda_email'
         sessao.save()
         return (
-            f"✅ {'Celular sec. registrado' if celular_sec else 'Pulado'}\n\n"
+            f"✅ Celular secundário registrado.\n\n"
             f"📧 Digite o *e-mail* do cliente:"
         )
     
@@ -2914,7 +2912,7 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
             sessao.dados_temp = dados
             sessao.etapa = 'venda_celular_sec'
             sessao.save()
-            return "⚠️ Este número (secundário) já foi recusado pelo sistema. Digite outro celular secundário ou *PULAR*:"
+            return "⚠️ Este número (secundário) já foi recusado pelo sistema. Digite outro celular secundário:"
         if cmd_queue:
             cmd_queue.put({
                 'action': 'etapa4',
@@ -3217,11 +3215,9 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
             if not confirmado and (sessao.dados_temp or {}):
                 dados_temp = sessao.dados_temp
                 celular = dados_temp.get('celular') or dados_temp.get('celular_principal') or ''
-                cel_sec = dados_temp.get('celular_sec') or ''
+                # Apenas o número principal pode confirmar; secundário não é aceito
                 chaves_cel = list(dict.fromkeys(
-                    [_chave_telefone(celular), _chave_telefone(cel_sec)]
-                    + (_chaves_telefone_variantes(celular) or [])
-                    + (_chaves_telefone_variantes(cel_sec) or [])
+                    [_chave_telefone(celular)] + (_chaves_telefone_variantes(celular) or [])
                 ))
                 chaves_cel = [c for c in chaves_cel if c]
                 if chaves_cel:
@@ -3573,8 +3569,8 @@ def _executar_venda_pap_etapa6_em_diante(
             try:
                 from crm_app.models import PapConfirmacaoCliente
                 cel_norm = _chave_telefone(celular_cliente)
-                cel_sec = _chave_telefone(dados.get('celular_sec', '') or '')
-                celulares_reg = [c for c in [cel_norm, cel_sec] if c]
+                # Apenas o número principal pode confirmar com SIM (secundário não é aceito)
+                celulares_reg = [cel_norm] if cel_norm else []
                 for c in celulares_reg:
                     PapConfirmacaoCliente.objects.filter(celular_cliente=c, confirmado=False, sessao_id=sessao_id).delete()
                     PapConfirmacaoCliente.objects.create(celular_cliente=c, confirmado=False, sessao_id=sessao_id)
