@@ -107,12 +107,13 @@ SELETORES = {
         'plano_1giga': 'label:has-text("1 Giga"), [class*="card"]:has-text("1 Giga")',
         'plano_700mega': 'label:has-text("700 Mega"), [class*="card"]:has-text("700 Mega")',
         'plano_500mega': 'label:has-text("500 Mega"), [class*="card"]:has-text("500 Mega")',
-        'btn_servicos': 'div:has-text("Serviços disponíveis")',
-        'opcao_fixo': 'div.sc-dcmekm.dBGnOE:has-text("Fixo"), div:has-text("Fixo"):not([disabled])',
-        'btn_streaming': 'div:has-text("Streaming e canais on-line")',
-        'opcao_hbomax': 'div.sc-dcmekm.dBGnOE:has-text("HBO Max"), div:has-text("HBO Max"):not([disabled])',
-        'opcao_globoplay_premium': 'div.sc-dcmekm:has-text("Plano Premium"):not([disabled])',
-        'opcao_globoplay_basico': 'div.sc-dcmekm:has-text("Plano Padrão com Anúncios"), div:has-text("Plano Padrão"):not([disabled])',
+        'btn_servicos': 'button:has-text("Serviços disponíveis")',
+        'card_fixo': 'div.sc-kUQWMX.bwZXDo:has-text("Fixo"), div.bwZXDo:has-text("Fixo"), div.sc-dcmekm.dBGnOE:has-text("Fixo")',
+        'btn_fechar_modal_x': 'button:has(svg path[d*="M19 6.41"]), button[aria-label="Close"], button[aria-label="Fechar"]',
+        'btn_streaming': 'button:has-text("Streaming e canais on-line")',
+        'opcao_hbomax': 'div:has-text("HBO Max") div.sc-jIyBzM.bSKio, div:has-text("HBO Max") img',
+        'opcao_globoplay_premium': 'div:has-text("Plano Premium"):not(:has-text("Padrão")) div.sc-jIyBzM.bSKio, div:has-text("Plano Premium") div.sc-jIyBzM img',
+        'opcao_globoplay_basico': 'div:has-text("Plano Padrão com Anúncios") div.sc-jIyBzM.bSKio, div:has-text("Plano Padrão") div.sc-jIyBzM img',
         'btn_avancar': 'button:has-text("Avançar")',
     },
     
@@ -212,7 +213,7 @@ class PAPNioAutomation:
                 except Exception:
                     pass
             # Pequena pausa para a UI terminar de pintar (React/animations)
-            self.page.wait_for_timeout(1500)
+            self.page.wait_for_timeout(800)
             from django.conf import settings
             base_dir = getattr(settings, 'BASE_DIR', None)
             if not base_dir:
@@ -430,10 +431,13 @@ class PAPNioAutomation:
                 except Exception as e:
                     logger.warning(f"[PAP] Trace não iniciado: {e}")
 
-            # Navegar para o PAP
+            # Navegar para o PAP (reduzir waits para acelerar "Acesso reservado")
             self.page.goto(PAP_LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
-            self.page.wait_for_timeout(3000)
-            self.page.wait_for_load_state("networkidle", timeout=30000)
+            self.page.wait_for_timeout(1000)
+            try:
+                self.page.wait_for_load_state("networkidle", timeout=8000)
+            except Exception:
+                self.page.wait_for_load_state("load", timeout=5000)
             
             # Verificar se precisa fazer login (URL ou formulário de login visível)
             current_url = self.page.url
@@ -454,7 +458,7 @@ class PAPNioAutomation:
             self._capture_screenshot(
                 "01_login_ok",
                 wait_selector=f"{SELETORES['etapa1']['matricula_vendedor']}, button:has-text('Avançar')",
-                wait_timeout_ms=15000,
+                wait_timeout_ms=8000,
             )
 
             # Salvar estado da sessão
@@ -518,7 +522,7 @@ class PAPNioAutomation:
                     self.page.click(SELETORES['login']['btn_login'])
 
                 # Aguardar a página reagir (redirecionamento ou mensagem de erro)
-                self.page.wait_for_timeout(4000)
+                self.page.wait_for_timeout(2500)
 
                 # Validar: se aparecer "Login failed, please try again" (ou similar), não avançar
                 if self._pagina_tem_erro_login():
@@ -623,8 +627,8 @@ class PAPNioAutomation:
                     if self.capture_screenshots:
                         self._highlight_element(el, duration_ms=500)
                     el.click()
-                    self.page.wait_for_timeout(3000)
-                    self.page.wait_for_load_state("domcontentloaded", timeout=10000)
+                    self.page.wait_for_timeout(1500)
+                    self.page.wait_for_load_state("domcontentloaded", timeout=8000)
                     return True
             except Exception as e:
                 logger.debug(f"[PAP] Menu Novo Pedido seletor {sel[:30]}: {e}")
@@ -654,8 +658,11 @@ class PAPNioAutomation:
             except Exception as e:
                 logger.warning(f"[PAP] goto domcontentloaded: {e}, tentando load...")
                 self.page.goto(PAP_NOVO_PEDIDO_URL, wait_until="load", timeout=30000)
-            self.page.wait_for_timeout(3000)
-            self.page.wait_for_load_state("networkidle", timeout=10000)
+            self.page.wait_for_timeout(1000)
+            try:
+                self.page.wait_for_load_state("networkidle", timeout=6000)
+            except Exception:
+                self.page.wait_for_load_state("load", timeout=4000)
             
             url_atual = self.page.url
             login_form = (
@@ -674,7 +681,7 @@ class PAPNioAutomation:
                 if not sucesso:
                     return False, msg
                 self.page.goto(PAP_NOVO_PEDIDO_URL, wait_until="domcontentloaded", timeout=30000)
-                self.page.wait_for_timeout(2000)
+                self.page.wait_for_timeout(1000)
                 url_atual = self.page.url
             
             # Verificar se chegou na página correta
@@ -683,7 +690,7 @@ class PAPNioAutomation:
                 return False, f"Não foi possível acessar a página de novo pedido. URL: {url_atual[:80]}..."
 
             if self.capture_screenshots:
-                self._capture_screenshot("01b_apos_goto_novo_pedido", wait_selector=None, wait_timeout_ms=2000)
+                self._capture_screenshot("01b_apos_goto_novo_pedido", wait_selector=None, wait_timeout_ms=800)
             
             # Aguardar campo matrícula ou página de novo pedido (timeout menor para tentar fallback)
             matricula_visivel = False
@@ -704,7 +711,7 @@ class PAPNioAutomation:
                 logger.warning("[PAP] Campo matrícula não encontrado após goto. Tentando clicar no menu 'Novo Pedido'...")
                 if self._clicar_menu_novo_pedido():
                     if self.capture_screenshots:
-                        self._capture_screenshot("01c_apos_clique_menu_novo_pedido", wait_selector=None, wait_timeout_ms=2000)
+                        self._capture_screenshot("01c_apos_clique_menu_novo_pedido", wait_selector=None, wait_timeout_ms=800)
                     try:
                         self.page.wait_for_selector(SELETORES['etapa1']['matricula_vendedor'], state="visible", timeout=12000)
                     except Exception:
@@ -732,7 +739,7 @@ class PAPNioAutomation:
                 # Digitar matrícula
                 matricula_input.fill(matricula_vendedor)
                 # Aguardar lista atualizar e clicar na opção
-                self.page.wait_for_timeout(500)  # debounce do autocomplete
+                self.page.wait_for_timeout(300)  # debounce do autocomplete
                 lista_items = self.page.query_selector_all(SELETORES['etapa1']['lista_vendedores'])
                 for item in lista_items:
                     if matricula_vendedor in item.inner_text():
@@ -755,7 +762,7 @@ class PAPNioAutomation:
             self.etapa_atual = 1
             self.dados_pedido['matricula_vendedor'] = matricula_vendedor
             if self.capture_screenshots:
-                self._capture_screenshot("01d_etapa1_concluida", wait_selector=SELETORES['etapa2']['cep'], wait_timeout_ms=5000)
+                self._capture_screenshot("01d_etapa1_concluida", wait_selector=SELETORES['etapa2']['cep'], wait_timeout_ms=3000)
             return True, "Etapa 1 concluída! Vendedor selecionado."
                 
         except Exception as e:
@@ -779,7 +786,7 @@ class PAPNioAutomation:
             if cep_sel and cep_sel.is_visible():
                 logger.info("[PAP] Tela validada: formulário de CEP/endereço visível.")
                 return True, "Tela pronta para CEP."
-            self.page.wait_for_timeout(2000)
+            self.page.wait_for_timeout(800)
             cep_sel = self.page.query_selector(SELETORES['etapa2']['cep']) or self.page.query_selector('button:has-text("Buscar")')
             if cep_sel and cep_sel.is_visible():
                 return True, "Tela pronta para CEP."
@@ -1424,11 +1431,29 @@ class PAPNioAutomation:
             logger.error(f"[PAP] Erro na Etapa 3: {e}")
             return False, f"Erro na Etapa 3: {str(e)}", None
     
+    def _etapa4_limpar_todos_campos_contato(self) -> None:
+        """Limpa todos os campos da etapa Contato (principal, confirmação, secundário, email, confirmação) para nova tentativa."""
+        try:
+            for sel in [
+                'input#contato, input[name="contato"]',
+                'input#confirmacaoContato, input[name="confirmacaoContato"]',
+                'input#contatoSecundario, input[name="contatoSecundario"]',
+                'input#email, input[name="email"]',
+                'input#confirmarEmail, input[name="confirma-email"]',
+            ]:
+                inp = self.page.query_selector(sel)
+                if inp and inp.is_visible():
+                    inp.fill('')
+            self.page.wait_for_timeout(300)
+        except Exception as e:
+            logger.warning(f"[PAP] _etapa4_limpar_todos_campos_contato: {e}")
+
     def etapa4_contato(self, celular: str, email: str, celular_secundario: str = None) -> Tuple[bool, str, Optional[str]]:
         """
         Etapa 4: Informações de contato e análise de crédito.
         Campos: contato, confirmacaoContato, contatoSecundario, email, confirmarEmail
         Trata modal "Atenção!" (telefone/email repetidos, e-mail inválido) e modal de crédito.
+        Em erro de celular (inválido/já utilizado/excede repetições): limpa TODOS os campos antes de retornar.
         
         Returns:
             Tuple (sucesso, mensagem, resultado_credito)
@@ -1482,15 +1507,10 @@ class PAPNioAutomation:
             self.page.keyboard.press("Tab")
             self.page.wait_for_timeout(800)
             
-            # Verificar se o sistema exibiu "Celular inválido" (principal ou secundário)
-            if "celular inválido" in self.page.content().lower():
-                try:
-                    inp_sec = self.page.query_selector('input#contatoSecundario, input[name="contatoSecundario"]')
-                    if inp_sec and inp_sec.is_visible():
-                        inp_sec.fill('')
-                        self.page.wait_for_timeout(200)
-                except Exception:
-                    pass
+            pagina_lower = self.page.content().lower()
+            # Celular inválido ou já utilizado (mensagem inline ou validação)
+            if "celular inválido" in pagina_lower or "celular já utilizado" in pagina_lower:
+                self._etapa4_limpar_todos_campos_contato()
                 return False, "CELULAR_INVALIDO", None
             
             # Verificar modal "Atenção!" (email já usado ou inválido) - pode aparecer ao validar
@@ -1502,8 +1522,10 @@ class PAPNioAutomation:
                     btn_ok.click()
                     self.page.wait_for_timeout(500)
                 if "email" in pagina and ("usado" in pagina or "pedido anterior" in pagina):
+                    self._etapa4_limpar_todos_campos_contato()
                     return False, "EMAIL_REJEITADO", None
                 if "e-mail inválido" in pagina or "preencha um e-mail válido" in pagina:
+                    self._etapa4_limpar_todos_campos_contato()
                     return False, "EMAIL_INVALIDO", None
             
             # Clicar Avançar para disparar análise de crédito
@@ -1527,30 +1549,43 @@ class PAPNioAutomation:
                     if btn_ok:
                         btn_ok.click()
                         self.page.wait_for_timeout(500)
-                    if "excede" in pagina or "repetições" in pagina:
-                        # Limpar campo celular secundário para a próxima tentativa (evita valor rejeitado permanecer)
-                        try:
-                            inp_sec = self.page.query_selector('input#contatoSecundario, input[name="contatoSecundario"]')
-                            if inp_sec and inp_sec.is_visible():
-                                inp_sec.fill('')
-                                self.page.wait_for_timeout(200)
-                        except Exception:
-                            pass
+                    if "excede" in pagina or "repetições" in pagina or "celular já utilizado" in pagina:
+                        self._etapa4_limpar_todos_campos_contato()
                         return False, "TELEFONE_REJEITADO", None
                     if "email" in pagina and ("usado" in pagina or "pedido anterior" in pagina):
+                        self._etapa4_limpar_todos_campos_contato()
                         return False, "EMAIL_REJEITADO", None
                     if "e-mail inválido" in pagina or "preencha um e-mail válido" in pagina:
+                        self._etapa4_limpar_todos_campos_contato()
                         return False, "EMAIL_INVALIDO", None
             
-            # Aguardar modal "Resultado da análise de crédito" (ignorar spinner/overlay)
-            try:
-                self.page.wait_for_selector('h2:has-text("Resultado da análise de crédito")', state="visible", timeout=20000)
-            except Exception:
-                pass
-            
-            self.page.wait_for_timeout(2000)
-            pagina_texto = self.page.content().lower()
-            
+            # Poll rápido: se Etapa 5 (Pagamento/Ofertas) aparecer sem modal = crédito aprovado (reduz tempo)
+            modal_apareceu = False
+            for _ in range(12):
+                self.page.wait_for_timeout(1000)
+                pagina_texto = (self.page.content() or "").lower()
+                etapa5_visivel = (
+                    'pagamento' in pagina_texto and 'ofertas' in pagina_texto
+                ) or self.page.query_selector('input[value="BOLETO"], input[value="CREDITO"], input[value="DACC"]')
+                modal_credito = self.page.query_selector('h2:has-text("Resultado da análise de crédito")')
+                if etapa5_visivel and not modal_credito:
+                    self.etapa_atual = 4
+                    self.dados_pedido['celular'] = celular
+                    self.dados_pedido['email'] = email
+                    if celular_secundario:
+                        self.dados_pedido['celular_sec'] = celular_secundario
+                    return True, "Análise de crédito: APROVADO! (Elegível para todas as formas de pagamento)", "Elegível para todas as formas de pagamento"
+                if modal_credito and modal_credito.is_visible():
+                    modal_apareceu = True
+                    break
+            if not modal_apareceu:
+                try:
+                    self.page.wait_for_selector('h2:has-text("Resultado da análise de crédito")', state="visible", timeout=8000)
+                    modal_apareceu = True
+                except Exception:
+                    pass
+            self.page.wait_for_timeout(1500)
+            pagina_texto = (self.page.content() or "").lower()
             # Crédito negado - fechar modal antes de retornar
             if "crédito negado" in pagina_texto or "credito negado" in pagina_texto or ("negado" in pagina_texto and "aprovado" not in pagina_texto):
                 for btn_text in ['Consultar outro CPF/CNPJ', 'Ok', 'Fechar']:
@@ -1563,36 +1598,29 @@ class PAPNioAutomation:
                             pass
                         break
                 return False, "CREDITO_NEGADO", None
-            
-            # Crédito aprovado (todas formas ou apenas cartão)
+            # Crédito aprovado (todas formas ou apenas cartão) - modal visível
             if "crédito aprovado" in pagina_texto or "credito aprovado" in pagina_texto:
                 if "apenas" in pagina_texto and "cartão" in pagina_texto:
                     resultado_credito = "Elegível apenas para Cartão de Crédito"
                 else:
                     resultado_credito = "Elegível para todas as formas de pagamento"
-                
-                # Clicar Continuar - force=True ignora spinner/overlay que interceptam
                 try:
                     self.page.locator('button:has-text("Continuar")').first.click(force=True, timeout=5000)
                     self.page.wait_for_load_state("networkidle", timeout=10000)
                 except Exception:
-                    # Fallback: clique via JS (ignora totalmente overlays)
                     self.page.evaluate("""() => {
-                        const btn = document.querySelector('button');
                         const btns = [...document.querySelectorAll('button')];
                         const c = btns.find(b => b.textContent.includes('Continuar'));
                         if (c) c.click();
                     }""")
                     self.page.wait_for_timeout(2000)
-                
                 self.etapa_atual = 4
                 self.dados_pedido['celular'] = celular
                 self.dados_pedido['email'] = email
                 if celular_secundario:
                     self.dados_pedido['celular_sec'] = celular_secundario
                 return True, f"Análise de crédito: APROVADO! ({resultado_credito})", resultado_credito
-            
-            # Site avançou direto para Etapa 5 (Pagamento/Ofertas) sem modal - crédito aprovado
+            # Etapa 5 visível sem texto de modal (fallback)
             etapa5_visivel = (
                 'pagamento' in pagina_texto and 'ofertas' in pagina_texto
             ) or self.page.query_selector('input[value="BOLETO"], input[value="CREDITO"], input[value="DACC"]')
@@ -1603,7 +1631,6 @@ class PAPNioAutomation:
                 if celular_secundario:
                     self.dados_pedido['celular_sec'] = celular_secundario
                 return True, "Análise de crédito: APROVADO! (Elegível para todas as formas de pagamento)", "Elegível para todas as formas de pagamento"
-            
             return False, "Não foi possível obter resultado da análise de crédito.", None
                 
         except Exception as e:
@@ -1729,22 +1756,88 @@ class PAPNioAutomation:
 
     def _etapa5_clicar_salvar_painel(self) -> bool:
         """
-        Clica no botão "Salvar" do painel de serviços (NÃO "Salvar Interesse").
-        O botão "Salvar Interesse" tem classe sc-dCaJBF - excluímos explicitamente.
+        Clica no botão "Salvar" do painel de serviços (Fixo/Streaming).
+        Preferir o botão com classe sc-izfUZz eKoZwI. NÃO "Salvar Interesse".
+        Para streaming o painel pode ter estrutura diferente; tenta vários seletores.
         """
         try:
+            self.page.wait_for_timeout(400)
+            # 0. Botão exato do painel: <button class="sc-izfUZz eKoZwI">Salvar</button>
+            for sel in [
+                'button.sc-izfUZz.eKoZwI',
+                'button.eKoZwI.sc-izfUZz',
+                'button[class*="eKoZwI"][class*="sc-izfUZz"]',
+            ]:
+                try:
+                    btn = self.page.query_selector(sel)
+                    if btn:
+                        txt = (btn.inner_text() or "").strip()
+                        if txt == "Salvar" and btn.is_visible():
+                            cls = btn.get_attribute("class") or ""
+                            if "dCaJBF" not in cls and "hBqtbW" not in cls:
+                                btn.scroll_into_view_if_needed()
+                                btn.click()
+                                self.page.wait_for_timeout(500)
+                                return True
+                except Exception:
+                    continue
+            # 1. Playwright role (qualquer botão com nome "Salvar")
+            try:
+                btn = self.page.get_by_role("button", name="Salvar")
+                if btn.count() > 0:
+                    for i in range(btn.count()):
+                        b = btn.nth(i)
+                        if b.is_visible():
+                            txt = (b.inner_text() or "").strip()
+                            cls = (b.get_attribute("class") or "")
+                            if txt == "Salvar" and "Interesse" not in cls and ("eKoZwI" in cls or "sc-izfUZz" in cls):
+                                b.click()
+                                self.page.wait_for_timeout(500)
+                                return True
+                    for i in range(btn.count()):
+                        b = btn.nth(i)
+                        if b.is_visible():
+                            txt = (b.inner_text() or "").strip()
+                            cls2 = (b.get_attribute("class") or "")
+                            if txt == "Salvar" and "Interesse" not in cls2:
+                                b.click()
+                                self.page.wait_for_timeout(500)
+                                return True
+            except Exception:
+                pass
+            # 2. Classe eKoZwI / sc-izfUZz (painel Fixo/Streaming)
+            for sel in ['button.sc-izfUZz.eKoZwI', 'button.eKoZwI', 'button.sc-izfUZz:has-text("Salvar")', '[class*="eKoZwI"]:has-text("Salvar")', 'button:has-text("Salvar")']:
+                try:
+                    btn = self.page.query_selector(sel)
+                    if btn:
+                        txt = (btn.inner_text() or "").strip()
+                        if txt == "Salvar" and btn.is_visible():
+                            cls = btn.get_attribute("class") or ""
+                            if "dCaJBF" in cls or "hBqtbW" in cls:
+                                continue
+                            btn.scroll_into_view_if_needed()
+                            btn.click()
+                            self.page.wait_for_timeout(500)
+                            return True
+                except Exception:
+                    continue
+            # 3. Último botão visível com texto exato "Salvar" (streaming costuma ser o da direita)
             btns = self.page.query_selector_all('button')
-            for b in btns:
+            for b in reversed(btns):
                 txt = (b.inner_text() or "").strip()
                 if txt == "Salvar":
-                    # Excluir "Salvar Interesse" (texto exato)
                     cls = b.get_attribute("class") or ""
                     if "dCaJBF" in cls or "hBqtbW" in cls:
                         continue
                     if b.is_visible():
-                        b.click()
-                        self.page.wait_for_timeout(500)
-                        return True
+                        try:
+                            b.scroll_into_view_if_needed()
+                            b.click()
+                            self.page.wait_for_timeout(500)
+                            return True
+                        except Exception:
+                            pass
+            logger.warning("[PAP] _etapa5_clicar_salvar_painel: nenhum botão Salvar visível encontrado")
             return False
         except Exception as e:
             logger.error(f"[PAP] _etapa5_clicar_salvar_painel: {e}")
@@ -1768,40 +1861,77 @@ class PAPNioAutomation:
         except Exception:
             return False
 
+    def _etapa5_clicar_fechar_modal_x(self) -> bool:
+        """Clica no botão X para fechar o modal que abre à direita (Fixo/Streaming)."""
+        try:
+            for sel in [
+                SELETORES['etapa5']['btn_fechar_modal_x'],
+                'button:has(svg path[d*="M19 6.41"])',
+                'button[aria-label="Close"]',
+                'button[aria-label="Fechar"]',
+                '[class*="close"] button',
+            ]:
+                btn = self.page.query_selector(sel)
+                if btn and btn.is_visible():
+                    btn.click()
+                    self.page.wait_for_timeout(400)
+                    return True
+            return False
+        except Exception as e:
+            logger.warning(f"[PAP] _etapa5_clicar_fechar_modal_x: {e}")
+            return False
+
     def etapa5_selecionar_fixo(self, tem_fixo: bool) -> Tuple[bool, str]:
         """
-        Seleciona Fixo (R$ 30). Fluxo: clicar seta Serviços disponíveis -> Fixo aparece
-        -> clicar Fixo -> marcar opção no painel -> Salvar (NÃO Salvar Interesse).
+        Seleciona Fixo (R$ 30/mês).
+        Passo 1: Clicar no botão "Serviços disponíveis".
+        Passo 2: Clicar no quadro/card que abre com "Fixo" (div.sc-kUQWMX.bwZXDo ou div.sc-dcmekm.dBGnOE).
+        Passo 3: Clicar no X para fechar o modal que abre à direita.
         """
         try:
             self._etapa5_garantir_pagina()
-            if tem_fixo:
-                # 1. Expandir "Serviços adicionais" se colapsado
-                serv_adic = self.page.query_selector('[class*="sc-"]:has-text("Serviços adicionais")')
-                if serv_adic:
-                    serv_adic.click()
-                    self.page.wait_for_timeout(400)
-                # 2. Clicar na seta de "Serviços disponíveis" para expandir (mostra Fixo)
-                # A seta (svg) está na mesma linha que o texto
-                serv_row = self.page.query_selector('div:has-text("Serviços disponíveis")')
-                if serv_row:
-                    serv_row.click()
-                    self.page.wait_for_timeout(600)
-                # 3. Clicar em "Fixo" (div.sc-dcmekm.dBGnOE) para abrir painel
-                fixo_elem = self.page.query_selector('div.sc-dcmekm.dBGnOE:has-text("Fixo"), div:has-text("Fixo"):not([disabled])')
-                if fixo_elem and fixo_elem.is_visible():
-                    fixo_elem.click()
-                    self.page.wait_for_timeout(600)
-                # 4. Marcar opção no painel (checkbox/div com img)
-                opc = self.page.query_selector('div.sc-jIyBzM.bSKio, div[class*="jIyBzM"]:has(img)')
-                if not opc:
-                    opc = self.page.query_selector('div:has(img)[class*="sc-"]')
-                if opc and opc.is_visible():
-                    opc.click()
-                    self.page.wait_for_timeout(400)
-                # 5. Clicar Salvar do painel (NUNCA Salvar Interesse)
-                self._etapa5_clicar_salvar_painel()
             self.dados_pedido['tem_fixo'] = tem_fixo
+            if not tem_fixo:
+                return True, "OK"
+            # 1. Clicar no BOTÃO "Serviços disponíveis" (class sc-wRHdD zRDVL)
+            btn_servicos = self.page.query_selector(SELETORES['etapa5']['btn_servicos'])
+            if not btn_servicos:
+                btn_servicos = self.page.query_selector('button.sc-wRHdD:has-text("Serviços disponíveis")')
+            if not btn_servicos:
+                btn_servicos = self.page.query_selector('div:has-text("Serviços disponíveis")')
+            if not btn_servicos or not btn_servicos.is_visible():
+                return False, "Botão 'Serviços disponíveis' não encontrado."
+            try:
+                btn_servicos.scroll_into_view_if_needed()
+                btn_servicos.click()
+            except Exception:
+                self.page.evaluate("(el) => el.click()", btn_servicos)
+            self.page.wait_for_timeout(800)
+            # 2. Clicar no quadro/card que contém "Fixo" (abre o modal à direita)
+            fixo_card = None
+            for sel in [
+                'div.sc-kUQWMX.bwZXDo:has-text("Fixo")',
+                'div.bwZXDo:has-text("Fixo")',
+                'div.sc-dcmekm.dBGnOE:has-text("Fixo")',
+                SELETORES['etapa5']['card_fixo'],
+                'div:has-text("Fixo"):has-text("Faça ligações")',
+                'div:has-text("Fixo"):has-text("R$ 30")',
+            ]:
+                fixo_card = self.page.query_selector(sel)
+                if fixo_card and fixo_card.is_visible():
+                    break
+                fixo_card = None
+            if not fixo_card or not fixo_card.is_visible():
+                return False, "Opção Fixo não encontrada. Verifique se a seção 'Serviços disponíveis' está expandida."
+            try:
+                fixo_card.scroll_into_view_if_needed()
+                fixo_card.click()
+            except Exception:
+                self.page.evaluate("(el) => el.click()", fixo_card)
+            self.page.wait_for_timeout(700)
+            # 3. Confirmar com Salvar (não usar X, pois desmarca a opção)
+            self._etapa5_clicar_salvar_painel()
+            self.page.wait_for_timeout(400)
             return True, "OK"
         except Exception as e:
             logger.error(f"[PAP] Erro ao selecionar fixo: {e}")
@@ -1809,44 +1939,83 @@ class PAPNioAutomation:
 
     def etapa5_selecionar_streaming(self, tem_streaming: bool, streaming_opcoes: str = None, plano: str = "") -> Tuple[bool, str]:
         """
-        Seleciona streaming. Fluxo: clicar "Streaming e canais on-line" -> marcar opções
-        (HBO Max, Globoplay Premium, Globoplay Padrão) -> Salvar (NÃO Salvar Interesse).
-        Plano Padrão com Anúncios não está disponível para 700Mb e 1Gb (já incluso).
+        Seleciona streaming.
+        Passo 1: Clicar no botão "Streaming e canais on-line".
+        Passo 2: Marcar cada opção clicando no ícone (div.sc-jIyBzM.bSKio ou img) da linha HBO Max / Globoplay Premium / Plano Padrão.
+        Passo 3: Confirmar com Salvar (não usar X, pois desmarca as opções).
+        Globoplay Premium e Plano Padrão são mutuamente exclusivos; Padrão não disponível para 700Mb/1Gb.
         """
         try:
             self._etapa5_garantir_pagina()
+            self.dados_pedido['tem_streaming'] = tem_streaming
+            self.dados_pedido['streaming_opcoes'] = (streaming_opcoes or '').strip()
             if not tem_streaming:
-                self.dados_pedido['tem_streaming'] = False
                 return True, "OK"
-            # 1. Clicar em "Streaming e canais on-line" para expandir
-            stream_row = self.page.query_selector('div:has-text("Streaming e canais on-line")')
-            if stream_row:
-                stream_row.click()
-                self.page.wait_for_timeout(600)
-            # 2. Marcar opções (div.sc-dcmekm.dBGnOE = clicável; kaHRcu = disabled)
+            # 1. Clicar no BOTÃO "Streaming e canais on-line"
+            btn_stream = self.page.query_selector(SELETORES['etapa5']['btn_streaming'])
+            if not btn_stream:
+                btn_stream = self.page.query_selector('button.sc-wRHdD:has-text("Streaming e canais on-line")')
+            if not btn_stream:
+                btn_stream = self.page.query_selector('div:has-text("Streaming e canais on-line")')
+            if not btn_stream or not btn_stream.is_visible():
+                return False, "Botão 'Streaming e canais on-line' não encontrado."
+            try:
+                btn_stream.scroll_into_view_if_needed()
+                btn_stream.click()
+            except Exception:
+                self.page.evaluate("(el) => el.click()", btn_stream)
+            self.page.wait_for_timeout(800)
             plano_lower = (plano or self.dados_pedido.get('plano', '')).lower()
-            skip_padrao = '700mega' in plano_lower or '1giga' in plano_lower  # já incluso
-            opts = (streaming_opcoes or '').lower().replace(' ', '').split(',')
+            skip_padrao = '700mega' in plano_lower or '1giga' in plano_lower
+            opts = [x.strip() for x in (streaming_opcoes or '').lower().replace(' ', '').split(',') if x.strip()]
+            # 2. Para cada opção: clicar no ícone (img ou div.sc-jIyBzM.bSKio) da linha correspondente
             for o in opts:
-                o = o.strip()
-                if not o:
-                    continue
                 el = None
                 if 'hbomax' in o or o == 'hbo':
-                    el = self.page.query_selector('div.sc-dcmekm.dBGnOE:has-text("HBO Max"), div:has-text("HBO Max"):not([disabled])')
+                    for sel in [
+                        'div:has-text("HBO Max") div.sc-jIyBzM.bSKio',
+                        'div:has-text("HBO Max") img',
+                        'div:has-text("HBO Max") [class*="jIyBzM"]',
+                    ]:
+                        el = self.page.query_selector(sel)
+                        if el and el.is_visible():
+                            break
                 elif 'globoplay_premium' in o or ('premium' in o and 'basico' not in o):
-                    el = self.page.query_selector('div.sc-dcmekm:has-text("Plano Premium"):not([disabled])')
+                    # Globoplay – Plano Premium (não confundir com Plano Padrão)
+                    for sel in [
+                        'div:has-text("Globoplay"):has-text("Plano Premium") div.sc-jIyBzM.bSKio',
+                        'div:has-text("Plano Premium") div.sc-jIyBzM.bSKio',
+                        'div:has-text("Plano Premium") img',
+                        'div:has-text("Plano Premium") [class*="jIyBzM"]',
+                    ]:
+                        el = self.page.query_selector(sel)
+                        if el and el.is_visible():
+                            break
                 elif ('globoplay_basico' in o or 'basico' in o or 'padrão' in o or 'padrao' in o) and not skip_padrao:
-                    el = self.page.query_selector('div.sc-dcmekm:has-text("Plano Padrão com Anúncios"), div:has-text("Plano Padrão"):not([disabled])')
-                if el and el.is_visible() and el.get_attribute('disabled') != 'true':
-                    try:
-                        el.click()
-                    except Exception:
-                        self.page.evaluate('(el) => el.click()', el)
-                    self.page.wait_for_timeout(400)
-            # 3. Clicar Salvar do painel (NUNCA Salvar Interesse)
-            self._etapa5_clicar_salvar_painel()
-            self.dados_pedido['tem_streaming'] = tem_streaming
+                    for sel in [
+                        'div:has-text("Plano Padrão com Anúncios") div.sc-jIyBzM.bSKio',
+                        'div:has-text("Plano Padrão com Anúncios") img',
+                        'div:has-text("Plano Padrão") div.sc-jIyBzM.bSKio',
+                    ]:
+                        el = self.page.query_selector(sel)
+                        if el and el.is_visible():
+                            break
+                if not el or not el.is_visible():
+                    continue
+                try:
+                    el.scroll_into_view_if_needed()
+                    el.click()
+                except Exception:
+                    self.page.evaluate("(el) => el.click()", el)
+                self.page.wait_for_timeout(500)
+            # 3. Confirmar com Salvar (não usar X, pois desmarca as opções de streaming)
+            self.page.wait_for_timeout(800)
+            if not self._etapa5_clicar_salvar_painel():
+                self.page.wait_for_timeout(700)
+                self._etapa5_clicar_salvar_painel()
+            self.page.wait_for_timeout(500)
+            self._fechar_modal_servicos_adicionais()
+            self.page.wait_for_timeout(300)
             return True, "OK"
         except Exception as e:
             logger.error(f"[PAP] Erro ao selecionar streaming: {e}")
@@ -1920,7 +2089,7 @@ class PAPNioAutomation:
     def obter_resumo_pedido_para_cliente(self) -> str:
         """
         Monta o resumo do pedido a partir dos dados coletados no fluxo.
-        Usado na etapa de biometria para enviar ao cliente e validar o "sim".
+        Inclui plano, Fixo (R$ 30/mês), streaming (HBO Max R$ 44,90; Globoplay Premium R$ 39,90; Padrão R$ 22,90).
         """
         d = self.dados_pedido
         nome = d.get('nome_cliente') or 'Cliente'
@@ -1931,22 +2100,36 @@ class PAPNioAutomation:
         plano = (d.get('plano') or '500mega').upper()
         forma_raw = (d.get('forma_pagamento') or '').upper()
         cartao = 'CREDITO' in forma_raw or 'CARTÃO' in forma_raw or 'CARTAO' in forma_raw
-        # 500Mb: boleto/débito R$100, cartão R$90 | 700Mb: boleto/débito R$130, cartão R$120 | 1Gb: boleto/débito R$160, cartão R$150
         valor_map = {
-            '500MEGA': ('R$ 100,00/mês', 'R$ 90,00/mês'),  # (boleto/debito, cartao)
+            '500MEGA': ('R$ 100,00/mês', 'R$ 90,00/mês'),
             '700MEGA': ('R$ 130,00/mês', 'R$ 120,00/mês'),
             '1GIGA': ('R$ 160,00/mês', 'R$ 150,00/mês'),
         }
         par = valor_map.get(plano.upper(), ('R$ --', 'R$ --'))
         valor = par[1] if cartao else par[0]
         forma = (d.get('forma_pagamento') or 'Boleto').replace('CREDITO', 'Cartão').replace('BOLETO', 'Boleto').replace('DACC', 'Débito')
+        # Serviços adicionais com preços
+        linhas_adic = []
+        if d.get('tem_fixo'):
+            linhas_adic.append("Fixo: R$ 30,00/mês")
+        opts_raw = (d.get('streaming_opcoes') or '').lower().replace(' ', '')
+        opts_set = set(x.strip() for x in opts_raw.split(',') if x.strip())
+        precos_streaming = [
+            ('hbomax', 'HBO Max', 'R$ 44,90/mês'),
+            ('globoplay_premium', 'Globoplay – Plano Premium', 'R$ 39,90/mês'),
+            ('globoplay_basico', 'Globoplay – Plano Padrão com Anúncios', 'R$ 22,90/mês'),
+        ]
+        for key, label, preco in precos_streaming:
+            if key in opts_set:
+                linhas_adic.append(f"{label}: {preco}")
+        bloco_adic = "\n".join(linhas_adic) if linhas_adic else "Nenhum"
         return (
             f"*RESUMO DO PEDIDO*\n\n"
             f"Nome do cliente: {nome}\n"
             f"Endereço: {endereco}\n"
-            f"Plano: {plano}\n"
-            f"Valor: {valor}\n"
+            f"Plano: {plano} – {valor}\n"
             f"Forma de pagamento: {forma}\n"
+            f"*Serviços adicionais:*\n{bloco_adic}\n"
             f"Fidelidade: 12 meses\n\n"
             f"Taxa de habilitação: Você ganha isenção da taxa de habilitação se permanecer no mínimo 12 meses com a gente."
         )
@@ -2131,14 +2314,17 @@ class PAPNioAutomation:
             return False, f"Erro na Etapa 6: {str(e)}", False
     
     def etapa7_ir_para_agendamento(self) -> Tuple[bool, str]:
-        """Clica em Abrir OS e aguarda a tela de Agendamento aparecer."""
+        """Clica em Abrir OS e aguarda a tela de Agendamento aparecer.
+        O portal executa 9 validações ('Consultando os slots para agendamento' 1 de 9 ... 9 de 9)
+        antes de exibir a tela; timeout alto para não falhar durante as validações."""
         try:
             btn = self.page.query_selector('button:has-text("Abrir OS"):not([disabled]), button:has-text("Abrir O.S"):not([disabled])')
             if not btn:
                 return False, "Botão Abrir OS não disponível."
             btn.click()
             self.page.wait_for_timeout(2000)
-            self.page.wait_for_selector('h3:has-text("Período"), [class*="react-datepicker"], [class*="Agendamento"]', state="visible", timeout=15000)
+            # 9 validações no portal; aguardar até 90s pela tela de Período/Agendamento
+            self.page.wait_for_selector('h3:has-text("Período"), [class*="react-datepicker"], [class*="Agendamento"]', state="visible", timeout=90000)
             self.page.wait_for_load_state("networkidle", timeout=10000)
             return True, "Tela de Agendamento exibida."
         except Exception as e:
@@ -2177,10 +2363,9 @@ class PAPNioAutomation:
                 return False, f"Dia {dia} não encontrado no calendário.", []
             elem.click()
             self.page.wait_for_timeout(1500)
-            # Períodos: li com "08h às 10h - Manhã", "10h às 12h - Manhã", etc
-            periodos = self.page.query_selector_all('li:has-text("Manhã"), li:has-text("Tarde")')
-            if not periodos:
-                periodos = self.page.query_selector_all('li:has-text("às")')
+            # Períodos: 2 (08h às 12h - Manhã, 13h às 18h - Tarde) ou 4 (08h-10h, 10h-12h, 13h-15h, 15h-18h)
+            # Garantir ordem do DOM e reconhecer ambos os formatos
+            periodos = self._etapa7_obter_lista_periodos()
             labels = []
             for i, p in enumerate(periodos):
                 lbl = (p.inner_text() or "").strip()
@@ -2191,12 +2376,32 @@ class PAPNioAutomation:
             logger.error(f"[PAP] etapa7_selecionar_data: {e}")
             return False, str(e), []
 
+    def _etapa7_obter_lista_periodos(self):
+        """Retorna lista de elementos li de período em ordem do DOM.
+        Reconhece 2 períodos (08h às 12h - Manhã, 13h às 18h - Tarde) ou 4 períodos."""
+        # Padrão "Xh às Yh" (ex.: 08h às 12h - Manhã, 13h às 18h - Tarde)
+        try:
+            all_li = self.page.query_selector_all('li')
+            periodos = []
+            pattern = re.compile(r'\d+h\s*às\s*\d+h', re.IGNORECASE)
+            for li in all_li:
+                text = (li.inner_text() or "").strip()
+                if pattern.search(text):
+                    periodos.append(li)
+            if periodos:
+                return periodos
+        except Exception as e:
+            logger.debug("[PAP] _etapa7_obter_lista_periodos (regex): %s", e)
+        # Fallback: li com Manhã ou Tarde
+        periodos = self.page.query_selector_all('li:has-text("Manhã"), li:has-text("Tarde")')
+        if periodos:
+            return periodos
+        return self.page.query_selector_all('li:has-text("às")')
+
     def etapa7_selecionar_periodo(self, indice: int) -> Tuple[bool, str]:
         """Seleciona o período pelo índice. NÃO clica em Agendar (apenas seleciona o turno)."""
         try:
-            periodos = self.page.query_selector_all('li:has-text("Manhã"), li:has-text("Tarde")')
-            if not periodos:
-                periodos = self.page.query_selector_all('li:has-text("às")')
+            periodos = self._etapa7_obter_lista_periodos()
             if indice < 1 or indice > len(periodos):
                 return False, f"Período {indice} inválido."
             periodos[indice - 1].click()
