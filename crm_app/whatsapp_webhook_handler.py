@@ -32,6 +32,9 @@ _automacoes_lock = threading.Lock()
 _pap_worker_queues = {}  # sessao_id -> queue.Queue()
 _pap_worker_lock = threading.Lock()
 
+# Evita enviar a lista de faturas duas vezes quando o webhook é disparado em duplicidade (ex.: Z-API/WhatsApp).
+_fatura_cpf_lock = threading.Lock()
+
 
 def _registrar_estatistica(telefone, comando):
     """
@@ -4550,301 +4553,301 @@ def processar_webhook_whatsapp(data):
             if not cpf_valido:
                 resposta = "❌ CPF inválido. Por favor, digite o CPF completo (11 dígitos, apenas números):"
             else:
-                logger.info(f"[Webhook] Buscando TODAS as faturas para CPF: {cpf_limpo}")
-                try:
-                    # Buscar TODAS as faturas - fazer múltiplas requisições se necessário
-                    todas_invoices = []
-                    offset = 0
-                    limit = 50  # Aumentar limite por requisição
-                    max_tentativas = 5  # Evitar loop infinito
-                    
-                    for tentativa in range(max_tentativas):
-                        resultado = consultar_dividas_nio(cpf_limpo, offset=offset, limit=limit, headless=True)
-                        invoices_lote = resultado.get('invoices', [])
+                with _fatura_cpf_lock:
+                    sessao.refresh_from_db()
+                    dados_temp = sessao.dados_temp or {}
+                    if sessao.etapa == 'fatura_selecionar' and dados_temp.get('cpf') == cpf_limpo:
+                        n = len(dados_temp.get('faturas', []))
+                        resposta = f"📋 Lista já enviada. Digite o *NÚMERO* da fatura (1 a {n}) que deseja ver os detalhes:"
+                        return _enviar_resposta_e_retornar(resposta)
+                    logger.info(f"[Webhook] Buscando TODAS as faturas para CPF: {cpf_limpo}")
+                    try:
+                        from django.conf import settings
+                        headless_fatura = getattr(settings, 'PAP_HEADLESS', True)  # False = ver navegador (igual Vender)
+                        # Buscar TODAS as faturas - fazer múltiplas requisições se necessário
+                        todas_invoices = []
+                        offset = 0
+                        limit = 50  # Aumentar limite por requisição
+                        max_tentativas = 5  # Evitar loop infinito
                         
-                        if not invoices_lote:
-                            break  # Não há mais faturas
+                        for tentativa in range(max_tentativas):
+                            resultado = consultar_dividas_nio(cpf_limpo, offset=offset, limit=limit, headless=headless_fatura)
+                            invoices_lote = resultado.get('invoices', [])
+                            
+                            if not invoices_lote:
+                                break  # Não há mais faturas
+                            
+                            todas_invoices.extend(invoices_lote)
+                            
+                            # Se retornou menos que o limite, já pegou todas
+                            if len(invoices_lote) < limit:
+                                break
+                            
+                            offset += limit
+                            logger.info(f"[Webhook] Buscando mais faturas: offset={offset}, já encontradas={len(todas_invoices)}")
                         
-                        todas_invoices.extend(invoices_lote)
+                        invoices = todas_invoices
+                        logger.info(f"[Webhook] Total de faturas encontradas: {len(invoices)}")
                         
-                        # Se retornou menos que o limite, já pegou todas
-                        if len(invoices_lote) < limit:
-                            break
+                        if not invoices:
+                            # Quando a API retorna 200 mas sem faturas (caso do site que mostra "0 contas pra pagar")
+                            # Formatar CPF para exibição (XXX.XXX.XXX-XX)
+                            cpf_formatado = f"{cpf_limpo[:3]}.XXX.XXX-{cpf_limpo[-2:]}"
+                            resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n✅ *CPF: {cpf_formatado}*\n\nOlá Cliente, você tem *0 contas* pra pagar.\n\nEste CPF não possui faturas em aberto no momento."
+                            sessao.etapa = 'inicial'
+                            sessao.dados_temp = {}
+                            sessao.save()
+                        else:
+                            # Separar faturas por status (aceitar tanto uppercase quanto lowercase)
+                            # Status pode vir como "overdue", "OVERDUE", "em aberto", "EM ABERTO", etc
+                            todas_faturas = []
+                            faturas_atrasadas = []
+                            faturas_aberto = []
+                            outras = []
+                            
+                            for inv in invoices:
+                                status = str(inv.get('status', '')).upper()
+                                if status in ['ATRASADO', 'ATRASADA', 'VENCIDA', 'VENCIDO', 'OVERDUE', 'LATE']:
+                                    faturas_atrasadas.append(inv)
+                                elif status in ['EM ABERTO', 'ABERTO', 'OPEN', 'PENDENTE']:
+                                    faturas_aberto.append(inv)
+                                else:
+                                    outras.append(inv)  # Incluir outras também
+                            
+                            # Ordenar: atrasadas primeiro, depois abertas, depois outras
+                            todas_faturas = faturas_atrasadas + faturas_aberto + outras
+                            
+                            logger.info(f"[Webhook] Faturas encontradas: {len(invoices)} total | {len(faturas_atrasadas)} atrasadas | {len(faturas_aberto)} em aberto | {len(outras)} outras")
+                            
+                            if len(todas_faturas) == 1:
+                                # Se só tem uma, mostra direto mas busca PDF também
+                                invoice = todas_faturas[0]
+                                
+                                # Tentar buscar PDF via API primeiro (mais rápido)
+                                print(f"[DEBUG PDF] 🔍 ETAPA 1: Tentando buscar PDF via API...")
+                                logger.info(f"[DEBUG PDF] 🔍 ETAPA 1: Tentando buscar PDF via API para fatura única")
+                                logger.info(f"[DEBUG PDF] Parâmetros: debt_id={invoice.get('debt_id')}, invoice_id={invoice.get('invoice_id')}, cpf={cpf_limpo}, ref={invoice.get('reference_month')}")
+                                print(f"[DEBUG PDF] debt_id={invoice.get('debt_id')}, invoice_id={invoice.get('invoice_id')}, cpf={cpf_limpo}")
+                                
+                                try:
+                                    from crm_app.nio_api import get_invoice_pdf_url
+                                    import requests
+                                    session = requests.Session()
+                                    
+                                    api_base = resultado.get('api_base', '')
+                                    token = resultado.get('token', '')
+                                    session_id = resultado.get('session_id', '')
+                                    
+                                    print(f"[DEBUG PDF] api_base={api_base}, token={'SIM' if token else 'NÃO'}, session_id={'SIM' if session_id else 'NÃO'}")
+                                    logger.info(f"[DEBUG PDF] api_base={api_base}, token presente={bool(token)}, session_id presente={bool(session_id)}")
+                                    
+                                    pdf_url = get_invoice_pdf_url(
+                                        api_base,
+                                        token,
+                                        session_id,
+                                        invoice.get('debt_id', ''),
+                                        invoice.get('invoice_id', ''),
+                                        cpf_limpo,
+                                        invoice.get('reference_month', ''),
+                                        session
+                                    )
+                                    
+                                    print(f"[DEBUG PDF] Resultado get_invoice_pdf_url: {pdf_url}")
+                                    logger.info(f"[DEBUG PDF] Resultado get_invoice_pdf_url: {pdf_url}")
+                                    
+                                    if pdf_url:
+                                        invoice['pdf_url'] = pdf_url
+                                        print(f"[DEBUG PDF] ✅ PDF encontrado via API: {pdf_url[:100]}...")
+                                        logger.info(f"[DEBUG PDF] ✅ PDF encontrado via API para fatura única: {pdf_url[:100]}...")
+                                    else:
+                                        print(f"[DEBUG PDF] ❌ PDF não encontrado via API (retornou None)")
+                                        logger.warning(f"[DEBUG PDF] ❌ PDF não encontrado via API (retornou None)")
+                                except Exception as e:
+                                    print(f"[DEBUG PDF] ❌ ERRO ao buscar PDF via API: {type(e).__name__}: {e}")
+                                    logger.warning(f"[DEBUG PDF] ❌ Erro ao buscar PDF via API para fatura única: {e}")
+                                    import traceback
+                                    logger.error(f"[DEBUG PDF] Traceback: {traceback.format_exc()}")
+                                    print(f"[DEBUG PDF] Traceback: {traceback.format_exc()}")
+                                
+                                # Se não encontrou via API, tenta baixar como humano (Playwright)
+                                print(f"[DEBUG PDF] 🔍 ETAPA 2: Verificando se precisa baixar via Playwright...")
+                                print(f"[DEBUG PDF] invoice.get('pdf_url')={invoice.get('pdf_url')}")
+                                print(f"[DEBUG PDF] invoice.get('pdf_path')={invoice.get('pdf_path')}")
+                                logger.info(f"[DEBUG PDF] Verificando necessidade de download via Playwright: pdf_url={bool(invoice.get('pdf_url'))}, pdf_path={bool(invoice.get('pdf_path'))}")
+                                
+                                if not invoice.get('pdf_url') and not invoice.get('pdf_path'):
+                                    print(f"[DEBUG PDF] 🔍 ETAPA 3: Iniciando download via Playwright...")
+                                    logger.info(f"[DEBUG PDF] 🔍 ETAPA 3: Tentando baixar PDF como humano para fatura única...")
+                                    
+                                    try:
+                                        # Importar função diretamente do módulo (função privada)
+                                        import crm_app.services_nio as nio_services
+                                        mes_ref = invoice.get('reference_month', '')
+                                        data_venc = invoice.get('due_date_raw') or invoice.get('data_vencimento', '')
+                                        
+                                        print(f"[DEBUG PDF] Parâmetros Playwright: CPF={cpf_limpo}, mes_ref={mes_ref}, data_venc={data_venc}")
+                                        logger.info(f"[DEBUG PDF] Parâmetros: CPF={cpf_limpo}, mes_ref={mes_ref}, data_venc={data_venc}")
+                                        
+                                        # Marcar que está processando PDF para evitar webhooks duplicados
+                                        if sessao:
+                                            sessao.dados_temp['processando_pdf'] = True
+                                            sessao.save(update_fields=['dados_temp', 'updated_at'])
+                                            print(f"[DEBUG PDF] 🔒 Marcado processando_pdf=True para evitar duplicação")
+                                            logger.info(f"[DEBUG PDF] 🔒 Marcado processando_pdf=True")
+                                        
+                                        pdf_result = nio_services._baixar_pdf_como_humano(cpf_limpo, mes_ref, data_venc)
+                                        
+                                        # Remover flag de processamento após concluir
+                                        if sessao:
+                                            sessao.dados_temp.pop('processando_pdf', None)
+                                            sessao.save(update_fields=['dados_temp', 'updated_at'])
+                                            print(f"[DEBUG PDF] 🔓 Removido processando_pdf após download")
+                                            logger.info(f"[DEBUG PDF] 🔓 Removido processando_pdf após download")
+                                        
+                                        print(f"[DEBUG PDF] Resultado _baixar_pdf_como_humano: {pdf_result}")
+                                        print(f"[DEBUG PDF] Tipo do resultado: {type(pdf_result)}")
+                                        logger.info(f"[DEBUG PDF] Resultado _baixar_pdf_como_humano: {pdf_result}, tipo: {type(pdf_result)}")
+                                        
+                                        if pdf_result:
+                                            # pdf_result pode ser dict (com local_path e onedrive_url) ou string (caminho antigo)
+                                            if isinstance(pdf_result, dict):
+                                                invoice['pdf_path'] = pdf_result.get('local_path')
+                                                invoice['pdf_onedrive_url'] = pdf_result.get('onedrive_url')
+                                                invoice['pdf_filename'] = pdf_result.get('filename')
+                                                
+                                                print(f"[DEBUG PDF] ✅ PDF baixado (dict): local_path={pdf_result.get('local_path')}, onedrive_url={pdf_result.get('onedrive_url')}")
+                                                logger.info(f"[DEBUG PDF] ✅ PDF baixado (dict): local_path={pdf_result.get('local_path')}, onedrive_url={pdf_result.get('onedrive_url')}")
+                                                
+                                                if pdf_result.get('onedrive_url'):
+                                                    print(f"[DEBUG PDF] ✅ PDF enviado para OneDrive: {pdf_result['onedrive_url']}")
+                                                    logger.info(f"[DEBUG PDF] ✅ PDF baixado e enviado para OneDrive (fatura única): {pdf_result['onedrive_url']}")
+                                                else:
+                                                    print(f"[DEBUG PDF] ✅ PDF baixado localmente: {pdf_result['local_path']}")
+                                                    logger.info(f"[DEBUG PDF] ✅ PDF baixado localmente (fatura única): {pdf_result['local_path']}")
+                                            else:
+                                                # Compatibilidade com formato antigo (string)
+                                                invoice['pdf_path'] = pdf_result
+                                                print(f"[DEBUG PDF] ✅ PDF baixado (string): {pdf_result}")
+                                                logger.info(f"[DEBUG PDF] ✅ PDF baixado com sucesso para fatura única: {pdf_result}")
+                                        else:
+                                            print(f"[DEBUG PDF] ❌ Falha ao baixar PDF - retornou None")
+                                            logger.warning(f"[DEBUG PDF] ❌ Falha ao baixar PDF como humano para fatura única - retornou None")
+                                    except Exception as e:
+                                        print(f"[DEBUG PDF] ❌ ERRO ao baixar PDF: {type(e).__name__}: {e}")
+                                        logger.error(f"[DEBUG PDF] ❌ Erro ao baixar PDF como humano para fatura única: {e}")
+                                        import traceback
+                                        tb = traceback.format_exc()
+                                        logger.error(f"[DEBUG PDF] Traceback completo:\n{tb}")
+                                        print(f"[DEBUG PDF] Traceback completo:\n{tb}")
+                                else:
+                                    print(f"[DEBUG PDF] ⏭️ Pulando download via Playwright - PDF já disponível")
+                                    logger.info(f"[DEBUG PDF] ⏭️ Pulando download via Playwright - PDF já disponível")
+                                
+                                resposta = _formatar_detalhes_fatura(invoice, cpf_limpo, incluir_pdf=True)
+                                
+                                # Armazenar invoice para envio do PDF após a mensagem (só se houver PDF disponível)
+                                print(f"[DEBUG PDF] 🔍 ETAPA 4: Verificando se PDF está disponível para envio...")
+                                print(f"[DEBUG PDF] invoice.get('pdf_path')={invoice.get('pdf_path')}")
+                                print(f"[DEBUG PDF] invoice.get('pdf_url')={invoice.get('pdf_url')}")
+                                print(f"[DEBUG PDF] invoice.get('pdf_onedrive_url')={invoice.get('pdf_onedrive_url')}")
+                                logger.info(f"[DEBUG PDF] Verificando disponibilidade de PDF: pdf_path={bool(invoice.get('pdf_path'))}, pdf_url={bool(invoice.get('pdf_url'))}, pdf_onedrive_url={bool(invoice.get('pdf_onedrive_url'))}")
+                                
+                                if invoice.get('pdf_path') or invoice.get('pdf_url') or invoice.get('pdf_onedrive_url'):
+                                    # Se tem pdf_onedrive_url, usar como pdf_url
+                                    if invoice.get('pdf_onedrive_url') and not invoice.get('pdf_url'):
+                                        invoice['pdf_url'] = invoice.get('pdf_onedrive_url')
+                                        print(f"[DEBUG PDF] ✅ Usando pdf_onedrive_url como pdf_url: {invoice['pdf_url']}")
+                                        logger.info(f"[DEBUG PDF] ✅ Usando pdf_onedrive_url como pdf_url")
+                                    
+                                    sessao.dados_temp = {'invoice_para_pdf': invoice}
+                                    print(f"[DEBUG PDF] ✅ PDF disponível - salvo na sessão para envio")
+                                    logger.info(f"[DEBUG PDF] ✅ PDF disponível - salvo na sessão para envio")
+                                else:
+                                    sessao.dados_temp = {}
+                                    print(f"[DEBUG PDF] ❌ PDF NÃO disponível - sessão limpa")
+                                    logger.warning(f"[DEBUG PDF] ❌ PDF NÃO disponível - sessão limpa")
+                                
+                                sessao.etapa = 'inicial'
+                                sessao.save()
+                            else:
+                                # Lista todas e pede para escolher
+                                resposta_parts = [
+                                    f"🔎 *FATURAS ENCONTRADAS* para CPF {cpf_limpo}:\n"
+                                ]
+                                
+                                for idx, inv in enumerate(todas_faturas, 1):
+                                    valor = inv.get('amount', 0)
+                                    status = inv.get('status', '')
+                                    data_venc = inv.get('due_date_raw') or inv.get('data_vencimento', '')
+                                    mes_ref = inv.get('reference_month', '')
+                                    
+                                    # Formatar valor
+                                    valor_str = f"R$ {valor:.2f}" if isinstance(valor, (int, float)) else str(valor)
+                                    
+                                    # Ícone de status (aceitar lowercase também)
+                                    status_upper = str(status).upper()
+                                    if status_upper in ['ATRASADO', 'ATRASADA', 'VENCIDA', 'VENCIDO', 'OVERDUE', 'LATE']:
+                                        emoji = "🔴"
+                                    elif status_upper in ['EM ABERTO', 'ABERTO', 'OPEN', 'PENDENTE']:
+                                        emoji = "🟡"
+                                    else:
+                                        emoji = "⚪"
+                                    
+                                    # Formatar data e status
+                                    data_venc_formatada = _formatar_data_brasileira(data_venc) or data_venc
+                                    status_pt = _formatar_status_portugues(status)
+                                    
+                                    resposta_parts.append(
+                                        f"{emoji} *{idx}.* {valor_str} | Venc: {data_venc_formatada} | {status_pt}"
+                                    )
+                                    if mes_ref:
+                                        resposta_parts.append(f"   📅 Ref: {mes_ref}")
+                                
+                                resposta_parts.append(
+                                    f"\n📋 Digite o *NÚMERO* da fatura que deseja ver os detalhes (1 a {len(todas_faturas)}):"
+                                )
+                                
+                                resposta = "\n".join(resposta_parts)
+                                
+                                # Salvar faturas na sessão para recuperar depois
+                                sessao.etapa = 'fatura_selecionar'
+                                sessao.dados_temp = {
+                                    'cpf': cpf_limpo,
+                                    'faturas': todas_faturas,
+                                    'token': resultado.get('token'),
+                                    'api_base': resultado.get('api_base'),
+                                    'session_id': resultado.get('session_id'),
+                                }
+                                sessao.save()
+                            
+                    except Exception as e:
+                        logger.error(f"[Webhook] Erro ao buscar faturas: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        # Tratamento de erros mais específico
+                        erro_msg = str(e)
                         
-                        offset += limit
-                        logger.info(f"[Webhook] Buscando mais faturas: offset={offset}, já encontradas={len(todas_invoices)}")
-                    
-                    invoices = todas_invoices
-                    logger.info(f"[Webhook] Total de faturas encontradas: {len(invoices)}")
-                    
-                    if not invoices:
-                        # Quando a API retorna 200 mas sem faturas (caso do site que mostra "0 contas pra pagar")
-                        # Formatar CPF para exibição (XXX.XXX.XXX-XX)
-                        cpf_formatado = f"{cpf_limpo[:3]}.XXX.XXX-{cpf_limpo[-2:]}"
-                        resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n✅ *CPF: {cpf_formatado}*\n\nOlá Cliente, você tem *0 contas* pra pagar.\n\nEste CPF não possui faturas em aberto no momento."
+                        # Verificar apenas formato básico (11 dígitos)
+                        cpf_formato_valido = cpf_limpo and len(cpf_limpo) == 11 and cpf_limpo.isdigit()
+                        cpf_formatado = f"{cpf_limpo[:3]}.XXX.XXX-{cpf_limpo[-2:]}" if cpf_formato_valido else cpf_limpo
+                        
+                        if "400" in erro_msg or "Bad Request" in erro_msg:
+                            if cpf_formato_valido:
+                                resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n✅ *CPF: {cpf_formatado}*\n\nOlá Cliente, você tem *0 contas* pra pagar.\n\nEste CPF não possui faturas em aberto no momento."
+                            else:
+                                resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n❌ *ERRO*\n\nCPF não encontrado na base da Nio ou dados inválidos.\n\nVerifique se o CPF está correto e tente novamente."
+                        elif "401" in erro_msg or "Unauthorized" in erro_msg:
+                            resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n❌ *ERRO*\n\nErro de autenticação com a API da Nio.\n\nTente novamente em alguns instantes."
+                        elif "404" in erro_msg or "Not Found" in erro_msg:
+                            if cpf_formato_valido:
+                                resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n✅ *CPF: {cpf_formatado}*\n\nOlá Cliente, você tem *0 contas* pra pagar.\n\nEste CPF não possui faturas em aberto no momento."
+                            else:
+                                resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n❌ *FATURAS NÃO ENCONTRADAS*\n\nNão encontrei nenhuma fatura para este CPF."
+                        else:
+                            resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n❌ *ERRO*\n\nErro ao buscar faturas: {erro_msg}\n\nTente novamente em alguns instantes."
                         sessao.etapa = 'inicial'
                         sessao.dados_temp = {}
                         sessao.save()
-                    else:
-                        # Separar faturas por status (aceitar tanto uppercase quanto lowercase)
-                        # Status pode vir como "overdue", "OVERDUE", "em aberto", "EM ABERTO", etc
-                        todas_faturas = []
-                        faturas_atrasadas = []
-                        faturas_aberto = []
-                        outras = []
-                        
-                        for inv in invoices:
-                            status = str(inv.get('status', '')).upper()
-                            if status in ['ATRASADO', 'ATRASADA', 'VENCIDA', 'VENCIDO', 'OVERDUE', 'LATE']:
-                                faturas_atrasadas.append(inv)
-                            elif status in ['EM ABERTO', 'ABERTO', 'OPEN', 'PENDENTE']:
-                                faturas_aberto.append(inv)
-                            else:
-                                outras.append(inv)  # Incluir outras também
-                        
-                        # Ordenar: atrasadas primeiro, depois abertas, depois outras
-                        todas_faturas = faturas_atrasadas + faturas_aberto + outras
-                        
-                        logger.info(f"[Webhook] Faturas encontradas: {len(invoices)} total | {len(faturas_atrasadas)} atrasadas | {len(faturas_aberto)} em aberto | {len(outras)} outras")
-                        
-                        if len(todas_faturas) == 1:
-                            # Se só tem uma, mostra direto mas busca PDF também
-                            invoice = todas_faturas[0]
-                            
-                            # Tentar buscar PDF via API primeiro (mais rápido)
-                            print(f"[DEBUG PDF] 🔍 ETAPA 1: Tentando buscar PDF via API...")
-                            logger.info(f"[DEBUG PDF] 🔍 ETAPA 1: Tentando buscar PDF via API para fatura única")
-                            logger.info(f"[DEBUG PDF] Parâmetros: debt_id={invoice.get('debt_id')}, invoice_id={invoice.get('invoice_id')}, cpf={cpf_limpo}, ref={invoice.get('reference_month')}")
-                            print(f"[DEBUG PDF] debt_id={invoice.get('debt_id')}, invoice_id={invoice.get('invoice_id')}, cpf={cpf_limpo}")
-                            
-                            try:
-                                from crm_app.nio_api import get_invoice_pdf_url
-                                import requests
-                                session = requests.Session()
-                                
-                                api_base = resultado.get('api_base', '')
-                                token = resultado.get('token', '')
-                                session_id = resultado.get('session_id', '')
-                                
-                                print(f"[DEBUG PDF] api_base={api_base}, token={'SIM' if token else 'NÃO'}, session_id={'SIM' if session_id else 'NÃO'}")
-                                logger.info(f"[DEBUG PDF] api_base={api_base}, token presente={bool(token)}, session_id presente={bool(session_id)}")
-                                
-                                pdf_url = get_invoice_pdf_url(
-                                    api_base,
-                                    token,
-                                    session_id,
-                                    invoice.get('debt_id', ''),
-                                    invoice.get('invoice_id', ''),
-                                    cpf_limpo,
-                                    invoice.get('reference_month', ''),
-                                    session
-                                )
-                                
-                                print(f"[DEBUG PDF] Resultado get_invoice_pdf_url: {pdf_url}")
-                                logger.info(f"[DEBUG PDF] Resultado get_invoice_pdf_url: {pdf_url}")
-                                
-                                if pdf_url:
-                                    invoice['pdf_url'] = pdf_url
-                                    print(f"[DEBUG PDF] ✅ PDF encontrado via API: {pdf_url[:100]}...")
-                                    logger.info(f"[DEBUG PDF] ✅ PDF encontrado via API para fatura única: {pdf_url[:100]}...")
-                                else:
-                                    print(f"[DEBUG PDF] ❌ PDF não encontrado via API (retornou None)")
-                                    logger.warning(f"[DEBUG PDF] ❌ PDF não encontrado via API (retornou None)")
-                            except Exception as e:
-                                print(f"[DEBUG PDF] ❌ ERRO ao buscar PDF via API: {type(e).__name__}: {e}")
-                                logger.warning(f"[DEBUG PDF] ❌ Erro ao buscar PDF via API para fatura única: {e}")
-                                import traceback
-                                logger.error(f"[DEBUG PDF] Traceback: {traceback.format_exc()}")
-                                print(f"[DEBUG PDF] Traceback: {traceback.format_exc()}")
-                            
-                            # Se não encontrou via API, tenta baixar como humano (Playwright)
-                            print(f"[DEBUG PDF] 🔍 ETAPA 2: Verificando se precisa baixar via Playwright...")
-                            print(f"[DEBUG PDF] invoice.get('pdf_url')={invoice.get('pdf_url')}")
-                            print(f"[DEBUG PDF] invoice.get('pdf_path')={invoice.get('pdf_path')}")
-                            logger.info(f"[DEBUG PDF] Verificando necessidade de download via Playwright: pdf_url={bool(invoice.get('pdf_url'))}, pdf_path={bool(invoice.get('pdf_path'))}")
-                            
-                            if not invoice.get('pdf_url') and not invoice.get('pdf_path'):
-                                print(f"[DEBUG PDF] 🔍 ETAPA 3: Iniciando download via Playwright...")
-                                logger.info(f"[DEBUG PDF] 🔍 ETAPA 3: Tentando baixar PDF como humano para fatura única...")
-                                
-                                try:
-                                    # Importar função diretamente do módulo (função privada)
-                                    import crm_app.services_nio as nio_services
-                                    mes_ref = invoice.get('reference_month', '')
-                                    data_venc = invoice.get('due_date_raw') or invoice.get('data_vencimento', '')
-                                    
-                                    print(f"[DEBUG PDF] Parâmetros Playwright: CPF={cpf_limpo}, mes_ref={mes_ref}, data_venc={data_venc}")
-                                    logger.info(f"[DEBUG PDF] Parâmetros: CPF={cpf_limpo}, mes_ref={mes_ref}, data_venc={data_venc}")
-                                    
-                                    # Marcar que está processando PDF para evitar webhooks duplicados
-                                    if sessao:
-                                        sessao.dados_temp['processando_pdf'] = True
-                                        sessao.save(update_fields=['dados_temp', 'updated_at'])
-                                        print(f"[DEBUG PDF] 🔒 Marcado processando_pdf=True para evitar duplicação")
-                                        logger.info(f"[DEBUG PDF] 🔒 Marcado processando_pdf=True")
-                                    
-                                    pdf_result = nio_services._baixar_pdf_como_humano(cpf_limpo, mes_ref, data_venc)
-                                    
-                                    # Remover flag de processamento após concluir
-                                    if sessao:
-                                        sessao.dados_temp.pop('processando_pdf', None)
-                                        sessao.save(update_fields=['dados_temp', 'updated_at'])
-                                        print(f"[DEBUG PDF] 🔓 Removido processando_pdf após download")
-                                        logger.info(f"[DEBUG PDF] 🔓 Removido processando_pdf após download")
-                                    
-                                    print(f"[DEBUG PDF] Resultado _baixar_pdf_como_humano: {pdf_result}")
-                                    print(f"[DEBUG PDF] Tipo do resultado: {type(pdf_result)}")
-                                    logger.info(f"[DEBUG PDF] Resultado _baixar_pdf_como_humano: {pdf_result}, tipo: {type(pdf_result)}")
-                                    
-                                    if pdf_result:
-                                        # pdf_result pode ser dict (com local_path e onedrive_url) ou string (caminho antigo)
-                                        if isinstance(pdf_result, dict):
-                                            invoice['pdf_path'] = pdf_result.get('local_path')
-                                            invoice['pdf_onedrive_url'] = pdf_result.get('onedrive_url')
-                                            invoice['pdf_filename'] = pdf_result.get('filename')
-                                            
-                                            print(f"[DEBUG PDF] ✅ PDF baixado (dict): local_path={pdf_result.get('local_path')}, onedrive_url={pdf_result.get('onedrive_url')}")
-                                            logger.info(f"[DEBUG PDF] ✅ PDF baixado (dict): local_path={pdf_result.get('local_path')}, onedrive_url={pdf_result.get('onedrive_url')}")
-                                            
-                                            if pdf_result.get('onedrive_url'):
-                                                print(f"[DEBUG PDF] ✅ PDF enviado para OneDrive: {pdf_result['onedrive_url']}")
-                                                logger.info(f"[DEBUG PDF] ✅ PDF baixado e enviado para OneDrive (fatura única): {pdf_result['onedrive_url']}")
-                                            else:
-                                                print(f"[DEBUG PDF] ✅ PDF baixado localmente: {pdf_result['local_path']}")
-                                                logger.info(f"[DEBUG PDF] ✅ PDF baixado localmente (fatura única): {pdf_result['local_path']}")
-                                        else:
-                                            # Compatibilidade com formato antigo (string)
-                                            invoice['pdf_path'] = pdf_result
-                                            print(f"[DEBUG PDF] ✅ PDF baixado (string): {pdf_result}")
-                                            logger.info(f"[DEBUG PDF] ✅ PDF baixado com sucesso para fatura única: {pdf_result}")
-                                    else:
-                                        print(f"[DEBUG PDF] ❌ Falha ao baixar PDF - retornou None")
-                                        logger.warning(f"[DEBUG PDF] ❌ Falha ao baixar PDF como humano para fatura única - retornou None")
-                                except Exception as e:
-                                    print(f"[DEBUG PDF] ❌ ERRO ao baixar PDF: {type(e).__name__}: {e}")
-                                    logger.error(f"[DEBUG PDF] ❌ Erro ao baixar PDF como humano para fatura única: {e}")
-                                    import traceback
-                                    tb = traceback.format_exc()
-                                    logger.error(f"[DEBUG PDF] Traceback completo:\n{tb}")
-                                    print(f"[DEBUG PDF] Traceback completo:\n{tb}")
-                            else:
-                                print(f"[DEBUG PDF] ⏭️ Pulando download via Playwright - PDF já disponível")
-                                logger.info(f"[DEBUG PDF] ⏭️ Pulando download via Playwright - PDF já disponível")
-                            
-                            resposta = _formatar_detalhes_fatura(invoice, cpf_limpo, incluir_pdf=True)
-                            
-                            # Armazenar invoice para envio do PDF após a mensagem (só se houver PDF disponível)
-                            print(f"[DEBUG PDF] 🔍 ETAPA 4: Verificando se PDF está disponível para envio...")
-                            print(f"[DEBUG PDF] invoice.get('pdf_path')={invoice.get('pdf_path')}")
-                            print(f"[DEBUG PDF] invoice.get('pdf_url')={invoice.get('pdf_url')}")
-                            print(f"[DEBUG PDF] invoice.get('pdf_onedrive_url')={invoice.get('pdf_onedrive_url')}")
-                            logger.info(f"[DEBUG PDF] Verificando disponibilidade de PDF: pdf_path={bool(invoice.get('pdf_path'))}, pdf_url={bool(invoice.get('pdf_url'))}, pdf_onedrive_url={bool(invoice.get('pdf_onedrive_url'))}")
-                            
-                            if invoice.get('pdf_path') or invoice.get('pdf_url') or invoice.get('pdf_onedrive_url'):
-                                # Se tem pdf_onedrive_url, usar como pdf_url
-                                if invoice.get('pdf_onedrive_url') and not invoice.get('pdf_url'):
-                                    invoice['pdf_url'] = invoice.get('pdf_onedrive_url')
-                                    print(f"[DEBUG PDF] ✅ Usando pdf_onedrive_url como pdf_url: {invoice['pdf_url']}")
-                                    logger.info(f"[DEBUG PDF] ✅ Usando pdf_onedrive_url como pdf_url")
-                                
-                                sessao.dados_temp = {'invoice_para_pdf': invoice}
-                                print(f"[DEBUG PDF] ✅ PDF disponível - salvo na sessão para envio")
-                                logger.info(f"[DEBUG PDF] ✅ PDF disponível - salvo na sessão para envio")
-                            else:
-                                sessao.dados_temp = {}
-                                print(f"[DEBUG PDF] ❌ PDF NÃO disponível - sessão limpa")
-                                logger.warning(f"[DEBUG PDF] ❌ PDF NÃO disponível - sessão limpa")
-                            
-                            sessao.etapa = 'inicial'
-                            sessao.save()
-                        else:
-                            # Lista todas e pede para escolher
-                            resposta_parts = [
-                                f"🔎 *FATURAS ENCONTRADAS* para CPF {cpf_limpo}:\n"
-                            ]
-                            
-                            for idx, inv in enumerate(todas_faturas, 1):
-                                valor = inv.get('amount', 0)
-                                status = inv.get('status', '')
-                                data_venc = inv.get('due_date_raw') or inv.get('data_vencimento', '')
-                                mes_ref = inv.get('reference_month', '')
-                                
-                                # Formatar valor
-                                valor_str = f"R$ {valor:.2f}" if isinstance(valor, (int, float)) else str(valor)
-                                
-                                # Ícone de status (aceitar lowercase também)
-                                status_upper = str(status).upper()
-                                if status_upper in ['ATRASADO', 'ATRASADA', 'VENCIDA', 'VENCIDO', 'OVERDUE', 'LATE']:
-                                    emoji = "🔴"
-                                elif status_upper in ['EM ABERTO', 'ABERTO', 'OPEN', 'PENDENTE']:
-                                    emoji = "🟡"
-                                else:
-                                    emoji = "⚪"
-                                
-                                # Formatar data e status
-                                data_venc_formatada = _formatar_data_brasileira(data_venc) or data_venc
-                                status_pt = _formatar_status_portugues(status)
-                                
-                                resposta_parts.append(
-                                    f"{emoji} *{idx}.* {valor_str} | Venc: {data_venc_formatada} | {status_pt}"
-                                )
-                                if mes_ref:
-                                    resposta_parts.append(f"   📅 Ref: {mes_ref}")
-                            
-                            resposta_parts.append(
-                                f"\n📋 Digite o *NÚMERO* da fatura que deseja ver os detalhes (1 a {len(todas_faturas)}):"
-                            )
-                            
-                            resposta = "\n".join(resposta_parts)
-                            
-                            # Salvar faturas na sessão para recuperar depois
-                            sessao.etapa = 'fatura_selecionar'
-                            sessao.dados_temp = {
-                                'cpf': cpf_limpo,
-                                'faturas': todas_faturas,
-                                'token': resultado.get('token'),
-                                'api_base': resultado.get('api_base'),
-                                'session_id': resultado.get('session_id'),
-                            }
-                            sessao.save()
-                            
-                except Exception as e:
-                    logger.error(f"[Webhook] Erro ao buscar faturas: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    # Tratamento de erros mais específico
-                    erro_msg = str(e)
-                    
-                    # Verificar apenas formato básico (11 dígitos)
-                    # A API da Nio é quem valida se o CPF existe na base deles
-                    cpf_formato_valido = cpf_limpo and len(cpf_limpo) == 11 and cpf_limpo.isdigit()
-                    
-                    # Formatar CPF para exibição (XXX.XXX.XXX-XX)
-                    cpf_formatado = f"{cpf_limpo[:3]}.XXX.XXX-{cpf_limpo[-2:]}" if cpf_formato_valido else cpf_limpo
-                    
-                    if "400" in erro_msg or "Bad Request" in erro_msg:
-                        # Erro 400: Pode ser CPF não encontrado na base OU formato inválido
-                        # Se o formato está correto, provavelmente existe mas não tem faturas
-                        if cpf_formato_valido:
-                            # CPF com formato válido mas API retornou 400 - provavelmente não tem faturas
-                            resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n✅ *CPF: {cpf_formatado}*\n\nOlá Cliente, você tem *0 contas* pra pagar.\n\nEste CPF não possui faturas em aberto no momento."
-                        else:
-                            # Formato inválido
-                            resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n❌ *ERRO*\n\nCPF não encontrado na base da Nio ou dados inválidos.\n\nVerifique se o CPF está correto e tente novamente."
-                    elif "401" in erro_msg or "Unauthorized" in erro_msg:
-                        resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n❌ *ERRO*\n\nErro de autenticação com a API da Nio.\n\nTente novamente em alguns instantes."
-                    elif "404" in erro_msg or "Not Found" in erro_msg:
-                        # Erro 404: Recurso não encontrado
-                        # Se o formato está correto, pode ser que não tenha faturas
-                        if cpf_formato_valido:
-                            resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n✅ *CPF: {cpf_formatado}*\n\nOlá Cliente, você tem *0 contas* pra pagar.\n\nEste CPF não possui faturas em aberto no momento."
-                        else:
-                            resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n❌ *FATURAS NÃO ENCONTRADAS*\n\nNão encontrei nenhuma fatura para este CPF."
-                    else:
-                        resposta = f"🔎 Buscando faturas para o cliente {cpf_limpo}...\n\n❌ *ERRO*\n\nErro ao buscar faturas: {erro_msg}\n\nTente novamente em alguns instantes."
-                    sessao.etapa = 'inicial'
-                    sessao.dados_temp = {}
-                    sessao.save()
         
         elif etapa_atual == 'fatura_negocia_cpf':
             cpf_limpo = limpar_texto_cep_cpf(mensagem_texto)
