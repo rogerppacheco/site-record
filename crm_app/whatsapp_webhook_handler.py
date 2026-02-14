@@ -4296,7 +4296,14 @@ def processar_webhook_whatsapp(data):
             logger.warning(f"[Webhook] Erro ao marcar PapConfirmacaoCliente (pend_cliente): {e}", exc_info=True)
         pend_cliente['event'].set()
         try:
-            WhatsAppService().enviar_mensagem_texto(telefone_formatado, "✅ *Confirmado!* O vendedor receberá a confirmação.")
+            protocolo = ''
+            automacao = pend_cliente.get('automacao')
+            if automacao and hasattr(automacao, 'dados_pedido'):
+                protocolo = automacao.dados_pedido.get('protocolo', '') or ''
+            msg_cliente = "✅ *Confirmado!* O vendedor receberá a confirmação."
+            if protocolo:
+                msg_cliente += f"\n\n📋 *Protocolo:* {protocolo}"
+            WhatsAppService().enviar_mensagem_texto(telefone_formatado, msg_cliente)
         except Exception:
             pass
         return {'status': 'ok', 'mensagem': 'Confirmado pelo cliente'}
@@ -4322,7 +4329,17 @@ def processar_webhook_whatsapp(data):
                     pend.save()
                     logger.info(f"[Webhook] PapConfirmacaoCliente marcado confirmado=True (celular={k})")
                     try:
-                        WhatsAppService().enviar_mensagem_texto(telefone_formatado, "✅ *Confirmado!* O vendedor receberá a confirmação.")
+                        protocolo = ''
+                        sessao_id_pend = pend.sessao_id if pend.sessao_id else (pend.sessao.pk if pend.sessao else None)
+                        if sessao_id_pend:
+                            with _automacoes_lock:
+                                ctx_pend = _automacoes_pap_ativas.get(sessao_id_pend)
+                            if ctx_pend and ctx_pend.get('automacao'):
+                                protocolo = ctx_pend['automacao'].dados_pedido.get('protocolo', '') or ''
+                        msg_cliente = "✅ *Confirmado!* O vendedor receberá a confirmação."
+                        if protocolo:
+                            msg_cliente += f"\n\n📋 *Protocolo:* {protocolo}"
+                        WhatsAppService().enviar_mensagem_texto(telefone_formatado, msg_cliente)
                     except Exception:
                         pass
                     return {'status': 'ok', 'mensagem': 'Confirmado pelo cliente (BD)'}
