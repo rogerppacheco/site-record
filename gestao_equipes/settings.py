@@ -27,6 +27,9 @@ ALLOWED_HOSTS = [
     # Permite qualquer subdomínio do Railway ou Heroku
     '.up.railway.app',
     '.herokuapp.com',
+    # Teste local: ngrok (ex.: d021-177-137-82-21.ngrok-free.app)
+    '.ngrok-free.app',
+    '.ngrok.io',
 ]
 
 INSTALLED_APPS = [
