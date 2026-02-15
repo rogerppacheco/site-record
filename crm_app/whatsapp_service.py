@@ -134,8 +134,13 @@ class WhatsAppService:
         if not telefone:
             return ""
         telefone_limpo = "".join(filter(str.isdigit, str(telefone)))
-        # Ajuste simples para garantir formato 55 + DDD + Numero
-        if len(telefone_limpo) == 10 or len(telefone_limpo) == 11: 
+        # Brasil: remover 55 no início para normalizar
+        if telefone_limpo.startswith("55") and len(telefone_limpo) > 11:
+            telefone_limpo = telefone_limpo[2:]
+        # Celular no Brasil: DDD (2) + 9 + 8 dígitos = 11. Se veio 10 (DDD+8, ex: MG 3188804000), inserir 9 após DDD
+        if len(telefone_limpo) == 10 and telefone_limpo[2:3] != "9":
+            telefone_limpo = telefone_limpo[:2] + "9" + telefone_limpo[2:]
+        if len(telefone_limpo) == 10 or len(telefone_limpo) == 11:
             telefone_limpo = f"55{telefone_limpo}"
         return telefone_limpo
 

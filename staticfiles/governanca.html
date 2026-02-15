@@ -90,6 +90,7 @@
             <div class="nav-section-title">Administração</div>
             <a href="#" class="admin-nav-link active" onclick="mostrarSecao(event, 'usuarios', this)"><i class="bi bi-people"></i> Gestão de Usuários</a>
             <a href="#" class="admin-nav-link" onclick="mostrarSecao(event, 'perfis', this)"><i class="bi bi-shield-lock"></i> Perfis de Acesso</a>
+            <a href="#" class="admin-nav-link" onclick="mostrarSecao(event, 'permissoes_sistema', this)"><i class="bi bi-key"></i> Todas as Permissões</a>
 
             <div class="nav-section-title">Configurações CRM</div>
             <a href="#" class="admin-nav-link" onclick="mostrarSecao(event, 'comissionamento', this)"><i class="bi bi-cash-stack"></i> Comissionamento</a>
@@ -156,6 +157,17 @@
                 <div class="d-flex justify-content-between align-items-center mb-4"><h3>Gestão de Perfis de Acesso</h3><button class="btn btn-primary" id="btn-adicionar-perfil"><i class="bi bi-plus-lg"></i> Novo Perfil</button></div>
                 <div class="alert alert-info py-2 small"><i class="bi bi-info-circle"></i> Defina aqui quais módulos cada cargo pode acessar.</div>
                 <div class="card"><div class="card-body p-0"><div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead class="table-light"><tr><th>Nome do Perfil</th><th>Permissões Habilitadas</th><th class="text-center" style="width: 180px;">Ações</th></tr></thead><tbody id="perfis-tabela-corpo"></tbody></table></div></div></div>
+            </section>
+
+            <section id="permissoes_sistema-section" class="content-section">
+                <h3 class="mb-4"><i class="bi bi-key text-primary"></i> Todas as Permissões do Sistema</h3>
+                <div class="alert alert-light border small"><i class="bi bi-info-circle"></i> Referência de todas as permissões que o sistema concede. Use em <strong>Perfis de Acesso</strong> para atribuir a cada perfil.</div>
+                <div class="card">
+                    <div class="card-body">
+                        <input type="text" id="filtro-permissoes-sistema" class="form-control form-control-sm mb-3" placeholder="Buscar permissão..." style="max-width: 300px;">
+                        <div id="lista-permissoes-sistema" class="perm-list" style="min-height: 400px;"></div>
+                    </div>
+                </div>
             </section>
             
             <section id="comissionamento-section" class="content-section">
@@ -469,7 +481,7 @@
                 statusIcon.style.display = '';
                 spinner.style.display = '';
                 // Recupera token JWT do localStorage ou cookie
-                let token = localStorage.getItem('access') || localStorage.getItem('token');
+                let token = localStorage.getItem('accessToken') || localStorage.getItem('access') || localStorage.getItem('token');
                 if (!token && window.getToken) token = window.getToken();
                 try {
                     const resp = await fetch('/api/usuarios/validar-whatsapp/', {
@@ -485,7 +497,7 @@
                     if (data.valido === true) {
                         telInput.classList.add('is-valid');
                         check.style.display = '';
-                        feedback.textContent = 'Número válido e possui WhatsApp.';
+                        feedback.textContent = data.aviso || 'Número válido e possui WhatsApp.';
                         feedback.className = 'form-text text-success';
                     } else if (data.valido === false) {
                         telInput.classList.add('is-invalid');
@@ -494,7 +506,7 @@
                         feedback.className = 'form-text text-danger';
                     } else {
                         warning.style.display = '';
-                        feedback.textContent = 'Não foi possível validar, mas pode salvar.';
+                        feedback.textContent = data.aviso || 'Não foi possível validar, mas pode salvar.';
                         feedback.className = 'form-text text-warning';
                     }
                     statusIcon.style.display = '';
@@ -537,6 +549,53 @@
         if (secaoAlvo) secaoAlvo.classList.add('active');
         document.querySelectorAll('.admin-nav-link').forEach(l => l.classList.remove('active'));
         if (menuItem) menuItem.classList.add('active');
+        if (idSecao === 'permissoes_sistema') carregarPermissoesSistema();
+    }
+    async function carregarPermissoesSistema() {
+        const container = document.getElementById('lista-permissoes-sistema');
+        const filtro = document.getElementById('filtro-permissoes-sistema');
+        if (!container) return;
+        container.innerHTML = '<p class="text-muted py-3">Carregando...</p>';
+        try {
+            const res = await apiFetch(API_PERMISSOES);
+            let perms = Array.isArray(res) ? res : (res?.results || []);
+            const chavesVistas = new Set();
+            perms = perms.filter(p => {
+                if (!p) return false;
+                const chave = ((p.codename || '') + '|' + (p.name || '')).toLowerCase();
+                if (chavesVistas.has(chave)) return false;
+                chavesVistas.add(chave);
+                return true;
+            });
+            const render = () => {
+                const termo = (filtro && filtro.value || '').toLowerCase();
+                const filtradas = termo ? perms.filter(p =>
+                    (p.name && p.name.toLowerCase().includes(termo)) ||
+                    (p.codename && p.codename.toLowerCase().includes(termo))
+                ) : perms;
+                const porRecurso = {};
+                filtradas.forEach(p => {
+                    const cod = (p.codename || '');
+                    const recurso = cod.indexOf('_') >= 0 ? cod.substring(cod.indexOf('_') + 1) : cod;
+                    if (!porRecurso[recurso]) porRecurso[recurso] = [];
+                    porRecurso[recurso].push(p);
+                });
+                const recursosOrdenados = Object.keys(porRecurso).sort();
+                let html = '';
+                recursosOrdenados.forEach(rec => {
+                    html += '<div class="perm-section-header">' + rec + '</div>';
+                    porRecurso[rec].sort((a, b) => (a.name || '').localeCompare(b.name || '')).forEach(p => {
+                        const nome = (p.name || p.codename || '').replace(/^Can /i, '');
+                        html += '<div class="perm-item"><span class="badge bg-secondary me-2">' + (p.codename || '') + '</span>' + nome + '</div>';
+                    });
+                });
+                container.innerHTML = html || '<p class="text-muted py-2">Nenhuma permissão encontrada.</p>';
+            };
+            render();
+            if (filtro) filtro.oninput = render;
+        } catch (e) {
+            container.innerHTML = '<p class="text-danger py-2">Erro ao carregar permissões.</p>';
+        }
     }
 
     async function apiFetch(endpoint, options = {}) {

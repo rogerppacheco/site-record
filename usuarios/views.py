@@ -253,37 +253,44 @@ class UsuarioViewSet(viewsets.ModelViewSet):
                  "mensagem": "Formato inválido. Digite DDD + Número (ex: 31999999999)."
              }, status=200)
 
-        # 2. Validação na API do WhatsApp (Z-API)
+        # 2. Normalizar celular BR: 10 dígitos (DDD+8, ex: 3188804000 MG) -> 11 (DDD+9+8)
+        if len(telefone_limpo) == 10 and telefone_limpo[2:3] != "9":
+            telefone_limpo = telefone_limpo[:2] + "9" + telefone_limpo[2:]
+
+        # 3. Validação na API do WhatsApp (Z-API)
         try:
             service = WhatsAppService()
             if not service.token or not service.instance_id:
                 return Response({
-                    "valido": True, 
+                    "valido": True,
                     "aviso": "API WhatsApp não configurada no servidor. Validação ignorada."
                 }, status=200)
-            
-            # Adiciona o 55 se não tiver
+
             if len(telefone_limpo) <= 11:
                 telefone_api = f"55{telefone_limpo}"
             else:
                 telefone_api = telefone_limpo
 
             existe = service.verificar_numero_existe(telefone_api)
-            
+
+            if existe is None:
+                # API retornou erro (timeout, etc.) – não bloquear cadastro
+                return Response({
+                    "valido": True,
+                    "aviso": "Não foi possível validar. Pode salvar."
+                }, status=200)
             if existe:
                 return Response({
-                    "valido": True, 
+                    "valido": True,
                     "mensagem": "WhatsApp confirmado!"
                 })
-            else:
-                return Response({
-                    "valido": False, 
-                    "mensagem": "Número não possui WhatsApp ativo."
-                })
-                
-        except Exception as e:
-            # Retornamos sucesso com aviso para não bloquear o usuário caso a API caia
             return Response({
-                "valido": True, 
-                "aviso": f"Erro de conexão na validação: {str(e)}"
+                "valido": False,
+                "mensagem": "Número não possui WhatsApp ativo."
             })
+
+        except Exception as e:
+            return Response({
+                "valido": True,
+                "aviso": "Não foi possível validar. Pode salvar."
+            }, status=200)

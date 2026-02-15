@@ -103,21 +103,27 @@ def _chave_telefone(telefone):
 
 def _chaves_telefone_variantes(telefone):
     """Retorna variantes da chave para matching robusto (ex: 31986791000 e 5531986791000).
-    Inclui variante 31X vs 319 (API às vezes envia 553191449649 em vez de 5531991449649).
+    Inclui variante 31X vs 319 (API pode enviar 10 dígitos 31+8 ou 11 dígitos 31+9+8).
     """
     base = formatar_telefone(telefone) or ""
     if not base:
         return []
     chaves = [base]
+    # Garantir que temos a versão sem 55 para números nacionais
     if base.startswith('55') and len(base) > 11:
         chaves.append(base[2:])  # sem 55
     elif len(base) >= 10 and not base.startswith('55'):
         chaves.append('55' + base)  # com 55
-    # Variante 31X <-> 319 (ex: 3191449649 vs 31991449649 - API pode enviar sem o 9 após DDD)
-    if len(base) == 10 and len(base) >= 3 and base[2] != '9':
-        chaves.append(base[:2] + '9' + base[2:])
-    if len(base) == 11 and len(base) >= 4 and base[2] == '9':
-        chaves.append(base[:2] + base[3:])
+    # Número nacional (sem 55) para variantes 10 <-> 11 dígitos
+    nacional = base[2:] if base.startswith('55') and len(base) > 11 else base
+    if len(nacional) == 10:
+        # 10 dígitos (ex: 3195157538 ou 3188804000): gerar 11 dígitos (DDD+9+resto)
+        chaves.append(nacional[:2] + '9' + nacional[2:])
+        chaves.append('55' + nacional[:2] + '9' + nacional[2:])
+    if len(nacional) == 11 and nacional[2] == '9':
+        # 11 dígitos (ex: 31995157538): gerar 10 dígitos (remover o 9 após DDD)
+        chaves.append(nacional[:2] + nacional[3:])
+        chaves.append('55' + nacional[:2] + nacional[3:])
     if len(base) == 12 and base.startswith('55') and len(base) >= 5 and base[4] != '9':
         chaves.append(base[:4] + '9' + base[4:])
     if len(base) == 13 and base.startswith('55') and len(base) >= 6 and base[4] == '9':
@@ -125,19 +131,27 @@ def _chaves_telefone_variantes(telefone):
     return list(dict.fromkeys(chaves))
 
 
+def _digits_only(s):
+    """Retorna apenas os dígitos da string (para comparar números com formatação)."""
+    if not s:
+        return ""
+    return "".join(filter(str.isdigit, str(s)))
+
+
 def _usuario_ativo_por_telefone(telefone):
     """
     Retorna o usuário ativo associado ao número de WhatsApp, ou None.
     Consulta os 3 campos (tel_whatsapp, tel_whatsapp_2, tel_whatsapp_3).
+    Aceita número com ou sem 9 após DDD e com ou sem formatação no banco.
     Apenas usuários ativos (is_active=True) podem interagir com o bot.
     """
     try:
         from django.db.models import Q
         from usuarios.models import Usuario
         chaves = _chaves_telefone_variantes(telefone) or [formatar_telefone(telefone) or '']
+        chaves = [c for c in chaves if c]
+        # 1) Busca por icontains (número sem formatação no banco)
         for tel_var in chaves:
-            if not tel_var:
-                continue
             usuario = Usuario.objects.filter(is_active=True).filter(
                 Q(tel_whatsapp__icontains=tel_var) |
                 Q(tel_whatsapp_2__icontains=tel_var) |
@@ -145,6 +159,23 @@ def _usuario_ativo_por_telefone(telefone):
             ).first()
             if usuario:
                 return usuario
+        # 2) Fallback: match por dígitos (quando o cadastro tem espaço/traço, ex: "31 99515-7538")
+        usuarios_ativos = Usuario.objects.filter(is_active=True).only(
+            'id', 'tel_whatsapp', 'tel_whatsapp_2', 'tel_whatsapp_3'
+        )
+        chaves_digits = [ _digits_only(c) for c in chaves ]
+        for u in usuarios_ativos:
+            for campo in (u.tel_whatsapp, u.tel_whatsapp_2, u.tel_whatsapp_3):
+                if not campo:
+                    continue
+                stored = _digits_only(campo)
+                if not stored:
+                    continue
+                for busca in chaves_digits:
+                    if not busca:
+                        continue
+                    if busca == stored or (len(stored) >= 10 and (busca in stored or stored in busca)):
+                        return u
         return None
     except Exception as e:
         logger.warning(f"[Webhook] Erro ao buscar usuário por telefone: {e}")
