@@ -4354,6 +4354,73 @@ def processar_webhook_whatsapp(data):
     logger.info(f"[Webhook] Mensagem recebida de {telefone_formatado}: {mensagem_texto}")
     logger.info(f"[Webhook] Mensagem limpa (uppercase): {mensagem_limpa}")
     
+    # --- Resposta do CLIENTE (SIM) antes de exigir usuário ativo ---
+    # Quando o sistema envia "RESUMO DO PEDIDO... responda SIM" ao cliente, a resposta "SIM"
+    # vem do número do cliente, que não é usuário interno. Tratar aqui para não rejeitar com
+    # "não pertence a nenhum usuário ativo".
+    if mensagem_limpa in ['SIM', 'S']:
+        chave = _chave_telefone(telefone_formatado)
+        chaves_tentar = _chaves_telefone_variantes(telefone_formatado) or [chave]
+        with _pending_lock:
+            pend_cliente = next((_pending_client_confirm.get(k) for k in chaves_tentar if _pending_client_confirm.get(k)), None)
+        if pend_cliente:
+            try:
+                from crm_app.models import PapConfirmacaoCliente
+                sessao_id_pend = pend_cliente.get('sessao_id')
+                for k in (chaves_tentar or [chave]):
+                    updated = PapConfirmacaoCliente.objects.filter(
+                        celular_cliente=k, confirmado=False, sessao_id=sessao_id_pend
+                    ).update(confirmado=True)
+                    if updated:
+                        logger.info(f"[Webhook] [Cliente] PapConfirmacaoCliente confirmado (sessao_id={sessao_id_pend}, celular={k})")
+                        break
+            except Exception as e:
+                logger.warning(f"[Webhook] Erro ao marcar PapConfirmacaoCliente (cliente): {e}", exc_info=True)
+            pend_cliente['event'].set()
+            try:
+                protocolo = ''
+                automacao = pend_cliente.get('automacao')
+                if automacao and hasattr(automacao, 'dados_pedido'):
+                    protocolo = automacao.dados_pedido.get('protocolo', '') or ''
+                msg_cliente = "✅ *Confirmado!* O vendedor receberá a confirmação."
+                if protocolo:
+                    msg_cliente += f"\n\n📋 *Protocolo:* {protocolo}"
+                WhatsAppService().enviar_mensagem_texto(telefone_formatado, msg_cliente)
+            except Exception:
+                pass
+            return {'status': 'ok', 'mensagem': 'Confirmado pelo cliente'}
+        # Fallback: confirmação só no BD (ex.: outro replica não tem o in-memory pend)
+        try:
+            from crm_app.models import PapConfirmacaoCliente
+            pend_bd = PapConfirmacaoCliente.objects.filter(
+                celular_cliente__in=chaves_tentar, confirmado=False
+            ).order_by('-criado_em').first()
+            if pend_bd:
+                pend_bd.confirmado = True
+                pend_bd.save()
+                logger.info(f"[Webhook] [Cliente] PapConfirmacaoCliente confirmado via BD (celular={pend_bd.celular_cliente})")
+                with _pending_lock:
+                    for _k, _v in _pending_client_confirm.items():
+                        if _v.get('sessao_id') == pend_bd.sessao_id:
+                            _v['event'].set()
+                            break
+                try:
+                    protocolo = ''
+                    if pend_bd.sessao_id:
+                        with _automacoes_lock:
+                            ctx_pend = _automacoes_pap_ativas.get(pend_bd.sessao_id)
+                        if ctx_pend and ctx_pend.get('automacao'):
+                            protocolo = ctx_pend['automacao'].dados_pedido.get('protocolo', '') or ''
+                    msg_cliente = "✅ *Confirmado!* O vendedor receberá a confirmação."
+                    if protocolo:
+                        msg_cliente += f"\n\n📋 *Protocolo:* {protocolo}"
+                    WhatsAppService().enviar_mensagem_texto(telefone_formatado, msg_cliente)
+                except Exception:
+                    pass
+                return {'status': 'ok', 'mensagem': 'Confirmado pelo cliente (BD)'}
+        except Exception as e:
+            logger.warning(f"[Webhook] Erro ao confirmar PapConfirmacaoCliente (BD): {e}", exc_info=True)
+    
     # Verificar se o número está associado a um usuário ativo
     usuario_whatsapp = _usuario_ativo_por_telefone(telefone_formatado)
     if not usuario_whatsapp:
