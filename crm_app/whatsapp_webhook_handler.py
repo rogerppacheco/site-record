@@ -121,6 +121,55 @@ def _chaves_telefone_variantes(telefone):
     return list(dict.fromkeys(chaves))
 
 
+def _usuario_ativo_por_telefone(telefone):
+    """
+    Retorna o usuário ativo associado ao número de WhatsApp, ou None.
+    Usa variantes do telefone (com/sem 55, etc.) para matching.
+    """
+    try:
+        from usuarios.models import Usuario
+        chaves = _chaves_telefone_variantes(telefone) or [formatar_telefone(telefone) or '']
+        for tel_var in chaves:
+            if not tel_var:
+                continue
+            usuario = Usuario.objects.filter(is_active=True).filter(
+                tel_whatsapp__icontains=tel_var
+            ).first()
+            if usuario:
+                return usuario
+        return None
+    except Exception as e:
+        logger.warning(f"[Webhook] Erro ao buscar usuário por telefone: {e}")
+        return None
+
+
+def _saudacao_por_hora():
+    """Retorna 'Bom Dia', 'Boa Tarde' ou 'Boa Noite' conforme o horário (timezone do servidor)."""
+    try:
+        hora = timezone.localtime(timezone.now()).hour
+        if hora < 12:
+            return "Bom Dia"
+        if hora < 18:
+            return "Boa Tarde"
+        return "Boa Noite"
+    except Exception:
+        return "Olá"
+
+
+def _formatar_primeira_mensagem_automatica(mensagem, usuario):
+    """
+    Formata a primeira mensagem após palavra-chave: [Bom Dia/Boa Tarde/Boa Noite] Nome:\n\nMensagem
+    Nome = first_name do usuário ou username.
+    """
+    if not mensagem or not str(mensagem).strip():
+        return mensagem
+    saudacao = _saudacao_por_hora()
+    nome = (usuario.first_name or usuario.username or "Usuário").strip() if usuario else "Usuário"
+    if not nome:
+        nome = usuario.username if usuario else "Usuário"
+    return f"[{saudacao}] {nome}:\n\n{mensagem.strip()}"
+
+
 def limpar_texto_cep_cpf(texto):
     """Remove pontos, traços e espaços (para CEP e CPF)"""
     if not texto:
@@ -4261,6 +4310,18 @@ def processar_webhook_whatsapp(data):
     logger.info(f"[Webhook] Mensagem recebida de {telefone_formatado}: {mensagem_texto}")
     logger.info(f"[Webhook] Mensagem limpa (uppercase): {mensagem_limpa}")
     
+    # Verificar se o número está associado a um usuário ativo
+    usuario_whatsapp = _usuario_ativo_por_telefone(telefone_formatado)
+    if not usuario_whatsapp:
+        try:
+            WhatsAppService().enviar_mensagem_texto(
+                telefone_formatado,
+                "Seu número de cel não pertence a nenhum usuário ativo, faça contato com o administrador para reativar seu acesso."
+            )
+        except Exception as e:
+            logger.exception(f"[Webhook] Erro ao enviar mensagem de usuário não associado: {e}")
+        return {'status': 'ok', 'mensagem': 'Número não associado a usuário ativo'}
+    
     # Se for SIM no fluxo VENDER (confirmar matrícula), não tratar como confirmação de cliente
     etapa_sessao = None
     try:
@@ -4383,6 +4444,10 @@ def processar_webhook_whatsapp(data):
                 logger.exception(f"[Webhook] Erro ao enviar mensagem ao usuário: {e}")
         return {'status': 'ok', 'mensagem': resposta_texto or 'Processado com sucesso'}
 
+    def _com_prefixo_primeira_mensagem(texto):
+        """Prefixa a primeira mensagem após palavra-chave com [Saudação] Nome: (usuario_whatsapp já validado)."""
+        return _formatar_primeira_mensagem_automatica(texto, usuario_whatsapp)
+
     try:
         # Identificar comando ou processar resposta
         resposta = None
@@ -4402,7 +4467,7 @@ def processar_webhook_whatsapp(data):
             sessao.dados_temp = {}
             sessao.save()
             resposta = "Por favor, digite o CPF do titular da fatura (apenas números):"
-            return _enviar_resposta_e_retornar(resposta)
+            return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
 
         # Comando VIABILIDADE
         if mensagem_limpa in ['VIABILIDADE', 'VIABILIDADES']:
@@ -4411,7 +4476,7 @@ def processar_webhook_whatsapp(data):
             sessao.dados_temp = {}
             sessao.save()
             resposta = "Por favor, digite o CEP do endereço para consulta de viabilidade (apenas números):"
-            return _enviar_resposta_e_retornar(resposta)
+            return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
 
         # Comando STATUS
         if mensagem_limpa in ['STATUS', 'SITUACAO', 'SITUAÇÃO']:
@@ -4421,14 +4486,14 @@ def processar_webhook_whatsapp(data):
             sessao.save()
             resposta = ("Para consultar o status do pedido, escolha uma opção:\n"
                         "1️⃣ CPF\n2️⃣ OS (Ordem de Serviço)\n\nDigite 1 para CPF ou 2 para O.S:")
-            return _enviar_resposta_e_retornar(resposta)
+            return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
         if 'FACHADA' in mensagem_limpa or 'FACADA' in mensagem_limpa:
             logger.info(f"[Webhook] Comando FACHADA reconhecido!")
             sessao.etapa = 'fachada_cep'
             sessao.dados_temp = {}
             sessao.save()
             resposta = "Por favor, digite o CEP para consultar fachadas (apenas números):"
-            return _enviar_resposta_e_retornar(resposta)
+            return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
 
         # Comando MATERIAL
         if mensagem_limpa in ['MATERIAL', 'MATERIAIS']:
@@ -4437,7 +4502,7 @@ def processar_webhook_whatsapp(data):
             sessao.dados_temp = {}
             sessao.save()
             resposta = "Digite a palavra-chave para buscar materiais ou documentos (ex: boleto, contrato, instalacao):"
-            return _enviar_resposta_e_retornar(resposta)
+            return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
         
         elif mensagem_limpa in ['ANDAMENTO', 'ANDAMENTOS']:
             logger.info(f"[Webhook] Comando ANDAMENTO reconhecido!")
@@ -4448,7 +4513,7 @@ def processar_webhook_whatsapp(data):
             _registrar_estatistica(telefone_formatado, 'ANDAMENTO')
             if resposta is None:
                 resposta = "Nenhum agendamento encontrado para hoje."
-            return _enviar_resposta_e_retornar(resposta)
+            return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
         
         elif mensagem_limpa in ['VENDER', 'VENDA', 'NOVA VENDA']:
             logger.info(f"[Webhook] Comando VENDER reconhecido!")
@@ -4456,7 +4521,7 @@ def processar_webhook_whatsapp(data):
             _registrar_estatistica(telefone_formatado, 'VENDER')
             if not resposta:
                 resposta = "Não foi possível iniciar o fluxo de venda. Tente novamente."
-            return _enviar_resposta_e_retornar(resposta)
+            return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
         
         elif mensagem_limpa in ['MENU', 'AJUDA', 'HELP', 'OPCOES', 'OPÇÕES', 'OPCOES', 'OPÇOES']:
             logger.info(f"[Webhook] Comando MENU/AJUDA reconhecido!")
@@ -4474,7 +4539,7 @@ def processar_webhook_whatsapp(data):
                 "• *Andamento* - Ver agendamentos do dia\n"
                 "• *Vender* - Realizar venda pelo WhatsApp 🆕"
             )
-            return _enviar_resposta_e_retornar(resposta)
+            return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
         
         # === PROCESSAMENTO POR ETAPA ===
         elif etapa_atual == 'fachada_cep':

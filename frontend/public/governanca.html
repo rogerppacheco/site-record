@@ -1723,10 +1723,13 @@
     });
 
     async function inativarUsuario(id) {
-        if(confirm('Inativar?')) {
-            await apiFetch(`/usuarios/${id}/`, { method: 'DELETE' });
+        if (!confirm('Inativar este usuário?')) return;
+        try {
+            await apiFetch(`/usuarios/${id}/`, { method: 'PATCH', body: JSON.stringify({ is_active: false }) });
             const statusAtual = document.getElementById('lista-status-titulo').textContent.includes('Ativos') ? 'ativos' : 'inativos';
-            carregarUsuarios(statusAtual, paginacaoAtual.page);
+            await carregarUsuarios(statusAtual, paginacaoAtual.page);
+        } catch (e) {
+            alert('Erro ao inativar usuário: ' + (e.message || e));
         }
     }
     async function reativarUsuario(id) {
