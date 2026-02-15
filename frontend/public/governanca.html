@@ -310,7 +310,7 @@
                                         <small class="text-muted form-text">Exibida como •••••• por segurança</small>
                                     </div>
                                     <div class="col-lg-3 col-md-6">
-                                        <label class="form-label fw-bold">WhatsApp</label>
+                                        <label class="form-label fw-bold">WhatsApp 1</label>
                                         <div class="input-group">
                                             <input type="text" class="form-control" id="tel_whatsapp" autocomplete="off">
                                             <span class="input-group-text bg-transparent border-0" id="whatsapp-status-icon" style="display:none; min-width:2rem;">
@@ -321,6 +321,14 @@
                                             </span>
                                         </div>
                                         <div id="whatsapp-feedback" class="form-text"></div>
+                                    </div>
+                                    <div class="col-lg-2 col-md-4">
+                                        <label class="form-label fw-bold">WhatsApp 2</label>
+                                        <input type="text" class="form-control" id="tel_whatsapp_2" autocomplete="off" placeholder="Opcional">
+                                    </div>
+                                    <div class="col-lg-2 col-md-4">
+                                        <label class="form-label fw-bold">WhatsApp 3</label>
+                                        <input type="text" class="form-control" id="tel_whatsapp_3" autocomplete="off" placeholder="Opcional">
                                     </div>
                                     <div class="col-lg-3 col-md-6">
                                         <label class="form-label fw-bold">Username</label>
@@ -1530,6 +1538,8 @@
             document.getElementById('cpf').value = user.cpf || '';
             document.getElementById('email').value = user.email || '';
             document.getElementById('tel_whatsapp').value = user.tel_whatsapp || '';
+            document.getElementById('tel_whatsapp_2').value = user.tel_whatsapp_2 || '';
+            document.getElementById('tel_whatsapp_3').value = user.tel_whatsapp_3 || '';
             document.getElementById('usuario_login').value = user.username || '';
             if (user.groups && user.groups.length > 0) {
                 const groupId = typeof user.groups[0] === 'object' ? user.groups[0].id : user.groups[0];
@@ -1554,6 +1564,8 @@
             ['valor_almoco', 'valor_passagem', 'chave_pix', 'nome_da_conta', 'meta_comissao', 'desconto_boleto', 'desconto_inclusao_viabilidade', 'desconto_instalacao_antecipada', 'adiantamento_cnpj', 'desconto_inss_fixo'].forEach(id => { document.getElementById(id).value = user[id] || ''; });
         } else {
             document.getElementById('matricula_pap').value = '';
+            document.getElementById('tel_whatsapp_2').value = '';
+            document.getElementById('tel_whatsapp_3').value = '';
         }
         // Senha PAP: nunca preencher valor (segurança); placeholder indica se já está cadastrada
         const senhaPapInput = document.getElementById('senha_pap');
@@ -1678,6 +1690,8 @@
             cpf: cleanValue(document.getElementById('cpf').value),
             email: document.getElementById('email').value,
             tel_whatsapp: cleanValue(document.getElementById('tel_whatsapp').value),
+            tel_whatsapp_2: cleanValue(document.getElementById('tel_whatsapp_2').value),
+            tel_whatsapp_3: cleanValue(document.getElementById('tel_whatsapp_3').value),
             username: document.getElementById('usuario_login').value,
             supervisor: supervisorValue ? parseInt(supervisorValue) : null,
             canal: document.getElementById('user_canal').value,

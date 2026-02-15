@@ -42,15 +42,15 @@ def _registrar_estatistica(telefone, comando):
     Tenta identificar o vendedor pelo telefone
     """
     try:
+        from django.db.models import Q
         from crm_app.models import EstatisticaBotWhatsApp
         from usuarios.models import Usuario
         
-        # Tentar encontrar vendedor pelo telefone
+        # Tentar encontrar vendedor pelo telefone (qualquer um dos 3 números)
         vendedor = None
         telefone_limpo = formatar_telefone(telefone)
         
-        # Buscar vendedor pelo tel_whatsapp (formato pode variar)
-        # Tentar com e sem prefixo 55
+        # Buscar vendedor pelo tel_whatsapp / tel_whatsapp_2 / tel_whatsapp_3 (formato pode variar)
         telefones_variantes = [telefone_limpo]
         if not telefone_limpo.startswith('55') and len(telefone_limpo) >= 10:
             telefones_variantes.append('55' + telefone_limpo)
@@ -59,10 +59,14 @@ def _registrar_estatistica(telefone, comando):
         
         for tel_var in telefones_variantes:
             try:
-                vendedor = Usuario.objects.filter(tel_whatsapp__icontains=tel_var).first()
+                vendedor = Usuario.objects.filter(
+                    Q(tel_whatsapp__icontains=tel_var) |
+                    Q(tel_whatsapp_2__icontains=tel_var) |
+                    Q(tel_whatsapp_3__icontains=tel_var)
+                ).first()
                 if vendedor:
                     break
-            except:
+            except Exception:
                 pass
         
         # Criar registro de estatística
@@ -124,16 +128,20 @@ def _chaves_telefone_variantes(telefone):
 def _usuario_ativo_por_telefone(telefone):
     """
     Retorna o usuário ativo associado ao número de WhatsApp, ou None.
-    Usa variantes do telefone (com/sem 55, etc.) para matching.
+    Consulta os 3 campos (tel_whatsapp, tel_whatsapp_2, tel_whatsapp_3).
+    Apenas usuários ativos (is_active=True) podem interagir com o bot.
     """
     try:
+        from django.db.models import Q
         from usuarios.models import Usuario
         chaves = _chaves_telefone_variantes(telefone) or [formatar_telefone(telefone) or '']
         for tel_var in chaves:
             if not tel_var:
                 continue
             usuario = Usuario.objects.filter(is_active=True).filter(
-                tel_whatsapp__icontains=tel_var
+                Q(tel_whatsapp__icontains=tel_var) |
+                Q(tel_whatsapp_2__icontains=tel_var) |
+                Q(tel_whatsapp_3__icontains=tel_var)
             ).first()
             if usuario:
                 return usuario
@@ -158,8 +166,8 @@ def _saudacao_por_hora():
 
 def _formatar_primeira_mensagem_automatica(mensagem, usuario):
     """
-    Formata a primeira mensagem após palavra-chave: [Bom Dia/Boa Tarde/Boa Noite] Nome:\n\nMensagem
-    Nome = first_name do usuário ou username.
+    Formata a primeira mensagem após palavra-chave: Saudação Nome:\n\nMensagem
+    Sem colchetes na saudação. Nome com primeira letra maiúscula e resto minúsculo (nome próprio).
     """
     if not mensagem or not str(mensagem).strip():
         return mensagem
@@ -167,7 +175,12 @@ def _formatar_primeira_mensagem_automatica(mensagem, usuario):
     nome = (usuario.first_name or usuario.username or "Usuário").strip() if usuario else "Usuário"
     if not nome:
         nome = usuario.username if usuario else "Usuário"
-    return f"[{saudacao}] {nome}:\n\n{mensagem.strip()}"
+    # Primeira letra maiúscula, resto minúsculo (nome próprio)
+    if len(nome) > 1:
+        nome = nome[0].upper() + nome[1:].lower()
+    elif nome:
+        nome = nome.upper()
+    return f"{saudacao} {nome}:\n\n{mensagem.strip()}"
 
 
 def limpar_texto_cep_cpf(texto):

@@ -80,12 +80,27 @@ class Usuario(AbstractUser):
     )
 
     # --- WHATSAPP ---
+    # Envios do sistema (notificações, OSAB, etc.) vão SEMPRE apenas para WhatsApp 1 (tel_whatsapp).
     tel_whatsapp = models.CharField(
         max_length=20, 
         blank=True, 
         null=True, 
-        verbose_name="WhatsApp do Consultor",
-        help_text="Número com DDD (apenas números). O sistema verificará se possui WhatsApp via validação assíncrona."
+        verbose_name="WhatsApp 1",
+        help_text="Número principal com DDD (apenas números). Notificações do sistema são enviadas só para este número. Qualquer um dos 3 pode interagir com o bot."
+    )
+    tel_whatsapp_2 = models.CharField(
+        max_length=20,
+        blank=True,
+        null=True,
+        verbose_name="WhatsApp 2",
+        help_text="Segundo número (opcional). Só para interagir com o bot; envios do sistema vão apenas para WhatsApp 1."
+    )
+    tel_whatsapp_3 = models.CharField(
+        max_length=20,
+        blank=True,
+        null=True,
+        verbose_name="WhatsApp 3",
+        help_text="Terceiro número (opcional). Só para interagir com o bot; envios do sistema vão apenas para WhatsApp 1."
     )
 
     # --- SEGURANÇA ---

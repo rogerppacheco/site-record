@@ -115,6 +115,8 @@ class UsuarioSerializer(serializers.ModelSerializer):
             'autorizar_venda_sem_auditoria',
             'autorizar_venda_automatica',
             'tel_whatsapp',
+            'tel_whatsapp_2',
+            'tel_whatsapp_3',
             'obriga_troca_senha',
             'password'
         ]
@@ -312,6 +314,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'supervisor', 'supervisor_nome',
             'is_active', 'is_staff',
             'tel_whatsapp',
+            'tel_whatsapp_2',
+            'tel_whatsapp_3',
             'obriga_troca_senha'
         ]
 

@@ -510,9 +510,12 @@ def consultar_andamento_agendamentos(telefone_vendedor=None):
             telefone_limpo_sem_55 = telefone_limpo
         
         vendedor = User.objects.filter(
-            Q(tel_whatsapp=telefone_limpo) | 
-            Q(tel_whatsapp=telefone_limpo_sem_55) |
-            Q(tel_whatsapp=f"55{telefone_limpo_sem_55}")
+            Q(tel_whatsapp__icontains=telefone_limpo) |
+            Q(tel_whatsapp__icontains=telefone_limpo_sem_55) |
+            Q(tel_whatsapp_2__icontains=telefone_limpo) |
+            Q(tel_whatsapp_2__icontains=telefone_limpo_sem_55) |
+            Q(tel_whatsapp_3__icontains=telefone_limpo) |
+            Q(tel_whatsapp_3__icontains=telefone_limpo_sem_55)
         ).first()
         
         if not vendedor:
