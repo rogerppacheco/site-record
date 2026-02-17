@@ -9757,98 +9757,82 @@ class BuscarFaturaNioView(APIView):
             }, status=500)
 
 
-class BuscarFaturasSafraView(APIView):
-    """Busca automática de todas as faturas disponíveis de uma safra"""
-    permission_classes = [permissions.IsAuthenticated]
-    
-    def post(self, request):
-        """
-        Busca faturas de todos os contratos de uma safra
-        
-        Body: {
-            "safra": "2025-12",  # Opcional: formato YYYY-MM
-            "safra_id": 1,       # Ou ID da safra
-            "numero_fatura": 1   # Opcional: buscar apenas esta fatura
+def _run_buscar_faturas_safra_background(historico_id, param, numero_fatura_filtro):
+    """
+    Executa a busca de faturas da safra em background (thread).
+    Atualiza HistoricoBuscaFatura ao final para não bloquear a requisição HTTP.
+    """
+    import re
+    import requests
+    from datetime import date, datetime as dt
+    from django.utils import timezone
+    from django.db.models import Q
+    from crm_app.nio_api import consultar_dividas_nio, get_invoice_pdf_url
+    from crm_app.models import HistoricoBuscaFatura
+
+    def _api_to_faturas_nio(api_result, cpf_limpo, incluir_pdf=False):
+        invoices = api_result.get('invoices') or []
+        out = []
+        sess = requests.Session() if incluir_pdf else None
+        for inv in invoices:
+            due = inv.get('due_date_raw') or inv.get('data_vencimento')
+            data_vencimento = None
+            if due:
+                if hasattr(due, 'strftime'):
+                    data_vencimento = due
+                elif isinstance(due, str) and len(due) >= 8:
+                    try:
+                        s = due[:10].replace('/', '-')
+                        if '-' in s:
+                            data_vencimento = dt.strptime(s, '%Y-%m-%d').date()
+                        elif due[:8].isdigit():
+                            data_vencimento = dt.strptime(due[:8], '%Y%m%d').date()
+                    except Exception:
+                        pass
+            valor = inv.get('amount')
+            codigo_pix = inv.get('pix') or inv.get('codigo_pix')
+            codigo_barras = inv.get('barcode') or inv.get('codigo_barras')
+            pdf_url = None
+            if incluir_pdf and api_result.get('token') and api_result.get('api_base') and api_result.get('session_id') and sess:
+                pdf_url = get_invoice_pdf_url(
+                    api_result['api_base'], api_result['token'], api_result['session_id'],
+                    inv.get('debt_id', ''), str(inv.get('invoice_id', '')), cpf_limpo,
+                    inv.get('reference_month', '') or '', sess)
+            out.append({
+                'data_vencimento': data_vencimento,
+                'valor': valor,
+                'codigo_pix': codigo_pix,
+                'codigo_barras': codigo_barras,
+                'pdf_url': pdf_url,
+            })
+        return out
+
+    inicio = timezone.now()
+    try:
+        historico = HistoricoBuscaFatura.objects.get(id=historico_id)
+        data_inicio, data_fim = _safra_to_data_range(param)
+        if data_inicio is None or data_fim is None:
+            historico.status = 'ERRO'
+            historico.mensagem = 'Safra inválida'
+            historico.termino_em = timezone.now()
+            historico.save()
+            return
+        contratos = list(ContratoM10.objects.filter(
+            data_instalacao__gte=data_inicio,
+            data_instalacao__lt=data_fim,
+            status_contrato='ATIVO'
+        ))
+        hoje = date.today()
+        resultados = {
+            'total_contratos': len(contratos),
+            'processados': 0,
+            'sucesso': 0,
+            'erros': 0,
+            'nao_disponiveis': 0,
+            'sem_cpf': 0,
+            'detalhes': []
         }
-        """
-        import re
-        import requests
-        from datetime import date, timedelta, datetime as dt
-        from crm_app.nio_api import consultar_dividas_nio, get_invoice_pdf_url
-
-        def _api_to_faturas_nio(api_result, cpf_limpo, incluir_pdf=True):
-            """Converte retorno da API Nio para lista de dicts (data_vencimento, valor, codigo_pix, codigo_barras, pdf_url)."""
-            invoices = api_result.get('invoices') or []
-            out = []
-            sess = requests.Session() if incluir_pdf else None
-            for inv in invoices:
-                due = inv.get('due_date_raw') or inv.get('data_vencimento')
-                data_vencimento = None
-                if due:
-                    if hasattr(due, 'strftime'):
-                        data_vencimento = due
-                    elif isinstance(due, str) and len(due) >= 8:
-                        try:
-                            s = due[:10].replace('/', '-')
-                            if '-' in s:
-                                data_vencimento = dt.strptime(s, '%Y-%m-%d').date()
-                            elif due[:8].isdigit():
-                                data_vencimento = dt.strptime(due[:8], '%Y%m%d').date()
-                        except Exception:
-                            pass
-                valor = inv.get('amount')
-                codigo_pix = inv.get('pix') or inv.get('codigo_pix')
-                codigo_barras = inv.get('barcode') or inv.get('codigo_barras')
-                pdf_url = None
-                if incluir_pdf and api_result.get('token') and api_result.get('api_base') and api_result.get('session_id') and sess:
-                    pdf_url = get_invoice_pdf_url(
-                        api_result['api_base'], api_result['token'], api_result['session_id'],
-                        inv.get('debt_id', ''), str(inv.get('invoice_id', '')), cpf_limpo,
-                        inv.get('reference_month', '') or '', sess)
-                out.append({
-                    'data_vencimento': data_vencimento,
-                    'valor': valor,
-                    'codigo_pix': codigo_pix,
-                    'codigo_barras': codigo_barras,
-                    'pdf_url': pdf_url,
-                })
-            return out
-
-        safra_str = request.data.get('safra')
-        safra_id = request.data.get('safra_id')
-        numero_fatura_filtro = request.data.get('numero_fatura')
-
-        if not safra_str and not safra_id:
-            return Response({'error': 'Informe a safra (YYYY-MM) ou safra_id'}, status=400)
-
-        try:
-            # Regra: safra = mês da data de instalação. Buscar contratos com data_instalacao no mês.
-            param = safra_id or safra_str
-            data_inicio, data_fim = _safra_to_data_range(param)
-            if data_inicio is None or data_fim is None:
-                return Response({'error': 'Safra inválida. Use safra_id ou safra (YYYY-MM).'}, status=400)
-
-            contratos = ContratoM10.objects.filter(
-                data_instalacao__gte=data_inicio,
-                data_instalacao__lt=data_fim,
-                status_contrato='ATIVO'
-            )
-            
-            if not contratos.exists():
-                return Response({'error': 'Nenhum contrato encontrado para esta safra'}, status=404)
-            
-            hoje = date.today()
-            resultados = {
-                'total_contratos': contratos.count(),
-                'processados': 0,
-                'sucesso': 0,
-                'erros': 0,
-                'nao_disponiveis': 0,
-                'sem_cpf': 0,
-                'detalhes': []
-            }
-            
-            for contrato in contratos:
+        for contrato in contratos:
                 if not contrato.cpf_cliente:
                     resultados['sem_cpf'] += 1
                     resultados['detalhes'].append({
@@ -9992,16 +9976,79 @@ class BuscarFaturasSafraView(APIView):
                         'status': 'erro',
                         'mensagem': str(e)
                     })
-            
+        # Atualiza histórico ao concluir
+        termino = timezone.now()
+        historico.termino_em = termino
+        historico.duracao_segundos = (termino - inicio).total_seconds()
+        historico.total_faturas = resultados['processados']
+        historico.faturas_sucesso = resultados['sucesso']
+        historico.faturas_erro = resultados['erros']
+        historico.faturas_nao_disponiveis = resultados.get('nao_disponiveis', 0)
+        historico.status = 'CONCLUIDA'
+        historico.mensagem = f"Processados {resultados['processados']}, sucesso: {resultados['sucesso']}, erros: {resultados['erros']}"
+        historico.logs = {'detalhes': resultados['detalhes'][:200]}
+        historico.save()
+    except Exception as e:
+        try:
+            historico = HistoricoBuscaFatura.objects.get(id=historico_id)
+            historico.status = 'ERRO'
+            historico.mensagem = str(e)[:500]
+            historico.termino_em = timezone.now()
+            historico.save()
+        except Exception:
+            pass
+
+
+class BuscarFaturasSafraView(APIView):
+    """Busca automática de todas as faturas disponíveis de uma safra (em background)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        """
+        Inicia busca de faturas em segundo plano. Retorna imediatamente com log_id.
+        Body: { "safra": "2025-12" | "safra_id": 1, "numero_fatura": 1 opcional }
+        """
+        import threading
+        from crm_app.models import HistoricoBuscaFatura
+        safra_str = request.data.get('safra')
+        safra_id = request.data.get('safra_id')
+        numero_fatura_filtro = request.data.get('numero_fatura')
+        if not safra_str and not safra_id:
+            return Response({'error': 'Informe a safra (YYYY-MM) ou safra_id'}, status=400)
+        param = safra_id or safra_str
+        try:
+            data_inicio, data_fim = _safra_to_data_range(param)
+            if data_inicio is None or data_fim is None:
+                return Response({'error': 'Safra inválida. Use safra_id ou safra (YYYY-MM).'}, status=400)
+            contratos = ContratoM10.objects.filter(
+                data_instalacao__gte=data_inicio,
+                data_instalacao__lt=data_fim,
+                status_contrato='ATIVO'
+            )
+            if not contratos.exists():
+                return Response({'error': 'Nenhum contrato encontrado para esta safra'}, status=404)
+            safra_display = f"{data_inicio.year}-{data_inicio.month:02d}" if data_inicio else str(param)
+            historico = HistoricoBuscaFatura.objects.create(
+                tipo_busca='SAFRA',
+                safra=safra_display,
+                usuario=None,
+                status='EM_ANDAMENTO',
+                total_contratos=contratos.count(),
+            )
+            thread = threading.Thread(
+                target=_run_buscar_faturas_safra_background,
+                args=(historico.id, param, numero_fatura_filtro),
+                daemon=True,
+            )
+            thread.start()
             return Response({
                 'success': True,
-                'resumo': resultados
-            })
-            
+                'message': 'Busca de faturas iniciada em segundo plano. Atualize a página em alguns minutos para ver os resultados.',
+                'log_id': historico.id,
+                'background': True,
+            }, status=202)
         except Exception as e:
-            return Response({
-                'error': f'Erro ao processar safra: {str(e)}'
-            }, status=500)
+            return Response({'error': str(e)}, status=500)
 
 
 class NioDividasView(APIView):

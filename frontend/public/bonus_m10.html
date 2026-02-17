@@ -1057,6 +1057,12 @@
                 // Remover modal de progresso
                 document.body.removeChild(modal);
                 
+                if (data.background && data.success) {
+                    alert(data.message || 'Busca iniciada em segundo plano. Atualize a página em alguns minutos para ver os resultados.');
+                    carregarDadosM10();
+                    return;
+                }
+                
                 if (response.ok && data.success) {
                     const resumo = data.resumo;
                     
