@@ -4629,6 +4629,16 @@ def processar_webhook_whatsapp(data, request=None):
         telefone = data['text'].get('participant')
     if not telefone and isinstance(data.get('message'), dict):
         telefone = (data.get('message') or {}).get('participant')
+    is_group = bool(data.get('isGroup') or (isinstance(telefone, str) and '-group' in telefone))
+    participant_phone = data.get('participantPhone') or data.get('participant_phone')
+    if not participant_phone and isinstance(data.get('text'), dict):
+        participant_phone = data['text'].get('participant')
+    if not participant_phone and isinstance(data.get('message'), dict):
+        participant_phone = (data.get('message') or {}).get('participant')
+    if is_group and participant_phone:
+        telefone_usuario = participant_phone  # Para identificar quem enviou (lookup usuário)
+    else:
+        telefone_usuario = telefone
     mensagem_texto = ""
     
     # Formato Z-API: text é um dict com 'message' dentro
@@ -4683,25 +4693,29 @@ def processar_webhook_whatsapp(data, request=None):
     if document_url:
         logger.info(f"[Webhook] Documento detectado: {document_url[:80]}...")
     
-    logger.info(f"[Webhook] Telefone extraído: {telefone}")
-    logger.info(f"[Webhook] Mensagem extraída: {mensagem_texto}")
-    logger.info(f"[Webhook] Tipo da mensagem: {type(mensagem_texto)}")
+    logger.info(f"[Webhook] Telefone extraído: {telefone}, is_group={is_group}, participant_phone={participant_phone}")
+    logger.info(f"[Webhook] Telefone para usuário (lookup): {telefone_usuario}")
+    logger.info(f"[Webhook] Mensagem extraída: {mensagem_texto!r}")
     
-    # Permitir continuar sem texto quando há imagem (ex: etapa inclusao_foto)
+    # Ignorar webhooks só de reação (emoji) - não têm texto/anexo, evitar 500
+    if not mensagem_texto and not image_url and not document_url:
+        if 'reaction' in data:
+            logger.info("[Webhook] Reação (emoji) ignorada - sem texto/anexo")
+            return {'status': 'ok', 'mensagem': 'Reação ignorada'}
+        logger.warning(f"[Webhook] Dados incompletos: telefone={telefone}, mensagem vazia e sem anexo")
+        return {'status': 'erro', 'mensagem': f'Dados incompletos: telefone={telefone}, mensagem vazia'}
     if not telefone:
         logger.warning(f"[Webhook] Dados incompletos: telefone vazio")
         return {'status': 'erro', 'mensagem': 'Telefone não informado'}
-    if not mensagem_texto and not image_url and not document_url:
-        logger.warning(f"[Webhook] Dados incompletos: telefone={telefone}, mensagem vazia e sem anexo")
-        return {'status': 'erro', 'mensagem': f'Dados incompletos: telefone={telefone}, mensagem={mensagem_texto}'}
 
     import time
     _webhook_t0 = time.monotonic()  # provisório: medir tempo de cada etapa (retorno ao usuário)
 
-    telefone_formatado = formatar_telefone(telefone)
+    telefone_formatado = formatar_telefone(telefone)  # chat (grupo ou direto) - para enviar resposta
+    telefone_formatado_usuario = formatar_telefone(telefone_usuario)  # quem enviou - para lookup usuário
     mensagem_limpa = (mensagem_texto or "").strip().upper()
     
-    logger.info(f"[Webhook] Mensagem recebida de {telefone_formatado}: {mensagem_texto}")
+    logger.info(f"[Webhook] Mensagem recebida de {telefone_formatado_usuario} (chat={telefone_formatado}): {mensagem_texto!r}")
     logger.info(f"[Webhook] Mensagem limpa (uppercase): {mensagem_limpa}")
     
     # --- Resposta do CLIENTE (SIM) antes de exigir usuário ativo ---
@@ -4709,8 +4723,8 @@ def processar_webhook_whatsapp(data, request=None):
     # vem do número do cliente, que não é usuário interno. Tratar aqui para não rejeitar com
     # "não pertence a nenhum usuário ativo".
     if mensagem_limpa in ['SIM', 'S']:
-        chave = _chave_telefone(telefone_formatado)
-        chaves_tentar = _chaves_telefone_variantes(telefone_formatado) or [chave]
+        chave = _chave_telefone(telefone_formatado_usuario)
+        chaves_tentar = _chaves_telefone_variantes(telefone_formatado_usuario) or [chave]
         with _pending_lock:
             pend_cliente = next((_pending_client_confirm.get(k) for k in chaves_tentar if _pending_client_confirm.get(k)), None)
         if pend_cliente:
@@ -4771,8 +4785,8 @@ def processar_webhook_whatsapp(data, request=None):
         except Exception as e:
             logger.warning(f"[Webhook] Erro ao confirmar PapConfirmacaoCliente (BD): {e}", exc_info=True)
     
-    # Verificar se o número está associado a um usuário ativo
-    usuario_whatsapp = _usuario_ativo_por_telefone(telefone_formatado)
+    # Verificar se o número está associado a um usuário ativo (em grupo, usar participant_phone)
+    usuario_whatsapp = _usuario_ativo_por_telefone(telefone_formatado_usuario)
     if not usuario_whatsapp:
         try:
             WhatsAppService().enviar_mensagem_texto(
@@ -4793,8 +4807,8 @@ def processar_webhook_whatsapp(data, request=None):
     
     # === ETAPA 6: Confirmação do cliente (SIM) ou BIO OK do vendedor ===
     # (não aplicar quando SIM é do fluxo VENDER: "Digite SIM para continuar" → abrir PAP/navegador)
-    chave = _chave_telefone(telefone_formatado)
-    chaves_tentar = _chaves_telefone_variantes(telefone_formatado) or [chave]
+    chave = _chave_telefone(telefone_formatado_usuario)
+    chaves_tentar = _chaves_telefone_variantes(telefone_formatado_usuario) or [chave]
     with _pending_lock:
         pend_cliente = next((_pending_client_confirm.get(k) for k in chaves_tentar if _pending_client_confirm.get(k)), None)
         pend_bio = next((_pending_bio_ok.get(k) for k in chaves_tentar if _pending_bio_ok.get(k)), None)
