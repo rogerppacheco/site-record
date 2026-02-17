@@ -640,6 +640,50 @@ class GrupoDisparo(models.Model):
     def __str__(self):
         return self.nome
 
+
+class AnteciparInstalacaoConfig(models.Model):
+    """Configuração única para a ferramenta Antecipar Instalação (número GC e grupo WhatsApp)."""
+    telefone_gc = models.CharField(max_length=20, blank=True, default='21979630377', verbose_name="Telefone do GC")
+    grupo = models.ForeignKey(
+        GrupoDisparo, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+', verbose_name="Grupo WhatsApp (ex: Record PAP)"
+    )
+    atualizado_em = models.DateTimeField(auto_now=True)
+    atualizado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+'
+    )
+
+    class Meta:
+        verbose_name = "Config. Antecipar Instalação"
+        verbose_name_plural = "Config. Antecipar Instalação"
+
+    def __str__(self):
+        return f"GC: {self.telefone_gc or 'não definido'} | Grupo: {self.grupo.nome if self.grupo else 'não definido'}"
+
+
+class AnteciparInstalacaoSolicitacao(models.Model):
+    """Histórico de solicitações de antecipação de instalação."""
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='solicitacoes_antecipar'
+    )
+    venda = models.ForeignKey(Venda, on_delete=models.SET_NULL, null=True, related_name='solicitacoes_antecipar')
+    ordem_servico = models.CharField(max_length=50, blank=True)
+    descricao_solicitacao = models.TextField()
+    data_solicitacao = models.DateTimeField(auto_now_add=True)
+    enviado_gc = models.BooleanField(default=False)
+    enviado_grupo = models.BooleanField(default=False)
+    erros = models.JSONField(default=list, blank=True)
+    mensagem_enviada = models.TextField(blank=True)
+
+    class Meta:
+        verbose_name = "Solicitação Antecipar Instalação"
+        verbose_name_plural = "Solicitações Antecipar Instalação"
+        ordering = ['-data_solicitacao']
+
+    def __str__(self):
+        return f"OS {self.ordem_servico} em {self.data_solicitacao.strftime('%d/%m/%Y %H:%M')}"
+
+
 class LancamentoFinanceiro(models.Model):
     TIPOS_CHOICES = [
         ('ADIANTAMENTO_CNPJ', 'Adiantamento CNPJ'),

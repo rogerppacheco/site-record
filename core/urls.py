@@ -5,6 +5,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     IndexView, 
     AreaInternaView, 
+    AnteciparInstalacaoView,
     GovernancaView, 
     PresencaView, 
     CrmVendasView, 
@@ -26,6 +27,7 @@ urlpatterns = [
     # --- Rotas de Páginas (Frontend) ---
     path('', IndexView.as_view(), name='index'),
     path('area-interna/', AreaInternaView.as_view(), name='area-interna'),
+    path('antecipar-instalacao/', AnteciparInstalacaoView.as_view(), name='page_antecipar_instalacao'),
     path('governanca/', GovernancaView.as_view(), name='governanca'),
     path('presenca/', PresencaView.as_view(), name='presenca'),
     path('crm-vendas/', CrmVendasView.as_view(), name='crm-vendas'),

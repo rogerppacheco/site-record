@@ -120,6 +120,9 @@ urlpatterns = [
     path('validacao-dfv/', page_validacao_dfv, name='page_validacao_dfv'),
     path('validacao-recompra/', page_validacao_recompra, name='page_validacao_recompra'),
     path('record-apoia/', page_record_apoia, name='page_record_apoia'),
+
+    # Antecipar Instalação (solicitação ao GC Nio)
+    path('antecipar-instalacao/', TemplateView.as_view(template_name='public/antecipar-instalacao.html'), name='page_antecipar_instalacao'),
     
     # API Bônus M-10
     path('api/bonus-m10/safras/', SafraM10ListView.as_view(), name='api-bonus-m10-safras'),

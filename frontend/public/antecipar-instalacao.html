@@ -1,0 +1,426 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Antecipar Instalação - Record PAP</title>
+    <link rel="shortcut icon" href="{% static 'logo.png' %}" type="image/x-icon">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="{% static 'css/custom_styles.css' %}?v=13.1">
+    <style>
+        body { background-color: #f8f9fc; padding-top: 80px; }
+        .tool-container { max-width: 820px; margin: 0 auto; padding: 20px; }
+        .card-panel { background: white; border-radius: 10px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 20px; }
+        .pedido-item { border: 1px solid #e3e6f0; border-radius: 8px; padding: 14px; margin-bottom: 10px; cursor: pointer; transition: all 0.2s; }
+        .pedido-item:hover { border-color: #4e73df; background: #f8f9fc; }
+        .pedido-item.selected { border-color: #4e73df; background: #e8eeff; }
+        .msg-preview { background: #f8f9fc; border-radius: 8px; padding: 16px; white-space: pre-wrap; font-size: 0.9rem; }
+        .btn-solicitar { min-width: 200px; }
+        .nav-tabs .nav-link { font-weight: 600; color: #5a5c69; }
+        .nav-tabs .nav-link.active { color: #4e73df; }
+        .historico-table { font-size: 0.9rem; }
+        .historico-table th { white-space: nowrap; }
+    </style>
+</head>
+<body>
+
+    <header class="main-header">
+        <div class="header-container">
+            <a href="/"><img src="{% static 'logo.png' %}" alt="Record PAP" class="logo"></a>
+            <button class="menu-toggle" id="menu-toggle"><div class="bar"></div><div class="bar"></div><div class="bar"></div></button>
+            <nav class="main-nav" id="main-nav">
+                <ul>
+                    <li><a href="/area-interna/" class="nav-button">Área Interna</a></li>
+                    <li><button onclick="logout()" class="nav-button logout-button">Sair</button></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <div class="tool-container">
+        <h2 class="mb-3"><i class="bi bi-lightning-charge-fill text-primary"></i> Antecipar Instalação</h2>
+
+        <ul class="nav nav-tabs mb-4" id="tab-main" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="tab-solicitar-btn" data-bs-toggle="tab" data-bs-target="#tab-solicitar" type="button">Solicitar</button>
+            </li>
+            <li class="nav-item" role="presentation" id="nav-item-config">
+                <button class="nav-link" id="tab-config-btn" data-bs-toggle="tab" data-bs-target="#tab-config" type="button">Configuração</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-historico-btn" data-bs-toggle="tab" data-bs-target="#tab-historico" type="button">Histórico</button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="tab-main-content">
+            <!-- Aba Solicitar -->
+            <div class="tab-pane fade show active" id="tab-solicitar" role="tabpanel">
+                <p class="text-muted mb-4">Solicite prioridade ao gerente de contas (GC) da Nio. Informe CPF ou número do pedido (O.S). Somente pedidos <strong>agendados</strong> podem ser solicitados.</p>
+                <div class="card-panel">
+                    <label class="form-label fw-bold">Buscar por CPF ou número do pedido (O.S)</label>
+                    <div class="input-group">
+                        <input type="text" id="busca" class="form-control" placeholder="Ex: 123.456.789-00 ou número da O.S" maxlength="50">
+                        <button type="button" class="btn btn-primary" id="btn-buscar"><i class="bi bi-search"></i> Buscar</button>
+                    </div>
+                    <div id="erro-busca" class="text-danger mt-2 small" style="display:none;"></div>
+                </div>
+                <div id="lista-pedidos" class="card-panel" style="display:none;">
+                    <h6 class="fw-bold mb-3">Selecione o pedido</h6>
+                    <div id="lista-pedidos-inner"></div>
+                </div>
+                <div id="painel-mensagem" class="card-panel" style="display:none;">
+                    <h6 class="fw-bold mb-3">Mensagem que será enviada ao GC e ao grupo configurado</h6>
+                    <div class="mb-3">
+                        <label class="form-label">Motivo da solicitação de antecipação <span class="text-danger">*</span></label>
+                        <textarea id="descricao" class="form-control" rows="3" placeholder="Descreva o motivo da tentativa de antecipação..." maxlength="500"></textarea>
+                    </div>
+                    <div id="msg-preview" class="msg-preview mb-3" style="display:none;"></div>
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                        <button type="button" class="btn btn-success btn-solicitar" id="btn-solicitar"><i class="bi bi-whatsapp"></i> Solicitar antecipação</button>
+                        <button type="button" class="btn btn-outline-secondary" id="btn-outro-pedido">Escolher outro pedido</button>
+                    </div>
+                    <div id="erro-solicitar" class="text-danger mt-2 small" style="display:none;"></div>
+                    <div id="sucesso-solicitar" class="text-success mt-2 small" style="display:none;"></div>
+                </div>
+                <div id="nenhum-resultado" class="card-panel text-center text-muted" style="display:none;">
+                    <i class="bi bi-inbox display-6"></i>
+                    <p class="mb-0 mt-2">Nenhum pedido agendado encontrado para esta busca.</p>
+                    <p class="small">Só é possível pedir antecipação para pedidos com status <strong>Agendado</strong> e data de agendamento preenchida.</p>
+                </div>
+            </div>
+
+            <!-- Aba Configuração -->
+            <div class="tab-pane fade" id="tab-config" role="tabpanel">
+                <div class="card-panel">
+                    <h6 class="fw-bold mb-3">Destino das mensagens (GC e grupo WhatsApp)</h6>
+                    <p class="text-muted small mb-3">Apenas Admin, Diretoria e BackOffice podem alterar. Os demais perfis apenas visualizam.</p>
+                    <div id="config-visualizar" class="mb-3">
+                        <p class="mb-1"><strong>Telefone do GC:</strong> <span id="config-telefone-display">—</span></p>
+                        <p class="mb-0"><strong>Grupo WhatsApp:</strong> <span id="config-grupo-display">—</span></p>
+                    </div>
+                    <div id="config-form" style="display:none;">
+                        <div class="mb-3">
+                            <label class="form-label">Telefone do GC (WhatsApp)</label>
+                            <input type="text" id="config-telefone" class="form-control" placeholder="Ex: 21979630377" maxlength="20">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Grupo WhatsApp</label>
+                            <select id="config-grupo" class="form-select">
+                                <option value="">— Nenhum —</option>
+                            </select>
+                            <div id="config-grupos-aviso" class="form-text text-warning" style="display:none;">Nenhum grupo cadastrado. Cadastre em Integração &gt; Grupos de disparo (ou use a opção listar grupos da Z-API).</div>
+                        </div>
+                        <button type="button" class="btn btn-primary" id="btn-salvar-config"><i class="bi bi-check-lg"></i> Salvar</button>
+                        <span id="config-msg" class="ms-2 small"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Aba Histórico -->
+            <div class="tab-pane fade" id="tab-historico" role="tabpanel">
+                <div class="card-panel">
+                    <h6 class="fw-bold mb-3">Últimas solicitações</h6>
+                    <div id="historico-loading" class="text-muted text-center py-4">Carregando...</div>
+                    <div id="historico-table-wrap" style="display:none;">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover historico-table">
+                                <thead>
+                                    <tr>
+                                        <th>Data</th>
+                                        <th>Solicitante</th>
+                                        <th>O.S</th>
+                                        <th>Cliente</th>
+                                        <th>Descrição</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="historico-tbody"></tbody>
+                            </table>
+                        </div>
+                        <div id="historico-pagination" class="d-flex justify-content-between align-items-center mt-2"></div>
+                    </div>
+                    <div id="historico-vazio" class="text-center text-muted py-4" style="display:none;">Nenhuma solicitação encontrada.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{% static 'js/auth.js' %}?v=7.0"></script>
+    <script src="{% static 'js/menu.js' %}?v=7.0"></script>
+    <script>
+        (function() {
+            const token = localStorage.getItem('accessToken');
+            if (!token) { window.location.href = '/'; return; }
+
+            const apiBase = '/api/crm';
+            let resultadosAtuais = [];
+            let pedidoSelecionado = null;
+            let configData = null;
+            let historicoPage = 1;
+
+            function getAuthHeader() {
+                return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+            }
+
+            function show(el, show) {
+                if (typeof el === 'string') el = document.getElementById(el);
+                if (el) el.style.display = show ? '' : 'none';
+            }
+
+            function showErro(id, msg) {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.textContent = msg || '';
+                show(el, !!msg);
+            }
+
+            // --- Aba Solicitar (lógica existente) ---
+            document.getElementById('btn-buscar').addEventListener('click', buscar);
+            document.getElementById('busca').addEventListener('keypress', function(e) { if (e.key === 'Enter') buscar(); });
+
+            async function buscar() {
+                const q = document.getElementById('busca').value.trim();
+                show('erro-busca', false);
+                show('lista-pedidos', false);
+                show('nenhum-resultado', false);
+                show('painel-mensagem', false);
+                if (!q) {
+                    showErro('erro-busca', 'Informe CPF ou número do pedido (O.S).');
+                    return;
+                }
+                try {
+                    const res = await fetch(apiBase + '/antecipar-instalacao/buscar/?q=' + encodeURIComponent(q), { headers: getAuthHeader() });
+                    const data = await res.json();
+                    if (!res.ok) {
+                        showErro('erro-busca', data.detail || 'Erro ao buscar.');
+                        return;
+                    }
+                    resultadosAtuais = data.results || [];
+                    if (resultadosAtuais.length === 0) {
+                        show('nenhum-resultado', true);
+                        return;
+                    }
+                    if (resultadosAtuais.length === 1) {
+                        selecionarPedido(resultadosAtuais[0]);
+                        show('painel-mensagem', true);
+                        show('lista-pedidos', false);
+                        return;
+                    }
+                    const inner = document.getElementById('lista-pedidos-inner');
+                    inner.innerHTML = resultadosAtuais.map(function(p) {
+                        return '<div class="pedido-item" data-id="' + p.id + '">' +
+                            '<strong>O.S ' + (p.ordem_servico || '-') + '</strong> · ' + (p.data_agendamento || '') + ' ' + (p.periodo_agendamento || '') + '<br>' +
+                            '<small class="text-muted">' + (p.cliente_nome || '') + '</small>' +
+                            '</div>';
+                    }).join('');
+                    inner.querySelectorAll('.pedido-item').forEach(function(node) {
+                        node.addEventListener('click', function() {
+                            inner.querySelectorAll('.pedido-item').forEach(function(n) { n.classList.remove('selected'); });
+                            this.classList.add('selected');
+                            const id = parseInt(this.getAttribute('data-id'), 10);
+                            const p = resultadosAtuais.find(function(r) { return r.id === id; });
+                            if (p) { selecionarPedido(p); show('painel-mensagem', true); }
+                        });
+                    });
+                    show('lista-pedidos', true);
+                } catch (e) {
+                    showErro('erro-busca', 'Erro de conexão. Tente novamente.');
+                }
+            }
+
+            function selecionarPedido(p) {
+                pedidoSelecionado = p;
+                document.getElementById('descricao').value = '';
+                show('msg-preview', false);
+                showErro('erro-solicitar', '');
+                show('sucesso-solicitar', false);
+            }
+
+            function atualizarPreview() {
+                if (!pedidoSelecionado) return;
+                const desc = document.getElementById('descricao').value.trim();
+                if (!desc) { show('msg-preview', false); return; }
+                const msg = (
+                    '*MÁSCARA PADRÃO DE ACIONAMENTO - GRUPO ELITE:*\n\n' +
+                    '- *OS:* ' + (pedidoSelecionado.ordem_servico || '') + '\n' +
+                    '- *ENDEREÇO COMPLETO:* ' + (pedidoSelecionado.endereco_completo || '') + '\n' +
+                    '- *NOME DO PDV:* 1067100 - RECORD\n' +
+                    '- *DATA AGENDADA:* ' + (pedidoSelecionado.data_agendamento || '') + ' - ' + (pedidoSelecionado.periodo_agendamento || '') + '\n' +
+                    '- *DESCRIÇÃO DETALHADA DA SOLICITAÇÃO:* ' + desc
+                );
+                document.getElementById('msg-preview').textContent = msg;
+                show('msg-preview', true);
+            }
+
+            document.getElementById('descricao').addEventListener('input', atualizarPreview);
+
+            document.getElementById('btn-solicitar').addEventListener('click', async function() {
+                if (!pedidoSelecionado) return;
+                const desc = document.getElementById('descricao').value.trim();
+                showErro('erro-solicitar', '');
+                show('sucesso-solicitar', false);
+                if (!desc) {
+                    showErro('erro-solicitar', 'Descreva o motivo da solicitação de antecipação.');
+                    return;
+                }
+                this.disabled = true;
+                try {
+                    const res = await fetch(apiBase + '/antecipar-instalacao/solicitar/', {
+                        method: 'POST',
+                        headers: getAuthHeader(),
+                        body: JSON.stringify({ venda_id: pedidoSelecionado.id, descricao_solicitacao: desc })
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.success) {
+                        document.getElementById('sucesso-solicitar').textContent = data.message || 'Mensagem enviada.';
+                        show('sucesso-solicitar', true);
+                        document.getElementById('descricao').value = '';
+                        show('msg-preview', false);
+                    } else {
+                        showErro('erro-solicitar', data.detail || 'Erro ao enviar.');
+                    }
+                } catch (e) {
+                    showErro('erro-solicitar', 'Erro de conexão. Tente novamente.');
+                }
+                this.disabled = false;
+            });
+
+            document.getElementById('btn-outro-pedido').addEventListener('click', function() {
+                pedidoSelecionado = null;
+                show('painel-mensagem', false);
+                show('lista-pedidos', resultadosAtuais.length > 1);
+                show('nenhum-resultado', false);
+            });
+
+            // --- Aba Configuração ---
+            document.getElementById('tab-config-btn').addEventListener('shown.bs.tab', carregarConfig);
+
+            async function carregarConfig() {
+                try {
+                    const res = await fetch(apiBase + '/antecipar-instalacao/config/', { headers: getAuthHeader() });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Erro');
+                    configData = data;
+                    document.getElementById('config-telefone-display').textContent = data.telefone_gc || 'Não configurado';
+                    document.getElementById('config-grupo-display').textContent = data.grupo_nome || 'Não configurado';
+                    const sel = document.getElementById('config-grupo');
+                    sel.innerHTML = '<option value="">— Nenhum —</option>';
+                    (data.grupos || []).forEach(function(g) {
+                        const opt = document.createElement('option');
+                        opt.value = g.id;
+                        opt.textContent = g.nome;
+                        if (Number(data.grupo_id) === Number(g.id)) opt.selected = true;
+                        sel.appendChild(opt);
+                    });
+                    document.getElementById('config-grupos-aviso').style.display = (data.grupos && data.grupos.length) ? 'none' : 'block';
+                    document.getElementById('config-telefone').value = data.telefone_gc || '';
+                    if (data.pode_editar) {
+                        show('config-form', true);
+                        show('config-visualizar', false);
+                    } else {
+                        show('config-form', false);
+                        show('config-visualizar', true);
+                    }
+                } catch (e) {
+                    document.getElementById('config-telefone-display').textContent = 'Erro ao carregar';
+                    document.getElementById('config-grupo-display').textContent = '—';
+                }
+            }
+
+            document.getElementById('btn-salvar-config').addEventListener('click', async function() {
+                const msgEl = document.getElementById('config-msg');
+                msgEl.textContent = '';
+                const telefone = document.getElementById('config-telefone').value.trim();
+                const grupoId = document.getElementById('config-grupo').value;
+                try {
+                    const body = { telefone_gc: telefone || null, grupo_id: grupoId === '' ? null : parseInt(grupoId, 10) };
+                    const res = await fetch(apiBase + '/antecipar-instalacao/config/', {
+                        method: 'PATCH',
+                        headers: getAuthHeader(),
+                        body: JSON.stringify(body)
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Erro ao salvar');
+                    msgEl.textContent = 'Configuração salva. O próximo envio usará este número e grupo.';
+                    msgEl.className = 'ms-2 small text-success';
+                    configData = data;
+                    document.getElementById('config-telefone-display').textContent = data.telefone_gc || 'Não configurado';
+                    document.getElementById('config-grupo-display').textContent = data.grupo_nome || 'Não configurado';
+                } catch (e) {
+                    msgEl.textContent = e.message || 'Erro ao salvar';
+                    msgEl.className = 'ms-2 small text-danger';
+                }
+            });
+
+            // --- Aba Histórico (não passar evento do tab como page) ---
+            document.getElementById('tab-historico-btn').addEventListener('shown.bs.tab', function() { carregarHistorico(); });
+
+            async function carregarHistorico(page) {
+                if (typeof page === 'number') historicoPage = page;
+                show('historico-loading', true);
+                show('historico-table-wrap', false);
+                show('historico-vazio', false);
+                try {
+                    const res = await fetch(apiBase + '/antecipar-instalacao/historico/?page=' + historicoPage + '&page_size=20', { headers: getAuthHeader() });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Erro');
+                    show('historico-loading', false);
+                    const results = data.results || [];
+                    const total = data.total || 0;
+                    if (results.length === 0) {
+                        show('historico-vazio', true);
+                        return;
+                    }
+                    const tbody = document.getElementById('historico-tbody');
+                    tbody.innerHTML = results.map(function(r) {
+                        const status = r.sucesso ? '<span class="badge bg-success">Enviado</span>' : '<span class="badge bg-danger">Erro</span>';
+                        return '<tr><td>' + (r.data_solicitacao || '') + '</td><td>' + (r.usuario_nome || '') + '</td><td>' + (r.ordem_servico || '') + '</td><td>' + (r.cliente_nome || '').substring(0, 25) + '</td><td>' + (r.descricao_solicitacao || '').substring(0, 40) + (r.descricao_solicitacao && r.descricao_solicitacao.length > 40 ? '…' : '') + '</td><td>' + status + '</td></tr>';
+                    }).join('');
+                    show('historico-table-wrap', true);
+                    const pagEl = document.getElementById('historico-pagination');
+                    if (total > 20) {
+                        const totalPages = Math.ceil(total / 20);
+                        let html = '<small class="text-muted">Total: ' + total + '</small>';
+                        if (historicoPage > 1) html += ' <button type="button" class="btn btn-sm btn-outline-primary">Anterior</button>';
+                        if (historicoPage < totalPages) html += ' <button type="button" class="btn btn-sm btn-outline-primary">Próxima</button>';
+                        pagEl.innerHTML = html;
+                        pagEl.querySelectorAll('button').forEach(function(btn) {
+                            btn.onclick = function() {
+                                if (btn.textContent === 'Anterior') carregarHistorico(historicoPage - 1);
+                                else carregarHistorico(historicoPage + 1);
+                            };
+                        });
+                    } else {
+                        pagEl.innerHTML = total ? '<small class="text-muted">Total: ' + total + '</small>' : '';
+                    }
+                } catch (e) {
+                    show('historico-loading', false);
+                    document.getElementById('historico-vazio').textContent = 'Erro ao carregar histórico.';
+                    show('historico-vazio', true);
+                }
+            }
+
+            // --- Ao carregar a página: esconder aba Configuração para quem não é BackOffice/Diretoria/Admin ---
+            (async function() {
+                try {
+                    const res = await fetch(apiBase + '/antecipar-instalacao/config/', { headers: getAuthHeader() });
+                    const data = await res.json();
+                    if (res.ok && data.pode_editar === false) {
+                        const el = document.getElementById('nav-item-config');
+                        if (el) el.style.display = 'none';
+                    }
+                } catch (e) { /* ignora */ }
+            })();
+
+            function logout() {
+                localStorage.removeItem('accessToken');
+                window.location.href = '/';
+            }
+            window.logout = logout;
+        })();
+    </script>
+</body>
+</html>

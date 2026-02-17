@@ -117,6 +117,11 @@
     <main>
         <div class="app-grid">
             <!-- A -->
+            <a href="/antecipar-instalacao/" class="app-card" id="card-antecipar">
+                <i class="bi bi-lightning-charge-fill app-icon icon-performance"></i>
+                <span class="app-title">Antecipar Instalação</span>
+            </a>
+
             <a href="/auditoria/" class="app-card" id="card-auditoria">
                 <i class="bi bi-headset app-icon icon-auditoria"></i>
                 <span class="app-title">Auditoria</span>
@@ -205,20 +210,21 @@
             } catch (e) { console.error(e); }
 
             // --- REGRAS DE VISIBILIDADE (Quem vê o quê) ---
-            // Bônus M-10: só Admin, Diretoria e BackOffice; dentro da ferramenta, só Diretoria/Admin veem o card "Valor Total"
+            // Antecipar Instalação: todos os perfis
+            // Bônus M-10: só Admin, Diretoria e BackOffice
             const regras = {
                 // Acesso Total
                 'Diretoria': 'all',
                 'Admin': 'all',
 
                 // Acesso Backoffice (inclui Bônus M-10)
-                'BackOffice': ['card-vendas', 'card-informa', 'card-esteira', 'card-auditoria', 'card-performance', 'card-importacoes', 'card-cdoi', 'card-apoia', 'card-bonus-m10'],
+                'BackOffice': ['card-antecipar', 'card-vendas', 'card-informa', 'card-esteira', 'card-auditoria', 'card-performance', 'card-importacoes', 'card-cdoi', 'card-apoia', 'card-bonus-m10'],
 
                 // Acesso Supervisor (sem Bônus M-10)
-                'Supervisor': ['card-vendas', 'card-presenca', 'card-cdoi', 'card-apoia'],
+                'Supervisor': ['card-antecipar', 'card-vendas', 'card-presenca', 'card-cdoi', 'card-apoia'],
 
                 // Acesso Vendedor (sem Bônus M-10)
-                'Vendedor': ['card-vendas', 'card-cdoi', 'card-apoia']
+                'Vendedor': ['card-antecipar', 'card-vendas', 'card-cdoi', 'card-apoia']
             };
 
             const cardsPermitidos = regras[userProfile] || regras['Vendedor']; // Fallback seguro

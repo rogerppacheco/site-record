@@ -144,6 +144,34 @@ class WhatsAppService:
             telefone_limpo = f"55{telefone_limpo}"
         return telefone_limpo
 
+    def _destino_send_text(self, telefone_ou_grupo):
+        """
+        Normaliza o destinatário para send-text: número (Brasil) ou ID de grupo.
+        Z-API usa formato nativo de grupo: sufixo "-group" (ex: 120363019502650977-group)
+        ou formato antigo 5511999999999-1623281429. NÃO usar @g.us no parâmetro phone.
+        Se o valor já contém "-group" ou "@g.us", ou for só dígitos com 15+ caracteres, trata como grupo.
+        """
+        if not telefone_ou_grupo:
+            return ""
+        s = str(telefone_ou_grupo).strip()
+        # Z-API retorna grupos com "phone": "120263358412332916-group" – enviar assim
+        if "-group" in s:
+            return s
+        # Se veio no formato WhatsApp @g.us, converter para formato Z-API: id-group
+        if "@g.us" in s:
+            parte = s.split("@g.us")[0].strip()
+            digitos = "".join(filter(str.isdigit, parte))
+            if digitos.startswith("55") and len(digitos) > 15:
+                digitos = digitos[2:]
+            return digitos + "-group" if digitos else s
+        digitos = "".join(filter(str.isdigit, s))
+        # ID de grupo: 15+ dígitos (formato novo) ou número-timestamp (formato antigo já tem hífen)
+        if len(digitos) >= 15:
+            if digitos.startswith("55") and len(digitos) > 15:
+                digitos = digitos[2:]
+            return digitos + "-group"
+        return self._formatar_telefone(telefone_ou_grupo)
+
     # ---------------------------------------------------------
     # 1. VERIFICAR SE NÚMERO TEM WHATSAPP
     # ---------------------------------------------------------
@@ -179,7 +207,7 @@ class WhatsAppService:
     # ---------------------------------------------------------
     def enviar_mensagem_texto(self, telefone, mensagem):
         url = f"{self.base_url}/send-text"
-        telefone_limpo = self._formatar_telefone(telefone)
+        telefone_limpo = self._destino_send_text(telefone)
 
         logger.info(f"[WhatsAppService] Enviando mensagem para {telefone_limpo}")
         logger.info(f"[WhatsAppService] URL: {url}")

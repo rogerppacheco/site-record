@@ -481,7 +481,8 @@ from .models import (
     Campanha, ComissaoOperadora, Comunicado, AreaVenda,
     SessaoWhatsapp, DFV, GrupoDisparo, LancamentoFinanceiro,
     AgendamentoDisparo,     ImportacaoAgendamento, ImportacaoRecompra,
-    LogImportacaoAgendamento, LogImportacaoLegado, LogImportacaoRecompra, EstatisticaBotWhatsApp
+    LogImportacaoAgendamento, LogImportacaoLegado, LogImportacaoRecompra, EstatisticaBotWhatsApp,
+    AnteciparInstalacaoConfig, AnteciparInstalacaoSolicitacao,
 )
 
 # Serializers do App
@@ -8905,6 +8906,244 @@ class ExportarAgendamentosDiaView(APIView):
         response['Content-Disposition'] = f'attachment; filename=agendamentos_operadora_{data_arquivo}.xlsx'
         wb.save(response)
         return response
+
+
+# --- Antecipar Instalação (solicitação ao GC Nio) ---
+def _antecipar_instalacao_queryset_vendas(request):
+    """Retorna queryset de Venda permitidas para o usuário: só AGENDADO e com data_agendamento."""
+    base = Venda.objects.filter(
+        ativo=True,
+        status_esteira__nome__iexact='AGENDADO',
+        data_agendamento__isnull=False
+    ).select_related('cliente', 'status_esteira')
+    if is_member(request.user, ['Diretoria', 'Admin', 'BackOffice']):
+        return base
+    if is_member(request.user, ['Supervisor']):
+        # Supervisor: suas vendas + dos liderados
+        liderados_ids = list(request.user.liderados.values_list('id', flat=True))
+        return base.filter(Q(vendedor_id=request.user.id) | Q(vendedor_id__in=liderados_ids))
+    # Vendedor: só as suas
+    return base.filter(vendedor_id=request.user.id)
+
+
+def _antecipar_instalacao_endereco_completo(v):
+    """Formato: Rua X, 123, Sala 1, Centro, São Paulo - SP - CEP 12345-678"""
+    partes = []
+    if v.logradouro:
+        partes.append(v.logradouro)
+    if v.numero_residencia:
+        partes.append(str(v.numero_residencia))
+    if v.complemento:
+        partes.append(v.complemento)
+    if v.bairro:
+        partes.append(v.bairro)
+    if v.cidade or v.estado:
+        partes.append(f"{v.cidade or ''} - {v.estado or ''}".strip(' -'))
+    end = ", ".join(p for p in partes if p)
+    if v.cep:
+        end = f"{end} - CEP {v.cep}" if end else f"CEP {v.cep}"
+    return end or "Endereço não informado"
+
+
+class BuscarAnteciparInstalacaoView(APIView):
+    """GET ?q=CPF ou número da O.S — retorna pedidos agendados (filtrados por perfil)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        q = (request.query_params.get('q') or '').strip()
+        if not q:
+            return Response({'detail': 'Informe CPF ou número do pedido (O.S).'}, status=status.HTTP_400_BAD_REQUEST)
+        q_limpo = re.sub(r'\D', '', q)
+        queryset = _antecipar_instalacao_queryset_vendas(request)
+        filters = Q(ordem_servico__icontains=q) | Q(cliente__cpf_cnpj__icontains=q)
+        if q_limpo:
+            filters |= Q(cliente__cpf_cnpj__icontains=q_limpo) | Q(ordem_servico__icontains=q_limpo)
+        vendas = list(queryset.filter(filters).order_by('-data_agendamento')[:50])
+        # Se não for agendado com data, não deve aparecer (já filtrado no base)
+        results = []
+        for v in vendas:
+            data_ag_fmt = v.data_agendamento.strftime('%d/%m/%Y') if v.data_agendamento else ''
+            turno = v.get_periodo_agendamento_display() if v.periodo_agendamento else ''
+            results.append({
+                'id': v.id,
+                'ordem_servico': v.ordem_servico or '',
+                'endereco_completo': _antecipar_instalacao_endereco_completo(v),
+                'data_agendamento': data_ag_fmt,
+                'periodo_agendamento': turno,
+                'cliente_nome': v.cliente.nome_razao_social if v.cliente else '',
+            })
+        return Response({'results': results})
+
+
+def _antecipar_instalacao_get_config():
+    """Retorna a configuração única (singleton). Cria com valores padrão se não existir."""
+    config = AnteciparInstalacaoConfig.objects.first()
+    if not config:
+        config = AnteciparInstalacaoConfig.objects.create(telefone_gc='')
+    return config
+
+
+class ConfigAnteciparInstalacaoView(APIView):
+    """GET: retorna config (telefone_gc, grupo) + lista de grupos para o select. PATCH: atualiza config (só Admin/Diretoria/BackOffice)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        config = _antecipar_instalacao_get_config()
+        grupos = list(
+            GrupoDisparo.objects.filter(ativo=True).order_by('nome').values('id', 'nome', 'chat_id')
+        )
+        return Response({
+            'telefone_gc': config.telefone_gc or '',
+            'grupo_id': config.grupo_id,
+            'grupo_nome': config.grupo.nome if config.grupo else None,
+            'grupos': grupos,
+            'pode_editar': is_member(request.user, ['Diretoria', 'Admin', 'BackOffice']),
+        })
+
+    def patch(self, request):
+        if not is_member(request.user, ['Diretoria', 'Admin', 'BackOffice']):
+            return Response({'detail': 'Sem permissão para alterar a configuração.'}, status=status.HTTP_403_FORBIDDEN)
+        config = _antecipar_instalacao_get_config()
+        if 'telefone_gc' in request.data:
+            val = request.data.get('telefone_gc')
+            config.telefone_gc = (val if val is not None else '').strip()
+        if 'grupo_id' in request.data:
+            gid = request.data.get('grupo_id')
+            if gid is None or gid == '':
+                config.grupo_id = None
+            else:
+                try:
+                    gid = int(gid)
+                    g = GrupoDisparo.objects.filter(id=gid, ativo=True).first()
+                    config.grupo = g
+                except (TypeError, ValueError):
+                    config.grupo_id = None
+        config.atualizado_por = request.user
+        config.save()
+        return Response({
+            'telefone_gc': config.telefone_gc or '',
+            'grupo_id': config.grupo_id,
+            'grupo_nome': config.grupo.nome if config.grupo else None,
+        })
+
+
+class HistoricoAnteciparInstalacaoView(APIView):
+    """GET: lista solicitações (filtrado por perfil: vendedor=só suas, supervisor=suas+liderados, gestão=todos)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        base = AnteciparInstalacaoSolicitacao.objects.select_related('usuario', 'venda').order_by('-data_solicitacao')
+        if is_member(request.user, ['Diretoria', 'Admin', 'BackOffice']):
+            qs = base
+        elif is_member(request.user, ['Supervisor']):
+            liderados_ids = list(request.user.liderados.values_list('id', flat=True))
+            qs = base.filter(Q(usuario_id=request.user.id) | Q(usuario_id__in=liderados_ids))
+        else:
+            qs = base.filter(usuario_id=request.user.id)
+        try:
+            page = int(request.query_params.get('page', 1))
+        except (TypeError, ValueError):
+            page = 1
+        if page < 1:
+            page = 1
+        try:
+            page_size = min(int(request.query_params.get('page_size', 20)), 50)
+        except (TypeError, ValueError):
+            page_size = 20
+        start = (page - 1) * page_size
+        lista = list(qs[start:start + page_size])
+        results = []
+        for s in lista:
+            results.append({
+                'id': s.id,
+                'data_solicitacao': s.data_solicitacao.strftime('%d/%m/%Y %H:%M') if s.data_solicitacao else '',
+                'usuario_nome': (s.usuario.get_full_name() or s.usuario.username) if s.usuario else '-',
+                'ordem_servico': s.ordem_servico or '-',
+                'cliente_nome': (s.venda.cliente.nome_razao_social if s.venda and s.venda.cliente else None) or '-',
+                'descricao_solicitacao': (s.descricao_solicitacao or '')[:200],
+                'enviado_gc': s.enviado_gc,
+                'enviado_grupo': s.enviado_grupo,
+                'erros': s.erros or [],
+                'sucesso': s.enviado_gc or s.enviado_grupo,
+            })
+        return Response({'results': results, 'total': qs.count()})
+
+
+class SolicitarAnteciparInstalacaoView(APIView):
+    """POST { venda_id, descricao_solicitacao } — usa config (GC + grupo), envia WhatsApp e grava histórico."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        venda_id = request.data.get('venda_id')
+        descricao = (request.data.get('descricao_solicitacao') or '').strip()
+        if not venda_id:
+            return Response({'detail': 'venda_id é obrigatório.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not descricao:
+            return Response({'detail': 'Descreva o motivo da solicitação de antecipação.'}, status=status.HTTP_400_BAD_REQUEST)
+        queryset = _antecipar_instalacao_queryset_vendas(request)
+        try:
+            venda = queryset.get(id=venda_id)
+        except Venda.DoesNotExist:
+            return Response({'detail': 'Pedido não encontrado ou você não tem permissão para solicitar antecipação deste pedido.'}, status=status.HTTP_404_NOT_FOUND)
+        data_ag_fmt = venda.data_agendamento.strftime('%d/%m/%Y') if venda.data_agendamento else ''
+        turno = venda.get_periodo_agendamento_display() if venda.periodo_agendamento else ''
+        endereco = _antecipar_instalacao_endereco_completo(venda)
+        os_num = venda.ordem_servico or ''
+        mensagem = (
+            "*MÁSCARA PADRÃO DE ACIONAMENTO - GRUPO ELITE:*\n\n"
+            f"- *OS:* {os_num}\n"
+            f"- *ENDEREÇO COMPLETO:* {endereco}\n"
+            "- *NOME DO PDV:* 1067100 - RECORD\n"
+            f"- *DATA AGENDADA:* {data_ag_fmt} - {turno}\n"
+            f"- *DESCRIÇÃO DETALHADA DA SOLICITAÇÃO:* {descricao}"
+        )
+        mensagem = mensagem.upper()
+        config = _antecipar_instalacao_get_config()
+        telefone_gc = (config.telefone_gc or '').strip()
+        grupo = config.grupo
+        enviados = []
+        erros = []
+        try:
+            svc = WhatsAppService()
+            if telefone_gc:
+                ok1, resp1 = svc.enviar_mensagem_texto(telefone_gc, mensagem)
+                if ok1:
+                    enviados.append('número do GC')
+                else:
+                    erros.append(f'GC: {resp1}')
+            else:
+                erros.append('Telefone do GC não configurado.')
+            if grupo and grupo.chat_id:
+                ok2, resp2 = svc.enviar_mensagem_texto(grupo.chat_id, mensagem)
+                if ok2:
+                    enviados.append('grupo')
+                else:
+                    erros.append(f'Grupo: {resp2}')
+            elif not grupo:
+                erros.append('Grupo não configurado.')
+        except Exception as e:
+            logger.exception("Erro ao enviar WhatsApp antecipar instalação: %s", e)
+            registro = AnteciparInstalacaoSolicitacao.objects.create(
+                usuario=request.user, venda=venda, ordem_servico=os_num,
+                descricao_solicitacao=descricao, enviado_gc=False, enviado_grupo=False,
+                erros=[str(e)], mensagem_enviada=mensagem[:2000]
+            )
+            return Response({'detail': f'Erro ao enviar: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        # Gravar histórico (sempre)
+        AnteciparInstalacaoSolicitacao.objects.create(
+            usuario=request.user, venda=venda, ordem_servico=os_num,
+            descricao_solicitacao=descricao,
+            enviado_gc=('número do GC' in enviados),
+            enviado_grupo=('grupo' in enviados),
+            erros=erros, mensagem_enviada=mensagem[:2000]
+        )
+        if not enviados:
+            return Response({'detail': 'Nenhuma mensagem foi enviada.', 'erros': erros}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({
+            'success': True,
+            'message': f'Mensagem enviada para {", ".join(enviados)}.',
+            'erros': erros if erros else None
+        })
 
 
 class DadosFPDView(APIView):

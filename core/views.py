@@ -45,6 +45,10 @@ class IndexView(TemplateView):
 class AreaInternaView(TemplateView):
     template_name = "frontend/public/area-interna.html"
 
+
+class AnteciparInstalacaoView(TemplateView):
+    template_name = "antecipar-instalacao.html"
+
 class GovernancaView(TemplateView):
     # Ajustado para o caminho correto se estiver usando a pasta public
     template_name = "public/governanca.html"

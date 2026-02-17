@@ -124,6 +124,10 @@ from .views import (
     ExportarAgendamentosDiaView,
     page_bonus_m10,
     NioDividasView,
+    BuscarAnteciparInstalacaoView,
+    SolicitarAnteciparInstalacaoView,
+    ConfigAnteciparInstalacaoView,
+    HistoricoAnteciparInstalacaoView,
 )
 
 # Importar módulo de views de análise de buscas
@@ -283,6 +287,12 @@ urlpatterns = [
 
     # --- Integração Nio (dívidas/PIX/barras) ---
     path('nio/dividas/', NioDividasView.as_view(), name='nio-dividas'),
+
+    # --- Antecipar Instalação (solicitação ao GC Nio) ---
+    path('antecipar-instalacao/buscar/', BuscarAnteciparInstalacaoView.as_view(), name='antecipar-instalacao-buscar'),
+    path('antecipar-instalacao/solicitar/', SolicitarAnteciparInstalacaoView.as_view(), name='antecipar-instalacao-solicitar'),
+    path('antecipar-instalacao/config/', ConfigAnteciparInstalacaoView.as_view(), name='antecipar-instalacao-config'),
+    path('antecipar-instalacao/historico/', HistoricoAnteciparInstalacaoView.as_view(), name='antecipar-instalacao-historico'),
     
     # --- Análise de Buscas de Faturas ---
     path('analise-buscas/', views_analise_busca.AnaliseBuscasView.as_view(), name='analise-buscas'),
