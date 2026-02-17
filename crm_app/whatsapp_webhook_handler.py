@@ -535,7 +535,7 @@ def _verificar_limites_credito(usuario) -> tuple:
             return False, f"Aguarde *{faltam} segundos* para fazer outra análise."
     # Limite 15 por dia
     inicio_hoje = agora_br.replace(hour=0, minute=0, second=0, microsecond=0)
-    inicio_hoje_utc = inicio_hoje.astimezone(timezone.utc)
+    inicio_hoje_utc = inicio_hoje.astimezone(pytz.utc)
     count_hoje = AnaliseCreditoHistorico.objects.filter(
         usuario=usuario,
         criado_em__gte=inicio_hoje_utc
