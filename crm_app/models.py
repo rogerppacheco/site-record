@@ -408,6 +408,103 @@ class ComissaoOperadora(models.Model):
     def __str__(self):
         return f"Recebimento {self.plano.nome}"
 
+
+class RegraComissaoFaixa(models.Model):
+    """
+    Regras por faixa de vendas (aba REGRAS_FAIXAS do Excel).
+    PERFIL = Supervisor/Vendedor (regra geral) ou vendedor específico quando vendedor preenchido.
+    """
+    PERFIL_CHOICES = [
+        ('Vendedor', 'Vendedor'),
+        ('Supervisor', 'Supervisor'),
+    ]
+    perfil = models.CharField(
+        max_length=50, choices=PERFIL_CHOICES, blank=True, null=True,
+        help_text="Vazio se for regra individual (vendedor preenchido)"
+    )
+    vendedor = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='regras_comissao_faixa', null=True, blank=True,
+        help_text="Preenchido quando a regra é só para este vendedor (ex.: ALEX)"
+    )
+    faixa_nome = models.CharField(max_length=100)
+    min_vendas = models.PositiveIntegerField(default=0)
+    max_vendas = models.PositiveIntegerField(
+        default=99999,
+        help_text="Use 99999 para sem teto"
+    )
+    valor_500mb_pap = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    valor_700mb_pap = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    valor_1gb_pap = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    valor_500mb_cnpj = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    valor_700mb_cnpj = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    valor_1gb_cnpj = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+
+    class Meta:
+        db_table = 'crm_regra_comissao_faixa'
+        verbose_name = "Regra de Comissão por Faixa"
+        verbose_name_plural = "Regras de Comissão por Faixa"
+        ordering = ['perfil', 'vendedor', 'min_vendas']
+
+    def __str__(self):
+        who = self.vendedor.username if self.vendedor_id else (self.perfil or "?")
+        return f"{who} | {self.faixa_nome} ({self.min_vendas}-{self.max_vendas})"
+
+
+class ConfigComissaoVendedor(models.Model):
+    """
+    Configuração de comissão por vendedor (aba REGRAS_VENDEDORES do Excel).
+    Uma linha por usuário (e por mês quando ano/mes preenchidos); valores manuais sobrescrevem faixa quando usar_valor_manual=True.
+    ano/mes nulos = modelo padrão do vendedor; preenchidos = regras daquele mês.
+    """
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='configs_comissao'
+    )
+    ano = models.PositiveSmallIntegerField(null=True, blank=True, help_text='Ano de referência (nulo = modelo padrão)')
+    mes = models.PositiveSmallIntegerField(null=True, blank=True, help_text='Mês de referência (1-12, nulo = modelo padrão)')
+    perfil_comissao = models.CharField(
+        max_length=20, choices=RegraComissaoFaixa.PERFIL_CHOICES, default='Vendedor'
+    )
+    usar_valor_manual = models.BooleanField(
+        default=False,
+        verbose_name="Usar valor manual?"
+    )
+    valor_500mb_pap_manual = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    valor_700mb_pap_manual = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    valor_1gb_pap_manual = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    valor_500mb_cnpj_manual = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    valor_700mb_cnpj_manual = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    valor_1gb_cnpj_manual = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    desconta_dacc_pap = models.BooleanField(default=False, verbose_name="Desconta DACC PAP?")
+    desconto_boleto = models.DecimalField(max_digits=10, decimal_places=2, default=0, null=True, blank=True)
+    desconto_inclusao = models.DecimalField(max_digits=10, decimal_places=2, default=0, null=True, blank=True)
+    desconto_instalacao = models.DecimalField(max_digits=10, decimal_places=2, default=0, null=True, blank=True)
+    adiantar_cnpj = models.DecimalField(max_digits=10, decimal_places=2, default=0, null=True, blank=True)
+    inss_valor = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    adiantamento = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    premiação = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    bonus_cartao_credito = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    cartao_trafego = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    gestor_trafego = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+
+    class Meta:
+        db_table = 'crm_config_comissao_vendedor'
+        verbose_name = "Config. Comissão Vendedor"
+        verbose_name_plural = "Config. Comissão Vendedores"
+        constraints = [
+            models.UniqueConstraint(
+                fields=['usuario', 'ano', 'mes'],
+                condition=models.Q(ano__isnull=False) & models.Q(mes__isnull=False),
+                name='crm_config_comissao_vendedor_ano_mes_uniq',
+            ),
+        ]
+
+    def __str__(self):
+        ref = f" {self.ano}/{self.mes}" if self.ano and self.mes else ""
+        return f"Config comissão: {self.usuario.username}{ref}"
+
+
 class Comunicado(models.Model):
     PERFIL_CHOICES = [
         ('TODOS', 'Todos'),

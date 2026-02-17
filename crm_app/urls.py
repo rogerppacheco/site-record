@@ -41,6 +41,11 @@ from .views import (
     StatusCRMListCreateView, StatusCRMDetailView,
     MotivoPendenciaListCreateView, MotivoPendenciaDetailView,
     RegraComissaoListCreateView, RegraComissaoDetailView,
+    RegraComissaoFaixaListCreateView, RegraComissaoFaixaDetailView,
+    RegraComissaoFaixaExportarView, RegraComissaoFaixaImportarView,
+    ConfigComissaoVendedorListView, ConfigComissaoVendedorDetailView,
+    ConfigComissaoVendedorSalvarMesView,
+    ConfigComissaoVendedorExportarView, ConfigComissaoVendedorImportarView,
     CampanhaListCreateView, CampanhaDetailView,
     
     # Dashboards e Importações
@@ -48,6 +53,7 @@ from .views import (
     VendasStatusCountView,
     ListaVendedoresView,
     ComissionamentoView,
+    FolhaComissionamentoView,
     FecharPagamentoView,
     ReabrirPagamentoView,
     GerarRelatorioPDFView,
@@ -179,6 +185,15 @@ urlpatterns = [
 
     path('regras-comissao/', RegraComissaoListCreateView.as_view(), name='regra-list'),
     path('regras-comissao/<int:pk>/', RegraComissaoDetailView.as_view(), name='regra-detail'),
+    path('regras-comissao-faixa/', RegraComissaoFaixaListCreateView.as_view(), name='regra-faixa-list'),
+    path('regras-comissao-faixa/exportar/', RegraComissaoFaixaExportarView.as_view(), name='regra-faixa-exportar'),
+    path('regras-comissao-faixa/importar/', RegraComissaoFaixaImportarView.as_view(), name='regra-faixa-importar'),
+    path('regras-comissao-faixa/<int:pk>/', RegraComissaoFaixaDetailView.as_view(), name='regra-faixa-detail'),
+    path('config-comissao-vendedor/', ConfigComissaoVendedorListView.as_view(), name='config-comissao-vendedor-list'),
+    path('config-comissao-vendedor/salvar-mes/', ConfigComissaoVendedorSalvarMesView.as_view(), name='config-comissao-vendedor-salvar-mes'),
+    path('config-comissao-vendedor/exportar/', ConfigComissaoVendedorExportarView.as_view(), name='config-comissao-vendedor-exportar'),
+    path('config-comissao-vendedor/importar/', ConfigComissaoVendedorImportarView.as_view(), name='config-comissao-vendedor-importar'),
+    path('config-comissao-vendedor/<int:user_id>/', ConfigComissaoVendedorDetailView.as_view(), name='config-comissao-vendedor-detail'),
 
     # --- Dashboards e Utilitários ---
     path('dashboard-resumo/', DashboardResumoView.as_view(), name='dashboard-resumo'),
@@ -187,6 +202,7 @@ urlpatterns = [
     
     # --- Comissionamento ---
     path('comissionamento/', ComissionamentoView.as_view(), name='comissionamento'),
+    path('comissionamento/folha/', FolhaComissionamentoView.as_view(), name='comissionamento-folha'),
     path('fechar-pagamento/', FecharPagamentoView.as_view(), name='fechar-pagamento'),
     path('reabrir-pagamento/', ReabrirPagamentoView.as_view(), name='reabrir-pagamento'),
     path('gerar-relatorio-pdf/', GerarRelatorioPDFView.as_view(), name='gerar-relatorio-pdf'),

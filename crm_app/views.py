@@ -482,6 +482,7 @@ from .models import (
     SessaoWhatsapp, DFV, GrupoDisparo, LancamentoFinanceiro,
     AgendamentoDisparo,     ImportacaoAgendamento, ImportacaoRecompra,
     LogImportacaoAgendamento, LogImportacaoLegado, LogImportacaoRecompra, EstatisticaBotWhatsApp,
+    RegraComissaoFaixa, ConfigComissaoVendedor,
     AnteciparInstalacaoConfig, AnteciparInstalacaoSolicitacao,
 )
 
@@ -489,6 +490,7 @@ from .models import (
 from .serializers import (
     OperadoraSerializer, PlanoSerializer, FormaPagamentoSerializer,
     StatusCRMSerializer, MotivoPendenciaSerializer, RegraComissaoSerializer,
+    RegraComissaoFaixaSerializer, ConfigComissaoVendedorSerializer,
     VendaSerializer, VendaCreateSerializer, ClienteSerializer,
     VendaUpdateSerializer, ImportacaoOsabSerializer, ImportacaoChurnSerializer,
     CicloPagamentoSerializer, VendaDetailSerializer,
@@ -654,6 +656,481 @@ class RegraComissaoDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = RegraComissaoSerializer
     permission_classes = [CheckAPIPermission]
     resource_name = 'regracomissao'
+
+
+class RegraComissaoFaixaListCreateView(generics.ListCreateAPIView):
+    """Regras por faixa (REGRAS_FAIXAS). Filtros: perfil, vendedor_id."""
+    queryset = RegraComissaoFaixa.objects.select_related('vendedor').all().order_by('perfil', 'vendedor', 'min_vendas')
+    serializer_class = RegraComissaoFaixaSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        perfil = self.request.query_params.get('perfil')
+        vendedor_id = self.request.query_params.get('vendedor_id')
+        if perfil:
+            qs = qs.filter(perfil=perfil)
+        if vendedor_id:
+            qs = qs.filter(vendedor_id=vendedor_id)
+        return qs
+
+
+class RegraComissaoFaixaDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = RegraComissaoFaixa.objects.all()
+    serializer_class = RegraComissaoFaixaSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+def _config_vendedor_padrao(u):
+    """Item padrão quando não existe config para o usuário."""
+    return {
+        'usuario_id': u.id,
+        'username': u.username,
+        'perfil_comissao': 'Vendedor',
+        'usar_valor_manual': False,
+        'valor_500mb_pap_manual': None,
+        'valor_700mb_pap_manual': None,
+        'valor_1gb_pap_manual': None,
+        'valor_500mb_cnpj_manual': None,
+        'valor_700mb_cnpj_manual': None,
+        'valor_1gb_cnpj_manual': None,
+        'desconta_dacc_pap': False,
+        'desconto_boleto': None,
+        'desconto_inclusao': None,
+        'desconto_instalacao': None,
+        'adiantar_cnpj': None,
+        'inss_valor': None,
+        'adiantamento': None,
+        'premiação': None,
+        'bonus_cartao_credito': None,
+        'cartao_trafego': None,
+        'gestor_trafego': None,
+    }
+
+
+class ConfigComissaoVendedorListView(APIView):
+    """Lista todos os usuários ativos; retorna config de comissão (por mês se ano/mes informados). GET ?ano=&mes= para regras daquele mês."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        usuarios = User.objects.filter(is_active=True).order_by('username')
+        ano = request.query_params.get('ano')
+        mes = request.query_params.get('mes')
+        try:
+            ano = int(ano) if ano else None
+            mes = int(mes) if mes else None
+        except (TypeError, ValueError):
+            ano, mes = None, None
+
+        if ano is not None and mes is not None:
+            # Regras do mês: (usuario, ano, mes) ou fallback (usuario, null, null)
+            configs_mes = {c.usuario_id: c for c in ConfigComissaoVendedor.objects.filter(ano=ano, mes=mes).select_related('usuario')}
+            configs_template = {c.usuario_id: c for c in ConfigComissaoVendedor.objects.filter(ano__isnull=True, mes__isnull=True).select_related('usuario')}
+        else:
+            configs_mes = {}
+            configs_template = {c.usuario_id: c for c in ConfigComissaoVendedor.objects.filter(ano__isnull=True, mes__isnull=True).select_related('usuario')}
+
+        lista = []
+        for u in usuarios:
+            c = configs_mes.get(u.id) or configs_template.get(u.id)
+            if c:
+                item = ConfigComissaoVendedorSerializer(c).data
+                item['usuario_id'] = item.get('usuario') or u.id
+                item['username'] = item.get('username') or u.username
+            else:
+                item = _config_vendedor_padrao(u)
+            lista.append(item)
+        return Response(lista)
+
+
+class ConfigComissaoVendedorDetailView(APIView):
+    """GET retorna config por user_id (e opcionalmente ano/mes). PUT faz upsert (aceita ano/mes no body para regra do mês)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _get_config(self, user_id, ano=None, mes=None):
+        if ano is not None and mes is not None:
+            c = ConfigComissaoVendedor.objects.filter(usuario_id=user_id, ano=ano, mes=mes).select_related('usuario').first()
+            if c:
+                return c
+        return ConfigComissaoVendedor.objects.filter(usuario_id=user_id, ano__isnull=True, mes__isnull=True).select_related('usuario').first()
+
+    def get(self, request, user_id):
+        ano = request.query_params.get('ano')
+        mes = request.query_params.get('mes')
+        try:
+            ano = int(ano) if ano else None
+            mes = int(mes) if mes else None
+        except (TypeError, ValueError):
+            ano, mes = None, None
+        config = self._get_config(user_id, ano, mes)
+        if not config:
+            return Response({'detail': 'Configuração não encontrada.'}, status=404)
+        serializer = ConfigComissaoVendedorSerializer(config)
+        return Response(serializer.data)
+
+    def put(self, request, user_id):
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        if not User.objects.filter(id=user_id).exists():
+            return Response({'error': 'Usuário não encontrado'}, status=404)
+        data = dict(request.data)
+        ano = data.pop('ano', None)
+        mes = data.pop('mes', None)
+        try:
+            ano = int(ano) if ano is not None else None
+            mes = int(mes) if mes is not None else None
+        except (TypeError, ValueError):
+            ano, mes = None, None
+        if ano is not None and mes is not None:
+            config, _ = ConfigComissaoVendedor.objects.get_or_create(
+                usuario_id=user_id, ano=ano, mes=mes, defaults={}
+            )
+        else:
+            config, _ = ConfigComissaoVendedor.objects.get_or_create(
+                usuario_id=user_id, ano=None, mes=None, defaults={'usuario_id': user_id}
+            )
+        serializer = ConfigComissaoVendedorSerializer(config, data=data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=400)
+
+    def patch(self, request, user_id):
+        ano = request.data.get('ano')
+        mes = request.data.get('mes')
+        try:
+            ano = int(ano) if ano is not None else None
+            mes = int(mes) if mes is not None else None
+        except (TypeError, ValueError):
+            ano, mes = None, None
+        config = self._get_config(user_id, ano, mes)
+        if not config:
+            return Response({'detail': 'Configuração não encontrada.'}, status=404)
+        serializer = ConfigComissaoVendedorSerializer(config, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=400)
+
+
+class ConfigComissaoVendedorSalvarMesView(APIView):
+    """POST config-comissao-vendedor/salvar-mes/ - Body: { ano, mes, configs: [ { usuario_id, perfil_comissao, usar_valor_manual, ... }, ... ] }. Salva todas as regras daquele mês."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        ano = request.data.get('ano')
+        mes = request.data.get('mes')
+        configs = request.data.get('configs') or []
+        try:
+            ano = int(ano)
+            mes = int(mes)
+        except (TypeError, ValueError):
+            return Response({'error': 'ano e mes são obrigatórios e devem ser números.'}, status=400)
+        if not 1 <= mes <= 12:
+            return Response({'error': 'mes deve ser entre 1 e 12.'}, status=400)
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        salvos = 0
+        erros = []
+        for c in configs:
+            uid = c.get('usuario_id') or c.get('usuario')
+            if not uid:
+                continue
+            try:
+                if not User.objects.filter(id=uid).exists():
+                    erros.append(f"Usuário {uid} não encontrado")
+                    continue
+                data = dict(c)
+                data.pop('usuario_id', None)
+                data.pop('usuario', None)
+                data.pop('username', None)
+                data.pop('ano', None)
+                data.pop('mes', None)
+                config, created = ConfigComissaoVendedor.objects.get_or_create(
+                    usuario_id=uid, ano=ano, mes=mes, defaults={}
+                )
+                serializer = ConfigComissaoVendedorSerializer(config, data=data, partial=True)
+                if serializer.is_valid():
+                    serializer.save()
+                    salvos += 1
+                else:
+                    erros.append(f"User {uid}: " + str(serializer.errors))
+            except Exception as e:
+                erros.append(f"User {uid}: {e}")
+        return Response({'salvos': salvos, 'erros': erros})
+
+
+def _decimal_ou_none(val):
+    from decimal import Decimal
+    if val is None or val == '' or (isinstance(val, str) and val.strip() == ''):
+        return None
+    try:
+        return Decimal(str(val).replace(',', '.'))
+    except Exception:
+        return None
+
+
+def _int_ou_none(val):
+    if val is None or val == '' or (isinstance(val, str) and val.strip() == ''):
+        return None
+    try:
+        return int(float(val))
+    except Exception:
+        return None
+
+
+class RegraComissaoFaixaExportarView(APIView):
+    """GET regras-comissao-faixa/exportar/?formato=xlsx|csv - Download Excel ou CSV."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        formato = (request.query_params.get('formato') or 'xlsx').lower()
+        qs = RegraComissaoFaixa.objects.select_related('vendedor').all().order_by('perfil', 'vendedor', 'min_vendas')
+        rows = [[
+            'PERFIL', 'FAIXA_NOME', 'MIN_VENDAS', 'MAX_VENDAS',
+            'VALOR_500MB_PAP', 'VALOR_700MB_PAP', 'VALOR_1GB_PAP',
+            'VALOR_500MB_CNPJ', 'VALOR_700MB_CNPJ', 'VALOR_1GB_CNPJ',
+        ]]
+        for r in qs:
+            perfil = r.vendedor.username if r.vendedor_id else (r.perfil or '')
+            rows.append([
+                perfil, r.faixa_nome, r.min_vendas, r.max_vendas,
+                r.valor_500mb_pap, r.valor_700mb_pap, r.valor_1gb_pap,
+                r.valor_500mb_cnpj, r.valor_700mb_cnpj, r.valor_1gb_cnpj,
+            ])
+        if formato == 'csv':
+            from django.http import HttpResponse
+            import csv
+            from io import StringIO
+            buf = StringIO()
+            w = csv.writer(buf, delimiter=';')
+            w.writerows(rows)
+            resp = HttpResponse(buf.getvalue(), content_type='text/csv; charset=utf-8')
+            resp['Content-Disposition'] = 'attachment; filename="regras_faixa.csv"'
+            return resp
+        from openpyxl import Workbook
+        from django.http import HttpResponse
+        from io import BytesIO
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'REGRAS_FAIXAS'
+        for row in rows:
+            ws.append(row)
+        buf = BytesIO()
+        wb.save(buf)
+        resp = HttpResponse(buf.getvalue(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        resp['Content-Disposition'] = 'attachment; filename="regras_faixa.xlsx"'
+        return resp
+
+
+class RegraComissaoFaixaImportarView(APIView):
+    """POST regras-comissao-faixa/importar/ - Body: arquivo (xlsx ou csv)."""
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def post(self, request):
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        arquivo = request.FILES.get('arquivo') or request.FILES.get('file')
+        if not arquivo:
+            return Response({'error': 'Envie o arquivo (arquivo ou file).'}, status=400)
+        erros = []
+        importados = 0
+        nome = (arquivo.name or '').lower()
+        try:
+            if nome.endswith('.xlsx') or nome.endswith('.xls'):
+                import openpyxl
+                wb = openpyxl.load_workbook(arquivo, read_only=True, data_only=True)
+                ws = wb.active
+                rows = list(ws.iter_rows(values_only=True))
+                wb.close()
+            elif nome.endswith('.csv'):
+                import csv
+                from io import TextIOWrapper
+                rows = list(csv.reader(TextIOWrapper(arquivo, encoding='utf-8-sig'), delimiter=';'))
+                if not rows and arquivo.tell() == 0:
+                    arquivo.seek(0)
+                    rows = list(csv.reader(TextIOWrapper(arquivo, encoding='latin-1'), delimiter=';'))
+            else:
+                return Response({'error': 'Use arquivo .xlsx ou .csv'}, status=400)
+        except Exception as e:
+            return Response({'error': str(e)}, status=400)
+        if not rows or len(rows) < 2:
+            return Response({'error': 'Arquivo vazio ou sem dados.'}, status=400)
+        header = [str(c).strip().upper() if c is not None else '' for c in rows[0]]
+        idx = {h: i for i, h in enumerate(header)}
+        for i, row in enumerate(rows[1:], start=2):
+            row = list(row) if row else []
+            while len(row) < len(header):
+                row.append('')
+            perfil_str = (row[idx.get('PERFIL', 0)] or '').strip()
+            faixa_nome = (row[idx.get('FAIXA_NOME', 1)] or '').strip() or f'Faixa {i}'
+            min_v = _int_ou_none(row[idx.get('MIN_VENDAS', 2)])
+            max_v = _int_ou_none(row[idx.get('MAX_VENDAS', 3)])
+            min_v = min_v if min_v is not None else 0
+            max_v = max_v if max_v is not None else 99999
+            vendedor = None
+            perfil = None
+            if perfil_str and perfil_str.upper() in ('SUPERVISOR', 'VENDEDOR'):
+                perfil = perfil_str.capitalize()
+            else:
+                user = User.objects.filter(username__iexact=perfil_str).first() if perfil_str else None
+                if user:
+                    vendedor = user
+            try:
+                RegraComissaoFaixa.objects.create(
+                    perfil=perfil,
+                    vendedor=vendedor,
+                    faixa_nome=faixa_nome,
+                    min_vendas=min_v,
+                    max_vendas=max_v,
+                    valor_500mb_pap=_decimal_ou_none(row[idx.get('VALOR_500MB_PAP', 4)]),
+                    valor_700mb_pap=_decimal_ou_none(row[idx.get('VALOR_700MB_PAP', 5)]),
+                    valor_1gb_pap=_decimal_ou_none(row[idx.get('VALOR_1GB_PAP', 6)]),
+                    valor_500mb_cnpj=_decimal_ou_none(row[idx.get('VALOR_500MB_CNPJ', 7)]),
+                    valor_700mb_cnpj=_decimal_ou_none(row[idx.get('VALOR_700MB_CNPJ', 8)]),
+                    valor_1gb_cnpj=_decimal_ou_none(row[idx.get('VALOR_1GB_CNPJ', 9)]),
+                )
+                importados += 1
+            except Exception as e:
+                erros.append(f'Linha {i}: {e}')
+        return Response({'importados': importados, 'erros': erros})
+
+
+class ConfigComissaoVendedorExportarView(APIView):
+    """GET config-comissao-vendedor/exportar/?formato=xlsx|csv - Download Excel ou CSV."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        formato = (request.query_params.get('formato') or 'xlsx').lower()
+        qs = ConfigComissaoVendedor.objects.select_related('usuario').all().order_by('usuario__username')
+        rows = [[
+            'VENDEDOR', 'PERFIL_COMISSAO', 'USAR_VALOR_MANUAL?',
+            '500MB_PAP_MANUAL', '700MB_PAP_MANUAL', '1GB_PAP_MANUAL',
+            '500MB_CNPJ_MANUAL', '700MB_CNPJ_MANUAL', '1GB_CNPJ_MANUAL',
+            'DESCONTA DACC PAP?', 'VENDAS BOLETO', 'INCLUSÃO', 'INSTALAÇÃO', 'ADIANTAR CNPJ',
+            'INSS_VALOR', 'ADIANTAMENTO', 'PREMIAÇÃO', 'CARTÃO TRAFEGO', 'GESTOR TRAFEGO',
+        ]]
+        for c in qs:
+            rows.append([
+                c.usuario.username,
+                c.perfil_comissao or 'Vendedor',
+                'SIM' if c.usar_valor_manual else 'NÃO',
+                c.valor_500mb_pap_manual, c.valor_700mb_pap_manual, c.valor_1gb_pap_manual,
+                c.valor_500mb_cnpj_manual, c.valor_700mb_cnpj_manual, c.valor_1gb_cnpj_manual,
+                'SIM' if c.desconta_dacc_pap else 'NÃO',
+                c.desconto_boleto, c.desconto_inclusao, c.desconto_instalacao, c.adiantar_cnpj,
+                c.inss_valor, c.adiantamento, getattr(c, 'premiação', None), c.cartao_trafego, c.gestor_trafego,
+            ])
+        if formato == 'csv':
+            from django.http import HttpResponse
+            import csv
+            from io import StringIO
+            buf = StringIO()
+            w = csv.writer(buf, delimiter=';')
+            w.writerows(rows)
+            resp = HttpResponse(buf.getvalue(), content_type='text/csv; charset=utf-8')
+            resp['Content-Disposition'] = 'attachment; filename="regras_vendedores.csv"'
+            return resp
+        from openpyxl import Workbook
+        from django.http import HttpResponse
+        from io import BytesIO
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'REGRAS_VENDEDORES'
+        for row in rows:
+            ws.append(row)
+        buf = BytesIO()
+        wb.save(buf)
+        resp = HttpResponse(buf.getvalue(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        resp['Content-Disposition'] = 'attachment; filename="regras_vendedores.xlsx"'
+        return resp
+
+
+class ConfigComissaoVendedorImportarView(APIView):
+    """POST config-comissao-vendedor/importar/ - Body: arquivo (xlsx ou csv)."""
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def post(self, request):
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        arquivo = request.FILES.get('arquivo') or request.FILES.get('file')
+        if not arquivo:
+            return Response({'error': 'Envie o arquivo (arquivo ou file).'}, status=400)
+        erros = []
+        importados = 0
+        nome = (arquivo.name or '').lower()
+        try:
+            if nome.endswith('.xlsx') or nome.endswith('.xls'):
+                import openpyxl
+                wb = openpyxl.load_workbook(arquivo, read_only=True, data_only=True)
+                ws = wb.active
+                rows = list(ws.iter_rows(values_only=True))
+                wb.close()
+            elif nome.endswith('.csv'):
+                import csv
+                from io import TextIOWrapper
+                rows = list(csv.reader(TextIOWrapper(arquivo, encoding='utf-8-sig'), delimiter=';'))
+                if not rows and arquivo.tell() == 0:
+                    arquivo.seek(0)
+                    rows = list(csv.reader(TextIOWrapper(arquivo, encoding='latin-1'), delimiter=';'))
+            else:
+                return Response({'error': 'Use arquivo .xlsx ou .csv'}, status=400)
+        except Exception as e:
+            return Response({'error': str(e)}, status=400)
+        if not rows or len(rows) < 2:
+            return Response({'error': 'Arquivo vazio ou sem dados.'}, status=400)
+        header = [str(c).strip().upper().replace('?', '').replace(' ', '_') if c is not None else '' for c in rows[0]]
+        idx = {h: i for i, h in enumerate(header)}
+        def col(k, default_idx):
+            for alias in (k, k.replace('_', ' '), k.replace(' ', '_')):
+                if alias in idx:
+                    return idx[alias]
+            return default_idx
+        for i, row in enumerate(rows[1:], start=2):
+            row = list(row) if row else []
+            while len(row) < max(idx.values()) + 1:
+                row.append('')
+            username = (row[col('VENDEDOR', 0)] or '').strip()
+            if not username:
+                continue
+            user = User.objects.filter(username__iexact=username).first()
+            if not user:
+                erros.append(f'Linha {i}: Vendedor "{username}" não encontrado.')
+                continue
+            try:
+                config, _ = ConfigComissaoVendedor.objects.get_or_create(usuario=user)
+                perfil = (row[col('PERFIL_COMISSAO', 1)] or '').strip()
+                if perfil and perfil.upper() in ('SUPERVISOR', 'VENDEDOR'):
+                    config.perfil_comissao = perfil.capitalize()
+                manual = (row[col('USAR_VALOR_MANUAL', 2)] or '').strip().upper()
+                config.usar_valor_manual = manual in ('SIM', 'S', '1', 'TRUE')
+                config.valor_500mb_pap_manual = _decimal_ou_none(row[col('500MB_PAP_MANUAL', 3)])
+                config.valor_700mb_pap_manual = _decimal_ou_none(row[col('700MB_PAP_MANUAL', 4)])
+                config.valor_1gb_pap_manual = _decimal_ou_none(row[col('1GB_PAP_MANUAL', 5)])
+                config.valor_500mb_cnpj_manual = _decimal_ou_none(row[col('500MB_CNPJ_MANUAL', 6)])
+                config.valor_700mb_cnpj_manual = _decimal_ou_none(row[col('700MB_CNPJ_MANUAL', 7)])
+                config.valor_1gb_cnpj_manual = _decimal_ou_none(row[col('1GB_CNPJ_MANUAL', 8)])
+                dacc = (row[col('DESCONTA_DACC_PAP', 9)] or '').strip().upper()
+                config.desconta_dacc_pap = dacc in ('SIM', 'S', '1')
+                config.desconto_boleto = _decimal_ou_none(row[col('VENDAS_BOLETO', 10)]) or 0
+                config.desconto_inclusao = _decimal_ou_none(row[col('INCLUSÃO', 11)]) or 0
+                config.desconto_instalacao = _decimal_ou_none(row[col('INSTALAÇÃO', 12)]) or 0
+                config.adiantar_cnpj = _decimal_ou_none(row[col('ADIANTAR_CNPJ', 13)]) or 0
+                config.inss_valor = _decimal_ou_none(row[col('INSS_VALOR', 14)])
+                config.adiantamento = _decimal_ou_none(row[col('ADIANTAMENTO', 15)])
+                setattr(config, 'premiação', _decimal_ou_none(row[col('PREMIAÇÃO', 16)]))
+                config.cartao_trafego = _decimal_ou_none(row[col('CARTÃO_TRAFEGO', 17)])
+                config.gestor_trafego = _decimal_ou_none(row[col('GESTOR_TRAFEGO', 18)])
+                config.save()
+                importados += 1
+            except Exception as e:
+                erros.append(f'Linha {i}: {e}')
+        return Response({'importados': importados, 'erros': erros})
+
 
 class ComunicadoViewSet(viewsets.ModelViewSet):
     queryset = Comunicado.objects.all().order_by('-id')
@@ -1830,6 +2307,29 @@ class ListaVendedoresView(APIView):
         return Response(list(vendedores))
 
 # Em site-record/crm_app/views.py
+
+class FolhaComissionamentoView(APIView):
+    """GET comissionamento/folha/?ano=AAAA&mes=M&vendedor_id=opcional - Folha no formato Excel."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from .comissao_folha_service import calcular_folha_mes
+        hoje = timezone.now()
+        try:
+            ano = int(request.query_params.get('ano', hoje.year))
+            mes = int(request.query_params.get('mes', hoje.month))
+        except ValueError:
+            ano = hoje.year
+            mes = hoje.month
+        vendedor_id = request.query_params.get('vendedor_id')
+        if vendedor_id is not None:
+            try:
+                vendedor_id = int(vendedor_id)
+            except ValueError:
+                vendedor_id = None
+        dados = calcular_folha_mes(ano, mes, vendedor_id)
+        return Response(dados)
+
 
 class ComissionamentoView(APIView):
     permission_classes = [permissions.IsAuthenticated]

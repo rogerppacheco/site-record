@@ -3,6 +3,7 @@ from .models import (
     SafraM10, ContratoM10, FaturaM10, HistoricoBuscaFatura,
     ImportacaoAgendamento, ImportacaoRecompra, ImportacaoFPD, LogImportacaoFPD,
     ImportacaoChurn, LogImportacaoChurn, PapBoEmUso,
+    RegraComissaoFaixa, ConfigComissaoVendedor,
 )
 
 
@@ -264,3 +265,19 @@ class PapBoEmUsoAdmin(admin.ModelAdmin):
     list_display = ('bo_usuario', 'vendedor_telefone', 'locked_at', 'sessao_whatsapp_id')
     list_filter = ('locked_at',)
     search_fields = ('vendedor_telefone', 'bo_usuario__username')
+
+
+@admin.register(RegraComissaoFaixa)
+class RegraComissaoFaixaAdmin(admin.ModelAdmin):
+    list_display = ('perfil', 'vendedor', 'faixa_nome', 'min_vendas', 'max_vendas')
+    list_filter = ('perfil',)
+    search_fields = ('faixa_nome', 'vendedor__username')
+    raw_id_fields = ('vendedor',)
+
+
+@admin.register(ConfigComissaoVendedor)
+class ConfigComissaoVendedorAdmin(admin.ModelAdmin):
+    list_display = ('usuario', 'perfil_comissao', 'usar_valor_manual')
+    list_filter = ('perfil_comissao', 'usar_valor_manual')
+    search_fields = ('usuario__username',)
+    raw_id_fields = ('usuario',)

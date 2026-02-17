@@ -7,7 +7,8 @@ from .models import (
     RegraComissao, Cliente, Venda, ImportacaoOsab, ImportacaoChurn,
     CicloPagamento, HistoricoAlteracaoVenda, Campanha,
     ComissaoOperadora, Comunicado, LancamentoFinanceiro,
-    RegraCampanha, FaturaM10, GrupoDisparo
+    RegraCampanha, FaturaM10, GrupoDisparo,
+    RegraComissaoFaixa, ConfigComissaoVendedor,
 )
 from usuarios.models import Usuario
 from usuarios.serializers import UsuarioSerializer
@@ -140,6 +141,22 @@ class RegraComissaoSerializer(serializers.ModelSerializer):
     class Meta:
         model = RegraComissao
         fields = '__all__'
+
+
+class RegraComissaoFaixaSerializer(serializers.ModelSerializer):
+    vendedor_username = serializers.CharField(source='vendedor.username', read_only=True)
+    class Meta:
+        model = RegraComissaoFaixa
+        fields = '__all__'
+
+
+class ConfigComissaoVendedorSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source='usuario.username', read_only=True)
+    class Meta:
+        model = ConfigComissaoVendedor
+        fields = '__all__'
+        extra_kwargs = {'usuario': {'read_only': True}}
+
 
 class ClienteSerializer(serializers.ModelSerializer):
     vendas_count = serializers.IntegerField(read_only=True, required=False)

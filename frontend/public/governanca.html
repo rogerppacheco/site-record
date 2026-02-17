@@ -179,11 +179,37 @@
             <section id="comissionamento-section" class="content-section">
                 <h3 class="mb-4">Gestão de Comissionamento</h3>
                 <div class="card">
-                    <div class="card-header"><ul class="nav nav-tabs card-header-tabs"><li class="nav-item"><button class="nav-link active" onclick="openTab(event, 'regras_comissao_tab')">Regras de Comissão</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'recebimento_operadora_tab')">Recebimento Operadora</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'config_mensal_tab')">Configurações do Mês</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'campanhas_tab')">Campanhas</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'adiantamentos_descontos_tab')">Adiantamentos e Descontos</button></li></ul></div>
+                    <div class="card-header"><ul class="nav nav-tabs card-header-tabs"><li class="nav-item"><button class="nav-link active" onclick="openTab(event, 'regras_comissao_tab')">Regras de Comissão</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'regras_faixa_tab'); carregarRegrasFaixa();">Regras por Faixa</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'regras_vendedores_tab'); if (!document.getElementById('regras_vendedor_mes').value) { const d = new Date(); document.getElementById('regras_vendedor_mes').value = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); } carregarConfigVendedores();">Regras por Vendedor</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'recebimento_operadora_tab')">Recebimento Operadora</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'config_mensal_tab')">Configurações do Mês</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'campanhas_tab')">Campanhas</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'adiantamentos_descontos_tab')">Adiantamentos e Descontos</button></li></ul></div>
                     <div class="card-body">
                         <div id="regras_comissao_tab" class="tab-content active">
                             <div class="bg-light p-4 rounded border mb-4"><h5 class="text-primary mb-3">Nova Regra (Pagamento ao Vendedor)</h5><form id="form-regra-comissao"><input type="hidden" id="regra_comissao_id"><div class="row g-3"><div class="col-md-4"><label class="form-label fw-bold">Consultor</label><select id="regra_consultor_id" class="form-select" required></select></div><div class="col-md-4"><label class="form-label fw-bold">Plano</label><select id="regra_plano_id" class="form-select" required></select></div><div class="col-md-2"><label class="form-label fw-bold">Tipo Venda</label><select id="regra_tipo_venda" class="form-select" required><option value="PAP">PAP</option><option value="TELAG">TELAG</option></select></div><div class="col-md-2"><label class="form-label fw-bold">Cliente</label><select id="regra_tipo_cliente" class="form-select" required><option value="CPF">CPF</option><option value="CNPJ">CNPJ</option></select></div><div class="col-md-3"><label class="form-label fw-bold">Base (R$)</label><input type="number" class="form-control" id="regra_valor_base" step="0.01" required></div><div class="col-md-3"><label class="form-label fw-bold">Acelerado (R$)</label><input type="number" class="form-control" id="regra_valor_acelerado" step="0.01" required></div><div class="col-md-6 d-flex align-items-end"><button type="submit" class="btn btn-primary w-100 me-2">Salvar Regra</button><button type="button" class="btn btn-outline-secondary w-50" onclick="resetFormRegraComissao()">Limpar</button></div></div></form></div>
                             <div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead class="table-light"><tr><th>Consultor</th><th>Plano</th><th>Tipo</th><th>Cliente</th><th>Base</th><th>Acelerado</th><th>Ações</th></tr></thead><tbody id="lista-regras-comissao"></tbody></table></div>
+                        </div>
+                        <div id="regras_faixa_tab" class="tab-content" style="display:none;">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h6 class="mb-0 text-primary">Regras por Faixa (REGRAS_FAIXAS)</h6>
+                                <div>
+                                    <input type="file" id="input-import-faixa" accept=".xlsx,.csv" style="display:none" onchange="importarRegrasFaixa(this)">
+                                    <button type="button" class="btn btn-sm btn-outline-success me-2" onclick="document.getElementById('input-import-faixa').click()"><i class="bi bi-upload"></i> Importar Excel/CSV</button>
+                                    <a href="#" id="link-export-faixa" class="btn btn-sm btn-outline-primary" onclick="exportarRegrasFaixa(); return false;"><i class="bi bi-download"></i> Exportar Excel</a>
+                                </div>
+                            </div>
+                            <div class="table-responsive"><table class="table table-hover align-middle mb-0 table-sm"><thead class="table-light"><tr><th>PERFIL</th><th>FAIXA_NOME</th><th>MIN</th><th>MAX</th><th>500MB PAP</th><th>700MB PAP</th><th>1GB PAP</th><th>500MB CNPJ</th><th>700MB CNPJ</th><th>1GB CNPJ</th><th>Ações</th></tr></thead><tbody id="lista-regras-faixa"></tbody></table></div>
+                        </div>
+                        <div id="regras_vendedores_tab" class="tab-content" style="display:none;">
+                            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                                <h6 class="mb-0 text-primary">Regras por Vendedor (REGRAS_VENDEDORES)</h6>
+                                <div class="d-flex align-items-center flex-wrap gap-2">
+                                    <label class="mb-0 fw-bold small">Mês de referência:</label>
+                                    <input type="month" id="regras_vendedor_mes" class="form-control form-control-sm" style="width: auto;" onchange="carregarConfigVendedores()">
+                                    <button type="button" class="btn btn-sm btn-primary" onclick="salvarTodosConfigVendedores()"><i class="bi bi-check-all"></i> Salvar todos (deste mês)</button>
+                                    <input type="file" id="input-import-vendedores" accept=".xlsx,.csv" style="display:none" onchange="importarConfigVendedores(this)">
+                                    <button type="button" class="btn btn-sm btn-outline-success" onclick="document.getElementById('input-import-vendedores').click()"><i class="bi bi-upload"></i> Importar Excel/CSV</button>
+                                    <a href="#" class="btn btn-sm btn-outline-primary" onclick="exportarConfigVendedores(); return false;"><i class="bi bi-download"></i> Exportar Excel</a>
+                                </div>
+                            </div>
+                            <p class="small text-muted mb-2">Regras do mês selecionado. Se &quot;Usar valor manual?&quot; for <strong>SIM</strong>, informe os valores por plano. Use <strong>Salvar todos (deste mês)</strong> para gravar todas as alterações daquele mês. INSS e Prêmio são tratados em Campanhas / Adiantamentos e Descontos.</p>
+                            <div class="table-responsive" style="max-height: 520px; overflow: auto;"><table class="table table-hover align-middle mb-0 table-sm"><thead class="table-light sticky-top"><tr><th>Vendedor</th><th>Perfil</th><th>Usar valor manual?</th><th class="cell-manual">500MB PAP</th><th class="cell-manual">700MB PAP</th><th class="cell-manual">1GB PAP</th><th class="cell-manual">500MB CNPJ</th><th class="cell-manual">700MB CNPJ</th><th class="cell-manual">1GB CNPJ</th><th>Boleto</th><th>Inclusão</th><th>Inst.</th><th>Adiant.CNPJ</th><th>Ação</th></tr></thead><tbody id="lista-config-vendedores"></tbody></table></div>
                         </div>
                         <div id="recebimento_operadora_tab" class="tab-content" style="display:none;">
                             <div class="bg-light p-4 rounded border mb-4"><h5 class="text-success mb-3"><i class="bi bi-bank"></i> Configuração de Recebimento (Operadora -> Empresa)</h5><form id="form-comissao-operadora"><input type="hidden" id="co_id"><div class="row g-3 align-items-end"><div class="col-md-4"><label class="form-label fw-bold">Plano Vendido</label><select id="co_plano_id" class="form-select" required></select></div><div class="col-md-2"><label class="form-label fw-bold">Comissão Base (R$)</label><input type="number" class="form-control" id="co_valor_base" step="0.01" required placeholder="0,00"></div><div class="col-md-2"><label class="form-label fw-bold text-success">Bônus Transição (R$)</label><input type="number" class="form-control border-success" id="co_bonus" step="0.01" value="0" placeholder="0,00"></div><div class="col-md-2"><label class="form-label small text-muted">Validade Bônus (Fim)</label><input type="date" class="form-control" id="co_data_fim"></div><div class="col-md-2"><button type="submit" class="btn btn-success w-100">Salvar Config</button></div></div></form></div>
@@ -519,6 +545,32 @@
         </div>
     </div>
     <div class="modal fade" id="excluirPerfilModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Confirmar Exclusão</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>Excluir o perfil "<strong id="nome-perfil-excluir"></strong>"?</p><input type="hidden" id="id-perfil-excluir"></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button type="button" class="btn btn-danger" id="btn-confirmar-exclusao-perfil">Excluir</button></div></div></div></div>
+
+    <div class="modal fade" id="modalEditarRegraFaixa" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title">Editar Regra por Faixa</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <input type="hidden" id="regra_faixa_id">
+                    <div class="row g-3">
+                        <div class="col-md-4"><label class="form-label fw-bold">Perfil</label><select id="regra_faixa_perfil" class="form-select"><option value="">— Vendedor específico —</option><option value="Vendedor">Vendedor</option><option value="Supervisor">Supervisor</option></select></div>
+                        <div class="col-md-4"><label class="form-label fw-bold">Vendedor (se específico)</label><select id="regra_faixa_vendedor" class="form-select"><option value="">— Nenhum —</option></select></div>
+                        <div class="col-md-4"><label class="form-label fw-bold">Nome da faixa</label><input type="text" id="regra_faixa_nome" class="form-control" placeholder="Ex: Faixa 1"></div>
+                        <div class="col-md-3"><label class="form-label fw-bold">Min. vendas</label><input type="number" id="regra_faixa_min" class="form-control" min="0"></div>
+                        <div class="col-md-3"><label class="form-label fw-bold">Máx. vendas</label><input type="number" id="regra_faixa_max" class="form-control" min="0" placeholder="99999"></div>
+                        <div class="col-12"><hr class="my-2"><small class="text-muted fw-bold">Valores por plano (R$)</small></div>
+                        <div class="col-md-4"><label class="form-label small">500MB PAP</label><input type="number" id="regra_faixa_500mb_pap" class="form-control form-control-sm" step="0.01" placeholder="—"></div>
+                        <div class="col-md-4"><label class="form-label small">700MB PAP</label><input type="number" id="regra_faixa_700mb_pap" class="form-control form-control-sm" step="0.01" placeholder="—"></div>
+                        <div class="col-md-4"><label class="form-label small">1GB PAP</label><input type="number" id="regra_faixa_1gb_pap" class="form-control form-control-sm" step="0.01" placeholder="—"></div>
+                        <div class="col-md-4"><label class="form-label small">500MB CNPJ</label><input type="number" id="regra_faixa_500mb_cnpj" class="form-control form-control-sm" step="0.01" placeholder="—"></div>
+                        <div class="col-md-4"><label class="form-label small">700MB CNPJ</label><input type="number" id="regra_faixa_700mb_cnpj" class="form-control form-control-sm" step="0.01" placeholder="—"></div>
+                        <div class="col-md-4"><label class="form-label small">1GB CNPJ</label><input type="number" id="regra_faixa_1gb_cnpj" class="form-control form-control-sm" step="0.01" placeholder="—"></div>
+                    </div>
+                </div>
+                <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button type="button" class="btn btn-primary" id="btnSalvarRegraFaixaModal"><i class="bi bi-check-lg"></i> Salvar</button></div>
+            </div>
+        </div>
+    </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jwt-decode@3.1.2/build/jwt-decode.min.js"></script>
@@ -2080,6 +2132,245 @@
     function resetFormRegraComissao() { document.getElementById('form-regra-comissao').reset(); document.getElementById('regra_comissao_id').value = ''; }
     window.editarRegra = (r) => { document.getElementById('regra_comissao_id').value = r.id; document.getElementById('regra_consultor_id').value = r.consultor || ""; document.getElementById('regra_plano_id').value = r.plano; document.getElementById('regra_tipo_venda').value = r.tipo_venda; document.getElementById('regra_tipo_cliente').value = r.tipo_cliente; document.getElementById('regra_valor_base').value = r.valor_base; document.getElementById('regra_valor_acelerado').value = r.valor_acelerado; document.getElementById('form-regra-comissao').scrollIntoView({ behavior: 'smooth' }); };
     window.excluirRegra = async(id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/regras-comissao/${id}/`, {method:'DELETE'}); carregarRegrasComissao(); } };
+
+    // --- Regras por Faixa (REGRAS_FAIXAS) ---
+    async function carregarRegrasFaixa() {
+        const lista = await apiFetch('/crm/regras-comissao-faixa/');
+        const tbody = document.getElementById('lista-regras-faixa');
+        if (!tbody) return;
+        tbody.innerHTML = '';
+        const regras = Array.isArray(lista) ? lista : (lista?.results || []);
+        if (!regras.length) { tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted">Nenhuma regra por faixa. Importe um Excel ou cadastre manualmente.</td></tr>'; return; }
+        regras.forEach(r => {
+            const perfil = r.vendedor_username || r.perfil || '-';
+            tbody.innerHTML += `<tr>
+                <td>${perfil}</td><td>${r.faixa_nome || ''}</td><td>${r.min_vendas}</td><td>${r.max_vendas}</td>
+                <td>${r.valor_500mb_pap != null ? r.valor_500mb_pap : ''}</td><td>${r.valor_700mb_pap != null ? r.valor_700mb_pap : ''}</td><td>${r.valor_1gb_pap != null ? r.valor_1gb_pap : ''}</td>
+                <td>${r.valor_500mb_cnpj != null ? r.valor_500mb_cnpj : ''}</td><td>${r.valor_700mb_cnpj != null ? r.valor_700mb_cnpj : ''}</td><td>${r.valor_1gb_cnpj != null ? r.valor_1gb_cnpj : ''}</td>
+                <td><button class="btn btn-sm btn-outline-primary me-1" onclick="abrirModalEditarRegraFaixa(${r.id})" title="Editar"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="excluirRegraFaixa(${r.id})" title="Excluir"><i class="bi bi-trash"></i></button></td>
+            </tr>`;
+        });
+    }
+    async function exportarRegrasFaixa() {
+        const token = localStorage.getItem('accessToken');
+        const url = (typeof apiUrl !== 'undefined' ? apiUrl : '') + '/api/crm/regras-comissao-faixa/exportar/?formato=xlsx';
+        try {
+            const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
+            if (!res.ok) throw new Error('Erro ao gerar arquivo');
+            const blob = await res.blob();
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'regras_faixa.xlsx';
+            a.click();
+            URL.revokeObjectURL(a.href);
+        } catch (e) { alert('Erro ao exportar: ' + e.message); }
+    }
+    async function importarRegrasFaixa(input) {
+        if (!input.files.length) return;
+        const fd = new FormData();
+        fd.append('arquivo', input.files[0]);
+        try {
+            const token = localStorage.getItem('accessToken');
+            const res = await fetch(apiUrl + '/api/crm/regras-comissao-faixa/importar/', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token }, body: fd });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Erro no servidor');
+            alert(`Importados: ${data.importados || 0}. ${(data.erros || []).length ? 'Erros: ' + data.erros.join('; ') : ''}`);
+            carregarRegrasFaixa();
+        } catch (e) { alert('Erro: ' + e.message); }
+        input.value = '';
+    }
+    window.excluirRegraFaixa = async(id) => { if (!confirm('Excluir esta regra por faixa?')) return; await apiFetch(`/crm/regras-comissao-faixa/${id}/`, { method: 'DELETE' }); carregarRegrasFaixa(); };
+
+    window.abrirModalEditarRegraFaixa = async function(id) {
+        const regra = await apiFetch(`/crm/regras-comissao-faixa/${id}/`);
+        const selVendedor = document.getElementById('regra_faixa_vendedor');
+        const users = await apiFetch('/crm/config-comissao-vendedor/');
+        const lista = Array.isArray(users) ? users : (users?.results || []);
+        selVendedor.innerHTML = '<option value="">— Nenhum —</option>';
+        lista.forEach(u => { const uid = u.usuario_id ?? u.usuario; const name = u.username || ('ID ' + uid); selVendedor.innerHTML += `<option value="${uid}">${name}</option>`; });
+        document.getElementById('regra_faixa_id').value = regra.id;
+        document.getElementById('regra_faixa_perfil').value = regra.perfil || '';
+        document.getElementById('regra_faixa_vendedor').value = regra.vendedor || '';
+        document.getElementById('regra_faixa_nome').value = regra.faixa_nome || '';
+        document.getElementById('regra_faixa_min').value = regra.min_vendas ?? '';
+        document.getElementById('regra_faixa_max').value = regra.max_vendas != null && regra.max_vendas !== 99999 ? regra.max_vendas : '';
+        document.getElementById('regra_faixa_500mb_pap').value = regra.valor_500mb_pap ?? '';
+        document.getElementById('regra_faixa_700mb_pap').value = regra.valor_700mb_pap ?? '';
+        document.getElementById('regra_faixa_1gb_pap').value = regra.valor_1gb_pap ?? '';
+        document.getElementById('regra_faixa_500mb_cnpj').value = regra.valor_500mb_cnpj ?? '';
+        document.getElementById('regra_faixa_700mb_cnpj').value = regra.valor_700mb_cnpj ?? '';
+        document.getElementById('regra_faixa_1gb_cnpj').value = regra.valor_1gb_cnpj ?? '';
+        const modal = new bootstrap.Modal(document.getElementById('modalEditarRegraFaixa'));
+        modal.show();
+    };
+
+    async function salvarRegraFaixaModal() {
+        const id = document.getElementById('regra_faixa_id').value;
+        if (!id) return;
+        const perfil = document.getElementById('regra_faixa_perfil').value || null;
+        const vendedorVal = document.getElementById('regra_faixa_vendedor').value;
+        const vendedor = (vendedorVal === '' || vendedorVal === '— Nenhum —') ? null : parseInt(vendedorVal, 10);
+        const maxVal = document.getElementById('regra_faixa_max').value;
+        const body = {
+            perfil,
+            vendedor,
+            faixa_nome: document.getElementById('regra_faixa_nome').value || '',
+            min_vendas: parseInt(document.getElementById('regra_faixa_min').value, 10) || 0,
+            max_vendas: (maxVal === '' || maxVal === null || maxVal === undefined) ? 99999 : parseInt(maxVal, 10),
+            valor_500mb_pap: document.getElementById('regra_faixa_500mb_pap').value === '' ? null : parseFloat(document.getElementById('regra_faixa_500mb_pap').value),
+            valor_700mb_pap: document.getElementById('regra_faixa_700mb_pap').value === '' ? null : parseFloat(document.getElementById('regra_faixa_700mb_pap').value),
+            valor_1gb_pap: document.getElementById('regra_faixa_1gb_pap').value === '' ? null : parseFloat(document.getElementById('regra_faixa_1gb_pap').value),
+            valor_500mb_cnpj: document.getElementById('regra_faixa_500mb_cnpj').value === '' ? null : parseFloat(document.getElementById('regra_faixa_500mb_cnpj').value),
+            valor_700mb_cnpj: document.getElementById('regra_faixa_700mb_cnpj').value === '' ? null : parseFloat(document.getElementById('regra_faixa_700mb_cnpj').value),
+            valor_1gb_cnpj: document.getElementById('regra_faixa_1gb_cnpj').value === '' ? null : parseFloat(document.getElementById('regra_faixa_1gb_cnpj').value)
+        };
+        await apiFetch(`/crm/regras-comissao-faixa/${id}/`, { method: 'PUT', body: JSON.stringify(body) });
+        bootstrap.Modal.getInstance(document.getElementById('modalEditarRegraFaixa')).hide();
+        carregarRegrasFaixa();
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const btnSalvar = document.getElementById('btnSalvarRegraFaixaModal');
+        if (btnSalvar) btnSalvar.addEventListener('click', salvarRegraFaixaModal);
+    });
+
+    // --- Config Comissão por Vendedor (REGRAS_VENDEDORES) ---
+    function val(c, key) { const v = c[key]; return (v !== null && v !== undefined && v !== '') ? v : ''; }
+    async function carregarConfigVendedores() {
+        const mesEl = document.getElementById('regras_vendedor_mes');
+        const anoMes = mesEl && mesEl.value ? mesEl.value.split('-') : [];
+        const ano = anoMes[0] || '';
+        const mes = anoMes[1] || '';
+        const url = ano && mes ? `/crm/config-comissao-vendedor/?ano=${ano}&mes=${mes}` : '/crm/config-comissao-vendedor/';
+        const lista = await apiFetch(url);
+        const tbody = document.getElementById('lista-config-vendedores');
+        if (!tbody) return;
+        tbody.innerHTML = '';
+        const configs = Array.isArray(lista) ? lista : (lista?.results || []);
+        if (!configs.length) { tbody.innerHTML = '<tr><td colspan="14" class="text-center text-muted">Nenhum usuário ativo no sistema.</td></tr>'; return; }
+        configs.forEach(c => {
+            const uid = c.usuario_id || c.usuario;
+            const manual = c.usar_valor_manual ? 'SIM' : 'NÃO';
+            const manualOpt = c.usar_valor_manual ? '<option value="SIM" selected>SIM</option><option value="NÃO">NÃO</option>' : '<option value="SIM">SIM</option><option value="NÃO" selected>NÃO</option>';
+            const perfil = (c.perfil_comissao || 'Vendedor').toLowerCase();
+            tbody.innerHTML += `<tr data-user-id="${uid}">
+                <td class="fw-bold">${c.username || ''}</td>
+                <td><select class="form-select form-select-sm cfg-perfil" style="width:100px"><option value="Vendedor">Vendedor</option><option value="Supervisor">Supervisor</option></select></td>
+                <td><select class="form-select form-select-sm cfg-manual" style="width:70px" onchange="toggleManualValores(this)">${manualOpt}</select></td>
+                <td class="cell-manual"><input type="number" class="form-control form-control-sm cfg-valor" data-campo="valor_500mb_pap_manual" placeholder="—" step="0.01" value="${val(c,'valor_500mb_pap_manual')}" ${!c.usar_valor_manual?'readonly':''}></td>
+                <td class="cell-manual"><input type="number" class="form-control form-control-sm cfg-valor" data-campo="valor_700mb_pap_manual" placeholder="—" step="0.01" value="${val(c,'valor_700mb_pap_manual')}" ${!c.usar_valor_manual?'readonly':''}></td>
+                <td class="cell-manual"><input type="number" class="form-control form-control-sm cfg-valor" data-campo="valor_1gb_pap_manual" placeholder="—" step="0.01" value="${val(c,'valor_1gb_pap_manual')}" ${!c.usar_valor_manual?'readonly':''}></td>
+                <td class="cell-manual"><input type="number" class="form-control form-control-sm cfg-valor" data-campo="valor_500mb_cnpj_manual" placeholder="—" step="0.01" value="${val(c,'valor_500mb_cnpj_manual')}" ${!c.usar_valor_manual?'readonly':''}></td>
+                <td class="cell-manual"><input type="number" class="form-control form-control-sm cfg-valor" data-campo="valor_700mb_cnpj_manual" placeholder="—" step="0.01" value="${val(c,'valor_700mb_cnpj_manual')}" ${!c.usar_valor_manual?'readonly':''}></td>
+                <td class="cell-manual"><input type="number" class="form-control form-control-sm cfg-valor" data-campo="valor_1gb_cnpj_manual" placeholder="—" step="0.01" value="${val(c,'valor_1gb_cnpj_manual')}" ${!c.usar_valor_manual?'readonly':''}></td>
+                <td><input type="number" class="form-control form-control-sm" data-campo="desconto_boleto" placeholder="0" step="0.01" value="${val(c,'desconto_boleto')}"></td>
+                <td><input type="number" class="form-control form-control-sm" data-campo="desconto_inclusao" placeholder="0" step="0.01" value="${val(c,'desconto_inclusao')}"></td>
+                <td><input type="number" class="form-control form-control-sm" data-campo="desconto_instalacao" placeholder="0" step="0.01" value="${val(c,'desconto_instalacao')}"></td>
+                <td><input type="number" class="form-control form-control-sm" data-campo="adiantar_cnpj" placeholder="0" step="0.01" value="${val(c,'adiantar_cnpj')}"></td>
+                <td><button type="button" class="btn btn-sm btn-primary" onclick="salvarConfigVendedor(this)"><i class="bi bi-check-lg"></i> Salvar</button></td>
+            </tr>`;
+            const tr = tbody.querySelector(`tr[data-user-id="${uid}"]`);
+            if (tr) { const sel = tr.querySelector('.cfg-perfil'); if (sel) sel.value = c.perfil_comissao || 'Vendedor'; }
+        });
+    }
+    function toggleManualValores(selectEl) {
+        const manual = selectEl.value === 'SIM';
+        const tr = selectEl.closest('tr');
+        tr.querySelectorAll('.cfg-valor').forEach(inp => { inp.readOnly = !manual; if (!manual) inp.value = ''; });
+    }
+    async function salvarConfigVendedor(btn) {
+        const tr = btn.closest('tr');
+        const userId = tr.getAttribute('data-user-id');
+        if (!userId) return;
+        const perfil = tr.querySelector('.cfg-perfil').value;
+        const manual = tr.querySelector('.cfg-manual').value === 'SIM';
+        const body = {
+            perfil_comissao: perfil,
+            usar_valor_manual: manual,
+            desconto_boleto: parseFloat(tr.querySelector('[data-campo="desconto_boleto"]').value) || null,
+            desconto_inclusao: parseFloat(tr.querySelector('[data-campo="desconto_inclusao"]').value) || null,
+            desconto_instalacao: parseFloat(tr.querySelector('[data-campo="desconto_instalacao"]').value) || null,
+            adiantar_cnpj: parseFloat(tr.querySelector('[data-campo="adiantar_cnpj"]').value) || null,
+        };
+        tr.querySelectorAll('.cfg-valor').forEach(inp => {
+            const v = parseFloat(inp.value);
+            body[inp.getAttribute('data-campo')] = (v !== undefined && !isNaN(v)) ? v : null;
+        });
+        const mesEl = document.getElementById('regras_vendedor_mes');
+        if (mesEl && mesEl.value) {
+            const [ano, mes] = mesEl.value.split('-');
+            if (ano && mes) { body.ano = parseInt(ano, 10); body.mes = parseInt(mes, 10); }
+        }
+        try {
+            await apiFetch(`/crm/config-comissao-vendedor/${userId}/`, { method: 'PUT', body: JSON.stringify(body) });
+            btn.innerHTML = '<i class="bi bi-check-lg text-success"></i> Salvo';
+            setTimeout(() => { btn.innerHTML = '<i class="bi bi-check-lg"></i> Salvar'; }, 1500);
+        } catch (e) { alert('Erro ao salvar: ' + e.message); }
+    }
+
+    async function salvarTodosConfigVendedores() {
+        const mesEl = document.getElementById('regras_vendedor_mes');
+        if (!mesEl || !mesEl.value) { alert('Selecione o mês de referência.'); return; }
+        const [ano, mes] = mesEl.value.split('-').map(Number);
+        if (!ano || !mes) { alert('Mês inválido.'); return; }
+        const tbody = document.getElementById('lista-config-vendedores');
+        if (!tbody) return;
+        const configs = [];
+        tbody.querySelectorAll('tr[data-user-id]').forEach(tr => {
+            const userId = tr.getAttribute('data-user-id');
+            if (!userId) return;
+            const perfil = tr.querySelector('.cfg-perfil').value;
+            const manual = tr.querySelector('.cfg-manual').value === 'SIM';
+            const obj = {
+                usuario_id: parseInt(userId, 10),
+                perfil_comissao: perfil,
+                usar_valor_manual: manual,
+                desconto_boleto: parseFloat(tr.querySelector('[data-campo="desconto_boleto"]').value) || null,
+                desconto_inclusao: parseFloat(tr.querySelector('[data-campo="desconto_inclusao"]').value) || null,
+                desconto_instalacao: parseFloat(tr.querySelector('[data-campo="desconto_instalacao"]').value) || null,
+                adiantar_cnpj: parseFloat(tr.querySelector('[data-campo="adiantar_cnpj"]').value) || null,
+            };
+            tr.querySelectorAll('.cfg-valor').forEach(inp => {
+                const v = parseFloat(inp.value);
+                obj[inp.getAttribute('data-campo')] = (v !== undefined && !isNaN(v)) ? v : null;
+            });
+            configs.push(obj);
+        });
+        try {
+            const res = await apiFetch('/crm/config-comissao-vendedor/salvar-mes/', { method: 'POST', body: JSON.stringify({ ano, mes, configs }) });
+            const n = (res && res.salvos) || 0;
+            const err = (res && res.erros && res.erros.length) ? res.erros.join('; ') : '';
+            alert(err ? `Salvos: ${n}. Erros: ${err}` : `Regras de ${mes}/${ano} salvas: ${n} vendedor(es).`);
+            carregarConfigVendedores();
+        } catch (e) { alert('Erro ao salvar: ' + e.message); }
+    }
+    async function exportarConfigVendedores() {
+        const token = localStorage.getItem('accessToken');
+        const url = (typeof apiUrl !== 'undefined' ? apiUrl : '') + '/api/crm/config-comissao-vendedor/exportar/?formato=xlsx';
+        try {
+            const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
+            const blob = await res.blob();
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'regras_vendedores.xlsx';
+            a.click();
+            URL.revokeObjectURL(a.href);
+        } catch (e) { alert('Erro ao exportar: ' + e.message); }
+    }
+    async function importarConfigVendedores(input) {
+        if (!input.files.length) return;
+        const fd = new FormData();
+        fd.append('arquivo', input.files[0]);
+        try {
+            const token = localStorage.getItem('accessToken');
+            const res = await fetch((typeof apiUrl !== 'undefined' ? apiUrl : '') + '/api/crm/config-comissao-vendedor/importar/', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token }, body: fd });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Erro no servidor');
+            alert(`Importados: ${data.importados || 0}. ${(data.erros || []).length ? 'Erros: ' + data.erros.join('; ') : ''}`);
+            carregarConfigVendedores();
+        } catch (e) { alert('Erro: ' + e.message); }
+        input.value = '';
+    }
 
     async function carregarConfigMensal() {
         const inputMes = document.getElementById('select_mes_config').value;
