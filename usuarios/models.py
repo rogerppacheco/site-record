@@ -121,6 +121,11 @@ class Usuario(AbstractUser):
         verbose_name="Autorizar venda Automática",
         help_text="Se marcado, o vendedor poderá informar se a O.S. foi gerada automaticamente ao cadastrar vendas."
     )
+    autorizar_analise_credito_wpp = models.BooleanField(
+        default=False,
+        verbose_name="Autorizar fazer análise de crédito pelo Wpp",
+        help_text="Se marcado, o usuário pode consultar análise de crédito pelo WhatsApp (palavra-chave CRÉDITO)."
+    )
 
     class Meta(AbstractUser.Meta):
         pass

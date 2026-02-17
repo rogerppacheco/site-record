@@ -1,7 +1,7 @@
 """Serviço de resolução de reCAPTCHA v2.
 
 Por padrão usa CapSolver (melhor latência e taxa de sucesso que 2Captcha em v2 checkbox).
-A API é simples para permitir troca de provedor.
+Suporta também 2captcha e API customizada (RECAPTCHA_SOLVER_API_URL).
 """
 from __future__ import annotations
 
@@ -11,23 +11,29 @@ from typing import Literal, Optional
 
 import requests
 
-CaptchaProvider = Literal["capsolver", "2captcha"]
+CaptchaProvider = Literal["capsolver", "2captcha", "custom"]
 
 
 class RecaptchaSolver:
     def __init__(
         self,
         api_key: Optional[str] = None,
-        provider: CaptchaProvider = "capsolver",
+        provider: Optional[str] = None,
         timeout: int = 120,
         poll_interval: int = 3,
+        custom_url: Optional[str] = None,
     ) -> None:
         self.api_key = api_key or os.getenv("CAPTCHA_API_KEY")
-        self.provider = provider or os.getenv("CAPTCHA_PROVIDER", "capsolver")
+        self.provider = (provider or os.getenv("CAPTCHA_PROVIDER", "capsolver")).lower()
         self.timeout = timeout
         self.poll_interval = poll_interval
+        self.custom_url = custom_url or os.getenv("RECAPTCHA_SOLVER_API_URL", "").strip()
 
     def solve_recaptcha_v2(self, site_key: str, page_url: str) -> Optional[str]:
+        if self.provider == "custom":
+            if not self.custom_url:
+                raise RuntimeError("RECAPTCHA_SOLVER_API_URL ausente para provedor 'custom'")
+            return self._solve_custom(site_key, page_url)
         if not self.api_key:
             raise RuntimeError("CAPTCHA_API_KEY ausente")
         if self.provider == "capsolver":
@@ -35,6 +41,21 @@ class RecaptchaSolver:
         if self.provider == "2captcha":
             return self._solve_2captcha(site_key, page_url)
         raise ValueError(f"Provedor de captcha não suportado: {self.provider}")
+
+    def _solve_custom(self, site_key: str, page_url: str) -> Optional[str]:
+        """Chama API customizada: POST com JSON { siteKey, pageUrl } e espera { token } ou { gRecaptchaResponse }."""
+        payload = {"siteKey": site_key, "pageUrl": page_url}
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+            payload["apiKey"] = self.api_key
+        try:
+            r = requests.post(self.custom_url, json=payload, headers=headers, timeout=int(self.timeout))
+            r.raise_for_status()
+            data = r.json()
+            return data.get("token") or data.get("gRecaptchaResponse") or data.get("solution", {}).get("gRecaptchaResponse")
+        except Exception:
+            return None
 
     # CapSolver
     def _solve_capsolver(self, site_key: str, page_url: str) -> Optional[str]:

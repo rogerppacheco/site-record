@@ -13,6 +13,7 @@ import time
 import logging
 import threading
 from datetime import datetime
+from django.conf import settings
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,15 @@ _pap_worker_lock = threading.Lock()
 
 # Evita enviar a lista de faturas duas vezes quando o webhook é disparado em duplicidade (ex.: Z-API/WhatsApp).
 _fatura_cpf_lock = threading.Lock()
+
+# Idempotência: não enviar a mesma resposta duas vezes para o mesmo messageId (Z-API pode reenviar o webhook).
+_webhook_reply_message_ids = {}  # messageId -> timestamp
+_webhook_reply_ttl = 300  # segundos
+_webhook_reply_lock = threading.Lock()
+
+# Evita execução duplicada do preenchimento do formulário de Inclusão (duas abas abertas)
+_inclusao_form_em_execucao = set()  # telefone_normalizado
+_inclusao_form_lock = threading.Lock()
 
 
 def _registrar_estatistica(telefone, comando):
@@ -285,6 +295,22 @@ def _formatar_data_brasileira(data_str):
         return str(data_str)
 
 
+def _build_serve_pdf_url(request, filename):
+    """
+    Gera URL pública do PDF com token assinado (para Z-API buscar o arquivo).
+    Só funciona se o servidor for acessível pela internet (ex.: Railway, ngrok).
+    """
+    import hmac
+    import base64
+    if not request or not filename:
+        return ""
+    secret = (getattr(settings, "SECRET_KEY", "") or "").encode("utf-8")
+    sig = hmac.new(secret, filename.encode("utf-8"), "sha256").hexdigest()[:32]
+    payload_b64 = base64.urlsafe_b64encode(filename.encode("utf-8")).decode("utf-8").rstrip("=")
+    token = f"{payload_b64}.{sig}"
+    return request.build_absolute_uri(f"/api/crm/serve-pdf/{token}/")
+
+
 def _enviar_pdf_whatsapp(whatsapp_service, telefone, invoice, caption=None):
     """
     Envia o PDF da fatura via WhatsApp se estiver disponível (localmente ou via URL).
@@ -436,6 +462,305 @@ def _formatar_detalhes_fatura(invoice, cpf, incluir_pdf=False):
     #     pass
     
     return "\n".join(resposta_parts)
+
+
+# =============================================================================
+# FUNÇÕES PARA FLUXO DE ANÁLISE DE CRÉDITO VIA WHATSAPP
+# =============================================================================
+
+# Endereço fixo para análise de crédito (loja)
+CREDITO_CEP_FIXO = "32140000"
+CREDITO_NUMERO_FIXO = "712"
+CREDITO_REFERENCIA_FIXA = "do lado da mecânica"
+CREDITO_ENDERECO_ALVO = "Avenida Fernão Dias"  # Para selecionar em múltiplos endereços
+CREDITO_COMPLEMENTO_ALVO = "Loja 1"  # Para selecionar na lista de complementos
+CREDITO_LIMITE_DIARIO = 15
+CREDITO_INTERVALO_MIN_SEG = 60  # 1 minuto entre análises
+
+
+def _buscar_usuario_por_telefone(telefone: str):
+    """Busca usuário ativo por qualquer um dos 3 números de WhatsApp."""
+    from usuarios.models import Usuario
+    telefone_limpo = re.sub(r'\D', '', telefone)
+    telefones_variantes = {telefone_limpo}
+    if telefone_limpo.startswith('55') and len(telefone_limpo) > 11:
+        telefones_variantes.add(telefone_limpo[2:])
+    if not telefone_limpo.startswith('55') and len(telefone_limpo) >= 10:
+        telefones_variantes.add('55' + telefone_limpo)
+    if len(telefone_limpo) >= 8:
+        telefones_variantes.add(telefone_limpo[-8:])
+    if len(telefone_limpo) >= 9:
+        telefones_variantes.add(telefone_limpo[-9:])
+    for tel_var in telefones_variantes:
+        usuario = Usuario.objects.filter(
+            is_active=True
+        ).extra(
+            where=["REPLACE(REPLACE(REPLACE(REPLACE(tel_whatsapp, '-', ''), ' ', ''), '(', ''), ')', '') LIKE %s"],
+            params=[f'%{tel_var}%']
+        ).first()
+        if usuario:
+            return usuario
+    for tel_var in telefones_variantes:
+        usuario = Usuario.objects.filter(tel_whatsapp__icontains=tel_var, is_active=True).first()
+        if usuario:
+            return usuario
+        usuario = Usuario.objects.filter(tel_whatsapp_2__icontains=tel_var, is_active=True).first()
+        if usuario:
+            return usuario
+        usuario = Usuario.objects.filter(tel_whatsapp_3__icontains=tel_var, is_active=True).first()
+        if usuario:
+            return usuario
+    return None
+
+
+def _verificar_limites_credito(usuario) -> tuple:
+    """
+    Verifica limites de análise de crédito.
+    Returns: (ok: bool, msg_erro: str ou None)
+    - 1 min desde o fim da última análise
+    - 15 por dia (horário Brasília)
+    """
+    from crm_app.models import AnaliseCreditoHistorico
+    from django.utils import timezone
+    import pytz
+    tz_brasilia = pytz.timezone('America/Sao_Paulo')
+    agora = timezone.now()
+    agora_br = agora.astimezone(tz_brasilia)
+    # Limite 1 min: última análise
+    ultima = AnaliseCreditoHistorico.objects.filter(usuario=usuario).order_by('-criado_em').first()
+    if ultima:
+        diff_seg = (agora - ultima.criado_em).total_seconds()
+        if diff_seg < CREDITO_INTERVALO_MIN_SEG:
+            faltam = int(CREDITO_INTERVALO_MIN_SEG - diff_seg)
+            return False, f"Aguarde *{faltam} segundos* para fazer outra análise."
+    # Limite 15 por dia
+    inicio_hoje = agora_br.replace(hour=0, minute=0, second=0, microsecond=0)
+    inicio_hoje_utc = inicio_hoje.astimezone(timezone.utc)
+    count_hoje = AnaliseCreditoHistorico.objects.filter(
+        usuario=usuario,
+        criado_em__gte=inicio_hoje_utc
+    ).count()
+    if count_hoje >= CREDITO_LIMITE_DIARIO:
+        return False, "Limite diário de análises atingido (15/dia). Tente novamente amanhã."
+    return True, None
+
+
+def _iniciar_fluxo_credito(telefone: str, sessao) -> str:
+    """
+    Inicia o fluxo de análise de crédito via WhatsApp.
+    Valida autorizar_analise_credito_wpp e limites (1 min, 15/dia).
+    """
+    usuario = _buscar_usuario_por_telefone(telefone)
+    if not usuario:
+        return (
+            "❌ *ACESSO NEGADO*\n\n"
+            "Seu número não está cadastrado no sistema.\n"
+            "Verifique se o campo WhatsApp está preenchido no seu cadastro."
+        )
+    if not getattr(usuario, 'autorizar_analise_credito_wpp', False):
+        return (
+            "❌ *ACESSO NEGADO*\n\n"
+            "Você não está autorizado a fazer análise de crédito pelo WhatsApp.\n"
+            "Solicite que marquem a opção 'Autorizar fazer análise de crédito pelo Wpp' no seu cadastro."
+        )
+    ok, msg_erro = _verificar_limites_credito(usuario)
+    if not ok:
+        return f"❌ {msg_erro}"
+    sessao.etapa = 'credito_cpf'
+    sessao.dados_temp = {'usuario_id': usuario.id, 'usuario_nome': usuario.get_full_name() or usuario.username}
+    sessao.save()
+    return (
+        "🔍 *ANÁLISE DE CRÉDITO*\n\n"
+        "Digite o *CPF* a ser consultado (apenas números):\n\n"
+        "Ou digite *CANCELAR* para sair."
+    )
+
+
+def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: str):
+    """
+    Thread: executa análise de crédito no PAP (login BO, viabilidade fixa, etapa3 CPF, etapa4 random).
+    Envia resultado via WhatsApp e salva em AnaliseCreditoHistorico.
+    """
+    from usuarios.models import Usuario
+    from crm_app.models import AnaliseCreditoHistorico, SessaoWhatsapp
+    from crm_app.services_pap_nio import PAPNioAutomation
+    from crm_app.pool_bo_pap import obter_login_bo, liberar_bo
+    from crm_app.credito_utils import gerar_celular_random, gerar_email_random
+    from crm_app.whatsapp_service import WhatsAppService
+    import re
+
+    usuario = Usuario.objects.get(id=usuario_id)
+    cpf_limpo = re.sub(r'\D', '', cpf)
+    if len(cpf_limpo) != 11:
+        WhatsAppService().enviar_mensagem_texto(telefone, "❌ CPF inválido (precisa 11 dígitos). Digite *CRÉDITO* para tentar novamente.")
+        try:
+            s = SessaoWhatsapp.objects.get(telefone=telefone)
+            s.etapa = 'inicial'
+            s.dados_temp = {}
+            s.save()
+        except Exception:
+            pass
+        return
+
+    bo_usuario, msg_erro = obter_login_bo(telefone, None)
+    if not bo_usuario:
+        WhatsAppService().enviar_mensagem_texto(telefone, f"❌ {msg_erro}\n\nDigite *CRÉDITO* para tentar novamente.")
+        try:
+            s = SessaoWhatsapp.objects.get(telefone=telefone)
+            s.etapa = 'inicial'
+            s.dados_temp = {}
+            s.save()
+        except Exception:
+            pass
+        return
+
+    automacao = None
+    try:
+        headless = getattr(settings, 'PAP_HEADLESS', True)
+        capture_screenshots = getattr(settings, 'PAP_CAPTURE_SCREENSHOTS', False)
+        automacao = PAPNioAutomation(
+            matricula_pap=bo_usuario.matricula_pap,
+            senha_pap=bo_usuario.senha_pap,
+            vendedor_nome=f"Credito-{usuario.username}",
+            headless=headless,
+            capture_screenshots=capture_screenshots,
+        )
+        sucesso, msg = automacao.iniciar_sessao()
+        if not sucesso:
+            liberar_bo(bo_usuario.id, telefone)
+            WhatsAppService().enviar_mensagem_texto(telefone, f"❌ Erro ao acessar PAP: {msg}\n\nDigite *CRÉDITO* para tentar novamente.")
+            _resetar_sessao_credito(telefone)
+            return
+        matricula_pedido = usuario.matricula_pap or bo_usuario.matricula_pap
+        sucesso, msg = automacao.iniciar_novo_pedido(matricula_pedido)
+        if not sucesso:
+            automacao._fechar_sessao()
+            liberar_bo(bo_usuario.id, telefone)
+            WhatsAppService().enviar_mensagem_texto(telefone, f"❌ Erro ao iniciar pedido: {msg}\n\nDigite *CRÉDITO* para tentar novamente.")
+            _resetar_sessao_credito(telefone)
+            return
+        ok_tela, msg_tela = automacao.validar_tela_pronta_para_cep()
+        if not ok_tela:
+            automacao._fechar_sessao()
+            liberar_bo(bo_usuario.id, telefone)
+            WhatsAppService().enviar_mensagem_texto(telefone, f"❌ Página não pronta: {msg_tela}\n\nDigite *CRÉDITO* para tentar novamente.")
+            _resetar_sessao_credito(telefone)
+            return
+
+        # Etapa 2: viabilidade com endereço fixo
+        cep = CREDITO_CEP_FIXO
+        numero = CREDITO_NUMERO_FIXO
+        ref = CREDITO_REFERENCIA_FIXA
+        sucesso, msg, extra = automacao.etapa2_viabilidade(cep, numero, ref)
+        if not sucesso:
+            if isinstance(extra, dict) and extra.get('_codigo') == 'MULTIPLOS_ENDERECOS':
+                lista = extra.get('lista', [])
+                idx = 1
+                for item in lista:
+                    txt = (item.get('texto') or '').upper()
+                    if CREDITO_ENDERECO_ALVO.upper() in txt and numero in txt:
+                        idx = item.get('indice', 1)
+                        break
+                ok_sel, _ = automacao.etapa2_selecionar_endereco_instalacao(idx)
+                if ok_sel:
+                    sucesso, msg, extra = automacao.etapa2_preencher_referencia_e_continuar(cep, numero, ref)
+            elif isinstance(extra, dict) and extra.get('_codigo') == 'COMPLEMENTOS':
+                lista = extra.get('lista', [])
+                idx = 1
+                for i, item in enumerate(lista):
+                    txt = (item.get('texto') or '').upper()
+                    if CREDITO_COMPLEMENTO_ALVO.upper() in txt:
+                        idx = i + 1
+                        break
+                ok_sel, _ = automacao.etapa2_selecionar_complemento(idx)
+                if ok_sel:
+                    sucesso, msg, extra = automacao.etapa2_clicar_avancar_apos_complemento(cep, numero)
+            if not sucesso and not isinstance(extra, dict):
+                automacao._fechar_sessao()
+                liberar_bo(bo_usuario.id, telefone)
+                WhatsAppService().enviar_mensagem_texto(telefone, f"❌ Erro na viabilidade: {msg}\n\nDigite *CRÉDITO* para tentar novamente.")
+                _resetar_sessao_credito(telefone)
+                return
+
+        if not sucesso:
+            automacao._fechar_sessao()
+            liberar_bo(bo_usuario.id, telefone)
+            WhatsAppService().enviar_mensagem_texto(telefone, f"❌ {msg}\n\nDigite *CRÉDITO* para tentar novamente.")
+            _resetar_sessao_credito(telefone)
+            return
+
+        # Etapa 3: CPF
+        sucesso, msg, _ = automacao.etapa3_cadastro_cliente(cpf_limpo)
+        if not sucesso:
+            automacao._fechar_sessao()
+            liberar_bo(bo_usuario.id, telefone)
+            WhatsAppService().enviar_mensagem_texto(telefone, f"❌ {msg}\n\nDigite *CRÉDITO* para tentar novamente.")
+            _resetar_sessao_credito(telefone)
+            return
+
+        # Etapa 4: contato com dados aleatórios
+        cel = gerar_celular_random()
+        cel_sec = gerar_celular_random()
+        email = gerar_email_random()
+        max_tentativas = 5
+        for tentativa in range(max_tentativas):
+            sucesso, msg, resultado_credito = automacao.etapa4_contato(cel, email, celular_secundario=cel_sec)
+            if sucesso:
+                break
+            if msg in ('TELEFONE_REJEITADO', 'EMAIL_REJEITADO', 'EMAIL_INVALIDO'):
+                cel = gerar_celular_random()
+                cel_sec = gerar_celular_random()
+                email = gerar_email_random()
+                continue
+            if msg == "CREDITO_NEGADO":
+                break
+            automacao._fechar_sessao()
+            liberar_bo(bo_usuario.id, telefone)
+            WhatsAppService().enviar_mensagem_texto(telefone, f"❌ Erro na análise: {msg}\n\nDigite *CRÉDITO* para tentar novamente.")
+            _resetar_sessao_credito(telefone)
+            return
+
+        aprovado = msg != "CREDITO_NEGADO" and sucesso
+        resultado_detalhe = (resultado_credito or "") if sucesso else None
+        AnaliseCreditoHistorico.objects.create(
+            usuario=usuario,
+            cpf_consultado=cpf_limpo,
+            aprovado=aprovado,
+            resultado_detalhe=resultado_detalhe,
+        )
+        automacao._fechar_sessao()
+        liberar_bo(bo_usuario.id, telefone)
+        _resetar_sessao_credito(telefone)
+
+        if aprovado:
+            resp = f"✅ *Crédito APROVADO!*\n\n{resultado_detalhe or 'Elegível para formas de pagamento disponíveis.'}"
+        else:
+            resp = "❌ *Crédito NEGADO* para este CPF."
+        WhatsAppService().enviar_mensagem_texto(telefone, resp)
+    except Exception as e:
+        logger.exception("[CRÉDITO] Erro ao executar análise: %s", e)
+        if automacao:
+            try:
+                automacao._fechar_sessao()
+            except Exception:
+                pass
+        try:
+            liberar_bo(bo_usuario.id, telefone)
+        except Exception:
+            pass
+        _resetar_sessao_credito(telefone)
+        WhatsAppService().enviar_mensagem_texto(telefone, f"❌ Erro ao consultar crédito: {e}\n\nDigite *CRÉDITO* para tentar novamente.")
+
+
+def _resetar_sessao_credito(telefone: str):
+    try:
+        from crm_app.models import SessaoWhatsapp
+        s = SessaoWhatsapp.objects.get(telefone=telefone)
+        s.etapa = 'inicial'
+        s.dados_temp = {}
+        s.save()
+    except Exception:
+        pass
 
 
 # =============================================================================
@@ -4256,9 +4581,10 @@ def _verificar_biometria_venda(telefone: str, sessao, dados: dict) -> str:
         return f"❌ *ERRO*\n\n{str(e)}\n\nDigite *VENDER* para iniciar novamente."
 
 
-def processar_webhook_whatsapp(data):
+def processar_webhook_whatsapp(data, request=None):
     """
     Processa mensagens recebidas do WhatsApp via webhook.
+    request: opcional, usado para gerar URL do PDF (serve-pdf) e enviar documento por URL na Z-API.
     
     Formato esperado do data (Z-API):
     {
@@ -4335,21 +4661,45 @@ def processar_webhook_whatsapp(data):
     
     # Normalizar: ignorar mensagens vazias ou só espaços (evita processar eventos sem texto)
     mensagem_texto = (mensagem_texto or "").strip()
+
+    # Extrair URL de imagem (Z-API: image.imageUrl) - para etapa inclusao_foto
+    image_url = None
+    if 'image' in data and isinstance(data.get('image'), dict):
+        image_url = data['image'].get('imageUrl') or data['image'].get('image')
+    elif data.get('imageUrl'):
+        image_url = data.get('imageUrl')
+    if image_url:
+        logger.info(f"[Webhook] Imagem detectada: {image_url[:80]}...")
+    # Extrair URL de documento (Z-API: document.documentUrl ou document como URL) - para etapa inclusao_comprovante
+    document_url = None
+    if 'document' in data:
+        doc = data['document']
+        if isinstance(doc, dict):
+            document_url = doc.get('documentUrl') or doc.get('document') or doc.get('url')
+        elif isinstance(doc, str) and doc.startswith('http'):
+            document_url = doc
+    if not document_url and data.get('documentUrl'):
+        document_url = data.get('documentUrl')
+    if document_url:
+        logger.info(f"[Webhook] Documento detectado: {document_url[:80]}...")
     
     logger.info(f"[Webhook] Telefone extraído: {telefone}")
     logger.info(f"[Webhook] Mensagem extraída: {mensagem_texto}")
     logger.info(f"[Webhook] Tipo da mensagem: {type(mensagem_texto)}")
     
-    if not telefone or not mensagem_texto:
-        logger.warning(f"[Webhook] Dados incompletos: telefone={telefone}, mensagem={mensagem_texto}")
-        logger.warning(f"[Webhook] Payload completo para análise: {data}")
+    # Permitir continuar sem texto quando há imagem (ex: etapa inclusao_foto)
+    if not telefone:
+        logger.warning(f"[Webhook] Dados incompletos: telefone vazio")
+        return {'status': 'erro', 'mensagem': 'Telefone não informado'}
+    if not mensagem_texto and not image_url and not document_url:
+        logger.warning(f"[Webhook] Dados incompletos: telefone={telefone}, mensagem vazia e sem anexo")
         return {'status': 'erro', 'mensagem': f'Dados incompletos: telefone={telefone}, mensagem={mensagem_texto}'}
 
     import time
     _webhook_t0 = time.monotonic()  # provisório: medir tempo de cada etapa (retorno ao usuário)
 
     telefone_formatado = formatar_telefone(telefone)
-    mensagem_limpa = mensagem_texto.strip().upper()
+    mensagem_limpa = (mensagem_texto or "").strip().upper()
     
     logger.info(f"[Webhook] Mensagem recebida de {telefone_formatado}: {mensagem_texto}")
     logger.info(f"[Webhook] Mensagem limpa (uppercase): {mensagem_limpa}")
@@ -4571,13 +4921,22 @@ def processar_webhook_whatsapp(data):
         # Verificação mais flexível - aceita comandos com ou sem acentuação, maiúsculas/minúsculas
         mensagem_sem_acentos = mensagem_limpa.replace('Á', 'A').replace('É', 'E').replace('Í', 'I').replace('Ó', 'O').replace('Ú', 'U')
         
-        # Comando FATURA
+        # Comando FATURA (Nio Negociar / API)
         if mensagem_limpa in ['FATURA', 'FATURAS']:
             logger.info(f"[Webhook] Comando FATURA reconhecido!")
             sessao.etapa = 'fatura_cpf'
             sessao.dados_temp = {}
             sessao.save()
             resposta = "Por favor, digite o CPF do titular da fatura (apenas números):"
+            return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
+
+        # Comando CONTA (2ª via - site sem reCAPTCHA)
+        if mensagem_limpa in ['CONTA', 'CONTAS']:
+            logger.info(f"[Webhook] Comando CONTA reconhecido!")
+            sessao.etapa = 'conta_cpf'
+            sessao.dados_temp = {}
+            sessao.save()
+            resposta = "Digite o CPF para consultar a conta (2ª via, apenas números):"
             return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
 
         # Comando VIABILIDADE
@@ -4589,6 +4948,17 @@ def processar_webhook_whatsapp(data):
             resposta = "Por favor, digite o CEP do endereço para consulta de viabilidade (apenas números):"
             return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
 
+        # Comando INCLUSÃO (solicitar viabilidade via formulário)
+        if mensagem_limpa in ['INCLUSAO', 'INCLUSÃO', 'INCLUSAO']:
+            logger.info(f"[Webhook] Comando INCLUSÃO reconhecido!")
+            sessao.etapa = 'inclusao_cep'
+            sessao.dados_temp = {}
+            sessao.save()
+            resposta = ("📋 *Solicitação de Viabilidade (Inclusão)*\n\n"
+                        "Digite o *CEP* do endereço (apenas números).\n"
+                        "Ou digite *CANCELAR* para sair.")
+            return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
+
         # Comando STATUS
         if mensagem_limpa in ['STATUS', 'SITUACAO', 'SITUAÇÃO']:
             logger.info(f"[Webhook] Comando STATUS reconhecido!")
@@ -4598,7 +4968,8 @@ def processar_webhook_whatsapp(data):
             resposta = ("Para consultar o status do pedido, escolha uma opção:\n"
                         "1️⃣ CPF\n2️⃣ OS (Ordem de Serviço)\n\nDigite 1 para CPF ou 2 para O.S:")
             return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
-        if 'FACHADA' in mensagem_limpa or 'FACADA' in mensagem_limpa:
+        # FACHADA só como comando quando etapa é inicial (evita "Fachada viável" em inclusao_observacoes ser interpretado como comando)
+        if etapa_atual == 'inicial' and ('FACHADA' in mensagem_limpa or 'FACADA' in mensagem_limpa):
             logger.info(f"[Webhook] Comando FACHADA reconhecido!")
             sessao.etapa = 'fachada_cep'
             sessao.dados_temp = {}
@@ -4626,6 +4997,14 @@ def processar_webhook_whatsapp(data):
                 resposta = "Nenhum agendamento encontrado para hoje."
             return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
         
+        elif mensagem_limpa in ['CREDITO', 'CRÉDITO']:
+            logger.info(f"[Webhook] Comando CRÉDITO reconhecido!")
+            resposta = _iniciar_fluxo_credito(telefone_formatado, sessao)
+            _registrar_estatistica(telefone_formatado, 'CREDITO')
+            if not resposta:
+                resposta = "Não foi possível iniciar o fluxo. Tente novamente."
+            return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
+
         elif mensagem_limpa in ['VENDER', 'VENDA', 'NOVA VENDA']:
             logger.info(f"[Webhook] Comando VENDER reconhecido!")
             resposta = _iniciar_fluxo_venda(telefone_formatado, sessao)
@@ -4644,10 +5023,13 @@ def processar_webhook_whatsapp(data):
                 "Escolha uma opção:\n"
                 "• *Fachada* - Consultar fachadas por CEP\n"
                 "• *Viabilidade* - Consultar viabilidade por CEP e número\n"
+                "• *Inclusão* - Solicitar viabilidade (formulário)\n"
                 "• *Status* - Consultar status de pedido\n"
-                "• *Fatura* - Consultar fatura por CPF\n"
+                "• *Fatura* - Consultar fatura por CPF (Nio Negociar)\n"
+                "• *Conta* - 2ª via de conta por CPF (site Nio)\n"
                 "• *Material* - Buscar materiais/documentos\n"
                 "• *Andamento* - Ver agendamentos do dia\n"
+                "• *Crédito* - Consultar análise de crédito por CPF\n"
                 "• *Vender* - Realizar venda pelo WhatsApp 🆕"
             )
             return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
@@ -4691,6 +5073,236 @@ def processar_webhook_whatsapp(data):
                 sessao.etapa = 'inicial'
                 sessao.dados_temp = {}
                 sessao.save()
+
+        # --- INCLUSÃO (Solicitação de viabilidade via formulário) ---
+        elif etapa_atual.startswith('inclusao_'):
+            if mensagem_limpa == 'CANCELAR':
+                sessao.etapa = 'inicial'
+                sessao.dados_temp = {}
+                sessao.save()
+                resposta = "Solicitação cancelada. Digite *MENU* para ver as opções."
+                return _enviar_resposta_e_retornar(resposta)
+
+            from crm_app.services_inclusao_viabilidade import (
+                consultar_viacep,
+                buscar_coordenadas,
+                obter_tipo_logradouro,
+                baixar_street_view,
+                formatar_cep,
+                preencher_formulario_inclusao,
+            )
+
+            if etapa_atual == 'inclusao_cep':
+                cep_limpo = limpar_texto_cep_cpf(mensagem_texto)
+                if not cep_limpo or len(cep_limpo) < 8:
+                    resposta = "❌ CEP inválido. Digite o CEP completo (8 dígitos) ou *CANCELAR*:"
+                else:
+                    viacep = consultar_viacep(cep_limpo)
+                    if not viacep:
+                        resposta = "❌ CEP não encontrado. Digite outro CEP ou *CANCELAR*:"
+                    else:
+                        sessao.etapa = 'inclusao_numero'
+                        sessao.dados_temp = {'cep': cep_limpo, 'viacep': viacep}
+                        sessao.save()
+                        end = viacep.get('logradouro') or viacep.get('localidade') or cep_limpo
+                        resposta = f"✅ CEP encontrado: {end}\n\nDigite o *número da fachada* (se SN ou sem número, informe 0):"
+                return _enviar_resposta_e_retornar(resposta)
+
+            elif etapa_atual == 'inclusao_numero':
+                num = mensagem_texto.strip().upper()
+                if num in ('SN', 'S/N', 'SEM NÚMERO', 'SEM NUMERO'):
+                    num = '0'
+                elif num.isdigit():
+                    num = num
+                else:
+                    num = mensagem_texto.strip()
+                sessao.etapa = 'inclusao_complementos'
+                sessao.dados_temp = {**dados_temp, 'numero_fachada': num}
+                sessao.save()
+                resposta = "Digite os *complementos* (Quadra, lote, apto, casa...). Se não houver, escreva *sem complementos*:"
+                return _enviar_resposta_e_retornar(resposta)
+
+            elif etapa_atual == 'inclusao_complementos':
+                comp = mensagem_texto.strip()
+                if not comp:
+                    comp = "sem complementos"
+                elif comp.upper() in ('NAO', 'NÃO', 'N', 'SEM'):
+                    comp = "sem complementos"
+                sessao.etapa = 'inclusao_vizinhos'
+                sessao.dados_temp = {**dados_temp, 'complementos': comp}
+                sessao.save()
+                resposta = "Digite as *fachadas/lotes vizinhos* no formato:\nFrente xx, Direita xx, Esquerda xx\n\n(Informe os 3 valores que souber):"
+                return _enviar_resposta_e_retornar(resposta)
+
+            elif etapa_atual == 'inclusao_vizinhos':
+                viz = mensagem_texto.strip()
+                if not viz:
+                    resposta = "Por favor, informe as fachadas vizinhas (Frente xx, Direita xx, Esquerda xx):"
+                    return _enviar_resposta_e_retornar(resposta)
+                viacep = dados_temp.get('viacep', {})
+                logr = viacep.get('logradouro', '')
+                cidade = viacep.get('localidade', '')
+                uf = viacep.get('uf', '')
+                numero = dados_temp.get('numero_fachada', '0')
+                endereco_completo = f"{logr}, {numero}, {cidade} - {uf}, Brasil"
+                coords = buscar_coordenadas(endereco_completo)
+                if coords:
+                    lat, lng = coords['lat'], coords['lng']
+                    coord_str = f"{lat:.14f}, {lng:.14f}"
+                    maps_link = f"https://www.google.com/maps?q={lat},{lng}"
+                    sessao.etapa = 'inclusao_coordenadas'
+                    sessao.dados_temp = {**dados_temp, 'fachadas_vizinhos': viz, 'coordenadas_preview': coord_str, 'maps_link': maps_link, 'coords_lat': lat, 'coords_lng': lng}
+                    sessao.save()
+                    resposta = (f"📍 Coordenadas encontradas:\n{coord_str}\n\n"
+                                f"🔗 Confira no mapa: {maps_link}\n\n"
+                                f"As coordenadas caem no endereço correto? Responda *SIM* ou digite as coordenadas manualmente (formato: -xx.xxxxxx, -xx.xxxxxxx):")
+                else:
+                    sessao.etapa = 'inclusao_coordenadas'
+                    sessao.dados_temp = {**dados_temp, 'fachadas_vizinhos': viz}
+                    sessao.save()
+                    resposta = "Não foi possível obter coordenadas automaticamente. Digite as coordenadas manualmente (formato: -xx.xxxxxx, -xx.xxxxxxx) ou copie do Google Maps:"
+                return _enviar_resposta_e_retornar(resposta)
+
+            elif etapa_atual == 'inclusao_coordenadas':
+                if mensagem_limpa in ('SIM', 'S'):
+                    coord_str = dados_temp.get('coordenadas_preview', '')
+                    if coord_str:
+                        sessao.etapa = 'inclusao_foto'
+                        sessao.dados_temp = {**dados_temp, 'coordenadas': coord_str}
+                        sessao.save()
+                        resposta = "Tentando obter foto do Street View automaticamente...\n\nSe não houver foto disponível, *envie uma foto* do local (Google Street View ou satélite):"
+                    else:
+                        resposta = "Erro ao confirmar coordenadas. Tente novamente."
+                else:
+                    coord_str = mensagem_texto.strip()
+                    if coord_str and (',' in coord_str or ' ' in coord_str):
+                        parts = re.sub(r'\s+', ' ', coord_str).replace(',', ' ').split()
+                        lat_val, lng_val = dados_temp.get('coords_lat'), dados_temp.get('coords_lng')
+                        if len(parts) >= 2:
+                            try:
+                                lat_val = float(parts[0])
+                                lng_val = float(parts[1])
+                            except (ValueError, TypeError):
+                                pass
+                        sessao.etapa = 'inclusao_foto'
+                        sessao.dados_temp = {**dados_temp, 'coordenadas': coord_str, 'coords_lat': lat_val, 'coords_lng': lng_val}
+                        sessao.save()
+                        resposta = "Tentando obter foto do Street View...\n\nSe não houver foto, *envie uma imagem* do local:"
+                    else:
+                        resposta = "Digite as coordenadas no formato: -xx.xxxxxx, -xx.xxxxxxx"
+                return _enviar_resposta_e_retornar(resposta)
+
+            elif etapa_atual == 'inclusao_foto':
+                foto_path = None
+                if image_url:
+                    try:
+                        import requests as req
+                        r = req.get(image_url, timeout=15)
+                        if r.status_code == 200:
+                            import tempfile
+                            fd, foto_path = tempfile.mkstemp(suffix='.jpg', prefix='inclusao_')
+                            os.close(fd)
+                            with open(foto_path, 'wb') as f:
+                                f.write(r.content)
+                            logger.info(f"[Inclusão] Foto recebida do usuário salva em {foto_path}")
+                    except Exception as e:
+                        logger.warning(f"[Inclusão] Erro ao baixar imagem: {e}")
+                if not foto_path:
+                    lat = dados_temp.get('coords_lat')
+                    lng = dados_temp.get('coords_lng')
+                    if lat is not None and lng is not None:
+                        foto_path = baixar_street_view(lat, lng)
+                if foto_path:
+                    sessao.etapa = 'inclusao_comprovante'
+                    sessao.dados_temp = {**dados_temp, 'foto_path': foto_path, 'comprovantes_paths': []}
+                    sessao.save()
+                    resposta = "✅ Foto recebida.\n\nDeseja anexar *comprovante de endereço*? (PDF ou imagem)\n\nEnvie o(s) arquivo(s) ou digite *pronto* para continuar:"
+                else:
+                    resposta = "Por favor, *envie uma foto* do local (Google Street View ou satélite são aceitas):"
+                return _enviar_resposta_e_retornar(resposta)
+
+            elif etapa_atual == 'inclusao_comprovante':
+                comprovantes = list(dados_temp.get('comprovantes_paths') or [])
+                arquivo_baixado = None
+                if image_url:
+                    try:
+                        import requests as req
+                        r = req.get(image_url, timeout=15)
+                        if r.status_code == 200:
+                            import tempfile
+                            fd, path = tempfile.mkstemp(suffix='.jpg', prefix='inclusao_comp_')
+                            os.close(fd)
+                            with open(path, 'wb') as f:
+                                f.write(r.content)
+                            comprovantes.append(path)
+                            arquivo_baixado = True
+                            logger.info(f"[Inclusão] Comprovante (imagem) salvo: {path}")
+                    except Exception as e:
+                        logger.warning(f"[Inclusão] Erro ao baixar imagem comprovante: {e}")
+                elif document_url:
+                    try:
+                        import requests as req
+                        r = req.get(document_url, timeout=15)
+                        if r.status_code == 200:
+                            import tempfile
+                            ext = '.pdf'
+                            ct = r.headers.get('Content-Type', '')
+                            if 'image' in ct:
+                                ext = '.jpg' if 'jpeg' in ct or 'jpg' in ct else '.png'
+                            fd, path = tempfile.mkstemp(suffix=ext, prefix='inclusao_comp_')
+                            os.close(fd)
+                            with open(path, 'wb') as f:
+                                f.write(r.content)
+                            comprovantes.append(path)
+                            arquivo_baixado = True
+                            logger.info(f"[Inclusão] Comprovante (documento) salvo: {path}")
+                    except Exception as e:
+                        logger.warning(f"[Inclusão] Erro ao baixar documento comprovante: {e}")
+                if mensagem_limpa in ['PRONTO', 'PULAR', 'CONTINUAR', 'NÃO', 'NAO']:
+                    sessao.etapa = 'inclusao_observacoes'
+                    sessao.dados_temp = {**dados_temp, 'comprovantes_paths': comprovantes}
+                    sessao.save()
+                    resposta = "Digite as *observações de vendas* (opcional - pode enviar em branco):"
+                elif arquivo_baixado:
+                    sessao.dados_temp = {**dados_temp, 'comprovantes_paths': comprovantes}
+                    sessao.save()
+                    resposta = f"✅ Comprovante recebido. Envie mais ou digite *pronto* para continuar:"
+                else:
+                    resposta = "Envie um comprovante (PDF ou imagem) ou digite *pronto* para pular:"
+                return _enviar_resposta_e_retornar(resposta)
+
+            elif etapa_atual == 'inclusao_enviando':
+                return _enviar_resposta_e_retornar("⏳ Enviando solicitação de viabilidade... Aguarde.")
+            elif etapa_atual == 'inclusao_observacoes':
+                # Lock por telefone: evita duas abas abertas (webhook duplicado / retry)
+                with _inclusao_form_lock:
+                    if telefone_formatado in _inclusao_form_em_execucao:
+                        return _enviar_resposta_e_retornar("⏳ Enviando solicitação de viabilidade... Aguarde.")
+                    _inclusao_form_em_execucao.add(telefone_formatado)
+                try:
+                    obs = mensagem_texto.strip() if mensagem_texto else ''
+                    dados_finais = {**dados_temp, 'observacoes': obs}
+                    foto_path = dados_temp.get('foto_path')
+                    comprovantes = dados_temp.get('comprovantes_paths') or []
+                    arquivos_paths = [foto_path] + comprovantes if foto_path else list(comprovantes)
+                    arquivos_paths = [p for p in arquivos_paths if p and os.path.isfile(p)]
+                    sessao.etapa = 'inclusao_enviando'
+                    sessao.save(update_fields=['etapa'])
+                    sucesso, msg = preencher_formulario_inclusao(dados_finais, arquivos_paths=arquivos_paths)
+                    for p in arquivos_paths:
+                        try:
+                            if p and os.path.isfile(p):
+                                os.unlink(p)
+                        except Exception:
+                            pass
+                    sessao.etapa = 'inicial'
+                    sessao.dados_temp = {}
+                    sessao.save()
+                    resposta = msg if sucesso else f"❌ {msg}"
+                    return _enviar_resposta_e_retornar(resposta)
+                finally:
+                    with _inclusao_form_lock:
+                        _inclusao_form_em_execucao.discard(telefone_formatado)
         
         elif etapa_atual == 'status_tipo':
             if mensagem_limpa in ['1', 'CPF']:
@@ -4729,6 +5341,74 @@ def processar_webhook_whatsapp(data):
                 sessao.etapa = 'inicial'
                 sessao.dados_temp = {}
                 sessao.save()
+
+        elif etapa_atual == 'credito_aguardando':
+            resposta = "⏳ Consultando crédito... Aguarde. Você receberá a resposta em seguida."
+            return _enviar_resposta_e_retornar(resposta)
+
+        elif etapa_atual == 'credito_cpf':
+            if mensagem_limpa in ['CANCELAR', 'SAIR', 'PARAR']:
+                sessao.etapa = 'inicial'
+                sessao.dados_temp = {}
+                sessao.save()
+                resposta = "❌ Cancelado. Digite *CRÉDITO* para consultar novamente."
+            else:
+                cpf_limpo = limpar_texto_cep_cpf(mensagem_texto)
+                if not cpf_limpo or len(cpf_limpo) != 11 or not cpf_limpo.isdigit():
+                    resposta = "❌ CPF inválido. Digite o CPF completo (11 dígitos) ou *CANCELAR*:"
+                else:
+                    usuario_id = dados_temp.get('usuario_id')
+                    if not usuario_id:
+                        sessao.etapa = 'inicial'
+                        sessao.dados_temp = {}
+                        sessao.save()
+                        resposta = "❌ Sessão expirada. Digite *CRÉDITO* para iniciar novamente."
+                    else:
+                        threading.Thread(
+                            target=_executar_analise_credito_background,
+                            args=(telefone_formatado, usuario_id, cpf_limpo),
+                            daemon=True
+                        ).start()
+                        sessao.etapa = 'credito_aguardando'
+                        sessao.save()
+                        resposta = "⏳ Consultando crédito... Aguarde alguns instantes. Você receberá a resposta em seguida."
+            return _enviar_resposta_e_retornar(resposta)
+
+        elif etapa_atual == 'conta_cpf':
+            # CONTA = 2ª via pelo site (sem reCAPTCHA)
+            cpf_limpo = limpar_texto_cep_cpf(mensagem_texto)
+            cpf_valido = cpf_limpo and len(cpf_limpo) == 11 and cpf_limpo.isdigit()
+            if not cpf_valido:
+                resposta = "❌ CPF inválido. Digite o CPF completo (11 dígitos, apenas números):"
+            else:
+                try:
+                    from django.conf import settings
+                    from crm_app.services_nio import buscar_fatura_segunda_via_site
+                    headless_conta = getattr(settings, 'PAP_HEADLESS', True)
+                    invoices = buscar_fatura_segunda_via_site(
+                        cpf_limpo, incluir_pdf=True, headless=headless_conta
+                    )
+                    if not invoices:
+                        cpf_formatado = f"{cpf_limpo[:3]}.XXX.XXX-{cpf_limpo[-2:]}"
+                        resposta = f"🔎 Consultando 2ª via para CPF {cpf_formatado}...\n\nNenhuma conta encontrada para este CPF."
+                        sessao.etapa = 'inicial'
+                        sessao.dados_temp = {}
+                        sessao.save()
+                    else:
+                        invoice = invoices[0]
+                        resposta = _formatar_detalhes_fatura(invoice, cpf_limpo, incluir_pdf=True)
+                        if invoice.get('pdf_path') or invoice.get('pdf_url'):
+                            sessao.dados_temp = {'invoice_para_pdf': invoice}
+                        else:
+                            sessao.dados_temp = {}
+                        sessao.etapa = 'inicial'
+                        sessao.save()
+                except Exception as e:
+                    logger.exception(f"[Webhook] Erro ao buscar conta (2ª via): {e}")
+                    resposta = "❌ Erro ao consultar a conta. Tente novamente em instantes."
+                    sessao.etapa = 'inicial'
+                    sessao.dados_temp = {}
+                    sessao.save()
         
         elif etapa_atual == 'fatura_cpf':
             cpf_limpo = limpar_texto_cep_cpf(mensagem_texto)
@@ -4745,6 +5425,10 @@ def processar_webhook_whatsapp(data):
                 with _fatura_cpf_lock:
                     sessao.refresh_from_db()
                     dados_temp = sessao.dados_temp or {}
+                    # Evitar processar duas vezes quando o webhook é disparado em duplicidade (ex.: Z-API)
+                    if dados_temp.get('processando_pdf'):
+                        resposta = "⏳ Ainda processando sua fatura. Aguarde um momento..."
+                        return _enviar_resposta_e_retornar(resposta)
                     if sessao.etapa == 'fatura_selecionar' and dados_temp.get('cpf') == cpf_limpo:
                         n = len(dados_temp.get('faturas', []))
                         resposta = f"📋 Lista já enviada. Digite o *NÚMERO* da fatura (1 a {n}) que deseja ver os detalhes:"
@@ -4753,25 +5437,18 @@ def processar_webhook_whatsapp(data):
                     try:
                         from django.conf import settings
                         headless_fatura = getattr(settings, 'PAP_HEADLESS', True)  # False = ver navegador (igual Vender)
-                        # Buscar TODAS as faturas - fazer múltiplas requisições se necessário
                         todas_invoices = []
                         offset = 0
                         limit = 50  # Aumentar limite por requisição
                         max_tentativas = 5  # Evitar loop infinito
-                        
                         for tentativa in range(max_tentativas):
                             resultado = consultar_dividas_nio(cpf_limpo, offset=offset, limit=limit, headless=headless_fatura)
                             invoices_lote = resultado.get('invoices', [])
-                            
                             if not invoices_lote:
-                                break  # Não há mais faturas
-                            
+                                break
                             todas_invoices.extend(invoices_lote)
-                            
-                            # Se retornou menos que o limite, já pegou todas
                             if len(invoices_lote) < limit:
                                 break
-                            
                             offset += limit
                             logger.info(f"[Webhook] Buscando mais faturas: offset={offset}, já encontradas={len(todas_invoices)}")
                         
@@ -4811,62 +5488,75 @@ def processar_webhook_whatsapp(data):
                             if len(todas_faturas) == 1:
                                 # Se só tem uma, mostra direto mas busca PDF também
                                 invoice = todas_faturas[0]
+                                # Marcar logo no início para evitar que outro webhook (duplicado) processe de novo
+                                sessao.dados_temp = (sessao.dados_temp or {}) | {'processando_pdf': True, 'cpf': cpf_limpo}
+                                sessao.save(update_fields=['dados_temp', 'updated_at'])
                                 
-                                # Tentar buscar PDF via API primeiro (mais rápido)
-                                print(f"[DEBUG PDF] 🔍 ETAPA 1: Tentando buscar PDF via API...")
-                                logger.info(f"[DEBUG PDF] 🔍 ETAPA 1: Tentando buscar PDF via API para fatura única")
-                                logger.info(f"[DEBUG PDF] Parâmetros: debt_id={invoice.get('debt_id')}, invoice_id={invoice.get('invoice_id')}, cpf={cpf_limpo}, ref={invoice.get('reference_month')}")
-                                print(f"[DEBUG PDF] debt_id={invoice.get('debt_id')}, invoice_id={invoice.get('invoice_id')}, cpf={cpf_limpo}")
+                                # Tentar buscar PDF via API primeiro (mais rápido) — a menos que FORCE_FATURA_PDF_PLAYWRIGHT=true (debug)
+                                # Segunda-via já traz pdf_path; não usar API (sem debt_id)
+                                force_pdf_playwright = getattr(settings, 'FORCE_FATURA_PDF_PLAYWRIGHT', False)
+                                eh_segunda_via = invoice.get('source') == 'segunda_via_site'
+                                if not force_pdf_playwright and not eh_segunda_via:
+                                    print(f"[DEBUG PDF] 🔍 ETAPA 1: Tentando buscar PDF via API...")
+                                    logger.info(f"[DEBUG PDF] 🔍 ETAPA 1: Tentando buscar PDF via API para fatura única")
+                                    logger.info(f"[DEBUG PDF] Parâmetros: debt_id={invoice.get('debt_id')}, invoice_id={invoice.get('invoice_id')}, cpf={cpf_limpo}, ref={invoice.get('reference_month')}")
+                                    print(f"[DEBUG PDF] debt_id={invoice.get('debt_id')}, invoice_id={invoice.get('invoice_id')}, cpf={cpf_limpo}")
+                                    
+                                    try:
+                                        from crm_app.nio_api import get_invoice_pdf_url
+                                        import requests
+                                        session = requests.Session()
+                                        
+                                        api_base = resultado.get('api_base', '')
+                                        token = resultado.get('token', '')
+                                        session_id = resultado.get('session_id', '')
+                                        
+                                        print(f"[DEBUG PDF] api_base={api_base}, token={'SIM' if token else 'NÃO'}, session_id={'SIM' if session_id else 'NÃO'}")
+                                        logger.info(f"[DEBUG PDF] api_base={api_base}, token presente={bool(token)}, session_id presente={bool(session_id)}")
+                                        
+                                        pdf_url = get_invoice_pdf_url(
+                                            api_base,
+                                            token,
+                                            session_id,
+                                            invoice.get('debt_id', ''),
+                                            invoice.get('invoice_id', ''),
+                                            cpf_limpo,
+                                            invoice.get('reference_month', ''),
+                                            session
+                                        )
+                                        
+                                        print(f"[DEBUG PDF] Resultado get_invoice_pdf_url: {pdf_url}")
+                                        logger.info(f"[DEBUG PDF] Resultado get_invoice_pdf_url: {pdf_url}")
+                                        
+                                        if pdf_url:
+                                            invoice['pdf_url'] = pdf_url
+                                            print(f"[DEBUG PDF] ✅ PDF encontrado via API: {pdf_url[:100]}...")
+                                            logger.info(f"[DEBUG PDF] ✅ PDF encontrado via API para fatura única: {pdf_url[:100]}...")
+                                        else:
+                                            print(f"[DEBUG PDF] ❌ PDF não encontrado via API (retornou None)")
+                                            logger.warning(f"[DEBUG PDF] ❌ PDF não encontrado via API (retornou None)")
+                                    except Exception as e:
+                                        print(f"[DEBUG PDF] ❌ ERRO ao buscar PDF via API: {type(e).__name__}: {e}")
+                                        logger.warning(f"[DEBUG PDF] ❌ Erro ao buscar PDF via API para fatura única: {e}")
+                                        import traceback
+                                        logger.error(f"[DEBUG PDF] Traceback: {traceback.format_exc()}")
+                                        print(f"[DEBUG PDF] Traceback: {traceback.format_exc()}")
+                                else:
+                                    print(f"[DEBUG PDF] 🔧 FORCE_FATURA_PDF_PLAYWRIGHT=true: pulando API, indo direto para Playwright (para você ver os cliques)")
+                                    logger.info(f"[DEBUG PDF] FORCE_FATURA_PDF_PLAYWRIGHT ativo - PDF será buscado via navegador")
+                                    invoice.pop('pdf_url', None)
+                                    invoice.pop('pdf_path', None)
                                 
-                                try:
-                                    from crm_app.nio_api import get_invoice_pdf_url
-                                    import requests
-                                    session = requests.Session()
-                                    
-                                    api_base = resultado.get('api_base', '')
-                                    token = resultado.get('token', '')
-                                    session_id = resultado.get('session_id', '')
-                                    
-                                    print(f"[DEBUG PDF] api_base={api_base}, token={'SIM' if token else 'NÃO'}, session_id={'SIM' if session_id else 'NÃO'}")
-                                    logger.info(f"[DEBUG PDF] api_base={api_base}, token presente={bool(token)}, session_id presente={bool(session_id)}")
-                                    
-                                    pdf_url = get_invoice_pdf_url(
-                                        api_base,
-                                        token,
-                                        session_id,
-                                        invoice.get('debt_id', ''),
-                                        invoice.get('invoice_id', ''),
-                                        cpf_limpo,
-                                        invoice.get('reference_month', ''),
-                                        session
-                                    )
-                                    
-                                    print(f"[DEBUG PDF] Resultado get_invoice_pdf_url: {pdf_url}")
-                                    logger.info(f"[DEBUG PDF] Resultado get_invoice_pdf_url: {pdf_url}")
-                                    
-                                    if pdf_url:
-                                        invoice['pdf_url'] = pdf_url
-                                        print(f"[DEBUG PDF] ✅ PDF encontrado via API: {pdf_url[:100]}...")
-                                        logger.info(f"[DEBUG PDF] ✅ PDF encontrado via API para fatura única: {pdf_url[:100]}...")
-                                    else:
-                                        print(f"[DEBUG PDF] ❌ PDF não encontrado via API (retornou None)")
-                                        logger.warning(f"[DEBUG PDF] ❌ PDF não encontrado via API (retornou None)")
-                                except Exception as e:
-                                    print(f"[DEBUG PDF] ❌ ERRO ao buscar PDF via API: {type(e).__name__}: {e}")
-                                    logger.warning(f"[DEBUG PDF] ❌ Erro ao buscar PDF via API para fatura única: {e}")
-                                    import traceback
-                                    logger.error(f"[DEBUG PDF] Traceback: {traceback.format_exc()}")
-                                    print(f"[DEBUG PDF] Traceback: {traceback.format_exc()}")
-                                
-                                # Se não encontrou via API, tenta baixar como humano (Playwright)
+                                # Se não encontrou via API (ou FORCE_FATURA_PDF_PLAYWRIGHT), tenta baixar como humano (Playwright)
                                 print(f"[DEBUG PDF] 🔍 ETAPA 2: Verificando se precisa baixar via Playwright...")
                                 print(f"[DEBUG PDF] invoice.get('pdf_url')={invoice.get('pdf_url')}")
                                 print(f"[DEBUG PDF] invoice.get('pdf_path')={invoice.get('pdf_path')}")
                                 logger.info(f"[DEBUG PDF] Verificando necessidade de download via Playwright: pdf_url={bool(invoice.get('pdf_url'))}, pdf_path={bool(invoice.get('pdf_path'))}")
                                 
-                                if not invoice.get('pdf_url') and not invoice.get('pdf_path'):
+                                if ((not invoice.get('pdf_url') and not invoice.get('pdf_path')) or force_pdf_playwright) and not eh_segunda_via:
                                     print(f"[DEBUG PDF] 🔍 ETAPA 3: Iniciando download via Playwright...")
                                     logger.info(f"[DEBUG PDF] 🔍 ETAPA 3: Tentando baixar PDF como humano para fatura única...")
+                                    logger.warning("[DEBUG PDF] ⚠️ A página Nio usa reCAPTCHA; o download via navegador costuma falhar. Preferir PDF via API.")
                                     
                                     try:
                                         # Importar função diretamente do módulo (função privada)
@@ -4877,14 +5567,22 @@ def processar_webhook_whatsapp(data):
                                         print(f"[DEBUG PDF] Parâmetros Playwright: CPF={cpf_limpo}, mes_ref={mes_ref}, data_venc={data_venc}")
                                         logger.info(f"[DEBUG PDF] Parâmetros: CPF={cpf_limpo}, mes_ref={mes_ref}, data_venc={data_venc}")
                                         
-                                        # Marcar que está processando PDF para evitar webhooks duplicados
-                                        if sessao:
-                                            sessao.dados_temp['processando_pdf'] = True
-                                            sessao.save(update_fields=['dados_temp', 'updated_at'])
-                                            print(f"[DEBUG PDF] 🔒 Marcado processando_pdf=True para evitar duplicação")
-                                            logger.info(f"[DEBUG PDF] 🔒 Marcado processando_pdf=True")
-                                        
-                                        pdf_result = nio_services._baixar_pdf_como_humano(cpf_limpo, mes_ref, data_venc)
+                                        # headless=False abre o navegador para você acompanhar os cliques (PAP_HEADLESS=false)
+                                        headless_pdf = getattr(settings, 'PAP_HEADLESS', True)
+                                        # Passar token/session para injetar na página e habilitar o botão Consultar (evita reCAPTCHA)
+                                        api_base = resultado.get('api_base', '')
+                                        token = resultado.get('token', '')
+                                        session_id = resultado.get('session_id', '')
+                                        has_token = bool(api_base and token and session_id)
+                                        print(f"[DEBUG PDF] Token para Playwright: api_base={bool(api_base)}, token={bool(token)}, session_id={bool(session_id)} => injetar={has_token}")
+                                        logger.info(f"[DEBUG PDF] Token para Playwright: injetar={has_token} (api_base={bool(api_base)}, token={bool(token)}, session_id={bool(session_id)})")
+                                        pdf_result = nio_services._baixar_pdf_como_humano(
+                                            cpf_limpo, mes_ref, data_venc,
+                                            headless=headless_pdf,
+                                            api_base=api_base or None,
+                                            token=token or None,
+                                            session_id=session_id or None,
+                                        )
                                         
                                         # Remover flag de processamento após concluir
                                         if sessao:
@@ -5472,6 +6170,11 @@ def processar_webhook_whatsapp(data):
         
         elif etapa_atual == 'fatura_selecionar':
             try:
+                sessao.refresh_from_db()
+                dados_temp = sessao.dados_temp or {}
+                if dados_temp.get('processando_pdf'):
+                    resposta = "⏳ Ainda processando sua fatura. Aguarde um momento..."
+                    return _enviar_resposta_e_retornar(resposta)
                 numero_escolhido = mensagem_texto.strip()
                 if not numero_escolhido:
                     resposta = None  # Mensagem vazia: não enviar erro para não duplicar
@@ -5488,6 +6191,9 @@ def processar_webhook_whatsapp(data):
                     else:
                         invoice = faturas[idx]
                         cpf = dados_temp.get('cpf', '')
+                        # Marcar logo para evitar processamento duplicado (webhook em duplicidade)
+                        sessao.dados_temp = (sessao.dados_temp or {}) | {'processando_pdf': True}
+                        sessao.save(update_fields=['dados_temp', 'updated_at'])
                         
                         # Tentar buscar PDF via API primeiro (mais rápido)
                         try:
@@ -5524,14 +6230,18 @@ def processar_webhook_whatsapp(data):
                                 logger.info(f"[Webhook] Tentando baixar PDF como humano...")
                                 logger.info(f"[Webhook] Parâmetros: CPF={cpf}, mes_ref={mes_ref}, data_venc={data_venc}")
                                 
-                                # Marcar que está processando PDF para evitar webhooks duplicados
-                                if sessao:
-                                    sessao.dados_temp['processando_pdf'] = True
-                                    sessao.save(update_fields=['dados_temp', 'updated_at'])
-                                    print(f"[DEBUG PDF] 🔒 Marcado processando_pdf=True para evitar duplicação")
-                                    logger.info(f"[DEBUG PDF] 🔒 Marcado processando_pdf=True")
-                                
-                                pdf_result = nio_services._baixar_pdf_como_humano(cpf, mes_ref, data_venc)
+                                headless_pdf = getattr(settings, 'PAP_HEADLESS', True)
+                                # Passar token/session se tiver na sessão (lista de faturas guarda isso)
+                                api_base = dados_temp.get('api_base')
+                                token = dados_temp.get('token')
+                                session_id = dados_temp.get('session_id')
+                                pdf_result = nio_services._baixar_pdf_como_humano(
+                                    cpf, mes_ref, data_venc,
+                                    headless=headless_pdf,
+                                    api_base=api_base,
+                                    token=token,
+                                    session_id=session_id,
+                                )
                                 
                                 # Remover flag de processamento após concluir
                                 if sessao:
@@ -5657,42 +6367,60 @@ def processar_webhook_whatsapp(data):
                 
                 # Se PDF é válido, enviar com a resposta como caption
                 if pdf_valido or invoice_para_pdf.get('pdf_url') or invoice_para_pdf.get('pdf_onedrive_url'):
-                    # Usar a resposta formatada como caption
-                    caption_para_pdf = resposta
-                    print(f"[DEBUG PDF] 📝 Enviando PDF com caption (primeiros 100 chars): {caption_para_pdf[:100]}...")
-                    logger.info(f"[DEBUG PDF] 📝 Enviando PDF com caption")
-                    
-                    resultado_envio = _enviar_pdf_whatsapp(whatsapp_service, telefone_formatado, invoice_para_pdf, caption=caption_para_pdf)
-                    print(f"[DEBUG PDF] Resultado do envio: {resultado_envio}")
-                    logger.info(f"[DEBUG PDF] Resultado do envio: {resultado_envio}")
-                    if resultado_envio:
-                        arquivo_enviado = True
-                        pdf_enviado_com_caption = True
-                        # Enviar mensagem imediatamente após o PDF para aparecer junto
-                        # (Z-API pode não suportar caption diretamente, então enviamos como mensagem separada)
-                        print(f"[DEBUG PDF] 📨 Enviando mensagem imediatamente após PDF para aparecer junto...")
-                        logger.info(f"[DEBUG PDF] 📨 Enviando mensagem imediatamente após PDF")
-                        try:
-                            sucesso_msg, resultado_msg = whatsapp_service.enviar_mensagem_texto(telefone_formatado, resposta)
-                            if sucesso_msg:
-                                print(f"[DEBUG PDF] ✅ Mensagem enviada após PDF")
-                                logger.info(f"[DEBUG PDF] ✅ Mensagem enviada após PDF")
-                            else:
-                                print(f"[DEBUG PDF] ⚠️ Erro ao enviar mensagem após PDF: {resultado_msg}")
-                                logger.warning(f"[DEBUG PDF] ⚠️ Erro ao enviar mensagem após PDF: {resultado_msg}")
-                        except Exception as e_msg:
-                            print(f"[DEBUG PDF] ❌ Exceção ao enviar mensagem após PDF: {e_msg}")
-                            logger.error(f"[DEBUG PDF] ❌ Exceção ao enviar mensagem após PDF: {e_msg}")
-                        
-                        # IMPORTANTE: Limpar resposta para não enviar mensagem duplicada
+                    # Idempotência: evitar enviar PDF+mensagem duas vezes para o mesmo messageId (webhook duplicado)
+                    message_id_pdf = (data or {}).get('messageId')
+                    skip_pdf_duplicate = False
+                    if message_id_pdf:
+                        with _webhook_reply_lock:
+                            now = time.time()
+                            expired = [mid for mid, ts in list(_webhook_reply_message_ids.items()) if now - ts > _webhook_reply_ttl]
+                            for mid in expired:
+                                del _webhook_reply_message_ids[mid]
+                            if message_id_pdf in _webhook_reply_message_ids:
+                                skip_pdf_duplicate = True
+                                logger.info(f"[Webhook] Resposta PDF já enviada para messageId={message_id_pdf[:20]}..., ignorando duplicata (bloco PDF).")
+                    if skip_pdf_duplicate:
                         resposta = None
-                        pdf_enviado_com_caption = True  # Garantir que está marcado
-                        print(f"[DEBUG PDF] ✅ PDF e mensagem enviados, resposta limpa (None), pdf_enviado_com_caption={pdf_enviado_com_caption}")
-                        logger.info(f"[DEBUG PDF] ✅ PDF e mensagem enviados, resposta limpa (None), pdf_enviado_com_caption={pdf_enviado_com_caption}")
+                        pdf_enviado_com_caption = True
+                        print(f"[DEBUG PDF] ⏭️ Duplicata ignorada (messageId já respondido)")
+                        logger.info(f"[DEBUG PDF] ⏭️ Duplicata ignorada (messageId já respondido)")
                     else:
-                        # Se PDF não foi enviado, manter resposta para enviar normalmente
-                        print(f"[DEBUG PDF] ⚠️ PDF não foi enviado, resposta será enviada normalmente")
-                        logger.warning(f"[DEBUG PDF] ⚠️ PDF não foi enviado, resposta será enviada normalmente")
+                        if message_id_pdf:
+                            with _webhook_reply_lock:
+                                _webhook_reply_message_ids[message_id_pdf] = time.time()
+                        # Se temos PDF local e não temos URL, gerar URL pública (serve-pdf) para Z-API buscar
+                        if pdf_valido and not invoice_para_pdf.get('pdf_url') and not invoice_para_pdf.get('pdf_onedrive_url') and request:
+                            try:
+                                pdf_filename = os.path.basename(pdf_path)
+                                serve_url = _build_serve_pdf_url(request, pdf_filename)
+                                if serve_url:
+                                    invoice_para_pdf["pdf_url"] = serve_url
+                                    print(f"[DEBUG PDF] 📎 URL do PDF para Z-API: {serve_url[:80]}...")
+                                    logger.info(f"[DEBUG PDF] PDF será enviado via URL (serve-pdf)")
+                            except Exception as e_build:
+                                print(f"[DEBUG PDF] ⚠️ Não foi possível gerar URL do PDF: {e_build}")
+                                logger.warning(f"[DEBUG PDF] URL do PDF não gerada: {e_build}")
+                        # Usar a resposta formatada como caption
+                        caption_para_pdf = resposta
+                        print(f"[DEBUG PDF] 📝 Enviando PDF com caption (primeiros 100 chars): {caption_para_pdf[:100]}...")
+                        logger.info(f"[DEBUG PDF] 📝 Enviando PDF com caption")
+                        
+                        resultado_envio = _enviar_pdf_whatsapp(whatsapp_service, telefone_formatado, invoice_para_pdf, caption=caption_para_pdf)
+                        print(f"[DEBUG PDF] Resultado do envio: {resultado_envio}")
+                        logger.info(f"[DEBUG PDF] Resultado do envio: {resultado_envio}")
+                        if resultado_envio:
+                            arquivo_enviado = True
+                            pdf_enviado_com_caption = True
+                            # PDF já enviado com caption no payload; não enviar texto em separado (evita 2ª mensagem duplicada)
+                            # IMPORTANTE: Limpar resposta para não enviar mensagem duplicada
+                            resposta = None
+                            pdf_enviado_com_caption = True  # Garantir que está marcado
+                            print(f"[DEBUG PDF] ✅ PDF e mensagem enviados, resposta limpa (None), pdf_enviado_com_caption={pdf_enviado_com_caption}")
+                            logger.info(f"[DEBUG PDF] ✅ PDF e mensagem enviados, resposta limpa (None), pdf_enviado_com_caption={pdf_enviado_com_caption}")
+                        else:
+                            # Se PDF não foi enviado, manter resposta para enviar normalmente
+                            print(f"[DEBUG PDF] ⚠️ PDF não foi enviado, resposta será enviada normalmente")
+                            logger.warning(f"[DEBUG PDF] ⚠️ PDF não foi enviado, resposta será enviada normalmente")
                     
             elif material_para_envio:
                 logger.info(f"[Webhook] Material detectado, enviando ANTES da mensagem...")
@@ -5734,8 +6462,21 @@ def processar_webhook_whatsapp(data):
                     traceback.print_exc()
         
         # DEPOIS: Enviar resposta via WhatsApp (só se houver resposta para enviar E PDF não foi enviado com caption)
+        # Idempotência: não enviar duas vezes para o mesmo messageId (Z-API pode reenviar o webhook)
+        message_id = (data or {}).get('messageId')
+        skip_duplicate = False
+        if message_id:
+            with _webhook_reply_lock:
+                now = time.time()
+                # Limpar entradas expiradas
+                expired = [mid for mid, ts in _webhook_reply_message_ids.items() if now - ts > _webhook_reply_ttl]
+                for mid in expired:
+                    del _webhook_reply_message_ids[mid]
+                if message_id in _webhook_reply_message_ids:
+                    skip_duplicate = True
+                    logger.info(f"[Webhook] Resposta já enviada para messageId={message_id[:20]}..., ignorando duplicata.")
         # IMPORTANTE: Verificar se resposta não é None, não está vazia e se PDF não foi enviado com caption
-        if resposta and resposta.strip() and not pdf_enviado_com_caption:
+        if resposta and resposta.strip() and not pdf_enviado_com_caption and not skip_duplicate:
             print(f"[DEBUG] Enviando resposta final: resposta não é None={resposta is not None}, pdf_enviado_com_caption={pdf_enviado_com_caption}")
             logger.info(f"[Webhook] Enviando resposta final: pdf_enviado_com_caption={pdf_enviado_com_caption}")
             try:
@@ -5758,6 +6499,10 @@ def processar_webhook_whatsapp(data):
                         logger.error(f"[Webhook] Erro ao enviar mensagem {idx+1}: {resultado}")
                 
                 logger.info(f"[Webhook] Resposta enviada para {telefone_formatado}")
+                # Marcar como já respondido para este messageId (evitar duplicata se Z-API reenviar o webhook)
+                if message_id:
+                    with _webhook_reply_lock:
+                        _webhook_reply_message_ids[message_id] = time.time()
                 
                 # Limpar dados temporários APENAS se arquivo foi enviado E não estamos na etapa material_selecionar
                 # (precisamos manter arquivos_ids na etapa material_selecionar para o usuário escolher)

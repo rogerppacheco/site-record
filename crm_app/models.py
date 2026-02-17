@@ -536,6 +536,47 @@ class PapConfirmacaoCliente(models.Model):
         return f"{self.celular_cliente} - {'OK' if self.confirmado else 'pendente'}"
 
 
+class AnaliseCreditoHistorico(models.Model):
+    """
+    Histórico de consultas de análise de crédito via WhatsApp.
+    Usado para rate limit (1 min entre análises, 15 por dia) e auditoria.
+    """
+    usuario = models.ForeignKey(
+        Usuario,
+        on_delete=models.CASCADE,
+        related_name='analises_credito_historico',
+        help_text="Usuário que fez a consulta",
+    )
+    cpf_consultado = models.CharField(
+        max_length=14,
+        db_index=True,
+        help_text="CPF consultado (apenas dígitos)",
+    )
+    aprovado = models.BooleanField(
+        help_text="True se crédito aprovado, False se negado",
+    )
+    resultado_detalhe = models.CharField(
+        max_length=200,
+        blank=True,
+        null=True,
+        help_text="Ex: Elegível para todas as formas, Elegível apenas para Cartão",
+    )
+    criado_em = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = "crm_analise_credito_historico"
+        verbose_name = "Análise de Crédito (Histórico)"
+        verbose_name_plural = "Análises de Crédito (Histórico)"
+        ordering = ["-criado_em"]
+        indexes = [
+            models.Index(fields=["usuario", "criado_em"]),
+        ]
+
+    def __str__(self):
+        status = "Aprovado" if self.aprovado else "Negado"
+        return f"{self.cpf_consultado} - {self.usuario.username} - {status} - {self.criado_em}"
+
+
 class EstatisticaBotWhatsApp(models.Model):
     """
     Armazena estatísticas de mensagens enviadas pelo bot WhatsApp
@@ -545,6 +586,7 @@ class EstatisticaBotWhatsApp(models.Model):
         ('VIABILIDADE', 'Viabilidade'),
         ('FATURA', 'Fatura'),
         ('STATUS', 'Status'),
+        ('CREDITO', 'Crédito'),
     ]
     
     telefone = models.CharField(max_length=100, db_index=True, help_text="Telefone do usuário que recebeu a mensagem")

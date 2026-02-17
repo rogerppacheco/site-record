@@ -1,0 +1,1954 @@
+[
+  {
+    "trigger": "navigation",
+    "url": "https://www.niointernet.com.br/ajuda/servicos/segunda-via/",
+    "title": "Segunda Via - Nio",
+    "inputs": [
+      {
+        "tag": "input",
+        "type": "text",
+        "id": "cpf-cnpj",
+        "name": "cpf-cnpj",
+        "placeholder": "Digite o CPF/CNPJ",
+        "selectors": {
+          "id": "#cpf-cnpj",
+          "name": "[name=\"cpf-cnpj\"]",
+          "placeholder": "[placeholder*=\"Digite o CPF/CNPJ\"]"
+        }
+      }
+    ],
+    "buttons": [
+      {
+        "tag": "button",
+        "text": "",
+        "dataContext": null,
+        "selectors": {
+          "id": "#theme-btn"
+        }
+      },
+      {
+        "tag": "button",
+        "text": "",
+        "dataContext": null,
+        "selectors": {}
+      },
+      {
+        "tag": "div",
+        "text": "Ajuda",
+        "dataContext": null,
+        "selectors": {
+          "id": "#help-menu-trigger",
+          "text": "button:has-text(\"Ajuda\")"
+        }
+      },
+      {
+        "tag": "button",
+        "text": "",
+        "dataContext": null,
+        "selectors": {}
+      },
+      {
+        "tag": "button",
+        "text": "",
+        "dataContext": null,
+        "selectors": {}
+      },
+      {
+        "tag": "button",
+        "text": "",
+        "dataContext": null,
+        "selectors": {}
+      },
+      {
+        "tag": "button",
+        "text": "Eu quero",
+        "dataContext": null,
+        "selectors": {
+          "text": "button:has-text(\"Eu quero\")"
+        }
+      },
+      {
+        "tag": "button",
+        "text": "Entendi",
+        "dataContext": null,
+        "selectors": {
+          "id": "#accept-cookies-trigger",
+          "text": "button:has-text(\"Entendi\")"
+        }
+      }
+    ],
+    "links": [
+      {
+        "text": "Ir pra ajuda da Nio",
+        "href": "https://servicos.niointernet.com.br/ajuda/servicos",
+        "selectors": {
+          "text": "a:has-text(\"Ir pra ajuda da Nio\")"
+        }
+      },
+      {
+        "text": "Ir para o conteúdo",
+        "href": "#main-nio",
+        "selectors": {
+          "text": "a:has-text(\"Ir para o conteúdo\")"
+        }
+      },
+      {
+        "text": "Compre pelo 0800 031 0453",
+        "href": "tel:08000310453",
+        "selectors": {
+          "text": "a:has-text(\"Compre pelo 0800 031 0453\")"
+        }
+      },
+      {
+        "text": "Compre pelo WhatsApp",
+        "href": "https://wa.me/552127410001?text=Ol%C3%A1%21%20Quero%20conhecer%20as%20ofertas%20da%20Nio%20Fibra",
+        "selectors": {
+          "text": "a:has-text(\"Compre pelo WhatsApp\")"
+        }
+      },
+      {
+        "text": "Ir para rodapé",
+        "href": "#footer-nio",
+        "selectors": {
+          "text": "a:has-text(\"Ir para rodapé\")"
+        }
+      },
+      {
+        "text": "EMPRESAS",
+        "href": "https://www.niointernet.com.br/",
+        "selectors": {
+          "text": "a:has-text(\"EMPRESAS\")"
+        }
+      },
+      {
+        "text": "Central de vendas",
+        "href": "tel:08000310453",
+        "selectors": {
+          "id": "#toSign"
+        }
+      },
+      {
+        "text": "Compre pelo 0800 031 0453",
+        "href": "tel:08000310453",
+        "selectors": {
+          "id": "#toSign-desktop-a"
+        }
+      },
+      {
+        "text": "",
+        "href": "tel:08000310453",
+        "selectors": {}
+      },
+      {
+        "text": "",
+        "href": "tel:08000011000",
+        "selectors": {}
+      },
+      {
+        "text": "2ª via\nde conta",
+        "href": "https://negociacao.niointernet.com.br/negociar/",
+        "selectors": {
+          "text": "a:has-text(\"2ª via\nde conta\")"
+        }
+      },
+      {
+        "text": "Negociar\ndívidas",
+        "href": "https://negociacao.niointernet.com.br/negociar/?_gl=1*nemjr*_gcl_au*MTY0NjQwODk0OS4xNzUyNDk4MTY5*_ga*MTEwNjAyMjE4NS4xNzUyNDk4MTY5*_ga_TY1W95D3MQ*czE3NTYzODI1MjMkbzM3JGcxJHQxNzU2MzgyNzU3JGo1OCRsMCRoMjY3ODM4NTI1",
+        "selectors": {
+          "text": "a:has-text(\"Negociar\ndívidas\")"
+        }
+      },
+      {
+        "text": "Ajuda\nda Nio",
+        "href": "https://www.niointernet.com.br/ajuda/",
+        "selectors": {
+          "text": "a:has-text(\"Ajuda\nda Nio\")"
+        }
+      },
+      {
+        "text": "Suporte técnico",
+        "href": "https://www.niointernet.com.br/ajuda/solicitar-suporte-tecnico/",
+        "selectors": {
+          "text": "a:has-text(\"Suporte técnico\")"
+        }
+      },
+      {
+        "text": "Desbloquear serviço",
+        "href": "https://www.niointernet.com.br/ajuda/servicos/desbloquear/",
+        "selectors": {
+          "text": "a:has-text(\"Desbloquear serviço\")"
+        }
+      },
+      {
+        "text": "WhatsApp Iniciar conversa",
+        "href": "https://wa.me/552136051000",
+        "selectors": {
+          "id": "#copyWhatsBtn"
+        }
+      },
+      {
+        "text": "Telefone Ligar pra 0800 001 1000",
+        "href": "tel:08000011000",
+        "selectors": {
+          "id": "#copyPhoneBtn"
+        }
+      },
+      {
+        "text": "Planos residenciais",
+        "href": "https://www.niointernet.com.br/?_gl=1*7sfruz*_gcl_au*MTY0NjQwODk0OS4xNzUyNDk4MTY5*_ga*MTEwNjAyMjE4NS4xNzUyNDk4MTY5*_ga_TY1W95D3MQ*czE3NTYzODI1MjMkbzM3JGcxJHQxNzU2MzgzNDg4JGo2MCRsMCRoMjY3ODM4NTI1",
+        "selectors": {
+          "text": "a:has-text(\"Planos residenciais\")"
+        }
+      },
+      {
+        "text": "Benefícios",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/beneficios/",
+        "selectors": {
+          "text": "a:has-text(\"Benefícios\")"
+        }
+      },
+      {
+        "text": "Planos empresariais",
+        "href": "https://www.niointernet.com.br/pra-sua-empresa/",
+        "selectors": {
+          "text": "a:has-text(\"Planos empresariais\")"
+        }
+      },
+      {
+        "text": "Consultar disponibilidade",
+        "href": "https://checkout.niointernet.com.br",
+        "selectors": {
+          "text": "a:has-text(\"Consultar disponibilidade\")"
+        }
+      },
+      {
+        "text": "Baixar app Nio",
+        "href": "https://app.niointernet.com.br/lojas/",
+        "selectors": {
+          "text": "a:has-text(\"Baixar app Nio\")"
+        }
+      },
+      {
+        "text": "Atendimento por WhatsApp",
+        "href": "https://api.whatsapp.com/send?1=pt_BR&phone=552136051000",
+        "selectors": {
+          "text": "a:has-text(\"Atendimento por WhatsApp\")"
+        }
+      },
+      {
+        "text": ".st0, .st1 { fill: #192b1c; } .st2 { stroke: #192b1c; stroke-miterlimit: 10; str",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/premios/",
+        "selectors": {
+          "text": "a:has-text(\".st0, .st1 { fill: #192b1c; } .st2 { str\")"
+        }
+      },
+      {
+        "text": ".st0, .st1 { fill: #192b1c; } .st2 { fill: #fff; stroke: #192b1c; stroke-miterli",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/premios/",
+        "selectors": {
+          "text": "a:has-text(\".st0, .st1 { fill: #192b1c; } .st2 { fil\")"
+        }
+      },
+      {
+        "text": "",
+        "href": "https://www.facebook.com/niointernet",
+        "selectors": {}
+      },
+      {
+        "text": "",
+        "href": "https://www.instagram.com/niointernet/",
+        "selectors": {}
+      },
+      {
+        "text": "",
+        "href": "https://www.linkedin.com/company/niointernet",
+        "selectors": {}
+      },
+      {
+        "text": "",
+        "href": "ttps://www.tiktok.com/Niointernet",
+        "selectors": {}
+      },
+      {
+        "text": "",
+        "href": "https://x.com/niointernet",
+        "selectors": {}
+      },
+      {
+        "text": "",
+        "href": "https://www.youtube.com/@niointernet",
+        "selectors": {}
+      },
+      {
+        "text": "Nio Fibra pra casa",
+        "href": "https://www.niointernet.com.br/pra-voce/fibra/",
+        "selectors": {
+          "text": "a:has-text(\"Nio Fibra pra casa\")"
+        }
+      },
+      {
+        "text": "Nio Fibra pra empresa",
+        "href": "../../../pra-sua-empresa/fibra/",
+        "selectors": {
+          "text": "a:has-text(\"Nio Fibra pra empresa\")"
+        }
+      },
+      {
+        "text": "Internet com Streaming",
+        "href": "https://www.niointernet.com.br/pra-voce/fibra/internet-com-streaming/",
+        "selectors": {
+          "text": "a:has-text(\"Internet com Streaming\")"
+        }
+      },
+      {
+        "text": "Internet Gamer",
+        "href": "https://www.niointernet.com.br/pra-voce/fibra/internet-gamer/",
+        "selectors": {
+          "text": "a:has-text(\"Internet Gamer\")"
+        }
+      },
+      {
+        "text": "Internet para Home Office",
+        "href": "https://www.niointernet.com.br/pra-voce/fibra/internet-para-home-office/",
+        "selectors": {
+          "text": "a:has-text(\"Internet para Home Office\")"
+        }
+      },
+      {
+        "text": "Wi-Fi 6",
+        "href": "https://www.niointernet.com.br/pra-voce/fibra/wifi-6/",
+        "selectors": {
+          "text": "a:has-text(\"Wi-Fi 6\")"
+        }
+      },
+      {
+        "text": "Benefícios",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/beneficios/",
+        "selectors": {
+          "text": "a:has-text(\"Benefícios\")"
+        }
+      },
+      {
+        "text": "Casa Inteligente",
+        "href": "https://www.niointernet.com.br/pra-voce/fibra/casa-inteligente/",
+        "selectors": {
+          "text": "a:has-text(\"Casa Inteligente\")"
+        }
+      },
+      {
+        "text": "Cobertura",
+        "href": "https://www.niointernet.com.br/pra-voce/fibra/cobertura/",
+        "selectors": {
+          "text": "a:has-text(\"Cobertura\")"
+        }
+      },
+      {
+        "text": "Teste de Velocidade",
+        "href": "https://www.niointernet.com.br/ferramentas/teste-de-velocidade/",
+        "selectors": {
+          "text": "a:has-text(\"Teste de Velocidade\")"
+        }
+      },
+      {
+        "text": "Serviços",
+        "href": "https://www.niointernet.com.br/ajuda/",
+        "selectors": {
+          "text": "a:has-text(\"Serviços\")"
+        }
+      },
+      {
+        "text": "Segunda via de conta",
+        "href": "https://negociacao.niointernet.com.br/negociar/",
+        "selectors": {
+          "text": "a:has-text(\"Segunda via de conta\")"
+        }
+      },
+      {
+        "text": "Negociar dívidas",
+        "href": "https://www.niointernet.com.br/negociar/",
+        "selectors": {
+          "text": "a:has-text(\"Negociar dívidas\")"
+        }
+      },
+      {
+        "text": "Desbloquear serviço",
+        "href": "https://www.niointernet.com.br/ajuda/servicos/desbloquear/",
+        "selectors": {
+          "text": "a:has-text(\"Desbloquear serviço\")"
+        }
+      },
+      {
+        "text": "Mudar plano",
+        "href": "https://www.niointernet.com.br/ajuda/mudar-plano/",
+        "selectors": {
+          "text": "a:has-text(\"Mudar plano\")"
+        }
+      },
+      {
+        "text": "Suporte técnico",
+        "href": "https://www.niointernet.com.br/ajuda/suporte-tecnico/",
+        "selectors": {
+          "text": "a:has-text(\"Suporte técnico\")"
+        }
+      },
+      {
+        "text": "Cancelamento",
+        "href": "../../../ajuda/cancelamento/",
+        "selectors": {
+          "text": "a:has-text(\"Cancelamento\")"
+        }
+      },
+      {
+        "text": "Central de ajuda",
+        "href": "https://www.niointernet.com.br/ajuda/",
+        "selectors": {
+          "text": "a:has-text(\"Central de ajuda\")"
+        }
+      },
+      {
+        "text": "WhatsApp\n\t\t\t\n\t\t\t\t21 3605 1000",
+        "href": "https://api.whatsapp.com/send?1=pt_BR&phone=552136051000",
+        "selectors": {
+          "text": "a:has-text(\"WhatsApp\n\t\t\t\n\t\t\t\t21 3605 1000\")"
+        }
+      },
+      {
+        "text": "Atendimento\n\t\t\t\n\t\t\t\t0800 001  1000",
+        "href": "tel:08000011000",
+        "selectors": {
+          "text": "a:has-text(\"Atendimento\n\t\t\t\n\t\t\t\t0800 001  1000\")"
+        }
+      },
+      {
+        "text": "Assinar pra casa\n\t\t\t\n\t\t\t\t0800 031 0453",
+        "href": "tel:0800030453",
+        "selectors": {
+          "text": "a:has-text(\"Assinar pra casa\n\t\t\t\n\t\t\t\t0800 031 0453\")"
+        }
+      },
+      {
+        "text": "Assinar pra empresa\n\t\t\t\n\t\t\t\t0800 282 3258",
+        "href": "tel:08002823258",
+        "selectors": {
+          "text": "a:has-text(\"Assinar pra empresa\n\t\t\t\n\t\t\t\t0800 282 325\")"
+        }
+      },
+      {
+        "text": "Deficientes auditivos",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/?q=geral&sq=acessibilidade",
+        "selectors": {
+          "text": "a:has-text(\"Deficientes auditivos\")"
+        }
+      },
+      {
+        "text": "Ouvidoria",
+        "href": "https://www.niointernet.com.br/ajuda/ouvidoria/",
+        "selectors": {
+          "text": "a:has-text(\"Ouvidoria\")"
+        }
+      },
+      {
+        "text": "Sobre a Nio",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/",
+        "selectors": {
+          "text": "a:has-text(\"Sobre a Nio\")"
+        }
+      },
+      {
+        "text": "Trabalhe conosco",
+        "href": "https://nio.gupy.io/",
+        "selectors": {
+          "text": "a:has-text(\"Trabalhe conosco\")"
+        }
+      },
+      {
+        "text": "Imprensa",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/?q=geral&sq=imprensa",
+        "selectors": {
+          "text": "a:has-text(\"Imprensa\")"
+        }
+      },
+      {
+        "text": "Seja parceiro",
+        "href": "https://www.niointernet.com.br/seja-parceiro/",
+        "selectors": {
+          "text": "a:has-text(\"Seja parceiro\")"
+        }
+      },
+      {
+        "text": "Confiabilidade",
+        "href": "http://www.niointernet.com.br/sobre-a-nio/premios/",
+        "selectors": {
+          "text": "a:has-text(\"Confiabilidade\")"
+        }
+      },
+      {
+        "text": "Termos e contratos",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/?q=internet&sq=contrato-e-regulamentos-vigentes",
+        "selectors": {
+          "text": "a:has-text(\"Termos e contratos\")"
+        }
+      },
+      {
+        "text": "Privacidade",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/privacidade/",
+        "selectors": {
+          "text": "a:has-text(\"Privacidade\")"
+        }
+      },
+      {
+        "text": "Comunicados",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/comunicados/",
+        "selectors": {
+          "text": "a:has-text(\"Comunicados\")"
+        }
+      },
+      {
+        "text": "Regulatório",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/",
+        "selectors": {
+          "text": "a:has-text(\"Regulatório\")"
+        }
+      },
+      {
+        "text": "Segurança",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/seguranca/",
+        "selectors": {
+          "text": "a:has-text(\"Segurança\")"
+        }
+      },
+      {
+        "text": "Acessibilidade",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/?q=geral&sq=acessibilidade",
+        "selectors": {
+          "text": "a:has-text(\"Acessibilidade\")"
+        }
+      },
+      {
+        "text": "Ética e integridade",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/?q=geral&sq=codigo-de-etica",
+        "selectors": {
+          "text": "a:has-text(\"Ética e integridade\")"
+        }
+      },
+      {
+        "text": "Conselho de usuários",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/?q=conselho-de-usuario&sq=o-que-e-conselho-usuario",
+        "selectors": {
+          "text": "a:has-text(\"Conselho de usuários\")"
+        }
+      },
+      {
+        "text": "Repositório de ofertas",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/?q=internet&sq=repositorio-de-ofertas",
+        "selectors": {
+          "text": "a:has-text(\"Repositório de ofertas\")"
+        }
+      },
+      {
+        "text": "Devolução de crédito ex-cliente",
+        "href": "https://www.niointernet.com.br/ajuda/devolucao-de-credito/",
+        "selectors": {
+          "text": "a:has-text(\"Devolução de crédito ex-cliente\")"
+        }
+      },
+      {
+        "text": "Interrupção de serviços",
+        "href": "https://consultaesaq.com.br/interrupcao/#/interrupcoes/home",
+        "selectors": {
+          "text": "a:has-text(\"Interrupção de serviços\")"
+        }
+      },
+      {
+        "text": "acesse o site Não Me Perturbe.",
+        "href": "https://www.naomeperturbe.com.br/",
+        "selectors": {
+          "text": "a:has-text(\"acesse o site Não Me Perturbe.\")"
+        }
+      },
+      {
+        "text": "Saber mais",
+        "href": "https://www.niointernet.com.br/data/files/C1/54/FB/38/81B389108BBC9189880B08A8/Pesquisa-Anatel-2025.pdf",
+        "selectors": {
+          "text": "a:has-text(\"Saber mais\")"
+        }
+      },
+      {
+        "text": "Segurança",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/?q=seguranca",
+        "selectors": {
+          "text": "a:has-text(\"Segurança\")"
+        }
+      },
+      {
+        "text": "Privacidade",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/?q=privacidade&sq=sobre-privacidade",
+        "selectors": {
+          "text": "a:has-text(\"Privacidade\")"
+        }
+      },
+      {
+        "text": "",
+        "href": "https://www.niointernet.com.br/",
+        "selectors": {}
+      },
+      {
+        "text": "Compre pelo WhatsApp",
+        "href": "https://wa.me/552127410001?text=Ol%C3%A1%21%20Quero%20conhecer%20as%20ofertas%20da%20Nio%20Fibra",
+        "selectors": {
+          "id": "#floating-elements-whatsapp"
+        }
+      },
+      {
+        "text": "Política de Privacidade.",
+        "href": "https://www.niointernet.com.br/",
+        "selectors": {
+          "text": "a:has-text(\"Política de Privacidade.\")"
+        }
+      },
+      {
+        "text": "Consultar disponibilidade",
+        "href": "https://assinar.niointernet.com.br/s/",
+        "selectors": {
+          "id": "#floating-elements-disponibility"
+        }
+      },
+      {
+        "text": "Consultar disponibilidade",
+        "href": "https://assinar.niointernet.com.br/s/",
+        "selectors": {
+          "id": "#floating-elements-disponibility-desk"
+        }
+      },
+      {
+        "text": "Ajuda",
+        "href": "../../../ajuda.htm",
+        "selectors": {
+          "text": "a:has-text(\"Ajuda\")"
+        }
+      }
+    ],
+    "iframes": []
+  },
+  {
+    "trigger": "navigation",
+    "url": "https://www.niointernet.com.br/ajuda/servicos/segunda-via/resultado/?hash=8d572d1e-331c-412b-a415-129bfeb9ce04",
+    "title": "Resultado - Nio",
+    "inputs": [],
+    "buttons": [
+      {
+        "tag": "button",
+        "text": "",
+        "dataContext": null,
+        "selectors": {
+          "id": "#theme-btn"
+        }
+      },
+      {
+        "tag": "button",
+        "text": "",
+        "dataContext": null,
+        "selectors": {}
+      },
+      {
+        "tag": "div",
+        "text": "Ajuda",
+        "dataContext": null,
+        "selectors": {
+          "id": "#help-menu-trigger",
+          "text": "button:has-text(\"Ajuda\")"
+        }
+      },
+      {
+        "tag": "button",
+        "text": "",
+        "dataContext": null,
+        "selectors": {}
+      },
+      {
+        "tag": "button",
+        "text": "",
+        "dataContext": null,
+        "selectors": {}
+      },
+      {
+        "tag": "button",
+        "text": "Recolher lista de contas em aberto",
+        "dataContext": null,
+        "selectors": {
+          "text": "button:has-text(\"Recolher lista de contas em ab\")"
+        }
+      },
+      {
+        "tag": "button",
+        "text": "Ver detalhes",
+        "dataContext": null,
+        "selectors": {
+          "id": "#openModalBtn",
+          "text": "button:has-text(\"Ver detalhes\")"
+        }
+      },
+      {
+        "tag": "button",
+        "text": "Ver detalhes",
+        "dataContext": null,
+        "selectors": {
+          "id": "#openModalBtn",
+          "text": "button:has-text(\"Ver detalhes\")"
+        }
+      },
+      {
+        "tag": "button",
+        "text": "Ver detalhes",
+        "dataContext": null,
+        "selectors": {
+          "id": "#openModalBtn",
+          "text": "button:has-text(\"Ver detalhes\")"
+        }
+      },
+      {
+        "tag": "button",
+        "text": "Ver detalhes",
+        "dataContext": null,
+        "selectors": {
+          "id": "#openModalBtn",
+          "text": "button:has-text(\"Ver detalhes\")"
+        }
+      },
+      {
+        "tag": "button",
+        "text": "Entendi",
+        "dataContext": null,
+        "selectors": {
+          "id": "#accept-cookies-trigger",
+          "text": "button:has-text(\"Entendi\")"
+        }
+      }
+    ],
+    "links": [
+      {
+        "text": "Ir pra ajuda da Nio",
+        "href": "https://servicos.niointernet.com.br/ajuda/servicos",
+        "selectors": {
+          "text": "a:has-text(\"Ir pra ajuda da Nio\")"
+        }
+      },
+      {
+        "text": "Ir para o conteúdo",
+        "href": "#main-nio",
+        "selectors": {
+          "text": "a:has-text(\"Ir para o conteúdo\")"
+        }
+      },
+      {
+        "text": "Compre pelo 0800 031 0453",
+        "href": "tel:08000310453",
+        "selectors": {
+          "text": "a:has-text(\"Compre pelo 0800 031 0453\")"
+        }
+      },
+      {
+        "text": "Compre pelo WhatsApp",
+        "href": "https://wa.me/552127410001?text=Ol%C3%A1%21%20Quero%20conhecer%20as%20ofertas%20da%20Nio%20Fibra",
+        "selectors": {
+          "text": "a:has-text(\"Compre pelo WhatsApp\")"
+        }
+      },
+      {
+        "text": "Ir para rodapé",
+        "href": "#footer-nio",
+        "selectors": {
+          "text": "a:has-text(\"Ir para rodapé\")"
+        }
+      },
+      {
+        "text": "EMPRESAS",
+        "href": "https://www.niointernet.com.br/",
+        "selectors": {
+          "text": "a:has-text(\"EMPRESAS\")"
+        }
+      },
+      {
+        "text": "Central de vendas",
+        "href": "tel:08000310453",
+        "selectors": {
+          "id": "#toSign"
+        }
+      },
+      {
+        "text": "Compre pelo 0800 031 0453",
+        "href": "tel:08000310453",
+        "selectors": {
+          "id": "#toSign-desktop-a"
+        }
+      },
+      {
+        "text": "",
+        "href": "tel:08000310453",
+        "selectors": {}
+      },
+      {
+        "text": "",
+        "href": "tel:08000011000",
+        "selectors": {}
+      },
+      {
+        "text": "2ª via\nde conta",
+        "href": "https://negociacao.niointernet.com.br/negociar/",
+        "selectors": {
+          "text": "a:has-text(\"2ª via\nde conta\")"
+        }
+      },
+      {
+        "text": "Negociar\ndívidas",
+        "href": "https://negociacao.niointernet.com.br/negociar/?_gl=1*nemjr*_gcl_au*MTY0NjQwODk0OS4xNzUyNDk4MTY5*_ga*MTEwNjAyMjE4NS4xNzUyNDk4MTY5*_ga_TY1W95D3MQ*czE3NTYzODI1MjMkbzM3JGcxJHQxNzU2MzgyNzU3JGo1OCRsMCRoMjY3ODM4NTI1",
+        "selectors": {
+          "text": "a:has-text(\"Negociar\ndívidas\")"
+        }
+      },
+      {
+        "text": "Ajuda\nda Nio",
+        "href": "https://www.niointernet.com.br/ajuda/",
+        "selectors": {
+          "text": "a:has-text(\"Ajuda\nda Nio\")"
+        }
+      },
+      {
+        "text": "Suporte técnico",
+        "href": "https://www.niointernet.com.br/ajuda/solicitar-suporte-tecnico/",
+        "selectors": {
+          "text": "a:has-text(\"Suporte técnico\")"
+        }
+      },
+      {
+        "text": "Desbloquear serviço",
+        "href": "https://www.niointernet.com.br/ajuda/servicos/desbloquear/",
+        "selectors": {
+          "text": "a:has-text(\"Desbloquear serviço\")"
+        }
+      },
+      {
+        "text": "WhatsApp Iniciar conversa",
+        "href": "https://wa.me/552136051000",
+        "selectors": {
+          "id": "#copyWhatsBtn"
+        }
+      },
+      {
+        "text": "Telefone Ligar pra 0800 001 1000",
+        "href": "tel:08000011000",
+        "selectors": {
+          "id": "#copyPhoneBtn"
+        }
+      },
+      {
+        "text": "Planos residenciais",
+        "href": "https://www.niointernet.com.br/?_gl=1*7sfruz*_gcl_au*MTY0NjQwODk0OS4xNzUyNDk4MTY5*_ga*MTEwNjAyMjE4NS4xNzUyNDk4MTY5*_ga_TY1W95D3MQ*czE3NTYzODI1MjMkbzM3JGcxJHQxNzU2MzgzNDg4JGo2MCRsMCRoMjY3ODM4NTI1",
+        "selectors": {
+          "text": "a:has-text(\"Planos residenciais\")"
+        }
+      },
+      {
+        "text": "Benefícios",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/beneficios/",
+        "selectors": {
+          "text": "a:has-text(\"Benefícios\")"
+        }
+      },
+      {
+        "text": "Planos empresariais",
+        "href": "https://www.niointernet.com.br/pra-sua-empresa/",
+        "selectors": {
+          "text": "a:has-text(\"Planos empresariais\")"
+        }
+      },
+      {
+        "text": "Consultar disponibilidade",
+        "href": "https://checkout.niointernet.com.br",
+        "selectors": {
+          "text": "a:has-text(\"Consultar disponibilidade\")"
+        }
+      },
+      {
+        "text": "Nova pesquisa",
+        "href": "https://www.niointernet.com.br/ajuda/servicos/segunda-via/",
+        "selectors": {
+          "text": "a:has-text(\"Nova pesquisa\")"
+        }
+      },
+      {
+        "text": "",
+        "href": "https://www.bb.com.br",
+        "selectors": {}
+      },
+      {
+        "text": "",
+        "href": "https://www.itau.com.br",
+        "selectors": {}
+      },
+      {
+        "text": "",
+        "href": "https://www.bradesco.com.br",
+        "selectors": {}
+      },
+      {
+        "text": "",
+        "href": "https://www.santander.com.br",
+        "selectors": {}
+      },
+      {
+        "text": "",
+        "href": "https://www.caixa.gov.br",
+        "selectors": {}
+      },
+      {
+        "text": "",
+        "href": "https://www.nubank.com.br",
+        "selectors": {}
+      },
+      {
+        "text": "",
+        "href": "https://www.picpay.com",
+        "selectors": {}
+      },
+      {
+        "text": "Baixar app Nio",
+        "href": "https://app.niointernet.com.br/lojas/",
+        "selectors": {
+          "text": "a:has-text(\"Baixar app Nio\")"
+        }
+      },
+      {
+        "text": "Atendimento por WhatsApp",
+        "href": "https://api.whatsapp.com/send?1=pt_BR&phone=552136051000",
+        "selectors": {
+          "text": "a:has-text(\"Atendimento por WhatsApp\")"
+        }
+      },
+      {
+        "text": ".st0, .st1 { fill: #192b1c; } .st2 { stroke: #192b1c; stroke-miterlimit: 10; str",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/premios/",
+        "selectors": {
+          "text": "a:has-text(\".st0, .st1 { fill: #192b1c; } .st2 { str\")"
+        }
+      },
+      {
+        "text": ".st0, .st1 { fill: #192b1c; } .st2 { fill: #fff; stroke: #192b1c; stroke-miterli",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/premios/",
+        "selectors": {
+          "text": "a:has-text(\".st0, .st1 { fill: #192b1c; } .st2 { fil\")"
+        }
+      },
+      {
+        "text": "",
+        "href": "https://www.facebook.com/niointernet",
+        "selectors": {}
+      },
+      {
+        "text": "",
+        "href": "https://www.instagram.com/niointernet/",
+        "selectors": {}
+      },
+      {
+        "text": "",
+        "href": "https://www.linkedin.com/company/niointernet",
+        "selectors": {}
+      },
+      {
+        "text": "",
+        "href": "ttps://www.tiktok.com/Niointernet",
+        "selectors": {}
+      },
+      {
+        "text": "",
+        "href": "https://x.com/niointernet",
+        "selectors": {}
+      },
+      {
+        "text": "",
+        "href": "https://www.youtube.com/@niointernet",
+        "selectors": {}
+      },
+      {
+        "text": "Nio Fibra pra casa",
+        "href": "https://www.niointernet.com.br/pra-voce/fibra/",
+        "selectors": {
+          "text": "a:has-text(\"Nio Fibra pra casa\")"
+        }
+      },
+      {
+        "text": "Nio Fibra pra empresa",
+        "href": "../../../../pra-sua-empresa/fibra/",
+        "selectors": {
+          "text": "a:has-text(\"Nio Fibra pra empresa\")"
+        }
+      },
+      {
+        "text": "Internet com Streaming",
+        "href": "https://www.niointernet.com.br/pra-voce/fibra/internet-com-streaming/",
+        "selectors": {
+          "text": "a:has-text(\"Internet com Streaming\")"
+        }
+      },
+      {
+        "text": "Internet Gamer",
+        "href": "https://www.niointernet.com.br/pra-voce/fibra/internet-gamer/",
+        "selectors": {
+          "text": "a:has-text(\"Internet Gamer\")"
+        }
+      },
+      {
+        "text": "Internet para Home Office",
+        "href": "https://www.niointernet.com.br/pra-voce/fibra/internet-para-home-office/",
+        "selectors": {
+          "text": "a:has-text(\"Internet para Home Office\")"
+        }
+      },
+      {
+        "text": "Wi-Fi 6",
+        "href": "https://www.niointernet.com.br/pra-voce/fibra/wifi-6/",
+        "selectors": {
+          "text": "a:has-text(\"Wi-Fi 6\")"
+        }
+      },
+      {
+        "text": "Benefícios",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/beneficios/",
+        "selectors": {
+          "text": "a:has-text(\"Benefícios\")"
+        }
+      },
+      {
+        "text": "Casa Inteligente",
+        "href": "https://www.niointernet.com.br/pra-voce/fibra/casa-inteligente/",
+        "selectors": {
+          "text": "a:has-text(\"Casa Inteligente\")"
+        }
+      },
+      {
+        "text": "Cobertura",
+        "href": "https://www.niointernet.com.br/pra-voce/fibra/cobertura/",
+        "selectors": {
+          "text": "a:has-text(\"Cobertura\")"
+        }
+      },
+      {
+        "text": "Teste de Velocidade",
+        "href": "https://www.niointernet.com.br/ferramentas/teste-de-velocidade/",
+        "selectors": {
+          "text": "a:has-text(\"Teste de Velocidade\")"
+        }
+      },
+      {
+        "text": "Serviços",
+        "href": "https://www.niointernet.com.br/ajuda/",
+        "selectors": {
+          "text": "a:has-text(\"Serviços\")"
+        }
+      },
+      {
+        "text": "Segunda via de conta",
+        "href": "https://negociacao.niointernet.com.br/negociar/",
+        "selectors": {
+          "text": "a:has-text(\"Segunda via de conta\")"
+        }
+      },
+      {
+        "text": "Negociar dívidas",
+        "href": "https://www.niointernet.com.br/negociar/",
+        "selectors": {
+          "text": "a:has-text(\"Negociar dívidas\")"
+        }
+      },
+      {
+        "text": "Desbloquear serviço",
+        "href": "https://www.niointernet.com.br/ajuda/servicos/desbloquear/",
+        "selectors": {
+          "text": "a:has-text(\"Desbloquear serviço\")"
+        }
+      },
+      {
+        "text": "Mudar plano",
+        "href": "https://www.niointernet.com.br/ajuda/mudar-plano/",
+        "selectors": {
+          "text": "a:has-text(\"Mudar plano\")"
+        }
+      },
+      {
+        "text": "Suporte técnico",
+        "href": "https://www.niointernet.com.br/ajuda/suporte-tecnico/",
+        "selectors": {
+          "text": "a:has-text(\"Suporte técnico\")"
+        }
+      },
+      {
+        "text": "Cancelamento",
+        "href": "../../../../ajuda/cancelamento/",
+        "selectors": {
+          "text": "a:has-text(\"Cancelamento\")"
+        }
+      },
+      {
+        "text": "Central de ajuda",
+        "href": "https://www.niointernet.com.br/ajuda/",
+        "selectors": {
+          "text": "a:has-text(\"Central de ajuda\")"
+        }
+      },
+      {
+        "text": "WhatsApp\n\t\t\t\n\t\t\t\t21 3605 1000",
+        "href": "https://api.whatsapp.com/send?1=pt_BR&phone=552136051000",
+        "selectors": {
+          "text": "a:has-text(\"WhatsApp\n\t\t\t\n\t\t\t\t21 3605 1000\")"
+        }
+      },
+      {
+        "text": "Atendimento\n\t\t\t\n\t\t\t\t0800 001  1000",
+        "href": "tel:08000011000",
+        "selectors": {
+          "text": "a:has-text(\"Atendimento\n\t\t\t\n\t\t\t\t0800 001  1000\")"
+        }
+      },
+      {
+        "text": "Assinar pra casa\n\t\t\t\n\t\t\t\t0800 031 0453",
+        "href": "tel:0800030453",
+        "selectors": {
+          "text": "a:has-text(\"Assinar pra casa\n\t\t\t\n\t\t\t\t0800 031 0453\")"
+        }
+      },
+      {
+        "text": "Assinar pra empresa\n\t\t\t\n\t\t\t\t0800 282 3258",
+        "href": "tel:08002823258",
+        "selectors": {
+          "text": "a:has-text(\"Assinar pra empresa\n\t\t\t\n\t\t\t\t0800 282 325\")"
+        }
+      },
+      {
+        "text": "Deficientes auditivos",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/?q=geral&sq=acessibilidade",
+        "selectors": {
+          "text": "a:has-text(\"Deficientes auditivos\")"
+        }
+      },
+      {
+        "text": "Ouvidoria",
+        "href": "https://www.niointernet.com.br/ajuda/ouvidoria/",
+        "selectors": {
+          "text": "a:has-text(\"Ouvidoria\")"
+        }
+      },
+      {
+        "text": "Sobre a Nio",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/",
+        "selectors": {
+          "text": "a:has-text(\"Sobre a Nio\")"
+        }
+      },
+      {
+        "text": "Trabalhe conosco",
+        "href": "https://nio.gupy.io/",
+        "selectors": {
+          "text": "a:has-text(\"Trabalhe conosco\")"
+        }
+      },
+      {
+        "text": "Imprensa",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/?q=geral&sq=imprensa",
+        "selectors": {
+          "text": "a:has-text(\"Imprensa\")"
+        }
+      },
+      {
+        "text": "Seja parceiro",
+        "href": "https://www.niointernet.com.br/seja-parceiro/",
+        "selectors": {
+          "text": "a:has-text(\"Seja parceiro\")"
+        }
+      },
+      {
+        "text": "Confiabilidade",
+        "href": "http://www.niointernet.com.br/sobre-a-nio/premios/",
+        "selectors": {
+          "text": "a:has-text(\"Confiabilidade\")"
+        }
+      },
+      {
+        "text": "Termos e contratos",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/?q=internet&sq=contrato-e-regulamentos-vigentes",
+        "selectors": {
+          "text": "a:has-text(\"Termos e contratos\")"
+        }
+      },
+      {
+        "text": "Privacidade",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/privacidade/",
+        "selectors": {
+          "text": "a:has-text(\"Privacidade\")"
+        }
+      },
+      {
+        "text": "Comunicados",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/comunicados/",
+        "selectors": {
+          "text": "a:has-text(\"Comunicados\")"
+        }
+      },
+      {
+        "text": "Regulatório",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/",
+        "selectors": {
+          "text": "a:has-text(\"Regulatório\")"
+        }
+      },
+      {
+        "text": "Segurança",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/seguranca/",
+        "selectors": {
+          "text": "a:has-text(\"Segurança\")"
+        }
+      },
+      {
+        "text": "Acessibilidade",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/?q=geral&sq=acessibilidade",
+        "selectors": {
+          "text": "a:has-text(\"Acessibilidade\")"
+        }
+      },
+      {
+        "text": "Ética e integridade",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/?q=geral&sq=codigo-de-etica",
+        "selectors": {
+          "text": "a:has-text(\"Ética e integridade\")"
+        }
+      },
+      {
+        "text": "Conselho de usuários",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/?q=conselho-de-usuario&sq=o-que-e-conselho-usuario",
+        "selectors": {
+          "text": "a:has-text(\"Conselho de usuários\")"
+        }
+      },
+      {
+        "text": "Repositório de ofertas",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/?q=internet&sq=repositorio-de-ofertas",
+        "selectors": {
+          "text": "a:has-text(\"Repositório de ofertas\")"
+        }
+      },
+      {
+        "text": "Devolução de crédito ex-cliente",
+        "href": "https://www.niointernet.com.br/ajuda/devolucao-de-credito/",
+        "selectors": {
+          "text": "a:has-text(\"Devolução de crédito ex-cliente\")"
+        }
+      },
+      {
+        "text": "Interrupção de serviços",
+        "href": "https://consultaesaq.com.br/interrupcao/#/interrupcoes/home",
+        "selectors": {
+          "text": "a:has-text(\"Interrupção de serviços\")"
+        }
+      },
+      {
+        "text": "acesse o site Não Me Perturbe.",
+        "href": "https://www.naomeperturbe.com.br/",
+        "selectors": {
+          "text": "a:has-text(\"acesse o site Não Me Perturbe.\")"
+        }
+      },
+      {
+        "text": "Saber mais",
+        "href": "https://www.niointernet.com.br/data/files/C1/54/FB/38/81B389108BBC9189880B08A8/Pesquisa-Anatel-2025.pdf",
+        "selectors": {
+          "text": "a:has-text(\"Saber mais\")"
+        }
+      },
+      {
+        "text": "Segurança",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/?q=seguranca",
+        "selectors": {
+          "text": "a:has-text(\"Segurança\")"
+        }
+      },
+      {
+        "text": "Privacidade",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/?q=privacidade&sq=sobre-privacidade",
+        "selectors": {
+          "text": "a:has-text(\"Privacidade\")"
+        }
+      },
+      {
+        "text": "",
+        "href": "https://www.niointernet.com.br/",
+        "selectors": {}
+      },
+      {
+        "text": "Compre pelo WhatsApp",
+        "href": "https://wa.me/552127410001?text=Ol%C3%A1%21%20Quero%20conhecer%20as%20ofertas%20da%20Nio%20Fibra",
+        "selectors": {
+          "id": "#floating-elements-whatsapp"
+        }
+      },
+      {
+        "text": "Política de Privacidade.",
+        "href": "https://www.niointernet.com.br/",
+        "selectors": {
+          "text": "a:has-text(\"Política de Privacidade.\")"
+        }
+      },
+      {
+        "text": "Consultar disponibilidade",
+        "href": "https://assinar.niointernet.com.br/s/",
+        "selectors": {
+          "id": "#floating-elements-disponibility"
+        }
+      },
+      {
+        "text": "Consultar disponibilidade",
+        "href": "https://assinar.niointernet.com.br/s/",
+        "selectors": {
+          "id": "#floating-elements-disponibility-desk"
+        }
+      },
+      {
+        "text": "Ajuda",
+        "href": "../../../../ajuda.htm",
+        "selectors": {
+          "text": "a:has-text(\"Ajuda\")"
+        }
+      }
+    ],
+    "iframes": []
+  },
+  {
+    "trigger": "navigation",
+    "url": "https://www.niointernet.com.br/ajuda/servicos/segunda-via/",
+    "title": "Segunda Via - Nio",
+    "inputs": [
+      {
+        "tag": "input",
+        "type": "text",
+        "id": "cpf-cnpj",
+        "name": "cpf-cnpj",
+        "placeholder": "Digite o CPF/CNPJ",
+        "selectors": {
+          "id": "#cpf-cnpj",
+          "name": "[name=\"cpf-cnpj\"]",
+          "placeholder": "[placeholder*=\"Digite o CPF/CNPJ\"]"
+        }
+      }
+    ],
+    "buttons": [
+      {
+        "tag": "button",
+        "text": "",
+        "dataContext": null,
+        "selectors": {
+          "id": "#theme-btn"
+        }
+      },
+      {
+        "tag": "button",
+        "text": "",
+        "dataContext": null,
+        "selectors": {}
+      },
+      {
+        "tag": "div",
+        "text": "Ajuda",
+        "dataContext": null,
+        "selectors": {
+          "id": "#help-menu-trigger",
+          "text": "button:has-text(\"Ajuda\")"
+        }
+      },
+      {
+        "tag": "button",
+        "text": "",
+        "dataContext": null,
+        "selectors": {}
+      },
+      {
+        "tag": "button",
+        "text": "",
+        "dataContext": null,
+        "selectors": {}
+      },
+      {
+        "tag": "button",
+        "text": "",
+        "dataContext": null,
+        "selectors": {}
+      },
+      {
+        "tag": "button",
+        "text": "Eu quero",
+        "dataContext": null,
+        "selectors": {
+          "text": "button:has-text(\"Eu quero\")"
+        }
+      },
+      {
+        "tag": "button",
+        "text": "Entendi",
+        "dataContext": null,
+        "selectors": {
+          "id": "#accept-cookies-trigger",
+          "text": "button:has-text(\"Entendi\")"
+        }
+      }
+    ],
+    "links": [
+      {
+        "text": "Ir pra ajuda da Nio",
+        "href": "https://servicos.niointernet.com.br/ajuda/servicos",
+        "selectors": {
+          "text": "a:has-text(\"Ir pra ajuda da Nio\")"
+        }
+      },
+      {
+        "text": "Ir para o conteúdo",
+        "href": "#main-nio",
+        "selectors": {
+          "text": "a:has-text(\"Ir para o conteúdo\")"
+        }
+      },
+      {
+        "text": "Compre pelo 0800 031 0453",
+        "href": "tel:08000310453",
+        "selectors": {
+          "text": "a:has-text(\"Compre pelo 0800 031 0453\")"
+        }
+      },
+      {
+        "text": "Compre pelo WhatsApp",
+        "href": "https://wa.me/552127410001?text=Ol%C3%A1%21%20Quero%20conhecer%20as%20ofertas%20da%20Nio%20Fibra",
+        "selectors": {
+          "text": "a:has-text(\"Compre pelo WhatsApp\")"
+        }
+      },
+      {
+        "text": "Ir para rodapé",
+        "href": "#footer-nio",
+        "selectors": {
+          "text": "a:has-text(\"Ir para rodapé\")"
+        }
+      },
+      {
+        "text": "EMPRESAS",
+        "href": "https://www.niointernet.com.br/",
+        "selectors": {
+          "text": "a:has-text(\"EMPRESAS\")"
+        }
+      },
+      {
+        "text": "Central de vendas",
+        "href": "tel:08000310453",
+        "selectors": {
+          "id": "#toSign"
+        }
+      },
+      {
+        "text": "Compre pelo 0800 031 0453",
+        "href": "tel:08000310453",
+        "selectors": {
+          "id": "#toSign-desktop-a"
+        }
+      },
+      {
+        "text": "",
+        "href": "tel:08000310453",
+        "selectors": {}
+      },
+      {
+        "text": "",
+        "href": "tel:08000011000",
+        "selectors": {}
+      },
+      {
+        "text": "2ª via\nde conta",
+        "href": "https://negociacao.niointernet.com.br/negociar/",
+        "selectors": {
+          "text": "a:has-text(\"2ª via\nde conta\")"
+        }
+      },
+      {
+        "text": "Negociar\ndívidas",
+        "href": "https://negociacao.niointernet.com.br/negociar/?_gl=1*nemjr*_gcl_au*MTY0NjQwODk0OS4xNzUyNDk4MTY5*_ga*MTEwNjAyMjE4NS4xNzUyNDk4MTY5*_ga_TY1W95D3MQ*czE3NTYzODI1MjMkbzM3JGcxJHQxNzU2MzgyNzU3JGo1OCRsMCRoMjY3ODM4NTI1",
+        "selectors": {
+          "text": "a:has-text(\"Negociar\ndívidas\")"
+        }
+      },
+      {
+        "text": "Ajuda\nda Nio",
+        "href": "https://www.niointernet.com.br/ajuda/",
+        "selectors": {
+          "text": "a:has-text(\"Ajuda\nda Nio\")"
+        }
+      },
+      {
+        "text": "Suporte técnico",
+        "href": "https://www.niointernet.com.br/ajuda/solicitar-suporte-tecnico/",
+        "selectors": {
+          "text": "a:has-text(\"Suporte técnico\")"
+        }
+      },
+      {
+        "text": "Desbloquear serviço",
+        "href": "https://www.niointernet.com.br/ajuda/servicos/desbloquear/",
+        "selectors": {
+          "text": "a:has-text(\"Desbloquear serviço\")"
+        }
+      },
+      {
+        "text": "WhatsApp Iniciar conversa",
+        "href": "https://wa.me/552136051000",
+        "selectors": {
+          "id": "#copyWhatsBtn"
+        }
+      },
+      {
+        "text": "Telefone Ligar pra 0800 001 1000",
+        "href": "tel:08000011000",
+        "selectors": {
+          "id": "#copyPhoneBtn"
+        }
+      },
+      {
+        "text": "Planos residenciais",
+        "href": "https://www.niointernet.com.br/?_gl=1*7sfruz*_gcl_au*MTY0NjQwODk0OS4xNzUyNDk4MTY5*_ga*MTEwNjAyMjE4NS4xNzUyNDk4MTY5*_ga_TY1W95D3MQ*czE3NTYzODI1MjMkbzM3JGcxJHQxNzU2MzgzNDg4JGo2MCRsMCRoMjY3ODM4NTI1",
+        "selectors": {
+          "text": "a:has-text(\"Planos residenciais\")"
+        }
+      },
+      {
+        "text": "Benefícios",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/beneficios/",
+        "selectors": {
+          "text": "a:has-text(\"Benefícios\")"
+        }
+      },
+      {
+        "text": "Planos empresariais",
+        "href": "https://www.niointernet.com.br/pra-sua-empresa/",
+        "selectors": {
+          "text": "a:has-text(\"Planos empresariais\")"
+        }
+      },
+      {
+        "text": "Consultar disponibilidade",
+        "href": "https://checkout.niointernet.com.br",
+        "selectors": {
+          "text": "a:has-text(\"Consultar disponibilidade\")"
+        }
+      },
+      {
+        "text": "Baixar app Nio",
+        "href": "https://app.niointernet.com.br/lojas/",
+        "selectors": {
+          "text": "a:has-text(\"Baixar app Nio\")"
+        }
+      },
+      {
+        "text": "Atendimento por WhatsApp",
+        "href": "https://api.whatsapp.com/send?1=pt_BR&phone=552136051000",
+        "selectors": {
+          "text": "a:has-text(\"Atendimento por WhatsApp\")"
+        }
+      },
+      {
+        "text": ".st0, .st1 { fill: #192b1c; } .st2 { stroke: #192b1c; stroke-miterlimit: 10; str",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/premios/",
+        "selectors": {
+          "text": "a:has-text(\".st0, .st1 { fill: #192b1c; } .st2 { str\")"
+        }
+      },
+      {
+        "text": ".st0, .st1 { fill: #192b1c; } .st2 { fill: #fff; stroke: #192b1c; stroke-miterli",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/premios/",
+        "selectors": {
+          "text": "a:has-text(\".st0, .st1 { fill: #192b1c; } .st2 { fil\")"
+        }
+      },
+      {
+        "text": "",
+        "href": "https://www.facebook.com/niointernet",
+        "selectors": {}
+      },
+      {
+        "text": "",
+        "href": "https://www.instagram.com/niointernet/",
+        "selectors": {}
+      },
+      {
+        "text": "",
+        "href": "https://www.linkedin.com/company/niointernet",
+        "selectors": {}
+      },
+      {
+        "text": "",
+        "href": "ttps://www.tiktok.com/Niointernet",
+        "selectors": {}
+      },
+      {
+        "text": "",
+        "href": "https://x.com/niointernet",
+        "selectors": {}
+      },
+      {
+        "text": "",
+        "href": "https://www.youtube.com/@niointernet",
+        "selectors": {}
+      },
+      {
+        "text": "Nio Fibra pra casa",
+        "href": "https://www.niointernet.com.br/pra-voce/fibra/",
+        "selectors": {
+          "text": "a:has-text(\"Nio Fibra pra casa\")"
+        }
+      },
+      {
+        "text": "Nio Fibra pra empresa",
+        "href": "../../../pra-sua-empresa/fibra/",
+        "selectors": {
+          "text": "a:has-text(\"Nio Fibra pra empresa\")"
+        }
+      },
+      {
+        "text": "Internet com Streaming",
+        "href": "https://www.niointernet.com.br/pra-voce/fibra/internet-com-streaming/",
+        "selectors": {
+          "text": "a:has-text(\"Internet com Streaming\")"
+        }
+      },
+      {
+        "text": "Internet Gamer",
+        "href": "https://www.niointernet.com.br/pra-voce/fibra/internet-gamer/",
+        "selectors": {
+          "text": "a:has-text(\"Internet Gamer\")"
+        }
+      },
+      {
+        "text": "Internet para Home Office",
+        "href": "https://www.niointernet.com.br/pra-voce/fibra/internet-para-home-office/",
+        "selectors": {
+          "text": "a:has-text(\"Internet para Home Office\")"
+        }
+      },
+      {
+        "text": "Wi-Fi 6",
+        "href": "https://www.niointernet.com.br/pra-voce/fibra/wifi-6/",
+        "selectors": {
+          "text": "a:has-text(\"Wi-Fi 6\")"
+        }
+      },
+      {
+        "text": "Benefícios",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/beneficios/",
+        "selectors": {
+          "text": "a:has-text(\"Benefícios\")"
+        }
+      },
+      {
+        "text": "Casa Inteligente",
+        "href": "https://www.niointernet.com.br/pra-voce/fibra/casa-inteligente/",
+        "selectors": {
+          "text": "a:has-text(\"Casa Inteligente\")"
+        }
+      },
+      {
+        "text": "Cobertura",
+        "href": "https://www.niointernet.com.br/pra-voce/fibra/cobertura/",
+        "selectors": {
+          "text": "a:has-text(\"Cobertura\")"
+        }
+      },
+      {
+        "text": "Teste de Velocidade",
+        "href": "https://www.niointernet.com.br/ferramentas/teste-de-velocidade/",
+        "selectors": {
+          "text": "a:has-text(\"Teste de Velocidade\")"
+        }
+      },
+      {
+        "text": "Serviços",
+        "href": "https://www.niointernet.com.br/ajuda/",
+        "selectors": {
+          "text": "a:has-text(\"Serviços\")"
+        }
+      },
+      {
+        "text": "Segunda via de conta",
+        "href": "https://negociacao.niointernet.com.br/negociar/",
+        "selectors": {
+          "text": "a:has-text(\"Segunda via de conta\")"
+        }
+      },
+      {
+        "text": "Negociar dívidas",
+        "href": "https://www.niointernet.com.br/negociar/",
+        "selectors": {
+          "text": "a:has-text(\"Negociar dívidas\")"
+        }
+      },
+      {
+        "text": "Desbloquear serviço",
+        "href": "https://www.niointernet.com.br/ajuda/servicos/desbloquear/",
+        "selectors": {
+          "text": "a:has-text(\"Desbloquear serviço\")"
+        }
+      },
+      {
+        "text": "Mudar plano",
+        "href": "https://www.niointernet.com.br/ajuda/mudar-plano/",
+        "selectors": {
+          "text": "a:has-text(\"Mudar plano\")"
+        }
+      },
+      {
+        "text": "Suporte técnico",
+        "href": "https://www.niointernet.com.br/ajuda/suporte-tecnico/",
+        "selectors": {
+          "text": "a:has-text(\"Suporte técnico\")"
+        }
+      },
+      {
+        "text": "Cancelamento",
+        "href": "../../../ajuda/cancelamento/",
+        "selectors": {
+          "text": "a:has-text(\"Cancelamento\")"
+        }
+      },
+      {
+        "text": "Central de ajuda",
+        "href": "https://www.niointernet.com.br/ajuda/",
+        "selectors": {
+          "text": "a:has-text(\"Central de ajuda\")"
+        }
+      },
+      {
+        "text": "WhatsApp\n\t\t\t\n\t\t\t\t21 3605 1000",
+        "href": "https://api.whatsapp.com/send?1=pt_BR&phone=552136051000",
+        "selectors": {
+          "text": "a:has-text(\"WhatsApp\n\t\t\t\n\t\t\t\t21 3605 1000\")"
+        }
+      },
+      {
+        "text": "Atendimento\n\t\t\t\n\t\t\t\t0800 001  1000",
+        "href": "tel:08000011000",
+        "selectors": {
+          "text": "a:has-text(\"Atendimento\n\t\t\t\n\t\t\t\t0800 001  1000\")"
+        }
+      },
+      {
+        "text": "Assinar pra casa\n\t\t\t\n\t\t\t\t0800 031 0453",
+        "href": "tel:0800030453",
+        "selectors": {
+          "text": "a:has-text(\"Assinar pra casa\n\t\t\t\n\t\t\t\t0800 031 0453\")"
+        }
+      },
+      {
+        "text": "Assinar pra empresa\n\t\t\t\n\t\t\t\t0800 282 3258",
+        "href": "tel:08002823258",
+        "selectors": {
+          "text": "a:has-text(\"Assinar pra empresa\n\t\t\t\n\t\t\t\t0800 282 325\")"
+        }
+      },
+      {
+        "text": "Deficientes auditivos",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/?q=geral&sq=acessibilidade",
+        "selectors": {
+          "text": "a:has-text(\"Deficientes auditivos\")"
+        }
+      },
+      {
+        "text": "Ouvidoria",
+        "href": "https://www.niointernet.com.br/ajuda/ouvidoria/",
+        "selectors": {
+          "text": "a:has-text(\"Ouvidoria\")"
+        }
+      },
+      {
+        "text": "Sobre a Nio",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/",
+        "selectors": {
+          "text": "a:has-text(\"Sobre a Nio\")"
+        }
+      },
+      {
+        "text": "Trabalhe conosco",
+        "href": "https://nio.gupy.io/",
+        "selectors": {
+          "text": "a:has-text(\"Trabalhe conosco\")"
+        }
+      },
+      {
+        "text": "Imprensa",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/?q=geral&sq=imprensa",
+        "selectors": {
+          "text": "a:has-text(\"Imprensa\")"
+        }
+      },
+      {
+        "text": "Seja parceiro",
+        "href": "https://www.niointernet.com.br/seja-parceiro/",
+        "selectors": {
+          "text": "a:has-text(\"Seja parceiro\")"
+        }
+      },
+      {
+        "text": "Confiabilidade",
+        "href": "http://www.niointernet.com.br/sobre-a-nio/premios/",
+        "selectors": {
+          "text": "a:has-text(\"Confiabilidade\")"
+        }
+      },
+      {
+        "text": "Termos e contratos",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/?q=internet&sq=contrato-e-regulamentos-vigentes",
+        "selectors": {
+          "text": "a:has-text(\"Termos e contratos\")"
+        }
+      },
+      {
+        "text": "Privacidade",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/privacidade/",
+        "selectors": {
+          "text": "a:has-text(\"Privacidade\")"
+        }
+      },
+      {
+        "text": "Comunicados",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/comunicados/",
+        "selectors": {
+          "text": "a:has-text(\"Comunicados\")"
+        }
+      },
+      {
+        "text": "Regulatório",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/",
+        "selectors": {
+          "text": "a:has-text(\"Regulatório\")"
+        }
+      },
+      {
+        "text": "Segurança",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/seguranca/",
+        "selectors": {
+          "text": "a:has-text(\"Segurança\")"
+        }
+      },
+      {
+        "text": "Acessibilidade",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/?q=geral&sq=acessibilidade",
+        "selectors": {
+          "text": "a:has-text(\"Acessibilidade\")"
+        }
+      },
+      {
+        "text": "Ética e integridade",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/?q=geral&sq=codigo-de-etica",
+        "selectors": {
+          "text": "a:has-text(\"Ética e integridade\")"
+        }
+      },
+      {
+        "text": "Conselho de usuários",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/?q=conselho-de-usuario&sq=o-que-e-conselho-usuario",
+        "selectors": {
+          "text": "a:has-text(\"Conselho de usuários\")"
+        }
+      },
+      {
+        "text": "Repositório de ofertas",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/?q=internet&sq=repositorio-de-ofertas",
+        "selectors": {
+          "text": "a:has-text(\"Repositório de ofertas\")"
+        }
+      },
+      {
+        "text": "Devolução de crédito ex-cliente",
+        "href": "https://www.niointernet.com.br/ajuda/devolucao-de-credito/",
+        "selectors": {
+          "text": "a:has-text(\"Devolução de crédito ex-cliente\")"
+        }
+      },
+      {
+        "text": "Interrupção de serviços",
+        "href": "https://consultaesaq.com.br/interrupcao/#/interrupcoes/home",
+        "selectors": {
+          "text": "a:has-text(\"Interrupção de serviços\")"
+        }
+      },
+      {
+        "text": "acesse o site Não Me Perturbe.",
+        "href": "https://www.naomeperturbe.com.br/",
+        "selectors": {
+          "text": "a:has-text(\"acesse o site Não Me Perturbe.\")"
+        }
+      },
+      {
+        "text": "Saber mais",
+        "href": "https://www.niointernet.com.br/data/files/C1/54/FB/38/81B389108BBC9189880B08A8/Pesquisa-Anatel-2025.pdf",
+        "selectors": {
+          "text": "a:has-text(\"Saber mais\")"
+        }
+      },
+      {
+        "text": "Segurança",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/?q=seguranca",
+        "selectors": {
+          "text": "a:has-text(\"Segurança\")"
+        }
+      },
+      {
+        "text": "Privacidade",
+        "href": "https://www.niointernet.com.br/sobre-a-nio/transparencia/?q=privacidade&sq=sobre-privacidade",
+        "selectors": {
+          "text": "a:has-text(\"Privacidade\")"
+        }
+      },
+      {
+        "text": "",
+        "href": "https://www.niointernet.com.br/",
+        "selectors": {}
+      },
+      {
+        "text": "Compre pelo WhatsApp",
+        "href": "https://wa.me/552127410001?text=Ol%C3%A1%21%20Quero%20conhecer%20as%20ofertas%20da%20Nio%20Fibra",
+        "selectors": {
+          "id": "#floating-elements-whatsapp"
+        }
+      },
+      {
+        "text": "Política de Privacidade.",
+        "href": "https://www.niointernet.com.br/",
+        "selectors": {
+          "text": "a:has-text(\"Política de Privacidade.\")"
+        }
+      },
+      {
+        "text": "Consultar disponibilidade",
+        "href": "https://assinar.niointernet.com.br/s/",
+        "selectors": {
+          "id": "#floating-elements-disponibility"
+        }
+      },
+      {
+        "text": "Consultar disponibilidade",
+        "href": "https://assinar.niointernet.com.br/s/",
+        "selectors": {
+          "id": "#floating-elements-disponibility-desk"
+        }
+      },
+      {
+        "text": "Ajuda",
+        "href": "../../../ajuda.htm",
+        "selectors": {
+          "text": "a:has-text(\"Ajuda\")"
+        }
+      }
+    ],
+    "iframes": []
+  }
+]

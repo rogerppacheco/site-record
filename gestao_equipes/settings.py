@@ -252,9 +252,11 @@ ZAPI_TOKEN = config('ZAPI_TOKEN', default='')
 ZAPI_CLIENT_TOKEN = config('ZAPI_CLIENT_TOKEN', default='')
 
 # --- CONFIGURAÇÕES DE CAPTCHA (reCAPTCHA SOLVER) ---
-# Use CapSolver ou 2Captcha para resolver automaticamente reCAPTCHA v2
+# Use CapSolver, 2Captcha ou API customizada para resolver reCAPTCHA v2 na página Nio (PDF fatura)
 CAPTCHA_API_KEY = config('CAPTCHA_API_KEY', default='CAP-4A266E1BA9DC47B87D28FBDE12A129014DB5B7EABC69D961115B3E184D497F85')
-CAPTCHA_PROVIDER = config('CAPTCHA_PROVIDER', default='capsolver')  # Opções: 'capsolver' ou '2captcha'
+CAPTCHA_PROVIDER = config('CAPTCHA_PROVIDER', default='capsolver')  # Opções: 'capsolver', '2captcha' ou 'custom'
+# Para provedor 'custom': URL da sua API que recebe POST JSON { siteKey, pageUrl } e retorna { token } ou { gRecaptchaResponse }
+RECAPTCHA_SOLVER_API_URL = config('RECAPTCHA_SOLVER_API_URL', default='')
 
 # Caminho para armazenar/reusar cookies da Nio (storage state do Playwright)
 NIO_STORAGE_STATE = os.path.join(BASE_DIR, '.playwright_state.json')
@@ -278,6 +280,11 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 200 * 1024 * 1024  # 200MB
 # Variável de ambiente: PAP_HEADLESS=false para ver o navegador.
 PAP_HEADLESS = config('PAP_HEADLESS', default=True, cast=lambda v: str(v).lower() not in ('false', '0', 'no'))
 
+# FORCE_FATURA_PDF_PLAYWRIGHT: Se True, o PDF da fatura é SEMPRE buscado abrindo o navegador (Playwright),
+# em vez de tentar primeiro a API. Use só para debug: ver os cliques (Consultar → Pagar conta → Gerar boleto → Baixar PDF).
+# Variável de ambiente: FORCE_FATURA_PDF_PLAYWRIGHT=true
+FORCE_FATURA_PDF_PLAYWRIGHT = config('FORCE_FATURA_PDF_PLAYWRIGHT', default=False, cast=lambda v: str(v).lower() in ('true', '1', 'yes'))
+
 # PAP_CAPTURE_SCREENSHOTS: Se True, salva screenshot em cada etapa da venda PAP (em produção).
 # Os arquivos ficam em downloads/pap_venda_*.png e podem ser vistos em /api/crm/debug/screenshots/
 # Variável de ambiente: PAP_CAPTURE_SCREENSHOTS=true
@@ -291,6 +298,11 @@ PAP_SCREENSHOTS_ONEDRIVE = config('PAP_SCREENSHOTS_ONEDRIVE', default=False, cas
 PAP_ONEDRIVE_FOLDER = config('PAP_ONEDRIVE_FOLDER', default='PAP_Screenshots')
 # Pasta no OneDrive para selfies de confirmação de presença (por data: Presenca_Selfies/YYYY-MM-DD/)
 PRESENCA_ONEDRIVE_FOLDER = config('PRESENCA_ONEDRIVE_FOLDER', default='Presenca_Selfies')
+# Pasta no OneDrive para solicitações de inclusão/viabilidade (subpasta por solicitação)
+INCLUSAO_ONEDRIVE_FOLDER = config('INCLUSAO_ONEDRIVE_FOLDER', default='Inclusao_Viabilidade')
+
+# Google Street View Static API - foto automática na automação Inclusão/Viabilidade
+GOOGLE_STREETVIEW_API_KEY = config('GOOGLE_STREETVIEW_API_KEY', default='')
 
 LOGGING = {
     'version': 1,

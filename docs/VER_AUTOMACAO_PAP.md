@@ -63,6 +63,38 @@ Quando você sobe o servidor **localmente** e dispara o fluxo pelo WhatsApp de v
 
 4. Na sua máquina o **navegador abrirá** e você verá o PAP sendo preenchido em tempo real.
 
+### Fluxo *Fatura* (consultar fatura por CPF e baixar PDF)
+
+O mesmo `PAP_HEADLESS=false` vale para o comando **Fatura** no WhatsApp.
+
+**De onde vêm os dados (valor, PIX, código de barras)?**  
+Tudo isso vem da **API REST da Nio**, não de cliques no site:
+
+1. **Token** – O sistema obtém um token: primeiro por uma requisição HTTP simples a `/negociar/params`. Se o servidor exigir cookies/captcha, aí sim o **navegador abre uma vez** para carregar a página e pegar o token (é o que você viu ao “abrir o site”).
+2. **Session ID** – Uma chamada HTTP à API com o token.
+3. **Dados da fatura** – Uma chamada GET à API em `/debts/customers/{CPF}`. O JSON de resposta já traz valor, vencimento, PIX, código de barras, etc. **Nenhum clique nem reCAPTCHA** – só HTTP com token e session ID.
+
+Por isso você viu o site abrir (para pegar o token, se precisou), mas não viu cliques: os dados que apareceram na mensagem vieram dessas chamadas de API.
+
+**E o PDF?**  
+O PDF é tentado **primeiro pela API** (endpoint de download da fatura). Se a API devolver a URL do PDF, o sistema usa essa URL e **não abre o navegador** para o PDF – por isso você não viu o clique em “Baixar PDF”. Só quando a API **não** devolve o PDF é que o sistema abre o navegador de novo e faz o fluxo: Consultar CPF → Ver detalhes → Pagar conta → Gerar boleto → **Baixar PDF**.
+
+**reCAPTCHA na página Nio:** A página de consulta da Nio exige reCAPTCHA ("Não sou um robô"). O botão "Consultar dívidas" só é habilitado depois que o reCAPTCHA é resolvido. O sistema não resolve reCAPTCHA automaticamente. Por isso, quando o PDF não vem pela API e o sistema tenta buscar pelo navegador, o clique em "Consultar" costuma falhar (botão permanece desabilitado). Em produção, o ideal é que a API da Nio devolva a URL do PDF; quando isso não acontece, a resposta da fatura segue com os dados (valor, PIX, código de barras), mas sem anexo PDF.
+
+**Como ver o navegador e os cliques do PDF (debug):**
+
+1. **PAP_HEADLESS=false** – O navegador abre na tela quando for usado (token ou PDF).
+2. **FORCE_FATURA_PDF_PLAYWRIGHT=true** – **Ignora** o PDF da API e **sempre** busca o PDF abrindo o navegador e fazendo o fluxo completo (Consultar → Pagar conta → Gerar boleto → Baixar PDF). Use só em teste local quando quiser ver exatamente onde clica e por que o download pode falhar.
+
+   **PowerShell (sessão atual):**
+   ```powershell
+   $env:PAP_HEADLESS="false"
+   $env:FORCE_FATURA_PDF_PLAYWRIGHT="true"
+   python manage.py runserver
+   ```
+
+   Depois envie **Fatura** e o **CPF**; o navegador abrirá e você verá todos os cliques até o “Baixar PDF”.
+
 ### Importante
 
 - Use **PAP_HEADLESS=false** só em **ambiente de teste local** (sua máquina com monitor).

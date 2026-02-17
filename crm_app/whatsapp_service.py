@@ -372,15 +372,13 @@ class WhatsAppService:
         print(f"[PDF-ENVIO] Iniciando envio de PDF: {nome_arquivo} para {telefone_limpo}")
         print(f"[PDF-ENVIO] Tamanho base64: {len(base64_data)} chars (~{tamanho_mb:.2f} MB)")
         
-        # Z-API send-document geralmente aceita apenas base64 puro (sem prefixo data:)
-        # Remover prefixo se existir
+        # Z-API documentação exige data URI para base64: "data:application/pdf;base64,..."
         base64_original = base64_data
         if base64_data.startswith('data:'):
-            logger.info(f"[WhatsAppService] ⚠️ Base64 contém prefixo 'data:', removendo...")
-            # Extrair apenas o base64 (depois do "base64,")
             if 'base64,' in base64_data:
                 base64_data = base64_data.split('base64,', 1)[1]
-                logger.info(f"[WhatsAppService] Base64 após remoção do prefixo: {len(base64_data)} chars")
+        base64_data = base64_data.replace("\r", "").replace("\n", "")
+        document_value = f"data:application/pdf;base64,{base64_data}"
         
         # Validar base64
         try:
@@ -394,7 +392,7 @@ class WhatsAppService:
         
         payload = {
             "phone": telefone_limpo,
-            "document": base64_data,
+            "document": document_value,
             "fileName": nome_arquivo
         }
         
@@ -406,7 +404,7 @@ class WhatsAppService:
         logger.info(f"[WhatsAppService] Payload preparado:")
         logger.info(f"[WhatsAppService]   - phone: {telefone_limpo}")
         logger.info(f"[WhatsAppService]   - fileName: {nome_arquivo}")
-        logger.info(f"[WhatsAppService]   - document (tamanho): {len(base64_data)} chars")
+        logger.info(f"[WhatsAppService]   - document (data URI, tamanho): {len(document_value)} chars")
         logger.info(f"[WhatsAppService] URL completa: {url}")
         logger.info(f"[WhatsAppService] Extensão usada: {extensao}")
         print(f"[PDF-ENVIO] Enviando requisição para: {url}")

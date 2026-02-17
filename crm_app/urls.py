@@ -74,7 +74,8 @@ from .views import (
     enviar_resultado_campanha_whatsapp,
     ImportarKMLView,        
     ImportarDFVView,
-    WebhookWhatsAppView,  
+    WebhookWhatsAppView,
+    serve_pdf_view,
     listar_grupos_whatsapp_api,
     VerificarPermissaoGestaoView,
     
@@ -138,6 +139,7 @@ router.register(r'lancamentos-financeiros', LancamentoFinanceiroViewSet, basenam
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('serve-pdf/<str:token>/', serve_pdf_view, name='serve-pdf'),
     path('duplicar-venda/', duplicar_venda, name='duplicar-venda'),
         # --- Endpoint para busca automática de fatura NIO (Bonus M-10) ---
         path('bonus-m10/buscar-fatura-nio/', buscar_fatura_nio_bonus_m10, name='buscar-fatura-nio-bonus-m10'),

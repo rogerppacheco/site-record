@@ -166,12 +166,48 @@ class WebhookWhatsAppView(APIView):
         
         try:
             from crm_app.whatsapp_webhook_handler import processar_webhook_whatsapp
-            resultado = processar_webhook_whatsapp(data)
+            resultado = processar_webhook_whatsapp(data, request=request)
             logger_webhook.info(f"[WebhookWhatsAppView] Resultado: {resultado.get('status', '?')}")
             return Response(resultado, status=200 if resultado.get('status') == 'ok' else 500)
         except Exception as e:
             logger_webhook.exception(f"[WebhookWhatsAppView] Erro no processamento: {e}")
             return Response({'status': 'erro', 'mensagem': str(e)}, status=500)
+
+
+def serve_pdf_view(request, token):
+    """
+    Serve um PDF da pasta downloads/ com token assinado (para Z-API buscar o arquivo por URL).
+    Uso: /api/crm/serve-pdf/<token>/ → retorna o PDF.
+    Token = base64url(filename) + "." + hmac(SECRET_KEY, filename).hexdigest()[:32]
+    """
+    import hmac
+    import base64
+    from django.http import FileResponse, HttpResponseNotFound
+
+    if not token or "." not in token:
+        return HttpResponseNotFound("Token inválido")
+    parts = token.split(".", 1)
+    try:
+        payload_b64 = parts[0]
+        payload_b64 += "=" * (4 - len(payload_b64) % 4)  # padding
+        filename = base64.urlsafe_b64decode(payload_b64).decode("utf-8")
+    except Exception:
+        return HttpResponseNotFound("Token inválido")
+    if not re.match(r"^[a-zA-Z0-9_.-]+$", filename):
+        return HttpResponseNotFound("Nome de arquivo inválido")
+    secret = (getattr(settings, "SECRET_KEY", "") or "").encode("utf-8")
+    expected_sig = hmac.new(secret, filename.encode("utf-8"), "sha256").hexdigest()[:32]
+    if parts[1] != expected_sig:
+        return HttpResponseNotFound("Token inválido")
+    downloads_dir = os.path.join(settings.BASE_DIR, "downloads")
+    filepath = os.path.join(downloads_dir, filename)
+    if not os.path.abspath(filepath).startswith(os.path.abspath(downloads_dir)) or not os.path.isfile(filepath):
+        return HttpResponseNotFound("Arquivo não encontrado")
+    response = FileResponse(open(filepath, "rb"), content_type="application/pdf")
+    response["Content-Disposition"] = f'inline; filename="{filename}"'
+    return response
+
+
 # Endpoint para duplicar venda (Reemissão)
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated

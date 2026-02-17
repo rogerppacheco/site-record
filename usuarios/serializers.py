@@ -114,6 +114,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
             'participa_controle_presenca',
             'autorizar_venda_sem_auditoria',
             'autorizar_venda_automatica',
+            'autorizar_analise_credito_wpp',
             'tel_whatsapp',
             'tel_whatsapp_2',
             'tel_whatsapp_3',
