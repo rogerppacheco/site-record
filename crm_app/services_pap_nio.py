@@ -1048,27 +1048,24 @@ class PAPNioAutomation:
             return False, str(e)
     
     def etapa2_selecionar_sem_complemento(self) -> Tuple[bool, str]:
-        """Clica em 'Sem complemento' (checkbox) quando o endereço tem complementos."""
+        """Marca 'Sem complemento' via check() (interação real) e força revalidação clicando no Avançar."""
         try:
-            inp = self.page.query_selector('#semComplemento, input[id="semComplemento"]')
-            if inp:
-                try:
-                    if not inp.is_checked():
-                        inp.click()
-                except Exception:
-                    inp.click(force=True)
-            else:
+            # 1. Fechar dropdown do complemento (etapa2_viabilidade abre ao detectar)
+            self.page.keyboard.press("Escape")
+            self.page.wait_for_timeout(300)
+            # 2. Marcar checkbox com Playwright check() - interação real, React atualiza
+            try:
+                self.page.check('#semComplemento', force=True)
+            except Exception:
                 lbl = self.page.query_selector('label[for="semComplemento"]')
-                if lbl:
+                if lbl and lbl.is_visible():
                     lbl.click()
-                else:
-                    self.page.evaluate("""() => {
-                        const inp = document.getElementById('semComplemento');
-                        const lbl = document.querySelector('label[for="semComplemento"]');
-                        if (inp && !inp.checked) inp.click();
-                        else if (lbl) lbl.click();
-                    }""")
-            self.page.wait_for_timeout(500)
+            self.page.wait_for_timeout(400)
+            # 3. Clicar no botão Avançar para disparar revalidação (habilita o botão)
+            btn = self.page.query_selector('button:has-text("Avançar")')
+            if btn and btn.is_visible():
+                btn.click(force=True)
+                self.page.wait_for_timeout(500)
             return True, "Sem complemento selecionado."
         except Exception as e:
             logger.error(f"[PAP] etapa2_selecionar_sem_complemento: {e}")
@@ -1076,22 +1073,43 @@ class PAPNioAutomation:
 
     def etapa2_selecionar_complemento(self, indice: int) -> Tuple[bool, str]:
         """
-        Seleciona um complemento da lista (ex.: Casa A, Casa B).
+        Seleciona um complemento da lista (ex.: Loja 1, Loja 2, Casa A).
+        Usa os mesmos seletores do fluxo vender (etapa2_viabilidade / etapa2_preencher_referencia).
         Args:
             indice: 1-based (1 = primeiro complemento)
         """
         try:
-            for sel in [
+            # Igual ao vender: abrir dropdown clicando no campo Complemento
+            inp_comp = self.page.query_selector('input[placeholder*="omplemento"], input[placeholder*="Complemento"]')
+            if inp_comp:
+                inp_comp.click()
+                self.page.wait_for_timeout(800)
+                try:
+                    self.page.wait_for_selector('ul[class*="fQkuQJ"] li, ul[class*="cUdcXF"] li', state="visible", timeout=3000)
+                except Exception:
+                    pass
+            # Mesmos seletores do vender (etapa2_viabilidade e _etapa2_preencher_referencia)
+            for sel_comp in [
+                'ul.sc-fQkuQJ.cUdcXF li',
                 'ul[class*="fQkuQJ"] li',
                 'ul[class*="cUdcXF"] li',
+                'ul li.sc-epGmkI',
                 'input[placeholder*="omplemento"] ~ ul li',
+                'div:has(input[placeholder*="omplemento"]) ul li',
             ]:
-                lis = self.page.query_selector_all(sel)
-                if indice > 0 and indice <= len(lis):
-                    lis[indice - 1].click()
-                    self.page.wait_for_timeout(500)
-                    return True, "Complemento selecionado."
-            return False, "Índice de complemento inválido."
+                try:
+                    lis = self.page.query_selector_all(sel_comp)
+                    vis = [el for el in lis if el.is_visible()]
+                    if indice > 0 and indice <= len(vis):
+                        texto = (vis[indice - 1].inner_text() or "").strip()
+                        if texto:
+                            vis[indice - 1].click()
+                            self.page.wait_for_timeout(600)
+                            logger.info(f"[PAP] Complemento selecionado (índice {indice}): {texto!r}")
+                            return True, "Complemento selecionado."
+                except Exception:
+                    continue
+            return False, "Índice de complemento inválido ou lista não encontrada."
         except Exception as e:
             logger.error(f"[PAP] etapa2_selecionar_complemento: {e}")
             return False, str(e)
@@ -1279,16 +1297,30 @@ class PAPNioAutomation:
     def _etapa2_clicar_avancar_e_tratar_modal(self, cep: str, numero: str, referencia: str) -> Tuple[bool, str, Optional[list]]:
         """Clica Avançar e trata modal de viabilidade (Disponível, Posse, Indisponível)."""
         try:
-            # Aguardar o botão Avançar habilitar (front pode depender de blur/validação)
-            try:
-                self.page.wait_for_selector('button:has-text("Avançar"):not([disabled])', state="visible", timeout=4000)
-            except Exception:
-                pass
-            btn = self.page.query_selector('button:has-text("Avançar"):not([disabled])')
-            if not btn:
-                return False, "Botão Avançar não habilitou.", None
-            btn.click()
-            self.page.wait_for_timeout(2000)
+            modal_sel = 'h2:has-text("Disponível"), h2:has-text("Indisponível"), h3:has-text("Posse encontrada")'
+            modal_el = self.page.query_selector(modal_sel)
+            spinner = self.page.query_selector('div[class*="spinner"]')
+            # Se modal já visível: pular clique. Se spinner visível: Avançar já foi clicado, aguardar modal.
+            if modal_el and modal_el.is_visible():
+                self.page.wait_for_timeout(500)
+            elif spinner and spinner.is_visible():
+                # Carregando (Avançar já clicado por etapa2_selecionar_sem_complemento) - aguardar modal
+                try:
+                    self.page.wait_for_selector(modal_sel, state="visible", timeout=25000)
+                    self.page.wait_for_timeout(500)
+                except Exception:
+                    return False, "Timeout aguardando resultado da viabilidade.", None
+            else:
+                # Avançar ainda não clicado (fluxo sem complementos)
+                try:
+                    self.page.wait_for_selector('button:has-text("Avançar"):not([disabled])', state="visible", timeout=4000)
+                except Exception:
+                    pass
+                btn = self.page.query_selector('button:has-text("Avançar"):not([disabled])')
+                if not btn:
+                    return False, "Botão Avançar não habilitou.", None
+                btn.click(force=True)
+                self.page.wait_for_timeout(2000)
             try:
                 self.page.wait_for_selector(
                     'h2:has-text("Disponível"), h2:has-text("Indisponível"), h3:has-text("Posse encontrada")',
@@ -1340,29 +1372,37 @@ class PAPNioAutomation:
         try:
             logger.info(f"[PAP] Etapa 3 - CPF: {cpf}")
             
-            # Avançar se necessário (da etapa anterior)
-            btn_avancar = self.page.query_selector('button:has-text("Avançar"):not([disabled])')
-            if btn_avancar:
-                btn_avancar.click()
-                self.page.wait_for_timeout(1500)
+            # Esperar transição da etapa 2 (Continuar/disponível) para a tela de CPF - evita timeout
+            self.page.wait_for_timeout(2000)
             
-            # Aguardar campo CPF/CNPJ (documento) aparecer - timeout alto (rede/React podem demorar)
+            # Avançar só se o campo documento ainda não estiver visível (evita clicar no Avançar errado)
+            doc_elem = self.page.query_selector('input[name="documento"]')
+            doc_ja_visivel = bool(doc_elem and doc_elem.is_visible())
+            if not doc_ja_visivel:
+                btn_avancar = self.page.query_selector('button:has-text("Avançar"):not([disabled])')
+                if btn_avancar:
+                    btn_avancar.click()
+                    self.page.wait_for_timeout(2500)
+            
+            # Aguardar campo CPF/CNPJ (documento) aparecer - timeout alto (rede/React podem demorar em produção)
             cpf_selector = None
             for sel in [
                 SELETORES['etapa3']['cpf'],
                 'input[name="documento"]',
                 'input[name=documento]',
+                'input#documento, input[id="documento"]',
                 'input[placeholder*="CPF"], input[placeholder*="cpf"], input[placeholder*="ocumento"]',
+                'input[aria-label*="CPF"], input[aria-label*="ocumento"]',
             ]:
                 try:
-                    self.page.wait_for_selector(sel, state="visible", timeout=20000)
+                    self.page.wait_for_selector(sel, state="visible", timeout=25000)
                     cpf_selector = sel
                     break
                 except Exception:
                     continue
             if not cpf_selector:
                 cpf_selector = 'input[name=documento]'
-                self.page.wait_for_selector(cpf_selector, state="visible", timeout=15000)
+                self.page.wait_for_selector(cpf_selector, state="visible", timeout=25000)
             
             # Preencher CPF/CNPJ (apenas dígitos)
             cpf_limpo = re.sub(r'\D', '', cpf)
@@ -1448,12 +1488,15 @@ class PAPNioAutomation:
         except Exception as e:
             logger.warning(f"[PAP] _etapa4_limpar_todos_campos_contato: {e}")
 
-    def etapa4_contato(self, celular: str, email: str, celular_secundario: str = None) -> Tuple[bool, str, Optional[str]]:
+    def etapa4_contato(self, celular: str, email: str, celular_secundario: str = None, parar_no_modal_credito: bool = False) -> Tuple[bool, str, Optional[str]]:
         """
         Etapa 4: Informações de contato e análise de crédito.
         Campos: contato, confirmacaoContato, contatoSecundario, email, confirmarEmail
         Trata modal "Atenção!" (telefone/email repetidos, e-mail inválido) e modal de crédito.
         Em erro de celular (inválido/já utilizado/excede repetições): limpa TODOS os campos antes de retornar.
+        
+        parar_no_modal_credito: se True (fluxo análise de crédito via WhatsApp), NÃO clica em Continuar
+        após obter o resultado - evita enviar link de biometria. Retorna com o resultado e encerra.
         
         Returns:
             Tuple (sucesso, mensagem, resultado_credito)
@@ -1604,16 +1647,18 @@ class PAPNioAutomation:
                     resultado_credito = "Elegível apenas para Cartão de Crédito"
                 else:
                     resultado_credito = "Elegível para todas as formas de pagamento"
-                try:
-                    self.page.locator('button:has-text("Continuar")').first.click(force=True, timeout=5000)
-                    self.page.wait_for_load_state("networkidle", timeout=10000)
-                except Exception:
-                    self.page.evaluate("""() => {
-                        const btns = [...document.querySelectorAll('button')];
-                        const c = btns.find(b => b.textContent.includes('Continuar'));
-                        if (c) c.click();
-                    }""")
-                    self.page.wait_for_timeout(2000)
+                # Não clicar Continuar quando parar_no_modal_credito (evita enviar link biometria)
+                if not parar_no_modal_credito:
+                    try:
+                        self.page.locator('button:has-text("Continuar")').first.click(force=True, timeout=5000)
+                        self.page.wait_for_load_state("networkidle", timeout=10000)
+                    except Exception:
+                        self.page.evaluate("""() => {
+                            const btns = [...document.querySelectorAll('button')];
+                            const c = btns.find(b => b.textContent.includes('Continuar'));
+                            if (c) c.click();
+                        }""")
+                        self.page.wait_for_timeout(2000)
                 self.etapa_atual = 4
                 self.dados_pedido['celular'] = celular
                 self.dados_pedido['email'] = email

@@ -473,7 +473,6 @@ CREDITO_CEP_FIXO = "32140000"
 CREDITO_NUMERO_FIXO = "712"
 CREDITO_REFERENCIA_FIXA = "do lado da mecânica"
 CREDITO_ENDERECO_ALVO = "Avenida Fernão Dias"  # Para selecionar em múltiplos endereços
-CREDITO_COMPLEMENTO_ALVO = "Loja 1"  # Para selecionar na lista de complementos
 CREDITO_LIMITE_DIARIO = 15
 CREDITO_INTERVALO_MIN_SEG = 60  # 1 minuto entre análises
 
@@ -576,6 +575,27 @@ def _iniciar_fluxo_credito(telefone: str, sessao) -> str:
     )
 
 
+def _run_django_sync(func):
+    """Executa operações Django/ORM/WhatsApp em thread sem event loop (evita SynchronousOnlyOperation após Playwright)."""
+    import queue
+    q = queue.Queue()
+    def worker():
+        try:
+            import django.db
+            django.db.close_old_connections()
+            func()
+            q.put(None)
+        except Exception as e:
+            q.put(e)
+    t = threading.Thread(target=worker)
+    t.start()
+    t.join(timeout=60)
+    if not q.empty():
+        exc = q.get()
+        if exc is not None:
+            raise exc
+
+
 def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: str):
     """
     Thread: executa análise de crédito no PAP (login BO, viabilidade fixa, etapa3 CPF, etapa4 random).
@@ -585,9 +605,11 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
     from crm_app.models import AnaliseCreditoHistorico, SessaoWhatsapp
     from crm_app.services_pap_nio import PAPNioAutomation
     from crm_app.pool_bo_pap import obter_login_bo, liberar_bo
-    from crm_app.credito_utils import gerar_celular_random, gerar_email_random
+    from crm_app.credito_utils import gerar_celular_random
     from crm_app.whatsapp_service import WhatsAppService
     import re
+
+    CREDITO_EMAIL_FIXO = "comunicacao@recordpap.com.br"
 
     usuario = Usuario.objects.get(id=usuario_id)
     cpf_limpo = re.sub(r'\D', '', cpf)
@@ -615,6 +637,7 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
         return
 
     automacao = None
+    tempo_inicio = time.time()
     try:
         headless = getattr(settings, 'PAP_HEADLESS', True)
         capture_screenshots = getattr(settings, 'PAP_CAPTURE_SCREENSHOTS', False)
@@ -652,6 +675,16 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
         numero = CREDITO_NUMERO_FIXO
         ref = CREDITO_REFERENCIA_FIXA
         sucesso, msg, extra = automacao.etapa2_viabilidade(cep, numero, ref)
+
+        # COMPLEMENTOS: marcar "Sem complemento" para evitar Posse encontrada (endereço fixo)
+        if isinstance(extra, dict) and extra.get('_codigo') == 'COMPLEMENTOS':
+            ok_sel, msg_sel = automacao.etapa2_selecionar_sem_complemento()
+            if ok_sel:
+                sucesso, msg, extra = automacao.etapa2_clicar_avancar_apos_complemento(cep, numero)
+            else:
+                sucesso = False
+                msg = msg_sel or "Não foi possível marcar Sem complemento."
+
         if not sucesso:
             if isinstance(extra, dict) and extra.get('_codigo') == 'MULTIPLOS_ENDERECOS':
                 lista = extra.get('lista', [])
@@ -664,30 +697,12 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
                 ok_sel, _ = automacao.etapa2_selecionar_endereco_instalacao(idx)
                 if ok_sel:
                     sucesso, msg, extra = automacao.etapa2_preencher_referencia_e_continuar(cep, numero, ref)
-            elif isinstance(extra, dict) and extra.get('_codigo') == 'COMPLEMENTOS':
-                lista = extra.get('lista', [])
-                idx = 1
-                for i, item in enumerate(lista):
-                    txt = (item.get('texto') or '').upper()
-                    if CREDITO_COMPLEMENTO_ALVO.upper() in txt:
-                        idx = i + 1
-                        break
-                ok_sel, _ = automacao.etapa2_selecionar_complemento(idx)
-                if ok_sel:
-                    sucesso, msg, extra = automacao.etapa2_clicar_avancar_apos_complemento(cep, numero)
-            if not sucesso and not isinstance(extra, dict):
+            if not sucesso:
                 automacao._fechar_sessao()
                 liberar_bo(bo_usuario.id, telefone)
-                WhatsAppService().enviar_mensagem_texto(telefone, f"❌ Erro na viabilidade: {msg}\n\nDigite *CRÉDITO* para tentar novamente.")
+                WhatsAppService().enviar_mensagem_texto(telefone, f"❌ {msg}\n\nDigite *CRÉDITO* para tentar novamente.")
                 _resetar_sessao_credito(telefone)
                 return
-
-        if not sucesso:
-            automacao._fechar_sessao()
-            liberar_bo(bo_usuario.id, telefone)
-            WhatsAppService().enviar_mensagem_texto(telefone, f"❌ {msg}\n\nDigite *CRÉDITO* para tentar novamente.")
-            _resetar_sessao_credito(telefone)
-            return
 
         # Etapa 3: CPF
         sucesso, msg, _ = automacao.etapa3_cadastro_cliente(cpf_limpo)
@@ -698,19 +713,18 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
             _resetar_sessao_credito(telefone)
             return
 
-        # Etapa 4: contato com dados aleatórios
+        # Etapa 4: contato com celular aleatório e email fixo
         cel = gerar_celular_random()
         cel_sec = gerar_celular_random()
-        email = gerar_email_random()
+        email = CREDITO_EMAIL_FIXO
         max_tentativas = 5
         for tentativa in range(max_tentativas):
-            sucesso, msg, resultado_credito = automacao.etapa4_contato(cel, email, celular_secundario=cel_sec)
+            sucesso, msg, resultado_credito = automacao.etapa4_contato(cel, email, celular_secundario=cel_sec, parar_no_modal_credito=True)
             if sucesso:
                 break
-            if msg in ('TELEFONE_REJEITADO', 'EMAIL_REJEITADO', 'EMAIL_INVALIDO'):
+            if msg in ('TELEFONE_REJEITADO',):
                 cel = gerar_celular_random()
                 cel_sec = gerar_celular_random()
-                email = gerar_email_random()
                 continue
             if msg == "CREDITO_NEGADO":
                 break
@@ -722,34 +736,44 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
 
         aprovado = msg != "CREDITO_NEGADO" and sucesso
         resultado_detalhe = (resultado_credito or "") if sucesso else None
-        AnaliseCreditoHistorico.objects.create(
-            usuario=usuario,
-            cpf_consultado=cpf_limpo,
-            aprovado=aprovado,
-            resultado_detalhe=resultado_detalhe,
-        )
-        automacao._fechar_sessao()
-        liberar_bo(bo_usuario.id, telefone)
-        _resetar_sessao_credito(telefone)
-
-        if aprovado:
-            resp = f"✅ *Crédito APROVADO!*\n\n{resultado_detalhe or 'Elegível para formas de pagamento disponíveis.'}"
-        else:
-            resp = "❌ *Crédito NEGADO* para este CPF."
-        WhatsAppService().enviar_mensagem_texto(telefone, resp)
+        tempo_decorrido = round(time.time() - tempo_inicio, 1)
+        automacao._fechar_sessao()  # fechar na thread do Playwright
+        # Playwright cria event loop na thread; ORM/WhatsApp precisam rodar em thread sem event loop
+        def _salvar_e_enviar():
+            import django.db
+            django.db.close_old_connections()
+            AnaliseCreditoHistorico.objects.create(
+                usuario=usuario,
+                cpf_consultado=cpf_limpo,
+                aprovado=aprovado,
+                resultado_detalhe=resultado_detalhe,
+            )
+            liberar_bo(bo_usuario.id, telefone)
+            _resetar_sessao_credito(telefone)
+            if aprovado:
+                resp = f"✅ *Crédito APROVADO!*\n\n{resultado_detalhe or 'Elegível para formas de pagamento disponíveis.'}"
+            else:
+                resp = "❌ *Crédito NEGADO* para este CPF."
+            resp += f"\n\n⏱ _{tempo_decorrido}s_"
+            WhatsAppService().enviar_mensagem_texto(telefone, resp)
+        _run_django_sync(_salvar_e_enviar)
     except Exception as e:
         logger.exception("[CRÉDITO] Erro ao executar análise: %s", e)
+        tempo_decorrido_erro = round(time.time() - tempo_inicio, 1)
         if automacao:
             try:
                 automacao._fechar_sessao()
             except Exception:
                 pass
-        try:
-            liberar_bo(bo_usuario.id, telefone)
-        except Exception:
-            pass
-        _resetar_sessao_credito(telefone)
-        WhatsAppService().enviar_mensagem_texto(telefone, f"❌ Erro ao consultar crédito: {e}\n\nDigite *CRÉDITO* para tentar novamente.")
+        def _erro_cleanup():
+            try:
+                liberar_bo(bo_usuario.id, telefone)
+            except Exception:
+                pass
+            _resetar_sessao_credito(telefone)
+            msg_erro = f"❌ Erro ao consultar crédito: {e}\n\nDigite *CRÉDITO* para tentar novamente.\n\n⏱ _{tempo_decorrido_erro}s_"
+            WhatsAppService().enviar_mensagem_texto(telefone, msg_erro)
+        _run_django_sync(_erro_cleanup)
 
 
 def _resetar_sessao_credito(telefone: str):
