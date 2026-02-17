@@ -4,10 +4,12 @@
 
 ### 1. **Cálculo Automático de Datas de Vencimento**
 
-#### Regras Implementadas:
+#### Regras Implementadas (1ª fatura / FPD):
 - **Dias 1-28**: Vencimento = Data de Instalação + 25 dias
 - **Dias 29-31**: Vencimento fixo no dia 26 do mês seguinte
-- **Faturas subsequentes**: Mesmo dia do vencimento da Fatura 1, nos meses seguintes
+- **Faturas subsequentes (M-10)**: Mesmo dia do vencimento da Fatura 1, nos meses seguintes
+
+O **FPD** acompanha apenas o **pagamento da primeira fatura**. O cálculo de vencimento da 1ª fatura segue a regra acima (implementada em `ContratoM10.calcular_vencimento_fatura_1()`). Se o arquivo "Simulador NIO - Cálculo Vencimento NF" tiver regras diferentes, o código pode ser alinhado.
 
 #### Campos Adicionados:
 - **ContratoM10.safra**: Campo calculado automaticamente no formato YYYY-MM

@@ -6724,6 +6724,7 @@ class SafraM10ListView(APIView):
             9: 'Setembro', 10: 'Outubro', 11: 'Novembro', 12: 'Dezembro'
         }
         
+        pode_ver_valor_bonus = is_member(request.user, ['Diretoria', 'Admin'])
         for s in safras:
             mes_nome = meses_pt.get(s.mes_referencia.month, s.mes_referencia.strftime('%m'))
             mes_formatado = f"{mes_nome}/{s.mes_referencia.year}"
@@ -6734,7 +6735,7 @@ class SafraM10ListView(APIView):
                 'total_instalados': s.total_instalados,
                 'total_ativos': s.total_ativos,
                 'total_elegivel_bonus': s.total_elegivel_bonus,
-                'valor_bonus_total': float(s.valor_bonus_total),
+                'valor_bonus_total': float(s.valor_bonus_total) if pode_ver_valor_bonus else 0,
             })
         return Response(data)
 
@@ -6784,6 +6785,49 @@ def _safra_to_data_range(safra_param):
         except (ValueError, TypeError):
             pass
     return None, None
+
+
+def _recalcular_totais_safra_m10(safra_str):
+    """GAP 3: Recalcula total_instalados, total_ativos, total_elegivel_bonus e valor_bonus_total da SafraM10.
+    safra_str: formato YYYY-MM (mês de instalação).
+    """
+    data_inicio, data_fim = _safra_to_data_range(safra_str)
+    if data_inicio is None or data_fim is None:
+        return
+    from django.db.models import Count, Q
+    total_instalados = ContratoM10.objects.filter(
+        data_instalacao__gte=data_inicio,
+        data_instalacao__lt=data_fim,
+    ).count()
+    total_ativos = ContratoM10.objects.filter(
+        data_instalacao__gte=data_inicio,
+        data_instalacao__lt=data_fim,
+        status_contrato='ATIVO',
+    ).count()
+    # Elegíveis: ativo, sem downgrade, todas as faturas cadastradas pagas (ou fallback FPD paga)
+    contratos_safra = ContratoM10.objects.filter(
+        data_instalacao__gte=data_inicio,
+        data_instalacao__lt=data_fim,
+    ).annotate(
+        total_faturas=Count('faturas', distinct=True),
+        faturas_pagas=Count('faturas', filter=Q(faturas__status='PAGO'), distinct=True),
+    )
+    elegiveis = 0
+    for c in contratos_safra:
+        total_f = c.total_faturas or 0
+        pagas = c.faturas_pagas or 0
+        if total_f == 0 and c.status_fatura_fpd and str(c.status_fatura_fpd).lower().startswith('paga'):
+            total_f, pagas = 1, 1
+        if (c.status_contrato == 'ATIVO' and not c.teve_downgrade and
+                total_f > 0 and pagas == total_f):
+            elegiveis += 1
+    valor_bonus_total = elegiveis * 150
+    SafraM10.objects.filter(mes_referencia=data_inicio).update(
+        total_instalados=total_instalados,
+        total_ativos=total_ativos,
+        total_elegivel_bonus=elegiveis,
+        valor_bonus_total=valor_bonus_total,
+    )
 
 
 class VendedoresM10View(APIView):
@@ -6899,6 +6943,10 @@ class DashboardM10View(APIView):
                 and c.total_faturas == c.faturas_pagas
             ])
             valor_total = elegiveis * 150  # R$ 150 por contrato elegível
+            # Valor total do bônus só visível para Diretoria e Admin
+            pode_ver_valor_bonus = is_member(request.user, ['Diretoria', 'Admin'])
+            if not pode_ver_valor_bonus:
+                valor_total = 0
 
             taxa_permanencia = round((ativos / total * 100) if total > 0 else 0, 1)
 
@@ -6963,6 +7011,7 @@ class DashboardM10View(APIView):
                 'ativos': ativos,
                 'elegiveis': elegiveis,
                 'valor_total': valor_total,
+                'pode_ver_valor_bonus': pode_ver_valor_bonus,
                 'taxa_permanencia': taxa_permanencia,
                 'contratos': contratos_data,
                 'page': page,
@@ -7004,8 +7053,9 @@ class DashboardFPDView(APIView):
             # Estatísticas
             total_geradas = queryset.count()
             total_pagas = queryset.filter(status='PAGO').count()
-            total_aberto = queryset.filter(status__in=['NAO_PAGO', 'AGUARDANDO']).count()
-            taxa_fpd = round((total_pagas / total_geradas * 100) if total_geradas > 0 else 0, 1)
+            total_aberto = total_geradas - total_pagas  # contas em aberto = total - pagas
+            # Taxa FPD = volume de contas em aberto / total de contas (em %)
+            taxa_fpd = round((total_aberto / total_geradas * 100) if total_geradas > 0 else 0, 1)
 
             # Faturas para tabela
             faturas_data = []
@@ -7133,6 +7183,8 @@ class PopularSafraM10View(APIView):
             safra.total_instalados = total_contratos_safra
             safra.total_ativos = total_ativos
             safra.save()
+            # GAP 3: Recalcular elegíveis e valor do bônus da safra
+            _recalcular_totais_safra_m10(safra_str)
 
             return Response({
                 'message': f'Safra {mes_referencia} populada com sucesso!',
@@ -7282,6 +7334,20 @@ class ImportarFPDView(APIView):
             # Normalizar nomes de colunas para minúsculas E remover espaços extras
             df.columns = df.columns.str.lower().str.strip().str.replace(' ', '_')
             
+            # GAP 7: Validar presença da coluna obrigatória NR_ORDEM
+            if 'nr_ordem' not in df.columns:
+                colunas_encontradas = ', '.join(sorted(df.columns[:15]))
+                log.status = 'ERRO'
+                log.mensagem_erro = (
+                    'Coluna NR_ORDEM não encontrada no arquivo. '
+                    'A planilha FPD deve ter uma coluna "NR_ORDEM" (ou "Nr Ordem"). '
+                    f'Colunas encontradas: {colunas_encontradas}' + ('...' if len(df.columns) > 15 else '')
+                )
+                log.finalizado_em = timezone.now()
+                log.calcular_duracao()
+                log.save()
+                return
+            
             log.total_linhas = len(df)
             log.save(update_fields=['total_linhas'])
             registros_nao_encontrados = 0
@@ -7306,11 +7372,14 @@ class ImportarFPDView(APIView):
                     # Indexar por múltiplas variações para facilitar busca
                     os_sem_zeros = os.lstrip('0') or '0'  # Proteger contra string vazia
                     variacoes = [
-                        os,                          # Exato
-                        os_sem_zeros,                # Sem zeros à esquerda
-                        f'OS-{os}',                  # Com prefixo OS-
-                        f'OS-{os_sem_zeros}',        # Prefixo OS- sem zeros
+                        os,
+                        os_sem_zeros,
+                        os.zfill(8) if len(os) <= 8 else os,  # 8 dígitos (compatível com churn)
+                        f'OS-{os}',
+                        f'OS-{os_sem_zeros}',
+                        f'OS-{os.zfill(8)}' if len(os) <= 8 else None,
                     ]
+                    variacoes = [v for v in variacoes if v]
                     for variacao in variacoes:
                         if variacao and variacao not in contratos_dict:
                             contratos_dict[variacao] = c
@@ -7330,6 +7399,8 @@ class ImportarFPDView(APIView):
             faturas_para_atualizar = []
             importacoes_para_criar = []
             importacoes_para_atualizar = []
+            # GAP 1+2: contratos que tiveram fatura 1 criada/atualizada (para atualizar ContratoM10 e elegibilidade)
+            contratos_afetados_ids = set()
 
             with transaction.atomic():  # Garantir atomicidade
                 for idx, row in df.iterrows():
@@ -7436,6 +7507,7 @@ class ImportarFPDView(APIView):
                                 fatura_existente.ds_status_fatura_fpd = status_str
                                 fatura_existente.data_importacao_fpd = data_importacao_agora
                                 faturas_para_atualizar.append(fatura_existente)
+                                contratos_afetados_ids.add(contrato.id)
                             else:
                                 faturas_para_criar.append(FaturaM10(
                                     contrato=contrato,
@@ -7451,6 +7523,7 @@ class ImportarFPDView(APIView):
                                     ds_status_fatura_fpd=status_str,
                                     data_importacao_fpd=data_importacao_agora
                                 ))
+                                contratos_afetados_ids.add(contrato.id)
 
                             # Preparar ImportacaoFPD para bulk
                             # Buscar por nr_ordem (atualizar se existir, criar se não existir)
@@ -7587,6 +7660,42 @@ class ImportarFPDView(APIView):
                 contratos_para_atualizar = [c for c in contratos_dict.values() if c.numero_contrato_definitivo]
                 if contratos_para_atualizar:
                     ContratoM10.objects.bulk_update(contratos_para_atualizar, ['numero_contrato_definitivo'], batch_size=500)
+
+                # GAP 1+2: Atualizar campos FPD no ContratoM10 e recalcular elegibilidade nos contratos afetados
+                if contratos_afetados_ids:
+                    faturas1 = FaturaM10.objects.filter(
+                        contrato_id__in=contratos_afetados_ids,
+                        numero_fatura=1
+                    ).select_related('contrato')
+                    contratos_fpd_atualizar = []
+                    for fatura in faturas1:
+                        c = fatura.contrato
+                        c.data_vencimento_fpd = fatura.data_vencimento
+                        c.data_pagamento_fpd = fatura.data_pagamento
+                        c.status_fatura_fpd = fatura.ds_status_fatura_fpd or (fatura.status if fatura.status else None)
+                        c.valor_fatura_fpd = fatura.valor
+                        c.nr_dias_atraso_fpd = fatura.dias_atraso or 0
+                        c.data_ultima_sincronizacao_fpd = data_importacao_agora
+                        contratos_fpd_atualizar.append(c)
+                    if contratos_fpd_atualizar:
+                        ContratoM10.objects.bulk_update(contratos_fpd_atualizar, [
+                            'data_vencimento_fpd', 'data_pagamento_fpd', 'status_fatura_fpd',
+                            'valor_fatura_fpd', 'nr_dias_atraso_fpd', 'data_ultima_sincronizacao_fpd'
+                        ], batch_size=500)
+                    for cid in contratos_afetados_ids:
+                        try:
+                            contrato = ContratoM10.objects.get(pk=cid)
+                            contrato.calcular_elegibilidade()
+                        except ContratoM10.DoesNotExist:
+                            pass
+                    # GAP 3: Recalcular totais das safras afetadas
+                    safras_afetadas = set(
+                        ContratoM10.objects.filter(id__in=contratos_afetados_ids).values_list('safra', flat=True)
+                    )
+                    safras_afetadas.discard(None)
+                    safras_afetadas.discard('')
+                    for safra_str in safras_afetadas:
+                        _recalcular_totais_safra_m10(safra_str)
 
             # Finalizar log
             log.finalizado_em = timezone.now()
@@ -8338,13 +8447,16 @@ class ImportarChurnView(APIView):
             elif arquivo.name.endswith('.xlsb'):
                 try:
                     df = pd.read_excel(arquivo, engine='pyxlsb', dtype={'PEDIDO': str, 'NR_ORDEM': str, 'NUMERO_PEDIDO': str})
-                except Exception:
+                except Exception as e:
                     log.status = 'ERRO'
-                    log.mensagem_erro = 'Formato .xlsb não suportado. Use .xlsx, .xls ou .csv'
+                    log.mensagem_erro = (
+                        'Formato .xlsb não suportado ou falha ao ler. '
+                        'Use arquivo .xlsx ou .csv. Se precisar usar .xlsb, instale: pip install pyxlsb'
+                    )
                     log.finalizado_em = datetime.now()
                     log.save()
                     return Response({
-                        'error': 'Formato .xlsb não suportado. Use .xlsx, .xls ou .csv'
+                        'error': log.mensagem_erro
                     }, status=400)
             else:
                 df = pd.read_excel(arquivo, dtype={'PEDIDO': str, 'NR_ORDEM': str, 'NUMERO_PEDIDO': str})
@@ -8365,6 +8477,15 @@ class ImportarChurnView(APIView):
             # Coletar todas as O.S que aparecem no CHURN
             ordens_no_churn = set()
 
+            # GAP 4: Dicionário de ContratoM10 por várias formas da O.S. (como no FPD)
+            contratos_churn_dict = {}
+            for c in ContratoM10.objects.exclude(ordem_servico__isnull=True).exclude(ordem_servico=''):
+                os_val = str(c.ordem_servico).strip()
+                os_sem_zeros = os_val.lstrip('0') or '0'
+                for key in [os_val, os_sem_zeros, os_val.zfill(8), f'OS-{os_val}', f'OS-{os_sem_zeros}', f'OS-{os_val.zfill(8)}']:
+                    if key and key not in contratos_churn_dict:
+                        contratos_churn_dict[key] = c
+
             for _, row in df.iterrows():
                 try:
                     # Busca por O.S - pode vir como NR_ORDEM ou NUMERO_PEDIDO
@@ -8379,7 +8500,9 @@ class ImportarChurnView(APIView):
                             continue  # Pula se não tiver nenhum dos dois
                     
                     nr_ordem = str(nr_ordem_raw).strip().zfill(8)  # Padronizar com 8 dígitos
+                    nr_ordem_sem_zeros = nr_ordem.lstrip('0') or '0'
                     ordens_no_churn.add(nr_ordem)
+                    ordens_no_churn.add(nr_ordem_sem_zeros)
 
                     # Salvar registro na ImportacaoChurn
                     try:
@@ -8483,9 +8606,17 @@ class ImportarChurnView(APIView):
                         erros += 1
                         print(f"Erro ao salvar ImportacaoChurn: {e}")
 
-                    # Atualizar status do contrato M10 para CANCELADO
+                    # Atualizar status do contrato M10 para CANCELADO (GAP 4: match por várias formas de O.S.)
                     try:
-                        contrato = ContratoM10.objects.get(ordem_servico=nr_ordem)
+                        contrato = None
+                        for key in [nr_ordem, nr_ordem_sem_zeros, str(nr_ordem_raw).strip(), f'OS-{nr_ordem}', f'OS-{nr_ordem_sem_zeros}']:
+                            if key and key in contratos_churn_dict:
+                                contrato = contratos_churn_dict[key]
+                                break
+                        if contrato is None:
+                            nao_encontrados += 1
+                            # Salvar ImportacaoChurn já foi feito acima; segue para próxima linha
+                            continue
                         
                         # Marca como cancelado (apareceu no CHURN)
                         if contrato.status_contrato != 'CANCELADO':
@@ -8496,16 +8627,21 @@ class ImportarChurnView(APIView):
                             contrato.save()
                             cancelados += 1
                         
-                    except ContratoM10.DoesNotExist:
+                    except Exception:
                         nao_encontrados += 1
                 
                 except Exception as e:
                     erros += 1
                     continue
 
-            # IMPORTANTE: Marcar como ATIVO os contratos que NÃO aparecem no CHURN
-            contratos_ativos = ContratoM10.objects.exclude(ordem_servico__in=ordens_no_churn).exclude(status_contrato='ATIVO')
-            reativados = contratos_ativos.update(status_contrato='ATIVO', data_cancelamento=None)
+            # GAP 6: Reativar apenas contratos que foram cancelados POR CHURN e cuja O.S. não está na planilha atual
+            contratos_reativar = ContratoM10.objects.filter(
+                status_contrato='CANCELADO',
+                motivo_cancelamento__icontains='CHURN',
+            ).exclude(ordem_servico__in=ordens_no_churn)
+            reativados = contratos_reativar.update(
+                status_contrato='ATIVO', data_cancelamento=None, motivo_cancelamento=None
+            )
 
             # Atualizar log
             fim = datetime.now()
@@ -9453,26 +9589,87 @@ class BuscarFaturaNioView(APIView):
                     'mensagem': 'CPF sem dívidas no momento.'
                 }, status=200)
 
-            inv = invoices[0]
-            valor = inv.get('amount')
-            codigo_pix = inv.get('pix') or inv.get('codigo_pix')
-            codigo_barras = inv.get('barcode') or inv.get('codigo_barras')
-            due = inv.get('due_date_raw') or inv.get('data_vencimento')
-            data_vencimento = None
-            if due:
+            # Data de vencimento esperada: só preenchemos fatura que corresponda a esta data (evita pegar fatura errada)
+            data_vencimento_esperada = None
+            if contrato_id and numero_fatura:
+                try:
+                    contrato = ContratoM10.objects.get(id=contrato_id)
+                    fatura = FaturaM10.objects.filter(
+                        contrato=contrato,
+                        numero_fatura=numero_fatura
+                    ).first()
+                    if fatura and fatura.data_vencimento:
+                        data_vencimento_esperada = fatura.data_vencimento
+                    else:
+                        data_vencimento_esperada = contrato.calcular_vencimento_fatura_n(numero_fatura)
+                except ContratoM10.DoesNotExist:
+                    pass
+            # Aceitar também do body (valor do formulário quando o usuário alterou a data)
+            data_vencimento_form = request.data.get('data_vencimento_esperada')
+            if data_vencimento_form:
+                try:
+                    from datetime import datetime as dt
+                    if isinstance(data_vencimento_form, str) and len(data_vencimento_form) >= 10:
+                        data_vencimento_esperada = dt.strptime(data_vencimento_form[:10], '%Y-%m-%d').date()
+                except Exception:
+                    pass
+
+            def _parse_due(inv):
+                due = inv.get('due_date_raw') or inv.get('data_vencimento')
+                if not due:
+                    return None
                 if hasattr(due, 'strftime'):
-                    data_vencimento = due
-                elif isinstance(due, str) and len(due) >= 8:
+                    return due
+                if isinstance(due, str) and len(due) >= 8:
                     try:
                         from datetime import datetime as dt
                         s = due[:10].replace('/', '-')
                         if '-' in s:
-                            data_vencimento = dt.strptime(s, '%Y-%m-%d').date()
-                        elif due[:8].isdigit():
-                            data_vencimento = dt.strptime(due[:8], '%Y%m%d').date()
+                            return dt.strptime(s, '%Y-%m-%d').date()
+                        if due[:8].isdigit():
+                            return dt.strptime(due[:8], '%Y%m%d').date()
                     except Exception:
                         pass
+                return None
 
+            # Matching por data de vencimento: só aceitar fatura Nio cujo vencimento coincida com o esperado (±3 dias)
+            TOLERANCIA_DIAS = 3
+            inv = None
+            data_vencimento = None
+            if data_vencimento_esperada:
+                melhor_diff = TOLERANCIA_DIAS + 1
+                for i in invoices:
+                    dv = _parse_due(i)
+                    if not dv:
+                        continue
+                    diff = abs((dv - data_vencimento_esperada).days)
+                    if diff <= TOLERANCIA_DIAS and diff < melhor_diff:
+                        melhor_diff = diff
+                        inv = i
+                        data_vencimento = dv
+                if inv is None:
+                    datas_nio = []
+                    for i in invoices:
+                        dv = _parse_due(i)
+                        if dv:
+                            datas_nio.append(dv.strftime('%d/%m/%Y'))
+                    return Response({
+                        'error': (
+                            f'Nenhuma fatura na Nio com vencimento em {data_vencimento_esperada.strftime("%d/%m/%Y")} (±{TOLERANCIA_DIAS} dias). '
+                            f'Faturas encontradas na Nio: {", ".join(datas_nio[:10]) or "sem data"}. '
+                            'Confira a data de vencimento no formulário ou se a fatura já está disponível na Nio.'
+                        ),
+                        'data_vencimento_esperada': data_vencimento_esperada.strftime('%Y-%m-%d'),
+                        'datas_nio': datas_nio[:10],
+                    }, status=400)
+            else:
+                # Sem data esperada (ex.: contrato não informado): usar primeira fatura e avisar
+                inv = invoices[0]
+                data_vencimento = _parse_due(inv)
+
+            valor = inv.get('amount')
+            codigo_pix = inv.get('pix') or inv.get('codigo_pix')
+            codigo_barras = inv.get('barcode') or inv.get('codigo_barras')
             pdf_url = None
             if api_result.get('token') and api_result.get('api_base') and api_result.get('session_id'):
                 sess = requests.Session()

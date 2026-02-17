@@ -1267,29 +1267,17 @@ class LogImportacaoFPD(models.Model):
         return f"Log FPD {self.nome_arquivo} - {self.status}"
     
     def calcular_duracao(self):
-        """Calcula duração em segundos entre início e fim"""
-        if self.iniciado_em and self.finalizado_em:
-            delta = self.finalizado_em - self.iniciado_em
-            self.duracao_segundos = int(delta.total_seconds())
-
-    # Compatível com chamadas existentes nos views: calcula a duração usando data_importacao
-    # e um possível atributo finalizado_em (quando presente). Ignora silenciosamente se
-    # os campos extras não existirem na base.
-    def calcular_duracao(self):
-        inicio = getattr(self, 'data_importacao', None) or getattr(self, 'iniciado_em', None)
+        """Calcula duração em segundos entre início e fim (usa iniciado_em/data_importacao e finalizado_em)."""
+        inicio = getattr(self, 'iniciado_em', None) or getattr(self, 'data_importacao', None)
         fim = getattr(self, 'finalizado_em', None)
         if not fim:
             try:
                 from django.utils import timezone
                 fim = timezone.now()
             except Exception:
-                return None
-        if not inicio or not fim:
-            return None
-        duracao = int((fim - inicio).total_seconds()) if hasattr(fim, '__sub__') else None
-        if duracao is not None and hasattr(self, 'duracao_segundos'):
-            self.duracao_segundos = duracao
-        return duracao
+                pass
+        if inicio and fim and hasattr(fim, '__sub__'):
+            self.duracao_segundos = int((fim - inicio).total_seconds())
 
 
 class LogImportacaoOSAB(models.Model):

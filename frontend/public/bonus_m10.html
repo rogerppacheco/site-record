@@ -449,8 +449,15 @@
                             <div class="stat-card red">
                                 <div class="stat-label"><i class="bi bi-percent"></i> Taxa FPD</div>
                                 <div class="stat-value" id="fpd-taxa">0%</div>
-                                <small>pagas / geradas</small>
+                                <small>em aberto / total</small>
                             </div>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-info d-flex align-items-center mb-3" role="alert">
+                        <i class="bi bi-info-circle fs-5 me-2"></i>
+                        <div>
+                            <strong>FPD (First Payment Default):</strong> acompanhamento do <strong>pagamento da primeira fatura</strong> apenas. O indicador mede se o cliente quitou a 1ª fatura; não é necessário preencher as 10 faturas para FPD.
                         </div>
                     </div>
 
@@ -514,8 +521,9 @@
             <div class="modal-content">
                 <div class="modal-header">
                     <div>
-                        <h5 class="modal-title mb-1"><i class="bi bi-receipt"></i> Gerenciar 10 Faturas - <span id="modal-contrato-nome"></span></h5>
+                        <h5 class="modal-title mb-1"><i class="bi bi-receipt"></i> Gerenciar Faturas - <span id="modal-contrato-nome"></span></h5>
                         <small class="text-muted"><strong>Cliente:</strong> <span id="modal-cliente-nome"></span> | <strong>CPF:</strong> <span id="modal-cliente-cpf"></span></small>
+                        <small class="d-block text-muted mt-1">FPD: apenas 1ª fatura | M-10: 10 faturas para bônus</small>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" title="Fechar"></button>
                 </div>
@@ -607,7 +615,15 @@
             document.getElementById('m10-ativos').textContent = data.ativos;
             document.getElementById('m10-taxa-ativos').textContent = `${data.taxa_permanencia}% de permanência`;
             document.getElementById('m10-elegiveis').textContent = data.elegiveis;
-            document.getElementById('m10-valor').textContent = `R$ ${data.valor_total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+            const cardValor = document.getElementById('card-valor-bonus');
+            const m10Valor = document.getElementById('m10-valor');
+            if (data.pode_ver_valor_bonus) {
+                cardValor.closest('.col-md-3').classList.remove('d-none');
+                m10Valor.textContent = `R$ ${(data.valor_total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+                if (cardValor) cardValor.title = '';
+            } else {
+                cardValor.closest('.col-md-3').classList.add('d-none');
+            }
             const tbody = document.getElementById('tbody-contratos-m10');
             tbody.innerHTML = data.contratos.length ? '' : '<tr><td colspan="11" class="text-center">Nenhum contrato encontrado</td></tr>';
             data.contratos.forEach(c => {
@@ -682,16 +698,17 @@
                         <td>R$ ${valorStr}</td>
                         <td>${f.data_pagamento || '-'}</td>
                         <td><span class="badge bg-${statusClass}">${f.status_display}</span></td>
-                        <td><button class="btn btn-sm btn-primary" onclick="abrirModalFaturas(${f.contrato_id})"><i class="bi bi-pencil"></i></button></td>
+                        <td><button class="btn btn-sm btn-primary" onclick="abrirModalFaturas(${f.contrato_id}, true)" title="Editar 1ª fatura (FPD)"><i class="bi bi-pencil"></i></button></td>
                     </tr>`);
             });
         }
 
-        async function abrirModalFaturas(contratoId) {
+        async function abrirModalFaturas(contratoId, somenteFpd = false) {
             try {
                 const resContrato = await fetch(`/api/bonus-m10/contratos/${contratoId}/`, { headers: { Authorization: `Bearer ${token}` } });
                 const contrato = await resContrato.json();
                 window.contratoAtual = contrato;
+                window.modalSomenteFpd = somenteFpd;
                 const resFaturas = await fetch(`/api/bonus-m10/faturas/?contrato_id=${contratoId}`, { headers: { Authorization: `Bearer ${token}` } });
                 const responseData = await resFaturas.json();
                 const faturasDetalhadas = Array.isArray(responseData) ? responseData : responseData.results || [];
@@ -699,8 +716,9 @@
                 document.getElementById('modal-contrato-nome').textContent = contrato.numero_contrato;
                 document.getElementById('modal-cliente-nome').textContent = contrato.cliente_nome || '-';
                 document.getElementById('modal-cliente-cpf').textContent = contrato.cpf_cliente || '-';
+                const totalFaturas = somenteFpd ? 1 : 10;
                 const faturas = [];
-                for (let i = 1; i <= 10; i++) {
+                for (let i = 1; i <= totalFaturas; i++) {
                     const faturaExistente = faturasDetalhadas.find(f => f.numero_fatura === i);
                     if (!faturaExistente && i === 1 && contrato.data_vencimento_fpd) {
                         faturas.push({
@@ -733,14 +751,15 @@
                 window.faturasAtuais = faturas;
                 const tabsHtml = faturas.map((f, i) => {
                     const statusIcon = f.valor > 0 ? '<i class="bi bi-check-circle-fill text-success"></i>' : '<i class="bi bi-circle text-muted"></i>';
-                    return `<li class="nav-item"><button class="nav-link ${i === 0 ? 'active' : ''}" id="tab-fatura-${i+1}" data-bs-toggle="pill" data-bs-target="#content-fatura-${i+1}" type="button">${statusIcon} Fatura ${i + 1}</button></li>`;
+                    const label = somenteFpd ? '1ª Fatura (FPD)' : `Fatura ${i + 1}`;
+                    return `<li class="nav-item"><button class="nav-link ${i === 0 ? 'active' : ''}" id="tab-fatura-${i+1}" data-bs-toggle="pill" data-bs-target="#content-fatura-${i+1}" type="button">${statusIcon} ${label}</button></li>`;
                 }).join('');
                 document.getElementById('faturas-tabs').innerHTML = tabsHtml;
                 const contentHtml = faturas.map((f, i) => `
                     <div class="tab-pane fade ${i === 0 ? 'show active' : ''}" id="content-fatura-${i+1}">
                         <div class="card">
                             <div class="card-header bg-primary text-white">
-                                <h6 class="mb-0"><i class="bi bi-receipt"></i> Fatura ${i + 1} de 10</h6>
+                                <h6 class="mb-0"><i class="bi bi-receipt"></i> ${somenteFpd ? '1ª Fatura (FPD)' : `Fatura ${i + 1} de 10`}</h6>
                             </div>
                             <div class="card-body">
                                 <div class="row g-3">
@@ -889,11 +908,20 @@
             btnBuscar.disabled = true;
             btnBuscar.innerHTML = '<i class="bi bi-hourglass-split"></i> Buscando na Nio...';
             try {
+                const vencimentoInput = document.getElementById(`vencimento-${indice}`);
+                const dataVencimentoEsperada = vencimentoInput && vencimentoInput.value ? vencimentoInput.value : null;
                 const url = '/api/bonus-m10/buscar-fatura-nio/';
+                const body = {
+                    cpf: window.contratoAtual.cpf_cliente,
+                    contrato_id: contratoId,
+                    numero_fatura: numeroFatura,
+                    salvar: false
+                };
+                if (dataVencimentoEsperada) body.data_vencimento_esperada = dataVencimentoEsperada;
                 const response = await fetch(url, {
                     method: 'POST',
                     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ cpf: window.contratoAtual.cpf_cliente, contrato_id: contratoId, numero_fatura: numeroFatura, salvar: false })
+                    body: JSON.stringify(body)
                 });
                 const raw = await response.text();
                 const data = raw ? JSON.parse(raw) : {};
