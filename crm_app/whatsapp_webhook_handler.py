@@ -898,7 +898,6 @@ def _iniciar_fluxo_venda(telefone: str, sessao) -> str:
     
     return (
         f"🛒 *NOVA VENDA - PAP NIO*\n\n"
-        f"Olá, {usuario.first_name or usuario.username}!\n\n"
         f"⚠️ *Portabilidade não pode ser feita pelo processo automático.*\n\n"
         f"Tempo médio do fluxo (seguindo rápido todas as etapas, com biometria pronta e *SIM* do cliente já respondido): cerca de 3 a 5 minutos.\n\n"
         f"Confirma que deseja iniciar uma nova venda?\n\n"
