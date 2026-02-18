@@ -2585,6 +2585,11 @@ class FecharPagamentoView(APIView):
                 data_pagamento_comissao=timezone.now().date()
             )
 
+            from .comissao_folha_service import get_vendas_ids_desconto_churn_mes
+            ids_churn = get_vendas_ids_desconto_churn_mes(ano, mes)
+            if ids_churn:
+                Venda.objects.filter(id__in=ids_churn).update(desconto_churn_aplicado_em=ano * 100 + mes)
+
             PagamentoComissao.objects.update_or_create(
                 referencia_ano=ano,
                 referencia_mes=mes,
@@ -3787,7 +3792,7 @@ class ImportacaoChurnView(APIView):
     def post(self, request, *args, **kwargs):
         file_obj = request.FILES.get('file')
         if not file_obj: return Response({'error': 'Nenhum arquivo.'}, status=400)
-        coluna_map = {'UF': 'uf', 'PRODUTO': 'produto', 'MATRICULA_VENDEDOR': 'matricula_vendedor', 'GV': 'gv', 'SAP_PRINCIPAL_FIM': 'sap_principal_fim', 'GESTAO': 'gestao', 'ST_REGIONAL': 'st_regional', 'GC': 'gc', 'NUMERO_PEDIDO': 'numero_pedido', 'NR_ORDEM': 'nr_ordem', 'DT_GROSS': 'dt_gross', 'ANOMES_GROSS': 'anomes_gross', 'DT_RETIRADA': 'dt_retirada', 'ANOMES_RETIRADA': 'anomes_retirada', 'GRUPO_UNIDADE': 'grupo_unidade', 'CODIGO_SAP': 'codigo_sap', 'MUNICIPIO': 'municipio', 'TIPO_RETIRADA': 'tipo_retirada', 'MOTIVO_RETIRADA': 'motivo_retirada', 'SUBMOTIVO_RETIRADA': 'submotivo_retirada', 'CLASSIFICACAO': 'classificacao', 'DESC_APELIDO': 'desc_apelido'}
+        coluna_map = {'UF': 'uf', 'PRODUTO': 'produto', 'MATRICULA_VENDEDOR': 'matricula_vendedor', 'GV': 'gv', 'SAP_PRINCIPAL_FIM': 'sap_principal_fim', 'GESTAO': 'gestao', 'ST_REGIONAL': 'st_regional', 'GC': 'gc', 'NUMERO_PEDIDO': 'numero_pedido', 'NR_ORDEM': 'nr_ordem', 'DT_GROSS': 'dt_gross', 'ANOMES_GROSS': 'anomes_gross', 'DT_RETIRADA': 'dt_retirada', 'ANOMES_RETIRADA': 'anomes_retirada', 'GRUPO_UNIDADE': 'grupo_unidade', 'CODIGO_SAP': 'codigo_sap', 'MUNICIPIO': 'municipio', 'TIPO_RETIRADA': 'tipo_retirada', 'MOTIVO_RETIRADA': 'motivo_retirada', 'SUBMOTIVO_RETIRADA': 'submotivo_retirada', 'CLASSIFICACAO': 'classificacao', 'DESC_APELIDO': 'desc_apelido', 'NR_VELOCIDADE': 'nr_velocidade', 'VELOCIDADE': 'nr_velocidade'}
         try:
             if file_obj.name.endswith(('.xlsx', '.xls')):
                 df = pd.read_excel(file_obj)
@@ -9018,6 +9023,7 @@ class ImportarChurnView(APIView):
                                     'submotivo_retirada': str(row.get('SUBMOTIVO_RETIRADA', '')) if pd.notna(row.get('SUBMOTIVO_RETIRADA')) else None,
                                     'classificacao': str(row.get('CLASSIFICACAO', '')) if pd.notna(row.get('CLASSIFICACAO')) else None,
                                     'desc_apelido': str(row.get('DESC_APELIDO', '')) if pd.notna(row.get('DESC_APELIDO')) else None,
+                                    'nr_velocidade': str(row.get('NR_VELOCIDADE', '') or row.get('VELOCIDADE', ''))[:50] if pd.notna(row.get('NR_VELOCIDADE', row.get('VELOCIDADE'))) else None,
                                 }
                             )
                             if created:
@@ -9080,6 +9086,7 @@ class ImportarChurnView(APIView):
                                     submotivo_retirada=str(row.get('SUBMOTIVO_RETIRADA', '')) if pd.notna(row.get('SUBMOTIVO_RETIRADA')) else None,
                                     classificacao=str(row.get('CLASSIFICACAO', '')) if pd.notna(row.get('CLASSIFICACAO')) else None,
                                     desc_apelido=str(row.get('DESC_APELIDO', '')) if pd.notna(row.get('DESC_APELIDO')) else None,
+                                    nr_velocidade=str(row.get('NR_VELOCIDADE', '') or row.get('VELOCIDADE', ''))[:50] if pd.notna(row.get('NR_VELOCIDADE', row.get('VELOCIDADE'))) else None,
                                 )
                                 criados_churn += 1
                     except Exception as e:

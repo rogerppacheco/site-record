@@ -253,24 +253,28 @@
                         const list = r.detalhes_descontos;
                         const boleto = list.filter(d => (d.tipo_exibicao || '').toLowerCase() === 'boleto');
                         const adiant = list.filter(d => (d.tipo_exibicao || '').toLowerCase() === 'adiant_cnpj');
-                        const outros = list.filter(d => { const t = (d.tipo_exibicao || '').toLowerCase(); return t !== 'boleto' && t !== 'adiant_cnpj'; });
+                        const churnM0 = list.filter(d => (d.tipo_exibicao || '').toLowerCase() === 'churn_m0');
+                        const churnM1 = list.filter(d => (d.tipo_exibicao || '').toLowerCase() === 'churn_m1');
+                        const outros = list.filter(d => { const t = (d.tipo_exibicao || '').toLowerCase(); return t !== 'boleto' && t !== 'adiant_cnpj' && t !== 'churn_m0' && t !== 'churn_m1'; });
                         const linha = (d) => { const q = (d.quantidade != null && d.quantidade !== '') ? d.quantidade : 1; return `<div class="d-flex justify-content-between text-danger"><span>${d.motivo || 'Desconto'}${q > 0 ? ' (' + q + ' un.)' : ''}</span><span>- ${fmtMoney(d.valor)}</span></div>`; };
                         let bloco = '<div class="small border-top pt-2 mt-2"><strong class="text-muted">Descontos</strong>';
                         if (r.qtd_a_descontar != null && r.qtd_a_descontar > 0) bloco += '<div class="mt-1 text-muted fw-bold">QTD A DESCONTAR: ' + r.qtd_a_descontar + '</div>';
                         bloco += '<div class="mt-1">';
                         if (boleto.length) { bloco += '<div class="mb-1"><span class="text-muted fw-bold small">Desconto Boleto</span>'; boleto.forEach(d => { bloco += linha(d); }); bloco += '</div>'; }
                         if (adiant.length) { bloco += '<div class="mb-1"><span class="text-muted fw-bold small">Adiant. CNPJ</span>'; adiant.forEach(d => { bloco += linha(d); }); bloco += '</div>'; }
+                        if (churnM0.length) { bloco += '<div class="mb-1"><span class="text-muted fw-bold small">Desconto Churn M0</span>'; churnM0.forEach(d => { bloco += linha(d); }); bloco += '</div>'; }
+                        if (churnM1.length) { bloco += '<div class="mb-1"><span class="text-muted fw-bold small">Desconto Churn M-1</span>'; churnM1.forEach(d => { bloco += linha(d); }); bloco += '</div>'; }
                         if (outros.length) { bloco += '<div class="mb-1"><span class="text-muted fw-bold small">Outros</span>'; outros.forEach(d => { bloco += linha(d); }); bloco += '</div>'; }
                         bloco += '</div></div>';
                         return bloco;
                     })() : ''}
                 </div>
-                <div class="p-2 border-top"><button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#extrato-folha-${v.vendedor_id}"><i class="bi bi-list"></i> Extrato (${(v.extrato || []).length} vendas)</button></div>
-                <div class="collapse" id="extrato-folha-${v.vendedor_id}"><div class="table-responsive"><table class="table table-sm table-striped mb-0 small"><thead class="table-light"><tr><th>NOME</th><th>DACC</th><th>CNPJ</th><th>PLANO</th><th>DT PEDIDO</th><th>DT INST</th><th>OS</th><th>SITUAÇÃO</th><th>CHURN</th></tr></thead><tbody>`;
+                <div class="p-2 border-top small text-muted fw-bold">Extrato (${(v.extrato || []).length} vendas)</div>
+                <div class="table-responsive"><table class="table table-sm table-striped mb-0 small"><thead class="table-light"><tr><th>NOME</th><th>DACC</th><th>CNPJ</th><th>PLANO</th><th>DT PEDIDO</th><th>DT INST</th><th>OS</th><th>SITUAÇÃO</th><th>CHURN</th></tr></thead><tbody>`;
             (v.extrato || []).forEach(e => {
                 html += `<tr><td>${e.nome || ''}</td><td>${e.dacc || ''}</td><td>${e.cnpj || ''}</td><td>${e.plano || ''}</td><td>${e.dt_pedido || ''}</td><td>${e.dt_inst || ''}</td><td>${e.os || ''}</td><td>${e.situacao || ''}</td><td>${e.churn || ''}</td></tr>`;
             });
-            html += `</tbody></table></div></div></div></div>`;
+            html += `</tbody></table></div></div></div>`;
             return html;
         }
 

@@ -183,6 +183,8 @@ class Venda(models.Model):
     flag_desc_boleto = models.BooleanField(default=False, verbose_name="Desc. Boleto Processado")
     flag_desc_viabilidade = models.BooleanField(default=False, verbose_name="Desc. Viab. Processado")
     flag_desc_antecipacao = models.BooleanField(default=False, verbose_name="Desc. Antecip. Processado")
+    # Ano/mês em que o desconto por churn foi aplicado (ex: 202601 = comissão jan/26). Evita descontar duas vezes.
+    desconto_churn_aplicado_em = models.PositiveIntegerField(null=True, blank=True, verbose_name="Desconto Churn aplicado em (AAAAMM)")
     # ------------------------------------------
 
     def __str__(self): return f"Venda #{self.id}"
@@ -1600,7 +1602,8 @@ class ImportacaoChurn(models.Model):
     submotivo_retirada = models.CharField(max_length=255, null=True, blank=True)
     classificacao = models.CharField(max_length=255, null=True, blank=True)
     desc_apelido = models.CharField(max_length=255, null=True, blank=True)
-    
+    nr_velocidade = models.CharField(max_length=50, null=True, blank=True, verbose_name="Velocidade/Plano (ex: 500MB, 700MB, 1GB)")
+
     class Meta:
         verbose_name = "Importação Churn"
         verbose_name_plural = "Importações Churn"
