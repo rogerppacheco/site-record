@@ -477,6 +477,7 @@ class ConfigComissaoVendedor(models.Model):
     valor_700mb_cnpj_manual = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     valor_1gb_cnpj_manual = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     desconta_dacc_pap = models.BooleanField(default=False, verbose_name="Desconta DACC PAP?")
+    desconta_boleto_pap = models.BooleanField(default=True, verbose_name="Desconta Boleto PAP?")
     desconto_boleto = models.DecimalField(max_digits=10, decimal_places=2, default=0, null=True, blank=True)
     desconto_inclusao = models.DecimalField(max_digits=10, decimal_places=2, default=0, null=True, blank=True)
     desconto_instalacao = models.DecimalField(max_digits=10, decimal_places=2, default=0, null=True, blank=True)

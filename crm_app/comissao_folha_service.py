@@ -206,7 +206,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None):
         total_descontos = Decimal('0')
         detalhes_descontos = []
         for l in lancamentos:
-            total_descontos += l.valor
+            qtd = getattr(l, 'quantidade_vendas', None) or 1
             desc = (l.descricao or l.get_tipo_display() or 'Desconto')
             # Exibir desconto direto (sem "Processamento Auto:") e classificar para separar boleto / adiant. CNPJ
             if desc.startswith('Processamento Auto:'):
@@ -226,20 +226,27 @@ def calcular_folha_mes(ano, mes, vendedor_id=None):
                     tipo_exibicao = 'adiant_cnpj'
                 elif 'BOLETO' in resto_upper:
                     tipo_exibicao = 'boleto'
-            detalhes_descontos.append({'motivo': motivo_limpo, 'valor': float(l.valor), 'tipo_exibicao': tipo_exibicao})
+            valor_item = float(l.valor)
+            # Se config diz "não descontar boleto PAP", valor exibido/efetivo é 0 (quantidade continua para informação)
+            if tipo_exibicao == 'boleto' and config and not getattr(config, 'desconta_boleto_pap', True):
+                total_descontos += 0  # não soma no total
+                valor_item = 0
+            else:
+                total_descontos += l.valor
+            detalhes_descontos.append({'motivo': motivo_limpo, 'valor': valor_item, 'tipo_exibicao': tipo_exibicao, 'quantidade': qtd})
         if config:
             if config.inss_valor and float(config.inss_valor) > 0:
                 total_descontos += config.inss_valor
-                detalhes_descontos.append({'motivo': 'INSS / Encargos', 'valor': float(config.inss_valor), 'tipo_exibicao': 'outros'})
+                detalhes_descontos.append({'motivo': 'INSS / Encargos', 'valor': float(config.inss_valor), 'tipo_exibicao': 'outros', 'quantidade': 1})
             if config.adiantamento and float(config.adiantamento) > 0:
                 total_descontos += config.adiantamento
-                detalhes_descontos.append({'motivo': 'Adiantamento', 'valor': float(config.adiantamento), 'tipo_exibicao': 'outros'})
+                detalhes_descontos.append({'motivo': 'Adiantamento', 'valor': float(config.adiantamento), 'tipo_exibicao': 'outros', 'quantidade': 1})
             if config.cartao_trafego and float(config.cartao_trafego) > 0:
                 total_descontos += config.cartao_trafego
-                detalhes_descontos.append({'motivo': 'Cartão Tráfego', 'valor': float(config.cartao_trafego), 'tipo_exibicao': 'outros'})
+                detalhes_descontos.append({'motivo': 'Cartão Tráfego', 'valor': float(config.cartao_trafego), 'tipo_exibicao': 'outros', 'quantidade': 1})
             if config.gestor_trafego and float(config.gestor_trafego) > 0:
                 total_descontos += config.gestor_trafego
-                detalhes_descontos.append({'motivo': 'Gestor Tráfego', 'valor': float(config.gestor_trafego), 'tipo_exibicao': 'outros'})
+                detalhes_descontos.append({'motivo': 'Gestor Tráfego', 'valor': float(config.gestor_trafego), 'tipo_exibicao': 'outros', 'quantidade': 1})
 
         total_bonus = Decimal('0')
         if config:
@@ -287,6 +294,10 @@ def calcular_folha_mes(ano, mes, vendedor_id=None):
                 'churn': 'ATIVO',
             })
 
+        qtd_a_descontar_boleto = sum(d.get('quantidade', 1) for d in detalhes_descontos if (d.get('tipo_exibicao') or '').lower() == 'boleto')
+        qtd_a_descontar_cnpj = sum(d.get('quantidade', 1) for d in detalhes_descontos if (d.get('tipo_exibicao') or '').lower() == 'adiant_cnpj')
+        qtd_a_descontar = qtd_a_descontar_boleto + qtd_a_descontar_cnpj
+
         resultado.append({
             'vendedor_id': consultor.id,
             'vendedor_nome': consultor.username,
@@ -302,6 +313,9 @@ def calcular_folha_mes(ano, mes, vendedor_id=None):
                 'total_bonus': float(total_bonus),
                 'liquido': float(liquido),
                 'detalhes_descontos': detalhes_descontos,
+                'qtd_a_descontar': qtd_a_descontar,
+                'qtd_a_descontar_boleto': qtd_a_descontar_boleto,
+                'qtd_a_descontar_cnpj': qtd_a_descontar_cnpj,
             },
             'extrato': extrato,
         })

@@ -219,6 +219,13 @@
                                                 <option value="SIM">SIM</option>
                                             </select>
                                         </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label fw-bold small">Desconta Boleto PAP?</label>
+                                            <select id="cfg_desconta_boleto_pap" class="form-select form-select-sm">
+                                                <option value="SIM">SIM</option>
+                                                <option value="NÃO">NÃO</option>
+                                            </select>
+                                        </div>
                                     </div>
                                     <div class="row g-2 mb-2"><div class="col-12 small text-muted fw-bold">Valores por plano (R$) — preencha se valor manual = SIM</div></div>
                                     <div class="row g-2">
@@ -2314,6 +2321,8 @@
             const c = await apiFetch(url);
             document.getElementById('regras-vendedor-nome').textContent = c.username || sel.options[sel.selectedIndex].text;
             document.getElementById('cfg_manual').value = c.usar_valor_manual ? 'SIM' : 'NÃO';
+            const elDescontaBoletoPap = document.getElementById('cfg_desconta_boleto_pap');
+            if (elDescontaBoletoPap) elDescontaBoletoPap.value = c.desconta_boleto_pap !== false ? 'SIM' : 'NÃO';
             document.getElementById('cfg_500mb_pap').value = val(c, 'valor_500mb_pap_manual');
             document.getElementById('cfg_700mb_pap').value = val(c, 'valor_700mb_pap_manual');
             document.getElementById('cfg_1gb_pap').value = val(c, 'valor_1gb_pap_manual');
@@ -2330,6 +2339,7 @@
             document.getElementById('regras-vendedor-nome').textContent = sel.options[sel.selectedIndex].text;
             document.getElementById('cfg_manual').value = 'NÃO';
             ['cfg_500mb_pap','cfg_700mb_pap','cfg_1gb_pap','cfg_500mb_cnpj','cfg_700mb_cnpj','cfg_1gb_cnpj','cfg_desconto_boleto','cfg_desconto_inclusao','cfg_desconto_instalacao','cfg_adiantar_cnpj'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+            const elDescontaBoletoPap2 = document.getElementById('cfg_desconta_boleto_pap'); if (elDescontaBoletoPap2) elDescontaBoletoPap2.value = 'SIM';
             toggleManualValoresForm();
             if (card) card.style.display = 'block';
         }
@@ -2345,6 +2355,7 @@
         const manual = document.getElementById('cfg_manual').value === 'SIM';
         const body = {
             usar_valor_manual: manual,
+            desconta_boleto_pap: document.getElementById('cfg_desconta_boleto_pap') && document.getElementById('cfg_desconta_boleto_pap').value === 'SIM',
             valor_500mb_pap_manual: document.getElementById('cfg_500mb_pap').value === '' ? null : parseFloat(document.getElementById('cfg_500mb_pap').value),
             valor_700mb_pap_manual: document.getElementById('cfg_700mb_pap').value === '' ? null : parseFloat(document.getElementById('cfg_700mb_pap').value),
             valor_1gb_pap_manual: document.getElementById('cfg_1gb_pap').value === '' ? null : parseFloat(document.getElementById('cfg_1gb_pap').value),
@@ -2377,7 +2388,13 @@
             valor_500mb_cnpj_manual: document.getElementById('cfg_500mb_cnpj').value === '' ? null : parseFloat(document.getElementById('cfg_500mb_cnpj').value),
             valor_700mb_cnpj_manual: document.getElementById('cfg_700mb_cnpj').value === '' ? null : parseFloat(document.getElementById('cfg_700mb_cnpj').value),
             valor_1gb_cnpj_manual: document.getElementById('cfg_1gb_cnpj').value === '' ? null : parseFloat(document.getElementById('cfg_1gb_cnpj').value),
+            desconto_boleto: document.getElementById('cfg_desconto_boleto').value === '' ? null : parseFloat(document.getElementById('cfg_desconto_boleto').value),
+            desconto_inclusao: document.getElementById('cfg_desconto_inclusao').value === '' ? null : parseFloat(document.getElementById('cfg_desconto_inclusao').value),
+            desconto_instalacao: document.getElementById('cfg_desconto_instalacao').value === '' ? null : parseFloat(document.getElementById('cfg_desconto_instalacao').value),
+            adiantar_cnpj: document.getElementById('cfg_adiantar_cnpj').value === '' ? null : parseFloat(document.getElementById('cfg_adiantar_cnpj').value),
         };
+        const cfgDescontaBoletoPap = document.getElementById('cfg_desconta_boleto_pap');
+        if (cfgDescontaBoletoPap) bodyBase.desconta_boleto_pap = cfgDescontaBoletoPap.value === 'SIM';
         if (!manual) { alert('Ative "Usar valor manual? = SIM" e preencha os valores por plano antes de replicar.'); return; }
         let ok = 0, err = 0;
         for (let mes = 1; mes <= 12; mes++) {

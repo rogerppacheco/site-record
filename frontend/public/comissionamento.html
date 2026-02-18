@@ -254,8 +254,10 @@
                         const boleto = list.filter(d => (d.tipo_exibicao || '').toLowerCase() === 'boleto');
                         const adiant = list.filter(d => (d.tipo_exibicao || '').toLowerCase() === 'adiant_cnpj');
                         const outros = list.filter(d => { const t = (d.tipo_exibicao || '').toLowerCase(); return t !== 'boleto' && t !== 'adiant_cnpj'; });
-                        const linha = (d) => `<div class="d-flex justify-content-between text-danger"><span>${d.motivo || 'Desconto'}</span><span>- ${fmtMoney(d.valor)}</span></div>`;
-                        let bloco = '<div class="small border-top pt-2 mt-2"><strong class="text-muted">Descontos</strong><div class="mt-1">';
+                        const linha = (d) => { const q = (d.quantidade != null && d.quantidade !== '') ? d.quantidade : 1; return `<div class="d-flex justify-content-between text-danger"><span>${d.motivo || 'Desconto'}${q > 0 ? ' (' + q + ' un.)' : ''}</span><span>- ${fmtMoney(d.valor)}</span></div>`; };
+                        let bloco = '<div class="small border-top pt-2 mt-2"><strong class="text-muted">Descontos</strong>';
+                        if (r.qtd_a_descontar != null && r.qtd_a_descontar > 0) bloco += '<div class="mt-1 text-muted fw-bold">QTD A DESCONTAR: ' + r.qtd_a_descontar + '</div>';
+                        bloco += '<div class="mt-1">';
                         if (boleto.length) { bloco += '<div class="mb-1"><span class="text-muted fw-bold small">Desconto Boleto</span>'; boleto.forEach(d => { bloco += linha(d); }); bloco += '</div>'; }
                         if (adiant.length) { bloco += '<div class="mb-1"><span class="text-muted fw-bold small">Adiant. CNPJ</span>'; adiant.forEach(d => { bloco += linha(d); }); bloco += '</div>'; }
                         if (outros.length) { bloco += '<div class="mb-1"><span class="text-muted fw-bold small">Outros</span>'; outros.forEach(d => { bloco += linha(d); }); bloco += '</div>'; }
