@@ -5194,78 +5194,36 @@ class LancamentoFinanceiroViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         # Salva automaticamente quem criou o registro (segurança/auditoria)
         serializer.save(criado_por=self.request.user)
-# --- NOVAS VIEWS PARA CONFIRMAÇÃO DE DESCONTOS ---
-
-class PendenciasDescontoView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request):
-        # Lista todas as vendas instaladas que geram desconto mas ainda não foram processadas
-        vendas = Venda.objects.filter(
-            ativo=True,
-            status_esteira__nome__iexact='INSTALADA'
-        ).select_related('vendedor', 'forma_pagamento', 'cliente')
-
-        pendencias = []
-
-        for v in vendas:
-            consultor = v.vendedor
-            if not consultor: continue
-
-            doc = v.cliente.cpf_cnpj if v.cliente else ''
-            doc_limpo = ''.join(filter(str.isdigit, doc))
-            eh_cnpj = len(doc_limpo) > 11
-
-            # 1. Adiantamento CNPJ
-            if eh_cnpj and not v.flag_adiant_cnpj:
-                val = float(consultor.adiantamento_cnpj or 0)
-                if val > 0:
-                    pendencias.append(self._montar_obj(v, 'CNPJ', val, 'Adiantamento CNPJ'))
-
-            # 2. Boleto
-            if v.forma_pagamento and 'BOLETO' in v.forma_pagamento.nome.upper() and not v.flag_desc_boleto:
-                val = float(consultor.desconto_boleto or 0)
-                if val > 0:
-                    pendencias.append(self._montar_obj(v, 'BOLETO', val, 'Desconto Boleto'))
-
-            # 3. Viabilidade
-            if v.inclusao and not v.flag_desc_viabilidade:
-                val = float(consultor.desconto_inclusao_viabilidade or 0)
-                if val > 0:
-                    pendencias.append(self._montar_obj(v, 'VIABILIDADE', val, 'Desconto Viabilidade'))
-
-            # 4. Antecipação
-            if v.antecipou_instalacao and not v.flag_desc_antecipacao:
-                val = float(consultor.desconto_instalacao_antecipada or 0)
-                if val > 0:
-                    pendencias.append(self._montar_obj(v, 'ANTECIPACAO', val, 'Desconto Antecipação'))
-
-        return Response(pendencias)
-
-    def _montar_obj(self, venda, tipo_codigo, valor, titulo):
-        return {
-            'venda_id': venda.id,
-            'data_instalacao': venda.data_instalacao,
-            'cliente': venda.cliente.nome_razao_social,
-            'cliente_cpf': venda.cliente.cpf_cnpj,
-            'os': venda.ordem_servico or "",
-            'vendedor_id': venda.vendedor.id,
-            'vendedor_nome': venda.vendedor.username,
-            'tipo_codigo': tipo_codigo,
-            'titulo': titulo,
-            'valor': valor
-        }
-
 # --- VIEWS PARA CONFIRMAÇÃO E REVERSÃO DE DESCONTOS ---
 
 class PendenciasDescontoView(APIView):
+    """Pendências de desconto/adiantamento. GET ?ano=&mes= para filtrar por mês da instalação (somente mês/ano)."""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        from datetime import datetime
         vendas = Venda.objects.filter(
             ativo=True,
             status_esteira__nome__iexact='INSTALADA'
         ).select_related('vendedor', 'forma_pagamento', 'cliente')
+
+        ano = request.query_params.get('ano')
+        mes = request.query_params.get('mes')
+        if ano and mes:
+            try:
+                ano, mes = int(ano), int(mes)
+                if 1 <= mes <= 12:
+                    data_inicio = datetime(ano, mes, 1).date()
+                    if mes == 12:
+                        data_fim = datetime(ano + 1, 1, 1).date()
+                    else:
+                        data_fim = datetime(ano, mes + 1, 1).date()
+                    vendas = vendas.filter(
+                        data_instalacao__gte=data_inicio,
+                        data_instalacao__lt=data_fim,
+                    )
+            except (TypeError, ValueError):
+                pass
 
         pendencias = []
 
@@ -5308,6 +5266,7 @@ class PendenciasDescontoView(APIView):
             'titulo': titulo,
             'valor': valor
         }
+
 
 class ConfirmarDescontosEmMassaView(APIView):
     permission_classes = [permissions.IsAuthenticated]

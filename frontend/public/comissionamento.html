@@ -148,11 +148,13 @@
                 <div class="tab-pane fade" id="tab-pendencias">
                     <div class="card border-0 shadow-sm">
                         <div class="card-header bg-white py-3">
-                            <div class="d-flex justify-content-between align-items-center">
+                            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
                                 <h6 class="mb-0 text-primary fw-bold"><i class="bi bi-list-check"></i> Pendências de Desconto/Adiantamento</h6>
-                                <div class="d-flex gap-2 align-items-center">
-                                    <label class="small text-muted me-2">Data do Lançamento:</label>
-                                    <input type="date" id="data-confirmacao-desc" class="form-control form-control-sm" style="width: 150px;">
+                                <div class="d-flex flex-wrap gap-2 align-items-center">
+                                    <label class="small text-muted me-1">Mês/Ano (instalações):</label>
+                                    <input type="month" id="filtro-pend-mes-ano" class="form-control form-control-sm" style="width: 140px;" onchange="carregarPendencias()">
+                                    <label class="small text-muted ms-2 me-1">Mês/Ano do lançamento:</label>
+                                    <input type="month" id="mes-ano-confirmacao-desc" class="form-control form-control-sm" style="width: 140px;">
                                     <button class="btn btn-success btn-sm" onclick="confirmarDescontosSelecionados()">
                                         <i class="bi bi-check-lg"></i> Confirmar Selecionados
                                     </button>
@@ -160,45 +162,9 @@
                             </div>
                         </div>
                         <div class="card-body p-0">
-                            <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
-                                <table class="table table-hover align-middle mb-0 small">
-                                    <thead class="table-light sticky-top">
-                                        <tr>
-                                            <th width="30"><input type="checkbox" onchange="togglePendencias(this)"></th>
-                                            <th>Vendedor</th>
-                                            <th>Cliente / Dados</th>
-                                            <th>Tipo de Desconto</th>
-                                            <th>Data Inst.</th>
-                                            <th class="text-end">Valor (R$)</th>
-                                        </tr>
-                                        <tr class="filter-row">
-                                            <th></th>
-                                            <th>
-                                                <select id="filtro-pend-vendedor" class="filter-input" onchange="filtrarTabelaPendencias()">
-                                                    <option value="">Todos</option>
-                                                </select>
-                                            </th>
-                                            <th>
-                                                <input type="text" id="filtro-pend-cliente" class="filter-input" placeholder="Buscar Nome, CPF ou OS..." onkeyup="filtrarTabelaPendencias()">
-                                            </th>
-                                            <th>
-                                                <select id="filtro-pend-tipo" class="filter-input" onchange="filtrarTabelaPendencias()">
-                                                    <option value="">Todos</option>
-                                                    <option value="CNPJ">Adiantamento CNPJ</option>
-                                                    <option value="BOLETO">Desconto Boleto</option>
-                                                    <option value="VIABILIDADE">Inclusão/Viabilidade</option>
-                                                    <option value="ANTECIPACAO">Antecipação</option>
-                                                </select>
-                                            </th>
-                                            <th></th>
-                                            <th></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="tbody-pendencias"></tbody>
-                                </table>
-                            </div>
+                            <div id="pendencias-por-vendedor" style="max-height: 500px; overflow-y: auto;"></div>
                             <div class="p-2 text-center small text-muted border-top">
-                                Exibindo <span id="count-exibidos">0</span> de <span id="count-total">0</span> pendências.
+                                <span id="count-total">0</span> pendência(s) no mês. Marque/desmarque itens e clique em Confirmar.
                             </div>
                         </div>
                     </div>
@@ -341,11 +307,12 @@
                     });
                     html += `<tr class="table-light"><td colspan="2" class="fw-bold">TOTAL</td><td></td><td></td><td class="text-end fw-bold">${fmtMoney(r.comissao_total_geral || 0)}</td></tr></tbody></table>
                             <div class="p-3 border-top bg-white">
-                                <div class="row small">
+                                <div class="row small mb-2">
                                     <div class="col">Descontos: <span class="text-danger fw-bold">- ${fmtMoney(r.total_descontos || 0)}</span></div>
                                     <div class="col">Bônus: <span class="text-success fw-bold">+ ${fmtMoney(r.total_bonus || 0)}</span></div>
                                     <div class="col"><strong>LÍQUIDO A PAGAR: <span class="text-success fs-6">${fmtMoney(r.liquido || 0)}</span></strong></div>
                                 </div>
+                                ${(r.detalhes_descontos && r.detalhes_descontos.length) ? `<div class="small border-top pt-2 mt-2"><strong class="text-muted">Lista de descontos (valor por valor):</strong><div class="mt-1">${r.detalhes_descontos.map(d => `<div class="d-flex justify-content-between text-danger"><span>${d.motivo || 'Desconto'}</span><span>- ${fmtMoney(d.valor)}</span></div>`).join('')}</div></div>` : ''}
                             </div>
                             <div class="p-2 border-top"><button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#extrato-${v.vendedor_id}"><i class="bi bi-list"></i> Extrato (${(r.extrato || v.extrato || []).length} vendas)</button></div>
                             <div class="collapse" id="extrato-${v.vendedor_id}"><div class="table-responsive"><table class="table table-sm table-striped mb-0 small"><thead class="table-light"><tr><th>NOME</th><th>DACC</th><th>CNPJ</th><th>PLANO</th><th>DT PEDIDO</th><th>DT INST</th><th>OS</th><th>SITUAÇÃO</th><th>CHURN</th></tr></thead><tbody>`;
@@ -385,123 +352,120 @@
             }
         }
 
-        // --- ABA 2: PENDÊNCIAS COM FILTROS ---
+        // --- ABA 2: PENDÊNCIAS POR MÊS, AGRUPADAS POR VENDEDOR ---
         async function carregarPendencias() {
-            const tbody = document.getElementById('tbody-pendencias');
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-3">Carregando...</td></tr>';
-            
-            try {
-                const res = await axios.get(`${apiUrl}pendencias-desconto/`);
-                pendenciasCache = res.data; // Guarda no cache
-                
-                atualizarFiltrosVendedor(pendenciasCache); // Popula o select de vendedores
-                renderizarTabelaPendencias(pendenciasCache); // Renderiza tudo
-                carregarHistoricoAuto(); // <--- CHAMA A FUNÇÃO DE HISTÓRICO
+            const container = document.getElementById('pendencias-por-vendedor');
+            if (!container) return;
+            container.innerHTML = '<div class="text-center py-4 text-muted">Carregando...</div>';
 
-            } catch(e) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Erro ao carregar pendências.</td></tr>';
+            const mesAnoEl = document.getElementById('filtro-pend-mes-ano');
+            let ano = '', mes = '';
+            if (mesAnoEl && mesAnoEl.value) {
+                const parts = mesAnoEl.value.split('-');
+                ano = parts[0]; mes = parts[1];
+            }
+            if (!ano || !mes) {
+                const h = new Date();
+                const m = String(h.getMonth() + 1).padStart(2, '0');
+                ano = h.getFullYear(); mes = m;
+                if (mesAnoEl) { mesAnoEl.value = `${ano}-${mes}`; }
+            }
+
+            try {
+                const res = await axios.get(`${apiUrl}pendencias-desconto/?ano=${ano}&mes=${mes}`);
+                pendenciasCache = res.data || [];
+                renderizarPendenciasPorVendedor(pendenciasCache);
+                const mesAnoConf = document.getElementById('mes-ano-confirmacao-desc');
+                if (mesAnoConf && !mesAnoConf.value) mesAnoConf.value = `${ano}-${mes}`;
+                carregarHistoricoAuto();
+            } catch (e) {
+                container.innerHTML = '<div class="text-center py-3 text-danger">Erro ao carregar pendências.</div>';
                 console.error(e);
             }
         }
 
-        function atualizarFiltrosVendedor(lista) {
-            const select = document.getElementById('filtro-pend-vendedor');
-            const vendedoresUnicos = [...new Set(lista.map(item => item.vendedor_nome))].sort();
-            
-            // Mantém "Todos" e adiciona os vendedores
-            select.innerHTML = '<option value="">Todos</option>';
-            vendedoresUnicos.forEach(v => {
-                select.add(new Option(v, v));
-            });
-        }
+        function renderizarPendenciasPorVendedor(lista) {
+            const container = document.getElementById('pendencias-por-vendedor');
+            const countEl = document.getElementById('count-total');
+            if (!container) return;
+            if (countEl) countEl.textContent = lista.length;
 
-        function renderizarTabelaPendencias(lista) {
-            const tbody = document.getElementById('tbody-pendencias');
-            tbody.innerHTML = '';
-            
-            document.getElementById('count-exibidos').textContent = lista.length;
-            document.getElementById('count-total').textContent = pendenciasCache.length;
-
-            if(lista.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-3 text-muted">Nenhuma pendência encontrada com esses filtros.</td></tr>';
+            if (lista.length === 0) {
+                container.innerHTML = '<div class="text-center py-4 text-muted">Nenhuma pendência para o mês selecionado.</div>';
                 return;
             }
 
-            lista.forEach((item) => {
-                const jsonDados = JSON.stringify({
-                    venda_id: item.venda_id,
-                    vendedor_id: item.vendedor_id,
-                    tipo_codigo: item.tipo_codigo,
-                    valor: item.valor
-                });
-                
-                // Formata dados extras
-                const cpf = item.cliente_cpf || "";
-                const os = item.os || "S/ OS";
-                const infoExtra = `<div class="small text-muted" style="font-size: 0.75rem;">CPF: ${cpf} | OS: ${os}</div>`;
+            const porVendedor = {};
+            lista.forEach(item => {
+                const k = item.vendedor_id + '|' + (item.vendedor_nome || '');
+                if (!porVendedor[k]) porVendedor[k] = { vendedor_nome: item.vendedor_nome, vendedor_id: item.vendedor_id, itens: [] };
+                porVendedor[k].itens.push(item);
+            });
 
-                tbody.innerHTML += `
-                    <tr>
-                        <td><input type="checkbox" class="check-pendencia" value='${jsonDados}'></td>
-                        <td class="fw-bold">${item.vendedor_nome}</td>
-                        <td>
-                            <div>${item.cliente}</div>
-                            ${infoExtra}
-                        </td>
-                        <td><span class="badge bg-warning text-dark border">${item.titulo}</span></td>
-                        <td>${new Date(item.data_instalacao).toLocaleDateString('pt-BR')}</td>
+            let html = '';
+            Object.keys(porVendedor).forEach((key, idx) => {
+                const g = porVendedor[key];
+                const total = g.itens.reduce((s, i) => s + parseFloat(i.valor), 0);
+                const idCollapse = 'collapse-pend-' + idx;
+                html += `<div class="border-bottom">
+                    <div class="d-flex align-items-center py-2 px-3 bg-light" style="cursor:pointer;" onclick="var el=document.getElementById('${idCollapse}');var icon=document.getElementById('btn-pend-${idx}').querySelector('i');el.classList.toggle('d-none');if(icon){icon.classList.toggle('bi-plus');icon.classList.toggle('bi-dash');}">
+                        <button type="button" class="btn btn-sm btn-outline-secondary me-2 btn-toggle-detalhe" id="btn-pend-${idx}" aria-label="Expandir"><i class="bi bi-plus"></i></button>
+                        <span class="fw-bold">${g.vendedor_nome || 'N/A'}</span>
+                        <span class="ms-2 text-danger fw-bold">Total: R$ ${total.toFixed(2)}</span>
+                        <span class="ms-2 small text-muted">(${g.itens.length} item(ns))</span>
+                    </div>
+                    <div class="d-none" id="${idCollapse}">
+                        <div class="px-3 py-2 small">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead><tr><th width="36"></th><th>Cliente / OS</th><th>Tipo</th><th>Data Inst.</th><th class="text-end">Valor</th></tr></thead>
+                                <tbody>`;
+                g.itens.forEach(item => {
+                    const dataInst = item.data_instalacao ? new Date(item.data_instalacao).toLocaleDateString('pt-BR') : '';
+                    const os = item.os || 'S/ OS';
+                    html += `<tr>
+                        <td><input type="checkbox" class="check-pendencia form-check-input" data-venda-id="${item.venda_id}" data-vendedor-id="${item.vendedor_id}" data-tipo-codigo="${item.tipo_codigo}" data-valor="${item.valor}" checked></td>
+                        <td><div>${(item.cliente || '').substring(0, 40)}</div><small class="text-muted">OS: ${os}</small></td>
+                        <td><span class="badge bg-warning text-dark">${item.titulo || item.tipo_codigo}</span></td>
+                        <td>${dataInst}</td>
                         <td class="text-end text-danger fw-bold">R$ ${parseFloat(item.valor).toFixed(2)}</td>
-                    </tr>
-                `;
+                    </tr>`;
+                });
+                html += `</tbody></table></div></div></div>`;
             });
-        }
-
-        function filtrarTabelaPendencias() {
-            const termoBusca = document.getElementById('filtro-pend-cliente').value.toLowerCase();
-            const tipoSelecionado = document.getElementById('filtro-pend-tipo').value;
-            const vendedorSelecionado = document.getElementById('filtro-pend-vendedor').value;
-
-            const filtrados = pendenciasCache.filter(item => {
-                // Filtro Texto (Nome, CPF, OS)
-                const textoCompleto = `${item.cliente} ${item.cliente_cpf || ''} ${item.os || ''}`.toLowerCase();
-                const matchTexto = textoCompleto.includes(termoBusca);
-
-                // Filtro Tipo
-                const matchTipo = tipoSelecionado ? item.tipo_codigo === tipoSelecionado : true;
-
-                // Filtro Vendedor
-                const matchVendedor = vendedorSelecionado ? item.vendedor_nome === vendedorSelecionado : true;
-
-                return matchTexto && matchTipo && matchVendedor;
-            });
-
-            renderizarTabelaPendencias(filtrados);
+            container.innerHTML = html;
         }
 
         function togglePendencias(source) {
-            document.querySelectorAll('.check-pendencia').forEach(c => c.checked = source.checked);
+            document.querySelectorAll('.check-pendencia').forEach(c => { c.checked = source.checked; });
         }
 
         async function confirmarDescontosSelecionados() {
             const checks = document.querySelectorAll('.check-pendencia:checked');
-            if(checks.length === 0) return alert("Selecione pelo menos um item.");
-            
-            const dataLanc = document.getElementById('data-confirmacao-desc').value;
-            if(!dataLanc) return alert("Selecione a data para o lançamento financeiro.");
+            if (checks.length === 0) return alert('Selecione pelo menos um item.');
 
-            if(!confirm(`Confirma o lançamento financeiro de ${checks.length} descontos na data ${dataLanc}?`)) return;
+            const mesAnoEl = document.getElementById('mes-ano-confirmacao-desc');
+            let dataLanc = '';
+            if (mesAnoEl && mesAnoEl.value) {
+                const [y, m] = mesAnoEl.value.split('-');
+                dataLanc = `${y}-${m}-01`;
+            }
+            if (!dataLanc) return alert('Selecione o Mês/Ano do lançamento.');
 
-            const itensParaEnviar = Array.from(checks).map(c => JSON.parse(c.value));
+            if (!confirm(`Confirmar lançamento de ${checks.length} desconto(s) no mês ${mesAnoEl.value.replace('-', '/')}?`)) return;
+
+            const itensParaEnviar = Array.from(checks).map(c => ({
+                venda_id: parseInt(c.getAttribute('data-venda-id'), 10),
+                vendedor_id: parseInt(c.getAttribute('data-vendedor-id'), 10),
+                tipo_codigo: c.getAttribute('data-tipo-codigo'),
+                valor: parseFloat(c.getAttribute('data-valor'))
+            }));
 
             try {
-                const res = await axios.post(`${apiUrl}confirmar-descontos/`, {
-                    data: dataLanc,
-                    itens: itensParaEnviar
-                });
+                const res = await axios.post(`${apiUrl}confirmar-descontos/`, { data: dataLanc, itens: itensParaEnviar });
                 alert(res.data.mensagem);
-                carregarPendencias(); // Recarrega a lista do servidor
-            } catch(e) {
-                alert("Erro: " + (e.response?.data?.error || e.message));
+                carregarPendencias();
+            } catch (e) {
+                alert('Erro: ' + (e.response?.data?.error || e.message));
             }
         }
 

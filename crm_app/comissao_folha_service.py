@@ -196,28 +196,32 @@ def calcular_folha_mes(ano, mes, vendedor_id=None):
                 'comissao_total': round(d['total'], 2),
             })
 
-        # Ajustes: descontos e bônus (lançamentos do mês + config)
+        # Ajustes: descontos vêm dos lançamentos confirmados (Adiantamentos e Descontos / Confirmar Descontos) + config (INSS, etc.)
+        # Não somar por venda da config: boleto/inclusão/instalação/adiant.CNPJ só entram após confirmação (LancamentoFinanceiro).
         lancamentos = LancamentoFinanceiro.objects.filter(
             usuario=consultor,
             data__gte=data_inicio.date(),
             data__lt=data_fim.date(),
-        )
+        ).order_by('data', 'id')
         total_descontos = Decimal('0')
-        if config:
-            for v in vendas:
-                if v.forma_pagamento and 'BOLETO' in (v.forma_pagamento.nome or '').upper():
-                    total_descontos += (config.desconto_boleto or 0)
-                if getattr(v, 'inclusao', False):
-                    total_descontos += (config.desconto_inclusao or 0)
-                if getattr(v, 'antecipou_instalacao', False):
-                    total_descontos += (config.desconto_instalacao or 0)
-                doc = (v.cliente.cpf_cnpj or '') if v.cliente else ''
-                if len(''.join(filter(str.isdigit, doc))) > 11:
-                    total_descontos += (config.adiantar_cnpj or 0)
-            total_descontos += (config.inss_valor or 0) + (config.adiantamento or 0)
-            total_descontos += (config.cartao_trafego or 0) + (config.gestor_trafego or 0)
+        detalhes_descontos = []
         for l in lancamentos:
-            total_descontos += l.valor  # lançamentos são descontos (valor positivo = desconto)
+            total_descontos += l.valor
+            desc = (l.descricao or l.get_tipo_display() or 'Desconto')
+            detalhes_descontos.append({'motivo': desc, 'valor': float(l.valor)})
+        if config:
+            if config.inss_valor and float(config.inss_valor) > 0:
+                total_descontos += config.inss_valor
+                detalhes_descontos.append({'motivo': 'INSS / Encargos', 'valor': float(config.inss_valor)})
+            if config.adiantamento and float(config.adiantamento) > 0:
+                total_descontos += config.adiantamento
+                detalhes_descontos.append({'motivo': 'Adiantamento', 'valor': float(config.adiantamento)})
+            if config.cartao_trafego and float(config.cartao_trafego) > 0:
+                total_descontos += config.cartao_trafego
+                detalhes_descontos.append({'motivo': 'Cartão Tráfego', 'valor': float(config.cartao_trafego)})
+            if config.gestor_trafego and float(config.gestor_trafego) > 0:
+                total_descontos += config.gestor_trafego
+                detalhes_descontos.append({'motivo': 'Gestor Tráfego', 'valor': float(config.gestor_trafego)})
 
         total_bonus = Decimal('0')
         if config:
@@ -279,6 +283,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None):
                 'total_descontos': float(total_descontos),
                 'total_bonus': float(total_bonus),
                 'liquido': float(liquido),
+                'detalhes_descontos': detalhes_descontos,
             },
             'extrato': extrato,
         })
