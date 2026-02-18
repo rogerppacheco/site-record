@@ -594,15 +594,30 @@ class WhatsAppService:
             d.text((W - 20, 18), f"Faixa: {faixa}", fill='white', font=font_md)
             y = 70
 
-            # Tabela por plano
+            # Tabela por plano — grade com linhas e colunas bem definidas
             por_plano = r.get('por_plano') or []
             col_w = [220, 80, 100, 110, 120]
+            xs = [20]
+            for cw in col_w:
+                xs.append(xs[-1] + cw)
+            xs.append(W - 20)
+            row_h = 26
+            cor_header_bg = (248, 249, 250)
+            cor_total_bg = (248, 249, 250)
+            linha_grossa = 2
             headers = ['PLANO', 'QTD', 'VALOR UNIT.', 'VALOR TOTAL', 'COMISSÃO']
+
+            y_tabela_inicio = y
+            # Cabeçalho da tabela (fundo cinza + bordas)
+            d.rectangle([(xs[0], y), (xs[-1], y + row_h)], fill=cor_header_bg, outline=cor_borda, width=1)
             for i, h in enumerate(headers):
-                d.text((20 + sum(col_w[:i]), y), h, fill=cor_texto_sec, font=font_bold)
-            y += 24
-            d.line([(20, y), (W - 20, y)], fill=cor_borda)
-            y += 8
+                px = xs[i] + 6
+                d.text((px, y + 6), h, fill=cor_texto_sec, font=font_bold)
+            y += row_h
+            # Linha horizontal abaixo do cabeçalho (mais marcada)
+            d.line([(xs[0], y), (xs[-1], y)], fill=cor_texto_sec, width=linha_grossa)
+            y += 4
+            # Linhas de dados
             for p in por_plano:
                 if (p.get('qtd_instalada_a_pagar') or 0) == 0 and (p.get('valor_total_instalados') or 0) == 0:
                     continue
@@ -612,18 +627,29 @@ class WhatsAppService:
                 vtot = p.get('valor_total_instalados') or 0
                 com = p.get('comissao_total') or 0
                 vunit_str = self._fmt_br(vunit) if vunit is not None else '-'
-                d.text((20, y), plano, fill=cor_texto, font=font_sm)
-                d.text((20 + col_w[0], y), str(qtd), fill=cor_texto, font=font_sm)
-                d.text((20 + col_w[0] + col_w[1], y), vunit_str, fill=cor_texto, font=font_sm)
-                d.text((20 + col_w[0] + col_w[1] + col_w[2], y), self._fmt_br(vtot), fill=cor_texto, font=font_sm)
-                d.text((20 + col_w[0] + col_w[1] + col_w[2] + col_w[3], y), self._fmt_br(com), fill=cor_texto, font=font_bold)
-                y += 22
+                d.rectangle([(xs[0], y), (xs[-1], y + row_h)], outline=cor_borda, width=1)
+                d.text((xs[0] + 6, y + 5), plano, fill=cor_texto, font=font_sm)
+                d.text((xs[1] + 6, y + 5), str(qtd), fill=cor_texto, font=font_sm)
+                d.text((xs[2] + 6, y + 5), vunit_str, fill=cor_texto, font=font_sm)
+                d.text((xs[3] + 6, y + 5), self._fmt_br(vtot), fill=cor_texto, font=font_sm)
+                d.text((xs[4] + 6, y + 5), self._fmt_br(com), fill=cor_texto, font=font_bold)
+                y += row_h
+            # Linha horizontal antes da linha TOTAL
+            d.line([(xs[0], y), (xs[-1], y)], fill=cor_texto_sec, width=linha_grossa)
             y += 4
-            d.line([(20, y), (W - 20, y)], fill=cor_borda)
-            y += 8
-            d.text((20, y), 'TOTAL', fill=cor_texto, font=font_bold)
-            d.text((20 + col_w[0] + col_w[1] + col_w[2] + col_w[3], y), self._fmt_br(r.get('comissao_total_geral') or 0), fill=cor_texto, font=font_bold)
-            y += 32
+            # Linha TOTAL (fundo cinza + bordas)
+            d.rectangle([(xs[0], y), (xs[-1], y + row_h)], fill=cor_total_bg, outline=cor_borda, width=1)
+            d.text((xs[0] + 6, y + 5), 'TOTAL', fill=cor_texto, font=font_bold)
+            d.text((xs[4] + 6, y + 5), self._fmt_br(r.get('comissao_total_geral') or 0), fill=cor_texto, font=font_bold)
+            y += row_h
+            # Linhas verticais da tabela (do topo ao fim da tabela)
+            y_tabela_fim = y
+            for xi in xs[1:-1]:
+                d.line([(xi, y_tabela_inicio), (xi, y_tabela_fim)], fill=cor_borda, width=1)
+            # Borda esquerda e direita da tabela (reforço)
+            d.line([(xs[0], y_tabela_inicio), (xs[0], y_tabela_fim)], fill=cor_borda, width=1)
+            d.line([(xs[-1], y_tabela_inicio), (xs[-1], y_tabela_fim)], fill=cor_borda, width=1)
+            y += 20
 
             # Resumo financeiro
             d.text((20, y), f"Descontos: - {self._fmt_br(r.get('total_descontos') or 0)}", fill=cor_vermelho, font=font_bold)
