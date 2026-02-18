@@ -167,11 +167,18 @@ def calcular_folha_mes(ano, mes, vendedor_id=None):
         if c.usuario_id not in configs:
             configs[c.usuario_id] = c
 
+    def _safe_min_max(r):
+        """Evita comparação None > None no sorted e no intervalo."""
+        min_v = r.min_vendas if r.min_vendas is not None else 0
+        max_v = r.max_vendas if r.max_vendas is not None else (10 ** 9)
+        return min_v, max_v
+
     def encontrar_faixa(consultor, qtd_vendas):
         # 1) Regra individual do vendedor
         listas = regras_faixa_vendedor.get(consultor.id, [])
-        for r in sorted(listas, key=lambda x: x.min_vendas, reverse=True):
-            if r.min_vendas <= qtd_vendas <= r.max_vendas:
+        for r in sorted(listas, key=lambda x: _safe_min_max(x)[0], reverse=True):
+            min_v, max_v = _safe_min_max(r)
+            if min_v <= qtd_vendas <= max_v:
                 return r
         # 2) Regra por perfil
         config = configs.get(consultor.id)
@@ -179,7 +186,8 @@ def calcular_folha_mes(ano, mes, vendedor_id=None):
         for r in regras_faixa_perfil:
             if r.perfil != perfil:
                 continue
-            if r.min_vendas <= qtd_vendas <= r.max_vendas:
+            min_v, max_v = _safe_min_max(r)
+            if min_v <= qtd_vendas <= max_v:
                 return r
         return None
 

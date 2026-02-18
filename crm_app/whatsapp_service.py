@@ -588,10 +588,14 @@ class WhatsAppService:
             vendedor_nome = (dados_vendedor.get('vendedor_nome') or '').upper()
             faixa = r.get('faixa_aplicada') or '-'
 
-            # Cabeçalho
+            # Cabeçalho: faixa alinhada à direita para não cortar (anchor rm = right-middle)
             d.rectangle([(0, 0), (W, 56)], fill=cor_cabecalho)
-            d.text((20, 18), vendedor_nome, fill='white', font=font_title)
-            d.text((W - 20, 18), f"Faixa: {faixa}", fill='white', font=font_md)
+            d.text((20, 28), vendedor_nome, fill='white', font=font_title)
+            faixa_str = f"Faixa: {faixa}" if faixa else "Faixa: -"
+            try:
+                d.text((W - 20, 28), faixa_str, fill='white', font=font_md, anchor='rm')
+            except TypeError:
+                d.text((W - 20, 18), faixa_str, fill='white', font=font_md)
             y = 70
 
             # Tabela por plano — grade com linhas e colunas bem definidas
@@ -617,12 +621,14 @@ class WhatsAppService:
             # Linha horizontal abaixo do cabeçalho (mais marcada)
             d.line([(xs[0], y), (xs[-1], y)], fill=cor_texto_sec, width=linha_grossa)
             y += 4
-            # Linhas de dados
+            # Linhas de dados + total de quantidade para a linha TOTAL
+            total_qtd = 0
             for p in por_plano:
                 if (p.get('qtd_instalada_a_pagar') or 0) == 0 and (p.get('valor_total_instalados') or 0) == 0:
                     continue
                 plano = (p.get('plano') or '-')[:22]
                 qtd = p.get('qtd_instalada_a_pagar') or 0
+                total_qtd += int(qtd) if qtd is not None else 0
                 vunit = p.get('valor_unitario_instalados')
                 vtot = p.get('valor_total_instalados') or 0
                 com = p.get('comissao_total') or 0
@@ -637,9 +643,10 @@ class WhatsAppService:
             # Linha horizontal antes da linha TOTAL
             d.line([(xs[0], y), (xs[-1], y)], fill=cor_texto_sec, width=linha_grossa)
             y += 4
-            # Linha TOTAL (fundo cinza + bordas)
+            # Linha TOTAL (fundo cinza + bordas): mostrar total de quantidade na coluna QTD
             d.rectangle([(xs[0], y), (xs[-1], y + row_h)], fill=cor_total_bg, outline=cor_borda, width=1)
             d.text((xs[0] + 6, y + 5), 'TOTAL', fill=cor_texto, font=font_bold)
+            d.text((xs[1] + 6, y + 5), str(total_qtd), fill=cor_texto, font=font_bold)
             d.text((xs[4] + 6, y + 5), self._fmt_br(r.get('comissao_total_geral') or 0), fill=cor_texto, font=font_bold)
             y += row_h
             # Linhas verticais da tabela (do topo ao fim da tabela)
@@ -657,16 +664,13 @@ class WhatsAppService:
             d.text((500, y), f"LÍQUIDO A PAGAR: {self._fmt_br(r.get('liquido') or 0)}", fill=cor_verde, font=font_bold)
             y += 36
 
-            # Detalhes descontos
+            # Detalhes descontos (sem a frase "QTD A DESCONTAR")
             detalhes = r.get('detalhes_descontos') or []
-            if detalhes or (r.get('qtd_a_descontar') or 0) > 0:
+            if detalhes:
                 d.line([(20, y), (W - 20, y)], fill=cor_borda)
                 y += 10
                 d.text((20, y), 'Descontos', fill=cor_texto_sec, font=font_bold)
                 y += 22
-                if (r.get('qtd_a_descontar') or 0) > 0:
-                    d.text((20, y), f"QTD A DESCONTAR: {r.get('qtd_a_descontar')}", fill=cor_texto_sec, font=font_sm)
-                    y += 20
                 for det in detalhes:
                     motivo = det.get('motivo') or 'Desconto'
                     q = det.get('quantidade')
