@@ -236,8 +236,9 @@
                                         <div class="col-md-3"><label class="form-label small">Desconto Instalação (R$)</label><input type="number" id="cfg_desconto_instalacao" class="form-control form-control-sm" step="0.01" placeholder="0"></div>
                                         <div class="col-md-3"><label class="form-label small">Adiant. CNPJ (R$)</label><input type="number" id="cfg_adiantar_cnpj" class="form-control form-control-sm" step="0.01" placeholder="0"></div>
                                     </div>
-                                    <div class="mt-4">
+                                    <div class="mt-4 d-flex flex-wrap gap-2 align-items-center">
                                         <button type="button" class="btn btn-primary" onclick="salvarConfigVendedorAtual()"><i class="bi bi-check-lg"></i> Salvar regras deste mês</button>
+                                        <button type="button" class="btn btn-outline-primary" onclick="replicarValoresManuaisAnoVigente()" title="Copia os valores por plano (e valor manual = SIM) para todos os 12 meses do ano vigente."><i class="bi bi-calendar3"></i> Replicar valores manuais para todo o ano</button>
                                     </div>
                                 </div>
                             </div>
@@ -2361,6 +2362,34 @@
             alert('Regras salvas para o mês selecionado.');
         } catch (e) { alert('Erro ao salvar: ' + e.message); }
     }
+
+    async function replicarValoresManuaisAnoVigente() {
+        const sel = document.getElementById('regras_vendedor_select');
+        const userId = sel && sel.value ? sel.value : '';
+        if (!userId) { alert('Selecione um vendedor.'); return; }
+        const ano = new Date().getFullYear();
+        const manual = document.getElementById('cfg_manual').value === 'SIM';
+        const bodyBase = {
+            usar_valor_manual: true,
+            valor_500mb_pap_manual: document.getElementById('cfg_500mb_pap').value === '' ? null : parseFloat(document.getElementById('cfg_500mb_pap').value),
+            valor_700mb_pap_manual: document.getElementById('cfg_700mb_pap').value === '' ? null : parseFloat(document.getElementById('cfg_700mb_pap').value),
+            valor_1gb_pap_manual: document.getElementById('cfg_1gb_pap').value === '' ? null : parseFloat(document.getElementById('cfg_1gb_pap').value),
+            valor_500mb_cnpj_manual: document.getElementById('cfg_500mb_cnpj').value === '' ? null : parseFloat(document.getElementById('cfg_500mb_cnpj').value),
+            valor_700mb_cnpj_manual: document.getElementById('cfg_700mb_cnpj').value === '' ? null : parseFloat(document.getElementById('cfg_700mb_cnpj').value),
+            valor_1gb_cnpj_manual: document.getElementById('cfg_1gb_cnpj').value === '' ? null : parseFloat(document.getElementById('cfg_1gb_cnpj').value),
+        };
+        if (!manual) { alert('Ative "Usar valor manual? = SIM" e preencha os valores por plano antes de replicar.'); return; }
+        let ok = 0, err = 0;
+        for (let mes = 1; mes <= 12; mes++) {
+            try {
+                await apiFetch(`/crm/config-comissao-vendedor/${userId}/`, { method: 'PUT', body: JSON.stringify({ ...bodyBase, ano, mes }) });
+                ok++;
+            } catch (e) { err++; }
+        }
+        if (err === 0) alert(`Valores manuais replicados para todos os 12 meses de ${ano}.`);
+        else alert(`Replicado: ${ok} mês(es). Erro em ${err} mês(es).`);
+    }
+
     async function exportarConfigVendedores() {
         const token = localStorage.getItem('accessToken');
         const url = (typeof apiUrl !== 'undefined' ? apiUrl : '') + '/api/crm/config-comissao-vendedor/exportar/?formato=xlsx';

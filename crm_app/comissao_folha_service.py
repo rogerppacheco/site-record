@@ -208,20 +208,38 @@ def calcular_folha_mes(ano, mes, vendedor_id=None):
         for l in lancamentos:
             total_descontos += l.valor
             desc = (l.descricao or l.get_tipo_display() or 'Desconto')
-            detalhes_descontos.append({'motivo': desc, 'valor': float(l.valor)})
+            # Exibir desconto direto (sem "Processamento Auto:") e classificar para separar boleto / adiant. CNPJ
+            if desc.startswith('Processamento Auto:'):
+                resto = desc.replace('Processamento Auto:', '').strip()
+                mapa = {'BOLETO': 'Desconto Boleto', 'CNPJ': 'Adiant. CNPJ', 'VIABILIDADE': 'Desconto Inclusão', 'ANTECIPACAO': 'Desconto Antecipação'}
+                partes = [mapa.get(p.strip(), p.strip()) for p in resto.split(',') if p.strip()]
+                motivo_limpo = ', '.join(partes) if partes else resto
+            else:
+                motivo_limpo = desc
+            # tipo_exibicao: boleto | adiant_cnpj | outros (para agrupar na UI)
+            tipo_exibicao = 'outros'
+            if desc.startswith('Processamento Auto:'):
+                resto_upper = desc.upper()
+                if 'BOLETO' in resto_upper and 'CNPJ' not in resto_upper:
+                    tipo_exibicao = 'boleto'
+                elif 'CNPJ' in resto_upper:
+                    tipo_exibicao = 'adiant_cnpj'
+                elif 'BOLETO' in resto_upper:
+                    tipo_exibicao = 'boleto'
+            detalhes_descontos.append({'motivo': motivo_limpo, 'valor': float(l.valor), 'tipo_exibicao': tipo_exibicao})
         if config:
             if config.inss_valor and float(config.inss_valor) > 0:
                 total_descontos += config.inss_valor
-                detalhes_descontos.append({'motivo': 'INSS / Encargos', 'valor': float(config.inss_valor)})
+                detalhes_descontos.append({'motivo': 'INSS / Encargos', 'valor': float(config.inss_valor), 'tipo_exibicao': 'outros'})
             if config.adiantamento and float(config.adiantamento) > 0:
                 total_descontos += config.adiantamento
-                detalhes_descontos.append({'motivo': 'Adiantamento', 'valor': float(config.adiantamento)})
+                detalhes_descontos.append({'motivo': 'Adiantamento', 'valor': float(config.adiantamento), 'tipo_exibicao': 'outros'})
             if config.cartao_trafego and float(config.cartao_trafego) > 0:
                 total_descontos += config.cartao_trafego
-                detalhes_descontos.append({'motivo': 'Cartão Tráfego', 'valor': float(config.cartao_trafego)})
+                detalhes_descontos.append({'motivo': 'Cartão Tráfego', 'valor': float(config.cartao_trafego), 'tipo_exibicao': 'outros'})
             if config.gestor_trafego and float(config.gestor_trafego) > 0:
                 total_descontos += config.gestor_trafego
-                detalhes_descontos.append({'motivo': 'Gestor Tráfego', 'valor': float(config.gestor_trafego)})
+                detalhes_descontos.append({'motivo': 'Gestor Tráfego', 'valor': float(config.gestor_trafego), 'tipo_exibicao': 'outros'})
 
         total_bonus = Decimal('0')
         if config:
