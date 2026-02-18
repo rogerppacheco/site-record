@@ -179,7 +179,7 @@
             <section id="comissionamento-section" class="content-section">
                 <h3 class="mb-4">Gestão de Comissionamento</h3>
                 <div class="card">
-                    <div class="card-header"><ul class="nav nav-tabs card-header-tabs"><li class="nav-item"><button class="nav-link active" onclick="openTab(event, 'regras_faixa_tab'); carregarRegrasFaixa();">Regras por Faixa</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'regras_vendedores_tab'); if (!document.getElementById('regras_vendedor_mes').value) { const d = new Date(); document.getElementById('regras_vendedor_mes').value = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); } carregarConfigVendedores();">Regras por Vendedor</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'recebimento_operadora_tab')">Recebimento Operadora</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'campanhas_tab')">Campanhas</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'adiantamentos_descontos_tab'); carregarUsuariosSelectsFinanceiro(); carregarLancamentosFinanceiros();">Adiantamentos e Descontos</button></li></ul></div>
+                    <div class="card-header"><ul class="nav nav-tabs card-header-tabs"><li class="nav-item"><button class="nav-link active" onclick="openTab(event, 'regras_faixa_tab'); carregarRegrasFaixa();">Regras por Faixa</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'regras_vendedores_tab'); if (!document.getElementById('regras_vendedor_mes').value) { const d = new Date(); document.getElementById('regras_vendedor_mes').value = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); } atualizarDropdownVendedores(); preencherFormConfigVendedor();">Regras por Vendedor</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'recebimento_operadora_tab')">Recebimento Operadora</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'campanhas_tab')">Campanhas</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'adiantamentos_descontos_tab'); carregarUsuariosSelectsFinanceiro(); carregarLancamentosFinanceiros();">Adiantamentos e Descontos</button></li></ul></div>
                     <div class="card-body">
                         <div id="regras_faixa_tab" class="tab-content active">
                             <div class="d-flex justify-content-between align-items-center mb-3">
@@ -197,15 +197,51 @@
                                 <h6 class="mb-0 text-primary">Regras por Vendedor (REGRAS_VENDEDORES)</h6>
                                 <div class="d-flex align-items-center flex-wrap gap-2">
                                     <label class="mb-0 fw-bold small">Mês de referência:</label>
-                                    <input type="month" id="regras_vendedor_mes" class="form-control form-control-sm" style="width: auto;" onchange="carregarConfigVendedores()">
-                                    <button type="button" class="btn btn-sm btn-primary" onclick="salvarTodosConfigVendedores()"><i class="bi bi-check-all"></i> Salvar todos (deste mês)</button>
+                                    <input type="month" id="regras_vendedor_mes" class="form-control form-control-sm" style="width: auto;" onchange="atualizarDropdownVendedores(); preencherFormConfigVendedor();">
+                                    <label class="mb-0 fw-bold small ms-2">Vendedor:</label>
+                                    <select id="regras_vendedor_select" class="form-select form-select-sm" style="width: auto; min-width: 180px;" onchange="preencherFormConfigVendedor()">
+                                        <option value="">— Selecione um vendedor —</option>
+                                    </select>
                                     <input type="file" id="input-import-vendedores" accept=".xlsx,.csv" style="display:none" onchange="importarConfigVendedores(this)">
-                                    <button type="button" class="btn btn-sm btn-outline-success" onclick="document.getElementById('input-import-vendedores').click()"><i class="bi bi-upload"></i> Importar Excel/CSV</button>
-                                    <a href="#" class="btn btn-sm btn-outline-primary" onclick="exportarConfigVendedores(); return false;"><i class="bi bi-download"></i> Exportar Excel</a>
+                                    <button type="button" class="btn btn-sm btn-outline-success" onclick="document.getElementById('input-import-vendedores').click()"><i class="bi bi-upload"></i> Importar</button>
+                                    <a href="#" class="btn btn-sm btn-outline-primary" onclick="exportarConfigVendedores(); return false;"><i class="bi bi-download"></i> Exportar</a>
                                 </div>
                             </div>
-                            <p class="small text-muted mb-2">Regras do mês selecionado. Se &quot;Usar valor manual?&quot; for <strong>SIM</strong>, informe os valores por plano. Use <strong>Salvar todos (deste mês)</strong> para gravar todas as alterações daquele mês. INSS e Prêmio são tratados em Campanhas / Adiantamentos e Descontos.</p>
-                            <div class="table-responsive" style="max-height: 520px; overflow: auto;"><table class="table table-hover align-middle mb-0 table-sm"><thead class="table-light sticky-top"><tr><th>Vendedor</th><th>Perfil</th><th>Usar valor manual?</th><th class="cell-manual">500MB PAP</th><th class="cell-manual">700MB PAP</th><th class="cell-manual">1GB PAP</th><th class="cell-manual">500MB CNPJ</th><th class="cell-manual">700MB CNPJ</th><th class="cell-manual">1GB CNPJ</th><th>Boleto</th><th>Inclusão</th><th>Inst.</th><th>Adiant.CNPJ</th><th>Ação</th></tr></thead><tbody id="lista-config-vendedores"></tbody></table></div>
+                            <p class="small text-muted mb-2">Selecione o mês e o vendedor. O perfil de comissão é definido no cadastro do usuário. Preencha as regras e clique em <strong>Salvar</strong> para gravar aquele mês.</p>
+                            <div id="form-regras-vendedor-card" class="card border shadow-sm" style="display:none;">
+                                <div class="card-header bg-light py-2"><strong id="regras-vendedor-nome">—</strong></div>
+                                <div class="card-body">
+                                    <div class="row g-3 mb-3">
+                                        <div class="col-md-4">
+                                            <label class="form-label fw-bold small">Usar valor manual?</label>
+                                            <select id="cfg_manual" class="form-select form-select-sm" onchange="toggleManualValoresForm()">
+                                                <option value="NÃO">NÃO</option>
+                                                <option value="SIM">SIM</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="row g-2 mb-2"><div class="col-12 small text-muted fw-bold">Valores por plano (R$) — preencha se valor manual = SIM</div></div>
+                                    <div class="row g-2">
+                                        <div class="col-md-4"><label class="form-label small">500MB PAP</label><input type="number" id="cfg_500mb_pap" class="form-control form-control-sm" step="0.01" placeholder="—" readonly></div>
+                                        <div class="col-md-4"><label class="form-label small">700MB PAP</label><input type="number" id="cfg_700mb_pap" class="form-control form-control-sm" step="0.01" placeholder="—" readonly></div>
+                                        <div class="col-md-4"><label class="form-label small">1GB PAP</label><input type="number" id="cfg_1gb_pap" class="form-control form-control-sm" step="0.01" placeholder="—" readonly></div>
+                                        <div class="col-md-4"><label class="form-label small">500MB CNPJ</label><input type="number" id="cfg_500mb_cnpj" class="form-control form-control-sm" step="0.01" placeholder="—" readonly></div>
+                                        <div class="col-md-4"><label class="form-label small">700MB CNPJ</label><input type="number" id="cfg_700mb_cnpj" class="form-control form-control-sm" step="0.01" placeholder="—" readonly></div>
+                                        <div class="col-md-4"><label class="form-label small">1GB CNPJ</label><input type="number" id="cfg_1gb_cnpj" class="form-control form-control-sm" step="0.01" placeholder="—" readonly></div>
+                                    </div>
+                                    <hr class="my-3">
+                                    <div class="row g-2">
+                                        <div class="col-md-3"><label class="form-label small">Desconto Boleto (R$)</label><input type="number" id="cfg_desconto_boleto" class="form-control form-control-sm" step="0.01" placeholder="0"></div>
+                                        <div class="col-md-3"><label class="form-label small">Desconto Inclusão (R$)</label><input type="number" id="cfg_desconto_inclusao" class="form-control form-control-sm" step="0.01" placeholder="0"></div>
+                                        <div class="col-md-3"><label class="form-label small">Desconto Instalação (R$)</label><input type="number" id="cfg_desconto_instalacao" class="form-control form-control-sm" step="0.01" placeholder="0"></div>
+                                        <div class="col-md-3"><label class="form-label small">Adiant. CNPJ (R$)</label><input type="number" id="cfg_adiantar_cnpj" class="form-control form-control-sm" step="0.01" placeholder="0"></div>
+                                    </div>
+                                    <div class="mt-4">
+                                        <button type="button" class="btn btn-primary" onclick="salvarConfigVendedorAtual()"><i class="bi bi-check-lg"></i> Salvar regras deste mês</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="form-regras-vendedor-placeholder" class="text-center text-muted py-4 small">Selecione um vendedor no dropdown acima.</div>
                         </div>
                         <div id="recebimento_operadora_tab" class="tab-content" style="display:none;">
                             <div class="bg-light p-4 rounded border mb-4"><h5 class="text-success mb-3"><i class="bi bi-bank"></i> Configuração de Recebimento (Operadora -> Empresa)</h5><form id="form-comissao-operadora"><input type="hidden" id="co_id"><div class="row g-3 align-items-end"><div class="col-md-4"><label class="form-label fw-bold">Plano Vendido</label><select id="co_plano_id" class="form-select" required></select></div><div class="col-md-2"><label class="form-label fw-bold">Comissão Base (R$)</label><input type="number" class="form-control" id="co_valor_base" step="0.01" required placeholder="0,00"></div><div class="col-md-2"><label class="form-label fw-bold text-success">Bônus Transição (R$)</label><input type="number" class="form-control border-success" id="co_bonus" step="0.01" value="0" placeholder="0,00"></div><div class="col-md-2"><label class="form-label small text-muted">Validade Bônus (Fim)</label><input type="date" class="form-control" id="co_data_fim"></div><div class="col-md-2"><button type="submit" class="btn btn-success w-100">Salvar Config</button></div></div></form></div>
@@ -2229,114 +2265,100 @@
         if (btnSalvar) btnSalvar.addEventListener('click', salvarRegraFaixaModal);
     });
 
-    // --- Config Comissão por Vendedor (REGRAS_VENDEDORES) ---
+    // --- Config Comissão por Vendedor (REGRAS_VENDEDORES): dropdown + formulário por vendedor (sem coluna Perfil) ---
     function val(c, key) { const v = c[key]; return (v !== null && v !== undefined && v !== '') ? v : ''; }
-    async function carregarConfigVendedores() {
+
+    async function atualizarDropdownVendedores() {
         const mesEl = document.getElementById('regras_vendedor_mes');
         const anoMes = mesEl && mesEl.value ? mesEl.value.split('-') : [];
         const ano = anoMes[0] || '';
         const mes = anoMes[1] || '';
         const url = ano && mes ? `/crm/config-comissao-vendedor/?ano=${ano}&mes=${mes}` : '/crm/config-comissao-vendedor/';
         const lista = await apiFetch(url);
-        const tbody = document.getElementById('lista-config-vendedores');
-        if (!tbody) return;
-        tbody.innerHTML = '';
         const configs = Array.isArray(lista) ? lista : (lista?.results || []);
-        if (!configs.length) { tbody.innerHTML = '<tr><td colspan="14" class="text-center text-muted">Nenhum usuário ativo no sistema.</td></tr>'; return; }
+        const sel = document.getElementById('regras_vendedor_select');
+        if (!sel) return;
+        sel.innerHTML = '<option value="">— Selecione um vendedor —</option>';
         configs.forEach(c => {
-            const uid = c.usuario_id || c.usuario;
-            const manual = c.usar_valor_manual ? 'SIM' : 'NÃO';
-            const manualOpt = c.usar_valor_manual ? '<option value="SIM" selected>SIM</option><option value="NÃO">NÃO</option>' : '<option value="SIM">SIM</option><option value="NÃO" selected>NÃO</option>';
-            const perfil = (c.perfil_comissao || 'Vendedor').toLowerCase();
-            tbody.innerHTML += `<tr data-user-id="${uid}">
-                <td class="fw-bold">${c.username || ''}</td>
-                <td><select class="form-select form-select-sm cfg-perfil" style="width:100px"><option value="Vendedor">Vendedor</option><option value="Supervisor">Supervisor</option></select></td>
-                <td><select class="form-select form-select-sm cfg-manual" style="width:70px" onchange="toggleManualValores(this)">${manualOpt}</select></td>
-                <td class="cell-manual"><input type="number" class="form-control form-control-sm cfg-valor" data-campo="valor_500mb_pap_manual" placeholder="—" step="0.01" value="${val(c,'valor_500mb_pap_manual')}" ${!c.usar_valor_manual?'readonly':''}></td>
-                <td class="cell-manual"><input type="number" class="form-control form-control-sm cfg-valor" data-campo="valor_700mb_pap_manual" placeholder="—" step="0.01" value="${val(c,'valor_700mb_pap_manual')}" ${!c.usar_valor_manual?'readonly':''}></td>
-                <td class="cell-manual"><input type="number" class="form-control form-control-sm cfg-valor" data-campo="valor_1gb_pap_manual" placeholder="—" step="0.01" value="${val(c,'valor_1gb_pap_manual')}" ${!c.usar_valor_manual?'readonly':''}></td>
-                <td class="cell-manual"><input type="number" class="form-control form-control-sm cfg-valor" data-campo="valor_500mb_cnpj_manual" placeholder="—" step="0.01" value="${val(c,'valor_500mb_cnpj_manual')}" ${!c.usar_valor_manual?'readonly':''}></td>
-                <td class="cell-manual"><input type="number" class="form-control form-control-sm cfg-valor" data-campo="valor_700mb_cnpj_manual" placeholder="—" step="0.01" value="${val(c,'valor_700mb_cnpj_manual')}" ${!c.usar_valor_manual?'readonly':''}></td>
-                <td class="cell-manual"><input type="number" class="form-control form-control-sm cfg-valor" data-campo="valor_1gb_cnpj_manual" placeholder="—" step="0.01" value="${val(c,'valor_1gb_cnpj_manual')}" ${!c.usar_valor_manual?'readonly':''}></td>
-                <td><input type="number" class="form-control form-control-sm" data-campo="desconto_boleto" placeholder="0" step="0.01" value="${val(c,'desconto_boleto')}"></td>
-                <td><input type="number" class="form-control form-control-sm" data-campo="desconto_inclusao" placeholder="0" step="0.01" value="${val(c,'desconto_inclusao')}"></td>
-                <td><input type="number" class="form-control form-control-sm" data-campo="desconto_instalacao" placeholder="0" step="0.01" value="${val(c,'desconto_instalacao')}"></td>
-                <td><input type="number" class="form-control form-control-sm" data-campo="adiantar_cnpj" placeholder="0" step="0.01" value="${val(c,'adiantar_cnpj')}"></td>
-                <td><button type="button" class="btn btn-sm btn-primary" onclick="salvarConfigVendedor(this)"><i class="bi bi-check-lg"></i> Salvar</button></td>
-            </tr>`;
-            const tr = tbody.querySelector(`tr[data-user-id="${uid}"]`);
-            if (tr) { const sel = tr.querySelector('.cfg-perfil'); if (sel) sel.value = c.perfil_comissao || 'Vendedor'; }
+            const uid = c.usuario_id ?? c.usuario;
+            const nome = c.username || ('ID ' + uid);
+            sel.appendChild(new Option(nome, uid));
         });
-    }
-    function toggleManualValores(selectEl) {
-        const manual = selectEl.value === 'SIM';
-        const tr = selectEl.closest('tr');
-        tr.querySelectorAll('.cfg-valor').forEach(inp => { inp.readOnly = !manual; if (!manual) inp.value = ''; });
-    }
-    async function salvarConfigVendedor(btn) {
-        const tr = btn.closest('tr');
-        const userId = tr.getAttribute('data-user-id');
-        if (!userId) return;
-        const perfil = tr.querySelector('.cfg-perfil').value;
-        const manual = tr.querySelector('.cfg-manual').value === 'SIM';
-        const body = {
-            perfil_comissao: perfil,
-            usar_valor_manual: manual,
-            desconto_boleto: parseFloat(tr.querySelector('[data-campo="desconto_boleto"]').value) || null,
-            desconto_inclusao: parseFloat(tr.querySelector('[data-campo="desconto_inclusao"]').value) || null,
-            desconto_instalacao: parseFloat(tr.querySelector('[data-campo="desconto_instalacao"]').value) || null,
-            adiantar_cnpj: parseFloat(tr.querySelector('[data-campo="adiantar_cnpj"]').value) || null,
-        };
-        tr.querySelectorAll('.cfg-valor').forEach(inp => {
-            const v = parseFloat(inp.value);
-            body[inp.getAttribute('data-campo')] = (v !== undefined && !isNaN(v)) ? v : null;
-        });
-        const mesEl = document.getElementById('regras_vendedor_mes');
-        if (mesEl && mesEl.value) {
-            const [ano, mes] = mesEl.value.split('-');
-            if (ano && mes) { body.ano = parseInt(ano, 10); body.mes = parseInt(mes, 10); }
-        }
-        try {
-            await apiFetch(`/crm/config-comissao-vendedor/${userId}/`, { method: 'PUT', body: JSON.stringify(body) });
-            btn.innerHTML = '<i class="bi bi-check-lg text-success"></i> Salvo';
-            setTimeout(() => { btn.innerHTML = '<i class="bi bi-check-lg"></i> Salvar'; }, 1500);
-        } catch (e) { alert('Erro ao salvar: ' + e.message); }
     }
 
-    async function salvarTodosConfigVendedores() {
+    function toggleManualValoresForm() {
+        const manual = document.getElementById('cfg_manual').value === 'SIM';
+        ['cfg_500mb_pap','cfg_700mb_pap','cfg_1gb_pap','cfg_500mb_cnpj','cfg_700mb_cnpj','cfg_1gb_cnpj'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) { el.readOnly = !manual; if (!manual) el.value = ''; }
+        });
+    }
+
+    async function preencherFormConfigVendedor() {
+        const sel = document.getElementById('regras_vendedor_select');
+        const card = document.getElementById('form-regras-vendedor-card');
+        const placeholder = document.getElementById('form-regras-vendedor-placeholder');
+        const userId = sel && sel.value ? sel.value : '';
+        if (!userId) {
+            if (card) card.style.display = 'none';
+            if (placeholder) placeholder.style.display = 'block';
+            return;
+        }
+        if (placeholder) placeholder.style.display = 'none';
+        const mesEl = document.getElementById('regras_vendedor_mes');
+        let ano = '', mes = '';
+        if (mesEl && mesEl.value) { const p = mesEl.value.split('-'); ano = p[0]; mes = p[1]; }
+        const url = (ano && mes) ? `/crm/config-comissao-vendedor/${userId}/?ano=${ano}&mes=${mes}` : `/crm/config-comissao-vendedor/${userId}/`;
+        try {
+            const c = await apiFetch(url);
+            document.getElementById('regras-vendedor-nome').textContent = c.username || sel.options[sel.selectedIndex].text;
+            document.getElementById('cfg_manual').value = c.usar_valor_manual ? 'SIM' : 'NÃO';
+            document.getElementById('cfg_500mb_pap').value = val(c, 'valor_500mb_pap_manual');
+            document.getElementById('cfg_700mb_pap').value = val(c, 'valor_700mb_pap_manual');
+            document.getElementById('cfg_1gb_pap').value = val(c, 'valor_1gb_pap_manual');
+            document.getElementById('cfg_500mb_cnpj').value = val(c, 'valor_500mb_cnpj_manual');
+            document.getElementById('cfg_700mb_cnpj').value = val(c, 'valor_700mb_cnpj_manual');
+            document.getElementById('cfg_1gb_cnpj').value = val(c, 'valor_1gb_cnpj_manual');
+            document.getElementById('cfg_desconto_boleto').value = val(c, 'desconto_boleto');
+            document.getElementById('cfg_desconto_inclusao').value = val(c, 'desconto_inclusao');
+            document.getElementById('cfg_desconto_instalacao').value = val(c, 'desconto_instalacao');
+            document.getElementById('cfg_adiantar_cnpj').value = val(c, 'adiantar_cnpj');
+            toggleManualValoresForm();
+            if (card) card.style.display = 'block';
+        } catch (e) {
+            document.getElementById('regras-vendedor-nome').textContent = sel.options[sel.selectedIndex].text;
+            document.getElementById('cfg_manual').value = 'NÃO';
+            ['cfg_500mb_pap','cfg_700mb_pap','cfg_1gb_pap','cfg_500mb_cnpj','cfg_700mb_cnpj','cfg_1gb_cnpj','cfg_desconto_boleto','cfg_desconto_inclusao','cfg_desconto_instalacao','cfg_adiantar_cnpj'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+            toggleManualValoresForm();
+            if (card) card.style.display = 'block';
+        }
+    }
+
+    async function salvarConfigVendedorAtual() {
+        const sel = document.getElementById('regras_vendedor_select');
+        const userId = sel && sel.value ? sel.value : '';
+        if (!userId) { alert('Selecione um vendedor.'); return; }
         const mesEl = document.getElementById('regras_vendedor_mes');
         if (!mesEl || !mesEl.value) { alert('Selecione o mês de referência.'); return; }
         const [ano, mes] = mesEl.value.split('-').map(Number);
-        if (!ano || !mes) { alert('Mês inválido.'); return; }
-        const tbody = document.getElementById('lista-config-vendedores');
-        if (!tbody) return;
-        const configs = [];
-        tbody.querySelectorAll('tr[data-user-id]').forEach(tr => {
-            const userId = tr.getAttribute('data-user-id');
-            if (!userId) return;
-            const perfil = tr.querySelector('.cfg-perfil').value;
-            const manual = tr.querySelector('.cfg-manual').value === 'SIM';
-            const obj = {
-                usuario_id: parseInt(userId, 10),
-                perfil_comissao: perfil,
-                usar_valor_manual: manual,
-                desconto_boleto: parseFloat(tr.querySelector('[data-campo="desconto_boleto"]').value) || null,
-                desconto_inclusao: parseFloat(tr.querySelector('[data-campo="desconto_inclusao"]').value) || null,
-                desconto_instalacao: parseFloat(tr.querySelector('[data-campo="desconto_instalacao"]').value) || null,
-                adiantar_cnpj: parseFloat(tr.querySelector('[data-campo="adiantar_cnpj"]').value) || null,
-            };
-            tr.querySelectorAll('.cfg-valor').forEach(inp => {
-                const v = parseFloat(inp.value);
-                obj[inp.getAttribute('data-campo')] = (v !== undefined && !isNaN(v)) ? v : null;
-            });
-            configs.push(obj);
-        });
+        const manual = document.getElementById('cfg_manual').value === 'SIM';
+        const body = {
+            usar_valor_manual: manual,
+            valor_500mb_pap_manual: document.getElementById('cfg_500mb_pap').value === '' ? null : parseFloat(document.getElementById('cfg_500mb_pap').value),
+            valor_700mb_pap_manual: document.getElementById('cfg_700mb_pap').value === '' ? null : parseFloat(document.getElementById('cfg_700mb_pap').value),
+            valor_1gb_pap_manual: document.getElementById('cfg_1gb_pap').value === '' ? null : parseFloat(document.getElementById('cfg_1gb_pap').value),
+            valor_500mb_cnpj_manual: document.getElementById('cfg_500mb_cnpj').value === '' ? null : parseFloat(document.getElementById('cfg_500mb_cnpj').value),
+            valor_700mb_cnpj_manual: document.getElementById('cfg_700mb_cnpj').value === '' ? null : parseFloat(document.getElementById('cfg_700mb_cnpj').value),
+            valor_1gb_cnpj_manual: document.getElementById('cfg_1gb_cnpj').value === '' ? null : parseFloat(document.getElementById('cfg_1gb_cnpj').value),
+            desconto_boleto: document.getElementById('cfg_desconto_boleto').value === '' ? null : parseFloat(document.getElementById('cfg_desconto_boleto').value),
+            desconto_inclusao: document.getElementById('cfg_desconto_inclusao').value === '' ? null : parseFloat(document.getElementById('cfg_desconto_inclusao').value),
+            desconto_instalacao: document.getElementById('cfg_desconto_instalacao').value === '' ? null : parseFloat(document.getElementById('cfg_desconto_instalacao').value),
+            adiantar_cnpj: document.getElementById('cfg_adiantar_cnpj').value === '' ? null : parseFloat(document.getElementById('cfg_adiantar_cnpj').value),
+            ano, mes
+        };
         try {
-            const res = await apiFetch('/crm/config-comissao-vendedor/salvar-mes/', { method: 'POST', body: JSON.stringify({ ano, mes, configs }) });
-            const n = (res && res.salvos) || 0;
-            const err = (res && res.erros && res.erros.length) ? res.erros.join('; ') : '';
-            alert(err ? `Salvos: ${n}. Erros: ${err}` : `Regras de ${mes}/${ano} salvas: ${n} vendedor(es).`);
-            carregarConfigVendedores();
+            await apiFetch(`/crm/config-comissao-vendedor/${userId}/`, { method: 'PUT', body: JSON.stringify(body) });
+            alert('Regras salvas para o mês selecionado.');
         } catch (e) { alert('Erro ao salvar: ' + e.message); }
     }
     async function exportarConfigVendedores() {
@@ -2362,7 +2384,8 @@
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Erro no servidor');
             alert(`Importados: ${data.importados || 0}. ${(data.erros || []).length ? 'Erros: ' + data.erros.join('; ') : ''}`);
-            carregarConfigVendedores();
+            atualizarDropdownVendedores();
+            preencherFormConfigVendedor();
         } catch (e) { alert('Erro: ' + e.message); }
         input.value = '';
     }
