@@ -4469,7 +4469,115 @@ def enviar_comissao_whatsapp(request):
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-# Em site-record/crm_app/views.py
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def enviar_folha_extrato_whatsapp(request):
+    """
+    Envia para o WhatsApp do vendedor: 1) imagem da folha de comissão (card); 2) PDF do extrato.
+    Body: { "vendedor_id": int, "ano": int, "mes": int }.
+    Destino: tel_whatsapp (WhatsApp 1 principal) do usuário.
+    """
+    try:
+        vendedor_id = request.data.get('vendedor_id')
+        ano = request.data.get('ano')
+        mes = request.data.get('mes')
+        if vendedor_id is None or ano is None or mes is None:
+            return Response(
+                {"error": "Envie vendedor_id, ano e mes."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        ano, mes = int(ano), int(mes)
+        User = get_user_model()
+        try:
+            consultor = User.objects.get(id=vendedor_id)
+        except User.DoesNotExist:
+            return Response({"error": "Vendedor não encontrado."}, status=status.HTTP_404_NOT_FOUND)
+        telefone = getattr(consultor, 'tel_whatsapp', None) or (consultor.telefone if hasattr(consultor, 'telefone') else None)
+        if not telefone or not str(telefone).strip():
+            return Response(
+                {"error": f"Vendedor {consultor.username} não possui WhatsApp 1 (principal) cadastrado."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        from .comissao_folha_service import calcular_folha_mes
+        folha = calcular_folha_mes(ano, mes)
+        vendedor_data = next(
+            (x for x in folha.get('vendedores', []) if str(x.get('vendedor_id')) == str(vendedor_id)),
+            None
+        )
+        if not vendedor_data:
+            return Response(
+                {"error": "Nenhum dado de folha para este vendedor neste mês."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        periodo = folha.get('periodo', f"{mes:02d}/{ano}")
+        svc = WhatsAppService()
+
+        # 1) Gerar e enviar imagem da folha (card)
+        img_b64 = svc.gerar_folha_comissao_card_b64(vendedor_data, periodo)
+        if img_b64:
+            resp_img = svc.enviar_imagem_b64(telefone, img_b64, caption=f"Folha de comissão {periodo}")
+            if resp_img is None:
+                return Response(
+                    {"error": "Falha ao enviar imagem da folha no WhatsApp."},
+                    status=status.HTTP_502_BAD_GATEWAY
+                )
+        else:
+            return Response(
+                {"error": "Não foi possível gerar a imagem da folha (Pillow indisponível ou erro)."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        # 2) Gerar PDF do extrato e enviar
+        extrato = vendedor_data.get('extrato') or []
+        html_parts = [
+            """<html><head><meta charset="utf-8"/><style>
+            body { font-family: Helvetica, sans-serif; font-size: 9px; }
+            table { width: 100%; border-collapse: collapse; }
+            th { background: #f8f9fa; border: 1px solid #dee2e6; padding: 4px; text-align: left; }
+            td { border: 1px solid #dee2e6; padding: 3px; }
+            .churn-sim { background-color: #f8d7da; }
+            .churn-nao { background-color: #d4edda; }
+            h2 { text-align: center; font-size: 12px; }
+            </style></head><body>""",
+            f"<h2>Extrato Comissão {periodo} - {vendedor_data.get('vendedor_nome', '')}</h2>",
+            "<table><thead><tr><th>NOME</th><th>DACC</th><th>CNPJ</th><th>PLANO</th><th>DT PEDIDO</th><th>DT INST</th><th>OS</th><th>SITUAÇÃO</th><th>CHURN</th></tr></thead><tbody>"
+        ]
+        for e in extrato:
+            is_churn = (str(e.get('churn') or '').strip().upper() == 'SIM')
+            cls = 'churn-sim' if is_churn else 'churn-nao'
+            html_parts.append(
+                f"<tr class=\"{cls}\"><td>{e.get('nome') or ''}</td><td>{e.get('dacc') or ''}</td><td>{e.get('cnpj') or ''}</td>"
+                f"<td>{e.get('plano') or ''}</td><td>{e.get('dt_pedido') or ''}</td><td>{e.get('dt_inst') or ''}</td>"
+                f"<td>{e.get('os') or ''}</td><td>{e.get('situacao') or ''}</td><td>{e.get('churn') or ''}</td></tr>"
+            )
+        html_parts.append("</tbody></table></body></html>")
+        html_string = "".join(html_parts)
+        pdf_buffer = BytesIO()
+        pisa_status = pisa.pisaDocument(BytesIO(html_string.encode("UTF-8")), pdf_buffer, encoding="utf-8")
+        if pisa_status.err:
+            return Response(
+                {"error": "Erro ao gerar PDF do extrato."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        pdf_bytes = pdf_buffer.getvalue()
+        pdf_b64 = base64.b64encode(pdf_bytes).decode("utf-8")
+        nome_pdf = f"Extrato_Comissao_{vendedor_data.get('vendedor_nome', 'vendedor')}_{mes}_{ano}.pdf"
+        resp_pdf = svc.enviar_pdf_b64(telefone, pdf_b64, nome_arquivo=nome_pdf, caption=f"Extrato de comissão {periodo}")
+        if resp_pdf is None or (isinstance(resp_pdf, dict) and resp_pdf.get('error')):
+            return Response(
+                {"error": "Folha enviada. Falha ao enviar PDF do extrato no WhatsApp."},
+                status=status.HTTP_502_BAD_GATEWAY
+            )
+        return Response({
+            "ok": True,
+            "mensagem": "Folha (imagem) e extrato (PDF) enviados no WhatsApp com sucesso.",
+        })
+    except Exception as e:
+        logger.exception("enviar_folha_extrato_whatsapp: %s", e)
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])

@@ -96,6 +96,9 @@
                             </select>
                         </div>
                         <button class="btn btn-sm btn-outline-primary" onclick="carregarFolhaExcel()"><i class="bi bi-arrow-clockwise"></i> Atualizar</button>
+                        <button class="btn btn-sm btn-success" id="btn-enviar-whatsapp-folha" onclick="enviarFolhaExtratoWhatsApp()" title="Envia folha (imagem) e extrato (PDF) para o WhatsApp do vendedor">
+                            <i class="bi bi-whatsapp"></i> Enviar folha e extrato no WhatsApp
+                        </button>
                     </div>
                     <div id="folha-excel-container"></div>
                 </div>
@@ -332,6 +335,39 @@
                 renderizarCardFolhaVendedor();
             } catch (err) {
                 container.innerHTML = `<div class="alert alert-danger">Erro ao carregar folha: ${err.message || err.response?.data?.error || 'Erro de rede'}</div>`;
+            }
+        }
+
+        async function enviarFolhaExtratoWhatsApp() {
+            const vendedorId = document.getElementById('folha-excel-vendedor')?.value;
+            const ano = document.getElementById('filtro-ano')?.value;
+            const mes = document.getElementById('filtro-mes')?.value;
+            if (!vendedorId) {
+                alert('Selecione um vendedor no dropdown.');
+                return;
+            }
+            const btn = document.getElementById('btn-enviar-whatsapp-folha');
+            if (!btn) return;
+            const origText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Enviando...';
+            try {
+                const res = await axios.post(`${apiUrl}enviar-folha-extrato-whatsapp/`, {
+                    vendedor_id: parseInt(vendedorId, 10),
+                    ano: parseInt(ano, 10),
+                    mes: parseInt(mes, 10)
+                });
+                if (res.data && res.data.ok) {
+                    alert(res.data.mensagem || 'Folha e extrato enviados no WhatsApp.');
+                } else {
+                    alert(res.data?.error || 'Resposta inesperada.');
+                }
+            } catch (err) {
+                const msg = err.response?.data?.error || err.message || 'Erro ao enviar.';
+                alert('Erro: ' + msg);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = origText;
             }
         }
 

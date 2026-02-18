@@ -522,7 +522,147 @@ class WhatsAppService:
     
     def _gerar_imagem_resumo_bytes(self, dados):
         if not Image: return None
-        return None 
+        return None
+
+    def _fmt_br(self, val):
+        try:
+            n = float(val)
+            return f"R$ {n:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        except (TypeError, ValueError):
+            return "R$ 0,00"
+
+    def gerar_folha_comissao_card_b64(self, dados_vendedor, periodo):
+        """
+        Gera imagem do card da folha de comissão (igual ao que aparece no site) para envio via WhatsApp.
+        dados_vendedor: dict com vendedor_nome, resumo (por_plano, faixa_aplicada, comissao_total_geral, total_descontos, total_bonus, liquido, detalhes_descontos, qtd_a_descontar).
+        Retorna base64 da imagem (string, sem prefixo data:...) ou None se falhar.
+        """
+        if not Image or not ImageDraw or not ImageFont:
+            return None
+        try:
+            W, H = 800, 1200
+            cor_fundo = (255, 255, 255)
+            cor_cabecalho = (13, 110, 253)
+            cor_texto = (33, 37, 41)
+            cor_texto_sec = (108, 117, 125)
+            cor_verde = (25, 135, 84)
+            cor_vermelho = (220, 53, 69)
+            cor_borda = (222, 226, 230)
+            font_paths = [
+                "arial.ttf", "Arial.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            ]
+            font_bold_paths = [
+                "arialbd.ttf", "Arial Bold.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            ]
+            f_path = None
+            for p in font_paths:
+                try:
+                    ImageFont.truetype(p, 14)
+                    f_path = p
+                    break
+                except Exception:
+                    continue
+            fb_path = None
+            for p in font_bold_paths:
+                try:
+                    ImageFont.truetype(p, 14)
+                    fb_path = p
+                    break
+                except Exception:
+                    continue
+            if not f_path:
+                f_path = font_bold_paths[0] if font_bold_paths else None
+            font_sm = ImageFont.truetype(f_path, 12) if f_path else ImageFont.load_default()
+            font_md = ImageFont.truetype(f_path, 14) if f_path else ImageFont.load_default()
+            font_bold = ImageFont.truetype(fb_path, 14) if fb_path else ImageFont.load_default()
+            font_title = ImageFont.truetype(fb_path, 18) if fb_path else ImageFont.load_default()
+
+            img = Image.new('RGB', (W, H), color=cor_fundo)
+            d = ImageDraw.Draw(img)
+            y = 10
+            r = dados_vendedor.get('resumo') or {}
+            vendedor_nome = (dados_vendedor.get('vendedor_nome') or '').upper()
+            faixa = r.get('faixa_aplicada') or '-'
+
+            # Cabeçalho
+            d.rectangle([(0, 0), (W, 56)], fill=cor_cabecalho)
+            d.text((20, 18), vendedor_nome, fill='white', font=font_title)
+            d.text((W - 20, 18), f"Faixa: {faixa}", fill='white', font=font_md)
+            y = 70
+
+            # Tabela por plano
+            por_plano = r.get('por_plano') or []
+            col_w = [220, 80, 100, 110, 120]
+            headers = ['PLANO', 'QTD', 'VALOR UNIT.', 'VALOR TOTAL', 'COMISSÃO']
+            for i, h in enumerate(headers):
+                d.text((20 + sum(col_w[:i]), y), h, fill=cor_texto_sec, font=font_bold)
+            y += 24
+            d.line([(20, y), (W - 20, y)], fill=cor_borda)
+            y += 8
+            for p in por_plano:
+                if (p.get('qtd_instalada_a_pagar') or 0) == 0 and (p.get('valor_total_instalados') or 0) == 0:
+                    continue
+                plano = (p.get('plano') or '-')[:22]
+                qtd = p.get('qtd_instalada_a_pagar') or 0
+                vunit = p.get('valor_unitario_instalados')
+                vtot = p.get('valor_total_instalados') or 0
+                com = p.get('comissao_total') or 0
+                vunit_str = self._fmt_br(vunit) if vunit is not None else '-'
+                d.text((20, y), plano, fill=cor_texto, font=font_sm)
+                d.text((20 + col_w[0], y), str(qtd), fill=cor_texto, font=font_sm)
+                d.text((20 + col_w[0] + col_w[1], y), vunit_str, fill=cor_texto, font=font_sm)
+                d.text((20 + col_w[0] + col_w[1] + col_w[2], y), self._fmt_br(vtot), fill=cor_texto, font=font_sm)
+                d.text((20 + col_w[0] + col_w[1] + col_w[2] + col_w[3], y), self._fmt_br(com), fill=cor_texto, font=font_bold)
+                y += 22
+            y += 4
+            d.line([(20, y), (W - 20, y)], fill=cor_borda)
+            y += 8
+            d.text((20, y), 'TOTAL', fill=cor_texto, font=font_bold)
+            d.text((20 + col_w[0] + col_w[1] + col_w[2] + col_w[3], y), self._fmt_br(r.get('comissao_total_geral') or 0), fill=cor_texto, font=font_bold)
+            y += 32
+
+            # Resumo financeiro
+            d.text((20, y), f"Descontos: - {self._fmt_br(r.get('total_descontos') or 0)}", fill=cor_vermelho, font=font_bold)
+            d.text((280, y), f"Bônus: + {self._fmt_br(r.get('total_bonus') or 0)}", fill=cor_verde, font=font_md)
+            d.text((500, y), f"LÍQUIDO A PAGAR: {self._fmt_br(r.get('liquido') or 0)}", fill=cor_verde, font=font_bold)
+            y += 36
+
+            # Detalhes descontos
+            detalhes = r.get('detalhes_descontos') or []
+            if detalhes or (r.get('qtd_a_descontar') or 0) > 0:
+                d.line([(20, y), (W - 20, y)], fill=cor_borda)
+                y += 10
+                d.text((20, y), 'Descontos', fill=cor_texto_sec, font=font_bold)
+                y += 22
+                if (r.get('qtd_a_descontar') or 0) > 0:
+                    d.text((20, y), f"QTD A DESCONTAR: {r.get('qtd_a_descontar')}", fill=cor_texto_sec, font=font_sm)
+                    y += 20
+                for det in detalhes:
+                    motivo = det.get('motivo') or 'Desconto'
+                    q = det.get('quantidade')
+                    if q is not None and q != '':
+                        motivo = f"{motivo} ({int(q)} un.)"
+                    val = det.get('valor') or 0
+                    d.text((20, y), f"{motivo}: - {self._fmt_br(val)}", fill=cor_vermelho, font=font_sm)
+                    y += 20
+                y += 8
+
+            # Rodapé período
+            d.line([(20, y), (W - 20, y)], fill=cor_borda)
+            y += 10
+            d.text((W // 2, y), f"Período: {periodo}", fill=cor_texto_sec, font=font_sm)
+            img = img.crop((0, 0, W, min(y + 30, H)))
+            buffered = io.BytesIO()
+            img.save(buffered, format='PNG')
+            b64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+            return b64
+        except Exception as e:
+            logger.exception("gerar_folha_comissao_card_b64: %s", e)
+            return None
 
     def enviar_resumo_comissao(self, telefone, dados_comissao):
         # Fallback texto se imagem falhar ou Pillow não existir
