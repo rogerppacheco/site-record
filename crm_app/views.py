@@ -5167,9 +5167,29 @@ def relatorio_resultado_campanha(request, campanha_id):
     except Exception as e: return Response({'error': str(e)}, status=500)
     
 class LancamentoFinanceiroViewSet(viewsets.ModelViewSet):
-    queryset = LancamentoFinanceiro.objects.all()
     serializer_class = LancamentoFinanceiroSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = LancamentoFinanceiro.objects.select_related('usuario', 'criado_por').all().order_by('-data')
+        ano = self.request.query_params.get('ano')
+        mes = self.request.query_params.get('mes')
+        if ano and mes:
+            try:
+                ano, mes = int(ano), int(mes)
+                if 1 <= mes <= 12:
+                    qs = qs.filter(data__year=ano, data__month=mes)
+            except (TypeError, ValueError):
+                pass
+        return qs
+
+    def list(self, request, *args, **kwargs):
+        # Quando filtrar por ano/mês, retornar lista completa (sem paginação) para exibir tudo no "Adiantamentos e Descontos"
+        if request.query_params.get('ano') and request.query_params.get('mes'):
+            qs = self.filter_queryset(self.get_queryset())
+            serializer = self.get_serializer(qs, many=True)
+            return Response(serializer.data)
+        return super().list(request, *args, **kwargs)
 
     def perform_create(self, serializer):
         # Salva automaticamente quem criou o registro (segurança/auditoria)

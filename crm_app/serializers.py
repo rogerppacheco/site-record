@@ -544,9 +544,20 @@ class GrupoDisparoSerializer(serializers.ModelSerializer):
         model = GrupoDisparo
         fields = '__all__'
 class LancamentoFinanceiroSerializer(serializers.ModelSerializer):
-    usuario_nome = serializers.ReadOnlyField(source='usuario.nome_completo')
+    usuario_nome = serializers.SerializerMethodField()
     criado_por_nome = serializers.ReadOnlyField(source='criado_por.username')
-    class Meta: model = LancamentoFinanceiro; fields = '__all__'
+
+    def get_usuario_nome(self, obj):
+        if not obj.usuario:
+            return 'N/A'
+        nome = getattr(obj.usuario, 'get_full_name', None) and obj.usuario.get_full_name()
+        if nome and nome.strip():
+            return nome.strip()
+        return obj.usuario.username or 'N/A'
+
+    class Meta:
+        model = LancamentoFinanceiro
+        fields = '__all__'
 
 class FaturaM10Serializer(serializers.ModelSerializer):
     """Serializer para as faturas do Bônus M-10"""

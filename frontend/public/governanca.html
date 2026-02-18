@@ -179,7 +179,7 @@
             <section id="comissionamento-section" class="content-section">
                 <h3 class="mb-4">Gestão de Comissionamento</h3>
                 <div class="card">
-                    <div class="card-header"><ul class="nav nav-tabs card-header-tabs"><li class="nav-item"><button class="nav-link active" onclick="openTab(event, 'regras_comissao_tab')">Regras de Comissão</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'regras_faixa_tab'); carregarRegrasFaixa();">Regras por Faixa</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'regras_vendedores_tab'); if (!document.getElementById('regras_vendedor_mes').value) { const d = new Date(); document.getElementById('regras_vendedor_mes').value = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); } carregarConfigVendedores();">Regras por Vendedor</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'recebimento_operadora_tab')">Recebimento Operadora</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'config_mensal_tab')">Configurações do Mês</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'campanhas_tab')">Campanhas</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'adiantamentos_descontos_tab')">Adiantamentos e Descontos</button></li></ul></div>
+                    <div class="card-header"><ul class="nav nav-tabs card-header-tabs"><li class="nav-item"><button class="nav-link active" onclick="openTab(event, 'regras_comissao_tab')">Regras de Comissão</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'regras_faixa_tab'); carregarRegrasFaixa();">Regras por Faixa</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'regras_vendedores_tab'); if (!document.getElementById('regras_vendedor_mes').value) { const d = new Date(); document.getElementById('regras_vendedor_mes').value = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); } carregarConfigVendedores();">Regras por Vendedor</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'recebimento_operadora_tab')">Recebimento Operadora</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'config_mensal_tab')">Configurações do Mês</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'campanhas_tab')">Campanhas</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'adiantamentos_descontos_tab'); carregarUsuariosSelectsFinanceiro(); carregarLancamentosFinanceiros();">Adiantamentos e Descontos</button></li></ul></div>
                     <div class="card-body">
                         <div id="regras_comissao_tab" class="tab-content active">
                             <div class="bg-light p-4 rounded border mb-4"><h5 class="text-primary mb-3">Nova Regra (Pagamento ao Vendedor)</h5><form id="form-regra-comissao"><input type="hidden" id="regra_comissao_id"><div class="row g-3"><div class="col-md-4"><label class="form-label fw-bold">Consultor</label><select id="regra_consultor_id" class="form-select" required></select></div><div class="col-md-4"><label class="form-label fw-bold">Plano</label><select id="regra_plano_id" class="form-select" required></select></div><div class="col-md-2"><label class="form-label fw-bold">Tipo Venda</label><select id="regra_tipo_venda" class="form-select" required><option value="PAP">PAP</option><option value="TELAG">TELAG</option></select></div><div class="col-md-2"><label class="form-label fw-bold">Cliente</label><select id="regra_tipo_cliente" class="form-select" required><option value="CPF">CPF</option><option value="CNPJ">CNPJ</option></select></div><div class="col-md-3"><label class="form-label fw-bold">Base (R$)</label><input type="number" class="form-control" id="regra_valor_base" step="0.01" required></div><div class="col-md-3"><label class="form-label fw-bold">Acelerado (R$)</label><input type="number" class="form-control" id="regra_valor_acelerado" step="0.01" required></div><div class="col-md-6 d-flex align-items-end"><button type="submit" class="btn btn-primary w-100 me-2">Salvar Regra</button><button type="button" class="btn btn-outline-secondary w-50" onclick="resetFormRegraComissao()">Limpar</button></div></div></form></div>
@@ -2513,13 +2513,25 @@
         alert('Salvo!'); document.getElementById('form-desconto').reset(); carregarLancamentosFinanceiros();
     };
     async function carregarLancamentosFinanceiros() {
-        let mes = document.getElementById('filtro-mes-lancamentos').value;
-        if (!mes) { const h = new Date(); mes = `${h.getFullYear()}-${String(h.getMonth()+1).padStart(2, '0')}`; document.getElementById('filtro-mes-lancamentos').value = mes; }
-        const res = await apiFetch('/crm/lancamentos-financeiros/');
+        const filtroEl = document.getElementById('filtro-mes-lancamentos');
+        let mes = filtroEl ? filtroEl.value : '';
+        if (!mes) { const h = new Date(); mes = `${h.getFullYear()}-${String(h.getMonth()+1).padStart(2, '0')}`; if (filtroEl) filtroEl.value = mes; }
+        const [ano, mesNum] = mes.split('-');
+        const url = (ano && mesNum) ? `/crm/lancamentos-financeiros/?ano=${ano}&mes=${mesNum}&page_size=500` : '/crm/lancamentos-financeiros/?page_size=500';
+        const res = await apiFetch(url);
         const lista = Array.isArray(res) ? res : (res?.results || []);
-        const tbody = document.getElementById('lista-lancamentos-fin'); tbody.innerHTML = '';
-        lista.filter(l => l.data && l.data.startsWith(mes)).forEach(l => {
-            tbody.innerHTML += `<tr><td>${new Date(l.data).toLocaleDateString('pt-BR',{timeZone:'UTC'})}</td><td>${l.usuario_nome || 'N/A'}</td><td>${l.tipo} - ${l.descricao}</td><td class="text-end fw-bold ${l.tipo==='DESCONTO'?'text-danger':'text-primary'}">${fmtMoeda(l.valor)}</td><td class="text-end"><button class="btn btn-xs btn-outline-danger" onclick="excluirLancamento(${l.id})">🗑️</button></td></tr>`;
+        const tbody = document.getElementById('lista-lancamentos-fin');
+        if (!tbody) return;
+        tbody.innerHTML = '';
+        if (lista.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">Nenhum lançamento neste mês. Registre adiantamentos ou descontos nos formulários ao lado.</td></tr>';
+            return;
+        }
+        lista.forEach(l => {
+            const dataStr = l.data ? (typeof l.data === 'string' ? l.data : l.data.substring(0, 10)) : '';
+            const dataFmt = dataStr ? new Date(dataStr + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
+            const tipoLabel = l.tipo === 'DESCONTO' ? 'Desconto' : (l.tipo === 'ADIANTAMENTO_CNPJ' ? 'Adiant. CNPJ' : (l.tipo === 'ADIANTAMENTO_COMISSAO' ? 'Adiant. Comissão' : l.tipo));
+            tbody.innerHTML += `<tr><td>${dataFmt}</td><td>${l.usuario_nome || 'N/A'}</td><td>${tipoLabel}${l.descricao ? ' — ' + l.descricao : ''}</td><td class="text-end fw-bold ${l.tipo==='DESCONTO'?'text-danger':'text-primary'}">${fmtMoeda(l.valor)}</td><td class="text-end"><button class="btn btn-xs btn-outline-danger" onclick="excluirLancamento(${l.id})" title="Excluir">🗑️</button></td></tr>`;
         });
     }
     window.excluirLancamento = async (id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/lancamentos-financeiros/${id}/`, {method:'DELETE'}); carregarLancamentosFinanceiros(); } };
