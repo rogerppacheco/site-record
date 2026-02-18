@@ -138,8 +138,13 @@
                 </div>
 
                 <div class="tab-pane fade" id="tab-folha-excel">
-                    <div class="mb-3 d-flex justify-content-between align-items-center">
-                        <span class="text-muted">Resumo por vendedor no formato da planilha (por plano + ajustes + extrato).</span>
+                    <div class="mb-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <div class="d-flex align-items-center gap-2">
+                            <label class="text-muted mb-0 small fw-bold">Vendedor com venda no mês:</label>
+                            <select id="folha-excel-vendedor" class="form-select form-select-sm" style="width: auto; min-width: 200px;" onchange="renderizarCardFolhaVendedor()">
+                                <option value="">— Selecione —</option>
+                            </select>
+                        </div>
                         <button class="btn btn-sm btn-outline-primary" onclick="carregarFolhaExcel()"><i class="bi bi-arrow-clockwise"></i> Atualizar</button>
                     </div>
                     <div id="folha-excel-container"></div>
@@ -273,56 +278,93 @@
             carregarDados();
         });
 
-        // --- FOLHA FORMATO EXCEL ---
+        // --- FOLHA FORMATO EXCEL (dropdown = vendedores com venda no mês, um card por vez) ---
+        let folhaExcelCache = { dados: null, periodo: '' };
+
+        function montarCardFolha(v) {
+            const r = v.resumo || {};
+            const porPlano = r.por_plano || [];
+            let html = `<div class="card border shadow-sm mb-4">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                    <span class="fw-bold">${v.vendedor_nome}</span>
+                    <span class="badge bg-primary">Faixa: ${r.faixa_aplicada || '-'}</span>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-sm table-bordered mb-0">
+                        <thead class="table-light"><tr><th>PLANO</th><th class="text-center">QTD A PAGAR</th><th class="text-end">VALOR UNIT.</th><th class="text-end">VALOR TOTAL</th><th class="text-end">COMISSÃO</th></tr></thead>
+                        <tbody>`;
+            porPlano.forEach(p => {
+                if (p.qtd_instalada_a_pagar > 0 || p.valor_total_instalados > 0)
+                    html += `<tr><td>${p.plano}</td><td class="text-center">${p.qtd_instalada_a_pagar}</td><td class="text-end">${p.valor_unitario_instalados != null ? fmtMoney(p.valor_unitario_instalados) : '-'}</td><td class="text-end">${fmtMoney(p.valor_total_instalados)}</td><td class="text-end fw-bold">${fmtMoney(p.comissao_total)}</td></tr>`;
+            });
+            html += `<tr class="table-light"><td colspan="2" class="fw-bold">TOTAL</td><td></td><td></td><td class="text-end fw-bold">${fmtMoney(r.comissao_total_geral || 0)}</td></tr></tbody></table>
+                <div class="p-3 border-top bg-white">
+                    <div class="row small mb-2">
+                        <div class="col">Descontos: <span class="text-danger fw-bold">- ${fmtMoney(r.total_descontos || 0)}</span></div>
+                        <div class="col">Bônus: <span class="text-success fw-bold">+ ${fmtMoney(r.total_bonus || 0)}</span></div>
+                        <div class="col"><strong>LÍQUIDO A PAGAR: <span class="text-success fs-6">${fmtMoney(r.liquido || 0)}</span></strong></div>
+                    </div>
+                    ${(r.detalhes_descontos && r.detalhes_descontos.length) ? `<div class="small border-top pt-2 mt-2"><strong class="text-muted">Lista de descontos (valor por valor):</strong><div class="mt-1">${r.detalhes_descontos.map(d => `<div class="d-flex justify-content-between text-danger"><span>${d.motivo || 'Desconto'}</span><span>- ${fmtMoney(d.valor)}</span></div>`).join('')}</div></div>` : ''}
+                </div>
+                <div class="p-2 border-top"><button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#extrato-folha-${v.vendedor_id}"><i class="bi bi-list"></i> Extrato (${(v.extrato || []).length} vendas)</button></div>
+                <div class="collapse" id="extrato-folha-${v.vendedor_id}"><div class="table-responsive"><table class="table table-sm table-striped mb-0 small"><thead class="table-light"><tr><th>NOME</th><th>DACC</th><th>CNPJ</th><th>PLANO</th><th>DT PEDIDO</th><th>DT INST</th><th>OS</th><th>SITUAÇÃO</th><th>CHURN</th></tr></thead><tbody>`;
+            (v.extrato || []).forEach(e => {
+                html += `<tr><td>${e.nome || ''}</td><td>${e.dacc || ''}</td><td>${e.cnpj || ''}</td><td>${e.plano || ''}</td><td>${e.dt_pedido || ''}</td><td>${e.dt_inst || ''}</td><td>${e.os || ''}</td><td>${e.situacao || ''}</td><td>${e.churn || ''}</td></tr>`;
+            });
+            html += `</tbody></table></div></div></div></div>`;
+            return html;
+        }
+
+        function renderizarCardFolhaVendedor() {
+            const container = document.getElementById('folha-excel-container');
+            const sel = document.getElementById('folha-excel-vendedor');
+            if (!container || !folhaExcelCache.dados) return;
+            const vendedorId = sel && sel.value ? sel.value : '';
+            if (!vendedorId) {
+                container.innerHTML = `<div class="text-muted text-center py-4">Selecione um vendedor no dropdown acima.</div>`;
+                return;
+            }
+            const v = folhaExcelCache.dados.vendedores.find(x => String(x.vendedor_id) === String(vendedorId));
+            if (!v) {
+                container.innerHTML = `<div class="alert alert-warning">Vendedor não encontrado.</div>`;
+                return;
+            }
+            container.innerHTML = `<div class="mb-3 fw-bold text-secondary">Período: ${folhaExcelCache.periodo}</div>` + montarCardFolha(v);
+        }
+
         async function carregarFolhaExcel() {
             const container = document.getElementById('folha-excel-container');
+            const selVendedor = document.getElementById('folha-excel-vendedor');
             if (!container) return;
             const mes = document.getElementById('filtro-mes').value;
             const ano = document.getElementById('filtro-ano').value;
             container.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div><p class="mt-2 text-muted">Carregando folha...</p></div>';
+            if (selVendedor) selVendedor.innerHTML = '<option value="">— Selecione —</option>';
             try {
                 const res = await axios.get(`/api/crm/comissionamento/folha/?ano=${ano}&mes=${mes}`);
                 const dados = res.data;
-                let html = `<div class="mb-3 fw-bold text-secondary">Período: ${dados.periodo || mes + '/' + ano}</div>`;
+                folhaExcelCache = { dados, periodo: dados.periodo || `${mes}/${ano}` };
+
                 if (!dados.vendedores || !dados.vendedores.length) {
-                    html += '<div class="alert alert-info">Nenhum dado de folha para este mês.</div>';
-                    container.innerHTML = html;
+                    container.innerHTML = '<div class="alert alert-info">Nenhum dado de folha para este mês.</div>';
                     return;
                 }
-                dados.vendedores.forEach(v => {
+                const comVendas = dados.vendedores.filter(v => {
                     const r = v.resumo || {};
-                    const porPlano = r.por_plano || [];
-                    html += `<div class="card border shadow-sm mb-4">
-                        <div class="card-header bg-light d-flex justify-content-between align-items-center">
-                            <span class="fw-bold">${v.vendedor_nome}</span>
-                            <span class="badge bg-primary">Faixa: ${r.faixa_aplicada || '-'}</span>
-                        </div>
-                        <div class="card-body p-0">
-                            <table class="table table-sm table-bordered mb-0">
-                                <thead class="table-light"><tr><th>PLANO</th><th class="text-center">QTD A PAGAR</th><th class="text-end">VALOR UNIT.</th><th class="text-end">VALOR TOTAL</th><th class="text-end">COMISSÃO</th></tr></thead>
-                                <tbody>`;
-                    porPlano.forEach(p => {
-                        if (p.qtd_instalada_a_pagar > 0 || p.valor_total_instalados > 0)
-                            html += `<tr><td>${p.plano}</td><td class="text-center">${p.qtd_instalada_a_pagar}</td><td class="text-end">${p.valor_unitario_instalados != null ? fmtMoney(p.valor_unitario_instalados) : '-'}</td><td class="text-end">${fmtMoney(p.valor_total_instalados)}</td><td class="text-end fw-bold">${fmtMoney(p.comissao_total)}</td></tr>`;
-                    });
-                    html += `<tr class="table-light"><td colspan="2" class="fw-bold">TOTAL</td><td></td><td></td><td class="text-end fw-bold">${fmtMoney(r.comissao_total_geral || 0)}</td></tr></tbody></table>
-                            <div class="p-3 border-top bg-white">
-                                <div class="row small mb-2">
-                                    <div class="col">Descontos: <span class="text-danger fw-bold">- ${fmtMoney(r.total_descontos || 0)}</span></div>
-                                    <div class="col">Bônus: <span class="text-success fw-bold">+ ${fmtMoney(r.total_bonus || 0)}</span></div>
-                                    <div class="col"><strong>LÍQUIDO A PAGAR: <span class="text-success fs-6">${fmtMoney(r.liquido || 0)}</span></strong></div>
-                                </div>
-                                ${(r.detalhes_descontos && r.detalhes_descontos.length) ? `<div class="small border-top pt-2 mt-2"><strong class="text-muted">Lista de descontos (valor por valor):</strong><div class="mt-1">${r.detalhes_descontos.map(d => `<div class="d-flex justify-content-between text-danger"><span>${d.motivo || 'Desconto'}</span><span>- ${fmtMoney(d.valor)}</span></div>`).join('')}</div></div>` : ''}
-                            </div>
-                            <div class="p-2 border-top"><button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#extrato-${v.vendedor_id}"><i class="bi bi-list"></i> Extrato (${(r.extrato || v.extrato || []).length} vendas)</button></div>
-                            <div class="collapse" id="extrato-${v.vendedor_id}"><div class="table-responsive"><table class="table table-sm table-striped mb-0 small"><thead class="table-light"><tr><th>NOME</th><th>DACC</th><th>CNPJ</th><th>PLANO</th><th>DT PEDIDO</th><th>DT INST</th><th>OS</th><th>SITUAÇÃO</th><th>CHURN</th></tr></thead><tbody>`;
-                    (v.extrato || []).forEach(e => {
-                        html += `<tr><td>${e.nome || ''}</td><td>${e.dacc || ''}</td><td>${e.cnpj || ''}</td><td>${e.plano || ''}</td><td>${e.dt_pedido || ''}</td><td>${e.dt_inst || ''}</td><td>${e.os || ''}</td><td>${e.situacao || ''}</td><td>${e.churn || ''}</td></tr>`;
-                    });
-                    html += `</tbody></table></div></div>
-                        </div></div>`;
+                    const qtd = r.total_qtd_instalada_a_pagar || 0;
+                    const comissao = r.comissao_total_geral || 0;
+                    return qtd > 0 || comissao > 0;
                 });
-                container.innerHTML = html;
+                if (selVendedor) {
+                    comVendas.forEach(v => {
+                        const opt = document.createElement('option');
+                        opt.value = v.vendedor_id;
+                        opt.textContent = v.vendedor_nome || ('ID ' + v.vendedor_id);
+                        selVendedor.appendChild(opt);
+                    });
+                    if (comVendas.length > 0) selVendedor.value = comVendas[0].vendedor_id;
+                }
+                renderizarCardFolhaVendedor();
             } catch (err) {
                 container.innerHTML = `<div class="alert alert-danger">Erro ao carregar folha: ${err.message || err.response?.data?.error || 'Erro de rede'}</div>`;
             }
