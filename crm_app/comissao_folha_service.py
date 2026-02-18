@@ -394,12 +394,39 @@ def calcular_folha_mes(ano, mes, vendedor_id=None):
                 'dacc': dacc,
                 'cnpj': 'SIM' if eh_cnpj else 'NÃO',
                 'plano': plano_label,
-                'dt_pedido': v.data_criacao.strftime('%Y-%m-%d') if v.data_criacao else '',
-                'dt_inst': v.data_instalacao.strftime('%Y-%m-%d') if v.data_instalacao else '',
+                'dt_pedido': v.data_criacao.strftime('%d/%m/%Y') if v.data_criacao else '',
+                'dt_inst': v.data_instalacao.strftime('%d/%m/%Y') if v.data_instalacao else '',
                 'os': v.ordem_servico or '',
                 'situacao': v.status_esteira.nome if v.status_esteira else 'INSTALADA',
                 'vendedor': consultor.username,
                 'churn': churn_status,
+            })
+        # Incluir no extrato as vendas churn M-1 (mês anterior), para aparecerem na lista com CHURN=SIM
+        for v in vendas_m1:
+            if not v.ordem_servico or getattr(v, 'desconto_churn_aplicado_em', None) is not None:
+                continue
+            variantes = _norm_os_variantes(v.ordem_servico)
+            if not (variantes & set_os_churn_m1):
+                continue
+            doc = (v.cliente.cpf_cnpj or '') if v.cliente else ''
+            doc_limpo = ''.join(filter(str.isdigit, doc))
+            eh_cnpj = len(doc_limpo) > 11
+            plano_nome = v.plano.nome if v.plano else ''
+            chave = plano_tipo_to_chave(plano_nome, 'CNPJ' if eh_cnpj else 'CPF')
+            plano_label = labels.get(chave, plano_nome or '-')
+            dacc = 'SIM' if (v.forma_pagamento and 'DÉBITO' in (v.forma_pagamento.nome or '').upper()) else 'NÃO'
+            extrato.append({
+                'venda_id': v.id,
+                'nome': (v.cliente.nome_razao_social or '')[:80] if v.cliente else '',
+                'dacc': dacc,
+                'cnpj': 'SIM' if eh_cnpj else 'NÃO',
+                'plano': plano_label,
+                'dt_pedido': v.data_criacao.strftime('%d/%m/%Y') if v.data_criacao else '',
+                'dt_inst': v.data_instalacao.strftime('%d/%m/%Y') if v.data_instalacao else '',
+                'os': v.ordem_servico or '',
+                'situacao': 'INSTALADA (Churn M-1)',
+                'vendedor': consultor.username,
+                'churn': 'SIM',
             })
 
         qtd_a_descontar_boleto = sum(d.get('quantidade', 1) for d in detalhes_descontos if (d.get('tipo_exibicao') or '').lower() == 'boleto')
