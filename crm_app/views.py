@@ -3762,9 +3762,17 @@ class ImportacaoOsabDetailView(generics.RetrieveUpdateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
 def _normalizar_anomes_gross(val):
-    """Normaliza ANOMES_GROSS para formato AAAAMM (ex.: '2025-07' -> '202507')"""
-    if not val or pd.isna(val):
+    """Normaliza ANOMES_GROSS para formato AAAAMM (ex.: '2025-07' -> '202507'). Aceita também número serial do Excel."""
+    if val is None or pd.isna(val):
         return None
+    # Número serial do Excel (ex.: 45658 = 1/12/2025)
+    try:
+        if isinstance(val, (int, float)) and 30000 <= float(val) <= 60000:
+            from datetime import datetime, timedelta
+            d = datetime(1899, 12, 30) + timedelta(days=int(float(val)))
+            return d.strftime('%Y%m')
+    except (ValueError, OSError):
+        pass
     s = str(val).strip()
     if not s or s.lower() in ('nan', 'none', ''):
         return None
@@ -3803,7 +3811,7 @@ class ImportacaoChurnView(APIView):
             else:
                 return Response({'error': 'Formato inválido. Use .xlsx, .xls, .xlsb ou .csv'}, status=400)
         except Exception as e: return Response({'error': str(e)}, status=400)
-        df.columns = [str(col).strip().upper() for col in df.columns]
+        df.columns = [str(col).strip().upper().replace(' ', '_') for col in df.columns]
         for f in ['DT_GROSS', 'DT_RETIRADA']:
             if f in df.columns: df[f] = pd.to_datetime(df[f], errors='coerce')
         df = df.replace({np.nan: None, pd.NaT: None})
@@ -8946,8 +8954,8 @@ class ImportarChurnView(APIView):
             else:
                 df = pd.read_excel(arquivo, dtype={'PEDIDO': str, 'NR_ORDEM': str, 'NUMERO_PEDIDO': str})
 
-            # Normalizar nomes das colunas
-            df.columns = df.columns.str.strip().str.upper()
+            # Normalizar nomes das colunas (ex.: "ANOMES GROSS" -> "ANOMES_GROSS", "NR ORDEM" -> "NR_ORDEM")
+            df.columns = df.columns.str.strip().str.upper().str.replace(' ', '_', regex=False)
             
             log.total_linhas = len(df)
             log.save()

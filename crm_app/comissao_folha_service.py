@@ -98,6 +98,13 @@ def calcular_folha_mes(ano, mes, vendedor_id=None):
         if val is None or (isinstance(val, str) and not val.strip()):
             return None
         s = str(val).strip()
+        # Remover prefixos comuns (OS-, OS, etc.) para cruzar com base churn
+        for prefix in ('OS-', 'OS', 'os-', 'os'):
+            if s.upper().startswith(prefix) and len(s) > len(prefix):
+                s = s[len(prefix):].strip()
+                break
+        if not s:
+            return None
         return s.zfill(8) if len(s) <= 8 else s
 
     def _norm_os_variantes(val):
@@ -109,20 +116,34 @@ def calcular_folha_mes(ano, mes, vendedor_id=None):
 
     ano_mes = ano * 100 + mes
     mes_ant = (ano * 100 + mes - 1) if mes > 1 else ((ano - 1) * 100 + 12)
-    churns_m0 = list(ImportacaoChurn.objects.filter(anomes_gross=str(ano_mes)).exclude(nr_ordem__isnull=True).exclude(nr_ordem='').values_list('nr_ordem', flat=True))
-    churns_m1 = list(ImportacaoChurn.objects.filter(anomes_gross=str(mes_ant)).exclude(nr_ordem__isnull=True).exclude(nr_ordem='').values_list('nr_ordem', flat=True))
+    # Aceitar anomes_gross em vários formatos (202512, 2025-12, 2025/12) para não falhar com imports antigos
+    def _anomes_variantes(am):
+        return [str(am), f"{am // 100}-{am % 100:02d}", f"{am // 100}/{am % 100:02d}"]
+    variantes_m0 = _anomes_variantes(ano_mes)
+    variantes_m1 = _anomes_variantes(mes_ant)
+    churns_m0 = list(ImportacaoChurn.objects.filter(anomes_gross__in=variantes_m0).exclude(nr_ordem__isnull=True).exclude(nr_ordem='').values_list('nr_ordem', flat=True))
+    churns_m1 = list(ImportacaoChurn.objects.filter(anomes_gross__in=variantes_m1).exclude(nr_ordem__isnull=True).exclude(nr_ordem='').values_list('nr_ordem', flat=True))
     set_os_churn_m0 = set()
     for os_val in churns_m0:
-        set_os_churn_m0.update(_norm_os_variantes(os_val))
+        if os_val is not None:
+            set_os_churn_m0.update(_norm_os_variantes(str(os_val).strip()))
     set_os_churn_m1 = set()
     for os_val in churns_m1:
-        set_os_churn_m1.update(_norm_os_variantes(os_val))
+        if os_val is not None:
+            set_os_churn_m1.update(_norm_os_variantes(str(os_val).strip()))
     set_os_churn_mes_extrato = set_os_churn_m0
     data_inicio = datetime(ano, mes, 1)
     if mes == 12:
         data_fim = datetime(ano + 1, 1, 1)
     else:
         data_fim = datetime(ano, mes + 1, 1)
+    # Mês anterior (para M-1: churns instalados no mês anterior descontados na comissão deste mês)
+    if mes == 1:
+        data_inicio_ant = datetime(ano - 1, 12, 1)
+        data_fim_ant = datetime(ano, 1, 1)
+    else:
+        data_inicio_ant = datetime(ano, mes - 1, 1)
+        data_fim_ant = datetime(ano, mes, 1)
 
     consultores = User.objects.filter(is_active=True).order_by('username')
     if vendedor_id:
@@ -170,6 +191,14 @@ def calcular_folha_mes(ano, mes, vendedor_id=None):
             status_esteira__nome__iexact='INSTALADA',
             data_instalacao__gte=data_inicio,
             data_instalacao__lt=data_fim,
+        ).select_related('plano', 'cliente', 'forma_pagamento')
+        # Vendas instaladas no mês anterior (para desconto M-1: churn dez descontado na comissão jan)
+        vendas_m1 = Venda.objects.filter(
+            vendedor=consultor,
+            ativo=True,
+            status_esteira__nome__iexact='INSTALADA',
+            data_instalacao__gte=data_inicio_ant,
+            data_instalacao__lt=data_fim_ant,
         ).select_related('plano', 'cliente', 'forma_pagamento')
 
         config = configs.get(consultor.id)
@@ -274,6 +303,8 @@ def calcular_folha_mes(ano, mes, vendedor_id=None):
                 detalhes_descontos.append({'motivo': 'Gestor Tráfego', 'valor': float(config.gestor_trafego), 'tipo_exibicao': 'outros', 'quantidade': 1})
 
         # Desconto Churn M0 e M-1: cruza base churn (ANOMES_GROSS) com Venda por O.S.; só Vendas ainda não marcadas com desconto_churn_aplicado_em
+        # M0 = churns do mês da comissão (ex.: jan/26) -> vendas instaladas no mês da comissão
+        # M-1 = churns do mês anterior (ex.: dez/25) -> descontado na comissão do mês atual (jan/26); vendas instaladas no mês anterior
         valor_churn_m0 = Decimal('0')
         valor_churn_m1 = Decimal('0')
         qtd_churn_m0 = 0
@@ -297,9 +328,26 @@ def calcular_folha_mes(ano, mes, vendedor_id=None):
             if variantes & set_os_churn_m0:
                 valor_churn_m0 += valor_unit
                 qtd_churn_m0 += 1
-            if variantes & set_os_churn_m1:
-                valor_churn_m1 += valor_unit
-                qtd_churn_m1 += 1
+        for v in vendas_m1:
+            if not v.ordem_servico or getattr(v, 'desconto_churn_aplicado_em', None) is not None:
+                continue
+            variantes = _norm_os_variantes(v.ordem_servico)
+            if not (variantes & set_os_churn_m1):
+                continue
+            doc = (v.cliente.cpf_cnpj or '') if v.cliente else ''
+            doc_limpo = ''.join(filter(str.isdigit, doc))
+            tipo_cliente = 'CNPJ' if len(doc_limpo) > 11 else 'CPF'
+            plano_nome = v.plano.nome if v.plano else ''
+            chave = plano_tipo_to_chave(plano_nome, tipo_cliente)
+            if not chave:
+                continue
+            if usar_manual:
+                valor_unit = get_valor_manual(config, chave)
+            else:
+                valor_unit = get_valor_from_faixa(faixa_regra, chave) if faixa_regra else None
+            valor_unit = Decimal(str(valor_unit)) if valor_unit is not None else Decimal('0')
+            valor_churn_m1 += valor_unit
+            qtd_churn_m1 += 1
         if qtd_churn_m0 > 0 or valor_churn_m0 > 0:
             total_descontos += valor_churn_m0
             detalhes_descontos.append({'motivo': 'Desconto Churn M0', 'valor': float(valor_churn_m0), 'tipo_exibicao': 'churn_m0', 'quantidade': qtd_churn_m0})
@@ -390,6 +438,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None):
 def get_vendas_ids_desconto_churn_mes(ano, mes):
     """
     Retorna os IDs das Vendas que entram no desconto churn (M0 + M-1) para o mês de comissão (ano, mes).
+    M0: vendas instaladas no mês da comissão que batem com churn do mês. M-1: vendas instaladas no mês anterior que batem com churn M-1.
     Usado ao fechar o mês para marcar desconto_churn_aplicado_em e não descontar duas vezes.
     """
     from .models import Venda, ImportacaoChurn
@@ -398,13 +447,21 @@ def get_vendas_ids_desconto_churn_mes(ano, mes):
         if val is None or (isinstance(val, str) and not val.strip()):
             return set()
         s = str(val).strip()
+        for prefix in ('OS-', 'OS', 'os-', 'os'):
+            if s.upper().startswith(prefix) and len(s) > len(prefix):
+                s = s[len(prefix):].strip()
+                break
+        if not s:
+            return set()
         n = s.zfill(8) if len(s) <= 8 else s
         return {n, n.lstrip('0') or '0'}
 
     ano_mes = ano * 100 + mes
     mes_ant = (ano * 100 + mes - 1) if mes > 1 else ((ano - 1) * 100 + 12)
-    churns_m0 = list(ImportacaoChurn.objects.filter(anomes_gross=str(ano_mes)).exclude(nr_ordem__isnull=True).exclude(nr_ordem='').values_list('nr_ordem', flat=True))
-    churns_m1 = list(ImportacaoChurn.objects.filter(anomes_gross=str(mes_ant)).exclude(nr_ordem__isnull=True).exclude(nr_ordem='').values_list('nr_ordem', flat=True))
+    variantes_m0 = [str(ano_mes), f"{ano_mes // 100}-{ano_mes % 100:02d}", f"{ano_mes // 100}/{ano_mes % 100:02d}"]
+    variantes_m1 = [str(mes_ant), f"{mes_ant // 100}-{mes_ant % 100:02d}", f"{mes_ant // 100}/{mes_ant % 100:02d}"]
+    churns_m0 = list(ImportacaoChurn.objects.filter(anomes_gross__in=variantes_m0).exclude(nr_ordem__isnull=True).exclude(nr_ordem='').values_list('nr_ordem', flat=True))
+    churns_m1 = list(ImportacaoChurn.objects.filter(anomes_gross__in=variantes_m1).exclude(nr_ordem__isnull=True).exclude(nr_ordem='').values_list('nr_ordem', flat=True))
     set_os_m0 = set()
     for os_val in churns_m0:
         set_os_m0.update(_norm_os_variantes(os_val))
@@ -412,19 +469,38 @@ def get_vendas_ids_desconto_churn_mes(ano, mes):
     for os_val in churns_m1:
         set_os_m1.update(_norm_os_variantes(os_val))
 
+    data_inicio = datetime(ano, mes, 1)
+    data_fim = datetime(ano, mes + 1, 1) if mes < 12 else datetime(ano + 1, 1, 1)
+    data_inicio_ant = datetime(ano, mes - 1, 1) if mes > 1 else datetime(ano - 1, 12, 1)
+    data_fim_ant = datetime(ano, mes, 1) if mes > 1 else datetime(ano, 1, 1)
+
     from django.contrib.auth import get_user_model
     User = get_user_model()
-    consultores = User.objects.filter(is_active=True).values_list('id', flat=True)
-    vendas_churn = Venda.objects.filter(
+    consultores = list(User.objects.filter(is_active=True).values_list('id', flat=True))
+
+    ids_marcar = []
+    # M0: vendas instaladas no mês da comissão que batem com churn do mês
+    vendas_m0 = Venda.objects.filter(
         vendedor_id__in=consultores,
         ativo=True,
         status_esteira__nome__iexact='INSTALADA',
+        data_instalacao__gte=data_inicio,
+        data_instalacao__lt=data_fim,
         desconto_churn_aplicado_em__isnull=True,
-    ).exclude(ordem_servico__isnull=True).exclude(ordem_servico='')
-
-    ids_marcar = []
-    for v in vendas_churn.only('id', 'ordem_servico'):
-        variantes = _norm_os_variantes(v.ordem_servico)
-        if (variantes & set_os_m0) or (variantes & set_os_m1):
+    ).exclude(ordem_servico__isnull=True).exclude(ordem_servico='').only('id', 'ordem_servico')
+    for v in vendas_m0:
+        if _norm_os_variantes(v.ordem_servico) & set_os_m0:
+            ids_marcar.append(v.id)
+    # M-1: vendas instaladas no mês anterior que batem com churn M-1 (ex.: dez/25 descontado em jan/26)
+    vendas_m1 = Venda.objects.filter(
+        vendedor_id__in=consultores,
+        ativo=True,
+        status_esteira__nome__iexact='INSTALADA',
+        data_instalacao__gte=data_inicio_ant,
+        data_instalacao__lt=data_fim_ant,
+        desconto_churn_aplicado_em__isnull=True,
+    ).exclude(ordem_servico__isnull=True).exclude(ordem_servico='').only('id', 'ordem_servico')
+    for v in vendas_m1:
+        if _norm_os_variantes(v.ordem_servico) & set_os_m1:
             ids_marcar.append(v.id)
     return ids_marcar
