@@ -179,7 +179,7 @@
             <section id="comissionamento-section" class="content-section">
                 <h3 class="mb-4">Gestão de Comissionamento</h3>
                 <div class="card">
-                    <div class="card-header"><ul class="nav nav-tabs card-header-tabs"><li class="nav-item"><button class="nav-link active" onclick="openTab(event, 'regras_faixa_tab'); carregarRegrasFaixa();">Regras por Faixa</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'regras_vendedores_tab'); if (!document.getElementById('regras_vendedor_mes').value) { const d = new Date(); document.getElementById('regras_vendedor_mes').value = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); } atualizarDropdownVendedores(); preencherFormConfigVendedor();">Regras por Vendedor</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'recebimento_operadora_tab')">Recebimento Operadora</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'campanhas_tab')">Campanhas</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'adiantamentos_descontos_tab'); carregarUsuariosSelectsFinanceiro(); carregarLancamentosFinanceiros(); toggleCamposAdiantamento();">Adiantamentos e Descontos</button></li></ul></div>
+                    <div class="card-header"><ul class="nav nav-tabs card-header-tabs"><li class="nav-item"><button class="nav-link active" onclick="openTab(event, 'regras_faixa_tab'); carregarRegrasFaixa();">Regras por Faixa</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'regras_vendedores_tab'); if (!document.getElementById('regras_vendedor_mes').value) { const d = new Date(); document.getElementById('regras_vendedor_mes').value = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); } atualizarDropdownVendedores(); preencherFormConfigVendedor();">Regras por Vendedor</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'recebimento_operadora_tab')">Recebimento Operadora</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'campanhas_tab')">Campanhas</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'adiantamentos_descontos_tab'); carregarUsuariosSelectsFinanceiro(); carregarLancamentosFinanceiros(); openSubTabAdiant(null, 'subtab-registrar');">Adiantamentos e Descontos</button></li></ul></div>
                     <div class="card-body">
                         <div id="regras_faixa_tab" class="tab-content active">
                             <div class="d-flex justify-content-between align-items-center mb-3">
@@ -260,10 +260,28 @@
                             <div class="card border-0 shadow-sm"><div class="card-body p-0 table-responsive"><table class="table table-hover align-middle mb-0"><thead class="table-light"><tr><th>Nome</th><th>Período</th><th>Faixas de Premiação</th><th>Regras</th><th>Status</th><th class="text-end">Ações</th></tr></thead><tbody id="lista-campanhas"></tbody></table></div></div>
                         </div>
                         <div id="adiantamentos_descontos_tab" class="tab-content" style="display:none;">
-                            <div class="row g-3">
-                                <div class="col-md-3"><div class="card border-primary shadow-sm h-100"><div class="card-header py-2" style="background-color:#0a58ca; color:#fff !important; text-shadow: 0 1px 2px rgba(0,0,0,0.3);"><h6 class="mb-0 fw-bold" style="color:#fff !important;"><i class="bi bi-cash-stack"></i> Novo Adiantamento</h6></div><div class="card-body"><form id="form-adiantamento"><div class="mb-2"><label class="form-label small fw-bold">Colaborador</label><select id="ad_usuario" class="form-select form-select-sm" required></select></div><div class="mb-2"><label class="form-label small fw-bold">Tipo</label><select id="ad_tipo" class="form-select form-select-sm" onchange="toggleCamposAdiantamento()"><option value="ADIANTAMENTO_CNPJ">Adiantamento CNPJ</option><option value="ADIANTAMENTO_COMISSAO">Adiantamento de Comissão (marcar vendas abaixo)</option></select><p class="small text-muted mb-0 mt-1">Se for <strong>Comissão</strong>, use Mês/Ano e &quot;Listar vendas&quot; abaixo para marcar quais vendas foram adiantadas.</p></div><div class="row g-2 mb-2"><div class="col-6"><label class="form-label small fw-bold">Data</label><input type="date" id="ad_data" class="form-control form-control-sm" required></div><div class="col-6"><label class="form-label small fw-bold">Valor (R$)</label><input type="number" class="form-control form-control-sm" id="ad_valor" step="0.01" required></div></div><div id="box-qtd-vendas" class="mb-2 bg-light p-2 rounded border"><label class="form-label small fw-bold text-primary">Qtd. Vendas Adiantadas</label><input type="number" id="ad_qtd" class="form-control form-control-sm"></div><div id="box-adiant-comissao-vendas" class="mb-2 bg-light p-2 rounded border" style="display:none;"><p class="small text-muted mb-2"><strong>Como usar:</strong> 1) Informe <strong>Mês/Ano</strong> abaixo e clique em <strong>Listar vendas</strong>. 2) Marque com ✓ as vendas que foram adiantadas. 3) Preencha <strong>Data</strong> e <strong>Valor (R$)</strong> acima e clique em <strong>Registrar</strong>.</p><label class="form-label small fw-bold text-primary">Mês/Ano das vendas</label><div class="row g-2 mb-2"><div class="col-5"><input type="month" id="ad_mes_ano" class="form-control form-control-sm" placeholder="Mês/Ano"></div><div class="col-7"><button type="button" class="btn btn-sm btn-outline-primary w-100" id="btn-listar-vendas-adiant">Listar vendas</button></div></div><div id="tabela-vendas-adiant-comissao" class="table-responsive" style="max-height:220px;overflow-y:auto;"><table class="table table-sm table-striped mb-0 small"><thead class="table-light sticky-top"><tr><th><input type="checkbox" id="ad_sel_todas" title="Marcar todas"></th><th>Cliente</th><th>Plano</th><th>Dt. Inst.</th><th>OS</th></tr></thead><tbody id="tbody-vendas-adiant-comissao"></tbody></table></div></div><div class="mb-3"><label class="form-label small fw-bold">Observação</label><textarea id="ad_obs" class="form-control form-control-sm" rows="2"></textarea></div><button type="button" id="btn-registrar-adiantamento" class="btn btn-primary btn-sm w-100">Registrar</button></form></div></div></div>
-                                <div class="col-md-3"><div class="card border-danger shadow-sm h-100"><div class="card-header py-2" style="background-color:#b02a37; color:#fff !important; text-shadow: 0 1px 2px rgba(0,0,0,0.3);"><h6 class="mb-0 fw-bold" style="color:#fff !important;"><i class="bi bi-dash-circle"></i> Novo Desconto</h6></div><div class="card-body"><form id="form-desconto"><div class="mb-2"><label class="form-label small fw-bold">Colaborador</label><select id="desc_usuario" class="form-select form-select-sm" required></select></div><div class="mb-2"><label class="form-label small fw-bold">Motivo</label><input type="text" id="desc_motivo" class="form-control form-control-sm" placeholder="Ex: Equipamento perdido" required></div><div class="row g-2 mb-3"><div class="col-6"><label class="form-label small fw-bold">Data</label><input type="date" id="desc_data" class="form-control form-control-sm" required></div><div class="col-6"><label class="form-label small fw-bold">Valor (R$)</label><input type="number" class="form-control form-control-sm" id="desc_valor" step="0.01" required></div></div><button type="button" id="btn-registrar-desconto" class="btn btn-danger btn-sm w-100">Registrar</button></form></div></div></div>
-                                <div class="col-md-6"><div class="card h-100 shadow-sm"><div class="card-header bg-white d-flex justify-content-between align-items-center"><h6 class="mb-0 fw-bold">Histórico de Lançamentos</h6><div class="input-group input-group-sm" style="width: 200px;"><input type="month" id="filtro-mes-lancamentos" class="form-control" onchange="carregarLancamentosFinanceiros()"></div></div><div class="card-body p-0 table-responsive"><table class="table table-hover table-striped mb-0 small align-middle"><thead class="table-light"><tr><th>Data</th><th>Colaborador</th><th>Tipo / Descrição</th><th class="text-end">Valor</th><th class="text-end">Ações</th></tr></thead><tbody id="lista-lancamentos-fin"></tbody></table></div></div></div>
+                            <ul class="nav nav-tabs nav-tabs mb-3" role="tablist">
+                                <li class="nav-item"><button class="nav-link active" type="button" id="tab-registrar-btn" onclick="openSubTabAdiant(event, 'subtab-registrar')"><i class="bi bi-pencil-square"></i> Registrar lançamentos</button></li>
+                                <li class="nav-item"><button class="nav-link" type="button" id="tab-marcar-vendas-btn" onclick="openSubTabAdiant(event, 'subtab-marcar-vendas')"><i class="bi bi-list-check"></i> Marcar vendas antecipadas</button></li>
+                            </ul>
+                            <div id="subtab-registrar" class="subtab-adiant-content">
+                                <div class="row g-3">
+                                    <div class="col-md-3"><div class="card border-primary shadow-sm h-100"><div class="card-header py-2" style="background-color:#0a58ca; color:#fff !important;"><h6 class="mb-0 fw-bold" style="color:#fff !important;"><i class="bi bi-cash-stack"></i> Novo Adiantamento</h6></div><div class="card-body"><form id="form-adiantamento" onsubmit="return false;"><div class="mb-2"><label class="form-label small fw-bold">Colaborador</label><select id="ad_usuario" class="form-select form-select-sm" required></select></div><div class="mb-2"><label class="form-label small fw-bold">Tipo</label><select id="ad_tipo" class="form-select form-select-sm" onchange="toggleCamposAdiantamento()"><option value="ADIANTAMENTO_CNPJ">Adiantamento CNPJ (informe qtd. abaixo)</option><option value="ADIANTAMENTO_COMISSAO">Adiantamento de Comissão</option></select><p class="small text-muted mb-0 mt-1">Para <strong>Comissão</strong>, use a aba <strong>&quot;Marcar vendas antecipadas&quot;</strong> para escolher as vendas e registrar.</p></div><div class="row g-2 mb-2"><div class="col-6"><label class="form-label small fw-bold">Data</label><input type="date" id="ad_data" class="form-control form-control-sm" required></div><div class="col-6"><label class="form-label small fw-bold">Valor (R$)</label><input type="number" class="form-control form-control-sm" id="ad_valor" step="0.01" required></div></div><div id="box-qtd-vendas" class="mb-2 bg-light p-2 rounded border"><label class="form-label small fw-bold text-primary">Qtd. Vendas Adiantadas</label><input type="number" id="ad_qtd" class="form-control form-control-sm" placeholder="0"></div><div class="mb-3"><label class="form-label small fw-bold">Observação</label><textarea id="ad_obs" class="form-control form-control-sm" rows="2"></textarea></div><button type="button" id="btn-registrar-adiantamento" class="btn btn-primary btn-sm w-100">Registrar</button></form></div></div></div>
+                                    <div class="col-md-3"><div class="card border-danger shadow-sm h-100"><div class="card-header py-2" style="background-color:#b02a37; color:#fff !important;"><h6 class="mb-0 fw-bold" style="color:#fff !important;"><i class="bi bi-dash-circle"></i> Novo Desconto</h6></div><div class="card-body"><form id="form-desconto" onsubmit="return false;"><div class="mb-2"><label class="form-label small fw-bold">Colaborador</label><select id="desc_usuario" class="form-select form-select-sm" required></select></div><div class="mb-2"><label class="form-label small fw-bold">Motivo</label><input type="text" id="desc_motivo" class="form-control form-control-sm" placeholder="Ex: Equipamento perdido" required></div><div class="row g-2 mb-3"><div class="col-6"><label class="form-label small fw-bold">Data</label><input type="date" id="desc_data" class="form-control form-control-sm" required></div><div class="col-6"><label class="form-label small fw-bold">Valor (R$)</label><input type="number" class="form-control form-control-sm" id="desc_valor" step="0.01" required></div></div><button type="button" id="btn-registrar-desconto" class="btn btn-danger btn-sm w-100">Registrar</button></form></div></div></div>
+                                    <div class="col-md-6"><div class="card h-100 shadow-sm"><div class="card-header bg-white d-flex justify-content-between align-items-center"><h6 class="mb-0 fw-bold">Histórico de Lançamentos</h6><div class="input-group input-group-sm" style="width: 200px;"><input type="month" id="filtro-mes-lancamentos" class="form-control" onchange="carregarLancamentosFinanceiros()"></div></div><div class="card-body p-0 table-responsive"><table class="table table-hover table-striped mb-0 small align-middle"><thead class="table-light"><tr><th>Data</th><th>Colaborador</th><th>Tipo / Descrição</th><th class="text-end">Valor</th><th class="text-end">Ações</th></tr></thead><tbody id="lista-lancamentos-fin"></tbody></table></div></div></div>
+                                </div>
+                            </div>
+                            <div id="subtab-marcar-vendas" class="subtab-adiant-content" style="display:none;">
+                                <div class="card border-primary shadow-sm"><div class="card-header py-2 bg-primary text-white"><h6 class="mb-0 fw-bold"><i class="bi bi-list-check"></i> Marcar vendas antecipadas e registrar adiantamento de comissão</h6></div><div class="card-body">
+                                <p class="small text-muted mb-3">Selecione o colaborador e o mês/ano das vendas instaladas. Clique em <strong>Listar vendas</strong>, marque as vendas que foram adiantadas e preencha Data, Valor e Observação para registrar.</p>
+                                <div class="row g-3 mb-3">
+                                    <div class="col-md-3"><label class="form-label small fw-bold">Colaborador</label><select id="ant_vendedor" class="form-select form-select-sm"></select></div>
+                                    <div class="col-md-2"><label class="form-label small fw-bold">Mês/Ano das vendas</label><input type="month" id="ant_mes_ano" class="form-control form-control-sm"></div>
+                                    <div class="col-md-2 d-flex align-items-end"><button type="button" class="btn btn-sm btn-outline-primary w-100" id="btn-ant-listar-vendas">Listar vendas</button></div>
+                                </div>
+                                <div class="table-responsive mb-3 border rounded" style="max-height:280px;overflow-y:auto;"><table class="table table-sm table-striped mb-0 small"><thead class="table-light sticky-top"><tr><th style="width:40px;"><input type="checkbox" id="ant_sel_todas" title="Marcar todas"></th><th>Cliente</th><th>Plano</th><th>Dt. Inst.</th><th>OS</th></tr></thead><tbody id="tbody-ant-vendas"></tbody></table></div>
+                                <div class="row g-2 mb-3 bg-light p-3 rounded border"><div class="col-md-2"><label class="form-label small fw-bold">Data do adiantamento</label><input type="date" id="ant_data" class="form-control form-control-sm"></div><div class="col-md-2"><label class="form-label small fw-bold">Valor (R$)</label><input type="number" id="ant_valor" class="form-control form-control-sm" step="0.01" placeholder="0,00"></div><div class="col-md-4"><label class="form-label small fw-bold">Observação</label><input type="text" id="ant_obs" class="form-control form-control-sm" placeholder="Opcional"></div><div class="col-md-2 d-flex align-items-end"><button type="button" class="btn btn-primary btn-sm w-100" id="btn-registrar-adiant-comissao">Registrar adiantamento</button></div></div>
+                                </div></div>
                             </div>
                         </div>
                     </div>
@@ -768,6 +786,16 @@
         if(tabName === 'recebimento_operadora_tab') carregarComissoesOperadora();
         if(tabName === 'campanhas_tab') { carregarDadosAuxiliaresCampanha(); carregarCampanhas(); }
         if(tabName === 'tab-lista-feriados') carregarFeriados();
+    }
+    function openSubTabAdiant(evt, subTabId) {
+        if (evt) evt.preventDefault();
+        document.querySelectorAll('#adiantamentos_descontos_tab .subtab-adiant-content').forEach(el => { el.style.display = 'none'; });
+        document.querySelectorAll('#adiantamentos_descontos_tab .nav-link').forEach(l => l.classList.remove('active'));
+        const target = document.getElementById(subTabId);
+        if (target) target.style.display = 'block';
+        const r = document.getElementById('tab-registrar-btn'), m = document.getElementById('tab-marcar-vendas-btn');
+        if (subTabId === 'subtab-registrar' && r) r.classList.add('active');
+        if (subTabId === 'subtab-marcar-vendas' && m) m.classList.add('active');
     }
 
     function mostrarSecao(event, idSecao, menuItem) {
@@ -2572,73 +2600,84 @@
         const res = await apiFetch('/usuarios/?is_active=true');
         const users = Array.isArray(res) ? res : (res?.results || []);
         if (!users) return;
-        const selAd = document.getElementById('ad_usuario'), selDesc = document.getElementById('desc_usuario');
-        selAd.innerHTML = '<option value="">Selecione...</option>'; selDesc.innerHTML = '<option value="">Selecione...</option>';
-        users.forEach(u => { const opt = new Option(u.username, u.id); selAd.add(opt.cloneNode(true)); selDesc.add(opt); });
+        const selAd = document.getElementById('ad_usuario'), selDesc = document.getElementById('desc_usuario'), selAnt = document.getElementById('ant_vendedor');
+        if (selAd) { selAd.innerHTML = '<option value="">Selecione...</option>'; users.forEach(u => selAd.add(new Option(u.username, u.id))); }
+        if (selDesc) { selDesc.innerHTML = '<option value="">Selecione...</option>'; users.forEach(u => selDesc.add(new Option(u.username, u.id))); }
+        if (selAnt) { selAnt.innerHTML = '<option value="">Selecione...</option>'; users.forEach(u => selAnt.add(new Option(u.username, u.id))); }
     }
+    function preencherSelectAntVendedor() { carregarUsuariosSelectsFinanceiro(); }
     window.toggleCamposAdiantamento = () => {
-        const tipo = document.getElementById('ad_tipo').value;
-        document.getElementById('box-qtd-vendas').style.display = tipo === 'ADIANTAMENTO_CNPJ' ? 'block' : 'none';
-        document.getElementById('box-adiant-comissao-vendas').style.display = tipo === 'ADIANTAMENTO_COMISSAO' ? 'block' : 'none';
+        const elTipo = document.getElementById('ad_tipo'), boxQtd = document.getElementById('box-qtd-vendas');
+        if (!elTipo || !boxQtd) return;
+        const showQtd = elTipo.value === 'ADIANTAMENTO_CNPJ';
+        boxQtd.style.display = showQtd ? 'block' : 'none';
     };
-    let vendasAdiantComissaoLista = [];
-    document.getElementById('btn-listar-vendas-adiant').onclick = async () => {
-        const vendedorId = document.getElementById('ad_usuario').value;
-        const mesAno = document.getElementById('ad_mes_ano').value;
-        if (!vendedorId) { alert('Selecione o colaborador.'); return; }
-        if (!mesAno) { alert('Informe o mês/ano das vendas.'); return; }
-        const [ano, mes] = mesAno.split('-');
-        const tbody = document.getElementById('tbody-vendas-adiant-comissao');
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center py-2 text-muted">Carregando...</td></tr>';
-        try {
-            const res = await apiFetch(`/crm/lancamentos-financeiros/vendas-instaladas-mes/?vendedor_id=${vendedorId}&ano=${ano}&mes=${mes}`);
-            vendasAdiantComissaoLista = Array.isArray(res) ? res : [];
-            tbody.innerHTML = '';
-            if (vendasAdiantComissaoLista.length === 0) { tbody.innerHTML = '<tr><td colspan="5" class="text-center py-2 text-muted">Nenhuma venda instalada neste mês.</td></tr>'; return; }
-            vendasAdiantComissaoLista.forEach(v => {
-                tbody.innerHTML += `<tr><td><input type="checkbox" class="ad-venda-cb" data-id="${v.id}"></td><td>${v.cliente_nome || ''}</td><td>${v.plano_nome || ''}</td><td>${v.data_instalacao || ''}</td><td>${v.ordem_servico || ''}</td></tr>`;
-            });
-            document.getElementById('ad_sel_todas').checked = false;
-        } catch (err) { tbody.innerHTML = '<tr><td colspan="5" class="text-center py-2 text-danger">Erro: ' + (err.message || 'Não foi possível carregar.') + '</td></tr>'; }
-    };
-    document.getElementById('ad_sel_todas').onclick = function() { document.querySelectorAll('.ad-venda-cb').forEach(cb => { cb.checked = this.checked; }); };
-    document.getElementById('form-adiantamento').onsubmit = (e) => { e.preventDefault(); return false; };
-    document.getElementById('btn-registrar-adiantamento').onclick = async () => {
-        const payload = { usuario: document.getElementById('ad_usuario').value, tipo: document.getElementById('ad_tipo').value, data: document.getElementById('ad_data').value, valor: document.getElementById('ad_valor').value, descricao: document.getElementById('ad_obs').value || '' };
-        if (!payload.usuario || !payload.data || !payload.valor) { alert('Preencha Colaborador, Data e Valor.'); return; }
-        if (payload.tipo === 'ADIANTAMENTO_COMISSAO') {
-            const ids = Array.from(document.querySelectorAll('.ad-venda-cb:checked')).map(cb => parseInt(cb.dataset.id, 10));
-            payload.metadados = { venda_ids: ids };
-            payload.quantidade_vendas = ids.length;
-        } else {
-            payload.quantidade_vendas = parseInt(document.getElementById('ad_qtd').value, 10) || 0;
+    let antVendasLista = [];
+    document.addEventListener('click', async function(e) {
+        const id = e.target.id;
+        if (id === 'btn-registrar-adiantamento') {
+            e.preventDefault();
+            const payload = { usuario: document.getElementById('ad_usuario')?.value, tipo: document.getElementById('ad_tipo')?.value, data: document.getElementById('ad_data')?.value, valor: document.getElementById('ad_valor')?.value, descricao: document.getElementById('ad_obs')?.value || '' };
+            if (!payload.usuario || !payload.data || !payload.valor) { alert('Preencha Colaborador, Data e Valor.'); return; }
+            payload.quantidade_vendas = parseInt(document.getElementById('ad_qtd')?.value, 10) || 0;
+            try {
+                await apiFetch('/crm/lancamentos-financeiros/', { method: 'POST', body: JSON.stringify(payload) });
+                alert('Salvo!');
+                document.getElementById('form-adiantamento')?.reset();
+                toggleCamposAdiantamento();
+                carregarLancamentosFinanceiros();
+            } catch (err) { alert('Erro ao registrar: ' + (err.message || 'Tente novamente.')); }
+            return;
         }
-        try {
-            await apiFetch('/crm/lancamentos-financeiros/', { method: 'POST', body: JSON.stringify(payload) });
-            alert('Salvo!');
-            document.getElementById('form-adiantamento').reset();
-            vendasAdiantComissaoLista = [];
-            const tbodyAd = document.getElementById('tbody-vendas-adiant-comissao');
-            if (tbodyAd) tbodyAd.innerHTML = '';
-            toggleCamposAdiantamento();
-            carregarLancamentosFinanceiros();
-        } catch (err) {
-            alert('Erro ao registrar: ' + (err.message || 'Tente novamente.'));
+        if (id === 'btn-registrar-desconto') {
+            e.preventDefault();
+            const usuario = document.getElementById('desc_usuario')?.value, data = document.getElementById('desc_data')?.value, valor = document.getElementById('desc_valor')?.value, motivo = document.getElementById('desc_motivo')?.value;
+            if (!usuario || !data || !valor || !motivo) { alert('Preencha todos os campos.'); return; }
+            try {
+                await apiFetch('/crm/lancamentos-financeiros/', { method: 'POST', body: JSON.stringify({ usuario, tipo: 'DESCONTO', data, valor, descricao: motivo }) });
+                alert('Salvo!');
+                document.getElementById('form-desconto')?.reset();
+                carregarLancamentosFinanceiros();
+            } catch (err) { alert('Erro ao registrar: ' + (err.message || 'Tente novamente.')); }
+            return;
         }
-    };
-    document.getElementById('form-desconto').onsubmit = (e) => { e.preventDefault(); return false; };
-    document.getElementById('btn-registrar-desconto').onclick = async () => {
-        const usuario = document.getElementById('desc_usuario').value, data = document.getElementById('desc_data').value, valor = document.getElementById('desc_valor').value, motivo = document.getElementById('desc_motivo').value;
-        if (!usuario || !data || !valor || !motivo) { alert('Preencha todos os campos.'); return; }
-        try {
-            await apiFetch('/crm/lancamentos-financeiros/', { method: 'POST', body: JSON.stringify({ usuario, tipo: 'DESCONTO', data, valor, descricao: motivo }) });
-            alert('Salvo!');
-            document.getElementById('form-desconto').reset();
-            carregarLancamentosFinanceiros();
-        } catch (err) {
-            alert('Erro ao registrar: ' + (err.message || 'Tente novamente.'));
+        if (id === 'btn-ant-listar-vendas') {
+            e.preventDefault();
+            const vendedorId = document.getElementById('ant_vendedor')?.value, mesAno = document.getElementById('ant_mes_ano')?.value;
+            if (!vendedorId) { alert('Selecione o colaborador.'); return; }
+            if (!mesAno) { alert('Informe o mês/ano das vendas.'); return; }
+            const [ano, mes] = mesAno.split('-');
+            const tbody = document.getElementById('tbody-ant-vendas');
+            if (!tbody) return;
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center py-2 text-muted">Carregando...</td></tr>';
+            try {
+                const res = await apiFetch(`/crm/lancamentos-financeiros/vendas-instaladas-mes/?vendedor_id=${vendedorId}&ano=${ano}&mes=${mes}`);
+                antVendasLista = Array.isArray(res) ? res : [];
+                tbody.innerHTML = '';
+                if (antVendasLista.length === 0) { tbody.innerHTML = '<tr><td colspan="5" class="text-center py-2 text-muted">Nenhuma venda instalada neste mês.</td></tr>'; return; }
+                antVendasLista.forEach(v => { tbody.innerHTML += `<tr><td><input type="checkbox" class="ant-venda-cb" data-id="${v.id}"></td><td>${v.cliente_nome || ''}</td><td>${v.plano_nome || ''}</td><td>${v.data_instalacao || ''}</td><td>${v.ordem_servico || ''}</td></tr>`; });
+                const cb = document.getElementById('ant_sel_todas'); if (cb) cb.checked = false;
+            } catch (err) { tbody.innerHTML = '<tr><td colspan="5" class="text-center py-2 text-danger">Erro: ' + (err.message || 'Não foi possível carregar.') + '</td></tr>'; }
+            return;
         }
-    };
+        if (id === 'btn-registrar-adiant-comissao') {
+            e.preventDefault();
+            const usuario = document.getElementById('ant_vendedor')?.value, data = document.getElementById('ant_data')?.value, valor = document.getElementById('ant_valor')?.value, obs = document.getElementById('ant_obs')?.value || '';
+            if (!usuario || !data || !valor) { alert('Preencha Colaborador, Data e Valor do adiantamento.'); return; }
+            const ids = Array.from(document.querySelectorAll('.ant-venda-cb:checked')).map(cb => parseInt(cb.dataset.id, 10));
+            try {
+                await apiFetch('/crm/lancamentos-financeiros/', { method: 'POST', body: JSON.stringify({ usuario, tipo: 'ADIANTAMENTO_COMISSAO', data, valor, descricao: obs, metadados: { venda_ids: ids }, quantidade_vendas: ids.length }) });
+                alert('Salvo!');
+                document.getElementById('ant_data').value = ''; document.getElementById('ant_valor').value = ''; document.getElementById('ant_obs').value = '';
+                antVendasLista = []; const tbody = document.getElementById('tbody-ant-vendas'); if (tbody) tbody.innerHTML = '';
+                carregarLancamentosFinanceiros();
+            } catch (err) { alert('Erro ao registrar: ' + (err.message || 'Tente novamente.')); }
+            return;
+        }
+    });
+    document.addEventListener('change', function(e) {
+        if (e.target.id === 'ant_sel_todas') document.querySelectorAll('.ant-venda-cb').forEach(cb => { cb.checked = e.target.checked; });
+    });
     async function carregarLancamentosFinanceiros() {
         const filtroEl = document.getElementById('filtro-mes-lancamentos');
         let mes = filtroEl ? filtroEl.value : '';
@@ -2870,6 +2909,8 @@
         carregarComissoesOperadora(); 
         carregarUsuariosSelectsFinanceiro();
         carregarLancamentosFinanceiros();
+        
+        if (typeof toggleCamposAdiantamento === 'function') toggleCamposAdiantamento();
         
         // --- NOVAS FUNÇÕES DA ABA AUTOMAÇÃO (SUBSTITUÍRAM AS ANTIGAS) ---
         carregarRegrasAutomacao();
