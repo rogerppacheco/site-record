@@ -239,13 +239,14 @@
                 </div>
                 <div class="card-body p-0">
                     <table class="table table-sm table-bordered mb-0">
-                        <thead class="table-light"><tr><th>PLANO</th><th class="text-center">QTD A PAGAR</th><th class="text-end">VALOR UNIT.</th><th class="text-end">VALOR TOTAL</th><th class="text-end">COMISSÃO</th></tr></thead>
+                        <thead class="table-light"><tr><th>PLANO</th><th class="text-center">QTD A PAGAR</th><th class="text-center">QTD ANTECIPADA</th><th class="text-end">VALOR UNIT.</th><th class="text-end">VALOR TOTAL</th><th class="text-end">COMISSÃO</th></tr></thead>
                         <tbody>`;
             porPlano.forEach(p => {
-                if (p.qtd_instalada_a_pagar > 0 || p.valor_total_instalados > 0)
-                    html += `<tr><td>${p.plano}</td><td class="text-center">${p.qtd_instalada_a_pagar}</td><td class="text-end">${p.valor_unitario_instalados != null ? fmtMoney(p.valor_unitario_instalados) : '-'}</td><td class="text-end">${fmtMoney(p.valor_total_instalados)}</td><td class="text-end fw-bold">${fmtMoney(p.comissao_total)}</td></tr>`;
+                const qtdAnt = p.qtd_antecipada || 0;
+                if (p.qtd_instalada_a_pagar > 0 || qtdAnt > 0 || p.valor_total_instalados > 0)
+                    html += `<tr><td>${p.plano}</td><td class="text-center">${p.qtd_instalada_a_pagar}</td><td class="text-center">${qtdAnt}</td><td class="text-end">${p.valor_unitario_instalados != null ? fmtMoney(p.valor_unitario_instalados) : '-'}</td><td class="text-end">${fmtMoney(p.valor_total_instalados)}</td><td class="text-end fw-bold">${fmtMoney(p.comissao_total)}</td></tr>`;
             });
-            html += `<tr class="table-light"><td colspan="2" class="fw-bold">TOTAL</td><td></td><td></td><td class="text-end fw-bold">${fmtMoney(r.comissao_total_geral || 0)}</td></tr></tbody></table>
+            html += `<tr class="table-light"><td colspan="2" class="fw-bold">TOTAL</td><td></td><td></td><td></td><td class="text-end fw-bold">${fmtMoney(r.comissao_total_geral || 0)}</td></tr></tbody></table>
                 <div class="p-3 border-top bg-white">
                     <div class="row small mb-2">
                         <div class="col">Descontos: <span class="text-danger fw-bold">- ${fmtMoney(r.total_descontos || 0)}</span></div>
@@ -256,15 +257,17 @@
                         const list = r.detalhes_descontos;
                         const boleto = list.filter(d => (d.tipo_exibicao || '').toLowerCase() === 'boleto');
                         const adiant = list.filter(d => (d.tipo_exibicao || '').toLowerCase() === 'adiant_cnpj');
+                        const adiantComissao = list.filter(d => (d.tipo_exibicao || '').toLowerCase() === 'adiant_comissao');
                         const churnM0 = list.filter(d => (d.tipo_exibicao || '').toLowerCase() === 'churn_m0');
                         const churnM1 = list.filter(d => (d.tipo_exibicao || '').toLowerCase() === 'churn_m1');
-                        const outros = list.filter(d => { const t = (d.tipo_exibicao || '').toLowerCase(); return t !== 'boleto' && t !== 'adiant_cnpj' && t !== 'churn_m0' && t !== 'churn_m1'; });
+                        const outros = list.filter(d => { const t = (d.tipo_exibicao || '').toLowerCase(); return t !== 'boleto' && t !== 'adiant_cnpj' && t !== 'adiant_comissao' && t !== 'churn_m0' && t !== 'churn_m1'; });
                         const linha = (d) => { const q = (d.quantidade != null && d.quantidade !== '') ? d.quantidade : 1; return `<div class="d-flex justify-content-between text-danger"><span>${d.motivo || 'Desconto'}${q > 0 ? ' (' + q + ' un.)' : ''}</span><span>- ${fmtMoney(d.valor)}</span></div>`; };
                         let bloco = '<div class="small border-top pt-2 mt-2"><strong class="text-muted">Descontos</strong>';
                         if (r.qtd_a_descontar != null && r.qtd_a_descontar > 0) bloco += '<div class="mt-1 text-muted fw-bold">QTD A DESCONTAR: ' + r.qtd_a_descontar + '</div>';
                         bloco += '<div class="mt-1">';
                         if (boleto.length) { bloco += '<div class="mb-1"><span class="text-muted fw-bold small">Desconto Boleto</span>'; boleto.forEach(d => { bloco += linha(d); }); bloco += '</div>'; }
                         if (adiant.length) { bloco += '<div class="mb-1"><span class="text-muted fw-bold small">Adiant. CNPJ</span>'; adiant.forEach(d => { bloco += linha(d); }); bloco += '</div>'; }
+                        if (adiantComissao.length) { bloco += '<div class="mb-1"><span class="text-muted fw-bold small">Adiant. Comissão</span>'; adiantComissao.forEach(d => { bloco += linha(d); }); bloco += '</div>'; }
                         if (churnM0.length) { bloco += '<div class="mb-1"><span class="text-muted fw-bold small">Desconto Churn M0</span>'; churnM0.forEach(d => { bloco += linha(d); }); bloco += '</div>'; }
                         if (churnM1.length) { bloco += '<div class="mb-1"><span class="text-muted fw-bold small">Desconto Churn M-1</span>'; churnM1.forEach(d => { bloco += linha(d); }); bloco += '</div>'; }
                         if (outros.length) { bloco += '<div class="mb-1"><span class="text-muted fw-bold small">Outros</span>'; outros.forEach(d => { bloco += linha(d); }); bloco += '</div>'; }

@@ -1,4 +1,5 @@
 from django.shortcuts import render, redirect
+from django.db import IntegrityError
 from django.db.models import Sum
 from django.views.generic import TemplateView
 from datetime import date, timedelta
@@ -120,11 +121,26 @@ def calendario_fiscal_view(request, ano=None, mes=None):
                 data_atual = date(ano, mes, dia_numero)
                 if data_atual not in dias_banco:
                     weekday = data_atual.weekday()
-                    # Regra padrão: Dom=0, Sáb=0.5 (Venda), Sáb/Dom=0 (Instalação)
                     p_venda = 0.0 if weekday == 6 else (0.5 if weekday == 5 else 1.0)
-                    p_inst = 0.0 if weekday >= 5 else 1.0 
-                    novo_dia = DiaFiscal.objects.create(data=data_atual, peso_venda=p_venda, peso_instalacao=p_inst)
-                    dias_banco[data_atual] = novo_dia
+                    p_inst = 0.0 if weekday >= 5 else 1.0
+                    try:
+                        dia_obj, _ = DiaFiscal.objects.get_or_create(
+                            data=data_atual,
+                            defaults={'peso_venda': p_venda, 'peso_instalacao': p_inst}
+                        )
+                    except IntegrityError:
+                        from django.db import connection
+                        with connection.cursor() as cur:
+                            cur.execute(
+                                "SELECT setval(pg_get_serial_sequence('core_diafiscal','id'), COALESCE((SELECT MAX(id) FROM core_diafiscal), 0) + 1)"
+                            )
+                        dia_obj = DiaFiscal.objects.filter(data=data_atual).first()
+                        if not dia_obj:
+                            dia_obj, _ = DiaFiscal.objects.get_or_create(
+                                data=data_atual,
+                                defaults={'peso_venda': p_venda, 'peso_instalacao': p_inst}
+                            )
+                    dias_banco[data_atual] = dia_obj
                 semana_processada.append(dias_banco[data_atual])
         estrutura_calendario.append(semana_processada)
 

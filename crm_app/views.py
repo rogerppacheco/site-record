@@ -5315,6 +5315,46 @@ class LancamentoFinanceiroViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         # Salva automaticamente quem criou o registro (segurança/auditoria)
         serializer.save(criado_por=self.request.user)
+
+    @action(detail=False, methods=['get'], url_path='vendas-instaladas-mes')
+    def vendas_instaladas_mes(self, request):
+        """Lista vendas instaladas de um vendedor em um mês (para adiantamento de comissão: marcar quais foram adiantadas)."""
+        from datetime import datetime
+        vendedor_id = request.query_params.get('vendedor_id')
+        ano = request.query_params.get('ano')
+        mes = request.query_params.get('mes')
+        if not vendedor_id or not ano or not mes:
+            return Response({'error': 'Parâmetros vendedor_id, ano e mes são obrigatórios.'}, status=400)
+        try:
+            ano, mes = int(ano), int(mes)
+            if not (1 <= mes <= 12):
+                return Response({'error': 'Mês inválido.'}, status=400)
+            data_inicio = datetime(ano, mes, 1).date()
+            if mes == 12:
+                data_fim = datetime(ano + 1, 1, 1).date()
+            else:
+                data_fim = datetime(ano, mes + 1, 1).date()
+        except (TypeError, ValueError):
+            return Response({'error': 'ano/mes inválidos.'}, status=400)
+        vendas = Venda.objects.filter(
+            vendedor_id=vendedor_id,
+            ativo=True,
+            status_esteira__nome__iexact='INSTALADA',
+            data_instalacao__gte=data_inicio,
+            data_instalacao__lt=data_fim,
+        ).select_related('plano', 'cliente').order_by('data_instalacao', 'id')
+        lista = []
+        for v in vendas:
+            lista.append({
+                'id': v.id,
+                'cliente_nome': v.cliente.nome_razao_social if v.cliente else '',
+                'plano_nome': v.plano.nome if v.plano else '',
+                'data_instalacao': v.data_instalacao.isoformat()[:10] if v.data_instalacao else '',
+                'ordem_servico': v.ordem_servico or '',
+            })
+        return Response(lista)
+
+
 # --- VIEWS PARA CONFIRMAÇÃO E REVERSÃO DE DESCONTOS ---
 
 class PendenciasDescontoView(APIView):

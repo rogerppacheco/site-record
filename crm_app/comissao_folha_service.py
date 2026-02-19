@@ -210,14 +210,25 @@ def calcular_folha_mes(ano, mes, vendedor_id=None):
         ).select_related('plano', 'cliente', 'forma_pagamento')
 
         config = configs.get(consultor.id)
-        qtd_instalada_a_pagar = vendas.count()
+        # Vendas adiantadas (comissão antecipada): não entram no volume a pagar
+        lancamentos_adiant = LancamentoFinanceiro.objects.filter(
+            usuario=consultor,
+            tipo='ADIANTAMENTO_COMISSAO',
+            data__gte=data_inicio.date(),
+            data__lt=data_fim.date(),
+        )
+        set_adiantadas = set()
+        for la in lancamentos_adiant:
+            ids = (la.metadados or {}).get('venda_ids') or []
+            set_adiantadas.update(int(x) for x in ids if x is not None)
+        vendas_para_pagar = [v for v in vendas if v.id not in set_adiantadas]
+        qtd_instalada_a_pagar = len(vendas_para_pagar)
         faixa_regra = encontrar_faixa(consultor, qtd_instalada_a_pagar)
         usar_manual = config and config.usar_valor_manual
 
-        # Por plano (chave): qtd, valor unit, total
-        por_plano = defaultdict(lambda: {'qtd': 0, 'valor_unit': None, 'total': 0.0})
+        # Por plano (chave): qtd a pagar, qtd antecipada, valor unit, total
+        por_plano = defaultdict(lambda: {'qtd': 0, 'qtd_antecipada': 0, 'valor_unit': None, 'total': 0.0})
         comissao_total_geral = Decimal('0')
-
         for v in vendas:
             doc = (v.cliente.cpf_cnpj or '') if v.cliente else ''
             doc_limpo = ''.join(filter(str.isdigit, doc))
@@ -226,29 +237,31 @@ def calcular_folha_mes(ano, mes, vendedor_id=None):
             chave = plano_tipo_to_chave(plano_nome, tipo_cliente)
             if not chave:
                 continue
-
+            if v.id in set_adiantadas:
+                por_plano[chave]['qtd_antecipada'] += 1
+                continue
             if usar_manual:
                 valor_unit = get_valor_manual(config, chave)
             else:
                 valor_unit = get_valor_from_faixa(faixa_regra, chave) if faixa_regra else None
-
             valor_unit = valor_unit if valor_unit is not None else 0
             por_plano[chave]['qtd'] += 1
             por_plano[chave]['valor_unit'] = valor_unit
             por_plano[chave]['total'] += valor_unit
             comissao_total_geral += Decimal(str(valor_unit))
 
-        # Montar lista por_plano no formato do Excel (500MB PAP, 700MB PAP, ...)
+        # Montar lista por_plano no formato do Excel (500MB PAP, 700MB PAP, ...) + qtd_antecipada
         labels = {
             '500MB_PAP': '500MB PAP', '700MB_PAP': '700MB PAP', '1GB_PAP': '1GB PAP',
             '500MB_CNPJ': '500MB CNPJ', '700MB_CNPJ': '700MB CNPJ', '1GB_CNPJ': '1GB CNPJ',
         }
         por_plano_lista = []
         for chave in CHAVES_PLANO:
-            d = por_plano.get(chave, {'qtd': 0, 'valor_unit': None, 'total': 0})
+            d = por_plano.get(chave, {'qtd': 0, 'qtd_antecipada': 0, 'valor_unit': None, 'total': 0})
             por_plano_lista.append({
                 'plano': labels.get(chave, chave),
                 'qtd_instalada_a_pagar': d['qtd'],
+                'qtd_antecipada': d.get('qtd_antecipada', 0),
                 'qtd_ja_pago': 0,
                 'qtd_churn_30': 0,
                 'valor_unitario_instalados': d['valor_unit'],
@@ -269,18 +282,24 @@ def calcular_folha_mes(ano, mes, vendedor_id=None):
         detalhes_descontos = []
         for l in lancamentos:
             qtd = getattr(l, 'quantidade_vendas', None) or 1
+            if getattr(l, 'tipo', None) == 'ADIANTAMENTO_COMISSAO':
+                venda_ids = (l.metadados or {}).get('venda_ids') or []
+                if venda_ids:
+                    qtd = len(venda_ids)
             desc = (l.descricao or l.get_tipo_display() or 'Desconto')
-            # Exibir desconto direto (sem "Processamento Auto:") e classificar para separar boleto / adiant. CNPJ
-            if desc.startswith('Processamento Auto:'):
+            # Exibir desconto direto (sem "Processamento Auto:") e classificar para separar boleto / adiant. CNPJ / adiant. comissão
+            if getattr(l, 'tipo', None) == 'ADIANTAMENTO_COMISSAO':
+                motivo_limpo = 'Adiant. Comissão'
+            elif desc.startswith('Processamento Auto:'):
                 resto = desc.replace('Processamento Auto:', '').strip()
                 mapa = {'BOLETO': 'Desconto Boleto', 'CNPJ': 'Adiant. CNPJ', 'VIABILIDADE': 'Desconto Inclusão', 'ANTECIPACAO': 'Desconto Antecipação'}
                 partes = [mapa.get(p.strip(), p.strip()) for p in resto.split(',') if p.strip()]
                 motivo_limpo = ', '.join(partes) if partes else resto
             else:
                 motivo_limpo = desc
-            # tipo_exibicao: boleto | adiant_cnpj | outros (para agrupar na UI)
-            tipo_exibicao = 'outros'
-            if desc.startswith('Processamento Auto:'):
+            # tipo_exibicao: boleto | adiant_cnpj | adiant_comissao | outros (para agrupar na UI)
+            tipo_exibicao = 'adiant_comissao' if getattr(l, 'tipo', None) == 'ADIANTAMENTO_COMISSAO' else 'outros'
+            if tipo_exibicao != 'adiant_comissao' and desc.startswith('Processamento Auto:'):
                 resto_upper = desc.upper()
                 if 'BOLETO' in resto_upper and 'CNPJ' not in resto_upper:
                     tipo_exibicao = 'boleto'
