@@ -4985,6 +4985,18 @@ def processar_webhook_whatsapp(data, request=None):
             resposta = "Por favor, digite o CEP do endereço para consulta de viabilidade (apenas números):"
             return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
 
+        # Comando NOVA VENDA (cadastrar venda no CRM via WhatsApp)
+        if mensagem_limpa in ['NOVA VENDA', 'CADASTRAR VENDA', 'CADASTRO VENDA']:
+            logger.info(f"[Webhook] Comando NOVA VENDA reconhecido!")
+            sessao.etapa = 'cadastro_venda_origem'
+            sessao.dados_temp = {'vendedor_id': usuario_whatsapp.id}
+            sessao.save()
+            resposta = ("📋 *Cadastro de Venda no CRM*\n\n"
+                        "A venda é *Via APP* ou *Sem APP*?\n\n"
+                        "Responda: *APP* ou *SEM APP*\n"
+                        "(Digite *CANCELAR* para sair)")
+            return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
+
         # Comando INCLUSÃO (solicitar viabilidade via formulário)
         if mensagem_limpa in ['INCLUSAO', 'INCLUSÃO', 'INCLUSAO']:
             logger.info(f"[Webhook] Comando INCLUSÃO reconhecido!")
@@ -5067,7 +5079,8 @@ def processar_webhook_whatsapp(data, request=None):
                 "• *Material* - Buscar materiais/documentos\n"
                 "• *Andamento* - Ver agendamentos do dia\n"
                 "• *Crédito* - Consultar análise de crédito por CPF\n"
-                "• *Vender* - Realizar venda pelo WhatsApp 🆕"
+                "• *Vender* - Realizar venda pelo WhatsApp 🆕\n"
+                "• *Nova Venda* - Cadastrar venda no CRM (Via APP ou Sem APP)"
             )
             return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
         
@@ -5110,6 +5123,326 @@ def processar_webhook_whatsapp(data, request=None):
                 sessao.etapa = 'inicial'
                 sessao.dados_temp = {}
                 sessao.save()
+
+        # --- CADASTRO DE VENDA NO CRM (Nova Venda via WhatsApp) ---
+        elif etapa_atual.startswith('cadastro_venda_'):
+            if mensagem_limpa == 'CANCELAR':
+                sessao.etapa = 'inicial'
+                sessao.dados_temp = {}
+                sessao.save()
+                resposta = "Cadastro de venda cancelado. Digite *MENU* para ver as opções."
+                return _enviar_resposta_e_retornar(resposta)
+
+            from crm_app.cadastro_venda_whatsapp import (
+                validar_cpf_ou_cnpj_whatsapp,
+                validar_telefone_brasil,
+                consultar_viacep_whatsapp,
+                cadastrar_venda_crm,
+            )
+            from crm_app.models import Plano, FormaPagamento
+
+            dt = sessao.dados_temp
+            forma_entrada = dt.get('forma_entrada', '')
+            eh_sem_app = forma_entrada == 'SEM_APP'
+
+            # --- Origem: APP ou SEM_APP ---
+            if etapa_atual == 'cadastro_venda_origem':
+                if 'APP' in mensagem_limpa and 'SEM' not in mensagem_limpa:
+                    sessao.etapa = 'cadastro_venda_fixo'
+                    sessao.dados_temp = {**dt, 'forma_entrada': 'APP'}
+                    sessao.save()
+                    resposta = "A venda tem *telefone fixo*? Responda *SIM* ou *NAO*:"
+                elif 'SEM' in mensagem_limpa and 'APP' in mensagem_limpa:
+                    sessao.etapa = 'cadastro_venda_fixo'
+                    sessao.dados_temp = {**dt, 'forma_entrada': 'SEM_APP'}
+                    sessao.save()
+                    resposta = "A venda tem *telefone fixo*? Responda *SIM* ou *NAO*:"
+                else:
+                    resposta = "Responda *APP* (Via APP) ou *SEM APP* (Sem APP):"
+                return _enviar_resposta_e_retornar(resposta)
+
+            # --- Tem fixo ---
+            if etapa_atual == 'cadastro_venda_fixo':
+                tem_fixo = mensagem_limpa in ['SIM', 'S']
+                sessao.dados_temp = {**dt, 'tem_fixo': tem_fixo}
+                mostrar_gerada_os = getattr(usuario_whatsapp, 'autorizar_venda_automatica', False)
+                if mostrar_gerada_os:
+                    sessao.etapa = 'cadastro_venda_gerada_os'
+                    sessao.save()
+                    resposta = "Foi *Gerada O.S. automática*? Responda *SIM* ou *NAO*:"
+                else:
+                    sessao.dados_temp = {**sessao.dados_temp, 'gerada_os_automatica': False}
+                    sessao.etapa = 'cadastro_venda_cpf'
+                    sessao.save()
+                    resposta = "Digite o *CPF ou CNPJ* do cliente (apenas números):"
+                return _enviar_resposta_e_retornar(resposta)
+
+            # --- Gerada O.S. automática ---
+            if etapa_atual == 'cadastro_venda_gerada_os':
+                gerada = mensagem_limpa in ['SIM', 'S']
+                sessao.dados_temp = {**dt, 'gerada_os_automatica': gerada}
+                sessao.etapa = 'cadastro_venda_cpf'
+                sessao.save()
+                resposta = "Digite o *CPF ou CNPJ* do cliente (apenas números):"
+                return _enviar_resposta_e_retornar(resposta)
+
+            # --- CPF/CNPJ ---
+            if etapa_atual == 'cadastro_venda_cpf':
+                cpf_limpo, err = validar_cpf_ou_cnpj_whatsapp(mensagem_texto)
+                if err:
+                    resposta = f"❌ {err}\n\nDigite o CPF ou CNPJ (apenas números):"
+                    return _enviar_resposta_e_retornar(resposta)
+                sessao.dados_temp = {**dt, 'cliente_cpf_cnpj': cpf_limpo}
+                sessao.etapa = 'cadastro_venda_nome'
+                sessao.save()
+                resposta = "Digite o *Nome completo* (ou Razão Social) do cliente:"
+                return _enviar_resposta_e_retornar(resposta)
+
+            # --- Nome ---
+            if etapa_atual == 'cadastro_venda_nome':
+                nome = (mensagem_texto or "").strip().upper()
+                if not nome:
+                    resposta = "Digite o nome completo do cliente:"
+                    return _enviar_resposta_e_retornar(resposta)
+                sessao.dados_temp = {**dt, 'cliente_nome_razao_social': nome}
+                sessao.etapa = 'cadastro_venda_tel1'
+                sessao.save()
+                resposta = "Digite o *Telefone 1 (WhatsApp)* do cliente (DDD + número, apenas números, 11 dígitos):"
+                return _enviar_resposta_e_retornar(resposta)
+
+            # --- Telefone 1 ---
+            if etapa_atual == 'cadastro_venda_tel1':
+                tel1, err = validar_telefone_brasil(mensagem_texto)
+                if err:
+                    resposta = f"❌ {err}\n\nDigite o Telefone 1 (11 dígitos):"
+                    return _enviar_resposta_e_retornar(resposta)
+                sessao.dados_temp = {**dt, 'telefone1': tel1}
+                sessao.etapa = 'cadastro_venda_tel2'
+                sessao.save()
+                resposta = "Digite o *Telefone 2* (contato secundário, 11 dígitos):"
+                return _enviar_resposta_e_retornar(resposta)
+
+            # --- Telefone 2 ---
+            if etapa_atual == 'cadastro_venda_tel2':
+                tel2, err = validar_telefone_brasil(mensagem_texto)
+                if err:
+                    resposta = f"❌ {err}\n\nDigite o Telefone 2 (11 dígitos):"
+                    return _enviar_resposta_e_retornar(resposta)
+                tel1 = dt.get('telefone1', '')
+                if tel2 == tel1:
+                    resposta = "❌ O Telefone 2 deve ser diferente do Telefone 1. Digite outro número:"
+                    return _enviar_resposta_e_retornar(resposta)
+                sessao.dados_temp = {**dt, 'telefone2': tel2}
+                sessao.save()
+                if eh_sem_app:
+                    sessao.etapa = 'cadastro_venda_cep'
+                    sessao.save()
+                    resposta = "Digite o *CEP* do endereço de instalação (8 dígitos):"
+                else:
+                    sessao.etapa = 'cadastro_venda_quer_plano'
+                    sessao.save()
+                    resposta = "Deseja informar *Plano* e *Forma de Pagamento*? Responda *1* (Sim) ou *2* (Não):"
+                return _enviar_resposta_e_retornar(resposta)
+
+            # --- [APP] Quer informar plano? ---
+            if etapa_atual == 'cadastro_venda_quer_plano':
+                if mensagem_limpa == '1' or mensagem_limpa == 'SIM':
+                    planos = list(Plano.objects.filter(ativo=True).order_by('nome').values_list('id', 'nome')[:15])
+                    opts = "\n".join([f"{i+1}. {n}" for i, (id_p, n) in enumerate(planos)])
+                    sessao.dados_temp = {**dt, '_planos_list': [(id_p, n) for id_p, n in planos]}
+                    sessao.etapa = 'cadastro_venda_plano'
+                    sessao.save()
+                    resposta = f"Escolha o *Plano* (digite o número):\n{opts}"
+                else:
+                    sessao.etapa = 'cadastro_venda_observacoes'
+                    sessao.save()
+                    resposta = "Digite *observações* (ou *PULAR* para nenhuma):"
+                return _enviar_resposta_e_retornar(resposta)
+
+            # --- CEP (SEM_APP) ---
+            if etapa_atual == 'cadastro_venda_cep':
+                cep_limpo = re.sub(r'\D', '', mensagem_texto or '')[:8]
+                if len(cep_limpo) != 8:
+                    resposta = "❌ CEP deve ter 8 dígitos. Digite o CEP:"
+                    return _enviar_resposta_e_retornar(resposta)
+                viacep = consultar_viacep_whatsapp(cep_limpo)
+                if not viacep:
+                    resposta = "❌ CEP não encontrado. Digite outro CEP ou *CANCELAR*:"
+                    return _enviar_resposta_e_retornar(resposta)
+                logr = viacep.get('logradouro') or viacep.get('localidade') or ''
+                sessao.dados_temp = {**dt, 'cep': viacep.get('cep', cep_limpo), 'viacep': viacep}
+                sessao.etapa = 'cadastro_venda_numero'
+                sessao.save()
+                resposta = f"✅ CEP: {logr}\n\nDigite o *número* do endereço (ou S/N):"
+                return _enviar_resposta_e_retornar(resposta)
+
+            # --- Número, complemento, bairro, cidade, estado, ponto ref ---
+            if etapa_atual == 'cadastro_venda_numero':
+                num = (mensagem_texto or "").strip().upper() or "S/N"
+                sessao.dados_temp = {**dt, 'numero_residencia': num}
+                vc = dt.get('viacep') or {}
+                sessao.dados_temp['logradouro'] = vc.get('logradouro') or ''
+                sessao.dados_temp['bairro'] = vc.get('bairro') or ''
+                sessao.dados_temp['cidade'] = vc.get('localidade') or ''
+                sessao.dados_temp['estado'] = (vc.get('uf') or '').upper()[:2]
+                sessao.etapa = 'cadastro_venda_complemento'
+                sessao.save()
+                resposta = "Digite o *complemento* (ou *PULAR*):"
+                return _enviar_resposta_e_retornar(resposta)
+
+            if etapa_atual == 'cadastro_venda_complemento':
+                compl = (mensagem_texto or "").strip().upper() if (mensagem_texto or "").strip().upper() != 'PULAR' else ''
+                sessao.dados_temp = {**dt, 'complemento': compl or None}
+                sessao.etapa = 'cadastro_venda_ponto_ref'
+                sessao.save()
+                resposta = "Digite o *ponto de referência* do endereço:"
+                return _enviar_resposta_e_retornar(resposta)
+
+            if etapa_atual == 'cadastro_venda_ponto_ref':
+                ref = (mensagem_texto or "").strip().upper()
+                sessao.dados_temp = {**dt, 'ponto_referencia': ref or None}
+                planos = list(Plano.objects.filter(ativo=True).order_by('nome').values_list('id', 'nome')[:15])
+                opts = "\n".join([f"{i+1}. {n}" for i, (id_p, n) in enumerate(planos)])
+                sessao.dados_temp['_planos_list'] = [(id_p, n) for id_p, n in planos]
+                sessao.etapa = 'cadastro_venda_plano'
+                sessao.save()
+                resposta = f"Escolha o *Plano* (digite o número):\n{opts}"
+                return _enviar_resposta_e_retornar(resposta)
+
+            # --- Plano (por número) ---
+            if etapa_atual == 'cadastro_venda_plano':
+                planos_list = dt.get('_planos_list') or []
+                try:
+                    idx = int(mensagem_limpa)
+                    if 1 <= idx <= len(planos_list):
+                        plano_id, _ = planos_list[idx - 1]
+                        sessao.dados_temp = {**dt, 'plano': plano_id}
+                        formas = list(FormaPagamento.objects.filter(ativo=True).order_by('nome').values_list('id', 'nome')[:15])
+                        opts = "\n".join([f"{i+1}. {n}" for i, (id_f, n) in enumerate(formas)])
+                        sessao.dados_temp['_formas_list'] = [(id_f, n) for id_f, n in formas]
+                        sessao.etapa = 'cadastro_venda_forma_pagamento'
+                        sessao.save()
+                        resposta = f"Escolha a *Forma de Pagamento* (digite o número):\n{opts}"
+                    else:
+                        resposta = "Número inválido. Digite o número do plano:"
+                except ValueError:
+                    resposta = "Digite o número do plano (ex: 1, 2, 3):"
+                return _enviar_resposta_e_retornar(resposta)
+
+            # --- Forma de pagamento ---
+            if etapa_atual == 'cadastro_venda_forma_pagamento':
+                formas_list = dt.get('_formas_list') or []
+                try:
+                    idx = int(mensagem_limpa)
+                    if 1 <= idx <= len(formas_list):
+                        forma_id, _ = formas_list[idx - 1]
+                        sessao.dados_temp = {**dt, 'forma_pagamento': forma_id}
+                        if eh_sem_app:
+                            sessao.etapa = 'cadastro_venda_nome_mae'
+                            sessao.save()
+                            resposta = "Digite o *Nome da Mãe* do cliente (ou *PULAR*):"
+                        else:
+                            sessao.etapa = 'cadastro_venda_observacoes'
+                            sessao.save()
+                            resposta = "Digite *observações* (ou *PULAR*):"
+                    else:
+                        resposta = "Número inválido. Digite o número da forma de pagamento:"
+                except ValueError:
+                    resposta = "Digite o número da forma de pagamento:"
+                return _enviar_resposta_e_retornar(resposta)
+
+            # --- Nome da mãe ---
+            if etapa_atual == 'cadastro_venda_nome_mae':
+                nome_mae = (mensagem_texto or "").strip().upper() if (mensagem_texto or "").strip().upper() != 'PULAR' else None
+                sessao.dados_temp = {**dt, 'nome_mae': nome_mae}
+                sessao.etapa = 'cadastro_venda_data_nasc'
+                sessao.save()
+                resposta = "Digite a *Data de Nascimento* (DD/MM/AAAA) ou *PULAR*:"
+                return _enviar_resposta_e_retornar(resposta)
+
+            # --- Data nascimento ---
+            if etapa_atual == 'cadastro_venda_data_nasc':
+                dn = None
+                if (mensagem_texto or "").strip().upper() != 'PULAR':
+                    for fmt in ('%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y'):
+                        try:
+                            dn = datetime.strptime((mensagem_texto or "").strip()[:10], fmt).date()
+                            break
+                        except ValueError:
+                            continue
+                sessao.dados_temp = {**dt, 'data_nascimento': dn}
+                sessao.etapa = 'cadastro_venda_email'
+                sessao.save()
+                resposta = "Digite o *E-mail* do cliente (ou *PULAR*):"
+                return _enviar_resposta_e_retornar(resposta)
+
+            # --- E-mail ---
+            if etapa_atual == 'cadastro_venda_email':
+                email = (mensagem_texto or "").strip() if (mensagem_texto or "").strip().upper() != 'PULAR' else None
+                if email and '@' not in email:
+                    resposta = "E-mail inválido. Digite um e-mail válido ou *PULAR*:"
+                    return _enviar_resposta_e_retornar(resposta)
+                sessao.dados_temp = {**dt, 'cliente_email': email or ''}
+                cpf_len = len(re.sub(r'\D', '', dt.get('cliente_cpf_cnpj', '')))
+                if cpf_len == 14:
+                    sessao.etapa = 'cadastro_venda_cpf_rep'
+                    sessao.save()
+                    resposta = "CNPJ informado. Digite o *CPF do Representante Legal* (11 dígitos):"
+                else:
+                    sessao.etapa = 'cadastro_venda_observacoes'
+                    sessao.save()
+                    resposta = "Digite *observações* (ou *PULAR*):"
+                return _enviar_resposta_e_retornar(resposta)
+
+            # --- CPF Representante (CNPJ) ---
+            if etapa_atual == 'cadastro_venda_cpf_rep':
+                cpf_rep, err = validar_cpf_ou_cnpj_whatsapp(mensagem_texto)
+                if err or (cpf_rep and len(cpf_rep) != 11):
+                    resposta = "❌ Digite um CPF válido (11 dígitos) do representante legal:"
+                    return _enviar_resposta_e_retornar(resposta)
+                sessao.dados_temp = {**dt, 'cpf_representante_legal': cpf_rep}
+                sessao.etapa = 'cadastro_venda_nome_rep'
+                sessao.save()
+                resposta = "Digite o *Nome do Representante Legal*:"
+                return _enviar_resposta_e_retornar(resposta)
+
+            # --- Nome Representante ---
+            if etapa_atual == 'cadastro_venda_nome_rep':
+                nome_rep = (mensagem_texto or "").strip().upper()
+                sessao.dados_temp = {**dt, 'nome_representante_legal': nome_rep}
+                sessao.etapa = 'cadastro_venda_observacoes'
+                sessao.save()
+                resposta = "Digite *observações* (ou *PULAR*):"
+                return _enviar_resposta_e_retornar(resposta)
+
+            # --- Observações e SALVAR ---
+            if etapa_atual == 'cadastro_venda_observacoes':
+                obs = (mensagem_texto or "").strip() if (mensagem_texto or "").strip().upper() != 'PULAR' else None
+                sessao.dados_temp = {**dt, 'observacoes': obs}
+                sessao.save()
+                payload = {k: v for k, v in sessao.dados_temp.items() if not k.startswith('_') and k != 'vendedor_id'}
+                payload['forma_entrada'] = payload.get('forma_entrada') or 'APP'
+                payload['tem_fixo'] = payload.get('tem_fixo', False)
+                payload['gerada_os_automatica'] = payload.get('gerada_os_automatica', False)
+                vendedor_id = sessao.dados_temp.get('vendedor_id')
+                from usuarios.models import Usuario
+                vendedor = Usuario.objects.filter(pk=vendedor_id, is_active=True).first() if vendedor_id else usuario_whatsapp
+                if not vendedor:
+                    vendedor = usuario_whatsapp
+                venda_id, err = cadastrar_venda_crm(payload, vendedor)
+                sessao.etapa = 'inicial'
+                sessao.dados_temp = {}
+                sessao.save()
+                if err:
+                    resposta = f"❌ Erro ao salvar: {err}\n\nDigite *MENU* para tentar novamente."
+                    return _enviar_resposta_e_retornar(resposta)
+                try:
+                    msg_backoffice = "Sua venda foi recebida pelo backOffice, aguarde o tratamento e acompanhe o status pelo bot, enviando a palavra \"Stratus\"."
+                    WhatsAppService().enviar_mensagem_texto(vendedor.tel_whatsapp or telefone_formatado, msg_backoffice)
+                except Exception:
+                    pass
+                resposta = f"✅ *Venda cadastrada com sucesso!*\n\nID da venda: *#{venda_id}*\n\nVocê receberá confirmação no WhatsApp. Digite *MENU* para outras opções."
+                return _enviar_resposta_e_retornar(resposta)
 
         # --- INCLUSÃO (Solicitação de viabilidade via formulário) ---
         elif etapa_atual.startswith('inclusao_'):

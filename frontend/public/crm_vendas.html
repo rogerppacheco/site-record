@@ -1196,11 +1196,18 @@
             ];
 
             if (origemCadastroAtual === 'APP') {
-                if(containerDadosVenda) containerDadosVenda.style.display = 'none';
+                const ehGestaoVendedor = ['Admin', 'Diretoria', 'BackOffice'].includes(userProfile);
+                // Para gestão (Diretoria/BackOffice/Admin) no fluxo APP: mostrar seção "Dados da Venda" para atribuir Vendedor (Responsável)
+                if (ehGestaoVendedor) {
+                    if(containerDadosVenda) containerDadosVenda.style.display = 'flex';
+                    if(headerDadosVenda) headerDadosVenda.style.display = 'block';
+                } else {
+                    if(containerDadosVenda) containerDadosVenda.style.display = 'none';
+                    if(headerDadosVenda) headerDadosVenda.style.display = 'none';
+                }
                 if(containerEndereco) containerEndereco.style.display = 'none';
-                if(headerDadosVenda) headerDadosVenda.style.display = 'none';
                 if(headerEndereco) headerEndereco.style.display = 'none';
-                
+
                 if(divNomeMae) divNomeMae.style.display = 'none';
                 if(divDataNasc) divDataNasc.style.display = 'none';
                 if(divEmail) divEmail.style.display = 'none';
@@ -1224,6 +1231,41 @@
                     const el = document.getElementById(id);
                     if(el) el.setAttribute('required', 'required');
                 });
+            }
+
+            // Para Diretoria/BackOffice/Admin: exibir lista de vendedores para atribuir responsável (tanto Via APP quanto Sem APP)
+            const areaStatus = document.getElementById('container-status-esteira');
+            const areaVendedor = document.getElementById('container-vendedor-modal');
+            const areaTrat = document.getElementById('container-status-gestao');
+            const colPlano = document.getElementById('select-plano')?.closest('.col-12');
+            const colPagamento = document.getElementById('select-pagamento')?.closest('.col-12');
+            const colObs = document.getElementById('input-observacoes')?.closest('.col-12');
+            const containerGeradaOs = document.getElementById('container-gerada-os-auto');
+            if (areaStatus && areaVendedor && areaTrat) {
+                if (['Admin', 'Diretoria', 'BackOffice'].includes(userProfile)) {
+                    areaVendedor.classList.remove('d-none');
+                    const selVendedor = document.getElementById('select-vendedor-modal');
+                    if (selVendedor) selVendedor.value = '';
+                    if (origemCadastroAtual === 'APP') {
+                        // Via APP: em "Dados da Venda" mostrar só Vendedor (Responsável)
+                        areaStatus.classList.add('d-none');
+                        areaTrat.classList.add('d-none');
+                        if (colPlano) colPlano.style.display = 'none';
+                        if (colPagamento) colPagamento.style.display = 'none';
+                        if (colObs) colObs.style.display = 'none';
+                        if (containerGeradaOs) containerGeradaOs.classList.add('d-none');
+                    } else {
+                        areaStatus.classList.remove('d-none');
+                        areaTrat.classList.remove('d-none');
+                        if (colPlano) colPlano.style.display = '';
+                        if (colPagamento) colPagamento.style.display = '';
+                        if (colObs) colObs.style.display = '';
+                    }
+                } else {
+                    areaStatus.classList.add('d-none');
+                    areaVendedor.classList.add('d-none');
+                    areaTrat.classList.add('d-none');
+                }
             }
 
             modalOrigem.hide();
@@ -1646,6 +1688,7 @@
             if (data.data_nascimento === "") data.data_nascimento = null;
             if (data.plano === "") data.plano = null;
             if (data.forma_pagamento === "") data.forma_pagamento = null;
+            if (data.vendedor === "") data.vendedor = null;
 
             try {
                 await apiFetch(url, { method: method, body: JSON.stringify(data) });

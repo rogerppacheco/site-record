@@ -1582,6 +1582,17 @@ class VendaViewSet(viewsets.ModelViewSet):
             print("[CRM DEBUG] Erros de validação do serializer:", serializer.errors)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         self.perform_create(serializer)
+        venda = serializer.instance
+        # Notificar o vendedor responsável (cadastro pelo vendedor ou pelo backoffice)
+        if venda.vendedor and getattr(venda.vendedor, 'tel_whatsapp', None):
+            try:
+                from .whatsapp_service import WhatsAppService
+                msg = "Sua venda foi recebida pelo backOffice, aguarde o tratamento e acompanhe o status pelo bot, enviando a palavra \"Stratus\"."
+                svc = WhatsAppService()
+                svc.enviar_mensagem_texto(venda.vendedor.tel_whatsapp, msg)
+                logger.info(f"Notificação de venda recebida enviada para vendedor {venda.vendedor.username} (venda #{venda.id})")
+            except Exception as e:
+                logger.warning(f"Falha ao enviar WhatsApp de venda recebida para {venda.vendedor.username}: {e}")
         headers = self.get_success_headers(serializer.data)
         print("[CRM DEBUG] Venda criada com sucesso! Dados:", serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
