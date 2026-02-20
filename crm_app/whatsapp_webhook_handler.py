@@ -5165,7 +5165,12 @@ def processar_webhook_whatsapp(data, request=None):
             if etapa_atual == 'cadastro_venda_fixo':
                 tem_fixo = mensagem_limpa in ['SIM', 'S']
                 sessao.dados_temp = {**dt, 'tem_fixo': tem_fixo}
-                mostrar_gerada_os = getattr(usuario_whatsapp, 'autorizar_venda_automatica', False)
+                # Perguntar "Gerada O.S. automática?" apenas se o usuário tem a opção no cadastro (autorizar_venda_automatica)
+                from usuarios.models import Usuario as UsuarioModel
+                try:
+                    mostrar_gerada_os = bool(UsuarioModel.objects.filter(pk=usuario_whatsapp.pk).values_list('autorizar_venda_automatica', flat=True).first())
+                except Exception:
+                    mostrar_gerada_os = False
                 if mostrar_gerada_os:
                     sessao.etapa = 'cadastro_venda_gerada_os'
                     sessao.save()
@@ -5192,10 +5197,18 @@ def processar_webhook_whatsapp(data, request=None):
                 if err:
                     resposta = f"❌ {err}\n\nDigite o CPF ou CNPJ (apenas números):"
                     return _enviar_resposta_e_retornar(resposta)
-                sessao.dados_temp = {**dt, 'cliente_cpf_cnpj': cpf_limpo}
-                sessao.etapa = 'cadastro_venda_nome'
-                sessao.save()
-                resposta = "Digite o *Nome completo* (ou Razão Social) do cliente:"
+                from crm_app.models import Cliente as ClienteCRM
+                cliente_existente = ClienteCRM.objects.filter(cpf_cnpj=cpf_limpo).first()
+                if cliente_existente:
+                    sessao.dados_temp = {**dt, 'cliente_cpf_cnpj': cpf_limpo, 'cliente_nome_razao_social': (cliente_existente.nome_razao_social or '').strip().upper() or f'Cliente {cpf_limpo}', 'cliente_ja_cadastrado': True}
+                    sessao.etapa = 'cadastro_venda_tel1'
+                    sessao.save()
+                    resposta = "✅ Cliente já cadastrado.\n\nDigite o *Telefone 1 (WhatsApp)* do cliente (DDD + número, 11 dígitos):"
+                else:
+                    sessao.dados_temp = {**dt, 'cliente_cpf_cnpj': cpf_limpo}
+                    sessao.etapa = 'cadastro_venda_nome'
+                    sessao.save()
+                    resposta = "Digite o *Nome completo* (ou Razão Social) do cliente:"
                 return _enviar_resposta_e_retornar(resposta)
 
             # --- Nome ---
@@ -5239,12 +5252,13 @@ def processar_webhook_whatsapp(data, request=None):
                     sessao.save()
                     resposta = "Digite o *CEP* do endereço de instalação (8 dígitos):"
                 else:
-                    sessao.etapa = 'cadastro_venda_quer_plano'
+                    # Via APP: não pergunta plano/forma de pagamento, vai direto para observações
+                    sessao.etapa = 'cadastro_venda_observacoes'
                     sessao.save()
-                    resposta = "Deseja informar *Plano* e *Forma de Pagamento*? Responda *1* (Sim) ou *2* (Não):"
+                    resposta = "Digite *observações* (ou *PULAR* para nenhuma):"
                 return _enviar_resposta_e_retornar(resposta)
 
-            # --- [APP] Quer informar plano? ---
+            # --- [SEM_APP apenas] Quer informar plano? (etapa usada só em fluxos que listam plano depois do endereço) ---
             if etapa_atual == 'cadastro_venda_quer_plano':
                 if mensagem_limpa == '1' or mensagem_limpa == 'SIM':
                     planos = list(Plano.objects.filter(ativo=True).order_by('nome').values_list('id', 'nome')[:15])
@@ -5415,34 +5429,42 @@ def processar_webhook_whatsapp(data, request=None):
                 resposta = "Digite *observações* (ou *PULAR*):"
                 return _enviar_resposta_e_retornar(resposta)
 
-            # --- Observações e SALVAR ---
+            # --- Observações e SALVAR (sempre envia resposta de sucesso ou erro ao usuário) ---
             if etapa_atual == 'cadastro_venda_observacoes':
-                obs = (mensagem_texto or "").strip() if (mensagem_texto or "").strip().upper() != 'PULAR' else None
-                sessao.dados_temp = {**dt, 'observacoes': obs}
-                sessao.save()
-                payload = {k: v for k, v in sessao.dados_temp.items() if not k.startswith('_') and k != 'vendedor_id'}
-                payload['forma_entrada'] = payload.get('forma_entrada') or 'APP'
-                payload['tem_fixo'] = payload.get('tem_fixo', False)
-                payload['gerada_os_automatica'] = payload.get('gerada_os_automatica', False)
-                vendedor_id = sessao.dados_temp.get('vendedor_id')
-                from usuarios.models import Usuario
-                vendedor = Usuario.objects.filter(pk=vendedor_id, is_active=True).first() if vendedor_id else usuario_whatsapp
-                if not vendedor:
-                    vendedor = usuario_whatsapp
-                venda_id, err = cadastrar_venda_crm(payload, vendedor)
-                sessao.etapa = 'inicial'
-                sessao.dados_temp = {}
-                sessao.save()
-                if err:
-                    resposta = f"❌ Erro ao salvar: {err}\n\nDigite *MENU* para tentar novamente."
-                    return _enviar_resposta_e_retornar(resposta)
                 try:
-                    msg_backoffice = "Sua venda foi recebida pelo backOffice, aguarde o tratamento e acompanhe o status pelo bot, enviando a palavra \"Stratus\"."
-                    WhatsAppService().enviar_mensagem_texto(vendedor.tel_whatsapp or telefone_formatado, msg_backoffice)
-                except Exception:
-                    pass
-                resposta = f"✅ *Venda cadastrada com sucesso!*\n\nID da venda: *#{venda_id}*\n\nVocê receberá confirmação no WhatsApp. Digite *MENU* para outras opções."
-                return _enviar_resposta_e_retornar(resposta)
+                    obs = (mensagem_texto or "").strip() if (mensagem_texto or "").strip().upper() != 'PULAR' else None
+                    sessao.dados_temp = {**dt, 'observacoes': obs}
+                    sessao.save()
+                    payload = {k: v for k, v in sessao.dados_temp.items() if not k.startswith('_') and k != 'vendedor_id'}
+                    payload['forma_entrada'] = payload.get('forma_entrada') or 'APP'
+                    payload['tem_fixo'] = payload.get('tem_fixo', False)
+                    payload['gerada_os_automatica'] = payload.get('gerada_os_automatica', False)
+                    vendedor_id = sessao.dados_temp.get('vendedor_id')
+                    from usuarios.models import Usuario
+                    vendedor = Usuario.objects.filter(pk=vendedor_id, is_active=True).first() if vendedor_id else usuario_whatsapp
+                    if not vendedor:
+                        vendedor = usuario_whatsapp
+                    venda_id, err = cadastrar_venda_crm(payload, vendedor)
+                    sessao.etapa = 'inicial'
+                    sessao.dados_temp = {}
+                    sessao.save()
+                    if err:
+                        resposta = f"❌ *Erro ao salvar:*\n{err}\n\nDigite *MENU* para tentar novamente."
+                        return _enviar_resposta_e_retornar(resposta)
+                    try:
+                        msg_backoffice = "Sua venda foi recebida pelo backOffice, aguarde o tratamento e acompanhe o status pelo bot, enviando a palavra \"Stratus\"."
+                        WhatsAppService().enviar_mensagem_texto(vendedor.tel_whatsapp or telefone_formatado, msg_backoffice)
+                    except Exception:
+                        pass
+                    resposta = f"✅ *Venda cadastrada com sucesso!*\n\nID da venda: *#{venda_id}*\n\nVocê receberá confirmação no WhatsApp. Digite *MENU* para outras opções."
+                    return _enviar_resposta_e_retornar(resposta)
+                except Exception as e:
+                    logger.exception(f"[Webhook] Erro ao processar cadastro_venda_observacoes: {e}")
+                    sessao.etapa = 'inicial'
+                    sessao.dados_temp = {}
+                    sessao.save()
+                    resposta = f"❌ *Ocorreu um erro* ao salvar a venda. Tente novamente ou digite *MENU*.\n\nDetalhe: {str(e)[:200]}"
+                    return _enviar_resposta_e_retornar(resposta)
 
         # --- INCLUSÃO (Solicitação de viabilidade via formulário) ---
         elif etapa_atual.startswith('inclusao_'):
