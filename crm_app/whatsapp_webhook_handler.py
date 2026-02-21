@@ -4662,6 +4662,12 @@ def processar_webhook_whatsapp(data, request=None):
         telefone_usuario = participant_phone  # Para identificar quem enviou (lookup usuário)
     else:
         telefone_usuario = telefone
+
+    # Ignorar mensagens de grupo: bot não processa webhooks nem automações em grupos
+    if is_group:
+        logger.info("[Webhook] Mensagem de grupo ignorada - bot não responde em grupos")
+        return {'status': 'ok', 'mensagem': 'Mensagem de grupo ignorada'}
+
     mensagem_texto = ""
     
     # Formato Z-API: text é um dict com 'message' dentro
