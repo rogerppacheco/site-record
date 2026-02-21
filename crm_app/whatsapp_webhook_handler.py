@@ -5458,7 +5458,12 @@ def processar_webhook_whatsapp(data, request=None):
                         resposta = f"❌ *Erro ao salvar:*\n{err}\n\nDigite *MENU* para tentar novamente."
                         return _enviar_resposta_e_retornar(resposta)
                     try:
-                        msg_backoffice = "Sua venda foi recebida pelo backOffice, aguarde o tratamento e acompanhe o status pelo bot, enviando a palavra \"Stratus\"."
+                        nome_cliente = dt.get('cliente_nome_razao_social') or 'N/A'
+                        msg_backoffice = (
+                            f"Sua venda, do cliente {nome_cliente} foi recebida pelo backOffice, está na etapa da auditoria, "
+                            f"aguarde o tratamento e acompanhe o status pelo bot, enviando a palavra \"Status\".\n"
+                            f"Protocolo: {venda_id}"
+                        )
                         WhatsAppService().enviar_mensagem_texto(vendedor.tel_whatsapp or telefone_formatado, msg_backoffice)
                     except Exception:
                         pass

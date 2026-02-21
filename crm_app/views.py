@@ -1587,7 +1587,12 @@ class VendaViewSet(viewsets.ModelViewSet):
         if venda.vendedor and getattr(venda.vendedor, 'tel_whatsapp', None):
             try:
                 from .whatsapp_service import WhatsAppService
-                msg = "Sua venda foi recebida pelo backOffice, aguarde o tratamento e acompanhe o status pelo bot, enviando a palavra \"Stratus\"."
+                nome_cliente = venda.cliente.nome_razao_social if venda.cliente else 'N/A'
+                msg = (
+                    f"Sua venda, do cliente {nome_cliente} foi recebida pelo backOffice, está na etapa da auditoria, "
+                    f"aguarde o tratamento e acompanhe o status pelo bot, enviando a palavra \"Status\".\n"
+                    f"Protocolo: {venda.id}"
+                )
                 svc = WhatsAppService()
                 svc.enviar_mensagem_texto(venda.vendedor.tel_whatsapp, msg)
                 logger.info(f"Notificação de venda recebida enviada para vendedor {venda.vendedor.username} (venda #{venda.id})")
