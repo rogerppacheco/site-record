@@ -879,14 +879,25 @@ class PAPNioAutomation:
         except Exception as e:
             logger.warning(f"[PAP] click Filtrar falhou: {e}")
             return False, f"Não foi possível clicar em Filtrar: {e}", [], None
-        self.page.wait_for_timeout(1500)
+        # Esperar a tabela de resultados carregar (pode demorar; colunas: STATUS, PLANO, NÚMERO DA OS, DATA E HORA [DA CRIAÇÃO], DETALHES)
+        try:
+            self.page.wait_for_selector(
+                'td.MuiTableCell-root.MuiTableCell-body, table tbody td, [class*="MuiTableCell-body"]',
+                state="visible",
+                timeout=12000
+            )
+            self.page.wait_for_timeout(800)
+        except Exception as e:
+            logger.debug(f"[PAP] Espera da tabela Consulta OS: {e}")
+        self.page.wait_for_timeout(500)
 
-        # Ler tabela: td.MuiTableCell-root.MuiTableCell-body (ordem: STATUS, PLANO, NÚMERO DA OS, DATA E HORA)
+        # Ler tabela: 4 colunas de dados (0=STATUS, 1=PLANO, 2=NÚMERO DA OS, 3=DATA E HORA); 5ª coluna = DETALHES (ignorar)
         detalhes: List[Dict[str, str]] = []
         try:
+            # Tentar por linhas da tabela
             rows = self.page.query_selector_all(SELETORES['consulta_os']['table_rows'])
             for row in rows:
-                cells = row.query_selector_all('td.MuiTableCell-root.MuiTableCell-body')
+                cells = row.query_selector_all('td.MuiTableCell-root.MuiTableCell-body, td[class*="MuiTableCell"], td')
                 if len(cells) >= 4:
                     status = (cells[0].inner_text() or "").strip()
                     plano = (cells[1].inner_text() or "").strip()
@@ -899,9 +910,16 @@ class PAPNioAutomation:
                             "numero_os": numero_os,
                             "data_hora": data_hora,
                         })
+            # Fallback: todas as células em sequência (4 colunas por linha; pode ter 5 se houver DETALHES)
             if not detalhes:
-                cells_direct = self.page.query_selector_all('td.MuiTableCell-root.MuiTableCell-body')
+                cells_direct = self.page.query_selector_all(
+                    'td.MuiTableCell-root.MuiTableCell-body, td[class*="MuiTableCell-body"], table tbody td'
+                )
                 if cells_direct:
+                    # Pode ser 4 ou 5 colunas por linha
+                    col_per_row = 5 if len(cells_direct) >= 5 and len(cells_direct) % 5 == 0 else 4
+                    if len(cells_direct) % col_per_row != 0:
+                        col_per_row = 4
                     idx = 0
                     while idx + 4 <= len(cells_direct):
                         status = (cells_direct[idx].inner_text() or "").strip()
@@ -915,7 +933,7 @@ class PAPNioAutomation:
                                 "numero_os": numero_os,
                                 "data_hora": data_hora,
                             })
-                        idx += 4
+                        idx += col_per_row
         except Exception as e:
             logger.warning(f"[PAP] Erro ao ler tabela Consulta OS: {e}")
 

@@ -896,12 +896,15 @@ def _executar_consulta_pedido_background(telefone: str, usuario_id: int, cpf: st
                     f"⏱ _{tempo_decorrido}s_"
                 )
             else:
-                partes = ["✅ *Existe um pedido*, segue detalhes abaixo:\n"]
+                n = len(detalhes)
+                partes = ["✅ *Existe(m) pedido(s)*, segue detalhes abaixo:\n\n"] if n > 1 else ["✅ *Existe um pedido*, segue detalhes abaixo:\n\n"]
                 for i, d in enumerate(detalhes):
                     status = d.get("status", "")
                     data_hora = d.get("data_hora", "")
                     plano = d.get("plano", "")
                     numero_os = d.get("numero_os", "")
+                    if n > 1:
+                        partes.append(f"📌 *Pedido {i + 1}/{n}* (OS {numero_os})\n")
                     partes.append(
                         f"• *Status:* {status}\n"
                         f"• *Data:* {data_hora}\n"
@@ -909,8 +912,9 @@ def _executar_consulta_pedido_background(telefone: str, usuario_id: int, cpf: st
                         f"• *Nº OS:* {numero_os}"
                     )
                     if i < len(detalhes) - 1:
-                        partes.append("\n")
-                partes.append(f"\n\n⏱ _{tempo_decorrido}s_")
+                        partes.append("\n\n")
+                    partes.append("\n")
+                partes.append(f"\n⏱ _{tempo_decorrido}s_")
                 caption = "".join(partes)
             if screenshot_path and os.path.isfile(screenshot_path):
                 try:
@@ -1035,8 +1039,11 @@ def _executar_consulta_status_online_background(telefone: str, cpf: str, eh_agen
                     f"⏱ _{tempo_decorrido}s_"
                 )
             else:
+                n = len(detalhes)
                 partes = ["📡 *Status online (PAP)*\n\n✅ *Existe(m) pedido(s):*\n\n"]
-                for d in detalhes:
+                for i, d in enumerate(detalhes):
+                    if n > 1:
+                        partes.append(f"📌 *Pedido {i + 1}/{n}* (OS {d.get('numero_os', '')})\n")
                     partes.append(f"• *Status:* {d.get('status', '')}\n")
                     partes.append(f"• *Data:* {d.get('data_hora', '')}\n")
                     partes.append(f"• *Plano:* {d.get('plano', '')}\n")
@@ -1046,6 +1053,8 @@ def _executar_consulta_status_online_background(telefone: str, cpf: str, eh_agen
                             partes.append(f"• *Status agendamento:* {d.get('status_agendamento')}\n")
                         if d.get('agendamento'):
                             partes.append(f"• *Agendamento:* {d.get('agendamento')}\n")
+                    if i < n - 1:
+                        partes.append("\n")
                     partes.append("\n")
                 partes.append(f"⏱ _{tempo_decorrido}s_")
                 caption = "".join(partes)
