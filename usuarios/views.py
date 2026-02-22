@@ -5,6 +5,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
 from django.contrib.auth.models import ContentType, Group, Permission
 from django.db import transaction
+from django.db.models import Q
 from django.utils.crypto import get_random_string
 from rest_framework_simplejwt.views import TokenObtainPairView
 from crm_app.whatsapp_service import WhatsAppService
@@ -150,10 +151,11 @@ class UsuarioViewSet(viewsets.ModelViewSet):
             is_active_value = is_active_param.lower() in ('true', '1')
             queryset = queryset.filter(is_active=is_active_value)
         
-        # Filtro textual simples (opcional, mas bom para performance no frontend novo)
-        search = self.request.query_params.get('search')
+        # Busca dinâmica: username, nome, sobrenome, e-mail (case-insensitive)
+        search = (self.request.query_params.get('search') or '').strip()
         if search:
-            queryset = queryset.filter(first_name__icontains=search) | queryset.filter(username__icontains=search)
+            q = Q(username__icontains=search) | Q(first_name__icontains=search) | Q(last_name__icontains=search) | Q(email__icontains=search)
+            queryset = queryset.filter(q)
 
         return queryset
 

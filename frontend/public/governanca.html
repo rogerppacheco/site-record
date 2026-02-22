@@ -132,8 +132,13 @@
                                 <h5 class="mb-0">Lista de Usuários <span id="lista-status-titulo" class="badge bg-success">Ativos</span></h5>
                                 <small id="contador-usuarios" class="text-muted">Carregando...</small>
                             </div>
-                            <div class="d-flex gap-2">
-                                <input type="text" id="busca-usuario" class="form-control form-control-sm" placeholder="Pesquisar usuário..." style="width: 200px;">
+                            <div class="d-flex flex-wrap gap-2 align-items-center">
+                                <div class="input-group input-group-sm" style="width: 320px;">
+                                    <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
+                                    <input type="text" id="busca-usuario" class="form-control" placeholder="Digite para buscar em todos os usuários (nome, e-mail, login)..." autocomplete="off" aria-label="Buscar usuário">
+                                    <button type="button" class="btn btn-outline-secondary" id="btn-limpar-busca-usuario" title="Limpar busca" style="display:none;"><i class="bi bi-x-lg"></i></button>
+                                </div>
+                                <span id="busca-usuario-loading" class="spinner-border spinner-border-sm text-primary" style="display:none;" aria-hidden="true"></span>
                                 <div class="btn-group">
                                     <button onclick="mostrarListaUsuarios('ativos', this)" class="btn btn-sm btn-outline-primary active">Ativos</button>
                                     <button onclick="mostrarListaUsuarios('inativos', this)" class="btn btn-sm btn-outline-secondary">Inativos</button>
@@ -179,7 +184,7 @@
             <section id="comissionamento-section" class="content-section">
                 <h3 class="mb-4">Gestão de Comissionamento</h3>
                 <div class="card">
-                    <div class="card-header"><ul class="nav nav-tabs card-header-tabs"><li class="nav-item"><button class="nav-link active" onclick="openTab(event, 'regras_faixa_tab'); carregarRegrasFaixa();">Regras por Faixa</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'regras_vendedores_tab'); if (!document.getElementById('regras_vendedor_mes').value) { const d = new Date(); document.getElementById('regras_vendedor_mes').value = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); } atualizarDropdownVendedores(); preencherFormConfigVendedor();">Regras por Vendedor</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'recebimento_operadora_tab')">Recebimento Operadora</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'campanhas_tab')">Campanhas</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'adiantamentos_descontos_tab'); carregarUsuariosSelectsFinanceiro(); carregarLancamentosFinanceiros(); openSubTabAdiant(null, 'subtab-registrar');">Adiantamentos e Descontos</button></li></ul></div>
+                    <div class="card-header"><ul class="nav nav-tabs card-header-tabs"><li class="nav-item"><button class="nav-link active" onclick="openTab(event, 'regras_faixa_tab'); carregarRegrasFaixa();">Regras por Faixa</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'regras_vendedores_tab'); if (!document.getElementById('regras_vendedor_mes').value) { const d = new Date(); document.getElementById('regras_vendedor_mes').value = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); } atualizarDropdownVendedores(); preencherFormConfigVendedor();">Regras por Vendedor</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'recebimento_operadora_tab')">Recebimento Operadora</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'campanhas_tab')">Campanhas</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'adiantamentos_descontos_tab'); carregarUsuariosSelectsFinanceiro(); carregarLancamentosFinanceiros(); openSubTabAdiant(null, 'subtab-registrar'); var adMes = document.getElementById('ad_mes_vendas'); if (adMes && !adMes.value) { var d = new Date(); adMes.value = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); }">Adiantamentos e Descontos</button></li></ul></div>
                     <div class="card-body">
                         <div id="regras_faixa_tab" class="tab-content active">
                             <div class="d-flex justify-content-between align-items-center mb-3">
@@ -260,28 +265,15 @@
                             <div class="card border-0 shadow-sm"><div class="card-body p-0 table-responsive"><table class="table table-hover align-middle mb-0"><thead class="table-light"><tr><th>Nome</th><th>Período</th><th>Faixas de Premiação</th><th>Regras</th><th>Status</th><th class="text-end">Ações</th></tr></thead><tbody id="lista-campanhas"></tbody></table></div></div>
                         </div>
                         <div id="adiantamentos_descontos_tab" class="tab-content" style="display:none;">
-                            <ul class="nav nav-tabs nav-tabs mb-3" role="tablist">
-                                <li class="nav-item"><button class="nav-link active" type="button" id="tab-registrar-btn" onclick="openSubTabAdiant(event, 'subtab-registrar')"><i class="bi bi-pencil-square"></i> Registrar lançamentos</button></li>
-                                <li class="nav-item"><button class="nav-link" type="button" id="tab-marcar-vendas-btn" onclick="openSubTabAdiant(event, 'subtab-marcar-vendas')"><i class="bi bi-list-check"></i> Marcar vendas antecipadas</button></li>
-                            </ul>
                             <div id="subtab-registrar" class="subtab-adiant-content">
                                 <div class="row g-3">
-                                    <div class="col-md-3"><div class="card border-primary shadow-sm h-100"><div class="card-header py-2" style="background-color:#0a58ca; color:#fff !important;"><h6 class="mb-0 fw-bold" style="color:#fff !important;"><i class="bi bi-cash-stack"></i> Novo Adiantamento</h6></div><div class="card-body"><form id="form-adiantamento" onsubmit="return false;"><div class="mb-2"><label class="form-label small fw-bold">Colaborador</label><select id="ad_usuario" class="form-select form-select-sm" required></select></div><div class="mb-2"><label class="form-label small fw-bold">Tipo</label><select id="ad_tipo" class="form-select form-select-sm" onchange="toggleCamposAdiantamento()"><option value="ADIANTAMENTO_CNPJ">Adiantamento CNPJ (informe qtd. abaixo)</option><option value="ADIANTAMENTO_COMISSAO">Adiantamento de Comissão</option></select><p class="small text-muted mb-0 mt-1">Para <strong>Comissão</strong>, use a aba <strong>&quot;Marcar vendas antecipadas&quot;</strong> para escolher as vendas e registrar.</p></div><div class="row g-2 mb-2"><div class="col-6"><label class="form-label small fw-bold">Data</label><input type="date" id="ad_data" class="form-control form-control-sm" required></div><div class="col-6"><label class="form-label small fw-bold">Valor (R$)</label><input type="number" class="form-control form-control-sm" id="ad_valor" step="0.01" required></div></div><div id="box-qtd-vendas" class="mb-2 bg-light p-2 rounded border"><label class="form-label small fw-bold text-primary">Qtd. Vendas Adiantadas</label><input type="number" id="ad_qtd" class="form-control form-control-sm" placeholder="0"></div><div class="mb-3"><label class="form-label small fw-bold">Observação</label><textarea id="ad_obs" class="form-control form-control-sm" rows="2"></textarea></div><button type="button" id="btn-registrar-adiantamento" class="btn btn-primary btn-sm w-100">Registrar</button></form></div></div></div>
+                                    <div class="col-md-3"><div class="card border-primary shadow-sm h-100"><div class="card-header py-2" style="background-color:#0a58ca; color:#fff !important;"><h6 class="mb-0 fw-bold" style="color:#fff !important;"><i class="bi bi-cash-stack"></i> Novo Adiantamento</h6></div><div class="card-body"><form id="form-adiantamento" onsubmit="return false;"><div class="mb-2"><label class="form-label small fw-bold">Colaborador</label><select id="ad_usuario" class="form-select form-select-sm" required onchange="toggleBoxVendasAdiantamento();"></select></div><div class="mb-2"><label class="form-label small fw-bold">Tipo</label><select id="ad_tipo" class="form-select form-select-sm" onchange="toggleCamposAdiantamento()"><option value="ADIANTAMENTO_CNPJ">Adiantamento CNPJ</option><option value="ADIANTAMENTO_COMISSAO">Adiantamento de Comissão</option></select><p class="small text-muted mb-0 mt-1">Em <strong>Comissão</strong>, liste as vendas e marque as antecipadas; o valor será a soma. Em <strong>CNPJ</strong>, liste os clientes CNPJ do vendedor e marque os adiantados; informe o valor manualmente.</p></div><div class="row g-2 mb-2"><div class="col-6"><label class="form-label small fw-bold">Data</label><input type="date" id="ad_data" class="form-control form-control-sm" required></div><div class="col-6"><label class="form-label small fw-bold">Valor (R$)</label><input type="number" class="form-control form-control-sm" id="ad_valor" step="0.01" required placeholder="0,00"></div></div><div class="mb-3"><label class="form-label small fw-bold">Observação</label><textarea id="ad_obs" class="form-control form-control-sm" rows="2"></textarea></div><button type="button" id="btn-registrar-adiantamento" class="btn btn-primary btn-sm w-100">Registrar</button></form></div></div></div>
                                     <div class="col-md-3"><div class="card border-danger shadow-sm h-100"><div class="card-header py-2" style="background-color:#b02a37; color:#fff !important;"><h6 class="mb-0 fw-bold" style="color:#fff !important;"><i class="bi bi-dash-circle"></i> Novo Desconto</h6></div><div class="card-body"><form id="form-desconto" onsubmit="return false;"><div class="mb-2"><label class="form-label small fw-bold">Colaborador</label><select id="desc_usuario" class="form-select form-select-sm" required></select></div><div class="mb-2"><label class="form-label small fw-bold">Motivo</label><input type="text" id="desc_motivo" class="form-control form-control-sm" placeholder="Ex: Equipamento perdido" required></div><div class="row g-2 mb-3"><div class="col-6"><label class="form-label small fw-bold">Data</label><input type="date" id="desc_data" class="form-control form-control-sm" required></div><div class="col-6"><label class="form-label small fw-bold">Valor (R$)</label><input type="number" class="form-control form-control-sm" id="desc_valor" step="0.01" required></div></div><button type="button" id="btn-registrar-desconto" class="btn btn-danger btn-sm w-100">Registrar</button></form></div></div></div>
                                     <div class="col-md-6"><div class="card h-100 shadow-sm"><div class="card-header bg-white d-flex justify-content-between align-items-center"><h6 class="mb-0 fw-bold">Histórico de Lançamentos</h6><div class="input-group input-group-sm" style="width: 200px;"><input type="month" id="filtro-mes-lancamentos" class="form-control" onchange="carregarLancamentosFinanceiros()"></div></div><div class="card-body p-0 table-responsive"><table class="table table-hover table-striped mb-0 small align-middle"><thead class="table-light"><tr><th>Data</th><th>Colaborador</th><th>Tipo / Descrição</th><th class="text-end">Valor</th><th class="text-end">Ações</th></tr></thead><tbody id="lista-lancamentos-fin"></tbody></table></div></div></div>
                                 </div>
-                            </div>
-                            <div id="subtab-marcar-vendas" class="subtab-adiant-content" style="display:none;">
-                                <div class="card border-primary shadow-sm"><div class="card-header py-2 bg-primary text-white"><h6 class="mb-0 fw-bold"><i class="bi bi-list-check"></i> Marcar vendas antecipadas e registrar adiantamento de comissão</h6></div><div class="card-body">
-                                <p class="small text-muted mb-3">Selecione o colaborador e o mês/ano das vendas instaladas. Clique em <strong>Listar vendas</strong>, marque as vendas que foram adiantadas e preencha Data, Valor e Observação para registrar.</p>
-                                <div class="row g-3 mb-3">
-                                    <div class="col-md-3"><label class="form-label small fw-bold">Colaborador</label><select id="ant_vendedor" class="form-select form-select-sm"></select></div>
-                                    <div class="col-md-2"><label class="form-label small fw-bold">Mês/Ano das vendas</label><input type="month" id="ant_mes_ano" class="form-control form-control-sm"></div>
-                                    <div class="col-md-2 d-flex align-items-end"><button type="button" class="btn btn-sm btn-outline-primary w-100" id="btn-ant-listar-vendas">Listar vendas</button></div>
+                                <div id="box-lista-vendas-adiantamento" class="mt-3" style="display:none;">
+                                    <div class="card border-primary shadow-sm"><div class="card-header py-2 d-flex flex-wrap align-items-center gap-2" style="background-color:#0a58ca; color:#fff !important;"><h6 class="mb-0 fw-bold" id="box-ad-titulo" style="color:#fff !important;"><i class="bi bi-list-check"></i> Vendas instaladas — marque as antecipadas</h6><div class="d-flex align-items-center gap-2 ms-auto"><label class="form-label small mb-0 text-white">Mês/ano</label><input type="month" id="ad_mes_vendas" class="form-control form-control-sm" style="width:140px"><button type="button" class="btn btn-sm btn-light" id="btn-ad-listar-vendas">Listar vendas</button></div></div><div class="card-body"><div class="table-responsive border rounded mb-2" style="max-height:240px;overflow-y:auto;"><table class="table table-sm table-striped mb-0 small"><thead class="table-light sticky-top"><tr><th style="width:40px;"><input type="checkbox" id="ad_sel_todas" title="Marcar todas"></th><th>Cliente</th><th>Plano</th><th>Dt. Inst.</th><th class="text-end">Comissão est.</th></tr></thead><tbody id="tbody-ad-vendas"></tbody></table></div><p class="small mb-0 fw-bold text-primary" id="ad-total-selecionado">Total selecionado: R$ 0,00</p></div></div>
                                 </div>
-                                <div class="table-responsive mb-3 border rounded" style="max-height:280px;overflow-y:auto;"><table class="table table-sm table-striped mb-0 small"><thead class="table-light sticky-top"><tr><th style="width:40px;"><input type="checkbox" id="ant_sel_todas" title="Marcar todas"></th><th>Cliente</th><th>Plano</th><th>Dt. Inst.</th><th>OS</th></tr></thead><tbody id="tbody-ant-vendas"></tbody></table></div>
-                                <div class="row g-2 mb-3 bg-light p-3 rounded border"><div class="col-md-2"><label class="form-label small fw-bold">Data do adiantamento</label><input type="date" id="ant_data" class="form-control form-control-sm"></div><div class="col-md-2"><label class="form-label small fw-bold">Valor (R$)</label><input type="number" id="ant_valor" class="form-control form-control-sm" step="0.01" placeholder="0,00"></div><div class="col-md-4"><label class="form-label small fw-bold">Observação</label><input type="text" id="ant_obs" class="form-control form-control-sm" placeholder="Opcional"></div><div class="col-md-2 d-flex align-items-end"><button type="button" class="btn btn-primary btn-sm w-100" id="btn-registrar-adiant-comissao">Registrar adiantamento</button></div></div>
-                                </div></div>
                             </div>
                         </div>
                     </div>
@@ -911,62 +903,104 @@
     let lideresCache = { data: [], timestamp: 0 }; // Cache para líderes/supervisores
     let paginacaoAtual = { page: 1, total: 0, pages: 0 };
     const CACHE_DURATION = 5 * 60 * 1000; // 5 minutos
-    const ITEMS_PER_PAGE = 20; // Corrigido: corresponde ao PAGE_SIZE da API (settings.py linha 183)
+    const ITEMS_PER_PAGE = 20;
+    const SEARCH_PAGE_SIZE = 100; // Na busca, trazer mais resultados de uma vez (todos os que baterem)
     let todasPermissoes = [];
+    let debounceTimerBuscaUsuario = null;
 
-    // Função para enriquecer dados dos usuários com nomes de perfis e usernames
+    window.toggleCamposAdiantamento = function() {
+        var el = document.getElementById('ad_tipo'), box = document.getElementById('box-lista-vendas-adiantamento');
+        if (el && box) {
+            var isComissao = (el.value === 'ADIANTAMENTO_COMISSAO');
+            var isCnpj = (el.value === 'ADIANTAMENTO_CNPJ');
+            if (isComissao || isCnpj) {
+                box.style.display = 'block';
+                var tit = document.getElementById('box-ad-titulo');
+                if (tit) tit.textContent = isCnpj ? 'Clientes CNPJ do vendedor — marque os adiantados' : 'Vendas instaladas — marque as antecipadas';
+                window.toggleBoxVendasAdiantamento();
+            } else {
+                box.style.display = 'none';
+                var t = document.getElementById('tbody-ad-vendas'); if (t) t.innerHTML = '';
+                var tot = document.getElementById('ad-total-selecionado'); if (tot) tot.textContent = 'Total selecionado: R$ 0,00';
+                var v = document.getElementById('ad_valor'); if (v) v.value = '';
+            }
+        }
+    };
+    window.toggleBoxVendasAdiantamento = function() {
+        var box = document.getElementById('box-lista-vendas-adiantamento'), tipo = document.getElementById('ad_tipo'), usuario = document.getElementById('ad_usuario');
+        if (!box || !tipo) return;
+        var tipoVal = tipo.value;
+        if ((tipoVal === 'ADIANTAMENTO_COMISSAO' || tipoVal === 'ADIANTAMENTO_CNPJ') && usuario && usuario.value) box.style.display = 'block'; else box.style.display = 'none';
+    };
+    var isRegistrandoAdiantamento = false, isRegistrandoDesconto = false;
+    window.registrarAdiantamento = async function(ev) {
+        if (ev) ev.preventDefault();
+        if (isRegistrandoAdiantamento) return;
+        var usuario = document.getElementById('ad_usuario') && document.getElementById('ad_usuario').value;
+        var tipo = document.getElementById('ad_tipo') && document.getElementById('ad_tipo').value;
+        var data = document.getElementById('ad_data') && document.getElementById('ad_data').value;
+        var valorEl = document.getElementById('ad_valor');
+        var valor = valorEl && valorEl.value;
+        var descricao = (document.getElementById('ad_obs') && document.getElementById('ad_obs').value || '').trim();
+        var qtd = 0;
+        var cbs = document.querySelectorAll('.ad-venda-cb:checked');
+        if (cbs) qtd = cbs.length;
+        if (!usuario || !data || !valor) { alert('Preencha Colaborador, Data e Valor.'); return; }
+        isRegistrandoAdiantamento = true;
+        var payload = { usuario: parseInt(usuario, 10), tipo: tipo || 'ADIANTAMENTO_CNPJ', data: data, valor: parseFloat(valor) || 0, descricao: descricao || 'Adiantamento', quantidade_vendas: qtd };
+        try {
+            await apiFetch('/crm/lancamentos-financeiros/', { method: 'POST', body: JSON.stringify(payload) });
+            alert('Adiantamento registrado com sucesso!');
+            if (document.getElementById('form-adiantamento')) document.getElementById('form-adiantamento').reset();
+            var tbodyAd = document.getElementById('tbody-ad-vendas');
+            if (tbodyAd) tbodyAd.innerHTML = '';
+            var totAd = document.getElementById('ad-total-selecionado');
+            if (totAd) totAd.textContent = 'Total selecionado: R$ 0,00';
+            adVendasLista = [];
+            window.toggleCamposAdiantamento();
+            if (typeof carregarLancamentosFinanceiros === 'function') carregarLancamentosFinanceiros();
+        } catch (err) { alert('Erro ao registrar: ' + (err.message || 'Tente novamente.')); }
+        finally { isRegistrandoAdiantamento = false; }
+    };
+    window.registrarDesconto = async function(ev) {
+        if (ev) ev.preventDefault();
+        if (isRegistrandoDesconto) return;
+        var usuario = document.getElementById('desc_usuario') && document.getElementById('desc_usuario').value;
+        var data = document.getElementById('desc_data') && document.getElementById('desc_data').value;
+        var valor = document.getElementById('desc_valor') && document.getElementById('desc_valor').value;
+        var motivo = (document.getElementById('desc_motivo') && document.getElementById('desc_motivo').value || '').trim();
+        if (!usuario || !data || !valor || !motivo) { alert('Preencha todos os campos (Colaborador, Data, Valor e Motivo).'); return; }
+        isRegistrandoDesconto = true;
+        var payload = { usuario: parseInt(usuario, 10), tipo: 'DESCONTO', data: data, valor: parseFloat(valor) || 0, descricao: motivo };
+        try {
+            await apiFetch('/crm/lancamentos-financeiros/', { method: 'POST', body: JSON.stringify(payload) });
+            alert('Desconto registrado com sucesso!');
+            if (document.getElementById('form-desconto')) document.getElementById('form-desconto').reset();
+            if (typeof carregarLancamentosFinanceiros === 'function') carregarLancamentosFinanceiros();
+        } catch (err) { alert('Erro ao registrar: ' + (err.message || 'Tente novamente.')); }
+        finally { isRegistrandoDesconto = false; }
+    };
+
     async function enriquecerDadosUsuarios(usuarios) {
-        console.log('=== ENRIQUECENDO DADOS ===');
-        console.log('Usuários recebidos:', usuarios.length);
-
-        // Carregar grupos se necessário
         if (gruposCache.data.length === 0) {
             try {
-                console.log('Carregando grupos da API...');
                 const res = await apiFetch(API_GRUPOS);
                 const grupos = Array.isArray(res) ? res : (res?.results || []);
                 gruposCache.data = grupos;
                 gruposCache.timestamp = Date.now();
-                console.log('Grupos carregados:', grupos.length, 'grupos');
-                console.log('Primeiro grupo:', grupos[0]);
             } catch (e) {
                 console.error('Erro ao carregar grupos:', e);
             }
-        } else {
-            console.log('Usando grupos do cache:', gruposCache.data.length, 'grupos');
         }
 
-        // Enriquecer cada usuário com dados dos grupos
-        return usuarios.map((user, index) => {
+        return usuarios.map((user) => {
             const enrichedUser = { ...user };
-
-            console.log(`\n--- Processando usuário ${index + 1}: ${user.username || user.id} ---`);
-            console.log('Groups original:', user.groups);
-
-            // FORÇAR perfil - tentar todas as possibilidades
             if (user.groups && user.groups.length > 0) {
                 const groupId = typeof user.groups[0] === 'object' ? user.groups[0].id : user.groups[0];
-                console.log('Procurando grupo com ID:', groupId);
-                console.log('Grupos disponíveis:', gruposCache.data.map(g => ({id: g.id, name: g.name})));
-
                 const grupo = gruposCache.data.find(g => g.id == groupId);
-                if (grupo && grupo.name) {
-                    enrichedUser.perfil_nome = grupo.name;
-                    console.log(`✅ Perfil encontrado: ${grupo.name}`);
-                } else {
-                    console.log(`❌ Grupo não encontrado para ID ${groupId}`);
-                }
-            } else {
-                console.log('⚠️ Usuário sem groups definido');
+                if (grupo && grupo.name) enrichedUser.perfil_nome = grupo.name;
             }
-
-            // Garantir que pelo menos algo apareça como perfil
-            if (!enrichedUser.perfil_nome) {
-                enrichedUser.perfil_nome = 'Sem Perfil';
-                console.log(`⚠️ Usando perfil padrão: Sem Perfil`);
-            }
-
-            console.log('Perfil final:', enrichedUser.perfil_nome);
+            if (!enrichedUser.perfil_nome) enrichedUser.perfil_nome = 'Sem Perfil';
             return enrichedUser;
         });
     }
@@ -1235,17 +1269,14 @@
         
         // Primeiro: verificar se o supervisor está nos dados do usuário atual (mais rápido)
         if (userData && userData.supervisor_detalhe) {
-            if (userData.supervisor_detalhe.username) {
-                return userData.supervisor_detalhe.username;
-            }
+            const un = userData.supervisor_detalhe.username;
+            if (un != null && un !== '') return un;
         }
         
         // Segundo: buscar no cache de líderes (eficiente e sempre completo)
         const lider = lideresCache.data.find(l => l.id == supervisorId);
         if (lider) {
-            // Priorizar username direto se disponível
-            if (lider.username) return lider.username;
-            // Fallback: extrair username do nome_exibicao (formato: "Nome (username)" ou apenas "username")
+            if (lider.username != null && lider.username !== '') return lider.username;
             if (lider.nome_exibicao) {
                 const match = lider.nome_exibicao.match(/\(([^)]+)\)$/);
                 return match ? match[1] : lider.nome_exibicao;
@@ -1254,9 +1285,7 @@
         
         // Terceiro: buscar no cache completo de usuários (fallback)
         const supervisorUser = todosUsuariosCache.find(u => u.id == supervisorId);
-        if (supervisorUser && supervisorUser.username) {
-            return supervisorUser.username;
-        }
+        if (supervisorUser && supervisorUser.username) return supervisorUser.username;
         
         return '-';
     }
@@ -1267,55 +1296,29 @@
         // Limpar campo de busca ao trocar de aba
         const campoBusca = document.getElementById('busca-usuario');
         if (campoBusca) campoBusca.value = '';
-        // Resetar para página 1 ao trocar de status
+        const btnLimpar = document.getElementById('btn-limpar-busca-usuario');
+        if (btnLimpar) btnLimpar.style.display = 'none';
         paginacaoAtual.page = 1;
         carregarUsuarios(status, 1);
     }
 
-    async function carregarUsuarios(status = 'ativos', page = 1) {
-        try {
-            // Tentar com paginação da API primeiro
-            console.log('Tentando carregar com paginação da API, página:', page, 'status:', status);
-            let res, dados, total;
+    async function carregarUsuarios(status = 'ativos', page = 1, searchTerm = '') {
+        const tbody = document.getElementById('user-list-body');
+        if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Carregando...</td></tr>';
 
+        try {
+            let res, dados, total;
             let todosUsuariosParaCache = [];
 
             try {
-                res = await apiFetch(`/usuarios/?is_active=${status === 'ativos'}&page=${page}&page_size=${ITEMS_PER_PAGE}`);
-                console.log('Resposta da API com paginação:', res);
-
+                const emBusca = searchTerm && searchTerm.trim();
+                const pageSize = emBusca ? SEARCH_PAGE_SIZE : ITEMS_PER_PAGE;
+                let url = `/usuarios/?is_active=${status === 'ativos'}&page=${page}&page_size=${pageSize}`;
+                if (emBusca) url += `&search=${encodeURIComponent(searchTerm.trim())}`;
+                res = await apiFetch(url);
                 dados = Array.isArray(res) ? res : (res?.results || []);
-                // IMPORTANTE: Usar o count da resposta paginada para calcular páginas corretamente
                 total = res?.count || (Array.isArray(res) ? res.length : dados.length);
-                console.log('Total de usuários (count):', total, 'Dados na página:', dados.length);
-
-                // Se a API suporta paginação, precisamos carregar TODAS as páginas para o cache
-                // para poder buscar supervisores de qualquer página e fazer busca completa
-                if (total > dados.length) {
-                    console.log(`Carregando todas as páginas para cache (total: ${total}, por página: ${dados.length})...`);
-                    todosUsuariosParaCache = [...dados]; // Começar com os dados da primeira página
-                    
-                    // Calcular quantas páginas existem baseado no tamanho padrão da página (20)
-                    const tamanhoPagina = dados.length || ITEMS_PER_PAGE;
-                    const totalPages = Math.ceil(total / tamanhoPagina);
-                    console.log(`Total de páginas a carregar: ${totalPages} (${total} usuários ÷ ${tamanhoPagina} por página)`);
-                    
-                    // Carregar todas as páginas restantes
-                    for (let p = 2; p <= totalPages; p++) {
-                        try {
-                            // Usar o mesmo page_size da primeira requisição para manter consistência
-                            const resPage = await apiFetch(`/usuarios/?is_active=${status === 'ativos'}&page=${p}&page_size=${ITEMS_PER_PAGE}`);
-                            const dadosPage = Array.isArray(resPage) ? resPage : (resPage?.results || []);
-                            todosUsuariosParaCache = todosUsuariosParaCache.concat(dadosPage);
-                            console.log(`Página ${p} carregada: ${dadosPage.length} usuários`);
-                        } catch (e) {
-                            console.warn(`Erro ao carregar página ${p}:`, e);
-                        }
-                    }
-                    console.log(`Todos os usuários carregados para cache: ${todosUsuariosParaCache.length} de ${total} esperados`);
-                } else {
-                    todosUsuariosParaCache = dados;
-                }
+                todosUsuariosParaCache = dados;
             } catch (apiError) {
                 console.warn('API não suporta paginação, tentando carregar todos os usuários com page_size grande:', apiError);
                 // Fallback: tentar carregar todos de uma vez com page_size muito grande
@@ -1337,84 +1340,37 @@
                 }
             }
 
-            // ATUALIZAR CACHE COM TODOS OS USUÁRIOS (não apenas da página atual)
             todosUsuariosCache = todosUsuariosParaCache;
-            console.log('Cache atualizado com', todosUsuariosCache.length, 'usuários');
 
-            // Carregar cache de líderes se necessário (para garantir que todos os supervisores estejam disponíveis)
             await carregarCacheLideres();
 
-            console.log('Dados processados:', dados.length, 'usuários mostrados, total:', total);
-
-            // DEBUG: Mostrar estrutura real dos dados
-            if (dados.length > 0) {
-                console.log('=== ESTRUTURA DO PRIMEIRO USUÁRIO ===');
-                console.log('Usuário completo:', dados[0]);
-                console.log('Campos disponíveis:', Object.keys(dados[0]));
-                console.log('Groups:', dados[0].groups);
-                console.log('Supervisor:', dados[0].supervisor);
-                console.log('Supervisor_username:', dados[0].supervisor_username);
-                console.log('Supervisor_nome:', dados[0].supervisor_nome);
-                console.log('=====================================');
-            }
-
-            if (dados.length === 0) {
-                console.warn('Nenhum dado encontrado para /usuarios/?is_active=' + (status === 'ativos'));
-            }
-
-            // Atualizar informações de paginação
+            const pageSizeAtual = (searchTerm && searchTerm.trim()) ? SEARCH_PAGE_SIZE : ITEMS_PER_PAGE;
             paginacaoAtual = {
                 page: page,
                 total: total,
-                pages: Math.ceil(total / ITEMS_PER_PAGE)
+                pages: Math.max(1, Math.ceil(total / pageSizeAtual)),
+                pageSize: pageSizeAtual
             };
 
-            console.log('Paginação calculada:', paginacaoAtual);
-            
-            // Atualizar contador de usuários
-            let startItemUsuarios = ((page - 1) * ITEMS_PER_PAGE) + 1;
-            const endItemUsuarios = Math.min(page * ITEMS_PER_PAGE, total);
+            let startItemUsuarios = ((page - 1) * pageSizeAtual) + 1;
+            const endItemUsuarios = Math.min(page * pageSizeAtual, total);
             const contadorEl = document.getElementById('contador-usuarios');
             if (contadorEl) {
                 contadorEl.textContent = `Mostrando ${startItemUsuarios}-${endItemUsuarios} de ${total} usuário(s)`;
             }
 
-            // Enriquecer dados com nomes de perfis
             const usuariosEnriquecidos = await enriquecerDadosUsuarios(dados);
-
-            // DEBUG: Verificar se enriquecimento funcionou
-            if (usuariosEnriquecidos.length > 0) {
-                console.log('=== APÓS ENRIQUECIMENTO ===');
-                console.log('Primeiro usuário enriquecido:', usuariosEnriquecidos[0]);
-                console.log('Perfil_nome:', usuariosEnriquecidos[0].perfil_nome);
-                console.log('==========================');
-            }
-
             renderizarTabelaUsuarios(usuariosEnriquecidos, status);
 
-            // Forçar criação da paginação após um pequeno delay
-            setTimeout(() => {
-                console.log('=== TENTANDO RENDERIZAR PAGINAÇÃO ===');
-                console.log('Páginas disponíveis:', paginacaoAtual.pages);
-                console.log('Total de usuários:', paginacaoAtual.total);
-                renderizarControlesPaginacao(status);
-            }, 200);
+            setTimeout(() => renderizarControlesPaginacao(status), 200);
         } catch (e) {
             document.getElementById('user-list-body').innerHTML = `<tr><td colspan="8">Erro: ${e.message}</td></tr>`;
         }
     }
 
     function renderizarControlesPaginacao(status) {
-        console.log('=== RENDERIZANDO PAGINAÇÃO ===');
-        console.log('Status:', status);
-        console.log('Páginas:', paginacaoAtual.pages);
-        console.log('Total:', paginacaoAtual.total);
-        console.log('Página atual:', paginacaoAtual.page);
-
-        // FORÇAR criação do container
         let container = document.getElementById('pagination-container');
         if (!container) {
-            console.log('Container não existe, criando...');
             const tabela = document.getElementById('tabela-usuarios');
             if (!tabela) {
                 console.error('Tabela não encontrada!');
@@ -1468,66 +1424,57 @@
             return;
         }
 
-        console.log('✅ Renderizando paginação com', paginacaoAtual.pages, 'páginas');
-
-        // PAGINAÇÃO SIMPLIFICADA E DIRETA
+        // Helper: ao clicar na paginação, repassa o termo de busca atual (campo de pesquisa)
+        const fnPag = `(function(){var el=document.getElementById('busca-usuario');carregarUsuarios('${status}', `;
+        const fnPagEnd = `, el ? el.value.trim() : '');})()`;
         let paginationHTML = '<nav><ul class="pagination justify-content-center">';
 
-        // Botão Anterior
         if (paginacaoAtual.page > 1) {
-            paginationHTML += `<li class="page-item"><a class="page-link" href="#" onclick="event.preventDefault(); carregarUsuarios('${status}', ${paginacaoAtual.page - 1});">◀ Anterior</a></li>`;
+            paginationHTML += `<li class="page-item"><a class="page-link" href="#" onclick="event.preventDefault();${fnPag}${paginacaoAtual.page - 1}${fnPagEnd}">◀ Anterior</a></li>`;
         } else {
             paginationHTML += '<li class="page-item disabled"><span class="page-link">◀ Anterior</span></li>';
         }
 
-        // Mostrar páginas próximas (máximo 7 páginas)
         const total = paginacaoAtual.pages;
         const current = paginacaoAtual.page;
         const start = Math.max(1, current - 3);
         const end = Math.min(total, current + 3);
 
-        // Página 1 se necessário
         if (start > 1) {
-            paginationHTML += `<li class="page-item"><a class="page-link" href="#" onclick="event.preventDefault(); carregarUsuarios('${status}', 1);">1</a></li>`;
+            paginationHTML += `<li class="page-item"><a class="page-link" href="#" onclick="event.preventDefault();${fnPag}1${fnPagEnd}">1</a></li>`;
             if (start > 2) paginationHTML += '<li class="page-item disabled"><span class="page-link">...</span></li>';
         }
 
-        // Páginas do meio
         for (let i = start; i <= end; i++) {
             if (i === current) {
                 paginationHTML += `<li class="page-item active"><span class="page-link">${i}</span></li>`;
             } else {
-                paginationHTML += `<li class="page-item"><a class="page-link" href="#" onclick="event.preventDefault(); carregarUsuarios('${status}', ${i});">${i}</a></li>`;
+                paginationHTML += `<li class="page-item"><a class="page-link" href="#" onclick="event.preventDefault();${fnPag}${i}${fnPagEnd}">${i}</a></li>`;
             }
         }
 
-        // Última página se necessário
         if (end < total) {
             if (end < total - 1) paginationHTML += '<li class="page-item disabled"><span class="page-link">...</span></li>';
-            paginationHTML += `<li class="page-item"><a class="page-link" href="#" onclick="event.preventDefault(); carregarUsuarios('${status}', ${total});">${total}</a></li>`;
+            paginationHTML += `<li class="page-item"><a class="page-link" href="#" onclick="event.preventDefault();${fnPag}${total}${fnPagEnd}">${total}</a></li>`;
         }
 
-        // Botão Próximo
         if (current < total) {
-            paginationHTML += `<li class="page-item"><a class="page-link" href="#" onclick="event.preventDefault(); carregarUsuarios('${status}', ${current + 1});">Próximo ▶</a></li>`;
+            paginationHTML += `<li class="page-item"><a class="page-link" href="#" onclick="event.preventDefault();${fnPag}${current + 1}${fnPagEnd}">Próximo ▶</a></li>`;
         } else {
             paginationHTML += '<li class="page-item disabled"><span class="page-link">Próximo ▶</span></li>';
         }
 
         paginationHTML += '</ul></nav>';
 
-        // Adicionar informações com contador
-        let startItemPag = ((current - 1) * ITEMS_PER_PAGE) + 1;
-        const endItemPag = Math.min(current * ITEMS_PER_PAGE, paginacaoAtual.total);
+        const pSize = paginacaoAtual.pageSize || ITEMS_PER_PAGE;
+        let startItemPag = ((current - 1) * pSize) + 1;
+        const endItemPag = Math.min(current * pSize, paginacaoAtual.total);
         paginationHTML += `<div class="text-center mt-2 text-muted small">Página ${current} de ${total} - Mostrando ${startItemPag}-${endItemPag} de ${paginacaoAtual.total} usuário(s)</div>`;
 
         container.innerHTML = paginationHTML;
         container.style.display = 'block';
         container.style.visibility = 'visible';
         container.style.opacity = '1';
-        console.log('✅ Paginação renderizada com sucesso');
-        console.log('Container visível:', container.style.display);
-        console.log('Container HTML:', container.innerHTML.substring(0, 200));
     }
 
     // Função global para debug - forçar renderização da paginação
@@ -1584,14 +1531,14 @@
                 row.appendChild(checkCell);
             }
 
-            // Nome completo
+            // Coluna "Nome" exibe username (fallback: nome_completo ou '-')
             const nomeCell = document.createElement('td');
-            nomeCell.textContent = user.nome_completo;
+            nomeCell.textContent = (user.username != null && user.username !== '') ? user.username : (user.nome_completo || '-');
             row.appendChild(nomeCell);
 
-            // Email
+            // Email (evitar "undefined")
             const emailCell = document.createElement('td');
-            emailCell.textContent = user.email;
+            emailCell.textContent = (user.email != null && user.email !== '') ? user.email : '-';
             row.appendChild(emailCell);
 
             // PERFIL - SIMPLIFICADO
@@ -1642,7 +1589,7 @@
                     }
                 }
 
-                liderCell.textContent = supervisorNome;
+                liderCell.textContent = (supervisorNome != null && supervisorNome !== '') ? supervisorNome : '-';
                 row.appendChild(liderCell);
             }
 
@@ -1680,90 +1627,73 @@
     }
 
     async function filtrarUsuarios() {
-        const termoBusca = document.getElementById('busca-usuario').value.toLowerCase().trim();
+        const inputBusca = document.getElementById('busca-usuario');
+        const termoBusca = (inputBusca && inputBusca.value ? inputBusca.value : '').trim();
         const statusAtual = document.getElementById('lista-status-titulo').textContent.includes('Ativos') ? 'ativos' : 'inativos';
-        const isAtivos = statusAtual === 'ativos';
+        const spinner = document.getElementById('busca-usuario-loading');
+        const btnLimpar = document.getElementById('btn-limpar-busca-usuario');
+
+        if (spinner) spinner.style.display = 'inline-block';
 
         if (!termoBusca) {
-            // Se não há busca, recarregar a página atual
-            carregarUsuarios(statusAtual, paginacaoAtual.page);
+            try {
+                await carregarUsuarios(statusAtual, 1);
+                if (btnLimpar) btnLimpar.style.display = 'none';
+            } finally {
+                if (spinner) spinner.style.display = 'none';
+            }
             return;
         }
 
-        // Verificar se o cache está carregado
-        if (todosUsuariosCache.length === 0) {
-            console.log('Cache vazio, carregando usuários primeiro...');
-            await carregarUsuarios(statusAtual, 1);
-            // Aguardar um pouco para garantir que o cache foi atualizado
-            await new Promise(resolve => setTimeout(resolve, 500));
-        }
-
-        // Filtrar usando o cache local (mais rápido e eficiente)
-        let usuariosFiltrados = todosUsuariosCache.filter(user => {
-            // Verificar se o usuário corresponde ao status atual
-            if (user.is_active !== isAtivos) {
-                return false;
-            }
-
-            // Buscar em múltiplos campos
-            const nomeCompleto = (user.nome_completo || '').toLowerCase();
-            const username = (user.username || '').toLowerCase();
-            const email = (user.email || '').toLowerCase();
-            const cpf = (user.cpf || '').toLowerCase();
-            const matriculaPap = (user.matricula_pap || '').toLowerCase();
-            const perfilNome = (user.perfil_nome || '').toLowerCase();
-            
-            // Buscar nome do supervisor
-            let supervisorNome = '';
-            if (user.supervisor) {
-                const supervisorId = typeof user.supervisor === 'object' && user.supervisor !== null 
-                    ? (user.supervisor.id || user.supervisor.pk) 
-                    : user.supervisor;
-                if (supervisorId) {
-                    supervisorNome = buscarNomeSupervisor(supervisorId, user).toLowerCase();
-                }
-            }
-
-            // Verificar se o termo de busca está em algum campo
-            return nomeCompleto.includes(termoBusca) ||
-                   username.includes(termoBusca) ||
-                   email.includes(termoBusca) ||
-                   cpf.includes(termoBusca) ||
-                   matriculaPap.includes(termoBusca) ||
-                   perfilNome.includes(termoBusca) ||
-                   supervisorNome.includes(termoBusca);
-        });
-
-        // Enriquecer dados com nomes de perfis e supervisores
         try {
-            const usuariosEnriquecidos = await enriquecerDadosUsuarios(usuariosFiltrados);
-            
-            // Renderizar apenas os resultados filtrados (sem paginação na busca)
-            renderizarTabelaUsuarios(usuariosEnriquecidos, statusAtual);
-            
-            // Atualizar informações de paginação para mostrar que está em modo busca
-            const totalFiltrados = usuariosFiltrados.length;
-            paginacaoAtual = {
-                page: 1,
-                total: totalFiltrados,
-                pages: 1
-            };
-            
-            // Atualizar contador de usuários (modo busca)
+            await carregarUsuarios(statusAtual, 1, termoBusca);
+            const totalFiltrados = paginacaoAtual.total;
             const contadorEl = document.getElementById('contador-usuarios');
             if (contadorEl) {
-                contadorEl.textContent = `Busca: ${totalFiltrados} resultado(s) encontrado(s)`;
+                contadorEl.textContent = totalFiltrados > 0
+                    ? `Busca: ${totalFiltrados} resultado(s) para "${termoBusca}"`
+                    : `Nenhum resultado para "${termoBusca}"`;
             }
-            
-            // Atualizar controles de paginação
-            renderizarControlesPaginacao(statusAtual);
-            
-            console.log(`Busca realizada: ${totalFiltrados} usuário(s) encontrado(s) para "${termoBusca}"`);
+            if (btnLimpar) btnLimpar.style.display = 'inline-block';
         } catch (e) {
-            console.error('Erro ao filtrar usuários:', e);
-            document.getElementById('user-list-body').innerHTML = `<tr><td colspan="8">Erro ao filtrar: ${e.message}</td></tr>`;
+            const tbody = document.getElementById('user-list-body');
+            if (tbody) tbody.innerHTML = `<tr><td colspan="8">Erro ao buscar: ${e.message}</td></tr>`;
+        } finally {
+            if (spinner) spinner.style.display = 'none';
         }
     }
+
+    function limparBuscaUsuario() {
+        const input = document.getElementById('busca-usuario');
+        const btnLimpar = document.getElementById('btn-limpar-busca-usuario');
+        if (input) { input.value = ''; input.focus(); }
+        if (btnLimpar) btnLimpar.style.display = 'none';
+        const statusAtual = document.getElementById('lista-status-titulo').textContent.includes('Ativos') ? 'ativos' : 'inativos';
+        carregarUsuarios(statusAtual, 1);
+    }
+
+    // Busca ao digitar: registrado fora do DOMContentLoaded para garantir que sempre funcione
+    document.addEventListener('input', function(e) {
+        if (e.target && e.target.id === 'busca-usuario') {
+            var el = e.target;
+            var termo = (el.value || '').trim();
+            var btnLimpar = document.getElementById('btn-limpar-busca-usuario');
+            if (btnLimpar) btnLimpar.style.display = termo ? 'inline-block' : 'none';
+            clearTimeout(debounceTimerBuscaUsuario);
+            debounceTimerBuscaUsuario = setTimeout(function() { filtrarUsuarios(); }, 350);
+        }
+    }, true);
+    document.addEventListener('keydown', function(e) {
+        if (e.target && e.target.id === 'busca-usuario' && e.key === 'Enter') {
+            e.preventDefault();
+            clearTimeout(debounceTimerBuscaUsuario);
+            filtrarUsuarios();
+        }
+    }, true);
+    document.addEventListener('click', function(e) {
+        var btn = e.target && (e.target.id === 'btn-limpar-busca-usuario' ? e.target : (e.target.closest ? e.target.closest('#btn-limpar-busca-usuario') : null));
+        if (btn) { e.preventDefault(); e.stopPropagation(); limparBuscaUsuario(); }
+    }, true);
 
     function editarUsuarioPeloId(id) { const user = todosUsuariosCache.find(u => u.id === id); if (user) abrirModalUsuario(user); }
     window.toggleTodos = (s) => document.querySelectorAll('.user-check').forEach(c => c.checked = s.checked);
@@ -2028,7 +1958,8 @@
             if(o.ativo) selPlanos.add(new Option(o.nome, o.id));
         });
     }
-    document.getElementById('form-operadora').onsubmit = async(e) => {
+    var formOperadora = document.getElementById('form-operadora');
+    if (formOperadora) formOperadora.onsubmit = async(e) => {
         e.preventDefault();
         const id = document.getElementById('operadora_id').value;
         const body = { nome: document.getElementById('operadora_nome').value, cnpj: document.getElementById('operadora_cnpj').value, ativo: document.getElementById('operadora_status').value == '1' };
@@ -2046,7 +1977,8 @@
             tbody.innerHTML += `<tr><td>${p.nome}</td><td>${p.operadora_nome || '-'}</td><td>${fmtMoeda(p.valor)}</td><td>${fmtMoeda(p.comissao)}</td><td><button class="btn btn-sm btn-editar me-1" onclick='editarPlano(${JSON.stringify(p)})'>✏️</button><button class="btn btn-sm btn-excluir" onclick="excluirPlano(${p.id})">🗑️</button></td></tr>`;
         });
     }
-    document.getElementById('form-plano').onsubmit = async(e) => {
+    var formPlano = document.getElementById('form-plano');
+    if (formPlano) formPlano.onsubmit = async(e) => {
         e.preventDefault();
         const id = document.getElementById('plano_id').value;
         const body = { nome: document.getElementById('plano_nome').value, valor: document.getElementById('plano_valor').value, comissao: document.getElementById('plano_comissao').value, operadora: document.getElementById('plano_operadora_id').value, ativo: true };
@@ -2094,15 +2026,12 @@
         document.getElementById('status_cor').value = s.cor;
         document.getElementById('status').scrollIntoView({behavior:'smooth'});
     };
-    document.getElementById('form-status').onsubmit = async(e) => {
+    var formStatus = document.getElementById('form-status');
+    if (formStatus) formStatus.onsubmit = async(e) => {
         e.preventDefault();
         const id = document.getElementById('status_id').value;
         const body = { nome: document.getElementById('status_nome').value, tipo: document.getElementById('status_tipo').value, estado: document.getElementById('status_estado').value, cor: document.getElementById('status_cor').value };
-        if(id) {
-            await apiFetch(`/crm/status/${id}/`, {method:'PATCH', body: JSON.stringify(body)});
-        } else {
-            await apiFetch('/crm/status/', {method:'POST', body: JSON.stringify(body)});
-        }
+        if(id) { await apiFetch(`/crm/status/${id}/`, {method:'PATCH', body: JSON.stringify(body)}); } else { await apiFetch('/crm/status/', {method:'POST', body: JSON.stringify(body)}); }
         document.getElementById('form-status').reset(); carregarStatus();
     };
     window.excluirStatus = async(id)=>{ if(confirm('Excluir?')) { await apiFetch(`/crm/status/${id}/`, {method:'DELETE'}); carregarStatus(); } };
@@ -2124,7 +2053,8 @@
         document.getElementById('pendencia_tipo').value = p.tipo_pendencia;
         document.getElementById('pendencias').scrollIntoView({behavior:'smooth'});
     };
-    document.getElementById('form-pendencia').onsubmit = async(e) => {
+    var formPendencia = document.getElementById('form-pendencia');
+    if (formPendencia) formPendencia.onsubmit = async(e) => {
         e.preventDefault();
         try {
             const id = document.getElementById('pendencia_id').value;
@@ -2193,20 +2123,23 @@
         const regras = Array.isArray(resRegras) ? resRegras : (resRegras?.results || []);
         const planos = Array.isArray(resPlanos) ? resPlanos : (resPlanos?.results || []);
         const users = Array.isArray(resUsers) ? resUsers : (resUsers?.results || []);
-        const selPlanos = document.getElementById('regra_plano_id'); selPlanos.innerHTML = '<option value="">Selecione...</option>';
-        const selUsers = document.getElementById('regra_consultor_id'); selUsers.innerHTML = '<option value="">Todos</option>';
-        planos.forEach(p => selPlanos.add(new Option(p.nome, p.id)));
-        users.forEach(u => selUsers.add(new Option(u.nome_completo, u.id)));
-        const tbody = document.getElementById('lista-regras-comissao'); tbody.innerHTML = '';
-        regras.forEach(r => tbody.innerHTML += `<tr><td>${r.consultor_nome||'TODOS'}</td><td>${r.plano_nome}</td><td>${r.tipo_venda}</td><td>${r.tipo_cliente}</td><td>${r.valor_base}</td><td>${r.valor_acelerado}</td><td><button class="btn btn-sm btn-warning me-1" onclick='editarRegra(${JSON.stringify(r)})'>✏️</button><button class="btn btn-sm btn-danger" onclick="excluirRegra(${r.id})">🗑️</button></td></tr>`);
+        const selPlanos = document.getElementById('regra_plano_id');
+        const selUsers = document.getElementById('regra_consultor_id');
+        const tbody = document.getElementById('lista-regras-comissao');
+        if (selPlanos) { selPlanos.innerHTML = '<option value="">Selecione...</option>'; planos.forEach(p => selPlanos.add(new Option(p.nome, p.id))); }
+        if (selUsers) { selUsers.innerHTML = '<option value="">Todos</option>'; users.forEach(u => selUsers.add(new Option(u.nome_completo, u.id))); }
+        if (tbody) { tbody.innerHTML = ''; regras.forEach(r => tbody.innerHTML += `<tr><td>${r.consultor_nome||'TODOS'}</td><td>${r.plano_nome}</td><td>${r.tipo_venda}</td><td>${r.tipo_cliente}</td><td>${r.valor_base}</td><td>${r.valor_acelerado}</td><td><button class="btn btn-sm btn-warning me-1" onclick='editarRegra(${JSON.stringify(r)})'>✏️</button><button class="btn btn-sm btn-danger" onclick="excluirRegra(${r.id})">🗑️</button></td></tr>`); }
     }
-    document.getElementById('form-regra-comissao').onsubmit = async(e) => {
-        e.preventDefault();
-        const id = document.getElementById('regra_comissao_id').value;
-        const body = { consultor: document.getElementById('regra_consultor_id').value || null, plano: document.getElementById('regra_plano_id').value, tipo_venda: document.getElementById('regra_tipo_venda').value, tipo_cliente: document.getElementById('regra_tipo_cliente').value, valor_base: document.getElementById('regra_valor_base').value, valor_acelerado: document.getElementById('regra_valor_acelerado').value };
-        await apiFetch(id ? `/crm/regras-comissao/${id}/` : '/crm/regras-comissao/', {method: id?'PUT':'POST', body: JSON.stringify(body)});
-        carregarRegrasComissao(); resetFormRegraComissao();
-    };
+    var formRegraComissao = document.getElementById('form-regra-comissao');
+    if (formRegraComissao) {
+        formRegraComissao.onsubmit = async(e) => {
+            e.preventDefault();
+            const id = document.getElementById('regra_comissao_id').value;
+            const body = { consultor: document.getElementById('regra_consultor_id').value || null, plano: document.getElementById('regra_plano_id').value, tipo_venda: document.getElementById('regra_tipo_venda').value, tipo_cliente: document.getElementById('regra_tipo_cliente').value, valor_base: document.getElementById('regra_valor_base').value, valor_acelerado: document.getElementById('regra_valor_acelerado').value };
+            await apiFetch(id ? `/crm/regras-comissao/${id}/` : '/crm/regras-comissao/', {method: id?'PUT':'POST', body: JSON.stringify(body)});
+            carregarRegrasComissao(); resetFormRegraComissao();
+        };
+    }
     function resetFormRegraComissao() { document.getElementById('form-regra-comissao').reset(); document.getElementById('regra_comissao_id').value = ''; }
     window.editarRegra = (r) => { document.getElementById('regra_comissao_id').value = r.id; document.getElementById('regra_consultor_id').value = r.consultor || ""; document.getElementById('regra_plano_id').value = r.plano; document.getElementById('regra_tipo_venda').value = r.tipo_venda; document.getElementById('regra_tipo_cliente').value = r.tipo_cliente; document.getElementById('regra_valor_base').value = r.valor_base; document.getElementById('regra_valor_acelerado').value = r.valor_acelerado; document.getElementById('form-regra-comissao').scrollIntoView({ behavior: 'smooth' }); };
     window.excluirRegra = async(id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/regras-comissao/${id}/`, {method:'DELETE'}); carregarRegrasComissao(); } };
@@ -2529,7 +2462,8 @@
             tbody.innerHTML += `<tr><td class="fw-bold">${c.nome}</td><td class="small">${c.data_inicio} <br> ${c.data_fim}</td><td>${resumoMetas}</td><td>Canal: ${c.canal_alvo}</td><td>${c.ativo?'<span class="badge bg-success">Ativa</span>':'Encerrada'}</td><td class="text-end"><button class="btn btn-sm btn-editar me-1" onclick='editarCampanha(${JSON.stringify(c)})'>✏️</button><button class="btn btn-sm btn-excluir" onclick="excluirCampanha(${c.id})">🗑️</button></td></tr>`;
         });
     }
-    document.getElementById('form-campanha').onsubmit = async(e) => {
+    var formCampanha = document.getElementById('form-campanha');
+    if (formCampanha) formCampanha.onsubmit = async(e) => {
         e.preventDefault();
         const faixas = [];
         document.querySelectorAll('#tbody-faixas-campanha tr').forEach(tr => {
@@ -2586,7 +2520,8 @@
             tbody.innerHTML += `<tr><td>${co.plano_nome || co.plano}</td><td>${fmtMoeda(co.valor_base)}</td><td class="text-success">${fmtMoeda(co.bonus_transicao)}</td><td>${co.data_fim_bonus||'-'}</td><td class="fw-bold">${fmtMoeda(total)}</td><td><button class="btn btn-warning btn-sm" onclick='editarComissaoOp(${JSON.stringify(co)})'>✏️</button></td></tr>`;
         });
     }
-    document.getElementById('form-comissao-operadora').onsubmit = async(e) => {
+    var formComissaoOp = document.getElementById('form-comissao-operadora');
+    if (formComissaoOp) formComissaoOp.onsubmit = async(e) => {
         e.preventDefault();
         const id = document.getElementById('co_id').value;
         const body = { plano: document.getElementById('co_plano_id').value, valor_base: document.getElementById('co_valor_base').value, bonus_transicao: document.getElementById('co_bonus').value, data_fim_bonus: document.getElementById('co_data_fim').value || null };
@@ -2606,77 +2541,63 @@
         if (selAnt) { selAnt.innerHTML = '<option value="">Selecione...</option>'; users.forEach(u => selAnt.add(new Option(u.username, u.id))); }
     }
     function preencherSelectAntVendedor() { carregarUsuariosSelectsFinanceiro(); }
-    window.toggleCamposAdiantamento = () => {
-        const elTipo = document.getElementById('ad_tipo'), boxQtd = document.getElementById('box-qtd-vendas');
-        if (!elTipo || !boxQtd) return;
-        const showQtd = elTipo.value === 'ADIANTAMENTO_CNPJ';
-        boxQtd.style.display = showQtd ? 'block' : 'none';
-    };
-    let antVendasLista = [];
+    let adVendasLista = [];
+    function updateTotalAdVendas() {
+        var tipoAd = document.getElementById('ad_tipo') && document.getElementById('ad_tipo').value;
+        var checked = document.querySelectorAll('.ad-venda-cb:checked');
+        var qtd = checked ? checked.length : 0;
+        var totEl = document.getElementById('ad-total-selecionado');
+        if (tipoAd === 'ADIANTAMENTO_CNPJ') {
+            if (totEl) totEl.textContent = 'Qtd. selecionada: ' + qtd;
+            return;
+        }
+        var total = 0;
+        if (checked) checked.forEach(function(cb) { total += parseFloat(cb.dataset.valor || 0) || 0; });
+        if (totEl) totEl.textContent = 'Total selecionado: R$ ' + total.toFixed(2).replace('.', ',');
+        var valEl = document.getElementById('ad_valor');
+        if (valEl) valEl.value = total > 0 ? total.toFixed(2) : '';
+    }
     document.addEventListener('click', async function(e) {
-        const id = e.target.id;
-        if (id === 'btn-registrar-adiantamento') {
+        const btn = e.target.closest && e.target.closest('button');
+        const id = (btn && btn.id) || e.target.id;
+        if (id === 'btn-registrar-adiantamento') { e.preventDefault(); registrarAdiantamento(e); return; }
+        if (id === 'btn-registrar-desconto') { e.preventDefault(); registrarDesconto(e); return; }
+        if (id === 'btn-ad-listar-vendas') {
             e.preventDefault();
-            const payload = { usuario: document.getElementById('ad_usuario')?.value, tipo: document.getElementById('ad_tipo')?.value, data: document.getElementById('ad_data')?.value, valor: document.getElementById('ad_valor')?.value, descricao: document.getElementById('ad_obs')?.value || '' };
-            if (!payload.usuario || !payload.data || !payload.valor) { alert('Preencha Colaborador, Data e Valor.'); return; }
-            payload.quantidade_vendas = parseInt(document.getElementById('ad_qtd')?.value, 10) || 0;
-            try {
-                await apiFetch('/crm/lancamentos-financeiros/', { method: 'POST', body: JSON.stringify(payload) });
-                alert('Salvo!');
-                document.getElementById('form-adiantamento')?.reset();
-                toggleCamposAdiantamento();
-                carregarLancamentosFinanceiros();
-            } catch (err) { alert('Erro ao registrar: ' + (err.message || 'Tente novamente.')); }
-            return;
-        }
-        if (id === 'btn-registrar-desconto') {
-            e.preventDefault();
-            const usuario = document.getElementById('desc_usuario')?.value, data = document.getElementById('desc_data')?.value, valor = document.getElementById('desc_valor')?.value, motivo = document.getElementById('desc_motivo')?.value;
-            if (!usuario || !data || !valor || !motivo) { alert('Preencha todos os campos.'); return; }
-            try {
-                await apiFetch('/crm/lancamentos-financeiros/', { method: 'POST', body: JSON.stringify({ usuario, tipo: 'DESCONTO', data, valor, descricao: motivo }) });
-                alert('Salvo!');
-                document.getElementById('form-desconto')?.reset();
-                carregarLancamentosFinanceiros();
-            } catch (err) { alert('Erro ao registrar: ' + (err.message || 'Tente novamente.')); }
-            return;
-        }
-        if (id === 'btn-ant-listar-vendas') {
-            e.preventDefault();
-            const vendedorId = document.getElementById('ant_vendedor')?.value, mesAno = document.getElementById('ant_mes_ano')?.value;
-            if (!vendedorId) { alert('Selecione o colaborador.'); return; }
+            var vendedorId = document.getElementById('ad_usuario') && document.getElementById('ad_usuario').value;
+            var tipoAd = document.getElementById('ad_tipo') && document.getElementById('ad_tipo').value;
+            var mesAnoEl = document.getElementById('ad_mes_vendas');
+            var mesAno = mesAnoEl ? mesAnoEl.value : '';
+            if (!vendedorId) { alert('Selecione o colaborador no formulário de Novo Adiantamento.'); return; }
             if (!mesAno) { alert('Informe o mês/ano das vendas.'); return; }
-            const [ano, mes] = mesAno.split('-');
-            const tbody = document.getElementById('tbody-ant-vendas');
+            var parts = mesAno.split('-');
+            var ano = parts[0], mes = parts[1];
+            var url = '/crm/lancamentos-financeiros/vendas-instaladas-mes/?vendedor_id=' + vendedorId + '&ano=' + ano + '&mes=' + mes;
+            if (tipoAd === 'ADIANTAMENTO_CNPJ') url += '&tipo_cliente=CNPJ';
+            var tbody = document.getElementById('tbody-ad-vendas');
             if (!tbody) return;
             tbody.innerHTML = '<tr><td colspan="5" class="text-center py-2 text-muted">Carregando...</td></tr>';
             try {
-                const res = await apiFetch(`/crm/lancamentos-financeiros/vendas-instaladas-mes/?vendedor_id=${vendedorId}&ano=${ano}&mes=${mes}`);
-                antVendasLista = Array.isArray(res) ? res : [];
+                var res = await apiFetch(url);
+                adVendasLista = Array.isArray(res) ? res : [];
                 tbody.innerHTML = '';
-                if (antVendasLista.length === 0) { tbody.innerHTML = '<tr><td colspan="5" class="text-center py-2 text-muted">Nenhuma venda instalada neste mês.</td></tr>'; return; }
-                antVendasLista.forEach(v => { tbody.innerHTML += `<tr><td><input type="checkbox" class="ant-venda-cb" data-id="${v.id}"></td><td>${v.cliente_nome || ''}</td><td>${v.plano_nome || ''}</td><td>${v.data_instalacao || ''}</td><td>${v.ordem_servico || ''}</td></tr>`; });
-                const cb = document.getElementById('ant_sel_todas'); if (cb) cb.checked = false;
+                if (adVendasLista.length === 0) { tbody.innerHTML = '<tr><td colspan="5" class="text-center py-2 text-muted">Nenhuma venda ' + (tipoAd === 'ADIANTAMENTO_CNPJ' ? 'CNPJ' : 'instalada') + ' neste mês.</td></tr>'; updateTotalAdVendas(); return; }
+                adVendasLista.forEach(function(v) {
+                    var val = (v.valor_comissao_estimado != null) ? parseFloat(v.valor_comissao_estimado) : 0;
+                    tbody.innerHTML += '<tr><td><input type="checkbox" class="ad-venda-cb" data-id="' + v.id + '" data-valor="' + val + '"></td><td>' + (v.cliente_nome || '') + '</td><td>' + (v.plano_nome || '') + '</td><td>' + (v.data_instalacao || '') + '</td><td class="text-end">R$ ' + val.toFixed(2).replace('.', ',') + '</td></tr>';
+                });
+                var cb = document.getElementById('ad_sel_todas'); if (cb) cb.checked = false;
+                updateTotalAdVendas();
             } catch (err) { tbody.innerHTML = '<tr><td colspan="5" class="text-center py-2 text-danger">Erro: ' + (err.message || 'Não foi possível carregar.') + '</td></tr>'; }
-            return;
-        }
-        if (id === 'btn-registrar-adiant-comissao') {
-            e.preventDefault();
-            const usuario = document.getElementById('ant_vendedor')?.value, data = document.getElementById('ant_data')?.value, valor = document.getElementById('ant_valor')?.value, obs = document.getElementById('ant_obs')?.value || '';
-            if (!usuario || !data || !valor) { alert('Preencha Colaborador, Data e Valor do adiantamento.'); return; }
-            const ids = Array.from(document.querySelectorAll('.ant-venda-cb:checked')).map(cb => parseInt(cb.dataset.id, 10));
-            try {
-                await apiFetch('/crm/lancamentos-financeiros/', { method: 'POST', body: JSON.stringify({ usuario, tipo: 'ADIANTAMENTO_COMISSAO', data, valor, descricao: obs, metadados: { venda_ids: ids }, quantidade_vendas: ids.length }) });
-                alert('Salvo!');
-                document.getElementById('ant_data').value = ''; document.getElementById('ant_valor').value = ''; document.getElementById('ant_obs').value = '';
-                antVendasLista = []; const tbody = document.getElementById('tbody-ant-vendas'); if (tbody) tbody.innerHTML = '';
-                carregarLancamentosFinanceiros();
-            } catch (err) { alert('Erro ao registrar: ' + (err.message || 'Tente novamente.')); }
             return;
         }
     });
     document.addEventListener('change', function(e) {
-        if (e.target.id === 'ant_sel_todas') document.querySelectorAll('.ant-venda-cb').forEach(cb => { cb.checked = e.target.checked; });
+        if (e.target.id === 'ad_sel_todas') {
+            document.querySelectorAll('.ad-venda-cb').forEach(function(cb) { cb.checked = e.target.checked; });
+            updateTotalAdVendas();
+        }
+        if (e.target.classList && e.target.classList.contains('ad-venda-cb')) updateTotalAdVendas();
     });
     async function carregarLancamentosFinanceiros() {
         const filtroEl = document.getElementById('filtro-mes-lancamentos');
@@ -2738,7 +2659,8 @@
         } catch (e) { tbody.innerHTML = '<tr><td colspan="4" class="text-danger text-center">Erro ao carregar regras.</td></tr>'; }
     }
 
-    document.getElementById('form-regra-automacao').onsubmit = async (e) => {
+    var formRegraAuto = document.getElementById('form-regra-automacao');
+    if (formRegraAuto) formRegraAuto.onsubmit = async (e) => {
         e.preventDefault();
         const id = document.getElementById('regra_auto_id').value;
         const gruposIds = Array.from(document.getElementById('regra_grupos').selectedOptions).map(opt => opt.value);
@@ -2827,8 +2749,8 @@
             const dados = await apiFetch(`/presenca/relatorio-financeiro/?inicio=${ini}&fim=${fim}`);
             const tPrev = document.getElementById('tbodyPrevisao'), tDesc = document.getElementById('tbodyDescontos');
             tPrev.innerHTML = ''; tDesc.innerHTML = '';
-            (dados.previsao||[]).forEach(p => tPrev.innerHTML += `<tr><td>${p.colaborador_username||p.colaborador}</td><td>${p.dias_uteis}</td><td>${fmtMoeda(p.valor_diario)}</td><td class="fw-bold">${fmtMoeda(p.total_receber||p.total_previsto)}</td></tr>`);
-            (dados.descontos||[]).forEach(d => tDesc.innerHTML += `<tr><td>${d.colaborador_username||d.colaborador}</td><td>${d.dias_uteis}</td><td>${d.qtd_faltas}</td><td>${fmtMoeda(d.valor_diario)}</td><td class="text-danger">${fmtMoeda(d.valor_desconto)}</td><td class="fw-bold">${fmtMoeda(d.total_receber)}</td></tr>`);
+            (dados.previsao||[]).forEach(p => tPrev.innerHTML += `<tr><td>${(p.username != null && p.username !== '') ? p.username : (p.colaborador_username || p.nome || p.colaborador || '-')}</td><td>${p.dias_uteis}</td><td>${fmtMoeda(p.valor_diario)}</td><td class="fw-bold">${fmtMoeda(p.total_receber||p.total_previsto)}</td></tr>`);
+            (dados.descontos||[]).forEach(d => tDesc.innerHTML += `<tr><td>${(d.username != null && d.username !== '') ? d.username : (d.colaborador_username || d.nome || d.colaborador || '-')}</td><td>${d.dias_uteis}</td><td>${d.qtd_faltas}</td><td>${fmtMoeda(d.valor_diario)}</td><td class="text-danger">${fmtMoeda(d.valor_desconto)}</td><td class="fw-bold">${fmtMoeda(d.total_receber)}</td></tr>`);
         } catch(e) { alert(e.message); }
     }
     
@@ -2915,27 +2837,6 @@
         // --- NOVAS FUNÇÕES DA ABA AUTOMAÇÃO (SUBSTITUÍRAM AS ANTIGAS) ---
         carregarRegrasAutomacao();
         carregarGruposExternos();
-
-        // Adicionar event listener para busca de usuários com debounce
-        const campoBuscaUsuario = document.getElementById('busca-usuario');
-        if (campoBuscaUsuario) {
-            let debounceTimer;
-            const debouncedFiltrar = () => {
-                clearTimeout(debounceTimer);
-                debounceTimer = setTimeout(() => {
-                    filtrarUsuarios();
-                }, 300); // Aguardar 300ms após parar de digitar
-            };
-            
-            campoBuscaUsuario.addEventListener('input', debouncedFiltrar);
-            campoBuscaUsuario.addEventListener('keyup', (e) => {
-                // Se pressionar Enter, buscar imediatamente
-                if (e.key === 'Enter') {
-                    clearTimeout(debounceTimer);
-                    filtrarUsuarios();
-                }
-            });
-        }
 
         const link = document.querySelector('.admin-nav-link');
         if(link) mostrarSecao(null, 'usuarios', link);

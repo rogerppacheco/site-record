@@ -2,6 +2,7 @@ from datetime import date
 
 from django.shortcuts import render, redirect
 from django.views.generic import TemplateView
+from django.contrib.auth.mixins import LoginRequiredMixin
 
 from rest_framework import viewsets
 from rest_framework.authentication import SessionAuthentication, BasicAuthentication
@@ -48,6 +49,11 @@ class AnteciparInstalacaoView(TemplateView):
 class GovernancaView(TemplateView):
     # Ajustado para o caminho correto se estiver usando a pasta public
     template_name = "public/governanca.html"
+
+
+class PainelSegundaView(TemplateView):
+    """Painel do Agente Financeiro (checklist toda segunda). HTML sempre servido; acesso Diretoria/Admin conferido no front via JWT (como área interna)."""
+    template_name = "public/painel-segunda.html"
 
 class PresencaView(TemplateView):
     template_name = "frontend/public/presenca.html"

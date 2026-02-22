@@ -4987,17 +4987,25 @@ class LancamentoFinanceiroViewSet(viewsets.ModelViewSet):
             return Response(serializer.data)
         return super().list(request, *args, **kwargs)
 
+    def create(self, request, *args, **kwargs):
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info('[LancamentoFinanceiro] POST create: usuario=%s tipo=%s data=%s valor=%s', request.data.get('usuario'), request.data.get('tipo'), request.data.get('data'), request.data.get('valor'))
+        return super().create(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         # Salva automaticamente quem criou o registro (segurança/auditoria)
         serializer.save(criado_por=self.request.user)
 
     @action(detail=False, methods=['get'], url_path='vendas-instaladas-mes')
     def vendas_instaladas_mes(self, request):
-        """Lista vendas instaladas de um vendedor em um mês (para adiantamento de comissão: marcar quais foram adiantadas)."""
+        """Lista vendas instaladas de um vendedor em um mês. ?tipo_cliente=CNPJ para só vendas CNPJ."""
         from datetime import datetime
+        import re
         vendedor_id = request.query_params.get('vendedor_id')
         ano = request.query_params.get('ano')
         mes = request.query_params.get('mes')
+        tipo_cliente = (request.query_params.get('tipo_cliente') or '').strip().upper()
         if not vendedor_id or not ano or not mes:
             return Response({'error': 'Parâmetros vendedor_id, ano e mes são obrigatórios.'}, status=400)
         try:
@@ -5019,15 +5027,53 @@ class LancamentoFinanceiroViewSet(viewsets.ModelViewSet):
             data_instalacao__lt=data_fim,
         ).select_related('plano', 'cliente').order_by('data_instalacao', 'id')
         lista = []
+        only_cnpj = (tipo_cliente == 'CNPJ')
         for v in vendas:
+            if only_cnpj and v.cliente:
+                digits = re.sub(r'\D', '', v.cliente.cpf_cnpj or '')
+                if len(digits) != 14:  # CNPJ tem 14 dígitos
+                    continue
+            valor_est = float(v.plano.comissao_base) if v.plano and v.plano.comissao_base is not None else 0
             lista.append({
                 'id': v.id,
                 'cliente_nome': v.cliente.nome_razao_social if v.cliente else '',
                 'plano_nome': v.plano.nome if v.plano else '',
                 'data_instalacao': v.data_instalacao.isoformat()[:10] if v.data_instalacao else '',
                 'ordem_servico': v.ordem_servico or '',
+                'valor_comissao_estimado': round(valor_est, 2),
             })
         return Response(lista)
+
+
+# --- PAINEL DO AGENTE FINANCEIRO (SEGUNDA-FEIRA) ---
+
+class PainelSegundaAPIView(APIView):
+    """GET ?semana=YYYY-MM-DD (segunda-feira). Retorna tabela por usuário. Acesso: Diretoria e Admin."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not request.user.is_superuser and not is_member(request.user, ['Diretoria', 'Admin']):
+            return Response({'error': 'Acesso negado. Apenas Diretoria e Admin.'}, status=403)
+        semana_str = request.query_params.get('semana')
+        if not semana_str:
+            return Response({'error': 'Parâmetro semana (YYYY-MM-DD, segunda-feira) é obrigatório.'}, status=400)
+        try:
+            from datetime import datetime
+            data_param = datetime.strptime(semana_str, '%Y-%m-%d').date()
+        except ValueError:
+            return Response({'error': 'Formato de data inválido. Use YYYY-MM-DD.'}, status=400)
+        from datetime import timedelta
+        from .painel_segunda_service import gerar_painel_semana, get_semana_seg_sab
+        seg, sab = get_semana_seg_sab(data_param)
+        # Semana a exibir: segunda a sábado ANTERIORES à segunda selecionada
+        semana_inicio = seg - timedelta(days=7)
+        semana_fim = semana_inicio + timedelta(days=5)
+        dados = gerar_painel_semana(semana_inicio)
+        return Response({
+            'semana_inicio': semana_inicio.isoformat(),
+            'semana_fim': semana_fim.isoformat(),
+            'dados': dados,
+        })
 
 
 # --- VIEWS PARA CONFIRMAÇÃO E REVERSÃO DE DESCONTOS ---

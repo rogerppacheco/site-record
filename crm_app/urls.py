@@ -32,6 +32,7 @@ from .views import (
     ComunicadoViewSet,
     EstatisticasBotWhatsAppView,
     LancamentoFinanceiroViewSet,
+    PainelSegundaAPIView,
     GrupoDisparoViewSet,
 
     # Views Genéricas (List/Detail)
@@ -150,6 +151,7 @@ router.register(r'lancamentos-financeiros', LancamentoFinanceiroViewSet, basenam
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('painel-segunda/', PainelSegundaAPIView.as_view(), name='painel-segunda-api'),
     path('serve-pdf/<str:token>/', serve_pdf_view, name='serve-pdf'),
     path('duplicar-venda/', duplicar_venda, name='duplicar-venda'),
         # --- Endpoint para busca automática de fatura NIO (Bonus M-10) ---

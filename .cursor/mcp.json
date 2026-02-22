@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "meu-banco-postgres": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-postgres",
+        "postgresql://siteuser:379806@localhost:5432/site_record"
+      ]
+    }
+  }
+}

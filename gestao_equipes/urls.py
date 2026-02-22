@@ -8,7 +8,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 # --- IMPORTS DAS VIEWS NECESSÁRIAS ---
 from usuarios.views import LoginView
-from core.views import calendario_fiscal_view, RegraAutomacaoViewSet
+from core.views import calendario_fiscal_view, RegraAutomacaoViewSet, PainelSegundaView
 from crm_app.views import (
     page_painel_performance, 
     page_cdoi_novo,
@@ -104,6 +104,7 @@ urlpatterns = [
     path('calendario/', calendario_fiscal_view, name='calendario_fiscal_atual'),
     path('calendario/<int:ano>/<int:mes>/', calendario_fiscal_view, name='calendario_fiscal'),
     path('painel-performance/', page_painel_performance, name='painel_performance'),
+    path('painel-segunda/', PainelSegundaView.as_view(), name='painel_segunda'),
 
     # --- NOVO: RECORD VERTICAL (CDOI) ---
     path('cdoi-novo/', page_cdoi_novo, name='page_cdoi_novo'),

@@ -3,19 +3,20 @@ from rest_framework.routers import DefaultRouter
 
 # IMPORTANDO AS VIEWS (Note a mudança na última linha do import)
 from .views import (
-    IndexView, 
-    AreaInternaView, 
+    IndexView,
+    AreaInternaView,
     AnteciparInstalacaoView,
-    GovernancaView, 
-    PresencaView, 
-    CrmVendasView, 
-    ConsultaCpfView, 
-    ConsultaTratamentoView, 
-    AuditoriaView, 
-    SalvarOsabView, 
+    GovernancaView,
+    PainelSegundaView,
+    PresencaView,
+    CrmVendasView,
+    ConsultaCpfView,
+    ConsultaTratamentoView,
+    AuditoriaView,
+    SalvarOsabView,
     SalvarChurnView,
     calendario_fiscal_view,
-    RegraAutomacaoViewSet  # <--- CORRIGIDO: Era ConfiguracaoEnvioViewSet
+    RegraAutomacaoViewSet,
 )
 
 # Configuração do Router
@@ -29,6 +30,7 @@ urlpatterns = [
     path('area-interna/', AreaInternaView.as_view(), name='area-interna'),
     path('antecipar-instalacao/', AnteciparInstalacaoView.as_view(), name='page_antecipar_instalacao'),
     path('governanca/', GovernancaView.as_view(), name='governanca'),
+    path('painel-segunda/', PainelSegundaView.as_view(), name='painel_segunda'),
     path('presenca/', PresencaView.as_view(), name='presenca'),
     path('crm-vendas/', CrmVendasView.as_view(), name='crm-vendas'),
     path('consulta-cpf/', ConsultaCpfView.as_view(), name='consulta-cpf'),
