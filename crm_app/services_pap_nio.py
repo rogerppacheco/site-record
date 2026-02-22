@@ -937,6 +937,9 @@ class PAPNioAutomation:
         except Exception as e:
             logger.warning(f"[PAP] Erro ao ler tabela Consulta OS: {e}")
 
+        # Screenshot logo após ler a tabela (com a lista de resultados visível), antes de abrir Detalhar
+        screenshot_path = self._screenshot_consulta_os_return_path(full_page=True)
+
         # Opcional: para cada OS com status diferente de Concluído/Instalado, abrir Detalhar e trazer Status agendamento + Agendamento
         if detalhes and enrich_detalhar:
             for row in detalhes:
@@ -949,18 +952,16 @@ class PAPNioAutomation:
                             row["status_agendamento"] = st_ag or ""
                             row["agendamento"] = ag_texto or ""
 
-        # Screenshot (sempre, para enviar no WhatsApp)
-        screenshot_path = self._screenshot_consulta_os_return_path(full_page=True)
-
         if detalhes:
             return True, "ok", detalhes, screenshot_path
         return True, "no_results", [], screenshot_path
 
     def abrir_detalhe_os_e_extrair(self, numero_os: str) -> Tuple[Optional[str], Optional[str]]:
         """
-        Na tela de Consulta OS (após filtrar), abre o link Detalhar da OS e extrai
-        Status agendamento e Agendamento (spans na página de detalhe).
-        Retorna (status_agendamento, agendamento_texto). Volta à lista após extrair.
+        Na tela de Consulta OS (após filtrar), abre o link Detalhar da OS e extrai na página de detalhe:
+        - Status agendamento: valor ao lado do rótulo "Status agendamento" (ex.: "Concluído com sucesso")
+        - Agendamento: valor ao lado do rótulo "Agendamento" (ex.: "23/02/2026 - Tarde")
+        Busca pelo rótulo para não confundir com outros spans (plano, status do pedido, etc.).
         """
         num = (numero_os or "").strip()
         num_sem_zero = num.lstrip("0") or num
@@ -979,11 +980,30 @@ class PAPNioAutomation:
                 self.page.wait_for_load_state("domcontentloaded", timeout=5000)
             status_agendamento = None
             agendamento_texto = None
-            spans = self.page.locator('span.sc-jrOYZv.ldMRLh, span.ldMRLh').all()
-            if len(spans) >= 1:
-                status_agendamento = (spans[0].inner_text() or "").strip()
-            if len(spans) >= 2:
-                agendamento_texto = (spans[1].inner_text() or "").strip()
+            # Buscar pelo rótulo para pegar o valor correto (span.ldMRLh no mesmo bloco do rótulo)
+            try:
+                loc_st = self.page.get_by_text("Status agendamento", exact=False).locator("..").locator("span.ldMRLh, span.sc-jrOYZv.ldMRLh").first
+                if loc_st.count() > 0:
+                    status_agendamento = (loc_st.inner_text() or "").strip()
+            except Exception:
+                pass
+            try:
+                loc_ag = self.page.get_by_text("Agendamento", exact=False).locator("..").locator("span.ldMRLh, span.sc-jrOYZv.ldMRLh").first
+                if loc_ag.count() > 0:
+                    agendamento_texto = (loc_ag.inner_text() or "").strip()
+            except Exception:
+                pass
+            # Fallback: valor no formato data + Tarde/Manhã = Agendamento; texto tipo "Concluído" = Status agendamento
+            if not status_agendamento or not agendamento_texto:
+                spans = self.page.locator('span.sc-jrOYZv.ldMRLh, span.ldMRLh').all()
+                for s in spans:
+                    t = (s.inner_text() or "").strip()
+                    if not t:
+                        continue
+                    if re.match(r'\d{2}/\d{2}/\d{4}\s*-\s*(Tarde|Manhã)', t) and not agendamento_texto:
+                        agendamento_texto = t
+                    if ("concluído" in t.lower() or "sucesso" in t.lower()) and not status_agendamento:
+                        status_agendamento = t
             self.page.go_back()
             self.page.wait_for_timeout(1000)
             return (status_agendamento or None, agendamento_texto or None)
