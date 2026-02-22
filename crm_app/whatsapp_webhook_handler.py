@@ -2432,6 +2432,8 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                             f"❌ *Página não pronta*\n\n{msg_tela}\n\nDigite *VENDER* para tentar novamente."
                         )
                         return
+                    # Nome do operador logado no portal (ex.: "Olá, ARIADNY STHER...")
+                    nome_operador = (automacao.obter_nome_operador_logado() or "").strip()
                     # Se o usuário cancelou enquanto conectava, não registrar nem pedir CEP.
                     # DB/save neste thread falha (Playwright deixa event loop no thread → SynchronousOnlyOperation).
                     # Rodar verificação de etapa e save + envio WhatsApp em thread separado (sem event loop).
@@ -2465,7 +2467,7 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                     # Save + enviar mensagem em thread sem event loop (evita SynchronousOnlyOperation)
                     _notify_t0 = webhook_t0 if webhook_t0 is not None else time.monotonic()
 
-                    def _db_save_e_notify(t0=_notify_t0):
+                    def _db_save_e_notify(t0=_notify_t0, nome_op=nome_operador):
                         from crm_app.whatsapp_service import WhatsAppService
                         import time
                         try:
@@ -2473,11 +2475,17 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                             s.etapa = "venda_cep"
                             s.save(update_fields=["etapa"])
                             elapsed = time.monotonic() - t0
+                            if nome_op:
+                                saudacao = (
+                                    f"✅ Olá, meu nome é *{nome_op}* e vou guiar você na ativação! Bora lá?\n\n"
+                                )
+                            else:
+                                saudacao = "✅ Acesso reservado!\n\n"
                             msg = (
-                                "✅ Acesso reservado!\n\n"
-                                "📍 *ETAPA 1: ENDEREÇO*\n\n"
-                                "Digite o *CEP* do endereço de instalação:\n\n"
-                                "⏱ _%.1fs_" % round(elapsed, 1)
+                                saudacao
+                                + "📍 *ETAPA 1: ENDEREÇO*\n\n"
+                                + "Digite o *CEP* do endereço de instalação:\n\n"
+                                + "⏱ _%.1fs_" % round(elapsed, 1)
                             )
                             WhatsAppService().enviar_mensagem_texto(telefone, msg)
                         except Exception as _e:

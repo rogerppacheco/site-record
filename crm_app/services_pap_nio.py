@@ -795,6 +795,35 @@ class PAPNioAutomation:
             logger.warning(f"[PAP] Validação da tela CEP: {e}")
             return False, f"Não foi possível validar a tela: {str(e)}"
 
+    def obter_nome_operador_logado(self) -> str:
+        """
+        Extrai o nome do operador (backoffice) logado no portal a partir do elemento
+        que exibe "Olá, <br> NOME DO OPERADOR" (ex.: #operador ou div.Operador-info).
+        Retorna string vazia se não encontrar.
+        """
+        if not self.page:
+            return ""
+        try:
+            # Tentar #operador ou .Operador-info primeiro (estrutura: div com "Olá," e nome após <br>)
+            el = self.page.query_selector('#operador') or self.page.query_selector('div.Operador-info')
+            if not el:
+                # Fallback: qualquer div que contenha "Olá," seguido do nome
+                el = self.page.query_selector('div:has-text("Olá")')
+            if not el:
+                return ""
+            texto = (el.inner_text() or "").strip()
+            if not texto:
+                return ""
+            # Remover "Olá," (com vírgula e variações) e pegar o restante como nome
+            texto = re.sub(r'^Olá\s*,?\s*', '', texto, flags=re.I).strip()
+            # Se tiver quebra de linha, o nome costuma estar na segunda parte
+            partes = [p.strip() for p in texto.split('\n') if p.strip()]
+            nome = partes[-1] if partes else texto
+            return nome.strip() if nome else ""
+        except Exception as e:
+            logger.warning(f"[PAP] obter_nome_operador_logado: {e}")
+            return ""
+
     def etapa2_viabilidade(self, cep: str, numero: str, referencia: str) -> Tuple[bool, str, Optional[list]]:
         """
         Etapa 2: Consulta de viabilidade.
