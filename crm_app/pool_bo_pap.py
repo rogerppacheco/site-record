@@ -211,6 +211,26 @@ def obter_mensagem_fila_ocupado(telefone: str, tipo_acao: str = "vender") -> str
     )
 
 
+def liberar_todos_bos() -> Tuple[int, str]:
+    """
+    Libera todos os logins PAP (remove todos os registros PapBoEmUso).
+    Útil quando os logins ficaram travados sem uso (ex.: sessão caiu e o lock não foi liberado).
+    Retorna (quantidade_liberada, mensagem).
+    """
+    from crm_app.models import PapBoEmUso
+
+    try:
+        total = PapBoEmUso.objects.count()
+        if total == 0:
+            return 0, "Nenhum login estava em uso."
+        PapBoEmUso.objects.all().delete()
+        logger.info(f"[POOL BO] Liberados todos os {total} BO(s) (logoff manual).")
+        return total, f"Liberados {total} login(s) PAP. Eles voltam ao pool para o bot."
+    except Exception as e:
+        logger.exception(f"[POOL BO] Erro ao liberar todos: {e}")
+        return 0, f"Erro ao liberar: {e}"
+
+
 def liberar_bo(
     bo_usuario_id: int,
     vendedor_telefone: str,

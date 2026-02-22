@@ -1417,23 +1417,20 @@ def _processar_viabilidade_selecionar_endereco(telefone: str, sessao, dados: dic
     idx = int(mensagem)
     with _automacoes_lock:
         ctx = _automacoes_pap_ativas.get(sessao.id)
+    put_payload = {
+        'action': 'selecionar_endereco',
+        'idx': idx,
+        'cep': dados.get('cep', ''),
+        'numero': dados.get('numero', ''),
+        'referencia': dados.get('referencia', ''),
+    }
+    if webhook_t0 is not None:
+        put_payload['worker_t0'] = webhook_t0
     if not ctx:
-        sessao.etapa = 'inicial'
-        sessao.dados_temp = {}
-        sessao.save()
-        return "❌ Sessão expirada. Digite *VENDER* para iniciar novamente."
+        return _marcar_sessao_erro_retry(sessao, dados, 'venda_selecionar_endereco', put_payload)
     
     cmd_queue = ctx.get('cmd_queue')
     if cmd_queue:
-        put_payload = {
-            'action': 'selecionar_endereco',
-            'idx': idx,
-            'cep': dados.get('cep', ''),
-            'numero': dados.get('numero', ''),
-            'referencia': dados.get('referencia', ''),
-        }
-        if webhook_t0 is not None:
-            put_payload['worker_t0'] = webhook_t0
         cmd_queue.put(put_payload)
         return "⏳ Processando endereço... Aguarde alguns instantes."
     
@@ -1505,22 +1502,19 @@ def _processar_viabilidade_selecionar_complemento(telefone: str, sessao, dados: 
     
     with _automacoes_lock:
         ctx = _automacoes_pap_ativas.get(sessao.id)
+    put_payload = {
+        'action': 'selecionar_complemento',
+        'escolha': mensagem.strip(),
+        'cep': dados.get('cep', ''),
+        'numero': dados.get('numero', ''),
+    }
+    if webhook_t0 is not None:
+        put_payload['worker_t0'] = webhook_t0
     if not ctx:
-        sessao.etapa = 'inicial'
-        sessao.dados_temp = {}
-        sessao.save()
-        return "❌ Sessão expirada. Digite *VENDER* para iniciar novamente."
+        return _marcar_sessao_erro_retry(sessao, dados, 'venda_selecionar_complemento', put_payload)
     
     cmd_queue = ctx.get('cmd_queue')
     if cmd_queue:
-        put_payload = {
-            'action': 'selecionar_complemento',
-            'escolha': mensagem.strip(),
-            'cep': dados.get('cep', ''),
-            'numero': dados.get('numero', ''),
-        }
-        if webhook_t0 is not None:
-            put_payload['worker_t0'] = webhook_t0
         cmd_queue.put(put_payload)
         return "⏳ Processando complemento... Aguarde alguns instantes."
     
@@ -1585,18 +1579,13 @@ def _processar_viabilidade_posse(telefone: str, sessao, dados: dict, mensagem_li
     
     with _automacoes_lock:
         ctx = _automacoes_pap_ativas.get(sessao.id)
+    put_payload = {'action': 'modal_posse_voltar', 'cep_novo': cep_novo}
     if not ctx:
-        sessao.etapa = 'inicial'
-        sessao.dados_temp = {}
-        sessao.save()
-        return "❌ Sessão expirada. Digite *VENDER* para iniciar novamente."
+        return _marcar_sessao_erro_retry(sessao, dados, 'venda_posse_consultar_outro', put_payload)
     
     cmd_queue = ctx.get('cmd_queue')
     if cmd_queue:
-        cmd_queue.put({
-            'action': 'modal_posse_voltar',
-            'cep_novo': cep_novo,
-        })
+        cmd_queue.put(put_payload)
         return "⏳ Processando... Aguarde alguns instantes."
     ok, _ = ctx['automacao'].etapa2_modal_posse_clicar_consultar_outro()
     if not ok:
@@ -1624,18 +1613,13 @@ def _processar_viabilidade_indisponivel(telefone: str, sessao, dados: dict, mens
     
     with _automacoes_lock:
         ctx = _automacoes_pap_ativas.get(sessao.id)
+    put_payload = {'action': 'modal_indisponivel_voltar', 'cep_novo': cep_novo}
     if not ctx:
-        sessao.etapa = 'inicial'
-        sessao.dados_temp = {}
-        sessao.save()
-        return "❌ Sessão expirada. Digite *VENDER* para iniciar novamente."
+        return _marcar_sessao_erro_retry(sessao, dados, 'venda_indisponivel_voltar', put_payload)
     
     cmd_queue = ctx.get('cmd_queue')
     if cmd_queue:
-        cmd_queue.put({
-            'action': 'modal_indisponivel_voltar',
-            'cep_novo': cep_novo,
-        })
+        cmd_queue.put(put_payload)
         return "⏳ Processando... Aguarde alguns instantes."
     ok, _ = ctx['automacao'].etapa2_modal_indisponivel_clicar_voltar()
     if not ok:
@@ -1940,6 +1924,25 @@ def _encerrar_automacao_pap(sessao_id: int, bo_usuario_id, telefone: str):
         liberar_bo(bo_usuario_id, telefone)
 
 
+def _marcar_sessao_erro_retry(sessao, dados: dict, etapa_erro: str, ultimo_cmd_erro: dict) -> str:
+    """
+    Quando a automação perde o contexto (ctx não está em _automacoes_pap_ativas),
+    marca a sessão para estado de retry e retorna mensagem oferecendo REPETIR ou VENDER.
+    """
+    if not dados:
+        dados = sessao.dados_temp or {}
+    dados = dict(dados)
+    dados['_etapa_erro'] = etapa_erro
+    dados['_ultimo_cmd_erro'] = ultimo_cmd_erro
+    sessao.etapa = 'venda_erro_retry'
+    sessao.dados_temp = dados
+    sessao.save()
+    return (
+        "❌ A conexão com a automação foi perdida (sessão expirada ou instável).\n\n"
+        "Digite *REPETIR* para tentar a última etapa novamente ou *VENDER* para iniciar do zero."
+    )
+
+
 def _formatar_streaming_resumo(dados: dict) -> str:
     """Retorna texto do streaming para o resumo: Não ou lista de opções com preços."""
     if not dados.get('tem_streaming'):
@@ -2090,17 +2093,22 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
             ultimo_cmd = (dados or {}).get('_ultimo_cmd_erro')
             with _automacoes_lock:
                 ctx = _automacoes_pap_ativas.get(sessao.id)
-            if not ctx or not ultimo_cmd:
+            if not ultimo_cmd:
                 sessao.etapa = 'inicial'
                 sessao.dados_temp = {}
                 sessao.save()
                 return "❌ Não há comando para repetir. Digite *VENDER* para iniciar novamente."
+            if not ctx:
+                return (
+                    "❌ A automação ainda não está conectada (ex.: outra sessão pode estar usando o login).\n\n"
+                    "Digite *REPETIR* em alguns segundos para tentar de novo ou *VENDER* para iniciar uma nova venda."
+                )
             cmd_queue = ctx.get('cmd_queue')
             if cmd_queue:
                 cmd_queue.put(ultimo_cmd)
                 return "⏳ Tentando novamente... Aguarde alguns instantes. Você receberá a resposta em seguida."
             return "❌ Sessão expirada. Digite *VENDER* para iniciar novamente."
-        return "Digite *REPETIR* para tentar a última etapa novamente ou *CANCELAR* para sair."
+        return "Digite *REPETIR* para tentar a última etapa novamente ou *VENDER* para iniciar do zero."
     
     # --- ETAPA: Confirmar matrícula ---
     if etapa == 'venda_confirmar_matricula':
@@ -3951,10 +3959,7 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
         with _automacoes_lock:
             ctx = _automacoes_pap_ativas.get(sessao.id)
         if not ctx:
-            sessao.etapa = 'inicial'
-            sessao.dados_temp = {}
-            sessao.save()
-            return "❌ Sessão expirada. Digite *VENDER* para iniciar novamente."
+            return _marcar_sessao_erro_retry(sessao, dados, 'venda_forma_pagamento', {'action': 'etapa5_forma', 'forma': forma})
         
         cmd_queue = ctx.get('cmd_queue')
         if cmd_queue:
@@ -4022,10 +4027,13 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
         with _automacoes_lock:
             ctx = _automacoes_pap_ativas.get(sessao.id)
         if not ctx:
-            sessao.etapa = 'inicial'
-            sessao.dados_temp = {}
-            sessao.save()
-            return "❌ Sessão expirada. Digite *VENDER* para iniciar novamente."
+            return _marcar_sessao_erro_retry(sessao, dados, 'venda_debito_digito', {
+                'action': 'etapa5_debito',
+                'banco': dados.get('banco', ''),
+                'agencia': dados.get('agencia', ''),
+                'conta': dados.get('conta', ''),
+                'digito': dados.get('digito', ''),
+            })
         
         cmd_queue = ctx.get('cmd_queue')
         if cmd_queue:
@@ -4068,10 +4076,7 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
         with _automacoes_lock:
             ctx = _automacoes_pap_ativas.get(sessao.id)
         if not ctx:
-            sessao.etapa = 'inicial'
-            sessao.dados_temp = {}
-            sessao.save()
-            return "❌ Sessão expirada. Digite *VENDER* para iniciar novamente."
+            return _marcar_sessao_erro_retry(sessao, dados, 'venda_plano', {'action': 'etapa5_plano', 'plano': plano})
         
         cmd_queue = ctx.get('cmd_queue')
         if cmd_queue:
@@ -4119,10 +4124,7 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
         with _automacoes_lock:
             ctx = _automacoes_pap_ativas.get(sessao.id)
         if not ctx:
-            sessao.etapa = 'inicial'
-            sessao.dados_temp = {}
-            sessao.save()
-            return "❌ Sessão expirada. Digite *VENDER* para iniciar novamente."
+            return _marcar_sessao_erro_retry(sessao, dados, 'venda_fixo', {'action': 'etapa5_fixo', 'tem_fixo': tem_fixo})
         
         cmd_queue = ctx.get('cmd_queue')
         if cmd_queue:
@@ -4178,13 +4180,14 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                 dados_temp = sessao.dados_temp
                 celular = dados_temp.get('celular') or dados_temp.get('celular_principal') or ''
                 # Apenas o número principal pode confirmar; secundário não é aceito
+                # Importante: filtrar por sessao_id para não considerar confirmação de outra venda do mesmo cliente
                 chaves_cel = list(dict.fromkeys(
                     [_chave_telefone(celular)] + (_chaves_telefone_variantes(celular) or [])
                 ))
                 chaves_cel = [c for c in chaves_cel if c]
                 if chaves_cel:
                     confirmado = PapConfirmacaoCliente.objects.filter(
-                        celular_cliente__in=chaves_cel, confirmado=True
+                        celular_cliente__in=chaves_cel, confirmado=True, sessao_id=sessao.id
                     ).exists()
                     if confirmado:
                         logger.info("[VENDA PAP] CONSULTAR fallback: confirmado=True por celular_cliente (sessao_id=%s, chaves_cel=%s)", sessao.id, chaves_cel[:5])
@@ -4228,10 +4231,12 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
         with _automacoes_lock:
             ctx = _automacoes_pap_ativas.get(sessao.id)
         if not ctx:
-            sessao.etapa = 'inicial'
-            sessao.dados_temp = {}
-            sessao.save()
-            return "❌ Sessão expirada. Digite *VENDER* para iniciar novamente."
+            return _marcar_sessao_erro_retry(sessao, dados, 'venda_streaming', {
+                'action': 'etapa5_streaming_avancar',
+                'tem_streaming': False,
+                'streaming_opcoes': '',
+                'plano': dados.get('plano', '500mega'),
+            })
         
         cmd_queue = ctx.get('cmd_queue')
         if cmd_queue:
@@ -4306,10 +4311,12 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
         with _automacoes_lock:
             ctx = _automacoes_pap_ativas.get(sessao.id)
         if not ctx:
-            sessao.etapa = 'inicial'
-            sessao.dados_temp = {}
-            sessao.save()
-            return "❌ Sessão expirada. Digite *VENDER* para iniciar novamente."
+            return _marcar_sessao_erro_retry(sessao, dados, 'venda_streaming_opcoes', {
+                'action': 'etapa5_streaming_avancar',
+                'tem_streaming': True,
+                'streaming_opcoes': streaming_opcoes,
+                'plano': dados.get('plano', '500mega'),
+            })
         
         cmd_queue = ctx.get('cmd_queue')
         if cmd_queue:
@@ -6273,7 +6280,14 @@ def processar_webhook_whatsapp(data, request=None):
                 resposta = "❌ CPF inválido. Por favor, digite o CPF completo (apenas números):"
             else:
                 logger.info(f"[Webhook] Consultando status por CPF: {cpf_limpo}")
-                resultado_status, fazer_consulta_online, cpf_para_consulta = consultar_status_venda_com_decisao('CPF', cpf_limpo)
+                try:
+                    resultado_status, fazer_consulta_online, cpf_para_consulta = consultar_status_venda_com_decisao('CPF', cpf_limpo)
+                except Exception as e:
+                    logger.exception("[Webhook] Erro ao consultar status por CPF: %s", e)
+                    resposta = "❌ Erro ao consultar status. Tente novamente em instantes."
+                    sessao.etapa = 'status_cpf'
+                    sessao.save()
+                    return _enviar_resposta_e_retornar(resposta)
                 resposta = f"🔎 Buscando pedido por CPF...\n\n{resultado_status}"
                 if fazer_consulta_online and cpf_para_consulta:
                     eh_agendado = "AGENDADO" in resultado_status.upper() and "PEDIDO NÃO ENCONTRADO" not in resultado_status.upper()
@@ -6290,7 +6304,8 @@ def processar_webhook_whatsapp(data, request=None):
                     sessao.etapa = 'inicial'
                     sessao.dados_temp = {}
                     sessao.save()
-        
+            return _enviar_resposta_e_retornar(resposta)
+
         elif etapa_atual == 'status_os':
             os_limpo = mensagem_texto.strip()
             if not os_limpo:
@@ -6314,6 +6329,7 @@ def processar_webhook_whatsapp(data, request=None):
                     sessao.etapa = 'inicial'
                     sessao.dados_temp = {}
                     sessao.save()
+            return _enviar_resposta_e_retornar(resposta)
 
         elif etapa_atual == 'credito_aguardando':
             resposta = "⏳ Consultando crédito... Aguarde. Você receberá a resposta em seguida."

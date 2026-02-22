@@ -23,8 +23,9 @@ from .record_apoia_api import (
 from .views import (
     listar_screenshots_debug,
     baixar_screenshot_debug,
-        buscar_fatura_nio_bonus_m10,
+    buscar_fatura_nio_bonus_m10,
     duplicar_venda,
+    liberar_pap_bo_view,
     # ViewSets
     VendaViewSet, 
     ClienteViewSet, 
@@ -154,8 +155,9 @@ urlpatterns = [
     path('painel-segunda/', PainelSegundaAPIView.as_view(), name='painel-segunda-api'),
     path('serve-pdf/<str:token>/', serve_pdf_view, name='serve-pdf'),
     path('duplicar-venda/', duplicar_venda, name='duplicar-venda'),
-        # --- Endpoint para busca automática de fatura NIO (Bonus M-10) ---
-        path('bonus-m10/buscar-fatura-nio/', buscar_fatura_nio_bonus_m10, name='buscar-fatura-nio-bonus-m10'),
+    path('liberar-pap-bo/', liberar_pap_bo_view, name='liberar-pap-bo'),
+    # --- Endpoint para busca automática de fatura NIO (Bonus M-10) ---
+    path('bonus-m10/buscar-fatura-nio/', buscar_fatura_nio_bonus_m10, name='buscar-fatura-nio-bonus-m10'),
     
     # --- ROTA DA NOVA CENTRAL DE IMPORTAÇÕES (MENU) ---
     path('importacoes/', TemplateView.as_view(template_name='importacoes.html'), name='central-importacoes'),

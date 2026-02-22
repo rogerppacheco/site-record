@@ -106,6 +106,7 @@
 
             <div class="nav-section-title">Automação</div>
             <a href="#" class="admin-nav-link" onclick="mostrarSecao(event, 'automacao', this)"><i class="bi bi-whatsapp"></i> Automação WhatsApp</a>
+            <a href="#" class="admin-nav-link" onclick="mostrarSecao(event, 'pap-logins', this)"><i class="bi bi-box-arrow-right"></i> Logins PAP</a>
 
             <div class="nav-section-title">Financeiro</div>
             <a href="#" class="admin-nav-link" onclick="mostrarSecao(event, 'relatorios', this)"><i class="bi bi-file-earmark-bar-graph"></i> Relatórios</a>
@@ -330,6 +331,19 @@
                     </div>
                     <div class="col-lg-7">
                         <div class="card"><div class="card-header bg-white fw-bold">Regras Ativas</div><div class="card-body p-0 table-responsive"><table class="table table-hover align-middle mb-0"><thead class="table-light"><tr><th>Nome / Evento</th><th>Destinos</th><th>Status</th><th class="text-end">Ações</th></tr></thead><tbody id="lista-regras-auto"></tbody></table></div></div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="pap-logins-section" class="content-section">
+                <h3 class="mb-4">Logins PAP (BackOffice)</h3>
+                <div class="card border-warning">
+                    <div class="card-body">
+                        <p class="text-muted mb-3">Quando os logins do PAP ficam travados (sem uso e o sistema ainda os considera em uso), use o botão abaixo para <strong>liberar todos</strong> e devolvê-los ao pool. Equivale a fazer logoff de todos os logins no site <a href="https://pap.niointernet.com.br/" target="_blank" rel="noopener">pap.niointernet.com.br</a>.</p>
+                        <button type="button" class="btn btn-warning" id="btn-liberar-pap-bo" onclick="liberarTodosPapBo()">
+                            <i class="bi bi-box-arrow-right"></i> Liberar todos os logins PAP (logoff)
+                        </button>
+                        <span id="liberar-pap-result" class="ms-3 small"></span>
                     </div>
                 </div>
             </section>
@@ -849,6 +863,27 @@
             if (filtro) filtro.oninput = render;
         } catch (e) {
             container.innerHTML = '<p class="text-danger py-2">Erro ao carregar permissões.</p>';
+        }
+    }
+
+    async function liberarTodosPapBo() {
+        const btn = document.getElementById('btn-liberar-pap-bo');
+        const resultEl = document.getElementById('liberar-pap-result');
+        if (!btn || !resultEl) return;
+        if (!confirm('Liberar todos os logins PAP? Os logins voltarão ao pool para o bot usar.')) return;
+        btn.disabled = true;
+        resultEl.textContent = '';
+        resultEl.className = 'ms-3 small';
+        try {
+            const res = await apiFetch('/liberar-pap-bo/', { method: 'POST' });
+            const qtd = res.liberados != null ? res.liberados : 0;
+            resultEl.textContent = res.message || (qtd > 0 ? `Liberados ${qtd} login(s).` : 'Nenhum login estava em uso.');
+            resultEl.classList.add(qtd > 0 ? 'text-success' : 'text-muted');
+        } catch (e) {
+            resultEl.textContent = 'Erro: ' + (e.message || e);
+            resultEl.classList.add('text-danger');
+        } finally {
+            btn.disabled = false;
         }
     }
 

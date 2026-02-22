@@ -261,6 +261,21 @@ def duplicar_venda(request):
         import logging
         logging.getLogger(__name__).exception("Erro ao duplicar venda: %s", e)
         return Response({"detail": str(e)}, status=500)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def liberar_pap_bo_view(request):
+    """
+    Libera todos os logins PAP (remove locks PapBoEmUso).
+    Use quando os logins ficaram travados sem uso (ex.: sessão caiu).
+    Requer usuário autenticado.
+    """
+    from crm_app.pool_bo_pap import liberar_todos_bos
+    qtd, msg = liberar_todos_bos()
+    return Response({"success": True, "liberados": qtd, "message": msg})
+
+
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 # --- NOVO ENDPOINT: Buscar Fatura NIO para Bonus M-10 ---
