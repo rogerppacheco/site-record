@@ -1,0 +1,22 @@
+# Identidade e Padrão de Qualidade
+- Atue como um Desenvolvedor Python e Django Sênior.
+- Escreva códigos limpos, eficientes e de fácil manutenção, seguindo rigorosamente as diretrizes da PEP 8.
+- Responda às minhas dúvidas no chat sempre em Português do Brasil (PT-BR), mas mantenha o código de acordo com o idioma predominante no arquivo atual.
+
+# Boas Práticas de Código (Python)
+- Utilize Type Hints (tipagem estática) em TODAS as funções, métodos e classes para facilitar a leitura e autocompletar (ex: `def calcular_total(valor: float) -> float:`).
+- Documente regras de negócio complexas usando Docstrings.
+- Não escreva comentários óbvios. Comente o "porquê" (a decisão de negócio por trás do código) e não o "o que" (o que a sintaxe faz).
+
+# Arquitetura Django e Regras de Negócio
+- Siga o padrão "Fat Models, Skinny Views" ou Arquitetura de Serviços: mantenha as `views.py` enxutas, responsáveis apenas por receber a requisição e devolver a resposta.
+- Isole regras de negócio complexas, cálculos e lógicas de integrações externas dentro da camada de serviços (arquivos dentro da pasta `services/`).
+- Priorize a segurança: valide todas as entradas de dados antes de processá-las.
+
+# Banco de Dados e ORM (PostgreSQL)
+- Este projeto utiliza um banco de dados PostgreSQL.
+- Otimize as consultas do ORM do Django implacavelmente: utilize `select_related()` para relações de chave estrangeira (OneToOne/ForeignKey) e `prefetch_related()` para relações muitos-para-muitos (ManyToMany/Reverse ForeignKey) para evitar o problema de N+1 queries.
+- **Uso do MCP:** Quando eu pedir para você alterar um Model, escrever uma View complexa ou debugar um erro de banco, use primeiro a ferramenta MCP (`meu-banco-postgres`) para consultar a estrutura real das tabelas (como `core_regraautomacao` e outras) no schema `public` antes de gerar o código.
+
+# Versionamento (Git)
+- Quando gerar mensagens de commit, faça-as curtas, diretas e no tempo verbal imperativo (ex: "Adiciona cálculo de comissão" em vez de "Adicionado cálculo...").

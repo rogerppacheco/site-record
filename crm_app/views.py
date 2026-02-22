@@ -218,88 +218,49 @@ from .models import Venda
 @permission_classes([IsAuthenticated])
 def duplicar_venda(request):
     """
-    Duplica uma venda (reemissão).
-    Cria uma NOVA venda com TODOS os dados iguais (incluindo data_criacao), exceto:
-    - data_abertura (OS): atual (timezone.now())
-    - ordem_servico: nova OS informada
-    - data_agendamento: nova data informada
-    - periodo_agendamento: novo turno informado
-    - status_esteira: AGENDADO
-    - reemissao: True
-    - observacoes: copiada da venda original (não muda)
+    Duplica uma venda (reemissão). Valida entrada e delega ao ReemissaoVendaService.
     """
-    id_venda = request.data.get('id_venda')
-    nova_os = request.data.get('nova_os') or request.data.get('ordem_servico')
-    nova_data = request.data.get('nova_data_agendamento') or request.data.get('data_agendamento')
-    novo_turno = request.data.get('novo_turno') or request.data.get('periodo_agendamento')
-    # observacoes não é usado - copia da venda original
-    
+    id_venda = request.data.get("id_venda")
+    nova_os = request.data.get("nova_os") or request.data.get("ordem_servico")
+    nova_data = request.data.get("nova_data_agendamento") or request.data.get("data_agendamento")
+    novo_turno = request.data.get("novo_turno") or request.data.get("periodo_agendamento")
+
     if not (id_venda and nova_os and nova_data and novo_turno):
-        return Response({'detail': 'Dados obrigatórios faltando: id_venda, ordem_servico, data_agendamento, periodo_agendamento.'}, status=400)
-    
+        return Response(
+            {
+                "detail": "Dados obrigatórios faltando: id_venda, ordem_servico, data_agendamento, periodo_agendamento."
+            },
+            status=400,
+        )
+
     try:
-        from django.utils import timezone
-        from crm_app.whatsapp_service import WhatsAppService
-        from .models import StatusCRM
-        
-        venda_original = Venda.objects.get(id=id_venda)
-        
-        # Duplicar venda (criar nova)
-        # Método correto: copiar a instância usando pk=None diretamente da instância
-        venda_nova = Venda()
-        
-        # Copiar TODOS os campos da venda original (incluindo data_criacao)
-        # ForeignKeys e relacionamentos são copiados como objetos (não IDs)
-        data_criacao_original = venda_original.data_criacao  # Preservar data_criacao
-        
-        for field in venda_original._meta.get_fields():
-            if field.auto_created or field.name in ['id', 'pk']:
-                continue
-            if hasattr(venda_original, field.name):
-                value = getattr(venda_original, field.name)
-                setattr(venda_nova, field.name, value)
-        
-        # APENAS estes campos mudam (vêm do formulário):
-        venda_nova.ordem_servico = nova_os
-        venda_nova.data_abertura = timezone.now()  # Data de abertura da OS = agora
-        venda_nova.data_agendamento = nova_data
-        venda_nova.periodo_agendamento = novo_turno
-        # observacoes: copiada da venda original (não usar nova_observacao)
-        
-        # Marcar como reemissão
-        venda_nova.reemissao = True
-        
-        # Status esteira = AGENDADO
-        try:
-            status_agendado = StatusCRM.objects.get(nome__iexact="AGENDADO", tipo__iexact="Esteira")
-            venda_nova.status_esteira = status_agendado
-        except StatusCRM.DoesNotExist:
-            return Response({'detail': 'Status AGENDADO (Esteira) não encontrado.'}, status=400)
-        
-        # Salvar nova venda primeiro (para gerar o ID)
-        venda_nova.save()
-        
-        # Preservar data_criacao da venda original (usar update para evitar auto_now_add)
-        if data_criacao_original:
-            Venda.objects.filter(id=venda_nova.id).update(data_criacao=data_criacao_original)
-            venda_nova.data_criacao = data_criacao_original  # Atualizar em memória também
+        from crm_app.services.reemissao_venda_service import (
+            ReemissaoVendaError,
+            duplicar as reemissao_duplicar,
+        )
 
-        # Enviar WhatsApp para o vendedor
-        if venda_nova.vendedor and venda_nova.telefone1:
-            try:
-                ws = WhatsAppService()
-                ws.enviar_mensagem_cadastrada(venda_nova)
-            except Exception as e:
-                import logging
-                logging.getLogger(__name__).warning(f"Erro ao enviar WhatsApp para reemissão: {e}")
-
-        return Response({'success': True, 'nova_venda_id': venda_nova.id, 'message': 'Reemissão criada com sucesso!'})
+        venda_nova = reemissao_duplicar(
+            id_venda=int(id_venda),
+            nova_os=str(nova_os).strip(),
+            nova_data=nova_data,
+            novo_turno=str(novo_turno).strip(),
+            enviar_whatsapp=True,
+        )
+        return Response(
+            {
+                "success": True,
+                "nova_venda_id": venda_nova.id,
+                "message": "Reemissão criada com sucesso!",
+            }
+        )
     except Venda.DoesNotExist:
-        return Response({'detail': 'Venda não encontrada.'}, status=404)
+        return Response({"detail": "Venda não encontrada."}, status=404)
+    except ReemissaoVendaError as e:
+        return Response({"detail": str(e)}, status=400)
     except Exception as e:
         import logging
-        logging.getLogger(__name__).exception(f"Erro ao duplicar venda: {e}")
-        return Response({'detail': str(e)}, status=500)
+        logging.getLogger(__name__).exception("Erro ao duplicar venda: %s", e)
+        return Response({"detail": str(e)}, status=500)
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 # --- NOVO ENDPOINT: Buscar Fatura NIO para Bonus M-10 ---
@@ -2348,228 +2309,23 @@ class FolhaComissionamentoView(APIView):
 
 
 class ComissionamentoView(APIView):
+    """GET comissionamento/?ano=AAAA&mes=M — Relatório de comissões do mês. Delega ao ComissionamentoService."""
+
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         hoje = timezone.now()
         try:
-            ano = int(request.query_params.get('ano', hoje.year))
-            mes = int(request.query_params.get('mes', hoje.month))
-        except ValueError:
+            ano = int(request.query_params.get("ano", hoje.year))
+            mes = int(request.query_params.get("mes", hoje.month))
+        except (TypeError, ValueError):
             ano = hoje.year
             mes = hoje.month
-        
-        # Define o intervalo do mês
-        data_inicio = datetime(ano, mes, 1)
-        if mes == 12:
-            data_fim = datetime(ano + 1, 1, 1)
-        else:
-            data_fim = datetime(ano, mes + 1, 1)
 
-        User = get_user_model()
-        consultores = User.objects.filter(is_active=True).order_by('username')
-        relatorio = []
-        todas_regras = list(RegraComissao.objects.select_related('plano', 'consultor').all())
-        
-        # --- 1. BUSCAR ADIANTAMENTOS E DESCONTOS JÁ PROCESSADOS (Lançamentos Financeiros) ---
-        lancamentos_mes = LancamentoFinanceiro.objects.filter(
-            data__gte=data_inicio,
-            data__lt=data_fim
-        )
-        mapa_lancamentos = defaultdict(list)
-        for l in lancamentos_mes:
-            mapa_lancamentos[l.usuario_id].append(l)
+        from crm_app.services.comissionamento_service import gerar_relatorio_comissionamento
 
-        # --- 2. BUSCAR CAMPANHAS VÁLIDAS NO MÊS ---
-        campanhas_mes = Campanha.objects.filter(
-            ativo=True,
-            data_fim__year=ano,
-            data_fim__month=mes
-        ).prefetch_related('planos_elegiveis', 'formas_pagamento_elegiveis')
-
-        for consultor in consultores:
-            # Vendas do Mês (Instaladas)
-            vendas = Venda.objects.filter(
-                vendedor=consultor,
-                ativo=True,
-                status_esteira__nome__iexact='INSTALADA',
-                data_instalacao__gte=data_inicio,
-                data_instalacao__lt=data_fim
-            ).select_related('plano', 'forma_pagamento', 'cliente')
-
-            qtd_instaladas = vendas.count()
-            meta = consultor.meta_comissao or 0
-            atingimento = (qtd_instaladas / meta * 100) if meta > 0 else 0
-            bateu_meta = qtd_instaladas >= meta
-            
-            comissao_bruta = 0.0
-            
-            stats_planos = defaultdict(lambda: {'qtd': 0, 'total': 0.0})
-            stats_descontos = defaultdict(float)
-            stats_bonus = defaultdict(float)
-            
-            # --- LOOP PRINCIPAL DE VENDAS ---
-            for v in vendas:
-                # Dados para regra
-                doc = v.cliente.cpf_cnpj if v.cliente else ''
-                doc_limpo = ''.join(filter(str.isdigit, doc))
-                tipo_cliente = 'CNPJ' if len(doc_limpo) > 11 else 'CPF'
-                canal_vendedor = getattr(consultor, 'canal', 'PAP') or 'PAP'
-                
-                # Encontrar Regra de Comissão
-                regra = next((r for r in todas_regras if r.plano_id == v.plano_id and r.tipo_cliente == tipo_cliente and r.tipo_venda == canal_vendedor and r.consultor_id == consultor.id), None)
-                if not regra:
-                    regra = next((r for r in todas_regras if r.plano_id == v.plano_id and r.tipo_cliente == tipo_cliente and r.tipo_venda == canal_vendedor and r.consultor is None), None)
-                
-                valor_item = float(regra.valor_acelerado if bateu_meta else regra.valor_base) if regra else 0.0
-                comissao_bruta += valor_item
-
-                # Estatísticas por Plano
-                key_plano = (v.plano.nome, valor_item)
-                stats_planos[key_plano]['qtd'] += 1
-                stats_planos[key_plano]['total'] += valor_item
-
-                # --- DESCONTOS AUTOMÁTICOS (PREVISTOS) ---
-                # Só calcula se a flag de processado for False.
-                # Se for True, o valor virá via LancamentoFinanceiro (no loop mais abaixo).
-
-                # 1. Boleto
-                if v.forma_pagamento and 'BOLETO' in v.forma_pagamento.nome.upper():
-                    if not v.flag_desc_boleto:
-                        val = float(consultor.desconto_boleto or 0)
-                        if val > 0: stats_descontos['Desc. Boleto (Previsto)'] += val
-
-                # 2. Inclusão/Viabilidade
-                if v.inclusao:
-                    if not v.flag_desc_viabilidade:
-                        val = float(consultor.desconto_inclusao_viabilidade or 0)
-                        if val > 0: stats_descontos['Desc. Inclusão (Previsto)'] += val
-
-                # 3. Antecipação
-                if v.antecipou_instalacao:
-                    if not v.flag_desc_antecipacao:
-                        val = float(consultor.desconto_instalacao_antecipada or 0)
-                        if val > 0: stats_descontos['Desc. Antecipação (Previsto)'] += val
-
-                # 4. Adiantamento CNPJ
-                if len(doc_limpo) > 11:
-                    if not v.flag_adiant_cnpj:
-                        val = float(consultor.adiantamento_cnpj or 0)
-                        if val > 0: stats_descontos['Adiant. CNPJ (Previsto)'] += val
-
-            # --- DESCONTOS FIXOS (Perfil) ---
-            if consultor.desconto_inss_fixo and float(consultor.desconto_inss_fixo) > 0:
-                 stats_descontos['INSS / Encargos (Fixo)'] += float(consultor.desconto_inss_fixo)
-
-            # --- LANÇAMENTOS FINANCEIROS PROCESSADOS (Manuais ou Confirmados) ---
-            lancamentos = mapa_lancamentos.get(consultor.id, [])
-            for l in lancamentos:
-                # Formatação do nome para exibição
-                tipo_display = "Outro"
-                if l.tipo == 'ADIANTAMENTO_CNPJ': tipo_display = "Adiant. CNPJ"
-                elif l.tipo == 'ADIANTAMENTO_COMISSAO': tipo_display = "Adiantamento"
-                elif l.tipo == 'DESCONTO': tipo_display = "Desconto"
-                
-                descricao_item = l.descricao or ""
-                chave_exibicao = f"{tipo_display}: {descricao_item}" if descricao_item else tipo_display
-                
-                stats_descontos[chave_exibicao] += float(l.valor)
-
-            # --- 3. CÁLCULO DE CAMPANHAS (BÔNUS) ---
-            for camp in campanhas_mes:
-                q_camp = Q(vendedor=consultor, ativo=True)
-                
-                # Regras da Campanha
-                q_camp &= Q(data_criacao__date__gte=camp.data_inicio, data_criacao__date__lte=camp.data_fim)
-                
-                if camp.tipo_meta == 'LIQUIDA':
-                    q_camp &= Q(status_esteira__nome__iexact='INSTALADA')
-                
-                if camp.canal_alvo != 'TODOS':
-                    q_camp &= Q(vendedor__canal=camp.canal_alvo)
-                
-                planos_ids = [p.id for p in camp.planos_elegiveis.all()]
-                if planos_ids:
-                    q_camp &= Q(plano_id__in=planos_ids)
-                
-                pgto_ids = [fp.id for fp in camp.formas_pagamento_elegiveis.all()]
-                if pgto_ids:
-                    q_camp &= Q(forma_pagamento_id__in=pgto_ids)
-                
-                total_atingido = Venda.objects.filter(q_camp).count()
-                
-                if total_atingido >= camp.meta_vendas:
-                    stats_bonus[f"Prêmio: {camp.nome}"] += float(camp.valor_premio)
-            
-            # --- TOTAIS FINAIS ---
-            total_descontos = sum(stats_descontos.values())
-            total_bonus = sum(stats_bonus.values())
-            
-            valor_liquido = (comissao_bruta + total_bonus) - total_descontos
-
-            # --- FORMATAÇÃO PARA O FRONTEND ---
-            
-            # 1. Planos
-            lista_planos_detalhe = []
-            for (nome_plano, unitario), dados in stats_planos.items():
-                lista_planos_detalhe.append({
-                    'plano': nome_plano, 'unitario': unitario,
-                    'qtd': dados['qtd'], 'total': dados['total']
-                })
-            lista_planos_detalhe.sort(key=lambda x: x['total'], reverse=True)
-
-            # 2. Descontos (Ordenados por valor)
-            lista_descontos_detalhe = [{'motivo': k, 'valor': v} for k, v in stats_descontos.items()]
-            lista_descontos_detalhe.sort(key=lambda x: x['valor'], reverse=True)
-
-            # 3. Bônus (Ordenados por valor)
-            lista_bonus_detalhe = [{'motivo': k, 'valor': v} for k, v in stats_bonus.items()]
-            lista_bonus_detalhe.sort(key=lambda x: x['valor'], reverse=True)
-
-            relatorio.append({
-                'consultor_id': consultor.id,
-                'consultor_nome': consultor.username.upper(),
-                'qtd_instaladas': qtd_instaladas,
-                'meta': meta,
-                'atingimento_pct': round(atingimento, 1),
-                'comissao_bruta': comissao_bruta,
-                'total_descontos': total_descontos,
-                'total_bonus': total_bonus,
-                'valor_liquido': valor_liquido,
-                'detalhes_planos': lista_planos_detalhe,
-                'detalhes_descontos': lista_descontos_detalhe,
-                'detalhes_bonus': lista_bonus_detalhe
-            })
-
-        # --- HISTÓRICO (Últimos 6 meses) ---
-        historico = []
-        for i in range(6):
-            d = hoje - timedelta(days=10*i)
-            mes_iter = d.month
-            ano_iter = d.year
-            
-            total_ciclo = CicloPagamento.objects.filter(
-                ano=ano_iter, mes=str(mes_iter)
-            ).aggregate(Sum('valor_comissao_final'))['valor_comissao_final__sum'] or 0
-            
-            fechamento = PagamentoComissao.objects.filter(
-                referencia_ano=ano_iter, referencia_mes=mes_iter
-            ).first()
-            
-            total_pago = fechamento.total_pago_consultores if fechamento else 0.0
-            
-            historico.append({
-                'ano_mes': f"{mes_iter}/{ano_iter}",
-                'total_pago_equipe': total_pago,
-                'total_recebido_ciclo': total_ciclo,
-                'status': 'Fechado' if fechamento else 'Aberto'
-            })
-
-        return Response({
-            'periodo': f"{mes}/{ano}",
-            'relatorio_consultores': relatorio,
-            'historico_pagamentos': historico
-        })
+        dados = gerar_relatorio_comissionamento(ano, mes)
+        return Response(dados)
 
 class FecharPagamentoView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -4352,137 +4108,40 @@ class ImportarDFVView(APIView):
 @permission_classes([permissions.IsAuthenticated])
 def enviar_comissao_whatsapp(request):
     """
-    Calcula o resumo da comissão e envia um card (imagem) via WhatsApp para o consultor.
+    Envia resumo de comissão (card) por WhatsApp aos consultores selecionados.
+    Valida entrada e delega ao ComissaoWhatsAppService.
     """
     try:
-        ano = int(request.data.get('ano'))
-        mes = int(request.data.get('mes'))
-        consultores_ids = request.data.get('consultores', [])
+        ano = int(request.data.get("ano"))
+        mes = int(request.data.get("mes"))
+    except (TypeError, ValueError):
+        return Response({"error": "ano e mes numéricos são obrigatórios."}, status=400)
 
-        if not consultores_ids:
-            return Response({"error": "Nenhum consultor selecionado."}, status=status.HTTP_400_BAD_REQUEST)
+    consultores_ids = request.data.get("consultores", [])
+    if not consultores_ids:
+        return Response(
+            {"error": "Nenhum consultor selecionado."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
-        User = get_user_model()
-        
-        # Define datas de início e fim do mês
-        data_inicio = datetime(ano, mes, 1)
-        if mes == 12:
-            data_fim = datetime(ano + 1, 1, 1)
-        else:
-            data_fim = datetime(ano, mes + 1, 1)
-        
-        svc = WhatsAppService()
-        todas_regras = list(RegraComissao.objects.select_related('plano', 'consultor').all())
-        
-        sucessos = 0
-        erros = []
+    try:
+        from crm_app.services.comissao_whatsapp_service import (
+            enviar_comissao_whatsapp_consultores,
+        )
 
-        for c_id in consultores_ids:
-            try:
-                consultor = User.objects.get(id=c_id)
-                telefone = consultor.tel_whatsapp
-                
-                if not telefone:
-                    erros.append(f"{consultor.username}: Sem WhatsApp cadastrado.")
-                    continue
-
-                # --- 1. Calcular Comissão (Versão simplificada para o Card) ---
-                vendas = Venda.objects.filter(
-                    vendedor=consultor,
-                    ativo=True,
-                    status_esteira__nome__iexact='INSTALADA',
-                    data_instalacao__gte=data_inicio,
-                    data_instalacao__lt=data_fim
-                ).select_related('plano', 'forma_pagamento', 'cliente')
-
-                qtd_instaladas = vendas.count()
-                meta = consultor.meta_comissao or 0
-                bateu_meta = qtd_instaladas >= meta
-
-                stats_planos = defaultdict(lambda: {'qtd': 0, 'valor_unit': 0.0, 'total': 0.0})
-                stats_descontos = defaultdict(float)
-                comissao_bruta = 0.0
-
-                for v in vendas:
-                    # Encontrar regra
-                    doc = v.cliente.cpf_cnpj if v.cliente else ''
-                    doc_limpo = ''.join(filter(str.isdigit, doc))
-                    tipo_cliente = 'CNPJ' if len(doc_limpo) > 11 else 'CPF'
-                    canal_vendedor = getattr(consultor, 'canal', 'PAP') or 'PAP'
-                    
-                    regra = next((r for r in todas_regras if r.plano_id == v.plano_id and r.tipo_cliente == tipo_cliente and r.tipo_venda == canal_vendedor and r.consultor_id == consultor.id), None)
-                    if not regra:
-                        regra = next((r for r in todas_regras if r.plano_id == v.plano_id and r.tipo_cliente == tipo_cliente and r.tipo_venda == canal_vendedor and r.consultor is None), None)
-                    
-                    valor_item = float(regra.valor_acelerado if bateu_meta else regra.valor_base) if regra else 0.0
-                    comissao_bruta += valor_item
-                    
-                    # Agrupar por Plano
-                    nm_plano = v.plano.nome
-                    stats_planos[nm_plano]['qtd'] += 1
-                    stats_planos[nm_plano]['total'] += valor_item
-
-                    # Calcular Descontos
-                    if v.forma_pagamento and 'BOLETO' in v.forma_pagamento.nome.upper():
-                        val = float(consultor.desconto_boleto or 0)
-                        if val > 0: stats_descontos['Boleto'] += val
-                    
-                    if v.inclusao:
-                        val = float(consultor.desconto_inclusao_viabilidade or 0)
-                        if val > 0: stats_descontos['Inclusão'] += val
-
-                    if v.antecipou_instalacao:
-                        val = float(consultor.desconto_instalacao_antecipada or 0)
-                        if val > 0: stats_descontos['Antecipação'] += val
-                    
-                    if len(doc_limpo) > 11:
-                        val = float(consultor.adiantamento_cnpj or 0)
-                        if val > 0: stats_descontos['Adiant. CNPJ'] += val
-
-                total_descontos = sum(stats_descontos.values())
-                liquido = comissao_bruta - total_descontos
-
-                # --- 2. Preparar Dados para a Imagem ---
-                detalhes_planos = []
-                for p_nome, dados in stats_planos.items():
-                    detalhes_planos.append({
-                        'nome': p_nome, 
-                        'qtd': dados['qtd'], 
-                        'valor': f"R$ {dados['total']:.2f}".replace('.', ',')
-                    })
-                
-                detalhes_descontos = []
-                for motivo, val in stats_descontos.items():
-                     detalhes_descontos.append({
-                        'motivo': motivo, 
-                        'valor': f"-R$ {val:.2f}".replace('.', ',')
-                      })
-
-                dados_img = {
-                    'titulo': 'Resumo Comissionamento',
-                    'vendedor': consultor.username.upper(),
-                    'periodo': f"{mes}/{ano}",
-                    'total': f"R$ {liquido:.2f}".replace('.', ','),
-                    'detalhes_planos': detalhes_planos,
-                    'detalhes_descontos': detalhes_descontos
-                }
-
-                # --- 3. Enviar ---
-                if svc.enviar_resumo_comissao(telefone, dados_img):
-                    sucessos += 1
-                else:
-                    erros.append(f"{consultor.username}: Falha no envio (Z-API).")
-
-            except Exception as e:
-                logger.error(f"Erro ao processar envio para {c_id}: {e}")
-                erros.append(f"ID {c_id}: Erro interno.")
-
-        return Response({
-            "mensagem": f"Processamento concluído. Sucessos: {sucessos}. Falhas: {len(erros)}",
-            "detalhes_erro": erros
-        })
-
+        sucessos, erros = enviar_comissao_whatsapp_consultores(
+            ano=ano,
+            mes=mes,
+            consultores_ids=[int(cid) for cid in consultores_ids],
+        )
+        return Response(
+            {
+                "mensagem": f"Processamento concluído. Sucessos: {sucessos}. Falhas: {len(erros)}",
+                "detalhes_erro": erros,
+            }
+        )
     except Exception as e:
+        logger.exception("enviar_comissao_whatsapp: %s", e)
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 

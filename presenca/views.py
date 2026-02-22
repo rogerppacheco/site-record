@@ -1,488 +1,320 @@
-from rest_framework import viewsets, status, generics
-from rest_framework.views import APIView
+from datetime import datetime
+
+from rest_framework import status, viewsets, generics
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated 
-from django.http import Http404, HttpResponse
-from django.db.models import Q
-from django.db import IntegrityError, transaction
-import pandas as pd
-from datetime import datetime, timedelta, date
+from rest_framework.views import APIView
 
-from django.conf import settings as django_settings
-
-from .models import MotivoAusencia, Presenca, DiaNaoUtil, ConfirmacaoPresencaDia
-from .serializers import (
-    MotivoAusenciaSerializer, PresencaSerializer, DiaNaoUtilSerializer,
+from presenca.models import MotivoAusencia, Presenca, DiaNaoUtil, ConfirmacaoPresencaDia
+from presenca.serializers import (
+    MotivoAusenciaSerializer,
+    PresencaSerializer,
+    DiaNaoUtilSerializer,
     ConfirmacaoPresencaDiaSerializer,
 )
 from usuarios.models import Usuario
 from usuarios.serializers import UsuarioSerializer
 
+
+# ---------------------------------------------------------------------------
+# ViewSets enxutos (list/detail); create de Presenca delega ao serviço
+# ---------------------------------------------------------------------------
+
 class MotivoViewSet(viewsets.ModelViewSet):
-    queryset = MotivoAusencia.objects.all().order_by('motivo')
+    queryset = MotivoAusencia.objects.all().order_by("motivo")
     serializer_class = MotivoAusenciaSerializer
     permission_classes = [IsAuthenticated]
+
 
 class PresencaViewSet(viewsets.ModelViewSet):
     serializer_class = PresencaSerializer
     permission_classes = [IsAuthenticated]
-    resource_name = 'presenca'
-    pagination_class = None  # Retorna todos os registros do dia para exibição correta (evita bug visual para Diretoria/Admin) 
+    resource_name = "presenca"
+    pagination_class = None
 
     def get_queryset(self):
         user = self.request.user
         queryset = Presenca.objects.all()
-        
-        if self.action in ['destroy', 'update', 'partial_update', 'retrieve']:
+        if self.action in ["destroy", "update", "partial_update", "retrieve"]:
             return queryset
-
-        if user.is_superuser or user.groups.filter(name__in=['Diretoria', 'Admin', 'BackOffice']).exists():
-            pass 
-        elif hasattr(user, 'liderados') and user.liderados.exists():
-            liderados_ids = list(user.liderados.values_list('id', flat=True))
-            all_ids = liderados_ids + [user.id]
-            queryset = queryset.filter(colaborador_id__in=all_ids)
+        if user.is_superuser or user.groups.filter(
+            name__in=["Diretoria", "Admin", "BackOffice"]
+        ).exists():
+            pass
+        elif hasattr(user, "liderados") and user.liderados.exists():
+            liderados_ids = list(user.liderados.values_list("id", flat=True))
+            queryset = queryset.filter(colaborador_id__in=liderados_ids + [user.id])
         else:
             queryset = queryset.filter(colaborador=user)
-
-        if self.action == 'list':
-            data_selecionada = self.request.query_params.get('data')
+        if self.action == "list":
+            data_selecionada = self.request.query_params.get("data")
             if data_selecionada:
                 queryset = queryset.filter(data=data_selecionada)
-        
         return queryset
 
     def destroy(self, request, *args, **kwargs):
         try:
-            pk = kwargs.get('pk')
-            instance = Presenca.objects.get(pk=pk)
+            instance = self.get_object()
             self.perform_destroy(instance)
             return Response(status=status.HTTP_204_NO_CONTENT)
         except Presenca.DoesNotExist:
-            return Response({"detail": "Registro não encontrado."}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"detail": "Registro não encontrado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
         except Exception as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     def create(self, request, *args, **kwargs):
         data = request.data.copy()
-        
-        # CORREÇÃO: Remover 'id' se for fornecido para evitar erro de chave duplicada
-        if 'id' in data:
-            del data['id']
-        
-        colaborador_id = data.get('colaborador')
-        data_registro = data.get('data')
+        if "id" in data:
+            del data["id"]
+        colaborador_id = data.get("colaborador")
+        data_registro = data.get("data")
         if not colaborador_id or not data_registro:
-            return Response({'detail': 'Colaborador e data são obrigatórios.'}, status=status.HTTP_400_BAD_REQUEST)
-        
+            return Response(
+                {"detail": "Colaborador e data são obrigatórios."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         try:
-            with transaction.atomic():
-                # Usar update_or_create para buscar ou criar/atualizar registro de forma atômica
-                # Isso evita condições de corrida (race conditions)
-                obj, created = Presenca.objects.update_or_create(
-                    colaborador_id=colaborador_id,
-                    data=data_registro,
-                    defaults={
-                        'status': data.get('status', True),
-                        'motivo_id': data.get('motivo'),
-                        'observacao': data.get('observacao', ''),
-                        'editado_por': request.user,
-                    }
-                )
-                
-                # Se foi criação, definir lancado_por (não editado_por)
-                if created:
-                    obj.lancado_por = request.user
-                    obj.editado_por = None
-                    obj.save(update_fields=['lancado_por', 'editado_por'])
-                
-                # Recarregar o objeto do banco para garantir dados atualizados
-                obj.refresh_from_db()
-                serializer = self.get_serializer(obj)
-                
-                print(f"[DEBUG PresencaViewSet] Registro {'criado' if created else 'atualizado'}: colaborador={colaborador_id}, data={data_registro}, status={obj.status}, id={obj.id}")
-                
-                return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
-                
-        except IntegrityError as e:
-            # Em caso de erro de integridade, tentar buscar o registro existente e atualizar
-            error_str = str(e)
-            print(f"[ERRO PresencaViewSet] IntegrityError: {error_str}")
-            
-            # Se for erro de chave duplicada (ID), tentar buscar e atualizar o registro existente
-            if 'duplicar valor da chave' in error_str or 'duplicate key' in error_str.lower():
-                try:
-                    # Tentar buscar o registro existente (pode ter sido criado por outra requisição simultânea)
-                    obj = Presenca.objects.get(colaborador_id=colaborador_id, data=data_registro)
-                    # Atualizar com os novos dados
-                    obj.status = data.get('status', True)
-                    obj.motivo_id = data.get('motivo')
-                    obj.observacao = data.get('observacao', '')
-                    obj.editado_por = request.user
-                    obj.save(update_fields=['status', 'motivo', 'observacao', 'editado_por', 'editado_em'])
-                    
-                    obj.refresh_from_db()
-                    serializer = self.get_serializer(obj)
-                    print(f"[DEBUG PresencaViewSet] Registro recuperado e atualizado apos IntegrityError: id={obj.id}")
-                    return Response(serializer.data, status=status.HTTP_200_OK)
-                except Presenca.DoesNotExist:
-                    pass
-            
-            return Response({'detail': f'Erro de integridade: Já existe um registro para este colaborador nesta data.'}, status=status.HTTP_400_BAD_REQUEST)
+            from presenca.services.presenca_service import (
+                PresencaServiceError,
+                registrar_presenca,
+            )
+
+            obj, created = registrar_presenca(
+                colaborador_id=int(colaborador_id),
+                data_registro=data_registro,
+                status=data.get("status", True),
+                motivo_id=data.get("motivo"),
+                observacao=data.get("observacao", ""),
+                usuario=request.user,
+            )
+            serializer = self.get_serializer(obj)
+            return Response(
+                serializer.data,
+                status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+            )
+        except PresencaServiceError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
-            # Captura outros erros
-            print(f"[ERRO PresencaViewSet] Exceção: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     def update(self, request, *args, **kwargs):
-        partial = kwargs.pop('partial', False) 
+        partial = kwargs.pop("partial", False)
         instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer = self.get_serializer(
+            instance, data=request.data, partial=partial
+        )
         serializer.is_valid(raise_exception=True)
         serializer.save(editado_por=request.user)
         return Response(serializer.data)
 
 
 class DiaNaoUtilViewSet(viewsets.ModelViewSet):
-    queryset = DiaNaoUtil.objects.all().order_by('-data')
+    queryset = DiaNaoUtil.objects.all().order_by("-data")
     serializer_class = DiaNaoUtilSerializer
     permission_classes = [IsAuthenticated]
+
 
 class MinhaEquipeListView(generics.ListAPIView):
     serializer_class = UsuarioSerializer
     permission_classes = [IsAuthenticated]
-    pagination_class = None  # <--- CORREÇÃO: Desativa paginação para trazer toda a equipe
+    pagination_class = None
 
     def get_queryset(self):
-        user = self.request.user
-        qs = getattr(user, 'liderados', None)
+        qs = getattr(self.request.user, "liderados", None)
         if qs is not None:
-            result = qs.filter(is_active=True).order_by('first_name')
-        else:
-            result = Usuario.objects.none()
-        print(f"[DEBUG MinhaEquipeListView] queryset type: {type(result)}, count: {result.count()}")
-        return result
+            return qs.filter(is_active=True).order_by("first_name")
+        return Usuario.objects.none()
+
 
 class TodosUsuariosListView(generics.ListAPIView):
-    from .serializers import UsuarioPresencaSerializer
+    from presenca.serializers import UsuarioPresencaSerializer
+
     serializer_class = UsuarioPresencaSerializer
     permission_classes = [IsAuthenticated]
-    pagination_class = None  # <--- CORREÇÃO: Desativa paginação para trazer todos os usuários
+    pagination_class = None
 
     def get_queryset(self):
-        qs = Usuario.objects.filter(is_active=True, participa_controle_presenca=True)\
-            .select_related('perfil', 'supervisor')\
-            .order_by('first_name')
-        print(f"[DEBUG TodosUsuariosListView] queryset type: {type(qs)}, count: {qs.count()}")
-        return qs
+        return (
+            Usuario.objects.filter(
+                is_active=True, participa_controle_presenca=True
+            )
+            .select_related("perfil", "supervisor")
+            .order_by("first_name")
+        )
 
 
-# =========================================================================
-# CONFIRMAÇÃO DO DIA COM SELFIE (upload OneDrive por data)
-# =========================================================================
-
-def _usuario_pode_confirmar_presenca(user):
-    """Supervisor (tem liderados), Diretoria, Admin ou BackOffice podem confirmar."""
-    if user.is_superuser:
-        return True
-    if user.groups.filter(name__in=['Diretoria', 'Admin', 'BackOffice']).exists():
-        return True
-    if hasattr(user, 'liderados') and user.liderados.exists():
-        return True
-    return False
-
+# ---------------------------------------------------------------------------
+# Confirmação do dia com selfie (GET/POST/DELETE) — delega ao serviço
+# ---------------------------------------------------------------------------
 
 class ConfirmacaoPresencaDiaView(APIView):
     """
-    GET: ?data=YYYY-MM-DD → retorna a confirmação (selfie) daquele dia para o supervisor/equipe.
-    POST: multipart/form-data com foto, data, latitude (opc), longitude (opc).
-          Faz upload da foto para OneDrive em Presenca_Selfies/YYYY-MM-DD/ e salva o registro.
+    GET: ?data=YYYY-MM-DD → confirmação do dia.
+    POST: foto + data (upload OneDrive + WhatsApp Diretoria).
+    DELETE: ?data=YYYY-MM-DD → exclui confirmação (Diretoria/Admin).
     """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        data_str = request.query_params.get('data')
+        data_str = request.query_params.get("data")
         if not data_str:
-            return Response({'detail': 'Parâmetro data (YYYY-MM-DD) é obrigatório.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": "Parâmetro data (YYYY-MM-DD) é obrigatório."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         try:
-            data_dia = datetime.strptime(data_str, '%Y-%m-%d').date()
+            data_dia = datetime.strptime(data_str, "%Y-%m-%d").date()
         except ValueError:
-            return Response({'detail': 'Data inválida. Use YYYY-MM-DD.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": "Data inválida. Use YYYY-MM-DD."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        from presenca.services.confirmacao_presenca_service import obter_confirmacao_dia
 
-        user = request.user
-        # Ver confirmações do dia: do próprio usuário (supervisor) ou de supervisores da equipe
-        qs = ConfirmacaoPresencaDia.objects.filter(data=data_dia)
-        if not (user.is_superuser or user.groups.filter(name__in=['Diretoria', 'Admin', 'BackOffice']).exists()):
-            qs = qs.filter(supervisor=user)
-        conf = qs.first()
-        if not conf:
-            return Response({'confirmado': False, 'detalhe': None})
-        serializer = ConfirmacaoPresencaDiaSerializer(conf)
-        return Response({'confirmado': True, 'detalhe': serializer.data})
+        payload = obter_confirmacao_dia(data_dia, request.user)
+        return Response(payload)
 
     def post(self, request):
-        if not _usuario_pode_confirmar_presenca(request.user):
-            return Response({'detail': 'Sem permissão para confirmar presença do dia.'}, status=status.HTTP_403_FORBIDDEN)
+        from presenca.services.confirmacao_presenca_service import (
+            ConfirmacaoPresencaServiceError,
+            usuario_pode_confirmar_presenca,
+            registrar_selfie,
+        )
+        from presenca.serializers import ConfirmacaoPresencaDiaSerializer
 
-        foto = request.FILES.get('foto')
-        data_str = request.data.get('data') or request.POST.get('data')
+        if not usuario_pode_confirmar_presenca(request.user):
+            return Response(
+                {"detail": "Sem permissão para confirmar presença do dia."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        foto = request.FILES.get("foto")
+        data_str = request.data.get("data") or request.POST.get("data")
         if not foto or not data_str:
             return Response(
-                {'detail': 'Envie a foto (foto) e a data (data, YYYY-MM-DD).'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"detail": "Envie a foto (foto) e a data (data, YYYY-MM-DD)."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
         try:
-            data_dia = datetime.strptime(data_str.strip(), '%Y-%m-%d').date()
+            data_dia = datetime.strptime(data_str.strip(), "%Y-%m-%d").date()
         except ValueError:
-            return Response({'detail': 'Data inválida. Use YYYY-MM-DD.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        lat = request.data.get('latitude') or request.POST.get('latitude')
-        lng = request.data.get('longitude') or request.POST.get('longitude')
-        if lat is not None and lat != '':
-            try:
-                lat = float(lat)
-            except (TypeError, ValueError):
-                lat = None
-        else:
-            lat = None
-        if lng is not None and lng != '':
-            try:
-                lng = float(lng)
-            except (TypeError, ValueError):
-                lng = None
-        else:
-            lng = None
-
-        # Nome do arquivo: único por data e supervisor
-        now = datetime.now()
-        nome_arquivo = f"equipe_{request.user.username}_{data_dia}_{now.strftime('%H-%M')}.jpg"
-        pasta_base = getattr(django_settings, 'PRESENCA_ONEDRIVE_FOLDER', 'Presenca_Selfies')
-        folder_name = f"{pasta_base}/{data_dia}"
-
-        # Ler bytes da foto uma vez (para OneDrive e para envio WhatsApp)
-        import io
-        import base64
-        foto_bytes = foto.read()
-        foto_io = io.BytesIO(foto_bytes)
-
-        try:
-            from crm_app.onedrive_service import OneDriveUploader
-            uploader = OneDriveUploader()
-            foto_url = uploader.upload_file(foto_io, folder_name, nome_arquivo)
-        except Exception as e:
             return Response(
-                {'detail': f'Erro ao enviar foto para o OneDrive: {str(e)}'},
-                status=status.HTTP_502_BAD_GATEWAY
+                {"detail": "Data inválida. Use YYYY-MM-DD."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        conf, created = ConfirmacaoPresencaDia.objects.update_or_create(
-            data=data_dia,
-            supervisor=request.user,
-            defaults={
-                'foto_url': foto_url,
-                'latitude': lat,
-                'longitude': lng,
-            }
-        )
-
-        # Enviar a selfie como IMAGEM no WhatsApp para usuários perfil Diretoria (silencioso)
+        lat = request.data.get("latitude") or request.POST.get("latitude")
+        lng = request.data.get("longitude") or request.POST.get("longitude")
         try:
-            diretores = Usuario.objects.filter(
-                groups__name='Diretoria',
-                is_active=True
-            ).exclude(tel_whatsapp__isnull=True).exclude(tel_whatsapp='').distinct()
-            if diretores.exists():
-                from crm_app.whatsapp_service import WhatsAppService
-                svc = WhatsAppService()
-                data_fmt = data_dia.strftime('%d/%m/%Y')
-                caption = f"Presença do dia {data_fmt} - supervisor: {request.user.username}"
-                img_b64 = base64.b64encode(foto_bytes).decode('utf-8')
-                for user in diretores:
-                    try:
-                        tel = (user.tel_whatsapp or '').replace(' ', '').replace('-', '').replace('(', '').replace(')', '')
-                        if tel:
-                            svc.enviar_imagem_b64(tel, img_b64, caption=caption)
-                    except Exception:
-                        pass
-        except Exception:
-            pass
+            lat_f = float(lat) if lat not in (None, "") else None
+        except (TypeError, ValueError):
+            lat_f = None
+        try:
+            lng_f = float(lng) if lng not in (None, "") else None
+        except (TypeError, ValueError):
+            lng_f = None
+
+        foto_bytes = foto.read()
+        try:
+            conf, created = registrar_selfie(
+                usuario=request.user,
+                data_dia=data_dia,
+                foto_bytes=foto_bytes,
+                latitude=lat_f,
+                longitude=lng_f,
+            )
+        except ConfirmacaoPresencaServiceError as e:
+            return Response(
+                {"detail": str(e)},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
 
         serializer = ConfirmacaoPresencaDiaSerializer(conf)
-        return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
 
     def delete(self, request):
-        """DELETE: ?data=YYYY-MM-DD - Exclui a confirmação (selfie) do dia. Apenas Diretoria/Admin."""
-        if not request.user.is_superuser and not request.user.groups.filter(name__in=['Diretoria', 'Admin']).exists():
-            return Response({'detail': 'Apenas Diretoria ou Admin podem excluir a foto.'}, status=status.HTTP_403_FORBIDDEN)
-
-        data_str = request.query_params.get('data')
+        if not request.user.is_superuser and not request.user.groups.filter(
+            name__in=["Diretoria", "Admin"]
+        ).exists():
+            return Response(
+                {"detail": "Apenas Diretoria ou Admin podem excluir a foto."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        data_str = request.query_params.get("data")
         if not data_str:
-            return Response({'detail': 'Parâmetro data (YYYY-MM-DD) é obrigatório.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": "Parâmetro data (YYYY-MM-DD) é obrigatório."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         try:
-            data_dia = datetime.strptime(data_str, '%Y-%m-%d').date()
+            data_dia = datetime.strptime(data_str, "%Y-%m-%d").date()
         except ValueError:
-            return Response({'detail': 'Data inválida. Use YYYY-MM-DD.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": "Data inválida. Use YYYY-MM-DD."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        from presenca.services.confirmacao_presenca_service import excluir_confirmacao_dia
 
-        deleted, _ = ConfirmacaoPresencaDia.objects.filter(data=data_dia).delete()
-        return Response({'detail': 'Foto excluída.'}, status=status.HTTP_200_OK)
+        excluir_confirmacao_dia(data_dia)
+        return Response({"detail": "Foto excluída."}, status=status.HTTP_200_OK)
 
 
-# =========================================================================
-# RELATÓRIOS FINANCEIROS (CORRIGIDO)
-# =========================================================================
-
-def get_dias_uteis_periodo(inicio, fim):
-    """Retorna uma lista de datas (dias úteis) entre inicio e fim, excluindo feriados."""
-    feriados = set(DiaNaoUtil.objects.filter(data__range=(inicio, fim)).values_list('data', flat=True))
-    dias = []
-    atual = inicio
-    while atual <= fim:
-        # 0=Segunda, 4=Sexta. Sábado(5) e Domingo(6) excluídos.
-        if atual.weekday() < 5 and atual not in feriados:
-            dias.append(atual)
-        atual += timedelta(days=1)
-    return dias
+# ---------------------------------------------------------------------------
+# Relatório financeiro (GET JSON e export Excel) — delega ao serviço
+# ---------------------------------------------------------------------------
 
 class RelatorioFinanceiroView(APIView):
+    """GET ?inicio=YYYY-MM-DD&fim=YYYY-MM-DD → previsão e descontos por colaborador."""
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        inicio_str = request.query_params.get('inicio')
-        fim_str = request.query_params.get('fim')
-
+        inicio_str = request.query_params.get("inicio")
+        fim_str = request.query_params.get("fim")
         if not inicio_str or not fim_str:
-            return Response({"error": "Datas obrigatórias."}, status=400)
-
+            return Response(
+                {"error": "Datas obrigatórias."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         try:
-            dt_ini = datetime.strptime(inicio_str, '%Y-%m-%d').date()
-            dt_fim = datetime.strptime(fim_str, '%Y-%m-%d').date()
+            dt_ini = datetime.strptime(inicio_str, "%Y-%m-%d").date()
+            dt_fim = datetime.strptime(fim_str, "%Y-%m-%d").date()
         except ValueError:
-            return Response({"error": "Data inválida."}, status=400)
+            return Response(
+                {"error": "Data inválida."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        from presenca.services.relatorio_financeiro_service import gerar_relatorio_financeiro
 
-        # 1. Mapeamento de Dias Úteis
-        dias_uteis_lista = get_dias_uteis_periodo(dt_ini, dt_fim)
-        qtd_dias_uteis = len(dias_uteis_lista)
+        dados = gerar_relatorio_financeiro(dt_ini, dt_fim)
+        return Response(dados)
 
-        # 2. Usuários Participantes
-        usuarios = Usuario.objects.filter(participa_controle_presenca=True, is_active=True).order_by('first_name')
 
-        # 3. Presenças no Período
-        presencas = Presenca.objects.filter(
-            data__range=(dt_ini, dt_fim),
-            colaborador__in=usuarios
-        ).select_related('motivo')
+class ExportarRelatorioFinanceiroExcelView(APIView):
+    """GET ?inicio=YYYY-MM-DD&fim=YYYY-MM-DD → download Excel do relatório financeiro."""
+    permission_classes = [IsAuthenticated]
 
-        # Mapa: { user_id: { data: { status: bool, gera_desconto: bool } } }
-        mapa_presencas = {}
-        for p in presencas:
-            uid = p.colaborador_id
-            if uid not in mapa_presencas: mapa_presencas[uid] = {}
-            
-            gera_desconto = False
-            if not p.status and p.motivo and p.motivo.gera_desconto:
-                gera_desconto = True
-            
-            mapa_presencas[uid][p.data] = {
-                'status': p.status,
-                'gera_desconto': gera_desconto
-            }
-
-        dados_previsao = []
-        dados_descontos = []
-
-        for user in usuarios:
-            # CORREÇÃO: Usar get_full_name() pois o objeto Model não tem 'nome_completo'
-            nome_display = user.get_full_name()
-            if not nome_display:
-                nome_display = user.username.upper()
-            else:
-                nome_display = nome_display.upper()
-
-            # Valor Diário = Almoço + Passagem (Campos do modelo Usuario)
-            val_almoco = float(user.valor_almoco or 0)
-            val_passagem = float(user.valor_passagem or 0)
-            valor_diario = val_almoco + val_passagem
-
-            # --- PREVISÃO (Cenário Ideal: Trabalhar todos os dias úteis) ---
-            total_previsao = qtd_dias_uteis * valor_diario
-            dados_previsao.append({
-                'nome': nome_display,
-                'username': user.username,  # <--- CORREÇÃO: Adicionado username para evitar "undefined"
-                'dias_uteis': qtd_dias_uteis,
-                'valor_diario': valor_diario,
-                'total_receber': total_previsao
-            })
-
-            # --- APURAÇÃO REAL (Faltas) ---
-            user_records = mapa_presencas.get(user.id, {})
-            datas_faltas = []
-
-            for dia in dias_uteis_lista:
-                rec = user_records.get(dia)
-                
-                if rec:
-                    # Se tem registro
-                    # É falta se status=Ausente E gera_desconto=True
-                    if rec['status'] == False and rec['gera_desconto'] == True:
-                        datas_faltas.append(dia)
-                else:
-                    # Sem registro no dia útil = Falta (Buraco)
-                    datas_faltas.append(dia)
-
-            qtd_faltas = len(datas_faltas)
-            valor_desconto = qtd_faltas * valor_diario
-            total_liquido = total_previsao - valor_desconto
-
-            dados_descontos.append({
-                'nome': nome_display,
-                'username': user.username,  # <--- CORREÇÃO: Adicionado username para evitar "undefined"
-                'dias_uteis': qtd_dias_uteis,
-                'qtd_faltas': qtd_faltas,
-                'datas_faltas': [d.strftime('%d/%m/%Y') for d in datas_faltas], # Lista formatada para o modal
-                'valor_diario': valor_diario,
-                'valor_desconto': valor_desconto,
-                'total_receber': total_liquido
-            })
-
-        return Response({
-            'previsao': dados_previsao,
-            'descontos': dados_descontos
-        })
-
-class ExportarRelatorioFinanceiroExcelView(RelatorioFinanceiroView):
-    # Herda a lógica acima para não duplicar código
     def get(self, request):
-        response_data = super().get(request)
-        if response_data.status_code != 200:
-            return response_data
-        
-        dados = response_data.data 
-        lista_final = dados['descontos'] # Usa a lista de descontos/realizado
+        inicio_str = request.query_params.get("inicio")
+        fim_str = request.query_params.get("fim")
+        if not inicio_str or not fim_str:
+            return Response(
+                {"error": "Parâmetros inicio e fim (YYYY-MM-DD) são obrigatórios."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            dt_ini = datetime.strptime(inicio_str, "%Y-%m-%d").date()
+            dt_fim = datetime.strptime(fim_str, "%Y-%m-%d").date()
+        except ValueError:
+            return Response(
+                {"error": "Data inválida."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        from presenca.services.relatorio_financeiro_service import gerar_excel_http
 
-        export_list = []
-        for item in lista_final:
-            export_list.append({
-                'Colaborador': item['nome'],
-                'Username': item.get('username', ''),  # <--- CORREÇÃO: Adicionado ao Excel também
-                'Dias Úteis': item['dias_uteis'],
-                'Valor Diário (R$)': item['valor_diario'],
-                'Previsão Total (R$)': item['dias_uteis'] * item['valor_diario'],
-                'Qtd Faltas': item['qtd_faltas'],
-                'Valor Desconto (R$)': item['valor_desconto'],
-                'Total a Receber (R$)': item['total_receber'],
-                'Datas das Faltas': ", ".join(item['datas_faltas'])
-            })
-
-        df = pd.DataFrame(export_list)
-        
-        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        filename = f"Financeiro_{request.query_params.get('inicio')}_{request.query_params.get('fim')}.xlsx"
-        response['Content-Disposition'] = f'attachment; filename="{filename}"'
-
-        # Requer openpyxl instalado (pip install openpyxl)
-        with pd.ExcelWriter(response, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='Financeiro')
-        
-        return response
+        return gerar_excel_http(dt_ini, dt_fim, inicio_str, fim_str)

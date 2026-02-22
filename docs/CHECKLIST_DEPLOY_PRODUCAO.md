@@ -1,254 +1,256 @@
-# ✅ Checklist Deploy Produção - Heroku
+# ✅ Checklist Final - Deploy em Produção
 
-**Data:** 30 de Dezembro de 2025  
-**Status:** PRONTO PARA DEPLOY
+## 🔒 PRÉ-REQUISITOS CRÍTICOS
 
----
+### 1. Backup do Banco de Dados ⚠️
+- [ ] **OBRIGATÓRIO**: Fazer backup completo do PostgreSQL
+- [ ] Testar restauração do backup (se possível)
+- [ ] Guardar backup em local seguro
 
-## 🔍 Pré-Deploy - Verificações
+### 2. Verificar Ambiente
+- [ ] Confirmar que está usando **PostgreSQL** (não SQLite)
+- [ ] Verificar espaço em disco (índices ocupam ~10-20% da tabela)
+- [ ] Confirmar que pode haver 5-15 minutos de criação de índices
 
-### 1. Django Health Check
-- ✅ `python manage.py check` → **OK (No issues)**
-- ✅ Não há erros de configuração
-- ✅ Todas as apps registradas corretamente
-
-### 2. Migrações
-- ✅ Todas as migrações aplicadas localmente
-- ✅ Migration 0044: SafraM10, ContratoM10, FaturaM10 ✅
-- ✅ Migration 0045: ordem_servico, cpf_cliente ✅
-- ✅ Status: `[X]` para todas (aplicadas)
-
-### 3. Dependências Python
-- ✅ `requirements.txt` atualizado com:
-  - pandas 2.1.4
-  - openpyxl 3.1.2
-  - pyxlsb (Excel binary support)
-  - djangorestframework
-  - django-cors-headers
-  - python-decouple
-  - Todas as demais dependências
-
-### 4. Variáveis de Ambiente
-- ⚠️ **CRÍTICO:** Verificar se as seguintes estão configuradas no Heroku:
-  - `SECRET_KEY` - Django secret
-  - `DEBUG` - False em produção
-  - `ALLOWED_HOSTS` - domínios permitidos
-  - `DATABASE_URL` - JawsDB ou banco produção
-  - `CORS_ALLOWED_ORIGINS` - frontend URLs
-  - `USE_X_FORWARDED_PROTO` - True (Heroku)
-
-### 5. Arquivos Estáticos
-- ✅ `static/` existente e funcional
-- ✅ `collectstatic` pronto para executar
-- ✅ CSS v13.2 mais recente
-
-### 6. Banco de Dados
-- ✅ JawsDB MySQL configurado (ou banco escolhido)
-- ✅ Migrações prontas para executar em produção
-
-### 7. Procfile
-- ✅ Arquivo presente e configurado
-- ✅ Comando web: `gunicorn gestao_equipes.wsgi`
-- ✅ Release phase: `python manage.py migrate` (se necessário)
+### 3. Janela de Manutenção
+- [ ] Escolher horário de baixo movimento (noite/madrugada)
+- [ ] Avisar equipe sobre manutenção
+- [ ] Ter plano de rollback pronto
 
 ---
 
-## 📝 Mudanças Incluídas neste Deploy
+## 🚀 PROCEDIMENTO DE DEPLOY
 
-### Backend (crm_app/views.py)
-- ✅ **PopularSafraM10View** - Novo endpoint para criar safras
-- ✅ **ImportarFPDView** - Refatorado com crossover por O.S
-- ✅ **ImportarChurnView** - Refatorado com crossover por O.S
-- ✅ Suporte a `.xlsb` em ambas as views de importação
-- ✅ Suporte a `.xlsb` em ImportacaoChurnView (sistema antigo)
-
-### Backend (crm_app/models.py)
-- ✅ **ContratoM10** - Campos adicionados: `ordem_servico`, `cpf_cliente`
-- ✅ Migrations 0044 e 0045 aplicadas
-
-### Backend (crm_app/urls.py)
-- ✅ Rotas do Bônus M-10 removidas (consolidadas em gestao_equipes)
-
-### Backend (gestao_equipes/urls.py)
-- ✅ Rota adicionada: `path('api/bonus-m10/safras/criar/', PopularSafraM10View.as_view())`
-- ✅ 9 rotas do Bônus M-10 consolidadas e funcionais
-
-### Backend (gestao_equipes/middleware.py)
-- ✅ **NOVO:** Custom CSRF middleware para JWT
-- ✅ DisableCsrfForJWT implementado
-- ✅ Registrado em settings.MIDDLEWARE
-
-### Frontend (area-interna.html)
-- ✅ Card-bonus-m10 removido de BackOffice
-- ✅ Restrição a Diretoria apenas
-- ✅ Card-performance removido de Supervisor
-
-### Frontend (bonus_m10.html)
-- ✅ Verificação de permissão aprimorada
-- ✅ Bloqueio de acesso para não-Diretoria
-- ✅ Modal "Criar Safra" adicionado
-- ✅ Funções JavaScript: abrirModalCriarSafra(), criarNovaSafra()
-- ✅ Paginação implementada e funcional
-
-### Frontend (importar_fpd.html)
-- ✅ Verificação de permissão no carregamento
-- ✅ Bloqueio de acesso para não-Diretoria
-- ✅ Suporte a .xlsb, .xlsx, .xls, .csv
-
-### Frontend (salvar_churn.html)
-- ✅ Suporte a .xlsb adicionado
-- ✅ Descrição de formatos atualizada
-
----
-
-## 🔐 Segurança
-
-### Permissões
-- ✅ Bônus M-10: Restrito a Diretoria (frontend + backend)
-- ✅ PopularSafraM10View: Requer Admin, BackOffice ou Diretoria
-- ✅ ImportarFPDView: Requer Admin, BackOffice ou Diretoria
-- ✅ ImportarChurnView: Requer Admin, BackOffice ou Diretoria
-- ✅ CSRF middleware customizado para JWT
-
-### Validações
-- ✅ Formato de arquivo (.xlsx, .xls, .xlsb, .csv)
-- ✅ Campos obrigatórios (O.S, data_instalacao)
-- ✅ Crossover validado (O.S existe antes de atualizar)
-
----
-
-## 📊 Testes Realizados
-
-### Testes Locais
-- ✅ `python manage.py check` - Sem erros
-- ✅ Migrações aplicadas com sucesso
-- ✅ Imports funcionando
-- ✅ Views acessíveis via API
-- ✅ Frontend carregando corretamente
-
-### Funcionalidades Testadas
-- ✅ Criar Safra M-10 (POST /api/bonus-m10/safras/criar/)
-- ✅ Importar FPD com crossover
-- ✅ Importar Churn com crossover
-- ✅ Restrição de permissões (área interna)
-- ✅ Modal de criação de safra
-- ✅ Paginação de contratos (100 por página)
-
----
-
-## 📈 Estatísticas do Deploy
-
-| Item | Valor |
-|------|-------|
-| **Arquivos Modificados** | 25+ |
-| **Novos Arquivos** | 45+ |
-| **Migrações Novas** | 2 (0044, 0045) |
-| **Views Novas** | 1 (PopularSafraM10View) |
-| **Views Refatoradas** | 2 (ImportarFPDView, ImportarChurnView) |
-| **Middleware Novo** | 1 (DisableCsrfForJWT) |
-| **Documentação** | 3+ arquivos markdown |
-| **Linhas de Código** | +2000 |
-
----
-
-## 🚀 Passos para Deploy no Heroku
-
-### 1. Commit e Push
+### Passo 1: Backup
 ```bash
-git add .
-git commit -m "Deploy: Bônus M-10 com arquitetura CRM, refatoração de importações, restrições de permissão"
-git push heroku main  # ou git push origin main (se usar pipeline do Heroku)
+# PostgreSQL via pg_dump
+pg_dump -U usuario -h host -d database > backup_antes_performance_$(date +%Y%m%d_%H%M%S).sql
+
+# OU via painel do provedor (AWS RDS, Azure, etc)
 ```
 
-### 2. Verificar Logs
-```bash
-heroku logs --tail
+### Passo 2: Commit e Push
+```powershell
+# Verificar mudanças
+git status
+
+# Adicionar arquivos
+git add crm_app/models.py
+git add crm_app/views.py
+git add crm_app/migrations/
+git add docs/
+git add scripts/
+git add *.md
+
+# Commit
+git commit -m "feat: Otimizações de performance PostgreSQL
+
+- Adicionar índices no modelo Venda
+- Implementar bulk operations nas importações
+- Adicionar índices compostos e parciais
+- Otimizar queries com .defer()
+
+Ganhos esperados:
+- Queries: 10-50x mais rápidas
+- Importações: 50-100x mais rápidas"
+
+# Push
+git push origin main
 ```
 
-### 3. Executar Migrações (se necessário)
+### Passo 3: Deploy no Servidor
 ```bash
-heroku run python manage.py migrate
+# Conectar ao servidor
+ssh usuario@servidor
+
+# Ir para diretório do projeto
+cd /caminho/do/projeto
+
+# Pull das mudanças
+git pull origin main
+
+# Ativar ambiente virtual (se usar)
+source venv/bin/activate
+
+# Aplicar migrations
+python manage.py migrate crm_app
+
+# Aguardar conclusão (5-15 minutos)
+# Você verá: "✓ Índices de performance PostgreSQL criados com sucesso!"
 ```
 
-### 4. Coletar Estáticos (se necessário)
+### Passo 4: Validação
 ```bash
-heroku run python manage.py collectstatic --noinput
+# Executar script de validação
+python scripts/validar_performance.py
+
+# Verificar se todos os índices foram criados
+# Confirmar tempos de resposta < 500ms
 ```
 
-### 5. Reiniciar Dynos
+### Passo 5: Restart da Aplicação
 ```bash
-heroku restart
+# Gunicorn
+sudo systemctl restart gunicorn
+
+# OU Supervisor
+sudo supervisorctl restart site-record
+
+# OU Docker
+docker-compose restart web
+
+# Verificar logs
+tail -f /var/log/gunicorn/error.log
+```
+
+### Passo 6: Testes de Fumaça
+- [ ] Acessar página de login
+- [ ] Navegar para esteira (deve estar < 500ms)
+- [ ] Navegar para auditoria (deve estar < 500ms)
+- [ ] Fazer busca por OS
+- [ ] Testar filtro por data
+- [ ] Fazer importação OSAB pequena (teste)
+
+---
+
+## 📊 MONITORAMENTO PÓS-DEPLOY
+
+### Primeira Hora
+- [ ] Monitorar logs de erro
+- [ ] Verificar tempo de resposta das APIs
+- [ ] Confirmar que não há erros 500
+- [ ] Testar importações
+
+### Primeiro Dia
+- [ ] Coletar feedback da equipe
+- [ ] Verificar métricas de performance
+- [ ] Validar tempos de importação
+
+### Primeira Semana
+- [ ] Analisar uso dos índices
+- [ ] Identificar queries ainda lentas
+- [ ] Ajustar se necessário
+
+---
+
+## 🔄 PLANO DE ROLLBACK (SE NECESSÁRIO)
+
+Se algo der errado:
+
+### Opção 1: Reverter Migration
+```bash
+# Reverter para migration anterior
+python manage.py migrate crm_app 0064
+
+# Restart
+sudo systemctl restart gunicorn
+```
+
+### Opção 2: Restaurar Backup
+```bash
+# Parar aplicação
+sudo systemctl stop gunicorn
+
+# Restaurar banco
+psql -U usuario -h host -d database < backup_antes_performance_*.sql
+
+# Reverter código
+git revert HEAD
+
+# Restart
+sudo systemctl start gunicorn
 ```
 
 ---
 
-## ⚠️ Ações Críticas Pré-Deploy
+## 📈 MÉTRICAS ESPERADAS
 
-### ANTES de fazer push:
+### Antes das Otimizações
+- Esteira: 2-5 segundos
+- Auditoria: 2-5 segundos
+- Importação OSAB (5k): 5-10 minutos
+- Importação Churn (10k): 10-20 minutos
 
-- [ ] **Clonar .env produção:**
-  ```bash
-  heroku config:set DEBUG=False
-  heroku config:set ALLOWED_HOSTS="seu-dominio.herokuapp.com,seu-dominio.com"
-  ```
-
-- [ ] **Verificar banco de dados:**
-  ```bash
-  heroku config | grep DATABASE_URL
-  ```
-
-- [ ] **Testar localmente com produção:**
-  ```bash
-  DEBUG=False python manage.py runserver
-  ```
-
-- [ ] **Backup do banco em produção:**
-  ```bash
-  heroku pg:backups capture --app seu-app
-  ```
+### Depois das Otimizações
+- Esteira: **100-300ms** (10-50x mais rápido) ⚡
+- Auditoria: **100-300ms** (10-50x mais rápido) ⚡
+- Importação OSAB (5k): **30-60s** (10x mais rápido) 🚀
+- Importação Churn (10k): **1-2min** (10-20x mais rápido) 🚀
 
 ---
 
-## 📞 Rollback (se necessário)
+## 🆘 TROUBLESHOOTING
 
-Se algo der errado, reverter é rápido:
+### Erro: "CREATE INDEX CONCURRENTLY cannot run inside a transaction block"
+**Solução**: A migration já está configurada para usar RunPython que evita isso. Se ocorrer, é porque há outra migration em transação. Execute manualmente:
+```sql
+CREATE INDEX CONCURRENTLY idx_venda_flow_auditoria ON crm_venda(status_tratamento_id, ativo) WHERE status_tratamento_id IS NOT NULL AND status_esteira_id IS NULL AND ativo IS TRUE;
+-- (repetir para outros índices)
+```
 
+### Erro: "relation already exists"
+**Solução**: Índices já foram criados. Pode ignorar ou dropar e recriar.
+
+### Performance não melhorou
+**Verificar**:
+1. Índices foram criados? `SELECT * FROM pg_indexes WHERE tablename='crm_venda';`
+2. Estatísticas atualizadas? `ANALYZE crm_venda;`
+3. PostgreSQL está usando os índices? `EXPLAIN ANALYZE SELECT ...`
+
+---
+
+## ✅ CONFIRMAÇÃO FINAL
+
+Antes de executar em produção, confirme:
+
+- [x] Código testado em desenvolvimento
+- [x] Migrations aplicadas e testadas localmente
+- [x] Script de validação executado com sucesso
+- [x] Documentação revisada
+- [ ] **BACKUP DO BANCO FEITO** ⚠️
+- [ ] Equipe avisada sobre manutenção
+- [ ] Plano de rollback preparado
+- [ ] Horário adequado escolhido
+
+---
+
+## 🎯 COMANDO ÚNICO DE DEPLOY
+
+Para facilitar, use o script automatizado:
+
+**Windows/PowerShell**:
+```powershell
+.\scripts\deploy_performance.ps1
+```
+
+**Linux/Bash**:
 ```bash
-heroku releases
-heroku rollback v123  # número da versão anterior
+bash scripts/deploy_performance.sh
 ```
 
 ---
 
-## ✅ Checklist Final
+## 📞 CONTATOS DE EMERGÊNCIA
 
-- [ ] Django check passou
-- [ ] Migrações revisadas
-- [ ] Variáveis de ambiente configuradas
-- [ ] Backup do banco realizado
-- [ ] Testes locais executados
-- [ ] Documentação atualizada
-- [ ] Permissões validadas
-- [ ] CSRF middleware funcionando
-- [ ] Logs monitorados
+Em caso de problemas críticos:
+- DBA: [contato]
+- DevOps: [contato]
+- Responsável Técnico: [contato]
 
 ---
 
-## 🎯 Resumo
-
-**Status:** ✅ **PRONTO PARA PRODUÇÃO**
-
-Todas as mudanças foram testadas localmente:
-- ✅ Backend funcional
-- ✅ Frontend responsivo
-- ✅ Segurança validada
-- ✅ Migrações aplicadas
-- ✅ Dependências atualizadas
-
-**Próximo passo:** Fazer commit, push e monitorar em produção.
+**Data**: 03/01/2026  
+**Responsável**: [Seu Nome]  
+**Status**: ✅ PRONTO PARA DEPLOY
 
 ---
 
-**Data de Geração:** 30 de Dezembro de 2025  
-**Responsável:** Sistema  
-**Versão:** 1.0
+## 🎉 PÓS-DEPLOY
+
+Após deploy bem-sucedido:
+1. ✅ Marcar task como concluída
+2. 📧 Comunicar equipe sobre melhorias
+3. 📊 Compartilhar métricas de antes/depois
+4. 🎊 Celebrar! 🚀
+
+**Sucesso!** As melhorias devem trazer ganhos significativos de performance!
