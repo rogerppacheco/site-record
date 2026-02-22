@@ -607,6 +607,37 @@ class PapBoEmUso(models.Model):
         return f"BO {self.bo_usuario.username} em uso por {self.vendedor_telefone}"
 
 
+class FilaEsperaPAP(models.Model):
+    """
+    Fila de espera quando todos os logins PAP estão em uso.
+    Ao liberar um login, o primeiro da fila é avisado por WhatsApp.
+    """
+    TIPO_VENDER = 'vender'
+    TIPO_PEDIDO = 'pedido'
+    TIPO_STATUS = 'status'
+    TIPO_CREDITO = 'credito'
+    TIPOS = (
+        (TIPO_VENDER, 'Vender'),
+        (TIPO_PEDIDO, 'Pedido'),
+        (TIPO_STATUS, 'Status'),
+        (TIPO_CREDITO, 'Crédito'),
+    )
+
+    telefone = models.CharField(max_length=100, db_index=True)
+    tipo_acao = models.CharField(max_length=20, choices=TIPOS, default=TIPO_VENDER)
+    created_at = models.DateTimeField(auto_now_add=True)
+    sessao_whatsapp_id = models.IntegerField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'crm_fila_espera_pap'
+        verbose_name = "Fila espera PAP"
+        verbose_name_plural = "Fila espera PAP"
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"{self.telefone} ({self.get_tipo_acao_display()}) desde {self.created_at}"
+
+
 class PapConfirmacaoCliente(models.Model):
     """
     Pendência de confirmação "Sim" do cliente no fluxo PAP.

@@ -6,6 +6,7 @@ Permite que vendedores autorizados realizem vendas pelo WhatsApp.
 
 import os
 import re
+import unicodedata
 import logging
 import threading
 import time
@@ -2059,6 +2060,9 @@ class PAPNioAutomation:
                 self._fechar_modal_erro_ops()
                 return False, PAP_ERRO_PORTAL_NIO, None
             pagina_texto = (self.page.content() or "").lower()
+            # Normalizar para comparação: acentos e variações (cartão/cartao, etc.)
+            pagina_norm = unicodedata.normalize("NFD", pagina_texto)
+            pagina_norm = "".join(c for c in pagina_norm if unicodedata.category(c) != "Mn")
             # Crédito negado - fechar modal antes de retornar
             if "crédito negado" in pagina_texto or "credito negado" in pagina_texto or ("negado" in pagina_texto and "aprovado" not in pagina_texto):
                 for btn_text in ['Consultar outro CPF/CNPJ', 'Ok', 'Fechar']:
@@ -2073,10 +2077,23 @@ class PAPNioAutomation:
                 return False, "CREDITO_NEGADO", None
             # Crédito aprovado (todas formas ou apenas cartão) - modal visível
             if "crédito aprovado" in pagina_texto or "credito aprovado" in pagina_texto:
-                if "apenas" in pagina_texto and "cartão" in pagina_texto:
+                # Detectar "apenas/somente cartão": variações com e sem acento (pagina_norm = texto sem acentos)
+                indicadores_apenas_cartao = (
+                    ("apenas" in pagina_norm and "cartao" in pagina_norm)
+                    or ("somente" in pagina_norm and "cartao" in pagina_norm)
+                    or ("so cartao" in pagina_norm)
+                    or ("apenas para cartao" in pagina_norm)
+                )
+                indicador_todas_formas = (
+                    "todas as formas" in pagina_norm
+                    or "todas as formas de pagamento" in pagina_norm
+                )
+                if indicadores_apenas_cartao and not indicador_todas_formas:
                     resultado_credito = "Elegível apenas para Cartão de Crédito"
+                    logger.info("[PAP] Análise de crédito: aprovado APENAS para Cartão de Crédito (modal detectado).")
                 else:
                     resultado_credito = "Elegível para todas as formas de pagamento"
+                    logger.info("[PAP] Análise de crédito: aprovado para todas as formas de pagamento (modal detectado).")
                 # Não clicar Continuar quando parar_no_modal_credito (evita enviar link biometria)
                 if not parar_no_modal_credito:
                     try:

@@ -2,7 +2,7 @@ from django.contrib import admin
 from .models import (
     SafraM10, ContratoM10, FaturaM10, HistoricoBuscaFatura,
     ImportacaoAgendamento, ImportacaoRecompra, ImportacaoFPD, LogImportacaoFPD,
-    ImportacaoChurn, LogImportacaoChurn, PapBoEmUso,
+    ImportacaoChurn, LogImportacaoChurn, PapBoEmUso, FilaEsperaPAP,
     RegraComissaoFaixa, ConfigComissaoVendedor,
 )
 
@@ -265,6 +265,14 @@ class PapBoEmUsoAdmin(admin.ModelAdmin):
     list_display = ('bo_usuario', 'vendedor_telefone', 'locked_at', 'sessao_whatsapp_id')
     list_filter = ('locked_at',)
     search_fields = ('vendedor_telefone', 'bo_usuario__username')
+
+
+@admin.register(FilaEsperaPAP)
+class FilaEsperaPAPAdmin(admin.ModelAdmin):
+    list_display = ('telefone', 'tipo_acao', 'created_at', 'sessao_whatsapp_id')
+    list_filter = ('tipo_acao', 'created_at')
+    search_fields = ('telefone',)
+    ordering = ('created_at',)
 
 
 @admin.register(RegraComissaoFaixa)

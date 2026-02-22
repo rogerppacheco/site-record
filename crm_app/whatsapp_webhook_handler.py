@@ -604,7 +604,7 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
     from usuarios.models import Usuario
     from crm_app.models import AnaliseCreditoHistorico, SessaoWhatsapp
     from crm_app.services_pap_nio import PAPNioAutomation
-    from crm_app.pool_bo_pap import obter_login_bo, liberar_bo
+    from crm_app.pool_bo_pap import obter_login_bo, liberar_bo, MSG_TODOS_ACESSOS_EM_USO, obter_mensagem_fila_ocupado
     from crm_app.credito_utils import gerar_celular_random
     from crm_app.whatsapp_service import WhatsAppService
     import re
@@ -626,7 +626,10 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
 
     bo_usuario, msg_erro = obter_login_bo(telefone, None)
     if not bo_usuario:
-        WhatsAppService().enviar_mensagem_texto(telefone, f"❌ {msg_erro}\n\nDigite *CRÉDITO* para tentar novamente.")
+        if msg_erro == MSG_TODOS_ACESSOS_EM_USO:
+            WhatsAppService().enviar_mensagem_texto(telefone, obter_mensagem_fila_ocupado(telefone, 'credito'))
+        else:
+            WhatsAppService().enviar_mensagem_texto(telefone, f"❌ {msg_erro}\n\nDigite *CRÉDITO* para tentar novamente.")
         try:
             s = SessaoWhatsapp.objects.get(telefone=telefone)
             s.etapa = 'inicial'
@@ -841,7 +844,7 @@ def _executar_consulta_pedido_background(telefone: str, usuario_id: int, cpf: st
     from usuarios.models import Usuario
     from crm_app.models import SessaoWhatsapp
     from crm_app.services_pap_nio import PAPNioAutomation
-    from crm_app.pool_bo_pap import obter_login_bo, liberar_bo
+    from crm_app.pool_bo_pap import obter_login_bo, liberar_bo, MSG_TODOS_ACESSOS_EM_USO, obter_mensagem_fila_ocupado
     from crm_app.whatsapp_service import WhatsAppService
 
     usuario = Usuario.objects.get(id=usuario_id)
@@ -856,10 +859,13 @@ def _executar_consulta_pedido_background(telefone: str, usuario_id: int, cpf: st
 
     bo_usuario, msg_erro = obter_login_bo(telefone, None)
     if not bo_usuario:
-        WhatsAppService().enviar_mensagem_texto(
-            telefone,
-            f"❌ {msg_erro}\n\nDigite *PEDIDO* para tentar novamente."
-        )
+        if msg_erro == MSG_TODOS_ACESSOS_EM_USO:
+            WhatsAppService().enviar_mensagem_texto(telefone, obter_mensagem_fila_ocupado(telefone, 'pedido'))
+        else:
+            WhatsAppService().enviar_mensagem_texto(
+                telefone,
+                f"❌ {msg_erro}\n\nDigite *PEDIDO* para tentar novamente."
+            )
         _resetar_sessao_pedido(telefone)
         return
 
@@ -962,7 +968,7 @@ def _executar_consulta_status_online_background(telefone: str, cpf: str, eh_agen
     from usuarios.models import Usuario
     from crm_app.models import SessaoWhatsapp
     from crm_app.services_pap_nio import PAPNioAutomation
-    from crm_app.pool_bo_pap import obter_login_bo, liberar_bo
+    from crm_app.pool_bo_pap import obter_login_bo, liberar_bo, MSG_TODOS_ACESSOS_EM_USO, obter_mensagem_fila_ocupado
     from crm_app.whatsapp_service import WhatsAppService
 
     cpf_limpo = re.sub(r'\D', '', cpf)
@@ -970,10 +976,13 @@ def _executar_consulta_status_online_background(telefone: str, cpf: str, eh_agen
         return
     bo_usuario, msg_erro = obter_login_bo(telefone, None)
     if not bo_usuario:
-        WhatsAppService().enviar_mensagem_texto(
-            telefone,
-            f"❌ {msg_erro}\n\nConsulta online (PAP) não realizada. Digite *STATUS* para tentar novamente."
-        )
+        if msg_erro == MSG_TODOS_ACESSOS_EM_USO:
+            WhatsAppService().enviar_mensagem_texto(telefone, obter_mensagem_fila_ocupado(telefone, 'status'))
+        else:
+            WhatsAppService().enviar_mensagem_texto(
+                telefone,
+                f"❌ {msg_erro}\n\nConsulta online (PAP) não realizada. Digite *STATUS* para tentar novamente."
+            )
         try:
             s = SessaoWhatsapp.objects.get(telefone=telefone)
             s.etapa = 'inicial'
@@ -1951,18 +1960,20 @@ def _texto_formas_pagamento_por_credito(resultado_credito: str) -> tuple:
     Retorna (texto_msg, formas_map) para a etapa de forma de pagamento conforme o resultado do crédito.
     - Se resultado_credito == "Elegível apenas para Cartão de Crédito": só opção 2 (Cartão).
     - Caso contrário: 1=Boleto, 2=Cartão, 3=Débito em Conta.
+    A mensagem deixa explícito se aprovou todas as formas ou apenas cartão, para evitar envio errado ao cliente.
     """
     apenas_cartao = (resultado_credito or '').strip() == "Elegível apenas para Cartão de Crédito"
     if apenas_cartao:
         return (
             "💳 *ETAPA 4: PAGAMENTO*\n\n"
-            "Crédito aprovado *apenas para Cartão de Crédito*.\n\n"
+            "Crédito aprovado *apenas para Cartão de Crédito* (boleto e débito não liberados).\n\n"
             "2️⃣ Cartão de Crédito\n\n"
             "Digite *2* para continuar:",
             {'2': 'cartao'},
         )
     return (
         "💳 *ETAPA 4: PAGAMENTO*\n\n"
+        "Crédito aprovado para *todas as formas de pagamento* (Boleto, Cartão ou Débito).\n\n"
         "Escolha a forma de pagamento:\n\n"
         "1️⃣ Boleto\n"
         "2️⃣ Cartão de Crédito\n"
@@ -2689,12 +2700,14 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
 
         if mensagem_limpa == 'SIM':
             # Obter login BackOffice do pool (seleção randômica entre disponíveis)
-            from crm_app.pool_bo_pap import obter_login_bo
+            from crm_app.pool_bo_pap import obter_login_bo, MSG_TODOS_ACESSOS_EM_USO, obter_mensagem_fila_ocupado
             bo_usuario, erro = obter_login_bo(
                 vendedor_telefone=telefone,
                 sessao_whatsapp_id=sessao.id,
             )
             if erro:
+                if erro == MSG_TODOS_ACESSOS_EM_USO:
+                    return obter_mensagem_fila_ocupado(telefone, 'vender')
                 return erro
             # Guardar bo_usuario_id; a thread fará login + novo pedido + validar tela e só então pedirá CEP
             dados['bo_usuario_id'] = bo_usuario.id
@@ -2829,8 +2842,9 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                             s.save(update_fields=["etapa"])
                             elapsed = time.monotonic() - t0
                             if nome_op:
+                                primeiro_nome = (nome_op.split()[0] if nome_op.strip() else nome_op).strip().title()
                                 saudacao = (
-                                    f"✅ Olá, meu nome é *{nome_op}* e vou guiar você na ativação! Bora lá?\n\n"
+                                    f"✅ Olá, meu nome é *{primeiro_nome}* e vou guiar você na ativação! Bora lá?\n\n"
                                 )
                             else:
                                 saudacao = "✅ Acesso reservado!\n\n"

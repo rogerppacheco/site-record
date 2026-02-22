@@ -32,6 +32,11 @@ class CustomUserAdmin(UserAdmin):
             'meta_comissao', 'desconto_boleto', 'desconto_inclusao_viabilidade',
             'desconto_instalacao_antecipada', 'adiantamento_cnpj', 'desconto_inss_fixo'
         )}),
+        ('Automação PAP / WhatsApp', {
+            'fields': ('matricula_pap', 'senha_pap', 'autorizar_venda_sem_auditoria', 'autorizar_venda_automatica', 'autorizar_analise_credito_wpp', 'login_pap_disponivel_para_automacao'),
+            'description': 'Login PAP: se "Disponibilizar login PAP para o bot" estiver desmarcado, o bot não usará este login no pool (útil quando o BO está atuando no PAP).'
+        }),
+        ('WhatsApp', {'fields': ('tel_whatsapp', 'tel_whatsapp_2', 'tel_whatsapp_3')}),
         ('Permissões', {
             'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions'),
             'description': 'OBS: O campo "Groups" acima também pode ser usado para definir perfis. O campo "Perfil" é opcional e legado.'

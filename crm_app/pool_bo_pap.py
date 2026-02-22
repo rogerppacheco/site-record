@@ -5,6 +5,9 @@ Pool de logins BackOffice para automação PAP.
 Vendedores (perfil Vendedor) não conseguem fazer vendas pelo site pap.niointernet.com.br.
 Usuários com autorizar_venda_sem_auditoria usam logins de perfil BackOffice,
 com seleção randômica entre os disponíveis e bloqueio para evitar conflitos.
+
+Inclui fila de espera: quando todos os logins estão em uso, o usuário entra na fila
+e é avisado por WhatsApp quando um login for liberado.
 """
 import logging
 import random
@@ -18,6 +21,14 @@ logger = logging.getLogger(__name__)
 
 # Timeout em minutos - locks mais antigos são considerados órfãos (sessão travou)
 LOCK_TIMEOUT_MINUTOS = 30
+
+# Mensagem retornada quando todos os BOs estão ocupados (webhook usa para detectar e enfileirar)
+MSG_TODOS_ACESSOS_EM_USO = (
+    "⚠️ *TODOS OS ACESSOS BACKOFFICE ESTÃO EM USO*\n\n"
+    "No momento todos os logins de backoffice estão ocupados com outras vendas.\n\n"
+    "Aguarde alguns minutos e tente novamente.\n\n"
+    "Digite *VENDER* para tentar novamente."
+)
 
 
 def _limpar_locks_expirados():
@@ -68,11 +79,12 @@ def obter_login_bo(
         PapBoEmUso.objects.values_list('bo_usuario_id', flat=True)
     )
 
-    # Buscar usuários BackOffice com matrícula e senha configuradas
+    # Buscar usuários BackOffice com matrícula e senha configuradas e com login liberado para o bot
     bo_queryset = Usuario.objects.filter(
         perfil__cod_perfil__iexact='backoffice',
         is_active=True,
         matricula_pap__isnull=False,
+        login_pap_disponivel_para_automacao=True,
     ).exclude(
         matricula_pap='',
     ).exclude(
@@ -87,15 +99,7 @@ def obter_login_bo(
 
     bo_list = list(bo_queryset)
     if not bo_list:
-        return (
-            None,
-            (
-                "⚠️ *TODOS OS ACESSOS BACKOFFICE ESTÃO EM USO*\n\n"
-                "No momento todos os logins de backoffice estão ocupados com outras vendas.\n\n"
-                "Aguarde alguns minutos e tente novamente.\n\n"
-                "Digite *VENDER* para tentar novamente."
-            ),
-        )
+        return (None, MSG_TODOS_ACESSOS_EM_USO)
 
     # Seleção randômica
     bo_usuario = random.choice(bo_list)
@@ -120,12 +124,100 @@ def obter_login_bo(
         )
 
 
+def adicionar_a_fila_pap(
+    telefone: str,
+    tipo_acao: str = "vender",
+    sessao_whatsapp_id: Optional[int] = None,
+) -> "FilaEsperaPAP":
+    """
+    Coloca o usuário na fila de espera (ou atualiza posição se já estiver).
+    Remove entradas anteriores do mesmo telefone para evitar duplicidade.
+
+    Args:
+        telefone: Telefone do usuário
+        tipo_acao: 'vender', 'pedido', 'status' ou 'credito'
+        sessao_whatsapp_id: ID da SessaoWhatsapp (opcional)
+
+    Returns:
+        Instância de FilaEsperaPAP criada
+    """
+    from crm_app.models import FilaEsperaPAP
+
+    FilaEsperaPAP.objects.filter(telefone=telefone).delete()
+    entrada = FilaEsperaPAP.objects.create(
+        telefone=telefone,
+        tipo_acao=tipo_acao,
+        sessao_whatsapp_id=sessao_whatsapp_id,
+    )
+    logger.info(f"[POOL BO] Entrada na fila: {telefone} (tipo={tipo_acao})")
+    return entrada
+
+
+def _notificar_proximo_da_fila() -> None:
+    """
+    Após liberar um login: pega o primeiro da fila, remove e envia WhatsApp
+    avisando que um login foi liberado.
+    """
+    from crm_app.models import FilaEsperaPAP
+    from crm_app.whatsapp_service import WhatsAppService
+
+    entrada = FilaEsperaPAP.objects.order_by("created_at").first()
+    if not entrada:
+        return
+    telefone = entrada.telefone
+    tipo = entrada.tipo_acao or "vender"
+    entrada.delete()
+    logger.info(f"[POOL BO] Notificando próximo da fila: {telefone} (tipo={tipo})")
+
+    comando = {"vender": "VENDER", "pedido": "PEDIDO", "status": "STATUS", "credito": "CRÉDITO"}.get(
+        tipo, "VENDER"
+    )
+    msg = (
+        "✅ *Um login PAP foi liberado!*\n\n"
+        f"Digite *{comando}* agora para usar.\n\n"
+        "Se demorar, outro usuário pode pegar o login e você será avisado de novo quando liberar."
+    )
+    try:
+        WhatsAppService().enviar_mensagem_texto(telefone, msg)
+        from django.core.cache import cache
+        cache.set(f"pap_fila_notificado:{telefone}", "1", timeout=120)  # 2 min para mensagem "recolocado"
+    except Exception as e:
+        logger.exception(f"[POOL BO] Erro ao notificar fila para {telefone}: {e}")
+
+
+def obter_mensagem_fila_ocupado(telefone: str, tipo_acao: str = "vender") -> str:
+    """
+    Adiciona o usuário à fila e retorna a mensagem a enviar (ocupado / recolocado).
+    Usado pelo webhook quando obter_login_bo retorna MSG_TODOS_ACESSOS_EM_USO.
+    """
+    from django.core.cache import cache
+
+    adicionar_a_fila_pap(telefone, tipo_acao=tipo_acao)
+    comando = {"vender": "VENDER", "pedido": "PEDIDO", "status": "STATUS", "credito": "CRÉDITO"}.get(
+        tipo_acao, "VENDER"
+    )
+    chave = f"pap_fila_notificado:{telefone}"
+    if cache.get(chave):
+        cache.delete(chave)
+        return (
+            "⚠️ *Login já ocupado novamente.*\n\n"
+            "Você foi recolocado na fila. Avisaremos na próxima liberação.\n\n"
+            f"Digite *{comando}* quando receber o aviso."
+        )
+    return (
+        "📋 *Você está na fila.*\n\n"
+        "Quando um login for liberado, avisaremos aqui.\n\n"
+        f"Digite *{comando}* quando receber o aviso."
+    )
+
+
 def liberar_bo(
     bo_usuario_id: int,
     vendedor_telefone: str,
 ) -> bool:
     """
     Libera o login BackOffice após conclusão da venda (sucesso, erro ou cancelamento).
+    Se houver fila de espera, notifica o primeiro da fila por WhatsApp.
 
     Args:
         bo_usuario_id: ID do usuário BackOffice
@@ -145,6 +237,7 @@ def liberar_bo(
             logger.info(
                 f"[POOL BO] Liberado BO id={bo_usuario_id} usado por {vendedor_telefone}"
             )
+            _notificar_proximo_da_fila()
         return deletados[0] > 0
     except Exception as e:
         logger.exception(f"[POOL BO] Erro ao liberar BO: {e}")
