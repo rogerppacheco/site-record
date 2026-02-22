@@ -788,6 +788,167 @@ def _resetar_sessao_credito(telefone: str):
 
 
 # =============================================================================
+# FLUXO PEDIDO (Consulta OS no PAP por CPF)
+# =============================================================================
+
+def _iniciar_fluxo_pedido(telefone: str, sessao) -> str:
+    """
+    Inicia o fluxo de consulta de pedido/OS via WhatsApp.
+    Login no PAP igual a crédito/vender; depois abre Consulta OS, Filtros e preenche CPF.
+    Usa a mesma autorização que crédito (autorizar_analise_credito_wpp) e pool BO.
+    """
+    usuario = _buscar_usuario_por_telefone(telefone)
+    if not usuario:
+        return (
+            "❌ *ACESSO NEGADO*\n\n"
+            "Seu número não está cadastrado no sistema.\n"
+            "Verifique se o campo WhatsApp está preenchido no seu cadastro."
+        )
+    if not getattr(usuario, 'autorizar_analise_credito_wpp', False):
+        return (
+            "❌ *ACESSO NEGADO*\n\n"
+            "Você não está autorizado a consultar pedido pelo WhatsApp.\n"
+            "Solicite que marquem a opção 'Autorizar fazer análise de crédito pelo Wpp' no seu cadastro."
+        )
+    sessao.etapa = 'pedido_cpf'
+    sessao.dados_temp = {'usuario_id': usuario.id, 'usuario_nome': usuario.get_full_name() or usuario.username}
+    sessao.save()
+    return (
+        "📋 *CONSULTA DE PEDIDO / O.S.*\n\n"
+        "Digite o *CPF ou CNPJ* para consultar (apenas números):\n\n"
+        "Ou digite *CANCELAR* para sair."
+    )
+
+
+def _resetar_sessao_pedido(telefone: str):
+    try:
+        from crm_app.models import SessaoWhatsapp
+        s = SessaoWhatsapp.objects.get(telefone=telefone)
+        s.etapa = 'inicial'
+        s.dados_temp = {}
+        s.save()
+    except Exception:
+        pass
+
+
+def _executar_consulta_pedido_background(telefone: str, usuario_id: int, cpf: str):
+    """
+    Thread: loga no PAP, abre Consulta OS, período 30 dias, Filtrar, lê tabela e tira screenshot.
+    Se houver pedido(s): envia mensagem com Status/Data/Plano e imagem da tela.
+    Se não houver: envia "Não tem pedido com 30 dias" e imagem da tela.
+    """
+    import base64
+    from usuarios.models import Usuario
+    from crm_app.models import SessaoWhatsapp
+    from crm_app.services_pap_nio import PAPNioAutomation
+    from crm_app.pool_bo_pap import obter_login_bo, liberar_bo
+    from crm_app.whatsapp_service import WhatsAppService
+
+    usuario = Usuario.objects.get(id=usuario_id)
+    cpf_limpo = re.sub(r'\D', '', cpf)
+    if len(cpf_limpo) not in (11, 14):
+        WhatsAppService().enviar_mensagem_texto(
+            telefone,
+            "❌ CPF/CNPJ inválido (precisa 11 ou 14 dígitos). Digite *PEDIDO* para tentar novamente."
+        )
+        _resetar_sessao_pedido(telefone)
+        return
+
+    bo_usuario, msg_erro = obter_login_bo(telefone, None)
+    if not bo_usuario:
+        WhatsAppService().enviar_mensagem_texto(
+            telefone,
+            f"❌ {msg_erro}\n\nDigite *PEDIDO* para tentar novamente."
+        )
+        _resetar_sessao_pedido(telefone)
+        return
+
+    automacao = None
+    tempo_inicio = time.time()
+    try:
+        headless = getattr(settings, 'PAP_HEADLESS', True)
+        capture_screenshots = getattr(settings, 'PAP_CAPTURE_SCREENSHOTS', False)
+        automacao = PAPNioAutomation(
+            matricula_pap=bo_usuario.matricula_pap,
+            senha_pap=bo_usuario.senha_pap,
+            vendedor_nome=f"Pedido-{usuario.username}",
+            headless=headless,
+            capture_screenshots=capture_screenshots,
+        )
+        sucesso, msg, detalhes, screenshot_path = automacao.consulta_os_por_cpf_com_resultado(cpf_limpo)
+        tempo_decorrido = round(time.time() - tempo_inicio, 1)
+        automacao._fechar_sessao()
+
+        def _finalizar():
+            import django.db
+            django.db.close_old_connections()
+            liberar_bo(bo_usuario.id, telefone)
+            _resetar_sessao_pedido(telefone)
+            whatsapp = WhatsAppService()
+            if not sucesso:
+                resp = f"❌ {msg}\n\nDigite *PEDIDO* para tentar novamente.\n\n⏱ _{tempo_decorrido}s_"
+                whatsapp.enviar_mensagem_texto(telefone, resp)
+                return
+            if msg == "no_results" or not detalhes:
+                caption = (
+                    "📋 *Consulta de pedido*\n\n"
+                    "Não tem pedido com 30 dias para este CPF/CNPJ.\n\n"
+                    f"⏱ _{tempo_decorrido}s_"
+                )
+            else:
+                partes = ["✅ *Existe um pedido*, segue detalhes abaixo:\n"]
+                for i, d in enumerate(detalhes):
+                    status = d.get("status", "")
+                    data_hora = d.get("data_hora", "")
+                    plano = d.get("plano", "")
+                    numero_os = d.get("numero_os", "")
+                    partes.append(
+                        f"• *Status:* {status}\n"
+                        f"• *Data:* {data_hora}\n"
+                        f"• *Plano:* {plano}\n"
+                        f"• *Nº OS:* {numero_os}"
+                    )
+                    if i < len(detalhes) - 1:
+                        partes.append("\n")
+                partes.append(f"\n\n⏱ _{tempo_decorrido}s_")
+                caption = "".join(partes)
+            if screenshot_path and os.path.isfile(screenshot_path):
+                try:
+                    with open(screenshot_path, "rb") as f:
+                        img_b64 = base64.b64encode(f.read()).decode("utf-8")
+                    whatsapp.enviar_imagem_b64(telefone, img_b64, caption=caption)
+                except Exception as e_img:
+                    logger.warning("[PEDIDO] Erro ao enviar imagem, enviando só texto: %s", e_img)
+                    whatsapp.enviar_mensagem_texto(telefone, caption)
+            else:
+                whatsapp.enviar_mensagem_texto(telefone, caption)
+
+        _run_django_sync(_finalizar)
+    except Exception as e:
+        logger.exception("[PEDIDO] Erro ao executar consulta: %s", e)
+        tempo_decorrido_erro = round(time.time() - tempo_inicio, 1)
+        if automacao:
+            try:
+                automacao._fechar_sessao()
+            except Exception:
+                pass
+
+        def _erro_cleanup():
+            try:
+                liberar_bo(bo_usuario.id, telefone)
+            except Exception:
+                pass
+            _resetar_sessao_pedido(telefone)
+            msg_erro = (
+                f"❌ Erro ao consultar pedido: {e}\n\n"
+                f"Digite *PEDIDO* para tentar novamente.\n\n⏱ _{tempo_decorrido_erro}s_"
+            )
+            WhatsAppService().enviar_mensagem_texto(telefone, msg_erro)
+
+        _run_django_sync(_erro_cleanup)
+
+
+# =============================================================================
 # FUNÇÕES PARA FLUXO DE VENDA VIA WHATSAPP
 # =============================================================================
 
@@ -5275,6 +5436,14 @@ def processar_webhook_whatsapp(data, request=None):
             if not resposta:
                 resposta = "Não foi possível iniciar o fluxo de venda. Tente novamente."
             return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
+
+        elif mensagem_limpa in ['PEDIDO', 'PEDIDOS']:
+            logger.info(f"[Webhook] Comando PEDIDO reconhecido!")
+            resposta = _iniciar_fluxo_pedido(telefone_formatado, sessao)
+            _registrar_estatistica(telefone_formatado, 'PEDIDO')
+            if not resposta:
+                resposta = "Não foi possível iniciar o fluxo. Tente novamente."
+            return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
         
         elif mensagem_limpa in ['MENU', 'AJUDA', 'HELP', 'OPCOES', 'OPÇÕES', 'OPCOES', 'OPÇOES']:
             logger.info(f"[Webhook] Comando MENU/AJUDA reconhecido!")
@@ -5293,6 +5462,7 @@ def processar_webhook_whatsapp(data, request=None):
                 "• *Material* - Buscar materiais/documentos\n"
                 "• *Andamento* - Ver agendamentos do dia\n"
                 "• *Crédito* - Consultar análise de crédito por CPF\n"
+                "• *Pedido* - Consultar pedido/O.S. por CPF no PAP\n"
                 "• *Vender* - Realizar venda pelo WhatsApp 🆕\n"
                 "• *Nova Venda* - Cadastrar venda no CRM (Via APP ou Sem APP)"
             )
@@ -5983,6 +6153,38 @@ def processar_webhook_whatsapp(data, request=None):
                         sessao.etapa = 'credito_aguardando'
                         sessao.save()
                         resposta = "⏳ Consultando crédito... Aguarde alguns instantes. Você receberá a resposta em seguida."
+            return _enviar_resposta_e_retornar(resposta)
+
+        elif etapa_atual == 'pedido_aguardando':
+            resposta = "⏳ Consultando pedido... Aguarde. Você receberá a resposta em seguida."
+            return _enviar_resposta_e_retornar(resposta)
+
+        elif etapa_atual == 'pedido_cpf':
+            if mensagem_limpa in ['CANCELAR', 'SAIR', 'PARAR']:
+                sessao.etapa = 'inicial'
+                sessao.dados_temp = {}
+                sessao.save()
+                resposta = "❌ Cancelado. Digite *PEDIDO* para consultar novamente."
+            else:
+                cpf_limpo = limpar_texto_cep_cpf(mensagem_texto)
+                if not cpf_limpo or len(cpf_limpo) not in (11, 14) or not cpf_limpo.isdigit():
+                    resposta = "❌ CPF/CNPJ inválido. Digite 11 (CPF) ou 14 (CNPJ) dígitos, ou *CANCELAR*:"
+                else:
+                    usuario_id = dados_temp.get('usuario_id')
+                    if not usuario_id:
+                        sessao.etapa = 'inicial'
+                        sessao.dados_temp = {}
+                        sessao.save()
+                        resposta = "❌ Sessão expirada. Digite *PEDIDO* para iniciar novamente."
+                    else:
+                        threading.Thread(
+                            target=_executar_consulta_pedido_background,
+                            args=(telefone_formatado, usuario_id, cpf_limpo),
+                            daemon=True
+                        ).start()
+                        sessao.etapa = 'pedido_aguardando'
+                        sessao.save()
+                        resposta = "⏳ Consultando pedido no PAP... Aguarde alguns instantes. Você receberá a resposta em seguida."
             return _enviar_resposta_e_retornar(resposta)
 
         elif etapa_atual == 'conta_cpf':

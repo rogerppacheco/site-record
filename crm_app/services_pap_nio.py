@@ -10,7 +10,7 @@ import logging
 import threading
 import time
 from datetime import datetime
-from typing import Dict, Optional, Tuple, Any
+from typing import Dict, List, Optional, Tuple, Any
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
@@ -30,6 +30,7 @@ except ImportError:
 PAP_LOGIN_URL = "https://pap.niointernet.com.br/"
 PAP_VTAL_LOGIN_URL = "https://login.vtal.com/nidp/saml2/sso"
 PAP_NOVO_PEDIDO_URL = "https://pap.niointernet.com.br/administrativo/novo-pedido"
+PAP_CONSULTA_OS_URL = "https://pap.niointernet.com.br/administrativo/consulta-os"
 DEFAULT_TIMEOUT = 30000  # 30 segundos
 STORAGE_STATE_DIR = os.path.join(settings.BASE_DIR, 'pap_sessions')
 
@@ -130,6 +131,18 @@ SELETORES = {
         'turno_manha': 'input[value*="manha"], label:has-text("Manhã")',
         'turno_tarde': 'input[value*="tarde"], label:has-text("Tarde")',
         'btn_confirmar': 'button:has-text("Confirmar")',
+    },
+
+    # Consulta OS (menu lateral e tela de filtros)
+    'consulta_os': {
+        'menu_consulta_os': 'a[href*="consulta-os"], span:has-text("Consulta OS"), div.sc-kAzzGY:has(img), [class*="sc-kAzzGY"]',
+        'filtros': 'span.titulo-filtro:has-text("Filtros"), .titulo-filtro, span:has-text("Filtros")',
+        'input_cpf_cnpj': 'input.input-text-filter[placeholder*="CPF"], input.input-text-filter[placeholder*="CNPJ"], input[placeholder="Digite o CPF/CNPJ..."]',
+        'btn_filtrar': 'button:has-text("Filtrar")',
+        'periodo_de': 'input[placeholder*="De"], input[name*="dataInicio"], input[id*="periodo"], input[aria-label*="De"]',
+        'periodo_ate': 'input[placeholder*="Até"], input[name*="dataFim"], input[id*="ate"]',
+        'table_body_cells': 'td.MuiTableCell-root.MuiTableCell-body',
+        'table_rows': 'table tbody tr, [class*="MuiTableBody"] tr',
     },
 }
 
@@ -637,6 +650,291 @@ class PAPNioAutomation:
                 logger.debug(f"[PAP] Menu Novo Pedido seletor {sel[:30]}: {e}")
                 continue
         return False
+
+    def _clicar_menu_consulta_os(self) -> bool:
+        """
+        Clica no item do menu lateral "Consulta OS" (ou navega para a URL).
+        Retorna True se encontrou e acessou a tela, False caso contrário.
+        """
+        # Tentar navegação direta primeiro
+        try:
+            self.page.goto(PAP_CONSULTA_OS_URL, wait_until="domcontentloaded", timeout=30000)
+            self.page.wait_for_timeout(1500)
+            try:
+                self.page.wait_for_load_state("networkidle", timeout=6000)
+            except Exception:
+                self.page.wait_for_load_state("load", timeout=4000)
+            if "consulta-os" in (self.page.url or "").lower() or "pap.niointernet.com.br" in (self.page.url or ""):
+                logger.info("[PAP] Navegação para Consulta OS OK (URL direta)")
+                return True
+        except Exception as e:
+            logger.warning(f"[PAP] goto Consulta OS: {e}")
+
+        seletores_menu = [
+            'a[href*="consulta-os"]',
+            'a:has-text("Consulta OS")',
+            'span:has-text("Consulta OS")',
+            'div.sc-kAzzGY:has(img)',
+            '[class*="sc-kAzzGY"]:has(img)',
+            "//span[contains(text(),'Consulta OS')]",
+            "//a[contains(@href,'consulta-os')]",
+        ]
+        for sel in seletores_menu:
+            try:
+                if sel.startswith("//"):
+                    el = self.page.query_selector(f"xpath={sel}")
+                else:
+                    el = self.page.query_selector(sel)
+                if el and el.is_visible():
+                    logger.info(f"[PAP] Clicando no menu 'Consulta OS' (seletor: {sel[:50]}...)")
+                    if self.capture_screenshots:
+                        self._highlight_element(el, duration_ms=500)
+                    el.click()
+                    self.page.wait_for_timeout(2000)
+                    self.page.wait_for_load_state("domcontentloaded", timeout=8000)
+                    return True
+            except Exception as e:
+                logger.debug(f"[PAP] Menu Consulta OS seletor {sel[:30]}: {e}")
+                continue
+        return False
+
+    def abrir_consulta_os_e_filtrar_cpf(self, cpf: str) -> Tuple[bool, str]:
+        """
+        Após login no PAP: acessa Consulta OS, clica em Filtros e preenche o CPF/CNPJ.
+        Não extrai resultado da tabela; apenas deixa a tela filtrada para o usuário.
+        Args:
+            cpf: CPF apenas dígitos (11 ou 14 para CNPJ).
+        Returns:
+            Tuple (sucesso, mensagem)
+        """
+        try:
+            cpf_limpo = re.sub(r'\D', '', cpf) if cpf else ""
+            if not cpf_limpo:
+                return False, "CPF/CNPJ inválido (vazio)."
+
+            if not self.logado:
+                sucesso, msg = self.iniciar_sessao()
+                if not sucesso:
+                    return False, msg
+
+            # Ir para Consulta OS (URL direta ou menu)
+            if self.capture_screenshots:
+                self._capture_screenshot("consulta_os_01_antes", wait_selector=None, wait_timeout_ms=0)
+            ok_menu = self._clicar_menu_consulta_os()
+            if not ok_menu:
+                return False, "Não foi possível acessar a tela Consulta OS (menu ou URL)."
+            self.page.wait_for_timeout(1500)
+
+            # Clicar em Filtros
+            sel_filtros = SELETORES['consulta_os']['filtros']
+            filtro_el = None
+            for sel in sel_filtros.split(", "):
+                try:
+                    el = self.page.query_selector(sel.strip())
+                    if el and el.is_visible():
+                        filtro_el = el
+                        break
+                except Exception:
+                    continue
+            if not filtro_el:
+                filtro_el = self.page.query_selector('span:has-text("Filtros")')
+            if not filtro_el or not filtro_el.is_visible():
+                return False, "Não foi possível encontrar o botão/link 'Filtros' na tela Consulta OS."
+            logger.info("[PAP] Clicando em Filtros")
+            if self.capture_screenshots:
+                self._highlight_element(filtro_el, duration_ms=500)
+            filtro_el.click()
+            self.page.wait_for_timeout(1200)
+
+            # Preencher CPF/CNPJ no input do filtro
+            sel_cpf = SELETORES['consulta_os']['input_cpf_cnpj']
+            input_el = None
+            for sel in sel_cpf.split(", "):
+                try:
+                    el = self.page.query_selector(sel.strip())
+                    if el and el.is_visible():
+                        input_el = el
+                        break
+                except Exception:
+                    continue
+            if not input_el:
+                input_el = self.page.query_selector('input[placeholder*="CPF"]') or self.page.query_selector('input.input-text-filter')
+            if not input_el or not input_el.is_visible():
+                return False, "Não foi possível encontrar o campo CPF/CNPJ nos filtros."
+            input_el.fill(cpf_limpo)
+            self.page.wait_for_timeout(500)
+            if self.capture_screenshots:
+                self._capture_screenshot("consulta_os_02_cpf_preenchido", wait_selector=None, wait_timeout_ms=0)
+            logger.info(f"[PAP] CPF/CNPJ preenchido nos filtros da Consulta OS: {cpf_limpo[:3]}***")
+            return True, "Consulta OS aberta e filtro por CPF/CNPJ aplicado."
+        except Exception as e:
+            logger.exception(f"[PAP] abrir_consulta_os_e_filtrar_cpf: {e}")
+            return False, str(e)
+
+    def _screenshot_consulta_os_return_path(self, full_page: bool = True) -> Optional[str]:
+        """
+        Tira screenshot da tela atual (Consulta OS) e retorna o caminho do arquivo.
+        Usado para enviar a imagem no WhatsApp. Sempre salva, independente de capture_screenshots.
+        """
+        if not self.page:
+            return None
+        try:
+            from django.conf import settings
+            base_dir = getattr(settings, 'BASE_DIR', None)
+            if not base_dir:
+                return None
+            downloads_dir = os.path.join(base_dir, 'downloads')
+            os.makedirs(downloads_dir, exist_ok=True)
+            safe_run = str(self.run_id).replace(os.sep, '_').replace('..', '_')[:50]
+            ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"consulta_os_{safe_run}_{ts}.png"
+            filepath = os.path.join(downloads_dir, filename)
+            self.page.wait_for_timeout(600)
+            self.page.screenshot(path=filepath, full_page=full_page)
+            logger.info(f"[PAP] Screenshot Consulta OS salvo: {filepath}")
+            return filepath
+        except Exception as e:
+            logger.warning(f"[PAP] Erro ao salvar screenshot Consulta OS: {e}")
+            return None
+
+    def consulta_os_por_cpf_com_resultado(
+        self, cpf: str
+    ) -> Tuple[bool, str, List[Dict[str, str]], Optional[str]]:
+        """
+        Fluxo completo: login, Consulta OS, Filtros, CPF, período 30 dias, Filtrar.
+        Lê a tabela (td.MuiTableCell-root.MuiTableCell-body), tira screenshot e retorna detalhes.
+        Returns:
+            (sucesso, mensagem, lista de dicts com status/plano/numero_os/data_hora, path do screenshot)
+            Se não houver pedidos: (True, "no_results", [], path).
+        """
+        from datetime import timedelta
+        cpf_limpo = re.sub(r'\D', '', cpf) if cpf else ""
+        if not cpf_limpo:
+            return False, "CPF/CNPJ inválido (vazio).", [], None
+
+        if not self.logado:
+            sucesso, msg = self.iniciar_sessao()
+            if not sucesso:
+                return False, msg, [], None
+
+        ok_menu = self._clicar_menu_consulta_os()
+        if not ok_menu:
+            return False, "Não foi possível acessar a tela Consulta OS.", [], None
+        self.page.wait_for_timeout(1500)
+
+        # Abrir Filtros
+        for sel in SELETORES['consulta_os']['filtros'].split(", "):
+            try:
+                el = self.page.query_selector(sel.strip())
+                if el and el.is_visible():
+                    el.click()
+                    self.page.wait_for_timeout(1200)
+                    break
+            except Exception:
+                continue
+        else:
+            el = self.page.query_selector('span:has-text("Filtros")')
+            if el and el.is_visible():
+                el.click()
+                self.page.wait_for_timeout(1200)
+
+        # Preencher CPF/CNPJ
+        input_el = None
+        for sel in SELETORES['consulta_os']['input_cpf_cnpj'].split(", "):
+            try:
+                el = self.page.query_selector(sel.strip())
+                if el and el.is_visible():
+                    input_el = el
+                    break
+            except Exception:
+                continue
+        if not input_el:
+            input_el = self.page.query_selector('input[placeholder*="CPF"]') or self.page.query_selector('input.input-text-filter')
+        if not input_el or not input_el.is_visible():
+            return False, "Campo CPF/CNPJ não encontrado nos filtros.", [], None
+        input_el.fill(cpf_limpo)
+        self.page.wait_for_timeout(400)
+
+        # Período: últimos 30 dias (De = hoje - 30, Até = hoje). Formato dd/mm/yyyy.
+        hoje = datetime.now().date()
+        data_ate = hoje
+        data_de = hoje - timedelta(days=30)
+        str_de = data_de.strftime("%d/%m/%Y")
+        str_ate = data_ate.strftime("%d/%m/%Y")
+        date_inputs = self.page.query_selector_all('input[type="date"], input[placeholder*="/"], input[placeholder*="De"], input[placeholder*="Até"]')
+        if len(date_inputs) >= 2:
+            try:
+                date_inputs[0].fill(str_de)
+                self.page.wait_for_timeout(200)
+                date_inputs[1].fill(str_ate)
+                self.page.wait_for_timeout(200)
+            except Exception as e:
+                logger.debug(f"[PAP] Preencher período (fallback): {e}")
+        # Fallback: inputs por placeholder/label
+        try:
+            inp_de = self.page.query_selector('input[placeholder*="De"], input[aria-label*="De"]')
+            inp_ate = self.page.query_selector('input[placeholder*="Até"], input[aria-label*="Até"]')
+            if inp_de and inp_de.is_visible():
+                inp_de.fill(str_de)
+            if inp_ate and inp_ate.is_visible():
+                inp_ate.fill(str_ate)
+        except Exception:
+            pass
+        self.page.wait_for_timeout(300)
+
+        # Clicar em Filtrar
+        btn = self.page.query_selector(SELETORES['consulta_os']['btn_filtrar'])
+        if not btn:
+            btn = self.page.query_selector('button:has-text("Filtrar")')
+        if not btn or not btn.is_visible():
+            return False, "Botão 'Filtrar' não encontrado.", [], None
+        btn.click()
+        self.page.wait_for_timeout(2500)
+
+        # Ler tabela: td.MuiTableCell-root.MuiTableCell-body (ordem: STATUS, PLANO, NÚMERO DA OS, DATA E HORA)
+        detalhes: List[Dict[str, str]] = []
+        try:
+            rows = self.page.query_selector_all(SELETORES['consulta_os']['table_rows'])
+            for row in rows:
+                cells = row.query_selector_all('td.MuiTableCell-root.MuiTableCell-body')
+                if len(cells) >= 4:
+                    status = (cells[0].inner_text() or "").strip()
+                    plano = (cells[1].inner_text() or "").strip()
+                    numero_os = (cells[2].inner_text() or "").strip()
+                    data_hora = (cells[3].inner_text() or "").strip()
+                    if status or plano or numero_os or data_hora:
+                        detalhes.append({
+                            "status": status,
+                            "plano": plano,
+                            "numero_os": numero_os,
+                            "data_hora": data_hora,
+                        })
+            if not detalhes:
+                cells_direct = self.page.query_selector_all('td.MuiTableCell-root.MuiTableCell-body')
+                if cells_direct:
+                    idx = 0
+                    while idx + 4 <= len(cells_direct):
+                        status = (cells_direct[idx].inner_text() or "").strip()
+                        plano = (cells_direct[idx + 1].inner_text() or "").strip()
+                        numero_os = (cells_direct[idx + 2].inner_text() or "").strip()
+                        data_hora = (cells_direct[idx + 3].inner_text() or "").strip()
+                        if status or plano or numero_os or data_hora:
+                            detalhes.append({
+                                "status": status,
+                                "plano": plano,
+                                "numero_os": numero_os,
+                                "data_hora": data_hora,
+                            })
+                        idx += 4
+        except Exception as e:
+            logger.warning(f"[PAP] Erro ao ler tabela Consulta OS: {e}")
+
+        # Screenshot (sempre, para enviar no WhatsApp)
+        screenshot_path = self._screenshot_consulta_os_return_path(full_page=True)
+
+        if detalhes:
+            return True, "ok", detalhes, screenshot_path
+        return True, "no_results", [], screenshot_path
 
     def iniciar_novo_pedido(self, matricula_vendedor: str) -> Tuple[bool, str]:
         """
