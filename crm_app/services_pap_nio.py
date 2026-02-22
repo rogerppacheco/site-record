@@ -133,6 +133,9 @@ SELETORES = {
     },
 }
 
+# Código retornado quando o modal "OPS, OCORREU UM ERRO!" aparece no PAP (erro do portal; orientar abrir chamado Nio)
+PAP_ERRO_PORTAL_NIO = "PAP_ERRO_PORTAL_NIO"
+
 # =============================================================================
 # CLASSE PRINCIPAL DE AUTOMAÇÃO
 # =============================================================================
@@ -867,13 +870,16 @@ class PAPNioAutomation:
             ref_selector = SELETORES['etapa2']['referencia']
             try:
                 self.page.wait_for_selector(
-                    f'{end_inst_sel}, {ref_selector}',
+                    f'{end_inst_sel}, {ref_selector}, h2:has-text("OPS, OCORREU UM ERRO")',
                     state="visible",
                     timeout=15000
                 )
             except Exception:
                 pass
             self.page.wait_for_timeout(500)
+            if self.verificar_modal_erro_ops_visivel():
+                self._fechar_modal_erro_ops()
+                return False, PAP_ERRO_PORTAL_NIO, None
             
             # 4b. Verificar múltiplos endereços (dropdown "Endereço de instalação")
             for end_sel in [
@@ -1352,12 +1358,18 @@ class PAPNioAutomation:
                 self.page.wait_for_timeout(2000)
             try:
                 self.page.wait_for_selector(
-                    'h2:has-text("Disponível"), h2:has-text("Indisponível"), h3:has-text("Posse encontrada")',
+                    'h2:has-text("Disponível"), h2:has-text("Indisponível"), h3:has-text("Posse encontrada"), h2:has-text("OPS, OCORREU UM ERRO")',
                     state="visible", timeout=20000
                 )
             except Exception:
+                if self.verificar_modal_erro_ops_visivel():
+                    self._fechar_modal_erro_ops()
+                    return False, PAP_ERRO_PORTAL_NIO, None
                 pass
             self.page.wait_for_timeout(500)
+            if self.verificar_modal_erro_ops_visivel():
+                self._fechar_modal_erro_ops()
+                return False, PAP_ERRO_PORTAL_NIO, None
             pagina = self.page.content()
             pagina_lower = pagina.lower()
             if "posse encontrada" in pagina_lower or ("pedido" in pagina_lower and "em andamento" in pagina_lower):
@@ -1454,9 +1466,9 @@ class PAPNioAutomation:
                 except Exception:
                     self.page.wait_for_timeout(3000)
             
-            # Fechar modal "OPS, OCORREU UM ERRO!" se aparecer (CPF não encontrado, etc.)
+            # Fechar modal "OPS, OCORREU UM ERRO!" se aparecer (erro do portal PAP → abrir chamado Nio)
             if self._fechar_modal_erro_ops():
-                return False, "CPF não encontrado ou inválido.", None
+                return False, PAP_ERRO_PORTAL_NIO, None
             
             self._capture_screenshot("03_cpf_cliente_ok", wait_selector='button:has-text("Avançar"):not([disabled])', wait_timeout_ms=5000)
             # Extrair dados do cliente (nome, nome_mae, data_nascimento para CRM)
@@ -1611,9 +1623,12 @@ class PAPNioAutomation:
                 if btn_avancar:
                     btn_avancar.click()
             
-            # Verificar modal "Atenção!" (obrigatório clicar Ok para destravar a tela)
+            # Verificar modal "Atenção!" e modal "OPS, OCORREU UM ERRO!" (erro do portal)
             for _ in range(10):
                 self.page.wait_for_timeout(1000)
+                if self.verificar_modal_erro_ops_visivel():
+                    self._fechar_modal_erro_ops()
+                    return False, PAP_ERRO_PORTAL_NIO, None
                 modal_atencao = self.page.query_selector('h2:has-text("Atenção!")')
                 if modal_atencao:
                     pagina = self.page.content().lower()
@@ -1635,6 +1650,9 @@ class PAPNioAutomation:
             modal_apareceu = False
             for _ in range(12):
                 self.page.wait_for_timeout(1000)
+                if self.verificar_modal_erro_ops_visivel():
+                    self._fechar_modal_erro_ops()
+                    return False, PAP_ERRO_PORTAL_NIO, None
                 pagina_texto = (self.page.content() or "").lower()
                 etapa5_visivel = (
                     'pagamento' in pagina_texto and 'ofertas' in pagina_texto
@@ -1655,8 +1673,14 @@ class PAPNioAutomation:
                     self.page.wait_for_selector('h2:has-text("Resultado da análise de crédito")', state="visible", timeout=8000)
                     modal_apareceu = True
                 except Exception:
+                    if self.verificar_modal_erro_ops_visivel():
+                        self._fechar_modal_erro_ops()
+                        return False, PAP_ERRO_PORTAL_NIO, None
                     pass
             self.page.wait_for_timeout(1500)
+            if self.verificar_modal_erro_ops_visivel():
+                self._fechar_modal_erro_ops()
+                return False, PAP_ERRO_PORTAL_NIO, None
             pagina_texto = (self.page.content() or "").lower()
             # Crédito negado - fechar modal antes de retornar
             if "crédito negado" in pagina_texto or "credito negado" in pagina_texto or ("negado" in pagina_texto and "aprovado" not in pagina_texto):
@@ -1814,18 +1838,37 @@ class PAPNioAutomation:
             logger.error(f"[PAP] Erro ao selecionar plano: {e}")
             return False, str(e)
 
-    def _fechar_modal_erro_ops(self) -> bool:
-        """Fecha o modal 'OPS, OCORREU UM ERRO!' clicando em 'Tentar novamente'."""
+    def verificar_modal_erro_ops_visivel(self) -> bool:
+        """Verifica se o modal 'OPS, OCORREU UM ERRO!' está visível na página (h2 ou div com esse texto)."""
         try:
-            if "OPS, OCORREU UM ERRO" not in (self.page.content() or ""):
+            if not self.page:
                 return False
-            btn = self.page.query_selector('button:has-text("Tentar novamente")')
-            if btn:
-                btn.click()
-                self.page.wait_for_timeout(500)
+            el = self.page.query_selector('h2:has-text("OPS, OCORREU UM ERRO")') or self.page.query_selector('h2:has-text("OPS, OCORREU UM ERRO!")')
+            if el and el.is_visible():
+                return True
+            if "OPS, OCORREU UM ERRO" in (self.page.content() or ""):
                 return True
             return False
         except Exception:
+            return False
+
+    def _fechar_modal_erro_ops(self) -> bool:
+        """
+        Fecha o modal 'OPS, OCORREU UM ERRO!' clicando em 'Tentar novamente'.
+        Retorna True se o modal estava presente e foi fechado (indica erro do portal PAP → abrir chamado Nio).
+        """
+        try:
+            if not self.verificar_modal_erro_ops_visivel():
+                return False
+            btn = self.page.query_selector('button:has-text("Tentar novamente")')
+            if btn and btn.is_visible():
+                btn.click()
+                self.page.wait_for_timeout(800)
+                logger.warning("[PAP] Modal 'OPS, OCORREU UM ERRO!' fechado (Tentar novamente). Orientar abrir chamado na Nio.")
+                return True
+            return True
+        except Exception as e:
+            logger.warning("[PAP] _fechar_modal_erro_ops: %s", e)
             return False
 
     def _etapa5_clicar_salvar_painel(self) -> bool:

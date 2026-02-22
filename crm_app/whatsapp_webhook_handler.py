@@ -972,10 +972,14 @@ def _processar_correcao_credito(telefone: str, sessao, dados: dict, mensagem_lim
         sessao.save()
         sucesso, msg, _ = automacao.etapa3_cadastro_cliente(cpf_limpo)
         if not sucesso:
+            if msg == "PAP_ERRO_PORTAL_NIO":
+                return "⚠️ O portal do PAP está com problemas no momento. Por favor, abra um chamado na *Nio* para que possamos verificar.\n\nDigite *VENDER* para tentar novamente mais tarde."
             return f"❌ Cadastro: {msg}\n\nDigite outro CPF ou *CANCELAR*."
         celular, email = dados.get('celular', ''), dados.get('email', '')
         sucesso, msg, _ = automacao.etapa4_contato(celular, email, celular_secundario=celular_sec)
         if not sucesso:
+            if msg == "PAP_ERRO_PORTAL_NIO":
+                return "⚠️ O portal do PAP está com problemas no momento. Por favor, abra um chamado na *Nio* para que possamos verificar.\n\nDigite *VENDER* para tentar novamente mais tarde."
             if msg in ("TELEFONE_REJEITADO", "CELULAR_INVALIDO"):
                 sessao.etapa = 'venda_corrigir_celular'
                 sessao.save()
@@ -1890,6 +1894,19 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                                 sess.save()
                                 WhatsAppService().enviar_mensagem_texto(telefone, msg + "\n\nDigite outro *CEP* ou *CONCLUIR*:")
                             _executar_ops_django_sync(_indisp)
+                        elif msg == "PAP_ERRO_PORTAL_NIO":
+                            automacao._fechar_sessao()
+                            def _ops_portal():
+                                liberar_bo(bo_id, telefone)
+                                sess = SessaoWhatsapp.objects.get(id=sessao_id)
+                                sess.etapa = 'inicial'
+                                sess.dados_temp = {}
+                                sess.save()
+                                WhatsAppService().enviar_mensagem_texto(
+                                    telefone,
+                                    "⚠️ O portal do PAP está com problemas no momento. Por favor, abra um chamado na *Nio* para que possamos verificar.\n\nDigite *VENDER* para tentar novamente mais tarde."
+                                )
+                            _executar_ops_django_sync(_ops_portal)
                         elif sucesso:
                             # Viabilidade realmente concluída (endereço único ou já escolhido)
                             with _automacoes_lock:
@@ -1937,10 +1954,20 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                                     f"✅ {msg}\n\n📱 *ETAPA 3: CONTATO*\n\nDigite o *celular principal* do cliente (com DDD):"
                                 )
                             else:
-                                WhatsAppService().enviar_mensagem_texto(
-                                    telefone,
-                                    f"❌ Cadastro: {msg}\n\nDigite outro CPF ou *CANCELAR*."
-                                )
+                                if msg == "PAP_ERRO_PORTAL_NIO":
+                                    _encerrar_automacao_pap(sessao_id, (sess.dados_temp or {}).get('bo_usuario_id'), telefone)
+                                    sess.etapa = 'inicial'
+                                    sess.dados_temp = {}
+                                    sess.save()
+                                    WhatsAppService().enviar_mensagem_texto(
+                                        telefone,
+                                        "⚠️ O portal do PAP está com problemas no momento. Por favor, abra um chamado na *Nio* para que possamos verificar.\n\nDigite *VENDER* para tentar novamente mais tarde."
+                                    )
+                                else:
+                                    WhatsAppService().enviar_mensagem_texto(
+                                        telefone,
+                                        f"❌ Cadastro: {msg}\n\nDigite outro CPF ou *CANCELAR*."
+                                    )
                         _executar_ops_django_sync(_sync_etapa3)
                     elif action == 'etapa4':
                         celular = cmd.get('celular', '')
@@ -1985,6 +2012,15 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                                     sess.dados_temp = dados
                                     sess.save()
                                     WhatsAppService().enviar_mensagem_texto(telefone, "❌ Crédito negado para este CPF.\n\nDigite outro CPF para tentar, ou *CANCELAR*:")
+                                elif msg == "PAP_ERRO_PORTAL_NIO":
+                                    _encerrar_automacao_pap(sessao_id, dados.get('bo_usuario_id'), telefone)
+                                    sess.etapa = 'inicial'
+                                    sess.dados_temp = {}
+                                    sess.save()
+                                    WhatsAppService().enviar_mensagem_texto(
+                                        telefone,
+                                        "⚠️ O portal do PAP está com problemas no momento. Por favor, abra um chamado na *Nio* para que possamos verificar.\n\nDigite *VENDER* para tentar novamente mais tarde."
+                                    )
                                 else:
                                     WhatsAppService().enviar_mensagem_texto(telefone, f"❌ {msg}\n\nDigite *CANCELAR* para sair.")
                             else:
@@ -2315,10 +2351,17 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                             with _automacoes_lock:
                                 if sessao_id in _automacoes_pap_ativas:
                                     _automacoes_pap_ativas[sessao_id]['dados'] = d
-                            msg_erro = (
-                                f"❌ Ocorreu um erro: {e}\n\n"
-                                "Seus dados foram salvos. Digite *REPETIR* para tentar a última etapa novamente ou *CANCELAR* para sair."
-                            )
+                            err_str = str(e).lower()
+                            if "timeout" in err_str or "timed out" in err_str:
+                                msg_erro = (
+                                    "⏱ O site está demorando para responder na etapa atual.\n\n"
+                                    "Seus dados foram salvos. Digite *REPETIR* para tentar novamente ou *CANCELAR* para sair."
+                                )
+                            else:
+                                msg_erro = (
+                                    f"❌ Ocorreu um erro: {e}\n\n"
+                                    "Seus dados foram salvos. Digite *REPETIR* para tentar a última etapa novamente ou *CANCELAR* para sair."
+                                )
                             WhatsAppService().enviar_mensagem_texto(telefone, msg_erro)
                         except Exception as sync_err:
                             logger.warning("[PAP Worker] Erro ao salvar sessão/notificar: %s", sync_err)
@@ -2723,6 +2766,19 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                                 sess.save()
                                 WhatsAppService().enviar_mensagem_texto(telefone, msg + "\n\nDigite outro *CEP* ou *CONCLUIR*:")
                             _executar_ops_django_sync(_indisp)
+                        elif msg == "PAP_ERRO_PORTAL_NIO":
+                            automacao._fechar_sessao()
+                            def _ops_portal():
+                                liberar_bo(bo_id, telefone)
+                                sess = SessaoWhatsapp.objects.get(id=sessao_id)
+                                sess.etapa = 'inicial'
+                                sess.dados_temp = {}
+                                sess.save()
+                                WhatsAppService().enviar_mensagem_texto(
+                                    telefone,
+                                    "⚠️ O portal do PAP está com problemas no momento. Por favor, abra um chamado na *Nio* para que possamos verificar.\n\nDigite *VENDER* para tentar novamente mais tarde."
+                                )
+                            _executar_ops_django_sync(_ops_portal)
                         elif sucesso:
                             # Viabilidade realmente concluída (endereço único ou já escolhido)
                             with _automacoes_lock:
@@ -2770,10 +2826,20 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                                     f"✅ {msg}\n\n📱 *ETAPA 3: CONTATO*\n\nDigite o *celular principal* do cliente (com DDD):"
                                 )
                             else:
-                                WhatsAppService().enviar_mensagem_texto(
-                                    telefone,
-                                    f"❌ Cadastro: {msg}\n\nDigite outro CPF ou *CANCELAR*."
-                                )
+                                if msg == "PAP_ERRO_PORTAL_NIO":
+                                    _encerrar_automacao_pap(sessao_id, (sess.dados_temp or {}).get('bo_usuario_id'), telefone)
+                                    sess.etapa = 'inicial'
+                                    sess.dados_temp = {}
+                                    sess.save()
+                                    WhatsAppService().enviar_mensagem_texto(
+                                        telefone,
+                                        "⚠️ O portal do PAP está com problemas no momento. Por favor, abra um chamado na *Nio* para que possamos verificar.\n\nDigite *VENDER* para tentar novamente mais tarde."
+                                    )
+                                else:
+                                    WhatsAppService().enviar_mensagem_texto(
+                                        telefone,
+                                        f"❌ Cadastro: {msg}\n\nDigite outro CPF ou *CANCELAR*."
+                                    )
                         _executar_ops_django_sync(_sync_etapa3)
                     elif action == 'etapa4':
                         celular = cmd.get('celular', '')
@@ -2818,6 +2884,15 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                                     sess.dados_temp = dados
                                     sess.save()
                                     WhatsAppService().enviar_mensagem_texto(telefone, "❌ Crédito negado para este CPF.\n\nDigite outro CPF para tentar, ou *CANCELAR*:")
+                                elif msg == "PAP_ERRO_PORTAL_NIO":
+                                    _encerrar_automacao_pap(sessao_id, dados.get('bo_usuario_id'), telefone)
+                                    sess.etapa = 'inicial'
+                                    sess.dados_temp = {}
+                                    sess.save()
+                                    WhatsAppService().enviar_mensagem_texto(
+                                        telefone,
+                                        "⚠️ O portal do PAP está com problemas no momento. Por favor, abra um chamado na *Nio* para que possamos verificar.\n\nDigite *VENDER* para tentar novamente mais tarde."
+                                    )
                                 else:
                                     WhatsAppService().enviar_mensagem_texto(telefone, f"❌ {msg}\n\nDigite *CANCELAR* para sair.")
                             else:
@@ -3148,10 +3223,17 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                             with _automacoes_lock:
                                 if sessao_id in _automacoes_pap_ativas:
                                     _automacoes_pap_ativas[sessao_id]['dados'] = d
-                            msg_erro = (
-                                f"❌ Ocorreu um erro: {e}\n\n"
-                                "Seus dados foram salvos. Digite *REPETIR* para tentar a última etapa novamente ou *CANCELAR* para sair."
-                            )
+                            err_str = str(e).lower()
+                            if "timeout" in err_str or "timed out" in err_str:
+                                msg_erro = (
+                                    "⏱ O site está demorando para responder na etapa atual.\n\n"
+                                    "Seus dados foram salvos. Digite *REPETIR* para tentar novamente ou *CANCELAR* para sair."
+                                )
+                            else:
+                                msg_erro = (
+                                    f"❌ Ocorreu um erro: {e}\n\n"
+                                    "Seus dados foram salvos. Digite *REPETIR* para tentar a última etapa novamente ou *CANCELAR* para sair."
+                                )
                             WhatsAppService().enviar_mensagem_texto(telefone, msg_erro)
                         except Exception as sync_err:
                             logger.warning("[PAP Worker] Erro ao salvar sessão/notificar: %s", sync_err)
@@ -3373,6 +3455,12 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
         automacao = ctx['automacao']
         sucesso, msg, _ = automacao.etapa3_cadastro_cliente(cpf_limpo)
         if not sucesso:
+            if msg == "PAP_ERRO_PORTAL_NIO":
+                _encerrar_automacao_pap(sessao.id, dados.get('bo_usuario_id'), telefone)
+                sessao.etapa = 'inicial'
+                sessao.dados_temp = {}
+                sessao.save()
+                return "⚠️ O portal do PAP está com problemas no momento. Por favor, abra um chamado na *Nio* para que possamos verificar.\n\nDigite *VENDER* para tentar novamente mais tarde."
             return f"❌ Cadastro: {msg}\n\nDigite outro CPF ou *CANCELAR*."
         dados['cpf_cliente'] = cpf_limpo
         sessao.dados_temp = dados
@@ -3508,6 +3596,12 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                 sessao.etapa = 'venda_corrigir_cpf'
                 sessao.save()
                 return "❌ Crédito negado para este CPF.\n\nDigite outro CPF para tentar, ou *CANCELAR*:"
+            if msg == "PAP_ERRO_PORTAL_NIO":
+                _encerrar_automacao_pap(sessao.id, dados.get('bo_usuario_id'), telefone)
+                sessao.etapa = 'inicial'
+                sessao.dados_temp = {}
+                sessao.save()
+                return "⚠️ O portal do PAP está com problemas no momento. Por favor, abra um chamado na *Nio* para que possamos verificar.\n\nDigite *VENDER* para tentar novamente mais tarde."
             return f"❌ {msg}\n\nDigite *CANCELAR* para sair."
         dados.pop('celulares_rejeitados', None)
         if resultado_credito:
@@ -4514,7 +4608,10 @@ def _executar_venda_pap_background(
         if not sucesso:
             automacao._fechar_sessao()
             resetar_sessao_e_liberar_bo()
-            enviar_resultado(f"❌ *ERRO NA VIABILIDADE*\n\n{msg}\n\nDigite *VENDER* para tentar novamente.")
+            if msg == "PAP_ERRO_PORTAL_NIO":
+                enviar_resultado("⚠️ O portal do PAP está com problemas no momento. Por favor, abra um chamado na *Nio* para que possamos verificar.\n\nDigite *VENDER* para tentar novamente mais tarde.")
+            else:
+                enviar_resultado(f"❌ *ERRO NA VIABILIDADE*\n\n{msg}\n\nDigite *VENDER* para tentar novamente.")
             return
         
         # Etapa 3: Cadastro do cliente
@@ -4522,7 +4619,10 @@ def _executar_venda_pap_background(
         if not sucesso:
             automacao._fechar_sessao()
             resetar_sessao_e_liberar_bo()
-            enviar_resultado(f"❌ *ERRO NO CADASTRO*\n\n{msg}\n\nDigite *VENDER* para tentar novamente.")
+            if msg == "PAP_ERRO_PORTAL_NIO":
+                enviar_resultado("⚠️ O portal do PAP está com problemas no momento. Por favor, abra um chamado na *Nio* para que possamos verificar.\n\nDigite *VENDER* para tentar novamente mais tarde.")
+            else:
+                enviar_resultado(f"❌ *ERRO NO CADASTRO*\n\n{msg}\n\nDigite *VENDER* para tentar novamente.")
             return
         
         # Etapa 4: Contato (com celular secundário como no terminal)
@@ -4533,6 +4633,11 @@ def _executar_venda_pap_background(
             celular_secundario=celular_sec
         )
         if not sucesso:
+            if msg == "PAP_ERRO_PORTAL_NIO":
+                automacao._fechar_sessao()
+                resetar_sessao_e_liberar_bo()
+                enviar_resultado("⚠️ O portal do PAP está com problemas no momento. Por favor, abra um chamado na *Nio* para que possamos verificar.\n\nDigite *VENDER* para tentar novamente mais tarde.")
+                return
             # Manter sessão e permitir correção (como no terminal)
             etapa_correcao = None
             txt = ""
