@@ -151,6 +151,11 @@
             </a>
 
             <!-- G -->
+            <a href="/gestao-acessos/" class="app-card" id="card-gestao-acessos">
+                <i class="bi bi-person-badge-fill app-icon icon-config"></i>
+                <span class="app-title">Gestão de Acessos</span>
+            </a>
+
             <a href="/governanca/" class="app-card" id="card-governanca">
                 <i class="bi bi-gear-fill app-icon icon-config"></i>
                 <span class="app-title">Governança</span>
@@ -205,19 +210,20 @@
             if (!token) { window.location.href = '/'; return; }
             
             let userProfile = 'Vendedor'; // Padrão
+            let payload = null;
             
             try {
-                const payload = jwt_decode(token);
-                const nome = payload.user_name || payload.username || 'Colaborador';
+                payload = jwt_decode(token);
+                const nome = (payload && (payload.user_name || payload.username)) || 'Colaborador';
                 document.getElementById('user-name').innerText = nome.split(' ')[0];
                 
                 // Normaliza o perfil vindo do token
-                userProfile = payload.user_role || payload.perfil || 'Vendedor';
+                userProfile = (payload && (payload.user_role || payload.perfil)) || 'Vendedor';
             } catch (e) { console.error(e); }
 
             // --- REGRAS DE VISIBILIDADE (Quem vê o quê) ---
-            // Antecipar Instalação: todos os perfis
-            // Bônus M-10: só Admin, Diretoria e BackOffice
+            // Gestão de Acessos: só quem tem pode_gestao_acessos no cadastro (vem no token)
+            const podeGestaoAcessos = !!(payload && payload.pode_gestao_acessos === true);
             const regras = {
                 // Acesso Total
                 'Diretoria': 'all',
@@ -233,7 +239,10 @@
                 'Vendedor': ['card-antecipar', 'card-vendas', 'card-cdoi', 'card-apoia']
             };
 
-            const cardsPermitidos = regras[userProfile] || regras['Vendedor']; // Fallback seguro
+            let cardsPermitidos = regras[userProfile] || regras['Vendedor'];
+            if (cardsPermitidos !== 'all' && podeGestaoAcessos && !cardsPermitidos.includes('card-gestao-acessos')) {
+                cardsPermitidos = [...(Array.isArray(cardsPermitidos) ? cardsPermitidos : []), 'card-gestao-acessos'];
+            }
 
             // Aplica a visibilidade
             const todosCards = document.querySelectorAll('.app-card');

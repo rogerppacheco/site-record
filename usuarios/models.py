@@ -132,6 +132,13 @@ class Usuario(AbstractUser):
         help_text="Se desmarcado, o bot/automação do WhatsApp não usará este login no pool. Use quando o BO estiver atuando no PAP para não disputar o mesmo login."
     )
 
+    # --- GESTÃO DE ACESSOS (DELEGAÇÃO) ---
+    pode_gestao_acessos = models.BooleanField(
+        default=False,
+        verbose_name="Pode usar a ferramenta Gestão de Acessos?",
+        help_text="Se marcado, o usuário verá o card 'Gestão de Acessos' na área interna e poderá gerenciar usuários (exceto perfis Admin e Diretoria)."
+    )
+
     class Meta(AbstractUser.Meta):
         pass
 

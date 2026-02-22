@@ -82,6 +82,7 @@ urlpatterns = [
     path('record-informa/', TemplateView.as_view(template_name='public/record_informa.html'), name='record-informa'),
     path('auditoria/', TemplateView.as_view(template_name='public/auditoria.html'), name='auditoria'),
     path('crm-vendas/', TemplateView.as_view(template_name='public/crm_vendas.html'), name='crm_vendas'),
+    path('gestao-acessos/', TemplateView.as_view(template_name='public/gestao-acessos.html'), name='gestao-acessos'),
     path('governanca/', TemplateView.as_view(template_name='public/governanca.html'), name='governanca'),
     path('presenca/', TemplateView.as_view(template_name='public/presenca.html'), name='presenca'),
     path('esteira/', TemplateView.as_view(template_name='public/esteira.html'), name='esteira'),

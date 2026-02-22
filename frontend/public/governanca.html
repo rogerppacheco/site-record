@@ -514,6 +514,11 @@
                                             <label class="form-check-label fw-bold" for="login_pap_disponivel_para_automacao">Disponibilizar login PAP para o bot (WhatsApp)</label>
                                             <small class="text-muted d-block ms-4 mt-1">Se desmarcado, o bot não usará este login no pool. Use quando o BO estiver atuando no PAP para não disputar o mesmo login.</small>
                                         </div>
+                                        <div class="form-check form-switch mb-3 p-3 rounded bg-light border border-primary">
+                                            <input class="form-check-input" type="checkbox" id="pode_gestao_acessos">
+                                            <label class="form-check-label fw-bold" for="pode_gestao_acessos">Pode usar a ferramenta <strong>Gestão de Acessos</strong>?</label>
+                                            <small class="text-muted d-block ms-4 mt-1">Se marcado, o usuário verá o card &quot;Gestão de Acessos&quot; na área interna e poderá gerenciar apenas usuários que não são Admin ou Diretoria.</small>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -1793,6 +1798,7 @@
             document.getElementById('autorizar_venda_automatica').checked = user.autorizar_venda_automatica || false;
             document.getElementById('autorizar_analise_credito_wpp').checked = user.autorizar_analise_credito_wpp || false;
             document.getElementById('login_pap_disponivel_para_automacao').checked = user.login_pap_disponivel_para_automacao !== false;
+            document.getElementById('pode_gestao_acessos').checked = user.pode_gestao_acessos || false;
             document.getElementById('matricula_pap').value = user.matricula_pap || '';
             ['valor_almoco', 'valor_passagem', 'chave_pix', 'nome_da_conta', 'meta_comissao', 'desconto_boleto', 'desconto_inclusao_viabilidade', 'desconto_instalacao_antecipada', 'adiantamento_cnpj', 'desconto_inss_fixo'].forEach(id => { document.getElementById(id).value = user[id] || ''; });
         } else {
@@ -1800,6 +1806,7 @@
             document.getElementById('tel_whatsapp_2').value = '';
             document.getElementById('tel_whatsapp_3').value = '';
             document.getElementById('login_pap_disponivel_para_automacao').checked = true;
+            document.getElementById('pode_gestao_acessos').checked = false;
         }
         // Senha PAP: nunca preencher valor (segurança); placeholder indica se já está cadastrada
         const senhaPapInput = document.getElementById('senha_pap');
@@ -1945,7 +1952,8 @@
             autorizar_venda_sem_auditoria: document.getElementById('autorizar_venda_sem_auditoria').checked,
             autorizar_venda_automatica: document.getElementById('autorizar_venda_automatica').checked,
             autorizar_analise_credito_wpp: document.getElementById('autorizar_analise_credito_wpp').checked,
-            login_pap_disponivel_para_automacao: document.getElementById('login_pap_disponivel_para_automacao').checked
+            login_pap_disponivel_para_automacao: document.getElementById('login_pap_disponivel_para_automacao').checked,
+            pode_gestao_acessos: document.getElementById('pode_gestao_acessos').checked
         };
         
         // Senha PAP: só enviar se preenchida (ao editar, vazio = manter a atual)

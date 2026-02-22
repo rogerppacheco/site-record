@@ -116,6 +116,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
             'autorizar_venda_automatica',
             'autorizar_analise_credito_wpp',
             'login_pap_disponivel_para_automacao',
+            'pode_gestao_acessos',
             'tel_whatsapp',
             'tel_whatsapp_2',
             'tel_whatsapp_3',
@@ -318,7 +319,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'tel_whatsapp',
             'tel_whatsapp_2',
             'tel_whatsapp_3',
-            'obriga_troca_senha'
+            'obriga_troca_senha',
+            'pode_gestao_acessos'
         ]
 
 # --- SERIALIZER DE LOGIN (CUSTOMIZADO) ---
@@ -358,6 +360,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         # --- SEGURANÇA: Adiciona flag no Token ---
         token['obriga_troca_senha'] = user.obriga_troca_senha
         token['autorizar_venda_automatica'] = getattr(user, 'autorizar_venda_automatica', False)
+        token['pode_gestao_acessos'] = getattr(user, 'pode_gestao_acessos', False)
         return token
 
     def validate(self, attrs):

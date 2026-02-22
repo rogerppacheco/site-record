@@ -36,6 +36,10 @@ class CustomUserAdmin(UserAdmin):
             'fields': ('matricula_pap', 'senha_pap', 'autorizar_venda_sem_auditoria', 'autorizar_venda_automatica', 'autorizar_analise_credito_wpp', 'login_pap_disponivel_para_automacao'),
             'description': 'Login PAP: se "Disponibilizar login PAP para o bot" estiver desmarcado, o bot não usará este login no pool (útil quando o BO está atuando no PAP).'
         }),
+        ('Delegação', {
+            'fields': ('pode_gestao_acessos',),
+            'description': 'Se "Pode usar a ferramenta Gestão de Acessos?" estiver marcado, o usuário verá o card Gestão de Acessos na área interna e poderá gerenciar apenas usuários que não são Admin ou Diretoria.'
+        }),
         ('WhatsApp', {'fields': ('tel_whatsapp', 'tel_whatsapp_2', 'tel_whatsapp_3')}),
         ('Permissões', {
             'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions'),

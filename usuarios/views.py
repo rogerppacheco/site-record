@@ -24,6 +24,115 @@ from .serializers import (
     ResetSenhaSolicitacaoSerializer
 )
 
+# Perfis que não aparecem na ferramenta Gestão de Acessos (delegação)
+PERFIS_EXCLUIDOS_GESTAO_ACESSOS = ('Admin', 'Diretoria')
+
+
+class PodeGestaoAcessos(permissions.BasePermission):
+    """Só permite acesso se o usuário tiver pode_gestao_acessos=True no cadastro."""
+    message = "Você não tem permissão para usar a Gestão de Acessos."
+
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        return getattr(request.user, 'pode_gestao_acessos', False)
+
+
+class GestaoAcessosUsuarioViewSet(viewsets.ModelViewSet):
+    """
+    API de usuários restrita à ferramenta Gestão de Acessos.
+    - Só acessível por quem tem pode_gestao_acessos=True.
+    - Lista e edição nunca incluem usuários com perfil Admin ou Diretoria.
+    - Não é permitido atribuir perfil/grupo Admin ou Diretoria a ninguém.
+    """
+    serializer_class = UsuarioSerializer
+    permission_classes = [permissions.IsAuthenticated, PodeGestaoAcessos]
+
+    def get_queryset(self):
+        qs = (
+            Usuario.objects.all()
+            .select_related('supervisor', 'perfil')
+            .prefetch_related('groups')
+            .order_by('first_name')
+        )
+        # Excluir quem tem perfil Admin ou Diretoria (por perfil ou por grupo)
+        qs = qs.exclude(
+            Q(perfil__nome__in=PERFIS_EXCLUIDOS_GESTAO_ACESSOS)
+            | Q(groups__name__in=PERFIS_EXCLUIDOS_GESTAO_ACESSOS)
+        ).distinct()
+
+        is_active_param = self.request.query_params.get('is_active')
+        if is_active_param is not None:
+            is_active_value = is_active_param.lower() in ('true', '1')
+            qs = qs.filter(is_active=is_active_value)
+        search = (self.request.query_params.get('search') or '').strip()
+        if search:
+            q = Q(username__icontains=search) | Q(first_name__icontains=search) | Q(last_name__icontains=search) | Q(email__icontains=search)
+            qs = qs.filter(q)
+        return qs
+
+    def _grupos_proibidos_ids(self):
+        return set(
+            Group.objects.filter(name__in=PERFIS_EXCLUIDOS_GESTAO_ACESSOS).values_list('id', flat=True)
+        )
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.get('partial', False)
+        groups = request.data.get('groups')
+        if groups is not None:
+            proibidos = self._grupos_proibidos_ids()
+            if any(g in proibidos for g in (groups if isinstance(groups, list) else [])):
+                return Response(
+                    {'detail': 'Não é permitido atribuir perfil Admin ou Diretoria nesta ferramenta.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        return super().update(request, *args, **kwargs)
+
+    def create(self, request, *args, **kwargs):
+        groups = request.data.get('groups')
+        if groups is not None:
+            proibidos = self._grupos_proibidos_ids()
+            if any(g in proibidos for g in (groups if isinstance(groups, list) else [])):
+                return Response(
+                    {'detail': 'Não é permitido atribuir perfil Admin ou Diretoria nesta ferramenta.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        return super().create(request, *args, **kwargs)
+
+    @action(detail=True, methods=['put'], url_path='reativar')
+    def reativar(self, request, pk=None):
+        usuario = self.get_object()
+        usuario.is_active = True
+        usuario.save()
+        return Response({'status': 'reativado'}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'])
+    def lideres(self, request):
+        """Líderes (supervisores) visíveis na Gestão de Acessos: apenas não Admin/Diretoria."""
+        qs = Usuario.objects.filter(is_active=True).exclude(
+            Q(perfil__nome__in=PERFIS_EXCLUIDOS_GESTAO_ACESSOS)
+            | Q(groups__name__in=PERFIS_EXCLUIDOS_GESTAO_ACESSOS)
+        ).distinct()
+        usuarios = qs.values('id', 'username', 'first_name', 'last_name')
+        data = []
+        for u in usuarios:
+            nome = f"{u['first_name']} {u['last_name']}".strip()
+            nome = nome or u['username']
+            if f"{u['first_name']} {u['last_name']}".strip():
+                nome = f"{nome} ({u['username']})"
+            data.append({'id': u['id'], 'username': u['username'], 'nome_exibicao': nome})
+        return Response(data)
+
+
+class GestaoAcessosGruposView(APIView):
+    """Lista grupos (perfis) permitidos na Gestão de Acessos: exclui Admin e Diretoria."""
+    permission_classes = [permissions.IsAuthenticated, PodeGestaoAcessos]
+
+    def get(self, request):
+        grupos = Group.objects.exclude(name__in=PERFIS_EXCLUIDOS_GESTAO_ACESSOS).order_by('name')
+        serializer = GroupSerializer(grupos, many=True)
+        return Response(serializer.data)
+
 class LoginView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
 
