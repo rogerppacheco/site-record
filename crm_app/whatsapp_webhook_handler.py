@@ -1632,6 +1632,32 @@ def _formatar_streaming_resumo(dados: dict) -> str:
     return "; ".join(partes) if partes else "Sim"
 
 
+def _texto_formas_pagamento_por_credito(resultado_credito: str) -> tuple:
+    """
+    Retorna (texto_msg, formas_map) para a etapa de forma de pagamento conforme o resultado do crédito.
+    - Se resultado_credito == "Elegível apenas para Cartão de Crédito": só opção 2 (Cartão).
+    - Caso contrário: 1=Boleto, 2=Cartão, 3=Débito em Conta.
+    """
+    apenas_cartao = (resultado_credito or '').strip() == "Elegível apenas para Cartão de Crédito"
+    if apenas_cartao:
+        return (
+            "💳 *ETAPA 4: PAGAMENTO*\n\n"
+            "Crédito aprovado *apenas para Cartão de Crédito*.\n\n"
+            "2️⃣ Cartão de Crédito\n\n"
+            "Digite *2* para continuar:",
+            {'2': 'cartao'},
+        )
+    return (
+        "💳 *ETAPA 4: PAGAMENTO*\n\n"
+        "Escolha a forma de pagamento:\n\n"
+        "1️⃣ Boleto\n"
+        "2️⃣ Cartão de Crédito\n"
+        "3️⃣ Débito em Conta\n\n"
+        "Digite o número da opção:",
+        {'1': 'boleto', '2': 'cartao', '3': 'debito'},
+    )
+
+
 def _texto_etapa5_planos(forma_pagamento: str) -> str:
     """Retorna o texto da ETAPA 5 (lista de planos). Cartão de crédito tem desconto de R$ 10."""
     if (forma_pagamento or '').strip().lower() == 'cartao':
@@ -1732,6 +1758,24 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
         sessao.dados_temp = {}
         sessao.save()
         return "❌ Venda cancelada. Digite *VENDER* para iniciar novamente."
+    
+    # Comando REPETIR: reenviar último comando ao worker (após erro, dados já salvos)
+    if etapa == 'venda_erro_retry':
+        if mensagem_limpa == 'REPETIR':
+            ultimo_cmd = (dados or {}).get('_ultimo_cmd_erro')
+            with _automacoes_lock:
+                ctx = _automacoes_pap_ativas.get(sessao.id)
+            if not ctx or not ultimo_cmd:
+                sessao.etapa = 'inicial'
+                sessao.dados_temp = {}
+                sessao.save()
+                return "❌ Não há comando para repetir. Digite *VENDER* para iniciar novamente."
+            cmd_queue = ctx.get('cmd_queue')
+            if cmd_queue:
+                cmd_queue.put(ultimo_cmd)
+                return "⏳ Tentando novamente... Aguarde alguns instantes. Você receberá a resposta em seguida."
+            return "❌ Sessão expirada. Digite *VENDER* para iniciar novamente."
+        return "Digite *REPETIR* para tentar a última etapa novamente ou *CANCELAR* para sair."
     
     # --- ETAPA: Confirmar matrícula ---
     if etapa == 'venda_confirmar_matricula':
@@ -1902,11 +1946,13 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                         celular = cmd.get('celular', '')
                         email = cmd.get('email', '')
                         celular_sec = cmd.get('celular_sec') or None
-                        sucesso, msg, _ = automacao.etapa4_contato(celular, email, celular_secundario=celular_sec)
+                        sucesso, msg, resultado_credito = automacao.etapa4_contato(celular, email, celular_secundario=celular_sec)
                         def _sync_etapa4():
                             sess = SessaoWhatsapp.objects.get(id=sessao_id)
                             dados = sess.dados_temp or {}
                             dados['email'] = email
+                            if resultado_credito:
+                                dados['resultado_credito'] = resultado_credito
                             with _automacoes_lock:
                                 if sessao_id in _automacoes_pap_ativas:
                                     _automacoes_pap_ativas[sessao_id]['dados'] = dados
@@ -1946,11 +1992,8 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                                 sess.etapa = 'venda_forma_pagamento'
                                 sess.dados_temp = dados
                                 sess.save()
-                                WhatsAppService().enviar_mensagem_texto(
-                                    telefone,
-                                    "✅ Crédito aprovado!\n\n💳 *ETAPA 4: PAGAMENTO*\n\n"
-                                    "Escolha a forma de pagamento:\n\n1️⃣ Boleto\n2️⃣ Cartão de Crédito\n3️⃣ Débito em Conta\n\nDigite o número da opção:"
-                                )
+                                texto_formas, _ = _texto_formas_pagamento_por_credito(dados.get('resultado_credito', ''))
+                                WhatsAppService().enviar_mensagem_texto(telefone, "✅ Crédito aprovado!\n\n" + texto_formas)
                         _executar_ops_django_sync(_sync_etapa4)
                     elif action == 'etapa5_forma':
                         forma = cmd.get('forma', 'boleto')
@@ -2250,14 +2293,42 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                             _executar_ops_django_sync(_sync_comp_resposta)
                 except Exception as e:
                     logger.exception(f"[PAP Worker] Erro ao processar comando: {e}")
-                    def _sync_send_error():
+                    retry_count = cmd.get('_retry_count', 0)
+                    if retry_count < 1:
                         try:
-                            WhatsAppService().enviar_mensagem_texto(
-                                telefone,
-                                f"❌ Erro: {e}\n\nDigite *VENDER* para tentar novamente."
-                            )
+                            cmd_retry = {**cmd, '_retry_count': retry_count + 1}
+                            cmd_queue.put(cmd_retry)
+                            logger.info("[PAP Worker] Repetindo comando automaticamente (tentativa %s)", retry_count + 2)
                         except Exception:
                             pass
+                        else:
+                            continue
+                    def _sync_send_error():
+                        try:
+                            from crm_app.models import SessaoWhatsapp
+                            sess = SessaoWhatsapp.objects.get(id=sessao_id)
+                            d = dict(sess.dados_temp or {})
+                            d['_ultimo_cmd_erro'] = cmd
+                            sess.dados_temp = d
+                            sess.etapa = 'venda_erro_retry'
+                            sess.save()
+                            with _automacoes_lock:
+                                if sessao_id in _automacoes_pap_ativas:
+                                    _automacoes_pap_ativas[sessao_id]['dados'] = d
+                            msg_erro = (
+                                f"❌ Ocorreu um erro: {e}\n\n"
+                                "Seus dados foram salvos. Digite *REPETIR* para tentar a última etapa novamente ou *CANCELAR* para sair."
+                            )
+                            WhatsAppService().enviar_mensagem_texto(telefone, msg_erro)
+                        except Exception as sync_err:
+                            logger.warning("[PAP Worker] Erro ao salvar sessão/notificar: %s", sync_err)
+                            try:
+                                WhatsAppService().enviar_mensagem_texto(
+                                    telefone,
+                                    f"❌ Erro: {e}\n\nDigite *VENDER* para tentar novamente."
+                                )
+                            except Exception:
+                                pass
                     try:
                         _executar_ops_django_sync(_sync_send_error)
                     except Exception:
@@ -2700,11 +2771,13 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                         celular = cmd.get('celular', '')
                         email = cmd.get('email', '')
                         celular_sec = cmd.get('celular_sec') or None
-                        sucesso, msg, _ = automacao.etapa4_contato(celular, email, celular_secundario=celular_sec)
+                        sucesso, msg, resultado_credito = automacao.etapa4_contato(celular, email, celular_secundario=celular_sec)
                         def _sync_etapa4():
                             sess = SessaoWhatsapp.objects.get(id=sessao_id)
                             dados = sess.dados_temp or {}
                             dados['email'] = email
+                            if resultado_credito:
+                                dados['resultado_credito'] = resultado_credito
                             with _automacoes_lock:
                                 if sessao_id in _automacoes_pap_ativas:
                                     _automacoes_pap_ativas[sessao_id]['dados'] = dados
@@ -2744,11 +2817,8 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                                 sess.etapa = 'venda_forma_pagamento'
                                 sess.dados_temp = dados
                                 sess.save()
-                                WhatsAppService().enviar_mensagem_texto(
-                                    telefone,
-                                    "✅ Crédito aprovado!\n\n💳 *ETAPA 4: PAGAMENTO*\n\n"
-                                    "Escolha a forma de pagamento:\n\n1️⃣ Boleto\n2️⃣ Cartão de Crédito\n3️⃣ Débito em Conta\n\nDigite o número da opção:"
-                                )
+                                texto_formas, _ = _texto_formas_pagamento_por_credito(dados.get('resultado_credito', ''))
+                                WhatsAppService().enviar_mensagem_texto(telefone, "✅ Crédito aprovado!\n\n" + texto_formas)
                         _executar_ops_django_sync(_sync_etapa4)
                     elif action == 'etapa5_forma':
                         forma = cmd.get('forma', 'boleto')
@@ -3048,14 +3118,42 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                             _executar_ops_django_sync(_sync_comp_resposta)
                 except Exception as e:
                     logger.exception(f"[PAP Worker] Erro ao processar comando: {e}")
-                    def _sync_send_error():
+                    retry_count = cmd.get('_retry_count', 0)
+                    if retry_count < 1:
                         try:
-                            WhatsAppService().enviar_mensagem_texto(
-                                telefone,
-                                f"❌ Erro: {e}\n\nDigite *VENDER* para tentar novamente."
-                            )
+                            cmd_retry = {**cmd, '_retry_count': retry_count + 1}
+                            cmd_queue.put(cmd_retry)
+                            logger.info("[PAP Worker] Repetindo comando automaticamente (tentativa %s)", retry_count + 2)
                         except Exception:
                             pass
+                        else:
+                            continue
+                    def _sync_send_error():
+                        try:
+                            from crm_app.models import SessaoWhatsapp
+                            sess = SessaoWhatsapp.objects.get(id=sessao_id)
+                            d = dict(sess.dados_temp or {})
+                            d['_ultimo_cmd_erro'] = cmd
+                            sess.dados_temp = d
+                            sess.etapa = 'venda_erro_retry'
+                            sess.save()
+                            with _automacoes_lock:
+                                if sessao_id in _automacoes_pap_ativas:
+                                    _automacoes_pap_ativas[sessao_id]['dados'] = d
+                            msg_erro = (
+                                f"❌ Ocorreu um erro: {e}\n\n"
+                                "Seus dados foram salvos. Digite *REPETIR* para tentar a última etapa novamente ou *CANCELAR* para sair."
+                            )
+                            WhatsAppService().enviar_mensagem_texto(telefone, msg_erro)
+                        except Exception as sync_err:
+                            logger.warning("[PAP Worker] Erro ao salvar sessão/notificar: %s", sync_err)
+                            try:
+                                WhatsAppService().enviar_mensagem_texto(
+                                    telefone,
+                                    f"❌ Erro: {e}\n\nDigite *VENDER* para tentar novamente."
+                                )
+                            except Exception:
+                                pass
                     try:
                         _executar_ops_django_sync(_sync_send_error)
                     except Exception:
@@ -3364,7 +3462,7 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
             return "⏳ Consultando crédito... Aguarde alguns instantes. Você receberá a resposta em seguida."
         automacao = ctx['automacao']
         celular_sec = dados.get('celular_sec', '') or None
-        sucesso, msg, _ = automacao.etapa4_contato(
+        sucesso, msg, resultado_credito = automacao.etapa4_contato(
             dados.get('celular', ''),
             email,
             celular_secundario=celular_sec
@@ -3404,27 +3502,24 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                 return "❌ Crédito negado para este CPF.\n\nDigite outro CPF para tentar, ou *CANCELAR*:"
             return f"❌ {msg}\n\nDigite *CANCELAR* para sair."
         dados.pop('celulares_rejeitados', None)
+        if resultado_credito:
+            dados['resultado_credito'] = resultado_credito
         sessao.dados_temp = dados
         sessao.etapa = 'venda_forma_pagamento'
         sessao.save()
         with _automacoes_lock:
             if sessao.id in _automacoes_pap_ativas:
                 _automacoes_pap_ativas[sessao.id]['dados'] = dados
-        return (
-            f"✅ Crédito aprovado!\n\n"
-            f"💳 *ETAPA 4: PAGAMENTO*\n\n"
-            f"Escolha a forma de pagamento:\n\n"
-            f"1️⃣ Boleto\n"
-            f"2️⃣ Cartão de Crédito\n"
-            f"3️⃣ Débito em Conta\n\n"
-            f"Digite o número da opção:"
-        )
+        texto_formas, _ = _texto_formas_pagamento_por_credito(dados.get('resultado_credito', ''))
+        return f"✅ Crédito aprovado!\n\n{texto_formas}"
     
     # --- ETAPA: Forma de Pagamento ---
     elif etapa == 'venda_forma_pagamento':
-        formas = {'1': 'boleto', '2': 'cartao', '3': 'debito'}
+        resultado_credito = (dados or {}).get('resultado_credito', '')
+        _, formas = _texto_formas_pagamento_por_credito(resultado_credito)
         if mensagem_limpa not in formas:
-            return "❌ Opção inválida. Digite 1, 2 ou 3:"
+            opcoes = "1, 2 ou 3" if len(formas) > 1 else "2 (Cartão de Crédito)"
+            return f"❌ Opção inválida. Digite {opcoes}:"
         
         forma = formas[mensagem_limpa]
         with _automacoes_lock:
@@ -3997,7 +4092,7 @@ def _executar_venda_pap_etapa6_em_diante(
     try:
         resumo_txt = automacao.obter_resumo_pedido_para_cliente()
         celular_cliente = dados.get('celular', '') or automacao.dados_pedido.get('celular', '')
-        msg_cliente = f"{resumo_txt}\n\nPara confirmar, responda *SIM*."
+        msg_cliente = resumo_txt
         try:
             WhatsAppService().enviar_mensagem_texto(celular_cliente, msg_cliente)
         except Exception as e:

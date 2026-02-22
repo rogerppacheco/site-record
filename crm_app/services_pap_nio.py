@@ -2135,13 +2135,21 @@ class PAPNioAutomation:
         """
         Monta o resumo do pedido a partir dos dados coletados no fluxo.
         Inclui plano, Fixo (R$ 30/mês), streaming (HBO Max R$ 44,90; Globoplay Premium R$ 39,90; Padrão R$ 22,90).
+        Endereço no padrão: Logradouro, Nº - Complemento - Bairro, Cidade - UF, CEP.
         """
         d = self.dados_pedido
         nome = d.get('nome_cliente') or 'Cliente'
         cep = d.get('cep') or ''
         numero = d.get('numero') or ''
         ref = d.get('referencia') or ''
-        endereco = f"CEP {cep}, Nº {numero}" + (f", Ref: {ref}" if ref else "")
+        # Endereço completo no padrão (ViaCEP): Logradouro, Nº - Complemento - Bairro, Cidade - UF, CEP
+        endereco = self._formatar_endereco_completo(cep, numero, ref) if cep else ""
+        if not endereco:
+            partes = []
+            if (str(cep or '').strip()): partes.append(f"CEP {cep}")
+            if (str(numero or '').strip()): partes.append(f"Nº {numero}")
+            if (str(ref or '').strip()): partes.append(f"Ref: {ref}")
+            endereco = ", ".join(partes) if partes else (ref if ref else "Endereço a confirmar")
         plano = (d.get('plano') or '500mega').upper()
         forma_raw = (d.get('forma_pagamento') or '').upper()
         cartao = 'CREDITO' in forma_raw or 'CARTÃO' in forma_raw or 'CARTAO' in forma_raw
@@ -2152,11 +2160,14 @@ class PAPNioAutomation:
         }
         par = valor_map.get(plano.upper(), ('R$ --', 'R$ --'))
         valor = par[1] if cartao else par[0]
-        forma = (d.get('forma_pagamento') or 'Boleto').replace('CREDITO', 'Cartão').replace('BOLETO', 'Boleto').replace('DACC', 'Débito')
+        plano_label = plano.replace('MEGA', ' Mega').replace('GIGA', ' Giga')
+        forma_raw_val = (d.get('forma_pagamento') or 'Boleto').strip().lower()
+        forma_display_map = {'boleto': 'Boleto', 'cartao': 'Cartão de Crédito', 'cartão': 'Cartão de Crédito', 'debito': 'Débito em Conta', 'débito': 'Débito em Conta'}
+        forma = forma_display_map.get(forma_raw_val) or forma_raw_val.replace('credito', 'Cartão').replace('dacc', 'Débito').replace('boleto', 'Boleto').title()
         # Serviços adicionais com preços
         linhas_adic = []
         if d.get('tem_fixo'):
-            linhas_adic.append("Fixo: R$ 30,00/mês")
+            linhas_adic.append("• Fixo: R$ 30,00/mês")
         opts_raw = (d.get('streaming_opcoes') or '').lower().replace(' ', '')
         opts_set = set(x.strip() for x in opts_raw.split(',') if x.strip())
         precos_streaming = [
@@ -2166,17 +2177,21 @@ class PAPNioAutomation:
         ]
         for key, label, preco in precos_streaming:
             if key in opts_set:
-                linhas_adic.append(f"{label}: {preco}")
+                linhas_adic.append(f"• {label}: {preco}")
         bloco_adic = "\n".join(linhas_adic) if linhas_adic else "Nenhum"
         return (
-            f"*RESUMO DO PEDIDO*\n\n"
-            f"Nome do cliente: {nome}\n"
-            f"Endereço: {endereco}\n"
-            f"Plano: {plano} – {valor}\n"
-            f"Forma de pagamento: {forma}\n"
-            f"*Serviços adicionais:*\n{bloco_adic}\n"
-            f"Fidelidade: 12 meses\n\n"
-            f"Taxa de habilitação: Você ganha isenção da taxa de habilitação se permanecer no mínimo 12 meses com a gente."
+            "📋 *RESUMO DO PEDIDO*\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"👤 *Cliente:* {nome}\n\n"
+            f"📍 *Endereço:*\n{endereco}\n\n"
+            f"📦 *Plano:* {plano_label} – {valor}\n\n"
+            f"💳 *Forma de pagamento:* {forma}\n\n"
+            f"✨ *Serviços adicionais:*\n{bloco_adic}\n\n"
+            f"📅 *Fidelidade:* 12 meses\n\n"
+            "💰 *Taxa de habilitação:*\n"
+            "Você ganha isenção da taxa de habilitação se permanecer no mínimo 12 meses conosco.\n\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            "✅ Para confirmar, responda *SIM*."
         )
 
     def etapa6_extrair_resumo_oferta(self) -> Tuple[bool, str]:
@@ -2248,6 +2263,44 @@ class PAPNioAutomation:
             return ", ".join(partes)
         except Exception as e:
             logger.warning(f"[PAP] ViaCEP erro: {e}")
+            return ""
+
+    def _formatar_endereco_completo(self, cep: str, numero: str = "", complemento: str = "") -> str:
+        """
+        Retorna endereço no padrão: Logradouro, Nº - Complemento - Bairro, Cidade - UF, CEP
+        Ex.: R. Cachopa, 108 - Casa 1 - São João, Betim - MG, 32655-612
+        Complemento (ex.: referencia) vem após o número da fachada.
+        """
+        try:
+            import requests
+            cep_limpo = re.sub(r'\D', '', str(cep or ''))[:8]
+            if len(cep_limpo) != 8:
+                return ""
+            url = f"https://viacep.com.br/ws/{cep_limpo}/json/"
+            r = requests.get(url, timeout=5)
+            r.raise_for_status()
+            d = r.json()
+            if d.get('erro'):
+                return ""
+            logradouro = (d.get('logradouro') or '').strip()
+            bairro = (d.get('bairro') or '').strip()
+            localidade = (d.get('localidade') or '').strip()
+            uf = (d.get('uf') or '').strip()
+            cep_fmt = d.get('cep', cep_limpo)
+            numero_s = str(numero or '').strip()
+            complemento_s = str(complemento or '').strip()
+            # Formato: Logradouro, Nº - Complemento - Bairro, Cidade - UF, CEP
+            parte1 = f"{logradouro}, {numero_s}" if logradouro else (numero_s or "")
+            if complemento_s:
+                parte1 = f"{parte1} - {complemento_s}" if parte1 else complemento_s
+            parte2 = f"{bairro}, {localidade} - {uf}, {cep_fmt}" if bairro else f"{localidade} - {uf}, {cep_fmt}"
+            if parte1 and parte2:
+                return f"{parte1} - {parte2}"
+            if parte2:
+                return parte2
+            return f"{parte1}, {cep_fmt}" if parte1 else ""
+        except Exception as e:
+            logger.warning(f"[PAP] _formatar_endereco_completo: {e}")
             return ""
 
     def etapa6_consultar_biometria(self) -> Tuple[bool, str]:
