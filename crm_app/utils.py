@@ -397,7 +397,7 @@ def consultar_status_venda_com_decisao(tipo_busca, valor):
     Igual a consultar_status_venda, mas retorna também se deve fazer consulta online no PAP
     e o CPF a usar. Usado pelo fluxo Status no WhatsApp para decidir se dispara Consulta OS.
     Retorna: (resultado_texto, fazer_consulta_online, cpf_para_consulta)
-    - fazer_consulta_online: True se (pedido não encontrado) ou (encontrado e status esteira == AGENDADO).
+    - fazer_consulta_online: True se (pedido não encontrado) ou (encontrado e (status esteira == AGENDADO ou status esteira não preenchido)) e tiver CPF.
     - cpf_para_consulta: CPF/CNPJ (só dígitos) para a Consulta OS, ou None.
     """
     valor_limpo = limpar_texto(valor)
@@ -426,8 +426,10 @@ def consultar_status_venda_com_decisao(tipo_busca, valor):
         # Pedido não encontrado: consulta online só se tivermos CPF (fluxo por CPF)
         fazer_online = bool(cpf_para_consulta)
         return (texto, fazer_online, cpf_para_consulta)
-    st_esteira = (venda.status_esteira.nome or "").upper()
-    if st_esteira == "AGENDADO" and cpf_para_consulta:
+    st_esteira = ((venda.status_esteira.nome if venda.status_esteira else None) or "").strip().upper()
+    # Liberar consulta online quando: AGENDADO ou quando status_esteira não estiver preenchido
+    fazer_online = bool(cpf_para_consulta) and (st_esteira == "AGENDADO" or not st_esteira)
+    if fazer_online:
         return (texto, True, cpf_para_consulta)
     return (texto, False, None)
 
