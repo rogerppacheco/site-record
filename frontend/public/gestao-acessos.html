@@ -407,6 +407,7 @@
             document.getElementById('senha_pap').placeholder = (user && user.senha_pap) ? '•••••• (preenchida)' : 'Branco = manter';
             setTimeout(() => userModal.show(), 100);
         }
+        window.abrirModalUsuario = abrirModalUsuario;
 
         async function carregarDadosParaFormulario() {
             const pSelect = document.getElementById('perfil_id');
