@@ -16,7 +16,17 @@
         .table-painel { font-size: 0.8rem; }
         .table-painel th { white-space: nowrap; background: #f8f9fa; }
         .table-painel td.num { text-align: right; }
+        .table-painel .cell-dual { padding: 0.25rem 0.5rem; line-height: 1.3; }
+        .table-painel .cell-dual .cell-qty { font-size: 0.75rem; color: #6c757d; }
+        .table-painel .cell-dual .cell-qty { font-size: 0.75rem; color: #6c757d; }
+        .table-painel .cell-dual .cell-val { font-weight: 500; }
+        .table-painel tr.totais td { background: #e9ecef; font-weight: 600; }
         .semana-toolbar { margin-bottom: 1rem; }
+        @media print {
+            .main-header, .semana-toolbar, .no-print { display: none !important; }
+            body { background: #fff; }
+            .table-responsive { overflow: visible; }
+        }
     </style>
 </head>
 <body>
@@ -44,6 +54,10 @@
             <input type="date" id="input-semana" class="form-control form-control-sm" style="width: 160px;">
             <button type="button" class="btn btn-primary btn-sm" id="btn-carregar"><i class="bi bi-search me-1"></i>Carregar</button>
             <span id="label-periodo" class="text-muted small"></span>
+            <span class="ms-auto d-flex gap-2 no-print">
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-imprimir" title="Imprimir"><i class="bi bi-printer me-1"></i>Imprimir</button>
+                <button type="button" class="btn btn-outline-success btn-sm" id="btn-excel" title="Baixar Excel"><i class="bi bi-file-earmark-excel me-1"></i>Excel</button>
+            </span>
         </div>
 
         <div class="table-responsive">
@@ -53,7 +67,6 @@
                         <th>Nome</th>
                         <th class="num">Passagem</th>
                         <th class="num">Almoço</th>
-                        <th class="num">Faltas</th>
                         <th class="num">Retirada (faltas)</th>
                         <th class="num">Total CNPJ</th>
                         <th class="num">Premiação cartão</th>
@@ -64,8 +77,9 @@
                         <th class="num fw-bold">Total a receber</th>
                     </tr>
                 </thead>
+                <tbody id="tbody-totais" style="display: none;"></tbody>
                 <tbody id="tbody-painel">
-                    <tr><td colspan="12" class="text-center text-muted py-4">Selecione a semana e clique em Carregar.</td></tr>
+                    <tr><td colspan="11" class="text-center text-muted py-4">Selecione a semana e clique em Carregar.</td></tr>
                 </tbody>
             </table>
         </div>
@@ -126,13 +140,15 @@
             var token = localStorage.getItem('accessToken');
             if (!token) { window.location.href = '/'; return; }
             var tbody = document.getElementById('tbody-painel');
-            tbody.innerHTML = '<tr><td colspan="12" class="text-center py-3"><span class="spinner-border spinner-border-sm me-2"></span>Carregando...</td></tr>';
+            document.getElementById('tbody-totais').style.display = 'none';
+            document.getElementById('tbody-totais').innerHTML = '';
+            tbody.innerHTML = '<tr><td colspan="11" class="text-center py-3"><span class="spinner-border spinner-border-sm me-2"></span>Carregando...</td></tr>';
             var labelPeriodo = document.getElementById('label-periodo');
             fetch('/api/crm/painel-segunda/?semana=' + semana, {
                 headers: { 'Authorization': 'Bearer ' + token }
             })
             .then(function(r) {
-                if (r.status === 403) { tbody.innerHTML = '<tr><td colspan="12" class="text-center text-danger">Acesso negado.</td></tr>'; return null; }
+                if (r.status === 403) { tbody.innerHTML = '<tr><td colspan="11" class="text-center text-danger">Acesso negado.</td></tr>'; return null; }
                 if (r.status !== 200) { return r.json().then(function(e) { throw new Error(e.error || 'Erro ao carregar'); }); }
                 return r.json();
             })
@@ -141,20 +157,57 @@
                 labelPeriodo.textContent = res.semana_inicio && res.semana_fim ? (fmtData(res.semana_inicio) + ' a ' + fmtData(res.semana_fim)) : '';
                 var dados = res.dados || [];
                 if (dados.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="12" class="text-center text-muted py-3">Nenhum usuário ativo para esta semana.</td></tr>';
+                    document.getElementById('tbody-totais').style.display = 'none';
+                    document.getElementById('tbody-totais').innerHTML = '';
+                    tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-3">Nenhum usuário ativo para esta semana.</td></tr>';
                     return;
                 }
+                var totais = { passagem: 0, almoco: 0, retirada: 0, cnpj: 0, cartao: 0, adiant: 0, avulso: 0, campanha: 0, vendas: 0, receber: 0, qtd_faltas: 0, qtd_cnpj: 0, qtd_cartao: 0 };
+                dados.forEach(function(row) {
+                    totais.passagem += parseFloat(row.valor_passagem) || 0;
+                    totais.almoco += parseFloat(row.valor_almoco) || 0;
+                    totais.retirada += parseFloat(row.retirada_faltas) || 0;
+                    totais.cnpj += parseFloat(row.total_cnpj) || 0;
+                    totais.cartao += parseFloat(row.premiacao_cartao) || 0;
+                    totais.adiant += parseFloat(row.adiantamento_solicitado) || 0;
+                    totais.avulso += parseFloat(row.valor_avulso) || 0;
+                    totais.campanha += parseFloat(row.valor_campanha) || 0;
+                    totais.vendas += parseFloat(row.total_vendas) || 0;
+                    totais.receber += parseFloat(row.total_a_receber) || 0;
+                    totais.qtd_faltas += parseInt(row.qtd_faltas, 10) || 0;
+                    totais.qtd_cnpj += parseInt(row.qtd_cnpj, 10) || 0;
+                    totais.qtd_cartao += parseInt(row.qtd_cartao, 10) || 0;
+                });
+                var tbodyTotais = document.getElementById('tbody-totais');
+                tbodyTotais.innerHTML = '<tr class="totais">' +
+                    '<td>Total</td>' +
+                    '<td class="num">' + fmtNum(totais.passagem) + '</td>' +
+                    '<td class="num">' + fmtNum(totais.almoco) + '</td>' +
+                    '<td class="num cell-dual"><div class="cell-qty">' + totais.qtd_faltas + ' faltas</div><div class="cell-val">R$ ' + fmtNum(totais.retirada) + '</div></td>' +
+                    '<td class="num cell-dual"><div class="cell-qty">' + totais.qtd_cnpj + '</div><div class="cell-val">R$ ' + fmtNum(totais.cnpj) + '</div></td>' +
+                    '<td class="num cell-dual"><div class="cell-qty">' + totais.qtd_cartao + '</div><div class="cell-val">R$ ' + fmtNum(totais.cartao) + '</div></td>' +
+                    '<td class="num">' + fmtNum(totais.adiant) + '</td>' +
+                    '<td class="num">' + fmtNum(totais.avulso) + '</td>' +
+                    '<td class="num">' + fmtNum(totais.campanha) + '</td>' +
+                    '<td class="num">' + fmtNum(totais.vendas) + '</td>' +
+                    '<td class="num fw-bold">' + fmtNum(totais.receber) + '</td>' +
+                    '</tr>';
+                tbodyTotais.style.display = '';
+                window._painelUltimosDados = { dados: dados, totais: totais, periodo: labelPeriodo.textContent };
+
                 tbody.innerHTML = '';
                 dados.forEach(function(row) {
                     var tr = document.createElement('tr');
+                    var retiradaCell = '<td class="num cell-dual"><div class="cell-qty">' + (row.qtd_faltas || 0) + ' faltas</div><div class="cell-val">R$ ' + fmtNum(row.retirada_faltas) + '</div></td>';
+                    var cnpjCell = '<td class="num cell-dual"><div class="cell-qty">' + (row.qtd_cnpj || 0) + '</div><div class="cell-val">R$ ' + fmtNum(row.total_cnpj) + '</div></td>';
+                    var cartaoCell = '<td class="num cell-dual"><div class="cell-qty">' + (row.qtd_cartao || 0) + '</div><div class="cell-val">R$ ' + fmtNum(row.premiacao_cartao) + '</div></td>';
                     tr.innerHTML =
                         '<td>' + (row.username || row.nome || '') + '</td>' +
                         '<td class="num">' + fmtNum(row.valor_passagem) + '</td>' +
                         '<td class="num">' + fmtNum(row.valor_almoco) + '</td>' +
-                        '<td class="num">' + (row.qtd_faltas || 0) + '</td>' +
-                        '<td class="num">' + fmtNum(row.retirada_faltas) + '</td>' +
-                        '<td class="num">' + fmtNum(row.total_cnpj) + '</td>' +
-                        '<td class="num">' + fmtNum(row.premiacao_cartao) + '</td>' +
+                        retiradaCell +
+                        cnpjCell +
+                        cartaoCell +
                         '<td class="num">' + fmtNum(row.adiantamento_solicitado) + '</td>' +
                         '<td class="num">' + fmtNum(row.valor_avulso) + '</td>' +
                         '<td class="num">' + fmtNum(row.valor_campanha) + '</td>' +
@@ -164,11 +217,67 @@
                 });
             })
             .catch(function(err) {
-                tbody.innerHTML = '<tr><td colspan="12" class="text-center text-danger py-3">' + (err.message || 'Erro ao carregar') + '</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="11" class="text-center text-danger py-3">' + (err.message || 'Erro ao carregar') + '</td></tr>';
             });
         };
 
         setDefaultSemana();
+
+        document.getElementById('btn-imprimir').onclick = function() {
+            window.print();
+        };
+
+        document.getElementById('btn-excel').onclick = function() {
+            var ctx = window._painelUltimosDados;
+            if (!ctx || !ctx.dados || !ctx.dados.length) {
+                alert('Carregue os dados primeiro (selecione a semana e clique em Carregar).');
+                return;
+            }
+            var headers = ['Nome', 'Passagem', 'Almoço', 'Faltas (qtd)', 'Retirada (R$)', 'CNPJ (qtd)', 'Total CNPJ (R$)', 'Cartão (qtd)', 'Premiação cartão (R$)', 'Adiant. solicitado', 'Valor avulso', 'Campanha', 'Total vendas', 'Total a receber'];
+            var rows = [headers];
+            var totais = ctx.totais;
+            ctx.dados.forEach(function(row) {
+                rows.push([
+                    row.username || row.nome || '',
+                    parseFloat(row.valor_passagem) || 0,
+                    parseFloat(row.valor_almoco) || 0,
+                    parseInt(row.qtd_faltas, 10) || 0,
+                    parseFloat(row.retirada_faltas) || 0,
+                    parseInt(row.qtd_cnpj, 10) || 0,
+                    parseFloat(row.total_cnpj) || 0,
+                    parseInt(row.qtd_cartao, 10) || 0,
+                    parseFloat(row.premiacao_cartao) || 0,
+                    parseFloat(row.adiantamento_solicitado) || 0,
+                    parseFloat(row.valor_avulso) || 0,
+                    parseFloat(row.valor_campanha) || 0,
+                    parseFloat(row.total_vendas) || 0,
+                    parseFloat(row.total_a_receber) || 0
+                ]);
+            });
+            rows.push(['Total', totais.passagem, totais.almoco, totais.qtd_faltas, totais.retirada, totais.qtd_cnpj, totais.cnpj, totais.qtd_cartao, totais.cartao, totais.adiant, totais.avulso, totais.campanha, totais.vendas, totais.receber]);
+            var nomeArquivo = 'painel-segunda-' + (ctx.periodo || '').replace(/\s/g, '-').replace(/\//g, '-').replace(/[^a-zA-Z0-9\-]/g, '') + '.xlsx';
+            if (typeof XLSX !== 'undefined') {
+                var ws = XLSX.utils.aoa_to_sheet(rows);
+                var wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Painel Segunda');
+                XLSX.writeFile(wb, nomeArquivo || 'painel-segunda.xlsx');
+            } else {
+                var csv = rows.map(function(r){ return r.map(function(c){ return '"' + String(c).replace(/"/g,'""') + '"'; }).join(';'); }).join('\n');
+                var BOM = '\uFEFF';
+                var a = document.createElement('a');
+                a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(BOM + csv);
+                a.download = (nomeArquivo && nomeArquivo.replace('.xlsx','.csv')) || 'painel-segunda.csv';
+                a.click();
+            }
+        };
+
+        (function() {
+            var s = document.createElement('script');
+            s.src = 'https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js';
+            s.onload = function() { document.getElementById('btn-excel').title = 'Baixar Excel (.xlsx)'; };
+            document.head.appendChild(s);
+        })();
+
         function logout() { localStorage.removeItem('accessToken'); window.location.href = '/'; }
     </script>
 </body>
