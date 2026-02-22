@@ -721,8 +721,9 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
         cel_sec = gerar_celular_random()
         email = CREDITO_EMAIL_FIXO
         max_tentativas = 5
+        screenshot_credito_b64 = None
         for tentativa in range(max_tentativas):
-            sucesso, msg, resultado_credito = automacao.etapa4_contato(cel, email, celular_secundario=cel_sec, parar_no_modal_credito=True)
+            sucesso, msg, resultado_credito, screenshot_credito_b64 = automacao.etapa4_contato(cel, email, celular_secundario=cel_sec, parar_no_modal_credito=True)
             if sucesso:
                 break
             if msg in ('TELEFONE_REJEITADO',):
@@ -758,7 +759,14 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
             else:
                 resp = "❌ *Crédito NEGADO* para este CPF."
             resp += f"\n\n⏱ _{tempo_decorrido}s_"
-            WhatsAppService().enviar_mensagem_texto(telefone, resp)
+            if screenshot_credito_b64:
+                try:
+                    WhatsAppService().enviar_imagem_b64(telefone, screenshot_credito_b64, caption=resp)
+                except Exception as e_img:
+                    logger.warning("[CRÉDITO] Erro ao enviar imagem do modal, enviando só texto: %s", e_img)
+                    WhatsAppService().enviar_mensagem_texto(telefone, resp)
+            else:
+                WhatsAppService().enviar_mensagem_texto(telefone, resp)
         _run_django_sync(_salvar_e_enviar)
     except Exception as e:
         logger.exception("[CRÉDITO] Erro ao executar análise: %s", e)
@@ -1295,7 +1303,7 @@ def _processar_correcao_credito(telefone: str, sessao, dados: dict, mensagem_lim
                 return "⚠️ O portal do PAP está com problemas no momento. Por favor, abra um chamado na *Nio* para que possamos verificar.\n\nDigite *VENDER* para tentar novamente mais tarde."
             return f"❌ Cadastro: {msg}\n\nDigite outro CPF ou *CANCELAR*."
         celular, email = dados.get('celular', ''), dados.get('email', '')
-        sucesso, msg, _ = automacao.etapa4_contato(celular, email, celular_secundario=celular_sec)
+        sucesso, msg, _, _ = automacao.etapa4_contato(celular, email, celular_secundario=celular_sec)
         if not sucesso:
             if msg == "PAP_ERRO_PORTAL_NIO":
                 return "⚠️ O portal do PAP está com problemas no momento. Por favor, abra um chamado na *Nio* para que possamos verificar.\n\nDigite *VENDER* para tentar novamente mais tarde."
@@ -2302,7 +2310,7 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                         celular = cmd.get('celular', '')
                         email = cmd.get('email', '')
                         celular_sec = cmd.get('celular_sec') or None
-                        sucesso, msg, resultado_credito = automacao.etapa4_contato(celular, email, celular_secundario=celular_sec)
+                        sucesso, msg, resultado_credito, _ = automacao.etapa4_contato(celular, email, celular_secundario=celular_sec)
                         def _sync_etapa4():
                             sess = SessaoWhatsapp.objects.get(id=sessao_id)
                             dados = sess.dados_temp or {}
@@ -3177,7 +3185,7 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                         celular = cmd.get('celular', '')
                         email = cmd.get('email', '')
                         celular_sec = cmd.get('celular_sec') or None
-                        sucesso, msg, resultado_credito = automacao.etapa4_contato(celular, email, celular_secundario=celular_sec)
+                        sucesso, msg, resultado_credito, _ = automacao.etapa4_contato(celular, email, celular_secundario=celular_sec)
                         def _sync_etapa4():
                             sess = SessaoWhatsapp.objects.get(id=sessao_id)
                             dados = sess.dados_temp or {}
@@ -3890,7 +3898,7 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
             return "⏳ Consultando crédito... Aguarde alguns instantes. Você receberá a resposta em seguida."
         automacao = ctx['automacao']
         celular_sec = dados.get('celular_sec', '') or None
-        sucesso, msg, resultado_credito = automacao.etapa4_contato(
+        sucesso, msg, resultado_credito, _ = automacao.etapa4_contato(
             dados.get('celular', ''),
             email,
             celular_secundario=celular_sec
@@ -4958,7 +4966,7 @@ def _executar_venda_pap_background(
         
         # Etapa 4: Contato (com celular secundário como no terminal)
         celular_sec = dados.get('celular_sec', '') or None
-        sucesso, msg, credito = automacao.etapa4_contato(
+        sucesso, msg, credito, _ = automacao.etapa4_contato(
             dados.get('celular', ''),
             dados.get('email', ''),
             celular_secundario=celular_sec

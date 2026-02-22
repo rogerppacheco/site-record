@@ -461,7 +461,7 @@ class Command(BaseCommand):
                         responder("❌ E-mail inválido:")
                         continue
                     responder("⏳ Análise de crédito no site... (observe o navegador)")
-                    sucesso, msg, _ = pap.etapa4_contato(celular, email, celular_secundario=celular_sec if celular_sec else None)
+                    sucesso, msg, _, _ = pap.etapa4_contato(celular, email, celular_secundario=celular_sec if celular_sec else None)
                     if not sucesso:
                         if msg in ("TELEFONE_REJEITADO", "CELULAR_INVALIDO"):
                             etapa_pap = 5

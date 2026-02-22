@@ -245,7 +245,7 @@ class Command(BaseCommand):
 
             # Etapa 4: Contato
             self.stdout.write(f"\n[ETAPA 4] Contato: {celular}, {email}")
-            sucesso, msg, _ = automacao.etapa4_contato(celular, email)
+            sucesso, msg, _, _ = automacao.etapa4_contato(celular, email)
             if not sucesso:
                 self.stdout.write(self.style.ERROR(f"Falha: {msg}"))
                 automacao._fechar_sessao()

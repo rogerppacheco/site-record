@@ -4,6 +4,7 @@ Serviço de automação para vendas no PAP Nio via Playwright.
 Permite que vendedores autorizados realizem vendas pelo WhatsApp.
 """
 
+import base64
 import os
 import re
 import unicodedata
@@ -1907,7 +1908,7 @@ class PAPNioAutomation:
         except Exception as e:
             logger.warning(f"[PAP] _etapa4_limpar_todos_campos_contato: {e}")
 
-    def etapa4_contato(self, celular: str, email: str, celular_secundario: str = None, parar_no_modal_credito: bool = False) -> Tuple[bool, str, Optional[str]]:
+    def etapa4_contato(self, celular: str, email: str, celular_secundario: str = None, parar_no_modal_credito: bool = False) -> Tuple[bool, str, Optional[str], Optional[str]]:
         """
         Etapa 4: Informações de contato e análise de crédito.
         Campos: contato, confirmacaoContato, contatoSecundario, email, confirmarEmail
@@ -1918,7 +1919,8 @@ class PAPNioAutomation:
         após obter o resultado - evita enviar link de biometria. Retorna com o resultado e encerra.
         
         Returns:
-            Tuple (sucesso, mensagem, resultado_credito)
+            Tuple (sucesso, mensagem, resultado_credito, screenshot_modal_b64)
+            screenshot_modal_b64: base64 da imagem do modal de resultado (quando visível), para envio no WhatsApp.
             "TELEFONE_REJEITADO" | "EMAIL_REJEITADO" | "EMAIL_INVALIDO" | "CREDITO_NEGADO"
         """
         try:
@@ -1973,7 +1975,7 @@ class PAPNioAutomation:
             # Celular inválido ou já utilizado (mensagem inline ou validação)
             if "celular inválido" in pagina_lower or "celular já utilizado" in pagina_lower:
                 self._etapa4_limpar_todos_campos_contato()
-                return False, "CELULAR_INVALIDO", None
+                return False, "CELULAR_INVALIDO", None, None
             
             # Verificar modal "Atenção!" (email já usado ou inválido) - pode aparecer ao validar
             modal_atencao = self.page.query_selector('h2:has-text("Atenção!")')
@@ -1985,10 +1987,10 @@ class PAPNioAutomation:
                     self.page.wait_for_timeout(500)
                 if "email" in pagina and ("usado" in pagina or "pedido anterior" in pagina):
                     self._etapa4_limpar_todos_campos_contato()
-                    return False, "EMAIL_REJEITADO", None
+                    return False, "EMAIL_REJEITADO", None, None
                 if "e-mail inválido" in pagina or "preencha um e-mail válido" in pagina:
                     self._etapa4_limpar_todos_campos_contato()
-                    return False, "EMAIL_INVALIDO", None
+                    return False, "EMAIL_INVALIDO", None, None
             
             # Clicar Avançar para disparar análise de crédito
             btn_avancar = self.page.query_selector('button:has-text("Avançar"):not([disabled])')
@@ -2006,7 +2008,7 @@ class PAPNioAutomation:
                 self.page.wait_for_timeout(1000)
                 if self.verificar_modal_erro_ops_visivel():
                     self._fechar_modal_erro_ops()
-                    return False, PAP_ERRO_PORTAL_NIO, None
+                    return False, PAP_ERRO_PORTAL_NIO, None, None
                 modal_atencao = self.page.query_selector('h2:has-text("Atenção!")')
                 if modal_atencao:
                     pagina = self.page.content().lower()
@@ -2016,13 +2018,13 @@ class PAPNioAutomation:
                         self.page.wait_for_timeout(500)
                     if "excede" in pagina or "repetições" in pagina or "celular já utilizado" in pagina:
                         self._etapa4_limpar_todos_campos_contato()
-                        return False, "TELEFONE_REJEITADO", None
+                        return False, "TELEFONE_REJEITADO", None, None
                     if "email" in pagina and ("usado" in pagina or "pedido anterior" in pagina):
                         self._etapa4_limpar_todos_campos_contato()
-                        return False, "EMAIL_REJEITADO", None
+                        return False, "EMAIL_REJEITADO", None, None
                     if "e-mail inválido" in pagina or "preencha um e-mail válido" in pagina:
                         self._etapa4_limpar_todos_campos_contato()
-                        return False, "EMAIL_INVALIDO", None
+                        return False, "EMAIL_INVALIDO", None, None
             
             # Poll rápido: se Etapa 5 (Pagamento/Ofertas) aparecer sem modal = crédito aprovado (reduz tempo)
             modal_apareceu = False
@@ -2030,7 +2032,7 @@ class PAPNioAutomation:
                 self.page.wait_for_timeout(1000)
                 if self.verificar_modal_erro_ops_visivel():
                     self._fechar_modal_erro_ops()
-                    return False, PAP_ERRO_PORTAL_NIO, None
+                    return False, PAP_ERRO_PORTAL_NIO, None, None
                 pagina_texto = (self.page.content() or "").lower()
                 etapa5_visivel = (
                     'pagamento' in pagina_texto and 'ofertas' in pagina_texto
@@ -2042,7 +2044,7 @@ class PAPNioAutomation:
                     self.dados_pedido['email'] = email
                     if celular_secundario:
                         self.dados_pedido['celular_sec'] = celular_secundario
-                    return True, "Análise de crédito: APROVADO! (Elegível para todas as formas de pagamento)", "Elegível para todas as formas de pagamento"
+                    return True, "Análise de crédito: APROVADO! (Elegível para todas as formas de pagamento)", "Elegível para todas as formas de pagamento", None
                 if modal_credito and modal_credito.is_visible():
                     modal_apareceu = True
                     break
@@ -2053,18 +2055,25 @@ class PAPNioAutomation:
                 except Exception:
                     if self.verificar_modal_erro_ops_visivel():
                         self._fechar_modal_erro_ops()
-                        return False, PAP_ERRO_PORTAL_NIO, None
+                        return False, PAP_ERRO_PORTAL_NIO, None, None
                     pass
             self.page.wait_for_timeout(1500)
             if self.verificar_modal_erro_ops_visivel():
                 self._fechar_modal_erro_ops()
-                return False, PAP_ERRO_PORTAL_NIO, None
+                return False, PAP_ERRO_PORTAL_NIO, None, None
             pagina_texto = (self.page.content() or "").lower()
             # Normalizar para comparação: acentos e variações (cartão/cartao, etc.)
             pagina_norm = unicodedata.normalize("NFD", pagina_texto)
             pagina_norm = "".join(c for c in pagina_norm if unicodedata.category(c) != "Mn")
-            # Crédito negado - fechar modal antes de retornar
+            # Crédito negado - capturar screenshot do modal e fechar antes de retornar
             if "crédito negado" in pagina_texto or "credito negado" in pagina_texto or ("negado" in pagina_texto and "aprovado" not in pagina_texto):
+                screenshot_b64 = None
+                try:
+                    screenshot_bytes = self.page.screenshot(type="png")
+                    if screenshot_bytes:
+                        screenshot_b64 = base64.b64encode(screenshot_bytes).decode("ascii")
+                except Exception as ex:
+                    logger.warning("[PAP] Falha ao capturar screenshot do modal de crédito (negado): %s", ex)
                 for btn_text in ['Consultar outro CPF/CNPJ', 'Ok', 'Fechar']:
                     btn = self.page.query_selector(f'button:has-text("{btn_text}")')
                     if btn:
@@ -2074,9 +2083,16 @@ class PAPNioAutomation:
                         except Exception:
                             pass
                         break
-                return False, "CREDITO_NEGADO", None
-            # Crédito aprovado (todas formas ou apenas cartão) - modal visível
+                return False, "CREDITO_NEGADO", None, screenshot_b64
+            # Crédito aprovado (todas formas ou apenas cartão) - modal visível: capturar screenshot
             if "crédito aprovado" in pagina_texto or "credito aprovado" in pagina_texto:
+                screenshot_b64 = None
+                try:
+                    screenshot_bytes = self.page.screenshot(type="png")
+                    if screenshot_bytes:
+                        screenshot_b64 = base64.b64encode(screenshot_bytes).decode("ascii")
+                except Exception as ex:
+                    logger.warning("[PAP] Falha ao capturar screenshot do modal de crédito (aprovado): %s", ex)
                 # Detectar "apenas/somente cartão": variações com e sem acento (pagina_norm = texto sem acentos)
                 indicadores_apenas_cartao = (
                     ("apenas" in pagina_norm and "cartao" in pagina_norm)
@@ -2111,7 +2127,7 @@ class PAPNioAutomation:
                 self.dados_pedido['email'] = email
                 if celular_secundario:
                     self.dados_pedido['celular_sec'] = celular_secundario
-                return True, f"Análise de crédito: APROVADO! ({resultado_credito})", resultado_credito
+                return True, f"Análise de crédito: APROVADO! ({resultado_credito})", resultado_credito, screenshot_b64
             # Etapa 5 visível sem texto de modal (fallback)
             etapa5_visivel = (
                 'pagamento' in pagina_texto and 'ofertas' in pagina_texto
@@ -2122,12 +2138,12 @@ class PAPNioAutomation:
                 self.dados_pedido['email'] = email
                 if celular_secundario:
                     self.dados_pedido['celular_sec'] = celular_secundario
-                return True, "Análise de crédito: APROVADO! (Elegível para todas as formas de pagamento)", "Elegível para todas as formas de pagamento"
-            return False, "Não foi possível obter resultado da análise de crédito.", None
+                return True, "Análise de crédito: APROVADO! (Elegível para todas as formas de pagamento)", "Elegível para todas as formas de pagamento", None
+            return False, "Não foi possível obter resultado da análise de crédito.", None, None
                 
         except Exception as e:
             logger.error(f"[PAP] Erro na Etapa 4: {e}")
-            return False, f"Erro na Etapa 4: {str(e)}", None
+            return False, f"Erro na Etapa 4: {str(e)}", None, None
     
     def _etapa5_garantir_pagina(self):
         """Garante que a página da etapa 5 (pagamento/ofertas) está carregada."""
