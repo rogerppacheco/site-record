@@ -392,6 +392,46 @@ def consultar_status_venda(tipo_busca, valor):
         )
 
 
+def consultar_status_venda_com_decisao(tipo_busca, valor):
+    """
+    Igual a consultar_status_venda, mas retorna também se deve fazer consulta online no PAP
+    e o CPF a usar. Usado pelo fluxo Status no WhatsApp para decidir se dispara Consulta OS.
+    Retorna: (resultado_texto, fazer_consulta_online, cpf_para_consulta)
+    - fazer_consulta_online: True se (pedido não encontrado) ou (encontrado e status esteira == AGENDADO).
+    - cpf_para_consulta: CPF/CNPJ (só dígitos) para a Consulta OS, ou None.
+    """
+    valor_limpo = limpar_texto(valor)
+    venda = None
+    cpf_para_consulta = None
+
+    if tipo_busca == 'CPF':
+        venda = Venda.objects.filter(
+            cliente__cpf_cnpj__icontains=valor_limpo,
+            ativo=True
+        ).order_by('-data_criacao').select_related('cliente', 'status_esteira', 'status_tratamento', 'plano').first()
+        cpf_para_consulta = valor_limpo if len(valor_limpo) in (11, 14) else None
+    elif tipo_busca == 'OS':
+        venda = Venda.objects.filter(
+            ordem_servico=valor_limpo,
+            ativo=True
+        ).select_related('cliente', 'status_esteira', 'status_tratamento', 'plano').first()
+        if venda and venda.cliente and venda.cliente.cpf_cnpj:
+            cpf_para_consulta = limpar_texto(venda.cliente.cpf_cnpj)
+            if len(cpf_para_consulta) not in (11, 14):
+                cpf_para_consulta = None
+
+    texto = consultar_status_venda(tipo_busca, valor)
+
+    if not venda:
+        # Pedido não encontrado: consulta online só se tivermos CPF (fluxo por CPF)
+        fazer_online = bool(cpf_para_consulta)
+        return (texto, fazer_online, cpf_para_consulta)
+    st_esteira = (venda.status_esteira.nome or "").upper()
+    if st_esteira == "AGENDADO" and cpf_para_consulta:
+        return (texto, True, cpf_para_consulta)
+    return (texto, False, None)
+
+
 def consultar_previsao_agendamento(numero_pedido):
     """
     Busca a previsão de instalação na base de agendamentos futuros e tarefas fechadas.

@@ -137,12 +137,14 @@ SELETORES = {
     'consulta_os': {
         'menu_consulta_os': 'a[href*="consulta-os"], span:has-text("Consulta OS"), div.sc-kAzzGY:has(img), [class*="sc-kAzzGY"]',
         'filtros': 'span.titulo-filtro:has-text("Filtros"), .titulo-filtro, span:has-text("Filtros")',
-        'input_cpf_cnpj': 'input.input-text-filter[placeholder*="CPF"], input.input-text-filter[placeholder*="CNPJ"], input[placeholder="Digite o CPF/CNPJ..."]',
-        'btn_filtrar': 'button:has-text("Filtrar")',
+        'input_cpf_cnpj': 'input.input-text-filter[placeholder="Digite o CPF/CNPJ..."], input.input-text-filter',
+        'btn_filtrar': 'button.btn-filters-new, button:has-text("Filtrar")',
         'periodo_de': 'input[placeholder*="De"], input[name*="dataInicio"], input[id*="periodo"], input[aria-label*="De"]',
         'periodo_ate': 'input[placeholder*="Até"], input[name*="dataFim"], input[id*="ate"]',
         'table_body_cells': 'td.MuiTableCell-root.MuiTableCell-body',
         'table_rows': 'table tbody tr, [class*="MuiTableBody"] tr',
+        'link_detalhar': 'a.detalhar-link[href*="detalhe-os"]',
+        'detalhe_status_agendamento': 'span.sc-jrOYZv.ldMRLh, span.ldMRLh',
     },
 }
 
@@ -746,22 +748,12 @@ class PAPNioAutomation:
             filtro_el.click()
             self.page.wait_for_timeout(1200)
 
-            # Preencher CPF/CNPJ no input do filtro
-            sel_cpf = SELETORES['consulta_os']['input_cpf_cnpj']
-            input_el = None
-            for sel in sel_cpf.split(", "):
-                try:
-                    el = self.page.query_selector(sel.strip())
-                    if el and el.is_visible():
-                        input_el = el
-                        break
-                except Exception:
-                    continue
-            if not input_el:
-                input_el = self.page.query_selector('input[placeholder*="CPF"]') or self.page.query_selector('input.input-text-filter')
-            if not input_el or not input_el.is_visible():
+            # Preencher CPF/CNPJ no input do filtro (force=True evita interceptação pelo MuiDrawer)
+            input_selector = 'input.input-text-filter[placeholder="Digite o CPF/CNPJ..."], input.input-text-filter'
+            locator_cpf = self.page.locator(input_selector).first
+            if locator_cpf.count() == 0:
                 return False, "Não foi possível encontrar o campo CPF/CNPJ nos filtros."
-            input_el.fill(cpf_limpo)
+            locator_cpf.fill(cpf_limpo, force=True, timeout=10000)
             self.page.wait_for_timeout(500)
             if self.capture_screenshots:
                 self._capture_screenshot("consulta_os_02_cpf_preenchido", wait_selector=None, wait_timeout_ms=0)
@@ -789,7 +781,7 @@ class PAPNioAutomation:
             ts = datetime.now().strftime('%Y%m%d_%H%M%S')
             filename = f"consulta_os_{safe_run}_{ts}.png"
             filepath = os.path.join(downloads_dir, filename)
-            self.page.wait_for_timeout(600)
+            self.page.wait_for_timeout(300)
             self.page.screenshot(path=filepath, full_page=full_page)
             logger.info(f"[PAP] Screenshot Consulta OS salvo: {filepath}")
             return filepath
@@ -798,13 +790,15 @@ class PAPNioAutomation:
             return None
 
     def consulta_os_por_cpf_com_resultado(
-        self, cpf: str
+        self, cpf: str, enrich_detalhar: bool = False
     ) -> Tuple[bool, str, List[Dict[str, str]], Optional[str]]:
         """
         Fluxo completo: login, Consulta OS, Filtros, CPF, período 30 dias, Filtrar.
         Lê a tabela (td.MuiTableCell-root.MuiTableCell-body), tira screenshot e retorna detalhes.
+        Se enrich_detalhar=True, para cada linha com status != Concluído/Instalado clica em Detalhar
+        e adiciona status_agendamento e agendamento ao dict.
         Returns:
-            (sucesso, mensagem, lista de dicts com status/plano/numero_os/data_hora, path do screenshot)
+            (sucesso, mensagem, lista de dicts com status/plano/numero_os/data_hora[, status_agendamento, agendamento], path do screenshot)
             Se não houver pedidos: (True, "no_results", [], path).
         """
         from datetime import timedelta
@@ -820,42 +814,45 @@ class PAPNioAutomation:
         ok_menu = self._clicar_menu_consulta_os()
         if not ok_menu:
             return False, "Não foi possível acessar a tela Consulta OS.", [], None
-        self.page.wait_for_timeout(1500)
+        self.page.wait_for_timeout(1000)
 
-        # Abrir Filtros
-        for sel in SELETORES['consulta_os']['filtros'].split(", "):
+        # No PAP, o painel de Filtros abre ao PASSAR O MOUSE em cima de "Filtros" (hover), não ao clicar.
+        input_selector = 'input.input-text-filter[placeholder="Digite o CPF/CNPJ..."], input.input-text-filter'
+        try:
+            self.page.locator('button:has-text("Filtros"), a:has-text("Filtros"), [role="button"]:has-text("Filtros")').first.hover(timeout=5000)
+            self.page.wait_for_timeout(400)
+        except Exception:
             try:
-                el = self.page.query_selector(sel.strip())
-                if el and el.is_visible():
-                    el.click()
-                    self.page.wait_for_timeout(1200)
-                    break
-            except Exception:
-                continue
-        else:
-            el = self.page.query_selector('span:has-text("Filtros")')
-            if el and el.is_visible():
-                el.click()
-                self.page.wait_for_timeout(1200)
-
-        # Preencher CPF/CNPJ
-        input_el = None
-        for sel in SELETORES['consulta_os']['input_cpf_cnpj'].split(", "):
+                self.page.locator('text=Filtros').first.hover(timeout=5000)
+                self.page.wait_for_timeout(400)
+            except Exception as e:
+                logger.debug(f"[PAP] Hover em Filtros: {e}")
+        try:
+            self.page.wait_for_selector(input_selector, state="visible", timeout=5000)
+        except Exception:
             try:
-                el = self.page.query_selector(sel.strip())
-                if el and el.is_visible():
-                    input_el = el
-                    break
+                self.page.locator('button:has-text("Filtros")').first.click(force=True, timeout=5000)
+                self.page.wait_for_timeout(600)
             except Exception:
-                continue
-        if not input_el:
-            input_el = self.page.query_selector('input[placeholder*="CPF"]') or self.page.query_selector('input.input-text-filter')
-        if not input_el or not input_el.is_visible():
-            return False, "Campo CPF/CNPJ não encontrado nos filtros.", [], None
-        input_el.fill(cpf_limpo)
-        self.page.wait_for_timeout(400)
+                self.page.locator('a:has-text("Filtros")').first.click(force=True, timeout=5000)
+                self.page.wait_for_timeout(600)
+            try:
+                self.page.wait_for_selector(input_selector, state="visible", timeout=4000)
+            except Exception:
+                return False, "Painel de Filtros não abriu ou campo CPF/CNPJ não encontrado.", [], None
 
-        # Período: últimos 30 dias (De = hoje - 30, Até = hoje). Formato dd/mm/yyyy.
+        # Preencher CPF/CNPJ e clicar Filtrar (reduzidos waits para agilizar)
+        locator_cpf = self.page.locator(input_selector).first
+        try:
+            if locator_cpf.count() == 0:
+                return False, "Campo CPF/CNPJ não encontrado nos filtros.", [], None
+            locator_cpf.fill(cpf_limpo, force=True, timeout=8000)
+        except Exception as e:
+            logger.warning(f"[PAP] fill CPF com force falhou: {e}")
+            return False, f"Não foi possível preencher CPF/CNPJ no filtro: {e}", [], None
+        self.page.wait_for_timeout(150)
+
+        # Período: últimos 30 dias (já costuma vir preenchido; preenche só se necessário)
         hoje = datetime.now().date()
         data_ate = hoje
         data_de = hoje - timedelta(days=30)
@@ -865,31 +862,24 @@ class PAPNioAutomation:
         if len(date_inputs) >= 2:
             try:
                 date_inputs[0].fill(str_de)
-                self.page.wait_for_timeout(200)
+                self.page.wait_for_timeout(80)
                 date_inputs[1].fill(str_ate)
-                self.page.wait_for_timeout(200)
-            except Exception as e:
-                logger.debug(f"[PAP] Preencher período (fallback): {e}")
-        # Fallback: inputs por placeholder/label
-        try:
-            inp_de = self.page.query_selector('input[placeholder*="De"], input[aria-label*="De"]')
-            inp_ate = self.page.query_selector('input[placeholder*="Até"], input[aria-label*="Até"]')
-            if inp_de and inp_de.is_visible():
-                inp_de.fill(str_de)
-            if inp_ate and inp_ate.is_visible():
-                inp_ate.fill(str_ate)
-        except Exception:
-            pass
-        self.page.wait_for_timeout(300)
+                self.page.wait_for_timeout(80)
+            except Exception:
+                pass
+        self.page.wait_for_timeout(100)
 
         # Clicar em Filtrar
-        btn = self.page.query_selector(SELETORES['consulta_os']['btn_filtrar'])
-        if not btn:
-            btn = self.page.query_selector('button:has-text("Filtrar")')
-        if not btn or not btn.is_visible():
-            return False, "Botão 'Filtrar' não encontrado.", [], None
-        btn.click()
-        self.page.wait_for_timeout(2500)
+        btn_selector = 'button.btn-filters-new, button:has-text("Filtrar")'
+        locator_btn = self.page.locator(btn_selector).first
+        try:
+            if locator_btn.count() == 0:
+                return False, "Botão 'Filtrar' não encontrado.", [], None
+            locator_btn.click(force=True, timeout=8000)
+        except Exception as e:
+            logger.warning(f"[PAP] click Filtrar falhou: {e}")
+            return False, f"Não foi possível clicar em Filtrar: {e}", [], None
+        self.page.wait_for_timeout(1500)
 
         # Ler tabela: td.MuiTableCell-root.MuiTableCell-body (ordem: STATUS, PLANO, NÚMERO DA OS, DATA E HORA)
         detalhes: List[Dict[str, str]] = []
@@ -929,12 +919,63 @@ class PAPNioAutomation:
         except Exception as e:
             logger.warning(f"[PAP] Erro ao ler tabela Consulta OS: {e}")
 
+        # Opcional: para cada OS com status diferente de Concluído/Instalado, abrir Detalhar e trazer Status agendamento + Agendamento
+        if detalhes and enrich_detalhar:
+            for row in detalhes:
+                status_tbl = (row.get("status") or "").strip().lower()
+                if status_tbl and "concluído" not in status_tbl and "instalado" not in status_tbl:
+                    num_os = row.get("numero_os") or ""
+                    if num_os:
+                        st_ag, ag_texto = self.abrir_detalhe_os_e_extrair(num_os)
+                        if st_ag or ag_texto:
+                            row["status_agendamento"] = st_ag or ""
+                            row["agendamento"] = ag_texto or ""
+
         # Screenshot (sempre, para enviar no WhatsApp)
         screenshot_path = self._screenshot_consulta_os_return_path(full_page=True)
 
         if detalhes:
             return True, "ok", detalhes, screenshot_path
         return True, "no_results", [], screenshot_path
+
+    def abrir_detalhe_os_e_extrair(self, numero_os: str) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Na tela de Consulta OS (após filtrar), abre o link Detalhar da OS e extrai
+        Status agendamento e Agendamento (spans na página de detalhe).
+        Retorna (status_agendamento, agendamento_texto). Volta à lista após extrair.
+        """
+        num = (numero_os or "").strip()
+        num_sem_zero = num.lstrip("0") or num
+        try:
+            link = self.page.locator(f'a.detalhar-link[href*="detalhe-os/{num}"]').first
+            if link.count() == 0 and num_sem_zero != num:
+                link = self.page.locator(f'a.detalhar-link[href*="detalhe-os/{num_sem_zero}"]').first
+            if link.count() == 0:
+                link = self.page.locator('a.detalhar-link[href*="detalhe-os"]').first
+            if link.count() == 0:
+                return None, None
+            link.click(force=True, timeout=5000)
+            self.page.wait_for_timeout(1500)
+            url_atual = self.page.url
+            if "detalhe-os" not in (url_atual or ""):
+                self.page.wait_for_load_state("domcontentloaded", timeout=5000)
+            status_agendamento = None
+            agendamento_texto = None
+            spans = self.page.locator('span.sc-jrOYZv.ldMRLh, span.ldMRLh').all()
+            if len(spans) >= 1:
+                status_agendamento = (spans[0].inner_text() or "").strip()
+            if len(spans) >= 2:
+                agendamento_texto = (spans[1].inner_text() or "").strip()
+            self.page.go_back()
+            self.page.wait_for_timeout(1000)
+            return (status_agendamento or None, agendamento_texto or None)
+        except Exception as e:
+            logger.warning(f"[PAP] abrir_detalhe_os_e_extrair {numero_os}: {e}")
+            try:
+                self.page.go_back()
+            except Exception:
+                pass
+            return None, None
 
     def iniciar_novo_pedido(self, matricula_vendedor: str) -> Tuple[bool, str]:
         """

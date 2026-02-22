@@ -948,6 +948,146 @@ def _executar_consulta_pedido_background(telefone: str, usuario_id: int, cpf: st
         _run_django_sync(_erro_cleanup)
 
 
+def _executar_consulta_status_online_background(telefone: str, cpf: str, eh_agendado: bool):
+    """
+    Thread: após Status no CRM (não encontrado ou encontrado com AGENDADO), consulta online no PAP
+    (mesmo fluxo Consulta OS). Se eh_agendado=True, enriquece com Detalhar (Status agendamento + Agendamento).
+    Envia resultado via WhatsApp e reseta sessão.
+    """
+    import base64
+    from usuarios.models import Usuario
+    from crm_app.models import SessaoWhatsapp
+    from crm_app.services_pap_nio import PAPNioAutomation
+    from crm_app.pool_bo_pap import obter_login_bo, liberar_bo
+    from crm_app.whatsapp_service import WhatsAppService
+
+    cpf_limpo = re.sub(r'\D', '', cpf)
+    if len(cpf_limpo) not in (11, 14):
+        return
+    bo_usuario, msg_erro = obter_login_bo(telefone, None)
+    if not bo_usuario:
+        WhatsAppService().enviar_mensagem_texto(
+            telefone,
+            f"❌ {msg_erro}\n\nConsulta online (PAP) não realizada. Digite *STATUS* para tentar novamente."
+        )
+        try:
+            s = SessaoWhatsapp.objects.get(telefone=telefone)
+            s.etapa = 'inicial'
+            s.dados_temp = {}
+            s.save()
+        except Exception:
+            pass
+        return
+
+    automacao = None
+    tempo_inicio = time.time()
+    try:
+        headless = getattr(settings, 'PAP_HEADLESS', True)
+        capture_screenshots = getattr(settings, 'PAP_CAPTURE_SCREENSHOTS', False)
+        automacao = PAPNioAutomation(
+            matricula_pap=bo_usuario.matricula_pap,
+            senha_pap=bo_usuario.senha_pap,
+            vendedor_nome="Status-Online",
+            headless=headless,
+            capture_screenshots=capture_screenshots,
+        )
+        sucesso, msg = automacao.iniciar_sessao()
+        if not sucesso:
+            liberar_bo(bo_usuario.id, telefone)
+            WhatsAppService().enviar_mensagem_texto(telefone, f"❌ Erro PAP: {msg}\n\nDigite *STATUS* para tentar novamente.")
+            try:
+                s = SessaoWhatsapp.objects.get(telefone=telefone)
+                s.etapa = 'inicial'
+                s.dados_temp = {}
+                s.save()
+            except Exception:
+                pass
+            return
+
+        sucesso, msg, detalhes, screenshot_path = automacao.consulta_os_por_cpf_com_resultado(
+            cpf_limpo, enrich_detalhar=eh_agendado
+        )
+        tempo_decorrido = round(time.time() - tempo_inicio, 1)
+        automacao._fechar_sessao()
+
+        def _finalizar():
+            import django.db
+            django.db.close_old_connections()
+            liberar_bo(bo_usuario.id, telefone)
+            try:
+                s = SessaoWhatsapp.objects.get(telefone=telefone)
+                s.etapa = 'inicial'
+                s.dados_temp = {}
+                s.save()
+            except Exception:
+                pass
+            whatsapp = WhatsAppService()
+            if not sucesso:
+                whatsapp.enviar_mensagem_texto(
+                    telefone,
+                    f"❌ Consulta online (PAP): {msg}\n\n⏱ _{tempo_decorrido}s_"
+                )
+                return
+            if msg == "no_results" or not detalhes:
+                caption = (
+                    "📡 *Status online (PAP)*\n\n"
+                    "Não tem pedido com 30 dias para este CPF/CNPJ.\n\n"
+                    f"⏱ _{tempo_decorrido}s_"
+                )
+            else:
+                partes = ["📡 *Status online (PAP)*\n\n✅ *Existe(m) pedido(s):*\n\n"]
+                for d in detalhes:
+                    partes.append(f"• *Status:* {d.get('status', '')}\n")
+                    partes.append(f"• *Data:* {d.get('data_hora', '')}\n")
+                    partes.append(f"• *Plano:* {d.get('plano', '')}\n")
+                    partes.append(f"• *Nº OS:* {d.get('numero_os', '')}\n")
+                    if d.get('status_agendamento') or d.get('agendamento'):
+                        if d.get('status_agendamento'):
+                            partes.append(f"• *Status agendamento:* {d.get('status_agendamento')}\n")
+                        if d.get('agendamento'):
+                            partes.append(f"• *Agendamento:* {d.get('agendamento')}\n")
+                    partes.append("\n")
+                partes.append(f"⏱ _{tempo_decorrido}s_")
+                caption = "".join(partes)
+            if screenshot_path and os.path.isfile(screenshot_path):
+                try:
+                    with open(screenshot_path, "rb") as f:
+                        img_b64 = base64.b64encode(f.read()).decode("utf-8")
+                    whatsapp.enviar_imagem_b64(telefone, img_b64, caption=caption)
+                except Exception as e_img:
+                    logger.warning("[STATUS ONLINE] Erro ao enviar imagem: %s", e_img)
+                    whatsapp.enviar_mensagem_texto(telefone, caption)
+            else:
+                whatsapp.enviar_mensagem_texto(telefone, caption)
+
+        _run_django_sync(_finalizar)
+    except Exception as e:
+        logger.exception("[STATUS ONLINE] Erro: %s", e)
+        tempo_decorrido = round(time.time() - tempo_inicio, 1)
+        if automacao:
+            try:
+                automacao._fechar_sessao()
+            except Exception:
+                pass
+        def _erro_cleanup():
+            try:
+                liberar_bo(bo_usuario.id, telefone)
+            except Exception:
+                pass
+            try:
+                s = SessaoWhatsapp.objects.get(telefone=telefone)
+                s.etapa = 'inicial'
+                s.dados_temp = {}
+                s.save()
+            except Exception:
+                pass
+            WhatsAppService().enviar_mensagem_texto(
+                telefone,
+                f"❌ Erro na consulta online (PAP): {e}\n\nDigite *STATUS* para tentar novamente.\n\n⏱ _{tempo_decorrido}s_"
+            )
+        _run_django_sync(_erro_cleanup)
+
+
 # =============================================================================
 # FUNÇÕES PARA FLUXO DE VENDA VIA WHATSAPP
 # =============================================================================
@@ -4998,6 +5138,7 @@ def processar_webhook_whatsapp(data, request=None):
         listar_fachadas_dfv,
         consultar_viabilidade_kmz,
         consultar_status_venda,
+        consultar_status_venda_com_decisao,
         consultar_andamento_agendamentos
     )
     from crm_app.nio_api import consultar_dividas_nio
@@ -6099,17 +6240,33 @@ def processar_webhook_whatsapp(data, request=None):
             else:
                 resposta = "❌ Opção inválida. Por favor, digite 1 para CPF ou 2 para O.S:"
         
+        elif etapa_atual == 'status_aguardando_online':
+            resposta = "⏳ Consultando status online no PAP... Aguarde. Você receberá a resposta em seguida."
+            return _enviar_resposta_e_retornar(resposta)
+
         elif etapa_atual == 'status_cpf':
             cpf_limpo = limpar_texto_cep_cpf(mensagem_texto)
             if not cpf_limpo or len(cpf_limpo) < 11:
                 resposta = "❌ CPF inválido. Por favor, digite o CPF completo (apenas números):"
             else:
                 logger.info(f"[Webhook] Consultando status por CPF: {cpf_limpo}")
-                resultado_status = consultar_status_venda('CPF', cpf_limpo)
+                resultado_status, fazer_consulta_online, cpf_para_consulta = consultar_status_venda_com_decisao('CPF', cpf_limpo)
                 resposta = f"🔎 Buscando pedido por CPF...\n\n{resultado_status}"
-                sessao.etapa = 'inicial'
-                sessao.dados_temp = {}
-                sessao.save()
+                if fazer_consulta_online and cpf_para_consulta:
+                    eh_agendado = "AGENDADO" in resultado_status.upper() and "PEDIDO NÃO ENCONTRADO" not in resultado_status.upper()
+                    sessao.etapa = 'status_aguardando_online'
+                    sessao.dados_temp = {}
+                    sessao.save()
+                    threading.Thread(
+                        target=_executar_consulta_status_online_background,
+                        args=(telefone_formatado, cpf_para_consulta, eh_agendado),
+                        daemon=True
+                    ).start()
+                    resposta += "\n\n⏳ Consultando também no PAP (status online)... Aguarde."
+                else:
+                    sessao.etapa = 'inicial'
+                    sessao.dados_temp = {}
+                    sessao.save()
         
         elif etapa_atual == 'status_os':
             os_limpo = mensagem_texto.strip()
@@ -6117,11 +6274,23 @@ def processar_webhook_whatsapp(data, request=None):
                 resposta = "❌ O.S inválida. Por favor, digite o número da O.S:"
             else:
                 logger.info(f"[Webhook] Consultando status por OS: {os_limpo}")
-                resultado_status = consultar_status_venda('OS', os_limpo)
+                resultado_status, fazer_consulta_online, cpf_para_consulta = consultar_status_venda_com_decisao('OS', os_limpo)
                 resposta = f"🔎 Buscando pedido por O.S...\n\n{resultado_status}"
-                sessao.etapa = 'inicial'
-                sessao.dados_temp = {}
-                sessao.save()
+                if fazer_consulta_online and cpf_para_consulta:
+                    eh_agendado = True
+                    sessao.etapa = 'status_aguardando_online'
+                    sessao.dados_temp = {}
+                    sessao.save()
+                    threading.Thread(
+                        target=_executar_consulta_status_online_background,
+                        args=(telefone_formatado, cpf_para_consulta, eh_agendado),
+                        daemon=True
+                    ).start()
+                    resposta += "\n\n⏳ Consultando também no PAP (status online)... Aguarde."
+                else:
+                    sessao.etapa = 'inicial'
+                    sessao.dados_temp = {}
+                    sessao.save()
 
         elif etapa_atual == 'credito_aguardando':
             resposta = "⏳ Consultando crédito... Aguarde. Você receberá a resposta em seguida."
