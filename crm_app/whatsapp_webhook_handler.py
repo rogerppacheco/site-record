@@ -5151,6 +5151,117 @@ def _verificar_biometria_venda(telefone: str, sessao, dados: dict) -> str:
         return f"❌ *ERRO*\n\n{str(e)}\n\nDigite *VENDER* para iniciar novamente."
 
 
+def _buscar_record_apoia_por_texto(busca_texto, sessao):
+    """
+    Busca no Record Apoia por tag/título/descrição/categoria.
+    - 0 resultados: retorna None.
+    - 1 resultado: prepara material_para_envio na sessão e retorna mensagem de envio.
+    - 2+ resultados: seta etapa material_selecionar e retorna lista numerada.
+    """
+    if not busca_texto or len(busca_texto.strip()) < 2:
+        return None
+    import base64
+    from django.db.models import Q
+    from crm_app.models import RecordApoia
+
+    busca_texto = busca_texto.strip()
+    arquivos = RecordApoia.objects.filter(ativo=True).filter(
+        Q(tags__icontains=busca_texto) |
+        Q(titulo__icontains=busca_texto) |
+        Q(descricao__icontains=busca_texto) |
+        Q(categoria__icontains=busca_texto)
+    ).order_by('-data_upload')[:5]
+
+    if not arquivos.exists():
+        return None
+
+    if arquivos.count() == 1:
+        arquivo = arquivos.first()
+        arquivo.downloads_count += 1
+        arquivo.save(update_fields=['downloads_count'])
+        try:
+            arquivo_field = arquivo.arquivo
+            if not arquivo_field or not arquivo_field.name:
+                return f"❌ Arquivo \"{arquivo.titulo}\" não encontrado."
+            arquivo_bytes = None
+            arquivo_b64 = None
+            try:
+                from django.core.files.storage import default_storage
+                if default_storage.exists(arquivo_field.name):
+                    with default_storage.open(arquivo_field.name, 'rb') as f:
+                        arquivo_bytes = f.read()
+                    arquivo_b64 = base64.b64encode(arquivo_bytes).decode('utf-8')
+                else:
+                    arquivo_field.open('rb')
+                    arquivo_bytes = arquivo_field.read()
+                    arquivo_field.close()
+                    arquivo_b64 = base64.b64encode(arquivo_bytes).decode('utf-8')
+            except (FileNotFoundError, IOError, OSError) as e:
+                logger.error(f"[Webhook] Erro ao ler arquivo {arquivo_field.name}: {e}")
+                return f"❌ Erro ao acessar arquivo \"{arquivo.titulo}\": {str(e)}"
+
+            nome_arquivo = arquivo.nome_original
+            if arquivo.tipo_arquivo == 'IMAGEM':
+                resposta = f"✅ *MATERIAL ENCONTRADO*\n\n📷 {arquivo.titulo}\n\nEnviando imagem..."
+                sessao.dados_temp = {
+                    'material_para_envio': {
+                        'tipo': 'IMAGEM',
+                        'base64': arquivo_b64,
+                        'nome': nome_arquivo,
+                        'titulo': arquivo.titulo,
+                        'descricao': arquivo.descricao or '',
+                    }
+                }
+            else:
+                tamanho_bytes = len(arquivo_bytes) if arquivo_bytes else (len(arquivo_b64) * 3 // 4)
+                tamanho_mb = tamanho_bytes / (1024 * 1024)
+                pdf_url = None
+                if tamanho_mb > 5:
+                    try:
+                        from crm_app.onedrive_service import OneDriveUploader
+                        from io import BytesIO
+                        file_obj = BytesIO(arquivo_bytes) if arquivo_bytes else BytesIO(base64.b64decode(arquivo_b64))
+                        onedrive = OneDriveUploader()
+                        pdf_url = onedrive.upload_file_and_get_download_url(
+                            file_obj, folder_name='WhatsApp_Materiais', filename=nome_arquivo
+                        )
+                    except Exception as e:
+                        logger.warning("[Webhook] Erro OneDrive para material: %s", e)
+                resposta = f"✅ *MATERIAL ENCONTRADO*\n\n📄 {arquivo.titulo}\nTipo: {arquivo.get_tipo_arquivo_display()}\n\nEnviando arquivo..."
+                material_data = {
+                    'tipo': 'DOCUMENTO',
+                    'nome': nome_arquivo,
+                    'titulo': arquivo.titulo,
+                    'tipo_display': arquivo.get_tipo_arquivo_display(),
+                }
+                if pdf_url:
+                    material_data['url'] = pdf_url
+                else:
+                    material_data['base64'] = arquivo_b64
+                sessao.dados_temp = {'material_para_envio': material_data}
+
+            sessao.etapa = 'inicial'
+            sessao.save()
+            return resposta
+        except Exception as e:
+            logger.exception("[Webhook] Erro ao preparar arquivo Record Apoia: %s", e)
+            return f"❌ Erro ao processar arquivo: {str(e)}"
+
+    arquivos_lista = list(arquivos)
+    arquivos_ids_lista = [arq.id for arq in arquivos_lista]
+    resposta_parts = [f"📚 *MATERIAIS ENCONTRADOS* para \"{busca_texto}\":\n"]
+    for idx, arq in enumerate(arquivos_lista, 1):
+        resposta_parts.append(f"{idx}. {arq.titulo} ({arq.get_tipo_arquivo_display()})")
+        if arq.descricao:
+            desc_curta = arq.descricao[:50] + "..." if len(arq.descricao) > 50 else arq.descricao
+            resposta_parts.append(f"   {desc_curta}")
+    resposta_parts.append(f"\n📋 Digite o *NÚMERO* do material desejado (1 a {len(arquivos_lista)}):")
+    sessao.etapa = 'material_selecionar'
+    sessao.dados_temp = {'busca': busca_texto, 'arquivos_ids': arquivos_ids_lista}
+    sessao.save()
+    return "\n".join(resposta_parts)
+
+
 def processar_webhook_whatsapp(data, request=None):
     """
     Processa mensagens recebidas do WhatsApp via webhook.
@@ -5603,6 +5714,18 @@ def processar_webhook_whatsapp(data, request=None):
             sessao.save()
             resposta = "Digite a palavra-chave para buscar materiais ou documentos (ex: boleto, contrato, instalacao):"
             return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
+
+        # Comando RECORD APOIA / APOIA (repositório de arquivos - mesmo fluxo que Material)
+        if mensagem_limpa in ['APOIA', 'RECORD APOIA', 'RECORDAPOIA']:
+            logger.info(f"[Webhook] Comando RECORD APOIA/APOIA reconhecido!")
+            sessao.etapa = 'material_buscar'
+            sessao.dados_temp = {}
+            sessao.save()
+            resposta = (
+                "📁 *Record Apoia* – Buscar arquivos/materiais\n\n"
+                "Digite a *palavra-chave* para buscar (ex: Globoplay, boleto, contrato, instalacao):"
+            )
+            return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
         
         elif mensagem_limpa in ['ANDAMENTO', 'ANDAMENTOS']:
             logger.info(f"[Webhook] Comando ANDAMENTO reconhecido!")
@@ -5654,6 +5777,7 @@ def processar_webhook_whatsapp(data, request=None):
                 "• *Fatura* - Consultar fatura por CPF (Nio Negociar)\n"
                 "• *Conta* - 2ª via de conta por CPF (site Nio)\n"
                 "• *Material* - Buscar materiais/documentos\n"
+                "• *Apoia* - Record Apoia (buscar arquivos por palavra-chave)\n"
                 "• *Andamento* - Ver agendamentos do dia\n"
                 "• *Crédito* - Consultar análise de crédito por CPF\n"
                 "• *Pedido* - Consultar pedido/O.S. por CPF no PAP\n"
@@ -5661,6 +5785,16 @@ def processar_webhook_whatsapp(data, request=None):
                 "• *Nova Venda* - Cadastrar venda no CRM (Via APP ou Sem APP)"
             )
             return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
+
+        # Busca direta por tag do Record Apoia (sem precisar digitar Material/Apoia)
+        if etapa_atual == 'inicial' and mensagem_texto and len(mensagem_texto.strip()) >= 2:
+            try:
+                logger.info(f"[Webhook] Busca direta por tag Record Apoia: \"{mensagem_texto.strip()}\"")
+                resposta_busca = _buscar_record_apoia_por_texto(mensagem_texto.strip(), sessao)
+                if resposta_busca is not None:
+                    return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta_busca))
+            except Exception as e:
+                logger.exception("[Webhook] Erro na busca direta Record Apoia: %s", e)
         
         # === PROCESSAMENTO POR ETAPA ===
         elif etapa_atual == 'fachada_cep':
@@ -6884,185 +7018,29 @@ def processar_webhook_whatsapp(data, request=None):
         
         elif etapa_atual == 'material_buscar':
             try:
-                busca_texto = mensagem_texto.strip()
+                busca_texto = (mensagem_texto or '').strip()
                 if not busca_texto or len(busca_texto) < 2:
                     resposta = "❌ Por favor, digite pelo menos 2 caracteres para buscar:"
-                else:
-                    logger.info(f"[Webhook] Buscando materiais com tag: {busca_texto}")
-                    from crm_app.models import RecordApoia
-                    from django.db.models import Q
-                    import base64
-                    
-                    # Buscar arquivos que contenham a tag na busca (case-insensitive, busca parcial)
-                    arquivos = RecordApoia.objects.filter(
-                        ativo=True
-                    ).filter(
-                        Q(tags__icontains=busca_texto) |
-                        Q(titulo__icontains=busca_texto) |
-                        Q(descricao__icontains=busca_texto) |
-                        Q(categoria__icontains=busca_texto)
-                    ).order_by('-data_upload')[:5]  # Limitar a 5 resultados
-                    
-                    if not arquivos.exists():
-                        resposta = f"❌ *MATERIAL NÃO ENCONTRADO*\n\nNão encontrei materiais com a tag \"{busca_texto}\".\n\nTente buscar com outras palavras-chave."
-                        sessao.etapa = 'inicial'
-                        sessao.dados_temp = {}
-                        sessao.save()
-                    else:
-                        # Se encontrou apenas 1, enviar direto
-                        if arquivos.count() == 1:
-                            arquivo = arquivos.first()
-                            arquivo.downloads_count += 1
-                            arquivo.save(update_fields=['downloads_count'])
-                            
-                            try:
-                                # Ler arquivo do FileField
-                                arquivo_field = arquivo.arquivo
-                                if not arquivo_field or not arquivo_field.name:
-                                    resposta = f"❌ Arquivo \"{arquivo.titulo}\" não encontrado."
-                                    sessao.etapa = 'inicial'
-                                    sessao.dados_temp = {}
-                                    sessao.save()
-                                else:
-                                    arquivo_bytes = None
-                                    arquivo_b64 = None
-                                    try:
-                                        # Usar storage para ler o arquivo (mais seguro)
-                                        from django.core.files.storage import default_storage
-                                        
-                                        if default_storage.exists(arquivo_field.name):
-                                            with default_storage.open(arquivo_field.name, 'rb') as f:
-                                                arquivo_bytes = f.read()
-                                            arquivo_b64 = base64.b64encode(arquivo_bytes).decode('utf-8')
-                                        else:
-                                            # Fallback: tentar abrir diretamente
-                                            arquivo_field.open('rb')
-                                            arquivo_bytes = arquivo_field.read()
-                                            arquivo_field.close()
-                                            arquivo_b64 = base64.b64encode(arquivo_bytes).decode('utf-8')
-                                    except (FileNotFoundError, IOError, OSError) as e:
-                                        logger.error(f"[Webhook] Erro ao ler arquivo {arquivo_field.name}: {e}")
-                                        resposta = f"❌ Erro ao acessar arquivo \"{arquivo.titulo}\": {str(e)}"
-                                        sessao.etapa = 'inicial'
-                                        sessao.dados_temp = {}
-                                        sessao.save()
-                                        arquivo_b64 = None
-                                    
-                                    if arquivo_b64:
-                                        nome_arquivo = arquivo.nome_original
-                                        
-                                        # Preparar mensagem de resposta
-                                        if arquivo.tipo_arquivo == 'IMAGEM':
-                                            resposta = f"✅ *MATERIAL ENCONTRADO*\n\n📷 {arquivo.titulo}\n\nEnviando imagem..."
-                                            # Armazenar dados do arquivo para envio após a mensagem
-                                            sessao.dados_temp = {
-                                                'material_para_envio': {
-                                                    'tipo': 'IMAGEM',
-                                                    'base64': arquivo_b64,
-                                                    'nome': nome_arquivo,
-                                                    'titulo': arquivo.titulo,
-                                                    'descricao': arquivo.descricao
-                                                }
-                                            }
-                                        else:
-                                            # DOCUMENTO: Verificar se é grande e fazer upload para OneDrive se necessário
-                                            tamanho_bytes = len(arquivo_bytes) if arquivo_bytes else (len(arquivo_b64) * 3 // 4)
-                                            tamanho_mb = tamanho_bytes / (1024 * 1024)
-                                            
-                                            pdf_url = None
-                                            usar_url = tamanho_mb > 5  # Usar URL se arquivo > 5MB
-                                            
-                                            if usar_url:
-                                                logger.info(f"[Webhook] Arquivo grande ({tamanho_mb:.2f} MB), fazendo upload para OneDrive...")
-                                                try:
-                                                    from crm_app.onedrive_service import OneDriveUploader
-                                                    from io import BytesIO
-                                                    
-                                                    # Criar objeto file-like do arquivo_bytes
-                                                    file_obj = BytesIO(arquivo_bytes) if arquivo_bytes else BytesIO(base64.b64decode(arquivo_b64))
-                                                    
-                                                    # Fazer upload para OneDrive
-                                                    onedrive = OneDriveUploader()
-                                                    pdf_url = onedrive.upload_file_and_get_download_url(
-                                                        file_obj, 
-                                                        folder_name='WhatsApp_Materiais',
-                                                        filename=nome_arquivo
-                                                    )
-                                                    
-                                                    logger.info(f"[Webhook] ✅ Upload para OneDrive concluído: {pdf_url}")
-                                                    print(f"[Webhook] ✅ Upload OneDrive: {pdf_url}")
-                                                except Exception as e:
-                                                    logger.error(f"[Webhook] ❌ Erro ao fazer upload para OneDrive: {e}")
-                                                    logger.warning(f"[Webhook] ⚠️ Continuando com base64 como fallback")
-                                                    print(f"[Webhook] ❌ Erro OneDrive: {e}, usando base64")
-                                                    pdf_url = None
-                                            
-                                            resposta = f"✅ *MATERIAL ENCONTRADO*\n\n📄 {arquivo.titulo}\nTipo: {arquivo.get_tipo_arquivo_display()}\n\nEnviando arquivo..."
-                                            # Armazenar dados do arquivo para envio após a mensagem
-                                            material_data = {
-                                                'tipo': 'DOCUMENTO',
-                                                'nome': nome_arquivo,
-                                                'titulo': arquivo.titulo,
-                                                'tipo_display': arquivo.get_tipo_arquivo_display()
-                                            }
-                                            
-                                            # Adicionar URL se disponível (preferível), senão base64
-                                            if pdf_url:
-                                                material_data['url'] = pdf_url
-                                                logger.info(f"[Webhook] Material preparado com URL (OneDrive)")
-                                            else:
-                                                material_data['base64'] = arquivo_b64
-                                                logger.info(f"[Webhook] Material preparado com base64")
-                                            
-                                            sessao.dados_temp = {
-                                                'material_para_envio': material_data
-                                            }
-                                        
-                                        sessao.etapa = 'inicial'
-                                        sessao.save()
-                                        
-                                        # Incrementar contador de downloads
-                                        arquivo.downloads_count += 1
-                                        arquivo.save(update_fields=['downloads_count'])
-                            except Exception as e:
-                                logger.error(f"[Webhook] Erro ao enviar arquivo: {e}")
-                                resposta = f"❌ Erro ao processar arquivo: {str(e)}"
-                                sessao.etapa = 'inicial'
-                                sessao.dados_temp = {}
-                                sessao.save()
-                        else:
-                            # Múltiplos resultados - listar para escolher
-                            # Converter QuerySet para lista ANTES de usar
-                            arquivos_lista = list(arquivos)
-                            arquivos_ids_lista = [arq.id for arq in arquivos_lista]
-                            
-                            resposta_parts = [f"📚 *MATERIAIS ENCONTRADOS* para \"{busca_texto}\":\n"]
-                            for idx, arq in enumerate(arquivos_lista, 1):
-                                resposta_parts.append(f"{idx}. {arq.titulo} ({arq.get_tipo_arquivo_display()})")
-                                if arq.descricao:
-                                    desc_curta = arq.descricao[:50] + "..." if len(arq.descricao) > 50 else arq.descricao
-                                    resposta_parts.append(f"   {desc_curta}")
-                            
-                            resposta_parts.append(f"\n📋 Digite o *NÚMERO* do material desejado (1 a {len(arquivos_lista)}):")
-                            resposta = "\n".join(resposta_parts)
-                            
-                            # Salvar arquivos na sessão usando save() com update_fields
-                            sessao.etapa = 'material_selecionar'
-                            sessao.dados_temp = {
-                                'busca': busca_texto,
-                                'arquivos_ids': arquivos_ids_lista
-                            }
-                            sessao.save(update_fields=['etapa', 'dados_temp'])
-                            logger.info(f"[Webhook] Salvos {len(arquivos_ids_lista)} IDs de arquivos na sessão: {arquivos_ids_lista}")
-                            logger.info(f"[Webhook] Sessão salva - etapa: {sessao.etapa}, dados_temp: {sessao.dados_temp}")
+                    return _enviar_resposta_e_retornar(resposta)
+                logger.info(f"[Webhook] Buscando materiais com tag: {busca_texto}")
+                resposta = _buscar_record_apoia_por_texto(busca_texto, sessao)
+                if resposta is None:
+                    resposta = (
+                        f"❌ *MATERIAL NÃO ENCONTRADO*\n\n"
+                        f"Não encontrei materiais com a tag \"{busca_texto}\".\n\n"
+                        "Tente buscar com outras palavras-chave."
+                    )
+                    sessao.etapa = 'inicial'
+                    sessao.dados_temp = {}
+                    sessao.save()
+                return _enviar_resposta_e_retornar(resposta)
             except Exception as e:
-                logger.error(f"[Webhook] Erro ao buscar material: {e}")
-                import traceback
-                traceback.print_exc()
+                logger.exception("[Webhook] Erro ao buscar material: %s", e)
                 resposta = f"❌ Erro ao buscar material: {str(e)}"
                 sessao.etapa = 'inicial'
                 sessao.dados_temp = {}
                 sessao.save()
+                return _enviar_resposta_e_retornar(resposta)
         
         elif etapa_atual == 'material_selecionar':
             try:
@@ -7361,7 +7339,11 @@ def processar_webhook_whatsapp(data, request=None):
         
         else:
             # Menu só aparece quando o usuário pede (MENU/AJUDA). Mensagem não reconhecida não gera resposta.
-            resposta = None
+            # Exceção: SIM em etapa inicial (sem confirmação pendente) → responder para não deixar usuário sem retorno
+            if etapa_atual == 'inicial' and mensagem_limpa in ['SIM', 'S']:
+                resposta = "Não há confirmação pendente no momento. Digite *MENU* para ver as opções."
+            else:
+                resposta = None
             sessao.etapa = 'inicial'
             sessao.dados_temp = {}
             sessao.save()
