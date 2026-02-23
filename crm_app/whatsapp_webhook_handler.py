@@ -5553,14 +5553,21 @@ def processar_webhook_whatsapp(data, request=None):
 
         # Comando INCLUSÃO (solicitar viabilidade via formulário) — exige autorização por usuário
         if mensagem_limpa in ['INCLUSAO', 'INCLUSÃO', 'INCLUSAO']:
-            usuario_whatsapp = _buscar_usuario_por_telefone(telefone_formatado)
-            if not getattr(usuario_whatsapp, 'autorizar_inclusao_wpp', False):
-                resposta = (
-                    "❌ *ACESSO NEGADO*\n\n"
-                    "Você não está autorizado a usar Inclusão/Viabilidade pelo WhatsApp.\n"
-                    "Solicite que marquem a opção 'Autorizar Inclusão/Viabilidade pelo Wpp' no seu cadastro."
-                )
-                return _enviar_resposta_e_retornar(resposta)
+            try:
+                usuario_whatsapp = _buscar_usuario_por_telefone(telefone_formatado)
+                if not getattr(usuario_whatsapp, 'autorizar_inclusao_wpp', False):
+                    resposta = (
+                        "❌ *ACESSO NEGADO*\n\n"
+                        "Você não está autorizado a usar Inclusão/Viabilidade pelo WhatsApp.\n"
+                        "Solicite que marquem a opção 'Autorizar Inclusão/Viabilidade pelo Wpp' no seu cadastro."
+                    )
+                    return _enviar_resposta_e_retornar(resposta)
+            except Exception as e:
+                # Coluna autorizar_inclusao_wpp pode não existir se a migration ainda não foi aplicada
+                if 'autorizar_inclusao_wpp' in str(e):
+                    logger.warning("[Webhook] Erro ao verificar autorizar_inclusao_wpp (migration pendente?): %s", e)
+                else:
+                    raise
             logger.info(f"[Webhook] Comando INCLUSÃO reconhecido!")
             sessao.etapa = 'inclusao_cep'
             sessao.dados_temp = {}

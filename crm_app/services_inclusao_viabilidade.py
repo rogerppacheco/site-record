@@ -554,6 +554,8 @@ def _upload_arquivos_viabilidade(page, arquivos_paths: list) -> bool:
                 return True
         except Exception:
             pass
+    except Exception:
+        pass
     return False
 
 
