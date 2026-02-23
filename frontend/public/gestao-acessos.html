@@ -123,6 +123,7 @@
                                     <div class="form-check form-switch mb-3 p-3 rounded bg-light border"><input class="form-check-input" type="checkbox" id="autorizar_venda_sem_auditoria"><label class="form-check-label fw-bold" for="autorizar_venda_sem_auditoria">Autorizar venda sem auditoria?</label></div>
                                     <div class="form-check form-switch mb-3 p-3 rounded bg-light border"><input class="form-check-input" type="checkbox" id="autorizar_venda_automatica"><label class="form-check-label fw-bold" for="autorizar_venda_automatica">Autorizar venda Automática</label></div>
                                     <div class="form-check form-switch mb-3 p-3 rounded bg-light border"><input class="form-check-input" type="checkbox" id="autorizar_analise_credito_wpp"><label class="form-check-label fw-bold" for="autorizar_analise_credito_wpp">Análise de crédito pelo WhatsApp</label></div>
+                                    <div class="form-check form-switch mb-3 p-3 rounded bg-light border"><input class="form-check-input" type="checkbox" id="autorizar_inclusao_wpp"><label class="form-check-label fw-bold" for="autorizar_inclusao_wpp">Inclusão/Viabilidade pelo WhatsApp</label></div>
                                     <div class="form-check form-switch mb-3 p-3 rounded bg-light border"><input class="form-check-input" type="checkbox" id="login_pap_disponivel_para_automacao"><label class="form-check-label fw-bold" for="login_pap_disponivel_para_automacao">Login PAP para o bot</label></div>
                                 </div>
                             </div>
@@ -397,6 +398,7 @@
                 document.getElementById('autorizar_venda_sem_auditoria').checked = user.autorizar_venda_sem_auditoria || false;
                 document.getElementById('autorizar_venda_automatica').checked = user.autorizar_venda_automatica || false;
                 document.getElementById('autorizar_analise_credito_wpp').checked = user.autorizar_analise_credito_wpp || false;
+                document.getElementById('autorizar_inclusao_wpp').checked = user.autorizar_inclusao_wpp || false;
                 document.getElementById('login_pap_disponivel_para_automacao').checked = user.login_pap_disponivel_para_automacao !== false;
                 document.getElementById('matricula_pap').value = user.matricula_pap || '';
                 ['valor_almoco','valor_passagem','chave_pix','nome_da_conta','meta_comissao','desconto_boleto','desconto_inclusao_viabilidade','desconto_instalacao_antecipada','adiantamento_cnpj','desconto_inss_fixo'].forEach(id => { document.getElementById(id).value = user[id] || ''; });
@@ -448,6 +450,7 @@
                 autorizar_venda_sem_auditoria: document.getElementById('autorizar_venda_sem_auditoria').checked,
                 autorizar_venda_automatica: document.getElementById('autorizar_venda_automatica').checked,
                 autorizar_analise_credito_wpp: document.getElementById('autorizar_analise_credito_wpp').checked,
+                autorizar_inclusao_wpp: document.getElementById('autorizar_inclusao_wpp').checked,
                 login_pap_disponivel_para_automacao: document.getElementById('login_pap_disponivel_para_automacao').checked,
                 matricula_pap: clean(document.getElementById('matricula_pap').value)
             };

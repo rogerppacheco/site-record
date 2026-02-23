@@ -126,6 +126,11 @@ class Usuario(AbstractUser):
         verbose_name="Autorizar fazer análise de crédito pelo Wpp",
         help_text="Se marcado, o usuário pode consultar análise de crédito pelo WhatsApp (palavra-chave CRÉDITO)."
     )
+    autorizar_inclusao_wpp = models.BooleanField(
+        default=False,
+        verbose_name="Autorizar Inclusão/Viabilidade pelo Wpp",
+        help_text="Se marcado, o usuário pode usar o comando INCLUSÃO pelo WhatsApp (solicitar viabilidade via formulário)."
+    )
     login_pap_disponivel_para_automacao = models.BooleanField(
         default=True,
         verbose_name="Disponibilizar login PAP para o bot (WhatsApp)",

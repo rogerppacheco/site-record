@@ -5551,8 +5551,16 @@ def processar_webhook_whatsapp(data, request=None):
                         "(Digite *CANCELAR* para sair)")
             return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
 
-        # Comando INCLUSÃO (solicitar viabilidade via formulário)
+        # Comando INCLUSÃO (solicitar viabilidade via formulário) — exige autorização por usuário
         if mensagem_limpa in ['INCLUSAO', 'INCLUSÃO', 'INCLUSAO']:
+            usuario_whatsapp = _buscar_usuario_por_telefone(telefone_formatado)
+            if not getattr(usuario_whatsapp, 'autorizar_inclusao_wpp', False):
+                resposta = (
+                    "❌ *ACESSO NEGADO*\n\n"
+                    "Você não está autorizado a usar Inclusão/Viabilidade pelo WhatsApp.\n"
+                    "Solicite que marquem a opção 'Autorizar Inclusão/Viabilidade pelo Wpp' no seu cadastro."
+                )
+                return _enviar_resposta_e_retornar(resposta)
             logger.info(f"[Webhook] Comando INCLUSÃO reconhecido!")
             sessao.etapa = 'inclusao_cep'
             sessao.dados_temp = {}
@@ -6233,15 +6241,23 @@ def processar_webhook_whatsapp(data, request=None):
 
             elif etapa_atual == 'inclusao_enviando':
                 return _enviar_resposta_e_retornar("⏳ Enviando solicitação de viabilidade... Aguarde.")
-            elif etapa_atual == 'inclusao_observacoes':
-                # Lock por telefone: evita duas abas abertas (webhook duplicado / retry)
+            elif etapa_atual == 'inclusao_confirmar':
+                if mensagem_limpa in ['CANCELAR', 'NAO', 'NÃO', 'DESISTIR']:
+                    sessao.etapa = 'inicial'
+                    sessao.dados_temp = {}
+                    sessao.save()
+                    resposta = "Envio cancelado. Digite *MENU* para ver as opções."
+                    return _enviar_resposta_e_retornar(resposta)
+                if mensagem_limpa not in ['SIM', 'S', 'CONFIRMAR', 'ENVIAR']:
+                    resposta = ("⚠️ Para enviar, confirme que as informações e anexos são verdadeiros.\n\n"
+                                "Digite *SIM* para enviar ou *CANCELAR* para desistir.")
+                    return _enviar_resposta_e_retornar(resposta)
                 with _inclusao_form_lock:
                     if telefone_formatado in _inclusao_form_em_execucao:
                         return _enviar_resposta_e_retornar("⏳ Enviando solicitação de viabilidade... Aguarde.")
                     _inclusao_form_em_execucao.add(telefone_formatado)
                 try:
-                    obs = mensagem_texto.strip() if mensagem_texto else ''
-                    dados_finais = {**dados_temp, 'observacoes': obs}
+                    dados_finais = {**dados_temp, 'observacoes': dados_temp.get('observacoes', '')}
                     foto_path = dados_temp.get('foto_path')
                     comprovantes = dados_temp.get('comprovantes_paths') or []
                     arquivos_paths = [foto_path] + comprovantes if foto_path else list(comprovantes)
@@ -6263,6 +6279,19 @@ def processar_webhook_whatsapp(data, request=None):
                 finally:
                     with _inclusao_form_lock:
                         _inclusao_form_em_execucao.discard(telefone_formatado)
+            elif etapa_atual == 'inclusao_observacoes':
+                obs = mensagem_texto.strip() if mensagem_texto else ''
+                sessao.dados_temp = {**dados_temp, 'observacoes': obs}
+                sessao.etapa = 'inclusao_confirmar'
+                sessao.save()
+                resposta = (
+                    "⚠️ *Confirmação antes de enviar*\n\n"
+                    "Confirme que você *não* está tentando criar um complemento ou fachada que não existe "
+                    "para recompra, ou anexar fotos/comprovante que não sejam verdadeiros, ou algo que possa "
+                    "prejudicar a Record como parceiro Nio.\n\n"
+                    "Digite *SIM* para enviar ou *CANCELAR* para desistir."
+                )
+                return _enviar_resposta_e_retornar(resposta)
         
         elif etapa_atual == 'status_tipo':
             if mensagem_limpa in ['1', 'CPF']:

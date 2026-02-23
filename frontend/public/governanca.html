@@ -510,6 +510,11 @@
                                             <small class="text-muted d-block ms-4 mt-1">Permite consultar análise de crédito pelo WhatsApp (palavra-chave CRÉDITO).</small>
                                         </div>
                                         <div class="form-check form-switch mb-3 p-3 rounded bg-light border">
+                                            <input class="form-check-input" type="checkbox" id="autorizar_inclusao_wpp">
+                                            <label class="form-check-label fw-bold" for="autorizar_inclusao_wpp">Autorizar Inclusão/Viabilidade pelo Wpp</label>
+                                            <small class="text-muted d-block ms-4 mt-1">Permite usar o comando INCLUSÃO pelo WhatsApp (solicitar viabilidade via formulário).</small>
+                                        </div>
+                                        <div class="form-check form-switch mb-3 p-3 rounded bg-light border">
                                             <input class="form-check-input" type="checkbox" id="login_pap_disponivel_para_automacao">
                                             <label class="form-check-label fw-bold" for="login_pap_disponivel_para_automacao">Disponibilizar login PAP para o bot (WhatsApp)</label>
                                             <small class="text-muted d-block ms-4 mt-1">Se desmarcado, o bot não usará este login no pool. Use quando o BO estiver atuando no PAP para não disputar o mesmo login.</small>
@@ -1797,6 +1802,7 @@
             document.getElementById('autorizar_venda_sem_auditoria').checked = user.autorizar_venda_sem_auditoria || false;
             document.getElementById('autorizar_venda_automatica').checked = user.autorizar_venda_automatica || false;
             document.getElementById('autorizar_analise_credito_wpp').checked = user.autorizar_analise_credito_wpp || false;
+            document.getElementById('autorizar_inclusao_wpp').checked = user.autorizar_inclusao_wpp || false;
             document.getElementById('login_pap_disponivel_para_automacao').checked = user.login_pap_disponivel_para_automacao !== false;
             document.getElementById('pode_gestao_acessos').checked = user.pode_gestao_acessos || false;
             document.getElementById('matricula_pap').value = user.matricula_pap || '';
@@ -1952,6 +1958,7 @@
             autorizar_venda_sem_auditoria: document.getElementById('autorizar_venda_sem_auditoria').checked,
             autorizar_venda_automatica: document.getElementById('autorizar_venda_automatica').checked,
             autorizar_analise_credito_wpp: document.getElementById('autorizar_analise_credito_wpp').checked,
+            autorizar_inclusao_wpp: document.getElementById('autorizar_inclusao_wpp').checked,
             login_pap_disponivel_para_automacao: document.getElementById('login_pap_disponivel_para_automacao').checked,
             pode_gestao_acessos: document.getElementById('pode_gestao_acessos').checked
         };

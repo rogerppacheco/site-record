@@ -364,21 +364,24 @@ TEXTAREAS_FORM = 'textarea:not([name="g-recaptcha-response"])'
 CONTENTEDITABLE_FORM = 'div[contenteditable="true"], [role="textbox"]'
 
 
-def _selecionar_dropdown(page, valor: str, nth_escolher: int = 0) -> bool:
-    """Abre o dropdown (Escolher ou Selecione) e seleciona valor. Retorna True se OK."""
+def _selecionar_dropdown(page, valor: str, nth_dropdown: int = 0) -> bool:
+    """
+    Abre o dropdown pelo índice (0=Executivo, 1=Empresa, 2=UF) e seleciona valor.
+    Google Forms: trigger pode ser div[role="option"] com span "Escolher" ou span.vRMGwf.oJeWuf.
+    """
     try:
-        # Fechar qualquer overlay/dropdown aberto que possa interceptar cliques
         page.keyboard.press('Escape')
         page.wait_for_timeout(300)
         page.keyboard.press('Escape')
         page.wait_for_timeout(200)
-        # Opção direta: se o dropdown já estiver aberto, clicar na opção
+
+        # Se o dropdown já estiver aberto, clicar na opção
         for sel in [
             f'div[role="option"][data-value="{valor}"]',
             f'div[role="option"][data-value="{valor.upper()}"]',
             f'div[role="option"][data-value="{valor.lower()}"]',
-            f'span.vRMGwf.oJeWuf:has-text("{valor}")',
             f'div[role="option"]:has(span:has-text("{valor}"))',
+            f'span.vRMGwf.oJeWuf:has-text("{valor}")',
         ]:
             opt = page.locator(sel).first
             if opt.count() > 0:
@@ -388,22 +391,34 @@ def _selecionar_dropdown(page, valor: str, nth_escolher: int = 0) -> bool:
                     return True
                 except Exception:
                     pass
-        # Abrir dropdown: clicar no trigger (Escolher OU Selecione - Google Forms pt-BR)
-        dd = page.locator('span.vRMGwf.oJeWuf').filter(has_text='Escolher')
-        if dd.count() == 0:
-            dd = page.get_by_text('Escolher', exact=True)
-        if dd.count() == 0:
-            # Form pode usar "Selecione" em vez de "Escolher"
-            dd = page.locator('span.vRMGwf.oJeWuf').filter(has_text=re.compile(r'Selecione|Escolher', re.I))
-        if dd.count() == 0:
-            dd = page.locator('span').filter(has_text=re.compile(r'Selecione', re.I))
-        if dd.count() > nth_escolher:
-            dd = dd.nth(nth_escolher)
+
+        # Abrir dropdown: tentar container div[role="option"] que contém "Escolher" (estado fechado)
+        trigger = page.locator('div[role="option"]').filter(has=page.locator('span:has-text("Escolher")'))
+        if trigger.count() > nth_dropdown:
+            tr = trigger.nth(nth_dropdown)
+            tr.scroll_into_view_if_needed()
+            page.wait_for_timeout(300)
+            tr.click(force=True, timeout=5000)
+            page.wait_for_timeout(1200)
+        else:
+            # Fallback: span "Escolher" (ordem: 0=Executivo, 1=Empresa, 2=UF)
+            dd = page.locator('span.vRMGwf.oJeWuf').filter(has_text='Escolher')
+            if dd.count() == 0:
+                dd = page.get_by_text('Escolher', exact=True)
+            if dd.count() == 0:
+                dd = page.locator('span.vRMGwf.oJeWuf').filter(has_text=re.compile(r'Selecione|Escolher', re.I))
+            if dd.count() == 0:
+                dd = page.locator('span').filter(has_text=re.compile(r'Selecione', re.I))
+            if dd.count() <= nth_dropdown:
+                _log_step("Dropdown", f"Trigger não encontrado (nth={nth_dropdown})", ok=False)
+                return False
+            dd = dd.nth(nth_dropdown)
             dd.scroll_into_view_if_needed()
             page.wait_for_timeout(300)
             dd.click(force=True, timeout=5000)
             page.wait_for_timeout(1200)
-        # Selecionar a opção - múltiplos seletores (Google Forms pode usar data-value ou span interno)
+
+        # Selecionar a opção no menu aberto
         for sel in [
             f'div[role="option"][data-value="{valor}"]',
             f'div[role="option"][data-value="{valor.upper()}"]',
@@ -417,7 +432,6 @@ def _selecionar_dropdown(page, valor: str, nth_escolher: int = 0) -> bool:
                 page.wait_for_timeout(300)
                 opt.click(force=True, timeout=5000)
                 return True
-        # Fallback: clique por texto exato
         opt = page.get_by_text(valor, exact=True).first
         if opt.count() > 0:
             opt.scroll_into_view_if_needed()
@@ -425,7 +439,7 @@ def _selecionar_dropdown(page, valor: str, nth_escolher: int = 0) -> bool:
             opt.click(force=True, timeout=5000)
             return True
     except Exception as e:
-        logger.warning(f"[Inclusão] Dropdown '{valor}' erro: {e}")
+        logger.warning(f"[Inclusão] Dropdown '{valor}' (nth={nth_dropdown}) erro: {e}")
     return False
 
 
@@ -505,18 +519,41 @@ def _upload_arquivos_viabilidade(page, arquivos_paths: list) -> bool:
         except Exception:
             pass
         page.wait_for_timeout(2500)
-        picker_frame = page.frame_locator('iframe[src*="docs.google.com/picker"]')
-        btn_procurar = picker_frame.locator('[jsname="V67aGc"], span:has-text("Procurar"), button:has-text("Procurar")').first
-        btn_procurar.wait_for(state='visible', timeout=8000)
-        with page.expect_file_chooser(timeout=12000) as fc_info:
-            btn_procurar.click(force=True)
-        fc = fc_info.value
-        fc.set_files(paths_abs)
-        _log_step("16-Foto", f"OK (FileChooser via Procurar, {len(paths_abs)} arquivo(s))")
-        page.wait_for_timeout(2000)
-        return True
-    except Exception as e2:
-        _log_step("16-Foto", f"Procurar (iframe): {e2}", ok=False)
+        # Modal Google Picker (iframe): botão "Procurar" pode ter jsname="V67aGc" ou classe UywwFc-vQzf8d
+        try:
+            picker_frame = page.frame_locator('iframe[src*="docs.google.com/picker"]')
+            for sel in [
+                '[jsname="V67aGc"]',
+                'span.UywwFc-vQzf8d:has-text("Procurar")',
+                'span:has-text("Procurar")',
+                'button:has-text("Procurar")',
+                '[role="button"]:has-text("Procurar")',
+            ]:
+                btn_procurar = picker_frame.locator(sel).first
+                if btn_procurar.count() > 0:
+                    btn_procurar.wait_for(state='visible', timeout=5000)
+                    with page.expect_file_chooser(timeout=12000) as fc_info:
+                        btn_procurar.click(force=True)
+                    fc = fc_info.value
+                    fc.set_files(paths_abs)
+                    _log_step("16-Foto", f"OK (FileChooser via Procurar, {len(paths_abs)} arquivo(s))")
+                    page.wait_for_timeout(2000)
+                    return True
+        except Exception as e_iframe:
+            _log_step("16-Foto", f"Procurar (iframe): {e_iframe}", ok=False)
+        # Última tentativa: Procurar na página principal (se o picker não estiver em iframe)
+        try:
+            btn_main = page.locator('[jsname="V67aGc"], span.UywwFc-vQzf8d:has-text("Procurar"), span:has-text("Procurar")').first
+            if btn_main.count() > 0:
+                btn_main.wait_for(state='visible', timeout=3000)
+                with page.expect_file_chooser(timeout=10000) as fc_info:
+                    btn_main.click(force=True)
+                fc_info.value.set_files(paths_abs)
+                _log_step("16-Foto", f"OK (Procurar página principal, {len(paths_abs)} arquivo(s))")
+                page.wait_for_timeout(2000)
+                return True
+        except Exception:
+            pass
     return False
 
 
@@ -666,9 +703,9 @@ def preencher_formulario_inclusao(
                     raise
             page.wait_for_timeout(200)
 
-            # 2. Executivo - dropdown
+            # 2. Executivo - dropdown (índice 0)
             _log_step("2-Executivo", "")
-            ok_dd = _selecionar_dropdown(page, EXECUTIVO)
+            ok_dd = _selecionar_dropdown(page, EXECUTIVO, nth_dropdown=0)
             _log_step("2-Executivo", "OK" if ok_dd else "FALHOU", ok=ok_dd)
             page.wait_for_timeout(500)
 
@@ -686,16 +723,16 @@ def preencher_formulario_inclusao(
                 raise
             page.wait_for_timeout(200)
 
-            # 5. Empresa - dropdown (1º Selecione restante após Executivo)
+            # 5. Empresa - dropdown (índice 1)
             _log_step("5-Empresa", "")
-            _selecionar_dropdown(page, EMPRESA_VENDAS, nth_escolher=0)
+            _selecionar_dropdown(page, EMPRESA_VENDAS, nth_dropdown=1)
             page.wait_for_timeout(500)
 
-            # 6. UF - dropdown (ViaCEP retorna sigla "MG", form usa "Minas Gerais")
+            # 6. UF - dropdown (índice 2; ViaCEP retorna sigla "MG", form usa "Minas Gerais")
             if uf:
                 uf_form = UF_SIGLA_PARA_NOME.get(uf.upper(), uf)
                 _log_step("6-UF", f"{uf} -> {uf_form}")
-                _selecionar_dropdown(page, uf_form, nth_escolher=1)
+                _selecionar_dropdown(page, uf_form, nth_dropdown=2)
                 page.wait_for_timeout(500)
 
             # 7. CEP
