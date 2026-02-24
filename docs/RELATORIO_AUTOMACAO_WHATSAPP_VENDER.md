@@ -160,7 +160,15 @@ A classe `PAPNioAutomation` em `services_pap_nio.py` implementa:
 
 ---
 
-## 6. Cadastro no CRM
+## 6. Tempo de Sessão e Prorrogação
+
+- **Timeout:** Se o usuário ficar **10 minutos** sem enviar nenhuma mensagem (nem dado nem comando), a sessão é encerrada e a mensagem "Sessão expirada. Digite *VENDER* para iniciar novamente." é exibida.
+- **Comando ESTENDER:** Durante o fluxo de venda, o vendedor pode digitar **ESTENDER** a qualquer momento para prorrogar o tempo em **5 minutos**. Há um limite de **3 prorrogações** por sessão (após isso, "Limite de prorrogações atingido").
+- **Por que "Sessão expirada" aparece?** (1) 10 min sem comando; (2) o site PAP deslogou e a automação encerrou; (3) a requisição caiu em outro servidor/réplica (o contexto da automação fica em memória por processo). Quando há dados já preenchidos (CEP, CPF, etc.), o sistema salva o estado e oferece *REPETIR* (tentar a última etapa de novo) ou *VENDER* (começar do zero).
+
+---
+
+## 7. Cadastro no CRM
 
 Após sucesso no PAP, `_cadastrar_venda_crm()`:
 
@@ -171,7 +179,7 @@ Após sucesso no PAP, `_cadastrar_venda_crm()`:
 
 ---
 
-## 7. Problemas Identificados (para correção nos testes)
+## 8. Problemas Identificados (para correção nos testes)
 
 ### 7.1 Crítico: Bug na etapa venda_confirmar_matricula
 
@@ -217,7 +225,7 @@ A função `_verificar_biometria_venda` usa `dados.get('automacao_instancia')`, 
 
 ---
 
-## 8. Sugestão de Ordem para Testes
+## 9. Sugestão de Ordem para Testes
 
 1. **Teste 1 – Pré-requisitos**  
    Verificar usuário com `tel_whatsapp`, `autorizar_venda_sem_auditoria`, `matricula_pap` e `senha_pap`.
@@ -251,7 +259,7 @@ A função `_verificar_biometria_venda` usa `dados.get('automacao_instancia')`, 
 
 ---
 
-## 9. Comandos de Cancelamento
+## 10. Comandos de Cancelamento
 
 Em qualquer etapa de venda, o usuário pode digitar:
 
@@ -263,7 +271,7 @@ Isso reseta a sessão para `inicial` e limpa `dados_temp`.
 
 ---
 
-## 10. Planos e Valores (configurados no fluxo)
+## 11. Planos e Valores (configurados no fluxo)
 
 | Código | Plano | Valor |
 |--------|-------|-------|
@@ -273,7 +281,7 @@ Isso reseta a sessão para `inicial` e limpa `dados_temp`.
 
 ---
 
-## 11. Dependências Técnicas
+## 12. Dependências Técnicas
 
 - **Playwright** (Chromium) – automação do PAP
 - **Django** – models, sessões

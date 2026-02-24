@@ -33,6 +33,12 @@ _automacoes_lock = threading.Lock()
 _pap_worker_queues = {}  # sessao_id -> queue.Queue()
 _pap_worker_lock = threading.Lock()
 
+# Timeout da sessão VENDER: sem comando do usuário por este tempo (segundos), a sessão encerra.
+SESSION_TIMEOUT_SECONDS = 600  # 10 min
+# Prorrogação: cada ESTENDER adiciona mais este tempo (minutos) e há um limite de prorrogações.
+EXTEND_SESSION_MINUTES = 5
+MAX_EXTEND_SESSION_COUNT = 3  # no máximo 3 prorrogações (ex.: +5 min cada = até 10+15 = 25 min extra)
+
 # Evita enviar a lista de faturas duas vezes quando o webhook é disparado em duplicidade (ex.: Z-API/WhatsApp).
 _fatura_cpf_lock = threading.Lock()
 
@@ -1951,6 +1957,26 @@ def _marcar_sessao_erro_retry(sessao, dados: dict, etapa_erro: str, ultimo_cmd_e
     )
 
 
+def _mensagem_sessao_expirada(sessao, dados: dict, etapa_atual: str, ultimo_cmd_erro: dict = None) -> str:
+    """
+    Usado quando ctx = _automacoes_pap_ativas.get(sessao.id) é None (sessão expirada).
+    Possíveis causas: (1) timeout 10 min sem comando, (2) site PAP deslogou e a thread encerrou,
+    (3) requisição caiu em outra réplica (contexto é em memória por processo).
+    Se houver dados salvos (dados_temp com CEP/CPF/etc.), marca para retry e oferece REPETIR.
+    """
+    logger.warning(
+        "[VENDER] Sessão expirada: sessao_id=%s etapa=%s has_dados=%s (ctx ausente: timeout, PAP deslogou ou outra réplica)",
+        sessao.id, etapa_atual, bool(dados),
+    )
+    if dados and (dados.get('cep') or dados.get('cpf_cliente') or dados.get('celular')):
+        # Salvar estado para permitir REPETIR quando o contexto existir (ex.: mesma réplica)
+        return _marcar_sessao_erro_retry(sessao, dados, etapa_atual, ultimo_cmd_erro or {'action': etapa_atual})
+    sessao.etapa = 'inicial'
+    sessao.dados_temp = {}
+    sessao.save()
+    return "❌ Sessão expirada. Digite *VENDER* para iniciar novamente."
+
+
 def _formatar_streaming_resumo(dados: dict) -> str:
     """Retorna texto do streaming para o resumo: Não ou lista de opções com preços."""
     if not dados.get('tem_streaming'):
@@ -2094,6 +2120,26 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
         sessao.dados_temp = {}
         sessao.save()
         return "❌ Venda cancelada. Digite *VENDER* para iniciar novamente."
+
+    # Comando ESTENDER: prorroga o tempo da sessão (evita encerrar por inatividade)
+    if mensagem_limpa == 'ESTENDER' and etapa and etapa.startswith('venda_') and etapa != 'venda_erro_retry':
+        with _automacoes_lock:
+            ctx = _automacoes_pap_ativas.get(sessao.id)
+        if ctx:
+            q = ctx.get('cmd_queue')
+            if q:
+                try:
+                    q.put({'action': 'ESTENDER'})
+                    ext = ctx.get('extension_count', 0)
+                    restantes = max(0, MAX_EXTEND_SESSION_COUNT - ext - 1)
+                    return (
+                        "⏱ Sua solicitação de *prorrogação* foi enviada. "
+                        "Em alguns segundos você receberá a confirmação."
+                        + (f" (Você pode prorrogar mais %d vez(es).)" % restantes if restantes > 0 else "")
+                    )
+                except Exception:
+                    pass
+        return "⚠️ Não foi possível prorrogar agora. Continue digitando os dados ou digite *VENDER* para iniciar novamente."
     
     # Comando REPETIR: reenviar último comando ao worker (após erro, dados já salvos)
     if etapa == 'venda_erro_retry':
@@ -2165,11 +2211,54 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
             from crm_app.pool_bo_pap import liberar_bo
             while True:
                 try:
-                    cmd = cmd_queue.get(timeout=600)  # 10 min sem comando = encerra
+                    with _automacoes_lock:
+                        ctx = _automacoes_pap_ativas.get(sessao_id)
+                    if not ctx:
+                        break
+                    now_ts = time.monotonic()
+                    deadline = ctx.get('session_deadline')
+                    if deadline is None:
+                        deadline = now_ts + SESSION_TIMEOUT_SECONDS
+                        with _automacoes_lock:
+                            if sessao_id in _automacoes_pap_ativas:
+                                _automacoes_pap_ativas[sessao_id]['session_deadline'] = deadline
+                    remaining = max(0, deadline - now_ts)
+                    if remaining <= 0:
+                        logger.info("[VENDER] Sessão encerrada por tempo (10 min sem comando ou limite de prorrogação)")
+                        break
+                    cmd = cmd_queue.get(timeout=min(60, remaining))
                 except queue.Empty:
-                    break
+                    continue
                 if cmd.get('action') == 'STOP':
                     break
+                if cmd.get('action') == 'ESTENDER':
+                    with _automacoes_lock:
+                        ctx = _automacoes_pap_ativas.get(sessao_id)
+                    if not ctx:
+                        break
+                    ext = ctx.get('extension_count', 0)
+                    if ext >= MAX_EXTEND_SESSION_COUNT:
+                        def _msg_limite():
+                            WhatsAppService().enviar_mensagem_texto(
+                                telefone,
+                                "⚠️ Limite de prorrogações atingido (máx. %d). Continue o atendimento ou digite *CANCELAR*."
+                                % MAX_EXTEND_SESSION_COUNT,
+                            )
+                        _executar_ops_django_sync(_msg_limite)
+                    else:
+                        with _automacoes_lock:
+                            if sessao_id in _automacoes_pap_ativas:
+                                _automacoes_pap_ativas[sessao_id]['extension_count'] = ext + 1
+                                _automacoes_pap_ativas[sessao_id]['session_deadline'] = time.monotonic() + (EXTEND_SESSION_MINUTES * 60)
+                        restantes = MAX_EXTEND_SESSION_COUNT - ext - 1
+                        def _msg_ok():
+                            WhatsAppService().enviar_mensagem_texto(
+                                telefone,
+                                "⏱ Tempo *estendido* em mais %d min. Você pode prorrogar mais %d vez(es)."
+                                % (EXTEND_SESSION_MINUTES, restantes),
+                            )
+                        _executar_ops_django_sync(_msg_ok)
+                    continue
                 try:
                     with _automacoes_lock:
                         ctx = _automacoes_pap_ativas.get(sessao_id)
@@ -2846,6 +2935,8 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                             'vendedor_id': dados_t.get('vendedor_id'), 'vendedor_matricula': vendedor_matricula,
                             'vendedor_nome': dados_t.get('vendedor_nome', ''),
                             'cmd_queue': cmd_queue,
+                            'session_deadline': time.monotonic() + SESSION_TIMEOUT_SECONDS,
+                            'extension_count': 0,
                         }
                     # Save + enviar mensagem em thread sem event loop (evita SynchronousOnlyOperation)
                     _notify_t0 = webhook_t0 if webhook_t0 is not None else time.monotonic()
@@ -2868,7 +2959,8 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                             msg = (
                                 saudacao
                                 + "📍 *ETAPA 1: ENDEREÇO*\n\n"
-                                + "Digite o *CEP* do endereço de instalação:\n\n"
+                                + "Digite o *CEP* do endereço de instalação.\n"
+                                + "(Se precisar de mais tempo, digite *ESTENDER* para prorrogar.)\n\n"
                                 + "⏱ _%.1fs_" % round(elapsed, 1)
                             )
                             WhatsAppService().enviar_mensagem_texto(telefone, msg)
@@ -3041,11 +3133,54 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
             from crm_app.pool_bo_pap import liberar_bo
             while True:
                 try:
-                    cmd = cmd_queue.get(timeout=600)  # 10 min sem comando = encerra
+                    with _automacoes_lock:
+                        ctx = _automacoes_pap_ativas.get(sessao_id)
+                    if not ctx:
+                        break
+                    now_ts = time.monotonic()
+                    deadline = ctx.get('session_deadline')
+                    if deadline is None:
+                        deadline = now_ts + SESSION_TIMEOUT_SECONDS
+                        with _automacoes_lock:
+                            if sessao_id in _automacoes_pap_ativas:
+                                _automacoes_pap_ativas[sessao_id]['session_deadline'] = deadline
+                    remaining = max(0, deadline - now_ts)
+                    if remaining <= 0:
+                        logger.info("[VENDER] Sessão encerrada por tempo (10 min sem comando ou limite de prorrogação)")
+                        break
+                    cmd = cmd_queue.get(timeout=min(60, remaining))
                 except queue.Empty:
-                    break
+                    continue
                 if cmd.get('action') == 'STOP':
                     break
+                if cmd.get('action') == 'ESTENDER':
+                    with _automacoes_lock:
+                        ctx = _automacoes_pap_ativas.get(sessao_id)
+                    if not ctx:
+                        break
+                    ext = ctx.get('extension_count', 0)
+                    if ext >= MAX_EXTEND_SESSION_COUNT:
+                        def _msg_limite():
+                            WhatsAppService().enviar_mensagem_texto(
+                                telefone,
+                                "⚠️ Limite de prorrogações atingido (máx. %d). Continue o atendimento ou digite *CANCELAR*."
+                                % MAX_EXTEND_SESSION_COUNT,
+                            )
+                        _executar_ops_django_sync(_msg_limite)
+                    else:
+                        with _automacoes_lock:
+                            if sessao_id in _automacoes_pap_ativas:
+                                _automacoes_pap_ativas[sessao_id]['extension_count'] = ext + 1
+                                _automacoes_pap_ativas[sessao_id]['session_deadline'] = time.monotonic() + (EXTEND_SESSION_MINUTES * 60)
+                        restantes = MAX_EXTEND_SESSION_COUNT - ext - 1
+                        def _msg_ok():
+                            WhatsAppService().enviar_mensagem_texto(
+                                telefone,
+                                "⏱ Tempo *estendido* em mais %d min. Você pode prorrogar mais %d vez(es)."
+                                % (EXTEND_SESSION_MINUTES, restantes),
+                            )
+                        _executar_ops_django_sync(_msg_ok)
+                    continue
                 try:
                     with _automacoes_lock:
                         ctx = _automacoes_pap_ativas.get(sessao_id)
@@ -3864,10 +3999,10 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
         with _automacoes_lock:
             ctx = _automacoes_pap_ativas.get(sessao.id)
         if not ctx:
-            sessao.etapa = 'inicial'
-            sessao.dados_temp = {}
-            sessao.save()
-            return "❌ Sessão expirada. Digite *VENDER* para iniciar novamente."
+            return _mensagem_sessao_expirada(sessao, dados, 'venda_email', {
+                'action': 'etapa4', 'celular': dados.get('celular', ''), 'email': email,
+                'celular_sec': dados.get('celular_sec', '') or None,
+            })
         
         cmd_queue = ctx.get('cmd_queue')
         # Validar antes de enviar: não aceitar números já rejeitados pelo sistema
@@ -3968,7 +4103,7 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
         with _automacoes_lock:
             ctx = _automacoes_pap_ativas.get(sessao.id)
         if not ctx:
-            return _marcar_sessao_erro_retry(sessao, dados, 'venda_forma_pagamento', {'action': 'etapa5_forma', 'forma': forma})
+            return _mensagem_sessao_expirada(sessao, dados, 'venda_forma_pagamento', {'action': 'etapa5_forma', 'forma': forma})
         
         cmd_queue = ctx.get('cmd_queue')
         if cmd_queue:
