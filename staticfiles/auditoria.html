@@ -370,44 +370,27 @@
 
             $('#audit-cep').on('blur', function() {
                 const cep = $(this).val().replace(/\D/g, '');
-                if (cep.length === 8) {
-                    const token = localStorage.getItem('accessToken');
-                    if (!token) { alert('Sessão expirada. Faça login novamente.'); window.location.href = '/'; return; }
-                    $('#audit-logradouro').val('Carregando...');
-                    $.ajax({
-                        url: `/api/crm/viacep/${cep}/`,
-                        dataType: 'json',
-                        type: 'GET',
-                        headers: { 'Authorization': 'Bearer ' + token }
-                    }).done(function(data) {
-                        if (data.error) {
-                            alert("Erro ao buscar CEP: " + (data.error || 'tente novamente.'));
+                if (cep.length !== 8) return;
+                $('#audit-logradouro').val('Carregando...');
+                // ViaCEP permite CORS: chamada direta no navegador (não depende da rede do servidor)
+                fetch(`https://viacep.com.br/ws/${cep}/json/`)
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (data.erro) {
+                            alert("CEP não encontrado.");
                             $('#audit-logradouro').val('');
                             return;
                         }
-                        if (!data.erro) {
-                            $('#audit-logradouro').val((data.logradouro || '').toUpperCase());
-                            $('#audit-bairro').val((data.bairro || '').toUpperCase());
-                            $('#audit-cidade').val((data.localidade || '').toUpperCase());
-                            $('#audit-uf').val((data.uf || '').toUpperCase());
-                            $('#audit-numero').focus();
-                        } else {
-                            alert("CEP não encontrado.");
-                            $('#audit-logradouro').val('');
-                        }
-                    }).fail(function(xhr) {
-                        let msg = "Erro ao buscar CEP.";
-                        if (xhr.status === 401 || xhr.status === 403) {
-                            msg = "Sessão expirada. Faça login novamente e tente de novo.";
-                        } else if (xhr.responseJSON && xhr.responseJSON.error) {
-                            msg = "Erro ao buscar CEP: " + xhr.responseJSON.error;
-                        } else if (xhr.status) {
-                            msg = "Erro ao buscar CEP. (HTTP " + xhr.status + ")";
-                        }
-                        alert(msg);
+                        $('#audit-logradouro').val((data.logradouro || '').toUpperCase());
+                        $('#audit-bairro').val((data.bairro || '').toUpperCase());
+                        $('#audit-cidade').val((data.localidade || '').toUpperCase());
+                        $('#audit-uf').val((data.uf || '').toUpperCase());
+                        $('#audit-numero').focus();
+                    })
+                    .catch(function() {
+                        alert("Erro ao buscar CEP. Verifique sua conexão ou tente novamente.");
                         $('#audit-logradouro').val('');
                     });
-                }
             });
 
             carregarAuxiliares().then(() => carregarVendasPendentes());
