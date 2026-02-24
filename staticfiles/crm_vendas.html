@@ -514,13 +514,17 @@
             const fields = ['nova-logradouro', 'nova-bairro', 'nova-cidade', 'nova-estado'];
             fields.forEach(id => document.getElementById(id).value = '...');
             try { 
-                const res = await fetch(`https://viacep.com.br/ws/${cep}/json/`); 
+                const res = await fetch(`/api/crm/viacep/${cep}/`, { credentials: 'include' }); 
                 const d = await res.json(); 
+                if (!res.ok) {
+                    modalCep.show();
+                    return;
+                }
                 if(!d.erro) { 
-                    document.getElementById('nova-logradouro').value = d.logradouro.toUpperCase(); 
-                    document.getElementById('nova-bairro').value = d.bairro.toUpperCase(); 
-                    document.getElementById('nova-cidade').value = d.localidade.toUpperCase(); 
-                    document.getElementById('nova-estado').value = d.uf.toUpperCase(); 
+                    document.getElementById('nova-logradouro').value = (d.logradouro || '').toUpperCase(); 
+                    document.getElementById('nova-bairro').value = (d.bairro || '').toUpperCase(); 
+                    document.getElementById('nova-cidade').value = (d.localidade || '').toUpperCase(); 
+                    document.getElementById('nova-estado').value = (d.uf || '').toUpperCase(); 
                     document.getElementById('nova-numero').focus();
                 } else { modalCep.show(); }
             } catch(err) { modalCep.show(); } 

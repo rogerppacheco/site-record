@@ -136,6 +136,27 @@ class Usuario(AbstractUser):
         verbose_name="Disponibilizar login PAP para o bot (WhatsApp)",
         help_text="Se desmarcado, o bot/automação do WhatsApp não usará este login no pool. Use quando o BO estiver atuando no PAP para não disputar o mesmo login."
     )
+    # Quais automações podem usar este login BO (só aplica se login_pap_disponivel_para_automacao=True)
+    pap_automacao_vender = models.BooleanField(
+        default=True,
+        verbose_name="PAP: automação Vender",
+        help_text="Se marcado, este login pode ser usado pela automação VENDER (nova venda pelo WhatsApp)."
+    )
+    pap_automacao_credito = models.BooleanField(
+        default=True,
+        verbose_name="PAP: automação Crédito",
+        help_text="Se marcado, este login pode ser usado pela automação CRÉDITO (análise de crédito pelo WhatsApp)."
+    )
+    pap_automacao_pedido = models.BooleanField(
+        default=True,
+        verbose_name="PAP: automação Pedido",
+        help_text="Se marcado, este login pode ser usado pela automação PEDIDO (consulta de pedido/O.S. pelo WhatsApp)."
+    )
+    pap_automacao_status = models.BooleanField(
+        default=True,
+        verbose_name="PAP: automação Status",
+        help_text="Se marcado, este login pode ser usado pela automação STATUS (consulta online de pedido no PAP)."
+    )
 
     # --- GESTÃO DE ACESSOS (DELEGAÇÃO) ---
     pode_gestao_acessos = models.BooleanField(

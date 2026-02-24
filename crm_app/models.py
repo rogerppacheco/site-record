@@ -588,6 +588,16 @@ class PapBoEmUso(models.Model):
     Vendedores com autorizar_venda_sem_auditoria usam logins de BO (pool),
     pois não conseguem vender pelo site pap.niointernet.com.br.
     """
+    TIPO_VENDER = 'vender'
+    TIPO_CREDITO = 'credito'
+    TIPO_PEDIDO = 'pedido'
+    TIPO_STATUS = 'status'
+    TIPOS_AUTOMACAO = (
+        (TIPO_VENDER, 'Vender'),
+        (TIPO_CREDITO, 'Crédito'),
+        (TIPO_PEDIDO, 'Pedido'),
+        (TIPO_STATUS, 'Status'),
+    )
     bo_usuario = models.ForeignKey(
         Usuario,
         on_delete=models.CASCADE,
@@ -597,6 +607,14 @@ class PapBoEmUso(models.Model):
     vendedor_telefone = models.CharField(max_length=100, db_index=True)
     locked_at = models.DateTimeField(auto_now_add=True)
     sessao_whatsapp_id = models.IntegerField(null=True, blank=True)
+    tipo_automacao = models.CharField(
+        max_length=20,
+        choices=TIPOS_AUTOMACAO,
+        blank=True,
+        default='',
+        verbose_name='Tipo automação',
+        help_text='Tipo de automação que está usando este login (para auditoria).'
+    )
 
     class Meta:
         db_table = 'crm_pap_bo_em_uso'

@@ -47,12 +47,20 @@ Vendedores (perfil Vendedor) não conseguem realizar vendas pelo site [pap.nioin
 - Perfil com `cod_perfil = 'backoffice'`
 - `matricula_pap` e `senha_pap` preenchidos
 - `is_active = True`
+- `login_pap_disponivel_para_automacao = True`
+- **Por automação:** cada login BO pode ser liberado só para as automações desejadas:
+  - `pap_automacao_vender` – automação VENDER (nova venda pelo WhatsApp)
+  - `pap_automacao_credito` – automação CRÉDITO (análise de crédito)
+  - `pap_automacao_pedido` – automação PEDIDO (consulta de pedido/O.S.)
+  - `pap_automacao_status` – automação STATUS (consulta online no PAP)
+
+Se nenhum login BO tiver a automação marcada, o usuário recebe mensagem orientando a falar com o administrador (Governança → Logins PAP).
 
 ## Modelo e Serviço
 
-- **Modelo:** `PapBoEmUso` – controla qual BO está em uso por qual vendedor
+- **Modelo:** `PapBoEmUso` – controla qual BO está em uso, por qual telefone e por qual tipo de automação (`tipo_automacao`: vender, credito, pedido, status)
 - **Serviço:** `crm_app.pool_bo_pap`
-  - `obter_login_bo(telefone, sessao_id)` – obtém BO livre, retorna `(Usuario, None)` ou `(None, mensagem_erro)`
+  - `obter_login_bo(telefone, sessao_id, tipo_automacao=None)` – obtém BO livre para a automação; retorna `(Usuario, None)` ou `(None, mensagem_erro)`. `tipo_automacao`: `'vender'`, `'credito'`, `'pedido'`, `'status'`.
   - `liberar_bo(bo_usuario_id, telefone)` – libera o BO ao finalizar
 
 ## Migração

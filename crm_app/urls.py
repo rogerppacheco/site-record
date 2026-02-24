@@ -301,7 +301,9 @@ urlpatterns = [
     path('cdoi/editar/<int:pk>/', CdoiUpdateView.as_view(), name='api-cdoi-editar'),
     path('cdoi/viacep/<str:cep>/', ViaCepProxyView.as_view(), name='api-cdoi-viacep'),
     path('cdoi/nominatim/', NominatimProxyView.as_view(), name='api-cdoi-nominatim'),
-    
+    # Proxy ViaCEP genérico (auditoria, crm_vendas, etc.) — evita CORS ao chamar do frontend
+    path('viacep/<str:cep>/', ViaCepProxyView.as_view(), name='api-viacep'),
+
     # --- PRÉ-VENDAS PÚBLICAS ---
     path('prevenda/gerar-link/<int:cdoi_id>/', GerarLinkPublicoPreVendaView.as_view(), name='api-prevenda-gerar-link'),
     path('prevenda/publica/<str:codigo>/', PreVendaPublicaFormView.as_view(), name='api-prevenda-publica-form'),

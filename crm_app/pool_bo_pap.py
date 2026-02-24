@@ -51,23 +51,47 @@ def limpar_sessoes_expiradas():
     return _limpar_locks_expirados()
 
 
+# Tipos de automação PAP (usados em obter_login_bo e PapBoEmUso)
+TIPO_AUTOMACAO_VENDER = 'vender'
+TIPO_AUTOMACAO_CREDITO = 'credito'
+TIPO_AUTOMACAO_PEDIDO = 'pedido'
+TIPO_AUTOMACAO_STATUS = 'status'
+
+# Mensagem quando não há nenhum login BO liberado para aquela automação
+def _msg_nenhum_bo_para_automacao(tipo_automacao: str) -> str:
+    nomes = {
+        TIPO_AUTOMACAO_VENDER: 'VENDER',
+        TIPO_AUTOMACAO_CREDITO: 'CRÉDITO',
+        TIPO_AUTOMACAO_PEDIDO: 'PEDIDO',
+        TIPO_AUTOMACAO_STATUS: 'STATUS',
+    }
+    nome = nomes.get(tipo_automacao, tipo_automacao)
+    return (
+        f"⚠️ *Nenhum login BackOffice está liberado para esta ação ({nome})*\n\n"
+        "Entre em contato com o administrador para liberar logins para esta automação na Governança (Logins PAP)."
+    )
+
+
 def obter_login_bo(
     vendedor_telefone: str,
     sessao_whatsapp_id: Optional[int] = None,
+    tipo_automacao: Optional[str] = None,
 ) -> Tuple[Optional["Usuario"], Optional[str]]:
     """
     Obtém um login BackOffice disponível para uso na automação PAP.
 
-    Usa seleção randômica entre os BOs livres. Garante que o próximo vendedor
-    não pegue o mesmo BO que outro em uso.
+    Usa seleção randômica entre os BOs livres para o tipo de automação.
+    Garante que o próximo vendedor não pegue o mesmo BO que outro em uso.
 
     Args:
-        vendedor_telefone: Telefone do vendedor que está iniciando a venda
+        vendedor_telefone: Telefone do vendedor que está iniciando a ação
         sessao_whatsapp_id: ID da SessaoWhatsapp (opcional, para rastreamento)
+        tipo_automacao: 'vender' | 'credito' | 'pedido' | 'status'. Se None, considera
+            qualquer BO com login_pap_disponivel_para_automacao (comportamento legado).
 
     Returns:
         (bo_usuario, None) em sucesso
-        (None, "mensagem_erro") quando todos os BOs estão ocupados
+        (None, "mensagem_erro") quando todos os BOs estão ocupados ou nenhum liberado para essa automação
     """
     from usuarios.models import Usuario
     from crm_app.models import PapBoEmUso
@@ -93,12 +117,25 @@ def obter_login_bo(
         senha_pap='',
     )
 
+    # Filtrar por automação: só BOs que têm o flag correspondente
+    if tipo_automacao:
+        if tipo_automacao == TIPO_AUTOMACAO_VENDER:
+            bo_queryset = bo_queryset.filter(pap_automacao_vender=True)
+        elif tipo_automacao == TIPO_AUTOMACAO_CREDITO:
+            bo_queryset = bo_queryset.filter(pap_automacao_credito=True)
+        elif tipo_automacao == TIPO_AUTOMACAO_PEDIDO:
+            bo_queryset = bo_queryset.filter(pap_automacao_pedido=True)
+        elif tipo_automacao == TIPO_AUTOMACAO_STATUS:
+            bo_queryset = bo_queryset.filter(pap_automacao_status=True)
+
     # Excluir os que já estão em uso
     if ids_em_uso:
         bo_queryset = bo_queryset.exclude(id__in=ids_em_uso)
 
     bo_list = list(bo_queryset)
     if not bo_list:
+        if tipo_automacao:
+            return (None, _msg_nenhum_bo_para_automacao(tipo_automacao))
         return (None, MSG_TODOS_ACESSOS_EM_USO)
 
     # Seleção randômica
@@ -110,10 +147,11 @@ def obter_login_bo(
                 bo_usuario=bo_usuario,
                 vendedor_telefone=vendedor_telefone,
                 sessao_whatsapp_id=sessao_whatsapp_id,
+                tipo_automacao=tipo_automacao or '',
             )
         logger.info(
             f"[POOL BO] BO {bo_usuario.username} (matricula {bo_usuario.matricula_pap}) "
-            f"alocado para {vendedor_telefone}"
+            f"alocado para {vendedor_telefone} (automação={tipo_automacao or 'qualquer'})"
         )
         return bo_usuario, None
     except Exception as e:

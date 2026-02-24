@@ -33,8 +33,14 @@ class CustomUserAdmin(UserAdmin):
             'desconto_instalacao_antecipada', 'adiantamento_cnpj', 'desconto_inss_fixo'
         )}),
         ('Automação PAP / WhatsApp', {
-            'fields': ('matricula_pap', 'senha_pap', 'autorizar_venda_sem_auditoria', 'autorizar_venda_automatica', 'autorizar_analise_credito_wpp', 'autorizar_inclusao_wpp', 'login_pap_disponivel_para_automacao'),
-            'description': 'Login PAP: se "Disponibilizar login PAP para o bot" estiver desmarcado, o bot não usará este login no pool (útil quando o BO está atuando no PAP).'
+            'fields': (
+                'matricula_pap', 'senha_pap',
+                'autorizar_venda_sem_auditoria', 'autorizar_venda_automatica',
+                'autorizar_analise_credito_wpp', 'autorizar_inclusao_wpp',
+                'login_pap_disponivel_para_automacao',
+                'pap_automacao_vender', 'pap_automacao_credito', 'pap_automacao_pedido', 'pap_automacao_status',
+            ),
+            'description': 'Login PAP: se "Disponibilizar login PAP para o bot" estiver desmarcado, o bot não usará este login. Use os checkboxes de automação para definir em quais fluxos (Vender, Crédito, Pedido, Status) este login BO pode ser usado.'
         }),
         ('Delegação', {
             'fields': ('pode_gestao_acessos',),

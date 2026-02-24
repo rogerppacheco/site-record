@@ -372,12 +372,21 @@
                 const cep = $(this).val().replace(/\D/g, '');
                 if (cep.length === 8) {
                     $('#audit-logradouro').val('Carregando...');
-                    $.getJSON(`https://viacep.com.br/ws/${cep}/json/`, function(data) {
+                    $.ajax({
+                        url: `/api/crm/viacep/${cep}/`,
+                        dataType: 'json',
+                        type: 'GET'
+                    }).done(function(data) {
+                        if (data.error) {
+                            alert("Erro ao buscar CEP: " + (data.error || 'tente novamente.'));
+                            $('#audit-logradouro').val('');
+                            return;
+                        }
                         if (!data.erro) {
-                            $('#audit-logradouro').val(data.logradouro.toUpperCase());
-                            $('#audit-bairro').val(data.bairro.toUpperCase());
-                            $('#audit-cidade').val(data.localidade.toUpperCase());
-                            $('#audit-uf').val(data.uf.toUpperCase());
+                            $('#audit-logradouro').val((data.logradouro || '').toUpperCase());
+                            $('#audit-bairro').val((data.bairro || '').toUpperCase());
+                            $('#audit-cidade').val((data.localidade || '').toUpperCase());
+                            $('#audit-uf').val((data.uf || '').toUpperCase());
                             $('#audit-numero').focus();
                         } else {
                             alert("CEP não encontrado.");

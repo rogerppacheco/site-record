@@ -624,12 +624,12 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
             pass
         return
 
-    bo_usuario, msg_erro = obter_login_bo(telefone, None)
+    bo_usuario, msg_erro = obter_login_bo(telefone, None, tipo_automacao='credito')
     if not bo_usuario:
         if msg_erro == MSG_TODOS_ACESSOS_EM_USO:
             WhatsAppService().enviar_mensagem_texto(telefone, obter_mensagem_fila_ocupado(telefone, 'credito'))
         else:
-            WhatsAppService().enviar_mensagem_texto(telefone, f"❌ {msg_erro}\n\nDigite *CRÉDITO* para tentar novamente.")
+            WhatsAppService().enviar_mensagem_texto(telefone, f"{msg_erro}\n\nDigite *CRÉDITO* para tentar novamente.")
         try:
             s = SessaoWhatsapp.objects.get(telefone=telefone)
             s.etapa = 'inicial'
@@ -865,14 +865,14 @@ def _executar_consulta_pedido_background(telefone: str, usuario_id: int, cpf: st
         _resetar_sessao_pedido(telefone)
         return
 
-    bo_usuario, msg_erro = obter_login_bo(telefone, None)
+    bo_usuario, msg_erro = obter_login_bo(telefone, None, tipo_automacao='pedido')
     if not bo_usuario:
         if msg_erro == MSG_TODOS_ACESSOS_EM_USO:
             WhatsAppService().enviar_mensagem_texto(telefone, obter_mensagem_fila_ocupado(telefone, 'pedido'))
         else:
             WhatsAppService().enviar_mensagem_texto(
                 telefone,
-                f"❌ {msg_erro}\n\nDigite *PEDIDO* para tentar novamente."
+                f"{msg_erro}\n\nDigite *PEDIDO* para tentar novamente."
             )
         _resetar_sessao_pedido(telefone)
         return
@@ -982,14 +982,14 @@ def _executar_consulta_status_online_background(telefone: str, cpf: str, eh_agen
     cpf_limpo = re.sub(r'\D', '', cpf)
     if len(cpf_limpo) not in (11, 14):
         return
-    bo_usuario, msg_erro = obter_login_bo(telefone, None)
+    bo_usuario, msg_erro = obter_login_bo(telefone, None, tipo_automacao='status')
     if not bo_usuario:
         if msg_erro == MSG_TODOS_ACESSOS_EM_USO:
             WhatsAppService().enviar_mensagem_texto(telefone, obter_mensagem_fila_ocupado(telefone, 'status'))
         else:
             WhatsAppService().enviar_mensagem_texto(
                 telefone,
-                f"❌ {msg_erro}\n\nConsulta online (PAP) não realizada. Digite *STATUS* para tentar novamente."
+                f"{msg_erro}\n\nConsulta online (PAP) não realizada. Digite *STATUS* para tentar novamente."
             )
         try:
             s = SessaoWhatsapp.objects.get(telefone=telefone)
@@ -2715,11 +2715,12 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                         pass
 
         if mensagem_limpa == 'SIM':
-            # Obter login BackOffice do pool (seleção randômica entre disponíveis)
+            # Obter login BackOffice do pool (seleção randômica entre disponíveis para automação VENDER)
             from crm_app.pool_bo_pap import obter_login_bo, MSG_TODOS_ACESSOS_EM_USO, obter_mensagem_fila_ocupado
             bo_usuario, erro = obter_login_bo(
                 vendedor_telefone=telefone,
                 sessao_whatsapp_id=sessao.id,
+                tipo_automacao='vender',
             )
             if erro:
                 if erro == MSG_TODOS_ACESSOS_EM_USO:
