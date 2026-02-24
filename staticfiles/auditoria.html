@@ -375,7 +375,8 @@
                     $.ajax({
                         url: `/api/crm/viacep/${cep}/`,
                         dataType: 'json',
-                        type: 'GET'
+                        type: 'GET',
+                        xhrFields: { withCredentials: true }
                     }).done(function(data) {
                         if (data.error) {
                             alert("Erro ao buscar CEP: " + (data.error || 'tente novamente.'));
@@ -392,8 +393,16 @@
                             alert("CEP não encontrado.");
                             $('#audit-logradouro').val('');
                         }
-                    }).fail(function() {
-                        alert("Erro ao buscar CEP.");
+                    }).fail(function(xhr) {
+                        let msg = "Erro ao buscar CEP.";
+                        if (xhr.status === 403) {
+                            msg = "Sessão expirada. Faça login novamente e tente de novo.";
+                        } else if (xhr.responseJSON && xhr.responseJSON.error) {
+                            msg = "Erro ao buscar CEP: " + xhr.responseJSON.error;
+                        } else if (xhr.status) {
+                            msg = "Erro ao buscar CEP. (HTTP " + xhr.status + ")";
+                        }
+                        alert(msg);
                         $('#audit-logradouro').val('');
                     });
                 }

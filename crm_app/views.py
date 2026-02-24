@@ -4838,15 +4838,23 @@ class ViaCepProxyView(APIView):
         if len(cep_limpo) != 8:
             return Response({'error': 'CEP inválido.'}, status=400)
 
+        url = f"https://viacep.com.br/ws/{cep_limpo}/json/"
         try:
-            import json
-            import urllib.request
-
-            url = f"https://viacep.com.br/ws/{cep_limpo}/json/"
-            with urllib.request.urlopen(url, timeout=8) as response:
-                data = json.loads(response.read().decode('utf-8'))
+            resp = requests.get(url, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
             return Response(data)
+        except requests.exceptions.Timeout:
+            logger.warning("[ViaCEP] Timeout ao consultar CEP %s", cep_limpo)
+            return Response({'error': 'Tempo esgotado ao consultar CEP. Tente novamente.'}, status=502)
+        except requests.exceptions.RequestException as e:
+            logger.warning("[ViaCEP] Erro de rede ao consultar CEP %s: %s", cep_limpo, e)
+            return Response({'error': f'Erro ao consultar CEP: {str(e)}'}, status=502)
+        except (ValueError, KeyError) as e:
+            logger.warning("[ViaCEP] Resposta inválida para CEP %s: %s", cep_limpo, e)
+            return Response({'error': 'Resposta inválida do serviço de CEP.'}, status=502)
         except Exception as e:
+            logger.exception("[ViaCEP] Erro inesperado ao consultar CEP %s: %s", cep_limpo, e)
             return Response({'error': f'Erro ao consultar CEP: {str(e)}'}, status=502)
 
 
