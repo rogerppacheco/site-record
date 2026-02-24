@@ -893,7 +893,7 @@
         resultEl.textContent = '';
         resultEl.className = 'ms-3 small';
         try {
-            const res = await apiFetch('/liberar-pap-bo/', { method: 'POST' });
+            const res = await apiFetch('/crm/liberar-pap-bo/', { method: 'POST' });
             const qtd = res.liberados != null ? res.liberados : 0;
             resultEl.textContent = res.message || (qtd > 0 ? `Liberados ${qtd} login(s).` : 'Nenhum login estava em uso.');
             resultEl.classList.add(qtd > 0 ? 'text-success' : 'text-muted');
