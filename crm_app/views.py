@@ -5031,7 +5031,8 @@ class LancamentoFinanceiroViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='vendas-instaladas-mes')
     def vendas_instaladas_mes(self, request):
-        """Lista vendas instaladas de um vendedor em um mês. ?tipo_cliente=CNPJ para só vendas CNPJ."""
+        """Lista vendas instaladas de um vendedor em um mês. ?tipo_cliente=CNPJ para só vendas CNPJ.
+        A coluna 'Comissão est.' usa a faixa 'Adiantamento' em REGRAS_FAIXAS quando existir (valores fixos por plano 500MB/700/1GB)."""
         from datetime import datetime
         import re
         vendedor_id = request.query_params.get('vendedor_id')
@@ -5058,14 +5059,19 @@ class LancamentoFinanceiroViewSet(viewsets.ModelViewSet):
             data_instalacao__gte=data_inicio,
             data_instalacao__lt=data_fim,
         ).select_related('plano', 'cliente').order_by('data_instalacao', 'id')
-        lista = []
+        # Faixa "Adiantamento" em REGRAS_FAIXAS define o valor fixo da comissão antecipada (500MB/700/1GB)
+        faixa_adiantamento = RegraComissaoFaixa.objects.filter(
+            faixa_nome__iexact='Adiantamento'
+        ).first()
         only_cnpj = (tipo_cliente == 'CNPJ')
+        lista = []
         for v in vendas:
             if only_cnpj and v.cliente:
                 digits = re.sub(r'\D', '', v.cliente.cpf_cnpj or '')
                 if len(digits) != 14:  # CNPJ tem 14 dígitos
                     continue
-            valor_est = float(v.plano.comissao_base) if v.plano and v.plano.comissao_base is not None else 0
+            is_cnpj_venda = v.cliente and len(re.sub(r'\D', '', v.cliente.cpf_cnpj or '')) == 14
+            valor_est = self._valor_comissao_estimado_venda(v, faixa_adiantamento, is_cnpj_venda)
             lista.append({
                 'id': v.id,
                 'cliente_nome': v.cliente.nome_razao_social if v.cliente else '',
@@ -5075,6 +5081,42 @@ class LancamentoFinanceiroViewSet(viewsets.ModelViewSet):
                 'valor_comissao_estimado': round(valor_est, 2),
             })
         return Response(lista)
+
+    @staticmethod
+    def _banda_plano(nome_plano):
+        """Retorna '500mb', '700mb' ou '1gb' conforme o nome do plano, ou None."""
+        if not nome_plano:
+            return None
+        n = (nome_plano or '').strip().lower()
+        if '1g' in n or '1 g' in n:
+            return '1gb'
+        if '700' in n:
+            return '700mb'
+        if '500' in n:
+            return '500mb'
+        return None
+
+    @staticmethod
+    def _valor_comissao_estimado_venda(venda, faixa_adiantamento, is_cnpj):
+        """Usa a faixa 'Adiantamento' (REGRAS_FAIXAS) para valor fixo; senão fallback em plano.comissao_base."""
+        if faixa_adiantamento:
+            nome_plano = venda.plano.nome if venda.plano else ''
+            banda = LancamentoFinanceiroViewSet._banda_plano(nome_plano)
+            if banda and is_cnpj:
+                if banda == '500mb' and faixa_adiantamento.valor_500mb_cnpj is not None:
+                    return float(faixa_adiantamento.valor_500mb_cnpj)
+                if banda == '700mb' and faixa_adiantamento.valor_700mb_cnpj is not None:
+                    return float(faixa_adiantamento.valor_700mb_cnpj)
+                if banda == '1gb' and faixa_adiantamento.valor_1gb_cnpj is not None:
+                    return float(faixa_adiantamento.valor_1gb_cnpj)
+            if banda and not is_cnpj:
+                if banda == '500mb' and faixa_adiantamento.valor_500mb_pap is not None:
+                    return float(faixa_adiantamento.valor_500mb_pap)
+                if banda == '700mb' and faixa_adiantamento.valor_700mb_pap is not None:
+                    return float(faixa_adiantamento.valor_700mb_pap)
+                if banda == '1gb' and faixa_adiantamento.valor_1gb_pap is not None:
+                    return float(faixa_adiantamento.valor_1gb_pap)
+        return float(venda.plano.comissao_base) if venda.plano and venda.plano.comissao_base is not None else 0
 
 
 # --- PAINEL DO AGENTE FINANCEIRO (SEGUNDA-FEIRA) ---

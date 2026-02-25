@@ -191,11 +191,13 @@
                             <div class="d-flex justify-content-between align-items-center mb-3">
                                 <h6 class="mb-0 text-primary">Regras por Faixa (REGRAS_FAIXAS)</h6>
                                 <div>
+                                    <button type="button" class="btn btn-sm btn-primary me-2" onclick="abrirModalNovaFaixa()"><i class="bi bi-plus-lg"></i> Nova faixa</button>
                                     <input type="file" id="input-import-faixa" accept=".xlsx,.csv" style="display:none" onchange="importarRegrasFaixa(this)">
                                     <button type="button" class="btn btn-sm btn-outline-success me-2" onclick="document.getElementById('input-import-faixa').click()"><i class="bi bi-upload"></i> Importar Excel/CSV</button>
                                     <a href="#" id="link-export-faixa" class="btn btn-sm btn-outline-primary" onclick="exportarRegrasFaixa(); return false;"><i class="bi bi-download"></i> Exportar Excel</a>
                                 </div>
                             </div>
+                            <p class="small text-muted mb-2">Crie uma faixa com nome <strong>Adiantamento</strong> e preencha os valores 500MB/700/1GB CNPJ (ex.: 130, 150, 180) para definir a &quot;Comissão est.&quot; na tela de Novo Adiantamento (Clientes CNPJ e vendas antecipadas).</p>
                             <div class="table-responsive"><table class="table table-hover align-middle mb-0 table-sm"><thead class="table-light"><tr><th>PERFIL</th><th>FAIXA_NOME</th><th>MIN</th><th>MAX</th><th>500MB PAP</th><th>700MB PAP</th><th>1GB PAP</th><th>500MB CNPJ</th><th>700MB CNPJ</th><th>1GB CNPJ</th><th>Ações</th></tr></thead><tbody id="lista-regras-faixa"></tbody></table></div>
                         </div>
                         <div id="regras_vendedores_tab" class="tab-content" style="display:none;">
@@ -639,7 +641,7 @@
     <div class="modal fade" id="modalEditarRegraFaixa" tabindex="-1">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
-                <div class="modal-header"><h5 class="modal-title">Editar Regra por Faixa</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-header"><h5 class="modal-title" id="modalRegraFaixaTitulo">Editar Regra por Faixa</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
                     <input type="hidden" id="regra_faixa_id">
                     <div class="row g-3">
@@ -2277,6 +2279,7 @@
         const lista = Array.isArray(users) ? users : (users?.results || []);
         selVendedor.innerHTML = '<option value="">— Nenhum —</option>';
         lista.forEach(u => { const uid = u.usuario_id ?? u.usuario; const name = u.username || ('ID ' + uid); selVendedor.innerHTML += `<option value="${uid}">${name}</option>`; });
+        document.getElementById('modalRegraFaixaTitulo').textContent = 'Editar Regra por Faixa';
         document.getElementById('regra_faixa_id').value = regra.id;
         document.getElementById('regra_faixa_perfil').value = regra.perfil || '';
         document.getElementById('regra_faixa_vendedor').value = regra.vendedor || '';
@@ -2293,9 +2296,31 @@
         modal.show();
     };
 
+    window.abrirModalNovaFaixa = async function() {
+        const selVendedor = document.getElementById('regra_faixa_vendedor');
+        const users = await apiFetch('/crm/config-comissao-vendedor/');
+        const lista = Array.isArray(users) ? users : (users?.results || []);
+        selVendedor.innerHTML = '<option value="">— Nenhum —</option>';
+        lista.forEach(u => { const uid = u.usuario_id ?? u.usuario; const name = u.username || ('ID ' + uid); selVendedor.innerHTML += `<option value="${uid}">${name}</option>`; });
+        document.getElementById('modalRegraFaixaTitulo').textContent = 'Nova faixa';
+        document.getElementById('regra_faixa_id').value = '';
+        document.getElementById('regra_faixa_perfil').value = 'Vendedor';
+        document.getElementById('regra_faixa_vendedor').value = '';
+        document.getElementById('regra_faixa_nome').value = '';
+        document.getElementById('regra_faixa_min').value = '0';
+        document.getElementById('regra_faixa_max').value = '';
+        document.getElementById('regra_faixa_500mb_pap').value = '';
+        document.getElementById('regra_faixa_700mb_pap').value = '';
+        document.getElementById('regra_faixa_1gb_pap').value = '';
+        document.getElementById('regra_faixa_500mb_cnpj').value = '';
+        document.getElementById('regra_faixa_700mb_cnpj').value = '';
+        document.getElementById('regra_faixa_1gb_cnpj').value = '';
+        const modal = new bootstrap.Modal(document.getElementById('modalEditarRegraFaixa'));
+        modal.show();
+    };
+
     async function salvarRegraFaixaModal() {
         const id = document.getElementById('regra_faixa_id').value;
-        if (!id) return;
         const perfil = document.getElementById('regra_faixa_perfil').value || null;
         const vendedorVal = document.getElementById('regra_faixa_vendedor').value;
         const vendedor = (vendedorVal === '' || vendedorVal === '— Nenhum —') ? null : parseInt(vendedorVal, 10);
@@ -2313,7 +2338,11 @@
             valor_700mb_cnpj: document.getElementById('regra_faixa_700mb_cnpj').value === '' ? null : parseFloat(document.getElementById('regra_faixa_700mb_cnpj').value),
             valor_1gb_cnpj: document.getElementById('regra_faixa_1gb_cnpj').value === '' ? null : parseFloat(document.getElementById('regra_faixa_1gb_cnpj').value)
         };
-        await apiFetch(`/crm/regras-comissao-faixa/${id}/`, { method: 'PUT', body: JSON.stringify(body) });
+        if (id) {
+            await apiFetch(`/crm/regras-comissao-faixa/${id}/`, { method: 'PUT', body: JSON.stringify(body) });
+        } else {
+            await apiFetch('/crm/regras-comissao-faixa/', { method: 'POST', body: JSON.stringify(body) });
+        }
         bootstrap.Modal.getInstance(document.getElementById('modalEditarRegraFaixa')).hide();
         carregarRegrasFaixa();
     }
