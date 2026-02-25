@@ -424,7 +424,15 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.exceptions import PermissionDenied, NotFound
 from rest_framework.decorators import api_view, permission_classes, action
+from rest_framework.pagination import PageNumberPagination
 from openpyxl.utils import get_column_letter
+
+
+class VendaPagination(PageNumberPagination):
+    """Paginação que aceita page_size na query (até 1000), para esteira e listagens grandes."""
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 1000
 
 
 # --- IMPORTS EXTRAS DO PROJETO ---
@@ -1362,6 +1370,7 @@ class VendaViewSet(viewsets.ModelViewSet):
     permission_classes = [VendaPermission]
     resource_name = 'venda'
     queryset = Venda.objects.filter(ativo=True).order_by('-data_criacao')
+    pagination_class = VendaPagination
 
     def get_serializer_context(self):
         context = super(VendaViewSet, self).get_serializer_context()

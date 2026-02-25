@@ -282,6 +282,24 @@
             } catch (e) { throw e; }
         }
 
+        /** Busca todas as páginas da listagem de vendas (esteira), agregando results até não haver next. */
+        async function buscarTodasPaginasEsteira(endpoint) {
+            const token = localStorage.getItem('accessToken');
+            const headers = { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) };
+            let url = `${apiUrl}/api${endpoint}`;
+            const all = [];
+            while (url) {
+                const response = await fetch(url, { headers });
+                if (response.status === 401) { logout(); return all; }
+                if (!response.ok) throw new Error(await response.text());
+                const data = await response.json();
+                const list = Array.isArray(data) ? data : (data.results || []);
+                all.push(...list);
+                url = data.next || null;
+            }
+            return all;
+        }
+
         const token = localStorage.getItem('accessToken');
         if(!token) window.location.href = '/';
         const decodedToken = jwt_decode(token);
@@ -380,16 +398,14 @@
             
             try {
                 const timestamp = new Date().getTime();
-                let url = `/crm/vendas/?flow=esteira&_t=${timestamp}`;
+                let url = `/crm/vendas/?flow=esteira&page_size=1000&_t=${timestamp}`;
                 if(busca) url += `&search=${busca}`;
 
-                // --- Carregamos Listas Auxiliares ---
-                // ...
+                // --- Carregamos Listas Auxiliares e vendas (todas as páginas da esteira) ---
                 const [vendasRes, statusRes, motivosRes, usuariosRes] = await Promise.all([
-                    apiFetch(url),
+                    buscarTodasPaginasEsteira(url),
                     apiFetch('/crm/status/?tipo=Esteira'),
                     apiFetch('/crm/motivos-pendencia/?page_size=1000'), 
-                    // CORRIGIDO: Removido '/api' inicial
                     apiFetch('/usuarios/?page_size=1000&is_active=true') 
                 ]);
                 
