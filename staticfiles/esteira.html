@@ -146,6 +146,10 @@
                             <label class="form-label fw-bold">Status da Esteira</label>
                             <select class="form-select" id="edit-status-esteira" onchange="verificarStatusInstaladaModal(this)"></select>
                         </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">O.S. (Ordem de Serviço)</label>
+                            <input type="text" class="form-control uppercase-input" id="edit-ordem-servico" placeholder="Número da O.S." maxlength="50" title="Corrija a O.S. se foi digitada errada">
+                        </div>
                         <div class="col-md-6"><label class="form-label">Plano</label><select class="form-select" id="edit-plano"></select></div>
                         <div class="col-md-6"><label class="form-label">Forma de Pagamento</label><select class="form-select" id="edit-pagamento"></select></div>
                     </div>
@@ -765,6 +769,7 @@
                 const pgSel = document.getElementById('edit-pagamento'); pgSel.innerHTML = ''; formas.forEach(f => pgSel.innerHTML += `<option value="${f.id}" ${v.forma_pagamento==f.id?'selected':''}>${f.nome}</option>`);
                 
                 setVal('edit-cliente-nome', v.cliente_nome_razao_social); setVal('edit-cliente-cpf', v.cliente_cpf_cnpj);
+                setVal('edit-ordem-servico', v.ordem_servico);
                 setVal('edit-telefone1', v.telefone1); setVal('edit-telefone2', v.telefone2);
                 setVal('edit-nome-mae', v.nome_mae); setVal('edit-data-nascimento', v.data_nascimento);
                 setVal('edit-cep', v.cep); setVal('edit-logradouro', v.logradouro); setVal('edit-numero', v.numero_residencia);
@@ -793,6 +798,7 @@
             const body = {
                 cliente: { nome_razao_social: getVal('edit-cliente-nome') },
                 plano: getVal('edit-plano'), forma_pagamento: getVal('edit-pagamento'), status_esteira: getVal('edit-status-esteira'),
+                ordem_servico: getVal('edit-ordem-servico'),
                 nome_mae: getVal('edit-nome-mae'), data_nascimento: getVal('edit-data-nascimento'),
                 telefone1: getVal('edit-telefone1'), telefone2: getVal('edit-telefone2'),
                 cep: getVal('edit-cep'), logradouro: getVal('edit-logradouro'), numero_residencia: getVal('edit-numero'),
