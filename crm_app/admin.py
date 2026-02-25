@@ -277,8 +277,8 @@ class FilaEsperaPAPAdmin(admin.ModelAdmin):
 
 @admin.register(RegraComissaoFaixa)
 class RegraComissaoFaixaAdmin(admin.ModelAdmin):
-    list_display = ('perfil', 'vendedor', 'faixa_nome', 'min_vendas', 'max_vendas')
-    list_filter = ('perfil',)
+    list_display = ('perfil', 'finalidade', 'vendedor', 'faixa_nome', 'min_vendas', 'max_vendas')
+    list_filter = ('perfil', 'finalidade')
     search_fields = ('faixa_nome', 'vendedor__username')
     raw_id_fields = ('vendedor',)
 

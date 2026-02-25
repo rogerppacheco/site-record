@@ -151,12 +151,14 @@ def calcular_folha_mes(ano, mes, vendedor_id=None):
         if not consultores.exists():
             return {"periodo": f"{mes:02d}/{ano}", "ano_mes": ano * 100 + mes, "vendedores": []}
 
-    # Regras por faixa: por perfil e por vendedor individual
+    # Regras por faixa: apenas finalidade COMISSAO (folha de pagamento). ADIANTAMENTO não entra aqui.
+    from django.db.models import Q
+    q_comissao = Q(finalidade='COMISSAO') | Q(finalidade__isnull=True)
     regras_faixa_perfil = list(
-        RegraComissaoFaixa.objects.filter(vendedor__isnull=True).order_by('perfil', 'min_vendas')
+        RegraComissaoFaixa.objects.filter(q_comissao, vendedor__isnull=True).order_by('perfil', 'min_vendas')
     )
     regras_faixa_vendedor = defaultdict(list)
-    for r in RegraComissaoFaixa.objects.filter(vendedor__isnull=False).select_related('vendedor'):
+    for r in RegraComissaoFaixa.objects.filter(q_comissao, vendedor__isnull=False).select_related('vendedor'):
         regras_faixa_vendedor[r.vendedor_id].append(r)
 
     # Config do mês (ano, mes) com fallback para modelo padrão (ano/mes nulos)

@@ -197,8 +197,8 @@
                                     <a href="#" id="link-export-faixa" class="btn btn-sm btn-outline-primary" onclick="exportarRegrasFaixa(); return false;"><i class="bi bi-download"></i> Exportar Excel</a>
                                 </div>
                             </div>
-                            <p class="small text-muted mb-2">Crie uma faixa com nome <strong>Adiantamento</strong> e preencha os valores 500MB/700/1GB CNPJ (ex.: 130, 150, 180) para definir a &quot;Comissão est.&quot; na tela de Novo Adiantamento (Clientes CNPJ e vendas antecipadas).</p>
-                            <div class="table-responsive"><table class="table table-hover align-middle mb-0 table-sm"><thead class="table-light"><tr><th>PERFIL</th><th>FAIXA_NOME</th><th>MIN</th><th>MAX</th><th>500MB PAP</th><th>700MB PAP</th><th>1GB PAP</th><th>500MB CNPJ</th><th>700MB CNPJ</th><th>1GB CNPJ</th><th>Ações</th></tr></thead><tbody id="lista-regras-faixa"></tbody></table></div>
+                            <p class="small text-muted mb-2">Use <strong>Finalidade</strong> = &quot;Adiantamento&quot; para a faixa que define a &quot;Comissão est.&quot; na tela de Novo Adiantamento (valores 500MB/700/1GB CNPJ). Faixas com Finalidade &quot;Pagamento de comissão&quot; entram no cálculo da folha (MIN/MAX); &quot;Adiantamento&quot; não entra na folha.</p>
+                            <div class="table-responsive"><table class="table table-hover align-middle mb-0 table-sm"><thead class="table-light"><tr><th>PERFIL</th><th>Finalidade</th><th>FAIXA_NOME</th><th>MIN</th><th>MAX</th><th>500MB PAP</th><th>700MB PAP</th><th>1GB PAP</th><th>500MB CNPJ</th><th>700MB CNPJ</th><th>1GB CNPJ</th><th>Ações</th></tr></thead><tbody id="lista-regras-faixa"></tbody></table></div>
                         </div>
                         <div id="regras_vendedores_tab" class="tab-content" style="display:none;">
                             <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
@@ -645,9 +645,10 @@
                 <div class="modal-body">
                     <input type="hidden" id="regra_faixa_id">
                     <div class="row g-3">
-                        <div class="col-md-4"><label class="form-label fw-bold">Perfil</label><select id="regra_faixa_perfil" class="form-select"><option value="">— Vendedor específico —</option><option value="Vendedor">Vendedor</option><option value="Supervisor">Supervisor</option></select></div>
-                        <div class="col-md-4"><label class="form-label fw-bold">Vendedor (se específico)</label><select id="regra_faixa_vendedor" class="form-select"><option value="">— Nenhum —</option></select></div>
-                        <div class="col-md-4"><label class="form-label fw-bold">Nome da faixa</label><input type="text" id="regra_faixa_nome" class="form-control" placeholder="Ex: Faixa 1"></div>
+                        <div class="col-md-3"><label class="form-label fw-bold">Finalidade</label><select id="regra_faixa_finalidade" class="form-select"><option value="COMISSAO">Pagamento de comissão</option><option value="ADIANTAMENTO">Adiantamento</option></select></div>
+                        <div class="col-md-3"><label class="form-label fw-bold">Perfil</label><select id="regra_faixa_perfil" class="form-select"><option value="">— Vendedor específico —</option><option value="Vendedor">Vendedor</option><option value="Supervisor">Supervisor</option></select></div>
+                        <div class="col-md-3"><label class="form-label fw-bold">Vendedor (se específico)</label><select id="regra_faixa_vendedor" class="form-select"><option value="">— Nenhum —</option></select></div>
+                        <div class="col-md-3"><label class="form-label fw-bold">Nome da faixa</label><input type="text" id="regra_faixa_nome" class="form-control" placeholder="Ex: Faixa 1 ou Adiantamento"></div>
                         <div class="col-md-3"><label class="form-label fw-bold">Min. vendas</label><input type="number" id="regra_faixa_min" class="form-control" min="0"></div>
                         <div class="col-md-3"><label class="form-label fw-bold">Máx. vendas</label><input type="number" id="regra_faixa_max" class="form-control" min="0" placeholder="99999"></div>
                         <div class="col-12"><hr class="my-2"><small class="text-muted fw-bold">Valores por plano (R$)</small></div>
@@ -2231,11 +2232,12 @@
         if (!tbody) return;
         tbody.innerHTML = '';
         const regras = Array.isArray(lista) ? lista : (lista?.results || []);
-        if (!regras.length) { tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted">Nenhuma regra por faixa. Importe um Excel ou cadastre manualmente.</td></tr>'; return; }
+        if (!regras.length) { tbody.innerHTML = '<tr><td colspan="12" class="text-center text-muted">Nenhuma regra por faixa. Importe um Excel ou cadastre manualmente.</td></tr>'; return; }
+        const finalidadeLabel = (f) => (f === 'ADIANTAMENTO' ? 'Adiantamento' : (f === 'COMISSAO' ? 'Comissão' : (f || 'Comissão')));
         regras.forEach(r => {
             const perfil = r.vendedor_username || r.perfil || '-';
             tbody.innerHTML += `<tr>
-                <td>${perfil}</td><td>${r.faixa_nome || ''}</td><td>${r.min_vendas}</td><td>${r.max_vendas}</td>
+                <td>${perfil}</td><td><span class="badge ${r.finalidade === 'ADIANTAMENTO' ? 'bg-info' : 'bg-secondary'}">${finalidadeLabel(r.finalidade)}</span></td><td>${r.faixa_nome || ''}</td><td>${r.min_vendas}</td><td>${r.max_vendas}</td>
                 <td>${r.valor_500mb_pap != null ? r.valor_500mb_pap : ''}</td><td>${r.valor_700mb_pap != null ? r.valor_700mb_pap : ''}</td><td>${r.valor_1gb_pap != null ? r.valor_1gb_pap : ''}</td>
                 <td>${r.valor_500mb_cnpj != null ? r.valor_500mb_cnpj : ''}</td><td>${r.valor_700mb_cnpj != null ? r.valor_700mb_cnpj : ''}</td><td>${r.valor_1gb_cnpj != null ? r.valor_1gb_cnpj : ''}</td>
                 <td><button class="btn btn-sm btn-outline-primary me-1" onclick="abrirModalEditarRegraFaixa(${r.id})" title="Editar"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="excluirRegraFaixa(${r.id})" title="Excluir"><i class="bi bi-trash"></i></button></td>
@@ -2281,6 +2283,7 @@
         lista.forEach(u => { const uid = u.usuario_id ?? u.usuario; const name = u.username || ('ID ' + uid); selVendedor.innerHTML += `<option value="${uid}">${name}</option>`; });
         document.getElementById('modalRegraFaixaTitulo').textContent = 'Editar Regra por Faixa';
         document.getElementById('regra_faixa_id').value = regra.id;
+        document.getElementById('regra_faixa_finalidade').value = regra.finalidade || 'COMISSAO';
         document.getElementById('regra_faixa_perfil').value = regra.perfil || '';
         document.getElementById('regra_faixa_vendedor').value = regra.vendedor || '';
         document.getElementById('regra_faixa_nome').value = regra.faixa_nome || '';
@@ -2304,6 +2307,7 @@
         lista.forEach(u => { const uid = u.usuario_id ?? u.usuario; const name = u.username || ('ID ' + uid); selVendedor.innerHTML += `<option value="${uid}">${name}</option>`; });
         document.getElementById('modalRegraFaixaTitulo').textContent = 'Nova faixa';
         document.getElementById('regra_faixa_id').value = '';
+        document.getElementById('regra_faixa_finalidade').value = 'COMISSAO';
         document.getElementById('regra_faixa_perfil').value = 'Vendedor';
         document.getElementById('regra_faixa_vendedor').value = '';
         document.getElementById('regra_faixa_nome').value = '';
@@ -2326,6 +2330,7 @@
         const vendedor = (vendedorVal === '' || vendedorVal === '— Nenhum —') ? null : parseInt(vendedorVal, 10);
         const maxVal = document.getElementById('regra_faixa_max').value;
         const body = {
+            finalidade: document.getElementById('regra_faixa_finalidade').value || 'COMISSAO',
             perfil,
             vendedor,
             faixa_nome: document.getElementById('regra_faixa_nome').value || '',

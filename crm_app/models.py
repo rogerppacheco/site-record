@@ -415,10 +415,15 @@ class RegraComissaoFaixa(models.Model):
     """
     Regras por faixa de vendas (aba REGRAS_FAIXAS do Excel).
     PERFIL = Supervisor/Vendedor (regra geral) ou vendedor específico quando vendedor preenchido.
+    FINALIDADE: COMISSAO = usada no pagamento da folha (considera MIN/MAX); ADIANTAMENTO = só na tela de adiantamento (Comissão est.).
     """
     PERFIL_CHOICES = [
         ('Vendedor', 'Vendedor'),
         ('Supervisor', 'Supervisor'),
+    ]
+    FINALIDADE_CHOICES = [
+        ('COMISSAO', 'Pagamento de comissão'),
+        ('ADIANTAMENTO', 'Adiantamento'),
     ]
     perfil = models.CharField(
         max_length=50, choices=PERFIL_CHOICES, blank=True, null=True,
@@ -428,6 +433,12 @@ class RegraComissaoFaixa(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
         related_name='regras_comissao_faixa', null=True, blank=True,
         help_text="Preenchido quando a regra é só para este vendedor (ex.: ALEX)"
+    )
+    finalidade = models.CharField(
+        max_length=20,
+        choices=FINALIDADE_CHOICES,
+        default='COMISSAO',
+        help_text="Comissão = folha de pagamento (usa MIN/MAX). Adiantamento = só tela de adiantamento."
     )
     faixa_nome = models.CharField(max_length=100)
     min_vendas = models.PositiveIntegerField(default=0)

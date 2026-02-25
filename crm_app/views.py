@@ -873,14 +873,15 @@ class RegraComissaoFaixaExportarView(APIView):
         formato = (request.query_params.get('formato') or 'xlsx').lower()
         qs = RegraComissaoFaixa.objects.select_related('vendedor').all().order_by('perfil', 'vendedor', 'min_vendas')
         rows = [[
-            'PERFIL', 'FAIXA_NOME', 'MIN_VENDAS', 'MAX_VENDAS',
+            'PERFIL', 'FINALIDADE', 'FAIXA_NOME', 'MIN_VENDAS', 'MAX_VENDAS',
             'VALOR_500MB_PAP', 'VALOR_700MB_PAP', 'VALOR_1GB_PAP',
             'VALOR_500MB_CNPJ', 'VALOR_700MB_CNPJ', 'VALOR_1GB_CNPJ',
         ]]
         for r in qs:
             perfil = r.vendedor.username if r.vendedor_id else (r.perfil or '')
+            fin = getattr(r, 'finalidade', None) or 'COMISSAO'
             rows.append([
-                perfil, r.faixa_nome, r.min_vendas, r.max_vendas,
+                perfil, fin, r.faixa_nome, r.min_vendas, r.max_vendas,
                 r.valor_500mb_pap, r.valor_700mb_pap, r.valor_1gb_pap,
                 r.valor_500mb_cnpj, r.valor_700mb_cnpj, r.valor_1gb_cnpj,
             ])
@@ -950,9 +951,12 @@ class RegraComissaoFaixaImportarView(APIView):
             while len(row) < len(header):
                 row.append('')
             perfil_str = (row[idx.get('PERFIL', 0)] or '').strip()
+            finalidade_str = (row[idx.get('FINALIDADE', 1)] or '').strip().upper()
+            if finalidade_str not in ('COMISSAO', 'ADIANTAMENTO'):
+                finalidade_str = 'COMISSAO'
             faixa_nome = (row[idx.get('FAIXA_NOME', 1)] or '').strip() or f'Faixa {i}'
-            min_v = _int_ou_none(row[idx.get('MIN_VENDAS', 2)])
-            max_v = _int_ou_none(row[idx.get('MAX_VENDAS', 3)])
+            min_v = _int_ou_none(row[idx.get('MIN_VENDAS', 2)] if len(row) > 2 else None)
+            max_v = _int_ou_none(row[idx.get('MAX_VENDAS', 3)] if len(row) > 3 else None)
             min_v = min_v if min_v is not None else 0
             max_v = max_v if max_v is not None else 99999
             vendedor = None
@@ -967,6 +971,7 @@ class RegraComissaoFaixaImportarView(APIView):
                 RegraComissaoFaixa.objects.create(
                     perfil=perfil,
                     vendedor=vendedor,
+                    finalidade=finalidade_str,
                     faixa_nome=faixa_nome,
                     min_vendas=min_v,
                     max_vendas=max_v,
@@ -5059,10 +5064,14 @@ class LancamentoFinanceiroViewSet(viewsets.ModelViewSet):
             data_instalacao__gte=data_inicio,
             data_instalacao__lt=data_fim,
         ).select_related('plano', 'cliente').order_by('data_instalacao', 'id')
-        # Faixa "Adiantamento" em REGRAS_FAIXAS define o valor fixo da comissão antecipada (500MB/700/1GB)
+        # Faixa com finalidade ADIANTAMENTO define o valor fixo da "Comissão est." (500MB/700/1GB)
         faixa_adiantamento = RegraComissaoFaixa.objects.filter(
-            faixa_nome__iexact='Adiantamento'
+            finalidade='ADIANTAMENTO'
         ).first()
+        if not faixa_adiantamento:
+            faixa_adiantamento = RegraComissaoFaixa.objects.filter(
+                faixa_nome__iexact='Adiantamento'
+            ).first()
         only_cnpj = (tipo_cliente == 'CNPJ')
         lista = []
         for v in vendas:
