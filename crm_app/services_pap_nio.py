@@ -259,7 +259,8 @@ class PAPNioAutomation:
                 except Exception as e_od:
                     logger.warning(f"[PAP] Erro ao enviar screenshot ao OneDrive: {e_od}")
         except Exception as e:
-            logger.warning(f"[PAP] Erro ao salvar screenshot: {e}")
+            if "Execution context was destroyed" not in str(e) and "context was destroyed" not in str(e):
+                logger.warning(f"[PAP] Erro ao salvar screenshot: {e}")
 
     def _highlight_element(self, selector_or_element, duration_ms: int = 800) -> None:
         """
@@ -458,16 +459,30 @@ class PAPNioAutomation:
                 self.page.wait_for_load_state("networkidle", timeout=8000)
             except Exception:
                 self.page.wait_for_load_state("load", timeout=5000)
-            
-            # Verificar se precisa fazer login (URL ou formulário de login visível)
-            current_url = self.page.url
-            login_form_visivel = (
-                self.page.query_selector('#inputMatricula') or
-                self.page.query_selector('#passwordInput') or
-                self.page.query_selector('input[placeholder*="Login"]') or
-                self.page.query_selector('input[type="password"]')
-            )
-            
+            # Dar tempo para redirects (ex.: PAP -> SSO); evita "Execution context was destroyed" ao ler url/query_selector
+            self.page.wait_for_timeout(2500)
+
+            # Verificar se precisa fazer login (URL ou formulário de login visível).
+            # Retry se a página navegou e o contexto anterior foi destruído.
+            current_url = ""
+            login_form_visivel = None
+            for _ in range(3):
+                try:
+                    current_url = self.page.url or ""
+                    login_form_visivel = (
+                        self.page.query_selector('#inputMatricula') or
+                        self.page.query_selector('#passwordInput') or
+                        self.page.query_selector('input[placeholder*="Login"]') or
+                        self.page.query_selector('input[type="password"]')
+                    )
+                    break
+                except Exception as e:
+                    if "Execution context was destroyed" in str(e) or "context was destroyed" in str(e):
+                        logger.warning("[PAP] Página ainda navegando, aguardando e tentando novamente...")
+                        self.page.wait_for_timeout(2500)
+                        continue
+                    raise
+
             if "login.vtal.com" in current_url or ("login" in current_url.lower() and "pap.niointernet.com.br" not in current_url) or login_form_visivel:
                 sucesso, msg = self._fazer_login()
                 if not sucesso:
@@ -541,8 +556,9 @@ class PAPNioAutomation:
                 else:
                     self.page.click(SELETORES['login']['btn_login'])
 
-                # Aguardar a página reagir (redirecionamento ou mensagem de erro)
-                self.page.wait_for_timeout(2500)
+                # Aguardar a página reagir (redirecionamento ou mensagem de erro).
+                # Tempo suficiente para o redirect do SSO evitar "Execution context was destroyed".
+                self.page.wait_for_timeout(3500)
 
                 # Validar: se aparecer "Login failed, please try again" (ou similar), não avançar
                 if self._pagina_tem_erro_login():
@@ -599,9 +615,17 @@ class PAPNioAutomation:
         """
         if not self.page:
             return False
+        for tentativa in range(2):
+            try:
+                content = (self.page.content() or "").lower()
+                url = (self.page.url or "").lower()
+                break
+            except Exception as e:
+                if ("Execution context was destroyed" in str(e) or "context was destroyed" in str(e)) and tentativa == 0:
+                    self.page.wait_for_timeout(2000)
+                    continue
+                return False
         try:
-            content = (self.page.content() or "").lower()
-            url = (self.page.url or "").lower()
             # Textos que indicam falha de login (inglês e português)
             if "login failed" in content or "please try again" in content:
                 logger.warning("[PAP] Mensagem de erro de login detectada (Login failed / please try again).")

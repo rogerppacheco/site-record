@@ -372,6 +372,9 @@
                         </div>
                         
                         <div class="d-flex gap-2">
+                            <button type="button" class="btn btn-outline-success btn-lg" onclick="enviarResumoPlanoCelular()" title="Envia o resumo do plano (igual ao VENDER) para o Celular 1 do cadastro">
+                                <i class="bi bi-whatsapp"></i> Enviar resumo ao celular
+                            </button>
                             <button type="button" class="btn btn-secondary btn-lg" onclick="fecharScriptSemSalvar()">Sair</button>
                             <button type="button" class="btn btn-success btn-lg fw-bold" onclick="finalizarComoAuditada()">
                                 <i class="bi bi-check-circle-fill"></i> SÓ AUDITAR
@@ -875,6 +878,26 @@
             if(!$('#check-viabilidade').is(':checked')) { alert('Erro: Valide a Viabilidade!'); proximaAba('pills-endereco-tab'); return false; }
             if(!$('#check-maioridade').is(':checked')) { alert('Erro: Confirme que o cliente foi avisado sobre o responsável +18!'); proximaAba('pills-finalizacao-tab'); return false; }
             return true;
+        }
+
+        async function enviarResumoPlanoCelular() {
+            if (!vendaEmAuditoria || !vendaEmAuditoria.id) { alert('Nenhuma venda em auditoria.'); return; }
+            const tel1 = $('#audit-tel1').val();
+            if (!tel1 || !String(tel1).replace(/\D/g, '').length) {
+                alert('Cadastro sem Celular 1. Preencha o telefone na aba Contato antes de enviar o resumo.');
+                return;
+            }
+            if (!confirm('Enviar resumo do plano para o Celular 1 (' + tel1 + ')?')) return;
+            $('#loadingOverlay').show();
+            try {
+                const res = await apiFetch(`${API_BASE}/${vendaEmAuditoria.id}/enviar-resumo-plano-whatsapp/`, { method: 'POST' });
+                alert(res.detail || 'Resumo enviado!');
+            } catch (e) {
+                const msg = (e && e.message) ? e.message : (typeof e === 'string' ? e : 'Erro ao enviar.');
+                alert(msg.includes('detail') ? (JSON.parse(msg)?.detail || msg) : msg);
+            } finally {
+                $('#loadingOverlay').hide();
+            }
         }
 
         async function finalizarComoAuditada() { 

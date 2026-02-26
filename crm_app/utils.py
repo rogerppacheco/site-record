@@ -392,6 +392,62 @@ def consultar_status_venda(tipo_busca, valor):
         )
 
 
+def montar_resumo_plano_para_whatsapp(venda):
+    """
+    Monta o texto do resumo da venda (plano, pagamento, endereço, cliente) no mesmo
+    formato usado no fluxo VENDER, para envio manual (ex.: auditoria enviar ao celular 1).
+    Retorna string pronta para WhatsApp.
+    """
+    if not venda:
+        return ""
+    cpf = (venda.cliente.cpf_cnpj or "") if venda.cliente else ""
+    cpf_limpo = "".join(filter(str.isdigit, cpf))
+    cpf_fmt = f"{cpf_limpo[:3]}.{cpf_limpo[3:6]}.{cpf_limpo[6:9]}-{cpf_limpo[9:]}" if len(cpf_limpo) == 11 else cpf
+
+    celular = (venda.telefone1 or "")
+    cel_limpo = "".join(filter(str.isdigit, celular))
+    cel_fmt = f"({cel_limpo[:2]}) {cel_limpo[2:7]}-{cel_limpo[7:]}" if len(cel_limpo) >= 10 else celular
+
+    email = (venda.cliente.email or "") if venda.cliente else ""
+    cep = venda.cep or ""
+    numero = venda.numero_residencia or ""
+    referencia = venda.ponto_referencia or ""
+
+    forma_nome = (venda.forma_pagamento.nome or "") if venda.forma_pagamento else ""
+    eh_cartao = forma_nome and ("CRÉDITO" in forma_nome.upper() or "CREDITO" in forma_nome.upper())
+
+    if venda.plano:
+        valor_plano = float(venda.plano.valor)
+        if eh_cartao:
+            valor_plano = max(0, valor_plano - 10)
+        plano_linha = f"{venda.plano.nome} - R$ {valor_plano:.2f}/mês".replace(".", ",")
+    else:
+        plano_linha = "Não informado"
+
+    fixo_linha = "Sim – R$ 30,00/mês" if venda.tem_fixo else "Não"
+    streaming_linha = "Não"  # auditoria não possui campo streaming
+
+    return (
+        f"📋 *RESUMO DA VENDA*\n\n"
+        f"📍 *Endereço:*\n"
+        f"CEP: {cep}\n"
+        f"Número: {numero}\n"
+        f"Referência: {referencia}\n\n"
+        f"👤 *Cliente:*\n"
+        f"CPF: {cpf_fmt}\n"
+        f"Celular: {cel_fmt}\n"
+        f"E-mail: {email}\n\n"
+        f"💳 *Pagamento:* {forma_nome}\n"
+        f"📦 *Plano:* {plano_linha}\n"
+        f"📞 *Fixo:* {fixo_linha}\n"
+        f"📺 *Streaming:* {streaming_linha}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"✅ Confirma a venda?\n\n"
+        f"Digite *CONFIRMAR* para enviar ao PAP\n"
+        f"Digite *CANCELAR* para desistir"
+    )
+
+
 def consultar_status_venda_com_decisao(tipo_busca, valor):
     """
     Igual a consultar_status_venda, mas retorna também se deve fazer consulta online no PAP

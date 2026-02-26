@@ -454,7 +454,8 @@ from .nio_api import consultar_dividas_nio
 from .utils import (
     verificar_viabilidade_por_cep,
     verificar_viabilidade_por_coordenadas,
-    verificar_viabilidade_exata
+    verificar_viabilidade_exata,
+    montar_resumo_plano_para_whatsapp,
 )
 
 # Modelos do App
@@ -1440,7 +1441,7 @@ class VendaViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(filters)
 
         # --- PERMISSÕES DE VISUALIZAÇÃO ---
-        acoes_gestao = ['retrieve', 'update', 'partial_update', 'destroy', 'alocar_auditoria', 'liberar_auditoria', 'finalizar_auditoria', 'pendentes_auditoria', 'reenviar_whatsapp_aprovacao', 'exportar_excel']
+        acoes_gestao = ['retrieve', 'update', 'partial_update', 'destroy', 'alocar_auditoria', 'liberar_auditoria', 'finalizar_auditoria', 'pendentes_auditoria', 'reenviar_whatsapp_aprovacao', 'enviar_resumo_plano_whatsapp', 'exportar_excel']
 
         if self.action in acoes_gestao:
             grupos_gestao_acao = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
@@ -1604,6 +1605,30 @@ class VendaViewSet(viewsets.ModelViewSet):
         except Exception as e:
             logger.error(f"Erro reenvio zap: {e}")
             return Response({"detail": "Erro ao tentar enviar mensagem."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['post'], url_path='enviar-resumo-plano-whatsapp', permission_classes=[permissions.IsAuthenticated])
+    def enviar_resumo_plano_whatsapp(self, request, pk=None):
+        """Envia o resumo do plano (mesmo formato do fluxo VENDER) para o celular 1 do cadastro da venda."""
+        venda = self.get_object()
+        telefone = venda.telefone1
+        if not telefone or not str(telefone).strip():
+            return Response(
+                {"detail": "Cadastro da venda não possui Celular 1 preenchido. Preencha o telefone na aba Contato."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            resumo = montar_resumo_plano_para_whatsapp(venda)
+            if not resumo:
+                return Response({"detail": "Não foi possível montar o resumo da venda."}, status=status.HTTP_400_BAD_REQUEST)
+            svc = WhatsAppService()
+            svc.enviar_mensagem_texto(telefone, resumo)
+            return Response({"detail": "Resumo enviado para o Celular 1 com sucesso!"})
+        except Exception as e:
+            logger.error(f"Erro ao enviar resumo plano WhatsApp (venda {venda.id}): {e}", exc_info=True)
+            return Response(
+                {"detail": "Erro ao enviar mensagem. Verifique o número e tente novamente."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     @action(detail=False, methods=['get'])
     def pendentes_auditoria(self, request):
