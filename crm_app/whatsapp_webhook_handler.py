@@ -611,11 +611,9 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
     from crm_app.models import AnaliseCreditoHistorico, SessaoWhatsapp
     from crm_app.services_pap_nio import PAPNioAutomation
     from crm_app.pool_bo_pap import obter_login_bo, liberar_bo, MSG_TODOS_ACESSOS_EM_USO, obter_mensagem_fila_ocupado
-    from crm_app.credito_utils import gerar_celular_random
+    from crm_app.credito_utils import gerar_celular_random, gerar_email_credito
     from crm_app.whatsapp_service import WhatsAppService
     import re
-
-    CREDITO_EMAIL_FIXO = "comunicacao@recordpap.com.br"
 
     usuario = Usuario.objects.get(id=usuario_id)
     cpf_limpo = re.sub(r'\D', '', cpf)
@@ -722,10 +720,10 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
             _resetar_sessao_credito(telefone)
             return
 
-        # Etapa 4: contato com celular aleatório e email fixo
+        # Etapa 4: contato com celular e email aleatórios (evita bloqueio por repetição/validação do site)
         cel = gerar_celular_random()
         cel_sec = gerar_celular_random()
-        email = CREDITO_EMAIL_FIXO
+        email = gerar_email_credito()
         max_tentativas = 5
         screenshot_credito_b64 = None
         for tentativa in range(max_tentativas):
@@ -735,6 +733,9 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
             if msg in ('TELEFONE_REJEITADO',):
                 cel = gerar_celular_random()
                 cel_sec = gerar_celular_random()
+                continue
+            if msg in ('EMAIL_REJEITADO', 'EMAIL_INVALIDO',):
+                email = gerar_email_credito()
                 continue
             if msg == "CREDITO_NEGADO":
                 break
@@ -4313,28 +4314,33 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                 sessao.refresh_from_db()
             except Exception:
                 pass
-            confirmado = PapConfirmacaoCliente.objects.filter(
-                sessao_id=sessao.id, confirmado=True
-            ).exists()
+            # Só considerar "Confirmado" se existir registro desta SESSÃO E do CELULAR do cliente da venda
+            # (evita falso positivo quando outro número ou sessão foi marcado por engano)
+            dados_temp = sessao.dados_temp or {}
+            celular = dados_temp.get('celular') or dados_temp.get('celular_principal') or ''
+            chaves_cel = list(dict.fromkeys(
+                [_chave_telefone(celular)] + (_chaves_telefone_variantes(celular) or [])
+            ))
+            chaves_cel = [c for c in chaves_cel if c]
+            if chaves_cel:
+                confirmado = PapConfirmacaoCliente.objects.filter(
+                    sessao_id=sessao.id, confirmado=True, celular_cliente__in=chaves_cel
+                ).exists()
+            else:
+                confirmado = PapConfirmacaoCliente.objects.filter(
+                    sessao_id=sessao.id, confirmado=True
+                ).exists()
             logger.info(
-                "[VENDA PAP] CONSULTAR: sessao_id=%s, confirmado_por_sessao=%s",
-                sessao.id, confirmado,
+                "[VENDA PAP] CONSULTAR: sessao_id=%s, confirmado=%s (chaves_cel=%s)",
+                sessao.id, confirmado, chaves_cel[:5] if chaves_cel else [],
             )
-            if not confirmado and (sessao.dados_temp or {}):
-                dados_temp = sessao.dados_temp
-                celular = dados_temp.get('celular') or dados_temp.get('celular_principal') or ''
-                # Apenas o número principal pode confirmar; secundário não é aceito
-                # Importante: filtrar por sessao_id para não considerar confirmação de outra venda do mesmo cliente
-                chaves_cel = list(dict.fromkeys(
-                    [_chave_telefone(celular)] + (_chaves_telefone_variantes(celular) or [])
-                ))
-                chaves_cel = [c for c in chaves_cel if c]
-                if chaves_cel:
-                    confirmado = PapConfirmacaoCliente.objects.filter(
-                        celular_cliente__in=chaves_cel, confirmado=True, sessao_id=sessao.id
-                    ).exists()
-                    if confirmado:
-                        logger.info("[VENDA PAP] CONSULTAR fallback: confirmado=True por celular_cliente (sessao_id=%s, chaves_cel=%s)", sessao.id, chaves_cel[:5])
+            if not confirmado and chaves_cel:
+                # Fallback legado: apenas por sessão (não deveria ser necessário com a regra acima)
+                confirmado = PapConfirmacaoCliente.objects.filter(
+                    celular_cliente__in=chaves_cel, confirmado=True, sessao_id=sessao.id
+                ).exists()
+                if confirmado:
+                    logger.info("[VENDA PAP] CONSULTAR fallback: confirmado=True por celular_cliente (sessao_id=%s)", sessao.id)
             status_sim = "✅ Confirmado" if confirmado else "⏳ Aguardando"
             status_bio = "Será verificada após o cliente confirmar (SIM)." if not confirmado else "Em andamento no sistema (após confirmação do cliente)."
             return (
@@ -4733,9 +4739,19 @@ def _executar_venda_pap_etapa6_em_diante(
                 automacao.page.wait_for_timeout(2500)
             except Exception as e:
                 logger.warning("[VENDA PAP] Erro ao consultar biometria no PAP: %s", e)
+            # Só considerar confirmado se o registro for do celular do cliente desta venda (evita falso positivo)
+            celular_ref = (dados or {}).get('celular') or (dados or {}).get('celular_principal') or ''
+            chaves_cel_consulta = list(dict.fromkeys(
+                [_chave_telefone(celular_ref)] + (_chaves_telefone_variantes(celular_ref) or [])
+            ))
+            chaves_cel_consulta = [c for c in chaves_cel_consulta if c]
             # Consulta ao DB em thread dedicada para evitar "async context" (Django SynchronousOnlyOperation)
             def _query_confirmado():
                 from crm_app.models import PapConfirmacaoCliente
+                if chaves_cel_consulta:
+                    return PapConfirmacaoCliente.objects.filter(
+                        sessao_id=sessao_id, confirmado=True, celular_cliente__in=chaves_cel_consulta
+                    ).exists()
                 return PapConfirmacaoCliente.objects.filter(sessao_id=sessao_id, confirmado=True).exists()
             _result_confirmado = [None]
             def _run_query():
@@ -5665,6 +5681,7 @@ def processar_webhook_whatsapp(data, request=None):
         return {'status': 'ok', 'mensagem': 'Confirmado pelo cliente'}
 
     # Terminal (testar_pap_terminal): confirmação via BD - cliente respondeu Sim (não no fluxo VENDER)
+    # Só aceitar se o pendente for de uma sessão que está aguardando confirmação (evita marcar sessão errada)
     if not sim_no_fluxo_vender and mensagem_limpa in ['SIM', 'S']:
         try:
             from crm_app.models import PapConfirmacaoCliente
@@ -5681,9 +5698,21 @@ def processar_webhook_whatsapp(data, request=None):
                 ).order_by('-criado_em').first()
                 logger.info(f"[Webhook] [DEBUG] Chave '{k}': pendente encontrado={pend is not None}")
                 if pend:
+                    # Só marcar confirmado se a sessão do pendente ainda estiver aguardando SIM (evita cross-session / sessão antiga)
+                    sessao_pend_etapa = None
+                    if pend.sessao_id:
+                        sessao_pend_etapa = SessaoWhatsapp.objects.filter(
+                            id=pend.sessao_id
+                        ).values_list('etapa', flat=True).first()
+                    if sessao_pend_etapa != 'venda_aguardando_confirmacao':
+                        logger.info(
+                            "[Webhook] [DEBUG] Ignorando SIM: pendente da sessão %s (etapa=%s) não está em venda_aguardando_confirmacao",
+                            pend.sessao_id, sessao_pend_etapa,
+                        )
+                        continue
                     pend.confirmado = True
                     pend.save()
-                    logger.info(f"[Webhook] PapConfirmacaoCliente marcado confirmado=True (celular={k})")
+                    logger.info(f"[Webhook] PapConfirmacaoCliente marcado confirmado=True (celular={k}, sessao_id={pend.sessao_id})")
                     try:
                         protocolo = ''
                         sessao_id_pend = pend.sessao_id if pend.sessao_id else (pend.sessao.pk if pend.sessao else None)

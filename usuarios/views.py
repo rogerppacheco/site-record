@@ -8,6 +8,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils.crypto import get_random_string
 from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.tokens import RefreshToken
 from crm_app.whatsapp_service import WhatsAppService
 import re
 
@@ -339,10 +340,17 @@ class UsuarioViewSet(viewsets.ModelViewSet):
             nova_senha = serializer.validated_data['nova_senha']
             
             usuario.set_password(nova_senha)
-            usuario.obriga_troca_senha = False 
+            usuario.obriga_troca_senha = False
             usuario.save()
             
-            return Response({"detail": "Senha alterada com sucesso!"})
+            # Retorna novo token para o frontend atualizar e parar de pedir troca
+            refresh = RefreshToken.for_user(usuario)
+            return Response({
+                "detail": "Senha alterada com sucesso!",
+                "access": str(refresh.access_token),
+                "refresh": str(refresh),
+                "obriga_troca_senha": False,
+            })
         
         return Response(serializer.errors, status=400)
 

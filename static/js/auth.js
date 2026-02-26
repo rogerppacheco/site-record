@@ -287,13 +287,18 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             try {
-                await apiClient.post('/api/usuarios/definir-senha/', {
+                const res = await apiClient.post('/api/usuarios/definir-senha/', {
                     nova_senha: nova,
                     confirmacao_senha: conf
                 });
+                const data = res.data || res;
                 
-                // SUCESSO! Remove a trava de segurança
-                localStorage.removeItem('trocaPendente'); 
+                // Atualiza token se o backend retornar (evita modal voltar)
+                if (data.access) {
+                    localStorage.setItem('accessToken', data.access);
+                    if (data.refresh) localStorage.setItem('refreshToken', data.refresh);
+                }
+                localStorage.removeItem('trocaPendente');
                 
                 alert('Senha alterada com sucesso!');
                 document.getElementById('modalTrocaSenha').style.display = 'none';

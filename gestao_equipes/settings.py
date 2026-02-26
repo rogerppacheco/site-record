@@ -301,6 +301,14 @@ PRESENCA_ONEDRIVE_FOLDER = config('PRESENCA_ONEDRIVE_FOLDER', default='Presenca_
 # Pasta no OneDrive para solicitações de inclusão/viabilidade (subpasta por solicitação)
 INCLUSAO_ONEDRIVE_FOLDER = config('INCLUSAO_ONEDRIVE_FOLDER', default='Inclusao_Viabilidade')
 
+# --- Análise de crédito via WhatsApp: e-mails para o PAP/Nio ---
+# O Nio valida o e-mail (envia teste). Use um dos dois:
+# CREDITO_EMAILS: lista de e-mails reais separados por vírgula; o sistema escolhe um aleatório a cada análise.
+#   Ex: comunicacao@recordpap.com.br,suporte@recordpap.com.br,vendas@recordpap.com.br
+# CREDITO_EMAIL_MAILINATOR: se true, gera endereços @mailinator.com (aceitam envio; Nio pode bloquear o domínio).
+CREDITO_EMAILS = config('CREDITO_EMAILS', default='')
+CREDITO_EMAIL_MAILINATOR = config('CREDITO_EMAIL_MAILINATOR', default=True, cast=lambda v: str(v).lower() in ('true', '1', 'yes'))
+
 # Google Street View Static API - foto automática na automação Inclusão/Viabilidade
 GOOGLE_STREETVIEW_API_KEY = config('GOOGLE_STREETVIEW_API_KEY', default='')
 
