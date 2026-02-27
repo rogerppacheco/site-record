@@ -6042,6 +6042,32 @@ def processar_webhook_whatsapp(data, request=None):
             )
             return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
 
+        # Mensagem livre na etapa inicial: pode ser busca de material (Record Apoia) ou dúvida (IA).
+        # Se parecer pergunta/dúvida, tentar a IA primeiro; senão tentar Record Apoia e depois IA como fallback.
+        _mensagem_strip = (mensagem_texto or "").strip()
+        _parece_pergunta = (
+            len(_mensagem_strip) >= 2
+            and (
+                "?" in _mensagem_strip
+                or "dúvida" in _mensagem_strip.lower()
+                or "duvida" in _mensagem_strip.lower()
+                or "como " in _mensagem_strip.lower()
+                or "qual " in _mensagem_strip.lower()
+                or "quero saber" in _mensagem_strip.lower()
+                or "instalou" in _mensagem_strip.lower()
+                or "status do pedido" in _mensagem_strip.lower()
+            )
+        )
+        if etapa_atual == 'inicial' and _mensagem_strip and _parece_pergunta:
+            try:
+                from crm_app.gemini_service import responder_com_gemini
+                nome_vendedor = (usuario_whatsapp.get_full_name() or usuario_whatsapp.username or "").strip() or None
+                resposta_ia = responder_com_gemini(_mensagem_strip, nome_vendedor=nome_vendedor)
+                if resposta_ia:
+                    logger.info("[Webhook] Resposta enviada via Gemini (mensagem identificada como pergunta).")
+                    return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta_ia))
+            except Exception as e:
+                logger.warning("[Webhook] Fallback Gemini (pergunta) falhou: %s", e)
         # Busca direta por tag do Record Apoia (sem precisar digitar Material/Apoia)
         if etapa_atual == 'inicial' and mensagem_texto and len(mensagem_texto.strip()) >= 2:
             try:

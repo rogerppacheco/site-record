@@ -56,7 +56,7 @@ def responder_com_gemini(mensagem_usuario: str, nome_vendedor: str = "") -> str 
     Retorna None em caso de erro ou se GEMINI_API_KEY não estiver configurada.
     """
     if not GEMINI_API_KEY:
-        logger.debug("[Gemini] GEMINI_API_KEY não configurada, ignorando.")
+        logger.warning("[Gemini] GEMINI_API_KEY não configurada. Configure a variável de ambiente para ativar respostas da IA.")
         return None
 
     mensagem_usuario = (mensagem_usuario or "").strip()
