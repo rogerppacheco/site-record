@@ -7602,6 +7602,17 @@ def processar_webhook_whatsapp(data, request=None):
                 resposta = "Não há confirmação pendente no momento. Digite *MENU* para ver as opções."
             else:
                 resposta = None
+                # Fallback: mensagem livre na etapa inicial → IA (Gemini) responde no contexto do sistema
+                if etapa_atual == 'inicial' and mensagem_texto and mensagem_texto.strip():
+                    try:
+                        from crm_app.gemini_service import responder_com_gemini
+                        nome_vendedor = (usuario_whatsapp.get_full_name() or usuario_whatsapp.username or "").strip() or None
+                        resposta_ia = responder_com_gemini(mensagem_texto.strip(), nome_vendedor=nome_vendedor)
+                        if resposta_ia:
+                            resposta = resposta_ia
+                            logger.info("[Webhook] Resposta enviada via Gemini (contexto do sistema).")
+                    except Exception as e:
+                        logger.warning("[Webhook] Fallback Gemini falhou: %s", e)
             sessao.etapa = 'inicial'
             sessao.dados_temp = {}
             sessao.save()
