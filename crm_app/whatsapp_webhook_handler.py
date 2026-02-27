@@ -973,7 +973,13 @@ def _executar_consulta_pedido_background(telefone: str, usuario_id: int, cpf: st
         _run_django_sync(_erro_cleanup)
 
 
-def _executar_consulta_status_online_background(telefone: str, cpf: str, eh_agendado: bool):
+def _executar_consulta_status_online_background(
+    telefone: str,
+    cpf: str,
+    eh_agendado: bool,
+    os_filtro: str = None,
+    run_id: str = None,
+):
     """
     Thread: após Status no CRM (não encontrado ou encontrado com AGENDADO), consulta online no PAP
     (mesmo fluxo Consulta OS). Se eh_agendado=True, enriquece com Detalhar (Status agendamento + Agendamento).
@@ -1032,7 +1038,9 @@ def _executar_consulta_status_online_background(telefone: str, cpf: str, eh_agen
                 pass
             return
 
-        sucesso, msg, detalhes, list_screenshot_path = automacao.consulta_os_por_cpf_com_resultado(cpf_limpo)
+        sucesso, msg, detalhes, list_screenshot_path = automacao.consulta_os_por_cpf_com_resultado(
+            cpf_limpo, numero_os_filtro=os_filtro
+        )
         tempo_decorrido = round(time.time() - tempo_inicio, 1)
         automacao._fechar_sessao()
 
@@ -1040,11 +1048,21 @@ def _executar_consulta_status_online_background(telefone: str, cpf: str, eh_agen
             import django.db
             django.db.close_old_connections()
             liberar_bo(bo_usuario.id, telefone)
+            # Evitar mandar resultado "atrasado" se o usuário iniciou outra consulta (run_id diferente)
+            if run_id:
+                try:
+                    s = SessaoWhatsapp.objects.get(telefone=telefone)
+                    if s.etapa != 'status_aguardando_online' or (s.dados_temp or {}).get('status_online_run_id') != run_id:
+                        return
+                except Exception:
+                    return
+            # Resetar sessão só se for a consulta atual
             try:
                 s = SessaoWhatsapp.objects.get(telefone=telefone)
-                s.etapa = 'inicial'
-                s.dados_temp = {}
-                s.save()
+                if (not run_id) or ((s.dados_temp or {}).get('status_online_run_id') == run_id):
+                    s.etapa = 'inicial'
+                    s.dados_temp = {}
+                    s.save()
             except Exception:
                 pass
             whatsapp = WhatsAppService()
@@ -1128,13 +1146,24 @@ def _executar_consulta_status_online_background(telefone: str, cpf: str, eh_agen
                 liberar_bo(bo_usuario.id, telefone)
             except Exception:
                 pass
-            try:
-                s = SessaoWhatsapp.objects.get(telefone=telefone)
-                s.etapa = 'inicial'
-                s.dados_temp = {}
-                s.save()
-            except Exception:
-                pass
+            # Resetar sessão só se for a consulta atual
+            if run_id:
+                try:
+                    s = SessaoWhatsapp.objects.get(telefone=telefone)
+                    if s.etapa == 'status_aguardando_online' and (s.dados_temp or {}).get('status_online_run_id') == run_id:
+                        s.etapa = 'inicial'
+                        s.dados_temp = {}
+                        s.save()
+                except Exception:
+                    pass
+            else:
+                try:
+                    s = SessaoWhatsapp.objects.get(telefone=telefone)
+                    s.etapa = 'inicial'
+                    s.dados_temp = {}
+                    s.save()
+                except Exception:
+                    pass
             WhatsAppService().enviar_mensagem_texto(
                 telefone,
                 f"❌ Erro na consulta online (PAP): {e}\n\nDigite *STATUS* para tentar novamente.\n\n⏱ _{tempo_decorrido}s_"
@@ -5911,6 +5940,13 @@ def processar_webhook_whatsapp(data, request=None):
         # Comando STATUS
         if mensagem_limpa in ['STATUS', 'SITUACAO', 'SITUAÇÃO']:
             logger.info(f"[Webhook] Comando STATUS reconhecido!")
+            # Se já existe uma consulta online em andamento, não reinicia o fluxo (evita misturar respostas)
+            try:
+                if sessao.etapa == 'status_aguardando_online':
+                    resposta = "⏳ Consultando status online no PAP... Aguarde. Você receberá a resposta em seguida."
+                    return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
+            except Exception:
+                pass
             sessao.etapa = 'status_tipo'
             sessao.dados_temp = {}
             sessao.save()
@@ -6689,12 +6725,13 @@ def processar_webhook_whatsapp(data, request=None):
                 resposta = f"🔎 Buscando pedido por CPF...\n\n{resultado_status}"
                 if fazer_consulta_online and cpf_para_consulta:
                     eh_agendado = "AGENDADO" in resultado_status.upper() and "PEDIDO NÃO ENCONTRADO" not in resultado_status.upper()
+                    run_id = str(int(time.time() * 1000))
                     sessao.etapa = 'status_aguardando_online'
-                    sessao.dados_temp = {}
+                    sessao.dados_temp = {'status_online_run_id': run_id}
                     sessao.save()
                     threading.Thread(
                         target=_executar_consulta_status_online_background,
-                        args=(telefone_formatado, cpf_para_consulta, eh_agendado),
+                        args=(telefone_formatado, cpf_para_consulta, eh_agendado, None, run_id),
                         daemon=True
                     ).start()
                     resposta += "\n\n⏳ Consultando também no PAP (status online)... Aguarde."
@@ -6714,12 +6751,13 @@ def processar_webhook_whatsapp(data, request=None):
                 resposta = f"🔎 Buscando pedido por O.S...\n\n{resultado_status}"
                 if fazer_consulta_online and cpf_para_consulta:
                     eh_agendado = True
+                    run_id = str(int(time.time() * 1000))
                     sessao.etapa = 'status_aguardando_online'
-                    sessao.dados_temp = {}
+                    sessao.dados_temp = {'status_online_run_id': run_id, 'os_filtro': os_limpo}
                     sessao.save()
                     threading.Thread(
                         target=_executar_consulta_status_online_background,
-                        args=(telefone_formatado, cpf_para_consulta, eh_agendado),
+                        args=(telefone_formatado, cpf_para_consulta, eh_agendado, os_limpo, run_id),
                         daemon=True
                     ).start()
                     resposta += "\n\n⏳ Consultando também no PAP (status online)... Aguarde."

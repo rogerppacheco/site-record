@@ -816,12 +816,13 @@ class PAPNioAutomation:
             return None
 
     def consulta_os_por_cpf_com_resultado(
-        self, cpf: str
+        self, cpf: str, numero_os_filtro: Optional[str] = None
     ) -> Tuple[bool, str, List[Dict[str, Any]], Optional[str]]:
         """
         Fluxo completo: login, Consulta OS, Filtros, CPF, período 30 dias, Filtrar.
         Lê a tabela e por linha detecta se existe link Detalhar (nao_pertence_pdv=False) ou não (não pertence ao PDV).
         Para cada linha com link Detalhar: abre o detalhe, extrai status_agendamento, agendamento, pendência e tira screenshot da tela de detalhe.
+        Se numero_os_filtro for informado, filtra o resultado para retornar somente aquela OS (comparando com e sem zeros à esquerda).
         Returns:
             (sucesso, mensagem, lista de dicts com status/plano/numero_os/data_hora, nao_pertence_pdv,
              e quando tem Detalhar: status_agendamento, agendamento, pendencia, detail_screenshot_path),
@@ -981,6 +982,19 @@ class PAPNioAutomation:
                         idx += col_per_row
         except Exception as e:
             logger.warning(f"[PAP] Erro ao ler tabela Consulta OS: {e}")
+
+        # Se for consulta por OS (via filtro), reduzir a lista antes de abrir detalhes para evitar abrir várias OS do mesmo CPF
+        if detalhes and numero_os_filtro:
+            filtro_raw = re.sub(r"\D", "", str(numero_os_filtro)).strip()
+            filtro_sem_zero = (filtro_raw.lstrip("0") or filtro_raw) if filtro_raw else ""
+            if filtro_raw:
+                filtrados = []
+                for d in detalhes:
+                    os_tbl = re.sub(r"\D", "", str(d.get("numero_os") or "")).strip()
+                    os_tbl_sem_zero = os_tbl.lstrip("0") or os_tbl
+                    if os_tbl == filtro_raw or os_tbl_sem_zero == filtro_sem_zero:
+                        filtrados.append(d)
+                detalhes = filtrados
 
         # Screenshot da lista (usado quando só 1 pedido e não pertence ao PDV)
         list_screenshot_path = self._screenshot_consulta_os_return_path(full_page=True)
