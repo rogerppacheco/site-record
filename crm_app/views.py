@@ -456,6 +456,7 @@ from .utils import (
     verificar_viabilidade_por_coordenadas,
     verificar_viabilidade_exata,
     montar_resumo_plano_para_whatsapp,
+    validar_venda_para_resumo_auditoria,
 )
 
 # Modelos do App
@@ -469,6 +470,7 @@ from .models import (
     LogImportacaoAgendamento, LogImportacaoLegado, LogImportacaoRecompra, EstatisticaBotWhatsApp,
     RegraComissaoFaixa, ConfigComissaoVendedor,
     AnteciparInstalacaoConfig, AnteciparInstalacaoSolicitacao,
+    PapConfirmacaoCliente,
 )
 
 # Serializers do App
@@ -1608,7 +1610,7 @@ class VendaViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='enviar-resumo-plano-whatsapp', permission_classes=[permissions.IsAuthenticated])
     def enviar_resumo_plano_whatsapp(self, request, pk=None):
-        """Envia o resumo do plano (mesmo formato do fluxo VENDER) para o celular 1 do cadastro da venda."""
+        """Envia o resumo do plano (mesmo formato do fluxo VENDER) para o celular 1 do cadastro da venda (cliente)."""
         venda = self.get_object()
         telefone = venda.telefone1
         if not telefone or not str(telefone).strip():
@@ -1616,13 +1618,28 @@ class VendaViewSet(viewsets.ModelViewSet):
                 {"detail": "Cadastro da venda não possui Celular 1 preenchido. Preencha o telefone na aba Contato."},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        ok, msg_erro = validar_venda_para_resumo_auditoria(venda)
+        if not ok:
+            return Response({"detail": msg_erro}, status=status.HTTP_400_BAD_REQUEST)
         try:
             resumo = montar_resumo_plano_para_whatsapp(venda)
             if not resumo:
                 return Response({"detail": "Não foi possível montar o resumo da venda."}, status=status.HTTP_400_BAD_REQUEST)
             svc = WhatsAppService()
             svc.enviar_mensagem_texto(telefone, resumo)
-            return Response({"detail": "Resumo enviado para o Celular 1 com sucesso!"})
+            # Registrar pendência de confirmação do cliente (resumo enviado da auditoria)
+            # para o webhook não responder "usuário não ativo" e gerar protocolo ao confirmar
+            celular_limpo = "".join(filter(str.isdigit, str(telefone)))
+            if celular_limpo.startswith("55") and len(celular_limpo) > 12:
+                celular_limpo = celular_limpo[2:]
+            if celular_limpo:
+                PapConfirmacaoCliente.objects.create(
+                    celular_cliente=celular_limpo,
+                    confirmado=False,
+                    sessao=None,
+                    venda=venda,
+                )
+            return Response({"detail": "Resumo enviado para o Cliente com sucesso!"})
         except Exception as e:
             logger.error(f"Erro ao enviar resumo plano WhatsApp (venda {venda.id}): {e}", exc_info=True)
             return Response(

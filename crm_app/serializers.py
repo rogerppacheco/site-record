@@ -245,7 +245,8 @@ class VendaSerializer(serializers.ModelSerializer):
             'periodo_agendamento', 'data_instalacao', 'antecipou_instalacao',
             'ponto_referencia', 'observacoes', 'data_pagamento', 'valor_pago',
             'auditor_atual', 'auditor_atual_nome', 'auditor_atual_id',
-            'nome_editor', 'data_ultima_alteracao', 'gerada_os_automatica'
+            'nome_editor', 'data_ultima_alteracao', 'gerada_os_automatica',
+            'cliente_confirmou_auditoria', 'protocolo_confirmacao_auditoria', 'data_confirmacao_auditoria',
         ]
 
     def get_auditor_atual_nome(self, obj):
@@ -283,17 +284,18 @@ class VendaDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Venda
         fields = [
-            'id', 'vendedor', 'vendedor_detalhes', 'cliente', 
+            'id', 'vendedor', 'vendedor_detalhes', 'cliente',
             'cliente_cpf_cnpj', 'cliente_nome_razao_social', 'cliente_email',
-            'plano', 'forma_pagamento', 'status_tratamento', 'status_esteira', 
+            'plano', 'forma_pagamento', 'status_tratamento', 'status_esteira',
             'status_comissionamento', 'motivo_pendencia',
             'nome_mae', 'data_nascimento', 'telefone1', 'telefone2',
             'cep', 'logradouro', 'numero_residencia', 'complemento', 'bairro', 'cidade', 'estado',
             'ponto_referencia', 'observacoes', 'ordem_servico', 'data_abertura',
             'data_agendamento', 'periodo_agendamento', 'data_instalacao', 'antecipou_instalacao',
-            'data_pagamento', 'valor_pago', 'cpf_representante_legal', 'nome_representante_legal', 
+            'data_pagamento', 'valor_pago', 'cpf_representante_legal', 'nome_representante_legal',
             'forma_entrada', 'tem_fixo', 'historico_alteracoes', 'data_criacao', 'data_ultima_alteracao',
-            'gerada_os_automatica'
+            'gerada_os_automatica',
+            'cliente_confirmou_auditoria', 'protocolo_confirmacao_auditoria', 'data_confirmacao_auditoria',
         ]
 
 class VendaCreateSerializer(serializers.ModelSerializer):

@@ -5558,11 +5558,11 @@ def processar_webhook_whatsapp(data, request=None):
     logger.info(f"[Webhook] Mensagem recebida de {telefone_formatado_usuario} (chat={telefone_formatado}): {mensagem_texto!r}")
     logger.info(f"[Webhook] Mensagem limpa (uppercase): {mensagem_limpa}")
     
-    # --- Resposta do CLIENTE (SIM) antes de exigir usuário ativo ---
-    # Quando o sistema envia "RESUMO DO PEDIDO... responda SIM" ao cliente, a resposta "SIM"
-    # vem do número do cliente, que não é usuário interno. Tratar aqui para não rejeitar com
-    # "não pertence a nenhum usuário ativo".
-    if mensagem_limpa in ['SIM', 'S']:
+    # --- Resposta do CLIENTE (SIM/CONFIRMAR) antes de exigir usuário ativo ---
+    # Quando o sistema envia "RESUMO DO PEDIDO... responda SIM" ao cliente (fluxo PAP ou
+    # resumo enviado da auditoria), a resposta vem do número do cliente, que não é usuário interno.
+    # Tratar aqui para não rejeitar com "não pertence a nenhum usuário ativo".
+    if mensagem_limpa in ['SIM', 'S', 'CONFIRMAR']:
         chave = _chave_telefone(telefone_formatado_usuario)
         chaves_tentar = _chaves_telefone_variantes(telefone_formatado_usuario) or [chave]
         with _pending_lock:
@@ -5595,7 +5595,8 @@ def processar_webhook_whatsapp(data, request=None):
             return {'status': 'ok', 'mensagem': 'Confirmado pelo cliente'}
         # Fallback: confirmação só no BD (ex.: outro replica não tem o in-memory pend)
         try:
-            from crm_app.models import PapConfirmacaoCliente
+            from crm_app.models import PapConfirmacaoCliente, Venda
+            from django.utils import timezone
             pend_bd = PapConfirmacaoCliente.objects.filter(
                 celular_cliente__in=chaves_tentar, confirmado=False
             ).order_by('-criado_em').first()
@@ -5610,7 +5611,20 @@ def processar_webhook_whatsapp(data, request=None):
                             break
                 try:
                     protocolo = ''
-                    if pend_bd.sessao_id:
+                    # Resumo enviado da auditoria: gerar protocolo e salvar na venda (uma confirmação por venda)
+                    if getattr(pend_bd, 'venda_id', None) and pend_bd.venda_id:
+                        venda = Venda.objects.filter(id=pend_bd.venda_id).first()
+                        if venda and not venda.protocolo_confirmacao_auditoria:
+                            now = timezone.now()
+                            protocolo = now.strftime("%Y%m%d%H%M") + str(venda.id)
+                            venda.cliente_confirmou_auditoria = True
+                            venda.protocolo_confirmacao_auditoria = protocolo
+                            venda.data_confirmacao_auditoria = now
+                            venda.save(update_fields=['cliente_confirmou_auditoria', 'protocolo_confirmacao_auditoria', 'data_confirmacao_auditoria'])
+                            logger.info(f"[Webhook] [Auditoria] Protocolo gerado para venda {venda.id}: {protocolo}")
+                        elif venda and venda.protocolo_confirmacao_auditoria:
+                            protocolo = venda.protocolo_confirmacao_auditoria
+                    elif pend_bd.sessao_id:
                         with _automacoes_lock:
                             ctx_pend = _automacoes_pap_ativas.get(pend_bd.sessao_id)
                         if ctx_pend and ctx_pend.get('automacao'):
@@ -5624,6 +5638,27 @@ def processar_webhook_whatsapp(data, request=None):
                 return {'status': 'ok', 'mensagem': 'Confirmado pelo cliente (BD)'}
         except Exception as e:
             logger.warning(f"[Webhook] Erro ao confirmar PapConfirmacaoCliente (BD): {e}", exc_info=True)
+    
+    # Se este número tem resumo enviado da auditoria (pendência de confirmação, sessao=None),
+    # não enviar "usuário não ativo" — orientar a responder SIM ou CONFIRMAR.
+    chave = _chave_telefone(telefone_formatado_usuario)
+    chaves_tentar_ua = _chaves_telefone_variantes(telefone_formatado_usuario) or [chave]
+    try:
+        from crm_app.models import PapConfirmacaoCliente
+        pendente_auditoria = PapConfirmacaoCliente.objects.filter(
+            celular_cliente__in=chaves_tentar_ua, confirmado=False, sessao__isnull=True
+        ).exists()
+        if pendente_auditoria:
+            try:
+                WhatsAppService().enviar_mensagem_texto(
+                    telefone_formatado,
+                    "Para confirmar o resumo do plano, responda *SIM* ou *CONFIRMAR*."
+                )
+            except Exception as e:
+                logger.warning(f"[Webhook] Erro ao enviar orientação resumo auditoria: {e}")
+            return {'status': 'ok', 'mensagem': 'Aguardando confirmação do cliente (resumo auditoria)'}
+    except Exception as e:
+        logger.warning(f"[Webhook] Erro ao verificar pendência resumo auditoria: {e}", exc_info=True)
     
     # Verificar se o número está associado a um usuário ativo (em grupo, usar participant_phone)
     usuario_whatsapp = _usuario_ativo_por_telefone(telefone_formatado_usuario)

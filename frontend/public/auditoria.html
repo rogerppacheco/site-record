@@ -136,9 +136,10 @@
         <div class="modal-dialog modal-fullscreen">
             <div class="modal-content">
                 <div class="modal-header bg-primary text-white py-2">
-                    <h6 class="modal-title d-flex align-items-center gap-2">
+                    <h6 class="modal-title d-flex align-items-center gap-2 flex-wrap">
                         <i class="bi bi-headset"></i> Auditoria Venda #<span id="script-id-venda"></span>
                         <span class="badge bg-light text-primary ms-2" id="script-vendedor-nome"></span>
+                        <span class="ms-2 small fw-normal opacity-90" id="script-protocolo-badge" style="display: none;">— [PROTOCOLO GERADO COM A CONFIRMAÇÃO DO CLIENTE]</span>
                     </h6>
                     <button type="button" class="btn-close btn-close-white" onclick="fecharScriptSemSalvar()"></button>
                 </div>
@@ -154,6 +155,7 @@
                             <li class="nav-item" role="presentation"><button class="nav-link" id="pills-endereco-tab" data-bs-toggle="pill" data-bs-target="#pills-endereco" type="button">3. Endereço</button></li>
                             <li class="nav-item" role="presentation"><button class="nav-link" id="pills-oferta-tab" data-bs-toggle="pill" data-bs-target="#pills-oferta" type="button">4. Oferta & Pagto</button></li>
                             <li class="nav-item" role="presentation"><button class="nav-link" id="pills-finalizacao-tab" data-bs-toggle="pill" data-bs-target="#pills-finalizacao" type="button">5. Finalização</button></li>
+                            <li class="nav-item" role="presentation"><button class="nav-link" id="pills-retorno-tab" data-bs-toggle="pill" data-bs-target="#pills-retorno" type="button">6. Retorno Auditoria</button></li>
                         </ul>
                     </div>
 
@@ -352,6 +354,30 @@
                                         <div class="card bg-light border-0 mb-3"><div class="card-body"><h6 class="card-subtitle mb-3 text-muted text-uppercase small fw-bold">Preferência de Agendamento</h6><div class="row g-3"><div class="col-md-6"><label class="form-label fw-bold">Data</label><input type="date" class="form-control" id="audit-data-agendamento"></div><div class="col-md-6"><label class="form-label fw-bold">Turno</label><select class="form-select" id="audit-turno-agendamento"><option value="">Não agendado</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select></div></div></div></div>
                                         <div class="script-section bg-light border p-3 rounded mb-3"><div class="script-title small">Aplicativo Nio</div><p class="script-text mb-0">"Para finalizar, gostaria de informar que temos o aplicativo Nio. Nele, você pode: <strong>Acompanhar a internet, Solicitar 2ª via da fatura, Atualizar dados e Pedir suporte.</strong> O app é essencial, pois você terá tudo na palma da sua mão. <br><br>Qualquer dúvida, entre em contato pelo WhatsApp (21 3605 1000). Enviaremos uma pesquisa de satisfação amanhã, sua opinião é muito importante!"</p></div>
                                         <div class="mb-2"><label class="form-label fw-bold text-danger">Observações da Auditoria</label><textarea class="form-control uppercase-input" id="script-obs-venda" rows="3" placeholder="Anote aqui qualquer divergência..."></textarea></div>
+                                        <div class="text-end mt-2"><button class="btn btn-primary btn-sm" onclick="proximaAba('pills-retorno-tab')">Próximo <i class="bi bi-arrow-right"></i></button></div>
+                                    </div>
+                                </div>
+
+                                <div class="tab-pane fade" id="pills-retorno" role="tabpanel">
+                                    <div class="script-section">
+                                        <div class="script-title">6. Retorno Auditoria</div>
+                                        <p class="script-text mb-3">Resposta do cliente ao resumo enviado pelo WhatsApp (aba Contato / botão "Enviar resumo ao Cliente").</p>
+                                        <div class="card border-0 bg-light mb-3">
+                                            <div class="card-body">
+                                                <div class="d-flex align-items-center gap-2 mb-2">
+                                                    <span class="fw-bold">Cliente confirmou?</span>
+                                                    <span id="audit-retorno-status" class="badge bg-secondary">—</span>
+                                                </div>
+                                                <div id="audit-retorno-protocolo-box" class="small text-success fw-bold mb-2" style="display: none;">
+                                                    <span>Protocolo:</span> <code id="audit-retorno-protocolo"></code>
+                                                </div>
+                                                <div id="audit-retorno-data-box" class="small text-muted" style="display: none;">
+                                                    Data/hora da confirmação: <span id="audit-retorno-data"></span>
+                                                </div>
+                                                <button type="button" class="btn btn-outline-warning btn-sm mt-2" id="btn-audit-marcar-nao-confirmado" style="display: none;" onclick="marcarClienteNaoConfirmado()">Marcar como não confirmado</button>
+                                            </div>
+                                        </div>
+                                        <p class="text-muted small mb-0">Se o cliente não confirmar, a auditoria segue os passos normais. Se confirmar, valide na aba 3. Endereço se o cliente possui fibra instalada.</p>
                                     </div>
                                 </div>
 
@@ -372,8 +398,8 @@
                         </div>
                         
                         <div class="d-flex gap-2">
-                            <button type="button" class="btn btn-outline-success btn-lg" onclick="enviarResumoPlanoCelular()" title="Envia o resumo do plano (igual ao VENDER) para o Celular 1 do cadastro">
-                                <i class="bi bi-whatsapp"></i> Enviar resumo ao celular
+                            <button type="button" class="btn btn-outline-success btn-lg" onclick="enviarResumoPlanoCliente()" title="Envia o resumo do plano ao Cliente (Celular 1). Exige Endereço, Plano e Forma de Pagamento preenchidos.">
+                                <i class="bi bi-whatsapp"></i> Enviar resumo ao Cliente
                             </button>
                             <button type="button" class="btn btn-secondary btn-lg" onclick="fecharScriptSemSalvar()">Sair</button>
                             <button type="button" class="btn btn-success btn-lg fw-bold" onclick="finalizarComoAuditada()">
@@ -768,6 +794,47 @@
                         alertaOsAuto.style.display = 'none';
                     }
                 }
+
+                // Título: protocolo confirmação cliente (auditoria)
+                const protocoloBadge = document.getElementById('script-protocolo-badge');
+                if (protocoloBadge) {
+                    if (v.protocolo_confirmacao_auditoria) {
+                        protocoloBadge.style.display = 'inline';
+                        protocoloBadge.textContent = '— [PROTOCOLO GERADO COM A CONFIRMAÇÃO DO CLIENTE]';
+                    } else {
+                        protocoloBadge.style.display = 'none';
+                    }
+                }
+
+                // Aba 6. Retorno Auditoria
+                const statusEl = document.getElementById('audit-retorno-status');
+                const protocoloBox = document.getElementById('audit-retorno-protocolo-box');
+                const protocoloEl = document.getElementById('audit-retorno-protocolo');
+                const dataBox = document.getElementById('audit-retorno-data-box');
+                const dataEl = document.getElementById('audit-retorno-data');
+                const btnNaoConfirmado = document.getElementById('btn-audit-marcar-nao-confirmado');
+                if (v.cliente_confirmou_auditoria === true) {
+                    statusEl.textContent = 'Sim'; statusEl.className = 'badge bg-success';
+                    if (v.protocolo_confirmacao_auditoria) {
+                        protocoloBox.style.display = 'block'; protocoloEl.textContent = v.protocolo_confirmacao_auditoria;
+                    } else { protocoloBox.style.display = 'none'; }
+                    if (v.data_confirmacao_auditoria) {
+                        dataBox.style.display = 'block';
+                        try {
+                            const d = new Date(v.data_confirmacao_auditoria);
+                            dataEl.textContent = d.toLocaleString('pt-BR');
+                        } catch (e) { dataEl.textContent = v.data_confirmacao_auditoria; }
+                    } else { dataBox.style.display = 'none'; }
+                    btnNaoConfirmado.style.display = 'none';
+                } else if (v.cliente_confirmou_auditoria === false) {
+                    statusEl.textContent = 'Não'; statusEl.className = 'badge bg-danger';
+                    protocoloBox.style.display = 'none'; dataBox.style.display = 'none';
+                    btnNaoConfirmado.style.display = 'none';
+                } else {
+                    statusEl.textContent = 'Aguardando'; statusEl.className = 'badge bg-secondary';
+                    protocoloBox.style.display = 'none'; dataBox.style.display = 'none';
+                    btnNaoConfirmado.style.display = 'inline-block';
+                }
             }).catch(e => { console.error(e); $('#loadingOverlay').hide(); alert('Erro ao abrir venda.'); });
         }
 
@@ -880,21 +947,72 @@
             return true;
         }
 
-        async function enviarResumoPlanoCelular() {
+        async function enviarResumoPlanoCliente() {
             if (!vendaEmAuditoria || !vendaEmAuditoria.id) { alert('Nenhuma venda em auditoria.'); return; }
             const tel1 = $('#audit-tel1').val();
             if (!tel1 || !String(tel1).replace(/\D/g, '').length) {
                 alert('Cadastro sem Celular 1. Preencha o telefone na aba Contato antes de enviar o resumo.');
                 return;
             }
-            if (!confirm('Enviar resumo do plano para o Celular 1 (' + tel1 + ')?')) return;
+            const cep = $('#audit-cep').val();
+            const logradouro = $('#audit-logradouro').val();
+            const numero = $('#audit-numero').val();
+            const plano = $('#audit-plano').val();
+            const pagamento = $('#audit-pagamento').val();
+            if (!cep || !String(cep).replace(/\D/g, '').length) {
+                alert('Preencha o CEP (aba Endereço) antes de enviar o resumo.');
+                return;
+            }
+            if (!logradouro || !String(logradouro).trim()) {
+                alert('Preencha o Logradouro (aba Endereço) antes de enviar o resumo.');
+                return;
+            }
+            if (!numero || !String(numero).trim()) {
+                alert('Preencha o Número (aba Endereço) antes de enviar o resumo.');
+                return;
+            }
+            if (!plano) {
+                alert('Selecione o Plano (aba Oferta & Pagamento) antes de enviar o resumo.');
+                return;
+            }
+            if (!pagamento) {
+                alert('Selecione a Forma de Pagamento (aba Oferta & Pagamento) antes de enviar o resumo.');
+                return;
+            }
+            if (!confirm('Enviar resumo do plano ao Cliente (' + tel1 + ')?')) return;
             $('#loadingOverlay').show();
             try {
                 const res = await apiFetch(`${API_BASE}/${vendaEmAuditoria.id}/enviar-resumo-plano-whatsapp/`, { method: 'POST' });
                 alert(res.detail || 'Resumo enviado!');
             } catch (e) {
                 const msg = (e && e.message) ? e.message : (typeof e === 'string' ? e : 'Erro ao enviar.');
-                alert(msg.includes('detail') ? (JSON.parse(msg)?.detail || msg) : msg);
+                try {
+                    const parsed = JSON.parse(msg);
+                    alert(parsed.detail || msg);
+                } catch (_) { alert(msg); }
+            } finally {
+                $('#loadingOverlay').hide();
+            }
+        }
+
+        async function marcarClienteNaoConfirmado() {
+            if (!vendaEmAuditoria || !vendaEmAuditoria.id) return;
+            if (!confirm('Marcar que o cliente não confirmou o resumo?')) return;
+            $('#loadingOverlay').show();
+            try {
+                await apiFetch(`${API_BASE}/${vendaEmAuditoria.id}/`, {
+                    method: 'PATCH',
+                    body: JSON.stringify({ cliente_confirmou_auditoria: false })
+                });
+                vendaEmAuditoria.cliente_confirmou_auditoria = false;
+                document.getElementById('audit-retorno-status').textContent = 'Não';
+                document.getElementById('audit-retorno-status').className = 'badge bg-danger';
+                document.getElementById('audit-retorno-protocolo-box').style.display = 'none';
+                document.getElementById('audit-retorno-data-box').style.display = 'none';
+                document.getElementById('btn-audit-marcar-nao-confirmado').style.display = 'none';
+                alert('Registrado: cliente não confirmou.');
+            } catch (e) {
+                alert('Erro ao salvar: ' + (e.message || e));
             } finally {
                 $('#loadingOverlay').hide();
             }

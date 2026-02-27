@@ -392,11 +392,32 @@ def consultar_status_venda(tipo_busca, valor):
         )
 
 
+def validar_venda_para_resumo_auditoria(venda):
+    """
+    Valida se a venda está completa para enviar o resumo ao cliente (auditoria).
+    Retorna (True, None) se OK, ou (False, mensagem_erro) se faltar algo.
+    Exige: endereço (CEP, logradouro, número), plano e forma de pagamento.
+    """
+    if not venda:
+        return False, "Venda não informada."
+    if not (venda.cep and str(venda.cep).strip()):
+        return False, "Preencha o CEP (aba Endereço) antes de enviar o resumo."
+    if not (venda.logradouro and str(venda.logradouro).strip()):
+        return False, "Preencha o Logradouro (aba Endereço) antes de enviar o resumo."
+    if not (venda.numero_residencia and str(venda.numero_residencia).strip()):
+        return False, "Preencha o Número (aba Endereço) antes de enviar o resumo."
+    if not venda.plano_id:
+        return False, "Selecione o Plano (aba Oferta & Pagamento) antes de enviar o resumo."
+    if not venda.forma_pagamento_id:
+        return False, "Selecione a Forma de Pagamento (aba Oferta & Pagamento) antes de enviar o resumo."
+    return True, None
+
+
 def montar_resumo_plano_para_whatsapp(venda):
     """
-    Monta o texto do resumo da venda (plano, pagamento, endereço, cliente) no mesmo
-    formato usado no fluxo VENDER, para envio manual (ex.: auditoria enviar ao celular 1).
-    Retorna string pronta para WhatsApp.
+    Monta o texto do resumo da venda (plano, pagamento, endereço completo, cliente) no mesmo
+    formato usado no fluxo VENDER, para envio manual (ex.: auditoria enviar ao celular).
+    Retorna string pronta para WhatsApp. Use validar_venda_para_resumo_auditoria antes.
     """
     if not venda:
         return ""
@@ -409,9 +430,31 @@ def montar_resumo_plano_para_whatsapp(venda):
     cel_fmt = f"({cel_limpo[:2]}) {cel_limpo[2:7]}-{cel_limpo[7:]}" if len(cel_limpo) >= 10 else celular
 
     email = (venda.cliente.email or "") if venda.cliente else ""
-    cep = venda.cep or ""
-    numero = venda.numero_residencia or ""
-    referencia = venda.ponto_referencia or ""
+
+    # Endereço completo: CEP, logradouro, número, complemento, bairro, cidade, UF, referência
+    cep = (venda.cep or "").strip()
+    if len(cep) == 8 and cep.isdigit():
+        cep = f"{cep[:5]}-{cep[5:]}"
+    logradouro = (venda.logradouro or "").strip()
+    numero = (venda.numero_residencia or "").strip()
+    complemento = (venda.complemento or "").strip()
+    bairro = (venda.bairro or "").strip()
+    cidade = (venda.cidade or "").strip()
+    estado = (venda.estado or "").strip()
+    referencia = (venda.ponto_referencia or "").strip()
+
+    linhas_endereco = [f"CEP: {cep}", f"Número: {numero}"]
+    if logradouro:
+        linhas_endereco.insert(1, f"Logradouro: {logradouro}")
+    if complemento:
+        linhas_endereco.append(f"Complemento: {complemento}")
+    if bairro:
+        linhas_endereco.append(f"Bairro: {bairro}")
+    if cidade or estado:
+        linhas_endereco.append(f"Cidade: {cidade}" + (f" - {estado}" if estado else ""))
+    if referencia:
+        linhas_endereco.append(f"Referência: {referencia}")
+    bloco_endereco = "\n".join(linhas_endereco)
 
     forma_nome = (venda.forma_pagamento.nome or "") if venda.forma_pagamento else ""
     eh_cartao = forma_nome and ("CRÉDITO" in forma_nome.upper() or "CREDITO" in forma_nome.upper())
@@ -430,9 +473,7 @@ def montar_resumo_plano_para_whatsapp(venda):
     return (
         f"📋 *RESUMO DA VENDA*\n\n"
         f"📍 *Endereço:*\n"
-        f"CEP: {cep}\n"
-        f"Número: {numero}\n"
-        f"Referência: {referencia}\n\n"
+        f"{bloco_endereco}\n\n"
         f"👤 *Cliente:*\n"
         f"CPF: {cpf_fmt}\n"
         f"Celular: {cel_fmt}\n"

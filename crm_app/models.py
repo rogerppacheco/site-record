@@ -178,6 +178,28 @@ class Venda(models.Model):
         help_text="Se a venda foi gerada com O.S. automática (vendedor já abriu o pedido)."
     )
 
+    # --- Retorno auditoria: confirmação do cliente (resumo enviado ao celular) ---
+    cliente_confirmou_auditoria = models.BooleanField(
+        null=True,
+        blank=True,
+        default=None,
+        verbose_name="Cliente confirmou resumo (auditoria)",
+        help_text="True se o cliente respondeu SIM/CONFIRMAR ao resumo enviado; False se BO marcou que não confirmou; null se ainda não definido.",
+    )
+    protocolo_confirmacao_auditoria = models.CharField(
+        max_length=30,
+        blank=True,
+        null=True,
+        db_index=True,
+        verbose_name="Protocolo confirmação cliente (auditoria)",
+        help_text="Formato AAAAMMDDHHMM + ID da venda (ex.: 2026022621403383). Gerado quando o cliente confirma pelo WhatsApp.",
+    )
+    data_confirmacao_auditoria = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Data/hora confirmação cliente (auditoria)",
+    )
+
     # --- CAMPOS PARA CONTROLE DE DESCONTOS ---
     flag_adiant_cnpj = models.BooleanField(default=False, verbose_name="Adiant. CNPJ Processado")
     flag_desc_boleto = models.BooleanField(default=False, verbose_name="Desc. Boleto Processado")
@@ -669,10 +691,10 @@ class FilaEsperaPAP(models.Model):
 
 class PapConfirmacaoCliente(models.Model):
     """
-    Pendência de confirmação "Sim" do cliente no fluxo PAP.
+    Pendência de confirmação "Sim" do cliente no fluxo PAP ou resumo enviado da auditoria.
     Usado para compartilhar estado entre terminal (testar_pap_terminal) e webhook:
     terminal registra ao enviar resumo; webhook marca confirmado ao receber "Sim".
-    sessao_id vincula a confirmação à sessão atual, evitando falso positivo com "Sim" de testes anteriores.
+    sessao_id vincula a confirmação à sessão atual (PAP). venda_id vincula à auditoria.
     """
     celular_cliente = models.CharField(max_length=20, db_index=True)
     confirmado = models.BooleanField(default=False)
@@ -684,6 +706,15 @@ class PapConfirmacaoCliente(models.Model):
         db_column='sessao_id',
         db_index=True,
         related_name='pap_confirmacoes',
+    )
+    venda = models.ForeignKey(
+        'Venda',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_index=True,
+        related_name='pap_confirmacoes_auditoria',
+        help_text='Preenchido quando o resumo foi enviado da auditoria; ao confirmar, gera protocolo nesta venda.',
     )
     criado_em = models.DateTimeField(auto_now_add=True)
 
