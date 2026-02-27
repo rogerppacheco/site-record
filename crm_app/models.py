@@ -610,6 +610,12 @@ class SessaoWhatsapp(models.Model):
     etapa = models.CharField(max_length=50) 
     dados_temp = models.JSONField(default=dict) 
     updated_at = models.DateTimeField(auto_now=True)
+    data_ultimo_aviso_nao_autorizado = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="Data do último aviso de usuário não autorizado",
+        help_text="Quando o usuário não está autorizado a chamar no bot, usamos esta data para enviar o aviso apenas uma vez por dia."
+    )
 
     def __str__(self):
         return f"{self.telefone} - {self.etapa}"

@@ -517,6 +517,11 @@
                                             <small class="text-muted d-block ms-4 mt-1">Permite usar o comando INCLUSÃO pelo WhatsApp (solicitar viabilidade via formulário).</small>
                                         </div>
                                         <div class="form-check form-switch mb-3 p-3 rounded bg-light border">
+                                            <input class="form-check-input" type="checkbox" id="autorizado_chamar_no_bot">
+                                            <label class="form-check-label fw-bold" for="autorizado_chamar_no_bot">Autorizado chamar no bot</label>
+                                            <small class="text-muted d-block ms-4 mt-1">Se desmarcado, o usuário continua recebendo mensagens do sistema; ao interagir, recebe aviso (uma vez por dia) de que não está liberado; no mesmo dia, novas interações não recebem resposta.</small>
+                                        </div>
+                                        <div class="form-check form-switch mb-3 p-3 rounded bg-light border">
                                             <input class="form-check-input" type="checkbox" id="login_pap_disponivel_para_automacao">
                                             <label class="form-check-label fw-bold" for="login_pap_disponivel_para_automacao">Disponibilizar login PAP para o bot (WhatsApp)</label>
                                             <small class="text-muted d-block ms-4 mt-1">Se desmarcado, o bot não usará este login no pool. Use quando o BO estiver atuando no PAP para não disputar o mesmo login.</small>
@@ -1814,6 +1819,7 @@
             document.getElementById('autorizar_venda_automatica').checked = user.autorizar_venda_automatica || false;
             document.getElementById('autorizar_analise_credito_wpp').checked = user.autorizar_analise_credito_wpp || false;
             document.getElementById('autorizar_inclusao_wpp').checked = user.autorizar_inclusao_wpp || false;
+            document.getElementById('autorizado_chamar_no_bot').checked = user.autorizado_chamar_no_bot !== false;
             document.getElementById('login_pap_disponivel_para_automacao').checked = user.login_pap_disponivel_para_automacao !== false;
             document.getElementById('pap_automacao_vender').checked = user.pap_automacao_vender !== false;
             document.getElementById('pap_automacao_credito').checked = user.pap_automacao_credito !== false;
@@ -1826,6 +1832,7 @@
             document.getElementById('matricula_pap').value = '';
             document.getElementById('tel_whatsapp_2').value = '';
             document.getElementById('tel_whatsapp_3').value = '';
+            document.getElementById('autorizado_chamar_no_bot').checked = true;
             document.getElementById('login_pap_disponivel_para_automacao').checked = true;
             document.getElementById('pap_automacao_vender').checked = true;
             document.getElementById('pap_automacao_credito').checked = true;
@@ -1978,6 +1985,7 @@
             autorizar_venda_automatica: document.getElementById('autorizar_venda_automatica').checked,
             autorizar_analise_credito_wpp: document.getElementById('autorizar_analise_credito_wpp').checked,
             autorizar_inclusao_wpp: document.getElementById('autorizar_inclusao_wpp').checked,
+            autorizado_chamar_no_bot: document.getElementById('autorizado_chamar_no_bot').checked,
             login_pap_disponivel_para_automacao: document.getElementById('login_pap_disponivel_para_automacao').checked,
             pap_automacao_vender: document.getElementById('pap_automacao_vender').checked,
             pap_automacao_credito: document.getElementById('pap_automacao_credito').checked,

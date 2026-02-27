@@ -5843,7 +5843,21 @@ def processar_webhook_whatsapp(data, request=None):
     
     etapa_atual = sessao.etapa
     dados_temp = sessao.dados_temp or {}
-    
+
+    # Usuário ativo mas não autorizado a chamar no bot: aviso uma vez por dia; no mesmo dia, sem resposta.
+    if not getattr(usuario_whatsapp, 'autorizado_chamar_no_bot', True):
+        hoje = timezone.localdate()
+        if sessao.data_ultimo_aviso_nao_autorizado != hoje:
+            try:
+                whatsapp_service.enviar_mensagem_texto(
+                    telefone_formatado,
+                    "Seu usuário não está liberado para acesso ao bot."
+                )
+            except Exception as e:
+                logger.warning(f"[Webhook] Erro ao enviar aviso não autorizado: {e}", exc_info=True)
+            SessaoWhatsapp.objects.filter(id=sessao.id).update(data_ultimo_aviso_nao_autorizado=hoje)
+        return {'status': 'ok', 'mensagem': 'Usuário não autorizado a chamar no bot'}
+
     def _enviar_resposta_e_retornar(resposta_texto):
         """Envia a mensagem ao usuário via Z-API e retorna o resultado para a API."""
         if resposta_texto and str(resposta_texto).strip():

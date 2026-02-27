@@ -116,6 +116,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
             'autorizar_venda_automatica',
             'autorizar_analise_credito_wpp',
             'autorizar_inclusao_wpp',
+            'autorizado_chamar_no_bot',
             'login_pap_disponivel_para_automacao',
             'pap_automacao_vender',
             'pap_automacao_credito',
