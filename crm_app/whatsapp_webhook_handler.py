@@ -5596,7 +5596,6 @@ def processar_webhook_whatsapp(data, request=None):
         # Fallback: confirmação só no BD (ex.: outro replica não tem o in-memory pend)
         try:
             from crm_app.models import PapConfirmacaoCliente, Venda
-            from django.utils import timezone
             pend_bd = PapConfirmacaoCliente.objects.filter(
                 celular_cliente__in=chaves_tentar, confirmado=False
             ).order_by('-criado_em').first()

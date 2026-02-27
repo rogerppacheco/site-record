@@ -364,9 +364,12 @@
                                         <p class="script-text mb-3">Resposta do cliente ao resumo enviado pelo WhatsApp (aba Contato / botão "Enviar resumo ao Cliente").</p>
                                         <div class="card border-0 bg-light mb-3">
                                             <div class="card-body">
-                                                <div class="d-flex align-items-center gap-2 mb-2">
+                                                <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
                                                     <span class="fw-bold">Cliente confirmou?</span>
                                                     <span id="audit-retorno-status" class="badge bg-secondary">—</span>
+                                                    <button type="button" class="btn btn-outline-primary btn-sm ms-2" onclick="atualizarStatusConfirmacaoCliente()" title="Verificar se o cliente já respondeu SIM/CONFIRMAR no WhatsApp">
+                                                        <i class="bi bi-arrow-clockwise"></i> Atualizar
+                                                    </button>
                                                 </div>
                                                 <div id="audit-retorno-protocolo-box" class="small text-success fw-bold mb-2" style="display: none;">
                                                     <span>Protocolo:</span> <code id="audit-retorno-protocolo"></code>
@@ -992,6 +995,48 @@
                 } catch (_) { alert(msg); }
             } finally {
                 $('#loadingOverlay').hide();
+            }
+        }
+
+        async function atualizarStatusConfirmacaoCliente() {
+            if (!vendaEmAuditoria || !vendaEmAuditoria.id) return;
+            try {
+                const v = await apiFetch(`${API_BASE}/${vendaEmAuditoria.id}/`);
+                vendaEmAuditoria = v;
+                const statusEl = document.getElementById('audit-retorno-status');
+                const protocoloBox = document.getElementById('audit-retorno-protocolo-box');
+                const protocoloEl = document.getElementById('audit-retorno-protocolo');
+                const dataBox = document.getElementById('audit-retorno-data-box');
+                const dataEl = document.getElementById('audit-retorno-data');
+                const btnNaoConfirmado = document.getElementById('btn-audit-marcar-nao-confirmado');
+                const protocoloBadge = document.getElementById('script-protocolo-badge');
+                if (v.cliente_confirmou_auditoria === true) {
+                    statusEl.textContent = 'Sim'; statusEl.className = 'badge bg-success';
+                    if (v.protocolo_confirmacao_auditoria) {
+                        protocoloBox.style.display = 'block'; protocoloEl.textContent = v.protocolo_confirmacao_auditoria;
+                    } else { protocoloBox.style.display = 'none'; }
+                    if (v.data_confirmacao_auditoria) {
+                        dataBox.style.display = 'block';
+                        try {
+                            const d = new Date(v.data_confirmacao_auditoria);
+                            dataEl.textContent = d.toLocaleString('pt-BR');
+                        } catch (e) { dataEl.textContent = v.data_confirmacao_auditoria; }
+                    } else { dataBox.style.display = 'none'; }
+                    btnNaoConfirmado.style.display = 'none';
+                    if (protocoloBadge) { protocoloBadge.style.display = 'inline'; protocoloBadge.textContent = '— [PROTOCOLO GERADO COM A CONFIRMAÇÃO DO CLIENTE]'; }
+                } else if (v.cliente_confirmou_auditoria === false) {
+                    statusEl.textContent = 'Não'; statusEl.className = 'badge bg-danger';
+                    protocoloBox.style.display = 'none'; dataBox.style.display = 'none';
+                    btnNaoConfirmado.style.display = 'none';
+                    if (protocoloBadge) protocoloBadge.style.display = 'none';
+                } else {
+                    statusEl.textContent = 'Aguardando'; statusEl.className = 'badge bg-secondary';
+                    protocoloBox.style.display = 'none'; dataBox.style.display = 'none';
+                    btnNaoConfirmado.style.display = 'inline-block';
+                    if (protocoloBadge) protocoloBadge.style.display = 'none';
+                }
+            } catch (e) {
+                alert('Erro ao atualizar: ' + (e.message || e));
             }
         }
 
