@@ -6066,6 +6066,12 @@ def processar_webhook_whatsapp(data, request=None):
                 if resposta_ia:
                     logger.info("[Webhook] Resposta enviada via Gemini (mensagem identificada como pergunta).")
                     return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta_ia))
+                # IA não respondeu (ex.: GEMINI_API_KEY não configurada em produção) → mensagem de fallback
+                resposta_fallback = (
+                    "No momento não consigo responder dúvidas por aqui. "
+                    "Digite *MENU* para ver os comandos disponíveis ou fale com seu gestor."
+                )
+                return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta_fallback))
             except Exception as e:
                 logger.warning("[Webhook] Fallback Gemini (pergunta) falhou: %s", e)
         # Busca direta por tag do Record Apoia (sem precisar digitar Material/Apoia)
