@@ -896,7 +896,7 @@ def _executar_consulta_pedido_background(telefone: str, usuario_id: int, cpf: st
             headless=headless,
             capture_screenshots=capture_screenshots,
         )
-        sucesso, msg, detalhes, screenshot_path = automacao.consulta_os_por_cpf_com_resultado(cpf_limpo)
+        sucesso, msg, detalhes, list_screenshot_path = automacao.consulta_os_por_cpf_com_resultado(cpf_limpo)
         tempo_decorrido = round(time.time() - tempo_inicio, 1)
         automacao._fechar_sessao()
 
@@ -937,9 +937,9 @@ def _executar_consulta_pedido_background(telefone: str, usuario_id: int, cpf: st
                     partes.append("\n")
                 partes.append(f"\n⏱ _{tempo_decorrido}s_")
                 caption = "".join(partes)
-            if screenshot_path and os.path.isfile(screenshot_path):
+            if list_screenshot_path and os.path.isfile(list_screenshot_path):
                 try:
-                    with open(screenshot_path, "rb") as f:
+                    with open(list_screenshot_path, "rb") as f:
                         img_b64 = base64.b64encode(f.read()).decode("utf-8")
                     whatsapp.enviar_imagem_b64(telefone, img_b64, caption=caption)
                 except Exception as e_img:
@@ -1032,9 +1032,7 @@ def _executar_consulta_status_online_background(telefone: str, cpf: str, eh_agen
                 pass
             return
 
-        sucesso, msg, detalhes, screenshot_path = automacao.consulta_os_por_cpf_com_resultado(
-            cpf_limpo, enrich_detalhar=eh_agendado
-        )
+        sucesso, msg, detalhes, list_screenshot_path = automacao.consulta_os_por_cpf_com_resultado(cpf_limpo)
         tempo_decorrido = round(time.time() - tempo_inicio, 1)
         automacao._fechar_sessao()
 
@@ -1068,25 +1066,48 @@ def _executar_consulta_status_online_background(telefone: str, cpf: str, eh_agen
                 for i, d in enumerate(detalhes):
                     if n > 1:
                         partes.append(f"📌 *Pedido {i + 1}/{n}* (OS {d.get('numero_os', '')})\n")
-                    partes.append(f"• *Status:* {d.get('status', '')}\n")
-                    partes.append(f"• *Data:* {d.get('data_hora', '')}\n")
-                    partes.append(f"• *Plano:* {d.get('plano', '')}\n")
-                    partes.append(f"• *Nº OS:* {d.get('numero_os', '')}\n")
-                    if d.get('status_agendamento') or d.get('agendamento'):
-                        if d.get('status_agendamento'):
+                    if d.get("nao_pertence_pdv"):
+                        partes.append("⚠️ Existe um pedido emitido, porém não pertence ao seu PDV.\n")
+                        partes.append(f"• *Status:* {d.get('status', '')}\n")
+                        partes.append(f"• *Data:* {d.get('data_hora', '')}\n")
+                        partes.append(f"• *Plano:* {d.get('plano', '')}\n")
+                        partes.append(f"• *Nº OS:* {d.get('numero_os', '')}\n")
+                    else:
+                        partes.append(f"• *Status:* {d.get('status', '')}\n")
+                        partes.append(f"• *Data:* {d.get('data_hora', '')}\n")
+                        partes.append(f"• *Plano:* {d.get('plano', '')}\n")
+                        partes.append(f"• *Nº OS:* {d.get('numero_os', '')}\n")
+                        if d.get("status_agendamento"):
                             partes.append(f"• *Status agendamento:* {d.get('status_agendamento')}\n")
-                        if d.get('agendamento'):
+                        if d.get("agendamento"):
                             partes.append(f"• *Agendamento:* {d.get('agendamento')}\n")
+                        if d.get("pendencia"):
+                            partes.append(f"• *Pendência:* {d.get('pendencia')}\n")
                     if i < n - 1:
                         partes.append("\n")
                     partes.append("\n")
                 partes.append(f"⏱ _{tempo_decorrido}s_")
                 caption = "".join(partes)
-            if screenshot_path and os.path.isfile(screenshot_path):
+
+            # Screenshots: só 1 pedido e não pertence ao PDV → lista; senão → um por OS que tem Detalhar (tela de detalhe)
+            screenshot_paths = []
+            if len(detalhes) == 1 and detalhes[0].get("nao_pertence_pdv") and list_screenshot_path and os.path.isfile(list_screenshot_path):
+                screenshot_paths = [list_screenshot_path]
+            else:
+                for d in detalhes:
+                    p = d.get("detail_screenshot_path")
+                    if p and os.path.isfile(p):
+                        screenshot_paths.append(p)
+                if not screenshot_paths and list_screenshot_path and os.path.isfile(list_screenshot_path):
+                    screenshot_paths = [list_screenshot_path]
+
+            if screenshot_paths:
                 try:
-                    with open(screenshot_path, "rb") as f:
-                        img_b64 = base64.b64encode(f.read()).decode("utf-8")
-                    whatsapp.enviar_imagem_b64(telefone, img_b64, caption=caption)
+                    for idx, path in enumerate(screenshot_paths):
+                        with open(path, "rb") as f:
+                            img_b64 = base64.b64encode(f.read()).decode("utf-8")
+                        cap = caption if idx == 0 else (f"Pedido {idx + 1}/{len(screenshot_paths)}\n\n⏱ _{tempo_decorrido}s_" if len(screenshot_paths) > 1 else "")
+                        whatsapp.enviar_imagem_b64(telefone, img_b64, caption=cap)
                 except Exception as e_img:
                     logger.warning("[STATUS ONLINE] Erro ao enviar imagem: %s", e_img)
                     whatsapp.enviar_mensagem_texto(telefone, caption)

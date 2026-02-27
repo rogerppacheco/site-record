@@ -816,16 +816,17 @@ class PAPNioAutomation:
             return None
 
     def consulta_os_por_cpf_com_resultado(
-        self, cpf: str, enrich_detalhar: bool = False
-    ) -> Tuple[bool, str, List[Dict[str, str]], Optional[str]]:
+        self, cpf: str
+    ) -> Tuple[bool, str, List[Dict[str, Any]], Optional[str]]:
         """
         Fluxo completo: login, Consulta OS, Filtros, CPF, período 30 dias, Filtrar.
-        Lê a tabela (td.MuiTableCell-root.MuiTableCell-body), tira screenshot e retorna detalhes.
-        Se enrich_detalhar=True, para cada linha com status != Concluído/Instalado clica em Detalhar
-        e adiciona status_agendamento e agendamento ao dict.
+        Lê a tabela e por linha detecta se existe link Detalhar (nao_pertence_pdv=False) ou não (não pertence ao PDV).
+        Para cada linha com link Detalhar: abre o detalhe, extrai status_agendamento, agendamento, pendência e tira screenshot da tela de detalhe.
         Returns:
-            (sucesso, mensagem, lista de dicts com status/plano/numero_os/data_hora[, status_agendamento, agendamento], path do screenshot)
-            Se não houver pedidos: (True, "no_results", [], path).
+            (sucesso, mensagem, lista de dicts com status/plano/numero_os/data_hora, nao_pertence_pdv,
+             e quando tem Detalhar: status_agendamento, agendamento, pendencia, detail_screenshot_path),
+            list_screenshot_path (screenshot da lista; usado quando só 1 pedido e não pertence ao PDV).
+            Se não houver pedidos: (True, "no_results", [], list_screenshot_path).
         """
         from datetime import timedelta
         cpf_limpo = re.sub(r'\D', '', cpf) if cpf else ""
@@ -917,8 +918,8 @@ class PAPNioAutomation:
             logger.debug(f"[PAP] Espera da tabela Consulta OS: {e}")
         self.page.wait_for_timeout(500)
 
-        # Ler tabela: 4 colunas de dados (0=STATUS, 1=PLANO, 2=NÚMERO DA OS, 3=DATA E HORA); 5ª coluna = DETALHES (ignorar)
-        detalhes: List[Dict[str, str]] = []
+        # Ler tabela: 4 colunas de dados (0=STATUS, 1=PLANO, 2=NÚMERO DA OS, 3=DATA E HORA); 5ª coluna = DETALHES (link "Detalhar" ou vazio)
+        detalhes: List[Dict[str, Any]] = []
         try:
             # Tentar por linhas da tabela
             rows = self.page.query_selector_all(SELETORES['consulta_os']['table_rows'])
@@ -929,20 +930,30 @@ class PAPNioAutomation:
                     plano = (cells[1].inner_text() or "").strip()
                     numero_os = (cells[2].inner_text() or "").strip()
                     data_hora = (cells[3].inner_text() or "").strip()
+                    # 5ª célula (DETALHES): se não tiver link "Detalhar" = pedido não pertence ao PDV
+                    tem_detalhar = False
+                    if len(cells) >= 5:
+                        cell_detalhes = cells[4]
+                        link = cell_detalhes.query_selector('a.detalhar-link[href*="detalhe-os"], a[href*="detalhe-os"]')
+                        if link:
+                            tem_detalhar = True
+                        if not tem_detalhar and "detalhar" in (cell_detalhes.inner_text() or "").lower():
+                            tem_detalhar = True
+                    item = {
+                        "status": status,
+                        "plano": plano,
+                        "numero_os": numero_os,
+                        "data_hora": data_hora,
+                        "nao_pertence_pdv": not tem_detalhar,
+                    }
                     if status or plano or numero_os or data_hora:
-                        detalhes.append({
-                            "status": status,
-                            "plano": plano,
-                            "numero_os": numero_os,
-                            "data_hora": data_hora,
-                        })
-            # Fallback: todas as células em sequência (4 colunas por linha; pode ter 5 se houver DETALHES)
+                        detalhes.append(item)
+            # Fallback: todas as células em sequência (4 ou 5 colunas por linha)
             if not detalhes:
                 cells_direct = self.page.query_selector_all(
                     'td.MuiTableCell-root.MuiTableCell-body, td[class*="MuiTableCell-body"], table tbody td'
                 )
                 if cells_direct:
-                    # Pode ser 4 ou 5 colunas por linha
                     col_per_row = 5 if len(cells_direct) >= 5 and len(cells_direct) % 5 == 0 else 4
                     if len(cells_direct) % col_per_row != 0:
                         col_per_row = 4
@@ -952,42 +963,59 @@ class PAPNioAutomation:
                         plano = (cells_direct[idx + 1].inner_text() or "").strip()
                         numero_os = (cells_direct[idx + 2].inner_text() or "").strip()
                         data_hora = (cells_direct[idx + 3].inner_text() or "").strip()
+                        tem_detalhar = False
+                        if col_per_row >= 5 and idx + 5 <= len(cells_direct):
+                            cell_d = cells_direct[idx + 4]
+                            if cell_d.query_selector('a.detalhar-link[href*="detalhe-os"], a[href*="detalhe-os"]'):
+                                tem_detalhar = True
+                            elif "detalhar" in (cell_d.inner_text() or "").lower():
+                                tem_detalhar = True
                         if status or plano or numero_os or data_hora:
                             detalhes.append({
                                 "status": status,
                                 "plano": plano,
                                 "numero_os": numero_os,
                                 "data_hora": data_hora,
+                                "nao_pertence_pdv": not tem_detalhar,
                             })
                         idx += col_per_row
         except Exception as e:
             logger.warning(f"[PAP] Erro ao ler tabela Consulta OS: {e}")
 
-        # Screenshot logo após ler a tabela (com a lista de resultados visível), antes de abrir Detalhar
-        screenshot_path = self._screenshot_consulta_os_return_path(full_page=True)
+        # Screenshot da lista (usado quando só 1 pedido e não pertence ao PDV)
+        list_screenshot_path = self._screenshot_consulta_os_return_path(full_page=True)
 
-        # Opcional: para cada OS com status diferente de Concluído/Instalado, abrir Detalhar e trazer Status agendamento + Agendamento
-        if detalhes and enrich_detalhar:
+        # Para cada OS que tem link Detalhar: abrir detalhe, extrair dados + Pendência e tirar screenshot da tela de detalhe
+        if detalhes:
             for row in detalhes:
-                status_tbl = (row.get("status") or "").strip().lower()
-                if status_tbl and "concluído" not in status_tbl and "instalado" not in status_tbl:
-                    num_os = row.get("numero_os") or ""
-                    if num_os:
-                        st_ag, ag_texto = self.abrir_detalhe_os_e_extrair(num_os)
-                        if st_ag or ag_texto:
-                            row["status_agendamento"] = st_ag or ""
-                            row["agendamento"] = ag_texto or ""
+                if row.get("nao_pertence_pdv"):
+                    continue
+                num_os = (row.get("numero_os") or "").strip()
+                if not num_os:
+                    continue
+                st_ag, ag_texto, pendencia, detail_screenshot_path = self.abrir_detalhe_os_e_extrair(num_os)
+                if st_ag is not None:
+                    row["status_agendamento"] = st_ag
+                if ag_texto is not None:
+                    row["agendamento"] = ag_texto
+                if pendencia is not None:
+                    row["pendencia"] = pendencia
+                if detail_screenshot_path:
+                    row["detail_screenshot_path"] = detail_screenshot_path
 
         if detalhes:
-            return True, "ok", detalhes, screenshot_path
-        return True, "no_results", [], screenshot_path
+            return True, "ok", detalhes, list_screenshot_path
+        return True, "no_results", [], list_screenshot_path
 
-    def abrir_detalhe_os_e_extrair(self, numero_os: str) -> Tuple[Optional[str], Optional[str]]:
+    def abrir_detalhe_os_e_extrair(self, numero_os: str) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
         """
         Na tela de Consulta OS (após filtrar), abre o link Detalhar da OS e extrai na página de detalhe:
-        - Status agendamento: valor ao lado do rótulo "Status agendamento" (ex.: "Concluído com sucesso")
-        - Agendamento: valor ao lado do rótulo "Agendamento" (ex.: "23/02/2026 - Tarde")
-        Busca pelo rótulo para não confundir com outros spans (plano, status do pedido, etc.).
+        - Status agendamento: valor ao lado do rótulo "Status agendamento"
+        - Agendamento: valor ao lado do rótulo "Agendamento"
+        - Pendência: valor ao lado do rótulo "Pendência" (ex.: "7029 - AGENDAMENTO DO PEDIDO")
+        Tira screenshot da tela de detalhe antes de voltar.
+        Returns:
+            (status_agendamento, agendamento, pendencia, screenshot_path)
         """
         num = (numero_os or "").strip()
         num_sem_zero = num.lstrip("0") or num
@@ -998,7 +1026,7 @@ class PAPNioAutomation:
             if link.count() == 0:
                 link = self.page.locator('a.detalhar-link[href*="detalhe-os"]').first
             if link.count() == 0:
-                return None, None
+                return None, None, None, None
             link.click(force=True, timeout=5000)
             self.page.wait_for_timeout(1500)
             url_atual = self.page.url
@@ -1006,21 +1034,30 @@ class PAPNioAutomation:
                 self.page.wait_for_load_state("domcontentloaded", timeout=5000)
             status_agendamento = None
             agendamento_texto = None
-            # Buscar pelo rótulo para pegar o valor correto (span.ldMRLh no mesmo bloco do rótulo)
+            pendencia_texto = None
+            # Status agendamento
             try:
                 loc_st = self.page.get_by_text("Status agendamento", exact=False).locator("..").locator("span.ldMRLh, span.sc-jrOYZv.ldMRLh").first
                 if loc_st.count() > 0:
                     status_agendamento = (loc_st.inner_text() or "").strip()
             except Exception:
                 pass
+            # Agendamento
             try:
                 loc_ag = self.page.get_by_text("Agendamento", exact=False).locator("..").locator("span.ldMRLh, span.sc-jrOYZv.ldMRLh").first
                 if loc_ag.count() > 0:
                     agendamento_texto = (loc_ag.inner_text() or "").strip()
             except Exception:
                 pass
-            # Fallback: valor no formato data + Tarde/Manhã = Agendamento; texto tipo "Concluído" = Status agendamento
-            if not status_agendamento or not agendamento_texto:
+            # Pendência (ex.: "7029 - AGENDAMENTO DO PEDIDO")
+            try:
+                loc_pend = self.page.get_by_text("Pendência", exact=False).locator("..").locator("span.ldMRLh, span.sc-jrOYZv.ldMRLh").first
+                if loc_pend.count() > 0:
+                    pendencia_texto = (loc_pend.inner_text() or "").strip()
+            except Exception:
+                pass
+            # Fallback: spans genéricos
+            if not status_agendamento or not agendamento_texto or not pendencia_texto:
                 spans = self.page.locator('span.sc-jrOYZv.ldMRLh, span.ldMRLh').all()
                 for s in spans:
                     t = (s.inner_text() or "").strip()
@@ -1030,16 +1067,26 @@ class PAPNioAutomation:
                         agendamento_texto = t
                     if ("concluído" in t.lower() or "sucesso" in t.lower()) and not status_agendamento:
                         status_agendamento = t
+                    # Padrão "XXXX - TEXTO" pode ser pendência (código - descrição)
+                    if re.match(r'^\d+\s*-\s*.+', t) and not pendencia_texto:
+                        pendencia_texto = t
+            self.page.wait_for_timeout(300)
+            detail_screenshot_path = self._screenshot_consulta_os_return_path(full_page=True)
             self.page.go_back()
             self.page.wait_for_timeout(1000)
-            return (status_agendamento or None, agendamento_texto or None)
+            return (
+                status_agendamento or None,
+                agendamento_texto or None,
+                pendencia_texto or None,
+                detail_screenshot_path,
+            )
         except Exception as e:
             logger.warning(f"[PAP] abrir_detalhe_os_e_extrair {numero_os}: {e}")
             try:
                 self.page.go_back()
             except Exception:
                 pass
-            return None, None
+            return None, None, None, None
 
     def iniciar_novo_pedido(self, matricula_vendedor: str) -> Tuple[bool, str]:
         """
