@@ -1434,12 +1434,18 @@ class VendaViewSet(viewsets.ModelViewSet):
         # --- FILTRO DE BUSCA GLOBAL ---
         if search:
             search_clean = re.sub(r'\D', '', search)
-            filters = Q(ordem_servico__icontains=search) | \
-                      Q(cliente__nome_razao_social__icontains=search) | \
-                      Q(cliente__cpf_cnpj__icontains=search)
+            search_strip = (search or '').strip()
+            filters = Q(ordem_servico__icontains=search_strip) | \
+                      Q(cliente__nome_razao_social__icontains=search_strip) | \
+                      Q(cliente__cpf_cnpj__icontains=search_strip)
             if search_clean:
                 filters |= Q(cliente__cpf_cnpj__icontains=search_clean)
                 filters |= Q(ordem_servico__icontains=search_clean)
+            # Incluir busca por consultor/vendedor (nome ou username)
+            if search_strip:
+                filters |= Q(vendedor__username__icontains=search_strip) | \
+                           Q(vendedor__first_name__icontains=search_strip) | \
+                           Q(vendedor__last_name__icontains=search_strip)
             queryset = queryset.filter(filters)
 
         # --- PERMISSÕES DE VISUALIZAÇÃO ---
@@ -1488,6 +1494,10 @@ class VendaViewSet(viewsets.ModelViewSet):
 
         if flow == 'auditoria':
             queryset = queryset.filter(status_tratamento__isnull=False, status_esteira__isnull=True)
+            # Filtro opcional por status do tratamento (auditoria)
+            status_tratamento_id = self.request.query_params.get('status_tratamento_id')
+            if status_tratamento_id and str(status_tratamento_id).isdigit():
+                queryset = queryset.filter(status_tratamento_id=int(status_tratamento_id))
         elif flow == 'esteira':
             queryset = queryset.filter(status_esteira__isnull=False, status_esteira__estado__iexact='ABERTO')
         elif flow == 'comissionamento':

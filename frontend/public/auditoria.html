@@ -99,7 +99,7 @@
 
     <main class="area-interna-section">
         <div class="system-container" style="max-width: 1600px;">
-            <div class="d-flex justify-content-between align-items-center mb-4 header-controls">
+            <div class="d-flex justify-content-between align-items-center mb-3 header-controls">
                 <div>
                     <h1 style="font-size: 1.8rem; margin: 0;">Auditoria de Vendas</h1>
                     <p class="text-muted mb-0">Validação de dados e qualidade (Script Oficial).</p>
@@ -107,6 +107,42 @@
                 <button class="btn btn-outline-primary fw-bold shadow-sm" onclick="carregarVendasPendentes()">
                     <i class="bi bi-arrow-clockwise"></i> Atualizar Lista
                 </button>
+            </div>
+
+            <!-- Filtros e abas por data -->
+            <div class="card border shadow-sm mb-3">
+                <div class="card-body py-3">
+                    <div class="row g-2 align-items-end mb-3">
+                        <div class="col-auto">
+                            <label class="form-label small fw-bold text-muted mb-1">Status Tratamento</label>
+                            <select class="form-select form-select-sm" id="filtro-status-tratamento" style="min-width: 180px;">
+                                <option value="">Todos</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold text-muted mb-1">Pesquisar (CPF, nome ou consultor)</label>
+                            <div class="input-group input-group-sm">
+                                <input type="text" class="form-control" id="filtro-pesquisa" placeholder="Digite CPF, nome do cliente ou consultor...">
+                                <button class="btn btn-primary" type="button" onclick="aplicarFiltrosAuditoria()" title="Pesquisar">
+                                    <i class="bi bi-search"></i> Pesquisar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <span class="small fw-bold text-muted me-1">Período:</span>
+                        <div class="btn-group btn-group-sm" role="group" id="abas-data-auditoria">
+                            <input type="radio" class="btn-check" name="aba-data-auditoria" id="aba-data-todos" value="todos" checked>
+                            <label class="btn btn-outline-secondary" for="aba-data-todos">Todos</label>
+                            <input type="radio" class="btn-check" name="aba-data-auditoria" id="aba-data-hoje" value="hoje">
+                            <label class="btn btn-outline-secondary" for="aba-data-hoje">Hoje</label>
+                            <input type="radio" class="btn-check" name="aba-data-auditoria" id="aba-data-ontem" value="ontem">
+                            <label class="btn btn-outline-secondary" for="aba-data-ontem">Ontem</label>
+                            <input type="radio" class="btn-check" name="aba-data-auditoria" id="aba-data-7dias" value="7dias">
+                            <label class="btn btn-outline-secondary" for="aba-data-7dias">Últimos 7 dias</label>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div class="card border-0 shadow-none" style="background: transparent;">
@@ -511,7 +547,11 @@
                     });
             });
 
-            carregarAuxiliares().then(() => carregarVendasPendentes());
+            $('#filtro-pesquisa').on('keypress', function(e) { if (e.which === 13) aplicarFiltrosAuditoria(); });
+            $(document).on('change', 'input[name="aba-data-auditoria"]', function() { carregarVendasPendentes(); });
+            carregarAuxiliares().then(() => {
+                carregarVendasPendentes();
+            });
         });
 
         // =========================================================================
@@ -600,9 +640,44 @@
                 
                 planosOptions.forEach(p => selPlano.append(`<option value="${p.id}">${p.nome}</option>`));
                 formasPagamentoOptions.forEach(f => selPag.append(`<option value="${f.id}">${f.nome}</option>`));
+                // Preencher filtro de status tratamento (auditoria)
+                const selStatus = $('#filtro-status-tratamento');
+                if (selStatus.length && globalStatusOptions.length) {
+                    selStatus.find('option:not(:first)').remove();
+                    globalStatusOptions.forEach(s => selStatus.append(`<option value="${s.id}">${s.nome}</option>`));
+                }
             } catch(e) {
                 console.error("Erro auxiliares", e);
             }
+        }
+
+        function aplicarFiltrosAuditoria() {
+            carregarVendasPendentes();
+        }
+
+        function getParamsDataAuditoria() {
+            const aba = document.querySelector('input[name="aba-data-auditoria"]:checked');
+            const valor = aba ? aba.value : 'todos';
+            if (valor === 'todos') return {};
+            const hoje = new Date();
+            hoje.setHours(0, 0, 0, 0);
+            let dataInicio = '', dataFim = '';
+            if (valor === 'hoje') {
+                dataFim = dataInicio = hoje.toISOString().slice(0, 10);
+            } else if (valor === 'ontem') {
+                const ontem = new Date(hoje);
+                ontem.setDate(ontem.getDate() - 1);
+                dataFim = dataInicio = ontem.toISOString().slice(0, 10);
+            } else if (valor === '7dias') {
+                const sete = new Date(hoje);
+                sete.setDate(sete.getDate() - 6);
+                dataInicio = sete.toISOString().slice(0, 10);
+                dataFim = hoje.toISOString().slice(0, 10);
+            }
+            const params = {};
+            if (dataInicio) params.data_inicio = dataInicio;
+            if (dataFim) params.data_fim = dataFim;
+            return params;
         }
 
         function atualizarTextoPlano() {
@@ -644,7 +719,17 @@
         // =========================================================================
         function carregarVendasPendentes() {
             $('#loadingOverlay').show();
-            apiFetch(`${API_BASE}/pendentes_auditoria/?page_size=100`)
+            const params = new URLSearchParams();
+            params.set('page_size', '200');
+            const statusId = $('#filtro-status-tratamento').val();
+            if (statusId) params.set('status_tratamento_id', statusId);
+            const pesquisa = ($('#filtro-pesquisa').val() || '').trim();
+            if (pesquisa) params.set('search', pesquisa);
+            const dataParams = getParamsDataAuditoria();
+            if (dataParams.data_inicio) params.set('data_inicio', dataParams.data_inicio);
+            if (dataParams.data_fim) params.set('data_fim', dataParams.data_fim);
+            const query = params.toString();
+            apiFetch(`${API_BASE}/pendentes_auditoria/?${query}`)
             .then(data => {
                 const tbody = $('#listaVendasBody'); tbody.empty();
                 // Normalização
