@@ -7,9 +7,14 @@ Usa requests para evitar conflito de dependências com protobuf.
 """
 import os
 import logging
+import time
 import requests
 
 logger = logging.getLogger(__name__)
+
+# Retry em 429 (Too Many Requests): esperar e tentar de novo
+GEMINI_MAX_RETRIES_429 = 2
+GEMINI_RETRY_DELAY_SEC = 2
 
 # Chave da API: use variável de ambiente GEMINI_API_KEY (nunca commitar a chave).
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
@@ -79,12 +84,37 @@ def responder_com_gemini(mensagem_usuario: str, nome_vendedor: str = "") -> str 
         },
     }
 
-    try:
-        url = f"{GEMINI_API_URL}?key={GEMINI_API_KEY}"
-        resp = requests.post(url, json=payload, timeout=30)
-        resp.raise_for_status()
-        data = resp.json()
+    url = f"{GEMINI_API_URL}?key={GEMINI_API_KEY}"
+    for attempt in range(GEMINI_MAX_RETRIES_429 + 1):
+        try:
+            resp = requests.post(url, json=payload, timeout=30)
+            if resp.status_code == 429:
+                if attempt < GEMINI_MAX_RETRIES_429:
+                    logger.warning(
+                        "[Gemini] 429 Too Many Requests (cota/rate limit). Tentando novamente em %ss (tentativa %d/%d).",
+                        GEMINI_RETRY_DELAY_SEC, attempt + 1, GEMINI_MAX_RETRIES_429 + 1,
+                    )
+                    time.sleep(GEMINI_RETRY_DELAY_SEC)
+                    continue
+                logger.warning(
+                    "[Gemini] 429 Too Many Requests após %d tentativas. Cota da API excedida; verifique uso no Google AI Studio.",
+                    GEMINI_MAX_RETRIES_429 + 1,
+                )
+                return None
+            resp.raise_for_status()
+            data = resp.json()
+            break
+        except requests.exceptions.RequestException as e:
+            if getattr(e, "response", None) and getattr(e.response, "status_code", None) == 429:
+                if attempt < GEMINI_MAX_RETRIES_429:
+                    time.sleep(GEMINI_RETRY_DELAY_SEC)
+                    continue
+                logger.warning("[Gemini] 429 Too Many Requests (cota excedida). Configure limite no Google AI Studio ou aguarde.")
+                return None
+            logger.warning("[Gemini] Erro de rede/HTTP: %s", e)
+            return None
 
+    try:
         # Resposta: data["candidates"][0]["content"]["parts"][0]["text"]
         candidates = data.get("candidates") or []
         if not candidates:
@@ -98,9 +128,6 @@ def responder_com_gemini(mensagem_usuario: str, nome_vendedor: str = "") -> str 
         if not text:
             return None
         return text
-    except requests.exceptions.RequestException as e:
-        logger.warning("[Gemini] Erro de rede/HTTP: %s", e)
-        return None
     except (KeyError, IndexError, TypeError) as e:
         logger.warning("[Gemini] Erro ao interpretar resposta: %s", e)
         return None
