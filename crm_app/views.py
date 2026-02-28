@@ -588,11 +588,35 @@ class StatusCRMListCreateView(generics.ListCreateAPIView):
             return queryset.order_by('nome')
         return StatusCRM.objects.none()
 
+    def perform_create(self, serializer):
+        """Evita 500 por IntegrityError (nome+tipo duplicado); retorna 400 com mensagem."""
+        from rest_framework.exceptions import ValidationError as DRFValidationError
+        try:
+            serializer.save()
+        except IntegrityError as e:
+            if 'unique' in str(e).lower() or 'duplicate' in str(e).lower():
+                raise DRFValidationError(
+                    {'nome': 'Já existe um status com este nome e tipo.'}
+                )
+            raise
+
 class StatusCRMDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = StatusCRM.objects.all()
     serializer_class = StatusCRMSerializer
     permission_classes = [CheckAPIPermission]
     resource_name = 'statuscrm'
+
+    def perform_update(self, serializer):
+        """Evita 500 por IntegrityError (nome+tipo duplicado) no PATCH."""
+        from rest_framework.exceptions import ValidationError as DRFValidationError
+        try:
+            serializer.save()
+        except IntegrityError as e:
+            if 'unique' in str(e).lower() or 'duplicate' in str(e).lower():
+                raise DRFValidationError(
+                    {'nome': 'Já existe um status com este nome e tipo.'}
+                )
+            raise
 
 class MotivoPendenciaListCreateView(generics.ListCreateAPIView):
     queryset = MotivoPendencia.objects.all().order_by('nome')
@@ -1510,10 +1534,19 @@ class VendaViewSet(viewsets.ModelViewSet):
         if data_inicio_str and data_fim_str and eh_gestao_total:
             try:
                 dt_ini = datetime.strptime(data_inicio_str, '%Y-%m-%d').date()
-                dt_fim = datetime.strptime(data_fim_str, '%Y-%m-%d').date() + timedelta(days=1)
-                queryset = queryset.filter(Q(data_criacao__range=(dt_ini, dt_fim)) | Q(data_instalacao__range=(dt_ini, dt_fim)))
-            except: pass
-            
+                dt_fim = datetime.strptime(data_fim_str, '%Y-%m-%d').date()
+                if flow == 'auditoria':
+                    # Auditoria: filtrar por data de criação (dia civil), evita problema de fuso
+                    queryset = queryset.filter(
+                        data_criacao__date__gte=dt_ini,
+                        data_criacao__date__lte=dt_fim
+                    )
+                else:
+                    dt_fim_plus = dt_fim + timedelta(days=1)
+                    queryset = queryset.filter(Q(data_criacao__range=(dt_ini, dt_fim_plus)) | Q(data_instalacao__range=(dt_ini, dt_fim_plus)))
+            except Exception:
+                pass
+
         return queryset
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)

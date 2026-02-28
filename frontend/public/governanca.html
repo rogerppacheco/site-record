@@ -938,7 +938,15 @@
             if (response.status === 401) { alert('Sessão expirada.'); logout(); throw new Error('Não autorizado'); }
             if (!response.ok) {
                 const errorData = responseData || await response.text();
-                throw new Error(errorData.detail || errorData.error || (typeof errorData === 'string' ? errorData : JSON.stringify(errorData)));
+                let msg = errorData.detail || errorData.error;
+                if (msg == null && typeof errorData === 'object' && !Array.isArray(errorData)) {
+                    const firstKey = Object.keys(errorData)[0];
+                    const val = firstKey ? errorData[firstKey] : null;
+                    msg = Array.isArray(val) ? val[0] : val;
+                }
+                if (msg == null && typeof errorData === 'string') msg = errorData;
+                if (msg == null) msg = JSON.stringify(errorData);
+                throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
             }
             if (response.status === 204) return null;
             return responseData;
@@ -2118,10 +2126,16 @@
     var formStatus = document.getElementById('form-status');
     if (formStatus) formStatus.onsubmit = async(e) => {
         e.preventDefault();
-        const id = document.getElementById('status_id').value;
-        const body = { nome: document.getElementById('status_nome').value, tipo: document.getElementById('status_tipo').value, estado: document.getElementById('status_estado').value, cor: document.getElementById('status_cor').value };
-        if(id) { await apiFetch(`/crm/status/${id}/`, {method:'PATCH', body: JSON.stringify(body)}); } else { await apiFetch('/crm/status/', {method:'POST', body: JSON.stringify(body)}); }
-        document.getElementById('form-status').reset(); carregarStatus();
+        try {
+            const id = document.getElementById('status_id').value;
+            const body = { nome: document.getElementById('status_nome').value.trim(), tipo: document.getElementById('status_tipo').value, estado: document.getElementById('status_estado').value.trim() || null, cor: document.getElementById('status_cor').value || '#FFFFFF' };
+            if (id) { await apiFetch(`/crm/status/${id}/`, { method: 'PATCH', body: JSON.stringify(body) }); } else { await apiFetch('/crm/status/', { method: 'POST', body: JSON.stringify(body) }); }
+            document.getElementById('form-status').reset(); document.getElementById('status_id').value = ''; carregarStatus();
+        } catch (err) {
+            const msg = err.message || '';
+            if (msg.includes('nome') || msg.includes('tipo') || msg.includes('Já existe')) alert(msg);
+            else alert('Erro ao salvar status: ' + (msg || 'Tente novamente.'));
+        }
     };
     window.excluirStatus = async(id)=>{ if(confirm('Excluir?')) { await apiFetch(`/crm/status/${id}/`, {method:'DELETE'}); carregarStatus(); } };
 

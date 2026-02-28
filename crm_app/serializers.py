@@ -119,6 +119,26 @@ class StatusCRMSerializer(serializers.ModelSerializer):
         model = StatusCRM
         fields = '__all__'
 
+    def validate_estado(self, value):
+        """Normaliza string vazia para None (campo opcional)."""
+        if value is not None and str(value).strip() == '':
+            return None
+        return value
+
+    def validate(self, attrs):
+        """Garante que (nome, tipo) seja único (evita 500 por IntegrityError)."""
+        nome = attrs.get('nome')
+        tipo = attrs.get('tipo')
+        if nome is not None and tipo is not None:
+            qs = StatusCRM.objects.filter(nome__iexact=nome.strip(), tipo=tipo)
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    {'nome': 'Já existe um status com este nome e tipo.'}
+                )
+        return attrs
+
 class MotivoPendenciaSerializer(serializers.ModelSerializer):
     class Meta:
         model = MotivoPendencia

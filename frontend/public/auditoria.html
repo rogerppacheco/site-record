@@ -112,13 +112,14 @@
             <!-- Filtros e abas por data -->
             <div class="card border shadow-sm mb-3">
                 <div class="card-body py-3">
-                    <div class="row g-2 align-items-end mb-3">
+                    <div class="row g-3 align-items-end mb-3">
                         <div class="col-auto">
                             <label class="form-label small fw-bold text-muted mb-1">Status Tratamento</label>
-                            <select class="form-select form-select-sm" id="filtro-status-tratamento" style="min-width: 180px;">
+                            <select class="form-select form-select-sm" id="filtro-status-tratamento" style="min-width: 200px;" title="Ao selecionar, a lista é atualizada automaticamente">
                                 <option value="">Todos</option>
                             </select>
                         </div>
+                        <div class="col"></div>
                         <div class="col-md-4">
                             <label class="form-label small fw-bold text-muted mb-1">Pesquisar (CPF, nome ou consultor)</label>
                             <div class="input-group input-group-sm">
@@ -549,6 +550,7 @@
 
             $('#filtro-pesquisa').on('keypress', function(e) { if (e.which === 13) aplicarFiltrosAuditoria(); });
             $(document).on('change', 'input[name="aba-data-auditoria"]', function() { carregarVendasPendentes(); });
+            $('#filtro-status-tratamento').on('change', function() { carregarVendasPendentes(); });
             carregarAuxiliares().then(() => {
                 carregarVendasPendentes();
             });
