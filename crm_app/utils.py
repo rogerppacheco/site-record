@@ -470,14 +470,18 @@ def montar_resumo_plano_para_whatsapp(venda):
     fixo_linha = "Sim – R$ 30,00/mês" if venda.tem_fixo else "Não"
     streaming_linha = "Não"  # auditoria não possui campo streaming
 
+    nome_cliente = (venda.cliente.nome_razao_social or "").strip() if venda.cliente else ""
+    if not nome_cliente:
+        nome_cliente = "Não informado"
+
     return (
         f"📋 *RESUMO DA VENDA*\n\n"
-        f"📍 *Endereço:*\n"
-        f"{bloco_endereco}\n\n"
-        f"👤 *Cliente:*\n"
+        f"👤 *Cliente:* {nome_cliente}\n"
         f"CPF: {cpf_fmt}\n"
         f"Celular: {cel_fmt}\n"
         f"E-mail: {email}\n\n"
+        f"📍 *Endereço:*\n"
+        f"{bloco_endereco}\n\n"
         f"💳 *Pagamento:* {forma_nome}\n"
         f"📦 *Plano:* {plano_linha}\n"
         f"📞 *Fixo:* {fixo_linha}\n"

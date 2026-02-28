@@ -2113,16 +2113,32 @@ def _montar_resumo_venda_e_pedir_confirmar(dados: dict) -> str:
     forma_nome = {'boleto': 'Boleto', 'cartao': 'Cartão de Crédito', 'debito': 'Débito em Conta'}
     cpf_fmt = f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}" if len(cpf) == 11 else cpf
     cel_fmt = f"({celular[:2]}) {celular[2:7]}-{celular[7:]}" if len(celular) >= 10 else celular
+    nome_cliente = (dados.get('nome_cliente') or '').strip() or 'Não informado'
+    linhas_endereco = [
+        f"CEP: {dados.get('cep', '')}",
+        f"Número: {dados.get('numero', '')}",
+    ]
+    logradouro = (dados.get('logradouro') or '').strip()
+    if logradouro:
+        linhas_endereco.insert(1, f"Logradouro: {logradouro}")
+    bairro = (dados.get('bairro') or '').strip()
+    if bairro:
+        linhas_endereco.append(f"Bairro: {bairro}")
+    cidade = (dados.get('cidade') or '').strip()
+    if cidade:
+        linhas_endereco.append(f"Cidade: {cidade}")
+    referencia = (dados.get('referencia') or '').strip()
+    if referencia:
+        linhas_endereco.append(f"Referência: {referencia}")
+    bloco_endereco = "\n".join(linhas_endereco)
     return (
         f"📋 *RESUMO DA VENDA*\n\n"
-        f"📍 *Endereço:*\n"
-        f"CEP: {dados.get('cep', '')}\n"
-        f"Número: {dados.get('numero', '')}\n"
-        f"Referência: {dados.get('referencia', '')}\n\n"
-        f"👤 *Cliente:*\n"
+        f"👤 *Cliente:* {nome_cliente}\n"
         f"CPF: {cpf_fmt}\n"
         f"Celular: {cel_fmt}\n"
         f"E-mail: {dados.get('email', '')}\n\n"
+        f"📍 *Endereço:*\n"
+        f"{bloco_endereco}\n\n"
         f"💳 *Pagamento:* {forma_nome.get(dados.get('forma_pagamento', ''), '')}\n"
         f"📦 *Plano:* {plano_nome.get(dados.get('plano', ''), '')}\n"
         f"📞 *Fixo:* {'Sim – R$ 30,00/mês' if dados.get('tem_fixo') else 'Não'}\n"
