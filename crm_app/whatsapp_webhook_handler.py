@@ -6074,20 +6074,20 @@ def processar_webhook_whatsapp(data, request=None):
         )
         if etapa_atual == 'inicial' and _mensagem_strip and _parece_pergunta:
             try:
-                from crm_app.gemini_service import responder_com_gemini
+                from crm_app.ai_chat_service import responder_com_ia
                 nome_vendedor = (usuario_whatsapp.get_full_name() or usuario_whatsapp.username or "").strip() or None
-                resposta_ia = responder_com_gemini(_mensagem_strip, nome_vendedor=nome_vendedor)
+                resposta_ia = responder_com_ia(_mensagem_strip, nome_vendedor=nome_vendedor)
                 if resposta_ia:
-                    logger.info("[Webhook] Resposta enviada via Gemini (mensagem identificada como pergunta).")
+                    logger.info("[Webhook] Resposta enviada via IA (mensagem identificada como pergunta).")
                     return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta_ia))
-                # IA não respondeu (ex.: GEMINI_API_KEY não configurada em produção) → mensagem de fallback
+                # IA não respondeu (sem chave ou cota excedida) → mensagem de fallback
                 resposta_fallback = (
                     "No momento não consigo responder dúvidas por aqui. "
                     "Digite *MENU* para ver os comandos disponíveis ou fale com seu gestor."
                 )
                 return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta_fallback))
             except Exception as e:
-                logger.warning("[Webhook] Fallback Gemini (pergunta) falhou: %s", e)
+                logger.warning("[Webhook] Fallback IA (pergunta) falhou: %s", e)
         # Busca direta por tag do Record Apoia (sem precisar digitar Material/Apoia)
         if etapa_atual == 'inicial' and mensagem_texto and len(mensagem_texto.strip()) >= 2:
             try:
@@ -7648,17 +7648,17 @@ def processar_webhook_whatsapp(data, request=None):
                 resposta = "Não há confirmação pendente no momento. Digite *MENU* para ver as opções."
             else:
                 resposta = None
-                # Fallback: mensagem livre na etapa inicial → IA (Gemini) responde no contexto do sistema
+                # Fallback: mensagem livre na etapa inicial → IA (Groq/Gemini) responde no contexto do sistema
                 if etapa_atual == 'inicial' and mensagem_texto and mensagem_texto.strip():
                     try:
-                        from crm_app.gemini_service import responder_com_gemini
+                        from crm_app.ai_chat_service import responder_com_ia
                         nome_vendedor = (usuario_whatsapp.get_full_name() or usuario_whatsapp.username or "").strip() or None
-                        resposta_ia = responder_com_gemini(mensagem_texto.strip(), nome_vendedor=nome_vendedor)
+                        resposta_ia = responder_com_ia(mensagem_texto.strip(), nome_vendedor=nome_vendedor)
                         if resposta_ia:
                             resposta = resposta_ia
-                            logger.info("[Webhook] Resposta enviada via Gemini (contexto do sistema).")
+                            logger.info("[Webhook] Resposta enviada via IA (contexto do sistema).")
                     except Exception as e:
-                        logger.warning("[Webhook] Fallback Gemini falhou: %s", e)
+                        logger.warning("[Webhook] Fallback IA falhou: %s", e)
             sessao.etapa = 'inicial'
             sessao.dados_temp = {}
             sessao.save()
