@@ -1692,9 +1692,30 @@ class VendaViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def pendentes_auditoria(self, request):
-        request.GET._mutable = True; request.GET['flow'] = 'auditoria'; request.GET['view'] = 'geral'; request.GET._mutable = False
+        request.GET._mutable = True
+        request.GET['flow'] = 'auditoria'
+        request.GET['view'] = 'geral'
+        request.GET._mutable = False
         qs = self.filter_queryset(self.get_queryset())
         qs = qs.exclude(status_tratamento__estado__iexact='FECHADO').order_by('-id')
+
+        # Aplicar filtros de data e status aqui (garantia: não depender só do get_queryset)
+        data_inicio_str = request.query_params.get('data_inicio')
+        data_fim_str = request.query_params.get('data_fim')
+        if data_inicio_str and data_fim_str:
+            try:
+                dt_ini = datetime.strptime(data_inicio_str, '%Y-%m-%d').date()
+                dt_fim = datetime.strptime(data_fim_str, '%Y-%m-%d').date()
+                qs = qs.filter(
+                    data_criacao__date__gte=dt_ini,
+                    data_criacao__date__lte=dt_fim
+                )
+            except (ValueError, TypeError):
+                pass
+        status_tratamento_id = request.query_params.get('status_tratamento_id')
+        if status_tratamento_id and str(status_tratamento_id).isdigit():
+            qs = qs.filter(status_tratamento_id=int(status_tratamento_id))
+
         page = self.paginate_queryset(qs)
         if page is not None:
             serializer = self.get_serializer(page, many=True)

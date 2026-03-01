@@ -642,12 +642,7 @@
                 
                 planosOptions.forEach(p => selPlano.append(`<option value="${p.id}">${p.nome}</option>`));
                 formasPagamentoOptions.forEach(f => selPag.append(`<option value="${f.id}">${f.nome}</option>`));
-                // Preencher filtro de status tratamento (auditoria)
-                const selStatus = $('#filtro-status-tratamento');
-                if (selStatus.length && globalStatusOptions.length) {
-                    selStatus.find('option:not(:first)').remove();
-                    globalStatusOptions.forEach(s => selStatus.append(`<option value="${s.id}">${s.nome}</option>`));
-                }
+                // Status tratamento da auditoria é preenchido pela lista (apenas statuses que existem na lista)
             } catch(e) {
                 console.error("Erro auxiliares", e);
             }
@@ -734,11 +729,35 @@
             apiFetch(`${API_BASE}/pendentes_auditoria/?${query}`)
             .then(data => {
                 const tbody = $('#listaVendasBody'); tbody.empty();
-                // Normalização
+                // Normalização (resposta pode ser paginada ou lista direta)
                 const lista = Array.isArray(data) ? data : (data.results || []);
-                
+                const currentStatusVal = $('#filtro-status-tratamento').val();
+
+                // Preencher select de status apenas com os statuses que existem na lista retornada
+                const statusMap = new Map();
+                (lista || []).forEach(v => {
+                    let id = null, nome = '-';
+                    if (v.status_tratamento != null && v.status_tratamento !== undefined) {
+                        if (typeof v.status_tratamento === 'object') {
+                            id = v.status_tratamento.id; nome = v.status_tratamento.nome || nome;
+                        } else {
+                            id = v.status_tratamento; nome = v.status_tratamento_nome || nome;
+                        }
+                    } else if (v.status_tratamento_nome) {
+                        nome = v.status_tratamento_nome; id = v.status_tratamento;
+                    }
+                    if (id != null && id !== '' && !statusMap.has(id)) statusMap.set(id, nome || `Status ${id}`);
+                });
+                const statusList = Array.from(statusMap.entries()).map(([id, nome]) => ({ id, nome })).sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+                const selStatus = $('#filtro-status-tratamento');
+                selStatus.off('change').empty().append('<option value="">Todos</option>');
+                statusList.forEach(s => selStatus.append(`<option value="${s.id}">${s.nome}</option>`));
+                if (currentStatusVal && statusList.some(s => String(s.id) === String(currentStatusVal))) selStatus.val(currentStatusVal);
+                else selStatus.val('');
+                selStatus.on('change', function() { carregarVendasPendentes(); });
+
                 if (!lista || lista.length === 0) { tbody.append('<tr><td colspan="9" class="text-center text-muted py-4">Nenhuma venda pendente.</td></tr>'); return; }
-                
+
                 lista.forEach(v => {
                     let nomeCliente = 'N/A'; let cpfCliente = '-';
                     if (v.cliente && typeof v.cliente === 'object') { nomeCliente = v.cliente.nome_razao_social || 'N/A'; cpfCliente = v.cliente.cpf_cnpj || '-'; } 
