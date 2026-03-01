@@ -421,6 +421,20 @@
                                         <small class="text-muted form-text">Exibida como •••••• por segurança</small>
                                     </div>
 
+                                    <div class="col-12 mt-3 pt-3"><h6 class="text-primary border-bottom pb-2 mb-2"><i class="bi bi-fingerprint me-1"></i> Br Pronto (Biometria – Auditoria)</h6></div>
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label fw-bold">Login Br Pronto</label>
+                                        <input type="text" class="form-control" id="brpronto_login" placeholder="Opcional – consulta biometria">
+                                    </div>
+                                    <div class="col-lg-2 col-md-6">
+                                        <label class="form-label fw-bold">Senha Br Pronto</label>
+                                        <input type="password" class="form-control" id="brpronto_senha" placeholder="Branco = manter" autocomplete="new-password">
+                                    </div>
+                                    <div class="col-lg-2 col-md-6">
+                                        <label class="form-label fw-bold">Domínio Br Pronto</label>
+                                        <input type="text" class="form-control" id="brpronto_dominio" placeholder="Opcional">
+                                    </div>
+
                                     <div class="col-12 mt-3 pt-3"><h6 class="text-primary border-bottom pb-2 mb-2"><i class="bi bi-whatsapp me-1"></i> Contato (WhatsApp)</h6></div>
                                     <div class="col-lg-3 col-md-6">
                                         <label class="form-label fw-bold">WhatsApp 1 <span class="text-muted fw-normal">(principal)</span></label>
@@ -1835,9 +1849,13 @@
             document.getElementById('pap_automacao_status').checked = user.pap_automacao_status !== false;
             document.getElementById('pode_gestao_acessos').checked = user.pode_gestao_acessos || false;
             document.getElementById('matricula_pap').value = user.matricula_pap || '';
+            document.getElementById('brpronto_login').value = user.brpronto_login || '';
+            document.getElementById('brpronto_dominio').value = user.brpronto_dominio || '';
             ['valor_almoco', 'valor_passagem', 'chave_pix', 'nome_da_conta', 'meta_comissao', 'desconto_boleto', 'desconto_inclusao_viabilidade', 'desconto_instalacao_antecipada', 'adiantamento_cnpj', 'desconto_inss_fixo'].forEach(id => { document.getElementById(id).value = user[id] || ''; });
         } else {
             document.getElementById('matricula_pap').value = '';
+            document.getElementById('brpronto_login').value = '';
+            document.getElementById('brpronto_dominio').value = '';
             document.getElementById('tel_whatsapp_2').value = '';
             document.getElementById('tel_whatsapp_3').value = '';
             document.getElementById('autorizado_chamar_no_bot').checked = true;
@@ -1852,6 +1870,9 @@
         const senhaPapInput = document.getElementById('senha_pap');
         senhaPapInput.value = '';
         senhaPapInput.placeholder = (user && user.senha_pap) ? '•••••• (preenchida)' : 'Deixe em branco para manter';
+        const brprontoSenhaInput = document.getElementById('brpronto_senha');
+        brprontoSenhaInput.value = '';
+        brprontoSenhaInput.placeholder = (user && user.brpronto_senha) ? '•••••• (preenchida)' : 'Branco = manter';
         
         // Pequeno delay para garantir que os selects foram populados
         setTimeout(() => {
@@ -1999,12 +2020,18 @@
             pap_automacao_credito: document.getElementById('pap_automacao_credito').checked,
             pap_automacao_pedido: document.getElementById('pap_automacao_pedido').checked,
             pap_automacao_status: document.getElementById('pap_automacao_status').checked,
-            pode_gestao_acessos: document.getElementById('pode_gestao_acessos').checked
+            pode_gestao_acessos: document.getElementById('pode_gestao_acessos').checked,
+            brpronto_login: cleanValue(document.getElementById('brpronto_login').value),
+            brpronto_dominio: cleanValue(document.getElementById('brpronto_dominio').value)
         };
         
         // Senha PAP: só enviar se preenchida (ao editar, vazio = manter a atual)
         if (senha_pap && senha_pap.trim()) {
             body.senha_pap = senha_pap.trim();
+        }
+        const brpronto_senha = document.getElementById('brpronto_senha').value;
+        if (brpronto_senha && brpronto_senha.trim()) {
+            body.brpronto_senha = brpronto_senha.trim();
         }
         
         const senha = document.getElementById('senha').value;

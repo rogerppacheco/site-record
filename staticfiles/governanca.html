@@ -312,7 +312,20 @@
                                     </div>
                                     <div class="col-lg-3 col-md-6">
                                         <label class="form-label fw-bold">Senha PAP</label>
-                                        <input type="text" class="form-control" id="senha_pap">
+                                        <input type="password" class="form-control" id="senha_pap" placeholder="Branco = manter" autocomplete="new-password">
+                                    </div>
+                                    <div class="col-12 mt-3 pt-3"><h6 class="text-primary border-bottom pb-2 mb-2"><i class="bi bi-fingerprint me-1"></i> Br Pronto (Biometria – Auditoria)</h6></div>
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label fw-bold">Login Br Pronto</label>
+                                        <input type="text" class="form-control" id="brpronto_login" placeholder="Opcional">
+                                    </div>
+                                    <div class="col-lg-2 col-md-6">
+                                        <label class="form-label fw-bold">Senha Br Pronto</label>
+                                        <input type="password" class="form-control" id="brpronto_senha" placeholder="Branco = manter" autocomplete="new-password">
+                                    </div>
+                                    <div class="col-lg-2 col-md-6">
+                                        <label class="form-label fw-bold">Domínio Br Pronto</label>
+                                        <input type="text" class="form-control" id="brpronto_dominio" placeholder="Opcional">
                                     </div>
                                     <div class="col-lg-3 col-md-6">
                                         <label class="form-label fw-bold">WhatsApp 1</label>
@@ -1353,7 +1366,12 @@
 
     async function abrirModalUsuario(user = null) {
             document.getElementById('matricula_pap').value = user ? user.matricula_pap || '' : '';
-            document.getElementById('senha_pap').value = user ? user.senha_pap || '' : '';
+            document.getElementById('senha_pap').value = '';
+            document.getElementById('senha_pap').placeholder = (user && user.senha_pap) ? '•••••• (preenchida)' : 'Branco = manter';
+            document.getElementById('brpronto_login').value = user ? user.brpronto_login || '' : '';
+            document.getElementById('brpronto_dominio').value = user ? user.brpronto_dominio || '' : '';
+            document.getElementById('brpronto_senha').value = '';
+            document.getElementById('brpronto_senha').placeholder = (user && user.brpronto_senha) ? '•••••• (preenchida)' : 'Branco = manter';
         console.log('Abrindo modal de usuário...');
         document.getElementById('user-form').reset();
         document.getElementById('user_id').value = user ? user.id : '';
@@ -1392,8 +1410,14 @@
             document.getElementById('user_canal').value = user.canal || 'PAP';
             document.getElementById('user_cluster').value = user.cluster || '';
             document.getElementById('participa_controle_presenca').checked = user.participa_controle_presenca;
+            document.getElementById('brpronto_login').value = user.brpronto_login || '';
+            document.getElementById('brpronto_dominio').value = user.brpronto_dominio || '';
             ['valor_almoco', 'valor_passagem', 'chave_pix', 'nome_da_conta', 'meta_comissao', 'desconto_boleto', 'desconto_inclusao_viabilidade', 'desconto_instalacao_antecipada', 'adiantamento_cnpj', 'desconto_inss_fixo'].forEach(id => { document.getElementById(id).value = user[id] || ''; });
         }
+        document.getElementById('senha_pap').value = '';
+        document.getElementById('senha_pap').placeholder = (user && user.senha_pap) ? '•••••• (preenchida)' : 'Branco = manter';
+        document.getElementById('brpronto_senha').value = '';
+        document.getElementById('brpronto_senha').placeholder = (user && user.brpronto_senha) ? '•••••• (preenchida)' : 'Branco = manter';
         
         // Pequeno delay para garantir que os selects foram populados
         setTimeout(() => {
@@ -1490,6 +1514,7 @@
     userForm.addEventListener('submit', async function(e) {
             const matricula_pap = document.getElementById('matricula_pap').value;
             const senha_pap = document.getElementById('senha_pap').value;
+            const brpronto_senha = document.getElementById('brpronto_senha').value;
         e.preventDefault();
         const id = document.getElementById('user_id').value;
         const nomeCompleto = document.getElementById('nome_completo').value.trim();
@@ -1508,7 +1533,6 @@
         const supervisorValue = document.getElementById('supervisor_id').value;
         const body = {
                         matricula_pap: cleanValue(matricula_pap),
-                        senha_pap: cleanValue(senha_pap),
             first_name: parts.shift() || '',
             last_name: parts.join(' ') || '',
             cpf: cleanValue(document.getElementById('cpf').value),
@@ -1531,8 +1555,12 @@
             desconto_instalacao_antecipada: cleanValue(document.getElementById('desconto_instalacao_antecipada').value, true),
             adiantamento_cnpj: cleanValue(document.getElementById('adiantamento_cnpj').value, true),
             desconto_inss_fixo: cleanValue(document.getElementById('desconto_inss_fixo').value, true),
-            participa_controle_presenca: document.getElementById('participa_controle_presenca').checked
+            participa_controle_presenca: document.getElementById('participa_controle_presenca').checked,
+            brpronto_login: cleanValue(document.getElementById('brpronto_login').value),
+            brpronto_dominio: cleanValue(document.getElementById('brpronto_dominio').value)
         };
+        if (senha_pap && senha_pap.trim()) body.senha_pap = senha_pap.trim();
+        if (brpronto_senha && brpronto_senha.trim()) body.brpronto_senha = brpronto_senha.trim();
         
         const senha = document.getElementById('senha').value;
         if (senha && senha.trim()) {
