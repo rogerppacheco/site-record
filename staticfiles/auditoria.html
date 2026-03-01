@@ -187,7 +187,12 @@
                                                 </div>
                                             </div>
                                         </div>
-                                        <div class="checklist-box mt-4"><div class="form-check"><input class="form-check-input" type="checkbox" id="check-biometria"><label class="form-check-label checklist-label" for="check-biometria">Verifiquei se a Biometria está APROVADA (Prazo link 48h)</label></div></div>
+                                        <div class="checklist-box mt-4"><div class="form-check"><input class="form-check-input" type="checkbox" id="check-biometria"><label class="form-check-label checklist-label" for="check-biometria">Verifiquei se a Biometria está APROVADA (Prazo link 48h)</label></div>
+                                        <div class="d-flex flex-wrap gap-2 mt-2 align-items-center">
+                                            <button type="button" class="btn btn-sm btn-outline-primary" id="btn-checar-biometria" onclick="checarBiometriaBrPronto()" title="Consulta Br Pronto e marca o checkbox se houver Doc. Apto para Venda"><i class="bi bi-check2-circle"></i> Checar biometria</button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-listar-biometria" onclick="listarBiometriaBrPronto()" title="Listar todos os registros de biometria no Br Pronto"><i class="bi bi-list-ul"></i> Listar biometria Br Pronto</button>
+                                            <span id="biometria-status-msg" class="small text-muted"></span>
+                                        </div></div>
                                         <div class="text-end mt-3"><button class="btn btn-primary" onclick="proximaAba('pills-contato-tab')">Próximo <i class="bi bi-arrow-right"></i></button></div>
                                     </div>
                                 </div>
@@ -303,6 +308,8 @@
     <div class="modal fade" id="modal-reprovacao" tabindex="-1" style="z-index: 1060;"><div class="modal-dialog"><div class="modal-content border-danger"><div class="modal-header bg-danger text-white"><h5 class="modal-title">Reprovar / Pendenciar Venda</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>Selecione o motivo:</p><div class="mb-3"><label class="form-label fw-bold">Novo Status</label><select class="form-select" id="repro-status"><option value="">Carregando...</option></select></div><div id="div-campos-aguardando-pagamento" style="display: none;" class="p-3 mb-3 bg-light border rounded"><div class="text-danger small fw-bold text-uppercase mb-2">Dados do pedido criado:</div><div class="mb-3"><label class="form-label fw-bold">O.S. *</label><input type="text" class="form-control" id="repro-os"></div><div class="row"><div class="col-6"><label class="form-label fw-bold">Data *</label><input type="date" class="form-control" id="repro-data"></div><div class="col-6"><label class="form-label fw-bold">Turno *</label><select class="form-select" id="repro-turno"><option value="">Selecione...</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select></div></div></div><div class="mb-3"><label class="form-label fw-bold">Observação</label><textarea class="form-control uppercase-input" id="repro-obs" rows="4"></textarea></div></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button type="button" class="btn btn-danger" onclick="confirmarReprovacao()">Confirmar</button></div></div></div></div>
     <div class="modal fade" id="modal-aprovacao" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header bg-success text-white"><h5 class="modal-title">Venda Aprovada!</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>Copie a mensagem:</p><textarea id="aprovacao-mensagem" class="form-control mb-3" rows="12" readonly></textarea><button id="btn-copiar" class="btn btn-outline-success w-100" onclick="copiarMensagem()"><i class="bi bi-whatsapp"></i> Copiar</button></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button></div></div></div></div>
     <div class="modal fade" id="modal-agendamento" tabindex="-1" data-bs-backdrop="static"><div class="modal-dialog"><div class="modal-content border-primary"><div class="modal-header bg-primary text-white"><h5 class="modal-title">Dados do Agendamento</h5><button type="button" class="btn-close btn-close-white" onclick="cancelarAgendamento()"></button></div><div class="modal-body"><div class="alert alert-info small">Aprovando para <strong>CADASTRADA</strong>. Preencha a O.S.</div><form id="form-agendamento"><div class="mb-3"><label class="form-label fw-bold">O.S. <span class="text-danger">*</span></label><input type="text" class="form-control" id="agenda-os" required></div><div class="row"><div class="col-md-6 mb-3"><label class="form-label fw-bold">Data <span class="text-danger">*</span></label><input type="date" class="form-control" id="agenda-data-final" required></div><div class="col-md-6 mb-3"><label class="form-label fw-bold">Turno <span class="text-danger">*</span></label><select class="form-select" id="agenda-turno-final" required><option value="">Selecione...</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select></div></div><div class="mb-3"><label class="form-label fw-bold">Observações</label><textarea class="form-control" id="agenda-obs" rows="3" placeholder="Observações da venda..."></textarea></div></form></div><div class="modal-footer"><button type="button" class="btn btn-secondary" onclick="cancelarAgendamento()">Voltar</button><button type="button" class="btn btn-primary" onclick="salvarAgendamentoFinal()">Confirmar</button></div></div></div></div>
+
+    <div class="modal fade" id="modal-biometria-lista" tabindex="-1"><div class="modal-dialog modal-xl"><div class="modal-content"><div class="modal-header bg-secondary text-white"><h5 class="modal-title"><i class="bi bi-fingerprint"></i> Resultado da consulta Biometria (Br Pronto)</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body p-0"><div class="table-responsive"><table class="table table-sm table-hover mb-0"><thead class="table-light"><tr><th>Protocolo</th><th>CPF/CNPJ</th><th>N. Linha</th><th>Data Envio</th><th>Data Conferência</th><th>Regional</th><th>Cód. PDV</th><th>Login</th><th>Tipo Serviço</th><th>Nome Fantasia</th><th>Resultado Análise</th></tr></thead><tbody id="tbody-biometria-lista"></tbody></table></div><div id="biometria-lista-vazia" class="p-4 text-center text-muted" style="display:none;">Nenhum registro encontrado.</div></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button></div></div></div></div>
 
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
@@ -724,6 +731,88 @@
                 return false;
             }
             return true;
+        }
+
+        function getCpfOuVendaIdParaBiometria() {
+            if (vendaEmAuditoria && vendaEmAuditoria.id) return { venda_id: vendaEmAuditoria.id };
+            const cpfRep = $('#audit-cpf-rep').val();
+            const cpfCli = $('#audit-cliente-cpf').val();
+            const cpf = ($('#div-representante').is(':visible') && cpfRep) ? cpfRep : cpfCli;
+            const cpfLimpo = (cpf || '').replace(/\D/g, '');
+            if (cpfLimpo.length !== 11) return null;
+            return { cpf: cpfLimpo };
+        }
+
+        async function checarBiometriaBrPronto() {
+            const payload = getCpfOuVendaIdParaBiometria();
+            if (!payload) { alert('Preencha o CPF do titular (ou do representante legal) na aba Identidade, ou abra uma venda para usar o CPF da venda.'); return; }
+            $('#biometria-status-msg').text('Consultando Br Pronto...').removeClass('text-success text-danger').addClass('text-muted');
+            $('#btn-checar-biometria').prop('disabled', true);
+            try {
+                const res = await apiFetch(`${API_AUX}/consultar-biometria-brpronto/`, { method: 'POST', body: JSON.stringify(payload) });
+                if (!res.ok) {
+                    $('#biometria-status-msg').text(res.error || 'Erro na consulta').removeClass('text-success text-muted').addClass('text-danger');
+                    return;
+                }
+                if (res.aprovada) {
+                    $('#check-biometria').prop('checked', true);
+                    $('#biometria-status-msg').text('Biometria APROVADA' + (res.data_mais_recente_apta ? ' em ' + res.data_mais_recente_apta : '')).removeClass('text-danger text-muted').addClass('text-success');
+                } else {
+                    $('#biometria-status-msg').text('Nenhuma biometria com "Doc. Apto para Venda" encontrada para este CPF.').removeClass('text-success text-muted').addClass('text-danger');
+                }
+            } catch (e) {
+                const msg = (e && e.message) ? e.message : String(e);
+                $('#biometria-status-msg').text(msg.indexOf('{') >= 0 ? (JSON.parse(msg).error || msg) : msg).removeClass('text-success text-muted').addClass('text-danger');
+            } finally {
+                $('#btn-checar-biometria').prop('disabled', false);
+            }
+        }
+
+        async function listarBiometriaBrPronto() {
+            const payload = getCpfOuVendaIdParaBiometria();
+            if (!payload) { alert('Preencha o CPF do titular (ou do representante legal) na aba Identidade, ou abra uma venda para usar o CPF da venda.'); return; }
+            $('#btn-listar-biometria').prop('disabled', true);
+            try {
+                const res = await apiFetch(`${API_AUX}/consultar-biometria-brpronto/`, { method: 'POST', body: JSON.stringify(payload) });
+                const tbody = $('#tbody-biometria-lista');
+                const vazia = $('#biometria-lista-vazia');
+                tbody.empty();
+                if (!res.ok) {
+                    vazia.show().text(res.error || 'Erro na consulta');
+                    bootstrap.Modal.getOrCreateInstance(document.getElementById('modal-biometria-lista')).show();
+                    return;
+                }
+                const registros = res.registros || [];
+                if (registros.length === 0) {
+                    vazia.show().text('Nenhum registro encontrado para este CPF.');
+                } else {
+                    vazia.hide();
+                    registros.forEach(function(r) {
+                        const tr = $('<tr></tr>');
+                        tr.append($('<td></td>').text(r.protocolo || ''));
+                        tr.append($('<td></td>').text(r.cpf_cnpj || ''));
+                        tr.append($('<td></td>').text(r.n_linha || ''));
+                        tr.append($('<td></td>').text(r.data_envio || ''));
+                        tr.append($('<td></td>').text(r.data_conferencia || ''));
+                        tr.append($('<td></td>').text(r.regional || ''));
+                        tr.append($('<td></td>').text(r.cod_pdv || ''));
+                        tr.append($('<td></td>').text(r.login || ''));
+                        tr.append($('<td></td>').text(r.tipo_servico || ''));
+                        tr.append($('<td></td>').text(r.nome_fantasia || ''));
+                        const resultado = (r.resultado_analise || '').trim();
+                        const tdResultado = $('<td></td>').text(resultado);
+                        if (resultado.indexOf('Doc. Apto para Venda') >= 0) tdResultado.addClass('text-success fw-bold');
+                        tr.append(tdResultado);
+                        tbody.append(tr);
+                    });
+                }
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('modal-biometria-lista')).show();
+            } catch (e) {
+                const msg = (e && e.message) ? e.message : String(e);
+                alert(msg.indexOf('{') >= 0 ? (JSON.parse(msg).error || msg) : msg);
+            } finally {
+                $('#btn-listar-biometria').prop('disabled', false);
+            }
         }
 
         function validarChecklist() {

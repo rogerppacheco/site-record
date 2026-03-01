@@ -163,6 +163,29 @@ class Usuario(AbstractUser):
         help_text="Se marcado, este login pode ser usado pela automação STATUS (consulta online de pedido no PAP)."
     )
 
+    # --- BR PRONTO PDV (Biometria - Auditoria) ---
+    brpronto_login = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="Login Br Pronto PDV",
+        help_text="Login para consulta de biometria no site Br Pronto (ged360). Usado na ferramenta de auditoria."
+    )
+    brpronto_senha = models.CharField(
+        max_length=128,
+        blank=True,
+        null=True,
+        verbose_name="Senha Br Pronto PDV",
+        help_text="Senha do Br Pronto. Cada backoffice/vendedor tem o seu."
+    )
+    brpronto_dominio = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="Domínio Br Pronto PDV",
+        help_text="Domínio no login do Br Pronto (se aplicável)."
+    )
+
     # --- GESTÃO DE ACESSOS (DELEGAÇÃO) ---
     pode_gestao_acessos = models.BooleanField(
         default=False,

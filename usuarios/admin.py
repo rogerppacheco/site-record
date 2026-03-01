@@ -42,6 +42,10 @@ class CustomUserAdmin(UserAdmin):
             ),
             'description': 'Login PAP: se "Disponibilizar login PAP para o bot" estiver desmarcado, o bot não usará este login. Use os checkboxes de automação para definir em quais fluxos (Vender, Crédito, Pedido, Status) este login BO pode ser usado.'
         }),
+        ('Br Pronto PDV (Biometria - Auditoria)', {
+            'fields': ('brpronto_login', 'brpronto_senha', 'brpronto_dominio'),
+            'description': 'Credenciais para consulta de biometria no Br Pronto (ged360). Usado na ferramenta de Auditoria (botões Checar biometria / Listar biometria). Cada backoffice/vendedor tem seu próprio login e domínio.'
+        }),
         ('Delegação', {
             'fields': ('pode_gestao_acessos',),
             'description': 'Se "Pode usar a ferramenta Gestão de Acessos?" estiver marcado, o usuário verá o card Gestão de Acessos na área interna e poderá gerenciar apenas usuários que não são Admin ou Diretoria.'

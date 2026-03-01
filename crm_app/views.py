@@ -276,6 +276,60 @@ def liberar_pap_bo_view(request):
     return Response({"success": True, "liberados": qtd, "message": msg})
 
 
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def consultar_biometria_brpronto_view(request):
+    """
+    Consulta biometria no Br Pronto PDV para um CPF.
+    Usa as credenciais Br Pronto do usuário logado.
+    Body: { "cpf": "12345678900" } ou { "venda_id": 123 }.
+    """
+    import re
+    from crm_app.services_brpronto import consultar_biometria_brpronto
+    from crm_app.models import Venda
+
+    user = request.user
+    login = getattr(user, "brpronto_login", None) or ""
+    senha = getattr(user, "brpronto_senha", None) or ""
+    dominio = getattr(user, "brpronto_dominio", None) or ""
+
+    cpf = request.data.get("cpf")
+    venda_id = request.data.get("venda_id")
+
+    if venda_id is not None:
+        try:
+            venda = Venda.objects.select_related("cliente").get(pk=venda_id)
+        except Venda.DoesNotExist:
+            return Response({"ok": False, "error": "Venda não encontrada."}, status=404)
+        cliente_cpf_cnpj = (venda.cliente.cpf_cnpj or "").replace(".", "").replace("-", "").replace("/", "").strip()
+        if len(cliente_cpf_cnpj) == 11:
+            cpf = cliente_cpf_cnpj
+        else:
+            cpf = (venda.cpf_representante_legal or "").replace(".", "").replace("-", "").strip() or cliente_cpf_cnpj
+    if not cpf:
+        return Response({"ok": False, "error": "Informe cpf ou venda_id."}, status=400)
+
+    cpf_limpo = re.sub(r"\D", "", str(cpf))
+    if len(cpf_limpo) != 11:
+        return Response({"ok": False, "error": "CPF deve ter 11 dígitos."}, status=400)
+
+    sucesso, msg_erro, resultado = consultar_biometria_brpronto(
+        login=login,
+        senha=senha,
+        cpf=cpf_limpo,
+        dominio=dominio or None,
+        headless=True,
+    )
+    if not sucesso:
+        return Response({"ok": False, "error": msg_erro or "Erro ao consultar Br Pronto."}, status=400)
+    return Response({
+        "ok": True,
+        "aprovada": resultado.get("aprovada", False),
+        "data_mais_recente_apta": resultado.get("data_mais_recente_apta"),
+        "registros": resultado.get("registros", []),
+    })
+
+
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 # --- NOVO ENDPOINT: Buscar Fatura NIO para Bonus M-10 ---
