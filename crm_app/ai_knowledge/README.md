@@ -24,3 +24,13 @@ O conteúdo desta pasta é carregado e enviado à IA (Groq/Gemini) para que o bo
 - Seja objetivo: listas e tópicos curtos funcionam melhor do que parágrafos longos.
 - Inclua nomes exatos de planos, valores e prazos que a IA deve citar.
 - Não coloque dados sensíveis (senhas, chaves) aqui; o arquivo pode ir para o repositório.
+
+## Treinar a IA / Groq tem painel para isso?
+
+O **Groq** (e a API do Gemini que usamos) **não oferece “treino” ou base de conhecimento no painel**. Eles são só APIs de inferência: você manda o texto e recebe a resposta. O “treino” do nosso bot é feito assim:
+
+1. **conhecimento.md** – sempre enviado no contexto; o ideal é ter aqui os **planos da Nio** e o essencial (assim a IA sempre tem a informação, mesmo em modo reduzido).
+2. **Documentos** (PDF/Excel/PPT) na página “Conhecimento IA” – texto extraído é incluído no contexto.
+3. **Sites** na mesma página – conteúdo das URLs é incluído no contexto.
+
+Para perguntas como “Quais são os planos da Nio?”, o mais garantido é **preencher a seção “Planos” do conhecimento.md** com a lista real. Documentos e sites complementam, mas em caso de limite de tamanho (erro 413) o sistema pode enviar só o conhecimento.md; por isso o essencial deve estar nele.

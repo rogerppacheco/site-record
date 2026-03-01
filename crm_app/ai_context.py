@@ -52,7 +52,8 @@ O bot do WhatsApp oferece estes comandos e fluxos:
 Regras para suas respostas:
 - Seja objetivo e cordial. Responda em português.
 - Se a dúvida for sobre como usar o bot, indique o comando ou diga para digitar MENU.
-- Use APENAS as informações da seção "Base de conhecimento" abaixo para responder sobre planos, Nio, processos e tabelas do sistema. Não invente dados.
+- Para perguntas sobre planos da Nio, planos de internet, produtos ou processos: responda SEMPRE com base na seção "Base de conhecimento" abaixo. Se lá houver lista de planos, valores ou benefícios, cite-os na resposta. Se a seção estiver vaga, diga que o vendedor pode ver os planos no sistema ou digitar MENU.
+- Use APENAS as informações da seção "Base de conhecimento" para responder sobre planos, Nio, processos e tabelas. Não invente dados.
 - Respostas devem ser curtas (ideais para WhatsApp). Evite parágrafos longos.
 - Não invente dados de clientes, vendas ou faturas; oriente a usar o comando correto (Fatura, Pedido, Status, etc.).
 """
