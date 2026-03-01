@@ -1991,3 +1991,67 @@ class RecordApoia(models.Model):
                 return f"{tamanho:.2f} {unidade}"
             tamanho /= 1024.0
         return f"{tamanho:.2f} TB"
+
+
+class DocumentoConhecimentoIA(models.Model):
+    """
+    Documentos (PDF, Excel, PPT) enviados pela área interna para alimentar
+    a base de conhecimento da IA do bot WhatsApp. O texto extraído é incluído no contexto.
+    """
+    titulo = models.CharField(max_length=255, help_text="Título do documento")
+    arquivo = models.FileField(
+        upload_to='conhecimento_ia/%Y/%m/',
+        help_text="Arquivo (PDF, XLS/XLSX, PPT/PPTX)"
+    )
+    nome_original = models.CharField(max_length=255, blank=True)
+    tipo = models.CharField(
+        max_length=20,
+        choices=[('PDF', 'PDF'), ('EXCEL', 'Excel'), ('PPT', 'PowerPoint'), ('OUTRO', 'Outro')],
+        default='OUTRO'
+    )
+    conteudo_extraido = models.TextField(
+        blank=True,
+        help_text="Texto extraído do arquivo para a IA (preenchido no processamento)"
+    )
+    ativo = models.BooleanField(default=True, help_text="Se inativo, não entra no contexto da IA")
+    data_upload = models.DateTimeField(auto_now_add=True)
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='documentos_conhecimento_ia'
+    )
+
+    class Meta:
+        db_table = 'crm_documento_conhecimento_ia'
+        verbose_name = "Documento Conhecimento IA"
+        verbose_name_plural = "Documentos Conhecimento IA"
+        ordering = ['-data_upload']
+
+
+class UrlConhecimentoIA(models.Model):
+    """
+    URLs de sites cujo conteúdo foi extraído para alimentar a base de conhecimento da IA.
+    """
+    url = models.URLField(max_length=2000, help_text="URL da página")
+    titulo = models.CharField(max_length=255, help_text="Título ou descrição")
+    conteudo_extraido = models.TextField(
+        blank=True,
+        help_text="Texto extraído da página (e de links do mesmo domínio, se crawlou)"
+    )
+    ativo = models.BooleanField(default=True, help_text="Se inativo, não entra no contexto da IA")
+    data_upload = models.DateTimeField(auto_now_add=True)
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='urls_conhecimento_ia'
+    )
+
+    class Meta:
+        db_table = 'crm_url_conhecimento_ia'
+        verbose_name = "URL Conhecimento IA"
+        verbose_name_plural = "URLs Conhecimento IA"
+        ordering = ['-data_upload']

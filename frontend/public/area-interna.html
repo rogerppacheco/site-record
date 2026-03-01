@@ -184,6 +184,11 @@
                 <span class="app-title">Record Apoia</span>
             </a>
 
+            <a href="/conhecimento-ia/" class="app-card" id="card-conhecimento-ia">
+                <i class="bi bi-robot app-icon icon-apoia"></i>
+                <span class="app-title">Conhecimento IA</span>
+            </a>
+
             <a href="/record-informa/" class="app-card" id="card-informa">
                 <i class="bi bi-megaphone-fill app-icon icon-informa"></i>
                 <span class="app-title">Record Informa</span>
@@ -230,13 +235,13 @@
                 'Admin': 'all',
 
                 // Acesso Backoffice (inclui Bônus M-10)
-                'BackOffice': ['card-antecipar', 'card-vendas', 'card-informa', 'card-esteira', 'card-auditoria', 'card-performance', 'card-importacoes', 'card-cdoi', 'card-apoia', 'card-bonus-m10'],
+                'BackOffice': ['card-antecipar', 'card-vendas', 'card-informa', 'card-esteira', 'card-auditoria', 'card-performance', 'card-importacoes', 'card-cdoi', 'card-apoia', 'card-conhecimento-ia', 'card-bonus-m10'],
 
                 // Acesso Supervisor (sem Bônus M-10)
-                'Supervisor': ['card-antecipar', 'card-vendas', 'card-presenca', 'card-cdoi', 'card-apoia'],
+                'Supervisor': ['card-antecipar', 'card-vendas', 'card-presenca', 'card-cdoi', 'card-apoia', 'card-conhecimento-ia'],
 
                 // Acesso Vendedor (sem Bônus M-10)
-                'Vendedor': ['card-antecipar', 'card-vendas', 'card-cdoi', 'card-apoia']
+                'Vendedor': ['card-antecipar', 'card-vendas', 'card-cdoi', 'card-apoia', 'card-conhecimento-ia']
             };
 
             let cardsPermitidos = regras[userProfile] || regras['Vendedor'];

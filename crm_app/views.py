@@ -7261,6 +7261,11 @@ def page_record_apoia(request):
     return render(request, 'record_apoia.html')
 
 
+def page_conhecimento_ia(request):
+    """View para a página de upload de documentos (PDF/Excel/PPT) que alimentam a IA do bot."""
+    return render(request, 'conhecimento_ia.html')
+
+
 class SafraM10ListView(APIView):
     """Lista todas as safras disponíveis"""
     permission_classes = [permissions.IsAuthenticated]

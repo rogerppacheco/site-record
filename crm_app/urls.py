@@ -141,6 +141,7 @@ from .views import (
 
 # Importar módulo de views de análise de buscas
 from . import views_analise_busca
+from . import conhecimento_ia_api
 
 router = DefaultRouter()
 router.register(r'vendas', VendaViewSet, basename='venda')
@@ -288,6 +289,18 @@ urlpatterns = [
     path('record-apoia/buscar/', RecordApoiaBuscarView.as_view(), name='record-apoia-buscar'),
     path('record-apoia/admin/orfaos/', RecordApoiaAdminOrfaosView.as_view(), name='record-apoia-admin-orfaos'),
     path('record-apoia/admin/limpar-orfaos/', RecordApoiaAdminLimparOrfaosView.as_view(), name='record-apoia-admin-limpar-orfaos'),
+    
+    # --- Conhecimento IA (upload PDF/Excel/PPT para alimentar o bot) ---
+    path('conhecimento-ia/list/', conhecimento_ia_api.ConhecimentoIAListView.as_view(), name='conhecimento-ia-list'),
+    path('conhecimento-ia/upload/', conhecimento_ia_api.ConhecimentoIAUploadView.as_view(), name='conhecimento-ia-upload'),
+    path('conhecimento-ia/delete/<int:doc_id>/', conhecimento_ia_api.ConhecimentoIADeleteView.as_view(), name='conhecimento-ia-delete'),
+    path('conhecimento-ia/toggle-ativo/<int:doc_id>/', conhecimento_ia_api.ConhecimentoIAToggleAtivoView.as_view(), name='conhecimento-ia-toggle'),
+    path('conhecimento-ia/reprocessar/<int:doc_id>/', conhecimento_ia_api.ConhecimentoIAReprocessarView.as_view(), name='conhecimento-ia-reprocessar'),
+    path('conhecimento-ia/urls/', conhecimento_ia_api.ConhecimentoIAUrlListView.as_view(), name='conhecimento-ia-urls-list'),
+    path('conhecimento-ia/urls/add/', conhecimento_ia_api.ConhecimentoIAUrlAddView.as_view(), name='conhecimento-ia-urls-add'),
+    path('conhecimento-ia/urls/delete/<int:url_id>/', conhecimento_ia_api.ConhecimentoIAUrlDeleteView.as_view(), name='conhecimento-ia-urls-delete'),
+    path('conhecimento-ia/urls/toggle-ativo/<int:url_id>/', conhecimento_ia_api.ConhecimentoIAUrlToggleAtivoView.as_view(), name='conhecimento-ia-urls-toggle'),
+    path('conhecimento-ia/urls/reprocessar/<int:url_id>/', conhecimento_ia_api.ConhecimentoIAUrlReprocessarView.as_view(), name='conhecimento-ia-urls-reprocessar'),
     
     # --- ROTAS EXTRAS ---
     path('grupos-disparo-api/', listar_grupos_whatsapp_api, name='listar_grupos_api'),

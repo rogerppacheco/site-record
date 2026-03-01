@@ -22,6 +22,7 @@ from crm_app.views import (
     page_validacao_dfv,
     page_validacao_recompra,
     page_record_apoia,
+    page_conhecimento_ia,
     listar_grupos_whatsapp_api,  # Importando a função de grupos
     SafraM10ListView,
     DashboardM10View,
@@ -122,6 +123,7 @@ urlpatterns = [
     path('validacao-dfv/', page_validacao_dfv, name='page_validacao_dfv'),
     path('validacao-recompra/', page_validacao_recompra, name='page_validacao_recompra'),
     path('record-apoia/', page_record_apoia, name='page_record_apoia'),
+    path('conhecimento-ia/', page_conhecimento_ia, name='page_conhecimento_ia'),
 
     # Antecipar Instalação (solicitação ao GC Nio)
     path('antecipar-instalacao/', TemplateView.as_view(template_name='public/antecipar-instalacao.html'), name='page_antecipar_instalacao'),
