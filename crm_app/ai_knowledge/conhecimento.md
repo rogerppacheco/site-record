@@ -45,18 +45,23 @@ O manual orienta como parceiros e consultores devem se comunicar com clientes (W
 ## Empresa e Nio
 
 - **Nio** é uma empresa nova, não é continuação da Oi nem “Oi com outro nome”. A Oi Fibra passou por transição e clientes foram transferidos para a Nio; gestão, investimentos e atendimento são diferentes. Foco em mais estabilidade, agilidade e cuidado com o cliente.
+- **Significado do nome**: "Nio" remete a "new" (novo em inglês). Novo modelo de provedor de internet, centrado no cliente, para melhor experiência digital. (Fonte: site niointernet.com.br.)
 - **Nio Negociar** é o sistema de consulta de faturas por CPF. No bot do WhatsApp, o comando **Fatura** abre essa tela.
 - Tecnologia 100% fibra óptica; velocidade, estabilidade e suporte próximo.
-- Aplicativo **Nio** (Play Store e App Store) para ativar Globoplay, consultar boleto e serviços.
+- Aplicativo **Nio** (Play Store e App Store): consultar disponibilidade, mudar plano, alterar endereço, suporte técnico, segunda via de conta, assinar serviços, religar serviço, trocar senha do Wi-Fi. Site do app: app.niointernet.com.br. Ajuda: www.niointernet.com.br/ajuda.
 
 ---
 
 ## Planos Nio – Varejo
 
+Slogan do site: "Internet nova, você leve". Planos a partir de R$ 100, com preço fixo até jan/2028 e desconto de R$ 10 no cartão. Mais de 3 milhões de clientes que eram Oi Fibra agora são Nio.
+
 Portfólio **com serviços inclusos** (orientar cliente a manter benefícios):
-- **500 Mega** – Roteador Wi-Fi 5. 12 meses por nossa conta. Valor do plano fixo até janeiro de 2028. Pagamento: débito em conta ou boleto; no cartão de crédito desconto de R$ 10.
-- **700 Mega** – Roteador Wi-Fi 6, mais estabilidade e menos latência. 12 meses por nossa conta. Mesmas condições de preço e pagamento.
-- **1 Giga** – Roteador Wi-Fi 6, 1 ponto extra Wi-Fi 6 Mesh (cobertura ampliada). Mesmas condições.
+- **Nio Fibra Essencial – 500 Mega**: Roteador Wi-Fi 5. R$ 100/mês (ou R$ 90/mês no cartão de crédito). Valor fixo até janeiro de 2028.
+- **Nio Fibra Super – 700 Mega**: Roteador Wi-Fi 6, mais estabilidade e menos latência. 12 meses por nossa conta. R$ 130/mês (ou R$ 120/mês no cartão).
+- **Nio Fibra Ultra – 1 Giga**: Roteador Wi-Fi 6, 1 ponto extra Wi-Fi 6 Mesh (cobertura ampliada). 12 meses por nossa conta. R$ 160/mês (ou R$ 150/mês no cartão).
+
+Formas de pagamento (site): cartão de crédito, Pix, débito automático ou boleto. Desconto de R$ 10 no cartão.
 
 Regras comuns varejo:
 - Taxa de habilitação: isenção se permanecer no mínimo 12 meses; se cancelar antes, valor proporcional de R$ 540 conforme meses restantes.
@@ -101,7 +106,8 @@ Pagamento: débito em conta ou boleto; no cartão de crédito **R$ 10 de descont
 - **Nio Revistas / Revista Exame** – (empresarial) App Revista da Exame (ZSix).
 - **Nio Negócios e Cultura** – (empresarial, plano Total) revistas empreendedorismo e negócios.
 - **Nio Learning** – (em alguns portfólios.)
-- **Globoplay** – Ativar no App Nio (Cadastrar-se, depois ativar assinatura Globoplay). Pode conter anúncios.
+- **Globoplay**: Planos Super e Ultra têm 12 meses de Globoplay Padrão com Anúncios por nossa conta (filmes, séries, esportes, etc.). HBO Max e Globoplay Premium (Sportv e outros canais ao vivo) são serviços adicionais.
+- **Por que Nio**: internet que chega “longe” (Ultra com 2 pontos Wi-Fi 6), assistir sem travar, jogar com menos lag, fibra rápida e estável, disponibilidade em todo o Brasil (consultar por CEP no site).
 - **Wi-Fi Mesh** – Pontos extras ampliam cobertura; rede única com o roteador principal.
 - **Exa Segurança** – (empresarial) Antivírus para até 2 dispositivos. App Exa Segurança, cadastro com número do celular do cliente Nio Fibra.
 - **Maquininha PagBank** – (empresarial) Grátis, sem custo de envio e mensalidade, taxas diferenciadas. Após instalação da Nio Empresas: https://pagbank.com.br/parcerias/nio, cadastro com e-mail do titular; maquininha em comodato.
@@ -132,9 +138,13 @@ Pagamento: débito em conta ou boleto; no cartão de crédito **R$ 10 de descont
 
 - **Televendas ativo**: TAHTO 0303 222 8045 | LIQ 0303 222 8050 | PA VIRTUAL (ACC) 0303 222 8056
 - **Televendas receptivo**: **Varejo 0800 031 0452** | **Empresarial 0800 282 3258**
+- **Central de vendas (site)**: 0800 031 0453 (qualquer dia e horário, consultar disponibilidade e assinar)
+- **WhatsApp vendas (site)**: 21 2741 0001 (assinar em até 3 minutos)
 - **URA / Ouvidoria**: 0800 001 0646
 - **Atendimento (Nova Fibra e Legado)**: 0800 001 1000
 - **WhatsApp oficial**: 21 3605 1000
+
+Consultar disponibilidade por CEP: assinar.niointernet.com.br. App Nio: app.niointernet.com.br. Ajuda: www.niointernet.com.br/ajuda.
 
 Ofertas **sem serviços inclusos**: apenas 0800 031 0452 (varejo) ou 0800 282 3258 (empresarial). Fixo sem banda larga: 0800 031 0452 (Varejo) ou 0800 282 3258 (Empresarial).
 
@@ -146,6 +156,44 @@ Ofertas **sem serviços inclusos**: apenas 0800 031 0452 (varejo) ou 0800 282 32
 - **Status**: consultar status de pedido.
 - **Pedido**: consultar pedido/O.S. por CPF no PAP.
 - Para ofertas especiais (sem serviços inclusos, portabilidade, fixo alone): orientar a ligar para o 0800 do canal correspondente (varejo ou empresarial).
+
+---
+
+## FAQ (respostas curtas – site niointernet.com.br)
+
+- **Prazo de instalação**: informado na contratação. Períodos: 08h às 12h e 13h às 18h. Confirmação ou dúvidas: WhatsApp (21) 3605 1000 ou 0800 001 1000.
+- **Pagamento da conta – quando a Nio identifica?** Até 3 dias úteis (prazos dos bancos). Se receber cobrança nesse período, desconsiderar. Após 3 dias sem compensar: 0800 001 1000 ou WhatsApp (21) 3605 1000.
+- **Segunda via de fatura**: App Nio (cadastro com CPF/CNPJ) ou site (segunda via com CPF/CNPJ); ou WhatsApp (21) 3605 1000 / 0800 001 1000.
+- **Disponibilidade por CEP**: assinar.niointernet.com.br — informar endereço completo (CEP e número). Empresas: niointernet.com.br/pra-sua-empresa, botão "consultar cobertura".
+- **Telefone fixo com internet empresarial**: Sim. Serviço adicional; adicionar antes de concluir o pedido no site.
+- **Wi-Fi na casa toda**: Plano 1 Giga traz 2 pontos Wi-Fi 6 (roteador + mesh). Em média 1 ponto cobre ~75 m² (varia com paredes e obstáculos).
+- **Suporte técnico**: App Nio (tipo de equipamento, lista de problemas e instruções; ou encaminha para especialista); ou 0800 001 1000 / WhatsApp (21) 3605 1000.
+- **Cancelamento**: Central 0800 001 1000. Devolução de equipamentos: voucher dos Correios por e-mail; envio gratuito. Devolver modem, cabo de energia e roteadores Mesh. Dúvidas: 0800 001 1000 ou WhatsApp (21) 3605 1000.
+- **Mudar de plano / aumentar velocidade**: App Nio ou 0800 001 1000 ou WhatsApp (21) 3605 1000.
+
+---
+
+## Concorrência (contexto para o vendedor – Vivo, TIM, Claro)
+
+Resumo para quando o vendedor perguntar sobre concorrência ou o cliente comparar com outras operadoras. Use para reforçar os diferenciais da Nio (preço fixo até 2028, fibra, benefícios inclusos) sem atacar a concorrente.
+
+**Vivo** (vivo.com.br):
+- **Vivo Fibra**: oferta 600 Mega com 1 ano grátis Perplexity Pro, 6 meses Amazon Prime, instalação grátis mediante fidelização, bônus Wi-Fi mediante adimplência. Vivo Total Pro: 500 Mega Fibra + 50 GB Pós. Vivo Fibra + TV: 500 Mega + 120 canais Vivo TV Avançado.
+- **Móvel**: Vivo Pós 66 GB com Amazon Prime inclusa; Vivo Controle 29 GB; Easy Lite 28 GB; Recarga com bônus. Apps: Globoplay, HBO Max, Netflix, YouTube Premium, Spotify, Disney+ etc. (condições no site).
+- **Canais**: Loja Vivo, app Vivo, recarga, 2ª via, débito automático. Contratar: loja.vivo.com.br, WhatsApp.
+
+**TIM** (tim.com.br):
+- **TIM Ultrafibra**: 1 Giga por R$ 129,99/mês; 700 Mega por R$ 109,99/mês. Ofertas “a partir de” R$ 99,99/mês e R$ 49,99/mês. Globoplay inclusa em parte dos planos; Netflix no TIM Beta.
+- **Móvel**: TIM Controle (Globoplay, a partir R$ 49,99/mês); TIM Black (até 110 GB, R$ 159,99/mês, streaming trocável); TIM Black Família; TIM Beta (Netflix); TIM Pré XIP (recarga). Amazon Prime, HBO Max, Paramount+, YouTube Premium em planos específicos.
+- **Canais**: Meu TIM (app), 2ª via, televendas, lojas. Contratar: site, WhatsApp. Número oficial de vendas começa com 0303; dúvidas WhatsApp 11 4280-9375.
+
+**Claro** (claro.com.br):
+- **Claro fibra**: oferta 600 Mega; planos para casa, gamers, empresas; Wi-Fi 6, extensores Mesh; Globoplay ativação; Proteção Digital McAfee.
+- **Claro Multi**: combinação fibra + celular + TV e streamings. Internet móvel, 5G, mapa de cobertura.
+- **Claro tv+**: Box, 4K, Soundbox; streamings (Amazon Prime, Globoplay, HBO Max, Netflix, Premiere, Telecine etc.).
+- **Canais**: Minha Claro (app), WhatsApp (vendas e atendimento), televendas, contratar online, lojas. Autoatendimento: 2ª via, consumo, recarga, suporte técnico.
+
+**Diferenciais Nio para argumentar**: preço fixo até janeiro de 2028 (sem reajuste no plano); desconto de R$ 10 no cartão; 100% fibra; planos claros (Essencial R$ 100, Super R$ 130, Ultra R$ 160); Globoplay 12 meses nos planos Super e Ultra; atendimento e app próprios; sem fidelidade (apenas regra da taxa de habilitação).
 
 ---
 
@@ -161,4 +209,4 @@ Ofertas **sem serviços inclusos**: apenas 0800 031 0452 (varejo) ou 0800 282 32
 
 ---
 
-*Fonte: Book de Vendas (ebook Nio 31/07/2025), Roteiro de Vendas Nio Empresas (24/07/2025). O arquivo “Resumo Lançamentos Agosto.pptx” não foi extraído aqui (formato binário); para dados de agosto, conferir o material oficial ou enviar em PDF/texto.*
+*Fonte: Book de Vendas (ebook Nio 31/07/2025), Roteiro de Vendas Nio Empresas (24/07/2025). O arquivo “Resumo Lançamentos Agosto.pptx” site www.niointernet.com.br (planos, FAQ, canais, app). O arquivo Resumo Lançamentos Agosto.pptx não foi extraído (formato binário).*
