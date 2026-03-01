@@ -23,11 +23,11 @@ def _limite_chars(name: str, default: int) -> int:
 
 
 # Limites configuráveis por variáveis de ambiente. Valores altos causam 413 no Groq; ao dar 413, o fallback
-# remove documentos/URLs e a IA fica sem o conhecimento. Mantemos defaults menores para a 1ª tentativa passar.
-_MAX_CHARS_DOCUMENTOS_UPLOAD = _limite_chars("IA_MAX_CHARS_DOCS", 12_000)
-_MAX_CHARS_URLS = _limite_chars("IA_MAX_CHARS_URLS", 12_000)
-_MAX_CHARS_CONHECIMENTO_MD = _limite_chars("IA_MAX_CHARS_CONHECIMENTO", 15_000)
-_MAX_CHARS_SCHEMA = _limite_chars("IA_MAX_CHARS_SCHEMA", 4_000)
+# remove documentos/URLs e a IA fica sem o conhecimento. Mantemos defaults bem baixos para a 1ª tentativa passar.
+_MAX_CHARS_DOCUMENTOS_UPLOAD = _limite_chars("IA_MAX_CHARS_DOCS", 8_000)
+_MAX_CHARS_URLS = _limite_chars("IA_MAX_CHARS_URLS", 8_000)
+_MAX_CHARS_CONHECIMENTO_MD = _limite_chars("IA_MAX_CHARS_CONHECIMENTO", 18_000)
+_MAX_CHARS_SCHEMA = _limite_chars("IA_MAX_CHARS_SCHEMA", 3_000)
 
 
 def _prompt_base() -> str:
@@ -54,6 +54,7 @@ Regras para suas respostas:
 - Seja objetivo e cordial. Responda em português.
 - Se a dúvida for sobre como usar o bot, indique o comando ou diga para digitar MENU.
 - Para perguntas sobre planos da Nio, planos de internet, produtos ou processos: responda SEMPRE com base na seção "Base de conhecimento" abaixo. Se lá houver lista de planos, valores ou benefícios, cite-os na resposta. Se a seção estiver vaga, diga que o vendedor pode ver os planos no sistema ou digitar MENU.
+- Quando o vendedor pedir "planos Nio", "Plano Nio - Varejo", "liste os planos", "planos com características" ou similar: liste os planos da seção "Base de conhecimento" com nome, velocidade, valor e principais características (roteador, benefícios), de forma objetiva e curta. Não apenas diga "consulte a base" — inclua a lista na resposta.
 - Use APENAS as informações da seção "Base de conhecimento" para responder sobre planos, Nio, processos e tabelas. Não invente dados.
 - Respostas devem ser curtas (ideais para WhatsApp). Evite parágrafos longos.
 - Não invente dados de clientes, vendas ou faturas; oriente a usar o comando correto (Fatura, Pedido, Status, etc.).

@@ -6076,19 +6076,27 @@ def processar_webhook_whatsapp(data, request=None):
             return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
 
         # Mensagem livre na etapa inicial: pode ser busca de material (Record Apoia) ou dúvida (IA).
-        # Se parecer pergunta/dúvida, tentar a IA primeiro; senão tentar Record Apoia e depois IA como fallback.
+        # Se parecer pergunta/dúvida ou pedido de planos Nio, tentar a IA primeiro; senão tentar Record Apoia e depois IA como fallback.
         _mensagem_strip = (mensagem_texto or "").strip()
+        _msg_lower = _mensagem_strip.lower()
         _parece_pergunta = (
             len(_mensagem_strip) >= 2
             and (
                 "?" in _mensagem_strip
-                or "dúvida" in _mensagem_strip.lower()
-                or "duvida" in _mensagem_strip.lower()
-                or "como " in _mensagem_strip.lower()
-                or "qual " in _mensagem_strip.lower()
-                or "quero saber" in _mensagem_strip.lower()
-                or "instalou" in _mensagem_strip.lower()
-                or "status do pedido" in _mensagem_strip.lower()
+                or "dúvida" in _msg_lower
+                or "duvida" in _msg_lower
+                or "como " in _msg_lower
+                or "qual " in _msg_lower
+                or "quero saber" in _msg_lower
+                or "instalou" in _msg_lower
+                or "status do pedido" in _msg_lower
+                or "plano" in _msg_lower
+                or "planos" in _msg_lower
+                or "liste" in _msg_lower
+                or "listar" in _msg_lower
+                or "características" in _msg_lower
+                or "caracteristicas" in _msg_lower
+                or ("nio" in _msg_lower and ("varejo" in _msg_lower or "empresarial" in _msg_lower))
             )
         )
         if etapa_atual == 'inicial' and _mensagem_strip and _parece_pergunta:
