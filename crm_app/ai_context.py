@@ -14,9 +14,11 @@ _AI_KNOWLEDGE_DIR = Path(__file__).resolve().parent / "ai_knowledge"
 _CONHECIMENTO_FILE = _AI_KNOWLEDGE_DIR / "conhecimento.md"
 _SCHEMA_FILE = _AI_KNOWLEDGE_DIR / "schema_tabelas.md"
 
-# Limite total de caracteres dos documentos + URLs (evita estourar contexto da IA)
-_MAX_CHARS_DOCUMENTOS_UPLOAD = 120_000
-_MAX_CHARS_URLS = 80_000
+# Limite de caracteres para caber no payload da API (Groq retorna 413 Payload Too Large se passar)
+_MAX_CHARS_DOCUMENTOS_UPLOAD = 35_000
+_MAX_CHARS_URLS = 25_000
+_MAX_CHARS_CONHECIMENTO_MD = 15_000
+_MAX_CHARS_SCHEMA = 6_000
 
 
 def _prompt_base() -> str:
@@ -60,12 +62,18 @@ def _carregar_arquivo(path: Path, nome: str) -> str:
 
 def _carregar_conhecimento() -> str:
     """Carrega o conteúdo de conhecimento.md (empresa, Nio, planos, processos)."""
-    return _carregar_arquivo(_CONHECIMENTO_FILE, "conhecimento.md")
+    s = _carregar_arquivo(_CONHECIMENTO_FILE, "conhecimento.md")
+    if len(s) > _MAX_CHARS_CONHECIMENTO_MD:
+        s = s[:_MAX_CHARS_CONHECIMENTO_MD] + "\n\n... (conteúdo truncado)"
+    return s
 
 
 def _carregar_schema_tabelas() -> str:
     """Carrega descrição das tabelas (schema_tabelas.md) se existir."""
-    return _carregar_arquivo(_SCHEMA_FILE, "schema_tabelas.md")
+    s = _carregar_arquivo(_SCHEMA_FILE, "schema_tabelas.md")
+    if len(s) > _MAX_CHARS_SCHEMA:
+        s = s[:_MAX_CHARS_SCHEMA] + "\n... (truncado)"
+    return s
 
 
 def _carregar_documentos_uploadados() -> str:
@@ -132,7 +140,10 @@ def _gerar_resumo_tabelas_django() -> str:
             except Exception:
                 continue
         if lines:
-            return "Tabelas do sistema (banco de dados):\n" + "\n".join(sorted(lines))
+            texto = "Tabelas do sistema (banco de dados):\n" + "\n".join(sorted(lines))
+            if len(texto) > _MAX_CHARS_SCHEMA:
+                texto = texto[:_MAX_CHARS_SCHEMA] + "\n... (truncado)"
+            return texto
     except Exception as e:
         logger.debug("[IA] Não foi possível gerar resumo de tabelas: %s", e)
     return ""
