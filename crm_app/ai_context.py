@@ -14,11 +14,19 @@ _AI_KNOWLEDGE_DIR = Path(__file__).resolve().parent / "ai_knowledge"
 _CONHECIMENTO_FILE = _AI_KNOWLEDGE_DIR / "conhecimento.md"
 _SCHEMA_FILE = _AI_KNOWLEDGE_DIR / "schema_tabelas.md"
 
-# Limite de caracteres para caber no payload da API (Groq retorna 413 Payload Too Large se passar)
-_MAX_CHARS_DOCUMENTOS_UPLOAD = 35_000
-_MAX_CHARS_URLS = 25_000
-_MAX_CHARS_CONHECIMENTO_MD = 15_000
-_MAX_CHARS_SCHEMA = 6_000
+def _limite_chars(name: str, default: int) -> int:
+    """Lê limite de caracteres da variável de ambiente (ex: IA_MAX_CHARS_DOCS)."""
+    val = os.environ.get(name, "").strip()
+    if val.isdigit():
+        return int(val)
+    return default
+
+
+# Limites configuráveis por variáveis de ambiente (aumente se quiser mais conhecimento; Groq pode retornar 413 se passar do aceito)
+_MAX_CHARS_DOCUMENTOS_UPLOAD = _limite_chars("IA_MAX_CHARS_DOCS", 50_000)
+_MAX_CHARS_URLS = _limite_chars("IA_MAX_CHARS_URLS", 40_000)
+_MAX_CHARS_CONHECIMENTO_MD = _limite_chars("IA_MAX_CHARS_CONHECIMENTO", 20_000)
+_MAX_CHARS_SCHEMA = _limite_chars("IA_MAX_CHARS_SCHEMA", 8_000)
 
 
 def _prompt_base() -> str:
@@ -149,10 +157,10 @@ def _gerar_resumo_tabelas_django() -> str:
     return ""
 
 
-def get_contexto_sistema() -> str:
+def get_contexto_sistema(reduzido: bool = False) -> str:
     """
-    Retorna o contexto completo para a IA: prompt base + base de conhecimento
-    (conhecimento.md) + schema de tabelas (arquivo ou gerado do Django).
+    Retorna o contexto para a IA.
+    reduzido=True: só prompt base + conhecimento.md + schema (sem documentos/URLs), para caber no payload quando der 413.
     """
     base = _prompt_base().strip()
     conhecimento = _carregar_conhecimento()
@@ -163,14 +171,15 @@ def get_contexto_sistema() -> str:
     if conhecimento:
         partes.append("\n\n---\n\nBase de conhecimento (use apenas isso para planos, Nio, processos):\n\n")
         partes.append(conhecimento)
-    docs_upload = _carregar_documentos_uploadados()
-    if docs_upload:
-        partes.append("\n\n---\n\nConteúdo de documentos enviados (PDFs, planilhas, apresentações):\n\n")
-        partes.append(docs_upload)
-    urls_sites = _carregar_urls_salvas()
-    if urls_sites:
-        partes.append("\n\n---\n\nConteúdo de sites adicionados:\n\n")
-        partes.append(urls_sites)
+    if not reduzido:
+        docs_upload = _carregar_documentos_uploadados()
+        if docs_upload:
+            partes.append("\n\n---\n\nConteúdo de documentos enviados (PDFs, planilhas, apresentações):\n\n")
+            partes.append(docs_upload)
+        urls_sites = _carregar_urls_salvas()
+        if urls_sites:
+            partes.append("\n\n---\n\nConteúdo de sites adicionados:\n\n")
+            partes.append(urls_sites)
     if schema_file:
         partes.append("\n\n---\n\nDescrição das tabelas:\n\n")
         partes.append(schema_file)

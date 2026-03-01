@@ -14,10 +14,10 @@ GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODEL = "llama-3.3-70b-versatile"
 
 
-def _contexto_sistema() -> str:
-    """Contexto do bot + base de conhecimento (conhecimento.md, tabelas)."""
+def _contexto_sistema(reduzido: bool = False) -> str:
+    """Contexto do bot + base de conhecimento. reduzido=True omite documentos/URLs (para retry após 413)."""
     from crm_app.ai_context import get_contexto_sistema
-    return get_contexto_sistema()
+    return get_contexto_sistema(reduzido=reduzido)
 
 
 def responder_com_groq(mensagem_usuario: str, nome_vendedor: str = "") -> str | None:
@@ -37,18 +37,17 @@ def responder_com_groq(mensagem_usuario: str, nome_vendedor: str = "") -> str | 
     if nome_vendedor:
         user_content = f"[Mensagem do vendedor {nome_vendedor}]: {user_content}"
 
-    payload = {
-        "model": GROQ_MODEL,
-        "messages": [
-            {"role": "system", "content": _contexto_sistema().strip()},
-            {"role": "user", "content": user_content},
-        ],
-        "max_tokens": 1024,
-        "temperature": 0.4,
-    }
-
-    try:
-        resp = requests.post(
+    def _enviar(reduzido: bool = False):
+        payload = {
+            "model": GROQ_MODEL,
+            "messages": [
+                {"role": "system", "content": _contexto_sistema(reduzido=reduzido).strip()},
+                {"role": "user", "content": user_content},
+            ],
+            "max_tokens": 1024,
+            "temperature": 0.4,
+        }
+        return requests.post(
             GROQ_API_URL,
             json=payload,
             timeout=30,
@@ -57,6 +56,12 @@ def responder_com_groq(mensagem_usuario: str, nome_vendedor: str = "") -> str | 
                 "Content-Type": "application/json",
             },
         )
+
+    try:
+        resp = _enviar(reduzido=False)
+        if resp.status_code == 413:
+            logger.warning("[Groq] 413 Payload Too Large. Tentando com contexto reduzido (sem documentos/URLs).")
+            resp = _enviar(reduzido=True)
         resp.raise_for_status()
         data = resp.json()
         choices = data.get("choices") or []
