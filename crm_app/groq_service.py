@@ -60,8 +60,13 @@ def responder_com_groq(mensagem_usuario: str, nome_vendedor: str = "") -> str | 
     try:
         resp = _enviar(reduzido=False)
         if resp.status_code == 413:
-            logger.warning("[Groq] 413 Payload Too Large. Tentando com contexto reduzido (sem documentos/URLs).")
+            logger.warning(
+                "[Groq] 413 Payload Too Large. Tentando com contexto reduzido (sem documentos/URLs). "
+                "A IA ficará sem os planos Nio que estão nos documentos. Reduza IA_MAX_CHARS_DOCS/URLS no .env."
+            )
             resp = _enviar(reduzido=True)
+        else:
+            logger.debug("[Groq] Contexto completo enviado (documentos e URLs incluídos).")
         resp.raise_for_status()
         data = resp.json()
         choices = data.get("choices") or []

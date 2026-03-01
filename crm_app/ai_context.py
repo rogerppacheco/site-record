@@ -22,11 +22,12 @@ def _limite_chars(name: str, default: int) -> int:
     return default
 
 
-# Limites configuráveis por variáveis de ambiente (aumente se quiser mais conhecimento; Groq pode retornar 413 se passar do aceito)
-_MAX_CHARS_DOCUMENTOS_UPLOAD = _limite_chars("IA_MAX_CHARS_DOCS", 50_000)
-_MAX_CHARS_URLS = _limite_chars("IA_MAX_CHARS_URLS", 40_000)
-_MAX_CHARS_CONHECIMENTO_MD = _limite_chars("IA_MAX_CHARS_CONHECIMENTO", 20_000)
-_MAX_CHARS_SCHEMA = _limite_chars("IA_MAX_CHARS_SCHEMA", 8_000)
+# Limites configuráveis por variáveis de ambiente. Valores altos causam 413 no Groq; ao dar 413, o fallback
+# remove documentos/URLs e a IA fica sem o conhecimento. Mantemos defaults menores para a 1ª tentativa passar.
+_MAX_CHARS_DOCUMENTOS_UPLOAD = _limite_chars("IA_MAX_CHARS_DOCS", 12_000)
+_MAX_CHARS_URLS = _limite_chars("IA_MAX_CHARS_URLS", 12_000)
+_MAX_CHARS_CONHECIMENTO_MD = _limite_chars("IA_MAX_CHARS_CONHECIMENTO", 15_000)
+_MAX_CHARS_SCHEMA = _limite_chars("IA_MAX_CHARS_SCHEMA", 4_000)
 
 
 def _prompt_base() -> str:
@@ -56,6 +57,14 @@ Regras para suas respostas:
 - Use APENAS as informações da seção "Base de conhecimento" para responder sobre planos, Nio, processos e tabelas. Não invente dados.
 - Respostas devem ser curtas (ideais para WhatsApp). Evite parágrafos longos.
 - Não invente dados de clientes, vendas ou faturas; oriente a usar o comando correto (Fatura, Pedido, Status, etc.).
+
+Linguagem e tom (padronização Nio – manual jornada cliente):
+Você fala com consultores/vendedores que, por sua vez, falam com clientes. Use a mesma padronização da Nio em suas respostas e, ao orientar o vendedor sobre o que dizer ao cliente, sugira o tom do manual.
+- Use linguagem completa, sem abreviações: escreva "você", "porque", "tudo bem", nunca "vc", "pq", "blz".
+- Tom leve e humano, mas profissional: cordial e respeitoso, sem gírias nem expressões informais ("rapidinho", "beleza?", "okzinho", "saquei", "tranquilo").
+- Prefira: "Bom dia/Boa tarde, como você está?"; "Perfeito." / "Entendido."; "Ficarei responsável por essa solicitação."; "Está correto." / "Compreendido."; "Permaneço à disposição para qualquer necessidade."; "Farei a verificação e retorno com as informações."; "Nossa equipe providenciará a solução."; "Obrigado pela sua atenção. Desejo um excelente dia."
+- Evite: "Oi, blza?"; "Deixa pra mim."; "Tá certo."; "Qualquer coisa prende o grito."; "Vou dar uma olhadinha."; "A gente vai resolver."; expressões religiosas ("fique com Deus"); excesso de pontos de exclamação; palavras de pressão ("imperdível", "exclusivo", "última chance"); formalidade excessiva ("Prezado cliente", "Solicitamos que...").
+- Ao sugerir frases para o vendedor usar com o cliente, use os exemplos do manual: chamar pelo nome, ser proativo, confirmar entendimento ("Posso confirmar se entendi corretamente?"), finalizar com gratidão e disponibilidade.
 """
 
 
