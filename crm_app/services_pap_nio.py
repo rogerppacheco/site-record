@@ -1878,7 +1878,7 @@ class PAPNioAutomation:
             logger.info(f"[PAP] Etapa 3 - CPF: {cpf}")
             
             # Esperar transição da etapa 2 (Continuar/disponível) para a tela de CPF - evita timeout
-            self.page.wait_for_timeout(2000)
+            self.page.wait_for_timeout(1200)
             
             # Avançar só se o campo documento ainda não estiver visível (evita clicar no Avançar errado)
             doc_elem = self.page.query_selector('input[name="documento"]')
@@ -1887,7 +1887,7 @@ class PAPNioAutomation:
                 btn_avancar = self.page.query_selector('button:has-text("Avançar"):not([disabled])')
                 if btn_avancar:
                     btn_avancar.click()
-                    self.page.wait_for_timeout(2500)
+                    self.page.wait_for_timeout(1800)
             
             # Aguardar campo CPF/CNPJ (documento) aparecer - timeout alto (rede/React podem demorar em produção)
             cpf_selector = None
@@ -1919,16 +1919,33 @@ class PAPNioAutomation:
             else:
                 self._set_valor_react(cpf_selector, cpf_limpo)
             
-            # Clicar em Buscar e aguardar resultado (nome do cliente ou Avançar)
+            # Dar tempo para o site validar o documento (evita clicar em Buscar com botão desabilitado)
+            self.page.wait_for_timeout(1500)
+            # Detectar "Documento inválido" na página e falhar rápido (evita timeout de 25s no click)
+            try:
+                doc_invalido = self.page.get_by_text("Documento inválido", exact=False).first
+                if doc_invalido and doc_invalido.is_visible():
+                    return False, "Documento inválido.", None
+            except Exception:
+                pass
+            pagina_texto = (self.page.content() or "").lower()
+            if "documento inválido" in pagina_texto or "documento invalido" in pagina_texto:
+                return False, "Documento inválido.", None
+            
+            # Clicar em Buscar somente se estiver habilitado (evita ElementHandle.click timeout)
             btn_buscar = self.page.query_selector('button:has-text("Buscar"):not([disabled])')
             if not btn_buscar:
-                btn_buscar = self.page.query_selector('button:has-text("Buscar")')
-            if btn_buscar:
-                btn_buscar.click()
-                try:
-                    self.page.wait_for_selector('button:has-text("Avançar"):not([disabled]), input[disabled][value], h2:has-text("OPS, OCORREU UM ERRO")', state="visible", timeout=15000)
-                except Exception:
-                    self.page.wait_for_timeout(3000)
+                # Botão desabilitado = validação falhou no site; verificar de novo a mensagem
+                self.page.wait_for_timeout(800)
+                pagina_texto = (self.page.content() or "").lower()
+                if "documento inválido" in pagina_texto or "documento invalido" in pagina_texto:
+                    return False, "Documento inválido.", None
+                return False, "Documento inválido ou CPF não encontrado. Verifique o número digitado.", None
+            btn_buscar.click()
+            try:
+                self.page.wait_for_selector('button:has-text("Avançar"):not([disabled]), input[disabled][value], h2:has-text("OPS, OCORREU UM ERRO")', state="visible", timeout=15000)
+            except Exception:
+                self.page.wait_for_timeout(3000)
             
             # Fechar modal "OPS, OCORREU UM ERRO!" se aparecer (erro do portal PAP → abrir chamado Nio)
             if self._fechar_modal_erro_ops():
@@ -2078,6 +2095,7 @@ class PAPNioAutomation:
                     return False, "EMAIL_INVALIDO", None, None
             
             # Clicar Avançar para disparar análise de crédito
+            t_avancar = time.time()
             btn_avancar = self.page.query_selector('button:has-text("Avançar"):not([disabled])')
             if btn_avancar:
                 btn_avancar.click()
@@ -2089,8 +2107,8 @@ class PAPNioAutomation:
                     btn_avancar.click()
             
             # Verificar modal "Atenção!" e modal "OPS, OCORREU UM ERRO!" (erro do portal)
-            for _ in range(10):
-                self.page.wait_for_timeout(1000)
+            for _ in range(6):
+                self.page.wait_for_timeout(500)
                 if self.verificar_modal_erro_ops_visivel():
                     self._fechar_modal_erro_ops()
                     return False, PAP_ERRO_PORTAL_NIO, None, None
@@ -2110,11 +2128,18 @@ class PAPNioAutomation:
                     if "e-mail inválido" in pagina or "preencha um e-mail válido" in pagina:
                         self._etapa4_limpar_todos_campos_contato()
                         return False, "EMAIL_INVALIDO", None, None
+            t_apos_atencao = time.time()
+            if parar_no_modal_credito:
+                logger.info("[PAP] [CRÉDITO] Etapa4: loop Atenção=%.1fs (desde clique Avançar)", t_apos_atencao - t_avancar)
             
-            # Poll rápido: se Etapa 5 (Pagamento/Ofertas) aparecer sem modal = crédito aprovado (reduz tempo)
+            # Fluxo crédito (parar_no_modal_credito): sempre esperar o modal "Resultado da análise de crédito"
+            # para obter texto correto (apenas cartão vs todas as formas) e screenshot. Não usar atalho.
+            # Fluxo venda: pode encerrar antes se Etapa 5 aparecer sem modal (aprovação todas as formas).
             modal_apareceu = False
-            for _ in range(12):
-                self.page.wait_for_timeout(1000)
+            poll_iteracao = 0
+            for _ in range(24):
+                self.page.wait_for_timeout(500)
+                poll_iteracao += 1
                 if self.verificar_modal_erro_ops_visivel():
                     self._fechar_modal_erro_ops()
                     return False, PAP_ERRO_PORTAL_NIO, None, None
@@ -2123,7 +2148,8 @@ class PAPNioAutomation:
                     'pagamento' in pagina_texto and 'ofertas' in pagina_texto
                 ) or self.page.query_selector('input[value="BOLETO"], input[value="CREDITO"], input[value="DACC"]')
                 modal_credito = self.page.query_selector('h2:has-text("Resultado da análise de crédito")')
-                if etapa5_visivel and not modal_credito:
+                # Só atalho quando NÃO é fluxo crédito: etapa 5 visível e modal não apareceu = todas as formas
+                if not parar_no_modal_credito and etapa5_visivel and not (modal_credito and modal_credito.is_visible()):
                     self.etapa_atual = 4
                     self.dados_pedido['celular'] = celular
                     self.dados_pedido['email'] = email
@@ -2132,17 +2158,31 @@ class PAPNioAutomation:
                     return True, "Análise de crédito: APROVADO! (Elegível para todas as formas de pagamento)", "Elegível para todas as formas de pagamento", None
                 if modal_credito and modal_credito.is_visible():
                     modal_apareceu = True
+                    t_modal_visivel = time.time()
+                    if parar_no_modal_credito:
+                        logger.info(
+                            "[PAP] [CRÉDITO] Etapa4: modal 'Resultado análise crédito' visível em %.1fs (poll=%d x 0.5s)",
+                            t_modal_visivel - t_avancar, poll_iteracao,
+                        )
                     break
             if not modal_apareceu:
                 try:
-                    self.page.wait_for_selector('h2:has-text("Resultado da análise de crédito")', state="visible", timeout=8000)
+                    self.page.wait_for_selector('h2:has-text("Resultado da análise de crédito")', state="visible", timeout=10000)
                     modal_apareceu = True
+                    t_modal_visivel = time.time()
+                    if parar_no_modal_credito:
+                        logger.info(
+                            "[PAP] [CRÉDITO] Etapa4: modal visível via wait_for_selector em %.1fs (após %d iterações)",
+                            t_modal_visivel - t_avancar, poll_iteracao,
+                        )
                 except Exception:
                     if self.verificar_modal_erro_ops_visivel():
                         self._fechar_modal_erro_ops()
                         return False, PAP_ERRO_PORTAL_NIO, None, None
                     pass
-            self.page.wait_for_timeout(1500)
+            self.page.wait_for_timeout(800)
+            if parar_no_modal_credito and modal_apareceu:
+                logger.info("[PAP] [CRÉDITO] Etapa4: total desde Avançar até leitura/screenshot=%.1fs", time.time() - t_avancar)
             if self.verificar_modal_erro_ops_visivel():
                 self._fechar_modal_erro_ops()
                 return False, PAP_ERRO_PORTAL_NIO, None, None
@@ -2179,8 +2219,10 @@ class PAPNioAutomation:
                 except Exception as ex:
                     logger.warning("[PAP] Falha ao capturar screenshot do modal de crédito (aprovado): %s", ex)
                 # Detectar "apenas/somente cartão": variações com e sem acento (pagina_norm = texto sem acentos)
+                # Frase do site: "Elegível apenas para a forma de pagamento: Cartão de Crédito"
                 indicadores_apenas_cartao = (
-                    ("apenas" in pagina_norm and "cartao" in pagina_norm)
+                    ("elegivel apenas para" in pagina_norm and "cartao" in pagina_norm)
+                    or ("apenas" in pagina_norm and "cartao" in pagina_norm)
                     or ("somente" in pagina_norm and "cartao" in pagina_norm)
                     or ("so cartao" in pagina_norm)
                     or ("apenas para cartao" in pagina_norm)

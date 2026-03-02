@@ -613,6 +613,7 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
     from crm_app.pool_bo_pap import obter_login_bo, liberar_bo, MSG_TODOS_ACESSOS_EM_USO, obter_mensagem_fila_ocupado
     from crm_app.credito_utils import gerar_celular_random, gerar_email_credito
     from crm_app.whatsapp_service import WhatsAppService
+    from crm_app.cadastro_venda_whatsapp import validar_cpf_ou_cnpj_whatsapp
     import re
 
     usuario = Usuario.objects.get(id=usuario_id)
@@ -627,6 +628,20 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
         except Exception:
             pass
         return
+
+    # Validar CPF (dígitos verificadores) antes de abrir PAP — falha rápida, evita timeout na Etapa 3
+    cpf_validado, err_val = validar_cpf_ou_cnpj_whatsapp(cpf)
+    if err_val or not cpf_validado:
+        WhatsAppService().enviar_mensagem_texto(telefone, "❌ Documento inválido. Digite um CPF válido (11 dígitos). Digite *CRÉDITO* para tentar novamente.")
+        try:
+            s = SessaoWhatsapp.objects.get(telefone=telefone)
+            s.etapa = 'inicial'
+            s.dados_temp = {}
+            s.save()
+        except Exception:
+            pass
+        return
+    cpf_limpo = cpf_validado
 
     bo_usuario, msg_erro = obter_login_bo(telefone, None, tipo_automacao='credito')
     if not bo_usuario:
@@ -645,6 +660,7 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
 
     automacao = None
     tempo_inicio = time.time()
+    tempos = {}  # medição por etapa para reduzir tempo (meta: < 1 min)
     try:
         headless = getattr(settings, 'PAP_HEADLESS', True)
         capture_screenshots = getattr(settings, 'PAP_CAPTURE_SCREENSHOTS', False)
@@ -655,32 +671,44 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
             headless=headless,
             capture_screenshots=capture_screenshots,
         )
+        t0 = time.time()
         sucesso, msg = automacao.iniciar_sessao()
+        tempos['login'] = round(time.time() - t0, 1)
         if not sucesso:
             liberar_bo(bo_usuario.id, telefone)
             WhatsAppService().enviar_mensagem_texto(telefone, f"❌ Erro ao acessar PAP: {msg}\n\nDigite *CRÉDITO* para tentar novamente.")
             _resetar_sessao_credito(telefone)
             return
+        logger.info("[CRÉDITO] Tempo: login=%ss (acumulado=%ss)", tempos['login'], round(time.time() - tempo_inicio, 1))
+
         matricula_pedido = usuario.matricula_pap or bo_usuario.matricula_pap
+        t0 = time.time()
         sucesso, msg = automacao.iniciar_novo_pedido(matricula_pedido)
+        tempos['pedido'] = round(time.time() - t0, 1)
         if not sucesso:
             automacao._fechar_sessao()
             liberar_bo(bo_usuario.id, telefone)
             WhatsAppService().enviar_mensagem_texto(telefone, f"❌ Erro ao iniciar pedido: {msg}\n\nDigite *CRÉDITO* para tentar novamente.")
             _resetar_sessao_credito(telefone)
             return
+        logger.info("[CRÉDITO] Tempo: pedido=%ss (acumulado=%ss)", tempos['pedido'], round(time.time() - tempo_inicio, 1))
+
+        t0 = time.time()
         ok_tela, msg_tela = automacao.validar_tela_pronta_para_cep()
+        tempos['tela'] = round(time.time() - t0, 1)
         if not ok_tela:
             automacao._fechar_sessao()
             liberar_bo(bo_usuario.id, telefone)
             WhatsAppService().enviar_mensagem_texto(telefone, f"❌ Página não pronta: {msg_tela}\n\nDigite *CRÉDITO* para tentar novamente.")
             _resetar_sessao_credito(telefone)
             return
+        logger.info("[CRÉDITO] Tempo: tela=%ss (acumulado=%ss)", tempos['tela'], round(time.time() - tempo_inicio, 1))
 
         # Etapa 2: viabilidade com endereço fixo
         cep = CREDITO_CEP_FIXO
         numero = CREDITO_NUMERO_FIXO
         ref = CREDITO_REFERENCIA_FIXA
+        t0 = time.time()
         sucesso, msg, extra = automacao.etapa2_viabilidade(cep, numero, ref)
 
         # COMPLEMENTOS: marcar "Sem complemento" para evitar Posse encontrada (endereço fixo)
@@ -691,6 +719,9 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
             else:
                 sucesso = False
                 msg = msg_sel or "Não foi possível marcar Sem complemento."
+
+        tempos['etapa2'] = round(time.time() - t0, 1)
+        logger.info("[CRÉDITO] Tempo: etapa2=%ss (acumulado=%ss)", tempos['etapa2'], round(time.time() - tempo_inicio, 1))
 
         if not sucesso:
             if isinstance(extra, dict) and extra.get('_codigo') == 'MULTIPLOS_ENDERECOS':
@@ -712,13 +743,16 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
                 return
 
         # Etapa 3: CPF
+        t0 = time.time()
         sucesso, msg, _ = automacao.etapa3_cadastro_cliente(cpf_limpo)
+        tempos['etapa3'] = round(time.time() - t0, 1)
         if not sucesso:
             automacao._fechar_sessao()
             liberar_bo(bo_usuario.id, telefone)
             WhatsAppService().enviar_mensagem_texto(telefone, f"❌ {msg}\n\nDigite *CRÉDITO* para tentar novamente.")
             _resetar_sessao_credito(telefone)
             return
+        logger.info("[CRÉDITO] Tempo: etapa3=%ss (acumulado=%ss)", tempos['etapa3'], round(time.time() - tempo_inicio, 1))
 
         # Etapa 4: contato com celular e email aleatórios (evita bloqueio por repetição/validação do site)
         cel = gerar_celular_random()
@@ -726,6 +760,7 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
         email = gerar_email_credito()
         max_tentativas = 5
         screenshot_credito_b64 = None
+        t0 = time.time()
         for tentativa in range(max_tentativas):
             sucesso, msg, resultado_credito, screenshot_credito_b64 = automacao.etapa4_contato(cel, email, celular_secundario=cel_sec, parar_no_modal_credito=True)
             if sucesso:
@@ -744,10 +779,23 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
             WhatsAppService().enviar_mensagem_texto(telefone, f"❌ Erro na análise: {msg}\n\nDigite *CRÉDITO* para tentar novamente.")
             _resetar_sessao_credito(telefone)
             return
+        tempos['etapa4'] = round(time.time() - t0, 1)
+        logger.info("[CRÉDITO] Tempo: etapa4=%ss (acumulado=%ss)", tempos['etapa4'], round(time.time() - tempo_inicio, 1))
 
         aprovado = msg != "CREDITO_NEGADO" and sucesso
         resultado_detalhe = (resultado_credito or "") if sucesso else None
         tempo_decorrido = round(time.time() - tempo_inicio, 1)
+        # Resumo de tempos para análise (meta: total < 60s)
+        logger.info(
+            "[CRÉDITO] Tempo total: %ss | login=%ss, pedido=%ss, tela=%ss, etapa2=%ss, etapa3=%ss, etapa4=%ss",
+            tempo_decorrido,
+            tempos.get('login', '-'),
+            tempos.get('pedido', '-'),
+            tempos.get('tela', '-'),
+            tempos.get('etapa2', '-'),
+            tempos.get('etapa3', '-'),
+            tempos.get('etapa4', '-'),
+        )
         automacao._fechar_sessao()  # fechar na thread do Playwright
         # Playwright cria event loop na thread; ORM/WhatsApp precisam rodar em thread sem event loop
         def _salvar_e_enviar():

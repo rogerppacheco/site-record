@@ -843,7 +843,7 @@
         }
 
         async function abrirModalReprovacao() {
-            const sel = $('#repro-status'); if (globalStatusOptions.length === 0) { try { const r = await apiFetch(`${API_AUX}/status/?tipo=Tratamento`); globalStatusOptions = r || []; } catch(e){} }
+            const sel = $('#repro-status'); if (globalStatusOptions.length === 0) { try { const r = await apiFetch(`${API_AUX}/status/?tipo=Tratamento&page_size=1000`); globalStatusOptions = Array.isArray(r) ? r : (r?.results || []); } catch(e){} }
             sel.empty().append('<option value="">Selecione...</option>');
             if (globalStatusOptions.length > 0) { globalStatusOptions.filter(s => {
                 const nome = s.nome.toUpperCase();

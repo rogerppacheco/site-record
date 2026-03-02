@@ -631,6 +631,7 @@ class StatusCRMListCreateView(generics.ListCreateAPIView):
     serializer_class = StatusCRMSerializer
     permission_classes = [permissions.IsAuthenticated]
     resource_name = 'statuscrm'
+    pagination_class = None  # Retorna todos os status (lista pequena); evita status “sumidos” na aba e no modal Reprovar
 
     def get_queryset(self):
         user = self.request.user
