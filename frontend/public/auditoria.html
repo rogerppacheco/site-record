@@ -1280,13 +1280,18 @@
         }
 
         async function abrirModalReprovacao() {
-            const sel = $('#repro-status'); if (globalStatusOptions.length === 0) { try { const r = await apiFetch(`${API_AUX}/status/?tipo=Tratamento&page_size=1000`); globalStatusOptions = Array.isArray(r) ? r : (r?.results || []); } catch(e){} }
+            const sel = $('#repro-status');
+            sel.empty().append('<option value="">Carregando...</option>');
+            try {
+                const r = await apiFetch(`${API_AUX}/status/?tipo=Tratamento&page_size=1000`);
+                globalStatusOptions = Array.isArray(r) ? r : (r?.results || []);
+            } catch(e) { globalStatusOptions = []; }
             sel.empty().append('<option value="">Selecione...</option>');
             if (globalStatusOptions.length > 0) { globalStatusOptions.filter(s => {
                 const nome = s.nome.toUpperCase();
                 return !(nome === 'AUDITADA' || nome === 'APROVADA' || nome === 'CADASTRADA' || nome.startsWith('APROVADA E '));
             }).forEach(s => sel.append(`<option value="${s.id}">${s.nome}</option>`)); }
-            $('#div-campos-aguardando-pagamento').hide(); $('#repro-os').val(''); $('#repro-data').val($('#audit-data-agendamento').val()); $('#repro-turno').val($('#audit-turno-agendamento').val()); $('#repro-obs').val($('#script-obs-venda').val()); 
+            $('#div-campos-aguardando-pagamento').hide(); $('#repro-os').val(''); $('#repro-data').val($('#audit-data-agendamento').val()); $('#repro-turno').val($('#audit-turno-agendamento').val()); $('#repro-obs').val($('#script-obs-venda').val());
             modalReprovacao.show();
         }
 

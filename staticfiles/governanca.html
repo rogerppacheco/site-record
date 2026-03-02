@@ -1660,7 +1660,7 @@
 
     let listaStatusGlobal = [];
     async function carregarStatus() {
-        const res = await apiFetch('/crm/status/');
+        const res = await apiFetch('/crm/status/?page_size=1000');
         const lista = Array.isArray(res) ? res : (res?.results || []);
         listaStatusGlobal = lista;
         const tbody = document.getElementById('lista-status'); tbody.innerHTML = '';

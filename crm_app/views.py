@@ -635,7 +635,8 @@ class StatusCRMListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         user = self.request.user
-        if is_member(user, ['Diretoria', 'BackOffice', 'Admin', 'Supervisor']):
+        # Listar status: quem gerencia cadastros (Diretoria, BackOffice, Admin, Supervisor) ou quem usa na auditoria (Auditoria, Qualidade)
+        if is_member(user, ['Diretoria', 'BackOffice', 'Admin', 'Supervisor', 'Auditoria', 'Qualidade']):
             queryset = StatusCRM.objects.all()
             tipo = self.request.query_params.get('tipo', None)
             if tipo:
