@@ -5794,14 +5794,23 @@ def processar_webhook_whatsapp(data, request=None):
                 horario_texto = '8h às 12h'
             else:
                 horario_texto = '13h às 18h'
-            if mensagem_limpa in ['SIM', 'S']:
+            texto_resposta = (mensagem_texto or '').strip() or mensagem_limpa or ''
+            agora = timezone.now()
+            venda = lembrete.venda
+            campos_venda = ['cliente_resposta_lembrete_instalacao', 'data_resposta_lembrete_instalacao', 'cliente_confirmou_lembrete_instalacao']
+
+            if mensagem_limpa in ['SIM', 'S', 'CONFIRMAR', 'CONFIRMO', 'OK', 'CERTO', 'PODE SER', 'POSSO']:
                 msg = f"Confirmação registrada!\nSua instalação Nio Fibra está confirmada para hoje, das {horario_texto}.\nNosso técnico entrará em contato por ligação e WhatsApp quando estiver a caminho. Obrigado por escolher a Nio Fibra."
                 try:
                     WhatsAppService().enviar_mensagem_texto(telefone_formatado, msg)
                 except Exception:
                     pass
-                lembrete.respondido_em = timezone.now()
+                lembrete.respondido_em = agora
                 lembrete.save(update_fields=['respondido_em'])
+                venda.cliente_confirmou_lembrete_instalacao = True
+                venda.cliente_resposta_lembrete_instalacao = texto_resposta[:2000] if texto_resposta else None
+                venda.data_resposta_lembrete_instalacao = agora
+                venda.save(update_fields=campos_venda)
                 return {'status': 'ok', 'mensagem': 'Confirmação instalação (SIM)'}
             if mensagem_limpa == 'SUPORTE' or mensagem_limpa in ['NAO', 'NÃO', 'NAO QUERO', 'NÃO QUERO', 'CANCELAR', 'CANCELAR INSTALACAO', 'DESISTIR']:
                 msg = "Em breve um especialista irá falar contigo"
@@ -5809,9 +5818,26 @@ def processar_webhook_whatsapp(data, request=None):
                     WhatsAppService().enviar_mensagem_texto(telefone_formatado, msg)
                 except Exception:
                     pass
-                lembrete.respondido_em = timezone.now()
+                lembrete.respondido_em = agora
                 lembrete.save(update_fields=['respondido_em'])
+                venda.cliente_confirmou_lembrete_instalacao = False
+                venda.cliente_resposta_lembrete_instalacao = texto_resposta[:2000] if texto_resposta else None
+                venda.data_resposta_lembrete_instalacao = agora
+                venda.save(update_fields=campos_venda)
                 return {'status': 'ok', 'mensagem': 'Resposta lembrete instalação (não/suporte)'}
+            # Qualquer outra resposta: registra na venda e envia "Em breve um especialista..."
+            msg = "Em breve um especialista irá falar contigo"
+            try:
+                WhatsAppService().enviar_mensagem_texto(telefone_formatado, msg)
+            except Exception:
+                pass
+            lembrete.respondido_em = agora
+            lembrete.save(update_fields=['respondido_em'])
+            venda.cliente_confirmou_lembrete_instalacao = False
+            venda.cliente_resposta_lembrete_instalacao = texto_resposta[:2000] if texto_resposta else None
+            venda.data_resposta_lembrete_instalacao = agora
+            venda.save(update_fields=campos_venda)
+            return {'status': 'ok', 'mensagem': 'Resposta lembrete instalação (outro)'}
     except Exception as e:
         logger.warning(f"[Webhook] Erro ao processar lembrete instalação: {e}", exc_info=True)
     

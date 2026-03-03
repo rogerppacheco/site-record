@@ -137,6 +137,7 @@
                                 <th>Plano</th>
                                 <th>Status Atual</th>
                                 <th>Motivo Pendência</th>
+                                <th title="Resposta do cliente ao lembrete de instalação">Conf. cliente</th>
                                 <th>Resp. Alteração</th> <th class="pe-3">Ações</th>
                             </tr>
                         </thead>
@@ -513,7 +514,7 @@
             const tbody = document.getElementById('tabela-esteira-body');
             const busca = document.getElementById('filtro-busca').value;
             
-            if (!silent) { tbody.innerHTML = '<tr><td colspan="12" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>'; }
+            if (!silent) { tbody.innerHTML = '<tr><td colspan="13" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>'; }
             
             try {
                 const timestamp = new Date().getTime();
@@ -587,7 +588,7 @@
                     }
                 }
 
-                if(vendas.length === 0) { tbody.innerHTML = '<tr><td colspan="12" class="text-center py-4 text-muted">Nenhuma venda encontrada nesta etapa.</td></tr>'; return; }
+                if(vendas.length === 0) { tbody.innerHTML = '<tr><td colspan="13" class="text-center py-4 text-muted">Nenhuma venda encontrada nesta etapa.</td></tr>'; return; }
 
                 // Função auxiliar para achar nome de usuário pelo ID
                 const getNomeUsuario = (userId) => {
@@ -656,6 +657,15 @@
                     }
                     const btnEditar = temDadosEditaveis ? `<button class="btn btn-sm btn-link text-primary p-0 ms-1" onclick="editarStatusExistente(${v.id}, '${nomeStatus}', '${statusId}')" title="Editar dados" aria-label="Editar dados da venda #${v.id}"><i class="bi bi-pencil-square"></i></button>` : '';
 
+                    let confCliente = '-';
+                    if (v.cliente_confirmou_lembrete_instalacao === true) {
+                        confCliente = '<span class="badge bg-success" title="' + (v.cliente_resposta_lembrete_instalacao || '').replace(/"/g, '&quot;').substring(0, 200) + '">Sim</span>';
+                    } else if (v.cliente_confirmou_lembrete_instalacao === false && (v.cliente_resposta_lembrete_instalacao || v.data_resposta_lembrete_instalacao)) {
+                        const respShort = (v.cliente_resposta_lembrete_instalacao || '').substring(0, 30);
+                        const respTitle = (v.cliente_resposta_lembrete_instalacao || '').replace(/"/g, '&quot;');
+                        confCliente = '<span class="badge bg-secondary" title="' + respTitle + '">Não' + (respShort ? ': ' + respShort + (v.cliente_resposta_lembrete_instalacao && v.cliente_resposta_lembrete_instalacao.length > 30 ? '…' : '') : '') + '</span>';
+                    }
+
                     htmlContent += `
                         <tr style="${rowStyle}" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='translateY(0)'">
                             <td class="fw-bold text-primary ps-4">#${v.id}</td>
@@ -668,6 +678,7 @@
                             <td>${nomePlano}</td>
                             <td><div class="d-flex align-items-center">${selectStatus}${btnEditar}</div></td>
                             <td class="text-danger small fw-bold">${motivoPendencia}</td>
+                            <td class="small">${confCliente}</td>
                             <td><small class="text-muted fw-bold">${alteradoPor}</small></td>
                             <td class="pe-4 text-end">
                                 ${(v.telefone1 && v.telefone1.trim()) ? `<button class="btn btn-sm btn-outline-secondary rounded-circle p-2 me-1" onclick="copiarTelefone(this)" data-telefone="${String(v.telefone1).replace(/"/g, '&quot;')}" title="Copiar telefone"><i class="bi bi-telephone"></i></button>` : ''}
@@ -678,7 +689,7 @@
                 });
                 tbody.innerHTML = htmlContent;
             } catch (e) { 
-                if(!silent) tbody.innerHTML = '<tr><td colspan="12" class="text-center text-danger">Erro ao carregar.<br><small>'+(e.message || e)+'</small></td></tr>'; 
+                if(!silent) tbody.innerHTML = '<tr><td colspan="13" class="text-center text-danger">Erro ao carregar.<br><small>'+(e.message || e)+'</small></td></tr>'; 
                 // ...
             }
         }

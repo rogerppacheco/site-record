@@ -200,6 +200,26 @@ class Venda(models.Model):
         verbose_name="Data/hora confirmação cliente (auditoria)",
     )
 
+    # --- Confirmação/resposta ao lembrete de instalação (esteira, WhatsApp) ---
+    cliente_confirmou_lembrete_instalacao = models.BooleanField(
+        null=True,
+        blank=True,
+        default=None,
+        verbose_name="Cliente confirmou instalação (lembrete)",
+        help_text="True=respondeu SIM/positivo; False=respondeu Não/Suporte/outro; null=ainda não respondeu ao lembrete.",
+    )
+    cliente_resposta_lembrete_instalacao = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="Resposta do cliente ao lembrete",
+        help_text="Texto que o cliente enviou ao responder o lembrete de instalação.",
+    )
+    data_resposta_lembrete_instalacao = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Data/hora resposta ao lembrete",
+    )
+
     # --- CAMPOS PARA CONTROLE DE DESCONTOS ---
     flag_adiant_cnpj = models.BooleanField(default=False, verbose_name="Adiant. CNPJ Processado")
     flag_desc_boleto = models.BooleanField(default=False, verbose_name="Desc. Boleto Processado")
