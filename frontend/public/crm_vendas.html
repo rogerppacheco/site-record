@@ -1098,7 +1098,12 @@
             } catch (e) {
                 resultado.style.display = 'block';
                 resultado.className = 'alert alert-danger mt-2';
-                resultado.textContent = 'Erro: ' + (e.message || e);
+                let msgErro = 'Erro ao enviar.';
+                if (typeof e === 'string') msgErro = e;
+                else if (e && e.message) msgErro = e.message;
+                else if (e && e.detail) msgErro = typeof e.detail === 'string' ? e.detail : JSON.stringify(e.detail);
+                else if (e && typeof e === 'object') msgErro = e.detail || e.erro || JSON.stringify(e);
+                resultado.textContent = 'Erro: ' + msgErro;
             }
             btn.disabled = false;
         }
