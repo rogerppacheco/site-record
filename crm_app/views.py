@@ -9951,11 +9951,24 @@ def _normalizar_telefone_chave(telefone):
     return tel
 
 
+# --- Boas práticas WhatsApp (evitar bloqueio) ---
+# Ref.: intervalos 30-60s entre mensagens; pausa 1-2 min entre lotes; máx ~20 msg/min; lotes pequenos (5-8).
+# Mensagens personalizadas (nome) e ordem aleatória reduzem detecção de padrão.
+WHATSAPP_ENVIO_MIN_SEG = 30   # mínimo segundos entre cada mensagem
+WHATSAPP_ENVIO_MAX_SEG = 65   # máximo segundos entre cada mensagem
+WHATSAPP_LOTE_TAMANHO = 5     # mensagens por lote
+WHATSAPP_PAUSA_LOTE_MIN_SEG = 60   # pausa mínima entre lotes (segundos)
+WHATSAPP_PAUSA_LOTE_MAX_SEG = 120  # pausa máxima entre lotes (segundos)
+
+
 class EnviarLembreteInstalacaoView(APIView):
-    """Envia mensagem de lembrete de instalação para clientes agendados na data e turno informados."""
+    """Envia lembrete de instalação para clientes agendados na data e turno informados.
+    Usa lotes com intervalo aleatório entre mensagens (boas práticas WhatsApp)."""
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
+        import time
+        import random
         from django.utils import timezone
         from datetime import datetime
         from crm_app.whatsapp_service import WhatsAppService
@@ -9972,12 +9985,20 @@ class EnviarLembreteInstalacaoView(APIView):
         except ValueError:
             return Response({'detail': 'Data inválida. Use YYYY-MM-DD.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        vendas = Venda.objects.filter(
+        offset = max(0, int(request.data.get('offset', 0)))
+        limite = max(1, min(10, int(request.data.get('limite', WHATSAPP_LOTE_TAMANHO))))
+        min_intervalo = max(15, min(90, int(request.data.get('min_intervalo', WHATSAPP_ENVIO_MIN_SEG))))
+        max_intervalo = max(min_intervalo + 5, min(120, int(request.data.get('max_intervalo', WHATSAPP_ENVIO_MAX_SEG))))
+
+        vendas_qs = Venda.objects.filter(
             ativo=True,
             data_agendamento=data_filtro,
             periodo_agendamento=turno,
             status_esteira__nome__icontains='AGENDADO'
-        ).exclude(telefone1__isnull=True).exclude(telefone1='').select_related('cliente')
+        ).exclude(telefone1__isnull=True).exclude(telefone1='').select_related('cliente').order_by('id')
+        total_na_data = vendas_qs.count()
+        vendas = list(vendas_qs[offset:offset + limite])
+        random.shuffle(vendas)
 
         primeiro_nome = (request.user.first_name or request.user.username or 'Especialista').strip().split()[0] or 'Especialista'
         agora = timezone.now()
@@ -9992,7 +10013,10 @@ class EnviarLembreteInstalacaoView(APIView):
         erros = []
         svc = WhatsAppService()
 
-        for venda in vendas:
+        for i, venda in enumerate(vendas):
+            if i > 0:
+                delay = random.randint(min_intervalo, max_intervalo)
+                time.sleep(delay)
             nome_cliente = (venda.cliente.nome_razao_social if venda.cliente else '').strip() or 'Cliente'
             mensagem = (
                 f"Olá, {saudacao} Sr(a). {nome_cliente}\n\n"
@@ -10023,18 +10047,29 @@ class EnviarLembreteInstalacaoView(APIView):
             except Exception as e:
                 erros.append(f"Venda #{venda.id}: {str(e)}")
 
+        restantes = max(0, total_na_data - offset - len(vendas))
+        proximo_offset = offset + len(vendas) if restantes > 0 else None
+        pause_antes_proximo = random.randint(WHATSAPP_PAUSA_LOTE_MIN_SEG, WHATSAPP_PAUSA_LOTE_MAX_SEG) if restantes > 0 else None
+
         return Response({
             'enviados': enviados,
-            'total': len(vendas),
+            'total_na_data': total_na_data,
+            'restantes': restantes,
+            'proximo_offset': proximo_offset,
+            'pause_antes_proximo_seg': pause_antes_proximo,
             'erros': erros[:20],
         }, status=status.HTTP_200_OK)
 
 
 class EnviarBoasVindasView(APIView):
-    """Envia mensagem de boas-vindas para clientes com venda Instalada na data de instalação informada."""
+    """Envia mensagem de boas-vindas para clientes com venda Instalada na data de instalação informada.
+    Envio em lotes com intervalo ALEATÓRIO entre mensagens (padrão diferente a cada vez) para evitar bloqueio.
+    Parâmetros opcionais: limite (ex.: 5 por vez), offset (para continuar)."""
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
+        import time
+        import random
         from django.utils import timezone
         from datetime import datetime
         from crm_app.whatsapp_service import WhatsAppService
@@ -10051,12 +10086,20 @@ class EnviarBoasVindasView(APIView):
         except ValueError:
             return Response({'detail': 'Data inválida. Use YYYY-MM-DD.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        vendas = Venda.objects.filter(
+        offset = max(0, int(request.data.get('offset', 0)))
+        limite = max(1, min(10, int(request.data.get('limite', WHATSAPP_LOTE_TAMANHO))))
+        min_intervalo = max(15, min(90, int(request.data.get('min_intervalo', WHATSAPP_ENVIO_MIN_SEG))))
+        max_intervalo = max(min_intervalo + 5, min(120, int(request.data.get('max_intervalo', WHATSAPP_ENVIO_MAX_SEG))))
+
+        vendas_qs = Venda.objects.filter(
             ativo=True,
             data_instalacao=data_instalacao,
             status_esteira__nome__icontains='INSTALADA',
             boas_vindas_enviado_em__isnull=True,
-        ).exclude(telefone1__isnull=True).exclude(telefone1='').select_related('cliente')
+        ).exclude(telefone1__isnull=True).exclude(telefone1='').select_related('cliente').order_by('id')
+        total_na_data = vendas_qs.count()
+        vendas = list(vendas_qs[offset:offset + limite])
+        random.shuffle(vendas)  # ordem de envio aleatória dentro do lote
 
         primeiro_nome = (request.user.first_name or request.user.username or 'Especialista').strip().split()[0] or 'Especialista'
         agora = timezone.now()
@@ -10085,14 +10128,17 @@ class EnviarBoasVindasView(APIView):
         erros = []
         svc = WhatsAppService()
 
-        for venda in vendas:
+        for i, venda in enumerate(vendas):
+            if i > 0:
+                delay = random.randint(min_intervalo, max_intervalo)
+                time.sleep(delay)
             nome_cliente = (venda.cliente.nome_razao_social if venda.cliente else '').strip() or 'Cliente'
             mensagem = msg_base.format(nome_cliente=nome_cliente)
             try:
                 ok, _ = svc.enviar_mensagem_texto(venda.telefone1, mensagem)
                 if ok:
                     enviados += 1
-                    venda.boas_vindas_enviado_em = agora
+                    venda.boas_vindas_enviado_em = timezone.now()
                     venda.save(update_fields=['boas_vindas_enviado_em'])
                     tel_chave = _normalizar_telefone_chave(venda.telefone1)
                     if tel_chave:
@@ -10102,9 +10148,17 @@ class EnviarBoasVindasView(APIView):
             except Exception as e:
                 erros.append(f"Venda #{venda.id}: {str(e)}")
 
+        restantes = max(0, total_na_data - offset - len(vendas))
+        proximo_offset = offset + len(vendas) if restantes > 0 else None
+        # Pausa sugerida entre lotes (boas práticas: 1-2 min para não parecer burst)
+        pause_antes_proximo = random.randint(WHATSAPP_PAUSA_LOTE_MIN_SEG, WHATSAPP_PAUSA_LOTE_MAX_SEG) if restantes > 0 else None
+
         return Response({
             'enviados': enviados,
-            'total': len(vendas),
+            'total_na_data': total_na_data,
+            'restantes': restantes,
+            'proximo_offset': proximo_offset,
+            'pause_antes_proximo_seg': pause_antes_proximo,
             'erros': erros[:20],
         }, status=status.HTTP_200_OK)
 

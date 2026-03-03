@@ -284,6 +284,7 @@
                 </div>
                 <div class="modal-body">
                     <p class="text-muted small">A mensagem será enviada para clientes com status <strong>Instalada</strong> na data em que o pedido foi instalado (telefone1).</p>
+                    <p class="alert alert-light border small mb-0"><i class="bi bi-info-circle"></i> O envio é feito em lotes, com intervalo <strong>aleatório</strong> entre cada mensagem (padrão diferente a cada vez) para evitar bloqueio do WhatsApp.</p>
                     <form id="form-boas-vindas">
                         <div class="mb-3">
                             <label class="form-label fw-bold">Data em que o pedido foi instalado *</label>
@@ -1087,23 +1088,53 @@
             const resultado = document.getElementById('boas-vindas-resultado');
             btn.disabled = true;
             resultado.style.display = 'none';
+            let offset = 0;
+            let totalEnviados = 0;
+            var WHATSAPP_PAUSA_LOTE_MIN = 60, WHATSAPP_PAUSA_LOTE_MAX = 120;
+            function esperaAleatoriaMinSec() {
+                var min = WHATSAPP_PAUSA_LOTE_MIN || 60, max = WHATSAPP_PAUSA_LOTE_MAX || 120;
+                return (Math.floor(Math.random() * (max - min + 1)) + min) * 1000;
+            }
+
+            function exibirMsg(tipo, html) {
+                resultado.style.display = 'block';
+                resultado.className = 'alert mt-2 alert-' + tipo;
+                resultado.innerHTML = html;
+            }
+
             try {
-                const res = await apiFetch('/crm/vendas/enviar-boas-vindas/', {
-                    method: 'POST',
-                    body: JSON.stringify({ data: dataStr })
-                });
-                resultado.style.display = 'block';
-                resultado.className = 'alert mt-2 ' + (res.erros && res.erros.length > 0 ? 'alert-warning' : 'alert-success');
-                resultado.innerHTML = 'Enviados: <strong>' + (res.enviados || 0) + '</strong> de ' + (res.total || 0) + (res.erros && res.erros.length ? '. Erros: ' + res.erros.slice(0, 5).join('; ') : '');
+                while (true) {
+                    const body = { data: dataStr, offset: offset, limite: 5 };
+                    const res = await apiFetch('/crm/vendas/enviar-boas-vindas/', {
+                        method: 'POST',
+                        body: JSON.stringify(body)
+                    });
+                    totalEnviados += res.enviados || 0;
+                    const totalNaData = res.total_na_data || 0;
+                    const restantes = res.restantes || 0;
+                    const erros = (res.erros || []).length;
+
+                    if (restantes > 0 && res.proximo_offset != null) {
+                        var esperaMs = res.pause_antes_proximo_seg != null
+                            ? (res.pause_antes_proximo_seg * 1000)
+                            : esperaAleatoriaMinSec();
+                        exibirMsg('info', 'Enviados <strong>' + totalEnviados + '</strong> de ' + totalNaData + '. Aguarde ~' + Math.round(esperaMs / 1000) + 's (pausa entre lotes) para o próximo lote...' + (erros ? ' <span class="text-danger">(' + erros + ' erros)</span>' : ''));
+                        offset = res.proximo_offset;
+                        await new Promise(r => setTimeout(r, esperaMs));
+                    } else {
+                        exibirMsg((res.erros && res.erros.length > 0) ? 'warning' : 'success',
+                            'Enviados: <strong>' + totalEnviados + '</strong> de ' + totalNaData + (res.erros && res.erros.length ? '. Erros: ' + res.erros.slice(0, 5).join('; ') : ''));
+                        break;
+                    }
+                }
             } catch (e) {
-                resultado.style.display = 'block';
-                resultado.className = 'alert alert-danger mt-2';
                 let msgErro = 'Erro ao enviar.';
                 if (typeof e === 'string') msgErro = e;
                 else if (e && e.message) msgErro = e.message;
                 else if (e && e.detail) msgErro = typeof e.detail === 'string' ? e.detail : JSON.stringify(e.detail);
                 else if (e && typeof e === 'object') msgErro = e.detail || e.erro || JSON.stringify(e);
-                resultado.textContent = 'Erro: ' + msgErro;
+                exibirMsg('danger', 'Erro: ' + msgErro);
+                if (totalEnviados > 0) resultado.innerHTML += '<br><small>Enviados até o momento: ' + totalEnviados + '</small>';
             }
             btn.disabled = false;
         }

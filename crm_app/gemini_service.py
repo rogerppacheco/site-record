@@ -24,16 +24,17 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
 
-def _contexto_sistema() -> str:
-    """Contexto do bot + base de conhecimento (conhecimento.md, tabelas)."""
+def _contexto_sistema(contexto_externo: bool = False) -> str:
+    """Contexto do bot + base de conhecimento. contexto_externo=True para contatos não cadastrados."""
     from crm_app.ai_context import get_contexto_sistema
-    return get_contexto_sistema()
+    return get_contexto_sistema(contexto_externo=contexto_externo)
 
 
-def responder_com_gemini(mensagem_usuario: str, nome_vendedor: str = "") -> str | None:
+def responder_com_gemini(mensagem_usuario: str, nome_vendedor: str = "", contexto_externo: bool = False) -> str | None:
     """
     Envia a mensagem do usuário ao Gemini (REST) com o contexto do sistema e retorna a resposta em texto.
     Retorna None em caso de erro ou se GEMINI_API_KEY não estiver configurada.
+    contexto_externo=True: usa prompt curto para contatos não cadastrados.
     """
     if not GEMINI_API_KEY:
         logger.warning("[Gemini] GEMINI_API_KEY não configurada. Configure a variável de ambiente para ativar respostas da IA.")
@@ -44,13 +45,13 @@ def responder_com_gemini(mensagem_usuario: str, nome_vendedor: str = "") -> str 
         return None
 
     user_content = mensagem_usuario
-    if nome_vendedor:
+    if nome_vendedor and not contexto_externo:
         user_content = f"[Mensagem do vendedor {nome_vendedor}]: {user_content}"
 
     payload = {
         "contents": [{"parts": [{"text": user_content}]}],
         "systemInstruction": {
-            "parts": [{"text": _contexto_sistema().strip()}],
+            "parts": [{"text": _contexto_sistema(contexto_externo=contexto_externo).strip()}],
         },
         "generationConfig": {
             "maxOutputTokens": 1024,

@@ -5869,14 +5869,27 @@ def processar_webhook_whatsapp(data, request=None):
     # Verificar se o número está associado a um usuário ativo (em grupo, usar participant_phone)
     usuario_whatsapp = _usuario_ativo_por_telefone(telefone_formatado_usuario)
     if not usuario_whatsapp:
+        # Contato externo: não enviar mensagem de "não cadastrado". Tentar IA acolhedora ou fallback profissional.
+        mensagem_enviar = None
         try:
-            WhatsAppService().enviar_mensagem_texto(
-                telefone_formatado,
-                "Seu número de cel não pertence a nenhum usuário ativo, faça contato com o administrador para reativar seu acesso."
+            from crm_app.ai_chat_service import responder_com_ia
+            mensagem_enviar = responder_com_ia(
+                (mensagem_texto or "").strip(),
+                nome_vendedor="",
+                contexto_externo=True,
             )
         except Exception as e:
-            logger.exception(f"[Webhook] Erro ao enviar mensagem de usuário não associado: {e}")
-        return {'status': 'ok', 'mensagem': 'Número não associado a usuário ativo'}
+            logger.warning("[Webhook] IA para contato externo falhou: %s", e)
+        if not mensagem_enviar or not str(mensagem_enviar).strip():
+            mensagem_enviar = (
+                "Recebemos sua mensagem. Em breve um de nossos analistas retornará o contato. "
+                "Agradecemos a compreensão."
+            )
+        try:
+            WhatsAppService().enviar_mensagem_texto(telefone_formatado, mensagem_enviar)
+        except Exception as e:
+            logger.exception("[Webhook] Erro ao enviar resposta para contato externo: %s", e)
+        return {'status': 'ok', 'mensagem': 'Contato externo: resposta enviada'}
     
     # Se for SIM no fluxo VENDER (confirmar matrícula), não tratar como confirmação de cliente
     etapa_sessao = None
@@ -7822,8 +7835,12 @@ def processar_webhook_whatsapp(data, request=None):
                         if resposta_ia:
                             resposta = resposta_ia
                             logger.info("[Webhook] Resposta enviada via IA (contexto do sistema).")
+                        else:
+                            logger.info("[Webhook] IA não retornou resposta para mensagem livre (etapa inicial). Enviando fallback.")
+                            resposta = "Olá! Digite *MENU* para ver os comandos disponíveis."
                     except Exception as e:
                         logger.warning("[Webhook] Fallback IA falhou: %s", e)
+                        resposta = "Olá! Digite *MENU* para ver os comandos disponíveis."
             sessao.etapa = 'inicial'
             sessao.dados_temp = {}
             sessao.save()

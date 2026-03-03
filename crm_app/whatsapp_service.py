@@ -205,7 +205,21 @@ class WhatsAppService:
     # ---------------------------------------------------------
     # 2. ENVIAR MENSAGEM DE TEXTO
     # ---------------------------------------------------------
-    def enviar_mensagem_texto(self, telefone, mensagem):
+    def enviar_mensagem_texto(self, telefone, mensagem, variar=True):
+        """
+        Envia mensagem de texto via Z-API.
+        variar=True: aplica variação de palavras (sinônimos) para reduzir bloqueios; desative para comandos exatos.
+        """
+        try:
+            if variar and mensagem and len(mensagem) > 20:
+                from crm_app.whatsapp_variacao import aplicar_variacao, aplicar_variacao_lote
+                # Mensagens longas (ex.: boas-vindas): aplicar várias substituições no mesmo texto
+                if len(mensagem) > 400:
+                    mensagem = aplicar_variacao_lote(mensagem, chance_substituir=0.5)
+                else:
+                    mensagem = aplicar_variacao(mensagem, chance_substituir=0.5)
+        except Exception as e:
+            logger.debug("[WhatsAppService] Variação de mensagem não aplicada: %s", e)
         url = f"{self.base_url}/send-text"
         telefone_limpo = self._destino_send_text(telefone)
 

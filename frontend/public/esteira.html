@@ -286,7 +286,8 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="text-muted small">A mensagem será enviada para todos os clientes agendados na <strong>data</strong> e <strong>turno</strong> selecionados (telefone1).</p>
+                    <p class="text-muted small">A mensagem será enviada para clientes agendados na <strong>data</strong> e <strong>turno</strong> selecionados (telefone1).</p>
+                    <p class="alert alert-light border small mb-0"><i class="bi bi-info-circle"></i> Envio em lotes com intervalo aleatório entre mensagens (boas práticas para evitar bloqueio).</p>
                     <form id="form-enviar-lembrete">
                         <div class="mb-3">
                             <label class="form-label fw-bold">Data do agendamento *</label>
@@ -762,18 +763,46 @@
             var resultado = document.getElementById('lembrete-resultado');
             btn.disabled = true;
             resultado.style.display = 'none';
+            var offset = 0;
+            var totalEnviados = 0;
+            function exibirLembrete(tipo, html) {
+                resultado.style.display = 'block';
+                resultado.className = 'alert mt-2 alert-' + tipo;
+                resultado.innerHTML = html;
+            }
             try {
-                var res = await apiFetch('/crm/esteira/enviar-lembrete-instalacao/', {
-                    method: 'POST',
-                    body: JSON.stringify({ data: dataStr, turno: turno })
-                });
-                resultado.style.display = 'block';
-                resultado.className = 'alert mt-2 ' + (res.erros && res.erros.length > 0 ? 'alert-warning' : 'alert-success');
-                resultado.innerHTML = 'Enviados: <strong>' + (res.enviados || 0) + '</strong> de ' + (res.total || 0) + (res.erros && res.erros.length ? '. Erros: ' + res.erros.slice(0, 5).join('; ') : '');
+                while (true) {
+                    var res = await apiFetch('/crm/esteira/enviar-lembrete-instalacao/', {
+                        method: 'POST',
+                        body: JSON.stringify({ data: dataStr, turno: turno, offset: offset, limite: 5 })
+                    });
+                    totalEnviados += res.enviados || 0;
+                    var totalNaData = res.total_na_data || 0;
+                    var restantes = res.restantes || 0;
+                    var erros = (res.erros || []).length;
+                    if (restantes > 0 && res.proximo_offset != null) {
+                        var esperaMs = (res.pause_antes_proximo_seg != null ? res.pause_antes_proximo_seg : 90) * 1000;
+                        exibirLembrete('info', 'Enviados <strong>' + totalEnviados + '</strong> de ' + totalNaData + '. Aguarde ~' + Math.round(esperaMs/1000) + 's para o próximo lote...' + (erros ? ' <span class="text-danger">(' + erros + ' erros)</span>' : ''));
+                        offset = res.proximo_offset;
+                        await new Promise(r => setTimeout(r, esperaMs));
+                    } else {
+                        exibirLembrete((res.erros && res.erros.length > 0) ? 'warning' : 'success',
+                            'Enviados: <strong>' + totalEnviados + '</strong> de ' + totalNaData + (res.erros && res.erros.length ? '. Erros: ' + res.erros.slice(0, 5).join('; ') : ''));
+                        break;
+                    }
+                }
             } catch (e) {
-                resultado.style.display = 'block';
-                resultado.className = 'alert alert-danger mt-2';
-                resultado.textContent = 'Erro: ' + (e.message || e);
+                var msgErro = 'Erro ao enviar.';
+                try {
+                    if (typeof e === 'string') msgErro = e;
+                    else if (e && e.message) {
+                        var parsed = null;
+                        try { parsed = JSON.parse(e.message); } catch (_) {}
+                        msgErro = (parsed && parsed.detail) ? parsed.detail : e.message;
+                    } else if (e && e.detail) msgErro = typeof e.detail === 'string' ? e.detail : JSON.stringify(e.detail);
+                } catch (_) {}
+                exibirLembrete('danger', 'Erro: ' + msgErro);
+                if (totalEnviados > 0) resultado.innerHTML += '<br><small>Enviados até o momento: ' + totalEnviados + '</small>';
             }
             btn.disabled = false;
         }

@@ -168,11 +168,24 @@ def _gerar_resumo_tabelas_django() -> str:
     return ""
 
 
-def get_contexto_sistema(reduzido: bool = False) -> str:
+def get_contexto_sistema(reduzido: bool = False, contexto_externo: bool = False) -> str:
     """
     Retorna o contexto para a IA.
     reduzido=True: só prompt base + conhecimento.md + schema (sem documentos/URLs), para caber no payload quando der 413.
+    contexto_externo=True: prompt curto para contatos não cadastrados (número externo); resposta acolhedora e profissional.
     """
+    if contexto_externo:
+        return """
+Você é o atendimento do Record PAP, parceiro da Nio Fibra. Esta mensagem veio de um contato externo (número não cadastrado como vendedor interno no sistema).
+
+Responda de forma acolhedora e profissional:
+- Coloque-se à disposição.
+- Se a mensagem for uma dúvida ou solicitação, diga que um analista retornará em breve.
+- Seja breve, cordial e use português correto (sem abreviações como "vc", "pq").
+- Não invente informações sobre planos ou processos; prefira dizer que um analista retornará com as informações.
+- Encerre com agradecimento e disponibilidade.
+""".strip()
+
     base = _prompt_base().strip()
     conhecimento = _carregar_conhecimento()
     schema_file = _carregar_schema_tabelas()
