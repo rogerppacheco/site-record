@@ -162,6 +162,8 @@ router.register(r'grupos-disparo', GrupoDisparoViewSet, basename='grupos-disparo
 router.register(r'lancamentos-financeiros', LancamentoFinanceiroViewSet, basename='lancamentos-financeiros')
 
 urlpatterns = [
+    # Rotas específicas de vendas ANTES do router (evita que "enviar-boas-vindas" seja interpretado como pk)
+    path('vendas/enviar-boas-vindas/', EnviarBoasVindasView.as_view(), name='enviar-boas-vindas'),
     path('', include(router.urls)),
     path('painel-segunda/', PainelSegundaAPIView.as_view(), name='painel-segunda-api'),
     path('serve-pdf/<str:token>/', serve_pdf_view, name='serve-pdf'),
@@ -270,7 +272,6 @@ urlpatterns = [
     # --- Exportação e Lembrete Agendamentos (Esteira) ---
     path('esteira/exportar-agendamentos/', ExportarAgendamentosDiaView.as_view(), name='exportar-agendamentos-dia'),
     path('esteira/enviar-lembrete-instalacao/', EnviarLembreteInstalacaoView.as_view(), name='enviar-lembrete-instalacao'),
-    path('vendas/enviar-boas-vindas/', EnviarBoasVindasView.as_view(), name='enviar-boas-vindas'),
     path('integracao/listar-grupos/', listar_grupos_whatsapp_api, name='listar-grupos-zapi'),
     
     # --- Debug Screenshots (Nio Negocia) ---
