@@ -84,6 +84,8 @@ from .views import (
     enviar_resultado_campanha_whatsapp,
     ImportarKMLView,        
     ImportarDFVView,
+    ImportarCNPJView,
+    LogsImportacaoCNPJView,
     WebhookWhatsAppView,
     serve_pdf_view,
     listar_grupos_whatsapp_api,
@@ -111,6 +113,11 @@ from .views import (
     CdoiCreateView,  # Criação
     CdoiListView,    # Listagem (NOVO)
     CdoiDashboardView,
+    CnpjEstabelecimentosCdoiView,
+    CnpjMunicipiosCdoiView,
+    CnpjCnaesCdoiView,
+    CnpjBairrosCdoiView,
+    CnpjUfsCdoiView,
     CdoiUpdateView,  # Edição/Status (NOVO)
     ViaCepProxyView,
     NominatimProxyView,
@@ -132,6 +139,7 @@ from .views import (
     AtualizarFaturasView,
     ExportarM10View,
     ExportarAgendamentosDiaView,
+    EnviarLembreteInstalacaoView,
     page_bonus_m10,
     NioDividasView,
     BuscarAnteciparInstalacaoView,
@@ -235,6 +243,8 @@ urlpatterns = [
     # --- Mapas e ZAP ---
     path('importar-kml/', ImportarKMLView.as_view(), name='importar-kml'),
     path('importar-dfv/', ImportarDFVView.as_view(), name='importar-dfv'),
+    path('importar-cnpj/', ImportarCNPJView.as_view(), name='importar-cnpj'),
+    path('logs-importacao-cnpj/', LogsImportacaoCNPJView.as_view(), name='logs-importacao-cnpj'),
     # Webhook WhatsApp - URL para configurar no Z-API:
     # Produção: https://www.recordpap.com.br/api/crm/webhook-whatsapp/
     # Alternativa: https://site-record-production.up.railway.app/api/crm/webhook-whatsapp/
@@ -256,8 +266,9 @@ urlpatterns = [
     path('performance-painel/exportar/', ExportarPerformanceExcelView.as_view(), name='exportar-performance-excel'),
     path('performance-painel/enviar-whatsapp/', EnviarImagemPerformanceView.as_view(), name='enviar-performance-zap'),
     
-    # --- Exportação Agendamentos do Dia (Esteira) ---
+    # --- Exportação e Lembrete Agendamentos (Esteira) ---
     path('esteira/exportar-agendamentos/', ExportarAgendamentosDiaView.as_view(), name='exportar-agendamentos-dia'),
+    path('esteira/enviar-lembrete-instalacao/', EnviarLembreteInstalacaoView.as_view(), name='enviar-lembrete-instalacao'),
     path('integracao/listar-grupos/', listar_grupos_whatsapp_api, name='listar-grupos-zapi'),
     
     # --- Debug Screenshots (Nio Negocia) ---
@@ -313,6 +324,11 @@ urlpatterns = [
     path('cdoi/novo/', CdoiCreateView.as_view(), name='api-cdoi-novo'),
     path('cdoi/listar/', CdoiListView.as_view(), name='api-cdoi-listar'),
     path('cdoi/dashboard/', CdoiDashboardView.as_view(), name='api-cdoi-dashboard'),
+    path('cdoi/cnpj-estabelecimentos/', CnpjEstabelecimentosCdoiView.as_view(), name='api-cdoi-cnpj-estabelecimentos'),
+    path('cdoi/cnpj-municipios/', CnpjMunicipiosCdoiView.as_view(), name='api-cdoi-cnpj-municipios'),
+    path('cdoi/cnpj-cnaes/', CnpjCnaesCdoiView.as_view(), name='api-cdoi-cnpj-cnaes'),
+    path('cdoi/cnpj-bairros/', CnpjBairrosCdoiView.as_view(), name='api-cdoi-cnpj-bairros'),
+    path('cdoi/cnpj-ufs/', CnpjUfsCdoiView.as_view(), name='api-cdoi-cnpj-ufs'),
     path('cdoi/editar/<int:pk>/', CdoiUpdateView.as_view(), name='api-cdoi-editar'),
     path('cdoi/viacep/<str:cep>/', ViaCepProxyView.as_view(), name='api-cdoi-viacep'),
     path('cdoi/nominatim/', NominatimProxyView.as_view(), name='api-cdoi-nominatim'),

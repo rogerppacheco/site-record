@@ -4,6 +4,7 @@ from .models import (
     ImportacaoAgendamento, ImportacaoRecompra, ImportacaoFPD, LogImportacaoFPD,
     ImportacaoChurn, LogImportacaoChurn, PapBoEmUso, FilaEsperaPAP,
     RegraComissaoFaixa, ConfigComissaoVendedor,
+    ImportacaoEstabelecimentoCNPJ, LogImportacaoEstabelecimentoCNPJ,
 )
 
 
@@ -289,3 +290,20 @@ class ConfigComissaoVendedorAdmin(admin.ModelAdmin):
     list_filter = ('perfil_comissao', 'usar_valor_manual')
     search_fields = ('usuario__username',)
     raw_id_fields = ('usuario',)
+
+
+@admin.register(ImportacaoEstabelecimentoCNPJ)
+class ImportacaoEstabelecimentoCNPJAdmin(admin.ModelAdmin):
+    list_display = ('cnpj_completo', 'nome_fantasia', 'cnae_fiscal', 'uf', 'codigo_municipio', 'situacao_cadastral', 'importada_em')
+    list_filter = ('situacao_cadastral', 'uf', 'cnae_fiscal')
+    search_fields = ('cnpj_completo', 'cnpj_raiz', 'nome_fantasia', 'logradouro', 'bairro')
+    list_per_page = 50
+    ordering = ['-importada_em']
+
+
+@admin.register(LogImportacaoEstabelecimentoCNPJ)
+class LogImportacaoEstabelecimentoCNPJAdmin(admin.ModelAdmin):
+    list_display = ('nome_arquivo', 'usuario', 'status', 'total_linhas', 'total_importadas', 'total_erros', 'duracao_segundos', 'iniciado_em')
+    list_filter = ('status', 'iniciado_em')
+    search_fields = ('nome_arquivo',)
+    ordering = ['-iniciado_em']

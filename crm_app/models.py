@@ -221,6 +221,23 @@ class Venda(models.Model):
             ("can_view_comissao_dashboard", "Pode visualizar card de comissão"), 
         ]
 
+
+class LembreteInstalacaoEnviado(models.Model):
+    """Registro de envio do lembrete de instalação (esteira) para respostas automáticas SIM/NÃO/SUPORTE."""
+    telefone = models.CharField(max_length=20, db_index=True, help_text="Telefone normalizado (apenas dígitos)")
+    venda = models.ForeignKey(Venda, on_delete=models.CASCADE, related_name='lembretes_instalacao_enviados')
+    data_envio = models.DateTimeField(auto_now_add=True)
+    data_agendamento = models.DateField()
+    periodo_agendamento = models.CharField(max_length=10, choices=[('MANHA', 'Manhã'), ('TARDE', 'Tarde')])
+    respondido_em = models.DateTimeField(null=True, blank=True, help_text="Quando o cliente respondeu (SIM/NÃO/SUPORTE)")
+
+    class Meta:
+        db_table = 'crm_lembrete_instalacao_enviado'
+        verbose_name = "Lembrete instalação enviado"
+        verbose_name_plural = "Lembretes instalação enviados"
+        ordering = ['-data_envio']
+
+
 class PagamentoComissao(models.Model):
     referencia_ano = models.IntegerField()
     referencia_mes = models.IntegerField()
@@ -2055,3 +2072,101 @@ class UrlConhecimentoIA(models.Model):
         verbose_name = "URL Conhecimento IA"
         verbose_name_plural = "URLs Conhecimento IA"
         ordering = ['-data_upload']
+
+
+class ImportacaoEstabelecimentoCNPJ(models.Model):
+    """
+    Modelo para importação de dados ESTABELE da Receita Federal (CNPJ).
+    Layout oficial: 30 colunas, separador ;, sem cabeçalho.
+    """
+    # Identificação CNPJ
+    cnpj_raiz = models.CharField(max_length=8, db_index=True, help_text="8 primeiros dígitos do CNPJ")
+    cnpj_ordem = models.CharField(max_length=4, help_text="Dígitos 9-12 do CNPJ")
+    cnpj_dv = models.CharField(max_length=2, help_text="Dígitos verificadores")
+    cnpj_completo = models.CharField(max_length=14, db_index=True, blank=True, help_text="CNPJ completo (raiz+ordem+dv)")
+
+    identificador_matriz_filial = models.CharField(max_length=1, blank=True)  # 1=Matriz, 2=Filial
+    nome_fantasia = models.CharField(max_length=255, blank=True)
+    situacao_cadastral = models.CharField(max_length=2, db_index=True, blank=True)  # 02=Ativa
+    data_situacao_cadastral = models.CharField(max_length=8, blank=True)  # AAAAMMDD
+    motivo_situacao_cadastral = models.CharField(max_length=2, blank=True)
+    nome_cidade_exterior = models.CharField(max_length=255, blank=True)
+    codigo_pais = models.CharField(max_length=3, blank=True)
+    data_inicio_atividade = models.CharField(max_length=8, blank=True)  # AAAAMMDD
+    cnae_fiscal = models.CharField(max_length=7, db_index=True, blank=True)  # CNAE principal
+    cnae_secundarios = models.TextField(blank=True)  # Lista separada por vírgula
+
+    # Endereço
+    tipo_logradouro = models.CharField(max_length=50, blank=True)
+    logradouro = models.CharField(max_length=255, blank=True)
+    numero = models.CharField(max_length=20, blank=True)
+    complemento = models.CharField(max_length=255, blank=True)
+    bairro = models.CharField(max_length=255, blank=True)
+    cep = models.CharField(max_length=8, blank=True)
+    uf = models.CharField(max_length=2, db_index=True, blank=True)
+    codigo_municipio = models.CharField(max_length=7, db_index=True, blank=True)
+
+    # Contato
+    ddd_telefone_1 = models.CharField(max_length=3, blank=True)
+    telefone_1 = models.CharField(max_length=20, blank=True)
+    ddd_telefone_2 = models.CharField(max_length=3, blank=True)
+    telefone_2 = models.CharField(max_length=20, blank=True)
+    ddd_fax = models.CharField(max_length=3, blank=True)
+    fax = models.CharField(max_length=20, blank=True)
+    email = models.CharField(max_length=255, blank=True)  # CharField para aceitar valores diversos da Receita
+
+    # Situação especial
+    situacao_especial = models.CharField(max_length=255, blank=True)
+    data_situacao_especial = models.CharField(max_length=8, blank=True)
+
+    importada_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'crm_importacao_estabelecimento_cnpj'
+        verbose_name = "Estabelecimento CNPJ (Receita Federal)"
+        verbose_name_plural = "Estabelecimentos CNPJ (Receita Federal)"
+        ordering = ['-importada_em']
+        indexes = [
+            models.Index(fields=['cnpj_completo']),
+            models.Index(fields=['cnae_fiscal', 'codigo_municipio']),
+            models.Index(fields=['situacao_cadastral']),
+        ]
+
+    def __str__(self):
+        return f"{self.cnpj_completo or self.cnpj_raiz} - {self.nome_fantasia or '(sem nome)'}"
+
+
+class LogImportacaoEstabelecimentoCNPJ(models.Model):
+    """Log de importações de arquivos ESTABELE da Receita Federal"""
+
+    STATUS_CHOICES = [
+        ('PROCESSANDO', 'Processando'),
+        ('SUCESSO', 'Sucesso'),
+        ('ERRO', 'Erro'),
+        ('PARCIAL', 'Parcial'),
+    ]
+
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    nome_arquivo = models.CharField(max_length=255)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES)
+    tamanho_arquivo = models.BigIntegerField(default=0, null=True, blank=True)
+    iniciado_em = models.DateTimeField(auto_now_add=True)
+    finalizado_em = models.DateTimeField(blank=True, null=True)
+    duracao_segundos = models.IntegerField(blank=True, null=True)
+
+    total_linhas = models.IntegerField(default=0)
+    total_importadas = models.IntegerField(default=0)
+    total_erros = models.IntegerField(default=0)
+
+    mensagem = models.TextField(blank=True, null=True)
+    mensagem_erro = models.TextField(blank=True, null=True)
+    detalhes_json = models.JSONField(default=dict, blank=True, null=True)
+
+    class Meta:
+        db_table = 'crm_log_importacao_estabelecimento_cnpj'
+        verbose_name = "Log Importação CNPJ"
+        verbose_name_plural = "Logs Importação CNPJ"
+        ordering = ['-iniciado_em']
+
+    def __str__(self):
+        return f"{self.nome_arquivo} - {self.status}"

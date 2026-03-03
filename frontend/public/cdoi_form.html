@@ -412,6 +412,7 @@
                 <li class="nav-item"><button class="nav-link" id="config-tab" data-bs-toggle="tab" data-bs-target="#config-content" type="button" onclick="carregarConfiguracaoCdoi()"><i class="bi bi-gear"></i> Configuração</button></li>
                 {% endif %}
                 <li class="nav-item"><button class="nav-link" id="lista-tab" data-bs-toggle="tab" data-bs-target="#lista-content" type="button" onclick="carregarMeusAcionamentos()"><i class="bi bi-list-ul"></i> Meus Acionamentos</button></li>
+                <li class="nav-item"><button class="nav-link" id="cnpj-tab" data-bs-toggle="tab" data-bs-target="#cnpj-content" type="button" onclick="carregarCnpjMunicipios(); carregarCnpjCnaes(); carregarCnpjUfs(); carregarCnpjBairros(); carregarCnpjEstabelecimentos();"><i class="bi bi-building"></i> CNPJ por Cidade/Bairro</button></li>
             </ul>
 
     <div class="tab-content">
@@ -705,6 +706,61 @@
                         <thead class="table-light"><tr><th>ID</th><th>Condomínio</th><th>Endereço</th><th>Síndico</th><th>Telefone</th><th>Total HPs</th><th>Pré-vendas</th><th>Fotos</th><th>Status</th><th>Acionado por</th><th>Ações</th></tr></thead>
                         <tbody id="tbody-acionamentos"></tbody>
                     </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-pane fade" id="cnpj-content">
+            <div class="card">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap">
+                    <h5 class="m-0 text-primary"><i class="bi bi-building"></i> CNPJ por Cidade e Bairro</h5>
+                    <a href="#" id="btn-download-cnpj" class="btn btn-sm btn-success" onclick="downloadCnpjExcel(); return false;"><i class="bi bi-download"></i> Download Excel</a>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small">Selecione um ou mais itens em cada filtro. Dados da base Receita Federal importada na Central de Importações.</p>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-3">
+                            <label class="form-label">CNAE Fiscal Principal</label>
+                            <input type="text" id="cnpj-filtro-cnae-pesquisa" class="form-control form-control-sm mb-1" placeholder="Pesquisar na lista..." title="Digite para filtrar" oninput="filtrarCnpjCnaes()">
+                            <div id="cnpj-box-cnaes" class="border rounded p-2 bg-light" style="max-height: 180px; overflow-y: auto;">
+                                <small class="text-muted">Carregando...</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Município (código)</label>
+                            <input type="text" id="cnpj-filtro-municipio-pesquisa" class="form-control form-control-sm mb-1" placeholder="Pesquisar na lista..." title="Digite para filtrar" oninput="filtrarCnpjMunicipios()">
+                            <div id="cnpj-box-municipios" class="border rounded p-2 bg-light" style="max-height: 180px; overflow-y: auto;">
+                                <small class="text-muted">Carregando...</small>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">UF</label>
+                            <input type="text" id="cnpj-filtro-uf-pesquisa" class="form-control form-control-sm mb-1" placeholder="Pesquisar na lista..." title="Digite para filtrar" oninput="filtrarCnpjUfs()">
+                            <div id="cnpj-box-ufs" class="border rounded p-2 bg-light" style="max-height: 180px; overflow-y: auto;">
+                                <small class="text-muted">Carregando...</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Bairro</label>
+                            <div class="d-flex gap-1 mb-1">
+                                <input type="text" id="cnpj-filtro-bairro-pesquisa" class="form-control form-control-sm" placeholder="Pesquisar na lista..." title="Digite para filtrar" oninput="filtrarCnpjBairros()">
+                                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="carregarCnpjBairros()" title="Atualizar lista (opcional: selecione municípios/UF antes)"><i class="bi bi-arrow-clockwise"></i></button>
+                            </div>
+                            <div id="cnpj-box-bairros" class="border rounded p-2 bg-light" style="max-height: 180px; overflow-y: auto;">
+                                <small class="text-muted">Clique em Atualizar para carregar bairros</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="carregarCnpjEstabelecimentos()"><i class="bi bi-search"></i> Filtrar</button>
+                        <span id="cnpj-total-registros" class="badge bg-secondary ms-2">0</span> registro(s)
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                            <thead class="table-light"><tr><th>CNPJ</th><th>Nome Fantasia</th><th>Logradouro</th><th>Nº</th><th>Bairro</th><th>CEP</th><th>UF</th><th>Município</th><th>CNAE</th><th>Tel</th><th>Viabilidade (DFV)</th></tr></thead>
+                            <tbody id="tbody-cnpj-estabelecimentos"></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1770,6 +1826,284 @@
         input.select();
         document.execCommand('copy');
         alert('Link copiado!');
+    }
+
+    function getCnpjFiltrosParams() {
+        const ufs = [];
+        document.querySelectorAll('#cnpj-box-ufs input[name="cnpj-uf"]:checked').forEach(cb => { if (cb.value) ufs.push(cb.value); });
+        const cnaes = [];
+        document.querySelectorAll('#cnpj-box-cnaes input[name="cnpj-cnae"]:checked').forEach(cb => { if (cb.value) cnaes.push(cb.value); });
+        const codigos_municipio = [];
+        document.querySelectorAll('#cnpj-box-municipios input[name="cnpj-municipio"]:checked').forEach(cb => { if (cb.value) codigos_municipio.push(cb.value); });
+        const bairros = [];
+        document.querySelectorAll('#cnpj-box-bairros input[name="cnpj-bairro"]:checked').forEach(cb => { if (cb.value) bairros.push(cb.value); });
+        return { ufs, cnaes, codigo_municipio: codigos_municipio, bairro: bairros };
+    }
+
+    function buildCnpjQueryString(params, extra) {
+        const p = { ...params, ...extra };
+        const qs = new URLSearchParams();
+        (p.ufs || []).forEach(v => qs.append('uf', v));
+        (p.cnaes || []).forEach(v => qs.append('cnae', v));
+        (p.codigo_municipio || []).forEach(v => qs.append('codigo_municipio', v));
+        (p.bairro || []).forEach(v => qs.append('bairro', v));
+        if (p.limit != null) qs.set('limit', p.limit);
+        if (p.page != null) qs.set('page', p.page);
+        if (p.export) qs.set('export', p.export);
+        return qs.toString();
+    }
+
+    async function carregarCnpjMunicipios() {
+        try {
+            const token = localStorage.getItem('accessToken');
+            const res = await fetch('/api/crm/cdoi/cnpj-municipios/', { headers: { 'Authorization': `Bearer ${token}` } });
+            const data = await res.json();
+            const box = document.getElementById('cnpj-box-municipios');
+            const checked = new Set(Array.from(document.querySelectorAll('#cnpj-box-municipios input[name="cnpj-municipio"]:checked')).map(c => c.value));
+            box.innerHTML = '';
+            (data.municipios || []).forEach(m => {
+                const label = document.createElement('label');
+                label.className = 'd-block small mb-1 cnpj-municipio-item';
+                label.setAttribute('data-search', `${m.codigo_municipio} ${m.uf || ''} ${(m.nome_municipio || '').toLowerCase()}`.trim().toLowerCase());
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.name = 'cnpj-municipio';
+                cb.value = m.codigo_municipio;
+                cb.className = 'me-1';
+                if (checked.has(m.codigo_municipio)) cb.checked = true;
+                label.appendChild(cb);
+                label.appendChild(document.createTextNode(`${m.codigo_municipio}${m.nome_municipio ? ' - ' + m.nome_municipio : ''} - ${m.uf || ''} (${(m.qtd || 0).toLocaleString('pt-BR')})`));
+                box.appendChild(label);
+                cb.addEventListener('change', carregarCnpjEstabelecimentos);
+            });
+            if (box.children.length === 0) box.innerHTML = '<small class="text-muted">Nenhum município na base.</small>';
+            else filtrarCnpjMunicipios();
+        } catch (e) { console.error('carregarCnpjMunicipios', e); document.getElementById('cnpj-box-municipios').innerHTML = '<small class="text-danger">Erro ao carregar.</small>'; }
+    }
+
+    function filtrarCnpjMunicipios() {
+        const q = (document.getElementById('cnpj-filtro-municipio-pesquisa') || {}).value.trim().toLowerCase();
+        document.querySelectorAll('#cnpj-box-municipios .cnpj-municipio-item').forEach(el => {
+            const text = (el.getAttribute('data-search') || '') + (el.textContent || '').toLowerCase();
+            el.style.display = (!q || text.includes(q)) ? '' : 'none';
+        });
+    }
+
+    async function carregarCnpjUfs() {
+        try {
+            const token = localStorage.getItem('accessToken');
+            const res = await fetch('/api/crm/cdoi/cnpj-ufs/', { headers: { 'Authorization': `Bearer ${token}` } });
+            const data = await res.json();
+            const box = document.getElementById('cnpj-box-ufs');
+            const checked = new Set(Array.from(document.querySelectorAll('#cnpj-box-ufs input[name="cnpj-uf"]:checked')).map(c => c.value));
+            box.innerHTML = '';
+            (data.ufs || []).forEach(x => {
+                const label = document.createElement('label');
+                label.className = 'd-block small mb-1 cnpj-uf-item';
+                label.setAttribute('data-uf', (x.uf || '').toUpperCase());
+                label.setAttribute('data-search', ((x.uf || '') + ' ' + (x.qtd || '')).toLowerCase());
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.name = 'cnpj-uf';
+                cb.value = x.uf;
+                cb.className = 'me-1';
+                if (checked.has(x.uf)) cb.checked = true;
+                label.appendChild(cb);
+                label.appendChild(document.createTextNode(`${x.uf || ''} (${(x.qtd || 0).toLocaleString('pt-BR')})`));
+                box.appendChild(label);
+                cb.addEventListener('change', carregarCnpjEstabelecimentos);
+            });
+            if (box.children.length === 0) box.innerHTML = '<small class="text-muted">Nenhuma UF na base.</small>';
+            filtrarCnpjUfs();
+        } catch (e) { console.error('carregarCnpjUfs', e); document.getElementById('cnpj-box-ufs').innerHTML = '<small class="text-danger">Erro ao carregar.</small>'; }
+    }
+
+    function filtrarCnpjUfs() {
+        const q = (document.getElementById('cnpj-filtro-uf-pesquisa') || {}).value.trim().toLowerCase();
+        document.querySelectorAll('#cnpj-box-ufs .cnpj-uf-item').forEach(el => {
+            const uf = (el.getAttribute('data-uf') || '').toLowerCase();
+            const text = ((el.getAttribute('data-search') || '') + ' ' + (el.textContent || '')).toLowerCase();
+            el.style.display = (!q || uf.includes(q) || text.includes(q)) ? '' : 'none';
+        });
+    }
+
+    async function carregarCnpjCnaes() {
+        try {
+            const token = localStorage.getItem('accessToken');
+            const res = await fetch('/api/crm/cdoi/cnpj-cnaes/', { headers: { 'Authorization': `Bearer ${token}` } });
+            const data = await res.json();
+            const box = document.getElementById('cnpj-box-cnaes');
+            const checked = new Set(Array.from(document.querySelectorAll('#cnpj-box-cnaes input[name="cnpj-cnae"]:checked')).map(c => c.value));
+            box.innerHTML = '';
+            (data.cnaes || []).forEach(x => {
+                const label = document.createElement('label');
+                label.className = 'd-block small mb-1 cnpj-cnae-item';
+                label.setAttribute('data-search', (x.cnae || '').toLowerCase());
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.name = 'cnpj-cnae';
+                cb.value = x.cnae;
+                cb.className = 'me-1';
+                if (checked.has(x.cnae)) cb.checked = true;
+                label.appendChild(cb);
+                label.appendChild(document.createTextNode(`${x.cnae} (${(x.qtd || 0).toLocaleString('pt-BR')})`));
+                box.appendChild(label);
+                cb.addEventListener('change', carregarCnpjEstabelecimentos);
+            });
+            if (box.children.length === 0) box.innerHTML = '<small class="text-muted">Nenhum CNAE na base.</small>';
+            else filtrarCnpjCnaes();
+        } catch (e) { console.error('carregarCnpjCnaes', e); document.getElementById('cnpj-box-cnaes').innerHTML = '<small class="text-danger">Erro ao carregar.</small>'; }
+    }
+
+    function filtrarCnpjCnaes() {
+        const q = (document.getElementById('cnpj-filtro-cnae-pesquisa') || {}).value.trim().toLowerCase();
+        document.querySelectorAll('#cnpj-box-cnaes .cnpj-cnae-item').forEach(el => {
+            const text = (el.getAttribute('data-search') || '') + (el.textContent || '').toLowerCase();
+            el.style.display = (!q || text.includes(q)) ? '' : 'none';
+        });
+    }
+
+    async function carregarCnpjBairros() {
+        const params = getCnpjFiltrosParams();
+        const qs = new URLSearchParams();
+        (params.ufs || []).forEach(v => qs.append('uf', v));
+        (params.codigo_municipio || []).forEach(v => qs.append('codigo_municipio', v));
+        try {
+            const token = localStorage.getItem('accessToken');
+            const res = await fetch(`/api/crm/cdoi/cnpj-bairros/?${qs.toString()}`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const data = await res.json();
+            const box = document.getElementById('cnpj-box-bairros');
+            const checked = new Set(Array.from(document.querySelectorAll('#cnpj-box-bairros input[name="cnpj-bairro"]:checked')).map(c => c.value));
+            box.innerHTML = '';
+            (data.bairros || []).forEach(x => {
+                const label = document.createElement('label');
+                label.className = 'd-block small mb-1 cnpj-bairro-item';
+                label.setAttribute('data-search', (x.bairro || '').toLowerCase());
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.name = 'cnpj-bairro';
+                cb.value = x.bairro;
+                cb.className = 'me-1';
+                if (checked.has(x.bairro)) cb.checked = true;
+                label.appendChild(cb);
+                label.appendChild(document.createTextNode(`${(x.bairro || '').substring(0, 35)} (${(x.qtd || 0).toLocaleString('pt-BR')})`));
+                box.appendChild(label);
+                cb.addEventListener('change', carregarCnpjEstabelecimentos);
+            });
+            if (box.children.length === 0) box.innerHTML = '<small class="text-muted">Nenhum bairro. Ajuste municípios/UF e clique em Atualizar.</small>';
+            else filtrarCnpjBairros();
+        } catch (e) { console.error('carregarCnpjBairros', e); document.getElementById('cnpj-box-bairros').innerHTML = '<small class="text-danger">Erro ao carregar.</small>'; }
+    }
+
+    function filtrarCnpjBairros() {
+        const q = (document.getElementById('cnpj-filtro-bairro-pesquisa') || {}).value.trim().toLowerCase();
+        document.querySelectorAll('#cnpj-box-bairros .cnpj-bairro-item').forEach(el => {
+            const text = (el.getAttribute('data-search') || '') + (el.textContent || '').toLowerCase();
+            el.style.display = (!q || text.includes(q)) ? '' : 'none';
+        });
+    }
+
+    async function carregarCnpjEstabelecimentos() {
+        const params = getCnpjFiltrosParams();
+        const qs = buildCnpjQueryString(params, { limit: 100, page: 1 });
+        const tbody = document.getElementById('tbody-cnpj-estabelecimentos');
+        const totalEl = document.getElementById('cnpj-total-registros');
+        tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted">Carregando...</td></tr>';
+        try {
+            const token = localStorage.getItem('accessToken');
+            const res = await fetch(`/api/crm/cdoi/cnpj-estabelecimentos/?${qs}`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const data = await res.json();
+            totalEl.textContent = data.total != null ? data.total : 0;
+            if (!data.results || data.results.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted">Nenhum registro. Ajuste os filtros ou importe a base CNPJ na Central de Importações.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = '';
+            data.results.forEach(r => {
+                tbody.innerHTML += `<tr>
+                    <td><code>${r.cnpj || ''}</code></td>
+                    <td>${(r.nome_fantasia || '').substring(0, 40)}</td>
+                    <td>${(r.logradouro || '').substring(0, 30)}</td>
+                    <td>${r.numero || ''}</td>
+                    <td>${(r.bairro || '').substring(0, 25)}</td>
+                    <td>${r.cep || ''}</td>
+                    <td>${r.uf || ''}</td>
+                    <td>${(r.nome_municipio || r.codigo_municipio || '-').substring(0, 25)}</td>
+                    <td>${r.cnae || '-'}</td>
+                    <td>${r.telefone || '-'}</td>
+                    <td>${(r.retorno_viabilidade || '-').substring(0, 40)}</td>
+                </tr>`;
+            });
+        } catch (e) {
+            console.error('carregarCnpjEstabelecimentos', e);
+            tbody.innerHTML = '<tr><td colspan="11" class="text-center text-danger">Erro ao carregar.</td></tr>';
+        }
+    }
+
+    async function downloadCnpjExcel() {
+        const btn = document.getElementById('btn-download-cnpj');
+        if (btn && btn.disabled) return; // evita duplo clique
+        const params = getCnpjFiltrosParams();
+        const qs = buildCnpjQueryString(params, { export: 'xlsx' });
+        const token = localStorage.getItem('accessToken');
+        if (!token) {
+            alert('Faça login para baixar o arquivo.');
+            return;
+        }
+        const totalEl = document.getElementById('cnpj-total-registros');
+        const total = parseInt(totalEl?.textContent || '0', 10) || 0;
+        if (total > 15000 && !confirm('São ' + total.toLocaleString('pt-BR') + ' registros. A exportação pode levar 10–30 minutos. Deseja continuar?')) {
+            return;
+        }
+        const labelOriginal = btn ? btn.innerHTML : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Gerando...';
+        }
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 25 * 60 * 1000); // 25 min
+        try {
+            const res = await fetch(`/api/crm/cdoi/cnpj-estabelecimentos/?${qs}`, {
+                headers: { 'Authorization': `Bearer ${token}` },
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+            if (!res.ok) {
+                if (res.status === 403) {
+                    alert('Sessão expirada. Faça login novamente.');
+                    return;
+                }
+                if (res.status === 404) {
+                    alert('Rota não encontrada. Atualize a página e tente novamente.');
+                    return;
+                }
+                const err = await res.json().catch(() => ({}));
+                alert(err.detail || err.error || `Erro ao baixar (${res.status}). Tente novamente.`);
+                return;
+            }
+            const blob = await res.blob();
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'cnpj_estabelecimentos_cidade_bairro.xlsx';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(function() { URL.revokeObjectURL(a.href); }, 500);
+        } catch (e) {
+            clearTimeout(timeoutId);
+            console.error(e);
+            if (e.name === 'AbortError') {
+                alert('A exportação demorou muito e foi cancelada. Tente reduzir os filtros (ex: município específico) para exportar menos registros.');
+            } else {
+                alert('Erro ao baixar. Verifique sua conexão e tente novamente.');
+            }
+        } finally {
+            clearTimeout(timeoutId);
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = labelOriginal;
+            }
+        }
     }
     
     async function verPreVendas(cdoiId) {

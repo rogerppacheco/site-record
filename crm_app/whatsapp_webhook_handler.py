@@ -5776,6 +5776,45 @@ def processar_webhook_whatsapp(data, request=None):
     except Exception as e:
         logger.warning(f"[Webhook] Erro ao verificar pendência resumo auditoria: {e}", exc_info=True)
     
+    # --- Resposta ao lembrete de instalação (esteira): SIM / NÃO / CANCELAR / SUPORTE ---
+    try:
+        from datetime import timedelta
+        from crm_app.models import LembreteInstalacaoEnviado
+        chave_lembrete = _chave_telefone(telefone_formatado_usuario)
+        chaves_lembrete = _chaves_telefone_variantes(telefone_formatado_usuario) or [chave_lembrete]
+        limite_envio = timezone.now() - timedelta(hours=48)
+        lembrete = LembreteInstalacaoEnviado.objects.filter(
+            telefone__in=chaves_lembrete,
+            respondido_em__isnull=True,
+            data_envio__gte=limite_envio,
+        ).order_by('-data_envio').select_related('venda').first()
+        if lembrete:
+            periodo = lembrete.periodo_agendamento or ''
+            if periodo == 'MANHA':
+                horario_texto = '8h às 12h'
+            else:
+                horario_texto = '13h às 18h'
+            if mensagem_limpa in ['SIM', 'S']:
+                msg = f"Confirmação registrada!\nSua instalação Nio Fibra está confirmada para hoje, das {horario_texto}.\nNosso técnico entrará em contato por ligação e WhatsApp quando estiver a caminho. Obrigado por escolher a Nio Fibra."
+                try:
+                    WhatsAppService().enviar_mensagem_texto(telefone_formatado, msg)
+                except Exception:
+                    pass
+                lembrete.respondido_em = timezone.now()
+                lembrete.save(update_fields=['respondido_em'])
+                return {'status': 'ok', 'mensagem': 'Confirmação instalação (SIM)'}
+            if mensagem_limpa == 'SUPORTE' or mensagem_limpa in ['NAO', 'NÃO', 'NAO QUERO', 'NÃO QUERO', 'CANCELAR', 'CANCELAR INSTALACAO', 'DESISTIR']:
+                msg = "Em breve um especialista irá falar contigo"
+                try:
+                    WhatsAppService().enviar_mensagem_texto(telefone_formatado, msg)
+                except Exception:
+                    pass
+                lembrete.respondido_em = timezone.now()
+                lembrete.save(update_fields=['respondido_em'])
+                return {'status': 'ok', 'mensagem': 'Resposta lembrete instalação (não/suporte)'}
+    except Exception as e:
+        logger.warning(f"[Webhook] Erro ao processar lembrete instalação: {e}", exc_info=True)
+    
     # Verificar se o número está associado a um usuário ativo (em grupo, usar participant_phone)
     usuario_whatsapp = _usuario_ativo_por_telefone(telefone_formatado_usuario)
     if not usuario_whatsapp:

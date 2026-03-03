@@ -207,6 +207,10 @@ Resumo para quando o vendedor perguntar sobre concorrência ou o cliente compara
 - **“Meu contrato será mantido?”** – Sim. Clientes Oi Fibra não assinam novo vínculo; contratos permanecem válidos.
 - **“Já sou cliente da marca anterior; preciso migrar?”** – Não. Transição não afeta internet; mesmo plano e benefícios.
 
+Solicitações dos consultoers:
+
+Se um consultor enviar a palavra Central, o bot deve responder com os números de 0800 e wpp da Nio: 0800 001 1000 e  (21) 3605 1000
+
 ---
 
 *Fonte: Book de Vendas (ebook Nio 31/07/2025), Roteiro de Vendas Nio Empresas (24/07/2025). O arquivo “Resumo Lançamentos Agosto.pptx” site www.niointernet.com.br (planos, FAQ, canais, app). O arquivo Resumo Lançamentos Agosto.pptx não foi extraído (formato binário).*

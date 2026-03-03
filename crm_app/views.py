@@ -524,7 +524,7 @@ from .models import (
     LogImportacaoAgendamento, LogImportacaoLegado, LogImportacaoRecompra, EstatisticaBotWhatsApp,
     RegraComissaoFaixa, ConfigComissaoVendedor,
     AnteciparInstalacaoConfig, AnteciparInstalacaoSolicitacao,
-    PapConfirmacaoCliente,
+    PapConfirmacaoCliente, LembreteInstalacaoEnviado,
 )
 
 # Serializers do App
@@ -4295,6 +4295,127 @@ class ImportarDFVView(APIView):
                 status=500
             )
 
+
+# --- IMPORTAÇÃO CNPJ RECEITA FEDERAL (ESTABELE) ---
+class ImportarCNPJView(APIView):
+    """
+    Importa arquivos ESTABELE da Receita Federal (30 colunas, separador ;, sem cabeçalho).
+    Processamento em streaming para suportar arquivos grandes.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        import threading
+        import tempfile
+
+        file_obj = request.FILES.get('file')
+        if not file_obj:
+            return Response({'error': 'Arquivo não enviado.'}, status=400)
+
+        nome = file_obj.name.upper()
+        if 'ESTABELE' not in nome and not nome.endswith('.CSV'):
+            return Response({
+                'error': 'Arquivo deve ser do tipo ESTABELE (Receita Federal) ou CSV. '
+                         'Ex: K3241.K03200Y0.D60214.ESTABELE'
+            }, status=400)
+
+        try:
+            from .models import LogImportacaoEstabelecimentoCNPJ
+            from .services.cnpj_estabele_import_service import processar_arquivo_estabele
+
+            log_em_andamento = LogImportacaoEstabelecimentoCNPJ.objects.filter(
+                status='PROCESSANDO'
+            ).first()
+            if log_em_andamento:
+                return Response({
+                    'error': 'Já existe uma importação CNPJ em andamento. Aguarde finalizar.',
+                    'log_id': log_em_andamento.id,
+                }, status=409)
+
+            log = LogImportacaoEstabelecimentoCNPJ.objects.create(
+                nome_arquivo=file_obj.name,
+                usuario=request.user,
+                status='PROCESSANDO',
+                tamanho_arquivo=0,
+            )
+
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.ESTABELE')
+            temp_path = temp_file.name
+            total_bytes = 0
+            for chunk in file_obj.chunks(chunk_size=1024 * 1024):
+                temp_file.write(chunk)
+                total_bytes += len(chunk)
+            temp_file.close()
+
+            LogImportacaoEstabelecimentoCNPJ.objects.filter(id=log.id).update(
+                tamanho_arquivo=total_bytes
+            )
+
+            aplicar_filtros = request.data.get('aplicar_filtros') in (True, 'true', '1')
+            cnae = request.data.get('cnae_fiscal') or None
+            municipio = request.data.get('codigo_municipio') or None
+            situacao = request.data.get('situacao_cadastral') or None
+
+            def processar_async():
+                try:
+                    processar_arquivo_estabele(
+                        log_id=log.id,
+                        arquivo_path=temp_path,
+                        aplicar_filtros=aplicar_filtros,
+                        cnae_fiscal=cnae,
+                        codigo_municipio=municipio,
+                        situacao_cadastral=situacao,
+                    )
+                finally:
+                    try:
+                        if os.path.exists(temp_path):
+                            os.remove(temp_path)
+                    except Exception:
+                        pass
+
+            threading.Thread(target=processar_async, daemon=True).start()
+
+            return Response({
+                'success': True,
+                'log_id': log.id,
+                'message': 'Importação CNPJ iniciada! O processamento continuará em segundo plano.',
+                'status': 'PROCESSANDO',
+                'background': True,
+            })
+        except Exception as e:
+            logger.exception("[CNPJ] Erro ao iniciar importação")
+            return Response({'error': str(e)}, status=500)
+
+
+class LogsImportacaoCNPJView(APIView):
+    """Lista logs de importação CNPJ Receita Federal"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from .models import LogImportacaoEstabelecimentoCNPJ
+        limit = int(request.query_params.get('limit', 20))
+        logs = LogImportacaoEstabelecimentoCNPJ.objects.all().order_by('-iniciado_em')[:limit]
+        data = []
+        for log in logs:
+            data.append({
+                'id': log.id,
+                'nome_arquivo': log.nome_arquivo,
+                'status': log.status,
+                'tamanho_arquivo': log.tamanho_arquivo,
+                'iniciado_em': log.iniciado_em.isoformat() if log.iniciado_em else None,
+                'finalizado_em': log.finalizado_em.isoformat() if log.finalizado_em else None,
+                'duracao_segundos': log.duracao_segundos,
+                'total_linhas': log.total_linhas,
+                'total_importadas': log.total_importadas,
+                'total_erros': log.total_erros,
+                'mensagem': log.mensagem,
+                'mensagem_erro': log.mensagem_erro,
+                'usuario_nome': log.usuario.username if log.usuario else None,
+            })
+        return Response({'success': True, 'logs': data})
+
+
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def enviar_comissao_whatsapp(request):
@@ -6197,6 +6318,305 @@ class CdoiListView(APIView):
             })
         
         return Response(data)
+
+
+class CnpjEstabelecimentosCdoiView(APIView):
+    """Lista estabelecimentos CNPJ (base Receita Federal) com filtros múltiplos por CNAE, município e bairro."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from .models import ImportacaoEstabelecimentoCNPJ, DFV
+
+        codigos_municipio = request.query_params.getlist('codigo_municipio') or []
+        codigos_municipio = [c.strip() for c in codigos_municipio if c and c.strip()]
+        ufs = request.query_params.getlist('uf') or []
+        ufs = [u.strip().upper()[:2] for u in ufs if u and u.strip()]
+        bairros = request.query_params.getlist('bairro') or []
+        bairros = [b.strip() for b in bairros if b and b.strip()]
+        cnaes = request.query_params.getlist('cnae') or []
+        cnaes = [c.strip().zfill(7) for c in cnaes if c and c.strip()]
+        if not cnaes:
+            cnaes = ['8112500']
+        page = int(request.query_params.get('page', 1))
+        limit = min(int(request.query_params.get('limit', 50)), 500)
+        format_type = request.query_params.get('format', 'json')
+
+        qs = ImportacaoEstabelecimentoCNPJ.objects.filter(situacao_cadastral='02')
+        if cnaes:
+            qs = qs.filter(cnae_fiscal__in=cnaes)
+        if codigos_municipio:
+            qs = qs.filter(codigo_municipio__in=codigos_municipio)
+        if ufs:
+            qs = qs.filter(uf__in=ufs)
+        if bairros:
+            qs = qs.filter(bairro__in=bairros)
+
+        total = qs.count()
+        # Usar 'export' em vez de 'format' para evitar 404 da content negotiation do DRF
+        format_type = (request.query_params.get('export') or request.query_params.get('format') or 'json').strip().lower()
+
+        def _normalize_numero(num):
+            """Normaliza número/fachada: parte antes de '(' apenas dígitos (ex: '391 (BL 2)' -> '391')."""
+            if num is None:
+                return None
+            s = str(num).strip().split("(")[0].strip()
+            digits = ''.join(c for c in s if c.isdigit())
+            return digits if digits else None
+
+        def _build_dfv_map_cep_fachada(pares_cep_num):
+            """
+            Monta mapa (cep_limpo, num_limpo) -> tipo_viabilidade a partir da base DFV.
+            pares_cep_num: set de (cep_limpo, num_limpo) com cep 8 dígitos e num normalizado.
+            Também retorna dfv_map_cep_only para fallback quando não acha por CEP+fachada.
+            """
+            if not pares_cep_num:
+                return {}, {}
+            ceps_norm = {p[0] for p in pares_cep_num if p[0]}
+            dfv_map_cep_num = {}
+            dfv_map_cep_only = {}
+            try:
+                from django.db.models.functions import Replace
+                from django.db.models import Value
+                qs_dfv = DFV.objects.annotate(
+                    cep_limpo=Replace(Replace('cep', Value('-'), Value('')), Value(' '), Value(''))
+                ).filter(cep_limpo__in=ceps_norm)
+                for dfv_row in qs_dfv.values_list('cep_limpo', 'num_fachada', 'tipo_viabilidade'):
+                    cl = (dfv_row[0] or '').strip()
+                    num_f = _normalize_numero(dfv_row[1])
+                    tv = (dfv_row[2] or '').strip()
+                    if not cl:
+                        continue
+                    key = (cl, num_f)
+                    if key not in dfv_map_cep_num or ('VIAVEL' in tv.upper() or 'VIÁVEL' in tv.upper()):
+                        dfv_map_cep_num[key] = tv or '-'
+                    if cl not in dfv_map_cep_only or ('VIAVEL' in tv.upper() or 'VIÁVEL' in tv.upper()):
+                        dfv_map_cep_only[cl] = tv or '-'
+            except Exception:
+                for row in DFV.objects.filter(cep__in=ceps_norm).values_list('cep', 'num_fachada', 'tipo_viabilidade'):
+                    cl = ''.join(c for c in (row[0] or '') if c.isdigit())[:8]
+                    num_f = _normalize_numero(row[1])
+                    tv = (row[2] or '').strip()
+                    if not cl:
+                        continue
+                    key = (cl, num_f)
+                    if key not in dfv_map_cep_num or ('VIAVEL' in tv.upper() or 'VIÁVEL' in tv.upper()):
+                        dfv_map_cep_num[key] = tv or '-'
+                    if cl not in dfv_map_cep_only or ('VIAVEL' in tv.upper() or 'VIÁVEL' in tv.upper()):
+                        dfv_map_cep_only[cl] = tv or '-'
+            return dfv_map_cep_num, dfv_map_cep_only
+
+        def _get_retorno_viab(cep_limpo, numero, dfv_map_cep_num, dfv_map_cep_only):
+            num_limpo = _normalize_numero(numero)
+            if cep_limpo:
+                key = (cep_limpo, num_limpo)
+                if key in dfv_map_cep_num:
+                    return dfv_map_cep_num[key]
+                return dfv_map_cep_only.get(cep_limpo, '-')
+            return '-'
+
+        if format_type in ('csv', 'xlsx', 'excel'):
+            import logging
+            _log = logging.getLogger(__name__)
+            _log.info('Exportação CNPJ iniciada: %s registros (formato=%s)', total, format_type)
+            try:
+                rows_list = list(qs.order_by('bairro', 'nome_fantasia').values_list(
+                    'cnpj_completo', 'nome_fantasia', 'logradouro', 'numero', 'bairro', 'cep', 'uf', 'codigo_municipio',
+                    'ddd_telefone_1', 'telefone_1', 'email', 'cnae_fiscal', 'situacao_cadastral'
+                )[:50000])
+                pares_cep_num = set()
+                for row in rows_list:
+                    c = ''.join(x for x in (row[5] or '') if x.isdigit())[:8]
+                    n = _normalize_numero(row[3])
+                    if c:
+                        pares_cep_num.add((c, n))
+                dfv_map_cep_num, dfv_map_cep_only = _build_dfv_map_cep_fachada(pares_cep_num)
+                from .ibge_municipios import get_nome_municipio_por_codigo
+                from .services.viacep import get_municipio_por_cep
+
+                if format_type == 'xlsx' or format_type == 'excel':
+                    import io
+                    import openpyxl
+                    from django.http import HttpResponse
+                    wb = openpyxl.Workbook()
+                    ws = wb.active
+                    ws.title = 'Estabelecimentos'
+                    headers = [
+                        'CNPJ', 'Nome Fantasia', 'Logradouro', 'Numero', 'Bairro', 'CEP', 'UF', 'Cod.Municipio', 'Município',
+                        'Telefone', 'Email', 'CNAE', 'Situacao', 'Retorno Viabilidade (DFV)'
+                    ]
+                    ws.append(headers)
+                    cache_cep_municipio = {}
+                    viacep_limit = 500  # evita milhares de chamadas API em exportações grandes
+                    for row in rows_list:
+                        cep_limpo = ''.join(x for x in (row[5] or '') if x.isdigit())[:8]
+                        retorno_viab = _get_retorno_viab(cep_limpo, row[3], dfv_map_cep_num, dfv_map_cep_only)
+                        nome_mun = get_nome_municipio_por_codigo(row[7], uf=row[6]) or ''
+                        if not nome_mun and cep_limpo and len(cache_cep_municipio) < viacep_limit:
+                            nome_mun = get_municipio_por_cep(cep_limpo, cache=cache_cep_municipio) or ''
+                        ddd, tel = row[8], row[9]
+                        telefone = f"{ddd or ''}{tel or ''}".strip()
+                        ws.append(list(row[:8]) + [nome_mun] + [telefone] + list(row[10:13]) + [retorno_viab])
+                    buffer = io.BytesIO()
+                    wb.save(buffer)
+                    buffer.seek(0)
+                    _log.info('Exportação CNPJ Excel concluída: %s linhas', len(rows_list))
+                    response = HttpResponse(buffer.getvalue(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+                    response['Content-Disposition'] = 'attachment; filename="cnpj_estabelecimentos_cidade_bairro.xlsx"'
+                    return response
+                else:
+                    import csv
+                    from django.http import HttpResponse
+                    response = HttpResponse(content_type='text/csv; charset=utf-8')
+                    response['Content-Disposition'] = 'attachment; filename="cnpj_estabelecimentos_cidade_bairro.csv"'
+                    response.write('\ufeff')
+                    writer = csv.writer(response, delimiter=';')
+                    writer.writerow([
+                        'CNPJ', 'Nome Fantasia', 'Logradouro', 'Numero', 'Bairro', 'CEP', 'UF', 'Cod.Municipio', 'Município',
+                        'Telefone', 'Email', 'CNAE', 'Situacao', 'Retorno Viabilidade (DFV)'
+                    ])
+                    cache_cep_municipio = {}
+                    viacep_limit = 500
+                    for row in rows_list:
+                        cep_limpo = ''.join(x for x in (row[5] or '') if x.isdigit())[:8]
+                        retorno_viab = _get_retorno_viab(cep_limpo, row[3], dfv_map_cep_num, dfv_map_cep_only)
+                        nome_mun = get_nome_municipio_por_codigo(row[7], uf=row[6]) or ''
+                        if not nome_mun and cep_limpo and len(cache_cep_municipio) < viacep_limit:
+                            nome_mun = get_municipio_por_cep(cep_limpo, cache=cache_cep_municipio) or ''
+                        ddd, tel = row[8], row[9]
+                        out = list(row[:8]) + [nome_mun] + [f"{ddd or ''}{tel or ''}".strip()] + list(row[10:13]) + [retorno_viab]
+                        writer.writerow([(c or '') for c in out])
+                    return response
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).exception('Erro ao exportar CNPJ estabelecimentos')
+                return Response({'error': str(e), 'detail': 'Erro ao gerar arquivo. Tente novamente.'}, status=500)
+
+        start = (page - 1) * limit
+        rows = qs.order_by('bairro', 'nome_fantasia')[start:start + limit]
+        pares_cep_num = set()
+        for r in rows:
+            c = ''.join(x for x in (r.cep or '') if x.isdigit())[:8]
+            n = _normalize_numero(r.numero)
+            if c:
+                pares_cep_num.add((c, n))
+        dfv_map_cep_num, dfv_map_cep_only = _build_dfv_map_cep_fachada(pares_cep_num)
+        from .ibge_municipios import get_nome_municipio_por_codigo
+        from .services.viacep import get_municipio_por_cep
+        cache_cep_municipio = {}
+        data = []
+        for r in rows:
+            cep_limpo = ''.join(x for x in (r.cep or '') if x.isdigit())[:8]
+            retorno_viab = _get_retorno_viab(cep_limpo, r.numero, dfv_map_cep_num, dfv_map_cep_only)
+            nome_mun = get_nome_municipio_por_codigo(r.codigo_municipio, uf=r.uf) or ''
+            if not nome_mun and cep_limpo:
+                nome_mun = get_municipio_por_cep(cep_limpo, cache=cache_cep_municipio) or ''
+            data.append({
+                'cnpj': r.cnpj_completo or '',
+                'nome_fantasia': r.nome_fantasia or '',
+                'logradouro': r.logradouro or '',
+                'numero': r.numero or '',
+                'bairro': r.bairro or '',
+                'cep': r.cep or '',
+                'uf': r.uf or '',
+                'codigo_municipio': r.codigo_municipio or '',
+                'nome_municipio': nome_mun,
+                'telefone': (r.ddd_telefone_1 or '') + (r.telefone_1 or ''),
+                'email': r.email or '',
+                'cnae': r.cnae_fiscal or '',
+                'retorno_viabilidade': retorno_viab,
+            })
+        return Response({'results': data, 'total': total, 'page': page, 'limit': limit})
+
+
+class CnpjCnaesCdoiView(APIView):
+    """Lista CNAEs distintos da base CNPJ para multi-select (CDOI)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from .models import ImportacaoEstabelecimentoCNPJ
+        from django.db.models import Count
+        qs = (
+            ImportacaoEstabelecimentoCNPJ.objects.filter(cnae_fiscal__isnull=False)
+            .exclude(cnae_fiscal='')
+            .filter(situacao_cadastral='02')
+            .values('cnae_fiscal')
+            .annotate(qtd=Count('id'))
+            .order_by('cnae_fiscal')
+        )
+        lista = [{'cnae': x['cnae_fiscal'], 'qtd': x['qtd']} for x in qs[:200]]
+        return Response({'cnaes': lista})
+
+
+class CnpjBairrosCdoiView(APIView):
+    """Lista bairros distintos da base CNPJ para multi-select (CDOI). Opcional: filtrar por codigo_municipio/uf."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from .models import ImportacaoEstabelecimentoCNPJ
+        from django.db.models import Count
+        qs = (
+            ImportacaoEstabelecimentoCNPJ.objects.filter(situacao_cadastral='02')
+            .exclude(bairro__isnull=True)
+            .exclude(bairro='')
+        )
+        codigos = request.query_params.getlist('codigo_municipio')
+        codigos = [c.strip() for c in codigos if c and c.strip()]
+        ufs_param = request.query_params.getlist('uf')
+        ufs_param = [u.strip().upper()[:2] for u in ufs_param if u and u.strip()]
+        if codigos:
+            qs = qs.filter(codigo_municipio__in=codigos)
+        if ufs_param:
+            qs = qs.filter(uf__in=ufs_param)
+        qs = qs.values('bairro').annotate(qtd=Count('id')).order_by('bairro')[:1000]
+        lista = [{'bairro': x['bairro'], 'qtd': x['qtd']} for x in qs]
+        return Response({'bairros': lista})
+
+
+class CnpjMunicipiosCdoiView(APIView):
+    """Lista códigos de município distintos da base CNPJ para dropdown (CDOI). Inclui nome do município via IBGE."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from .models import ImportacaoEstabelecimentoCNPJ
+        from django.db.models import Count
+        from .ibge_municipios import get_nome_municipio_por_codigo
+        qs = (
+            ImportacaoEstabelecimentoCNPJ.objects.filter(codigo_municipio__isnull=False)
+            .exclude(codigo_municipio='')
+            .values('codigo_municipio', 'uf')
+            .annotate(qtd=Count('id'))
+            .order_by('uf', 'codigo_municipio')
+        )
+        lista = []
+        for x in qs[:500]:
+            cod = x['codigo_municipio']
+            nome = get_nome_municipio_por_codigo(cod, uf=x['uf'])
+            lista.append({
+                'codigo_municipio': cod,
+                'uf': x['uf'],
+                'qtd': x['qtd'],
+                'nome_municipio': nome or '',
+            })
+        return Response({'municipios': lista})
+
+
+class CnpjUfsCdoiView(APIView):
+    """Lista UFs distintas da base CNPJ para multi-select com pesquisa (CDOI)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from .models import ImportacaoEstabelecimentoCNPJ
+        from django.db.models import Count
+        qs = (
+            ImportacaoEstabelecimentoCNPJ.objects.filter(situacao_cadastral='02')
+            .exclude(uf__isnull=True)
+            .exclude(uf='')
+            .values('uf')
+            .annotate(qtd=Count('id'))
+            .order_by('uf')
+        )
+        lista = [{'uf': x['uf'], 'qtd': x['qtd']} for x in qs]
+        return Response({'ufs': lista})
 
 
 class CdoiDashboardView(APIView):
@@ -9519,6 +9939,95 @@ class ExportarAgendamentosDiaView(APIView):
         response['Content-Disposition'] = f'attachment; filename=agendamentos_operadora_{data_arquivo}.xlsx'
         wb.save(response)
         return response
+
+
+def _normalizar_telefone_chave(telefone):
+    """Normaliza telefone para chave de lookup (igual ao webhook: dígitos, sem 55 se len>12)."""
+    if not telefone:
+        return ""
+    tel = re.sub(r'\D', '', str(telefone))
+    if tel.startswith('55') and len(tel) > 12:
+        tel = tel[2:]
+    return tel
+
+
+class EnviarLembreteInstalacaoView(APIView):
+    """Envia mensagem de lembrete de instalação para clientes agendados na data e turno informados."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        from django.utils import timezone
+        from datetime import datetime
+        from crm_app.whatsapp_service import WhatsAppService
+
+        data_str = request.data.get('data')
+        turno = (request.data.get('turno') or '').strip().upper()
+        if not data_str or turno not in ('MANHA', 'TARDE'):
+            return Response(
+                {'detail': 'Envie "data" (YYYY-MM-DD) e "turno" (MANHA ou TARDE).'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            data_filtro = datetime.strptime(data_str, '%Y-%m-%d').date()
+        except ValueError:
+            return Response({'detail': 'Data inválida. Use YYYY-MM-DD.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        vendas = Venda.objects.filter(
+            ativo=True,
+            data_agendamento=data_filtro,
+            periodo_agendamento=turno,
+            status_esteira__nome__icontains='AGENDADO'
+        ).exclude(telefone1__isnull=True).exclude(telefone1='').select_related('cliente')
+
+        primeiro_nome = (request.user.first_name or request.user.username or 'Especialista').strip().split()[0] or 'Especialista'
+        agora = timezone.now()
+        saudacao = 'boa tarde' if agora.hour >= 12 else 'bom dia'
+        dd_mm = data_filtro.strftime('%d/%m')
+        if turno == 'MANHA':
+            periodo_texto = '8h às 12h'
+        else:
+            periodo_texto = '13h às 18h'
+
+        enviados = 0
+        erros = []
+        svc = WhatsAppService()
+
+        for venda in vendas:
+            nome_cliente = (venda.cliente.nome_razao_social if venda.cliente else '').strip() or 'Cliente'
+            mensagem = (
+                f"Olá, {saudacao} Sr(a). {nome_cliente}\n\n"
+                f"Me chamo {primeiro_nome}, sou especialista de qualidade do Record PAP, parceiro Oficial da Nio Fibra.\n\n"
+                f"A sua instalação da Nio Fibra está agendada para hoje ({dd_mm}), no período das {periodo_texto}.\n\n"
+                "Se você não puder estar presente, é necessário que uma pessoa maior de 18 anos esteja no local.\n\n"
+                "Informações sobre sua instalação:\n"
+                "A instalação é gratuita.\n"
+                "Não realizamos instalações em dias de chuva.\n\n"
+                "Para confirmar, digite SIM\n"
+                "Para reagendar, envie o dia e o período (manhã/tarde)\n"
+                "Para falar com suporte, envie SUPORTE"
+            )
+            try:
+                ok, _ = svc.enviar_mensagem_texto(venda.telefone1, mensagem)
+                if ok:
+                    enviados += 1
+                    tel_chave = _normalizar_telefone_chave(venda.telefone1)
+                    if tel_chave:
+                        LembreteInstalacaoEnviado.objects.create(
+                            telefone=tel_chave,
+                            venda=venda,
+                            data_agendamento=venda.data_agendamento,
+                            periodo_agendamento=venda.periodo_agendamento or turno,
+                        )
+                else:
+                    erros.append(f"Venda #{venda.id} ({venda.telefone1})")
+            except Exception as e:
+                erros.append(f"Venda #{venda.id}: {str(e)}")
+
+        return Response({
+            'enviados': enviados,
+            'total': len(vendas),
+            'erros': erros[:20],
+        }, status=status.HTTP_200_OK)
 
 
 # --- Antecipar Instalação (solicitação ao GC Nio) ---

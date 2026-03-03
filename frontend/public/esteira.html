@@ -97,6 +97,10 @@
                         <i class="bi bi-file-earmark-excel"></i> Exportar Agendados Hoje
                     </button>
 
+                    <button onclick="abrirModalEnviarLembrete()" class="btn btn-outline-success fw-bold shadow-sm" title="Enviar mensagem de lembrete para clientes agendados">
+                        <i class="bi bi-whatsapp"></i> Enviar Lembrete
+                    </button>
+
                     <button onclick="carregarVendas()" class="btn btn-outline-primary fw-bold shadow-sm">
                         <i class="bi bi-arrow-clockwise"></i> Atualizar Lista
                     </button>
@@ -108,6 +112,15 @@
                 <li class="nav-item"><a class="nav-link" href="#" data-tab="AGENDADO" onclick="filtrarStatus('AGENDADO', this)">Agendados</a></li>
                 <li class="nav-item"><a class="nav-link" href="#" data-tab="PENDEN" onclick="filtrarStatus('PENDEN', this)">Pendentes</a></li>
             </ul>
+
+            <div id="filtro-turno-container" class="mb-3" style="display: none;">
+                <span class="me-2 text-muted fw-bold">Turno:</span>
+                <div class="btn-group btn-group-sm" role="group">
+                    <button type="button" class="btn btn-outline-secondary active" id="btn-turno-todos" onclick="filtrarTurno('', this)">Todos os turnos</button>
+                    <button type="button" class="btn btn-outline-secondary" id="btn-turno-manha" onclick="filtrarTurno('MANHA', this)">Manhã</button>
+                    <button type="button" class="btn btn-outline-secondary" id="btn-turno-tarde" onclick="filtrarTurno('TARDE', this)">Tarde</button>
+                </div>
+            </div>
 
             <div class="card border-0 shadow-none" style="background: transparent;">
                 <div class="table-responsive" style="overflow-y: visible; overflow-x: auto; padding: 4px;">
@@ -264,6 +277,41 @@
         </div>
     </div>
 
+    <div class="modal fade" id="modal-enviar-lembrete" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content border-success">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title"><i class="bi bi-whatsapp"></i> Enviar Lembrete de Instalação</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small">A mensagem será enviada para todos os clientes agendados na <strong>data</strong> e <strong>turno</strong> selecionados (telefone1).</p>
+                    <form id="form-enviar-lembrete">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Data do agendamento *</label>
+                            <input type="date" class="form-control" id="lembrete-data" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Turno *</label>
+                            <select class="form-select" id="lembrete-turno" required>
+                                <option value="">Selecione...</option>
+                                <option value="MANHA">Manhã</option>
+                                <option value="TARDE">Tarde</option>
+                            </select>
+                        </div>
+                    </form>
+                    <div id="lembrete-resultado" class="alert mt-2" style="display: none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                    <button type="button" class="btn btn-success" id="btn-enviar-lembrete" onclick="enviarLembreteInstalacao()">
+                        <i class="bi bi-send"></i> Enviar mensagem
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     <script src="{% static 'js/auth.js' %}?v=7.0"></script>
     <script src="{% static 'js/menu.js' %}?v=7.0"></script>
@@ -320,12 +368,14 @@
         let envioWhatsappAtivo = true;
 
         let filtroAtual = 'TODOS';
+        let filtroTurnoAtual = '';
         let tempVendaId = null;
         let tempStatusId = null;
         const modalEditar = new bootstrap.Modal(document.getElementById('modal-editar-venda'));
         const modalAgendamento = new bootstrap.Modal(document.getElementById('modal-agendamento'));
         const modalInstalacao = new bootstrap.Modal(document.getElementById('modal-instalacao'));
         const modalPendencia = new bootstrap.Modal(document.getElementById('modal-pendencia'));
+        const modalEnviarLembrete = document.getElementById('modal-enviar-lembrete') ? new bootstrap.Modal(document.getElementById('modal-enviar-lembrete')) : null;
         
         document.addEventListener('DOMContentLoaded', () => {
             carregarVendas();
@@ -463,7 +513,7 @@
             const tbody = document.getElementById('tabela-esteira-body');
             const busca = document.getElementById('filtro-busca').value;
             
-            if (!silent) { tbody.innerHTML = '<tr><td colspan="11" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>'; }
+            if (!silent) { tbody.innerHTML = '<tr><td colspan="12" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>'; }
             
             try {
                 const timestamp = new Date().getTime();
@@ -532,9 +582,12 @@
                 }
                 else {
                     vendas = vendas.filter(v => v.data_agendamento === filtroAtual);
+                    if (filtroTurnoAtual === 'MANHA' || filtroTurnoAtual === 'TARDE') {
+                        vendas = vendas.filter(v => (v.periodo_agendamento || '').toUpperCase() === filtroTurnoAtual);
+                    }
                 }
 
-                if(vendas.length === 0) { tbody.innerHTML = '<tr><td colspan="11" class="text-center py-4 text-muted">Nenhuma venda encontrada nesta etapa.</td></tr>'; return; }
+                if(vendas.length === 0) { tbody.innerHTML = '<tr><td colspan="12" class="text-center py-4 text-muted">Nenhuma venda encontrada nesta etapa.</td></tr>'; return; }
 
                 // Função auxiliar para achar nome de usuário pelo ID
                 const getNomeUsuario = (userId) => {
@@ -616,13 +669,16 @@
                             <td><div class="d-flex align-items-center">${selectStatus}${btnEditar}</div></td>
                             <td class="text-danger small fw-bold">${motivoPendencia}</td>
                             <td><small class="text-muted fw-bold">${alteradoPor}</small></td>
-                            <td class="pe-4 text-end"><button class="btn btn-sm btn-outline-primary rounded-circle p-2" onclick="abrirEdicao(${v.id})" aria-label="Editar venda #${v.id}"><i class="bi bi-pencil-fill"></i></button></td>
+                            <td class="pe-4 text-end">
+                                ${(v.telefone1 && v.telefone1.trim()) ? `<button class="btn btn-sm btn-outline-secondary rounded-circle p-2 me-1" onclick="copiarTelefone(this)" data-telefone="${String(v.telefone1).replace(/"/g, '&quot;')}" title="Copiar telefone"><i class="bi bi-telephone"></i></button>` : ''}
+                                <button class="btn btn-sm btn-outline-primary rounded-circle p-2" onclick="abrirEdicao(${v.id})" aria-label="Editar venda #${v.id}"><i class="bi bi-pencil-fill"></i></button>
+                            </td>
                         </tr>
                     `;
                 });
                 tbody.innerHTML = htmlContent;
             } catch (e) { 
-                if(!silent) tbody.innerHTML = '<tr><td colspan="11" class="text-center text-danger">Erro ao carregar.<br><small>'+(e.message || e)+'</small></td></tr>'; 
+                if(!silent) tbody.innerHTML = '<tr><td colspan="12" class="text-center text-danger">Erro ao carregar.<br><small>'+(e.message || e)+'</small></td></tr>'; 
                 // ...
             }
         }
@@ -642,10 +698,73 @@
                 const contadorDia = contagemDatas[dataIso] || 0;
                 const li = document.createElement('li'); li.className = 'nav-item';
                 const a = document.createElement('a'); a.className = `nav-link data-tab ${filtroAtual === dataIso ? 'active' : ''}`;
-                a.href = '#'; a.textContent = `${dataExibicao} (${contadorDia})`; 
+                a.href = '#'; a.setAttribute('data-tab', dataIso); a.textContent = `${dataExibicao} (${contadorDia})`; 
                 a.onclick = (e) => { e.preventDefault(); filtrarStatus(dataIso, a); };
                 li.appendChild(a); ul.appendChild(li);
             });
+            var ehAbaData = /^\d{4}-\d{2}-\d{2}$/.test(filtroAtual);
+            var containerTurno = document.getElementById('filtro-turno-container');
+            if (containerTurno) containerTurno.style.display = ehAbaData ? 'block' : 'none';
+            if (!ehAbaData) filtroTurnoAtual = '';
+            document.querySelectorAll('#filtro-turno-container .btn').forEach(btn => {
+                btn.classList.remove('active', 'btn-primary'); btn.classList.add('btn-outline-secondary');
+            });
+            if (filtroTurnoAtual === 'MANHA') { var b = document.getElementById('btn-turno-manha'); if (b) { b.classList.add('active', 'btn-primary'); b.classList.remove('btn-outline-secondary'); } }
+            else if (filtroTurnoAtual === 'TARDE') { var b = document.getElementById('btn-turno-tarde'); if (b) { b.classList.add('active', 'btn-primary'); b.classList.remove('btn-outline-secondary'); } }
+            else { var b = document.getElementById('btn-turno-todos'); if (b) { b.classList.add('active', 'btn-primary'); b.classList.remove('btn-outline-secondary'); } }
+        }
+
+        function filtrarTurno(turno, element) {
+            filtroTurnoAtual = turno || '';
+            document.querySelectorAll('#filtro-turno-container .btn').forEach(btn => {
+                btn.classList.remove('active', 'btn-primary'); btn.classList.add('btn-outline-secondary');
+            });
+            if (element) { element.classList.add('active', 'btn-primary'); element.classList.remove('btn-outline-secondary'); }
+            carregarVendas();
+        }
+
+        function copiarTelefone(btn) {
+            var tel = btn && btn.getAttribute('data-telefone');
+            if (!tel) return;
+            try {
+                navigator.clipboard.writeText(tel).then(function() {
+                    var oldTitle = btn.title; btn.title = 'Copiado!'; setTimeout(function() { btn.title = oldTitle || 'Copiar telefone'; }, 1500);
+                });
+            } catch (e) {
+                prompt('Copie o número:', tel);
+            }
+        }
+
+        function abrirModalEnviarLembrete() {
+            var hoje = new Date().toISOString().split('T')[0];
+            document.getElementById('lembrete-data').value = hoje;
+            document.getElementById('lembrete-turno').value = '';
+            document.getElementById('lembrete-resultado').style.display = 'none';
+            if (modalEnviarLembrete) modalEnviarLembrete.show();
+        }
+
+        async function enviarLembreteInstalacao() {
+            var dataStr = document.getElementById('lembrete-data').value;
+            var turno = document.getElementById('lembrete-turno').value;
+            if (!dataStr || !turno) { alert('Selecione a data e o turno.'); return; }
+            var btn = document.getElementById('btn-enviar-lembrete');
+            var resultado = document.getElementById('lembrete-resultado');
+            btn.disabled = true;
+            resultado.style.display = 'none';
+            try {
+                var res = await apiFetch('/crm/esteira/enviar-lembrete-instalacao/', {
+                    method: 'POST',
+                    body: JSON.stringify({ data: dataStr, turno: turno })
+                });
+                resultado.style.display = 'block';
+                resultado.className = 'alert mt-2 ' + (res.erros && res.erros.length > 0 ? 'alert-warning' : 'alert-success');
+                resultado.innerHTML = 'Enviados: <strong>' + (res.enviados || 0) + '</strong> de ' + (res.total || 0) + (res.erros && res.erros.length ? '. Erros: ' + res.erros.slice(0, 5).join('; ') : '');
+            } catch (e) {
+                resultado.style.display = 'block';
+                resultado.className = 'alert alert-danger mt-2';
+                resultado.textContent = 'Erro: ' + (e.message || e);
+            }
+            btn.disabled = false;
         }
 
         function filtrarStatus(status, element) {

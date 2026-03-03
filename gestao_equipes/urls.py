@@ -101,6 +101,7 @@ urlpatterns = [
     path('importar-legado/', TemplateView.as_view(template_name='public/importar_legado.html'), name='importar-legado'),
     path('importar-agendamento/', TemplateView.as_view(template_name='public/importar_agendamento.html'), name='importar-agendamento'),
     path('importar-recompra/', TemplateView.as_view(template_name='public/importar_recompra.html'), name='importar-recompra'),
+    path('importar-cnpj/', TemplateView.as_view(template_name='public/importar_cnpj.html'), name='importar-cnpj'),
 
     # CALENDÁRIO & PAINEL DE PERFORMANCE
     path('calendario/', calendario_fiscal_view, name='calendario_fiscal_atual'),
