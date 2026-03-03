@@ -140,6 +140,7 @@ from .views import (
     ExportarM10View,
     ExportarAgendamentosDiaView,
     EnviarLembreteInstalacaoView,
+    EnviarBoasVindasView,
     page_bonus_m10,
     NioDividasView,
     BuscarAnteciparInstalacaoView,
@@ -269,6 +270,7 @@ urlpatterns = [
     # --- Exportação e Lembrete Agendamentos (Esteira) ---
     path('esteira/exportar-agendamentos/', ExportarAgendamentosDiaView.as_view(), name='exportar-agendamentos-dia'),
     path('esteira/enviar-lembrete-instalacao/', EnviarLembreteInstalacaoView.as_view(), name='enviar-lembrete-instalacao'),
+    path('vendas/enviar-boas-vindas/', EnviarBoasVindasView.as_view(), name='enviar-boas-vindas'),
     path('integracao/listar-grupos/', listar_grupos_whatsapp_api, name='listar-grupos-zapi'),
     
     # --- Debug Screenshots (Nio Negocia) ---

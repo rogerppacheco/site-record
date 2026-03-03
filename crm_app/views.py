@@ -10030,6 +10030,85 @@ class EnviarLembreteInstalacaoView(APIView):
         }, status=status.HTTP_200_OK)
 
 
+class EnviarBoasVindasView(APIView):
+    """Envia mensagem de boas-vindas para clientes com venda Instalada na data de instalação informada."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        from django.utils import timezone
+        from datetime import datetime
+        from crm_app.whatsapp_service import WhatsAppService
+        from crm_app.models import BoasVindasEnviado
+
+        data_str = request.data.get('data')
+        if not data_str:
+            return Response(
+                {'detail': 'Envie "data" (YYYY-MM-DD) - data em que o pedido foi instalado.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            data_instalacao = datetime.strptime(data_str, '%Y-%m-%d').date()
+        except ValueError:
+            return Response({'detail': 'Data inválida. Use YYYY-MM-DD.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        vendas = Venda.objects.filter(
+            ativo=True,
+            data_instalacao=data_instalacao,
+            status_esteira__nome__icontains='INSTALADA',
+            boas_vindas_enviado_em__isnull=True,
+        ).exclude(telefone1__isnull=True).exclude(telefone1='').select_related('cliente')
+
+        primeiro_nome = (request.user.first_name or request.user.username or 'Especialista').strip().split()[0] or 'Especialista'
+        agora = timezone.now()
+        saudacao = 'boa tarde' if agora.hour >= 12 else 'bom dia'
+        despedida = 'boa tarde!' if agora.hour >= 12 else 'bom dia!'
+
+        msg_base = (
+            f"Olá {saudacao}, {{nome_cliente}} tudo bem?\n\n"
+            f"Me chamo {primeiro_nome}, sou especialista de qualidade do Record PAP, parceiro Oficial da Nio Fibra.\n\n"
+            "Estou entrando em contato para informar que estamos à sua disposição, caso você precise tirar dúvidas sobre seu plano e faturas.\n\n"
+            "Sua primeira fatura irá vencer 25 dias após a instalação.\n\n"
+            "Você também pode acompanhar sua conta através do app Nio.\n"
+            "Instale o aplicativo no seu aparelho celular.\n\n"
+            "Disponível para Android e iOS:\n"
+            "Google Play Store (Android)\n"
+            "https://play.google.com/store/apps/details?id=br.com.niointernet.app\n\n"
+            "Apple Store (iOS):\n"
+            "https://apps.apple.com/br/app/nio-internet/id6746278488\n\n"
+            "Você ainda pode realizar contato pelos canais de comunicação oficiais da Nio:\n"
+            "SAC:0800 001 1000\n"
+            "WhatsApp: 21-3605-1000\n\n"
+            f"Obrigado e tenha um {despedida}"
+        )
+
+        enviados = 0
+        erros = []
+        svc = WhatsAppService()
+
+        for venda in vendas:
+            nome_cliente = (venda.cliente.nome_razao_social if venda.cliente else '').strip() or 'Cliente'
+            mensagem = msg_base.format(nome_cliente=nome_cliente)
+            try:
+                ok, _ = svc.enviar_mensagem_texto(venda.telefone1, mensagem)
+                if ok:
+                    enviados += 1
+                    venda.boas_vindas_enviado_em = agora
+                    venda.save(update_fields=['boas_vindas_enviado_em'])
+                    tel_chave = _normalizar_telefone_chave(venda.telefone1)
+                    if tel_chave:
+                        BoasVindasEnviado.objects.create(telefone=tel_chave, venda=venda)
+                else:
+                    erros.append(f"Venda #{venda.id} ({venda.telefone1})")
+            except Exception as e:
+                erros.append(f"Venda #{venda.id}: {str(e)}")
+
+        return Response({
+            'enviados': enviados,
+            'total': len(vendas),
+            'erros': erros[:20],
+        }, status=status.HTTP_200_OK)
+
+
 # --- Antecipar Instalação (solicitação ao GC Nio) ---
 def _antecipar_instalacao_queryset_vendas(request):
     """Retorna queryset de Venda permitidas para o usuário: só AGENDADO e com data_agendamento."""

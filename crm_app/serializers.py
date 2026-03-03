@@ -268,6 +268,7 @@ class VendaSerializer(serializers.ModelSerializer):
             'nome_editor', 'data_ultima_alteracao', 'gerada_os_automatica',
             'cliente_confirmou_auditoria', 'protocolo_confirmacao_auditoria', 'data_confirmacao_auditoria',
             'cliente_confirmou_lembrete_instalacao', 'cliente_resposta_lembrete_instalacao', 'data_resposta_lembrete_instalacao',
+            'boas_vindas_enviado_em', 'cliente_resposta_boas_vindas', 'data_resposta_boas_vindas',
         ]
 
     def get_auditor_atual_nome(self, obj):
@@ -318,6 +319,7 @@ class VendaDetailSerializer(serializers.ModelSerializer):
             'gerada_os_automatica',
             'cliente_confirmou_auditoria', 'protocolo_confirmacao_auditoria', 'data_confirmacao_auditoria',
             'cliente_confirmou_lembrete_instalacao', 'cliente_resposta_lembrete_instalacao', 'data_resposta_lembrete_instalacao',
+            'boas_vindas_enviado_em', 'cliente_resposta_boas_vindas', 'data_resposta_boas_vindas',
         ]
 
 class VendaCreateSerializer(serializers.ModelSerializer):

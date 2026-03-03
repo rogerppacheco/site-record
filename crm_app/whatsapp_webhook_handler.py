@@ -5841,6 +5841,31 @@ def processar_webhook_whatsapp(data, request=None):
     except Exception as e:
         logger.warning(f"[Webhook] Erro ao processar lembrete instalação: {e}", exc_info=True)
     
+    # --- Resposta ao boas-vindas (Record Vendas): gravar o que o cliente enviou ---
+    try:
+        from datetime import timedelta as _td
+        from crm_app.models import BoasVindasEnviado
+        chave_bv = _chave_telefone(telefone_formatado_usuario)
+        chaves_bv = _chaves_telefone_variantes(telefone_formatado_usuario) or [chave_bv]
+        limite_bv = timezone.now() - _td(days=30)
+        bv = BoasVindasEnviado.objects.filter(
+            telefone__in=chaves_bv,
+            respondido_em__isnull=True,
+            data_envio__gte=limite_bv,
+        ).order_by('-data_envio').select_related('venda').first()
+        if bv:
+            texto_resposta = (mensagem_texto or '').strip() or mensagem_limpa or ''
+            agora_bv = timezone.now()
+            bv.respondido_em = agora_bv
+            bv.save(update_fields=['respondido_em'])
+            venda_bv = bv.venda
+            venda_bv.cliente_resposta_boas_vindas = texto_resposta[:2000] if texto_resposta else None
+            venda_bv.data_resposta_boas_vindas = agora_bv
+            venda_bv.save(update_fields=['cliente_resposta_boas_vindas', 'data_resposta_boas_vindas'])
+            return {'status': 'ok', 'mensagem': 'Resposta boas-vindas registrada'}
+    except Exception as e:
+        logger.warning(f"[Webhook] Erro ao processar resposta boas-vindas: {e}", exc_info=True)
+    
     # Verificar se o número está associado a um usuário ativo (em grupo, usar participant_phone)
     usuario_whatsapp = _usuario_ativo_por_telefone(telefone_formatado_usuario)
     if not usuario_whatsapp:

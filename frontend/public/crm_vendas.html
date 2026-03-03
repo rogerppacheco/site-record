@@ -97,7 +97,9 @@
                     <button id="btn-exportar-excel" class="btn btn-success shadow-sm fw-bold d-none" onclick="exportarExcelDiretoria()">
                         <i class="bi bi-file-earmark-excel-fill"></i> Baixar Base
                     </button>
-                    
+                    <button class="btn btn-outline-success shadow-sm fw-bold" onclick="abrirModalBoasVindas()" title="Enviar mensagem de boas-vindas para clientes instalados">
+                        <i class="bi bi-chat-heart"></i> Boas Vindas
+                    </button>
                     <button class="btn btn-primary shadow-sm fw-bold" onclick="abrirModalOrigem()">
                         <i class="bi bi-plus-lg"></i> Nova Venda
                     </button>
@@ -269,6 +271,33 @@
                 <div class="modal-header bg-warning text-dark"><h5 class="modal-title fw-bold"><i class="bi bi-exclamation-triangle-fill"></i> Atenção: Cliente Recorrente</h5><button type="button" class="btn-close" onclick="fecharModalAviso()"></button></div>
                 <div class="modal-body"><div class="alert alert-light border text-center mb-3"><h4 class="fw-bold text-warning" id="aviso-qtd-vendas" style="font-size: 2.5rem;">0</h4><span class="text-muted text-uppercase small fw-bold">Vendas Ativas Encontradas</span></div><p class="text-center mb-3">O cliente <strong id="aviso-nome-cliente"></strong> já possui histórico em nossa base.</p><div class="alert alert-danger" role="alert"><div class="d-flex align-items-center mb-2"><i class="bi bi-shield-lock-fill fs-3 me-3"></i><div><strong>Aviso de Segurança:</strong><br>Esta venda passará por uma <u>auditoria mais apurada</u> devido à duplicidade de CPF/CNPJ.</div></div><hr><p class="mb-0 fw-bold text-center small text-uppercase"><i class="bi bi-exclamation-circle"></i> Essa venda poderá gerar uma recompra ou uma venda indevida!</p></div><p class="small text-muted text-center mt-3">Deseja continuar com este CPF ou informar um novo?</p></div>
                 <div class="modal-footer justify-content-center"><button type="button" class="btn btn-outline-secondary px-4" onclick="fecharModalAviso()">Informar Outro CPF</button><button type="button" class="btn btn-warning px-4 fw-bold" onclick="confirmarClienteExistente()">Sim, Continuar Venda</button></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modal-boas-vindas" tabindex="-1" style="z-index: 1055;">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-success">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title"><i class="bi bi-chat-heart"></i> Boas Vindas</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small">A mensagem será enviada para clientes com status <strong>Instalada</strong> na data em que o pedido foi instalado (telefone1).</p>
+                    <form id="form-boas-vindas">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Data em que o pedido foi instalado *</label>
+                            <input type="date" class="form-control" id="boas-vindas-data" required>
+                        </div>
+                    </form>
+                    <div id="boas-vindas-resultado" class="alert mt-2" style="display: none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                    <button type="button" class="btn btn-success" id="btn-enviar-boas-vindas" onclick="enviarBoasVindas()">
+                        <i class="bi bi-send"></i> Enviar mensagem
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -1042,6 +1071,36 @@
         async function reenviarWhatsApp(id) {
             if(!confirm("Deseja reenviar a mensagem de aprovação para o vendedor responsável?")) return;
             try { const res = await apiFetch(`/crm/vendas/${id}/reenviar-whatsapp-aprovacao/`, { method: 'POST' }); alert(res.detail || "Enviado!"); } catch(e) { alert("Erro ao enviar: " + (e.detail || e)); }
+        }
+
+        function abrirModalBoasVindas() {
+            document.getElementById('boas-vindas-data').value = '';
+            document.getElementById('boas-vindas-resultado').style.display = 'none';
+            const modal = new bootstrap.Modal(document.getElementById('modal-boas-vindas'));
+            modal.show();
+        }
+
+        async function enviarBoasVindas() {
+            const dataStr = document.getElementById('boas-vindas-data').value;
+            if (!dataStr) { alert('Selecione a data em que o pedido foi instalado.'); return; }
+            const btn = document.getElementById('btn-enviar-boas-vindas');
+            const resultado = document.getElementById('boas-vindas-resultado');
+            btn.disabled = true;
+            resultado.style.display = 'none';
+            try {
+                const res = await apiFetch('/crm/vendas/enviar-boas-vindas/', {
+                    method: 'POST',
+                    body: JSON.stringify({ data: dataStr })
+                });
+                resultado.style.display = 'block';
+                resultado.className = 'alert mt-2 ' + (res.erros && res.erros.length > 0 ? 'alert-warning' : 'alert-success');
+                resultado.innerHTML = 'Enviados: <strong>' + (res.enviados || 0) + '</strong> de ' + (res.total || 0) + (res.erros && res.erros.length ? '. Erros: ' + res.erros.slice(0, 5).join('; ') : '');
+            } catch (e) {
+                resultado.style.display = 'block';
+                resultado.className = 'alert alert-danger mt-2';
+                resultado.textContent = 'Erro: ' + (e.message || e);
+            }
+            btn.disabled = false;
         }
 
         function verificarRegraCNPJ(valor) {

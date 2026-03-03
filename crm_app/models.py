@@ -220,6 +220,25 @@ class Venda(models.Model):
         verbose_name="Data/hora resposta ao lembrete",
     )
 
+    # --- Boas-vindas (mensagem pós-instalação) ---
+    boas_vindas_enviado_em = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Boas-vindas enviado em",
+        help_text="Quando a mensagem de boas-vindas foi enviada ao cliente.",
+    )
+    cliente_resposta_boas_vindas = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="Resposta do cliente (boas-vindas)",
+        help_text="Texto que o cliente enviou ao responder a mensagem de boas-vindas.",
+    )
+    data_resposta_boas_vindas = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Data/hora resposta boas-vindas",
+    )
+
     # --- CAMPOS PARA CONTROLE DE DESCONTOS ---
     flag_adiant_cnpj = models.BooleanField(default=False, verbose_name="Adiant. CNPJ Processado")
     flag_desc_boleto = models.BooleanField(default=False, verbose_name="Desc. Boleto Processado")
@@ -255,6 +274,20 @@ class LembreteInstalacaoEnviado(models.Model):
         db_table = 'crm_lembrete_instalacao_enviado'
         verbose_name = "Lembrete instalação enviado"
         verbose_name_plural = "Lembretes instalação enviados"
+        ordering = ['-data_envio']
+
+
+class BoasVindasEnviado(models.Model):
+    """Registro de envio da mensagem de boas-vindas (pós-instalação) para gravar resposta do cliente."""
+    telefone = models.CharField(max_length=20, db_index=True, help_text="Telefone normalizado (apenas dígitos)")
+    venda = models.ForeignKey(Venda, on_delete=models.CASCADE, related_name='boas_vindas_enviados')
+    data_envio = models.DateTimeField(auto_now_add=True)
+    respondido_em = models.DateTimeField(null=True, blank=True, help_text="Quando o cliente respondeu")
+
+    class Meta:
+        db_table = 'crm_boas_vindas_enviado'
+        verbose_name = "Boas-vindas enviado"
+        verbose_name_plural = "Boas-vindas enviados"
         ordering = ['-data_envio']
 
 
