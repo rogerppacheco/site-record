@@ -62,6 +62,7 @@ from .views import (
     GerarRelatorioPDFView,
     EnviarExtratoEmailView,
     ImportacaoOsabView, ImportacaoOsabDetailView, DownloadRelatorioOSABView, CancelarImportacaoOSABView, AnaliseComparacaoOSABView, LimparImportacaoOSABView,
+    ControleTTsAPIView, ControleTTTratadoAPIView,
     ImportacaoChurnView, ImportacaoChurnDetailView,
     ImportacaoCicloPagamentoView,
     PerformanceVendasView,
@@ -238,6 +239,8 @@ urlpatterns = [
     # --- Importações ---
     path('import/osab/', ImportacaoOsabView.as_view(), name='importacao-osab'),
     path('import/osab/<int:pk>/', ImportacaoOsabDetailView.as_view(), name='importacao-osab-detail'),
+    path('controle-tts/', ControleTTsAPIView.as_view(), name='controle-tts-api'),
+    path('controle-tts/tratado/', ControleTTTratadoAPIView.as_view(), name='controle-tts-tratado-api'),
     path('import/osab/analise/', AnaliseComparacaoOSABView.as_view(), name='analise-osab'),
     path('import/churn/', ImportacaoChurnView.as_view(), name='importacao-churn'),
     path('import/churn/<int:pk>/', ImportacaoChurnDetailView.as_view(), name='importacao-churn-detail'),

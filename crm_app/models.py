@@ -377,6 +377,30 @@ class ImportacaoOsab(models.Model):
         verbose_name_plural = "Importações OSAB"
 
 
+class ControleTTDiaTratado(models.Model):
+    """Registro de que o BO marcou uma venda naquele dia para aquele vendedor (TT)."""
+    matricula_vendedor = models.CharField(max_length=50, db_index=True)
+    data = models.DateField(db_index=True)
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='controle_tt_tratados'
+    )
+    marcado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'crm_controle_tt_dia_tratado'
+        verbose_name = "Controle TT dia tratado"
+        verbose_name_plural = "Controle TT dias tratados"
+        unique_together = [('matricula_vendedor', 'data')]
+        ordering = ['-data', 'matricula_vendedor']
+
+    def __str__(self):
+        return f"{self.matricula_vendedor} em {self.data}"
+
+
 class CicloPagamento(models.Model):
     ano = models.IntegerField(null=True, blank=True)
     mes = models.CharField(max_length=20, null=True, blank=True)

@@ -80,6 +80,7 @@ urlpatterns = [
     # PÁGINAS FRONTEND (HTML para o usuário)
     path('', TemplateView.as_view(template_name='public/index.html'), name='home'),
     path('area-interna/', TemplateView.as_view(template_name='public/area-interna.html'), name='area-interna'),
+    path('controle-tts/', TemplateView.as_view(template_name='public/controle_tts.html'), name='controle-tts'),
     path('record-informa/', TemplateView.as_view(template_name='public/record_informa.html'), name='record-informa'),
     path('auditoria/', TemplateView.as_view(template_name='public/auditoria.html'), name='auditoria'),
     path('crm-vendas/', TemplateView.as_view(template_name='public/crm_vendas.html'), name='crm_vendas'),

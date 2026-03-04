@@ -525,6 +525,7 @@ from .models import (
     RegraComissaoFaixa, ConfigComissaoVendedor,
     AnteciparInstalacaoConfig, AnteciparInstalacaoSolicitacao,
     PapConfirmacaoCliente, LembreteInstalacaoEnviado,
+    ControleTTDiaTratado,
 )
 
 # Serializers do App
@@ -3723,6 +3724,158 @@ class ImportacaoOsabDetailView(generics.RetrieveUpdateAPIView):
     queryset = ImportacaoOsab.objects.all()
     serializer_class = ImportacaoOsabSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+
+# --- Controle de TT's (vendedores sem venda há X dias) ---
+SITUACOES_VENDA_VALIDA_OSAB = [
+    'Concluído',
+    'Pendência Cliente',
+    'Cancelado',
+    'Pendência Técnica',
+    'Em Aprovisionamento',
+]
+
+
+class ControleTTsAPIView(APIView):
+    """GET: lista TTs dos últimos 2 meses na OSAB, com última venda válida e dias sem vender. Ordenado por dias sem vender decrescente."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if not is_member(request.user, ['BackOffice', 'Diretoria', 'Admin']):
+            return Response({'error': 'Acesso negado. Apenas BackOffice, Diretoria ou Admin.'}, status=403)
+
+        from django.db.models import Max, Q
+        hoje = timezone.localdate()
+        ontem = hoje - timedelta(days=1)
+        dois_meses_atras = hoje - timedelta(days=60)
+
+        # Matrículas que aparecem na base OSAB nos últimos 2 meses
+        matriculas_qs = (
+            ImportacaoOsab.objects
+            .filter(
+                data_abertura__gte=dois_meses_atras,
+                matricula_vendedor__isnull=False,
+            )
+            .exclude(matricula_vendedor='')
+            .values_list('matricula_vendedor', flat=True)
+            .distinct()
+        )
+        matriculas = list(matriculas_qs)
+
+        filtro_situacao_valida = Q(situacao__in=SITUACOES_VENDA_VALIDA_OSAB)
+
+        resultado = []
+        for mat in matriculas:
+            ultima = (
+                ImportacaoOsab.objects
+                .filter(matricula_vendedor=mat)
+                .filter(filtro_situacao_valida)
+                .filter(data_abertura__isnull=False)
+                .aggregate(Max('data_abertura'))
+            )
+            ultima_venda = ultima.get('data_abertura__max')
+            if ultima_venda is not None:
+                # Garantir que é date (pode vir como datetime)
+                if hasattr(ultima_venda, 'date'):
+                    ultima_venda = ultima_venda.date()
+                dias_sem_vender = (ontem - ultima_venda).days
+            else:
+                dias_sem_vender = None  # Nunca vendeu (venda válida)
+
+            resultado.append({
+                'matricula_vendedor': mat,
+                'ultima_venda': ultima_venda.isoformat() if ultima_venda else None,
+                'dias_sem_vender': dias_sem_vender,
+            })
+
+        # Ordenar: maior dias_sem_vender primeiro; null (nunca vendeu) no topo
+        def sort_key(item):
+            d = item['dias_sem_vender']
+            if d is None:
+                return -1  # Nunca vendeu fica no topo
+            return -d  # Decrescente
+
+        resultado.sort(key=sort_key)
+
+        return Response({
+            'data_referencia': ontem.isoformat(),
+            'itens': resultado,
+        })
+
+
+class ControleTTTratadoAPIView(APIView):
+    """GET: marcações (tratado) do mês. POST: marcar tratado para (matricula, data). DELETE: desmarcar."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if not is_member(request.user, ['BackOffice', 'Diretoria', 'Admin']):
+            return Response({'error': 'Acesso negado.'}, status=403)
+
+        mes_str = request.query_params.get('mes')  # YYYY-MM
+        if mes_str:
+            try:
+                ano, mes = int(mes_str[:4]), int(mes_str[5:7])
+                primeiro = date(ano, mes, 1)
+                ultimo_dia = calendar.monthrange(ano, mes)[1]
+                ultima_data = date(ano, mes, ultimo_dia)
+            except (ValueError, IndexError):
+                primeiro = timezone.localdate().replace(day=1)
+                ultimo_dia = calendar.monthrange(primeiro.year, primeiro.month)[1]
+                ultima_data = primeiro.replace(day=ultimo_dia)
+        else:
+            primeiro = timezone.localdate().replace(day=1)
+            ultimo_dia = calendar.monthrange(primeiro.year, primeiro.month)[1]
+            ultima_data = primeiro.replace(day=ultimo_dia)
+
+        marcacoes = list(
+            ControleTTDiaTratado.objects
+            .filter(data__gte=primeiro, data__lte=ultima_data)
+            .values_list('matricula_vendedor', 'data')
+        )
+        return Response({
+            'mes': primeiro.strftime('%Y-%m'),
+            'marcacoes': [{'matricula_vendedor': m, 'data': d.isoformat()} for m, d in marcacoes],
+        })
+
+    def post(self, request):
+        if not is_member(request.user, ['BackOffice', 'Diretoria', 'Admin']):
+            return Response({'error': 'Acesso negado.'}, status=403)
+
+        mat = request.data.get('matricula_vendedor')
+        data_str = request.data.get('data')  # YYYY-MM-DD
+        if not mat or not data_str:
+            return Response({'error': 'matricula_vendedor e data são obrigatórios.'}, status=400)
+        try:
+            data_obj = datetime.strptime(data_str[:10], '%Y-%m-%d').date()
+        except ValueError:
+            return Response({'error': 'data inválida. Use YYYY-MM-DD.'}, status=400)
+
+        obj, created = ControleTTDiaTratado.objects.update_or_create(
+            matricula_vendedor=mat.strip(),
+            data=data_obj,
+            defaults={'usuario': request.user},
+        )
+        return Response({'tratado': True, 'created': created})
+
+    def delete(self, request):
+        if not is_member(request.user, ['BackOffice', 'Diretoria', 'Admin']):
+            return Response({'error': 'Acesso negado.'}, status=403)
+
+        mat = request.query_params.get('matricula_vendedor')
+        data_str = request.query_params.get('data')
+        if not mat or not data_str:
+            return Response({'error': 'matricula_vendedor e data são obrigatórios.'}, status=400)
+        try:
+            data_obj = datetime.strptime(data_str[:10], '%Y-%m-%d').date()
+        except ValueError:
+            return Response({'error': 'data inválida.'}, status=400)
+
+        deleted, _ = ControleTTDiaTratado.objects.filter(
+            matricula_vendedor=mat.strip(),
+            data=data_obj,
+        ).delete()
+        return Response({'tratado': False, 'deleted': deleted > 0})
+
 
 def _normalizar_anomes_gross(val):
     """Normaliza ANOMES_GROSS para formato AAAAMM (ex.: '2025-07' -> '202507'). Aceita também número serial do Excel."""
