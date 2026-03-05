@@ -887,87 +887,116 @@ class WhatsAppService:
             return None
 
     # ---------------------------------------------------------
-    # NOVO: GERAR IMAGEM DE PERFORMANCE (TABELA)
+    # GERAR IMAGEM DE PERFORMANCE (TABELA) - Layout profissional
     # ---------------------------------------------------------
+    def _font_performance(self, name, size):
+        """Carrega fonte para a imagem de performance (múltiplos caminhos)."""
+        if not ImageFont:
+            return ImageFont.load_default()
+        paths = [
+            "arial.ttf",
+            "Arial.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        ]
+        for path in paths:
+            try:
+                return ImageFont.truetype(path, size)
+            except (OSError, IOError):
+                continue
+        return ImageFont.load_default()
+
     def gerar_imagem_performance_b64(self, dados_relatorio):
         """
         Gera uma imagem com a tabela de performance do dia.
+        Layout profissional: fontes maiores, linha inteira verde para quem vendeu, ordem alfabética.
         """
-        if not Image: return None
+        if not Image:
+            return None
 
         try:
-            # 1. Configurações de Layout
-            lista = dados_relatorio.get('lista', [])
+            # Ordem alfabética por nome do vendedor
+            lista = sorted(dados_relatorio.get('lista', []), key=lambda x: (str(x.get('nome', '')).upper()))
             qtd_linhas = len(lista)
-            
-            H_BASE = 250
-            H_LINHA = 60
-            H_RODAPE = 150
-            W = 1000
+
+            # Dimensões maiores e mais confortáveis para leitura
+            H_BASE = 280
+            H_LINHA = 72
+            H_RODAPE = 160
+            W = 1100
             H = H_BASE + (qtd_linhas * H_LINHA) + H_RODAPE
 
-            cor_fundo = (255, 255, 255)
-            cor_azul_escuro = (10, 30, 60)
-            cor_azul_claro = (235, 240, 255) # Para linhas alternadas
-            cor_texto = (50, 50, 50)
-            cor_verde = (0, 150, 70)
-            cor_destaque = (255, 100, 0)
+            # Paleta profissional
+            cor_fundo = (248, 249, 252)
+            cor_azul_escuro = (15, 42, 87)
+            cor_azul_header = (30, 64, 125)
+            cor_azul_claro = (232, 238, 252)
+            cor_texto = (33, 37, 41)
+            cor_texto_suave = (108, 117, 125)
+            cor_verde_linha = (212, 237, 218)   # Linha inteira quando vendeu
+            cor_verde_texto = (21, 87, 36)     # Números em verde escuro
+            cor_borda = (222, 226, 230)
 
             img = Image.new('RGB', (W, H), color=cor_fundo)
             d = ImageDraw.Draw(img)
 
-            # Fontes
-            try:
-                f_titulo = ImageFont.truetype("arial.ttf", 60)
-                f_sub = ImageFont.truetype("arial.ttf", 35)
-                f_texto = ImageFont.truetype("arial.ttf", 30)
-                f_bold = ImageFont.truetype("arialbd.ttf", 30)
-            except:
-                f_titulo = f_sub = f_texto = f_bold = ImageFont.load_default()
+            # Fontes maiores para melhor leitura
+            f_titulo = self._font_performance("arial", 78)
+            f_sub = self._font_performance("arial", 44)
+            f_texto = self._font_performance("arial", 40)
+            f_bold = self._font_performance("arial", 40)
 
-            # 2. Cabeçalho
-            d.rectangle([(0, 0), (W, 180)], fill=cor_azul_escuro)
-            d.text((W/2, 60), dados_relatorio['titulo'], fill="white", anchor="mm", font=f_titulo)
-            d.text((W/2, 130), f"📅 {dados_relatorio['data']}", fill="white", anchor="mm", font=f_sub)
+            # Cabeçalho principal
+            d.rectangle([(0, 0), (W, 200)], fill=cor_azul_escuro)
+            d.text((W / 2, 70), dados_relatorio.get('titulo', 'PERFORMANCE'), fill="white", anchor="mm", font=f_titulo)
+            d.text((W / 2, 155), f"📅 {dados_relatorio.get('data', '')}", fill="white", anchor="mm", font=f_sub)
 
-            # Cabeçalho da Tabela
-            y_start = 200
-            col_x = [50, 450, 700, 900]
-            
-            d.text((col_x[0], y_start), "VENDEDOR", fill=cor_azul_escuro, anchor="lm", font=f_bold)
-            d.text((col_x[1], y_start), "TOTAL", fill=cor_azul_escuro, anchor="mm", font=f_bold)
-            d.text((col_x[2], y_start), "CARTÃO", fill=cor_azul_escuro, anchor="mm", font=f_bold)
-            d.text((col_x[3], y_start), "%", fill=cor_azul_escuro, anchor="mm", font=f_bold)
-            
-            d.line([(30, y_start + 25), (W-30, y_start + 25)], fill=(200,200,200), width=2)
+            # Cabeçalho da tabela
+            y_start = 230
+            col_x = [60, 520, 780, 980]
+            h_cab = 56
 
-            # 3. Linhas da Tabela
-            y = y_start + 60
+            d.rectangle([(40, y_start), (W - 40, y_start + h_cab)], fill=cor_azul_header)
+            d.text((col_x[0], y_start + h_cab // 2), "VENDEDOR", fill="white", anchor="lm", font=f_bold)
+            d.text((col_x[1], y_start + h_cab // 2), "TOTAL", fill="white", anchor="mm", font=f_bold)
+            d.text((col_x[2], y_start + h_cab // 2), "CARTÃO", fill="white", anchor="mm", font=f_bold)
+            d.text((col_x[3], y_start + h_cab // 2), "%", fill="white", anchor="mm", font=f_bold)
+
+            # Linhas da tabela (ordem alfabética já aplicada)
+            y = y_start + h_cab + 4
             for i, item in enumerate(lista):
-                if i % 2 == 0:
-                    d.rectangle([(30, y-30), (W-30, y+30)], fill=cor_azul_claro)
+                ly_top = y - 4
+                ly_bot = y + H_LINHA - 8
+                vendeu = (item.get('total') or 0) > 0
 
-                d.text((col_x[0], y), str(item['nome'])[:22], fill=cor_texto, anchor="lm", font=f_texto)
-                
-                cor_num = cor_verde if item['total'] > 0 else (150,150,150)
-                d.text((col_x[1], y), str(item['total']), fill=cor_num, anchor="mm", font=f_bold)
-                d.text((col_x[2], y), str(item['cc']), fill=cor_texto, anchor="mm", font=f_texto)
-                d.text((col_x[3], y), item['pct'], fill=cor_texto, anchor="mm", font=f_texto)
-                
+                if vendeu:
+                    # Linha inteira verde para quem vendeu
+                    d.rectangle([(40, ly_top), (W - 40, ly_bot)], fill=cor_verde_linha)
+                    d.rectangle([(40, ly_bot), (W - 40, ly_bot + 1)], fill=cor_borda)
+                else:
+                    if i % 2 == 0:
+                        d.rectangle([(40, ly_top), (W - 40, ly_bot)], fill=cor_azul_claro)
+                    d.rectangle([(40, ly_bot), (W - 40, ly_bot + 1)], fill=cor_borda)
+
+                cor_nome = cor_verde_texto if vendeu else cor_texto
+                cor_num = cor_verde_texto if vendeu else cor_texto_suave
+                d.text((col_x[0], y + (H_LINHA - 8) // 2), str(item.get('nome', ''))[:24], fill=cor_nome, anchor="lm", font=f_texto)
+                d.text((col_x[1], y + (H_LINHA - 8) // 2), str(item.get('total', 0)), fill=cor_num, anchor="mm", font=f_bold)
+                d.text((col_x[2], y + (H_LINHA - 8) // 2), str(item.get('cc', 0)), fill=cor_num, anchor="mm", font=f_texto)
+                d.text((col_x[3], y + (H_LINHA - 8) // 2), str(item.get('pct', '0%')), fill=cor_num, anchor="mm", font=f_texto)
+
                 y += H_LINHA
 
-            # 4. Totais (Rodapé)
-            y_totais = H - 100
-            d.rectangle([(0, y_totais - 40), (W, H)], fill=cor_azul_escuro)
-            
+            # Rodapé
             totais = dados_relatorio.get('totais', {})
-            resumo = f"🏆 TOTAL: {totais['total']}   |   💳 CARTÃO: {totais['cc']} ({totais['pct']})"
-            d.text((W/2, y_totais + 20), resumo, fill="white", anchor="mm", font=f_sub)
+            y_totais = H - 120
+            d.rectangle([(0, y_totais), (W, H)], fill=cor_azul_escuro)
+            resumo = f"🏆 TOTAL: {totais.get('total', 0)}   |   💳 CARTÃO: {totais.get('cc', 0)} ({totais.get('pct', '0%')})"
+            d.text((W / 2, y_totais + 50), resumo, fill="white", anchor="mm", font=f_sub)
 
             buffered = io.BytesIO()
             img.save(buffered, format="PNG")
             img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-            
             return f"data:image/png;base64,{img_str}"
 
         except Exception as e:

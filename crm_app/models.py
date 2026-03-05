@@ -1024,6 +1024,10 @@ class AgendamentoDisparo(models.Model):
     destinatarios = models.TextField(help_text="IDs de grupos ou números separados por vírgula")
     ativo = models.BooleanField(default=True)
     ultimo_disparo = models.DateTimeField(null=True, blank=True)
+    intervalo_minutos = models.PositiveIntegerField(
+        default=60,
+        help_text="Intervalo mínimo em minutos entre envios (ex: 60 = 1x por hora, 30 = a cada 30 min)"
+    )
 
     def __str__(self):
         return f"{self.nome} - {self.get_canal_alvo_display()}"
@@ -2183,6 +2187,9 @@ class ImportacaoEstabelecimentoCNPJ(models.Model):
     uf = models.CharField(max_length=2, db_index=True, blank=True)
     codigo_municipio = models.CharField(max_length=7, db_index=True, blank=True)
 
+    # Município (nome): preenchido por cruzamento CEP -> CepLocalidade ou codigo_municipio -> IBGE
+    nome_municipio = models.CharField(max_length=255, null=True, blank=True, verbose_name='Nome do município')
+
     # Contato
     ddd_telefone_1 = models.CharField(max_length=3, blank=True)
     telefone_1 = models.CharField(max_length=20, blank=True)
@@ -2211,6 +2218,25 @@ class ImportacaoEstabelecimentoCNPJ(models.Model):
 
     def __str__(self):
         return f"{self.cnpj_completo or self.cnpj_raiz} - {self.nome_fantasia or '(sem nome)'}"
+
+
+class CepLocalidade(models.Model):
+    """
+    Base local CEP -> cidade/UF para consulta rápida.
+    Preenchida por importação de CSV (ex.: CEP Aberto, Base dos Dados, etc.).
+    """
+    cep = models.CharField(max_length=8, unique=True, db_index=True, help_text="CEP apenas dígitos (8)")
+    localidade = models.CharField(max_length=255, help_text="Nome do município/cidade")
+    uf = models.CharField(max_length=2, db_index=True, help_text="Sigla UF")
+
+    class Meta:
+        db_table = 'crm_cep_localidade'
+        verbose_name = "CEP Localidade"
+        verbose_name_plural = "CEP Localidades"
+        ordering = ['cep']
+
+    def __str__(self):
+        return f"{self.cep} - {self.localidade}/{self.uf}"
 
 
 class LogImportacaoEstabelecimentoCNPJ(models.Model):

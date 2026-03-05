@@ -12,6 +12,8 @@ logger = logging.getLogger(__name__)
 
 _IBGE_MAP = None
 _IBGE_MAP_LOADED = False
+# Índice opcional: 6 dígitos (2 UF + 4 mun) -> nome, para códigos Receita de 4 dígitos
+_IBGE_MAP_6 = None
 
 
 def _get_data_path():
@@ -70,7 +72,7 @@ def _save_to_file(data):
 
 
 def _load_ibge_municipios():
-    global _IBGE_MAP, _IBGE_MAP_LOADED
+    global _IBGE_MAP, _IBGE_MAP_LOADED, _IBGE_MAP_6
     if _IBGE_MAP_LOADED:
         return
     _IBGE_MAP_LOADED = True
@@ -78,14 +80,28 @@ def _load_ibge_municipios():
     _IBGE_MAP = _load_from_file()
     if _IBGE_MAP:
         logger.info('IBGE municípios carregados do arquivo: %d', len(_IBGE_MAP))
+        # Índice 6 dígitos (2 UF + 4 mun) -> nome (primeiro 7-dig que bate)
+        _IBGE_MAP_6 = {}
+        for k, v in _IBGE_MAP.items():
+            if len(k) == 7 and k.isdigit():
+                key_6 = k[:2] + k[3:7]  # UF + dígitos 3-6 do código (4 dígitos municipais “no meio”)
+                if key_6 not in _IBGE_MAP_6:
+                    _IBGE_MAP_6[key_6] = v
         return
     # 2) Tenta API
     _IBGE_MAP = _load_from_api()
     if _IBGE_MAP:
         logger.info('IBGE municípios carregados da API: %d', len(_IBGE_MAP))
         _save_to_file(_IBGE_MAP)
+        _IBGE_MAP_6 = {}
+        for k, v in _IBGE_MAP.items():
+            if len(k) == 7 and k.isdigit():
+                key_6 = k[:2] + k[3:7]
+                if key_6 not in _IBGE_MAP_6:
+                    _IBGE_MAP_6[key_6] = v
         return
     _IBGE_MAP = {}
+    _IBGE_MAP_6 = {}
     logger.warning('Nenhum dado de municípios IBGE disponível. Rode: python manage.py download_ibge_municipios')
 
 
@@ -140,6 +156,17 @@ def get_nome_municipio_por_codigo(codigo_municipio, uf=None):
         return nome
     try:
         nome = _IBGE_MAP.get(str(int(cod_7)))
+        if nome:
+            return nome
     except ValueError:
         pass
-    return nome
+    # Fallback: Receita às vezes envia só 4 dígitos. Tentar chave 6 dígitos (UF + 4 dígitos).
+    if len(cod_digits) == 4 and uf and _IBGE_MAP_6 is not None:
+        uf_key = (uf or '').strip().lower()[:2]
+        prefix = _UF_PREFIX.get(uf_key)
+        if prefix:
+            key_6 = prefix + cod_digits
+            nome = _IBGE_MAP_6.get(key_6)
+            if nome:
+                return nome
+    return None

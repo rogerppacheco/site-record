@@ -6235,10 +6235,11 @@ class ConfigurarAutomacaoView(APIView):
         elif acao == 'salvar':
             d = request.data.get('dados')
             defaults = {
-                'nome': d['nome'], 'tipo': d['tipo'], 
-                'canal_alvo': d['canal_alvo'], 
-                'destinatarios': d['destinatarios'], 
-                'ativo': d['ativo']
+                'nome': d['nome'], 'tipo': d['tipo'],
+                'canal_alvo': d['canal_alvo'],
+                'destinatarios': d['destinatarios'],
+                'ativo': d['ativo'],
+                'intervalo_minutos': int(d.get('intervalo_minutos', 60) or 60),
             }
             if d.get('id'):
                 AgendamentoDisparo.objects.filter(id=d['id']).update(**defaults)
@@ -6584,7 +6585,7 @@ class CnpjEstabelecimentosCdoiView(APIView):
                         pares_cep_num.add((c, n))
                 dfv_map_cep_num, dfv_map_cep_only = _build_dfv_map_cep_fachada(pares_cep_num)
                 from .ibge_municipios import get_nome_municipio_por_codigo
-                from .services.viacep import get_municipio_por_cep
+                from .services.cep_lookup import get_municipio_por_cep
 
                 if format_type == 'xlsx' or format_type == 'excel':
                     import io
@@ -6654,7 +6655,7 @@ class CnpjEstabelecimentosCdoiView(APIView):
                 pares_cep_num.add((c, n))
         dfv_map_cep_num, dfv_map_cep_only = _build_dfv_map_cep_fachada(pares_cep_num)
         from .ibge_municipios import get_nome_municipio_por_codigo
-        from .services.viacep import get_municipio_por_cep
+        from .services.cep_lookup import get_municipio_por_cep
         cache_cep_municipio = {}
         data = []
         for r in rows:

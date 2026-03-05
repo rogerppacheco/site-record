@@ -116,9 +116,10 @@
         <div class="row g-3 mb-4 p-3 bg-light rounded border">
             <div class="col-12"><h6 class="fw-bold text-primary">Nova Regra de Envio</h6></div>
             <input type="hidden" id="robo-id">
-            <div class="col-md-4"><label class="small fw-bold">Nome da Regra</label><input type="text" id="robo-nome" class="form-control form-control-sm" placeholder="Ex: Hora a Hora PAP"></div>
-            <div class="col-md-3"><label class="small fw-bold">Frequência</label><select id="robo-tipo" class="form-select form-select-sm"><option value="HORARIO">Hora em Hora (9h-19h)</option><option value="SEMANAL">Semanal (Ter/Qui/Sáb 17h)</option></select></div>
-            <div class="col-md-3"><label class="small fw-bold">Canal</label><select id="robo-canal" class="form-select form-select-sm"><option value="TODOS">Todos</option><option value="PAP">PAP</option><option value="DIGITAL">Digital</option><option value="RECEPTIVO">Receptivo</option><option value="PARCEIRO">Parceiro</option></select></div>
+            <div class="col-md-3"><label class="small fw-bold">Nome da Regra</label><input type="text" id="robo-nome" class="form-control form-control-sm" placeholder="Ex: Hora a Hora PAP"></div>
+            <div class="col-md-2"><label class="small fw-bold">Frequência</label><select id="robo-tipo" class="form-select form-select-sm"><option value="HORARIO">Hora em Hora (9h-19h)</option><option value="SEMANAL">Semanal (Ter/Qui/Sáb 17h)</option></select></div>
+            <div class="col-md-2"><label class="small fw-bold">Intervalo (min)</label><select id="robo-intervalo" class="form-select form-select-sm"><option value="15">A cada 15 min</option><option value="30">A cada 30 min</option><option value="60" selected>A cada 1 hora</option><option value="120">A cada 2 horas</option></select></div>
+            <div class="col-md-2"><label class="small fw-bold">Canal</label><select id="robo-canal" class="form-select form-select-sm"><option value="TODOS">Todos</option><option value="PAP">PAP</option><option value="DIGITAL">Digital</option><option value="RECEPTIVO">Receptivo</option><option value="PARCEIRO">Parceiro</option></select></div>
             <div class="col-md-2 d-flex align-items-end"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="robo-ativo" checked><label class="form-check-label small fw-bold">Ativo</label></div></div>
             <div class="col-12"><label class="small fw-bold">Destinatários (Grupos ou Números)</label><div class="input-group input-group-sm"><input type="text" id="robo-destinos" class="form-control" placeholder="12036... , 5531..."><button class="btn btn-outline-secondary" onclick="abrirSeletorGrupos('robo-destinos')">🔍 Buscar Grupos</button></div><small class="text-muted">Separe múltiplos destinos por vírgula.</small></div>
             <div class="col-12 text-end"><button class="btn btn-primary btn-sm" onclick="salvarRegraRobo()"><i class="bi bi-save"></i> Salvar Regra</button></div>
@@ -126,7 +127,7 @@
 
         <h6 class="fw-bold mb-2">Regras Ativas</h6>
         <div class="table-responsive"><table class="table table-sm table-hover border">
-            <thead class="table-light"><tr><th>Nome</th><th>Tipo</th><th>Canal</th><th>Destinos</th><th>Status</th><th>Ações</th></tr></thead>
+            <thead class="table-light"><tr><th>Nome</th><th>Tipo</th><th>Intervalo</th><th>Canal</th><th>Destinos</th><th>Status</th><th>Ações</th></tr></thead>
             <tbody id="lista-regras-robo"></tbody>
         </table></div>
 
@@ -284,14 +285,16 @@
 
         async function carregarRegrasRobo() {
             const tb = document.getElementById('lista-regras-robo');
-            tb.innerHTML = '<tr><td colspan="6" class="text-center">Carregando...</td></tr>';
+            tb.innerHTML = '<tr><td colspan="7" class="text-center">Carregando...</td></tr>';
             try {
                 const res = await axios.post('/api/crm/automacao-performance/', { acao: 'listar' }, { headers: { 'Authorization': `Bearer ${token}` }});
                 tb.innerHTML = '';
                 res.data.forEach(r => {
+                    const intervalo = r.intervalo_minutos != null ? (r.intervalo_minutos >= 60 ? (r.intervalo_minutos/60) + 'h' : r.intervalo_minutos + ' min') : '1h';
                     tb.innerHTML += `<tr>
                         <td>${r.nome}</td>
                         <td>${r.tipo}</td>
+                        <td>${intervalo}</td>
                         <td>${r.canal_alvo}</td>
                         <td class="text-truncate" style="max-width: 100px;">${r.destinatarios}</td>
                         <td>${r.ativo ? '<span class="badge bg-success">ON</span>' : '<span class="badge bg-secondary">OFF</span>'}</td>
@@ -301,7 +304,7 @@
                         </td>
                     </tr>`;
                 });
-            } catch(e) { tb.innerHTML = '<tr><td colspan="6" class="text-danger">Erro ao carregar regras.</td></tr>'; }
+            } catch(e) { tb.innerHTML = '<tr><td colspan="7" class="text-danger">Erro ao carregar regras.</td></tr>'; }
         }
 
         async function salvarRegraRobo() {
@@ -311,7 +314,8 @@
                 tipo: document.getElementById('robo-tipo').value,
                 canal_alvo: document.getElementById('robo-canal').value,
                 destinatarios: document.getElementById('robo-destinos').value,
-                ativo: document.getElementById('robo-ativo').checked
+                ativo: document.getElementById('robo-ativo').checked,
+                intervalo_minutos: parseInt(document.getElementById('robo-intervalo').value, 10) || 60
             };
             if(!dados.nome || !dados.destinatarios) return alert("Preencha Nome e Destinatários.");
             await axios.post('/api/crm/automacao-performance/', { acao: 'salvar', dados }, { headers: { 'Authorization': `Bearer ${token}` }});
@@ -329,6 +333,9 @@
             document.getElementById('robo-canal').value = r.canal_alvo;
             document.getElementById('robo-destinos').value = r.destinatarios;
             document.getElementById('robo-ativo').checked = r.ativo;
+            const sel = document.getElementById('robo-intervalo');
+            const val = (r.intervalo_minutos != null && [15, 30, 60, 120].includes(Number(r.intervalo_minutos))) ? String(r.intervalo_minutos) : '60';
+            sel.value = val;
         }
 
         async function excluirRegra(id) {

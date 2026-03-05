@@ -5,6 +5,7 @@ from .models import (
     ImportacaoChurn, LogImportacaoChurn, PapBoEmUso, FilaEsperaPAP,
     RegraComissaoFaixa, ConfigComissaoVendedor,
     ImportacaoEstabelecimentoCNPJ, LogImportacaoEstabelecimentoCNPJ,
+    CepLocalidade,
 )
 
 
@@ -299,6 +300,14 @@ class ImportacaoEstabelecimentoCNPJAdmin(admin.ModelAdmin):
     search_fields = ('cnpj_completo', 'cnpj_raiz', 'nome_fantasia', 'logradouro', 'bairro')
     list_per_page = 50
     ordering = ['-importada_em']
+
+
+@admin.register(CepLocalidade)
+class CepLocalidadeAdmin(admin.ModelAdmin):
+    list_display = ('cep', 'localidade', 'uf')
+    search_fields = ('cep', 'localidade', 'uf')
+    list_filter = ('uf',)
+    ordering = ['cep']
 
 
 @admin.register(LogImportacaoEstabelecimentoCNPJ)
