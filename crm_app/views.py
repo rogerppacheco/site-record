@@ -6241,6 +6241,8 @@ class ConfigurarAutomacaoView(APIView):
                 'destinatarios': d['destinatarios'],
                 'ativo': d['ativo'],
                 'intervalo_minutos': int(d.get('intervalo_minutos', 60) or 60),
+                'hora_fim': int(d.get('hora_fim', 19) or 19),
+                'tipo_relatorio': (d.get('tipo_relatorio') or 'HOJE').strip() or 'HOJE',
             }
             if d.get('id'):
                 AgendamentoDisparo.objects.filter(id=d['id']).update(**defaults)

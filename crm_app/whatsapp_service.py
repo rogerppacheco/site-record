@@ -515,20 +515,63 @@ class WhatsAppService:
     def listar_grupos(self):
         """
         Retorna a lista de grupos que o número conectado participa.
+        Usa paginação da Z-API (page, pageSize) para trazer todos os grupos.
+        Se a API não suportar paginação, tenta uma única chamada sem parâmetros.
         """
-        url = f"{self.base_url}/groups"
-        data = self._send_request(url, method='GET')
-        
-        # Tratamento de retorno variado da Z-API
+        page_size = 100
+        page = 1
+        todos = []
+        url_com_params = f"{self.base_url}/groups?page={page}&pageSize={page_size}"
+        data = self._send_request(url_com_params, method='GET')
+        # Se retornar erro ou estrutura sem lista, tenta sem paginação (API antiga)
+        if not data or (isinstance(data, dict) and 'error' in data):
+            data = self._send_request(f"{self.base_url}/groups", method='GET')
         if data:
             if isinstance(data, list):
-                return data
+                todos = data
             elif isinstance(data, dict) and 'response' in data:
-                return data['response']
+                r = data['response']
+                todos = r if isinstance(r, list) else []
             elif isinstance(data, dict) and 'groups' in data:
-                return data['groups']
-        
-        return []
+                g = data['groups']
+                todos = g if isinstance(g, list) else []
+        # Se temos uma lista e ela veio da primeira página com paginação, buscar próximas páginas
+        if todos and len(todos) == page_size:
+            page = 2
+            while True:
+                url = f"{self.base_url}/groups?page={page}&pageSize={page_size}"
+                chunk_data = self._send_request(url, method='GET')
+                chunk = []
+                if chunk_data:
+                    if isinstance(chunk_data, list):
+                        chunk = chunk_data
+                    elif isinstance(chunk_data, dict) and 'response' in chunk_data:
+                        r = chunk_data['response']
+                        chunk = r if isinstance(r, list) else []
+                    elif isinstance(chunk_data, dict) and 'groups' in chunk_data:
+                        g = chunk_data['groups']
+                        chunk = g if isinstance(g, list) else []
+                if not chunk:
+                    break
+                todos.extend(chunk)
+                if len(chunk) < page_size:
+                    break
+                page += 1
+                if page > 50:
+                    break
+        # Formata e remove duplicatas por id
+        seen = set()
+        lista_formatada = []
+        for g in todos:
+            if not isinstance(g, dict):
+                continue
+            g_id = g.get('id') or g.get('phone') or g.get('chatId')
+            if not g_id or g_id in seen:
+                continue
+            seen.add(g_id)
+            g_name = g.get('name') or g.get('subject') or g.get('contactName') or 'Sem Nome'
+            lista_formatada.append({'id': str(g_id), 'name': g_name})
+        return lista_formatada
 
     # ---------------------------------------------------------
     # 6. FUNÇÕES LEGADAS / AUXILIARES

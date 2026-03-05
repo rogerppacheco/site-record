@@ -1034,6 +1034,21 @@ class AgendamentoDisparo(models.Model):
         default=60,
         help_text="Intervalo mínimo em minutos entre envios (ex: 60 = 1x por hora, 30 = a cada 30 min)"
     )
+    hora_fim = models.PositiveSmallIntegerField(
+        default=19,
+        help_text="Horário máximo (0-23) para envio na frequência diária. Ex: 19 = até 19h59."
+    )
+    TIPO_RELATORIO_CHOICES = [
+        ('HOJE', 'Hoje'),
+        ('SEMANAL', 'Semanal'),
+        ('MENSAL', 'Mensal'),
+    ]
+    tipo_relatorio = models.CharField(
+        max_length=10,
+        choices=TIPO_RELATORIO_CHOICES,
+        default='HOJE',
+        help_text="Qual relatório enviar: Hoje, Semanal ou Mensal."
+    )
 
     def __str__(self):
         return f"{self.nome} - {self.get_canal_alvo_display()}"

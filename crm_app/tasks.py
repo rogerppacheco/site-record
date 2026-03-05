@@ -1,4 +1,5 @@
 import logging
+from datetime import timedelta
 from django.utils import timezone
 from django.db.models import Count, Q
 from django.contrib.auth import get_user_model
@@ -6,6 +7,13 @@ from .models import Venda, AgendamentoDisparo, LogEnvioPerformance
 from .whatsapp_service import WhatsAppService
 
 logger = logging.getLogger(__name__)
+
+def _filtro_cc():
+    return (
+        Q(vendas__forma_pagamento__nome__icontains='CREDIT') |
+        Q(vendas__forma_pagamento__nome__icontains='CRÉDIT') |
+        (Q(vendas__forma_pagamento__nome__icontains='CARTA') & ~Q(vendas__forma_pagamento__nome__icontains='DEBIT'))
+    )
 
 def processar_envio_performance():
     """Lógica principal chamada pelo Scheduler"""
@@ -37,13 +45,14 @@ def processar_envio_performance():
                 pass
 
         # --- VERIFICAÇÃO DE HORÁRIO (janela permitida) ---
-        # Para HORARIO: janela ampla; o intervalo_minutos controla a frequência (ex: 15 min)
+        hora_fim = getattr(regra, 'hora_fim', 19) or 19
         if regra.tipo == 'HORARIO':
-            if dia_sem in [0, 1, 2, 3, 4]:  # Seg-Sex: 8h30 até 17h59
-                if (hora == 8 and minuto >= 30) or (9 <= hora <= 17):
+            if dia_sem in [0, 1, 2, 3, 4]:  # Seg-Sex: 8h30 até hora_fim
+                if (hora == 8 and minuto >= 30) or (9 <= hora <= hora_fim):
                     enviar = True
-            elif dia_sem == 5:  # Sábado: 9h até 12h59
-                if 9 <= hora <= 12:
+            elif dia_sem == 5:  # Sábado: 9h até 12h59 (ou hora_fim se menor)
+                fim_sab = min(12, hora_fim)
+                if 9 <= hora <= fim_sab:
                     enviar = True
         elif regra.tipo == 'SEMANAL':
             if dia_sem in [1, 3, 5] and hora == 17 and minuto == 0:
@@ -51,46 +60,86 @@ def processar_envio_performance():
 
         if enviar:
             try:
-                # 1. Coletar Dados do Banco
                 hoje = agora.date()
+                inicio_semana = hoje - timedelta(days=hoje.weekday())
+                dias_semana = [inicio_semana + timedelta(days=i) for i in range(6)]
+                inicio_mes = hoje.replace(day=1)
+
                 users = User.objects.filter(is_active=True).exclude(username__in=['OSAB_IMPORT', 'admin', 'root'])
-                
                 if regra.canal_alvo != 'TODOS':
                     users = users.filter(canal__iexact=regra.canal_alvo)
-
                 if getattr(regra, 'cluster_alvo', None) and str(regra.cluster_alvo).strip() and str(regra.cluster_alvo).upper() != 'TODOS':
                     users = users.filter(cluster__iexact=regra.cluster_alvo.strip())
 
-                filtro = Q(vendas__ativo=True, vendas__data_abertura__date=hoje)
-                qs = users.annotate(
-                    total=Count('vendas', filter=filtro),
-                    cc=Count('vendas', filter=filtro & (Q(vendas__forma_pagamento__nome__icontains='CREDIT') | Q(vendas__forma_pagamento__nome__icontains='CARTA')))
-                ).filter(total__gt=0).order_by('username')  # Ordem alfabética
+                filtro_os = Q(vendas__ativo=True) & ~Q(vendas__ordem_servico='') & Q(vendas__ordem_servico__isnull=False)
+                filtro_cc = _filtro_cc()
+                filtro_inst = Q(vendas__status_esteira__nome__iexact='INSTALADA')
+                tipo_rel = getattr(regra, 'tipo_relatorio', 'HOJE') or 'HOJE'
 
-                if not qs.exists():
-                    logger.info(f"Sem vendas para regra {regra.nome} - pulando envio")
-                    continue
-
-                # 2. Formatar para o Gerador de Imagem
                 lista_dados = []
                 t_total = 0
                 t_cc = 0
-                
-                for u in qs:
-                    pct = int((u.cc / u.total * 100)) if u.total > 0 else 0
-                    lista_dados.append({
-                        'nome': u.username.upper(),
-                        'total': u.total,
-                        'cc': u.cc,
-                        'pct': f"{pct}%"
-                    })
-                    t_total += u.total
-                    t_cc += u.cc
-                
+                titulo_extra = ""
+
+                if tipo_rel == 'HOJE':
+                    filtro = filtro_os & Q(vendas__data_abertura__date=hoje)
+                    qs = users.annotate(
+                        total=Count('vendas', filter=filtro),
+                        cc=Count('vendas', filter=filtro & filtro_cc)
+                    ).filter(total__gt=0).order_by('username')
+                    if not qs.exists():
+                        logger.info(f"Sem vendas (hoje) para regra {regra.nome} - pulando envio")
+                        continue
+                    titulo_extra = " HOJE"
+                    for u in qs:
+                        pct = int((u.cc / u.total * 100)) if u.total > 0 else 0
+                        lista_dados.append({'nome': u.username.upper(), 'total': u.total, 'cc': u.cc, 'pct': f"{pct}%"})
+                        t_total += u.total
+                        t_cc += u.cc
+
+                elif tipo_rel == 'SEMANAL':
+                    qs_semana = users.annotate(
+                        seg=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date=dias_semana[0])),
+                        ter=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date=dias_semana[1])),
+                        qua=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date=dias_semana[2])),
+                        qui=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date=dias_semana[3])),
+                        sex=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date=dias_semana[4])),
+                        sab=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date=dias_semana[5])),
+                        total_semana=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date__gte=inicio_semana)),
+                        total_cc=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date__gte=inicio_semana) & filtro_cc)
+                    ).filter(total_semana__gt=0).order_by('username').values('username', 'total_semana', 'total_cc')
+                    if not qs_semana.exists():
+                        logger.info(f"Sem vendas (semana) para regra {regra.nome} - pulando envio")
+                        continue
+                    titulo_extra = " SEMANAL"
+                    for u in qs_semana:
+                        tot = u['total_semana']
+                        cc = u['total_cc']
+                        pct = int((cc / tot * 100)) if tot > 0 else 0
+                        lista_dados.append({'nome': u['username'].upper(), 'total': tot, 'cc': cc, 'pct': f"{pct}%"})
+                        t_total += tot
+                        t_cc += cc
+
+                else:  # MENSAL
+                    qs_mes = users.annotate(
+                        total_vendas=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date__gte=inicio_mes)),
+                        total_cc=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date__gte=inicio_mes) & filtro_cc)
+                    ).filter(total_vendas__gt=0).order_by('username').values('username', 'total_vendas', 'total_cc')
+                    if not qs_mes.exists():
+                        logger.info(f"Sem vendas (mês) para regra {regra.nome} - pulando envio")
+                        continue
+                    titulo_extra = " MENSAL"
+                    for u in qs_mes:
+                        tot = u['total_vendas']
+                        cc = u['total_cc']
+                        pct = int((cc / tot * 100)) if tot > 0 else 0
+                        lista_dados.append({'nome': u['username'].upper(), 'total': tot, 'cc': cc, 'pct': f"{pct}%"})
+                        t_total += tot
+                        t_cc += cc
+
                 pct_geral = int((t_cc / t_total * 100)) if t_total > 0 else 0
-                
                 payload_imagem = {
-                    'titulo': f"PERFORMANCE {regra.get_canal_alvo_display().upper()}",
+                    'titulo': f"PERFORMANCE {regra.get_canal_alvo_display().upper()}{titulo_extra}",
                     'data': hoje.strftime('%d/%m/%Y'),
                     'lista': lista_dados,
                     'totais': {'total': t_total, 'cc': t_cc, 'pct': f"{pct_geral}%"}
