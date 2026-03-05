@@ -3830,11 +3830,11 @@ class ControleTTTratadoAPIView(APIView):
         marcacoes = list(
             ControleTTDiaTratado.objects
             .filter(data__gte=primeiro, data__lte=ultima_data)
-            .values_list('matricula_vendedor', 'data')
+            .values_list('matricula_vendedor', 'data', 'tipo')
         )
         return Response({
             'mes': primeiro.strftime('%Y-%m'),
-            'marcacoes': [{'matricula_vendedor': m, 'data': d.isoformat()} for m, d in marcacoes],
+            'marcacoes': [{'matricula_vendedor': m, 'data': d.isoformat(), 'tipo': t or 'tratado'} for m, d, t in marcacoes],
         })
 
     def post(self, request):
@@ -3843,6 +3843,9 @@ class ControleTTTratadoAPIView(APIView):
 
         mat = request.data.get('matricula_vendedor')
         data_str = request.data.get('data')  # YYYY-MM-DD
+        tipo = request.data.get('tipo', 'tratado')
+        if tipo not in (ControleTTDiaTratado.TIPO_TRATADO, ControleTTDiaTratado.TIPO_NAO_VENDAS):
+            tipo = ControleTTDiaTratado.TIPO_TRATADO
         if not mat or not data_str:
             return Response({'error': 'matricula_vendedor e data são obrigatórios.'}, status=400)
         try:
@@ -3853,9 +3856,9 @@ class ControleTTTratadoAPIView(APIView):
         obj, created = ControleTTDiaTratado.objects.update_or_create(
             matricula_vendedor=mat.strip(),
             data=data_obj,
-            defaults={'usuario': request.user},
+            defaults={'usuario': request.user, 'tipo': tipo},
         )
-        return Response({'tratado': True, 'created': created})
+        return Response({'tipo': obj.tipo, 'created': created})
 
     def delete(self, request):
         if not is_member(request.user, ['BackOffice', 'Diretoria', 'Admin']):

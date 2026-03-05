@@ -378,9 +378,16 @@ class ImportacaoOsab(models.Model):
 
 
 class ControleTTDiaTratado(models.Model):
-    """Registro de que o BO marcou uma venda naquele dia para aquele vendedor (TT)."""
+    """Marcação por (TT, dia): positivo = venda registrada, negativo = não foi possível ter vendas."""
+    TIPO_TRATADO = 'tratado'
+    TIPO_NAO_VENDAS = 'nao_vendas'
+    TIPO_CHOICES = [
+        (TIPO_TRATADO, 'Venda registrada no dia'),
+        (TIPO_NAO_VENDAS, 'Não foi possível ter vendas no dia'),
+    ]
     matricula_vendedor = models.CharField(max_length=50, db_index=True)
     data = models.DateField(db_index=True)
+    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, default=TIPO_TRATADO)
     usuario = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -398,7 +405,7 @@ class ControleTTDiaTratado(models.Model):
         ordering = ['-data', 'matricula_vendedor']
 
     def __str__(self):
-        return f"{self.matricula_vendedor} em {self.data}"
+        return f"{self.matricula_vendedor} em {self.data} ({self.tipo})"
 
 
 class CicloPagamento(models.Model):

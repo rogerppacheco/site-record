@@ -29,6 +29,7 @@
         .grid-mes .dia-header { background: #e9ecef; font-weight: 600; min-width: 32px; }
         .grid-mes .tt-cell { background: #fff; border: 1px solid #dee2e6; cursor: pointer; }
         .grid-mes .tratado { background: #d4edda !important; }
+        .grid-mes .nao-vendas { background: #f8d7da !important; }
         .col-hoje { width: 90px; text-align: center; vertical-align: middle; }
         .col-hoje .tt-marca-hoje { cursor: pointer; padding: 4px 8px; border-radius: 6px; }
         .col-hoje .tt-marca-hoje:hover { background: #e7f1ff; }
@@ -105,7 +106,7 @@
 
             <!-- Aba 2: Grid do mês -->
             <div class="tab-pane fade" id="painel-mes" role="tabpanel">
-                <p class="text-muted small mb-2">Clique na célula do dia para marcar ou desmarcar que registrou venda para aquele TT naquele dia.</p>
+                <p class="text-muted small mb-2">Clique na célula para alternar: <span class="text-muted">sem marca</span> → <span class="text-success">✓ venda registrada</span> → <span class="text-danger">✗ não foi possível ter vendas</span> → sem marca.</p>
                 <div class="grid-mes" id="grid-mes-container">
                     <p class="text-muted">Altere para esta aba após carregar os dados na aba Controle de TT's.</p>
                 </div>
@@ -178,10 +179,12 @@
                 const ultimaStr = item.ultima_venda ? new Date(item.ultima_venda + 'T12:00:00').toLocaleDateString('pt-BR') : '-';
                 const diasStr = dias !== null && dias !== undefined ? String(dias) : '-';
                 const keyHoje = item.matricula_vendedor + '|' + hojeStr;
-                const marcadoHoje = marcacoesMes[keyHoje];
+                const tipoHoje = marcacoesMes[keyHoje];
                 html += '<tr><td>' + escapeHtml(item.matricula_vendedor) + '</td><td>' + ultimaStr + '</td>';
-                html += '<td class="col-hoje"><span class="tt-marca-hoje" data-mat="' + escapeHtml(item.matricula_vendedor) + '" data-data="' + hojeStr + '" onclick="handleTratadoClick(this)" title="Clique para marcar/desmarcar venda registrada hoje">';
-                html += marcadoHoje ? '<i class="bi bi-check-lg text-success"></i>' : '<span class="text-muted">-</span>';
+                html += '<td class="col-hoje"><span class="tt-marca-hoje" data-mat="' + escapeHtml(item.matricula_vendedor) + '" data-data="' + hojeStr + '" onclick="handleTratadoClick(this)" title="Clique para alternar: sem marca → venda registrada → não foi possível vendas → sem marca">';
+                if (tipoHoje === 'tratado') html += '<i class="bi bi-check-lg text-success"></i>';
+                else if (tipoHoje === 'nao_vendas') html += '<i class="bi bi-x-lg text-danger"></i>';
+                else html += '<span class="text-muted">-</span>';
                 html += '</span></td><td class="' + cls + '">' + diasStr + '</td></tr>';
             });
             if (!html) html = '<tr><td colspan="4" class="text-center text-muted">Nenhum TT encontrado nos últimos 2 meses na base OSAB.</td></tr>';
@@ -211,7 +214,7 @@
                 marcacoesMes = {};
                 (data.marcacoes || []).forEach(m => {
                     const k = m.matricula_vendedor + '|' + m.data;
-                    marcacoesMes[k] = true;
+                    marcacoesMes[k] = m.tipo || 'tratado';
                 });
             } catch (_) {}
         }
@@ -222,11 +225,19 @@
             if (mat && dataStr) toggleTratado(mat, dataStr);
         }
 
+        /** Ciclo: sem marca → tratado (venda registrada) → nao_vendas (não foi possível) → sem marca */
+        function proximoTipo(current) {
+            if (!current || current === 'nao_vendas') return null;
+            if (current === 'tratado') return 'nao_vendas';
+            return 'tratado';
+        }
+
         async function toggleTratado(matricula, dataStr) {
             const key = matricula + '|' + dataStr;
-            const estaMarcado = marcacoesMes[key];
+            const atual = marcacoesMes[key];
+            const proximo = atual ? proximoTipo(atual) : 'tratado';
             try {
-                if (estaMarcado) {
+                if (proximo === null) {
                     const res = await fetch('/api/crm/controle-tts/tratado/?matricula_vendedor=' + encodeURIComponent(matricula) + '&data=' + dataStr, {
                         method: 'DELETE',
                         headers: getHeaders()
@@ -237,10 +248,10 @@
                     const res = await fetch('/api/crm/controle-tts/tratado/', {
                         method: 'POST',
                         headers: getHeaders(),
-                        body: JSON.stringify({ matricula_vendedor: matricula, data: dataStr })
+                        body: JSON.stringify({ matricula_vendedor: matricula, data: dataStr, tipo: proximo })
                     });
                     if (!res.ok) throw new Error(await res.text());
-                    marcacoesMes[key] = true;
+                    marcacoesMes[key] = proximo;
                 }
                 const hojeStr = getHojeISO();
                 if (dataStr === hojeStr && listaTTs.length) montarTabelaComHoje();
@@ -278,10 +289,12 @@
                             for (let dia = 1; dia <= ultimoDia; dia++) {
                                 const dataStr = ano + '-' + String(mes + 1).padStart(2, '0') + '-' + String(dia).padStart(2, '0');
                                 const key = mat + '|' + dataStr;
-                                const tratado = marcacoesMes[key];
-                                const cls = tratado ? 'tratado' : '';
-                                html += '<td class="tt-cell ' + cls + '" data-mat="' + escapeHtml(mat) + '" data-data="' + dataStr + '" onclick="handleTratadoClick(this)" title="' + (tratado ? 'Desmarcar' : 'Marcar venda registrada') + '">';
-                                html += tratado ? '<i class="bi bi-check-lg text-success"></i>' : '<span class="text-muted">-</span>';
+                                const tipo = marcacoesMes[key];
+                                const cls = tipo === 'tratado' ? 'tratado' : (tipo === 'nao_vendas' ? 'nao-vendas' : '');
+                                html += '<td class="tt-cell ' + cls + '" data-mat="' + escapeHtml(mat) + '" data-data="' + dataStr + '" onclick="handleTratadoClick(this)" title="Clique para alternar: sem marca → venda registrada → não foi possível vendas → sem marca">';
+                                if (tipo === 'tratado') html += '<i class="bi bi-check-lg text-success"></i>';
+                                else if (tipo === 'nao_vendas') html += '<i class="bi bi-x-lg text-danger"></i>';
+                                else html += '<span class="text-muted">-</span>';
                                 html += '</td>';
                             }
                             html += '</tr>';
