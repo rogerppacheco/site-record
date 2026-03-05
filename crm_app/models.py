@@ -1021,6 +1021,12 @@ class AgendamentoDisparo(models.Model):
     nome = models.CharField(max_length=100)
     tipo = models.CharField(max_length=20, choices=TIPOS)
     canal_alvo = models.CharField(max_length=20, choices=CANAL_OPCOES, default='TODOS')
+    cluster_alvo = models.CharField(
+        max_length=50,
+        blank=True,
+        default='',
+        help_text="Filtro por cluster (vazio ou TODOS = todos). Ex: CLUSTER_1, CLUSTER_2, CLUSTER_3"
+    )
     destinatarios = models.TextField(help_text="IDs de grupos ou números separados por vírgula")
     ativo = models.BooleanField(default=True)
     ultimo_disparo = models.DateTimeField(null=True, blank=True)

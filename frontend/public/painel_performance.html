@@ -120,6 +120,7 @@
             <div class="col-md-2"><label class="small fw-bold">Frequência</label><select id="robo-tipo" class="form-select form-select-sm"><option value="HORARIO">Hora em Hora (9h-19h)</option><option value="SEMANAL">Semanal (Ter/Qui/Sáb 17h)</option></select></div>
             <div class="col-md-2"><label class="small fw-bold">Intervalo (min)</label><select id="robo-intervalo" class="form-select form-select-sm"><option value="15">A cada 15 min</option><option value="30">A cada 30 min</option><option value="60" selected>A cada 1 hora</option><option value="120">A cada 2 horas</option></select></div>
             <div class="col-md-2"><label class="small fw-bold">Canal</label><select id="robo-canal" class="form-select form-select-sm"><option value="TODOS">Todos</option><option value="PAP">PAP</option><option value="DIGITAL">Digital</option><option value="RECEPTIVO">Receptivo</option><option value="PARCEIRO">Parceiro</option></select></div>
+            <div class="col-md-2"><label class="small fw-bold">Cluster</label><select id="robo-cluster" class="form-select form-select-sm"><option value="">Todos</option><option value="CLUSTER_1">CLUSTER 1</option><option value="CLUSTER_2">CLUSTER 2</option><option value="CLUSTER_3">CLUSTER 3</option></select></div>
             <div class="col-md-2 d-flex align-items-end"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="robo-ativo" checked><label class="form-check-label small fw-bold">Ativo</label></div></div>
             <div class="col-12"><label class="small fw-bold">Destinatários (Grupos ou Números)</label><div class="input-group input-group-sm"><input type="text" id="robo-destinos" class="form-control" placeholder="12036... , 5531..."><button class="btn btn-outline-secondary" onclick="abrirSeletorGrupos('robo-destinos')">🔍 Buscar Grupos</button></div><small class="text-muted">Separe múltiplos destinos por vírgula.</small></div>
             <div class="col-12 text-end"><button class="btn btn-primary btn-sm" onclick="salvarRegraRobo()"><i class="bi bi-save"></i> Salvar Regra</button></div>
@@ -127,7 +128,7 @@
 
         <h6 class="fw-bold mb-2">Regras Ativas</h6>
         <div class="table-responsive"><table class="table table-sm table-hover border">
-            <thead class="table-light"><tr><th>Nome</th><th>Tipo</th><th>Intervalo</th><th>Canal</th><th>Destinos</th><th>Status</th><th>Ações</th></tr></thead>
+            <thead class="table-light"><tr><th>Nome</th><th>Tipo</th><th>Intervalo</th><th>Canal</th><th>Cluster</th><th>Destinos</th><th>Status</th><th>Ações</th></tr></thead>
             <tbody id="lista-regras-robo"></tbody>
         </table></div>
 
@@ -316,17 +317,19 @@
 
         async function carregarRegrasRobo() {
             const tb = document.getElementById('lista-regras-robo');
-            tb.innerHTML = '<tr><td colspan="7" class="text-center">Carregando...</td></tr>';
+            tb.innerHTML = '<tr><td colspan="8" class="text-center">Carregando...</td></tr>';
             try {
                 const res = await axios.post('/api/crm/automacao-performance/', { acao: 'listar' }, { headers: { 'Authorization': `Bearer ${token}` }});
                 tb.innerHTML = '';
                 res.data.forEach(r => {
                     const intervalo = r.intervalo_minutos != null ? (r.intervalo_minutos >= 60 ? (r.intervalo_minutos/60) + 'h' : r.intervalo_minutos + ' min') : '1h';
+                    const cluster = (r.cluster_alvo || '') ? r.cluster_alvo : 'Todos';
                     tb.innerHTML += `<tr>
                         <td>${r.nome}</td>
                         <td>${r.tipo}</td>
                         <td>${intervalo}</td>
                         <td>${r.canal_alvo}</td>
+                        <td>${cluster}</td>
                         <td class="text-truncate" style="max-width: 100px;">${r.destinatarios}</td>
                         <td>${r.ativo ? '<span class="badge bg-success">ON</span>' : '<span class="badge bg-secondary">OFF</span>'}</td>
                         <td>
@@ -335,7 +338,7 @@
                         </td>
                     </tr>`;
                 });
-            } catch(e) { tb.innerHTML = '<tr><td colspan="7" class="text-danger">Erro ao carregar regras.</td></tr>'; }
+            } catch(e) { tb.innerHTML = '<tr><td colspan="8" class="text-danger">Erro ao carregar regras.</td></tr>'; }
         }
 
         async function salvarRegraRobo() {
@@ -344,6 +347,7 @@
                 nome: document.getElementById('robo-nome').value,
                 tipo: document.getElementById('robo-tipo').value,
                 canal_alvo: document.getElementById('robo-canal').value,
+                cluster_alvo: document.getElementById('robo-cluster').value || '',
                 destinatarios: document.getElementById('robo-destinos').value,
                 ativo: document.getElementById('robo-ativo').checked,
                 intervalo_minutos: parseInt(document.getElementById('robo-intervalo').value, 10) || 60
@@ -362,6 +366,7 @@
             document.getElementById('robo-nome').value = r.nome;
             document.getElementById('robo-tipo').value = r.tipo;
             document.getElementById('robo-canal').value = r.canal_alvo;
+            document.getElementById('robo-cluster').value = r.cluster_alvo || '';
             document.getElementById('robo-destinos').value = r.destinatarios;
             document.getElementById('robo-ativo').checked = r.ativo;
             const sel = document.getElementById('robo-intervalo');
@@ -371,8 +376,14 @@
 
         async function excluirRegra(id) {
             if(!confirm("Excluir esta regra?")) return;
-            await axios.post('/api/crm/automacao-performance/', { acao: 'excluir', id }, { headers: { 'Authorization': `Bearer ${token}` }});
-            carregarRegrasRobo();
+            try {
+                await axios.post('/api/crm/automacao-performance/', { acao: 'excluir', id }, { headers: { 'Authorization': `Bearer ${token}` }});
+                carregarRegrasRobo();
+            } catch (e) {
+                const msg = e.response?.data?.error || e.message;
+                alert(msg || 'Erro ao excluir.');
+                if (e.response?.status === 503) carregarRegrasRobo();
+            }
         }
 
         // --- SELETOR DE GRUPOS MÚLTIPLOS ---

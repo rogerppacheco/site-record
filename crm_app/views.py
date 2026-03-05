@@ -6237,6 +6237,7 @@ class ConfigurarAutomacaoView(APIView):
             defaults = {
                 'nome': d['nome'], 'tipo': d['tipo'],
                 'canal_alvo': d['canal_alvo'],
+                'cluster_alvo': (d.get('cluster_alvo') or '').strip() or '',
                 'destinatarios': d['destinatarios'],
                 'ativo': d['ativo'],
                 'intervalo_minutos': int(d.get('intervalo_minutos', 60) or 60),
@@ -6248,25 +6249,37 @@ class ConfigurarAutomacaoView(APIView):
             return Response({'ok': True})
             
         elif acao == 'excluir':
-            AgendamentoDisparo.objects.filter(id=request.data.get('id')).delete()
+            try:
+                AgendamentoDisparo.objects.filter(id=request.data.get('id')).delete()
+            except Exception as e:
+                from django.db.utils import ProgrammingError
+                if isinstance(e, ProgrammingError) and 'logenvioperformance' in str(e).lower():
+                    return Response({
+                        'error': 'Tabela de histórico de envio não existe. Execute no servidor: python manage.py migrate crm_app'
+                    }, status=503)
+                raise
             return Response({'ok': True})
 
         elif acao == 'historico':
             from django.utils import timezone
-            hoje = timezone.localtime(timezone.now()).date()
-            logs = LogEnvioPerformance.objects.filter(
-                data_hora__date=hoje
-            ).order_by('-data_hora')[:100]
-            return Response([{
-                'id': l.id,
-                'regra_nome': l.regra_nome,
-                'data_hora': l.data_hora.isoformat() if l.data_hora else None,
-                'sucesso': l.sucesso,
-                'total_destinos': l.total_destinos,
-                'sucessos': l.sucessos,
-                'falhas': l.falhas,
-                'detalhe': l.detalhe or '',
-            } for l in logs])
+            from django.db.utils import ProgrammingError
+            try:
+                hoje = timezone.localtime(timezone.now()).date()
+                logs = LogEnvioPerformance.objects.filter(
+                    data_hora__date=hoje
+                ).order_by('-data_hora')[:100]
+                return Response([{
+                    'id': l.id,
+                    'regra_nome': l.regra_nome,
+                    'data_hora': l.data_hora.isoformat() if l.data_hora else None,
+                    'sucesso': l.sucesso,
+                    'total_destinos': l.total_destinos,
+                    'sucessos': l.sucessos,
+                    'falhas': l.falhas,
+                    'detalhe': l.detalhe or '',
+                } for l in logs])
+            except ProgrammingError:
+                return Response([])
 
         return Response({'error': 'Ação inválida'}, status=400)
 class CdoiCreateView(APIView):

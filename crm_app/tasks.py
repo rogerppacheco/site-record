@@ -31,6 +31,7 @@ def processar_envio_performance():
             try:
                 diff_minutos = (agora - regra.ultimo_disparo).total_seconds() / 60.0
                 if diff_minutos < intervalo_min:
+                    logger.info(f"⏳ Regra '{regra.nome}': aguardando intervalo ({diff_minutos:.0f} min < {intervalo_min} min)")
                     continue  # Ainda não passou o intervalo, pula esta regra
             except (TypeError, AttributeError):
                 pass
@@ -56,6 +57,9 @@ def processar_envio_performance():
                 
                 if regra.canal_alvo != 'TODOS':
                     users = users.filter(canal__iexact=regra.canal_alvo)
+
+                if getattr(regra, 'cluster_alvo', None) and str(regra.cluster_alvo).strip() and str(regra.cluster_alvo).upper() != 'TODOS':
+                    users = users.filter(cluster__iexact=regra.cluster_alvo.strip())
 
                 filtro = Q(vendas__ativo=True, vendas__data_abertura__date=hoje)
                 qs = users.annotate(
@@ -126,26 +130,32 @@ def processar_envio_performance():
                         logger.error(f"❌ Nenhum envio bem-sucedido para regra '{regra.nome}' ({falhas} falha(s))")
                         detalhe = f"0/{len(destinos)} - todas falhas"
                     # Histórico do dia
-                    LogEnvioPerformance.objects.create(
-                        regra=regra,
-                        regra_nome=regra.nome,
-                        sucesso=(sucessos > 0),
-                        total_destinos=len(destinos),
-                        sucessos=sucessos,
-                        falhas=falhas,
-                        detalhe=detalhe,
-                    )
+                    try:
+                        LogEnvioPerformance.objects.create(
+                            regra=regra,
+                            regra_nome=regra.nome,
+                            sucesso=(sucessos > 0),
+                            total_destinos=len(destinos),
+                            sucessos=sucessos,
+                            falhas=falhas,
+                            detalhe=detalhe,
+                        )
+                    except Exception:
+                        pass
                 else:
                     logger.error(f"❌ Erro ao gerar imagem (Pillow) para regra '{regra.nome}'")
-                    LogEnvioPerformance.objects.create(
-                        regra=regra,
-                        regra_nome=regra.nome,
-                        sucesso=False,
-                        total_destinos=0,
-                        sucessos=0,
-                        falhas=0,
-                        detalhe="Erro ao gerar imagem",
-                    )
+                    try:
+                        LogEnvioPerformance.objects.create(
+                            regra=regra,
+                            regra_nome=regra.nome,
+                            sucesso=False,
+                            total_destinos=0,
+                            sucessos=0,
+                            falhas=0,
+                            detalhe="Erro ao gerar imagem",
+                        )
+                    except Exception:
+                        pass
 
             except Exception as e:
                 logger.error(f"❌ Erro no disparo da regra '{regra.nome}': {e}")
