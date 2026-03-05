@@ -1031,7 +1031,32 @@ class AgendamentoDisparo(models.Model):
 
     def __str__(self):
         return f"{self.nome} - {self.get_canal_alvo_display()}"
-    
+
+
+class LogEnvioPerformance(models.Model):
+    """Histórico de envios do Painel de Performance (regras automáticas)."""
+    regra = models.ForeignKey(
+        AgendamentoDisparo,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='logs_envio'
+    )
+    regra_nome = models.CharField(max_length=100)  # cópia para quando regra for apagada
+    data_hora = models.DateTimeField(auto_now_add=True)
+    sucesso = models.BooleanField(default=False)
+    total_destinos = models.PositiveSmallIntegerField(default=0)
+    sucessos = models.PositiveSmallIntegerField(default=0)
+    falhas = models.PositiveSmallIntegerField(default=0)
+    detalhe = models.CharField(max_length=500, blank=True)  # erro ou "OK"
+
+    class Meta:
+        ordering = ['-data_hora']
+        verbose_name = "Log de envio Performance"
+        verbose_name_plural = "Logs de envio Performance"
+
+    def __str__(self):
+        return f"{self.regra_nome} @ {self.data_hora} - {'OK' if self.sucesso else 'Falha'}"
+
 # No arquivo site-record/crm_app/models.py
 
 class CdoiSolicitacao(models.Model):

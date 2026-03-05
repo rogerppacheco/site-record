@@ -131,6 +131,13 @@
             <tbody id="lista-regras-robo"></tbody>
         </table></div>
 
+        <h6 class="fw-bold mb-2 mt-4">Histórico de envio (hoje)</h6>
+        <div class="table-responsive"><table class="table table-sm table-hover border">
+            <thead class="table-light"><tr><th>Horário</th><th>Regra</th><th>Resultado</th><th>Destinos</th><th>Detalhe</th></tr></thead>
+            <tbody id="lista-historico-envios"></tbody>
+        </table></div>
+        <p class="small text-muted mb-0">Exibe os envios automáticos do dia (sucesso ou falha).</p>
+
     </div></div></div></div>
 
     <div class="modal fade" id="modalSeletor" tabindex="-1">
@@ -280,7 +287,31 @@
         // --- LÓGICA DO ROBÔ ---
         function abrirConfiguracaoRobo() {
             carregarRegrasRobo();
+            carregarHistoricoEnvios();
             modalRobo.show();
+        }
+
+        async function carregarHistoricoEnvios() {
+            const tb = document.getElementById('lista-historico-envios');
+            tb.innerHTML = '<tr><td colspan="5" class="text-center">Carregando...</td></tr>';
+            try {
+                const res = await axios.post('/api/crm/automacao-performance/', { acao: 'historico' }, { headers: { 'Authorization': `Bearer ${token}` }});
+                tb.innerHTML = '';
+                const lista = res.data || [];
+                if (lista.length === 0) {
+                    tb.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Nenhum envio registrado hoje.</td></tr>';
+                    return;
+                }
+                lista.forEach(l => {
+                    const dh = l.data_hora ? new Date(l.data_hora) : null;
+                    const horario = dh ? dh.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '-';
+                    const resultado = l.sucesso ? '<span class="badge bg-success">OK</span>' : '<span class="badge bg-danger">Falha</span>';
+                    const destinos = l.total_destinos != null ? `${l.sucessos}/${l.total_destinos}` : '-';
+                    tb.innerHTML += `<tr><td>${horario}</td><td>${l.regra_nome || '-'}</td><td>${resultado}</td><td>${destinos}</td><td class="small">${(l.detalhe || '').substring(0, 60)}</td></tr>`;
+                });
+            } catch (e) {
+                tb.innerHTML = '<tr><td colspan="5" class="text-danger">Erro ao carregar histórico.</td></tr>';
+            }
         }
 
         async function carregarRegrasRobo() {

@@ -520,7 +520,7 @@ from .models import (
     CicloPagamento, HistoricoAlteracaoVenda, PagamentoComissao,
     Campanha, ComissaoOperadora, Comunicado, AreaVenda,
     SessaoWhatsapp, DFV, GrupoDisparo, LancamentoFinanceiro,
-    AgendamentoDisparo,     ImportacaoAgendamento, ImportacaoRecompra,
+    AgendamentoDisparo, LogEnvioPerformance, ImportacaoAgendamento, ImportacaoRecompra,
     LogImportacaoAgendamento, LogImportacaoLegado, LogImportacaoRecompra, EstatisticaBotWhatsApp,
     RegraComissaoFaixa, ConfigComissaoVendedor,
     AnteciparInstalacaoConfig, AnteciparInstalacaoSolicitacao,
@@ -6250,7 +6250,24 @@ class ConfigurarAutomacaoView(APIView):
         elif acao == 'excluir':
             AgendamentoDisparo.objects.filter(id=request.data.get('id')).delete()
             return Response({'ok': True})
-            
+
+        elif acao == 'historico':
+            from django.utils import timezone
+            hoje = timezone.localtime(timezone.now()).date()
+            logs = LogEnvioPerformance.objects.filter(
+                data_hora__date=hoje
+            ).order_by('-data_hora')[:100]
+            return Response([{
+                'id': l.id,
+                'regra_nome': l.regra_nome,
+                'data_hora': l.data_hora.isoformat() if l.data_hora else None,
+                'sucesso': l.sucesso,
+                'total_destinos': l.total_destinos,
+                'sucessos': l.sucessos,
+                'falhas': l.falhas,
+                'detalhe': l.detalhe or '',
+            } for l in logs])
+
         return Response({'error': 'Ação inválida'}, status=400)
 class CdoiCreateView(APIView):
     permission_classes = [permissions.IsAuthenticated]

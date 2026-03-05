@@ -2,7 +2,7 @@ import logging
 from django.utils import timezone
 from django.db.models import Count, Q
 from django.contrib.auth import get_user_model
-from .models import Venda, AgendamentoDisparo
+from .models import Venda, AgendamentoDisparo, LogEnvioPerformance
 from .whatsapp_service import WhatsAppService
 
 logger = logging.getLogger(__name__)
@@ -36,11 +36,12 @@ def processar_envio_performance():
                 pass
 
         # --- VERIFICAÇÃO DE HORÁRIO (janela permitida) ---
+        # Para HORARIO: janela ampla; o intervalo_minutos controla a frequência (ex: 15 min)
         if regra.tipo == 'HORARIO':
-            if dia_sem in [0, 1, 2, 3, 4]:  # Seg-Sex
-                if (hora == 8 and minuto >= 30) or (9 <= hora <= 16) or (hora == 17 and minuto == 0):
+            if dia_sem in [0, 1, 2, 3, 4]:  # Seg-Sex: 8h30 até 17h59
+                if (hora == 8 and minuto >= 30) or (9 <= hora <= 17):
                     enviar = True
-            elif dia_sem == 5:  # Sábado
+            elif dia_sem == 5:  # Sábado: 9h até 12h59
                 if 9 <= hora <= 12:
                     enviar = True
         elif regra.tipo == 'SEMANAL':
@@ -120,12 +121,45 @@ def processar_envio_performance():
                         logger.info(f"✅ Enviado regra '{regra.nome}' com imagem para {sucessos}/{len(destinos)} destinatário(s) (falhas: {falhas})")
                         regra.ultimo_disparo = agora
                         regra.save()
+                        detalhe = f"{sucessos}/{len(destinos)} enviados"
                     else:
                         logger.error(f"❌ Nenhum envio bem-sucedido para regra '{regra.nome}' ({falhas} falha(s))")
+                        detalhe = f"0/{len(destinos)} - todas falhas"
+                    # Histórico do dia
+                    LogEnvioPerformance.objects.create(
+                        regra=regra,
+                        regra_nome=regra.nome,
+                        sucesso=(sucessos > 0),
+                        total_destinos=len(destinos),
+                        sucessos=sucessos,
+                        falhas=falhas,
+                        detalhe=detalhe,
+                    )
                 else:
                     logger.error(f"❌ Erro ao gerar imagem (Pillow) para regra '{regra.nome}'")
+                    LogEnvioPerformance.objects.create(
+                        regra=regra,
+                        regra_nome=regra.nome,
+                        sucesso=False,
+                        total_destinos=0,
+                        sucessos=0,
+                        falhas=0,
+                        detalhe="Erro ao gerar imagem",
+                    )
 
             except Exception as e:
                 logger.error(f"❌ Erro no disparo da regra '{regra.nome}': {e}")
                 import traceback
                 logger.error(f"Traceback: {traceback.format_exc()}")
+                try:
+                    LogEnvioPerformance.objects.create(
+                        regra=regra,
+                        regra_nome=regra.nome,
+                        sucesso=False,
+                        total_destinos=0,
+                        sucessos=0,
+                        falhas=0,
+                        detalhe=str(e)[:500],
+                    )
+                except Exception:
+                    pass
