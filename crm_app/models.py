@@ -338,6 +338,26 @@ class MensagemClienteBoasVindas(models.Model):
         ordering = ['data_hora']
 
 
+class FilaEnvioBoasVindas(models.Model):
+    """Fila de envio automático de boas-vindas. O scheduler processa a cada 5 min."""
+    venda = models.ForeignKey(Venda, on_delete=models.CASCADE, related_name='fila_boas_vindas')
+    data_instalacao = models.DateField(help_text="Data das instalações que originaram esta fila")
+    agendado_para = models.DateTimeField(db_index=True, help_text="Horário previsto para envio (8h-16h)")
+    enviado_em = models.DateTimeField(null=True, blank=True, help_text="Quando foi enviado")
+    erro = models.TextField(null=True, blank=True, help_text="Mensagem de erro se falhou")
+    criado_em = models.DateTimeField(auto_now_add=True)
+    criado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='filas_boas_vindas_criadas'
+    )
+
+    class Meta:
+        db_table = 'crm_fila_envio_boas_vindas'
+        verbose_name = "Fila envio boas-vindas"
+        verbose_name_plural = "Filas envio boas-vindas"
+        ordering = ['agendado_para']
+
+
 class PagamentoComissao(models.Model):
     referencia_ano = models.IntegerField()
     referencia_mes = models.IntegerField()

@@ -145,12 +145,12 @@ Status específicos para respostas às boas-vindas:
 
 ## 7. Implementação Realizada (06/03/2026)
 
-- **Modelos:** `StatusBoasVindas`, `MensagemClienteBoasVindas`, campos em `BoasVindasEnviado`
+- **Modelos:** `StatusBoasVindas`, `MensagemClienteBoasVindas`, `FilaEnvioBoasVindas`, campos em `BoasVindasEnviado`
 - **Página:** `/boas-vindas/` com abas Instalações e Retornos
 - **Card:** "Boas Vindas" na área interna (BackOffice, Diretoria, Admin)
-- **APIs:** `/api/crm/boas-vindas/instalacoes/`, `retornos/`, `retornos/<id>/`, `status/`, `sugestao-ia/`, `enviar/`
+- **APIs:** `instalacoes/`, `retornos/`, `retornos/<id>/`, `status/`, `sugestao-ia/`, `enviar/`, `agendar/`, `fila-status/`
+- **Fila automática:** Botão "Agendar na fila" → cria registros em `FilaEnvioBoasVindas` com horários 8h-16h. O **scheduler** (APScheduler) roda a cada 5 min e processa a fila.
 - **Webhook:** Grava todas as mensagens em `MensagemClienteBoasVindas`, sugere status via IA na primeira resposta
-- **Record Vendas:** O botão Boas-Vindas permanece (pode ser removido se preferir usar só a nova ferramenta)
 
 ---
 

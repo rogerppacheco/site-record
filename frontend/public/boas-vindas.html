@@ -66,8 +66,12 @@
                         <div class="col-md-4"><div class="p-3 bg-success bg-opacity-25 rounded"><span class="stat-mini" id="stat-enviados">0</span> enviados</div></div>
                     </div>
                     <div class="mb-3">
-                        <button type="button" class="btn btn-success" id="btn-enviar-boas-vindas" disabled><i class="bi bi-send"></i> Enviar boas-vindas (1 a cada 20-30 min)</button>
+                        <button type="button" class="btn btn-success" id="btn-agendar-boas-vindas" disabled><i class="bi bi-clock-history"></i> Agendar na fila (envio automático até 16h)</button>
+                        <button type="button" class="btn btn-outline-success ms-2" id="btn-enviar-1-agora" disabled title="Enviar 1 mensagem agora (manual)"><i class="bi bi-send"></i> Enviar 1 agora</button>
                         <span id="envio-status" class="ms-2 small text-muted"></span>
+                    </div>
+                    <div id="fila-status" class="alert alert-info py-2 small" style="display:none;">
+                        <i class="bi bi-info-circle"></i> <span id="fila-status-text">—</span>
                     </div>
                     <div class="table-responsive">
                         <table class="table table-sm table-hover">
@@ -166,40 +170,58 @@
                         <td>${i.boas_vindas_enviado_em ? '<span class="badge bg-success">Enviado</span>' : '<span class="badge bg-warning text-dark">Pendente</span>'}</td>
                     </tr>
                 `).join('');
-                document.getElementById('btn-enviar-boas-vindas').disabled = r.pendentes === 0;
+                document.getElementById('btn-agendar-boas-vindas').disabled = r.pendentes === 0;
+                document.getElementById('btn-enviar-1-agora').disabled = r.pendentes === 0;
+                carregarFilaStatus();
             } catch (e) {
                 alert('Erro: ' + (e.message || e));
             }
         };
 
-        document.getElementById('btn-enviar-boas-vindas').onclick = async () => {
+        async function carregarFilaStatus() {
+            const data = document.getElementById('data-instalacoes').value;
+            if (!data) return;
+            try {
+                const r = await apiFetch('/boas-vindas/fila-status/?data=' + data);
+                const el = document.getElementById('fila-status');
+                const txt = document.getElementById('fila-status-text');
+                if (r.total_fila > 0) {
+                    el.style.display = 'block';
+                    txt.textContent = `Fila: ${r.pendentes} pendente(s), ${r.enviados} enviado(s). O sistema processa automaticamente a cada 5 min até 16h.`;
+                } else {
+                    el.style.display = 'none';
+                }
+            } catch (e) { document.getElementById('fila-status').style.display = 'none'; }
+        }
+
+        document.getElementById('btn-agendar-boas-vindas').onclick = async () => {
             const data = document.getElementById('data-instalacoes').value;
             if (!data) { alert('Selecione a data.'); return; }
-            const btn = document.getElementById('btn-enviar-boas-vindas');
+            const btn = document.getElementById('btn-agendar-boas-vindas');
             const status = document.getElementById('envio-status');
             btn.disabled = true;
-            let offset = 0;
-            let totalEnviados = 0;
             try {
-                while (true) {
-                    status.textContent = 'Enviando...';
-                    const r = await apiFetch('/boas-vindas/enviar/', {
-                        method: 'POST',
-                        body: JSON.stringify({ data, offset, limite: 1 })
-                    });
-                    totalEnviados += r.enviados || 0;
-                    status.textContent = `Enviados: ${totalEnviados} de ${r.total_na_data}`;
-                    if (r.restantes > 0 && r.proximo_offset != null) {
-                        const pause = (r.pause_antes_proximo_seg || 1200) * 1000;
-                        status.textContent += ` — Próximo em ${Math.round(pause/60000)} min`;
-                        await new Promise(ok => setTimeout(ok, pause));
-                        offset = r.proximo_offset;
-                    } else {
-                        status.textContent = `Concluído: ${totalEnviados} enviados.`;
-                        document.getElementById('btn-carregar-instalacoes').click();
-                        break;
-                    }
-                }
+                const r = await apiFetch('/boas-vindas/agendar/', { method: 'POST', body: JSON.stringify({ data }) });
+                status.textContent = r.detail || `${r.agendados} agendados.`;
+                status.className = 'ms-2 small text-success';
+                document.getElementById('btn-carregar-instalacoes').click();
+            } catch (e) {
+                status.textContent = 'Erro: ' + (e.message || e);
+                status.className = 'ms-2 small text-danger';
+            }
+            btn.disabled = false;
+        };
+
+        document.getElementById('btn-enviar-1-agora').onclick = async () => {
+            const data = document.getElementById('data-instalacoes').value;
+            if (!data) { alert('Selecione a data.'); return; }
+            const btn = document.getElementById('btn-enviar-1-agora');
+            const status = document.getElementById('envio-status');
+            btn.disabled = true;
+            try {
+                const r = await apiFetch('/boas-vindas/enviar/', { method: 'POST', body: JSON.stringify({ data, offset: 0, limite: 1 }) });
+                status.textContent = r.enviados ? `1 enviada. Restam ${r.restantes}.` : (r.erros?.length ? 'Falha no envio.' : 'Nenhuma pendente.');
+                document.getElementById('btn-carregar-instalacoes').click();
             } catch (e) {
                 status.textContent = 'Erro: ' + (e.message || e);
             }

@@ -41,6 +41,19 @@ def processar_envio_performance_agendado():
         logger.error(f"Traceback: {traceback.format_exc()}")
 
 
+def processar_fila_boas_vindas():
+    """
+    Processa a fila de envio de boas-vindas.
+    Envia mensagens cujo horário agendado já passou (distribuídas 8h-16h).
+    """
+    try:
+        call_command('processar_fila_boas_vindas', '--limite', '5')
+    except Exception as e:
+        logger.error(f"❌ Erro ao processar fila boas-vindas: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+
+
 def start_scheduler():
     """
     Inicia o agendador de tarefas
@@ -70,6 +83,16 @@ def start_scheduler():
         name='Processar envios programados de Performance (a cada minuto)',
         replace_existing=True,
         max_instances=1,  # Previne execuções simultâneas
+    )
+
+    # 3. Fila de boas-vindas - a cada 5 min (envia 1 msg a cada 20-30 min via agendamento)
+    scheduler.add_job(
+        processar_fila_boas_vindas,
+        trigger=IntervalTrigger(minutes=5),  # A cada 5 min
+        id='processar_fila_boas_vindas',
+        name='Processar fila de boas-vindas (a cada 5 min)',
+        replace_existing=True,
+        max_instances=1,
     )
     
     scheduler.start()

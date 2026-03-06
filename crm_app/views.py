@@ -526,7 +526,7 @@ from .models import (
     AnteciparInstalacaoConfig, AnteciparInstalacaoSolicitacao,
     PapConfirmacaoCliente, LembreteInstalacaoEnviado,
     ControleTTDiaTratado,
-    BoasVindasEnviado, MensagemClienteBoasVindas, StatusBoasVindas,
+    BoasVindasEnviado, MensagemClienteBoasVindas, StatusBoasVindas, FilaEnvioBoasVindas,
 )
 
 # Serializers do App
@@ -10763,6 +10763,134 @@ class BoasVindasEnviarGestaoView(APIView):
             'pause_antes_proximo_seg': pause_antes_proximo,
             'erros': erros[:20],
         }, status=status.HTTP_200_OK)
+
+
+class BoasVindasAgendarView(APIView):
+    """POST: Coloca na fila os envios de boas-vindas. O scheduler processa a cada 5 min.
+    Distribui os envios entre 8h e 16h do dia atual (intervalo ~20-30 min entre cada)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if not is_member(request.user, ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']):
+            return Response({'detail': 'Sem permissão.'}, status=status.HTTP_403_FORBIDDEN)
+        from datetime import datetime, timedelta
+        import random
+
+        data_str = request.data.get('data')
+        if not data_str:
+            return Response(
+                {'detail': 'Envie "data" (YYYY-MM-DD) - data das instalações.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            data_instalacao = datetime.strptime(data_str, '%Y-%m-%d').date()
+        except ValueError:
+            return Response({'detail': 'Data inválida. Use YYYY-MM-DD.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        vendas = list(Venda.objects.filter(
+            ativo=True,
+            data_instalacao=data_instalacao,
+            status_esteira__nome__icontains='INSTALADA',
+            boas_vindas_enviado_em__isnull=True,
+        ).exclude(telefone1__isnull=True).exclude(telefone1='').values_list('id', flat=True))
+
+        if not vendas:
+            return Response({
+                'detail': 'Nenhuma instalação pendente de boas-vindas para esta data.',
+                'agendados': 0,
+            }, status=status.HTTP_200_OK)
+
+        # Evita duplicar na fila
+        ja_na_fila = set(
+            FilaEnvioBoasVindas.objects.filter(
+                data_instalacao=data_instalacao,
+                enviado_em__isnull=True,
+            ).values_list('venda_id', flat=True)
+        )
+        vendas = [v for v in vendas if v not in ja_na_fila]
+        if not vendas:
+            return Response({
+                'detail': 'Todas as instalações já estão na fila.',
+                'agendados': 0,
+            }, status=status.HTTP_200_OK)
+
+        random.shuffle(vendas)
+        hoje = timezone.now().date()
+        # Janela 8h-16h (até 16h)
+        hora_inicio = 8
+        hora_fim = 16
+        total_min = (hora_fim - hora_inicio) * 60  # 480 min
+        n = len(vendas)
+        intervalo_medio = max(20, min(30, total_min // max(1, n)))  # 20-30 min entre cada
+
+        criados = 0
+        for i, venda_id in enumerate(vendas):
+            min_offset = i * intervalo_medio
+            variacao = random.randint(-3, 5)  # ± variação
+            min_offset = max(0, min_offset + variacao)
+            hora = hora_inicio + (min_offset // 60)
+            minuto = min_offset % 60
+            if hora >= hora_fim:
+                hora = hora_fim - 1
+                minuto = 59
+            agendado_para = timezone.make_aware(
+                datetime(hoje.year, hoje.month, hoje.day, hora, minuto, 0)
+            )
+            if agendado_para <= timezone.now():
+                agendado_para = timezone.now() + timedelta(minutes=random.randint(2, 5))
+            FilaEnvioBoasVindas.objects.create(
+                venda_id=venda_id,
+                data_instalacao=data_instalacao,
+                agendado_para=agendado_para,
+                criado_por=request.user,
+            )
+            criados += 1
+
+        return Response({
+            'detail': f'{criados} envio(s) agendados na fila. O sistema enviará automaticamente até 16h (a cada 5 min verifica).',
+            'agendados': criados,
+        }, status=status.HTTP_200_OK)
+
+
+class BoasVindasFilaStatusView(APIView):
+    """GET: Status da fila de envios (pendentes, enviados, por data)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if not is_member(request.user, ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']):
+            return Response({'detail': 'Sem permissão.'}, status=status.HTTP_403_FORBIDDEN)
+        data_str = request.query_params.get('data')
+        from datetime import timedelta
+        if data_str:
+            try:
+                from datetime import datetime
+                data_filtro = datetime.strptime(data_str, '%Y-%m-%d').date()
+            except ValueError:
+                return Response({'detail': 'Data inválida.'}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            data_filtro = (timezone.now() - timedelta(days=1)).date()
+
+        pendentes = FilaEnvioBoasVindas.objects.filter(
+            data_instalacao=data_filtro,
+            enviado_em__isnull=True,
+        ).count()
+        enviados = FilaEnvioBoasVindas.objects.filter(
+            data_instalacao=data_filtro,
+            enviado_em__isnull=False,
+        ).count()
+        com_erro = FilaEnvioBoasVindas.objects.filter(
+            data_instalacao=data_filtro,
+            enviado_em__isnull=True,
+            erro__isnull=False,
+        ).exclude(erro='').count()
+
+        return Response({
+            'data': str(data_filtro),
+            'pendentes': pendentes,
+            'enviados': enviados,
+            'com_erro': com_erro,
+            'total_fila': pendentes + enviados,
+        })
 
 
 # --- Antecipar Instalação (solicitação ao GC Nio) ---
