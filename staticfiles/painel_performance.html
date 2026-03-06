@@ -34,6 +34,8 @@
         
         /* Estilo para o checkbox no modal */
         .chk-grupo { width: 1.2em; height: 1.2em; margin-top: 0.2em; }
+        #modalConfigRobo .table td.cell-wrap { white-space: normal; word-break: break-word; vertical-align: middle; }
+        #modalConfigRobo .table th { white-space: nowrap; }
     </style>
 </head>
 <body>
@@ -111,37 +113,49 @@
 
     <div class="modal fade" id="modalEnvioManual" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Enviar Imagem Agora</h5><button class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="mb-3"><label class="fw-bold">Para quem?</label><div class="input-group"><input type="text" id="manual-destino" class="form-control" placeholder="ID Grupo ou Telefone..."><button class="btn btn-outline-secondary" onclick="abrirSeletorGrupos('manual-destino')"><i class="bi bi-search"></i></button></div></div><div class="alert alert-info small">Isso vai gerar um "print" da tabela atual e enviar imediatamente.</div></div><div class="modal-footer"><button class="btn btn-success w-100" id="btn-enviar-manual" onclick="dispararEnvioManual()">🚀 Enviar Imagem</button></div></div></div></div>
 
-    <div class="modal fade" id="modalConfigRobo" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content"><div class="modal-header bg-dark text-white"><h5 class="modal-title">🤖 Configuração de Automação</h5><button class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body">
-        
-        <div class="row g-3 mb-4 p-3 bg-light rounded border">
-            <div class="col-12"><h6 class="fw-bold text-primary">Nova Regra de Envio</h6></div>
-            <input type="hidden" id="robo-id">
-            <div class="col-md-3"><label class="small fw-bold">Nome da Regra</label><input type="text" id="robo-nome" class="form-control form-control-sm" placeholder="Ex: Hora a Hora PAP"></div>
-            <div class="col-md-2"><label class="small fw-bold">Frequência</label><select id="robo-tipo" class="form-select form-select-sm"><option value="HORARIO">Diário (por intervalo)</option><option value="SEMANAL">Semanal (Ter/Qui/Sáb 17h)</option></select></div>
-            <div class="col-md-2"><label class="small fw-bold">Horário máx.</label><select id="robo-hora-fim" class="form-select form-select-sm"><option value="17">17h</option><option value="18">18h</option><option value="19" selected>19h</option><option value="20">20h</option><option value="21">21h</option><option value="22">22h</option></select></div>
-            <div class="col-md-2"><label class="small fw-bold">Intervalo (min)</label><select id="robo-intervalo" class="form-select form-select-sm"><option value="15">A cada 15 min</option><option value="30">A cada 30 min</option><option value="60" selected>A cada 1 hora</option><option value="120">A cada 2 horas</option></select></div>
-            <div class="col-md-2"><label class="small fw-bold">Relatório</label><select id="robo-tipo-relatorio" class="form-select form-select-sm"><option value="HOJE" selected>Hoje</option><option value="SEMANAL">Semanal</option><option value="MENSAL">Mensal</option></select></div>
-            <div class="col-md-2"><label class="small fw-bold">Canal</label><select id="robo-canal" class="form-select form-select-sm"><option value="TODOS">Todos</option><option value="PAP">PAP</option><option value="DIGITAL">Digital</option><option value="RECEPTIVO">Receptivo</option><option value="PARCEIRO">Parceiro</option></select></div>
-            <div class="col-md-2"><label class="small fw-bold">Cluster</label><select id="robo-cluster" class="form-select form-select-sm"><option value="">Todos</option><option value="CLUSTER_1">CLUSTER 1</option><option value="CLUSTER_2">CLUSTER 2</option><option value="CLUSTER_3">CLUSTER 3</option></select></div>
-            <div class="col-md-2 d-flex align-items-end"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="robo-ativo" checked><label class="form-check-label small fw-bold">Ativo</label></div></div>
-            <div class="col-12"><label class="small fw-bold">Destinatários (Grupos ou Números)</label><div class="input-group input-group-sm"><input type="text" id="robo-destinos" class="form-control" placeholder="12036... , 5531..."><button class="btn btn-outline-secondary" onclick="abrirSeletorGrupos('robo-destinos')">🔍 Buscar Grupos</button></div><small class="text-muted">Separe múltiplos destinos por vírgula ou ponto e vírgula.</small></div>
-            <div class="col-12 text-end"><button class="btn btn-primary btn-sm" onclick="salvarRegraRobo()"><i class="bi bi-save"></i> Salvar Regra</button></div>
+    <div class="modal fade" id="modalConfigRobo" tabindex="-1">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-dark text-white py-2">
+                    <h5 class="modal-title">🤖 Configuração de Automação</h5>
+                    <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body py-3" style="max-height: 85vh;">
+                    <div class="row g-2 mb-3 p-3 bg-light rounded border">
+                        <div class="col-12"><h6 class="fw-bold text-primary mb-2">Nova Regra de Envio</h6></div>
+                        <input type="hidden" id="robo-id">
+                        <div class="col-md-3 col-6"><label class="small fw-bold">Nome</label><input type="text" id="robo-nome" class="form-control form-control-sm" placeholder="Ex: Hora a Hora PAP"></div>
+                        <div class="col-md-2 col-6"><label class="small fw-bold">Frequência</label><select id="robo-tipo" class="form-select form-select-sm"><option value="HORARIO">Diário</option><option value="SEMANAL">Semanal</option></select></div>
+                        <div class="col-md-1 col-4"><label class="small fw-bold">Até</label><select id="robo-hora-fim" class="form-select form-select-sm"><option value="17">17h</option><option value="18">18h</option><option value="19" selected>19h</option><option value="20">20h</option><option value="21">21h</option><option value="22">22h</option></select></div>
+                        <div class="col-md-2 col-4"><label class="small fw-bold">Intervalo</label><select id="robo-intervalo" class="form-select form-select-sm"><option value="15">15 min</option><option value="30">30 min</option><option value="60" selected>1 h</option><option value="120">2 h</option></select></div>
+                        <div class="col-md-2 col-4"><label class="small fw-bold">Relatório</label><select id="robo-tipo-relatorio" class="form-select form-select-sm"><option value="HOJE" selected>Hoje</option><option value="SEMANAL">Semanal</option><option value="MENSAL">Mensal</option></select></div>
+                        <div class="col-md-2 col-4"><label class="small fw-bold">Canal</label><select id="robo-canal" class="form-select form-select-sm"><option value="TODOS">Todos</option><option value="PAP">PAP</option><option value="DIGITAL">Digital</option><option value="RECEPTIVO">Receptivo</option><option value="PARCEIRO">Parceiro</option></select></div>
+                        <div class="col-md-2 col-4"><label class="small fw-bold">Cluster</label><select id="robo-cluster" class="form-select form-select-sm"><option value="">Todos</option><option value="CLUSTER_1">CLUSTER 1</option><option value="CLUSTER_2">CLUSTER 2</option><option value="CLUSTER_3">CLUSTER 3</option></select></div>
+                        <div class="col-md-1 col-4 d-flex align-items-end"><div class="form-check form-switch mb-0"><input class="form-check-input" type="checkbox" id="robo-ativo" checked><label class="form-check-label small">Ativo</label></div></div>
+                        <div class="col-12 mt-1"><label class="small fw-bold">Destinatários</label><div class="input-group input-group-sm"><input type="text" id="robo-destinos" class="form-control" placeholder="IDs ou números separados por vírgula"><button class="btn btn-outline-secondary" onclick="abrirSeletorGrupos('robo-destinos')">🔍 Grupos</button></div><small class="text-muted">Vírgula ou ponto e vírgula.</small></div>
+                        <div class="col-12 text-end"><button class="btn btn-primary btn-sm" onclick="salvarRegraRobo()"><i class="bi bi-save"></i> Salvar Regra</button></div>
+                    </div>
+
+                    <h6 class="fw-bold mb-2">Regras Ativas</h6>
+                    <div class="table-responsive" style="max-height: 220px; overflow-y: auto;">
+                        <table class="table table-sm table-hover border mb-0">
+                            <thead class="table-light sticky-top bg-white"><tr><th>Nome</th><th>Tipo</th><th>Até</th><th>Int.</th><th>Relat.</th><th>Canal</th><th>Cluster</th><th>Destinos</th><th>Status</th><th>Ações</th></tr></thead>
+                            <tbody id="lista-regras-robo"></tbody>
+                        </table>
+                    </div>
+
+                    <h6 class="fw-bold mb-2 mt-3">Histórico de envio (hoje)</h6>
+                    <div class="table-responsive" style="max-height: 160px; overflow-y: auto;">
+                        <table class="table table-sm table-hover border mb-0">
+                            <thead class="table-light sticky-top bg-white"><tr><th>Horário</th><th>Regra</th><th>Resultado</th><th>Destinos</th><th>Detalhe</th></tr></thead>
+                            <tbody id="lista-historico-envios"></tbody>
+                        </table>
+                    </div>
+                    <p class="small text-muted mb-0">Envios automáticos do dia.</p>
+                </div>
+            </div>
         </div>
-
-        <h6 class="fw-bold mb-2">Regras Ativas</h6>
-        <div class="table-responsive"><table class="table table-sm table-hover border">
-            <thead class="table-light"><tr><th>Nome</th><th>Tipo</th><th>Até</th><th>Intervalo</th><th>Relatório</th><th>Canal</th><th>Cluster</th><th>Destinos</th><th>Status</th><th>Ações</th></tr></thead>
-            <tbody id="lista-regras-robo"></tbody>
-        </table></div>
-
-        <h6 class="fw-bold mb-2 mt-4">Histórico de envio (hoje)</h6>
-        <div class="table-responsive"><table class="table table-sm table-hover border">
-            <thead class="table-light"><tr><th>Horário</th><th>Regra</th><th>Resultado</th><th>Destinos</th><th>Detalhe</th></tr></thead>
-            <tbody id="lista-historico-envios"></tbody>
-        </table></div>
-        <p class="small text-muted mb-0">Exibe os envios automáticos do dia (sucesso ou falha).</p>
-
-    </div></div></div></div>
+    </div>
 
     <div class="modal fade" id="modalSeletor" tabindex="-1">
         <div class="modal-dialog modal-dialog-scrollable">
@@ -329,15 +343,17 @@
                     const cluster = (r.cluster_alvo || '') ? r.cluster_alvo : 'Todos';
                     const horaFim = (r.hora_fim != null) ? r.hora_fim + 'h' : '19h';
                     const relatorio = (r.tipo_relatorio === 'SEMANAL') ? 'Semanal' : (r.tipo_relatorio === 'MENSAL') ? 'Mensal' : 'Hoje';
+                    const destEsc = (r.destinatarios || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                    const nomeEsc = (r.nome || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
                     tb.innerHTML += `<tr>
-                        <td>${r.nome}</td>
+                        <td class="cell-wrap" title="${nomeEsc}">${nomeEsc}</td>
                         <td>${r.tipo}</td>
                         <td>${horaFim}</td>
                         <td>${intervalo}</td>
                         <td>${relatorio}</td>
                         <td>${r.canal_alvo}</td>
                         <td>${cluster}</td>
-                        <td class="text-truncate" style="max-width: 100px;">${r.destinatarios}</td>
+                        <td class="cell-wrap small" title="${destEsc}">${destEsc}</td>
                         <td>${r.ativo ? '<span class="badge bg-success">ON</span>' : '<span class="badge bg-secondary">OFF</span>'}</td>
                         <td>
                             <button class="btn btn-sm btn-editar me-1" onclick='editarRegra(${JSON.stringify(r)})'><i class="bi bi-pencil"></i></button>
