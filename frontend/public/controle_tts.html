@@ -35,6 +35,9 @@
         .col-hoje .tt-marca-hoje:hover { background: #e7f1ff; }
         .nav-tabs .nav-link { font-weight: 600; }
         .tab-content { padding-top: 1rem; }
+        /* Banner "Próximo TT da vez" - mostra após marcar e no carregamento */
+        #proximo-tt-banner { display: none; border-left: 4px solid #0d6efd; }
+        #proximo-tt-banner .tt-matricula { font-size: 1.25rem; font-weight: 800; font-family: monospace; }
     </style>
 </head>
 <body>
@@ -70,6 +73,16 @@
                 <span><span class="badge bg-success">0</span> <span class="text-muted">vendeu no dia</span></span>
                 <span><span class="badge bg-warning text-dark">1-7</span> <span class="text-muted">dias sem vender</span></span>
                 <span><span class="badge bg-danger">8+</span> <span class="text-muted">crítico</span></span>
+            </div>
+        </div>
+
+        <!-- Próximo TT da vez: destaque após marcar (venda registrada ou não foi possível) -->
+        <div class="alert alert-primary d-flex align-items-center mb-3 shadow-sm" id="proximo-tt-banner" role="alert">
+            <i class="bi bi-person-check-fill me-2" style="font-size: 1.5rem;"></i>
+            <div class="flex-grow-1">
+                <strong>Próximo TT da vez:</strong>
+                <span class="tt-matricula ms-2" id="proximo-tt-matricula">—</span>
+                <span class="text-muted ms-2" id="proximo-tt-dias"></span>
             </div>
         </div>
 
@@ -135,6 +148,29 @@
 
         function logout() { localStorage.removeItem('accessToken'); window.location.href = '/'; }
 
+        /** Carrega e exibe o "Próximo TT da vez" (para usar ao registrar venda). Chamado ao carregar e após cada marcação. */
+        async function carregarProximoTTBanner() {
+            const banner = document.getElementById('proximo-tt-banner');
+            const matEl = document.getElementById('proximo-tt-matricula');
+            const diasEl = document.getElementById('proximo-tt-dias');
+            if (!banner || !matEl) return;
+            try {
+                const res = await fetch('/api/crm/controle-tts/proximo/', { headers: getHeaders() });
+                if (!res.ok) { banner.style.display = 'none'; return; }
+                const data = await res.json();
+                if (data && data.proximo) {
+                    matEl.textContent = data.proximo.matricula_vendedor || '—';
+                    const d = data.proximo.dias_sem_vender;
+                    diasEl.textContent = d !== null && d !== undefined ? '(' + d + ' dia(s) sem vender)' : '';
+                    banner.style.display = 'flex';
+                } else {
+                    banner.style.display = 'none';
+                }
+            } catch (_) {
+                banner.style.display = 'none';
+            }
+        }
+
         async function carregarTabela() {
             const tbody = document.getElementById('corpo-tabela');
             tbody.innerHTML = '<tr><td colspan="4" class="text-center">Carregando...</td></tr>';
@@ -154,6 +190,7 @@
                 listaTTs = data.itens || [];
                 await carregarMarcacoes();
                 montarTabelaComHoje();
+                await carregarProximoTTBanner();
             } catch (e) {
                 console.error('Controle TTs erro:', e);
                 tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger">Erro ao carregar: ' + escapeHtml(e.message) + '. Verifique o console (F12).</td></tr>';
@@ -257,6 +294,7 @@
                 if (dataStr === hojeStr && listaTTs.length) montarTabelaComHoje();
                 const tabMes = document.getElementById('painel-mes');
                 if (tabMes && tabMes.classList.contains('show')) montarGridMes();
+                await carregarProximoTTBanner();
             } catch (e) {
                 alert('Erro ao atualizar: ' + e.message);
             }

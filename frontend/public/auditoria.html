@@ -46,6 +46,10 @@
         .container.compact-container { max-width: 1200px; padding: 0; }
         .tab-pane { padding: 0; }
 
+        /* Banner "Próximo TT da vez" na auditoria */
+        #proximo-tt-banner { display: none; border-left: 4px solid #0d6efd; }
+        #proximo-tt-banner .tt-matricula { font-size: 1.25rem; font-weight: 800; font-family: monospace; }
+
         /* Cards e linhas mais próximas */
         .row.g-3 { row-gap: 10px; }
         .script-text.mb-2 { margin-bottom: 6px !important; }
@@ -107,6 +111,27 @@
                 <button class="btn btn-outline-primary fw-bold shadow-sm" onclick="carregarVendasPendentes()">
                     <i class="bi bi-arrow-clockwise"></i> Atualizar Lista
                 </button>
+            </div>
+
+            <!-- Próximo TT da vez: destaque para usar esta matrícula ao registrar venda -->
+            <div class="alert alert-primary d-flex align-items-center mb-3 shadow-sm" id="proximo-tt-banner" role="alert">
+                <i class="bi bi-person-badge-fill me-3" style="font-size: 1.5rem;"></i>
+                <div class="flex-grow-1">
+                    <strong>Próximo TT da vez:</strong>
+                    <span class="tt-matricula ms-2" id="proximo-tt-matricula">—</span>
+                    <span class="text-muted ms-2" id="proximo-tt-dias"> </span>
+                    <span class="text-muted small d-block mt-1">Use esta matrícula ao atribuir o vendedor na venda para priorizar quem está há mais tempo sem vender.</span>
+                </div>
+                <div class="d-flex flex-wrap align-items-center gap-2 ms-2">
+                    <span class="small text-muted me-1">Marcar uso de hoje:</span>
+                    <button type="button" class="btn btn-success btn-sm" id="btn-proximo-tt-deu-certo" title="Marque se conseguiu atribuir venda a este TT hoje">
+                        <i class="bi bi-check-lg"></i> Deu certo
+                    </button>
+                    <button type="button" class="btn btn-outline-danger btn-sm" id="btn-proximo-tt-nao-deu" title="Marque se não foi possível ter venda para este TT hoje">
+                        <i class="bi bi-x-lg"></i> Não deu certo
+                    </button>
+                </div>
+                <a href="/controle-tts/" class="btn btn-outline-primary btn-sm ms-2" target="_blank">Ver Controle de TT's</a>
             </div>
 
             <!-- Filtros e abas por data -->
@@ -510,8 +535,55 @@
             } catch (e) { throw e; }
         }
 
+        /** Carrega o banner "Próximo TT da vez" (primeiro da fila do Controle de TTs) para destacar na auditoria. */
+        let proximoTTMatriculaAtual = null;
+
+        async function carregarProximoTTBanner() {
+            const banner = document.getElementById('proximo-tt-banner');
+            const matEl = document.getElementById('proximo-tt-matricula');
+            const diasEl = document.getElementById('proximo-tt-dias');
+            if (!banner || !matEl || !diasEl) return;
+            try {
+                const data = await apiFetch(`${API_AUX}/controle-tts/proximo/`);
+                if (data && data.proximo) {
+                    proximoTTMatriculaAtual = data.proximo.matricula_vendedor || null;
+                    matEl.textContent = proximoTTMatriculaAtual || '—';
+                    const dias = data.proximo.dias_sem_vender;
+                    if (dias !== null && dias !== undefined) {
+                        diasEl.textContent = '(' + dias + ' dias sem vender)';
+                    } else {
+                        diasEl.textContent = '(sem venda válida registrada)';
+                    }
+                    banner.style.display = 'flex';
+                } else {
+                    proximoTTMatriculaAtual = null;
+                    banner.style.display = 'none';
+                }
+            } catch (_) {
+                proximoTTMatriculaAtual = null;
+                banner.style.display = 'none';
+            }
+        }
+
+        /** Marca o resultado do uso do "próximo TT" (deu certo = venda registrada, não deu certo = não foi possível) e atualiza o banner para o próximo. */
+        async function marcarProximoTTResultado(tipo) {
+            if (!proximoTTMatriculaAtual) return;
+            const hoje = new Date();
+            const dataStr = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0') + '-' + String(hoje.getDate()).padStart(2, '0');
+            const body = { matricula_vendedor: proximoTTMatriculaAtual, data: dataStr, tipo: tipo };
+            try {
+                await apiFetch(`${API_AUX}/controle-tts/tratado/`, { method: 'POST', body: JSON.stringify(body) });
+                await carregarProximoTTBanner();
+            } catch (e) {
+                alert('Erro ao marcar: ' + (e.message || 'tente novamente.'));
+            }
+        }
+
         $(document).ready(function() {
             if (!localStorage.getItem('accessToken')) { window.location.href = '/'; return; }
+            carregarProximoTTBanner();
+            $('#btn-proximo-tt-deu-certo').on('click', function() { marcarProximoTTResultado('tratado'); });
+            $('#btn-proximo-tt-nao-deu').on('click', function() { marcarProximoTTResultado('nao_vendas'); });
             $(document).on('input', '.uppercase-input', function() { this.value = this.value.toUpperCase(); });
             $(document).on('input', '.lowercase-input', function() { this.value = this.value.toLowerCase(); });
             

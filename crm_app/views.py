@@ -3743,64 +3743,74 @@ class ControleTTsAPIView(APIView):
     def get(self, request):
         if not is_member(request.user, ['BackOffice', 'Diretoria', 'Admin']):
             return Response({'error': 'Acesso negado. Apenas BackOffice, Diretoria ou Admin.'}, status=403)
-
-        from django.db.models import Max, Q
-        hoje = timezone.localdate()
-        ontem = hoje - timedelta(days=1)
-        dois_meses_atras = hoje - timedelta(days=60)
-
-        # Matrículas que aparecem na base OSAB nos últimos 2 meses
-        matriculas_qs = (
-            ImportacaoOsab.objects
-            .filter(
-                data_abertura__gte=dois_meses_atras,
-                matricula_vendedor__isnull=False,
-            )
-            .exclude(matricula_vendedor='')
-            .values_list('matricula_vendedor', flat=True)
-            .distinct()
-        )
-        matriculas = list(matriculas_qs)
-
-        filtro_situacao_valida = Q(situacao__in=SITUACOES_VENDA_VALIDA_OSAB)
-
-        resultado = []
-        for mat in matriculas:
-            ultima = (
-                ImportacaoOsab.objects
-                .filter(matricula_vendedor=mat)
-                .filter(filtro_situacao_valida)
-                .filter(data_abertura__isnull=False)
-                .aggregate(Max('data_abertura'))
-            )
-            ultima_venda = ultima.get('data_abertura__max')
-            if ultima_venda is not None:
-                # Garantir que é date (pode vir como datetime)
-                if hasattr(ultima_venda, 'date'):
-                    ultima_venda = ultima_venda.date()
-                dias_sem_vender = (ontem - ultima_venda).days
-            else:
-                dias_sem_vender = None  # Nunca vendeu (venda válida)
-
-            resultado.append({
-                'matricula_vendedor': mat,
-                'ultima_venda': ultima_venda.isoformat() if ultima_venda else None,
-                'dias_sem_vender': dias_sem_vender,
-            })
-
-        # Ordenar: maior dias_sem_vender primeiro; null (nunca vendeu) no topo
-        def sort_key(item):
-            d = item['dias_sem_vender']
-            if d is None:
-                return -1  # Nunca vendeu fica no topo
-            return -d  # Decrescente
-
-        resultado.sort(key=sort_key)
-
+        ontem = timezone.localdate() - timedelta(days=1)
+        resultado = _controle_tts_listar_ordenado()
         return Response({
             'data_referencia': ontem.isoformat(),
             'itens': resultado,
         })
+
+
+def _controle_tts_listar_ordenado():
+    """Retorna lista de TTs ordenada por dias sem vender (decrescente). Reutilizado por ControleTTsAPIView e ControleTTsProximoAPIView."""
+    from django.db.models import Max, Q
+    hoje = timezone.localdate()
+    ontem = hoje - timedelta(days=1)
+    dois_meses_atras = hoje - timedelta(days=60)
+    matriculas_qs = (
+        ImportacaoOsab.objects
+        .filter(data_abertura__gte=dois_meses_atras, matricula_vendedor__isnull=False)
+        .exclude(matricula_vendedor='')
+        .values_list('matricula_vendedor', flat=True)
+        .distinct()
+    )
+    matriculas = list(matriculas_qs)
+    filtro_situacao_valida = Q(situacao__in=SITUACOES_VENDA_VALIDA_OSAB)
+    resultado = []
+    for mat in matriculas:
+        ultima = (
+            ImportacaoOsab.objects
+            .filter(matricula_vendedor=mat)
+            .filter(filtro_situacao_valida)
+            .filter(data_abertura__isnull=False)
+            .aggregate(Max('data_abertura'))
+        )
+        ultima_venda = ultima.get('data_abertura__max')
+        if ultima_venda is not None:
+            if hasattr(ultima_venda, 'date'):
+                ultima_venda = ultima_venda.date()
+            dias_sem_vender = (ontem - ultima_venda).days
+        else:
+            dias_sem_vender = None
+        resultado.append({
+            'matricula_vendedor': mat,
+            'ultima_venda': ultima_venda.isoformat() if ultima_venda else None,
+            'dias_sem_vender': dias_sem_vender,
+        })
+    def sort_key(item):
+        d = item['dias_sem_vender']
+        if d is None:
+            return -1
+        return -d
+    resultado.sort(key=sort_key)
+    return resultado
+
+
+class ControleTTsProximoAPIView(APIView):
+    """GET: retorna o próximo TT da vez (primeiro da fila que ainda não foi marcado hoje)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if not is_member(request.user, ['BackOffice', 'Diretoria', 'Admin']):
+            return Response({'error': 'Acesso negado.'}, status=403)
+        lista = _controle_tts_listar_ordenado()
+        hoje = timezone.localdate()
+        matriculas_marcadas_hoje = set(
+            ControleTTDiaTratado.objects.filter(data=hoje).values_list('matricula_vendedor', flat=True)
+        )
+        lista_filtrada = [x for x in lista if x['matricula_vendedor'] not in matriculas_marcadas_hoje]
+        proximo = lista_filtrada[0] if lista_filtrada else None
+        return Response({'proximo': proximo})
 
 
 class ControleTTTratadoAPIView(APIView):
