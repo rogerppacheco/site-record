@@ -142,6 +142,12 @@ from .views import (
     ExportarAgendamentosDiaView,
     EnviarLembreteInstalacaoView,
     EnviarBoasVindasView,
+    BoasVindasInstalacoesView,
+    BoasVindasRetornosView,
+    BoasVindasDetalheView,
+    BoasVindasStatusListView,
+    BoasVindasSugestaoIAView,
+    BoasVindasEnviarGestaoView,
     page_bonus_m10,
     NioDividasView,
     BuscarAnteciparInstalacaoView,
@@ -165,6 +171,13 @@ router.register(r'lancamentos-financeiros', LancamentoFinanceiroViewSet, basenam
 urlpatterns = [
     # Rotas específicas de vendas ANTES do router (evita que "enviar-boas-vindas" seja interpretado como pk)
     path('vendas/enviar-boas-vindas/', EnviarBoasVindasView.as_view(), name='enviar-boas-vindas'),
+    # Boas-Vindas Gestão (ferramenta dedicada)
+    path('boas-vindas/instalacoes/', BoasVindasInstalacoesView.as_view(), name='boas-vindas-instalacoes'),
+    path('boas-vindas/retornos/', BoasVindasRetornosView.as_view(), name='boas-vindas-retornos'),
+    path('boas-vindas/retornos/<int:pk>/', BoasVindasDetalheView.as_view(), name='boas-vindas-detalhe'),
+    path('boas-vindas/status/', BoasVindasStatusListView.as_view(), name='boas-vindas-status'),
+    path('boas-vindas/sugestao-ia/', BoasVindasSugestaoIAView.as_view(), name='boas-vindas-sugestao-ia'),
+    path('boas-vindas/enviar/', BoasVindasEnviarGestaoView.as_view(), name='boas-vindas-enviar'),
     path('', include(router.urls)),
     path('painel-segunda/', PainelSegundaAPIView.as_view(), name='painel-segunda-api'),
     path('serve-pdf/<str:token>/', serve_pdf_view, name='serve-pdf'),

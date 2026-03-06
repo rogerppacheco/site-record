@@ -32,7 +32,8 @@ Tratamento de erros:
 
 Uso:
     cd c:\\site-record
-    python scripts/testar_lead_login.py
+    python scripts/testar_lead_login.py              # execução normal
+    python scripts/testar_lead_login.py --passo-a-passo   # pausa antes de cada passo (mapear seletores)
 
 Requisito: playwright instalado (pip install playwright && playwright install chromium)
 """
@@ -97,6 +98,30 @@ SELETOR_RUA = "textarea[name='street'], input[name='street']"
 SELETOR_CEP_PREENCHIDO = "input[name='postalCode']"
 SELETOR_CIDADE = "input[name='city']"
 
+# --- Pós-criação do lead: fluxo até Consultar Serasa ---
+SELETOR_BOTAO_FECHAR_MODAL = "button[title='Cancelar e fechar'], button.slds-modal__close"
+# CEP: dentro da seção "Buscar CEP" para não confundir com campo Número (que também pode ter maxlength)
+SELETOR_CEP_BUSCAR = "input[maxlength='8'][pattern='[0-9]{8}']"
+SELETOR_BOTAO_BUSCAR = "button:has-text('Buscar')"
+# Número da fachada: usar label "Número" para não preencher o campo CEP
+SELETOR_NUMERO_FACHADA_2 = "input[id^='input-'][type='text']"
+SELETOR_SALVAR = "button:has-text('Salvar'), span.label.bBody:has-text('Salvar')"
+SELETOR_MARCAR_STATUS_CONCLUIDO = "span:has-text('Marcar Status como concluído(a)')"
+SELETOR_AVANCAR = "button:has-text('Avançar')"
+SELETOR_RELACIONADO = "span.title:has-text('Relacionado')"
+SELETOR_ADICIONAR_PRODUTOS = "div[title='Adicionar produtos'], div:has-text('Adicionar produtos')"
+SELETOR_MODAL_CATALOGO = "h1:has-text('Selecionar catálogo de preços')"
+SELETOR_MODAL_ADICIONAR_PRODUTOS = "h2:has-text('Adicionar Produtos')"
+PRODUTO_NOME = "600 Mega - Sócio Torcedor América"
+SELETOR_CHECKBOX_PRODUTO = "span.slds-checkbox--faux, span.slds-checkbox_faux"
+SELETOR_MODAL_EDITAR_PRODUTOS = "h2:has-text('Editar Produtos selecionados')"
+SELETOR_QUANTIDADE = "input[role='spinbutton'], input#input-991"
+SELETOR_MARCAR_FASE_CONCLUIDO = "span:has-text('Marcar Fase como concluído(a)')"
+SELETOR_CONSULTAR_SERASA = "button:has-text('Consultar Serasa'), button[name='Opportunity.Consultar_Serasa_v2']"
+SELETOR_MODAL_SERASA = "h2:has-text('Consultar Serasa')"
+SELETOR_RESULTADO_SERASA = "p:has-text('Consulta realizada com sucesso')"
+SELETOR_CONCLUIR = "button:has-text('Concluir')"
+
 
 def verificar_endereco_preenchido(page, timeout_espera: float = 1.5) -> bool:
     """
@@ -127,10 +152,12 @@ def verificar_endereco_preenchido(page, timeout_espera: float = 1.5) -> bool:
 
 def verificar_erro_obstaculo(page) -> tuple:
     """
-    Verifica se na página aparece o diálogo 'Encontramos um obstáculo.' (Salesforce).
+    Verifica se na página aparece o diálogo ou banner 'Encontramos um obstáculo.' (Salesforce).
+    O erro pode vir como dialog separado ou como banner dentro do modal do formulário (h2 + detalhe).
     Retorna (True, mensagem_erro) se encontrar; (False, None) caso contrário.
     """
     try:
+        # 1) Diálogo separado (role=dialog com o título)
         dialog = page.get_by_role("dialog", name="Encontramos um obstáculo.")
         if dialog.count() > 0 and dialog.first.is_visible():
             msg = "Encontramos um obstáculo."
@@ -141,8 +168,37 @@ def verificar_erro_obstaculo(page) -> tuple:
             except Exception:
                 pass
             return (True, msg)
-        if page.get_by_text("Encontramos um obstáculo.", exact=False).first.is_visible():
-            return (True, "Encontramos um obstáculo.")
+
+        # 2) Texto "Encontramos um obstáculo." em qualquer lugar (ex.: h2 no banner dentro do modal)
+        loc_obst = page.get_by_text("Encontramos um obstáculo.", exact=False)
+        if loc_obst.count() > 0 and loc_obst.first.is_visible():
+            msg = "Encontramos um obstáculo."
+            try:
+                # Detalhe no mesmo bloco: "Já existe um lead com esse telefone" ou "Revise os erros"
+                for detail in ["Já existe um lead com esse telefone", "Revise os erros nesta página", "já existe um lead com esse telefone"]:
+                    d = page.get_by_text(detail, exact=False)
+                    if d.count() > 0 and d.first.is_visible():
+                        msg = d.first.inner_text().strip()
+                        break
+                if msg == "Encontramos um obstáculo.":
+                    # Tentar pegar texto de lista de erros perto do título
+                    listas = page.locator("ul.errorsList.slds-list_dotted li, .pageLevelErrors ul li, [class*='slds-theme_error'] li, [class*='error'] li")
+                    for i in range(min(listas.count(), 3)):
+                        t = listas.nth(i).inner_text().strip()
+                        if t and len(t) > 10:
+                            msg = t
+                            break
+            except Exception:
+                pass
+            return (True, msg)
+
+        # 3) Só a mensagem de telefone duplicado (às vezes aparece sem o título "Encontramos um obstáculo.")
+        dup = page.get_by_text("Já existe um lead com esse telefone", exact=False)
+        if dup.count() > 0 and dup.first.is_visible():
+            try:
+                return (True, dup.first.inner_text().strip())
+            except Exception:
+                return (True, "Já existe um lead com esse telefone.")
     except Exception:
         pass
     return (False, None)
@@ -164,8 +220,51 @@ def fechar_dialogo_erro(page) -> None:
         pass
 
 
+def is_erro_telefone_duplicado(msg_erro: str) -> bool:
+    """Verifica se a mensagem de obstáculo é 'já existe um lead com esse telefone'."""
+    if not msg_erro:
+        return False
+    msg = msg_erro.lower().strip()
+    return ("já existe" in msg and "telefone" in msg) or "lead com esse telefone" in msg
+
+
 def log(msg: str) -> None:
     print(f"  [LEAD] {msg}")
+
+
+def fechar_modal_localizacao(page) -> None:
+    """
+    Fecha apenas o modal do navegador 'Saber sua localização' (geolocalização),
+    clicando em 'Nunca permitir' ou no X **dentro desse modal**. Não toca no modal
+    'Criar lead' (evita fechar o formulário por engano).
+    """
+    try:
+        # Escopo: só o modal que contém "Saber sua localização" (não o modal do lead)
+        modal_loc = page.locator("[role='dialog'], div").filter(has_text="Saber sua localização").first
+        if modal_loc.count() == 0:
+            return
+        modal_loc.wait_for(state="visible", timeout=2000)
+        # Dentro desse modal apenas: "Nunca permitir" ou X
+        btn = modal_loc.get_by_role("button", name="Nunca permitir")
+        if btn.count() > 0 and btn.first.is_visible():
+            btn.first.click(timeout=2000)
+            log("Modal de localização fechado (Nunca permitir).")
+            time.sleep(0.5)
+            return
+        btn = modal_loc.get_by_text("Nunca permitir", exact=False).first
+        if btn.is_visible():
+            btn.click(timeout=2000)
+            log("Modal de localização fechado (Nunca permitir).")
+            time.sleep(0.5)
+            return
+        # X apenas dentro do modal de localização (não o do lead)
+        x_btn = modal_loc.locator("button[aria-label*='echar'], button[title*='echar'], button").first
+        if x_btn.is_visible():
+            x_btn.click(timeout=2000)
+            log("Modal de localização fechado (X).")
+            time.sleep(0.5)
+    except Exception:
+        pass
 
 
 def passo_clique(page, seletor: str, descricao: str, fallback: str = None, timeout: int = 10000) -> bool:
@@ -248,6 +347,7 @@ def main():
         context = browser.new_context(
             viewport={"width": 1280, "height": 800},
             locale="pt-BR",
+            permissions=[],  # não conceder geolocalização; evita prompt "Saber sua localização"
         )
         page = context.new_page()
 
@@ -298,13 +398,16 @@ def main():
                 time.sleep(30)
                 return
 
-            log("Aguardando redirecionamento após login...")
-            time.sleep(3)
+            log("Aguardando página pós-login (Bem vindo Blinker!)...")
             try:
-                page.wait_for_load_state("networkidle", timeout=15000)
+                page.get_by_text("Bem vindo Blinker!", exact=False).first.wait_for(state="visible", timeout=20000)
+                log("Página pronta para interação.")
             except Exception:
-                pass
-
+                try:
+                    page.wait_for_load_state("domcontentloaded", timeout=10000)
+                except Exception:
+                    pass
+            time.sleep(0.5)
             log(f"URL atual: {page.url}")
 
             log("Passo 5: Clicar em 'Leads'")
@@ -327,7 +430,33 @@ def main():
                 print("[ERRO] Não encontrou 'Avançar'.")
                 time.sleep(30)
                 return
-            time.sleep(2)
+            time.sleep(1)
+
+            # Modal do formulário "Novo Lead" pode demorar a abrir; esperar o campo Primeiro Nome ficar visível
+            log("Aguardando formulário do lead (modal pode demorar a abrir)...")
+            form_visivel = False
+            try:
+                page.locator(SELETOR_PRIMEIRO_NOME).first.wait_for(state="visible", timeout=20000)
+                form_visivel = True
+                log("Formulário do lead visível.")
+            except Exception:
+                try:
+                    page.locator(SELETOR_PRIMEIRO_NOME_FB).first.wait_for(state="visible", timeout=5000)
+                    form_visivel = True
+                    log("Formulário do lead visível (fallback).")
+                except Exception:
+                    try:
+                        page.get_by_label("Primeiro Nome", exact=False).first.wait_for(state="visible", timeout=5000)
+                        form_visivel = True
+                        log("Formulário do lead visível (por label).")
+                    except Exception:
+                        try:
+                            page.get_by_placeholder("Primeiro Nome", exact=False).first.wait_for(state="visible", timeout=5000)
+                            form_visivel = True
+                            log("Formulário do lead visível (por placeholder).")
+                        except Exception:
+                            log("Aguardando formulário: timeout; tentando preencher mesmo assim.")
+            time.sleep(0.5)
 
             log("Passo 8: Preencher formulário do lead (dados de teste)")
 
@@ -371,11 +500,13 @@ def main():
                 log(f"Canal (Externo) não encontrado ou já selecionado: {ex}")
             time.sleep(0.5)
 
-            log("Passo 8c: CEP - preencher e selecionar sugestão de endereço")
-            page.keyboard.press("Escape")
+            fechar_modal_localizacao(page)
             time.sleep(0.5)
+
+            log("Passo 8c: CEP - preencher e selecionar sugestão de endereço")
+            # NÃO pressionar Escape aqui: no Salesforce o Escape fecha o modal "Criar lead".
             # Dar tempo para o bloco de endereço do formulário renderizar (LWC pode carregar depois)
-            time.sleep(1.5)
+            time.sleep(1)
             cep_locator = None
             timeout_cep = 10000
             # 1) get_by_placeholder perfura Shadow DOM (LWC); tentar na página inteira primeiro
@@ -439,6 +570,8 @@ def main():
                     pass
                 time.sleep(0.3)
                 try:
+                    cep_locator.click()
+                    time.sleep(0.2)
                     cep_locator.fill(CEP)
                 except Exception:
                     try:
@@ -449,21 +582,52 @@ def main():
                         log(f"Falha ao preencher CEP: {e}")
                         cep_locator = None
                 if cep_locator:
-                    log(f"CEP digitado: {CEP}; aguardando sugestão...")
-                    time.sleep(2)
+                    log(f"CEP digitado: {CEP}; aguardando lista de sugestões...")
+                    # Esperar a lista de endereços aparecer antes de selecionar (primeira interação)
+                    listbox_ok = False
+                    for _ in range(15):
+                        time.sleep(0.5)
+                        try:
+                            lb = page.locator("[role='listbox']").first
+                            if lb.count() > 0 and lb.is_visible():
+                                listbox_ok = True
+                                log("Lista de endereços visível.")
+                                break
+                        except Exception:
+                            pass
+                        try:
+                            if page.get_by_text(CEP[:5], exact=False).first.is_visible():
+                                listbox_ok = True
+                                log("Sugestão de CEP visível.")
+                                break
+                        except Exception:
+                            pass
+                    if not listbox_ok:
+                        log("Lista não apareceu em 7.5s; tentando selecionar mesmo assim.")
+                    time.sleep(0.3)
                     page.keyboard.press("ArrowDown")
-                    time.sleep(0.4)
+                    time.sleep(0.3)
                     page.keyboard.press("Enter")
-                    log("Sugestão selecionada (ArrowDown + Enter)")
-                    time.sleep(0.6)
+                    log("Teclado: ArrowDown + Enter (selecionar primeira sugestão)")
+                    # Clicar na sugestão por texto como reforço (primeira interação)
                     cep_formatado = f"{CEP[:5]}-{CEP[5:]}" if len(CEP) >= 8 else CEP
                     try:
                         sug = page.get_by_text(cep_formatado, exact=False).first
+                        sug.wait_for(state="visible", timeout=2000)
                         if sug.is_visible():
                             sug.click()
                             log("Sugestão selecionada (clique no CEP)")
+                            time.sleep(0.5)
                     except Exception:
                         pass
+                    # Garantir que endereço foi aplicado antes de seguir: esperar campos rua/CEP/cidade
+                    for tentativa in range(10):
+                        if verificar_endereco_preenchido(page, timeout_espera=0.5):
+                            log("Endereço confirmado no formulário.")
+                            break
+                        time.sleep(0.6)
+                    else:
+                        log("[AVISO] Campos de endereço podem não ter sido preenchidos.")
             else:
                 log("[AVISO] Campo CEP não encontrado.")
             time.sleep(1)
@@ -493,23 +657,319 @@ def main():
                 time.sleep(30)
                 return
 
-            time.sleep(2)
+            # Dar tempo para a resposta do servidor e o banner de erro (ex.: "Encontramos um obstáculo.") aparecer
+            time.sleep(4)
+            tem_obstaculo, msg_erro = verificar_erro_obstaculo(page)
+            if not tem_obstaculo:
+                # Rechecar após mais 2s (erro pode vir com atraso no modal)
+                time.sleep(2)
+                tem_obstaculo, msg_erro = verificar_erro_obstaculo(page)
+            if not tem_obstaculo:
+                time.sleep(1)
+                tem_obstaculo, msg_erro = verificar_erro_obstaculo(page)
 
             # Tratamento de erro 2: "Encontramos um obstáculo."
-            tem_obstaculo, msg_erro = verificar_erro_obstaculo(page)
             if tem_obstaculo:
-                print("\n[ERRO] Encontramos um obstáculo. O lead NÃO foi criado.")
-                print(f"Detalhe: {msg_erro}")
-                fechar_dialogo_erro(page)
-                print("\nNavegador permanecerá aberto por 30 segundos.")
-                time.sleep(30)
-                browser.close()
-                print("\nFim do teste (lead não criado).")
-                return
+                lead_criado_com_retry = False
+                # Caso especial: telefone já cadastrado -> pedir outro número e tentar de novo
+                if is_erro_telefone_duplicado(msg_erro):
+                    fechar_dialogo_erro(page)
+                    time.sleep(0.8)
+                    tentativas = 0
+                    max_tentativas = 20
+                    while tentativas < max_tentativas:
+                        print("\n  [LEAD] Já existe um lead com esse telefone.")
+                        print(f"  Detalhe: {msg_erro}")
+                        try:
+                            novo = input("  Digite outro número (DDD + celular, ex: 11987654322) ou Enter para encerrar: ").strip()
+                        except (KeyboardInterrupt, EOFError):
+                            print("\nEncerrado.")
+                            break
+                        if not novo:
+                            print("  Encerrando sem criar lead.")
+                            break
+                        if len(novo) < 10 or not novo.isdigit():
+                            print("  Número inválido. Use apenas dígitos (ex: 11987654322).")
+                            continue
+                        log(f"Alterando telefone para {novo} e tentando salvar novamente...")
+                        fechar_dialogo_erro(page)
+                        time.sleep(0.3)
+                        if not passo_preencher(page, SELETOR_TELEFONE, novo, "Telefone (novo)", fallback=SELETOR_TELEFONE_FB):
+                            log("Campo telefone não encontrado após fechar diálogo.")
+                            break
+                        time.sleep(0.5)
+                        if not passo_clique(page, SELETOR_SALVAR_CRIAR, "Salvar e criar", fallback=SELETOR_SALVAR_CRIAR_FB) and not passo_clique_por_texto(page, "Salvar e criar", "Salvar e criar"):
+                            log("Botão Salvar e criar não encontrado.")
+                            break
+                        time.sleep(2)
+                        tem_obstaculo, msg_erro = verificar_erro_obstaculo(page)
+                        if not tem_obstaculo:
+                            lead_criado_com_retry = True
+                            log("Lead criado com o novo número.")
+                            break
+                        if not is_erro_telefone_duplicado(msg_erro):
+                            print("\n[ERRO] Encontramos um obstáculo. O lead NÃO foi criado.")
+                            print(f"Detalhe: {msg_erro}")
+                            fechar_dialogo_erro(page)
+                            break
+                        tentativas += 1
+                    else:
+                        print("\n  Limite de tentativas atingido.")
+                    if not lead_criado_com_retry:
+                        time.sleep(30)
+                        browser.close()
+                        return
+                else:
+                    # Outro tipo de obstáculo
+                    print("\n[ERRO] Encontramos um obstáculo. O lead NÃO foi criado.")
+                    print(f"Detalhe: {msg_erro}")
+                    fechar_dialogo_erro(page)
+                    print("\nNavegador permanecerá aberto por 30 segundos.")
+                    time.sleep(30)
+                    browser.close()
+                    print("\nFim do teste (lead não criado).")
+                    return
 
             log(f"URL final: {page.url}")
 
-            print("\n--- Fluxo concluído. Verifique se o lead foi criado. ---")
+            # --- Aguardar tela pronta: máscara de loading some e, se o modal "Novo lead" aparecer, fechar ---
+            try:
+                # 1) Esperar a máscara de loading sumir (evita clique interceptado)
+                mask = page.locator("div.siteforceSpinnerManager .mask, div.mask").first
+                mask.wait_for(state="hidden", timeout=15000)
+                log("Máscara de loading sumiu.")
+            except Exception:
+                log("Aguardando máscara de loading: timeout (seguindo mesmo assim).")
+            time.sleep(2)  # Dar tempo para o modal "Novo lead" aparecer (ele pode vir com atraso)
+
+            # --- Fluxo pós-lead: fechar modal, CEP/Buscar, fachada, Salvar, status, avançar, relacionado, produtos, Serasa ---
+            nome_cliente = f"{PRIMEIRO_NOME} {SOBRENOME}"
+            try:
+                log("Passo 10: Fechar modal (Cancelar e fechar)")
+                # Esperar o modal "Novo lead" aparecer (até 5s); se aparecer, fechar
+                modal_novo_lead = page.get_by_role("dialog").filter(has_text="Novo lead").first
+                try:
+                    modal_novo_lead.wait_for(state="visible", timeout=5000)
+                except Exception:
+                    pass
+                if modal_novo_lead.is_visible():
+                    # Garantir que a máscara não está bloqueando o clique
+                    try:
+                        page.locator("div.mask").first.wait_for(state="hidden", timeout=5000)
+                    except Exception:
+                        pass
+                    page.locator(SELETOR_BOTAO_FECHAR_MODAL).first.click(timeout=5000)
+                    time.sleep(1.5)
+                    log("Modal fechado.")
+                else:
+                    log("Modal 'Novo lead' não apareceu; pulando fechamento.")
+            except Exception as e:
+                log(f"Fechar modal: {e}")
+
+            # Validar que estamos na tela do lead (seção Buscar CEP visível) antes de CEP/Número
+            try:
+                # Esperar a página do lead: entity "Lead" e/ou seção "Buscar CEP"
+                page.get_by_text("Lead", exact=True).first.wait_for(state="visible", timeout=15000)
+                log("Tela do lead (entity Lead) visível.")
+            except Exception:
+                pass
+            try:
+                page.locator("div, section").filter(has_text="Buscar CEP").first.wait_for(state="visible", timeout=15000)
+                log("Seção Buscar CEP visível.")
+            except Exception as e:
+                log(f"Aviso: seção Buscar CEP não visível: {e}")
+
+            try:
+                log("Passo 11: Preencher CEP (campo Buscar CEP) e clicar Buscar")
+                # Usar label 'CEP' ou escopo 'Buscar CEP' para NÃO preencher o campo Número por engano
+                cep_input = None
+                try:
+                    cep_input = page.get_by_label("CEP", exact=False).first
+                    cep_input.wait_for(state="visible", timeout=5000)
+                except Exception:
+                    pass
+                if not cep_input or not cep_input.is_visible():
+                    secao = page.locator("div, section").filter(has_text="Buscar CEP").first
+                    cep_input = secao.locator("input[maxlength='8']").first
+                    cep_input.wait_for(state="visible", timeout=5000)
+                cep_input.fill(CEP)
+                time.sleep(0.3)
+                page.locator(SELETOR_BOTAO_BUSCAR).first.click(timeout=5000)
+                # Aguardar o endereço carregar e o campo Número ficar habilitado (LWC pode demorar)
+                time.sleep(3)
+            except Exception as e:
+                log(f"CEP/Buscar: {e}")
+
+            try:
+                log("Passo 12: Preencher Número (fachada) e Salvar")
+                # Escopo: só a seção de endereço (Buscar CEP / Logradouro) para o campo Número da fachada.
+                secao_endereco = page.locator("div, section").filter(has_text="Buscar CEP").filter(has_text="Logradouro").first
+                secao_endereco.wait_for(state="visible", timeout=8000)
+                num_input = None
+                # 1) Por label "Número" dentro da seção (evita dropdown de telefones)
+                try:
+                    num_input = secao_endereco.get_by_label("Número", exact=False).first
+                    num_input.wait_for(state="visible", timeout=3000)
+                    if num_input.is_disabled():
+                        num_input = None
+                except Exception:
+                    num_input = None
+                # 2) Célula da tabela que contém "Número:" e o input (estrutura c-busca-c-e-p)
+                if not num_input or not num_input.is_visible():
+                    try:
+                        num_input = secao_endereco.locator("td").filter(has_text="Número").locator("input[type='text']").first
+                        num_input.wait_for(state="visible", timeout=3000)
+                    except Exception:
+                        num_input = None
+                # 3) Primeiro input type=text sem maxlength=8 e não desabilitado (ordem: Número, Complemento)
+                if not num_input or not num_input.is_visible():
+                    try:
+                        num_input = secao_endereco.locator("input.slds-input[type='text']:not([maxlength='8'])").first
+                        num_input.wait_for(state="visible", timeout=3000)
+                    except Exception:
+                        num_input = secao_endereco.locator("input[type='text']:not([maxlength='8'])").first
+                        num_input.wait_for(state="visible", timeout=3000)
+                if num_input:
+                    # Garantir que está habilitado (após Buscar CEP o LWC pode demorar a habilitar)
+                    for _ in range(10):
+                        try:
+                            if not num_input.is_disabled():
+                                break
+                            time.sleep(1)
+                        except Exception:
+                            time.sleep(1)
+                    try:
+                        num_input.wait_for(state="visible", timeout=2000)
+                        num_input.fill(NUMERO_FACHADA)
+                        time.sleep(0.5)
+                        page.locator(SELETOR_SALVAR).first.click(timeout=5000)
+                        time.sleep(2)
+                        log("Número da fachada preenchido e Salvar clicado.")
+                    except Exception as fill_err:
+                        log(f"Número fachada/Salvar: {fill_err}")
+                else:
+                    log("Número fachada/Salvar: campo Número não encontrado na seção de endereço.")
+            except Exception as e:
+                log(f"Número fachada/Salvar: {e}")
+
+            try:
+                log("Passo 13: Marcar Status como concluído(a)")
+                page.get_by_text("Marcar Status como concluído(a)", exact=False).first.click(timeout=5000)
+                time.sleep(1.5)
+            except Exception as e:
+                log(f"Marcar Status: {e}")
+
+            try:
+                log("Passo 14: Clicar Avançar")
+                page.locator(SELETOR_AVANCAR).first.click(timeout=5000)
+                time.sleep(2)
+            except Exception as e:
+                log(f"Avançar: {e}")
+
+            try:
+                log("Passo 15: Clicar Relacionado")
+                page.get_by_text("Relacionado", exact=False).first.click(timeout=5000)
+                time.sleep(1.5)
+            except Exception as e:
+                log(f"Relacionado: {e}")
+
+            try:
+                log(f"Passo 16: Clicar na oportunidade (nome do cliente: {nome_cliente})")
+                page.get_by_role("link", name=nome_cliente).first.click(timeout=8000)
+                time.sleep(2)
+            except Exception as e:
+                log(f"Link oportunidade: {e}")
+
+            try:
+                log("Passo 17: Clicar em Relacionado (novamente)")
+                page.get_by_text("Relacionado", exact=False).first.click(timeout=5000)
+                time.sleep(1.5)
+            except Exception as e:
+                log(f"Relacionado 2: {e}")
+
+            try:
+                log("Passo 18: Adicionar produtos")
+                page.get_by_text("Adicionar produtos", exact=False).first.click(timeout=5000)
+                time.sleep(2)
+            except Exception as e:
+                log(f"Adicionar produtos: {e}")
+
+            try:
+                log("Passo 19: Modal catálogo - clicar Salvar")
+                page.get_by_text("Selecionar catálogo de preços", exact=False).first.wait_for(state="visible", timeout=5000)
+                page.get_by_text("Salvar", exact=False).first.click(timeout=5000)
+                time.sleep(2)
+            except Exception as e:
+                log(f"Modal catálogo: {e}")
+
+            try:
+                log("Passo 20: Modal Adicionar Produtos - selecionar produto")
+                page.get_by_text("Adicionar Produtos", exact=False).first.wait_for(state="visible", timeout=8000)
+                time.sleep(1)
+                row = page.locator("tr").filter(has_text=PRODUTO_NOME).first
+                row.wait_for(state="visible", timeout=5000)
+                row.locator(SELETOR_CHECKBOX_PRODUTO).first.click(timeout=3000)
+                time.sleep(0.5)
+                page.get_by_text("Avançar", exact=False).first.click(timeout=5000)
+                time.sleep(2)
+            except Exception as e:
+                try:
+                    page.get_by_text(PRODUTO_NOME, exact=False).first.click(timeout=3000)
+                    time.sleep(0.5)
+                    page.get_by_text("Avançar", exact=False).first.click(timeout=5000)
+                    time.sleep(2)
+                except Exception as e2:
+                    log(f"Selecionar produto (fallback): {e2}")
+
+            try:
+                log("Passo 21: Editar Produtos - Quantidade 1 e Salvar")
+                page.get_by_text("Editar Produtos selecionados", exact=False).first.wait_for(state="visible", timeout=8000)
+                qtd = page.locator(SELETOR_QUANTIDADE).first
+                qtd.wait_for(state="visible", timeout=5000)
+                qtd.fill("1")
+                time.sleep(0.5)
+                page.get_by_text("Salvar", exact=False).first.click(timeout=5000)
+                time.sleep(2)
+            except Exception as e:
+                log(f"Editar quantidade: {e}")
+
+            try:
+                log("Passo 22: Marcar Fase como concluído(a)")
+                page.get_by_text("Marcar Fase como concluído(a)", exact=False).first.click(timeout=5000)
+                time.sleep(1.5)
+            except Exception as e:
+                log(f"Marcar Fase: {e}")
+
+            try:
+                log("Passo 23: Consultar Serasa")
+                page.locator(SELETOR_CONSULTAR_SERASA).first.click(timeout=5000)
+                time.sleep(3)
+            except Exception as e:
+                log(f"Consultar Serasa: {e}")
+
+            resultado_serasa = None
+            try:
+                log("Passo 24: Ler resultado da consulta Serasa")
+                page.get_by_text("Consultar Serasa", exact=False).first.wait_for(state="visible", timeout=8000)
+                par = page.locator(SELETOR_RESULTADO_SERASA).first
+                par.wait_for(state="visible", timeout=5000)
+                texto = par.inner_text()
+                resultado_serasa = "APROVADO" if "aprovado" in texto.lower() and "não" not in texto.lower() else "REPROVADO"
+                log(f"Resultado Serasa: {texto.strip()} -> {resultado_serasa}")
+            except Exception as e:
+                log(f"Ler resultado Serasa: {e}")
+
+            try:
+                log("Passo 25: Concluir (fechar modal Serasa)")
+                page.locator(SELETOR_CONCLUIR).first.click(timeout=5000)
+                time.sleep(1.5)
+            except Exception as e:
+                log(f"Concluir: {e}")
+
+            if resultado_serasa:
+                print(f"\n--- Fluxo concluído. Resultado consulta Serasa: {resultado_serasa} ---")
+            else:
+                print("\n--- Fluxo concluído. Verifique a tela. ---")
             print("Navegador permanecerá aberto por 60 segundos para você inspecionar.")
             time.sleep(60)
 

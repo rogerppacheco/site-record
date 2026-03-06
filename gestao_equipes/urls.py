@@ -14,6 +14,7 @@ from crm_app.views import (
     page_cdoi_novo,
     prevenda_publica_landing,
     page_bonus_m10,
+    page_boas_vindas,
     page_validacao_fpd,
     page_validacao_churn,
     page_validacao_osab,
@@ -116,6 +117,7 @@ urlpatterns = [
 
     # --- NOVO: BÔNUS M-10 & FPD ---
     path('bonus-m10/', page_bonus_m10, name='page_bonus_m10'),
+    path('boas-vindas/', page_boas_vindas, name='page_boas_vindas'),
     path('importar-fpd/', TemplateView.as_view(template_name='importar_fpd.html'), name='importar_fpd'),
     path('validacao-fpd/', page_validacao_fpd, name='page_validacao_fpd'),
     path('validacao-churn/', page_validacao_churn, name='page_validacao_churn'),

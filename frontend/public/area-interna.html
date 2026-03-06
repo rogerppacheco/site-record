@@ -127,6 +127,11 @@
                 <span class="app-title">Auditoria</span>
             </a>
 
+            <a href="/boas-vindas/" class="app-card" id="card-boas-vindas">
+                <i class="bi bi-chat-heart-fill app-icon icon-bonus"></i>
+                <span class="app-title">Boas Vindas</span>
+            </a>
+
             <!-- B -->
             <a href="{% url 'page_bonus_m10' %}" class="app-card" id="card-bonus-m10">
                 <i class="bi bi-piggy-bank-fill app-icon icon-bonus"></i>
@@ -240,7 +245,7 @@
                 'Admin': 'all',
 
                 // Acesso Backoffice (inclui Bônus M-10)
-                'BackOffice': ['card-antecipar', 'card-vendas', 'card-informa', 'card-esteira', 'card-auditoria', 'card-performance', 'card-importacoes', 'card-cdoi', 'card-apoia', 'card-conhecimento-ia', 'card-bonus-m10', 'card-controle-tts'],
+                'BackOffice': ['card-antecipar', 'card-boas-vindas', 'card-vendas', 'card-informa', 'card-esteira', 'card-auditoria', 'card-performance', 'card-importacoes', 'card-cdoi', 'card-apoia', 'card-conhecimento-ia', 'card-bonus-m10', 'card-controle-tts'],
 
                 // Acesso Supervisor (sem Bônus M-10)
                 'Supervisor': ['card-antecipar', 'card-vendas', 'card-presenca', 'card-cdoi', 'card-apoia', 'card-conhecimento-ia'],

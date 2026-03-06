@@ -526,6 +526,7 @@ from .models import (
     AnteciparInstalacaoConfig, AnteciparInstalacaoSolicitacao,
     PapConfirmacaoCliente, LembreteInstalacaoEnviado,
     ControleTTDiaTratado,
+    BoasVindasEnviado, MensagemClienteBoasVindas, StatusBoasVindas,
 )
 
 # Serializers do App
@@ -7896,6 +7897,11 @@ def page_bonus_m10(request):
     return render(request, 'bonus_m10.html')
 
 
+def page_boas_vindas(request):
+    """View para a ferramenta Boas Vindas (gestão à vista)."""
+    return render(request, 'boas-vindas.html')
+
+
 def page_validacao_fpd(request):
     """View para renderizar a página de validação de importações FPD"""
     return render(request, 'validacao-fpd.html')
@@ -10351,6 +10357,270 @@ class EnviarBoasVindasView(APIView):
         proximo_offset = offset + len(vendas) if restantes > 0 else None
         # Pausa sugerida entre lotes (boas práticas: 1-2 min para não parecer burst)
         pause_antes_proximo = random.randint(WHATSAPP_PAUSA_LOTE_MIN_SEG, WHATSAPP_PAUSA_LOTE_MAX_SEG) if restantes > 0 else None
+
+        return Response({
+            'enviados': enviados,
+            'total_na_data': total_na_data,
+            'restantes': restantes,
+            'proximo_offset': proximo_offset,
+            'pause_antes_proximo_seg': pause_antes_proximo,
+            'erros': erros[:20],
+        }, status=status.HTTP_200_OK)
+
+
+# --- Boas-Vindas Gestão (ferramenta dedicada) ---
+# Constantes anti-spam: 1 msg a cada 20-30 min, tudo até 16h
+BOAS_VINDAS_INTERVALO_MIN_SEG = 1200   # 20 min
+BOAS_VINDAS_INTERVALO_MAX_SEG = 1800   # 30 min
+BOAS_VINDAS_HORA_LIMITE = 16            # até 16h
+
+
+class BoasVindasInstalacoesView(APIView):
+    """GET: Lista instalações do dia anterior (ou data informada) para envio de boas-vindas."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if not is_member(request.user, ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']):
+            return Response({'detail': 'Sem permissão.'}, status=status.HTTP_403_FORBIDDEN)
+        from datetime import datetime, timedelta
+        data_str = request.query_params.get('data')
+        if data_str:
+            try:
+                data_filtro = datetime.strptime(data_str, '%Y-%m-%d').date()
+            except ValueError:
+                return Response({'detail': 'Data inválida. Use YYYY-MM-DD.'}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            data_filtro = (timezone.now() - timedelta(days=1)).date()
+        vendas = Venda.objects.filter(
+            ativo=True,
+            data_instalacao=data_filtro,
+            status_esteira__nome__icontains='INSTALADA',
+        ).exclude(telefone1__isnull=True).exclude(telefone1='').select_related(
+            'cliente', 'vendedor', 'plano', 'status_esteira'
+        ).order_by('id')
+        pendentes = vendas.filter(boas_vindas_enviado_em__isnull=True)
+        enviados = vendas.exclude(boas_vindas_enviado_em__isnull=True)
+        items = []
+        for v in vendas:
+            items.append({
+                'id': v.id,
+                'cliente': v.cliente.nome_razao_social if v.cliente else '-',
+                'telefone': v.telefone1,
+                'vendedor': v.vendedor.username if v.vendedor else '-',
+                'plano': v.plano.nome if v.plano else '-',
+                'data_instalacao': str(v.data_instalacao) if v.data_instalacao else None,
+                'boas_vindas_enviado_em': v.boas_vindas_enviado_em.isoformat() if v.boas_vindas_enviado_em else None,
+            })
+        return Response({
+            'data': str(data_filtro),
+            'total': vendas.count(),
+            'pendentes': pendentes.count(),
+            'enviados': enviados.count(),
+            'items': items,
+        })
+
+
+class BoasVindasRetornosView(APIView):
+    """GET: Lista clientes que receberam boas-vindas e enviaram mensagem (para o BO tratar)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if not is_member(request.user, ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']):
+            return Response({'detail': 'Sem permissão.'}, status=status.HTTP_403_FORBIDDEN)
+        from datetime import timedelta
+        limite_dias = int(request.query_params.get('dias', 30))
+        data_min = timezone.now() - timedelta(days=limite_dias)
+        bvs = BoasVindasEnviado.objects.filter(
+            respondido_em__isnull=False,
+            data_envio__gte=data_min,
+        ).select_related('venda__cliente', 'venda__vendedor', 'status_boas_vindas').order_by('-respondido_em')
+        items = []
+        for bv in bvs:
+            v = bv.venda
+            ultima_msg = (v.cliente_resposta_boas_vindas or '')[:200]
+            items.append({
+                'id': bv.id,
+                'venda_id': v.id,
+                'cliente': v.cliente.nome_razao_social if v.cliente else '-',
+                'telefone': bv.telefone,
+                'vendedor': v.vendedor.username if v.vendedor else '-',
+                'data_envio': bv.data_envio.isoformat(),
+                'respondido_em': bv.respondido_em.isoformat() if bv.respondido_em else None,
+                'ultima_mensagem': ultima_msg[:150] + ('...' if len(ultima_msg) > 150 else ''),
+                'status_codigo': bv.status_boas_vindas.codigo if bv.status_boas_vindas else 'PENDENTE',
+                'status_nome': bv.status_boas_vindas.nome if bv.status_boas_vindas else 'Pendente',
+                'sugestao_ia': bv.sugestao_status_ia,
+            })
+        return Response({'items': items})
+
+
+class BoasVindasDetalheView(APIView):
+    """GET: Detalhe de um retorno (mensagens, venda, status). POST: Atribuir status."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        if not is_member(request.user, ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']):
+            return Response({'detail': 'Sem permissão.'}, status=status.HTTP_403_FORBIDDEN)
+        bv = BoasVindasEnviado.objects.filter(pk=pk).select_related(
+            'venda__cliente', 'venda__vendedor', 'venda__plano', 'status_boas_vindas', 'status_definido_por'
+        ).prefetch_related('mensagens').first()
+        if not bv:
+            return Response({'detail': 'Não encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+        v = bv.venda
+        mensagens = [{'texto': m.texto, 'data_hora': m.data_hora.isoformat(), 'direcao': m.direcao} for m in bv.mensagens.order_by('data_hora')]
+        return Response({
+            'id': bv.id,
+            'venda_id': v.id,
+            'cliente': v.cliente.nome_razao_social if v.cliente else '-',
+            'telefone': bv.telefone,
+            'vendedor': v.vendedor.username if v.vendedor else '-',
+            'plano': v.plano.nome if v.plano else '-',
+            'data_envio': bv.data_envio.isoformat(),
+            'respondido_em': bv.respondido_em.isoformat() if bv.respondido_em else None,
+            'mensagens': mensagens,
+            'cliente_resposta_boas_vindas': v.cliente_resposta_boas_vindas,
+            'status': {'codigo': bv.status_boas_vindas.codigo, 'nome': bv.status_boas_vindas.nome} if bv.status_boas_vindas else None,
+            'sugestao_ia': bv.sugestao_status_ia,
+            'status_definido_por': bv.status_definido_por.username if bv.status_definido_por else None,
+            'status_definido_em': bv.status_definido_em.isoformat() if bv.status_definido_em else None,
+        })
+
+    def post(self, request, pk):
+        if not is_member(request.user, ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']):
+            return Response({'detail': 'Sem permissão.'}, status=status.HTTP_403_FORBIDDEN)
+        status_codigo = (request.data.get('status_codigo') or '').strip().upper()
+        if not status_codigo:
+            return Response({'detail': 'Informe status_codigo.'}, status=status.HTTP_400_BAD_REQUEST)
+        st = StatusBoasVindas.objects.filter(codigo=status_codigo).first()
+        if not st:
+            return Response({'detail': f'Status "{status_codigo}" não encontrado.'}, status=status.HTTP_400_BAD_REQUEST)
+        bv = BoasVindasEnviado.objects.filter(pk=pk).first()
+        if not bv:
+            return Response({'detail': 'Não encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+        bv.status_boas_vindas = st
+        bv.status_definido_por = request.user
+        bv.status_definido_em = timezone.now()
+        bv.save(update_fields=['status_boas_vindas', 'status_definido_por', 'status_definido_em'])
+        return Response({'status': 'ok', 'status_codigo': st.codigo, 'status_nome': st.nome})
+
+
+class BoasVindasStatusListView(APIView):
+    """GET: Lista status disponíveis para atribuição."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        status_list = list(StatusBoasVindas.objects.order_by('ordem').values('id', 'codigo', 'nome', 'cor'))
+        return Response({'items': status_list})
+
+
+class BoasVindasSugestaoIAView(APIView):
+    """POST: IA sugere status a partir do texto das mensagens do cliente."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if not is_member(request.user, ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']):
+            return Response({'detail': 'Sem permissão.'}, status=status.HTTP_403_FORBIDDEN)
+        texto = (request.data.get('texto') or '').strip()
+        if not texto:
+            return Response({'detail': 'Informe o texto das mensagens.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            from crm_app.ai_chat_service import sugerir_status_boas_vindas
+            sugestao = sugerir_status_boas_vindas(texto)
+            return Response({'sugestao': sugestao})
+        except Exception as e:
+            logger.warning(f"[BoasVindas] IA sugestão falhou: {e}")
+            return Response({'sugestao': 'OUTROS'})
+
+
+class BoasVindasEnviarGestaoView(APIView):
+    """Envia boas-vindas com modelo anti-spam: 1 msg a cada 20-30 min, até 16h.
+    Parâmetros: data (YYYY-MM-DD), offset, limite (default 1 para spread máximo)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if not is_member(request.user, ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']):
+            return Response({'detail': 'Sem permissão.'}, status=status.HTTP_403_FORBIDDEN)
+        import time
+        import random
+        from datetime import datetime
+        from crm_app.whatsapp_service import WhatsAppService
+
+        data_str = request.data.get('data')
+        if not data_str:
+            return Response(
+                {'detail': 'Envie "data" (YYYY-MM-DD) - data em que o pedido foi instalado.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            data_instalacao = datetime.strptime(data_str, '%Y-%m-%d').date()
+        except ValueError:
+            return Response({'detail': 'Data inválida. Use YYYY-MM-DD.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        offset = max(0, int(request.data.get('offset', 0)))
+        limite = max(1, min(3, int(request.data.get('limite', 1))))  # 1 por vez = spread máximo
+        min_intervalo = BOAS_VINDAS_INTERVALO_MIN_SEG
+        max_intervalo = BOAS_VINDAS_INTERVALO_MAX_SEG
+
+        vendas_qs = Venda.objects.filter(
+            ativo=True,
+            data_instalacao=data_instalacao,
+            status_esteira__nome__icontains='INSTALADA',
+            boas_vindas_enviado_em__isnull=True,
+        ).exclude(telefone1__isnull=True).exclude(telefone1='').select_related('cliente').order_by('id')
+        total_na_data = vendas_qs.count()
+        vendas = list(vendas_qs[offset:offset + limite])
+        random.shuffle(vendas)
+
+        primeiro_nome = (request.user.first_name or request.user.username or 'Especialista').strip().split()[0] or 'Especialista'
+        agora = timezone.now()
+        saudacao = 'boa tarde' if agora.hour >= 12 else 'bom dia'
+        despedida = 'boa tarde!' if agora.hour >= 12 else 'bom dia!'
+
+        msg_base = (
+            f"Olá {saudacao}, {{nome_cliente}} tudo bem?\n\n"
+            f"Me chamo {primeiro_nome}, sou especialista de qualidade do Record PAP, parceiro Oficial da Nio Fibra.\n\n"
+            "Estou entrando em contato para informar que estamos à sua disposição, caso você precise tirar dúvidas sobre seu plano e faturas.\n\n"
+            "Sua primeira fatura irá vencer 25 dias após a instalação.\n\n"
+            "Você também pode acompanhar sua conta através do app Nio.\n"
+            "Instale o aplicativo no seu aparelho celular.\n\n"
+            "Disponível para Android e iOS:\n"
+            "Google Play Store (Android)\n"
+            "https://play.google.com/store/apps/details?id=br.com.niointernet.app\n\n"
+            "Apple Store (iOS):\n"
+            "https://apps.apple.com/br/app/nio-internet/id6746278488\n\n"
+            "Você ainda pode realizar contato pelos canais de comunicação oficiais da Nio:\n"
+            "SAC:0800 001 1000\n"
+            "WhatsApp: 21-3605-1000\n\n"
+            f"Obrigado e tenha um {despedida}"
+        )
+
+        enviados = 0
+        erros = []
+        svc = WhatsAppService()
+
+        for i, venda in enumerate(vendas):
+            if i > 0:
+                delay = random.randint(min_intervalo, max_intervalo)
+                time.sleep(delay)
+            nome_cliente = (venda.cliente.nome_razao_social if venda.cliente else '').strip() or 'Cliente'
+            mensagem = msg_base.format(nome_cliente=nome_cliente)
+            try:
+                ok, _ = svc.enviar_mensagem_texto(venda.telefone1, mensagem)
+                if ok:
+                    enviados += 1
+                    venda.boas_vindas_enviado_em = timezone.now()
+                    venda.save(update_fields=['boas_vindas_enviado_em'])
+                    tel_chave = _normalizar_telefone_chave(venda.telefone1)
+                    if tel_chave:
+                        BoasVindasEnviado.objects.create(telefone=tel_chave, venda=venda)
+                else:
+                    erros.append(f"Venda #{venda.id} ({venda.telefone1})")
+            except Exception as e:
+                erros.append(f"Venda #{venda.id}: {str(e)}")
+
+        restantes = max(0, total_na_data - offset - len(vendas))
+        proximo_offset = offset + len(vendas) if restantes > 0 else None
+        pause_antes_proximo = random.randint(1200, 1800) if restantes > 0 else None  # 20-30 min
 
         return Response({
             'enviados': enviados,

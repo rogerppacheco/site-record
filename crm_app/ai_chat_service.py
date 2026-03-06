@@ -35,3 +35,39 @@ def responder_com_ia(mensagem_usuario: str, nome_vendedor: str = "", contexto_ex
         logger.warning("[IA] Gemini falhou: %s", e)
 
     return None
+
+
+def sugerir_status_boas_vindas(texto: str) -> str:
+    """
+    Sugere status para resposta do cliente às boas-vindas.
+    Retorna: OK, ERRO_VENDAS, ERRO_TECNICO ou OUTROS.
+    Usa regras por palavras-chave (pode ser ampliado com IA depois).
+    """
+    if not texto or not texto.strip():
+        return 'OUTROS'
+    t = texto.lower().strip()
+    # Erro técnico: internet, velocidade, caiu, instável, não funciona, lento, etc.
+    termos_tecnico = [
+        'internet', 'velocidade', 'lento', 'lenta', 'caiu', 'cai', 'instável', 'instavel',
+        'não funciona', 'nao funciona', 'não entrega', 'nao entrega', 'queda', 'sinal',
+        'conexão', 'conexao', 'wi-fi', 'wifi', 'roteador', 'modem', 'fibra', 'reclamação',
+        'reclamacao', 'problema técnico', 'problema tecnico', 'velocidade não', 'velocidade nao',
+    ]
+    for termo in termos_tecnico:
+        if termo in t:
+            return 'ERRO_TECNICO'
+    # Erro de vendas: vendedor, prometeu, mentiu, atendimento, insatisfeito
+    termos_vendas = [
+        'vendedor', 'vendedora', 'prometeu', 'prometeu e não', 'mentiu', 'enganou',
+        'atendimento ruim', 'atendimento péssimo', 'atendimento pessimo', 'insatisfeito',
+        'insatisfeita', 'não era o que', 'nao era o que', 'diferente do que', 'esperava',
+    ]
+    for termo in termos_vendas:
+        if termo in t:
+            return 'ERRO_VENDAS'
+    # OK: agradecimento, confirmação positiva
+    termos_ok = ['obrigado', 'obrigada', 'valeu', 'ok', 'tudo bem', 'tudo certo', 'perfeito', 'ótimo', 'otimo']
+    for termo in termos_ok:
+        if termo in t and len(t) < 100:  # mensagem curta e positiva
+            return 'OK'
+    return 'OUTROS'

@@ -5841,23 +5841,38 @@ def processar_webhook_whatsapp(data, request=None):
     except Exception as e:
         logger.warning(f"[Webhook] Erro ao processar lembrete instalação: {e}", exc_info=True)
     
-    # --- Resposta ao boas-vindas (Record Vendas): gravar o que o cliente enviou ---
+    # --- Resposta ao boas-vindas: gravar TODAS as mensagens do cliente (histórico completo) ---
     try:
         from datetime import timedelta as _td
-        from crm_app.models import BoasVindasEnviado
+        from crm_app.models import BoasVindasEnviado, MensagemClienteBoasVindas
         chave_bv = _chave_telefone(telefone_formatado_usuario)
         chaves_bv = _chaves_telefone_variantes(telefone_formatado_usuario) or [chave_bv]
         limite_bv = timezone.now() - _td(days=30)
+        # Busca o envio mais recente para este telefone (para continuar recebendo mensagens)
         bv = BoasVindasEnviado.objects.filter(
             telefone__in=chaves_bv,
-            respondido_em__isnull=True,
             data_envio__gte=limite_bv,
         ).order_by('-data_envio').select_related('venda').first()
         if bv:
             texto_resposta = (mensagem_texto or '').strip() or mensagem_limpa or ''
             agora_bv = timezone.now()
-            bv.respondido_em = agora_bv
-            bv.save(update_fields=['respondido_em'])
+            # Sempre registra cada mensagem no histórico
+            MensagemClienteBoasVindas.objects.create(
+                boas_vindas_enviado=bv,
+                texto=texto_resposta[:5000] if texto_resposta else '',
+                direcao='ENTRADA',
+            )
+            # Primeira resposta: marca respondido_em e sugere status via IA
+            if bv.respondido_em is None:
+                bv.respondido_em = agora_bv
+                bv.save(update_fields=['respondido_em'])
+                try:
+                    from crm_app.ai_chat_service import sugerir_status_boas_vindas
+                    bv.sugestao_status_ia = sugerir_status_boas_vindas(texto_resposta)
+                    bv.save(update_fields=['sugestao_status_ia'])
+                except Exception as e_ia:
+                    logger.warning(f"[Webhook] IA sugestão boas-vindas: {e_ia}")
+            # Atualiza sempre a última mensagem na venda (para exibição rápida)
             venda_bv = bv.venda
             venda_bv.cliente_resposta_boas_vindas = texto_resposta[:2000] if texto_resposta else None
             venda_bv.data_resposta_boas_vindas = agora_bv

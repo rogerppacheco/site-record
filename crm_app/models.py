@@ -277,18 +277,65 @@ class LembreteInstalacaoEnviado(models.Model):
         ordering = ['-data_envio']
 
 
+class StatusBoasVindas(models.Model):
+    """Status atribuível pelo BO às respostas dos clientes às boas-vindas."""
+    codigo = models.CharField(max_length=30, unique=True)
+    nome = models.CharField(max_length=100)
+    cor = models.CharField(max_length=7, default='#6c757d')
+    ordem = models.PositiveSmallIntegerField(default=0)
+
+    def __str__(self):
+        return self.nome
+
+    class Meta:
+        db_table = 'crm_status_boas_vindas'
+        verbose_name = "Status Boas-Vindas"
+        verbose_name_plural = "Status Boas-Vindas"
+        ordering = ['ordem', 'nome']
+
+
 class BoasVindasEnviado(models.Model):
     """Registro de envio da mensagem de boas-vindas (pós-instalação) para gravar resposta do cliente."""
     telefone = models.CharField(max_length=20, db_index=True, help_text="Telefone normalizado (apenas dígitos)")
     venda = models.ForeignKey(Venda, on_delete=models.CASCADE, related_name='boas_vindas_enviados')
     data_envio = models.DateTimeField(auto_now_add=True)
     respondido_em = models.DateTimeField(null=True, blank=True, help_text="Quando o cliente respondeu")
+    # Campos para gestão (BO)
+    status_boas_vindas = models.ForeignKey(
+        StatusBoasVindas, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='envios', verbose_name="Status (BO)"
+    )
+    status_definido_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='boas_vindas_status_definidos', verbose_name="Status definido por"
+    )
+    status_definido_em = models.DateTimeField(null=True, blank=True, verbose_name="Status definido em")
+    sugestao_status_ia = models.CharField(
+        max_length=30, null=True, blank=True, verbose_name="Sugestão de status pela IA"
+    )
 
     class Meta:
         db_table = 'crm_boas_vindas_enviado'
         verbose_name = "Boas-vindas enviado"
         verbose_name_plural = "Boas-vindas enviados"
         ordering = ['-data_envio']
+
+
+class MensagemClienteBoasVindas(models.Model):
+    """Cada mensagem enviada pelo cliente no chat daquele número que recebeu boas-vindas."""
+    DIRECAO_CHOICES = [('ENTRADA', 'Cliente'), ('SAIDA', 'Sistema')]
+    boas_vindas_enviado = models.ForeignKey(
+        BoasVindasEnviado, on_delete=models.CASCADE, related_name='mensagens'
+    )
+    texto = models.TextField(help_text="Mensagem original do cliente")
+    data_hora = models.DateTimeField(auto_now_add=True)
+    direcao = models.CharField(max_length=10, choices=DIRECAO_CHOICES, default='ENTRADA')
+
+    class Meta:
+        db_table = 'crm_mensagem_cliente_boas_vindas'
+        verbose_name = "Mensagem Cliente (Boas-Vindas)"
+        verbose_name_plural = "Mensagens Cliente (Boas-Vindas)"
+        ordering = ['data_hora']
 
 
 class PagamentoComissao(models.Model):
