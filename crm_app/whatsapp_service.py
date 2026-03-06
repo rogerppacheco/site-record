@@ -248,23 +248,41 @@ class WhatsAppService:
     def enviar_imagem_b64(self, telefone, img_b64, caption=""):
         """
         Envia imagem em Base64 com legenda (caption) via Z-API.
+        Retorna o dict da resposta em caso de sucesso (messageId/zaapId presentes).
+        Retorna None se a API indicar erro ou não confirmar envio (para o histórico não marcar como enviado à toa).
         """
         url = f"{self.base_url}/send-image"
-        
+        telefone_limpo = self._formatar_telefone(telefone)
+
         # Z-API exige o prefixo data:image/png;base64,
-        # Se não tiver, adicionamos.
         if "base64," not in img_b64:
             img_b64 = "data:image/png;base64," + img_b64
 
         payload = {
-            "phone": telefone,
+            "phone": telefone_limpo,
             "image": img_b64,
-            "caption": caption  # <--- Este é o "Cabeçalho" da mensagem
+            "caption": caption or ""
         }
-        
+
         try:
-            response = requests.post(url, json=payload, headers=self._get_headers())
-            return response.json()
+            resp = self._send_request(url, payload)
+            if not resp:
+                logger.error(f"[WhatsAppService] Envio de imagem: resposta vazia ou None para {telefone_limpo}")
+                return None
+            if not isinstance(resp, dict):
+                logger.warning(f"[WhatsAppService] Envio de imagem: resposta não é dict para {telefone_limpo}: {type(resp)}")
+                return None
+            # Z-API pode retornar 200 com body de erro (ex: {"error": true, "message": "..."})
+            if resp.get("error"):
+                msg = resp.get("message") or resp.get("error") or "Erro desconhecido"
+                logger.error(f"[WhatsAppService] Z-API erro ao enviar imagem para {telefone_limpo}: {msg}")
+                return None
+            # Sucesso real: resposta deve conter messageId ou zaapId (mensagem criada no WhatsApp)
+            if resp.get("messageId") or resp.get("zaapId") or resp.get("id"):
+                logger.info(f"[WhatsAppService] Imagem enviada com sucesso para {telefone_limpo} (messageId/zaapId presente)")
+                return resp
+            logger.warning(f"[WhatsAppService] Resposta Z-API sem messageId/zaapId (mensagem pode não ter sido criada): {resp}")
+            return None
         except Exception as e:
             logger.error(f"Erro ao enviar imagem Z-API: {e}")
             return None
