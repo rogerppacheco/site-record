@@ -983,15 +983,15 @@ class WhatsAppService:
             titulo = dados_relatorio.get('titulo', 'Performance - Hoje')
             data_str = dados_relatorio.get('data', '')
 
-            # Coluna "Vendas" muda de nome conforme tipo
-            col_vendas_label = "Vendas Hoje (O.S.)" if tipo == "HOJE" else "Total"
+            # Coluna "Vendas" muda de nome conforme tipo (labels curtos para evitar sobreposição)
+            col_vendas_label = "V. Hoje" if tipo == "HOJE" else "Total"
 
             # Uma linha TOTAL + N linhas de dados
             qtd_linhas = 1 + len(lista)
             H_LINHA = 44
             H_TITULO = 72
             H_HEADER = 48
-            W = 1200
+            W = 1400  # Largura maior para evitar sobreposição de colunas
             H = H_TITULO + H_HEADER + (qtd_linhas * H_LINHA) + 40
 
             # Cores iguais ao manual (Bootstrap/painel)
@@ -1015,13 +1015,14 @@ class WhatsAppService:
             # Título centralizado (preto, como no manual)
             d.text((W / 2, H_TITULO // 2), titulo, fill=cor_texto, anchor="mm", font=f_titulo)
 
-            # Cabeçalho da tabela (6 colunas)
+            # Cabeçalho da tabela (6 colunas) - posições ajustadas para evitar sobreposição
+            # Colunas: Vendedor | Cluster | Canal | V.Hoje/Total | Cartão | % CC
             y_start = H_TITULO
-            col_x = [24, 220, 380, 620, 880, 1080]
-            col_align = ["lm", "mm", "mm", "mm", "mm", "mm"]
+            col_x = [24, 240, 400, 620, 880, 1140]
+            col_align = ["lm", "lm", "mm", "mm", "mm", "mm"]
 
             d.rectangle([(20, y_start), (W - 20, y_start + H_HEADER)], fill=cor_azul_header)
-            headers = ["Vendedor", "Cluster", "Canal", col_vendas_label, "Vendas Cartão (CC)", "% CC / Total"]
+            headers = ["Vendedor", "Cluster", "Canal", col_vendas_label, "Cartão", "% CC"]
             for i, label in enumerate(headers):
                 anchor = col_align[i]
                 x = col_x[i]

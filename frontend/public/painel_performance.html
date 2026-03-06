@@ -502,72 +502,29 @@
             const btnEnviar = document.getElementById('btn-enviar-manual');
             const textoBotao = btnEnviar.innerHTML;
             
-            // Desabilitar botão e mostrar loading
             btnEnviar.disabled = true;
             btnEnviar.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Enviando...';
             
-            const tabelaVisivel = document.querySelector('.tab-pane.active table');
-            if(!tabelaVisivel) {
-                btnEnviar.disabled = false;
-                btnEnviar.innerHTML = textoBotao;
-                return alert("Nenhuma tabela visível.");
+            // Usar gerador do servidor (Pillow) - mesmo estilo do robô automático, com dados e clusters
+            const canal = document.getElementById('filtro-canal').value || '';
+            const cluster = document.getElementById('filtro-cluster').value || '';
+            const tabAtiva = document.querySelector('.nav-pills .nav-link.active');
+            let tipo = 'HOJE';
+            if (tabAtiva) {
+                if (tabAtiva.id === 'tab-semana') tipo = 'SEMANAL';
+                else if (tabAtiva.id === 'tab-mes') tipo = 'MENSAL';
             }
-            
-            // Copiar cabeçalho (thead) + corpo (tbody) da tabela visível
-            const theadCopia = tabelaVisivel.querySelector('thead').cloneNode(true);
-            const tbodyCopia = tabelaVisivel.querySelector('tbody').cloneNode(true);
-            const tabelaCopia = document.createElement('table');
-            tabelaCopia.className = 'table-excel';
-            tabelaCopia.appendChild(theadCopia);
-            tabelaCopia.appendChild(tbodyCopia);
-            
-            // Preencher dados da tabela com cabeçalho
-            document.getElementById('capture-table').innerHTML = tabelaCopia.outerHTML;
-            
-            // Extrair dados da primeira linha (TOTAL) que agora é o primeiro tr do tbody
-            const primeiraLinha = tabelaVisivel.querySelector('tbody tr');
-            if(primeiraLinha && primeiraLinha.textContent.includes('TOTAL')) {
-                const colunas = primeiraLinha.querySelectorAll('td');
-                // Adaptar conforme a aba ativa
-                const abAtiva = document.querySelector('.nav-pills .nav-link.active').id;
-                
-                if(abAtiva === 'tab-hoje' && colunas.length >= 5) {
-                    // Hoje: TOTAL | - | total | cc | % 
-                    document.getElementById('capture-total').textContent = colunas[2].textContent;
-                    document.getElementById('capture-cc').textContent = colunas[3].textContent;
-                    document.getElementById('capture-percentual').textContent = colunas[4].textContent;
-                } else if(abAtiva === 'tab-semana' && colunas.length >= 10) {
-                    // Semana: TOTAL | seg | ter | qua | qui | sex | sab | total | cc | %
-                    document.getElementById('capture-total').textContent = colunas[7].textContent;
-                    document.getElementById('capture-cc').textContent = colunas[8].textContent;
-                    document.getElementById('capture-percentual').textContent = colunas[9].textContent;
-                } else if(abAtiva === 'tab-mes' && colunas.length >= 11) {
-                    // Mensal: TOTAL | total | inst | cc_total | cc_inst | % total | % inst | aprov | pend | agend | canc
-                    document.getElementById('capture-total').textContent = colunas[1].textContent;
-                    document.getElementById('capture-cc').textContent = colunas[3].textContent;
-                    const pctCC = colunas[5].textContent;
-                    document.getElementById('capture-percentual').textContent = pctCC;
-                }
-            }
-            
-            // Mostrar resumo na captura
-            document.getElementById('capture-summary').classList.add('show');
-            
-            // Definir título dinâmico
-            const tabAtiva = document.querySelector('.nav-pills .nav-link.active').textContent.trim();
-            document.getElementById('capture-title').textContent = `Performance - ${tabAtiva}`;
-            
-            const canvas = await html2canvas(document.getElementById('capture-area'));
-            const imgData = canvas.toDataURL("image/png");
-            
-            // Remover sumário após captura
-            document.getElementById('capture-summary').classList.remove('show');
+            const tabLabel = tabAtiva ? tabAtiva.textContent.trim() : 'Hoje';
+            const titulo = `Performance - ${tabLabel}`;
 
             try {
                 await axios.post('/api/crm/enviar-imagem-performance/', { 
                     chat_id: destino, 
-                    imagem_b64: imgData, 
-                    titulo: "Performance Manual"
+                    gerar_server: true,
+                    canal: canal,
+                    cluster: cluster,
+                    tipo: tipo,
+                    titulo: titulo
                 }, { headers: { 'Authorization': `Bearer ${token}` }});
                 
                 // Sucesso
@@ -588,7 +545,7 @@
                 btnEnviar.style.backgroundColor = '#dc3545';
                 btnEnviar.style.borderColor = '#dc3545';
                 
-                alert("Erro ao enviar: " + (e.response?.data?.detail || e.message)); 
+                alert("Erro ao enviar: " + (e.response?.data?.error || e.response?.data?.detail || e.message)); 
                 
                 setTimeout(() => {
                     btnEnviar.innerHTML = textoBotao;

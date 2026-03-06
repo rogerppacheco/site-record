@@ -5218,41 +5218,153 @@ class GrupoDisparoViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
 # 2. API que recebe a Imagem (Base64) e manda pro Z-API
+# Ou gera a imagem no servidor (gerar_server=True) para unificar o estilo com o robô automático
 class EnviarImagemPerformanceView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
         chat_id = request.data.get('chat_id')
-        imagem_b64 = request.data.get('imagem_b64') # String Base64 vinda do HTML2Canvas
+        imagem_b64 = request.data.get('imagem_b64')
         titulo = request.data.get('titulo', 'Performance')
+        gerar_server = request.data.get('gerar_server', False)
 
-        if not chat_id or not imagem_b64:
-            return Response({'error': 'Dados incompletos.'}, status=400)
+        if not chat_id:
+            return Response({'error': 'Destino (chat_id) é obrigatório.'}, status=400)
 
-        # Remove o cabeçalho do base64 se vier (data:image/png;base64,...)
-        if "base64," in imagem_b64:
-            imagem_b64 = imagem_b64.split("base64,")[1]
+        # Modo 1: Gerar imagem no servidor (Pillow) - unifica estilo com robô automático
+        if gerar_server:
+            try:
+                imagem_b64 = self._gerar_imagem_servidor(request)
+                if not imagem_b64:
+                    return Response({'error': 'Falha ao gerar imagem.'}, status=500)
+                titulo = request.data.get('titulo', titulo)
+            except Exception as e:
+                return Response({'error': str(e)}, status=500)
+        else:
+            # Modo 2: Usar imagem enviada (html2canvas)
+            if not imagem_b64:
+                return Response({'error': 'Envie imagem_b64 ou use gerar_server=true.'}, status=400)
+            if "base64," in imagem_b64:
+                imagem_b64 = imagem_b64.split("base64,")[1]
 
         try:
             svc = WhatsAppService()
-            # Envia para a Z-API (presumindo que seu service tenha enviar_imagem_b64 ou similar)
-            # Se não tiver, vamos usar a enviar_mensagem_imagem genérica
-            
-            # Ajuste conforme seu whatsapp_service.py:
-            # Geralmente Z-API aceita o base64 direto no campo 'image'
-            payload = {
-                "phone": chat_id,
-                "image": imagem_b64,
-                "caption": f"📊 *{titulo}* \nGerado em: {timezone.localtime().strftime('%d/%m/%Y %H:%M')}"
-            }
-            # Aqui chamamos o método interno do seu serviço ou request direto
-            # Vou simular usando o seu svc existente:
-            resp = svc.enviar_imagem_base64_direto(chat_id, imagem_b64, payload['caption'])
-            
+            caption = f"📊 *{titulo}* \nGerado em: {timezone.localtime().strftime('%d/%m/%Y %H:%M')}"
+            resp = svc.enviar_imagem_base64_direto(chat_id, imagem_b64, caption)
             return Response({'status': 'sucesso', 'zapi_response': resp})
-
         except Exception as e:
             return Response({'error': str(e)}, status=500)
+
+    def _gerar_imagem_servidor(self, request):
+        """Gera imagem com Pillow usando os mesmos dados e layout do robô automático."""
+        from crm_app.tasks import _filtro_cc
+        User = get_user_model()
+        user = request.user
+        canal = request.data.get('canal', '')
+        cluster = request.data.get('cluster', '')
+        tipo = (request.data.get('tipo') or 'HOJE').upper()
+        if tipo not in ('HOJE', 'SEMANAL', 'MENSAL'):
+            tipo = 'HOJE'
+
+        agora_local = timezone.localtime(timezone.now())
+        hoje = agora_local.date()
+        inicio_semana = hoje - timedelta(days=hoje.weekday())
+        dias_semana = [inicio_semana + timedelta(days=i) for i in range(6)]
+        inicio_mes = hoje.replace(day=1)
+
+        users = User.objects.filter(is_active=True).exclude(username__in=['OSAB_IMPORT', 'admin', 'root'])
+        grupos_gestao = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
+        if is_member(user, grupos_gestao):
+            pass
+        elif is_member(user, ['Supervisor']):
+            users = users.filter(Q(supervisor=user) | Q(id=user.id))
+        else:
+            users = users.filter(id=user.id)
+
+        if canal and str(canal).upper() != 'TODOS':
+            users = users.filter(canal__iexact=canal)
+        if cluster and str(cluster).strip():
+            users = users.filter(cluster__iexact=cluster.strip())
+
+        filtro_os = Q(vendas__ativo=True) & ~Q(vendas__ordem_servico='') & Q(vendas__ordem_servico__isnull=False)
+        filtro_cc = _filtro_cc()
+        filtro_inst = Q(vendas__status_esteira__nome__iexact='INSTALADA')
+
+        lista_dados = []
+        t_total = 0
+        t_cc = 0
+        titulo_extra = " Hoje" if tipo == "HOJE" else (" Semanal" if tipo == "SEMANAL" else " Mensal")
+
+        if tipo == 'HOJE':
+            filtro = filtro_os & Q(vendas__data_abertura__date=hoje)
+            qs = users.annotate(
+                total=Count('vendas', filter=filtro),
+                cc=Count('vendas', filter=filtro & filtro_cc)
+            ).order_by('username')
+            for u in qs:
+                pct = int((u.cc / u.total * 100)) if u.total > 0 else 0
+                lista_dados.append({
+                    'nome': u.username.upper(),
+                    'cluster': getattr(u, 'cluster', None) or '-',
+                    'canal': getattr(u, 'canal', None) or '-',
+                    'total': u.total,
+                    'cc': u.cc,
+                    'pct': f"{pct}%"
+                })
+                t_total += u.total
+                t_cc += u.cc
+        elif tipo == 'SEMANAL':
+            qs = users.annotate(
+                total_semana=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date__gte=inicio_semana)),
+                total_cc=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date__gte=inicio_semana) & filtro_cc)
+            ).order_by('username').values('username', 'cluster', 'canal', 'total_semana', 'total_cc')
+            for u in qs:
+                tot = u['total_semana']
+                cc = u['total_cc']
+                pct = int((cc / tot * 100)) if tot > 0 else 0
+                lista_dados.append({
+                    'nome': u['username'].upper(),
+                    'cluster': u.get('cluster') or '-',
+                    'canal': u.get('canal') or '-',
+                    'total': tot,
+                    'cc': cc,
+                    'pct': f"{pct}%"
+                })
+                t_total += tot
+                t_cc += cc
+        else:  # MENSAL
+            qs = users.annotate(
+                total_vendas=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date__gte=inicio_mes)),
+                total_cc=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date__gte=inicio_mes) & filtro_cc)
+            ).order_by('username').values('username', 'cluster', 'canal', 'total_vendas', 'total_cc')
+            for u in qs:
+                tot = u['total_vendas']
+                cc = u['total_cc']
+                pct = int((cc / tot * 100)) if tot > 0 else 0
+                lista_dados.append({
+                    'nome': u['username'].upper(),
+                    'cluster': u.get('cluster') or '-',
+                    'canal': u.get('canal') or '-',
+                    'total': tot,
+                    'cc': cc,
+                    'pct': f"{pct}%"
+                })
+                t_total += tot
+                t_cc += cc
+
+        pct_geral = int((t_cc / t_total * 100)) if t_total > 0 else 0
+        payload = {
+            'titulo': f"Performance -{titulo_extra.strip()}",
+            'data': hoje.strftime('%d/%m/%Y'),
+            'lista': lista_dados,
+            'totais': {'total': t_total, 'cc': t_cc, 'pct': f"{pct_geral}%"},
+            'tipo': tipo,
+        }
+        svc = WhatsAppService()
+        img_b64 = svc.gerar_imagem_performance_b64(payload)
+        if img_b64 and "base64," in img_b64:
+            img_b64 = img_b64.split("base64,")[1]
+        return img_b64
         
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
