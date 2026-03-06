@@ -148,14 +148,28 @@ def processar_envio_performance():
                 # 3. Gerar Imagem no Backend (Pillow)
                 img_b64 = svc.gerar_imagem_performance_b64(payload_imagem)
 
-                # 4. Enviar
+                # 4. Enviar (só registrar sucesso quando a Z-API confirmar com messageId/zaapId)
                 if img_b64:
-                    destinos = [d.strip() for d in regra.destinatarios.split(',') if d.strip()]
+                    # Aceitar vírgula ou ponto-e-vírgula (ex: "id1,id2" ou "id1;id2")
+                    raw = (regra.destinatarios or "").replace(";", ",")
+                    destinos = [d.strip() for d in raw.split(",") if d.strip()]
+                    if not destinos:
+                        logger.warning(f"Regra '{regra.nome}': nenhum destinatário válido (destinatarios='{regra.destinatarios}')")
+                        try:
+                            LogEnvioPerformance.objects.create(
+                                regra=regra, regra_nome=regra.nome, sucesso=False,
+                                total_destinos=0, sucessos=0, falhas=0,
+                                detalhe="Nenhum destinatário válido (use vírgula ou ; para separar)",
+                            )
+                        except Exception:
+                            pass
+                        continue
+                    logger.info(f"Imagem gerada para regra '{regra.nome}', enviando para {len(destinos)} destino(s)")
                     legenda = f"📊 *Atualização Automática* \n⏰ {agora.strftime('%H:%M')}"
-                    
                     sucessos = 0
                     falhas = 0
-                    
+                    erros_desc = []
+
                     for dest in destinos:
                         try:
                             resultado = svc.enviar_imagem_b64(dest, img_b64, caption=legenda)
@@ -164,12 +178,13 @@ def processar_envio_performance():
                                 logger.info(f"✅ Imagem enviada com sucesso para {dest}")
                             else:
                                 falhas += 1
-                                logger.error(f"❌ Falha ao enviar imagem para {dest}: resposta None")
+                                erros_desc.append(f"{dest}: Z-API não confirmou envio")
+                                logger.error(f"❌ Falha ao enviar imagem para {dest}: Z-API não retornou messageId/zaapId")
                         except Exception as e:
                             falhas += 1
+                            erros_desc.append(f"{dest}: {str(e)[:80]}")
                             logger.error(f"❌ Erro ao enviar imagem para {dest}: {e}")
-                    
-                    # Só atualizar último_disparo se pelo menos um envio foi bem-sucedido
+
                     if sucessos > 0:
                         logger.info(f"✅ Enviado regra '{regra.nome}' com imagem para {sucessos}/{len(destinos)} destinatário(s) (falhas: {falhas})")
                         regra.ultimo_disparo = agora
@@ -177,8 +192,7 @@ def processar_envio_performance():
                         detalhe = f"{sucessos}/{len(destinos)} enviados"
                     else:
                         logger.error(f"❌ Nenhum envio bem-sucedido para regra '{regra.nome}' ({falhas} falha(s))")
-                        detalhe = f"0/{len(destinos)} - todas falhas"
-                    # Histórico do dia
+                        detalhe = f"0/{len(destinos)} - " + ("; ".join(erros_desc[:3]) if erros_desc else "Z-API não confirmou envio")
                     try:
                         LogEnvioPerformance.objects.create(
                             regra=regra,
@@ -187,7 +201,7 @@ def processar_envio_performance():
                             total_destinos=len(destinos),
                             sucessos=sucessos,
                             falhas=falhas,
-                            detalhe=detalhe,
+                            detalhe=detalhe[:500],
                         )
                     except Exception:
                         pass
