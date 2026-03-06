@@ -969,91 +969,102 @@ class WhatsAppService:
 
     def gerar_imagem_performance_b64(self, dados_relatorio):
         """
-        Gera uma imagem com a tabela de performance do dia.
-        Layout profissional: fontes maiores, linha inteira verde para quem vendeu, ordem alfabética.
+        Gera imagem da tabela de performance no mesmo layout do envio manual:
+        título "Performance - Hoje" (ou Semanal/Mensal), tabela com Vendedor, Cluster, Canal,
+        Vendas Hoje (O.S.), Vendas Cartão (CC), % CC / Total; linha TOTAL primeiro; verde/rosa por venda.
         """
         if not Image:
             return None
 
         try:
-            # Ordem alfabética por nome do vendedor
             lista = sorted(dados_relatorio.get('lista', []), key=lambda x: (str(x.get('nome', '')).upper()))
-            qtd_linhas = len(lista)
+            totais = dados_relatorio.get('totais', {})
+            tipo = dados_relatorio.get('tipo', 'HOJE')
+            titulo = dados_relatorio.get('titulo', 'Performance - Hoje')
+            data_str = dados_relatorio.get('data', '')
 
-            # Dimensões maiores e mais confortáveis para leitura
-            H_BASE = 280
-            H_LINHA = 72
-            H_RODAPE = 160
-            W = 1100
-            H = H_BASE + (qtd_linhas * H_LINHA) + H_RODAPE
+            # Coluna "Vendas" muda de nome conforme tipo
+            col_vendas_label = "Vendas Hoje (O.S.)" if tipo == "HOJE" else "Total"
 
-            # Paleta profissional
-            cor_fundo = (248, 249, 252)
-            cor_azul_escuro = (15, 42, 87)
-            cor_azul_header = (30, 64, 125)
-            cor_azul_claro = (232, 238, 252)
+            # Uma linha TOTAL + N linhas de dados
+            qtd_linhas = 1 + len(lista)
+            H_LINHA = 44
+            H_TITULO = 72
+            H_HEADER = 48
+            W = 1200
+            H = H_TITULO + H_HEADER + (qtd_linhas * H_LINHA) + 40
+
+            # Cores iguais ao manual (Bootstrap/painel)
+            cor_fundo = (255, 255, 255)
+            cor_azul_header = (78, 115, 223)   # #4e73df
+            cor_azul_total = (44, 62, 80)       # #2c3e50
+            cor_verde_linha = (209, 231, 221)  # bg-green-soft
+            cor_verde_texto = (15, 81, 50)     # text green
+            cor_rosa_linha = (248, 215, 218)   # bg-red-soft
+            cor_rosa_texto = (132, 32, 41)     # text red
             cor_texto = (33, 37, 41)
-            cor_texto_suave = (108, 117, 125)
-            cor_verde_linha = (212, 237, 218)   # Linha inteira quando vendeu
-            cor_verde_texto = (21, 87, 36)     # Números em verde escuro
-            cor_borda = (222, 226, 230)
+            cor_borda = (227, 230, 240)        # #e3e6f0
 
             img = Image.new('RGB', (W, H), color=cor_fundo)
             d = ImageDraw.Draw(img)
 
-            # Fontes maiores para melhor leitura
-            f_titulo = self._font_performance("arial", 78)
-            f_sub = self._font_performance("arial", 44)
-            f_texto = self._font_performance("arial", 40)
-            f_bold = self._font_performance("arial", 40)
+            f_titulo = self._font_performance("arial", 52)
+            f_texto = self._font_performance("arial", 32)
+            f_bold = self._font_performance("arial", 32)
 
-            # Cabeçalho principal
-            d.rectangle([(0, 0), (W, 200)], fill=cor_azul_escuro)
-            d.text((W / 2, 70), dados_relatorio.get('titulo', 'PERFORMANCE'), fill="white", anchor="mm", font=f_titulo)
-            d.text((W / 2, 155), f"📅 {dados_relatorio.get('data', '')}", fill="white", anchor="mm", font=f_sub)
+            # Título centralizado (preto, como no manual)
+            d.text((W / 2, H_TITULO // 2), titulo, fill=cor_texto, anchor="mm", font=f_titulo)
 
-            # Cabeçalho da tabela
-            y_start = 230
-            col_x = [60, 520, 780, 980]
-            h_cab = 56
+            # Cabeçalho da tabela (6 colunas)
+            y_start = H_TITULO
+            col_x = [24, 220, 380, 620, 880, 1080]
+            col_align = ["lm", "mm", "mm", "mm", "mm", "mm"]
 
-            d.rectangle([(40, y_start), (W - 40, y_start + h_cab)], fill=cor_azul_header)
-            d.text((col_x[0], y_start + h_cab // 2), "VENDEDOR", fill="white", anchor="lm", font=f_bold)
-            d.text((col_x[1], y_start + h_cab // 2), "TOTAL", fill="white", anchor="mm", font=f_bold)
-            d.text((col_x[2], y_start + h_cab // 2), "CARTÃO", fill="white", anchor="mm", font=f_bold)
-            d.text((col_x[3], y_start + h_cab // 2), "%", fill="white", anchor="mm", font=f_bold)
+            d.rectangle([(20, y_start), (W - 20, y_start + H_HEADER)], fill=cor_azul_header)
+            headers = ["Vendedor", "Cluster", "Canal", col_vendas_label, "Vendas Cartão (CC)", "% CC / Total"]
+            for i, label in enumerate(headers):
+                anchor = col_align[i]
+                x = col_x[i]
+                d.text((x, y_start + H_HEADER // 2), label, fill="white", anchor=anchor, font=f_bold)
+            y = y_start + H_HEADER
 
-            # Linhas da tabela (ordem alfabética já aplicada)
-            y = y_start + h_cab + 4
+            # Linha TOTAL (igual ao manual: logo após o header)
+            d.rectangle([(20, y), (W - 20, y + H_LINHA)], fill=cor_azul_total)
+            t_total = totais.get('total', 0)
+            t_cc = totais.get('cc', 0)
+            t_pct = totais.get('pct', '0%')
+            d.text((col_x[0], y + H_LINHA // 2), "TOTAL", fill="white", anchor="lm", font=f_bold)
+            d.text((col_x[1], y + H_LINHA // 2), "-", fill="white", anchor="mm", font=f_texto)
+            d.text((col_x[2], y + H_LINHA // 2), "-", fill="white", anchor="mm", font=f_texto)
+            d.text((col_x[3], y + H_LINHA // 2), str(t_total), fill="white", anchor="mm", font=f_bold)
+            d.text((col_x[4], y + H_LINHA // 2), str(t_cc), fill="white", anchor="mm", font=f_texto)
+            d.text((col_x[5], y + H_LINHA // 2), str(t_pct), fill="white", anchor="mm", font=f_texto)
+            y += H_LINHA
+
+            # Linhas de dados (verde se vendeu, rosa se zero)
             for i, item in enumerate(lista):
-                ly_top = y - 4
-                ly_bot = y + H_LINHA - 8
+                ly_top = y
+                ly_bot = y + H_LINHA
                 vendeu = (item.get('total') or 0) > 0
+                bg = cor_verde_linha if vendeu else cor_rosa_linha
+                cor_nums = cor_verde_texto if vendeu else cor_rosa_texto
+                d.rectangle([(20, ly_top), (W - 20, ly_bot)], fill=bg)
+                d.line([(20, ly_bot), (W - 20, ly_bot)], fill=cor_borda)
 
-                if vendeu:
-                    # Linha inteira verde para quem vendeu
-                    d.rectangle([(40, ly_top), (W - 40, ly_bot)], fill=cor_verde_linha)
-                    d.rectangle([(40, ly_bot), (W - 40, ly_bot + 1)], fill=cor_borda)
-                else:
-                    if i % 2 == 0:
-                        d.rectangle([(40, ly_top), (W - 40, ly_bot)], fill=cor_azul_claro)
-                    d.rectangle([(40, ly_bot), (W - 40, ly_bot + 1)], fill=cor_borda)
+                nome = str(item.get('nome', ''))[:20]
+                cluster = str(item.get('cluster', '-'))[:12]
+                canal = str(item.get('canal', '-'))[:10]
+                total = item.get('total', 0)
+                cc = item.get('cc', 0)
+                pct = item.get('pct', '0%')
 
-                cor_nome = cor_verde_texto if vendeu else cor_texto
-                cor_num = cor_verde_texto if vendeu else cor_texto_suave
-                d.text((col_x[0], y + (H_LINHA - 8) // 2), str(item.get('nome', ''))[:24], fill=cor_nome, anchor="lm", font=f_texto)
-                d.text((col_x[1], y + (H_LINHA - 8) // 2), str(item.get('total', 0)), fill=cor_num, anchor="mm", font=f_bold)
-                d.text((col_x[2], y + (H_LINHA - 8) // 2), str(item.get('cc', 0)), fill=cor_num, anchor="mm", font=f_texto)
-                d.text((col_x[3], y + (H_LINHA - 8) // 2), str(item.get('pct', '0%')), fill=cor_num, anchor="mm", font=f_texto)
-
+                d.text((col_x[0], y + H_LINHA // 2), nome, fill=cor_texto, anchor="lm", font=f_bold)
+                d.text((col_x[1], y + H_LINHA // 2), cluster, fill=cor_texto, anchor="mm", font=f_texto)
+                d.text((col_x[2], y + H_LINHA // 2), canal, fill=cor_texto, anchor="mm", font=f_texto)
+                d.text((col_x[3], y + H_LINHA // 2), str(total), fill=cor_nums, anchor="mm", font=f_bold)
+                d.text((col_x[4], y + H_LINHA // 2), str(cc), fill=cor_nums, anchor="mm", font=f_texto)
+                d.text((col_x[5], y + H_LINHA // 2), str(pct), fill=cor_nums, anchor="mm", font=f_texto)
                 y += H_LINHA
-
-            # Rodapé
-            totais = dados_relatorio.get('totais', {})
-            y_totais = H - 120
-            d.rectangle([(0, y_totais), (W, H)], fill=cor_azul_escuro)
-            resumo = f"🏆 TOTAL: {totais.get('total', 0)}   |   💳 CARTÃO: {totais.get('cc', 0)} ({totais.get('pct', '0%')})"
-            d.text((W / 2, y_totais + 50), resumo, fill="white", anchor="mm", font=f_sub)
 
             buffered = io.BytesIO()
             img.save(buffered, format="PNG")

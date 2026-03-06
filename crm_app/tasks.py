@@ -90,10 +90,17 @@ def processar_envio_performance():
                     if not qs.exists():
                         logger.info(f"Sem vendas (hoje) para regra {regra.nome} - pulando envio")
                         continue
-                    titulo_extra = " HOJE"
+                    titulo_extra = " Hoje"
                     for u in qs:
                         pct = int((u.cc / u.total * 100)) if u.total > 0 else 0
-                        lista_dados.append({'nome': u.username.upper(), 'total': u.total, 'cc': u.cc, 'pct': f"{pct}%"})
+                        lista_dados.append({
+                            'nome': u.username.upper(),
+                            'cluster': getattr(u, 'cluster', None) or '-',
+                            'canal': getattr(u, 'canal', None) or '-',
+                            'total': u.total,
+                            'cc': u.cc,
+                            'pct': f"{pct}%"
+                        })
                         t_total += u.total
                         t_cc += u.cc
 
@@ -107,16 +114,23 @@ def processar_envio_performance():
                         sab=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date=dias_semana[5])),
                         total_semana=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date__gte=inicio_semana)),
                         total_cc=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date__gte=inicio_semana) & filtro_cc)
-                    ).filter(total_semana__gt=0).order_by('username').values('username', 'total_semana', 'total_cc')
+                    ).filter(total_semana__gt=0).order_by('username').values('username', 'cluster', 'canal', 'total_semana', 'total_cc')
                     if not qs_semana.exists():
                         logger.info(f"Sem vendas (semana) para regra {regra.nome} - pulando envio")
                         continue
-                    titulo_extra = " SEMANAL"
+                    titulo_extra = " Semanal"
                     for u in qs_semana:
                         tot = u['total_semana']
                         cc = u['total_cc']
                         pct = int((cc / tot * 100)) if tot > 0 else 0
-                        lista_dados.append({'nome': u['username'].upper(), 'total': tot, 'cc': cc, 'pct': f"{pct}%"})
+                        lista_dados.append({
+                            'nome': u['username'].upper(),
+                            'cluster': u.get('cluster') or '-',
+                            'canal': u.get('canal') or '-',
+                            'total': tot,
+                            'cc': cc,
+                            'pct': f"{pct}%"
+                        })
                         t_total += tot
                         t_cc += cc
 
@@ -124,25 +138,33 @@ def processar_envio_performance():
                     qs_mes = users.annotate(
                         total_vendas=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date__gte=inicio_mes)),
                         total_cc=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date__gte=inicio_mes) & filtro_cc)
-                    ).filter(total_vendas__gt=0).order_by('username').values('username', 'total_vendas', 'total_cc')
+                    ).filter(total_vendas__gt=0).order_by('username').values('username', 'cluster', 'canal', 'total_vendas', 'total_cc')
                     if not qs_mes.exists():
                         logger.info(f"Sem vendas (mês) para regra {regra.nome} - pulando envio")
                         continue
-                    titulo_extra = " MENSAL"
+                    titulo_extra = " Mensal"
                     for u in qs_mes:
                         tot = u['total_vendas']
                         cc = u['total_cc']
                         pct = int((cc / tot * 100)) if tot > 0 else 0
-                        lista_dados.append({'nome': u['username'].upper(), 'total': tot, 'cc': cc, 'pct': f"{pct}%"})
+                        lista_dados.append({
+                            'nome': u['username'].upper(),
+                            'cluster': u.get('cluster') or '-',
+                            'canal': u.get('canal') or '-',
+                            'total': tot,
+                            'cc': cc,
+                            'pct': f"{pct}%"
+                        })
                         t_total += tot
                         t_cc += cc
 
                 pct_geral = int((t_cc / t_total * 100)) if t_total > 0 else 0
                 payload_imagem = {
-                    'titulo': f"PERFORMANCE {regra.get_canal_alvo_display().upper()}{titulo_extra}",
+                    'titulo': f"Performance -{titulo_extra.strip()}",
                     'data': hoje.strftime('%d/%m/%Y'),
                     'lista': lista_dados,
-                    'totais': {'total': t_total, 'cc': t_cc, 'pct': f"{pct_geral}%"}
+                    'totais': {'total': t_total, 'cc': t_cc, 'pct': f"{pct_geral}%"},
+                    'tipo': tipo_rel,
                 }
 
                 # 3. Gerar Imagem no Backend (Pillow)
@@ -165,7 +187,13 @@ def processar_envio_performance():
                             pass
                         continue
                     logger.info(f"Imagem gerada para regra '{regra.nome}', enviando para {len(destinos)} destino(s)")
-                    legenda = f"📊 *Atualização Automática* \n⏰ {agora.strftime('%H:%M')}"
+                    # Legenda: "Atualização da Parcial de hoje" para HOJE, semanal/mensal para os outros
+                    if tipo_rel == 'HOJE':
+                        legenda = f"📊 *Atualização da Parcial de hoje* \n⏰ {agora.strftime('%H:%M')}"
+                    elif tipo_rel == 'SEMANAL':
+                        legenda = f"📊 *Atualização da Parcial semanal* \n⏰ {agora.strftime('%H:%M')}"
+                    else:
+                        legenda = f"📊 *Atualização da Parcial mensal* \n⏰ {agora.strftime('%H:%M')}"
                     sucessos = 0
                     falhas = 0
                     erros_desc = []
