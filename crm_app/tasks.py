@@ -86,9 +86,9 @@ def processar_envio_performance():
                     qs = users.annotate(
                         total=Count('vendas', filter=filtro),
                         cc=Count('vendas', filter=filtro & filtro_cc)
-                    ).filter(total__gt=0).order_by('username')
+                    ).order_by('username')
                     if not qs.exists():
-                        logger.info(f"Sem vendas (hoje) para regra {regra.nome} - pulando envio")
+                        logger.info(f"Nenhum usuário ativo para regra {regra.nome} - pulando envio")
                         continue
                     titulo_extra = " Hoje"
                     for u in qs:
@@ -114,9 +114,9 @@ def processar_envio_performance():
                         sab=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date=dias_semana[5])),
                         total_semana=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date__gte=inicio_semana)),
                         total_cc=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date__gte=inicio_semana) & filtro_cc)
-                    ).filter(total_semana__gt=0).order_by('username').values('username', 'cluster', 'canal', 'total_semana', 'total_cc')
+                    ).order_by('username').values('username', 'cluster', 'canal', 'total_semana', 'total_cc')
                     if not qs_semana.exists():
-                        logger.info(f"Sem vendas (semana) para regra {regra.nome} - pulando envio")
+                        logger.info(f"Nenhum usuário ativo para regra {regra.nome} - pulando envio")
                         continue
                     titulo_extra = " Semanal"
                     for u in qs_semana:
@@ -138,9 +138,9 @@ def processar_envio_performance():
                     qs_mes = users.annotate(
                         total_vendas=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date__gte=inicio_mes)),
                         total_cc=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date__gte=inicio_mes) & filtro_cc)
-                    ).filter(total_vendas__gt=0).order_by('username').values('username', 'cluster', 'canal', 'total_vendas', 'total_cc')
+                    ).order_by('username').values('username', 'cluster', 'canal', 'total_vendas', 'total_cc')
                     if not qs_mes.exists():
-                        logger.info(f"Sem vendas (mês) para regra {regra.nome} - pulando envio")
+                        logger.info(f"Nenhum usuário ativo para regra {regra.nome} - pulando envio")
                         continue
                     titulo_extra = " Mensal"
                     for u in qs_mes:
