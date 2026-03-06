@@ -248,11 +248,12 @@ class WhatsAppService:
     def enviar_imagem_b64(self, telefone, img_b64, caption=""):
         """
         Envia imagem em Base64 com legenda (caption) via Z-API.
+        Aceita número (5531999999999) ou ID de grupo (120363024223594143-group).
         Retorna o dict da resposta em caso de sucesso (messageId/zaapId presentes).
         Retorna None se a API indicar erro ou não confirmar envio (para o histórico não marcar como enviado à toa).
         """
         url = f"{self.base_url}/send-image"
-        telefone_limpo = self._formatar_telefone(telefone)
+        telefone_limpo = self._destino_send_text(telefone)  # Suporta grupos (-group) e números
 
         # Z-API exige o prefixo data:image/png;base64,
         if "base64," not in img_b64:
@@ -1015,11 +1016,11 @@ class WhatsAppService:
             # Título centralizado (preto, como no manual)
             d.text((W / 2, H_TITULO // 2), titulo, fill=cor_texto, anchor="mm", font=f_titulo)
 
-            # Cabeçalho da tabela (5 colunas) - sem Canal para melhor distribuição
-            # Colunas: Vendedor | Cluster | V.Hoje/Total | Cartão | % CC
+            # Cabeçalho da tabela (5 colunas) - sem Canal; espaço amplo para Vendedor e Cluster
+            # Colunas: Vendedor (até 420px) | Cluster (até 720px) | V.Hoje | Cartão | % CC
             y_start = H_TITULO
-            col_x = [24, 340, 720, 1040, 1300]
-            col_align = ["lm", "lm", "mm", "mm", "mm"]
+            col_x = [24, 570, 900, 1150, 1320]
+            col_align = ["lm", "mm", "mm", "mm", "mm"]
 
             d.rectangle([(20, y_start), (W - 20, y_start + H_HEADER)], fill=cor_azul_header)
             headers = ["Vendedor", "Cluster", col_vendas_label, "Cartão", "% CC"]
@@ -1051,8 +1052,8 @@ class WhatsAppService:
                 d.rectangle([(20, ly_top), (W - 20, ly_bot)], fill=bg)
                 d.line([(20, ly_bot), (W - 20, ly_bot)], fill=cor_borda)
 
-                nome = str(item.get('nome', ''))[:20]
-                cluster = str(item.get('cluster', '-'))[:12]
+                nome = str(item.get('nome', ''))[:18]
+                cluster = str(item.get('cluster', '-'))[:10]
                 total = item.get('total', 0)
                 cc = item.get('cc', 0)
                 pct = item.get('pct', '0%')

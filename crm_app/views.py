@@ -5231,6 +5231,10 @@ class EnviarImagemPerformanceView(APIView):
         if not chat_id:
             return Response({'error': 'Destino (chat_id) é obrigatório.'}, status=400)
 
+        # Aceitar múltiplos destinos (vírgula ou ponto e vírgula)
+        raw = str(chat_id).replace(";", ",")
+        destinos = [d.strip() for d in raw.split(",") if d.strip()]
+
         # Modo 1: Gerar imagem no servidor (Pillow) - unifica estilo com robô automático
         if gerar_server:
             try:
@@ -5250,8 +5254,25 @@ class EnviarImagemPerformanceView(APIView):
         try:
             svc = WhatsAppService()
             caption = f"📊 *{titulo}* \nGerado em: {timezone.localtime().strftime('%d/%m/%Y %H:%M')}"
-            resp = svc.enviar_imagem_base64_direto(chat_id, imagem_b64, caption)
-            return Response({'status': 'sucesso', 'zapi_response': resp})
+            sucessos = 0
+            erros = []
+            for dest in destinos:
+                try:
+                    resp = svc.enviar_imagem_base64_direto(dest, imagem_b64, caption)
+                    if resp:
+                        sucessos += 1
+                    else:
+                        erros.append(f"{dest}: Z-API não confirmou")
+                except Exception as e:
+                    erros.append(f"{dest}: {str(e)[:80]}")
+            if sucessos == 0 and erros:
+                return Response({'error': '; '.join(erros[:3])}, status=500)
+            return Response({
+                'status': 'sucesso',
+                'enviados': sucessos,
+                'total': len(destinos),
+                'erros': erros[:5] if erros else []
+            })
         except Exception as e:
             return Response({'error': str(e)}, status=500)
 
