@@ -969,9 +969,9 @@ class WhatsAppService:
 
     def gerar_imagem_performance_b64(self, dados_relatorio):
         """
-        Gera imagem da tabela de performance no mesmo layout do envio manual:
-        título "Performance - Hoje" (ou Semanal/Mensal), tabela com Vendedor, Cluster, Canal,
-        Vendas Hoje (O.S.), Vendas Cartão (CC), % CC / Total; linha TOTAL primeiro; verde/rosa por venda.
+        Gera imagem da tabela de performance:
+        título "Performance - Hoje" (ou Semanal/Mensal), tabela com Vendedor, Cluster,
+        V. Hoje/Total, Cartão, % CC; linha TOTAL primeiro; verde/rosa por venda.
         """
         if not Image:
             return None
@@ -1015,14 +1015,14 @@ class WhatsAppService:
             # Título centralizado (preto, como no manual)
             d.text((W / 2, H_TITULO // 2), titulo, fill=cor_texto, anchor="mm", font=f_titulo)
 
-            # Cabeçalho da tabela (6 colunas) - posições ajustadas para evitar sobreposição
-            # Colunas: Vendedor | Cluster | Canal | V.Hoje/Total | Cartão | % CC
+            # Cabeçalho da tabela (5 colunas) - sem Canal para melhor distribuição
+            # Colunas: Vendedor | Cluster | V.Hoje/Total | Cartão | % CC
             y_start = H_TITULO
-            col_x = [24, 240, 400, 620, 880, 1140]
-            col_align = ["lm", "lm", "mm", "mm", "mm", "mm"]
+            col_x = [24, 340, 720, 1040, 1300]
+            col_align = ["lm", "lm", "mm", "mm", "mm"]
 
             d.rectangle([(20, y_start), (W - 20, y_start + H_HEADER)], fill=cor_azul_header)
-            headers = ["Vendedor", "Cluster", "Canal", col_vendas_label, "Cartão", "% CC"]
+            headers = ["Vendedor", "Cluster", col_vendas_label, "Cartão", "% CC"]
             for i, label in enumerate(headers):
                 anchor = col_align[i]
                 x = col_x[i]
@@ -1036,10 +1036,9 @@ class WhatsAppService:
             t_pct = totais.get('pct', '0%')
             d.text((col_x[0], y + H_LINHA // 2), "TOTAL", fill="white", anchor="lm", font=f_bold)
             d.text((col_x[1], y + H_LINHA // 2), "-", fill="white", anchor="mm", font=f_texto)
-            d.text((col_x[2], y + H_LINHA // 2), "-", fill="white", anchor="mm", font=f_texto)
-            d.text((col_x[3], y + H_LINHA // 2), str(t_total), fill="white", anchor="mm", font=f_bold)
-            d.text((col_x[4], y + H_LINHA // 2), str(t_cc), fill="white", anchor="mm", font=f_texto)
-            d.text((col_x[5], y + H_LINHA // 2), str(t_pct), fill="white", anchor="mm", font=f_texto)
+            d.text((col_x[2], y + H_LINHA // 2), str(t_total), fill="white", anchor="mm", font=f_bold)
+            d.text((col_x[3], y + H_LINHA // 2), str(t_cc), fill="white", anchor="mm", font=f_texto)
+            d.text((col_x[4], y + H_LINHA // 2), str(t_pct), fill="white", anchor="mm", font=f_texto)
             y += H_LINHA
 
             # Linhas de dados (verde se vendeu, rosa se zero)
@@ -1054,17 +1053,15 @@ class WhatsAppService:
 
                 nome = str(item.get('nome', ''))[:20]
                 cluster = str(item.get('cluster', '-'))[:12]
-                canal = str(item.get('canal', '-'))[:10]
                 total = item.get('total', 0)
                 cc = item.get('cc', 0)
                 pct = item.get('pct', '0%')
 
                 d.text((col_x[0], y + H_LINHA // 2), nome, fill=cor_texto, anchor="lm", font=f_bold)
                 d.text((col_x[1], y + H_LINHA // 2), cluster, fill=cor_texto, anchor="mm", font=f_texto)
-                d.text((col_x[2], y + H_LINHA // 2), canal, fill=cor_texto, anchor="mm", font=f_texto)
-                d.text((col_x[3], y + H_LINHA // 2), str(total), fill=cor_nums, anchor="mm", font=f_bold)
-                d.text((col_x[4], y + H_LINHA // 2), str(cc), fill=cor_nums, anchor="mm", font=f_texto)
-                d.text((col_x[5], y + H_LINHA // 2), str(pct), fill=cor_nums, anchor="mm", font=f_texto)
+                d.text((col_x[2], y + H_LINHA // 2), str(total), fill=cor_nums, anchor="mm", font=f_bold)
+                d.text((col_x[3], y + H_LINHA // 2), str(cc), fill=cor_nums, anchor="mm", font=f_texto)
+                d.text((col_x[4], y + H_LINHA // 2), str(pct), fill=cor_nums, anchor="mm", font=f_texto)
                 y += H_LINHA
 
             buffered = io.BytesIO()
