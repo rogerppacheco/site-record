@@ -1071,6 +1071,11 @@
         if (!usuario || !data || !valor) { alert('Preencha Colaborador, Data e Valor.'); return; }
         isRegistrandoAdiantamento = true;
         var payload = { usuario: parseInt(usuario, 10), tipo: tipo || 'ADIANTAMENTO_CNPJ', data: data, valor: parseFloat(valor) || 0, descricao: descricao || 'Adiantamento', quantidade_vendas: qtd };
+        if (tipo === 'ADIANTAMENTO_COMISSAO' && cbs && cbs.length > 0) {
+            var vendaIds = [];
+            cbs.forEach(function(cb) { var id = cb.getAttribute('data-id'); if (id) vendaIds.push(parseInt(id, 10)); });
+            payload.metadados = { venda_ids: vendaIds };
+        }
         try {
             await apiFetch('/crm/lancamentos-financeiros/', { method: 'POST', body: JSON.stringify(payload) });
             alert('Adiantamento registrado com sucesso!');

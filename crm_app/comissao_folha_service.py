@@ -429,6 +429,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None):
                 'situacao': v.status_esteira.nome if v.status_esteira else 'INSTALADA',
                 'vendedor': consultor.username,
                 'churn': churn_status,
+                'adiantada': 'SIM' if v.id in set_adiantadas else 'NÃO',
             })
         # Incluir no extrato as vendas churn M-1 (mês anterior), para aparecerem na lista com CHURN=SIM
         for v in vendas_m1:
@@ -456,6 +457,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None):
                 'situacao': 'INSTALADA (Churn M-1)',
                 'vendedor': consultor.username,
                 'churn': 'SIM',
+                'adiantada': 'NÃO',
             })
 
         qtd_a_descontar_boleto = sum(d.get('quantidade', 1) for d in detalhes_descontos if (d.get('tipo_exibicao') or '').lower() == 'boleto')
