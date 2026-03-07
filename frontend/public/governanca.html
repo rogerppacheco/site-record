@@ -140,6 +140,24 @@
                                     <button type="button" class="btn btn-outline-secondary" id="btn-limpar-busca-usuario" title="Limpar busca" style="display:none;"><i class="bi bi-x-lg"></i></button>
                                 </div>
                                 <span id="busca-usuario-loading" class="spinner-border spinner-border-sm text-primary" style="display:none;" aria-hidden="true"></span>
+                                <select id="filtro-canal-usuario" class="form-select form-select-sm" style="width: auto;" title="Filtrar por canal">
+                                    <option value="">Canal: Todos</option>
+                                    <option value="PAP">PAP</option>
+                                    <option value="DIGITAL">Digital</option>
+                                    <option value="RECEPTIVO">Receptivo</option>
+                                    <option value="PARCEIRO">Parceiro</option>
+                                    <option value="TELAG">TelAg</option>
+                                    <option value="INTERNO">Interno</option>
+                                </select>
+                                <select id="filtro-perfil-usuario" class="form-select form-select-sm" style="width: auto;" title="Filtrar por perfil">
+                                    <option value="">Perfil: Todos</option>
+                                </select>
+                                <select id="filtro-cluster-usuario" class="form-select form-select-sm" style="width: auto;" title="Filtrar por cluster">
+                                    <option value="">Cluster: Todos</option>
+                                    <option value="CLUSTER_1">Cluster 1</option>
+                                    <option value="CLUSTER_2">Cluster 2</option>
+                                    <option value="CLUSTER_3">Cluster 3</option>
+                                </select>
                                 <div class="btn-group">
                                     <button onclick="mostrarListaUsuarios('ativos', this)" class="btn btn-sm btn-outline-primary active">Ativos</button>
                                     <button onclick="mostrarListaUsuarios('inativos', this)" class="btn btn-sm btn-outline-secondary">Inativos</button>
@@ -157,7 +175,7 @@
                     <div class="card-body p-0">
                         <div class="table-responsive">
                             <table class="table table-hover align-middle mb-0" id="tabela-usuarios">
-                                <thead class="table-light"><tr id="user-list-header"><th style="width: 40px;"><input type="checkbox" id="check-all" onclick="toggleTodos(this)"></th><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Matr. PAP</th><th>Canal</th><th>Líder</th><th class="text-end">Ações</th></tr></thead>
+                                <thead class="table-light"><tr id="user-list-header"><th style="width: 40px;"><input type="checkbox" id="check-all" onclick="toggleTodos(this)"></th><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Matr. PAP</th><th>Canal</th><th>Benefício</th><th>Líder</th><th class="text-end">Ações</th></tr></thead>
                                 <tbody id="user-list-body"></tbody>
                             </table>
                         </div>
@@ -580,6 +598,10 @@
                                         <label class="form-label small fw-bold">Passagem</label>
                                         <input type="number" class="form-control" id="valor_passagem" step="0.01">
                                     </div>
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label small fw-bold">Ajuda de custo mensal (R$)</label>
+                                        <input type="number" class="form-control" id="valor_ajuda_custo_mensal" step="0.01" placeholder="Ex: 500">
+                                    </div>
 
                                     <div class="col-12">
                                         <hr class="text-muted">
@@ -858,6 +880,19 @@
         if (menuItem) menuItem.classList.add('active');
         if (idSecao === 'permissoes_sistema') carregarPermissoesSistema();
         if (idSecao === 'perfis') carregarPerfis();
+        if (idSecao === 'usuarios') carregarOpcoesFiltrosUsuarios();
+    }
+    var perfisFiltroCarregados = false;
+    async function carregarOpcoesFiltrosUsuarios() {
+        const sel = document.getElementById('filtro-perfil-usuario');
+        if (!sel || perfisFiltroCarregados) return;
+        try {
+            const res = await apiFetch('/perfis/');
+            const lista = Array.isArray(res) ? res : (res?.results || []);
+            sel.innerHTML = '<option value="">Perfil: Todos</option>';
+            lista.forEach(p => sel.add(new Option(p.nome || p.cod_perfil || 'Perfil ' + p.id, p.id)));
+            perfisFiltroCarregados = true;
+        } catch (e) { console.warn('Não foi possível carregar perfis para filtro:', e); }
     }
     async function carregarPermissoesSistema() {
         const container = document.getElementById('lista-permissoes-sistema');
@@ -1392,7 +1427,7 @@
 
     async function carregarUsuarios(status = 'ativos', page = 1, searchTerm = '') {
         const tbody = document.getElementById('user-list-body');
-        if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Carregando...</td></tr>';
+        if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="text-center py-4 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Carregando...</td></tr>';
 
         try {
             let res, dados, total;
@@ -1403,6 +1438,12 @@
                 const pageSize = emBusca ? SEARCH_PAGE_SIZE : ITEMS_PER_PAGE;
                 let url = `/usuarios/?is_active=${status === 'ativos'}&page=${page}&page_size=${pageSize}`;
                 if (emBusca) url += `&search=${encodeURIComponent(searchTerm.trim())}`;
+                const canal = document.getElementById('filtro-canal-usuario')?.value;
+                if (canal) url += `&canal=${encodeURIComponent(canal)}`;
+                const perfil = document.getElementById('filtro-perfil-usuario')?.value;
+                if (perfil) url += `&perfil=${encodeURIComponent(perfil)}`;
+                const cluster = document.getElementById('filtro-cluster-usuario')?.value;
+                if (cluster) url += `&cluster=${encodeURIComponent(cluster)}`;
                 res = await apiFetch(url);
                 dados = Array.isArray(res) ? res : (res?.results || []);
                 total = res?.count || (Array.isArray(res) ? res.length : dados.length);
@@ -1411,7 +1452,14 @@
                 console.warn('API não suporta paginação, tentando carregar todos os usuários com page_size grande:', apiError);
                 // Fallback: tentar carregar todos de uma vez com page_size muito grande
                 try {
-                    res = await apiFetch(`/usuarios/?is_active=${status === 'ativos'}&page_size=1000`);
+                    let fallbackUrl = `/usuarios/?is_active=${status === 'ativos'}&page_size=1000`;
+                    const canal = document.getElementById('filtro-canal-usuario')?.value;
+                    if (canal) fallbackUrl += `&canal=${encodeURIComponent(canal)}`;
+                    const perfil = document.getElementById('filtro-perfil-usuario')?.value;
+                    if (perfil) fallbackUrl += `&perfil=${encodeURIComponent(perfil)}`;
+                    const cluster = document.getElementById('filtro-cluster-usuario')?.value;
+                    if (cluster) fallbackUrl += `&cluster=${encodeURIComponent(cluster)}`;
+                    res = await apiFetch(fallbackUrl);
                     todosUsuariosParaCache = Array.isArray(res) ? res : (res?.results || []);
                     total = res?.count || todosUsuariosParaCache.length;
                     
@@ -1452,7 +1500,7 @@
 
             setTimeout(() => renderizarControlesPaginacao(status), 200);
         } catch (e) {
-            document.getElementById('user-list-body').innerHTML = `<tr><td colspan="8">Erro: ${e.message}</td></tr>`;
+            document.getElementById('user-list-body').innerHTML = `<tr><td colspan="9">Erro: ${e.message}</td></tr>`;
         }
     }
 
@@ -1594,17 +1642,18 @@
 
         // Otimizar renderização do header
         headerRow.innerHTML = isAtivos
-            ? `<th style="width: 40px;"><input type="checkbox" id="check-all" onclick="toggleTodos(this)"></th><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Matr. PAP</th><th>Canal</th><th>Líder</th><th class="text-end">Ações</th>`
-            : `<th>Nome</th><th>E-mail</th><th>Perfil</th><th>Matr. PAP</th><th>Canal</th><th class="text-end">Ações</th>`;
+            ? `<th style="width: 40px;"><input type="checkbox" id="check-all" onclick="toggleTodos(this)"></th><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Matr. PAP</th><th>Canal</th><th>Benefício</th><th>Líder</th><th class="text-end">Ações</th>`
+            : `<th>Nome</th><th>E-mail</th><th>Perfil</th><th>Matr. PAP</th><th>Canal</th><th>Benefício</th><th class="text-end">Ações</th>`;
 
         if (!lista.length) {
-            userListBody.innerHTML = '<tr><td colspan="8">Nenhum usuário.</td></tr>';
+            const colSpan = isAtivos ? 9 : 7;
+            userListBody.innerHTML = '<tr><td colspan="' + colSpan + '">Nenhum usuário.</td></tr>';
             return;
         }
 
         // Otimizar renderização usando documentFragment
         const fragment = document.createDocumentFragment();
-        const colunas = isAtivos ? 8 : 6;
+        const colunas = isAtivos ? 9 : 7;
 
         lista.forEach(user => {
             const row = document.createElement('tr');
@@ -1656,6 +1705,16 @@
             const canalCell = document.createElement('td');
             canalCell.textContent = user.canal || '-';
             row.appendChild(canalCell);
+
+            // Benefício (almoço+passagem ou ajuda de custo mensal)
+            const beneficioCell = document.createElement('td');
+            const vAjuda = parseFloat(user.valor_ajuda_custo_mensal) || 0;
+            const vAlmoco = parseFloat(user.valor_almoco) || 0;
+            const vPass = parseFloat(user.valor_passagem) || 0;
+            if (vAjuda > 0) beneficioCell.textContent = 'Ajuda R$ ' + Number(vAjuda).toFixed(2).replace('.', ',');
+            else if (vAlmoco > 0 || vPass > 0) beneficioCell.textContent = 'Almoço+Passagem';
+            else beneficioCell.textContent = '-';
+            row.appendChild(beneficioCell);
 
             if (isAtivos) {
                 // SUPERVISOR/USERNAME - BUSCAR NO CACHE DE LÍDERES
@@ -1745,7 +1804,7 @@
             if (btnLimpar) btnLimpar.style.display = 'inline-block';
         } catch (e) {
             const tbody = document.getElementById('user-list-body');
-            if (tbody) tbody.innerHTML = `<tr><td colspan="8">Erro ao buscar: ${e.message}</td></tr>`;
+            if (tbody) tbody.innerHTML = `<tr><td colspan="9">Erro ao buscar: ${e.message}</td></tr>`;
         } finally {
             if (spinner) spinner.style.display = 'none';
         }
@@ -1782,6 +1841,13 @@
         var btn = e.target && (e.target.id === 'btn-limpar-busca-usuario' ? e.target : (e.target.closest ? e.target.closest('#btn-limpar-busca-usuario') : null));
         if (btn) { e.preventDefault(); e.stopPropagation(); limparBuscaUsuario(); }
     }, true);
+    [ 'filtro-canal-usuario', 'filtro-perfil-usuario', 'filtro-cluster-usuario' ].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.addEventListener('change', function() {
+            var status = document.getElementById('lista-status-titulo') && document.getElementById('lista-status-titulo').textContent.includes('Ativos') ? 'ativos' : 'inativos';
+            carregarUsuarios(status, 1);
+        });
+    });
 
     function editarUsuarioPeloId(id) { const user = todosUsuariosCache.find(u => u.id === id); if (user) abrirModalUsuario(user); }
     window.toggleTodos = (s) => document.querySelectorAll('.user-check').forEach(c => c.checked = s.checked);
@@ -1851,7 +1917,7 @@
             document.getElementById('matricula_pap').value = user.matricula_pap || '';
             document.getElementById('brpronto_login').value = user.brpronto_login || '';
             document.getElementById('brpronto_dominio').value = user.brpronto_dominio || '';
-            ['valor_almoco', 'valor_passagem', 'chave_pix', 'nome_da_conta', 'meta_comissao', 'desconto_boleto', 'desconto_inclusao_viabilidade', 'desconto_instalacao_antecipada', 'adiantamento_cnpj', 'desconto_inss_fixo'].forEach(id => { document.getElementById(id).value = user[id] || ''; });
+            ['valor_almoco', 'valor_passagem', 'valor_ajuda_custo_mensal', 'chave_pix', 'nome_da_conta', 'meta_comissao', 'desconto_boleto', 'desconto_inclusao_viabilidade', 'desconto_instalacao_antecipada', 'adiantamento_cnpj', 'desconto_inss_fixo'].forEach(id => { document.getElementById(id).value = user[id] || ''; });
         } else {
             document.getElementById('matricula_pap').value = '';
             document.getElementById('brpronto_login').value = '';
@@ -2001,6 +2067,7 @@
             groups: document.getElementById('perfil_id').value ? [parseInt(document.getElementById('perfil_id').value)] : [],
             valor_almoco: cleanValue(document.getElementById('valor_almoco').value, true),
             valor_passagem: cleanValue(document.getElementById('valor_passagem').value, true),
+            valor_ajuda_custo_mensal: cleanValue(document.getElementById('valor_ajuda_custo_mensal').value, true),
             chave_pix: cleanValue(document.getElementById('chave_pix').value),
             nome_da_conta: cleanValue(document.getElementById('nome_da_conta').value),
             meta_comissao: cleanValue(document.getElementById('meta_comissao').value, true),
@@ -2693,7 +2760,7 @@
 
     // --- ADIANTAMENTOS E DESCONTOS ---
     async function carregarUsuariosSelectsFinanceiro() {
-        const res = await apiFetch('/usuarios/?is_active=true');
+        const res = await apiFetch('/usuarios/ativos-para-select/');
         const users = Array.isArray(res) ? res : (res?.results || []);
         if (!users) return;
         const selAd = document.getElementById('ad_usuario'), selDesc = document.getElementById('desc_usuario'), selAnt = document.getElementById('ant_vendedor');
@@ -2973,6 +3040,7 @@
     document.addEventListener('DOMContentLoaded', () => {
         carregarDadosParaFormulario();
         carregarPerfis();
+        carregarOpcoesFiltrosUsuarios();
         carregarUsuarios('ativos'); 
         
         carregarMotivos();

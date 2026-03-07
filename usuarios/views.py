@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
+from rest_framework.pagination import PageNumberPagination
 from django.contrib.auth.models import ContentType, Group, Permission
 from django.db import transaction
 from django.db.models import Q
@@ -241,18 +242,23 @@ class DefinirNovaSenhaView(APIView):
             return Response({"detail": "Senha alterada com sucesso!"})
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+class UsuarioPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 1000
+
+
 class UsuarioViewSet(viewsets.ModelViewSet):
     queryset = Usuario.objects.all().select_related('supervisor', 'perfil').prefetch_related('groups').order_by('first_name')
     serializer_class = UsuarioSerializer
     permission_classes = [permissions.IsAuthenticated]
-    
-    # --- Performance ---
-    # Se você quiser ativar paginação padrão aqui futuramente, descomente:
-    # pagination_class = PageNumberPagination 
+    pagination_class = UsuarioPagination
+    ordering_fields = ['username', 'first_name', 'last_name', 'email', 'canal', 'cluster']
+    ordering = ['first_name']  # padrão para listagem da gestão
 
     def get_queryset(self):
         """
-        Processa o parâmetro is_active da query string para filtrar usuários ativos/inativos.
+        Processa parâmetros da query: is_active, search, canal, perfil, cluster.
         """
         queryset = super().get_queryset()
         
@@ -260,6 +266,24 @@ class UsuarioViewSet(viewsets.ModelViewSet):
         if is_active_param is not None:
             is_active_value = is_active_param.lower() in ('true', '1')
             queryset = queryset.filter(is_active=is_active_value)
+        
+        # Filtro por canal (PAP, PARCEIRO, DIGITAL, etc.)
+        canal = (self.request.query_params.get('canal') or '').strip()
+        if canal:
+            queryset = queryset.filter(canal=canal)
+        
+        # Filtro por perfil (id do perfil)
+        perfil_id = self.request.query_params.get('perfil')
+        if perfil_id:
+            try:
+                queryset = queryset.filter(perfil_id=int(perfil_id))
+            except (ValueError, TypeError):
+                pass
+        
+        # Filtro por cluster (CLUSTER_1, CLUSTER_2, CLUSTER_3)
+        cluster = (self.request.query_params.get('cluster') or '').strip()
+        if cluster:
+            queryset = queryset.filter(cluster=cluster)
         
         # Busca dinâmica: username, nome, sobrenome, e-mail (case-insensitive)
         search = (self.request.query_params.get('search') or '').strip()
@@ -307,6 +331,15 @@ class UsuarioViewSet(viewsets.ModelViewSet):
                 'nome_exibicao': nome
             })
         return Response(data)
+
+    @action(detail=False, methods=['get'], url_path='ativos-para-select')
+    def ativos_para_select(self, request):
+        """
+        Retorna todos os usuários ativos (id, username) ordenados por username, sem paginação.
+        Uso: dropdowns de Novo Adiantamento e Novo Desconto.
+        """
+        qs = Usuario.objects.filter(is_active=True).order_by('username').values('id', 'username')
+        return Response(list(qs))
 
     @action(detail=False, methods=['post'])
     def trocar_senha(self, request):

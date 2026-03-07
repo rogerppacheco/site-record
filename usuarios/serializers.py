@@ -104,7 +104,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
             'perfil', 'perfil_detalhe',
             'groups', 'groups_detalhe',
             'supervisor', 'supervisor_detalhe', 'supervisor_nome',
-            'valor_almoco', 'valor_passagem', 'chave_pix', 'nome_da_conta',
+            'valor_almoco', 'valor_passagem', 'valor_ajuda_custo_mensal', 'chave_pix', 'nome_da_conta',
             'meta_comissao', 'desconto_boleto', 'desconto_inclusao_viabilidade',
             'desconto_instalacao_antecipada', 
             'adiantamento_cnpj', 'desconto_inss_fixo',

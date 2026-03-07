@@ -60,6 +60,14 @@ class Usuario(AbstractUser):
     # --- FINANCEIRO ---
     valor_almoco = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     valor_passagem = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    valor_ajuda_custo_mensal = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0.00,
+        blank=True,
+        verbose_name="Ajuda de custo mensal fixa (R$)",
+        help_text="Valor fixo mensal de ajuda de custo (ex.: parceiros). Diferente de almoço+passagem."
+    )
     chave_pix = models.CharField(max_length=255, blank=True, null=True)
     nome_da_conta = models.CharField(max_length=255, blank=True, null=True)
 
