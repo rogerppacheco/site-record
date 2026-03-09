@@ -993,7 +993,7 @@ class WhatsAppService:
             H_LINHA = 44
             H_TITULO = 72
             H_HEADER = 48
-            W = 1300 if is_mensal else 1400  # Mensal: 7 colunas bem distribuídas, sem espaço vazio à direita
+            W = 1200 if is_mensal else 1400  # Mensal: 7 colunas bem separadas, ocupando toda a largura
             H = H_TITULO + H_HEADER + (qtd_linhas * H_LINHA) + 40
 
             # Cores iguais ao manual (Bootstrap/painel)
@@ -1021,7 +1021,9 @@ class WhatsAppService:
             # MENSAL: colunas bem espaçadas (Vendedor/Cluster separados) e distribuídas na largura total
             y_start = H_TITULO
             if is_mensal:
-                col_x = [24, 200, 340, 480, 620, 760, 900]
+                # Vendedor (24) e Cluster (350) bem separados para evitar sobreposição
+                # Colunas distribuídas até a borda direita (1100)
+                col_x = [24, 350, 500, 650, 800, 950, 1100]
                 col_align = ["lm", "mm", "mm", "mm", "mm", "mm", "mm"]
                 headers = ["Vendedor", "Cluster", "Total", "Instaladas", "Aprov", "Cartão", "% CC"]
             else:
@@ -1066,8 +1068,8 @@ class WhatsAppService:
                 d.rectangle([(20, ly_top), (W - 20, ly_bot)], fill=bg)
                 d.line([(20, ly_bot), (W - 20, ly_bot)], fill=cor_borda)
 
-                # MENSAL: nome mais curto para não sobrepor a coluna Cluster (espaço ~196px)
-                nome_max = 10 if is_mensal else 18
+                # MENSAL: nome limitado a 8 chars (coluna Vendedor até ~180px) para não invadir Cluster em 350
+                nome_max = 8 if is_mensal else 18
                 nome = str(item.get('nome', ''))[:nome_max]
                 cluster = str(item.get('cluster', '-'))[:10]
                 total = item.get('total', 0)
