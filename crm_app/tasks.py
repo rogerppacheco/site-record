@@ -79,6 +79,7 @@ def processar_envio_performance():
                 lista_dados = []
                 t_total = 0
                 t_cc = 0
+                t_instaladas = 0
                 titulo_extra = ""
 
                 if tipo_rel == 'HOJE':
@@ -137,33 +138,46 @@ def processar_envio_performance():
                 else:  # MENSAL
                     qs_mes = users.annotate(
                         total_vendas=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date__gte=inicio_mes)),
+                        instaladas=Count('vendas', filter=filtro_os & Q(vendas__data_instalacao__gte=inicio_mes) & filtro_inst),
                         total_cc=Count('vendas', filter=filtro_os & Q(vendas__data_abertura__date__gte=inicio_mes) & filtro_cc)
-                    ).order_by('username').values('username', 'cluster', 'canal', 'total_vendas', 'total_cc')
+                    ).order_by('username').values('username', 'cluster', 'canal', 'total_vendas', 'instaladas', 'total_cc')
                     if not qs_mes.exists():
                         logger.info(f"Nenhum usuário ativo para regra {regra.nome} - pulando envio")
                         continue
                     titulo_extra = " Mensal"
                     for u in qs_mes:
                         tot = u['total_vendas']
+                        inst = u['instaladas']
                         cc = u['total_cc']
                         pct = int((cc / tot * 100)) if tot > 0 else 0
+                        aprov = int((inst / tot * 100)) if tot > 0 else 0
                         lista_dados.append({
                             'nome': u['username'].upper(),
                             'cluster': u.get('cluster') or '-',
                             'canal': u.get('canal') or '-',
                             'total': tot,
+                            'instaladas': inst,
+                            'aprov': f"{aprov}%",
                             'cc': cc,
                             'pct': f"{pct}%"
                         })
                         t_total += tot
                         t_cc += cc
+                        t_instaladas += inst
 
                 pct_geral = int((t_cc / t_total * 100)) if t_total > 0 else 0
+                aprov_geral = int((t_instaladas / t_total * 100)) if t_total > 0 and tipo_rel == 'MENSAL' else 0
                 payload_imagem = {
                     'titulo': f"Performance -{titulo_extra.strip()}",
                     'data': hoje.strftime('%d/%m/%Y'),
                     'lista': lista_dados,
-                    'totais': {'total': t_total, 'cc': t_cc, 'pct': f"{pct_geral}%"},
+                    'totais': {
+                        'total': t_total,
+                        'cc': t_cc,
+                        'pct': f"{pct_geral}%",
+                        'instaladas': t_instaladas if tipo_rel == 'MENSAL' else None,
+                        'aprov': f"{aprov_geral}%" if tipo_rel == 'MENSAL' else None,
+                    },
                     'tipo': tipo_rel,
                 }
 

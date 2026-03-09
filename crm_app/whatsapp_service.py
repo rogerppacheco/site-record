@@ -986,13 +986,14 @@ class WhatsAppService:
 
             # Coluna "Vendas" muda de nome conforme tipo (labels curtos para evitar sobreposição)
             col_vendas_label = "V. Hoje" if tipo == "HOJE" else "Total"
+            is_mensal = tipo == "MENSAL"
 
             # Uma linha TOTAL + N linhas de dados
             qtd_linhas = 1 + len(lista)
             H_LINHA = 44
             H_TITULO = 72
             H_HEADER = 48
-            W = 1400  # Largura maior para evitar sobreposição de colunas
+            W = 1600 if is_mensal else 1400  # Mais largura para 7 colunas no Mensal
             H = H_TITULO + H_HEADER + (qtd_linhas * H_LINHA) + 40
 
             # Cores iguais ao manual (Bootstrap/painel)
@@ -1016,14 +1017,18 @@ class WhatsAppService:
             # Título centralizado (preto, como no manual)
             d.text((W / 2, H_TITULO // 2), titulo, fill=cor_texto, anchor="mm", font=f_titulo)
 
-            # Cabeçalho da tabela (5 colunas) - sem Canal; espaço amplo para Vendedor e Cluster
-            # Colunas: Vendedor (até 420px) | Cluster (até 720px) | V.Hoje | Cartão | % CC
+            # Cabeçalho: 7 colunas para MENSAL, 5 para Hoje/Semanal
             y_start = H_TITULO
-            col_x = [24, 570, 900, 1150, 1320]
-            col_align = ["lm", "mm", "mm", "mm", "mm"]
+            if is_mensal:
+                col_x = [24, 230, 380, 520, 660, 800, 940]
+                col_align = ["lm", "mm", "mm", "mm", "mm", "mm", "mm"]
+                headers = ["Vendedor", "Cluster", "Total", "Instaladas", "Aprov", "Cartão", "% CC"]
+            else:
+                col_x = [24, 570, 900, 1150, 1320]
+                col_align = ["lm", "mm", "mm", "mm", "mm"]
+                headers = ["Vendedor", "Cluster", col_vendas_label, "Cartão", "% CC"]
 
             d.rectangle([(20, y_start), (W - 20, y_start + H_HEADER)], fill=cor_azul_header)
-            headers = ["Vendedor", "Cluster", col_vendas_label, "Cartão", "% CC"]
             for i, label in enumerate(headers):
                 anchor = col_align[i]
                 x = col_x[i]
@@ -1038,8 +1043,16 @@ class WhatsAppService:
             d.text((col_x[0], y + H_LINHA // 2), "TOTAL", fill="white", anchor="lm", font=f_bold)
             d.text((col_x[1], y + H_LINHA // 2), "-", fill="white", anchor="mm", font=f_texto)
             d.text((col_x[2], y + H_LINHA // 2), str(t_total), fill="white", anchor="mm", font=f_bold)
-            d.text((col_x[3], y + H_LINHA // 2), str(t_cc), fill="white", anchor="mm", font=f_texto)
-            d.text((col_x[4], y + H_LINHA // 2), str(t_pct), fill="white", anchor="mm", font=f_texto)
+            if is_mensal:
+                t_inst = totais.get('instaladas', 0)
+                t_aprov = totais.get('aprov', '0%')
+                d.text((col_x[3], y + H_LINHA // 2), str(t_inst), fill="white", anchor="mm", font=f_texto)
+                d.text((col_x[4], y + H_LINHA // 2), str(t_aprov), fill="white", anchor="mm", font=f_texto)
+                d.text((col_x[5], y + H_LINHA // 2), str(t_cc), fill="white", anchor="mm", font=f_texto)
+                d.text((col_x[6], y + H_LINHA // 2), str(t_pct), fill="white", anchor="mm", font=f_texto)
+            else:
+                d.text((col_x[3], y + H_LINHA // 2), str(t_cc), fill="white", anchor="mm", font=f_texto)
+                d.text((col_x[4], y + H_LINHA // 2), str(t_pct), fill="white", anchor="mm", font=f_texto)
             y += H_LINHA
 
             # Linhas de dados (verde se vendeu, rosa se zero)
@@ -1061,8 +1074,16 @@ class WhatsAppService:
                 d.text((col_x[0], y + H_LINHA // 2), nome, fill=cor_texto, anchor="lm", font=f_bold)
                 d.text((col_x[1], y + H_LINHA // 2), cluster, fill=cor_texto, anchor="mm", font=f_texto)
                 d.text((col_x[2], y + H_LINHA // 2), str(total), fill=cor_nums, anchor="mm", font=f_bold)
-                d.text((col_x[3], y + H_LINHA // 2), str(cc), fill=cor_nums, anchor="mm", font=f_texto)
-                d.text((col_x[4], y + H_LINHA // 2), str(pct), fill=cor_nums, anchor="mm", font=f_texto)
+                if is_mensal:
+                    inst = item.get('instaladas', 0)
+                    aprov = item.get('aprov', '0%')
+                    d.text((col_x[3], y + H_LINHA // 2), str(inst), fill=cor_nums, anchor="mm", font=f_texto)
+                    d.text((col_x[4], y + H_LINHA // 2), str(aprov), fill=cor_nums, anchor="mm", font=f_texto)
+                    d.text((col_x[5], y + H_LINHA // 2), str(cc), fill=cor_nums, anchor="mm", font=f_texto)
+                    d.text((col_x[6], y + H_LINHA // 2), str(pct), fill=cor_nums, anchor="mm", font=f_texto)
+                else:
+                    d.text((col_x[3], y + H_LINHA // 2), str(cc), fill=cor_nums, anchor="mm", font=f_texto)
+                    d.text((col_x[4], y + H_LINHA // 2), str(pct), fill=cor_nums, anchor="mm", font=f_texto)
                 y += H_LINHA
 
             buffered = io.BytesIO()
