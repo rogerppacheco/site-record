@@ -1739,6 +1739,7 @@ class VendaViewSet(viewsets.ModelViewSet):
                     confirmado=False,
                     sessao=None,
                     venda=venda,
+                    enviado_por=request.user,
                 )
             return Response({"detail": "Resumo enviado para o Cliente com sucesso!"})
         except Exception as e:
@@ -1818,6 +1819,59 @@ class VendaViewSet(viewsets.ModelViewSet):
         ).order_by('-data_confirmacao_auditoria')
         total_confirmacoes = lista_confirmacoes.count()
 
+        # Lista por BO: username, tratou, enviou, confirmaram (mês atual)
+        vendas_mes_ids = list(vendas_mes.values_list('id', flat=True))
+        User = get_user_model()
+        user_ids_hist = HistoricoAlteracaoVenda.objects.filter(
+            venda_id__in=vendas_mes_ids,
+            data_alteracao__date__gte=primeiro_dia,
+            data_alteracao__date__lte=ultimo_dia,
+            usuario__isnull=False
+        ).values_list('usuario_id', flat=True).distinct()
+        user_ids_envio = PapConfirmacaoCliente.objects.filter(
+            venda_id__in=venda_ids_permitidos,
+            criado_em__date__gte=primeiro_dia,
+            criado_em__date__lte=ultimo_dia,
+            enviado_por_id__isnull=False
+        ).values_list('enviado_por_id', flat=True).distinct()
+        all_user_ids = list(set(user_ids_hist) | set(user_ids_envio))
+        lista_por_bo = []
+        for uid in all_user_ids:
+            user = User.objects.filter(pk=uid).first()
+            if not user:
+                continue
+            tratou = HistoricoAlteracaoVenda.objects.filter(
+                usuario_id=uid,
+                venda_id__in=vendas_mes_ids,
+                data_alteracao__date__gte=primeiro_dia,
+                data_alteracao__date__lte=ultimo_dia
+            ).values_list('venda_id', flat=True).distinct().count()
+            enviou = PapConfirmacaoCliente.objects.filter(
+                enviado_por_id=uid,
+                venda_id__in=venda_ids_permitidos,
+                criado_em__date__gte=primeiro_dia,
+                criado_em__date__lte=ultimo_dia
+            ).values_list('venda_id', flat=True).distinct().count()
+            venda_ids_enviados_user = list(PapConfirmacaoCliente.objects.filter(
+                enviado_por_id=uid,
+                venda_id__in=venda_ids_permitidos,
+                criado_em__date__gte=primeiro_dia,
+                criado_em__date__lte=ultimo_dia
+            ).values_list('venda_id', flat=True).distinct())
+            confirmaram = Venda.objects.filter(
+                id__in=venda_ids_enviados_user,
+                cliente_confirmou_auditoria=True,
+                data_confirmacao_auditoria__date__gte=primeiro_dia,
+                data_confirmacao_auditoria__date__lte=ultimo_dia
+            ).count() if venda_ids_enviados_user else 0
+            lista_por_bo.append({
+                'username': user.username,
+                'tratou': tratou,
+                'enviou': enviou,
+                'confirmaram': confirmaram,
+            })
+        lista_por_bo.sort(key=lambda x: (-x['tratou'], -x['enviou'], x['username']))
+
         serializer = self.get_serializer(vendas_mes, many=True)
         serializer_envios = self.get_serializer(lista_envios, many=True)
         serializer_confirmacoes = self.get_serializer(lista_confirmacoes, many=True)
@@ -1834,6 +1888,7 @@ class VendaViewSet(viewsets.ModelViewSet):
             'lista_vendas': serializer.data,
             'lista_envios_resumo': serializer_envios.data,
             'lista_confirmacoes': serializer_confirmacoes.data,
+            'lista_por_bo': lista_por_bo,
         })
 
     @action(detail=True, methods=['post'], url_path='alocar-auditoria', permission_classes=[permissions.IsAuthenticated])

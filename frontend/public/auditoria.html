@@ -213,6 +213,13 @@
                                 </div>
                             </div>
                         </div>
+                        <h6 class="mt-4 mb-2 fw-bold text-muted"><i class="bi bi-people me-1"></i> Por BO (tratou / enviou / confirmaram no mês)</h6>
+                        <div class="table-responsive mb-4">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead class="table-light"><tr><th>BO (username)</th><th class="text-center">Tratou</th><th class="text-center">Enviou</th><th class="text-center">Confirmaram</th></tr></thead>
+                                <tbody id="resumo-lista-por-bo"></tbody>
+                            </table>
+                        </div>
                         <ul class="nav nav-tabs mb-3" id="resumo-sub-abas" role="tablist">
                             <li class="nav-item" role="presentation">
                                 <button class="nav-link active" id="resumo-tab-vendas" data-bs-toggle="tab" data-bs-target="#resumo-pane-vendas" type="button">Lista de vendas do mês</button>
@@ -836,6 +843,7 @@
                     renderResumoTabela('resumo-lista-vendas', data.lista_vendas || [], true);
                     renderResumoTabela('resumo-lista-envios', data.lista_envios_resumo || [], false);
                     renderResumoConfirmacoes('resumo-lista-confirmacoes', data.lista_confirmacoes || []);
+                    renderResumoPorBo('resumo-lista-por-bo', data.lista_por_bo || []);
                 })
                 .catch(function(e) { console.error(e); alert('Erro ao carregar resumo.'); })
                 .finally(function() { $('#loadingOverlay').hide(); });
@@ -887,6 +895,20 @@
                 var acao = '<button class="btn btn-sm btn-auditar" onclick="retomarAuditoria(' + v.id + ')"><i class="bi bi-headset"></i> Auditar</button>';
                 var row = '<tr><td class="fw-bold text-primary">#' + v.id + '</td><td>' + dataConf + '</td><td>' + nome + '</td><td class="small">' + cpf + '</td><td>' + vendedor + '</td><td>' + produto + '</td><td class="text-end">' + acao + '</td></tr>';
                 tbody.insertAdjacentHTML('beforeend', row);
+            });
+        }
+
+        function renderResumoPorBo(tbodyId, lista) {
+            var tbody = document.getElementById(tbodyId);
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            if (!lista || lista.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">Nenhum BO com atividade no mês.</td></tr>';
+                return;
+            }
+            lista.forEach(function(row) {
+                var tr = '<tr><td class="fw-bold">' + (row.username || '—') + '</td><td class="text-center">' + (row.tratou != null ? row.tratou : 0) + '</td><td class="text-center text-primary">' + (row.enviou != null ? row.enviou : 0) + '</td><td class="text-center text-success">' + (row.confirmaram != null ? row.confirmaram : 0) + '</td></tr>';
+                tbody.insertAdjacentHTML('beforeend', tr);
             });
         }
 

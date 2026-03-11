@@ -890,6 +890,15 @@ class PapConfirmacaoCliente(models.Model):
         related_name='pap_confirmacoes_auditoria',
         help_text='Preenchido quando o resumo foi enviado da auditoria; ao confirmar, gera protocolo nesta venda.',
     )
+    enviado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='resumos_plano_enviados',
+        verbose_name='Enviado por (BO)',
+        help_text='Usuário que enviou o resumo do plano pela auditoria.',
+    )
     criado_em = models.DateTimeField(auto_now_add=True)
 
     class Meta:
