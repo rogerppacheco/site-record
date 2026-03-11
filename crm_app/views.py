@@ -1531,7 +1531,7 @@ class VendaViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(filters)
 
         # --- PERMISSÕES DE VISUALIZAÇÃO ---
-        acoes_gestao = ['retrieve', 'update', 'partial_update', 'destroy', 'alocar_auditoria', 'liberar_auditoria', 'finalizar_auditoria', 'pendentes_auditoria', 'reenviar_whatsapp_aprovacao', 'enviar_resumo_plano_whatsapp', 'exportar_excel']
+        acoes_gestao = ['retrieve', 'update', 'partial_update', 'destroy', 'alocar_auditoria', 'liberar_auditoria', 'finalizar_auditoria', 'pendentes_auditoria', 'resumo_auditoria', 'reenviar_whatsapp_aprovacao', 'enviar_resumo_plano_whatsapp', 'exportar_excel']
 
         if self.action in acoes_gestao:
             grupos_gestao_acao = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
@@ -1780,6 +1780,61 @@ class VendaViewSet(viewsets.ModelViewSet):
             return self.get_paginated_response(serializer.data)
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='resumo_auditoria')
+    def resumo_auditoria(self, request):
+        """Resumo do mês atual: total vendas, envios de resumo pelo BO e confirmações pelo cliente."""
+        request.GET._mutable = True
+        request.GET['flow'] = 'auditoria'
+        request.GET['view'] = 'geral'
+        request.GET._mutable = False
+        qs = self.filter_queryset(self.get_queryset())
+        hoje = timezone.localdate()
+        primeiro_dia = hoje.replace(day=1)
+        ultimo_dia = (primeiro_dia + relativedelta(months=1)) - timedelta(days=1)
+
+        vendas_mes = qs.filter(
+            data_criacao__date__gte=primeiro_dia,
+            data_criacao__date__lte=ultimo_dia
+        ).order_by('-data_criacao')
+
+        total_vendas_mes = vendas_mes.count()
+
+        venda_ids_permitidos = list(qs.values_list('id', flat=True))
+        envio_venda_ids = list(
+            PapConfirmacaoCliente.objects.filter(
+                venda_id__in=venda_ids_permitidos,
+                criado_em__date__gte=primeiro_dia,
+                criado_em__date__lte=ultimo_dia
+            ).values_list('venda_id', flat=True).distinct()
+        )
+        total_envios_resumo = len(envio_venda_ids)
+        lista_envios = vendas_mes.filter(id__in=envio_venda_ids) if envio_venda_ids else vendas_mes.none()
+
+        lista_confirmacoes = vendas_mes.filter(
+            cliente_confirmou_auditoria=True,
+            data_confirmacao_auditoria__date__gte=primeiro_dia,
+            data_confirmacao_auditoria__date__lte=ultimo_dia
+        ).order_by('-data_confirmacao_auditoria')
+        total_confirmacoes = lista_confirmacoes.count()
+
+        serializer = self.get_serializer(vendas_mes, many=True)
+        serializer_envios = self.get_serializer(lista_envios, many=True)
+        serializer_confirmacoes = self.get_serializer(lista_confirmacoes, many=True)
+
+        return Response({
+            'periodo': {
+                'primeiro_dia': primeiro_dia.isoformat(),
+                'ultimo_dia': ultimo_dia.isoformat(),
+                'mes_ano': f"{primeiro_dia.month:02d}/{primeiro_dia.year}",
+            },
+            'total_vendas_mes': total_vendas_mes,
+            'total_envios_resumo': total_envios_resumo,
+            'total_confirmacoes': total_confirmacoes,
+            'lista_vendas': serializer.data,
+            'lista_envios_resumo': serializer_envios.data,
+            'lista_confirmacoes': serializer_confirmacoes.data,
+        })
 
     @action(detail=True, methods=['post'], url_path='alocar-auditoria', permission_classes=[permissions.IsAuthenticated])
     def alocar_auditoria(self, request, pk=None):

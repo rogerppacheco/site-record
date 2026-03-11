@@ -108,9 +108,17 @@
                     <h1 style="font-size: 1.8rem; margin: 0;">Auditoria de Vendas</h1>
                     <p class="text-muted mb-0">Validação de dados e qualidade (Script Oficial).</p>
                 </div>
-                <button class="btn btn-outline-primary fw-bold shadow-sm" onclick="carregarVendasPendentes()">
-                    <i class="bi bi-arrow-clockwise"></i> Atualizar Lista
-                </button>
+                <div class="d-flex align-items-center gap-2">
+                    <div class="btn-group btn-group-sm" role="group" id="aba-principal-auditoria">
+                        <input type="radio" class="btn-check" name="aba-principal" id="aba-lista" value="lista" checked>
+                        <label class="btn btn-outline-primary" for="aba-lista"><i class="bi bi-list-ul me-1"></i> Lista</label>
+                        <input type="radio" class="btn-check" name="aba-principal" id="aba-resumo" value="resumo">
+                        <label class="btn btn-outline-primary" for="aba-resumo"><i class="bi bi-bar-chart me-1"></i> Resumo</label>
+                    </div>
+                    <button class="btn btn-outline-primary fw-bold shadow-sm" id="btn-atualizar-lista" onclick="carregarVendasPendentes()">
+                        <i class="bi bi-arrow-clockwise"></i> Atualizar Lista
+                    </button>
+                </div>
             </div>
 
             <!-- Próximo TT da vez: destaque para usar esta matrícula ao registrar venda -->
@@ -134,8 +142,8 @@
                 <a href="/controle-tts/" class="btn btn-outline-primary btn-sm ms-2" target="_blank">Ver Controle de TT's</a>
             </div>
 
-            <!-- Filtros e abas por data -->
-            <div class="card border shadow-sm mb-3">
+            <!-- Filtros e abas por data (visível apenas na aba Lista) -->
+            <div class="card border shadow-sm mb-3" id="painel-lista">
                 <div class="card-body py-3">
                     <div class="row g-3 align-items-end mb-3">
                         <div class="col-auto">
@@ -171,7 +179,82 @@
                 </div>
             </div>
 
-            <div class="card border-0 shadow-none" style="background: transparent;">
+            <!-- Painel Resumo do mês (envios e confirmações) -->
+            <div id="painel-resumo" style="display: none;">
+                <div class="card border shadow-sm mb-3">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5 class="card-title mb-0"><i class="bi bi-bar-chart me-2"></i>Resumo do mês <span id="resumo-mes-ano" class="text-primary">—</span></h5>
+                            <button class="btn btn-sm btn-outline-primary" onclick="carregarResumoAuditoria()"><i class="bi bi-arrow-clockwise"></i> Atualizar</button>
+                        </div>
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-4">
+                                <div class="card bg-light border-0 h-100">
+                                    <div class="card-body text-center">
+                                        <div class="text-muted small text-uppercase fw-bold mb-1">Vendas no mês</div>
+                                        <div class="display-6 fw-bold text-dark" id="resumo-total-vendas">—</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card bg-light border-0 h-100">
+                                    <div class="card-body text-center">
+                                        <div class="text-muted small text-uppercase fw-bold mb-1">Envios de resumo (BO)</div>
+                                        <div class="display-6 fw-bold text-primary" id="resumo-total-envios">—</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card bg-light border-0 h-100">
+                                    <div class="card-body text-center">
+                                        <div class="text-muted small text-uppercase fw-bold mb-1">Confirmações (cliente)</div>
+                                        <div class="display-6 fw-bold text-success" id="resumo-total-confirmacoes">—</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <ul class="nav nav-tabs mb-3" id="resumo-sub-abas" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="resumo-tab-vendas" data-bs-toggle="tab" data-bs-target="#resumo-pane-vendas" type="button">Lista de vendas do mês</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="resumo-tab-envios" data-bs-toggle="tab" data-bs-target="#resumo-pane-envios" type="button">Com envio de resumo</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="resumo-tab-confirmacoes" data-bs-toggle="tab" data-bs-target="#resumo-pane-confirmacoes" type="button">Que confirmaram</button>
+                            </li>
+                        </ul>
+                        <div class="tab-content" id="resumo-tab-content">
+                            <div class="tab-pane fade show active" id="resumo-pane-vendas" role="tabpanel">
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-hover mb-0">
+                                        <thead class="table-light"><tr><th>ID</th><th>Data</th><th>Cliente</th><th>CPF</th><th>Vendedor</th><th>Produto</th><th>Status</th><th class="text-end">Ação</th></tr></thead>
+                                        <tbody id="resumo-lista-vendas"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div class="tab-pane fade" id="resumo-pane-envios" role="tabpanel">
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-hover mb-0">
+                                        <thead class="table-light"><tr><th>ID</th><th>Data</th><th>Cliente</th><th>CPF</th><th>Vendedor</th><th>Produto</th><th class="text-end">Ação</th></tr></thead>
+                                        <tbody id="resumo-lista-envios"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div class="tab-pane fade" id="resumo-pane-confirmacoes" role="tabpanel">
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-hover mb-0">
+                                        <thead class="table-light"><tr><th>ID</th><th>Data conf.</th><th>Cliente</th><th>CPF</th><th>Vendedor</th><th>Produto</th><th class="text-end">Ação</th></tr></thead>
+                                        <tbody id="resumo-lista-confirmacoes"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-none" style="background: transparent;" id="painel-lista-tabela">
                 <div class="table-responsive" style="overflow-y: visible; overflow-x: auto; padding: 4px;">
                     <table class="table table-hover mb-0 bg-white rounded shadow-sm align-middle">
                         <thead class="table-light">
@@ -630,6 +713,16 @@
             $('#filtro-pesquisa').on('keypress', function(e) { if (e.which === 13) aplicarFiltrosAuditoria(); });
             $(document).on('change', 'input[name="aba-data-auditoria"]', function() { carregarVendasPendentes(); });
             $('#filtro-status-tratamento').on('change', function() { carregarVendasPendentes(); });
+            $(document).on('change', 'input[name="aba-principal"]', function() {
+                const aba = document.querySelector('input[name="aba-principal"]:checked');
+                const valor = aba ? aba.value : 'lista';
+                const listVisible = (valor === 'lista');
+                $('#painel-lista').toggle(listVisible);
+                $('#painel-lista-tabela').toggle(listVisible);
+                $('#painel-resumo').toggle(!listVisible);
+                $('#btn-atualizar-lista').toggle(listVisible);
+                if (valor === 'resumo') carregarResumoAuditoria();
+            });
             carregarAuxiliares().then(() => {
                 carregarVendasPendentes();
             });
@@ -729,6 +822,72 @@
 
         function aplicarFiltrosAuditoria() {
             carregarVendasPendentes();
+        }
+
+        function carregarResumoAuditoria() {
+            $('#loadingOverlay').show();
+            apiFetch(API_BASE + '/resumo_auditoria/')
+                .then(function(data) {
+                    if (!data) return;
+                    $('#resumo-mes-ano').text(data.periodo && data.periodo.mes_ano ? data.periodo.mes_ano : '—');
+                    $('#resumo-total-vendas').text(data.total_vendas_mes != null ? data.total_vendas_mes : '—');
+                    $('#resumo-total-envios').text(data.total_envios_resumo != null ? data.total_envios_resumo : '—');
+                    $('#resumo-total-confirmacoes').text(data.total_confirmacoes != null ? data.total_confirmacoes : '—');
+                    renderResumoTabela('resumo-lista-vendas', data.lista_vendas || [], true);
+                    renderResumoTabela('resumo-lista-envios', data.lista_envios_resumo || [], false);
+                    renderResumoConfirmacoes('resumo-lista-confirmacoes', data.lista_confirmacoes || []);
+                })
+                .catch(function(e) { console.error(e); alert('Erro ao carregar resumo.'); })
+                .finally(function() { $('#loadingOverlay').hide(); });
+        }
+
+        function formatarDataResumo(d) {
+            if (!d) return '—';
+            try { return new Date(d).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch(e) { return d; }
+        }
+
+        function renderResumoTabela(tbodyId, lista, comStatus) {
+            var tbody = document.getElementById(tbodyId);
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            var colCount = comStatus ? 8 : 7;
+            if (!lista || lista.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="' + colCount + '" class="text-center text-muted py-3">Nenhum registro.</td></tr>';
+                return;
+            }
+            lista.forEach(function(v) {
+                var nome = v.cliente_nome_razao_social || 'N/A';
+                var cpf = v.cliente_cpf_cnpj || '—';
+                var vendedor = v.vendedor_nome || '—';
+                var produto = v.plano_nome || '—';
+                var dataStr = formatarDataResumo(v.data_criacao);
+                var statusNome = v.status_tratamento_nome || '—';
+                var acao = '<button class="btn btn-sm btn-auditar" onclick="retomarAuditoria(' + v.id + ')"><i class="bi bi-headset"></i> Auditar</button>';
+                var row = '<tr><td class="fw-bold text-primary">#' + v.id + '</td><td>' + dataStr + '</td><td>' + nome + '</td><td class="small">' + cpf + '</td><td>' + vendedor + '</td><td>' + produto + '</td>';
+                if (comStatus) row += '<td><span class="badge bg-secondary">' + statusNome + '</span></td>';
+                row += '<td class="text-end">' + acao + '</td></tr>';
+                tbody.insertAdjacentHTML('beforeend', row);
+            });
+        }
+
+        function renderResumoConfirmacoes(tbodyId, lista) {
+            var tbody = document.getElementById(tbodyId);
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            if (!lista || lista.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">Nenhuma confirmação no mês.</td></tr>';
+                return;
+            }
+            lista.forEach(function(v) {
+                var nome = v.cliente_nome_razao_social || 'N/A';
+                var cpf = v.cliente_cpf_cnpj || '—';
+                var vendedor = v.vendedor_nome || '—';
+                var produto = v.plano_nome || '—';
+                var dataConf = formatarDataResumo(v.data_confirmacao_auditoria);
+                var acao = '<button class="btn btn-sm btn-auditar" onclick="retomarAuditoria(' + v.id + ')"><i class="bi bi-headset"></i> Auditar</button>';
+                var row = '<tr><td class="fw-bold text-primary">#' + v.id + '</td><td>' + dataConf + '</td><td>' + nome + '</td><td class="small">' + cpf + '</td><td>' + vendedor + '</td><td>' + produto + '</td><td class="text-end">' + acao + '</td></tr>';
+                tbody.insertAdjacentHTML('beforeend', row);
+            });
         }
 
         function getParamsDataAuditoria() {
