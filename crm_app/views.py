@@ -11245,11 +11245,12 @@ def _historico_antecipar_queryset(request):
     return base.filter(usuario_id=request.user.id)
 
 
-def _mensagem_resposta_gc_para_vendedor(os_num, resposta_gc):
+def _mensagem_resposta_gc_para_vendedor(os_num, resposta_gc, tipo_solicitacao=None):
     """Mensagem padronizada enviada ao vendedor quando o GC registra a resposta."""
     os_txt = (os_num or 'O.S').strip()
     if resposta_gc == 'solicitado':
-        return f"Olá! Sobre a *{os_txt}*: Sua solicitação foi tratada pelo GC e encaminhada para Vtal."
+        tipo_txt = 'de reparo' if tipo_solicitacao == 'reparo' else 'de antecipação'
+        return f"Olá! Sobre a *{os_txt}*: Sua solicitação {tipo_txt} foi tratada pelo GC e encaminhada para Vtal."
     if resposta_gc == 'antecipada':
         return f"Olá! Sobre a *{os_txt}*: Vtal conseguiu antecipar essa instalação para o período solicitado."
     if resposta_gc == 'nao_antecipada':
@@ -11274,7 +11275,7 @@ class RespostaGCAnteciparInstalacaoView(APIView):
             return Response({'detail': 'Solicitação não encontrada.'}, status=status.HTTP_404_NOT_FOUND)
         if sol.resposta_gc:
             return Response({'detail': 'Esta solicitação já possui resposta do GC registrada.'}, status=status.HTTP_400_BAD_REQUEST)
-        msg = _mensagem_resposta_gc_para_vendedor(sol.ordem_servico or '', resposta_gc)
+        msg = _mensagem_resposta_gc_para_vendedor(sol.ordem_servico or '', resposta_gc, getattr(sol, 'tipo_solicitacao', None))
         if not msg:
             return Response({'detail': 'Mensagem não definida para esta resposta.'}, status=status.HTTP_400_BAD_REQUEST)
         vendedor = sol.venda.vendedor if sol.venda else None

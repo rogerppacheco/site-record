@@ -5531,11 +5531,12 @@ def _buscar_record_apoia_por_texto(busca_texto, sessao):
     return "\n".join(resposta_parts)
 
 
-def _mensagem_resposta_gc_para_vendedor(os_num, resposta_gc):
+def _mensagem_resposta_gc_para_vendedor(os_num, resposta_gc, tipo_solicitacao=None):
     """Mensagem padronizada enviada ao vendedor quando o GC responde (igual à usada na API)."""
     os_txt = (os_num or 'O.S').strip()
     if resposta_gc == 'solicitado':
-        return f"Olá! Sobre a *{os_txt}*: Sua solicitação foi tratada pelo GC e encaminhada para Vtal."
+        tipo_txt = 'de reparo' if tipo_solicitacao == 'reparo' else 'de antecipação'
+        return f"Olá! Sobre a *{os_txt}*: Sua solicitação {tipo_txt} foi tratada pelo GC e encaminhada para Vtal."
     if resposta_gc == 'antecipada':
         return f"Olá! Sobre a *{os_txt}*: Vtal conseguiu antecipar essa instalação para o período solicitado."
     if resposta_gc == 'nao_antecipada':
@@ -5597,7 +5598,8 @@ def processar_resposta_gc_antecipar(telefone_remetente, mensagem_texto):
     if not sol:
         logger.info(f"[Webhook] Resposta GC: O.S {os_num} não encontrada ou já respondida.")
         return False
-    msg_vendedor = _mensagem_resposta_gc_para_vendedor(sol.ordem_servico or os_num, resposta_gc)
+    tipo_sol = getattr(sol, 'tipo_solicitacao', None) or 'antecipacao'
+    msg_vendedor = _mensagem_resposta_gc_para_vendedor(sol.ordem_servico or os_num, resposta_gc, tipo_sol)
     if not msg_vendedor:
         return False
     vendedor = sol.venda.vendedor if sol.venda else None
