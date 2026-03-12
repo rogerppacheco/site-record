@@ -11035,6 +11035,25 @@ def _antecipar_instalacao_queryset_vendas(request):
     return base.filter(vendedor_id=request.user.id)
 
 
+def _antecipar_instalacao_queryset_vendas_reparo(request):
+    """Retorna queryset de Venda INSTALADAS com data_instalacao até 5 dias atrás (para solicitar reparo)."""
+    hoje = date.today()
+    data_limite = hoje - timedelta(days=5)
+    base = Venda.objects.filter(
+        ativo=True,
+        status_esteira__nome__iexact='INSTALADA',
+        data_instalacao__isnull=False,
+        data_instalacao__gte=data_limite,
+        data_instalacao__lte=hoje,
+    ).select_related('cliente', 'status_esteira')
+    if is_member(request.user, ['Diretoria', 'Admin', 'BackOffice']):
+        return base
+    if is_member(request.user, ['Supervisor']):
+        liderados_ids = list(request.user.liderados.values_list('id', flat=True))
+        return base.filter(Q(vendedor_id=request.user.id) | Q(vendedor_id__in=liderados_ids))
+    return base.filter(vendedor_id=request.user.id)
+
+
 def _antecipar_instalacao_endereco_completo(v):
     """Formato: Rua X, 123, Sala 1, Centro, São Paulo - SP - CEP 12345-678"""
     partes = []
@@ -11055,7 +11074,7 @@ def _antecipar_instalacao_endereco_completo(v):
 
 
 class BuscarAnteciparInstalacaoView(APIView):
-    """GET ?q=CPF ou número da O.S — retorna pedidos agendados (filtrados por perfil)."""
+    """GET ?q=CPF ou número da O.S — retorna pedidos agendados (antecipação) e instalados até 5 dias (reparo)."""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
@@ -11063,14 +11082,18 @@ class BuscarAnteciparInstalacaoView(APIView):
         if not q:
             return Response({'detail': 'Informe CPF ou número do pedido (O.S).'}, status=status.HTTP_400_BAD_REQUEST)
         q_limpo = re.sub(r'\D', '', q)
-        queryset = _antecipar_instalacao_queryset_vendas(request)
         filters = Q(ordem_servico__icontains=q) | Q(cliente__cpf_cnpj__icontains=q)
         if q_limpo:
             filters |= Q(cliente__cpf_cnpj__icontains=q_limpo) | Q(ordem_servico__icontains=q_limpo)
-        vendas = list(queryset.filter(filters).order_by('-data_agendamento')[:50])
-        # Se não for agendado com data, não deve aparecer (já filtrado no base)
+
         results = []
-        for v in vendas:
+        ids_incluidos = set()
+
+        # Pedidos agendados (antecipação)
+        queryset_ag = _antecipar_instalacao_queryset_vendas(request)
+        vendas_ag = list(queryset_ag.filter(filters).order_by('-data_agendamento')[:50])
+        for v in vendas_ag:
+            ids_incluidos.add(v.id)
             data_ag_fmt = v.data_agendamento.strftime('%d/%m/%Y') if v.data_agendamento else ''
             turno = v.get_periodo_agendamento_display() if v.periodo_agendamento else ''
             results.append({
@@ -11080,7 +11103,31 @@ class BuscarAnteciparInstalacaoView(APIView):
                 'data_agendamento': data_ag_fmt,
                 'periodo_agendamento': turno,
                 'cliente_nome': v.cliente.nome_razao_social if v.cliente else '',
+                'tipo_disponivel': 'antecipacao',
+                'data_instalacao': None,
             })
+
+        # Pedidos instalados até 5 dias (reparo)
+        queryset_rep = _antecipar_instalacao_queryset_vendas_reparo(request)
+        vendas_rep = list(queryset_rep.filter(filters).order_by('-data_instalacao')[:50])
+        for v in vendas_rep:
+            if v.id in ids_incluidos:
+                continue
+            ids_incluidos.add(v.id)
+            data_inst_fmt = v.data_instalacao.strftime('%d/%m/%Y') if v.data_instalacao else ''
+            results.append({
+                'id': v.id,
+                'ordem_servico': v.ordem_servico or '',
+                'endereco_completo': _antecipar_instalacao_endereco_completo(v),
+                'data_agendamento': '',
+                'periodo_agendamento': '',
+                'cliente_nome': v.cliente.nome_razao_social if v.cliente else '',
+                'tipo_disponivel': 'reparo',
+                'data_instalacao': data_inst_fmt,
+            })
+
+        # Ordenar: antecipação primeiro (por data_agendamento), depois reparo (por data_instalacao)
+        results.sort(key=lambda x: (0 if x['tipo_disponivel'] == 'antecipacao' else 1, x['data_agendamento'] or x['data_instalacao'] or ''), reverse=True)
         return Response({'results': results})
 
 
@@ -11170,6 +11217,8 @@ class HistoricoAnteciparInstalacaoView(APIView):
                 'ordem_servico': s.ordem_servico or '-',
                 'cliente_nome': (s.venda.cliente.nome_razao_social if s.venda and s.venda.cliente else None) or '-',
                 'descricao_solicitacao': (s.descricao_solicitacao or '')[:200],
+                'tipo_solicitacao': getattr(s, 'tipo_solicitacao', 'antecipacao') or 'antecipacao',
+                'observacao_reparo': (getattr(s, 'observacao_reparo', None) or '')[:200],
                 'enviado_gc': s.enviado_gc,
                 'enviado_grupo': s.enviado_grupo,
                 'erros': s.erros or [],
@@ -11178,35 +11227,71 @@ class HistoricoAnteciparInstalacaoView(APIView):
         return Response({'results': results, 'total': qs.count()})
 
 
+def _mensagem_padrao_reparo(os_num, endereco, data_inst_fmt, observacao_reparo):
+    """Mensagem padrão para solicitação de reparo (internet não funciona após instalação recente)."""
+    base = (
+        "*SOLICITAÇÃO DE REPARO - INTERNET PÓS-INSTALAÇÃO:*\n\n"
+        f"- *OS:* {os_num}\n"
+        f"- *ENDEREÇO COMPLETO:* {endereco}\n"
+        "- *NOME DO PDV:* 1067100 - RECORD\n"
+        f"- *DATA INSTALAÇÃO:* {data_inst_fmt}\n"
+        "- *MOTIVO:* Reparo - internet não funciona após instalação recente (até 5 dias)."
+    )
+    if observacao_reparo:
+        base += f"\n- *OBSERVAÇÃO DO SOLICITANTE:* {observacao_reparo}"
+    return base.upper()
+
+
 class SolicitarAnteciparInstalacaoView(APIView):
-    """POST { venda_id, descricao_solicitacao } — usa config (GC + grupo), envia WhatsApp e grava histórico."""
+    """POST { venda_id, descricao_solicitacao? } ou { venda_id, tipo: 'reparo', observacao_reparo? }."""
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
         venda_id = request.data.get('venda_id')
-        descricao = (request.data.get('descricao_solicitacao') or '').strip()
+        tipo = (request.data.get('tipo') or 'antecipacao').strip().lower()
+        if tipo not in ('antecipacao', 'reparo'):
+            tipo = 'antecipacao'
+
         if not venda_id:
             return Response({'detail': 'venda_id é obrigatório.'}, status=status.HTTP_400_BAD_REQUEST)
-        if not descricao:
-            return Response({'detail': 'Descreva o motivo da solicitação de antecipação.'}, status=status.HTTP_400_BAD_REQUEST)
-        queryset = _antecipar_instalacao_queryset_vendas(request)
-        try:
-            venda = queryset.get(id=venda_id)
-        except Venda.DoesNotExist:
-            return Response({'detail': 'Pedido não encontrado ou você não tem permissão para solicitar antecipação deste pedido.'}, status=status.HTTP_404_NOT_FOUND)
-        data_ag_fmt = venda.data_agendamento.strftime('%d/%m/%Y') if venda.data_agendamento else ''
-        turno = venda.get_periodo_agendamento_display() if venda.periodo_agendamento else ''
-        endereco = _antecipar_instalacao_endereco_completo(venda)
-        os_num = venda.ordem_servico or ''
-        mensagem = (
-            "*MÁSCARA PADRÃO DE ACIONAMENTO - GRUPO ELITE:*\n\n"
-            f"- *OS:* {os_num}\n"
-            f"- *ENDEREÇO COMPLETO:* {endereco}\n"
-            "- *NOME DO PDV:* 1067100 - RECORD\n"
-            f"- *DATA AGENDADA:* {data_ag_fmt} - {turno}\n"
-            f"- *DESCRIÇÃO DETALHADA DA SOLICITAÇÃO:* {descricao}"
-        )
-        mensagem = mensagem.upper()
+
+        if tipo == 'reparo':
+            queryset = _antecipar_instalacao_queryset_vendas_reparo(request)
+            try:
+                venda = queryset.get(id=venda_id)
+            except Venda.DoesNotExist:
+                return Response({'detail': 'Pedido não encontrado ou não está elegível para reparo (instalado há até 5 dias).'}, status=status.HTTP_404_NOT_FOUND)
+            observacao_reparo = (request.data.get('observacao_reparo') or '').strip()[:500]
+            data_inst_fmt = venda.data_instalacao.strftime('%d/%m/%Y') if venda.data_instalacao else ''
+            endereco = _antecipar_instalacao_endereco_completo(venda)
+            os_num = venda.ordem_servico or ''
+            descricao = "Reparo - internet não funciona após instalação recente."
+            if observacao_reparo:
+                descricao += " Observação: " + observacao_reparo
+            mensagem = _mensagem_padrao_reparo(os_num, endereco, data_inst_fmt, observacao_reparo)
+        else:
+            descricao = (request.data.get('descricao_solicitacao') or '').strip()
+            if not descricao:
+                return Response({'detail': 'Descreva o motivo da solicitação de antecipação.'}, status=status.HTTP_400_BAD_REQUEST)
+            queryset = _antecipar_instalacao_queryset_vendas(request)
+            try:
+                venda = queryset.get(id=venda_id)
+            except Venda.DoesNotExist:
+                return Response({'detail': 'Pedido não encontrado ou você não tem permissão para solicitar antecipação deste pedido.'}, status=status.HTTP_404_NOT_FOUND)
+            data_ag_fmt = venda.data_agendamento.strftime('%d/%m/%Y') if venda.data_agendamento else ''
+            turno = venda.get_periodo_agendamento_display() if venda.periodo_agendamento else ''
+            endereco = _antecipar_instalacao_endereco_completo(venda)
+            os_num = venda.ordem_servico or ''
+            mensagem = (
+                "*MÁSCARA PADRÃO DE ACIONAMENTO - GRUPO ELITE:*\n\n"
+                f"- *OS:* {os_num}\n"
+                f"- *ENDEREÇO COMPLETO:* {endereco}\n"
+                "- *NOME DO PDV:* 1067100 - RECORD\n"
+                f"- *DATA AGENDADA:* {data_ag_fmt} - {turno}\n"
+                f"- *DESCRIÇÃO DETALHADA DA SOLICITAÇÃO:* {descricao}"
+            )
+            mensagem = mensagem.upper()
+
         config = _antecipar_instalacao_get_config()
         telefone_gc = (config.telefone_gc or '').strip()
         grupo = config.grupo
@@ -11231,17 +11316,22 @@ class SolicitarAnteciparInstalacaoView(APIView):
             elif not grupo:
                 erros.append('Grupo não configurado.')
         except Exception as e:
-            logger.exception("Erro ao enviar WhatsApp antecipar instalação: %s", e)
-            registro = AnteciparInstalacaoSolicitacao.objects.create(
+            logger.exception("Erro ao enviar WhatsApp antecipar instalação/reparo: %s", e)
+            obs_rep = (request.data.get('observacao_reparo') or '').strip()[:500] if tipo == 'reparo' else ''
+            AnteciparInstalacaoSolicitacao.objects.create(
                 usuario=request.user, venda=venda, ordem_servico=os_num,
-                descricao_solicitacao=descricao, enviado_gc=False, enviado_grupo=False,
+                tipo_solicitacao=tipo, descricao_solicitacao=descricao,
+                observacao_reparo=obs_rep,
+                enviado_gc=False, enviado_grupo=False,
                 erros=[str(e)], mensagem_enviada=mensagem[:2000]
             )
             return Response({'detail': f'Erro ao enviar: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        # Gravar histórico (sempre)
+
+        obs_rep_final = (request.data.get('observacao_reparo') or '').strip()[:500] if tipo == 'reparo' else ''
         AnteciparInstalacaoSolicitacao.objects.create(
             usuario=request.user, venda=venda, ordem_servico=os_num,
-            descricao_solicitacao=descricao,
+            tipo_solicitacao=tipo, descricao_solicitacao=descricao,
+            observacao_reparo=obs_rep_final,
             enviado_gc=('número do GC' in enviados),
             enviado_grupo=('grupo' in enviados),
             erros=erros, mensagem_enviada=mensagem[:2000]

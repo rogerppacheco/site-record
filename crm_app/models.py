@@ -1036,13 +1036,25 @@ class AnteciparInstalacaoConfig(models.Model):
 
 
 class AnteciparInstalacaoSolicitacao(models.Model):
-    """Histórico de solicitações de antecipação de instalação."""
+    TIPO_SOLICITACAO_CHOICES = [
+        ('antecipacao', 'Antecipação'),
+        ('reparo', 'Reparo'),
+    ]
+    """Histórico de solicitações de antecipação de instalação e de reparo (internet pós-instalação)."""
     usuario = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='solicitacoes_antecipar'
     )
     venda = models.ForeignKey(Venda, on_delete=models.SET_NULL, null=True, related_name='solicitacoes_antecipar')
     ordem_servico = models.CharField(max_length=50, blank=True)
+    tipo_solicitacao = models.CharField(
+        max_length=20, choices=TIPO_SOLICITACAO_CHOICES, default='antecipacao',
+        verbose_name="Tipo (Antecipação ou Reparo)"
+    )
     descricao_solicitacao = models.TextField()
+    observacao_reparo = models.TextField(
+        blank=True,
+        verbose_name="Observação no reparo (ex.: internet não funciona total ou com lentidão)"
+    )
     data_solicitacao = models.DateTimeField(auto_now_add=True)
     enviado_gc = models.BooleanField(default=False)
     enviado_grupo = models.BooleanField(default=False)

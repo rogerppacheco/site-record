@@ -57,7 +57,7 @@
         <div class="tab-content" id="tab-main-content">
             <!-- Aba Solicitar -->
             <div class="tab-pane fade show active" id="tab-solicitar" role="tabpanel">
-                <p class="text-muted mb-4">Solicite prioridade ao gerente de contas (GC) da Nio. Informe CPF ou número do pedido (O.S). Somente pedidos <strong>agendados</strong> podem ser solicitados.</p>
+                <p class="text-muted mb-4">Solicite prioridade ao gerente de contas (GC) da Nio. Informe CPF ou número do pedido (O.S). Pedidos <strong>agendados</strong> podem solicitar antecipação; pedidos <strong>instalados há até 5 dias</strong> podem solicitar <strong>reparo</strong> (internet não funciona após instalação).</p>
                 <div class="card-panel">
                     <label class="form-label fw-bold">Buscar por CPF ou número do pedido (O.S)</label>
                     <div class="input-group">
@@ -70,7 +70,8 @@
                     <h6 class="fw-bold mb-3">Selecione o pedido</h6>
                     <div id="lista-pedidos-inner"></div>
                 </div>
-                <div id="painel-mensagem" class="card-panel" style="display:none;">
+                <!-- Painel Antecipação (pedido agendado) -->
+                <div id="painel-antecipacao" class="card-panel" style="display:none;">
                     <h6 class="fw-bold mb-3">Mensagem que será enviada ao GC e ao grupo configurado</h6>
                     <div class="mb-3">
                         <label class="form-label">Motivo da solicitação de antecipação <span class="text-danger">*</span></label>
@@ -84,10 +85,32 @@
                     <div id="erro-solicitar" class="text-danger mt-2 small" style="display:none;"></div>
                     <div id="sucesso-solicitar" class="text-success mt-2 small" style="display:none;"></div>
                 </div>
+                <!-- Painel Reparo (pedido instalado até 5 dias) -->
+                <div id="painel-reparo" class="card-panel" style="display:none;">
+                    <h6 class="fw-bold mb-3"><i class="bi bi-wrench text-warning"></i> Solicitar reparo - Internet pós-instalação</h6>
+                    <p class="text-muted small mb-3">Mensagem padrão de reparo será enviada ao GC e ao grupo. Opcionalmente informe como está a internet.</p>
+                    <div class="mb-3">
+                        <label class="form-label">Observação (opcional)</label>
+                        <select id="observacao-reparo-opcao" class="form-select mb-2">
+                            <option value="">— Nenhuma —</option>
+                            <option value="Internet não funciona (total)">Internet não funciona (total)</option>
+                            <option value="Internet com lentidão">Internet com lentidão</option>
+                            <option value="outro">Outra (descreva abaixo)</option>
+                        </select>
+                        <textarea id="observacao-reparo" class="form-control" rows="2" placeholder="Ex.: internet cai toda hora, sem sinal..." maxlength="500" style="display:none;"></textarea>
+                    </div>
+                    <div id="msg-preview-reparo" class="msg-preview mb-3" style="display:none;"></div>
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                        <button type="button" class="btn btn-warning btn-solicitar" id="btn-solicitar-reparo"><i class="bi bi-wrench"></i> Solicitar reparo</button>
+                        <button type="button" class="btn btn-outline-secondary" id="btn-outro-pedido-reparo">Escolher outro pedido</button>
+                    </div>
+                    <div id="erro-solicitar-reparo" class="text-danger mt-2 small" style="display:none;"></div>
+                    <div id="sucesso-solicitar-reparo" class="text-success mt-2 small" style="display:none;"></div>
+                </div>
                 <div id="nenhum-resultado" class="card-panel text-center text-muted" style="display:none;">
                     <i class="bi bi-inbox display-6"></i>
-                    <p class="mb-0 mt-2">Nenhum pedido agendado encontrado para esta busca.</p>
-                    <p class="small">Só é possível pedir antecipação para pedidos com status <strong>Agendado</strong> e data de agendamento preenchida.</p>
+                    <p class="mb-0 mt-2">Nenhum pedido encontrado para esta busca.</p>
+                    <p class="small">Podem ser solicitados: pedidos <strong>Agendados</strong> (antecipação) ou <strong>Instalados há até 5 dias</strong> (reparo).</p>
                 </div>
             </div>
 
@@ -129,6 +152,7 @@
                                 <thead>
                                     <tr>
                                         <th>Data</th>
+                                        <th>Tipo</th>
                                         <th>Solicitante</th>
                                         <th>O.S</th>
                                         <th>Cliente</th>
@@ -205,14 +229,17 @@
                     }
                     if (resultadosAtuais.length === 1) {
                         selecionarPedido(resultadosAtuais[0]);
-                        show('painel-mensagem', true);
+                        showPainelPorTipo(resultadosAtuais[0].tipo_disponivel);
                         show('lista-pedidos', false);
                         return;
                     }
                     const inner = document.getElementById('lista-pedidos-inner');
                     inner.innerHTML = resultadosAtuais.map(function(p) {
+                        const badge = p.tipo_disponivel === 'reparo'
+                            ? '<span class="badge bg-warning text-dark me-1">Reparo</span> Instalado em ' + (p.data_instalacao || '')
+                            : '<span class="badge bg-primary me-1">Agendado</span> ' + (p.data_agendamento || '') + ' ' + (p.periodo_agendamento || '');
                         return '<div class="pedido-item" data-id="' + p.id + '">' +
-                            '<strong>O.S ' + (p.ordem_servico || '-') + '</strong> · ' + (p.data_agendamento || '') + ' ' + (p.periodo_agendamento || '') + '<br>' +
+                            '<strong>O.S ' + (p.ordem_servico || '-') + '</strong> · ' + badge + '<br>' +
                             '<small class="text-muted">' + (p.cliente_nome || '') + '</small>' +
                             '</div>';
                     }).join('');
@@ -222,7 +249,7 @@
                             this.classList.add('selected');
                             const id = parseInt(this.getAttribute('data-id'), 10);
                             const p = resultadosAtuais.find(function(r) { return r.id === id; });
-                            if (p) { selecionarPedido(p); show('painel-mensagem', true); }
+                            if (p) { selecionarPedido(p); showPainelPorTipo(p.tipo_disponivel); }
                         });
                     });
                     show('lista-pedidos', true);
@@ -231,12 +258,25 @@
                 }
             }
 
+            function showPainelPorTipo(tipo) {
+                const isReparo = tipo === 'reparo';
+                show('painel-reparo', isReparo);
+                show('painel-antecipacao', !isReparo);
+                if (isReparo) setTimeout(function() { atualizarPreviewReparo(); }, 0);
+            }
+
             function selecionarPedido(p) {
                 pedidoSelecionado = p;
                 document.getElementById('descricao').value = '';
                 show('msg-preview', false);
                 showErro('erro-solicitar', '');
                 show('sucesso-solicitar', false);
+                document.getElementById('observacao-reparo-opcao').value = '';
+                document.getElementById('observacao-reparo').value = '';
+                document.getElementById('observacao-reparo').style.display = 'none';
+                show('msg-preview-reparo', false);
+                showErro('erro-solicitar-reparo', '');
+                show('sucesso-solicitar-reparo', false);
             }
 
             function atualizarPreview() {
@@ -256,6 +296,32 @@
             }
 
             document.getElementById('descricao').addEventListener('input', atualizarPreview);
+
+            document.getElementById('observacao-reparo-opcao').addEventListener('change', function() {
+                const txt = document.getElementById('observacao-reparo');
+                txt.style.display = this.value === 'outro' ? 'block' : 'none';
+                if (this.value !== 'outro') txt.value = '';
+                atualizarPreviewReparo();
+            });
+            document.getElementById('observacao-reparo').addEventListener('input', atualizarPreviewReparo);
+
+            function atualizarPreviewReparo() {
+                if (!pedidoSelecionado || pedidoSelecionado.tipo_disponivel !== 'reparo') return;
+                const opcao = document.getElementById('observacao-reparo-opcao').value;
+                const txt = document.getElementById('observacao-reparo').value.trim();
+                const obs = opcao === 'outro' ? txt : (opcao || '');
+                const msg = (
+                    '*SOLICITAÇÃO DE REPARO - INTERNET PÓS-INSTALAÇÃO:*\n\n' +
+                    '- *OS:* ' + (pedidoSelecionado.ordem_servico || '') + '\n' +
+                    '- *ENDEREÇO COMPLETO:* ' + (pedidoSelecionado.endereco_completo || '') + '\n' +
+                    '- *NOME DO PDV:* 1067100 - RECORD\n' +
+                    '- *DATA INSTALAÇÃO:* ' + (pedidoSelecionado.data_instalacao || '') + '\n' +
+                    '- *MOTIVO:* Reparo - internet não funciona após instalação recente (até 5 dias).' +
+                    (obs ? '\n- *OBSERVAÇÃO DO SOLICITANTE:* ' + obs : '')
+                );
+                document.getElementById('msg-preview-reparo').textContent = msg.toUpperCase();
+                show('msg-preview-reparo', true);
+            }
 
             document.getElementById('btn-solicitar').addEventListener('click', async function() {
                 if (!pedidoSelecionado) return;
@@ -290,9 +356,44 @@
 
             document.getElementById('btn-outro-pedido').addEventListener('click', function() {
                 pedidoSelecionado = null;
-                show('painel-mensagem', false);
+                show('painel-antecipacao', false);
+                show('painel-reparo', false);
                 show('lista-pedidos', resultadosAtuais.length > 1);
                 show('nenhum-resultado', false);
+            });
+            document.getElementById('btn-outro-pedido-reparo').addEventListener('click', function() {
+                document.getElementById('btn-outro-pedido').click();
+            });
+
+            document.getElementById('btn-solicitar-reparo').addEventListener('click', async function() {
+                if (!pedidoSelecionado || pedidoSelecionado.tipo_disponivel !== 'reparo') return;
+                const opcao = document.getElementById('observacao-reparo-opcao').value;
+                const txt = document.getElementById('observacao-reparo').value.trim();
+                const observacao_reparo = opcao === 'outro' ? txt : (opcao || '');
+                showErro('erro-solicitar-reparo', '');
+                show('sucesso-solicitar-reparo', false);
+                this.disabled = true;
+                try {
+                    const res = await fetch(apiBase + '/antecipar-instalacao/solicitar/', {
+                        method: 'POST',
+                        headers: getAuthHeader(),
+                        body: JSON.stringify({ venda_id: pedidoSelecionado.id, tipo: 'reparo', observacao_reparo: observacao_reparo })
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.success) {
+                        document.getElementById('sucesso-solicitar-reparo').textContent = data.message || 'Solicitação de reparo enviada.';
+                        show('sucesso-solicitar-reparo', true);
+                        document.getElementById('observacao-reparo-opcao').value = '';
+                        document.getElementById('observacao-reparo').value = '';
+                        document.getElementById('observacao-reparo').style.display = 'none';
+                        show('msg-preview-reparo', false);
+                    } else {
+                        showErro('erro-solicitar-reparo', data.detail || 'Erro ao enviar.');
+                    }
+                } catch (e) {
+                    showErro('erro-solicitar-reparo', 'Erro de conexão. Tente novamente.');
+                }
+                this.disabled = false;
             });
 
             // --- Aba Configuração ---
@@ -377,7 +478,9 @@
                     const tbody = document.getElementById('historico-tbody');
                     tbody.innerHTML = results.map(function(r) {
                         const status = r.sucesso ? '<span class="badge bg-success">Enviado</span>' : '<span class="badge bg-danger">Erro</span>';
-                        return '<tr><td>' + (r.data_solicitacao || '') + '</td><td>' + (r.usuario_nome || '') + '</td><td>' + (r.ordem_servico || '') + '</td><td>' + (r.cliente_nome || '').substring(0, 25) + '</td><td>' + (r.descricao_solicitacao || '').substring(0, 40) + (r.descricao_solicitacao && r.descricao_solicitacao.length > 40 ? '…' : '') + '</td><td>' + status + '</td></tr>';
+                        const tipoLabel = (r.tipo_solicitacao || 'antecipacao') === 'reparo' ? '<span class="badge bg-warning text-dark">Reparo</span>' : '<span class="badge bg-primary">Antecipação</span>';
+                        const desc = (r.descricao_solicitacao || '') + (r.observacao_reparo ? ' | ' + r.observacao_reparo : '');
+                        return '<tr><td>' + (r.data_solicitacao || '') + '</td><td>' + tipoLabel + '</td><td>' + (r.usuario_nome || '') + '</td><td>' + (r.ordem_servico || '') + '</td><td>' + (r.cliente_nome || '').substring(0, 25) + '</td><td>' + desc.substring(0, 50) + (desc.length > 50 ? '…' : '') + '</td><td>' + status + '</td></tr>';
                     }).join('');
                     show('historico-table-wrap', true);
                     const pagEl = document.getElementById('historico-pagination');
