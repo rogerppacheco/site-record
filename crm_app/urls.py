@@ -156,6 +156,7 @@ from .views import (
     SolicitarAnteciparInstalacaoView,
     ConfigAnteciparInstalacaoView,
     HistoricoAnteciparInstalacaoView,
+    RespostaGCAnteciparInstalacaoView,
 )
 
 # Importar módulo de views de análise de buscas
@@ -372,6 +373,7 @@ urlpatterns = [
     path('antecipar-instalacao/solicitar/', SolicitarAnteciparInstalacaoView.as_view(), name='antecipar-instalacao-solicitar'),
     path('antecipar-instalacao/config/', ConfigAnteciparInstalacaoView.as_view(), name='antecipar-instalacao-config'),
     path('antecipar-instalacao/historico/', HistoricoAnteciparInstalacaoView.as_view(), name='antecipar-instalacao-historico'),
+    path('antecipar-instalacao/solicitacao/<int:pk>/resposta/', RespostaGCAnteciparInstalacaoView.as_view(), name='antecipar-instalacao-resposta-gc'),
     
     # --- Análise de Buscas de Faturas ---
     path('analise-buscas/', views_analise_busca.AnaliseBuscasView.as_view(), name='analise-buscas'),

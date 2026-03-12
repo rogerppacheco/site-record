@@ -158,6 +158,7 @@
                                         <th>Cliente</th>
                                         <th>Descrição</th>
                                         <th>Status</th>
+                                        <th>Resposta GC</th>
                                     </tr>
                                 </thead>
                                 <tbody id="historico-tbody"></tbody>
@@ -459,6 +460,8 @@
             // --- Aba Histórico (não passar evento do tab como page) ---
             document.getElementById('tab-historico-btn').addEventListener('shown.bs.tab', function() { carregarHistorico(); });
 
+            let podeRegistrarRespostaGc = false;
+
             async function carregarHistorico(page) {
                 if (typeof page === 'number') historicoPage = page;
                 show('historico-loading', true);
@@ -471,17 +474,53 @@
                     show('historico-loading', false);
                     const results = data.results || [];
                     const total = data.total || 0;
+                    podeRegistrarRespostaGc = data.pode_registrar_resposta_gc === true;
                     if (results.length === 0) {
                         show('historico-vazio', true);
                         return;
                     }
+                    const respostasLabels = { solicitado: 'Solicitado', antecipada: 'Antecipada', nao_antecipada: 'Não antecipada' };
                     const tbody = document.getElementById('historico-tbody');
                     tbody.innerHTML = results.map(function(r) {
                         const status = r.sucesso ? '<span class="badge bg-success">Enviado</span>' : '<span class="badge bg-danger">Erro</span>';
                         const tipoLabel = (r.tipo_solicitacao || 'antecipacao') === 'reparo' ? '<span class="badge bg-warning text-dark">Reparo</span>' : '<span class="badge bg-primary">Antecipação</span>';
                         const desc = (r.descricao_solicitacao || '') + (r.observacao_reparo ? ' | ' + r.observacao_reparo : '');
-                        return '<tr><td>' + (r.data_solicitacao || '') + '</td><td>' + tipoLabel + '</td><td>' + (r.usuario_nome || '') + '</td><td>' + (r.ordem_servico || '') + '</td><td>' + (r.cliente_nome || '').substring(0, 25) + '</td><td>' + desc.substring(0, 50) + (desc.length > 50 ? '…' : '') + '</td><td>' + status + '</td></tr>';
+                        let respGcCell;
+                        if (r.resposta_gc) {
+                            respGcCell = '<span class="badge bg-secondary">' + (respostasLabels[r.resposta_gc] || r.resposta_gc) + '</span><br><small class="text-muted">' + (r.resposta_gc_em || '') + '</small>';
+                        } else if (podeRegistrarRespostaGc) {
+                            respGcCell = '<div class="d-flex flex-wrap gap-1 align-items-center"><select class="form-select form-select-sm resp-gc-select" data-id="' + r.id + '" style="width:auto;min-width:120px"><option value="">—</option><option value="solicitado">Solicitado</option><option value="antecipada">Antecipada</option><option value="nao_antecipada">Não antecipada</option></select><button type="button" class="btn btn-sm btn-outline-primary btn-registrar-resp-gc" data-id="' + r.id + '">Registrar</button></div>';
+                        } else {
+                            respGcCell = '<span class="text-muted">—</span>';
+                        }
+                        return '<tr><td>' + (r.data_solicitacao || '') + '</td><td>' + tipoLabel + '</td><td>' + (r.usuario_nome || '') + '</td><td>' + (r.ordem_servico || '') + '</td><td>' + (r.cliente_nome || '').substring(0, 25) + '</td><td>' + desc.substring(0, 50) + (desc.length > 50 ? '…' : '') + '</td><td>' + status + '</td><td>' + respGcCell + '</td></tr>';
                     }).join('');
+                    tbody.querySelectorAll('.btn-registrar-resp-gc').forEach(function(btn) {
+                        btn.addEventListener('click', function() {
+                            const id = parseInt(this.getAttribute('data-id'), 10);
+                            const row = this.closest('tr');
+                            const sel = row.querySelector('.resp-gc-select');
+                            const valor = (sel && sel.value) || '';
+                            if (!valor) { alert('Escolha uma opção de resposta do GC.'); return; }
+                            btn.disabled = true;
+                            fetch(apiBase + '/antecipar-instalacao/solicitacao/' + id + '/resposta/', {
+                                method: 'PATCH',
+                                headers: getAuthHeader(),
+                                body: JSON.stringify({ resposta_gc: valor })
+                            }).then(function(res) { return res.json(); }).then(function(data) {
+                                if (data.success) {
+                                    alert(data.message || 'Resposta registrada.');
+                                    carregarHistorico(historicoPage);
+                                } else {
+                                    alert(data.detail || 'Erro ao registrar.');
+                                    btn.disabled = false;
+                                }
+                            }).catch(function() {
+                                alert('Erro de conexão.');
+                                btn.disabled = false;
+                            });
+                        });
+                    });
                     show('historico-table-wrap', true);
                     const pagEl = document.getElementById('historico-pagination');
                     if (total > 20) {

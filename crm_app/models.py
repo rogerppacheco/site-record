@@ -1060,6 +1060,21 @@ class AnteciparInstalacaoSolicitacao(models.Model):
     enviado_grupo = models.BooleanField(default=False)
     erros = models.JSONField(default=list, blank=True)
     mensagem_enviada = models.TextField(blank=True)
+    # Resposta do GC ao solicitante (registro + disparo de msg padronizada ao vendedor)
+    RESPOSTA_GC_CHOICES = [
+        ('solicitado', 'Solicitado (encaminhada para Vtal)'),
+        ('antecipada', 'Antecipada'),
+        ('nao_antecipada', 'Não antecipada'),
+    ]
+    resposta_gc = models.CharField(
+        max_length=20, choices=RESPOSTA_GC_CHOICES, blank=True, null=True,
+        verbose_name="Resposta do GC"
+    )
+    resposta_gc_em = models.DateTimeField(blank=True, null=True, verbose_name="Data da resposta GC")
+    resposta_gc_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='respostas_gc_antecipar'
+    )
 
     class Meta:
         verbose_name = "Solicitação Antecipar Instalação"

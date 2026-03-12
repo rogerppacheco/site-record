@@ -11188,7 +11188,7 @@ class HistoricoAnteciparInstalacaoView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        base = AnteciparInstalacaoSolicitacao.objects.select_related('usuario', 'venda').order_by('-data_solicitacao')
+        base = AnteciparInstalacaoSolicitacao.objects.select_related('usuario', 'venda', 'resposta_gc_por').order_by('-data_solicitacao')
         if is_member(request.user, ['Diretoria', 'Admin', 'BackOffice']):
             qs = base
         elif is_member(request.user, ['Supervisor']):
@@ -11223,8 +11223,81 @@ class HistoricoAnteciparInstalacaoView(APIView):
                 'enviado_grupo': s.enviado_grupo,
                 'erros': s.erros or [],
                 'sucesso': s.enviado_gc or s.enviado_grupo,
+                'resposta_gc': getattr(s, 'resposta_gc', None) or '',
+                'resposta_gc_em': s.resposta_gc_em.strftime('%d/%m/%Y %H:%M') if getattr(s, 'resposta_gc_em', None) else '',
+                'resposta_gc_por_nome': (s.resposta_gc_por.get_full_name() or s.resposta_gc_por.username) if getattr(s, 'resposta_gc_por', None) else '',
             })
-        return Response({'results': results, 'total': qs.count()})
+        return Response({
+            'results': results,
+            'total': qs.count(),
+            'pode_registrar_resposta_gc': is_member(request.user, ['Diretoria', 'Admin', 'BackOffice']),
+        })
+
+
+def _historico_antecipar_queryset(request):
+    """Queryset de solicitações visíveis para o usuário (mesmo filtro do histórico)."""
+    base = AnteciparInstalacaoSolicitacao.objects.select_related('usuario', 'venda', 'venda__vendedor', 'resposta_gc_por')
+    if is_member(request.user, ['Diretoria', 'Admin', 'BackOffice']):
+        return base
+    if is_member(request.user, ['Supervisor']):
+        liderados_ids = list(request.user.liderados.values_list('id', flat=True))
+        return base.filter(Q(usuario_id=request.user.id) | Q(usuario_id__in=liderados_ids))
+    return base.filter(usuario_id=request.user.id)
+
+
+def _mensagem_resposta_gc_para_vendedor(os_num, resposta_gc):
+    """Mensagem padronizada enviada ao vendedor quando o GC registra a resposta."""
+    os_txt = (os_num or 'O.S').strip()
+    if resposta_gc == 'solicitado':
+        return f"Olá! Sobre a *{os_txt}*: Sua solicitação foi tratada pelo GC e encaminhada para Vtal."
+    if resposta_gc == 'antecipada':
+        return f"Olá! Sobre a *{os_txt}*: Vtal conseguiu antecipar essa instalação para o período solicitado."
+    if resposta_gc == 'nao_antecipada':
+        return f"Olá! Sobre a *{os_txt}*: Vtal não tem espaço na agenda para antecipar este pedido."
+    return None
+
+
+class RespostaGCAnteciparInstalacaoView(APIView):
+    """PATCH: registra resposta do GC e envia mensagem padronizada ao vendedor (só Diretoria/Admin/BackOffice)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request, pk):
+        if not is_member(request.user, ['Diretoria', 'Admin', 'BackOffice']):
+            return Response({'detail': 'Sem permissão para registrar resposta do GC.'}, status=status.HTTP_403_FORBIDDEN)
+        resposta_gc = (request.data.get('resposta_gc') or '').strip().lower()
+        if resposta_gc not in ('solicitado', 'antecipada', 'nao_antecipada'):
+            return Response({'detail': 'resposta_gc deve ser: solicitado, antecipada ou nao_antecipada.'}, status=status.HTTP_400_BAD_REQUEST)
+        qs = _historico_antecipar_queryset(request)
+        try:
+            sol = qs.get(id=pk)
+        except AnteciparInstalacaoSolicitacao.DoesNotExist:
+            return Response({'detail': 'Solicitação não encontrada.'}, status=status.HTTP_404_NOT_FOUND)
+        if sol.resposta_gc:
+            return Response({'detail': 'Esta solicitação já possui resposta do GC registrada.'}, status=status.HTTP_400_BAD_REQUEST)
+        msg = _mensagem_resposta_gc_para_vendedor(sol.ordem_servico or '', resposta_gc)
+        if not msg:
+            return Response({'detail': 'Mensagem não definida para esta resposta.'}, status=status.HTTP_400_BAD_REQUEST)
+        vendedor = sol.venda.vendedor if sol.venda else None
+        telefone = getattr(vendedor, 'tel_whatsapp', None) if vendedor else None
+        telefone = (telefone or '').strip()
+        enviado_zap = False
+        if telefone:
+            try:
+                svc = WhatsAppService()
+                ok, _ = svc.enviar_mensagem_texto(telefone, msg)
+                enviado_zap = ok
+            except Exception as e:
+                logger.exception("Erro ao enviar WhatsApp resposta GC ao vendedor: %s", e)
+        from django.utils import timezone
+        sol.resposta_gc = resposta_gc
+        sol.resposta_gc_em = timezone.now()
+        sol.resposta_gc_por = request.user
+        sol.save(update_fields=['resposta_gc', 'resposta_gc_em', 'resposta_gc_por'])
+        return Response({
+            'success': True,
+            'message': 'Resposta registrada.' + (' Mensagem enviada ao vendedor por WhatsApp.' if enviado_zap else ' (Vendedor sem telefone ou falha no envio.)' if telefone else ' (Vendedor sem telefone cadastrado.)'),
+            'enviado_whatsapp': enviado_zap,
+        })
 
 
 def _mensagem_padrao_reparo(os_num, endereco, data_inst_fmt, observacao_reparo):

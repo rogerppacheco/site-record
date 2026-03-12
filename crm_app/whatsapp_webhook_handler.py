@@ -5531,6 +5531,93 @@ def _buscar_record_apoia_por_texto(busca_texto, sessao):
     return "\n".join(resposta_parts)
 
 
+def _mensagem_resposta_gc_para_vendedor(os_num, resposta_gc):
+    """Mensagem padronizada enviada ao vendedor quando o GC responde (igual à usada na API)."""
+    os_txt = (os_num or 'O.S').strip()
+    if resposta_gc == 'solicitado':
+        return f"Olá! Sobre a *{os_txt}*: Sua solicitação foi tratada pelo GC e encaminhada para Vtal."
+    if resposta_gc == 'antecipada':
+        return f"Olá! Sobre a *{os_txt}*: Vtal conseguiu antecipar essa instalação para o período solicitado."
+    if resposta_gc == 'nao_antecipada':
+        return f"Olá! Sobre a *{os_txt}*: Vtal não tem espaço na agenda para antecipar este pedido."
+    return None
+
+
+def processar_resposta_gc_antecipar(telefone_remetente, mensagem_texto):
+    """
+    Se a mensagem for do número do GC e no formato [O.S], antecipada|não antecipada|solicitado,
+    registra a resposta no sistema e envia a mensagem padronizada ao vendedor.
+    Retorna True se processou (e deve encerrar o webhook); False caso contrário.
+    """
+    if not mensagem_texto or not (mensagem_texto or "").strip():
+        return False
+    from crm_app.models import AnteciparInstalacaoConfig, AnteciparInstalacaoSolicitacao
+    from crm_app.whatsapp_service import WhatsAppService
+    config = AnteciparInstalacaoConfig.objects.first()
+    if not config or not (getattr(config, 'telefone_gc', None) or "").strip():
+        return False
+    gc_norm = formatar_telefone(config.telefone_gc)
+    rem_norm = formatar_telefone(telefone_remetente)
+    if not gc_norm or not rem_norm or gc_norm != rem_norm:
+        return False
+    msg = (mensagem_texto or "").strip()
+    # Aceita: "12345, antecipada" | "12345, não antecipada" | "12345, solicitado" | "OS 12345, antecipada" etc.
+    m = re.match(
+        r'^(?:O\.?S\.?)?\s*(\d+)\s*[,]\s*(antecipada|(?:nao|não)\s*antecipada|solicitado)\s*$',
+        msg,
+        re.IGNORECASE,
+    )
+    if not m:
+        m = re.match(
+            r'^(\d+)\s+(antecipada|(?:nao|não)\s*antecipada|solicitado)\s*$',
+            msg,
+            re.IGNORECASE,
+        )
+    if not m:
+        return False
+    os_num = m.group(1).strip()
+    kw = (m.group(2) or "").strip().lower()
+    if 'solicitado' in kw:
+        resposta_gc = 'solicitado'
+    elif 'não' in kw or 'nao' in kw:
+        resposta_gc = 'nao_antecipada'
+    elif 'antecipada' in kw:
+        resposta_gc = 'antecipada'
+    else:
+        return False
+    sol = (
+        AnteciparInstalacaoSolicitacao.objects.filter(
+            ordem_servico__icontains=os_num,
+            resposta_gc__isnull=True,
+        )
+        .select_related('venda', 'venda__vendedor')
+        .order_by('-data_solicitacao')
+        .first()
+    )
+    if not sol:
+        logger.info(f"[Webhook] Resposta GC: O.S {os_num} não encontrada ou já respondida.")
+        return False
+    msg_vendedor = _mensagem_resposta_gc_para_vendedor(sol.ordem_servico or os_num, resposta_gc)
+    if not msg_vendedor:
+        return False
+    vendedor = sol.venda.vendedor if sol.venda else None
+    telefone_vendedor = (getattr(vendedor, 'tel_whatsapp', None) or "").strip() if vendedor else ""
+    enviado = False
+    if telefone_vendedor:
+        try:
+            svc = WhatsAppService()
+            ok, _ = svc.enviar_mensagem_texto(telefone_vendedor, msg_vendedor)
+            enviado = ok
+        except Exception as e:
+            logger.exception("Erro ao enviar WhatsApp resposta GC ao vendedor: %s", e)
+    sol.resposta_gc = resposta_gc
+    sol.resposta_gc_em = timezone.now()
+    sol.resposta_gc_por = None  # automático via WhatsApp
+    sol.save(update_fields=['resposta_gc', 'resposta_gc_em', 'resposta_gc_por'])
+    logger.info(f"[Webhook] Resposta GC registrada: O.S {os_num} -> {resposta_gc}; mensagem ao vendedor: {'enviada' if enviado else 'não enviada'}")
+    return True
+
+
 def processar_webhook_whatsapp(data, request=None):
     """
     Processa mensagens recebidas do WhatsApp via webhook.
@@ -5591,18 +5678,10 @@ def processar_webhook_whatsapp(data, request=None):
     else:
         telefone_usuario = telefone
 
-    # Ignorar mensagens de grupo: bot não processa webhooks nem automações em grupos
-    if is_group:
-        logger.info("[Webhook] Mensagem de grupo ignorada - bot não responde em grupos")
-        return {'status': 'ok', 'mensagem': 'Mensagem de grupo ignorada'}
-
+    # Extrair mensagem antes do return de grupo (para permitir resposta do GC em grupo)
     mensagem_texto = ""
-    
-    # Formato Z-API: text é um dict com 'message' dentro
     if 'text' in data and isinstance(data['text'], dict):
         mensagem_texto = data['text'].get('message') or data['text'].get('text') or data['text'].get('body') or ""
-    
-    # Tentar múltiplos formatos de mensagem (outros provedores)
     if not mensagem_texto:
         if 'message' in data:
             if isinstance(data['message'], dict):
@@ -5611,23 +5690,23 @@ def processar_webhook_whatsapp(data, request=None):
                 mensagem_texto = str(data['message'])
         else:
             mensagem_texto = data.get('text') or data.get('body') or data.get('message') or data.get('content') or ""
-    
-    # Se ainda não encontrou, tentar em nested structures comuns
     if not mensagem_texto:
         if 'data' in data and isinstance(data['data'], dict):
             mensagem_texto = data['data'].get('text') or data['data'].get('body') or data['data'].get('message') or ""
         if 'payload' in data and isinstance(data['payload'], dict):
             mensagem_texto = data['payload'].get('text') or data['payload'].get('body') or data['payload'].get('message') or ""
-    
-    # Garantir que mensagem_texto é string
     if isinstance(mensagem_texto, dict):
-        # Se ainda for dict, tentar extrair valores
         mensagem_texto = mensagem_texto.get('message') or mensagem_texto.get('text') or mensagem_texto.get('body') or str(mensagem_texto)
     elif not isinstance(mensagem_texto, str):
         mensagem_texto = str(mensagem_texto) if mensagem_texto else ""
-    
-    # Normalizar: ignorar mensagens vazias ou só espaços (evita processar eventos sem texto)
     mensagem_texto = (mensagem_texto or "").strip()
+
+    # Ignorar mensagens de grupo — exceto se for resposta do GC (formato [O.S], antecipada|não antecipada|solicitado)
+    if is_group:
+        if mensagem_texto and processar_resposta_gc_antecipar(participant_phone or telefone, mensagem_texto):
+            return {'status': 'ok', 'mensagem': 'Resposta GC registrada'}
+        logger.info("[Webhook] Mensagem de grupo ignorada - bot não responde em grupos")
+        return {'status': 'ok', 'mensagem': 'Mensagem de grupo ignorada'}
 
     # Extrair URL de imagem (Z-API: image.imageUrl) - para etapa inclusao_foto
     image_url = None
@@ -5674,7 +5753,11 @@ def processar_webhook_whatsapp(data, request=None):
     
     logger.info(f"[Webhook] Mensagem recebida de {telefone_formatado_usuario} (chat={telefone_formatado}): {mensagem_texto!r}")
     logger.info(f"[Webhook] Mensagem limpa (uppercase): {mensagem_limpa}")
-    
+
+    # --- Resposta do GC (Antecipar Instalação): [O.S], antecipada|não antecipada|solicitado — atualiza sistema e manda msg ao vendedor
+    if mensagem_texto and processar_resposta_gc_antecipar(telefone_formatado_usuario, mensagem_texto):
+        return {'status': 'ok', 'mensagem': 'Resposta GC registrada'}
+
     # --- Resposta do CLIENTE (SIM/CONFIRMAR) antes de exigir usuário ativo ---
     # Quando o sistema envia "RESUMO DO PEDIDO... responda SIM" ao cliente (fluxo PAP ou
     # resumo enviado da auditoria), a resposta vem do número do cliente, que não é usuário interno.
