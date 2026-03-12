@@ -2180,7 +2180,7 @@ def _montar_resumo_venda_e_pedir_confirmar(dados: dict) -> str:
         linhas_endereco.append(f"Referência: {referencia}")
     bloco_endereco = "\n".join(linhas_endereco)
     return (
-        f"📋 *RESUMO DA VENDA*\n\n"
+        f"📋 *RESUMO DO PEDIDO NIO FIBRA*\n\n"
         f"👤 *Cliente:* {nome_cliente}\n"
         f"CPF: {cpf_fmt}\n"
         f"Celular: {cel_fmt}\n"

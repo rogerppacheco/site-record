@@ -1433,6 +1433,36 @@
             if (!confirm('Enviar resumo do plano ao Cliente (' + tel1 + ')?')) return;
             $('#loadingOverlay').show();
             try {
+                // Salva rascunho da auditoria antes de enviar o resumo
+                const d = coletarDadosAuditoria();
+                const rascunho = {
+                    cliente_email: d.cliente_email || null,
+                    cliente_nome_razao_social: d.cliente_nome || null,
+                    cliente_cpf_cnpj: d.cliente_cpf || null,
+                    observacoes: d.observacoes || null,
+                    nome_mae: d.nome_mae || null,
+                    data_nascimento: d.data_nascimento || null,
+                    telefone1: d.telefone1 || null,
+                    telefone2: d.telefone2 || null,
+                    cep: d.cep || null,
+                    logradouro: d.logradouro || null,
+                    numero_residencia: d.numero || null,
+                    complemento: d.complemento || null,
+                    bairro: d.bairro || null,
+                    cidade: d.cidade || null,
+                    estado: d.estado || null,
+                    ponto_referencia: d.referencia || null,
+                    plano: d.plano || null,
+                    forma_pagamento: d.forma_pagamento || null,
+                    data_agendamento: d.data_agendamento || null,
+                    periodo_agendamento: d.periodo_agendamento || null,
+                    cpf_representante_legal: d.cpf_representante_legal || null,
+                    nome_representante_legal: d.nome_representante_legal || null
+                };
+                Object.keys(rascunho).forEach(key => { if (rascunho[key] === "") rascunho[key] = null; });
+
+                await apiFetch(`${API_BASE}/${vendaEmAuditoria.id}/`, { method: 'PATCH', body: JSON.stringify(rascunho) });
+
                 const res = await apiFetch(`${API_BASE}/${vendaEmAuditoria.id}/enviar-resumo-plano-whatsapp/`, { method: 'POST' });
                 alert(res.detail || 'Resumo enviado!');
             } catch (e) {

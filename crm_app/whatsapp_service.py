@@ -147,29 +147,40 @@ class WhatsAppService:
     def _destino_send_text(self, telefone_ou_grupo):
         """
         Normaliza o destinatário para send-text: número (Brasil) ou ID de grupo.
-        Z-API usa formato nativo de grupo: sufixo "-group" (ex: 120363019502650977-group)
-        ou formato antigo 5511999999999-1623281429. NÃO usar @g.us no parâmetro phone.
-        Se o valor já contém "-group" ou "@g.us", ou for só dígitos com 15+ caracteres, trata como grupo.
+        - Grupos formato novo Z-API: "120363019502650977-group"
+        - Grupos formato antigo WhatsApp: "5531999999999-1623281429"
         """
         if not telefone_ou_grupo:
             return ""
+
         s = str(telefone_ou_grupo).strip()
-        # Z-API retorna grupos com "phone": "120263358412332916-group" – enviar assim
+
+        # 1) Já está no formato novo da Z-API
         if "-group" in s:
             return s
-        # Se veio no formato WhatsApp @g.us, converter para formato Z-API: id-group
+
+        # 2) Formato antigo do WhatsApp: 5511999999999-1623281429 ou 5531999999999-...
+        #    Mantém exatamente como veio, sem tentar remontar o ID.
+        if "-" in s and s.replace("-", "").isdigit():
+            # Ex.: "553194588810-1624885503"
+            return s
+
+        # 3) Formato @g.us -> converte para id-group
         if "@g.us" in s:
             parte = s.split("@g.us")[0].strip()
             digitos = "".join(filter(str.isdigit, parte))
             if digitos.startswith("55") and len(digitos) > 15:
                 digitos = digitos[2:]
             return digitos + "-group" if digitos else s
+
+        # 4) Heurística: só dígitos com 15+ caracteres = ID de grupo novo
         digitos = "".join(filter(str.isdigit, s))
-        # ID de grupo: 15+ dígitos (formato novo) ou número-timestamp (formato antigo já tem hífen)
         if len(digitos) >= 15:
             if digitos.startswith("55") and len(digitos) > 15:
                 digitos = digitos[2:]
             return digitos + "-group"
+
+        # 5) Caso contrário, tratar como número de telefone
         return self._formatar_telefone(telefone_ou_grupo)
 
     # ---------------------------------------------------------

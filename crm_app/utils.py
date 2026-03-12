@@ -475,7 +475,7 @@ def montar_resumo_plano_para_whatsapp(venda):
         nome_cliente = "Não informado"
 
     return (
-        f"📋 *RESUMO DA VENDA*\n\n"
+        f"📋 *RESUMO DO PEDIDO NIO FIBRA*\n\n"
         f"👤 *Cliente:* {nome_cliente}\n"
         f"CPF: {cpf_fmt}\n"
         f"Celular: {cel_fmt}\n"
