@@ -182,6 +182,32 @@
                         <div class="col-md-6"><label class="form-label">Forma de Pagamento</label><select class="form-select" id="edit-pagamento"></select></div>
                     </div>
 
+                    <div id="campos-datas-agendamento" class="row g-3 mb-4 p-3 rounded border" style="display: none; background: #cce5ff; border-color: #b8daff !important;">
+                        <div class="col-12"><h6 class="text-primary border-bottom pb-2"><i class="bi bi-calendar-event"></i> Datas do agendamento</h6></div>
+                        <div class="col-md-6"><label class="form-label fw-bold">Data agendada</label><input type="date" class="form-control" id="edit-data-agendamento-modal"></div>
+                        <div class="col-md-6"><label class="form-label fw-bold">Turno</label><select class="form-select" id="edit-periodo-agendamento-modal"><option value="">—</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select></div>
+                    </div>
+
+                    <div id="campos-instalacao-modal" style="display: none; background: #d1e7dd; padding: 15px; border-radius: 8px; border: 1px solid #badbcc;">
+                        <h6 class="text-success mb-3 border-bottom pb-2"><i class="bi bi-check-circle-fill"></i> Datas da instalação</h6>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Data da Instalação (OSAB)</label>
+                                <input type="date" class="form-control" id="edit-data-instalacao-modal" title="Data oficial registrada na OSAB">
+                                <small class="text-muted">Data que consta na OSAB (oficial).</small>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Houve Antecipação?</label>
+                                <select class="form-select" id="edit-antecipou-modal"><option value="false">Não</option><option value="true">Sim</option></select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Data física (no cliente)</label>
+                                <input type="date" class="form-control" id="edit-data-instalacao-fisica-modal" title="Data em que a instalação ocorreu de fato no cliente">
+                                <small class="text-muted">Opcional. Só BackOffice/Diretoria/Admin alteram.</small>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="row g-3 mb-4">
                          <div class="col-12"><h6 class="text-secondary border-bottom pb-2">Dados do Cliente</h6></div>
                         <div class="col-md-6"><label class="form-label fw-bold">Nome do Cliente</label><input type="text" class="form-control uppercase-input" id="edit-cliente-nome"></div>
@@ -209,26 +235,6 @@
                     <div class="mb-3">
                         <label class="form-label">Observações</label>
                         <textarea class="form-control uppercase-input" id="edit-observacoes" rows="3"></textarea>
-                    </div>
-
-                    <div id="campos-instalacao-modal" style="display: none; background: #d1e7dd; padding: 15px; border-radius: 8px; border: 1px solid #badbcc;">
-                        <h6 class="text-success mb-3 border-bottom pb-2"><i class="bi bi-check-circle-fill"></i> Confirmação de Instalação</h6>
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label class="form-label fw-bold">Data da Instalação (OSAB)</label>
-                                <input type="date" class="form-control" id="edit-data-instalacao-modal" title="Data oficial registrada na OSAB – usada para diretores e parceiros">
-                                <small class="text-muted">Data que consta na OSAB (oficial).</small>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label fw-bold">Houve Antecipação?</label>
-                                <select class="form-select" id="edit-antecipou-modal"><option value="false">Não</option><option value="true">Sim</option></select>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label fw-bold">Data física (no cliente)</label>
-                                <input type="date" class="form-control" id="edit-data-instalacao-fisica-modal" title="Data em que a instalação ocorreu de fato no cliente">
-                                <small class="text-muted">Opcional. Data real no cliente. Usada em performance/dashboard para consultores. Só BackOffice/Diretoria/Admin alteram.</small>
-                            </div>
-                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -1045,14 +1051,16 @@
         async function abrirEdicao(id) {
             setVal('edit-venda-id-hidden', id);
             document.getElementById('campos-instalacao-modal').style.display = 'none';
+            document.getElementById('campos-datas-agendamento').style.display = 'none';
             try {
                 const [v, pRes, sRes, fRes] = await Promise.all([ apiFetch(`/crm/vendas/${id}/`), apiFetch('/crm/planos/'), apiFetch('/crm/status/?tipo=Esteira'), apiFetch('/crm/formas-pagamento/') ]);
                 const planos = Array.isArray(pRes) ? pRes : (pRes.results || []);
                 const statusLista = Array.isArray(sRes) ? sRes : (sRes.results || []);
                 const formas = Array.isArray(fRes) ? fRes : (fRes.results || []);
 
+                const statusId = v.status_esteira && (typeof v.status_esteira === 'object' ? v.status_esteira.id : v.status_esteira);
                 const pSel = document.getElementById('edit-plano'); pSel.innerHTML = ''; planos.forEach(p => pSel.innerHTML += `<option value="${p.id}" ${v.plano==p.id?'selected':''}>${p.nome}</option>`);
-                const sSel = document.getElementById('edit-status-esteira'); sSel.innerHTML = ''; statusLista.forEach(s => sSel.innerHTML += `<option value="${s.id}" ${v.status_esteira==s.id?'selected':''}>${s.nome}</option>`);
+                const sSel = document.getElementById('edit-status-esteira'); sSel.innerHTML = ''; statusLista.forEach(s => sSel.innerHTML += `<option value="${s.id}" ${(statusId && (s.id==statusId || s.id==v.status_esteira))?'selected':''}>${s.nome}</option>`);
                 const pgSel = document.getElementById('edit-pagamento'); pgSel.innerHTML = ''; formas.forEach(f => pgSel.innerHTML += `<option value="${f.id}" ${v.forma_pagamento==f.id?'selected':''}>${f.nome}</option>`);
                 
                 setVal('edit-cliente-nome', v.cliente_nome_razao_social); setVal('edit-cliente-cpf', v.cliente_cpf_cnpj);
@@ -1061,24 +1069,41 @@
                 setVal('edit-nome-mae', v.nome_mae); setVal('edit-data-nascimento', v.data_nascimento);
                 setVal('edit-cep', v.cep); setVal('edit-logradouro', v.logradouro); setVal('edit-numero', v.numero_residencia);
                 setVal('edit-complemento', v.complemento); setVal('edit-bairro', v.bairro); setVal('edit-cidade', v.cidade);
-                setVal('edit-estado', v.estado); setVal('edit-referencia', v.ponto_referencia); setVal('edit-observacoes', v.observacoes);
+                setVal('edit-estado', v.estado);                 setVal('edit-referencia', v.ponto_referencia); setVal('edit-observacoes', v.observacoes);
 
-                if (v.status_esteira) {
-                    const statusObj = statusLista.find(s => s.id == v.status_esteira);
-                    if (statusObj && statusObj.nome.toUpperCase() === 'INSTALADA') {
-                        document.getElementById('campos-instalacao-modal').style.display = 'block';
-                        setVal('edit-data-instalacao-modal', v.data_instalacao);
-                        setVal('edit-antecipou-modal', v.antecipou_instalacao ? 'true' : 'false');
-                        setVal('edit-data-instalacao-fisica-modal', v.data_instalacao_fisica || '');
-                    }
+                setVal('edit-data-agendamento-modal', v.data_agendamento || '');
+                setVal('edit-periodo-agendamento-modal', v.periodo_agendamento || '');
+
+                const statusObj = statusLista.find(s => s.id == statusId || s.id == v.status_esteira);
+                const nomeStatus = (statusObj && statusObj.nome) ? String(statusObj.nome).toUpperCase() : '';
+                if (nomeStatus === 'INSTALADA') {
+                    document.getElementById('campos-instalacao-modal').style.display = 'block';
+                    document.getElementById('campos-datas-agendamento').style.display = 'none';
+                    setVal('edit-data-instalacao-modal', v.data_instalacao);
+                    setVal('edit-antecipou-modal', v.antecipou_instalacao ? 'true' : 'false');
+                    setVal('edit-data-instalacao-fisica-modal', v.data_instalacao_fisica || '');
+                } else if (nomeStatus.includes('AGENDADO')) {
+                    document.getElementById('campos-instalacao-modal').style.display = 'none';
+                    document.getElementById('campos-datas-agendamento').style.display = 'block';
                 }
                 modalEditar.show();
             } catch(e) { alert('Erro ao abrir edição.'); }
         }
 
         function verificarStatusInstaladaModal(select) {
-            const texto = select.options[select.selectedIndex].text.toUpperCase();
-            document.getElementById('campos-instalacao-modal').style.display = (texto === 'INSTALADA') ? 'block' : 'none';
+            const texto = (select.options[select.selectedIndex].text || '').toUpperCase();
+            const divInst = document.getElementById('campos-instalacao-modal');
+            const divAgend = document.getElementById('campos-datas-agendamento');
+            if (texto === 'INSTALADA') {
+                if (divInst) divInst.style.display = 'block';
+                if (divAgend) divAgend.style.display = 'none';
+            } else if (texto.includes('AGENDADO')) {
+                if (divInst) divInst.style.display = 'none';
+                if (divAgend) divAgend.style.display = 'block';
+            } else {
+                if (divInst) divInst.style.display = 'none';
+                if (divAgend) divAgend.style.display = 'none';
+            }
         }
 
         async function salvarEdicaoVenda() {
@@ -1094,9 +1119,14 @@
                 estado: getVal('edit-estado'), ponto_referencia: getVal('edit-referencia'), observacoes: getVal('edit-observacoes'),
                 enviar_whatsapp: envioWhatsappAtivo
             };
+            const divAgend = document.getElementById('campos-datas-agendamento');
+            if (divAgend && divAgend.style.display !== 'none') {
+                body.data_agendamento = getVal('edit-data-agendamento-modal') || null;
+                body.periodo_agendamento = getVal('edit-periodo-agendamento-modal') || null;
+            }
             const divInst = document.getElementById('campos-instalacao-modal');
             if (divInst && divInst.style.display !== 'none') {
-                body.data_instalacao = getVal('edit-data-instalacao-modal');
+                body.data_instalacao = getVal('edit-data-instalacao-modal') || null;
                 body.antecipou_instalacao = getVal('edit-antecipou-modal') === 'true';
                 const dtFisica = getVal('edit-data-instalacao-fisica-modal');
                 body.data_instalacao_fisica = dtFisica && dtFisica.trim() ? dtFisica.trim() : null;
