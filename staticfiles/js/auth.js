@@ -653,30 +653,46 @@ async function renovarTokenAutomatico() {
     }
 }
 
+// Evita duas renovações ao mesmo tempo (rotação de refresh token invalida o anterior).
+let refreshPromise = null;
+
 async function renovarTokenAPI() {
-    const refresh = localStorage.getItem('refreshToken');
-    if (!refresh) throw new Error('Sem refresh token');
-
-    const response = await fetch('/api/auth/token/refresh/', {
-        method: 'POST',
-        headers: { 
-            'Content-Type': 'application/json',
-            'X-CSRFToken': getCookie('csrftoken')
-        },
-        body: JSON.stringify({ refresh: refresh })
-    });
-
-    if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const detail = errorData.detail || 'Falha ao renovar token';
-        const err = new Error(detail);
-        err.status = response.status;
-        throw err;
+    if (refreshPromise) {
+        return refreshPromise;
     }
 
-    const data = await response.json();
-    localStorage.setItem('accessToken', data.access);
-    if (data.refresh) localStorage.setItem('refreshToken', data.refresh);
+    const doRefresh = async () => {
+        const refresh = localStorage.getItem('refreshToken');
+        if (!refresh) throw new Error('Sem refresh token');
+
+        const response = await fetch('/api/auth/token/refresh/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({ refresh: refresh })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            const detail = errorData.detail || 'Falha ao renovar token';
+            const err = new Error(detail);
+            err.status = response.status;
+            throw err;
+        }
+
+        const data = await response.json();
+        localStorage.setItem('accessToken', data.access);
+        if (data.refresh) localStorage.setItem('refreshToken', data.refresh);
+    };
+
+    refreshPromise = doRefresh();
+    try {
+        await refreshPromise;
+    } finally {
+        refreshPromise = null;
+    }
 }
 
 // Parar monitoramento ao sair da página

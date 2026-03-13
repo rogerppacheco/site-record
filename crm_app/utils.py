@@ -1,3 +1,21 @@
+def is_member(user, groups):
+    """Verifica se o usuário pertence a algum dos grupos (por Group ou Perfil). Usado para regras de permissão."""
+    if not user:
+        return False
+    if getattr(user, 'is_superuser', False):
+        return True
+    if user.groups.filter(name__in=groups).exists():
+        return True
+    try:
+        if hasattr(user, 'perfil_id') and user.perfil_id:
+            perfil = user.perfil
+            if perfil and perfil.nome in groups:
+                return True
+    except Exception:
+        pass
+    return False
+
+
 def listar_fachadas_dfv_por_endereco(endereco):
     """
     Busca fachadas por endereço (logradouro, bairro ou município) na base DFV.

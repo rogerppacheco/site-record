@@ -71,9 +71,10 @@ def get_valor_manual(config, chave):
     return float(v) if v is not None else None
 
 
-def calcular_folha_mes(ano, mes, vendedor_id=None):
+def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_display=False):
     """
     Calcula a folha de comissão do mês no formato Excel.
+    use_effective_date_for_display: se True, no extrato dt_inst usa data_instalacao_fisica (quando preenchida) para consultores.
     Retorna: {
       "periodo": "01/2026",
       "ano_mes": 202601,
@@ -417,6 +418,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None):
             plano_label = labels.get(chave, plano_nome or '-')
             dacc = 'SIM' if (v.forma_pagamento and 'DÉBITO' in (v.forma_pagamento.nome or '').upper()) else 'NÃO'
             churn_status = 'SIM' if _norm_os_variantes(v.ordem_servico) & set_os_churn_mes_extrato else 'NÃO'
+            dt_inst = (v.data_instalacao_fisica or v.data_instalacao) if use_effective_date_for_display else v.data_instalacao
             extrato.append({
                 'venda_id': v.id,
                 'nome': (v.cliente.nome_razao_social or '')[:80] if v.cliente else '',
@@ -424,7 +426,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None):
                 'cnpj': 'SIM' if eh_cnpj else 'NÃO',
                 'plano': plano_label,
                 'dt_pedido': v.data_criacao.strftime('%d/%m/%Y') if v.data_criacao else '',
-                'dt_inst': v.data_instalacao.strftime('%d/%m/%Y') if v.data_instalacao else '',
+                'dt_inst': dt_inst.strftime('%d/%m/%Y') if dt_inst else '',
                 'os': v.ordem_servico or '',
                 'situacao': v.status_esteira.nome if v.status_esteira else 'INSTALADA',
                 'vendedor': consultor.username,
@@ -445,6 +447,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None):
             chave = plano_tipo_to_chave(plano_nome, 'CNPJ' if eh_cnpj else 'CPF')
             plano_label = labels.get(chave, plano_nome or '-')
             dacc = 'SIM' if (v.forma_pagamento and 'DÉBITO' in (v.forma_pagamento.nome or '').upper()) else 'NÃO'
+            dt_inst_m1 = (v.data_instalacao_fisica or v.data_instalacao) if use_effective_date_for_display else v.data_instalacao
             extrato.append({
                 'venda_id': v.id,
                 'nome': (v.cliente.nome_razao_social or '')[:80] if v.cliente else '',
@@ -452,7 +455,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None):
                 'cnpj': 'SIM' if eh_cnpj else 'NÃO',
                 'plano': plano_label,
                 'dt_pedido': v.data_criacao.strftime('%d/%m/%Y') if v.data_criacao else '',
-                'dt_inst': v.data_instalacao.strftime('%d/%m/%Y') if v.data_instalacao else '',
+                'dt_inst': dt_inst_m1.strftime('%d/%m/%Y') if dt_inst_m1 else '',
                 'os': v.ordem_servico or '',
                 'situacao': 'INSTALADA (Churn M-1)',
                 'vendedor': consultor.username,

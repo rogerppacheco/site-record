@@ -153,6 +153,13 @@ class Venda(models.Model):
     data_agendamento = models.DateField(null=True, blank=True)
     periodo_agendamento = models.CharField(max_length=10, choices=[('MANHA', 'Manhã'), ('TARDE', 'Tarde')], null=True, blank=True)
     data_instalacao = models.DateField(null=True, blank=True, db_index=True)
+    data_instalacao_fisica = models.DateField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="Data instalação (no cliente)",
+        help_text="Data em que a instalação ocorreu de fato no cliente. Usada em performance/dashboard para consultores. Editável apenas por BackOffice/Diretoria/Admin.",
+    )
     antecipou_instalacao = models.BooleanField(default=False)
     motivo_pendencia = models.ForeignKey(MotivoPendencia, on_delete=models.SET_NULL, null=True, blank=True, related_name='vendas_pendentes', db_index=True)
 

@@ -261,8 +261,8 @@ class VendaSerializer(serializers.ModelSerializer):
             'motivo_pendencia', 'motivo_pendencia_nome',
             'data_criacao', 'forma_entrada', 'cpf_representante_legal', 'nome_representante_legal',
             'nome_mae', 'data_nascimento', 'telefone1', 'telefone2', 'cep', 'logradouro', 'numero_residencia',
-            'complemento', 'bairro', 'cidade', 'estado', 'data_abertura', 'ordem_servico', 'data_agendamento',
-            'periodo_agendamento', 'data_instalacao', 'antecipou_instalacao',
+            'complemento', 'bairro', 'cidade', 'estado',             'data_abertura', 'ordem_servico', 'data_agendamento',
+            'periodo_agendamento', 'data_instalacao', 'data_instalacao_fisica', 'antecipou_instalacao',
             'ponto_referencia', 'observacoes', 'data_pagamento', 'valor_pago',
             'auditor_atual', 'auditor_atual_nome', 'auditor_atual_id',
             'nome_editor', 'data_ultima_alteracao', 'gerada_os_automatica',
@@ -313,7 +313,7 @@ class VendaDetailSerializer(serializers.ModelSerializer):
             'nome_mae', 'data_nascimento', 'telefone1', 'telefone2',
             'cep', 'logradouro', 'numero_residencia', 'complemento', 'bairro', 'cidade', 'estado',
             'ponto_referencia', 'observacoes', 'ordem_servico', 'data_abertura',
-            'data_agendamento', 'periodo_agendamento', 'data_instalacao', 'antecipou_instalacao',
+            'data_agendamento', 'periodo_agendamento', 'data_instalacao', 'data_instalacao_fisica', 'antecipou_instalacao',
             'data_pagamento', 'valor_pago', 'cpf_representante_legal', 'nome_representante_legal',
             'forma_entrada', 'tem_fixo', 'historico_alteracoes', 'data_criacao', 'data_ultima_alteracao',
             'gerada_os_automatica',
@@ -411,6 +411,7 @@ class VendaCreateSerializer(serializers.ModelSerializer):
         return data
 
 class VendaUpdateSerializer(serializers.ModelSerializer):
+    # data_instalacao_fisica: editável apenas por BackOffice/Diretoria/Admin (validado em validate)
     # Campos "Manuais" para evitar conflito de nesting e validação
     cliente_nome_razao_social = serializers.CharField(required=False, allow_null=True, allow_blank=True, write_only=True)
     cliente_cpf_cnpj = serializers.CharField(required=False, allow_null=True, allow_blank=True, write_only=True)
@@ -433,6 +434,11 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
         read_only_fields = ('data_criacao', 'forma_entrada', 'cliente')
 
     def validate(self, data):
+        # data_instalacao_fisica: somente BackOffice/Diretoria/Admin podem alterar
+        from crm_app.utils import is_member
+        request = self.context.get('request')
+        if request and 'data_instalacao_fisica' in data and not is_member(request.user, ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']):
+            data.pop('data_instalacao_fisica', None)
         # Converte para maiúsculo, exceto email e obs
         for key, value in data.items():
             if value is None: continue

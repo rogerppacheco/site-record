@@ -506,6 +506,7 @@ from .nio_api import consultar_dividas_nio
 
 # Funções de Mapa (Geometria e Busca)
 from .utils import (
+    is_member,
     verificar_viabilidade_por_cep,
     verificar_viabilidade_por_coordenadas,
     verificar_viabilidade_exata,
@@ -542,22 +543,6 @@ from .serializers import (
 )
 
 logger = logging.getLogger(__name__)
-
-def is_member(user, groups):
-    if user.is_superuser:
-        return True
-    if user.groups.filter(name__in=groups).exists():
-        return True
-    # Verifica perfil com tratamento de erro (caso perfil não exista)
-    try:
-        if hasattr(user, 'perfil_id') and user.perfil_id:
-            perfil = user.perfil  # Acessa o perfil
-            if perfil and perfil.nome in groups:
-                return True
-    except Exception:
-        # Se houver erro ao acessar perfil (não existe, etc), ignora
-        pass
-    return False
 
 def get_osab_bot_user():
     User = get_user_model()
@@ -2607,7 +2592,9 @@ class FolhaComissionamentoView(APIView):
                 vendedor_id = int(vendedor_id)
             except ValueError:
                 vendedor_id = None
-        dados = calcular_folha_mes(ano, mes, vendedor_id)
+        grupos_gestao = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
+        use_effective_date = not is_member(request.user, grupos_gestao)
+        dados = calcular_folha_mes(ano, mes, vendedor_id, use_effective_date_for_display=use_effective_date)
         return Response(dados)
 
 
@@ -4765,7 +4752,8 @@ def enviar_folha_extrato_whatsapp(request):
             )
 
         from .comissao_folha_service import calcular_folha_mes
-        folha = calcular_folha_mes(ano, mes)
+        # Extrato enviado ao consultor usa data efetiva (instalação no cliente)
+        folha = calcular_folha_mes(ano, mes, vendedor_id=vendedor_id, use_effective_date_for_display=True)
         vendedor_data = next(
             (x for x in folha.get('vendedores', []) if str(x.get('vendedor_id')) == str(vendedor_id)),
             None
@@ -5035,6 +5023,13 @@ class PainelPerformanceView(APIView):
         
         # Filtro Instalada
         filtro_inst = Q(vendas__status_esteira__nome__iexact='INSTALADA')
+        # Data efetiva (para consultores): data_instalacao_fisica se preenchida, senão data_instalacao (OSAB)
+        filtro_data_efetiva_mes = (
+            (Q(vendas__data_instalacao_fisica__isnull=False) & Q(vendas__data_instalacao_fisica__gte=inicio_mes))
+            | (Q(vendas__data_instalacao_fisica__isnull=True) & Q(vendas__data_instalacao__gte=inicio_mes))
+        )
+        eh_gestao_performance = is_member(user, grupos_gestao)
+        filtro_data_inst_mes = Q(vendas__data_instalacao__gte=inicio_mes) if eh_gestao_performance else filtro_data_efetiva_mes
 
         # --- A. DADOS DE HOJE ---
         qs_hoje = users.annotate(
@@ -5088,15 +5083,12 @@ class PainelPerformanceView(APIView):
 
         # --- C. DADOS DO MÊS (CORRIGIDO) ---
         # "total_vendas": Mantém data_abertura (Vendas Novas no mês)
-        # "instaladas": Muda para data_instalacao (Instalações no mês, independente de quando vendeu)
-        
+        # "instaladas": Gestão usa data_instalacao (OSAB); consultores usam data efetiva (física se preenchida)
         qs_mes = users.annotate(
             total_vendas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_mes)),
-            # CORREÇÃO AQUI: Trocado data_abertura por data_instalacao
-            instaladas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_instalacao__gte=inicio_mes) & filtro_inst),
+            instaladas=Count('vendas', filter=filtro_os_valida & filtro_data_inst_mes & filtro_inst),
             total_cc=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_mes) & filtro_cc),
-            # CORREÇÃO AQUI TAMBÉM: Instaladas com cartão (olha a data da instalação)
-            instaladas_cc=Count('vendas', filter=filtro_os_valida & Q(vendas__data_instalacao__gte=inicio_mes) & filtro_inst & filtro_cc),
+            instaladas_cc=Count('vendas', filter=filtro_os_valida & filtro_data_inst_mes & filtro_inst & filtro_cc),
             pendenciadas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_mes, vendas__status_esteira__nome__icontains='PENDEN')),
             agendadas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_mes, vendas__status_esteira__nome__iexact='AGENDADO')),
             canceladas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_mes, vendas__status_esteira__nome__icontains='CANCELAD'))
@@ -5269,19 +5261,21 @@ class ExportarPerformanceExcelView(APIView):
         if filtro_canal:
             vendas = vendas.filter(vendedor__canal__iexact=filtro_canal)
 
-        # 3. Preparar os 3 DataFrames
-        
+        # 3. Preparar os 3 DataFrames (consultores veem data efetiva na coluna Data Instalação)
+        grupos_gestao = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
+        use_data_efetiva = not is_member(user, grupos_gestao)
+
         # --- ABA 1: HOJE ---
         vendas_hoje = vendas.filter(data_criacao__date=hoje)
-        dados_hoje = self._montar_dados(vendas_hoje)
+        dados_hoje = self._montar_dados(vendas_hoje, use_data_efetiva)
         
         # --- ABA 2: SEMANA ---
         vendas_semana = vendas.filter(data_criacao__date__gte=inicio_semana)
-        dados_semana = self._montar_dados(vendas_semana)
+        dados_semana = self._montar_dados(vendas_semana, use_data_efetiva)
         
         # --- ABA 3: MÊS ---
         vendas_mes = vendas.filter(data_criacao__date__gte=inicio_mes)
-        dados_mes = self._montar_dados(vendas_mes)
+        dados_mes = self._montar_dados(vendas_mes, use_data_efetiva)
 
         # 4. Gerar o Excel
         output = BytesIO()
@@ -5298,12 +5292,14 @@ class ExportarPerformanceExcelView(APIView):
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
 
-    def _montar_dados(self, queryset):
+    def _montar_dados(self, queryset, use_data_efetiva=False):
         dados = []
         for v in queryset:
             # Converter para horário local para validação visual
             dt_criacao_local = timezone.localtime(v.data_criacao).strftime('%d/%m/%Y %H:%M:%S') if v.data_criacao else '-'
-            
+            # Consultores: data efetiva (física se preenchida); gestão: data OSAB
+            dt_inst = (v.data_instalacao_fisica or v.data_instalacao) if use_data_efetiva else v.data_instalacao
+            dt_inst_str = dt_inst.strftime('%d/%m/%Y') if dt_inst else '-'
             dados.append({
                 'ID Venda': v.id,
                 'Data Criação (Local)': dt_criacao_local,
@@ -5314,7 +5310,7 @@ class ExportarPerformanceExcelView(APIView):
                 'Plano': v.plano.nome if v.plano else '-',
                 'Forma Pagamento': v.forma_pagamento.nome if v.forma_pagamento else '-',
                 'Status Esteira': v.status_esteira.nome if v.status_esteira else '-',
-                'Data Instalação': v.data_instalacao.strftime('%d/%m/%Y') if v.data_instalacao else '-',
+                'Data Instalação': dt_inst_str,
                 'OS': v.ordem_servico or '-'
             })
         if not dados:
