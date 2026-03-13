@@ -1568,24 +1568,14 @@ class VendaViewSet(viewsets.ModelViewSet):
         elif flow == 'esteira':
             queryset = queryset.filter(status_esteira__isnull=False, status_esteira__estado__iexact='ABERTO')
         elif flow == 'esteira_instaladas':
-            # Vendas já instaladas: para ajustar "Data instalação (no cliente)" (data_instalacao_fisica)
+            # Vendas instaladas: apenas consulta por CPF ou O.S. (qualquer data). Sem search = sem resultado.
             queryset = queryset.filter(
                 status_esteira__isnull=False,
                 status_esteira__nome__iexact='Instalada'
             ).order_by('-data_instalacao', '-id')
-            # Opcional: limitar aos últimos 180 dias para não sobrecarregar
-            data_limite_inst = request.query_params.get('data_limite_inst')
-            if data_limite_inst:
-                try:
-                    from datetime import datetime as dt
-                    limite = dt.strptime(data_limite_inst, '%Y-%m-%d').date()
-                    queryset = queryset.filter(data_instalacao__gte=limite)
-                except Exception:
-                    pass
-            elif not request.query_params.get('todas_instaladas'):
-                from datetime import date, timedelta
-                limite = date.today() - timedelta(days=180)
-                queryset = queryset.filter(data_instalacao__gte=limite)
+            search_inst = (self.request.query_params.get('search') or '').strip()
+            if not search_inst:
+                queryset = queryset.none()
         elif flow == 'comissionamento':
             queryset = queryset.filter(status_esteira__nome__iexact='Instalada').exclude(status_comissionamento__nome__iexact='Pago')
 

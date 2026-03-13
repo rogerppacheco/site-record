@@ -519,18 +519,27 @@
 
         async function carregarVendas(silent = false) {
             const tbody = document.getElementById('tabela-esteira-body');
-            const busca = document.getElementById('filtro-busca').value;
-            
+            const busca = (document.getElementById('filtro-busca').value || '').trim();
+            const carregarInstaladas = (filtroAtual === 'INSTALADAS');
+
+            if (carregarInstaladas && !busca) {
+                tbody.innerHTML = '<tr><td colspan="13" class="text-center py-5 text-muted"><p class="mb-2"><i class="bi bi-search" style="font-size: 1.5rem;"></i></p><p class="mb-0">Digite <strong>CPF</strong> ou <strong>número da O.S.</strong> no campo acima e pressione <kbd>Enter</kbd> para consultar vendas instaladas em qualquer data.</p></td></tr>';
+                return;
+            }
+
+            if (!carregarInstaladas) {
+                var inp = document.getElementById('filtro-busca');
+                if (inp) inp.placeholder = 'Buscar CPF ou OS...';
+            }
             if (!silent) { tbody.innerHTML = '<tr><td colspan="13" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>'; }
-            
+
             try {
                 const timestamp = new Date().getTime();
-                const carregarInstaladas = (filtroAtual === 'INSTALADAS');
-                // flow=esteira_instaladas: vendas já instaladas (últimos 180 dias) para ajustar "Data instalação (no cliente)"
+                // flow=esteira_instaladas: só retorna resultados com search (CPF ou O.S.) – qualquer data
                 let url = carregarInstaladas
-                    ? `/crm/vendas/?flow=esteira_instaladas&page_size=1000&_t=${timestamp}`
+                    ? `/crm/vendas/?flow=esteira_instaladas&page_size=1000&_t=${timestamp}&search=${encodeURIComponent(busca)}`
                     : `/crm/vendas/?flow=esteira&page_size=1000&_t=${timestamp}`;
-                if(busca) url += `&search=${encodeURIComponent(busca)}`;
+                if (!carregarInstaladas && busca) url += `&search=${encodeURIComponent(busca)}`;
 
                 // --- Carregamos Listas Auxiliares e vendas (todas as páginas da esteira) ---
                 const [vendasRes, statusRes, motivosRes, usuariosRes] = await Promise.all([
@@ -607,7 +616,7 @@
                 }
 
                 if(vendas.length === 0) {
-                    const msg = carregarInstaladas ? 'Nenhuma venda instalada nos últimos 180 dias.' : 'Nenhuma venda encontrada nesta etapa.';
+                    const msg = carregarInstaladas ? 'Nenhuma venda instalada encontrada para este CPF/O.S.' : 'Nenhuma venda encontrada nesta etapa.';
                     tbody.innerHTML = '<tr><td colspan="13" class="text-center py-4 text-muted">' + msg + '</td></tr>';
                     return;
                 }
@@ -831,8 +840,17 @@
 
         function filtrarStatus(status, element) {
             filtroAtual = status;
-            document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+            document.querySelectorAll('#abas-esteira .nav-link').forEach(l => l.classList.remove('active'));
             if(element) element.classList.add('active');
+            if (status === 'INSTALADAS') {
+                document.getElementById('filtro-turno-container').style.display = 'none';
+                while (document.getElementById('abas-esteira').children.length > 4) document.getElementById('abas-esteira').removeChild(document.getElementById('abas-esteira').lastChild);
+                var tb = document.getElementById('tabela-esteira-body');
+                tb.innerHTML = '<tr><td colspan="13" class="text-center py-5 text-muted"><p class="mb-2"><i class="bi bi-search" style="font-size: 1.5rem;"></i></p><p class="mb-0">Digite <strong>CPF</strong> ou <strong>número da O.S.</strong> no campo acima e pressione <kbd>Enter</kbd> para consultar vendas instaladas em qualquer data.</p><p class="small mt-2 mb-0">Apenas para consulta e ajuste da data de instalação (no cliente).</p></td></tr>';
+                var inp = document.getElementById('filtro-busca');
+                if (inp) { inp.placeholder = 'CPF ou O.S. – consultar instaladas'; inp.focus(); }
+                return;
+            }
             carregarVendas();
         }
 
