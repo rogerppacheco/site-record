@@ -123,6 +123,15 @@
                 </div>
             </div>
 
+            <div id="painel-busca-instaladas" class="mb-3 p-3 bg-light rounded border" style="display: none;">
+                <label class="form-label fw-bold mb-2">Consultar venda instalada por CPF ou O.S.</label>
+                <div class="d-flex gap-2 flex-wrap align-items-center">
+                    <input type="text" id="busca-instaladas" class="form-control" placeholder="Digite CPF ou número da O.S." style="max-width: 320px;" onkeyup="if(event.key === 'Enter') buscarInstaladas()">
+                    <button type="button" class="btn btn-primary" onclick="buscarInstaladas()"><i class="bi bi-search me-1"></i>Buscar</button>
+                </div>
+                <small class="text-muted d-block mt-2">Consulta em qualquer data. Use o resultado para ajustar a data de instalação (no cliente) se necessário.</small>
+            </div>
+
             <div class="card border-0 shadow-none" style="background: transparent;">
                 <div class="table-responsive" style="overflow-y: visible; overflow-x: auto; padding: 4px;">
                     <table class="table mb-0">
@@ -205,15 +214,19 @@
                     <div id="campos-instalacao-modal" style="display: none; background: #d1e7dd; padding: 15px; border-radius: 8px; border: 1px solid #badbcc;">
                         <h6 class="text-success mb-3 border-bottom pb-2"><i class="bi bi-check-circle-fill"></i> Confirmação de Instalação</h6>
                         <div class="row g-3">
-                            <div class="col-md-6"><label class="form-label fw-bold">Data da Instalação</label><input type="date" class="form-control" id="edit-data-instalacao-modal" title="Data registrada na OSAB"></div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Data da Instalação (OSAB)</label>
+                                <input type="date" class="form-control" id="edit-data-instalacao-modal" title="Data oficial registrada na OSAB – usada para diretores e parceiros">
+                                <small class="text-muted">Data que consta na OSAB (oficial).</small>
+                            </div>
                             <div class="col-md-6">
                                 <label class="form-label fw-bold">Houve Antecipação?</label>
                                 <select class="form-select" id="edit-antecipou-modal"><option value="false">Não</option><option value="true">Sim</option></select>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label fw-bold">Data instalação (no cliente)</label>
+                                <label class="form-label fw-bold">Data física (no cliente)</label>
                                 <input type="date" class="form-control" id="edit-data-instalacao-fisica-modal" title="Data em que a instalação ocorreu de fato no cliente">
-                                <small class="text-muted">Opcional. Só BackOffice/Diretoria/Admin podem alterar.</small>
+                                <small class="text-muted">Opcional. Data real no cliente. Usada em performance/dashboard para consultores. Só BackOffice/Diretoria/Admin alteram.</small>
                             </div>
                         </div>
                     </div>
@@ -838,19 +851,28 @@
             btn.disabled = false;
         }
 
+        function buscarInstaladas() {
+            var buscaInst = document.getElementById('busca-instaladas');
+            var termo = buscaInst ? buscaInst.value.trim() : '';
+            if (!termo) { alert('Digite o CPF ou o número da O.S. para buscar.'); if (buscaInst) buscaInst.focus(); return; }
+            document.getElementById('filtro-busca').value = termo;
+            carregarVendas();
+        }
+
         function filtrarStatus(status, element) {
             filtroAtual = status;
             document.querySelectorAll('#abas-esteira .nav-link').forEach(l => l.classList.remove('active'));
             if(element) element.classList.add('active');
             if (status === 'INSTALADAS') {
                 document.getElementById('filtro-turno-container').style.display = 'none';
+                document.getElementById('painel-busca-instaladas').style.display = 'block';
                 while (document.getElementById('abas-esteira').children.length > 4) document.getElementById('abas-esteira').removeChild(document.getElementById('abas-esteira').lastChild);
                 var tb = document.getElementById('tabela-esteira-body');
-                tb.innerHTML = '<tr><td colspan="13" class="text-center py-5 text-muted"><p class="mb-2"><i class="bi bi-search" style="font-size: 1.5rem;"></i></p><p class="mb-0">Digite <strong>CPF</strong> ou <strong>número da O.S.</strong> no campo acima e pressione <kbd>Enter</kbd> para consultar vendas instaladas em qualquer data.</p><p class="small mt-2 mb-0">Apenas para consulta e ajuste da data de instalação (no cliente).</p></td></tr>';
-                var inp = document.getElementById('filtro-busca');
-                if (inp) { inp.placeholder = 'CPF ou O.S. – consultar instaladas'; inp.focus(); }
+                tb.innerHTML = '<tr><td colspan="13" class="text-center py-5 text-muted"><p class="mb-2"><i class="bi bi-search" style="font-size: 1.5rem;"></i></p><p class="mb-0">Use o campo de busca acima (CPF ou O.S.) e clique em <strong>Buscar</strong> para consultar vendas instaladas em qualquer data.</p><p class="small mt-2 mb-0">Apenas para consulta e ajuste da data de instalação (no cliente).</p></td></tr>';
+                setTimeout(function() { var bi = document.getElementById('busca-instaladas'); if (bi) bi.focus(); }, 100);
                 return;
             }
+            document.getElementById('painel-busca-instaladas').style.display = 'none';
             carregarVendas();
         }
 
