@@ -1596,11 +1596,16 @@
             return; // Não tem dados suficientes ainda
         }
         
-        // Monta o endereço completo para geocodificação
-        const enderecoCompleto = `${logradouro}, ${numero}, ${bairro || ''}, ${cidade}, ${uf}, Brasil`.replace(/,\s*,/g, ',').replace(/,\s*$/, '');
-        
         const latInput = document.getElementById('inp_lat');
         const lngInput = document.getElementById('inp_long');
+
+        // Se já temos coordenadas preenchidas (ex.: vindo da edição), não sobrescreve
+        if ((latInput.value && latInput.value !== 'Buscando...') && (lngInput.value && lngInput.value !== 'Buscando...')) {
+            return;
+        }
+        
+        // Monta o endereço completo para geocodificação
+        const enderecoCompleto = `${logradouro}, ${numero}, ${bairro || ''}, ${cidade}, ${uf}, Brasil`.replace(/,\s*,/g, ',').replace(/,\s*$/, '');
         
         // Mostra indicador de carregamento
         latInput.value = 'Buscando...';
@@ -1643,15 +1648,24 @@
                     }
                 }
                 
-                // Se não encontrou, limpa os campos
-                latInput.value = '';
-                lngInput.value = '';
+                // Se não encontrou e ainda não existiam valores manuais, limpa os campos
+                if (latInput.value === 'Buscando...' || !latInput.value) {
+                    latInput.value = '';
+                }
+                if (lngInput.value === 'Buscando...' || !lngInput.value) {
+                    lngInput.value = '';
+                }
                 console.warn('Coordenadas não encontradas para:', enderecoCompleto);
             }
         } catch (error) {
             console.error('Erro ao buscar coordenadas:', error);
-            latInput.value = '';
-            lngInput.value = '';
+            // Em caso de erro, não apaga valores já preenchidos manualmente
+            if (latInput.value === 'Buscando...') {
+                latInput.value = '';
+            }
+            if (lngInput.value === 'Buscando...') {
+                lngInput.value = '';
+            }
         }
     }
 
