@@ -1361,13 +1361,23 @@
                 document.getElementById('inp_lat').value = d.latitude || '';
                 document.getElementById('inp_long').value = d.longitude || '';
                 
+                // Preenche endereço com os dados já salvos (não depende do ViaCEP no servidor)
+                document.getElementById('logradouro').value = d.logradouro || '';
+                document.getElementById('bairro').value = d.bairro || '';
+                document.getElementById('cidade').value = d.cidade || '';
+                document.getElementById('uf').value = d.uf || '';
+                document.getElementById('cidade_uf').value = (d.cidade && d.uf) ? `${d.cidade}-${d.uf}` : ((d.cidade || '') + (d.uf ? '-' + d.uf : ''));
+                
+                // Só chama ViaCEP se faltar endereço (fallback; no servidor pode falhar por rede)
+                if ((!d.logradouro || !d.cidade) && d.cep) {
+                    buscarCep(d.cep);
+                }
+                
                 // Aguarda o select ser populado antes de definir o valor
                 await carregarUsuariosParaSelect();
                 if (d.criado_por_id) {
                     document.getElementById('inp_criado_por').value = d.criado_por_id;
                 }
-                
-                buscarCep(d.cep);
 
                 // Debug: verificar blocos retornados
                 console.log('[CDOI] Blocos retornados pela API:', d.blocos);

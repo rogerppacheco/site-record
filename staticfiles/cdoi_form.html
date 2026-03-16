@@ -625,7 +625,13 @@
                 document.getElementById('inp_lat').value = d.latitude || '';
                 document.getElementById('inp_long').value = d.longitude || '';
                 
-                buscarCep(d.cep);
+                // Preenche endereço com os dados já salvos (não depende do ViaCEP no servidor)
+                document.getElementById('logradouro').value = d.logradouro || '';
+                document.getElementById('bairro').value = d.bairro || '';
+                document.getElementById('cidade').value = d.cidade || '';
+                document.getElementById('uf').value = d.uf || '';
+                document.getElementById('cidade_uf').value = (d.cidade && d.uf) ? `${d.cidade}-${d.uf}` : ((d.cidade || '') + (d.uf ? '-' + d.uf : ''));
+                if ((!d.logradouro || !d.cidade) && d.cep) buscarCep(d.cep);
 
                 blocos = d.blocos.map(b => ({ nome: b.nome, andares: b.andares, aptos: b.aptos, total: b.total }));
                 atualizarTabelaBlocos();
