@@ -380,6 +380,80 @@
         .table-hover tbody tr:hover {
             background-color: rgba(13, 110, 253, 0.05);
         }
+
+        /* Dashboard moderno */
+        .dashboard-card {
+            border: none;
+            border-radius: 16px;
+            padding: 1.1rem 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 0.9rem;
+            background: linear-gradient(135deg, #ffffff, #f3f6ff);
+            box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+        }
+
+        .dashboard-card-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3rem;
+            color: #ffffff;
+        }
+
+        .dashboard-card-icon.bg-azul {
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+        }
+
+        .dashboard-card-icon.bg-verde {
+            background: linear-gradient(135deg, #16a34a, #15803d);
+        }
+
+        .dashboard-card-icon.bg-laranja {
+            background: linear-gradient(135deg, #f97316, #ea580c);
+        }
+
+        .dashboard-card-icon.bg-roxo {
+            background: linear-gradient(135deg, #7c3aed, #6d28d9);
+        }
+
+        .dashboard-card-label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+            color: #6b7280;
+            white-space: nowrap;
+        }
+
+        .dashboard-card-value {
+            font-size: 1.7rem;
+            font-weight: 700;
+            color: #111827;
+        }
+
+        .dashboard-status-table table {
+            margin-bottom: 0;
+        }
+
+        .dashboard-status-table th,
+        .dashboard-status-table td {
+            white-space: nowrap;
+        }
+
+        .dashboard-status-pill {
+            display: inline-flex;
+            align-items: center;
+            border-radius: 999px;
+            padding: 0.25rem 0.75rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+            background-color: #eff6ff;
+            color: #1d4ed8;
+        }
     </style>
 </head>
 <body>
@@ -534,6 +608,12 @@
                                         <i class="bi bi-clipboard"></i>
                                     </button>
                                 </div>
+                            </div>
+                            <div class="col-md-4">
+                                <label>Endereço completo</label>
+                                <button type="button" class="btn btn-outline-primary w-100" onclick="copiarEnderecoCompleto()" title="Copiar endereço completo">
+                                    <i class="bi bi-geo-alt"></i> Copiar endereço completo
+                                </button>
                             </div>
                             <div class="col-md-3">
                                 <label>Latitude</label>
@@ -990,7 +1070,7 @@
         const res = await fetch('/api/crm/cdoi/listar/', { headers: {'Authorization': `Bearer ${localStorage.getItem('accessToken')}`} });
         const lista = await res.json();
         tbody.innerHTML = '';
-        lista.forEach(i => {
+            lista.forEach(i => {
             let btns = '<div class="d-flex gap-1 justify-content-center">';
             btns += `<button class="btn btn-sm btn-editar" onclick='editarTudo(${i.id})' title="Editar"><i class="bi bi-pencil-square"></i></button>`;
             if (i.can_edit) btns += `<button class="btn btn-sm btn-outline-info" onclick='modalStatus(${i.id}, "${i.status_cod}", "${i.observacao}")' title="Atualizar Status"><i class="bi bi-arrow-repeat"></i></button>`;
@@ -1000,6 +1080,13 @@
             btns += '</div>';
             
             const endereco = `${i.logradouro || ''}, ${i.numero || ''} - ${i.bairro || ''}`;
+            const enderecoCompleto = [
+                i.nome || i.nome_condominio || '',
+                endereco,
+                `${i.cidade || ''}/${i.uf || ''}`,
+                i.cep ? `CEP ${i.cep}` : ''
+            ].filter(Boolean).join(' | ');
+            const enderecoCompletoEscapado = enderecoCompleto.replace(/"/g, '&quot;');
             const telefone = i.contato || '-';
             const sindico = i.nome_sindico || '-';
             const totalHps = i.total_hps || 0;
@@ -1031,7 +1118,12 @@
             tbody.innerHTML += `<tr>
                 <td>#${i.id}</td>
                 <td><strong>${i.nome}</strong><br><small class="text-muted">${i.cidade}</small></td>
-                <td><small>${endereco}</small></td>
+                <td>
+                    <small>${endereco}</small><br>
+                    <button type="button" class="btn btn-link btn-sm p-0" onclick="copiarTexto('${enderecoCompletoEscapado}')" title="Copiar endereço completo">
+                        <i class="bi bi-geo-alt"></i> copiar endereço
+                    </button>
+                </td>
                 <td>${sindico}</td>
                 <td>${telefone}</td>
                 <td class="text-center"><span class="badge bg-primary">${totalHps}</span></td>
@@ -1567,6 +1659,10 @@
         const input = document.getElementById(inputId);
         if (!input) return;
         const valor = (input.value || '').trim();
+        copiarTexto(valor);
+    }
+
+    function copiarTexto(valor) {
         if (!valor) {
             if (typeof showAlert === 'function') {
                 showAlert('Campo vazio. Nada para copiar.', 'warning');
@@ -1584,6 +1680,31 @@
         }).catch(() => {
             alert('Erro ao copiar.');
         });
+    }
+
+    function copiarEnderecoCompleto() {
+        const nome = (document.getElementById('inp_nome')?.value || '').trim();
+        const logradouro = (document.getElementById('logradouro')?.value || '').trim();
+        const numero = (document.getElementById('inp_numero')?.value || '').trim();
+        const bairro = (document.getElementById('bairro')?.value || '').trim();
+        const cidade = (document.getElementById('cidade')?.value || '').trim();
+        const uf = (document.getElementById('uf')?.value || '').trim();
+        const cep = (document.getElementById('inp_cep')?.value || '').trim();
+
+        const partes = [];
+        if (nome) partes.push(nome);
+        if (logradouro || numero) {
+            const endBase = [logradouro, numero].filter(Boolean).join(', ');
+            if (endBase) partes.push(endBase);
+        }
+        if (bairro) partes.push(bairro);
+
+        const cidadeUf = [cidade, uf].filter(Boolean).join(' - ');
+        if (cidadeUf) partes.push(cidadeUf);
+        if (cep) partes.push(`CEP ${cep}`);
+
+        const endereco = partes.join(' | ');
+        copiarTexto(endereco);
     }
 
     function parseDestinatarios(texto) {
@@ -1669,35 +1790,47 @@
 
             const cards = document.getElementById('dashboard-cards');
             cards.innerHTML = `
-                <div class="col-md-3">
-                    <div class="card border-0 bg-light">
-                        <div class="card-body">
-                            <div class="fw-bold text-muted">Acionamentos</div>
-                            <div class="fs-4">${data.total_acionamentos}</div>
+                <div class="col-12 col-md-6 col-xl-3">
+                    <div class="dashboard-card">
+                        <div class="dashboard-card-icon bg-azul">
+                            <i class="bi bi-building-fill"></i>
+                        </div>
+                        <div>
+                            <div class="dashboard-card-label">Acionamentos</div>
+                            <div class="dashboard-card-value">${data.total_acionamentos}</div>
                         </div>
                     </div>
                 </div>
-                <div class="col-md-3">
-                    <div class="card border-0 bg-light">
-                        <div class="card-body">
-                            <div class="fw-bold text-muted">HPs Total</div>
-                            <div class="fs-4">${data.total_hps}</div>
+                <div class="col-12 col-md-6 col-xl-3">
+                    <div class="dashboard-card">
+                        <div class="dashboard-card-icon bg-verde">
+                            <i class="bi bi-grid-fill"></i>
+                        </div>
+                        <div>
+                            <div class="dashboard-card-label">HPs total</div>
+                            <div class="dashboard-card-value">${data.total_hps}</div>
                         </div>
                     </div>
                 </div>
-                <div class="col-md-3">
-                    <div class="card border-0 bg-light">
-                        <div class="card-body">
-                            <div class="fw-bold text-muted">Pré-venda</div>
-                            <div class="fs-4">${data.total_prevenda}</div>
+                <div class="col-12 col-md-6 col-xl-3">
+                    <div class="dashboard-card">
+                        <div class="dashboard-card-icon bg-laranja">
+                            <i class="bi bi-people-fill"></i>
+                        </div>
+                        <div>
+                            <div class="dashboard-card-label">Pré-venda</div>
+                            <div class="dashboard-card-value">${data.total_prevenda}</div>
                         </div>
                     </div>
                 </div>
-                <div class="col-md-3">
-                    <div class="card border-0 bg-light">
-                        <div class="card-body">
-                            <div class="fw-bold text-muted">Vendas (CEP+Fachada)</div>
-                            <div class="fs-4">${data.vendas_realizadas}</div>
+                <div class="col-12 col-md-6 col-xl-3">
+                    <div class="dashboard-card">
+                        <div class="dashboard-card-icon bg-roxo">
+                            <i class="bi bi-cash-stack"></i>
+                        </div>
+                        <div>
+                            <div class="dashboard-card-label">Vendas (CEP + fachada)</div>
+                            <div class="dashboard-card-value">${data.vendas_realizadas}</div>
                         </div>
                     </div>
                 </div>
@@ -1705,13 +1838,29 @@
 
             const statusDiv = document.getElementById('dashboard-status');
             let statusHtml = `
-                <table class="table table-sm">
-                    <thead><tr><th>Status</th><th>Quantidade</th></tr></thead><tbody>
+                <div class="dashboard-status-table">
+                    <table class="table table-sm align-middle">
+                        <thead>
+                            <tr>
+                                <th>Status</th>
+                                <th class="text-end">Quantidade</th>
+                            </tr>
+                        </thead>
+                        <tbody>
             `;
             (data.por_status || []).forEach(s => {
-                statusHtml += `<tr><td>${s.status}</td><td>${s.qtd}</td></tr>`;
+                statusHtml += `
+                    <tr>
+                        <td><span class="dashboard-status-pill">${s.status}</span></td>
+                        <td class="text-end"><span class="fw-bold">${s.qtd}</span></td>
+                    </tr>
+                `;
             });
-            statusHtml += '</tbody></table>';
+            statusHtml += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
             statusDiv.innerHTML = statusHtml;
         } catch (e) {
             console.error('Erro dashboard CDOI:', e);
