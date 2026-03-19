@@ -558,6 +558,9 @@
                         </div>
                         
                         <div class="d-flex gap-2">
+                            <button type="button" class="btn btn-outline-primary btn-lg" onclick="abrirModalLigacoesAuditoria()" title="Iniciar ligação e visualizar gravações da venda.">
+                                <i class="bi bi-telephone-forward-fill"></i> Ligar e gravar
+                            </button>
                             <button type="button" class="btn btn-outline-success btn-lg" onclick="enviarResumoPlanoCliente()" title="Envia o resumo do plano ao Cliente (Celular 1). Exige Endereço, Plano e Forma de Pagamento preenchidos.">
                                 <i class="bi bi-whatsapp"></i> Enviar resumo ao Cliente
                             </button>
@@ -580,6 +583,58 @@
     <div class="modal fade" id="modal-agendamento" tabindex="-1" data-bs-backdrop="static"><div class="modal-dialog"><div class="modal-content border-primary"><div class="modal-header bg-primary text-white"><h5 class="modal-title">Dados do Agendamento</h5><button type="button" class="btn-close btn-close-white" onclick="cancelarAgendamento()"></button></div><div class="modal-body"><div class="alert alert-info small">Aprovando para <strong>CADASTRADA</strong>. Preencha a O.S.</div><form id="form-agendamento"><div class="mb-3"><label class="form-label fw-bold">O.S. <span class="text-danger">*</span></label><input type="text" class="form-control" id="agenda-os" required></div><div class="row"><div class="col-md-6 mb-3"><label class="form-label fw-bold">Data <span class="text-danger">*</span></label><input type="date" class="form-control" id="agenda-data-final" required></div><div class="col-md-6 mb-3"><label class="form-label fw-bold">Turno <span class="text-danger">*</span></label><select class="form-select" id="agenda-turno-final" required><option value="">Selecione...</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select></div></div><div class="mb-3"><label class="form-label fw-bold">Observações</label><textarea class="form-control" id="agenda-obs" rows="3" placeholder="Observações da venda..."></textarea></div></form></div><div class="modal-footer"><button type="button" class="btn btn-secondary" onclick="cancelarAgendamento()">Voltar</button><button type="button" class="btn btn-primary" onclick="salvarAgendamentoFinal()">Confirmar</button></div></div></div></div>
 
     <div class="modal fade" id="modal-biometria-lista" tabindex="-1"><div class="modal-dialog modal-xl"><div class="modal-content"><div class="modal-header bg-secondary text-white"><h5 class="modal-title"><i class="bi bi-fingerprint"></i> Resultado da consulta Biometria (Br Pronto)</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body p-0"><div class="table-responsive"><table class="table table-sm table-hover mb-0"><thead class="table-light"><tr><th>Protocolo</th><th>CPF/CNPJ</th><th>N. Linha</th><th>Data Envio</th><th>Data Conferência</th><th>Regional</th><th>Cód. PDV</th><th>Login</th><th>Tipo Serviço</th><th>Nome Fantasia</th><th>Resultado Análise</th></tr></thead><tbody id="tbody-biometria-lista"></tbody></table></div><div id="biometria-lista-vazia" class="p-4 text-center text-muted" style="display:none;">Nenhum registro encontrado.</div></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button></div></div></div></div>
+    <div class="modal fade" id="modal-ligacoes-auditoria" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="bi bi-telephone"></i> Ligações gravadas da auditoria</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-2 mb-3 align-items-end">
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Destino (cliente)</label>
+                            <input type="text" id="ligacao-destino" class="form-control" placeholder="(DDD) 9xxxx-xxxx">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Origem (opcional)</label>
+                            <input type="text" id="ligacao-origem" class="form-control" placeholder="Se vazio, usa o padrão do servidor">
+                        </div>
+                        <div class="col-md-4 d-flex gap-2">
+                            <button type="button" class="btn btn-primary w-100" onclick="iniciarLigacaoGravada()">
+                                <i class="bi bi-telephone-outbound-fill"></i> Iniciar ligação
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="carregarLigacoesAuditoria()">
+                                <i class="bi bi-arrow-clockwise"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="ligacao-feedback" class="small text-muted mb-2"></div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Status</th>
+                                    <th>Origem</th>
+                                    <th>Destino</th>
+                                    <th>Duração</th>
+                                    <th>Gravação</th>
+                                    <th>Criada em</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbody-ligacoes-auditoria">
+                                <tr><td colspan="7" class="text-center text-muted">Sem dados.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
@@ -601,6 +656,7 @@
         const modalReprovacao = new bootstrap.Modal(document.getElementById('modal-reprovacao'));
         const modalAprovacao = new bootstrap.Modal(document.getElementById('modal-aprovacao'));
         const modalAgendamento = new bootstrap.Modal(document.getElementById('modal-agendamento'));
+        const modalLigacoesAuditoria = new bootstrap.Modal(document.getElementById('modal-ligacoes-auditoria'));
 
         // =========================================================================
         // FUNÇÃO FETCH PADRONIZADA (SUBSTITUI API CLIENT EXTERNO)
@@ -1624,6 +1680,106 @@
             .then(() => { alert('Salvo!'); if(fechaRep) modalReprovacao.hide(); modalAgendamento.hide(); modalAuditoria.hide(); if(abreZap) gerarAprovacaoMsg(dados); else carregarVendasPendentes(); })
             .catch(e => { console.error(e); alert('Erro ao finalizar.'); })
             .finally(() => { if(!abreZap) $('#loadingOverlay').hide(); });
+        }
+
+        function normalizarTelefone(valor) {
+            return (valor || '').replace(/\D/g, '');
+        }
+
+        function formatarDataHoraLigacao(valor) {
+            if (!valor) return '-';
+            const dt = new Date(valor);
+            if (Number.isNaN(dt.getTime())) return '-';
+            return dt.toLocaleString('pt-BR');
+        }
+
+        function abrirModalLigacoesAuditoria() {
+            if (!vendaEmAuditoria || !vendaEmAuditoria.id) {
+                alert('Abra uma venda na auditoria antes de iniciar uma ligação.');
+                return;
+            }
+            const telefonePreferencial = $('#audit-tel1').val() || vendaEmAuditoria.telefone1 || vendaEmAuditoria.telefone2 || '';
+            $('#ligacao-destino').val(telefonePreferencial);
+            $('#ligacao-feedback').removeClass('text-danger text-success').addClass('text-muted').text('Pronto para iniciar ligação.');
+            modalLigacoesAuditoria.show();
+            carregarLigacoesAuditoria();
+        }
+
+        async function iniciarLigacaoGravada() {
+            if (!vendaEmAuditoria || !vendaEmAuditoria.id) {
+                alert('Nenhuma venda carregada na auditoria.');
+                return;
+            }
+
+            const destino = normalizarTelefone($('#ligacao-destino').val());
+            const origem = normalizarTelefone($('#ligacao-origem').val());
+            if (!destino) {
+                alert('Informe o telefone de destino.');
+                return;
+            }
+
+            const payload = {
+                destination_number: destino,
+                consentimento_declarado: true,
+                consentimento_observacao: 'Cliente informado pelo auditor no início da chamada.'
+            };
+            if (origem) {
+                payload.source_number = origem;
+            }
+
+            $('#ligacao-feedback').removeClass('text-danger text-success').addClass('text-muted').text('Iniciando ligação...');
+            try {
+                const resp = await apiFetch(`${API_AUX}/auditoria/ligacoes/${vendaEmAuditoria.id}/iniciar/`, {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                });
+                $('#ligacao-feedback')
+                    .removeClass('text-danger text-muted')
+                    .addClass('text-success')
+                    .text(`Ligação iniciada. ID: ${resp.ligacao_id || '-'} | Provedor: ${resp.provider_call_id || '-'}`);
+                carregarLigacoesAuditoria();
+            } catch (e) {
+                let msg = (e && e.message) ? e.message : 'Erro ao iniciar ligação.';
+                try {
+                    const parsed = JSON.parse(msg);
+                    msg = parsed.detail || msg;
+                } catch (_) {}
+                $('#ligacao-feedback').removeClass('text-success text-muted').addClass('text-danger').text(msg);
+            }
+        }
+
+        async function carregarLigacoesAuditoria() {
+            if (!vendaEmAuditoria || !vendaEmAuditoria.id) return;
+            const tbody = $('#tbody-ligacoes-auditoria');
+            tbody.html('<tr><td colspan="7" class="text-center text-muted">Carregando...</td></tr>');
+            try {
+                const resp = await apiFetch(`${API_AUX}/auditoria/ligacoes/${vendaEmAuditoria.id}/`);
+                const rows = Array.isArray(resp) ? resp : (resp.results || []);
+                if (!rows.length) {
+                    tbody.html('<tr><td colspan="7" class="text-center text-muted">Nenhuma ligação registrada para esta venda.</td></tr>');
+                    return;
+                }
+                tbody.empty();
+                rows.forEach(r => {
+                    const gravacao = r.link_gravacao_onedrive || r.link_gravacao_provedor;
+                    const botaoOuvir = gravacao
+                        ? `<a href="${gravacao}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary"><i class="bi bi-play-fill"></i> Ouvir</a>`
+                        : '<span class="text-muted small">Processando...</span>';
+                    tbody.append(`
+                        <tr>
+                            <td>#${r.id || '-'}</td>
+                            <td><span class="badge bg-secondary">${r.status || '-'}</span></td>
+                            <td>${r.numero_origem || '-'}</td>
+                            <td>${r.numero_destino || '-'}</td>
+                            <td>${(r.duracao_segundos || 0)}s</td>
+                            <td>${botaoOuvir}</td>
+                            <td>${formatarDataHoraLigacao(r.criado_em)}</td>
+                        </tr>
+                    `);
+                });
+            } catch (e) {
+                tbody.html('<tr><td colspan="7" class="text-center text-danger">Erro ao carregar ligações.</td></tr>');
+            }
         }
 
         async function fecharScriptSemSalvar() { 
