@@ -162,6 +162,11 @@ from .views import (
 # Importar módulo de views de análise de buscas
 from . import views_analise_busca
 from . import conhecimento_ia_api
+from .auditoria_ligacoes_api import (
+    AuditoriaLigacaoListView,
+    AuditoriaLigacaoStartView,
+    AuditoriaLigacaoWebhookView,
+)
 
 router = DefaultRouter()
 router.register(r'vendas', VendaViewSet, basename='venda')
@@ -374,6 +379,11 @@ urlpatterns = [
     path('antecipar-instalacao/config/', ConfigAnteciparInstalacaoView.as_view(), name='antecipar-instalacao-config'),
     path('antecipar-instalacao/historico/', HistoricoAnteciparInstalacaoView.as_view(), name='antecipar-instalacao-historico'),
     path('antecipar-instalacao/solicitacao/<int:pk>/resposta/', RespostaGCAnteciparInstalacaoView.as_view(), name='antecipar-instalacao-resposta-gc'),
+
+    # --- Auditoria de ligações (Zenvia Voice) ---
+    path('auditoria/ligacoes/<int:venda_id>/iniciar/', AuditoriaLigacaoStartView.as_view(), name='auditoria-ligacao-iniciar'),
+    path('auditoria/ligacoes/<int:venda_id>/', AuditoriaLigacaoListView.as_view(), name='auditoria-ligacao-listar'),
+    path('auditoria/ligacoes/webhook/', AuditoriaLigacaoWebhookView.as_view(), name='auditoria-ligacao-webhook'),
     
     # --- Análise de Buscas de Faturas ---
     path('analise-buscas/', views_analise_busca.AnaliseBuscasView.as_view(), name='analise-buscas'),

@@ -2436,3 +2436,62 @@ class LogImportacaoEstabelecimentoCNPJ(models.Model):
 
     def __str__(self):
         return f"{self.nome_arquivo} - {self.status}"
+
+
+class AuditoriaLigacao(models.Model):
+    STATUS_CHOICES = [
+        ("INICIADA", "Iniciada"),
+        ("PROCESSANDO", "Processando"),
+        ("FINALIZADA", "Finalizada"),
+        ("ARQUIVADA", "Arquivada"),
+        ("ERRO", "Erro"),
+    ]
+
+    PROVEDOR_CHOICES = [
+        ("ZENVIA", "Zenvia Voice API"),
+    ]
+
+    venda = models.ForeignKey(
+        Venda,
+        on_delete=models.CASCADE,
+        related_name="auditoria_ligacoes",
+    )
+    auditor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ligacoes_auditoria_realizadas",
+    )
+
+    provedor = models.CharField(max_length=30, choices=PROVEDOR_CHOICES, default="ZENVIA")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="INICIADA", db_index=True)
+
+    provider_call_id = models.CharField(max_length=120, db_index=True)
+    provider_recording_id = models.CharField(max_length=120, blank=True, null=True, db_index=True)
+    numero_origem = models.CharField(max_length=20, blank=True, null=True)
+    numero_destino = models.CharField(max_length=20, blank=True, null=True)
+    duracao_segundos = models.PositiveIntegerField(default=0)
+
+    consentimento_declarado = models.BooleanField(default=True)
+    consentimento_observacao = models.CharField(max_length=255, blank=True, null=True)
+
+    link_gravacao_provedor = models.TextField(blank=True, null=True)
+    link_gravacao_onedrive = models.TextField(blank=True, null=True)
+    expira_em = models.DateTimeField(blank=True, null=True)
+
+    payload_inicio = models.JSONField(default=dict, blank=True)
+    payload_webhook = models.JSONField(default=dict, blank=True)
+
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+    finalizado_em = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        db_table = "crm_auditoria_ligacao"
+        verbose_name = "Auditoria Ligação"
+        verbose_name_plural = "Auditoria Ligações"
+        ordering = ["-criado_em"]
+
+    def __str__(self):
+        return f"Venda {self.venda_id} - {self.provider_call_id} - {self.status}"
