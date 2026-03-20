@@ -5040,7 +5040,12 @@ class PainelPerformanceView(APIView):
 
         # 5. Filtros de Venda
         # IMPORTANTE: filtro_os_valida já garante que tem OS, mas agora filtramos pela DATA DE ABERTURA
-        filtro_os_valida = Q(vendas__ativo=True) & ~Q(vendas__ordem_servico='') & Q(vendas__ordem_servico__isnull=False)
+        filtro_os_valida = (
+            Q(vendas__ativo=True)
+            & ~Q(vendas__ordem_servico='')
+            & Q(vendas__ordem_servico__isnull=False)
+            & Q(vendas__reemissao=False)
+        )
         
         # Filtro CC (Cartão)
         filtro_cc = (
@@ -5274,7 +5279,9 @@ class ExportarPerformanceExcelView(APIView):
         inicio_mes = hoje.replace(day=1)
         
         # 2. Base de Vendas (Filtragem por permissão)
-        vendas = Venda.objects.filter(ativo=True).select_related('vendedor', 'cliente', 'plano', 'forma_pagamento', 'status_esteira')
+        vendas = Venda.objects.filter(
+            ativo=True,
+        ).select_related('vendedor', 'cliente', 'plano', 'forma_pagamento', 'status_esteira')
         
         grupos_gestao = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
         if not is_member(user, grupos_gestao):
@@ -5441,7 +5448,12 @@ class EnviarImagemPerformanceView(APIView):
         if cluster and str(cluster).strip():
             users = users.filter(cluster__iexact=cluster.strip())
 
-        filtro_os = Q(vendas__ativo=True) & ~Q(vendas__ordem_servico='') & Q(vendas__ordem_servico__isnull=False)
+        filtro_os = (
+            Q(vendas__ativo=True)
+            & ~Q(vendas__ordem_servico='')
+            & Q(vendas__ordem_servico__isnull=False)
+            & Q(vendas__reemissao=False)
+        )
         filtro_cc = _filtro_cc()
         filtro_inst = Q(vendas__status_esteira__nome__iexact='INSTALADA')
 

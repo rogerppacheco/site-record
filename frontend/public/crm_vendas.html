@@ -403,6 +403,12 @@
                                     <label class="form-check-label" for="gerada-os-nao">Não</label>
                                 </div>
                             </div>
+                            <div class="col-12 d-none" id="container-reemissao-modal">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="checkbox-reemissao" name="reemissao">
+                                    <label class="form-check-label fw-bold text-warning" for="checkbox-reemissao">Reemissão</label>
+                                </div>
+                            </div>
                             <div class="col-12"><label>Observações</label><textarea class="form-control" name="observacoes" id="input-observacoes" rows="2" oninput="this.value = this.value.toUpperCase()"></textarea></div>
                         </div>
                         
@@ -1223,6 +1229,10 @@
             if (containerOs) containerOs.classList.add('d-none');
             const inputOs = document.getElementById('input-ordem-servico');
             if (inputOs) inputOs.value = '';
+            const containerReemissao = document.getElementById('container-reemissao-modal');
+            if (containerReemissao) containerReemissao.classList.add('d-none');
+            const checkboxReemissao = document.getElementById('checkbox-reemissao');
+            if (checkboxReemissao) checkboxReemissao.checked = false;
             
             ['input-nome', 'input-email', 'input-telefone', 'input-telefone2', 'input-nome-mae', 'input-data-nascimento'].forEach(id => {
                 const el = document.getElementById(id);
@@ -1694,6 +1704,10 @@
                 document.getElementById('input-cpf-rep').value = venda.cpf_representante_legal || '';
                 document.getElementById('input-nome-rep').value = venda.nome_representante_legal || '';
                 document.getElementById('input-ordem-servico').value = venda.ordem_servico || '';
+                const checkboxReemissao = document.getElementById('checkbox-reemissao');
+                if (checkboxReemissao) {
+                    checkboxReemissao.checked = !!venda.reemissao;
+                }
 
 
                 // Preenche selects somente após as opções estarem disponíveis
@@ -1748,17 +1762,20 @@
                 const areaVendedor = document.getElementById('container-vendedor-modal');
                 const areaTrat = document.getElementById('container-status-gestao');
                 const areaOs = document.getElementById('container-ordem-servico');
+                const areaReemissao = document.getElementById('container-reemissao-modal');
                 
                 if(['Admin', 'Diretoria', 'BackOffice'].includes(userProfile)) {
                     areaStatus.classList.remove('d-none');
                     areaVendedor.classList.remove('d-none'); 
                     areaTrat.classList.remove('d-none');
                     areaOs.classList.remove('d-none');
+                    if (areaReemissao) areaReemissao.classList.remove('d-none');
                 } else {
                     areaStatus.classList.add('d-none'); 
                     areaVendedor.classList.add('d-none'); 
                     areaTrat.classList.add('d-none');
                     areaOs.classList.remove('d-none');
+                    if (areaReemissao) areaReemissao.classList.remove('d-none');
                 }
 
                 // Adiciona debug simples nos selects
