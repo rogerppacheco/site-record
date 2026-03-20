@@ -1937,6 +1937,24 @@ class VendaViewSet(viewsets.ModelViewSet):
         if not status_obj:
              return Response({"detail": f"Status '{status_novo_id}' não encontrado no banco."}, status=status.HTTP_400_BAD_REQUEST)
 
+        def os_valida(valor):
+            if not valor:
+                return False
+            return bool(re.fullmatch(r'(\d{8}|\d-\d{12})', str(valor).strip()))
+
+        os_informada = (dados_edicao.get('ordem_servico', venda.ordem_servico) or '').strip()
+        if os_informada and not os_valida(os_informada):
+            return Response(
+                {"detail": "Formato de O.S inválido. Use 8 dígitos (08907507) ou X-12DÍGITOS (4-212051254235)."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if status_obj.nome.upper() == 'CADASTRADA' and not os_valida(os_informada):
+            return Response(
+                {"detail": "Para mudar o status para CADASTRADA é obrigatório informar O.S válida."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         try:
             with transaction.atomic():
                 if dados_edicao:
@@ -1985,6 +2003,7 @@ class VendaViewSet(viewsets.ModelViewSet):
                         dt_ag = dados_edicao['data_agendamento']
                         venda.data_agendamento = None if dt_ag == "" else dt_ag
                     if 'periodo_agendamento' in dados_edicao: venda.periodo_agendamento = dados_edicao['periodo_agendamento']
+                    if 'ordem_servico' in dados_edicao: venda.ordem_servico = (dados_edicao['ordem_servico'] or '').strip()
 
                 venda.status_tratamento = status_obj
                 if observacoes: venda.observacoes = observacoes

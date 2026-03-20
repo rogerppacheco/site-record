@@ -390,6 +390,7 @@
                             <div class="col-12 col-md-6"><label>Forma de Pagamento <span class="text-danger">*</span></label><select class="form-select" name="forma_pagamento" id="select-pagamento" required></select></div>
                             <div class="col-12 col-md-6 d-none" id="container-status-gestao"><label class="fw-bold text-secondary">Status Tratamento</label><select class="form-select" name="status_tratamento" id="select-status-tratamento"></select></div>
                             <div class="col-12 col-md-6 d-none" id="container-status-esteira"><label class="fw-bold text-success">Status Esteira</label><select class="form-select border-success" name="status_esteira" id="select-status-esteira"></select></div>
+                            <div class="col-12 col-md-6 d-none" id="container-ordem-servico"><label class="fw-bold text-secondary">O.S</label><input type="text" class="form-control" name="ordem_servico" id="input-ordem-servico" placeholder="08907507 ou 4-212051254235"></div>
                             <div class="col-12 col-md-6 d-none" id="container-vendedor-modal"><label class="fw-bold text-secondary">Vendedor (Responsável)</label><select class="form-select" name="vendedor" id="select-vendedor-modal"></select></div>
                             <div class="col-12 d-none" id="container-gerada-os-auto">
                                 <label class="fw-bold text-secondary">Gerada O.S automática?</label>
@@ -448,6 +449,21 @@
 
         const token = localStorage.getItem('accessToken');
         if(!token) window.location.href = '/';
+
+        function aplicarMascaraOs(valor) {
+            let v = String(valor || '').replace(/[^\d-]/g, '');
+            const semHifen = v.replace(/-/g, '');
+            if (v.includes('-')) {
+                const partes = v.split('-');
+                const primeiro = (partes[0] || '').replace(/\D/g, '').slice(0, 1);
+                const resto = (partes.slice(1).join('') || '').replace(/\D/g, '').slice(0, 12);
+                return primeiro + (primeiro ? '-' : '') + resto;
+            }
+            if (semHifen.length <= 8) return semHifen;
+            const primeiro = semHifen.slice(0, 1);
+            const resto = semHifen.slice(1, 13);
+            return primeiro + '-' + resto;
+        }
 
         let modalOrigem, modalNovaVenda, modalAviso, modalDetalhe, modalMix, modalCep, modalReemissao;
         let vendaReemissaoId = null;
@@ -566,6 +582,16 @@
                     }
                 });
             });
+
+            const inputOs = document.getElementById('input-ordem-servico');
+            if (inputOs) {
+                inputOs.addEventListener('input', function() {
+                    this.value = aplicarMascaraOs(this.value);
+                });
+                inputOs.addEventListener('blur', function() {
+                    this.value = aplicarMascaraOs(this.value);
+                });
+            }
         });
 
         // ===== VALIDAÇÃO DE CPF/CNPJ =====
@@ -1193,6 +1219,10 @@
             
             const containerGestao = document.getElementById('container-status-gestao');
             if (containerGestao) containerGestao.classList.add('d-none');
+            const containerOs = document.getElementById('container-ordem-servico');
+            if (containerOs) containerOs.classList.add('d-none');
+            const inputOs = document.getElementById('input-ordem-servico');
+            if (inputOs) inputOs.value = '';
             
             ['input-nome', 'input-email', 'input-telefone', 'input-telefone2', 'input-nome-mae', 'input-data-nascimento'].forEach(id => {
                 const el = document.getElementById(id);
@@ -1336,6 +1366,7 @@
             const areaStatus = document.getElementById('container-status-esteira');
             const areaVendedor = document.getElementById('container-vendedor-modal');
             const areaTrat = document.getElementById('container-status-gestao');
+            const areaOs = document.getElementById('container-ordem-servico');
             const colPlano = document.getElementById('select-plano')?.closest('.col-12');
             const colPagamento = document.getElementById('select-pagamento')?.closest('.col-12');
             const colObs = document.getElementById('input-observacoes')?.closest('.col-12');
@@ -1349,6 +1380,7 @@
                         // Via APP: em "Dados da Venda" mostrar só Vendedor (Responsável)
                         areaStatus.classList.add('d-none');
                         areaTrat.classList.add('d-none');
+                        if (areaOs) areaOs.classList.add('d-none');
                         if (colPlano) colPlano.style.display = 'none';
                         if (colPagamento) colPagamento.style.display = 'none';
                         if (colObs) colObs.style.display = 'none';
@@ -1356,6 +1388,7 @@
                     } else {
                         areaStatus.classList.remove('d-none');
                         areaTrat.classList.remove('d-none');
+                        if (areaOs) areaOs.classList.add('d-none');
                         if (colPlano) colPlano.style.display = '';
                         if (colPagamento) colPagamento.style.display = '';
                         if (colObs) colObs.style.display = '';
@@ -1364,6 +1397,7 @@
                     areaStatus.classList.add('d-none');
                     areaVendedor.classList.add('d-none');
                     areaTrat.classList.add('d-none');
+                    if (areaOs) areaOs.classList.add('d-none');
                 }
             }
 
@@ -1659,6 +1693,7 @@
                 verificarRegraCNPJ(venda.cliente_cpf_cnpj);
                 document.getElementById('input-cpf-rep').value = venda.cpf_representante_legal || '';
                 document.getElementById('input-nome-rep').value = venda.nome_representante_legal || '';
+                document.getElementById('input-ordem-servico').value = venda.ordem_servico || '';
 
 
                 // Preenche selects somente após as opções estarem disponíveis
@@ -1712,15 +1747,18 @@
                 const areaStatus = document.getElementById('container-status-esteira');
                 const areaVendedor = document.getElementById('container-vendedor-modal');
                 const areaTrat = document.getElementById('container-status-gestao');
+                const areaOs = document.getElementById('container-ordem-servico');
                 
                 if(['Admin', 'Diretoria', 'BackOffice'].includes(userProfile)) {
                     areaStatus.classList.remove('d-none');
                     areaVendedor.classList.remove('d-none'); 
                     areaTrat.classList.remove('d-none');
+                    areaOs.classList.remove('d-none');
                 } else {
                     areaStatus.classList.add('d-none'); 
                     areaVendedor.classList.add('d-none'); 
                     areaTrat.classList.add('d-none');
+                    areaOs.classList.remove('d-none');
                 }
 
                 // Adiciona debug simples nos selects
@@ -1763,6 +1801,25 @@
             const idEdicao = document.getElementById('id-venda-edicao').value;
             const method = idEdicao ? 'PUT' : 'POST';
             const url = idEdicao ? `/crm/vendas/${idEdicao}/` : '/crm/vendas/';
+
+            const osValidaFormato = (valor) => /^(\d{8}|\d-\d{12})$/.test((valor || '').trim());
+            const textoSelecionado = (idSelect) => {
+                const sel = document.getElementById(idSelect);
+                if (!sel || sel.selectedIndex < 0) return '';
+                return (sel.options[sel.selectedIndex].text || '').toUpperCase();
+            };
+            data.ordem_servico = (data.ordem_servico || '').trim();
+            if (data.ordem_servico && !osValidaFormato(data.ordem_servico)) {
+                alert('Formato de O.S inválido. Use 8 dígitos (08907507) ou X-12DÍGITOS (4-212051254235).');
+                return;
+            }
+            const statusEsteiraSelecionado = textoSelecionado('select-status-esteira');
+            const statusTratamentoSelecionado = textoSelecionado('select-status-tratamento');
+            const exigeOs = idEdicao && (statusEsteiraSelecionado.includes('INSTALADA') || statusTratamentoSelecionado === 'CADASTRADA');
+            if (exigeOs && !osValidaFormato(data.ordem_servico)) {
+                alert('Para salvar como INSTALADA/CADASTRADA é obrigatório informar O.S válida.');
+                return;
+            }
             
             // CORREÇÃO: Converter checkbox de reemissão para boolean
             const checkboxReemissao = document.getElementById('checkbox-reemissao');
@@ -1788,6 +1845,7 @@
             if (data.plano === "") data.plano = null;
             if (data.forma_pagamento === "") data.forma_pagamento = null;
             if (data.vendedor === "") data.vendedor = null;
+            if (data.ordem_servico === "") data.ordem_servico = null;
 
             try {
                 await apiFetch(url, { method: method, body: JSON.stringify(data) });

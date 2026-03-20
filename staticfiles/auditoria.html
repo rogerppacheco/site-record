@@ -355,10 +355,30 @@
             } catch (e) { throw e; }
         }
 
+        function aplicarMascaraOs(valor) {
+            let v = String(valor || '').replace(/[^\d-]/g, '');
+            const semHifen = v.replace(/-/g, '');
+            if (v.includes('-')) {
+                const partes = v.split('-');
+                const primeiro = (partes[0] || '').replace(/\D/g, '').slice(0, 1);
+                const resto = (partes.slice(1).join('') || '').replace(/\D/g, '').slice(0, 12);
+                return primeiro + (primeiro ? '-' : '') + resto;
+            }
+            if (semHifen.length <= 8) return semHifen;
+            const primeiro = semHifen.slice(0, 1);
+            const resto = semHifen.slice(1, 13);
+            return primeiro + '-' + resto;
+        }
+
         $(document).ready(function() {
             if (!localStorage.getItem('accessToken')) { window.location.href = '/'; return; }
             $(document).on('input', '.uppercase-input', function() { this.value = this.value.toUpperCase(); });
             $(document).on('input', '.lowercase-input', function() { this.value = this.value.toLowerCase(); });
+            ['#agenda-os', '#repro-os'].forEach(function(sel) {
+                $(sel).on('input blur', function() {
+                    this.value = aplicarMascaraOs(this.value);
+                });
+            });
             
             $('#repro-status').change(function() {
                 const text = $(this).find('option:selected').text().toUpperCase();
@@ -862,8 +882,9 @@
             const stId = $('#repro-status').val(); const obs = $('#repro-obs').val(); const stText = $('#repro-status option:selected').text().toUpperCase();
             if(!stId || !obs) { alert('Selecione status e motivo.'); return; }
             if (stText.includes('AGUARDANDO PAGAMENTO')) {
-                const os = $('#repro-os').val(), dt = $('#repro-data').val(), tr = $('#repro-turno').val();
+                const os = ($('#repro-os').val() || '').trim(), dt = $('#repro-data').val(), tr = $('#repro-turno').val();
                 if (!os || !dt || !tr) { alert('O.S, Data e Turno obrigatórios.'); return; }
+                if (!validarFormatoOs(os, 'AGUARDANDO PAGAMENTO')) return;
                 $('#loadingOverlay').show();
                 apiFetch(`${API_BASE}/${vendaEmAuditoria.id}/`, { method: 'PATCH', body: JSON.stringify({ ordem_servico: os, data_agendamento: dt, periodo_agendamento: tr }) })
                 .then(() => { const d = coletarDadosAuditoria(); d.data_agendamento = dt; d.periodo_agendamento = tr; return enviarFinalizacao(stId, obs, d, true); })
@@ -872,9 +893,10 @@
         }
 
         function salvarAgendamentoFinal() {
-            const os = $('#agenda-os').val(), dt = $('#agenda-data-final').val(), tr = $('#agenda-turno-final').val();
+            const os = ($('#agenda-os').val() || '').trim(), dt = $('#agenda-data-final').val(), tr = $('#agenda-turno-final').val();
             const obs = $('#agenda-obs').val();
             if(!os || !dt || !tr) { alert('Preencha tudo.'); return; }
+            if(!validarFormatoOs(os, 'CADASTRADA')) return;
             $('#loadingOverlay').show();
             apiFetch(`${API_AUX}/status/?tipo=Esteira`).then(res => {
                 const lista = Array.isArray(res) ? res : (res.results || []);
@@ -894,6 +916,17 @@
             .then(() => { alert('Salvo!'); if(fechaRep) modalReprovacao.hide(); modalAgendamento.hide(); modalAuditoria.hide(); if(abreZap) gerarAprovacaoMsg(dados); else carregarVendasPendentes(); })
             .catch(e => { console.error(e); alert('Erro ao finalizar.'); })
             .finally(() => { if(!abreZap) $('#loadingOverlay').hide(); });
+        }
+
+        function validarFormatoOs(os, contextoStatus = '') {
+            const valor = (os || '').trim();
+            const regexOs = /^(\d{8}|\d-\d{12})$/;
+            if (!regexOs.test(valor)) {
+                const sufixo = contextoStatus ? ` para ${contextoStatus}` : '';
+                alert(`O.S inválida${sufixo}. Use 8 dígitos (08907507) ou X-12DÍGITOS (4-212051254235).`);
+                return false;
+            }
+            return true;
         }
 
         async function fecharScriptSemSalvar() { 

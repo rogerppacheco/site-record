@@ -402,8 +402,9 @@
                             <div class="col-md-5"><label>Logradouro</label><input type="text" name="logradouro" id="logradouro" class="form-control bg-light" readonly></div>
                             <div class="col-md-2"><label>Número *</label><input type="text" name="numero" id="inp_numero" class="form-control" required></div>
                             <div class="col-md-5"><label>Bairro</label><input type="text" name="bairro" id="bairro" class="form-control bg-light" readonly></div>
-                            <div class="col-md-3"><label>Latitude</label><input type="text" name="latitude" id="inp_lat" class="form-control"></div>
-                            <div class="col-md-3"><label>Longitude</label><input type="text" name="longitude" id="inp_long" class="form-control"></div>
+                            <div class="col-md-3"><label>Latitude</label><input type="text" name="latitude" id="inp_lat" class="form-control" placeholder="Ex: -19.920489"></div>
+                            <div class="col-md-3"><label>Longitude</label><input type="text" name="longitude" id="inp_long" class="form-control" placeholder="Ex: -44.060309"></div>
+                            <div class="col-md-12"><button type="button" class="btn btn-outline-primary btn-sm" onclick="gerarCoordenadas()"><i class="bi bi-geo-alt-fill"></i> Gerar coordenadas pelo endereço</button> <small class="text-muted">Preencha CEP, logradouro, número e cidade antes.</small></div>
                         </div>
 
                         <h6 class="text-primary fw-bold mb-3 border-bottom pb-2">Contato e Síndico</h6>
@@ -720,6 +721,23 @@
         mStatus.hide(); carregarMeusAcionamentos();
     }
     async function buscarCep(cep) { try { const r=await fetch(`https://viacep.com.br/ws/${cep.replace(/\D/g,'')}/json/`); const d=await r.json(); if(!d.erro){ document.getElementById('logradouro').value=d.logradouro; document.getElementById('bairro').value=d.bairro; document.getElementById('cidade_uf').value=`${d.localidade}-${d.uf}`; document.getElementById('cidade').value=d.localidade; document.getElementById('uf').value=d.uf; } } catch(e){} }
+    
+    function gerarCoordenadas() { buscarCoordenadas(true); }
+    async function buscarCoordenadas(force) {
+        var logradouro=document.getElementById('logradouro').value, numero=document.getElementById('inp_numero').value, bairro=document.getElementById('bairro').value, cidade=document.getElementById('cidade').value, uf=document.getElementById('uf').value, cep=(document.getElementById('inp_cep').value||'').replace(/\D/g,'');
+        if(!logradouro||!numero||!cidade||!uf){ alert('Preencha logradouro, número, cidade e UF antes de gerar coordenadas.'); return; }
+        var latInput=document.getElementById('inp_lat'), lngInput=document.getElementById('inp_long');
+        if(!force && latInput.value && lngInput.value && latInput.value!=='Buscando...') return;
+        var enderecoCompleto=(logradouro+', '+numero+', '+(bairro||'')+', '+cidade+', '+uf+', Brasil').replace(/,\s*,/g,',').replace(/,\s*$/,'');
+        latInput.value='Buscando...'; lngInput.value='Buscando...';
+        try {
+            var token=localStorage.getItem('accessToken'), url='/api/crm/cdoi/nominatim/?q='+encodeURIComponent(enderecoCompleto), res=await fetch(url,{headers:{'Authorization':'Bearer '+token}}), data=res.ok?await res.json():[];
+            if(data&&data.length&&data[0].lat&&data[0].lon){ latInput.value=parseFloat(data[0].lat).toFixed(6); lngInput.value=parseFloat(data[0].lon).toFixed(6); return; }
+            if(cep&&cep.length===8){ var r2=await fetch('/api/crm/cdoi/nominatim/?postalcode='+cep,{headers:{'Authorization':'Bearer '+token}}); if(r2.ok){ var d2=await r2.json(); if(d2&&d2.length&&d2[0].lat&&d2[0].lon){ latInput.value=parseFloat(d2[0].lat).toFixed(6); lngInput.value=parseFloat(d2[0].lon).toFixed(6); return; } } }
+            latInput.value=''; lngInput.value='';
+            if(force) alert('Não foi possível obter as coordenadas. Digite manualmente e salve.');
+        } catch(e){ latInput.value=''; lngInput.value=''; if(force) alert('Erro ao buscar coordenadas. Digite manualmente e salve.'); }
+    }
     
     // Expande o container quando a aba Meus Acionamentos está ativa
     document.getElementById('lista-tab').addEventListener('click', function() {

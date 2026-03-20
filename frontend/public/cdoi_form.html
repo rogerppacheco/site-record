@@ -618,22 +618,29 @@
                             <div class="col-md-3">
                                 <label>Latitude</label>
                                 <div class="input-group">
-                                    <input type="text" name="latitude" id="inp_lat" class="form-control" readonly>
+                                    <input type="text" name="latitude" id="inp_lat" class="form-control" placeholder="Ex: -19.920489">
                                     <button type="button" class="btn btn-outline-secondary" onclick="copiarCoordenada('lat')" title="Copiar latitude">
                                         <i class="bi bi-clipboard"></i>
                                     </button>
                                 </div>
-                                <small class="text-muted">Preenchido automaticamente</small>
+                                <small class="text-muted">Salvo no banco; editável. Use o botão ao lado para gerar.</small>
                             </div>
                             <div class="col-md-3">
                                 <label>Longitude</label>
                                 <div class="input-group">
-                                    <input type="text" name="longitude" id="inp_long" class="form-control" readonly>
+                                    <input type="text" name="longitude" id="inp_long" class="form-control" placeholder="Ex: -44.060309">
                                     <button type="button" class="btn btn-outline-secondary" onclick="copiarCoordenada('long')" title="Copiar longitude">
                                         <i class="bi bi-clipboard"></i>
                                     </button>
                                 </div>
-                                <small class="text-muted">Preenchido automaticamente</small>
+                                <small class="text-muted">Salvo no banco; editável.</small>
+                            </div>
+                            <div class="col-md-12 col-lg-6">
+                                <label class="d-block">&nbsp;</label>
+                                <button type="button" class="btn btn-outline-primary" onclick="gerarCoordenadas()" title="Buscar latitude/longitude pelo endereço preenchido">
+                                    <i class="bi bi-geo-alt-fill"></i> Gerar coordenadas pelo endereço
+                                </button>
+                                <small class="text-muted d-block mt-1">Preencha CEP, logradouro, número e cidade antes.</small>
                             </div>
                         </div>
 
@@ -1592,8 +1599,14 @@
         timeoutCoordenadas = setTimeout(() => buscarCoordenadas(), 1000);
     }
     
+    // Força nova busca ao clicar em "Gerar coordenadas"
+    function gerarCoordenadas() {
+        buscarCoordenadas(true);
+    }
+    
     // Função para buscar coordenadas (latitude/longitude) via geocodificação
-    async function buscarCoordenadas() {
+    // force = true: sempre busca (botão "Gerar coordenadas"). force = false: não sobrescreve se já tiver valor
+    async function buscarCoordenadas(force) {
         const logradouro = document.getElementById('logradouro').value;
         const numero = document.getElementById('inp_numero').value;
         const bairro = document.getElementById('bairro').value;
@@ -1603,14 +1616,19 @@
         
         // Verifica se temos dados suficientes para geocodificar
         if (!logradouro || !numero || !cidade || !uf) {
-            return; // Não tem dados suficientes ainda
+            if (typeof showAlert === 'function') {
+                showAlert('Preencha logradouro, número, cidade e UF (ou CEP) antes de gerar coordenadas.', 'warning');
+            } else {
+                alert('Preencha logradouro, número, cidade e UF (ou CEP) antes de gerar coordenadas.');
+            }
+            return;
         }
         
         const latInput = document.getElementById('inp_lat');
         const lngInput = document.getElementById('inp_long');
 
-        // Se já temos coordenadas preenchidas (ex.: vindo da edição), não sobrescreve
-        if ((latInput.value && latInput.value !== 'Buscando...') && (lngInput.value && lngInput.value !== 'Buscando...')) {
+        // Se já temos coordenadas e não é forçado (botão), não sobrescreve
+        if (!force && (latInput.value && latInput.value !== 'Buscando...') && (lngInput.value && lngInput.value !== 'Buscando...')) {
             return;
         }
         
@@ -1669,12 +1687,14 @@
             }
         } catch (error) {
             console.error('Erro ao buscar coordenadas:', error);
-            // Em caso de erro, não apaga valores já preenchidos manualmente
-            if (latInput.value === 'Buscando...') {
-                latInput.value = '';
-            }
-            if (lngInput.value === 'Buscando...') {
-                lngInput.value = '';
+            if (latInput.value === 'Buscando...') latInput.value = '';
+            if (lngInput.value === 'Buscando...') lngInput.value = '';
+            if (force) {
+                if (typeof showAlert === 'function') {
+                    showAlert('Não foi possível obter as coordenadas automaticamente. Você pode digitar latitude e longitude manualmente e salvar.', 'warning');
+                } else {
+                    alert('Não foi possível obter as coordenadas automaticamente. Você pode digitar latitude e longitude manualmente e salvar.');
+                }
             }
         }
     }

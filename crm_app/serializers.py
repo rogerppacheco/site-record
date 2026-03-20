@@ -433,6 +433,12 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ('data_criacao', 'forma_entrada', 'cliente')
 
+    @staticmethod
+    def _os_valida(valor):
+        if not valor:
+            return False
+        return bool(re.fullmatch(r'(\d{8}|\d-\d{12})', str(valor).strip()))
+
     def validate(self, data):
         # data_instalacao_fisica: somente BackOffice/Diretoria/Admin podem alterar
         from crm_app.utils import is_member
@@ -444,6 +450,23 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
             if value is None: continue
             if isinstance(value, str) and key not in ['cliente_email', 'observacoes']:
                 data[key] = value.upper()
+
+        ordem_servico = (data.get('ordem_servico', getattr(self.instance, 'ordem_servico', None)) or '').strip()
+        if ordem_servico and not self._os_valida(ordem_servico):
+            raise serializers.ValidationError({
+                'ordem_servico': 'Formato inválido. Use 8 dígitos (ex: 08907507) ou X-12DÍGITOS (ex: 4-212051254235).'
+            })
+
+        status_esteira = data.get('status_esteira', getattr(self.instance, 'status_esteira', None))
+        status_tratamento = data.get('status_tratamento', getattr(self.instance, 'status_tratamento', None))
+        status_esteira_nome = (getattr(status_esteira, 'nome', '') or '').upper()
+        status_tratamento_nome = (getattr(status_tratamento, 'nome', '') or '').upper()
+
+        exige_os = ('INSTALADA' in status_esteira_nome) or (status_tratamento_nome == 'CADASTRADA')
+        if exige_os and not self._os_valida(ordem_servico):
+            raise serializers.ValidationError({
+                'ordem_servico': 'O.S obrigatória e válida para status INSTALADA/CADASTRADA. Use 8 dígitos ou X-12DÍGITOS.'
+            })
         return data
 
     def _get_field_repr(self, instance_value):
