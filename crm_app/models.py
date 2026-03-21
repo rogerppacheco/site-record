@@ -854,6 +854,14 @@ class HistoricoConsultaAutomacaoPAP(models.Model):
         (TIPO_PEDIDO, 'Pedido'),
         (TIPO_STATUS, 'Status'),
     )
+    STATUS_PENDENTE = 'pendente'
+    STATUS_SUCESSO = 'sucesso'
+    STATUS_ERRO = 'erro'
+    STATUS_EXECUCAO = (
+        (STATUS_PENDENTE, 'Pendente'),
+        (STATUS_SUCESSO, 'Sucesso'),
+        (STATUS_ERRO, 'Erro'),
+    )
 
     solicitado_por = models.ForeignKey(
         Usuario,
@@ -891,7 +899,20 @@ class HistoricoConsultaAutomacaoPAP(models.Model):
         default='',
         help_text='Snapshot da matrícula PAP no momento da alocação.',
     )
+    status_execucao = models.CharField(
+        max_length=20,
+        choices=STATUS_EXECUCAO,
+        default=STATUS_PENDENTE,
+        db_index=True,
+        help_text='Resultado final da consulta após execução da automação.',
+    )
+    mensagem_resultado = models.TextField(
+        blank=True,
+        default='',
+        help_text='Resumo do resultado/erro retornado ao usuário.',
+    )
     criado_em = models.DateTimeField(auto_now_add=True, db_index=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'crm_hist_consulta_automacao_pap'

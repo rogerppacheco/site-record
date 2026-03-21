@@ -481,6 +481,7 @@ CREDITO_REFERENCIA_FIXA = "do lado da mecânica"
 CREDITO_ENDERECO_ALVO = "Avenida Fernão Dias"  # Para selecionar em múltiplos endereços
 CREDITO_LIMITE_DIARIO = 15
 CREDITO_INTERVALO_MIN_SEG = 60  # 1 minuto entre análises
+STATUS_ONLINE_MAX_WAIT_SECONDS = 180  # evita sessão "presa" em aguardando_online
 
 
 def _buscar_usuario_por_telefone(telefone: str):
@@ -516,6 +517,18 @@ def _buscar_usuario_por_telefone(telefone: str):
         if usuario:
             return usuario
     return None
+
+
+def _primeiro_nome_usuario(usuario) -> str:
+    """Retorna primeiro nome amigável para mensagens do bot."""
+    try:
+        nome = (usuario.get_full_name() or "").strip()
+    except Exception:
+        nome = ""
+    base = nome or (getattr(usuario, "first_name", "") or "").strip() or (getattr(usuario, "username", "") or "").strip()
+    if not base:
+        return "BackOffice"
+    return base.split()[0]
 
 
 def _verificar_limites_credito(usuario) -> tuple:
@@ -610,7 +623,13 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
     from usuarios.models import Usuario
     from crm_app.models import AnaliseCreditoHistorico, SessaoWhatsapp
     from crm_app.services_pap_nio import PAPNioAutomation
-    from crm_app.pool_bo_pap import obter_login_bo, liberar_bo, MSG_TODOS_ACESSOS_EM_USO, obter_mensagem_fila_ocupado
+    from crm_app.pool_bo_pap import (
+        obter_login_bo,
+        liberar_bo,
+        MSG_TODOS_ACESSOS_EM_USO,
+        obter_mensagem_fila_ocupado,
+        atualizar_historico_consulta_pap_resultado,
+    )
     from crm_app.credito_utils import gerar_celular_random, gerar_email_credito
     from crm_app.whatsapp_service import WhatsAppService
     from crm_app.cadastro_venda_whatsapp import validar_cpf_ou_cnpj_whatsapp
@@ -661,21 +680,41 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
     automacao = None
     tempo_inicio = time.time()
     tempos = {}  # medição por etapa para reduzir tempo (meta: < 1 min)
+    def _marcar_hist(sucesso: bool, mensagem: str = ""):
+        try:
+            atualizar_historico_consulta_pap_resultado(
+                vendedor_telefone=telefone,
+                bo_usuario=bo_usuario,
+                tipo_automacao='credito',
+                sucesso=sucesso,
+                mensagem_resultado=mensagem,
+            )
+        except Exception:
+            pass
     try:
+        bo_primeiro_nome = _primeiro_nome_usuario(bo_usuario)
+        WhatsAppService().enviar_mensagem_texto(
+            telefone,
+            f"🙋‍♂️ Sou o BO *{bo_primeiro_nome}* e vou tratar sua consulta.\n\n⏳ Consultando crédito no PAP... Aguarde.",
+        )
         headless = getattr(settings, 'PAP_HEADLESS', True)
-        capture_screenshots = getattr(settings, 'PAP_CAPTURE_SCREENSHOTS', False)
+        # Crédito precisa ser rápido: screenshots/trace desativados por padrão neste fluxo.
+        capture_screenshots = getattr(settings, 'PAP_CAPTURE_SCREENSHOTS_CREDITO', False)
+        optimize_for_credit = getattr(settings, 'PAP_CREDITO_FAST_MODE', True)
         automacao = PAPNioAutomation(
             matricula_pap=bo_usuario.matricula_pap,
             senha_pap=bo_usuario.senha_pap,
             vendedor_nome=f"Credito-{usuario.username}",
             headless=headless,
             capture_screenshots=capture_screenshots,
+            optimize_for_credit=optimize_for_credit,
         )
         t0 = time.time()
         sucesso, msg = automacao.iniciar_sessao()
         tempos['login'] = round(time.time() - t0, 1)
         if not sucesso:
             liberar_bo(bo_usuario.id, telefone)
+            _marcar_hist(False, msg)
             WhatsAppService().enviar_mensagem_texto(telefone, f"❌ Erro ao acessar PAP: {msg}\n\nDigite *CRÉDITO* para tentar novamente.")
             _resetar_sessao_credito(telefone)
             return
@@ -688,6 +727,7 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
         if not sucesso:
             automacao._fechar_sessao()
             liberar_bo(bo_usuario.id, telefone)
+            _marcar_hist(False, msg)
             WhatsAppService().enviar_mensagem_texto(telefone, f"❌ Erro ao iniciar pedido: {msg}\n\nDigite *CRÉDITO* para tentar novamente.")
             _resetar_sessao_credito(telefone)
             return
@@ -699,6 +739,7 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
         if not ok_tela:
             automacao._fechar_sessao()
             liberar_bo(bo_usuario.id, telefone)
+            _marcar_hist(False, msg_tela)
             WhatsAppService().enviar_mensagem_texto(telefone, f"❌ Página não pronta: {msg_tela}\n\nDigite *CRÉDITO* para tentar novamente.")
             _resetar_sessao_credito(telefone)
             return
@@ -738,6 +779,7 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
             if not sucesso:
                 automacao._fechar_sessao()
                 liberar_bo(bo_usuario.id, telefone)
+                _marcar_hist(False, msg)
                 WhatsAppService().enviar_mensagem_texto(telefone, f"❌ {msg}\n\nDigite *CRÉDITO* para tentar novamente.")
                 _resetar_sessao_credito(telefone)
                 return
@@ -749,6 +791,7 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
         if not sucesso:
             automacao._fechar_sessao()
             liberar_bo(bo_usuario.id, telefone)
+            _marcar_hist(False, msg)
             WhatsAppService().enviar_mensagem_texto(telefone, f"❌ {msg}\n\nDigite *CRÉDITO* para tentar novamente.")
             _resetar_sessao_credito(telefone)
             return
@@ -776,6 +819,7 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
                 break
             automacao._fechar_sessao()
             liberar_bo(bo_usuario.id, telefone)
+            _marcar_hist(False, msg)
             WhatsAppService().enviar_mensagem_texto(telefone, f"❌ Erro na análise: {msg}\n\nDigite *CRÉDITO* para tentar novamente.")
             _resetar_sessao_credito(telefone)
             return
@@ -808,6 +852,7 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
                 resultado_detalhe=resultado_detalhe,
             )
             liberar_bo(bo_usuario.id, telefone)
+            _marcar_hist(True, resultado_detalhe or msg or "Consulta concluída com sucesso.")
             _resetar_sessao_credito(telefone)
             if aprovado:
                 resp = f"✅ *Crédito APROVADO!*\n\n{resultado_detalhe or 'Elegível para formas de pagamento disponíveis.'}"
@@ -836,6 +881,7 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
                 liberar_bo(bo_usuario.id, telefone)
             except Exception:
                 pass
+            _marcar_hist(False, str(e))
             _resetar_sessao_credito(telefone)
             msg_erro = f"❌ Erro ao consultar crédito: {e}\n\nDigite *CRÉDITO* para tentar novamente.\n\n⏱ _{tempo_decorrido_erro}s_"
             WhatsAppService().enviar_mensagem_texto(telefone, msg_erro)
@@ -907,7 +953,13 @@ def _executar_consulta_pedido_background(telefone: str, usuario_id: int, cpf: st
     from usuarios.models import Usuario
     from crm_app.models import SessaoWhatsapp
     from crm_app.services_pap_nio import PAPNioAutomation
-    from crm_app.pool_bo_pap import obter_login_bo, liberar_bo, MSG_TODOS_ACESSOS_EM_USO, obter_mensagem_fila_ocupado
+    from crm_app.pool_bo_pap import (
+        obter_login_bo,
+        liberar_bo,
+        MSG_TODOS_ACESSOS_EM_USO,
+        obter_mensagem_fila_ocupado,
+        atualizar_historico_consulta_pap_resultado,
+    )
     from crm_app.whatsapp_service import WhatsAppService
 
     usuario = Usuario.objects.get(id=usuario_id)
@@ -934,6 +986,17 @@ def _executar_consulta_pedido_background(telefone: str, usuario_id: int, cpf: st
 
     automacao = None
     tempo_inicio = time.time()
+    def _marcar_hist(sucesso: bool, mensagem: str = ""):
+        try:
+            atualizar_historico_consulta_pap_resultado(
+                vendedor_telefone=telefone,
+                bo_usuario=bo_usuario,
+                tipo_automacao='pedido',
+                sucesso=sucesso,
+                mensagem_resultado=mensagem,
+            )
+        except Exception:
+            pass
     try:
         headless = getattr(settings, 'PAP_HEADLESS', True)
         capture_screenshots = getattr(settings, 'PAP_CAPTURE_SCREENSHOTS', False)
@@ -952,6 +1015,7 @@ def _executar_consulta_pedido_background(telefone: str, usuario_id: int, cpf: st
             import django.db
             django.db.close_old_connections()
             liberar_bo(bo_usuario.id, telefone)
+            _marcar_hist(sucesso, msg)
             _resetar_sessao_pedido(telefone)
             whatsapp = WhatsAppService()
             if not sucesso:
@@ -1011,6 +1075,7 @@ def _executar_consulta_pedido_background(telefone: str, usuario_id: int, cpf: st
                 liberar_bo(bo_usuario.id, telefone)
             except Exception:
                 pass
+            _marcar_hist(False, str(e))
             _resetar_sessao_pedido(telefone)
             msg_erro = (
                 f"❌ Erro ao consultar pedido: {e}\n\n"
@@ -1037,7 +1102,13 @@ def _executar_consulta_status_online_background(
     from usuarios.models import Usuario
     from crm_app.models import SessaoWhatsapp
     from crm_app.services_pap_nio import PAPNioAutomation
-    from crm_app.pool_bo_pap import obter_login_bo, liberar_bo, MSG_TODOS_ACESSOS_EM_USO, obter_mensagem_fila_ocupado
+    from crm_app.pool_bo_pap import (
+        obter_login_bo,
+        liberar_bo,
+        MSG_TODOS_ACESSOS_EM_USO,
+        obter_mensagem_fila_ocupado,
+        atualizar_historico_consulta_pap_resultado,
+    )
     from crm_app.whatsapp_service import WhatsAppService
 
     cpf_limpo = re.sub(r'\D', '', cpf)
@@ -1063,6 +1134,17 @@ def _executar_consulta_status_online_background(
 
     automacao = None
     tempo_inicio = time.time()
+    def _marcar_hist(sucesso: bool, mensagem: str = ""):
+        try:
+            atualizar_historico_consulta_pap_resultado(
+                vendedor_telefone=telefone,
+                bo_usuario=bo_usuario,
+                tipo_automacao='status',
+                sucesso=sucesso,
+                mensagem_resultado=mensagem,
+            )
+        except Exception:
+            pass
     try:
         headless = getattr(settings, 'PAP_HEADLESS', True)
         capture_screenshots = getattr(settings, 'PAP_CAPTURE_SCREENSHOTS', False)
@@ -1076,6 +1158,7 @@ def _executar_consulta_status_online_background(
         sucesso, msg = automacao.iniciar_sessao()
         if not sucesso:
             liberar_bo(bo_usuario.id, telefone)
+            _marcar_hist(False, msg)
             WhatsAppService().enviar_mensagem_texto(telefone, f"❌ Erro PAP: {msg}\n\nDigite *STATUS* para tentar novamente.")
             try:
                 s = SessaoWhatsapp.objects.get(telefone=telefone)
@@ -1096,6 +1179,7 @@ def _executar_consulta_status_online_background(
             import django.db
             django.db.close_old_connections()
             liberar_bo(bo_usuario.id, telefone)
+            _marcar_hist(sucesso, msg)
             # Evitar mandar resultado "atrasado" se o usuário iniciou outra consulta (run_id diferente)
             if run_id:
                 try:
@@ -1194,6 +1278,7 @@ def _executar_consulta_status_online_background(
                 liberar_bo(bo_usuario.id, telefone)
             except Exception:
                 pass
+            _marcar_hist(False, str(e))
             # Resetar sessão só se for a consulta atual
             if run_id:
                 try:
@@ -1433,7 +1518,8 @@ def _continuar_apos_correcao_credito(telefone: str, sessao_id: int, dados: dict)
     django.setup()
     from crm_app.models import SessaoWhatsapp
     from crm_app.whatsapp_service import WhatsAppService
-    from crm_app.pool_bo_pap import liberar_bo
+    from crm_app.pool_bo_pap import liberar_bo, atualizar_historico_consulta_pap_resultado
+    from usuarios.models import Usuario
     
     whatsapp = WhatsAppService()
     def enviar(m):
@@ -1442,7 +1528,25 @@ def _continuar_apos_correcao_credito(telefone: str, sessao_id: int, dados: dict)
         except Exception as e:
             logger.error(f"[VENDA PAP] Erro ao enviar: {e}")
     
-    def resetar():
+    bo_usuario_hist = Usuario.objects.filter(id=dados.get('bo_usuario_id')).first()
+    _hist_fechado = {'done': False}
+    def _marcar_hist(sucesso: bool, mensagem: str = ""):
+        if _hist_fechado['done'] or not bo_usuario_hist:
+            return
+        try:
+            atualizar_historico_consulta_pap_resultado(
+                vendedor_telefone=telefone,
+                bo_usuario=bo_usuario_hist,
+                tipo_automacao='vender',
+                sucesso=sucesso,
+                mensagem_resultado=mensagem,
+            )
+            _hist_fechado['done'] = True
+        except Exception:
+            pass
+
+    def resetar(sucesso: bool = False, mensagem: str = ""):
+        _marcar_hist(sucesso, mensagem)
         try:
             s = SessaoWhatsapp.objects.get(id=sessao_id)
             s.etapa = 'inicial'
@@ -1465,7 +1569,7 @@ def _continuar_apos_correcao_credito(telefone: str, sessao_id: int, dados: dict)
             automacao._fechar_sessao()
             with _automacoes_lock:
                 _automacoes_pap_ativas.pop(sessao_id, None)
-            resetar()
+                resetar(False, msg)
             enviar(f"❌ Erro na forma de pagamento: {msg}\n\nDigite *VENDER* para tentar novamente.")
             return
         if dados.get('forma_pagamento') == 'debito':
@@ -1475,7 +1579,7 @@ def _continuar_apos_correcao_credito(telefone: str, sessao_id: int, dados: dict)
                 automacao._fechar_sessao()
                 with _automacoes_lock:
                     _automacoes_pap_ativas.pop(sessao_id, None)
-                resetar()
+                resetar(False, msg)
                 enviar(f"❌ Erro no débito: {msg}\n\nDigite *VENDER* para tentar novamente.")
                 return
         for step_name, step_fn in [
@@ -1490,7 +1594,7 @@ def _continuar_apos_correcao_credito(telefone: str, sessao_id: int, dados: dict)
                 automacao._fechar_sessao()
                 with _automacoes_lock:
                     _automacoes_pap_ativas.pop(sessao_id, None)
-                resetar()
+                resetar(False, msg)
                 enviar(f"❌ Erro: {msg}\n\nDigite *VENDER* para tentar novamente.")
                 return
         _executar_venda_pap_etapa6_em_diante(
@@ -1507,7 +1611,7 @@ def _continuar_apos_correcao_credito(telefone: str, sessao_id: int, dados: dict)
             pass
         with _automacoes_lock:
             _automacoes_pap_ativas.pop(sessao_id, None)
-        resetar()
+        resetar(False, str(e))
         enviar(f"❌ Erro: {e}\n\nDigite *VENDER* para tentar novamente.")
 
 
@@ -1677,7 +1781,7 @@ def _processar_viabilidade_selecionar_complemento(telefone: str, sessao, dados: 
 
 def _processar_viabilidade_posse(telefone: str, sessao, dados: dict, mensagem_limpa: str) -> str:
     """Processa posse encontrada - outro CEP ou CONCLUIR (como no terminal etapa 30)."""
-    from crm_app.pool_bo_pap import liberar_bo
+    from crm_app.pool_bo_pap import liberar_bo, atualizar_historico_consulta_pap_resultado
     
     if mensagem_limpa == 'CONCLUIR':
         _encerrar_automacao_pap(sessao.id, dados.get('bo_usuario_id'), telefone)
@@ -2013,7 +2117,8 @@ def _processar_agendamento_final(telefone: str, sessao, dados: dict, mensagem_li
 
 def _encerrar_automacao_pap(sessao_id: int, bo_usuario_id, telefone: str):
     """Encerra automação PAP (agendamento, viabilidade ou crédito) e libera o BO."""
-    from crm_app.pool_bo_pap import liberar_bo
+    from crm_app.pool_bo_pap import liberar_bo, atualizar_historico_consulta_pap_resultado
+    from usuarios.models import Usuario
     with _automacoes_lock:
         ctx = _automacoes_pap_ativas.get(sessao_id)
     if ctx:
@@ -2034,6 +2139,18 @@ def _encerrar_automacao_pap(sessao_id: int, bo_usuario_id, telefone: str):
         except Exception:
             pass
     if bo_usuario_id:
+        try:
+            bo_usuario = Usuario.objects.filter(id=bo_usuario_id).first()
+            if bo_usuario:
+                atualizar_historico_consulta_pap_resultado(
+                    vendedor_telefone=telefone,
+                    bo_usuario=bo_usuario,
+                    tipo_automacao='vender',
+                    sucesso=False,
+                    mensagem_resultado="Cancelado/encerrado pelo usuário.",
+                )
+        except Exception:
+            pass
         liberar_bo(bo_usuario_id, telefone)
 
 
@@ -5110,7 +5227,7 @@ def _executar_venda_pap_etapa6_em_diante(
                 automacao._fechar_sessao()
                 with _automacoes_lock:
                     _automacoes_pap_ativas.pop(sessao_id, None)
-                resetar_sessao_e_liberar_bo()
+                resetar_sessao_e_liberar_bo(sucesso, msg)
                 break
 
         # Se saiu do loop por timeout ou cancelar (não por 'final'), encerra
@@ -5167,8 +5284,27 @@ def _executar_venda_pap_background(
         except Exception as e:
             logger.error(f"[VENDA PAP] Erro ao enviar resultado: {e}")
 
-    def resetar_sessao_e_liberar_bo():
+    bo_usuario_hist = Usuario.objects.filter(id=bo_usuario_id).first()
+    _hist_fechado = {'done': False}
+
+    def _marcar_hist(sucesso: bool, mensagem: str = ""):
+        if _hist_fechado['done'] or not bo_usuario_hist:
+            return
+        try:
+            atualizar_historico_consulta_pap_resultado(
+                vendedor_telefone=telefone,
+                bo_usuario=bo_usuario_hist,
+                tipo_automacao='vender',
+                sucesso=sucesso,
+                mensagem_resultado=mensagem,
+            )
+            _hist_fechado['done'] = True
+        except Exception:
+            pass
+
+    def resetar_sessao_e_liberar_bo(sucesso: bool = False, mensagem: str = ""):
         """Reseta sessão e libera o BO para o pool"""
+        _marcar_hist(sucesso, mensagem)
         try:
             sessao = SessaoWhatsapp.objects.get(id=sessao_id)
             sessao.etapa = 'inicial'
@@ -5195,7 +5331,7 @@ def _executar_venda_pap_background(
         sucesso, msg = automacao.iniciar_sessao()
         if not sucesso:
             automacao._fechar_sessao()
-            resetar_sessao_e_liberar_bo()
+            resetar_sessao_e_liberar_bo(False, msg)
             enviar_resultado(f"❌ *ERRO NO LOGIN PAP*\n\n{msg}\n\nDigite *VENDER* para tentar novamente.")
             return
         
@@ -5203,7 +5339,7 @@ def _executar_venda_pap_background(
         sucesso, msg = automacao.iniciar_novo_pedido(vendedor_matricula)
         if not sucesso:
             automacao._fechar_sessao()
-            resetar_sessao_e_liberar_bo()
+            resetar_sessao_e_liberar_bo(False, msg)
             enviar_resultado(f"❌ *ERRO NA ETAPA 1*\n\n{msg}\n\nDigite *VENDER* para tentar novamente.")
             return
         
@@ -5215,7 +5351,7 @@ def _executar_venda_pap_background(
         )
         if not sucesso:
             automacao._fechar_sessao()
-            resetar_sessao_e_liberar_bo()
+            resetar_sessao_e_liberar_bo(False, msg)
             if msg == "PAP_ERRO_PORTAL_NIO":
                 enviar_resultado("⚠️ O portal do PAP está com problemas no momento. Por favor, abra um chamado na *Nio* para que possamos verificar.\n\nDigite *VENDER* para tentar novamente mais tarde.")
             else:
@@ -5226,7 +5362,7 @@ def _executar_venda_pap_background(
         sucesso, msg, cliente = automacao.etapa3_cadastro_cliente(dados.get('cpf_cliente', ''))
         if not sucesso:
             automacao._fechar_sessao()
-            resetar_sessao_e_liberar_bo()
+            resetar_sessao_e_liberar_bo(False, msg)
             if msg == "PAP_ERRO_PORTAL_NIO":
                 enviar_resultado("⚠️ O portal do PAP está com problemas no momento. Por favor, abra um chamado na *Nio* para que possamos verificar.\n\nDigite *VENDER* para tentar novamente mais tarde.")
             else:
@@ -5243,7 +5379,7 @@ def _executar_venda_pap_background(
         if not sucesso:
             if msg == "PAP_ERRO_PORTAL_NIO":
                 automacao._fechar_sessao()
-                resetar_sessao_e_liberar_bo()
+                resetar_sessao_e_liberar_bo(False, msg)
                 enviar_resultado("⚠️ O portal do PAP está com problemas no momento. Por favor, abra um chamado na *Nio* para que possamos verificar.\n\nDigite *VENDER* para tentar novamente mais tarde.")
                 return
             # Manter sessão e permitir correção (como no terminal)
@@ -5284,13 +5420,13 @@ def _executar_venda_pap_background(
                     e = _err_corr[0]
                     logger.error(f"[VENDA PAP] Erro ao atualizar sessão: {e}")
                     automacao._fechar_sessao()
-                    resetar_sessao_e_liberar_bo()
+                    resetar_sessao_e_liberar_bo(False, str(e))
                     enviar_resultado(f"❌ Erro: {e}\n\nDigite *VENDER* para tentar novamente.")
                     return
                 enviar_resultado(txt)
             else:
                 automacao._fechar_sessao()
-                resetar_sessao_e_liberar_bo()
+                resetar_sessao_e_liberar_bo(False, msg)
                 enviar_resultado(f"❌ *ERRO NA ANÁLISE DE CRÉDITO*\n\n{msg}\n\nDigite *VENDER* para tentar novamente.")
             return
         
@@ -5298,7 +5434,7 @@ def _executar_venda_pap_background(
         sucesso, msg = automacao.etapa5_selecionar_forma_pagamento(dados.get('forma_pagamento', 'boleto'))
         if not sucesso:
             automacao._fechar_sessao()
-            resetar_sessao_e_liberar_bo()
+            resetar_sessao_e_liberar_bo(False, msg)
             enviar_resultado(f"❌ *ERRO NA FORMA DE PAGAMENTO*\n\n{msg}\n\nDigite *VENDER* para tentar novamente.")
             return
         if dados.get('forma_pagamento') == 'debito':
@@ -5310,19 +5446,19 @@ def _executar_venda_pap_background(
             )
             if not sucesso:
                 automacao._fechar_sessao()
-                resetar_sessao_e_liberar_bo()
+                resetar_sessao_e_liberar_bo(False, msg)
                 enviar_resultado(f"❌ *ERRO NO DÉBITO*\n\n{msg}\n\nDigite *VENDER* para tentar novamente.")
                 return
         sucesso, msg = automacao.etapa5_selecionar_plano(dados.get('plano', '500mega'))
         if not sucesso:
             automacao._fechar_sessao()
-            resetar_sessao_e_liberar_bo()
+            resetar_sessao_e_liberar_bo(False, msg)
             enviar_resultado(f"❌ *ERRO NO PLANO*\n\n{msg}\n\nDigite *VENDER* para tentar novamente.")
             return
         sucesso, msg = automacao.etapa5_selecionar_fixo(dados.get('tem_fixo', False))
         if not sucesso:
             automacao._fechar_sessao()
-            resetar_sessao_e_liberar_bo()
+            resetar_sessao_e_liberar_bo(False, msg)
             enviar_resultado(f"❌ *ERRO NO FIXO*\n\n{msg}\n\nDigite *VENDER* para tentar novamente.")
             return
         plano = dados.get('plano', '500mega')
@@ -5334,13 +5470,13 @@ def _executar_venda_pap_background(
         )
         if not sucesso:
             automacao._fechar_sessao()
-            resetar_sessao_e_liberar_bo()
+            resetar_sessao_e_liberar_bo(False, msg)
             enviar_resultado(f"❌ *ERRO NO STREAMING*\n\n{msg}\n\nDigite *VENDER* para tentar novamente.")
             return
         sucesso, msg = automacao.etapa5_clicar_avancar()
         if not sucesso:
             automacao._fechar_sessao()
-            resetar_sessao_e_liberar_bo()
+            resetar_sessao_e_liberar_bo(False, msg)
             enviar_resultado(f"❌ *ERRO AO AVANÇAR*\n\n{msg}\n\nDigite *VENDER* para tentar novamente.")
             return
         
@@ -5353,7 +5489,7 @@ def _executar_venda_pap_background(
         
     except Exception as e:
         logger.exception(f"[VENDA PAP] Erro na execução em background: {e}")
-        resetar_sessao_e_liberar_bo()
+        resetar_sessao_e_liberar_bo(False, str(e))
         enviar_resultado(f"❌ *ERRO INESPERADO*\n\n{str(e)}\n\nDigite *VENDER* para tentar novamente.")
 
 
@@ -6227,7 +6363,19 @@ def processar_webhook_whatsapp(data, request=None):
             # Se já existe uma consulta online em andamento, não reinicia o fluxo (evita misturar respostas)
             try:
                 if sessao.etapa == 'status_aguardando_online':
-                    resposta = "⏳ Consultando status online no PAP... Aguarde. Você receberá a resposta em seguida."
+                    dados_online = sessao.dados_temp or {}
+                    started_at = float(dados_online.get('status_online_started_at') or 0)
+                    tempo_espera = time.time() - started_at if started_at else 0
+                    if started_at and tempo_espera > STATUS_ONLINE_MAX_WAIT_SECONDS:
+                        sessao.etapa = 'inicial'
+                        sessao.dados_temp = {}
+                        sessao.save()
+                        resposta = (
+                            "❌ Não foi possível concluir a conexão com o PAP a tempo.\n\n"
+                            "Digite *STATUS* para tentar novamente."
+                        )
+                    else:
+                        resposta = "⏳ Consultando status online no PAP... Aguarde. Você receberá a resposta em seguida."
                     return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
             except Exception:
                 pass
@@ -7029,7 +7177,19 @@ def processar_webhook_whatsapp(data, request=None):
                 resposta = "❌ Opção inválida. Por favor, digite 1 para CPF ou 2 para O.S:"
         
         elif etapa_atual == 'status_aguardando_online':
-            resposta = "⏳ Consultando status online no PAP... Aguarde. Você receberá a resposta em seguida."
+            dados_online = dados_temp or {}
+            started_at = float(dados_online.get('status_online_started_at') or 0)
+            tempo_espera = time.time() - started_at if started_at else 0
+            if started_at and tempo_espera > STATUS_ONLINE_MAX_WAIT_SECONDS:
+                sessao.etapa = 'inicial'
+                sessao.dados_temp = {}
+                sessao.save()
+                resposta = (
+                    "❌ Não foi possível concluir a conexão com o PAP a tempo.\n\n"
+                    "Digite *STATUS* para tentar novamente."
+                )
+            else:
+                resposta = "⏳ Consultando status online no PAP... Aguarde. Você receberá a resposta em seguida."
             return _enviar_resposta_e_retornar(resposta)
 
         elif etapa_atual == 'status_cpf':
@@ -7051,7 +7211,10 @@ def processar_webhook_whatsapp(data, request=None):
                     eh_agendado = "AGENDADO" in resultado_status.upper() and "PEDIDO NÃO ENCONTRADO" not in resultado_status.upper()
                     run_id = str(int(time.time() * 1000))
                     sessao.etapa = 'status_aguardando_online'
-                    sessao.dados_temp = {'status_online_run_id': run_id}
+                    sessao.dados_temp = {
+                        'status_online_run_id': run_id,
+                        'status_online_started_at': time.time(),
+                    }
                     sessao.save()
                     threading.Thread(
                         target=_executar_consulta_status_online_background,
@@ -7077,7 +7240,11 @@ def processar_webhook_whatsapp(data, request=None):
                     eh_agendado = True
                     run_id = str(int(time.time() * 1000))
                     sessao.etapa = 'status_aguardando_online'
-                    sessao.dados_temp = {'status_online_run_id': run_id, 'os_filtro': os_limpo}
+                    sessao.dados_temp = {
+                        'status_online_run_id': run_id,
+                        'status_online_started_at': time.time(),
+                        'os_filtro': os_limpo,
+                    }
                     sessao.save()
                     threading.Thread(
                         target=_executar_consulta_status_online_background,

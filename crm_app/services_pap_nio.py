@@ -171,6 +171,7 @@ class PAPNioAutomation:
         headless: bool = True,
         capture_screenshots: bool = None,
         run_id: str = None,
+        optimize_for_credit: bool = False,
     ):
         """
         Inicializa a automação PAP.
@@ -182,6 +183,7 @@ class PAPNioAutomation:
             headless: Se False, abre o navegador visível (para testes)
             capture_screenshots: Se True, salva screenshot em cada etapa (produção). None = usa settings.PAP_CAPTURE_SCREENSHOTS
             run_id: Identificador da sessão (ex: sessao_id) para nomear os arquivos de screenshot
+            optimize_for_credit: Reduz esperas fixas no fluxo de consulta de crédito
         """
         self.matricula_pap = matricula_pap
         self.senha_pap = senha_pap
@@ -195,6 +197,7 @@ class PAPNioAutomation:
                 capture_screenshots = False
         self.capture_screenshots = capture_screenshots
         self.run_id = run_id or str(int(time.time()))
+        self.optimize_for_credit = optimize_for_credit
         
         self.playwright = None  # sync_playwright instance; precisa .stop() para encerrar event loop
         self.browser: Optional[Browser] = None
@@ -454,13 +457,13 @@ class PAPNioAutomation:
 
             # Navegar para o PAP (reduzir waits para acelerar "Acesso reservado")
             self.page.goto(PAP_LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
-            self.page.wait_for_timeout(1000)
+            self.page.wait_for_timeout(400 if self.optimize_for_credit else 1000)
             try:
                 self.page.wait_for_load_state("networkidle", timeout=8000)
             except Exception:
                 self.page.wait_for_load_state("load", timeout=5000)
             # Dar tempo para redirects (ex.: PAP -> SSO); evita "Execution context was destroyed" ao ler url/query_selector
-            self.page.wait_for_timeout(2500)
+            self.page.wait_for_timeout(1000 if self.optimize_for_credit else 2500)
 
             # Verificar se precisa fazer login (URL ou formulário de login visível).
             # Retry se a página navegou e o contexto anterior foi destruído.
@@ -558,7 +561,7 @@ class PAPNioAutomation:
 
                 # Aguardar a página reagir (redirecionamento ou mensagem de erro).
                 # Tempo suficiente para o redirect do SSO evitar "Execution context was destroyed".
-                self.page.wait_for_timeout(3500)
+                self.page.wait_for_timeout(1500 if self.optimize_for_credit else 3500)
 
                 # Validar: se aparecer "Login failed, please try again" (ou similar), não avançar
                 if self._pagina_tem_erro_login():
@@ -569,7 +572,7 @@ class PAPNioAutomation:
                 try:
                     self.page.wait_for_url(
                         lambda url: "pap.niointernet.com.br" in url and "login" not in url.lower(),
-                        timeout=22000
+                        timeout=14000 if self.optimize_for_credit else 22000
                     )
                     # Nova checagem: às vezes o redirect mostra PAP mas ainda com iframe de erro
                     if self._pagina_tem_erro_login():
@@ -645,6 +648,72 @@ class PAPNioAutomation:
             logger.debug(f"[PAP] Verificação de erro de login: {e}")
             return False
 
+    def _sessao_expirada_detectada(self) -> bool:
+        """
+        Detecta quando a sessão do PAP foi invalidada por outro login.
+        Ex.: modal "Não Autorizado" + "Sessão expirada. Por gentileza, logar novamente no Portal."
+        """
+        if not self.page:
+            return False
+        try:
+            url = (self.page.url or "").lower()
+            if "login.vtal.com" in url:
+                return True
+        except Exception:
+            pass
+        try:
+            content = (self.page.content() or "").lower()
+        except Exception:
+            return False
+        sinais = (
+            "não autorizado",
+            "nao autorizado",
+            "sessão expirada",
+            "sessao expirada",
+            "logar novamente no portal",
+        )
+        return any(s in content for s in sinais)
+
+    def _fechar_modal_sessao_expirada(self) -> None:
+        """Tenta fechar modal de sessão expirada para liberar a UI antes do relogin."""
+        if not self.page:
+            return
+        for sel in ['button:has-text("OK")', 'button:has-text("Ok")', 'button:has-text("Fechar")']:
+            try:
+                btn = self.page.query_selector(sel)
+                if btn and btn.is_visible():
+                    btn.click()
+                    self.page.wait_for_timeout(200 if self.optimize_for_credit else 400)
+                    return
+            except Exception:
+                continue
+
+    def garantir_sessao_ativa(self, target_url: Optional[str] = None) -> Tuple[bool, str]:
+        """
+        Garante que a sessão no PAP ainda está válida.
+        Se detectar sessão expirada, faz relogin e opcionalmente volta para target_url.
+        """
+        if not self.page:
+            return False, "Página não iniciada."
+        try:
+            if not self._sessao_expirada_detectada():
+                return True, "Sessão ativa."
+
+            logger.warning("[PAP] Sessão expirada detectada. Tentando relogin automático...")
+            self._fechar_modal_sessao_expirada()
+            self.page.goto(PAP_LOGIN_URL, wait_until="domcontentloaded", timeout=30000)
+            ok, msg = self._fazer_login()
+            if not ok:
+                self.logado = False
+                return False, f"Sessão expirada e relogin falhou: {msg}"
+            self.logado = True
+            if target_url:
+                self.page.goto(target_url, wait_until="domcontentloaded", timeout=30000)
+            return True, "Sessão restaurada com sucesso."
+        except Exception as e:
+            self.logado = False
+            return False, f"Erro ao validar/restaurar sessão: {e}"
+
     def _clicar_menu_novo_pedido(self) -> bool:
         """
         Clica no item do menu lateral "Novo Pedido" (fallback quando goto não abre o formulário).
@@ -686,6 +755,9 @@ class PAPNioAutomation:
         """
         # Tentar navegação direta primeiro
         try:
+            ok_sessao, _ = self.garantir_sessao_ativa()
+            if not ok_sessao:
+                return False
             self.page.goto(PAP_CONSULTA_OS_URL, wait_until="domcontentloaded", timeout=30000)
             self.page.wait_for_timeout(1500)
             try:
@@ -744,6 +816,10 @@ class PAPNioAutomation:
                 sucesso, msg = self.iniciar_sessao()
                 if not sucesso:
                     return False, msg
+            else:
+                ok_sessao, msg_sessao = self.garantir_sessao_ativa(PAP_CONSULTA_OS_URL)
+                if not ok_sessao:
+                    return False, msg_sessao
 
             # Ir para Consulta OS (URL direta ou menu)
             if self.capture_screenshots:
@@ -838,6 +914,10 @@ class PAPNioAutomation:
             sucesso, msg = self.iniciar_sessao()
             if not sucesso:
                 return False, msg, [], None
+        else:
+            ok_sessao, msg_sessao = self.garantir_sessao_ativa(PAP_CONSULTA_OS_URL)
+            if not ok_sessao:
+                return False, msg_sessao, [], None
 
         ok_menu = self._clicar_menu_consulta_os()
         if not ok_menu:
@@ -1114,6 +1194,10 @@ class PAPNioAutomation:
         """
         try:
             logger.info(f"[PAP] Iniciando novo pedido - Vendedor: {matricula_vendedor}")
+            modo_rapido_credito = self.optimize_for_credit
+            ok_sessao, msg_sessao = self.garantir_sessao_ativa(PAP_NOVO_PEDIDO_URL)
+            if not ok_sessao:
+                return False, msg_sessao
 
             # Screenshot do estado atual (ex.: tela de auditoria) antes de navegar
             if self.capture_screenshots:
@@ -1125,7 +1209,7 @@ class PAPNioAutomation:
             except Exception as e:
                 logger.warning(f"[PAP] goto domcontentloaded: {e}, tentando load...")
                 self.page.goto(PAP_NOVO_PEDIDO_URL, wait_until="load", timeout=30000)
-            self.page.wait_for_timeout(1000)
+            self.page.wait_for_timeout(300 if modo_rapido_credito else 1000)
             try:
                 self.page.wait_for_load_state("networkidle", timeout=6000)
             except Exception:
@@ -1148,7 +1232,7 @@ class PAPNioAutomation:
                 if not sucesso:
                     return False, msg
                 self.page.goto(PAP_NOVO_PEDIDO_URL, wait_until="domcontentloaded", timeout=30000)
-                self.page.wait_for_timeout(1000)
+                self.page.wait_for_timeout(300 if modo_rapido_credito else 1000)
                 url_atual = self.page.url
             
             # Verificar se chegou na página correta
@@ -1158,16 +1242,41 @@ class PAPNioAutomation:
 
             if self.capture_screenshots:
                 self._capture_screenshot("01b_apos_goto_novo_pedido", wait_selector=None, wait_timeout_ms=800)
+
+            # No crédito, quando o PAP prende na tela de Auditoria/Pedido, antecipar fallback do menu
+            # evita esperar o timeout completo do campo de matrícula.
+            if modo_rapido_credito:
+                try:
+                    pagina_atual = (self.page.content() or "").lower()
+                except Exception:
+                    pagina_atual = ""
+                url_lower = (url_atual or "").lower()
+                preso_em_auditoria = (
+                    "auditoria" in url_lower
+                    or "pedido" in url_lower
+                    or "auditoria de pedidos" in pagina_atual
+                )
+                if preso_em_auditoria:
+                    logger.info("[PAP] Modo rápido crédito: tela de auditoria detectada, tentando menu 'Novo Pedido' imediatamente.")
+                    self._clicar_menu_novo_pedido()
             
             # Aguardar campo matrícula ou página de novo pedido (timeout menor para tentar fallback)
             matricula_visivel = False
             try:
-                self.page.wait_for_selector(SELETORES['etapa1']['matricula_vendedor'], state="visible", timeout=10000)
+                self.page.wait_for_selector(
+                    SELETORES['etapa1']['matricula_vendedor'],
+                    state="visible",
+                    timeout=4000 if modo_rapido_credito else 10000,
+                )
                 matricula_visivel = True
             except Exception:
                 for sel in ['input[placeholder*="matrícula"]', 'input[placeholder*="matricula"]', 'input[id*="vendedor"]']:
                     try:
-                        self.page.wait_for_selector(sel, state="visible", timeout=3000)
+                        self.page.wait_for_selector(
+                            sel,
+                            state="visible",
+                            timeout=1500 if modo_rapido_credito else 3000,
+                        )
                         matricula_visivel = True
                         break
                     except Exception:
@@ -1180,11 +1289,19 @@ class PAPNioAutomation:
                     if self.capture_screenshots:
                         self._capture_screenshot("01c_apos_clique_menu_novo_pedido", wait_selector=None, wait_timeout_ms=800)
                     try:
-                        self.page.wait_for_selector(SELETORES['etapa1']['matricula_vendedor'], state="visible", timeout=12000)
+                        self.page.wait_for_selector(
+                            SELETORES['etapa1']['matricula_vendedor'],
+                            state="visible",
+                            timeout=7000 if modo_rapido_credito else 12000,
+                        )
                     except Exception:
                         for sel in ['input[placeholder*="matrícula"]', 'input[placeholder*="matricula"]', 'input[id*="vendedor"]']:
                             try:
-                                self.page.wait_for_selector(sel, state="visible", timeout=5000)
+                                self.page.wait_for_selector(
+                                    sel,
+                                    state="visible",
+                                    timeout=2500 if modo_rapido_credito else 5000,
+                                )
                                 break
                             except Exception:
                                 continue
@@ -1299,6 +1416,9 @@ class PAPNioAutomation:
         """
         try:
             logger.info(f"[PAP] Etapa 2 - CEP: {cep}, Número: {numero}, Referência: {referencia}")
+            ok_sessao, msg_sessao = self.garantir_sessao_ativa(PAP_NOVO_PEDIDO_URL)
+            if not ok_sessao:
+                return False, msg_sessao, None
             
             # Avançar da etapa 1 já foi feito em iniciar_novo_pedido; garantir que estamos na tela CEP
             try:
@@ -1340,7 +1460,7 @@ class PAPNioAutomation:
                 )
             except Exception:
                 pass
-            self.page.wait_for_timeout(500)
+            self.page.wait_for_timeout(250 if self.optimize_for_credit else 500)
             if self.verificar_modal_erro_ops_visivel():
                 self._fechar_modal_erro_ops()
                 return False, PAP_ERRO_PORTAL_NIO, None
@@ -1357,7 +1477,7 @@ class PAPNioAutomation:
                     continue
                 try:
                     inp_end_inst.click()
-                    self.page.wait_for_timeout(1000)
+                    self.page.wait_for_timeout(350 if self.optimize_for_credit else 1000)
                     for sel_ul in [
                         'input[placeholder="Endereço de instalação"] ~ ul li',
                         'input[placeholder*="Endereço"] ~ ul li',
@@ -1387,7 +1507,7 @@ class PAPNioAutomation:
                         if enderecos or lis:
                             break
                     else:
-                        self.page.wait_for_timeout(500)
+                        self.page.wait_for_timeout(250 if self.optimize_for_credit else 500)
                     break
                 except Exception:
                     pass
@@ -1801,12 +1921,12 @@ class PAPNioAutomation:
             spinner = self.page.query_selector('div[class*="spinner"]')
             # Se modal já visível: pular clique. Se spinner visível: Avançar já foi clicado, aguardar modal.
             if modal_el and modal_el.is_visible():
-                self.page.wait_for_timeout(500)
+                self.page.wait_for_timeout(250 if self.optimize_for_credit else 500)
             elif spinner and spinner.is_visible():
                 # Carregando (Avançar já clicado por etapa2_selecionar_sem_complemento) - aguardar modal
                 try:
-                    self.page.wait_for_selector(modal_sel, state="visible", timeout=25000)
-                    self.page.wait_for_timeout(500)
+                    self.page.wait_for_selector(modal_sel, state="visible", timeout=18000 if self.optimize_for_credit else 25000)
+                    self.page.wait_for_timeout(250 if self.optimize_for_credit else 500)
                 except Exception:
                     return False, "Timeout aguardando resultado da viabilidade.", None
             else:
@@ -1819,18 +1939,18 @@ class PAPNioAutomation:
                 if not btn:
                     return False, "Botão Avançar não habilitou.", None
                 btn.click(force=True)
-                self.page.wait_for_timeout(2000)
+                self.page.wait_for_timeout(700 if self.optimize_for_credit else 2000)
             try:
                 self.page.wait_for_selector(
                     'h2:has-text("Disponível"), h2:has-text("Indisponível"), h3:has-text("Posse encontrada"), h2:has-text("OPS, OCORREU UM ERRO")',
-                    state="visible", timeout=20000
+                    state="visible", timeout=12000 if self.optimize_for_credit else 20000
                 )
             except Exception:
                 if self.verificar_modal_erro_ops_visivel():
                     self._fechar_modal_erro_ops()
                     return False, PAP_ERRO_PORTAL_NIO, None
                 pass
-            self.page.wait_for_timeout(500)
+            self.page.wait_for_timeout(250 if self.optimize_for_credit else 500)
             if self.verificar_modal_erro_ops_visivel():
                 self._fechar_modal_erro_ops()
                 return False, PAP_ERRO_PORTAL_NIO, None
@@ -1876,9 +1996,12 @@ class PAPNioAutomation:
         """
         try:
             logger.info(f"[PAP] Etapa 3 - CPF: {cpf}")
+            ok_sessao, msg_sessao = self.garantir_sessao_ativa(PAP_NOVO_PEDIDO_URL)
+            if not ok_sessao:
+                return False, msg_sessao, None
             
             # Esperar transição da etapa 2 (Continuar/disponível) para a tela de CPF - evita timeout
-            self.page.wait_for_timeout(1200)
+            self.page.wait_for_timeout(400 if self.optimize_for_credit else 1200)
             
             # Avançar só se o campo documento ainda não estiver visível (evita clicar no Avançar errado)
             doc_elem = self.page.query_selector('input[name="documento"]')
@@ -1887,7 +2010,7 @@ class PAPNioAutomation:
                 btn_avancar = self.page.query_selector('button:has-text("Avançar"):not([disabled])')
                 if btn_avancar:
                     btn_avancar.click()
-                    self.page.wait_for_timeout(1800)
+                    self.page.wait_for_timeout(700 if self.optimize_for_credit else 1800)
             
             # Aguardar campo CPF/CNPJ (documento) aparecer - timeout alto (rede/React podem demorar em produção)
             cpf_selector = None
@@ -1920,7 +2043,7 @@ class PAPNioAutomation:
                 self._set_valor_react(cpf_selector, cpf_limpo)
             
             # Dar tempo para o site validar o documento (evita clicar em Buscar com botão desabilitado)
-            self.page.wait_for_timeout(1500)
+            self.page.wait_for_timeout(600 if self.optimize_for_credit else 1500)
             # Detectar "Documento inválido" na página e falhar rápido (evita timeout de 25s no click)
             try:
                 doc_invalido = self.page.get_by_text("Documento inválido", exact=False).first
@@ -1936,7 +2059,7 @@ class PAPNioAutomation:
             btn_buscar = self.page.query_selector('button:has-text("Buscar"):not([disabled])')
             if not btn_buscar:
                 # Botão desabilitado = validação falhou no site; verificar de novo a mensagem
-                self.page.wait_for_timeout(800)
+                self.page.wait_for_timeout(300 if self.optimize_for_credit else 800)
                 pagina_texto = (self.page.content() or "").lower()
                 if "documento inválido" in pagina_texto or "documento invalido" in pagina_texto:
                     return False, "Documento inválido.", None
@@ -1945,7 +2068,7 @@ class PAPNioAutomation:
             try:
                 self.page.wait_for_selector('button:has-text("Avançar"):not([disabled]), input[disabled][value], h2:has-text("OPS, OCORREU UM ERRO")', state="visible", timeout=15000)
             except Exception:
-                self.page.wait_for_timeout(3000)
+                self.page.wait_for_timeout(1200 if self.optimize_for_credit else 3000)
             
             # Fechar modal "OPS, OCORREU UM ERRO!" se aparecer (erro do portal PAP → abrir chamado Nio)
             if self._fechar_modal_erro_ops():
@@ -2027,6 +2150,10 @@ class PAPNioAutomation:
         """
         try:
             logger.info(f"[PAP] Etapa 4 - Celular: {celular}, Email: {email}")
+            modo_rapido_credito = self.optimize_for_credit and parar_no_modal_credito
+            ok_sessao, msg_sessao = self.garantir_sessao_ativa(PAP_NOVO_PEDIDO_URL)
+            if not ok_sessao:
+                return False, msg_sessao, None, None
             
             # Clicar Avançar da Etapa 3 para ir para Etapa 4 (Contato), se ainda não estivermos lá
             btn_avancar = self.page.query_selector('button:has-text("Avançar"):not([disabled])')
@@ -2042,7 +2169,7 @@ class PAPNioAutomation:
                 btn_ok = self.page.query_selector('button:has-text("Ok")')
                 if btn_ok:
                     btn_ok.click()
-                    self.page.wait_for_timeout(500)
+                    self.page.wait_for_timeout(250 if modo_rapido_credito else 500)
             
             celular_limpo = re.sub(r'\D', '', celular)
             
@@ -2071,7 +2198,7 @@ class PAPNioAutomation:
             
             # Disparar validação (Tab para sair do último campo)
             self.page.keyboard.press("Tab")
-            self.page.wait_for_timeout(800)
+            self.page.wait_for_timeout(300 if modo_rapido_credito else 800)
             
             pagina_lower = self.page.content().lower()
             # Celular inválido ou já utilizado (mensagem inline ou validação)
@@ -2086,7 +2213,7 @@ class PAPNioAutomation:
                 btn_ok = self.page.query_selector('button:has-text("Ok")')
                 if btn_ok:
                     btn_ok.click()
-                    self.page.wait_for_timeout(500)
+                    self.page.wait_for_timeout(250 if modo_rapido_credito else 500)
                 if "email" in pagina and ("usado" in pagina or "pedido anterior" in pagina):
                     self._etapa4_limpar_todos_campos_contato()
                     return False, "EMAIL_REJEITADO", None, None
@@ -2101,14 +2228,16 @@ class PAPNioAutomation:
                 btn_avancar.click()
             else:
                 self.page.keyboard.press("Tab")
-                self.page.wait_for_timeout(500)
+                self.page.wait_for_timeout(250 if modo_rapido_credito else 500)
                 btn_avancar = self.page.query_selector('button:has-text("Avançar"):not([disabled])')
                 if btn_avancar:
                     btn_avancar.click()
             
             # Verificar modal "Atenção!" e modal "OPS, OCORREU UM ERRO!" (erro do portal)
-            for _ in range(6):
-                self.page.wait_for_timeout(500)
+            loops_atencao = 4 if modo_rapido_credito else 6
+            pausa_atencao_ms = 300 if modo_rapido_credito else 500
+            for _ in range(loops_atencao):
+                self.page.wait_for_timeout(pausa_atencao_ms)
                 if self.verificar_modal_erro_ops_visivel():
                     self._fechar_modal_erro_ops()
                     return False, PAP_ERRO_PORTAL_NIO, None, None
@@ -2118,7 +2247,7 @@ class PAPNioAutomation:
                     btn_ok = self.page.query_selector('button:has-text("Ok")')
                     if btn_ok:
                         btn_ok.click()
-                        self.page.wait_for_timeout(500)
+                        self.page.wait_for_timeout(250 if modo_rapido_credito else 500)
                     if "excede" in pagina or "repetições" in pagina or "celular já utilizado" in pagina:
                         self._etapa4_limpar_todos_campos_contato()
                         return False, "TELEFONE_REJEITADO", None, None
@@ -2137,8 +2266,10 @@ class PAPNioAutomation:
             # Fluxo venda: pode encerrar antes se Etapa 5 aparecer sem modal (aprovação todas as formas).
             modal_apareceu = False
             poll_iteracao = 0
-            for _ in range(24):
-                self.page.wait_for_timeout(500)
+            loops_modal = 16 if modo_rapido_credito else 24
+            pausa_modal_ms = 300 if modo_rapido_credito else 500
+            for _ in range(loops_modal):
+                self.page.wait_for_timeout(pausa_modal_ms)
                 poll_iteracao += 1
                 if self.verificar_modal_erro_ops_visivel():
                     self._fechar_modal_erro_ops()
@@ -2161,13 +2292,17 @@ class PAPNioAutomation:
                     t_modal_visivel = time.time()
                     if parar_no_modal_credito:
                         logger.info(
-                            "[PAP] [CRÉDITO] Etapa4: modal 'Resultado análise crédito' visível em %.1fs (poll=%d x 0.5s)",
-                            t_modal_visivel - t_avancar, poll_iteracao,
+                            "[PAP] [CRÉDITO] Etapa4: modal 'Resultado análise crédito' visível em %.1fs (poll=%d x %.1fs)",
+                            t_modal_visivel - t_avancar, poll_iteracao, (pausa_modal_ms / 1000),
                         )
                     break
             if not modal_apareceu:
                 try:
-                    self.page.wait_for_selector('h2:has-text("Resultado da análise de crédito")', state="visible", timeout=10000)
+                    self.page.wait_for_selector(
+                        'h2:has-text("Resultado da análise de crédito")',
+                        state="visible",
+                        timeout=6000 if modo_rapido_credito else 10000,
+                    )
                     modal_apareceu = True
                     t_modal_visivel = time.time()
                     if parar_no_modal_credito:
@@ -2180,7 +2315,7 @@ class PAPNioAutomation:
                         self._fechar_modal_erro_ops()
                         return False, PAP_ERRO_PORTAL_NIO, None, None
                     pass
-            self.page.wait_for_timeout(800)
+            self.page.wait_for_timeout(300 if modo_rapido_credito else 800)
             if parar_no_modal_credito and modal_apareceu:
                 logger.info("[PAP] [CRÉDITO] Etapa4: total desde Avançar até leitura/screenshot=%.1fs", time.time() - t_avancar)
             if self.verificar_modal_erro_ops_visivel():
@@ -2204,7 +2339,7 @@ class PAPNioAutomation:
                     if btn:
                         try:
                             btn.click()
-                            self.page.wait_for_timeout(500)
+                            self.page.wait_for_timeout(250 if modo_rapido_credito else 500)
                         except Exception:
                             pass
                         break

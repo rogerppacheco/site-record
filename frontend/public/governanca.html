@@ -382,11 +382,12 @@
                                         <th>Usuário solicitante</th>
                                         <th>Automação</th>
                                         <th>Login PAP usado</th>
+                                        <th>Resultado</th>
                                     </tr>
                                 </thead>
                                 <tbody id="pap-historico-consultas-body">
                                     <tr>
-                                        <td colspan="4" class="text-muted text-center py-3">Abra a aba para carregar o histórico.</td>
+                                        <td colspan="5" class="text-muted text-center py-3">Abra a aba para carregar o histórico.</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -1000,28 +1001,33 @@
     async function carregarHistoricoConsultasPapBo() {
         const tbody = document.getElementById('pap-historico-consultas-body');
         if (!tbody) return;
-        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm me-2"></span>Carregando histórico...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm me-2"></span>Carregando histórico...</td></tr>';
         try {
             const res = await apiFetch('/crm/historico-consultas-pap-bo/?limite=200');
             const itens = Array.isArray(res) ? res : (res.results || []);
             if (!itens.length) {
-                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">Nenhum registro encontrado.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">Nenhum registro encontrado.</td></tr>';
                 return;
             }
             tbody.innerHTML = itens.map((item) => {
                 const solicitante = item.usuario_solicitante || (item.telefone_solicitante ? `Telefone ${item.telefone_solicitante}` : '-');
                 const loginPap = [item.login_pap_usuario || '-', item.matricula_pap ? `(${item.matricula_pap})` : ''].join(' ').trim();
+                const status = (item.status_execucao || '').toLowerCase();
+                const statusLabel = item.status_execucao_label || '-';
+                const badgeClass = status === 'sucesso' ? 'bg-success' : (status === 'erro' ? 'bg-danger' : 'bg-secondary');
+                const statusHtml = `<span class="badge ${badgeClass}">${statusLabel}</span>`;
                 return `
                     <tr>
                         <td>${formatarDataHoraBrasileira(item.data_hora)}</td>
                         <td>${solicitante}</td>
                         <td>${item.automacao || '-'}</td>
                         <td>${loginPap}</td>
+                        <td>${statusHtml}</td>
                     </tr>
                 `;
             }).join('');
         } catch (e) {
-            tbody.innerHTML = `<tr><td colspan="4" class="text-center text-danger py-3">Erro ao carregar histórico: ${e.message || e}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="5" class="text-center text-danger py-3">Erro ao carregar histórico: ${e.message || e}</td></tr>`;
         }
     }
 

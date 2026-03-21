@@ -98,9 +98,49 @@ def _registrar_historico_consulta_pap(
             tipo_automacao=tipo_automacao or "",
             login_pap_utilizado=bo_usuario,
             matricula_pap_utilizada=(bo_usuario.matricula_pap or ""),
+            status_execucao=HistoricoConsultaAutomacaoPAP.STATUS_PENDENTE,
         )
     except Exception as exc:
         logger.warning("[POOL BO] Falha ao registrar histórico de consulta PAP: %s", exc)
+
+
+def atualizar_historico_consulta_pap_resultado(
+    *,
+    vendedor_telefone: str,
+    bo_usuario,
+    tipo_automacao: Optional[str],
+    sucesso: bool,
+    mensagem_resultado: Optional[str] = None,
+) -> None:
+    """
+    Atualiza o resultado final da consulta no histórico de automações PAP.
+    Busca o registro mais recente em estado pendente para a combinação telefone/BO/tipo.
+    """
+    from crm_app.models import HistoricoConsultaAutomacaoPAP
+
+    try:
+        status = (
+            HistoricoConsultaAutomacaoPAP.STATUS_SUCESSO
+            if sucesso
+            else HistoricoConsultaAutomacaoPAP.STATUS_ERRO
+        )
+        qs = (
+            HistoricoConsultaAutomacaoPAP.objects.filter(
+                telefone_solicitante=vendedor_telefone or "",
+                login_pap_utilizado=bo_usuario,
+                tipo_automacao=tipo_automacao or "",
+                status_execucao=HistoricoConsultaAutomacaoPAP.STATUS_PENDENTE,
+            )
+            .order_by("-criado_em")
+        )
+        item = qs.first()
+        if not item:
+            return
+        item.status_execucao = status
+        item.mensagem_resultado = (mensagem_resultado or "")[:1000]
+        item.save(update_fields=["status_execucao", "mensagem_resultado", "atualizado_em"])
+    except Exception as exc:
+        logger.warning("[POOL BO] Falha ao atualizar histórico de consulta PAP: %s", exc)
 
 
 def limpar_sessoes_expiradas():

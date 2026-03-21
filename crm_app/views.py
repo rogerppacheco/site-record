@@ -314,6 +314,9 @@ def historico_consultas_pap_bo_view(request):
                     item.login_pap_utilizado.username if item.login_pap_utilizado else None
                 ),
                 "matricula_pap": item.matricula_pap_utilizada or "",
+                "status_execucao": item.status_execucao or "",
+                "status_execucao_label": item.get_status_execucao_display() if item.status_execucao else "",
+                "mensagem_resultado": item.mensagem_resultado or "",
             }
         )
 
