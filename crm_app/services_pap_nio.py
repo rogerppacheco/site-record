@@ -1989,13 +1989,13 @@ class PAPNioAutomation:
             logger.error(f"[PAP] _etapa2_clicar_avancar_e_tratar_modal: {e}")
             return False, str(e), None
     
-    def etapa3_cadastro_cliente(self, cpf: str) -> Tuple[bool, str, Optional[Dict]]:
+    def etapa3_cadastro_cliente(self, cpf: str, cpf_representante: str = None) -> Tuple[bool, str, Optional[Dict]]:
         """
         Etapa 3: Cadastro do cliente.
         Campo CPF/CNPJ: input[name="documento"]
         """
         try:
-            logger.info(f"[PAP] Etapa 3 - CPF: {cpf}")
+            logger.info(f"[PAP] Etapa 3 - Documento: {cpf}")
             ok_sessao, msg_sessao = self.garantir_sessao_ativa(PAP_NOVO_PEDIDO_URL)
             if not ok_sessao:
                 return False, msg_sessao, None
@@ -2041,6 +2041,28 @@ class PAPNioAutomation:
                 self.page.keyboard.press("Tab")
             else:
                 self._set_valor_react(cpf_selector, cpf_limpo)
+
+            # Fluxo CNPJ: selecionar "Dados do representante legal" e preencher CPF do representante
+            if len(cpf_limpo) == 14:
+                cpf_rep_limpo = re.sub(r'\D', '', str(cpf_representante or ''))
+                if len(cpf_rep_limpo) != 11:
+                    return False, "Para CNPJ, informe um CPF válido do representante legal.", None
+                try:
+                    btn_rep = self.page.query_selector('button:has-text("Dados do representante legal")')
+                    if not btn_rep:
+                        btn_rep = self.page.query_selector('button.sc-eklfrZ.jZwwQY')
+                    if btn_rep and btn_rep.is_visible():
+                        btn_rep.click()
+                    self.page.wait_for_selector('input[name="cpfRepresentante"]', state="visible", timeout=10000)
+                    inp_rep = self.page.query_selector('input[name="cpfRepresentante"]')
+                    if inp_rep:
+                        inp_rep.click()
+                        inp_rep.fill(cpf_rep_limpo)
+                        self.page.keyboard.press("Tab")
+                    else:
+                        self._set_valor_react('input[name="cpfRepresentante"]', cpf_rep_limpo)
+                except Exception as e_rep:
+                    return False, f"Não foi possível preencher CPF do representante legal: {e_rep}", None
             
             # Dar tempo para o site validar o documento (evita clicar em Buscar com botão desabilitado)
             self.page.wait_for_timeout(600 if self.optimize_for_credit else 1500)
@@ -2105,6 +2127,8 @@ class PAPNioAutomation:
             if btn_avancar:
                 self.etapa_atual = 3
                 self.dados_pedido['cpf_cliente'] = cpf
+                if cpf_representante:
+                    self.dados_pedido['cpf_representante_legal'] = cpf_representante
                 self.dados_pedido['nome_cliente'] = dados_cliente.get('nome', '')
                 self.dados_pedido['nome_mae'] = dados_cliente.get('nome_mae', '')
                 self.dados_pedido['mes_nascimento'] = dados_cliente.get('mes_nascimento')

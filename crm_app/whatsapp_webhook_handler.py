@@ -589,7 +589,8 @@ def _iniciar_fluxo_credito(telefone: str, sessao) -> str:
     sessao.save()
     return (
         "🔍 *ANÁLISE DE CRÉDITO*\n\n"
-        "Digite o *CPF* a ser consultado (apenas números):\n\n"
+        "Digite o *CPF ou CNPJ* a ser consultado (apenas números):\n\n"
+        "Se for CNPJ, em seguida vou pedir o CPF do representante legal.\n\n"
         "Ou digite *CANCELAR* para sair."
     )
 
@@ -615,7 +616,7 @@ def _run_django_sync(func):
             raise exc
 
 
-def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: str):
+def _executar_analise_credito_background(telefone: str, usuario_id: int, documento: str, cpf_representante: str = None):
     """
     Thread: executa análise de crédito no PAP (login BO, viabilidade fixa, etapa3 CPF, etapa4 random).
     Envia resultado via WhatsApp e salva em AnaliseCreditoHistorico.
@@ -636,9 +637,9 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
     import re
 
     usuario = Usuario.objects.get(id=usuario_id)
-    cpf_limpo = re.sub(r'\D', '', cpf)
-    if len(cpf_limpo) != 11:
-        WhatsAppService().enviar_mensagem_texto(telefone, "❌ CPF inválido (precisa 11 dígitos). Digite *CRÉDITO* para tentar novamente.")
+    documento_limpo = re.sub(r'\D', '', documento or "")
+    if len(documento_limpo) not in (11, 14):
+        WhatsAppService().enviar_mensagem_texto(telefone, "❌ Documento inválido (use CPF com 11 dígitos ou CNPJ com 14 dígitos). Digite *CRÉDITO* para tentar novamente.")
         try:
             s = SessaoWhatsapp.objects.get(telefone=telefone)
             s.etapa = 'inicial'
@@ -648,10 +649,10 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
             pass
         return
 
-    # Validar CPF (dígitos verificadores) antes de abrir PAP — falha rápida, evita timeout na Etapa 3
-    cpf_validado, err_val = validar_cpf_ou_cnpj_whatsapp(cpf)
-    if err_val or not cpf_validado:
-        WhatsAppService().enviar_mensagem_texto(telefone, "❌ Documento inválido. Digite um CPF válido (11 dígitos). Digite *CRÉDITO* para tentar novamente.")
+    # Validar documento (CPF/CNPJ) antes de abrir PAP — falha rápida, evita timeout na Etapa 3
+    doc_validado, err_val = validar_cpf_ou_cnpj_whatsapp(documento)
+    if err_val or not doc_validado:
+        WhatsAppService().enviar_mensagem_texto(telefone, "❌ Documento inválido. Digite um CPF (11) ou CNPJ (14) válido. Digite *CRÉDITO* para tentar novamente.")
         try:
             s = SessaoWhatsapp.objects.get(telefone=telefone)
             s.etapa = 'inicial'
@@ -660,7 +661,21 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
         except Exception:
             pass
         return
-    cpf_limpo = cpf_validado
+    documento_limpo = doc_validado
+    cpf_rep_limpo = re.sub(r'\D', '', str(cpf_representante or ""))
+    if len(documento_limpo) == 14 and len(cpf_rep_limpo) != 11:
+        WhatsAppService().enviar_mensagem_texto(
+            telefone,
+            "❌ Para consulta por CNPJ, preciso do CPF do representante legal (11 dígitos). Digite *CRÉDITO* para tentar novamente.",
+        )
+        try:
+            s = SessaoWhatsapp.objects.get(telefone=telefone)
+            s.etapa = 'inicial'
+            s.dados_temp = {}
+            s.save()
+        except Exception:
+            pass
+        return
 
     bo_usuario, msg_erro = obter_login_bo(telefone, None, tipo_automacao='credito')
     if not bo_usuario:
@@ -784,9 +799,9 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
                 _resetar_sessao_credito(telefone)
                 return
 
-        # Etapa 3: CPF
+        # Etapa 3: Documento (CPF/CNPJ)
         t0 = time.time()
-        sucesso, msg, _ = automacao.etapa3_cadastro_cliente(cpf_limpo)
+        sucesso, msg, _ = automacao.etapa3_cadastro_cliente(documento_limpo, cpf_representante=cpf_rep_limpo or None)
         tempos['etapa3'] = round(time.time() - t0, 1)
         if not sucesso:
             automacao._fechar_sessao()
@@ -847,7 +862,7 @@ def _executar_analise_credito_background(telefone: str, usuario_id: int, cpf: st
             django.db.close_old_connections()
             AnaliseCreditoHistorico.objects.create(
                 usuario=usuario,
-                cpf_consultado=cpf_limpo,
+                cpf_consultado=documento_limpo,
                 aprovado=aprovado,
                 resultado_detalhe=resultado_detalhe,
             )
@@ -7269,9 +7284,9 @@ def processar_webhook_whatsapp(data, request=None):
                 sessao.save()
                 resposta = "❌ Cancelado. Digite *CRÉDITO* para consultar novamente."
             else:
-                cpf_limpo = limpar_texto_cep_cpf(mensagem_texto)
-                if not cpf_limpo or len(cpf_limpo) != 11 or not cpf_limpo.isdigit():
-                    resposta = "❌ CPF inválido. Digite o CPF completo (11 dígitos) ou *CANCELAR*:"
+                doc_limpo = limpar_texto_cep_cpf(mensagem_texto)
+                if not doc_limpo or len(doc_limpo) not in (11, 14) or not doc_limpo.isdigit():
+                    resposta = "❌ Documento inválido. Digite um CPF (11) ou CNPJ (14) ou *CANCELAR*:"
                 else:
                     usuario_id = dados_temp.get('usuario_id')
                     if not usuario_id:
@@ -7280,14 +7295,49 @@ def processar_webhook_whatsapp(data, request=None):
                         sessao.save()
                         resposta = "❌ Sessão expirada. Digite *CRÉDITO* para iniciar novamente."
                     else:
+                        if len(doc_limpo) == 14:
+                            sessao.etapa = 'credito_cnpj_representante'
+                            sessao.dados_temp = {**(dados_temp or {}), 'documento_credito': doc_limpo}
+                            sessao.save()
+                            resposta = "✅ CNPJ recebido.\n\nAgora digite o *CPF do representante legal* (11 dígitos), ou *CANCELAR*:"
+                        else:
+                            threading.Thread(
+                                target=_executar_analise_credito_background,
+                                args=(telefone_formatado, usuario_id, doc_limpo, None),
+                                daemon=True
+                            ).start()
+                            sessao.etapa = 'credito_aguardando'
+                            sessao.save()
+                            resposta = "⏳ Consultando crédito... Aguarde alguns instantes. Você receberá a resposta em seguida."
+            return _enviar_resposta_e_retornar(resposta)
+
+        elif etapa_atual == 'credito_cnpj_representante':
+            if mensagem_limpa in ['CANCELAR', 'SAIR', 'PARAR']:
+                sessao.etapa = 'inicial'
+                sessao.dados_temp = {}
+                sessao.save()
+                resposta = "❌ Cancelado. Digite *CRÉDITO* para consultar novamente."
+            else:
+                cpf_rep = limpar_texto_cep_cpf(mensagem_texto)
+                if not cpf_rep or len(cpf_rep) != 11 or not cpf_rep.isdigit():
+                    resposta = "❌ CPF do representante inválido. Digite 11 dígitos ou *CANCELAR*:"
+                else:
+                    usuario_id = dados_temp.get('usuario_id')
+                    doc_cnpj = (dados_temp or {}).get('documento_credito')
+                    if not usuario_id or not doc_cnpj:
+                        sessao.etapa = 'inicial'
+                        sessao.dados_temp = {}
+                        sessao.save()
+                        resposta = "❌ Sessão expirada. Digite *CRÉDITO* para iniciar novamente."
+                    else:
                         threading.Thread(
                             target=_executar_analise_credito_background,
-                            args=(telefone_formatado, usuario_id, cpf_limpo),
+                            args=(telefone_formatado, usuario_id, doc_cnpj, cpf_rep),
                             daemon=True
                         ).start()
                         sessao.etapa = 'credito_aguardando'
                         sessao.save()
-                        resposta = "⏳ Consultando crédito... Aguarde alguns instantes. Você receberá a resposta em seguida."
+                        resposta = "⏳ Consultando crédito para o CNPJ... Aguarde alguns instantes. Você receberá a resposta em seguida."
             return _enviar_resposta_e_retornar(resposta)
 
         elif etapa_atual == 'pedido_aguardando':
