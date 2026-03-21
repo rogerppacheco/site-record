@@ -11,6 +11,7 @@ e é avisado por WhatsApp quando um login for liberado.
 """
 import logging
 import random
+import re
 from datetime import timedelta
 from typing import Optional, Tuple
 
@@ -40,6 +41,66 @@ def _limpar_locks_expirados():
     if deletados[0] > 0:
         logger.info(f"[POOL BO] Liberados {deletados[0]} lock(s) expirado(s)")
     return deletados[0]
+
+
+def _normalizar_telefone(telefone: str) -> str:
+    return re.sub(r"\D", "", str(telefone or ""))
+
+
+def _identificar_usuario_por_telefone(telefone: str):
+    """
+    Tenta identificar o usuário que chamou a automação a partir do telefone
+    da sessão WhatsApp, considerando os campos de WhatsApp cadastrados.
+    """
+    from django.db.models import Q
+    from usuarios.models import Usuario
+
+    telefone_limpo = _normalizar_telefone(telefone)
+    if not telefone_limpo:
+        return None
+
+    sufixo = telefone_limpo[-8:] if len(telefone_limpo) >= 8 else telefone_limpo
+    filtro_base = Q()
+    if sufixo:
+        filtro_base = (
+            Q(tel_whatsapp__endswith=sufixo)
+            | Q(tel_whatsapp_2__endswith=sufixo)
+            | Q(tel_whatsapp_3__endswith=sufixo)
+        )
+
+    candidatos = Usuario.objects.filter(is_active=True).filter(filtro_base).only(
+        "id", "tel_whatsapp", "tel_whatsapp_2", "tel_whatsapp_3"
+    )
+    for usuario in candidatos:
+        telefones_usuario = [
+            _normalizar_telefone(usuario.tel_whatsapp),
+            _normalizar_telefone(usuario.tel_whatsapp_2),
+            _normalizar_telefone(usuario.tel_whatsapp_3),
+        ]
+        if telefone_limpo in telefones_usuario:
+            return usuario
+    return None
+
+
+def _registrar_historico_consulta_pap(
+    *,
+    vendedor_telefone: str,
+    bo_usuario,
+    tipo_automacao: Optional[str],
+) -> None:
+    from crm_app.models import HistoricoConsultaAutomacaoPAP
+
+    try:
+        solicitante = _identificar_usuario_por_telefone(vendedor_telefone)
+        HistoricoConsultaAutomacaoPAP.objects.create(
+            solicitado_por=solicitante,
+            telefone_solicitante=vendedor_telefone or "",
+            tipo_automacao=tipo_automacao or "",
+            login_pap_utilizado=bo_usuario,
+            matricula_pap_utilizada=(bo_usuario.matricula_pap or ""),
+        )
+    except Exception as exc:
+        logger.warning("[POOL BO] Falha ao registrar histórico de consulta PAP: %s", exc)
 
 
 def limpar_sessoes_expiradas():
@@ -152,6 +213,11 @@ def obter_login_bo(
         logger.info(
             f"[POOL BO] BO {bo_usuario.username} (matricula {bo_usuario.matricula_pap}) "
             f"alocado para {vendedor_telefone} (automação={tipo_automacao or 'qualquer'})"
+        )
+        _registrar_historico_consulta_pap(
+            vendedor_telefone=vendedor_telefone,
+            bo_usuario=bo_usuario,
+            tipo_automacao=tipo_automacao,
         )
         return bo_usuario, None
     except Exception as e:

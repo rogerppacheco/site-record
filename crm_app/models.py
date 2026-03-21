@@ -839,6 +839,72 @@ class PapBoEmUso(models.Model):
         return f"BO {self.bo_usuario.username} em uso por {self.vendedor_telefone}"
 
 
+class HistoricoConsultaAutomacaoPAP(models.Model):
+    """
+    Auditoria de consultas das automações ao pool de login PAP.
+    Registra quem chamou a automação e qual login PAP foi utilizado.
+    """
+    TIPO_VENDER = 'vender'
+    TIPO_CREDITO = 'credito'
+    TIPO_PEDIDO = 'pedido'
+    TIPO_STATUS = 'status'
+    TIPOS_AUTOMACAO = (
+        (TIPO_VENDER, 'Vender'),
+        (TIPO_CREDITO, 'Crédito'),
+        (TIPO_PEDIDO, 'Pedido'),
+        (TIPO_STATUS, 'Status'),
+    )
+
+    solicitado_por = models.ForeignKey(
+        Usuario,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='historico_consultas_automacao_pap',
+        help_text='Usuário que chamou a automação (quando identificado).',
+    )
+    telefone_solicitante = models.CharField(
+        max_length=100,
+        blank=True,
+        default='',
+        db_index=True,
+        help_text='Telefone usado na sessão da automação (fallback de auditoria).',
+    )
+    tipo_automacao = models.CharField(
+        max_length=20,
+        choices=TIPOS_AUTOMACAO,
+        blank=True,
+        default='',
+        db_index=True,
+    )
+    login_pap_utilizado = models.ForeignKey(
+        Usuario,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='historico_logins_pap_utilizados',
+        help_text='Usuário BackOffice cujo login PAP foi alocado para a automação.',
+    )
+    matricula_pap_utilizada = models.CharField(
+        max_length=80,
+        blank=True,
+        default='',
+        help_text='Snapshot da matrícula PAP no momento da alocação.',
+    )
+    criado_em = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = 'crm_hist_consulta_automacao_pap'
+        verbose_name = 'Histórico consulta automação PAP'
+        verbose_name_plural = 'Histórico consultas automação PAP'
+        ordering = ['-criado_em']
+
+    def __str__(self):
+        automacao = self.get_tipo_automacao_display() if self.tipo_automacao else 'Não informado'
+        login = self.login_pap_utilizado.username if self.login_pap_utilizado else '-'
+        return f'{automacao} | login PAP: {login} | {self.criado_em:%d/%m/%Y %H:%M}'
+
+
 class FilaEsperaPAP(models.Model):
     """
     Fila de espera quando todos os logins PAP estão em uso.

@@ -276,6 +276,50 @@ def liberar_pap_bo_view(request):
     return Response({"success": True, "liberados": qtd, "message": msg})
 
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def historico_consultas_pap_bo_view(request):
+    """
+    Lista histórico de consultas das automações ao pool de login PAP.
+    """
+    from crm_app.models import HistoricoConsultaAutomacaoPAP
+
+    limite_raw = request.GET.get("limite", "200")
+    try:
+        limite = max(1, min(int(limite_raw), 1000))
+    except (TypeError, ValueError):
+        limite = 200
+
+    queryset = (
+        HistoricoConsultaAutomacaoPAP.objects.select_related(
+            "solicitado_por",
+            "login_pap_utilizado",
+        )
+        .order_by("-criado_em")[:limite]
+    )
+
+    data = []
+    for item in queryset:
+        data.append(
+            {
+                "id": item.id,
+                "data_hora": item.criado_em,
+                "automacao": item.get_tipo_automacao_display() if item.tipo_automacao else "Não informado",
+                "automacao_cod": item.tipo_automacao or "",
+                "usuario_solicitante": (
+                    item.solicitado_por.username if item.solicitado_por else None
+                ),
+                "telefone_solicitante": item.telefone_solicitante or "",
+                "login_pap_usuario": (
+                    item.login_pap_utilizado.username if item.login_pap_utilizado else None
+                ),
+                "matricula_pap": item.matricula_pap_utilizada or "",
+            }
+        )
+
+    return Response({"count": len(data), "results": data})
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def consultar_biometria_brpronto_view(request):

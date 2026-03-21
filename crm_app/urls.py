@@ -26,6 +26,7 @@ from .views import (
     buscar_fatura_nio_bonus_m10,
     duplicar_venda,
     liberar_pap_bo_view,
+    historico_consultas_pap_bo_view,
     consultar_biometria_brpronto_view,
     # ViewSets
     VendaViewSet, 
@@ -193,6 +194,7 @@ urlpatterns = [
     path('serve-pdf/<str:token>/', serve_pdf_view, name='serve-pdf'),
     path('duplicar-venda/', duplicar_venda, name='duplicar-venda'),
     path('liberar-pap-bo/', liberar_pap_bo_view, name='liberar-pap-bo'),
+    path('historico-consultas-pap-bo/', historico_consultas_pap_bo_view, name='historico-consultas-pap-bo'),
     path('consultar-biometria-brpronto/', consultar_biometria_brpronto_view, name='consultar-biometria-brpronto'),
     # --- Endpoint para busca automática de fatura NIO (Bonus M-10) ---
     path('bonus-m10/buscar-fatura-nio/', buscar_fatura_nio_bonus_m10, name='buscar-fatura-nio-bonus-m10'),
