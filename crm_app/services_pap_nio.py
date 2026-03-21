@@ -461,7 +461,11 @@ class PAPNioAutomation:
             try:
                 self.page.wait_for_load_state("networkidle", timeout=8000)
             except Exception:
-                self.page.wait_for_load_state("load", timeout=5000)
+                try:
+                    # SPAs/SSO muitas vezes não disparam "load" após domcontentloaded — não falhar a sessão por isso
+                    self.page.wait_for_load_state("load", timeout=20000)
+                except Exception:
+                    pass
             # Dar tempo para redirects (ex.: PAP -> SSO); evita "Execution context was destroyed" ao ler url/query_selector
             self.page.wait_for_timeout(1000 if self.optimize_for_credit else 2500)
 
@@ -719,6 +723,40 @@ class PAPNioAutomation:
         Clica no item do menu lateral "Novo Pedido" (fallback quando goto não abre o formulário).
         Retorna True se encontrou e clicou, False caso contrário.
         """
+        # Locators Playwright (acessibilidade + texto) — mais estáveis que só CSS
+        def _apos_clique_menu() -> None:
+            self.page.wait_for_timeout(1500)
+            try:
+                self.page.wait_for_load_state("domcontentloaded", timeout=12000)
+            except Exception:
+                pass
+
+        for nome, loc in (
+            ("link role Novo pedido", self.page.get_by_role("link", name=re.compile(r"Novo\s+pedido", re.I))),
+            ("button role Novo pedido", self.page.get_by_role("button", name=re.compile(r"Novo\s+pedido", re.I))),
+            ("a[href*=novo-pedido]", self.page.locator("a[href*='novo-pedido']")),
+            ("button texto Novo Pedido", self.page.locator("button:has-text('Novo Pedido')")),
+        ):
+            try:
+                if loc.count() < 1:
+                    continue
+                alvo = loc.first
+                alvo.wait_for(state="visible", timeout=8000)
+                logger.info(f"[PAP] Fallback: clicando menu Novo Pedido ({nome})")
+                if self.capture_screenshots:
+                    try:
+                        h = alvo.element_handle()
+                        if h:
+                            self._highlight_element(h, duration_ms=500)
+                    except Exception:
+                        pass
+                alvo.click(timeout=12000, force=True)
+                _apos_clique_menu()
+                return True
+            except Exception as e:
+                logger.debug(f"[PAP] Menu Novo Pedido ({nome}): {e}")
+                continue
+
         seletores_menu = [
             'a[href*="novo-pedido"]',
             'a:has-text("Novo Pedido")',
@@ -741,7 +779,10 @@ class PAPNioAutomation:
                         self._highlight_element(el, duration_ms=500)
                     el.click()
                     self.page.wait_for_timeout(1500)
-                    self.page.wait_for_load_state("domcontentloaded", timeout=8000)
+                    try:
+                        self.page.wait_for_load_state("domcontentloaded", timeout=12000)
+                    except Exception:
+                        pass
                     return True
             except Exception as e:
                 logger.debug(f"[PAP] Menu Novo Pedido seletor {sel[:30]}: {e}")
@@ -763,7 +804,10 @@ class PAPNioAutomation:
             try:
                 self.page.wait_for_load_state("networkidle", timeout=6000)
             except Exception:
-                self.page.wait_for_load_state("load", timeout=4000)
+                try:
+                    self.page.wait_for_load_state("load", timeout=15000)
+                except Exception:
+                    pass
             if "consulta-os" in (self.page.url or "").lower() or "pap.niointernet.com.br" in (self.page.url or ""):
                 logger.info("[PAP] Navegação para Consulta OS OK (URL direta)")
                 return True
@@ -1213,9 +1257,18 @@ class PAPNioAutomation:
             try:
                 self.page.wait_for_load_state("networkidle", timeout=6000)
             except Exception:
-                self.page.wait_for_load_state("load", timeout=4000)
+                try:
+                    self.page.wait_for_load_state("load", timeout=20000)
+                except Exception:
+                    pass  # SPA: evita Timeout 5000/4000 ao iniciar pedido
             
             url_atual = self.page.url
+            # Às vezes o PAP abre outra rota administrativa; forçar navegação ao fluxo novo pedido
+            if "pap.niointernet.com.br" in (url_atual or "") and "novo-pedido" not in (url_atual or "").lower():
+                logger.info(f"[PAP] URL sem novo-pedido ({url_atual[:80]}...), tentando menu lateral.")
+                self._clicar_menu_novo_pedido()
+                self.page.wait_for_timeout(800 if modo_rapido_credito else 1500)
+                url_atual = self.page.url
             login_form = (
                 self.page.query_selector('#inputMatricula') or
                 self.page.query_selector('#passwordInput') or
@@ -1260,13 +1313,13 @@ class PAPNioAutomation:
                     logger.info("[PAP] Modo rápido crédito: tela de auditoria detectada, tentando menu 'Novo Pedido' imediatamente.")
                     self._clicar_menu_novo_pedido()
             
-            # Aguardar campo matrícula ou página de novo pedido (timeout menor para tentar fallback)
+            # Aguardar campo matrícula ou página de novo pedido (crédito: dar tempo ao React)
             matricula_visivel = False
             try:
                 self.page.wait_for_selector(
                     SELETORES['etapa1']['matricula_vendedor'],
                     state="visible",
-                    timeout=4000 if modo_rapido_credito else 10000,
+                    timeout=12000 if modo_rapido_credito else 10000,
                 )
                 matricula_visivel = True
             except Exception:
@@ -1996,9 +2049,26 @@ class PAPNioAutomation:
         cpfRepresentante fica disponível — não adianta clicar antes do Buscar.
         """
         try:
-            t_btn = 20000 if self.optimize_for_credit else 35000
-            t_inp = 18000 if self.optimize_for_credit else 28000
-            self.page.wait_for_timeout(350 if self.optimize_for_credit else 700)
+            t_btn = 25000 if self.optimize_for_credit else 40000
+            t_inp = 25000 if self.optimize_for_credit else 35000
+            self.page.wait_for_timeout(500 if self.optimize_for_credit else 1000)
+            try:
+                self.page.wait_for_load_state("networkidle", timeout=12000)
+            except Exception:
+                try:
+                    self.page.wait_for_load_state("domcontentloaded", timeout=8000)
+                except Exception:
+                    pass
+
+            # Esperar qualquer um dos blocos CNPJ (empresa ou representante) — confirma que a consulta respondeu
+            try:
+                self.page.wait_for_selector(
+                    'button:has-text("Dados do representante legal"), button:has-text("Dados da empresa")',
+                    state="visible",
+                    timeout=t_btn,
+                )
+            except Exception:
+                logger.warning("[PAP] Botões CNPJ (empresa/representante) não apareceram no tempo esperado; seguindo tentativas.")
 
             # Não usar o primeiro button.sc-eklfrZ (seria "Dados da empresa"); filtrar pelo texto.
             clicou = False
@@ -2010,8 +2080,8 @@ class PAPNioAutomation:
                 ).first,
             ):
                 try:
-                    locator.wait_for(state="visible", timeout=t_btn)
-                    locator.click(timeout=t_btn)
+                    locator.wait_for(state="visible", timeout=min(t_btn, 15000))
+                    locator.click(timeout=t_btn, force=True)
                     clicou = True
                     logger.info("[PAP] CNPJ: clicado em 'Dados do representante legal'")
                     break
@@ -2024,14 +2094,28 @@ class PAPNioAutomation:
                     "O portal pode ter alterado a tela."
                 )
 
-            self.page.wait_for_timeout(400 if self.optimize_for_credit else 900)
+            self.page.wait_for_timeout(500 if self.optimize_for_credit else 1000)
             sel_rep = 'input[name="cpfRepresentante"]'
-            self.page.wait_for_selector(sel_rep, state="visible", timeout=t_inp)
+            try:
+                self.page.wait_for_selector(sel_rep, state="visible", timeout=t_inp)
+            except Exception:
+                try:
+                    self.page.wait_for_selector(sel_rep, state="attached", timeout=10000)
+                    self.page.locator(sel_rep).first.scroll_into_view_if_needed()
+                    self.page.wait_for_timeout(400)
+                    self.page.wait_for_selector(sel_rep, state="visible", timeout=t_inp)
+                except Exception:
+                    pass
             inp_rep = self.page.query_selector(sel_rep)
             if inp_rep:
-                inp_rep.click()
-                inp_rep.fill(cpf_rep_limpo)
-                self.page.keyboard.press("Tab")
+                try:
+                    inp_rep.click()
+                except Exception:
+                    self.page.locator(sel_rep).first.click(force=True, timeout=8000)
+                inp_rep = self.page.query_selector(sel_rep)
+                if inp_rep:
+                    inp_rep.fill(cpf_rep_limpo)
+                    self.page.keyboard.press("Tab")
             else:
                 self._set_valor_react(sel_rep, cpf_rep_limpo)
             return True, ""
