@@ -1988,6 +1988,56 @@ class PAPNioAutomation:
         except Exception as e:
             logger.error(f"[PAP] _etapa2_clicar_avancar_e_tratar_modal: {e}")
             return False, str(e), None
+
+    def _preencher_cpf_representante_apos_consultar_cnpj(self, cpf_rep_limpo: str) -> Tuple[bool, str]:
+        """
+        Após clicar em Buscar/Consultar com CNPJ, o PAP exibe dois botões:
+        "Dados da empresa" e "Dados do representante legal". Só então o campo
+        cpfRepresentante fica disponível — não adianta clicar antes do Buscar.
+        """
+        try:
+            t_btn = 20000 if self.optimize_for_credit else 35000
+            t_inp = 18000 if self.optimize_for_credit else 28000
+            self.page.wait_for_timeout(350 if self.optimize_for_credit else 700)
+
+            # Não usar o primeiro button.sc-eklfrZ (seria "Dados da empresa"); filtrar pelo texto.
+            clicou = False
+            for locator in (
+                self.page.get_by_role("button", name=re.compile(r"Dados\s+do\s+representante\s+legal", re.I)),
+                self.page.locator('button:has-text("Dados do representante legal")').first,
+                self.page.locator("button.sc-eklfrZ.jZwwQY").filter(
+                    has_text=re.compile(r"representante\s+legal", re.I)
+                ).first,
+            ):
+                try:
+                    locator.wait_for(state="visible", timeout=t_btn)
+                    locator.click(timeout=t_btn)
+                    clicou = True
+                    logger.info("[PAP] CNPJ: clicado em 'Dados do representante legal'")
+                    break
+                except Exception as e_try:
+                    logger.debug(f"[PAP] Tentativa botão representante: {e_try}")
+                    continue
+            if not clicou:
+                return False, (
+                    "Não foi possível localizar o botão 'Dados do representante legal' após consultar o CNPJ. "
+                    "O portal pode ter alterado a tela."
+                )
+
+            self.page.wait_for_timeout(400 if self.optimize_for_credit else 900)
+            sel_rep = 'input[name="cpfRepresentante"]'
+            self.page.wait_for_selector(sel_rep, state="visible", timeout=t_inp)
+            inp_rep = self.page.query_selector(sel_rep)
+            if inp_rep:
+                inp_rep.click()
+                inp_rep.fill(cpf_rep_limpo)
+                self.page.keyboard.press("Tab")
+            else:
+                self._set_valor_react(sel_rep, cpf_rep_limpo)
+            return True, ""
+        except Exception as e:
+            logger.error(f"[PAP] _preencher_cpf_representante_apos_consultar_cnpj: {e}")
+            return False, f"Não foi possível preencher CPF do representante legal: {e}"
     
     def etapa3_cadastro_cliente(self, cpf: str, cpf_representante: str = None) -> Tuple[bool, str, Optional[Dict]]:
         """
@@ -2042,27 +2092,12 @@ class PAPNioAutomation:
             else:
                 self._set_valor_react(cpf_selector, cpf_limpo)
 
-            # Fluxo CNPJ: selecionar "Dados do representante legal" e preencher CPF do representante
+            # CNPJ: o CPF do representante só pode ser preenchido DEPOIS de Buscar/Consultar
+            # (o portal mostra os botões "Dados da empresa" e "Dados do representante legal").
             if len(cpf_limpo) == 14:
-                cpf_rep_limpo = re.sub(r'\D', '', str(cpf_representante or ''))
-                if len(cpf_rep_limpo) != 11:
+                cpf_rep_chk = re.sub(r'\D', '', str(cpf_representante or ''))
+                if len(cpf_rep_chk) != 11:
                     return False, "Para CNPJ, informe um CPF válido do representante legal.", None
-                try:
-                    btn_rep = self.page.query_selector('button:has-text("Dados do representante legal")')
-                    if not btn_rep:
-                        btn_rep = self.page.query_selector('button.sc-eklfrZ.jZwwQY')
-                    if btn_rep and btn_rep.is_visible():
-                        btn_rep.click()
-                    self.page.wait_for_selector('input[name="cpfRepresentante"]', state="visible", timeout=10000)
-                    inp_rep = self.page.query_selector('input[name="cpfRepresentante"]')
-                    if inp_rep:
-                        inp_rep.click()
-                        inp_rep.fill(cpf_rep_limpo)
-                        self.page.keyboard.press("Tab")
-                    else:
-                        self._set_valor_react('input[name="cpfRepresentante"]', cpf_rep_limpo)
-                except Exception as e_rep:
-                    return False, f"Não foi possível preencher CPF do representante legal: {e_rep}", None
             
             # Dar tempo para o site validar o documento (evita clicar em Buscar com botão desabilitado)
             self.page.wait_for_timeout(600 if self.optimize_for_credit else 1500)
@@ -2077,8 +2112,10 @@ class PAPNioAutomation:
             if "documento inválido" in pagina_texto or "documento invalido" in pagina_texto:
                 return False, "Documento inválido.", None
             
-            # Clicar em Buscar somente se estiver habilitado (evita ElementHandle.click timeout)
+            # Clicar em Buscar ou Consultar somente se estiver habilitado
             btn_buscar = self.page.query_selector('button:has-text("Buscar"):not([disabled])')
+            if not btn_buscar:
+                btn_buscar = self.page.query_selector('button:has-text("Consultar"):not([disabled])')
             if not btn_buscar:
                 # Botão desabilitado = validação falhou no site; verificar de novo a mensagem
                 self.page.wait_for_timeout(300 if self.optimize_for_credit else 800)
@@ -2087,6 +2124,14 @@ class PAPNioAutomation:
                     return False, "Documento inválido.", None
                 return False, "Documento inválido ou CPF não encontrado. Verifique o número digitado.", None
             btn_buscar.click()
+
+            # CNPJ: após consultar, abrir "Dados do representante legal" e preencher o CPF
+            if len(cpf_limpo) == 14:
+                cpf_rep_limpo = re.sub(r'\D', '', str(cpf_representante or ''))
+                ok_rep, msg_rep = self._preencher_cpf_representante_apos_consultar_cnpj(cpf_rep_limpo)
+                if not ok_rep:
+                    return False, msg_rep, None
+
             try:
                 self.page.wait_for_selector('button:has-text("Avançar"):not([disabled]), input[disabled][value], h2:has-text("OPS, OCORREU UM ERRO")', state="visible", timeout=15000)
             except Exception:
