@@ -335,6 +335,31 @@
         // =========================================================================
         // FUNÇÃO FETCH PADRONIZADA (SUBSTITUI API CLIENT EXTERNO)
         // =========================================================================
+        function extrairMensagemErroApi(errorText, statusText = 'Erro na requisição') {
+            if (!errorText) return statusText;
+            try {
+                const parsed = JSON.parse(errorText);
+                if (typeof parsed === 'string') return parsed;
+                if (parsed.detail) return parsed.detail;
+                if (parsed.error) return parsed.error;
+                const primeiroCampo = Object.keys(parsed || {})[0];
+                const valorCampo = parsed?.[primeiroCampo];
+                if (Array.isArray(valorCampo) && valorCampo.length) return `${primeiroCampo}: ${valorCampo[0]}`;
+                if (typeof valorCampo === 'string' && valorCampo.trim()) return `${primeiroCampo}: ${valorCampo}`;
+            } catch (_) {
+                return errorText;
+            }
+            return statusText;
+        }
+
+        function mensagemErroAmigavel(err, fallback = 'Não foi possível concluir a ação.') {
+            const msg = (err && err.message) ? String(err.message) : String(err || '');
+            if (!msg) return fallback;
+            if (msg.includes('cliente_cpf_cnpj')) return 'CPF/CNPJ já cadastrado para outro cliente. Verifique o documento informado.';
+            if (msg.toLowerCase().includes('ordem_servico')) return 'O.S inválida. Use 8 dígitos ou X-12DÍGITOS.';
+            return msg;
+        }
+
         async function apiFetch(endpoint, options = {}) {
             const token = localStorage.getItem('accessToken');
             const headers = {
@@ -348,7 +373,7 @@
                 if (response.status === 401) { logout(); return null; }
                 if (!response.ok) {
                     const errorText = await response.text();
-                    throw new Error(errorText || response.statusText);
+                    throw new Error(extrairMensagemErroApi(errorText, response.statusText));
                 }
                 if (response.status === 204) return null;
                 return await response.json();
@@ -914,7 +939,7 @@
         function enviarFinalizacao(st, obs, dados, fechaRep=false, abreZap=false) {
             return apiFetch(`${API_BASE}/${vendaEmAuditoria.id}/finalizar_auditoria/`, { method: 'POST', body: JSON.stringify({ status: st, observacoes: obs, dados_atualizados: dados }) })
             .then(() => { alert('Salvo!'); if(fechaRep) modalReprovacao.hide(); modalAgendamento.hide(); modalAuditoria.hide(); if(abreZap) gerarAprovacaoMsg(dados); else carregarVendasPendentes(); })
-            .catch(e => { console.error(e); alert('Erro ao finalizar.'); })
+            .catch(e => { console.error(e); alert(mensagemErroAmigavel(e, 'Erro ao finalizar.')); })
             .finally(() => { if(!abreZap) $('#loadingOverlay').hide(); });
         }
 

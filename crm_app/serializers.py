@@ -490,9 +490,25 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
             cliente_instance.nome_razao_social = novo_nome.upper()
             mudou_cliente = True
         
-        if novo_cpf and novo_cpf.strip() and novo_cpf != cliente_instance.cpf_cnpj:
-            cliente_instance.cpf_cnpj = novo_cpf
-            mudou_cliente = True
+        if novo_cpf and novo_cpf.strip():
+            novo_cpf_limpo = re.sub(r'\D', '', str(novo_cpf))
+            cpf_atual_limpo = re.sub(r'\D', '', str(cliente_instance.cpf_cnpj or ''))
+
+            if novo_cpf_limpo and novo_cpf_limpo != cpf_atual_limpo:
+                cliente_duplicado = (
+                    Cliente.objects
+                    .filter(cpf_cnpj__in=[str(novo_cpf), novo_cpf_limpo])
+                    .exclude(pk=cliente_instance.pk)
+                    .first()
+                )
+                if cliente_duplicado:
+                    raise serializers.ValidationError({
+                        'cliente_cpf_cnpj': 'Este CPF/CNPJ já está cadastrado em outro cliente.'
+                    })
+
+                # Salva sempre em formato normalizado para reduzir conflitos de máscara.
+                cliente_instance.cpf_cnpj = novo_cpf_limpo
+                mudou_cliente = True
             
         if novo_email is not None and novo_email != cliente_instance.email:
             cliente_instance.email = novo_email

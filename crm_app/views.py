@@ -1689,7 +1689,30 @@ class VendaViewSet(viewsets.ModelViewSet):
             # -------------------------------
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        self.perform_update(serializer)
+        try:
+            self.perform_update(serializer)
+        except Exception as e:
+            erro_texto = str(e).lower()
+            if hasattr(e, 'detail'):
+                return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
+
+            if isinstance(e, IntegrityError):
+                if 'cliente_cpf_cnpj_key' in erro_texto or ('cpf_cnpj' in erro_texto and ('duplicate' in erro_texto or 'unique' in erro_texto)):
+                    return Response(
+                        {"cliente_cpf_cnpj": ["Este CPF/CNPJ já está cadastrado em outro cliente."]},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                logger.error(f"Erro de integridade ao salvar venda #{instance.id}: {e}", exc_info=True)
+                return Response(
+                    {"detail": "Não foi possível salvar por conflito de dados. Revise os campos e tente novamente."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            logger.error(f"Erro inesperado ao salvar venda #{instance.id}: {e}", exc_info=True)
+            return Response(
+                {"detail": "Não foi possível salvar a venda. Tente novamente em instantes."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
         if getattr(instance, '_prefetched_objects_cache', None):
             instance._prefetched_objects_cache = {}
