@@ -437,15 +437,39 @@ class AuditoriaLigacaoWebhookView(APIView):
         z_secret = (getattr(settings, "ZENVIA_VOICE_WEBHOOK_SECRET", "") or "").strip()
         s_secret = (getattr(settings, "SONAX_WEBHOOK_SECRET", "") or "").strip()
         configured = [s for s in (z_secret, s_secret) if s]
-        received = (request.headers.get("X-Webhook-Secret") or request.query_params.get("secret") or "").strip()
+
+        # O Sonax pode enviar `secret` tanto na querystring quanto no body (depende do tipo de integração).
+        received = ""
+        received_src = ""
+        q_secret = request.query_params.get("secret") if hasattr(request, "query_params") else None
+        h_secret = request.headers.get("X-Webhook-Secret") if hasattr(request, "headers") else None
+        if h_secret:
+            received = str(h_secret).strip()
+            received_src = "header"
+        elif q_secret:
+            received = str(q_secret).strip()
+            received_src = "query"
+        else:
+            # Tenta body (form/json). Pode falhar por Content-Type inesperado; por isso try/except.
+            try:
+                body = getattr(request, "data", None)
+            except Exception:
+                body = None
+            if isinstance(body, dict):
+                for k in ("secret", "Secret", "WEBHOOK_SECRET", "webhook_secret"):
+                    if k in body and body[k] not in (None, ""):
+                        received = str(body.get(k)).strip()
+                        received_src = "body"
+                        break
+
         if configured:
             if received not in configured:
                 # Importante: não registrar o secret em claro
                 logger.warning(
-                    "Webhook auditoria recusado (secret mismatch). method=%s path=%s received=%s configured_count=%s payload_keys=%s",
+                    "Webhook auditoria recusado (secret mismatch). method=%s path=%s received_src=%s configured_count=%s payload_keys=%s",
                     request.method,
                     getattr(request, "path", ""),
-                    ("***" if received else ""),
+                    received_src,
                     len(configured),
                     list(request.query_params.keys())[:20],
                 )
