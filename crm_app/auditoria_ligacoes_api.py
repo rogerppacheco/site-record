@@ -440,15 +440,47 @@ class AuditoriaLigacaoWebhookView(APIView):
         received = (request.headers.get("X-Webhook-Secret") or request.query_params.get("secret") or "").strip()
         if configured:
             if received not in configured:
+                # Importante: não registrar o secret em claro
+                logger.warning(
+                    "Webhook auditoria recusado (secret mismatch). method=%s path=%s received=%s configured_count=%s payload_keys=%s",
+                    request.method,
+                    getattr(request, "path", ""),
+                    ("***" if received else ""),
+                    len(configured),
+                    list(request.query_params.keys())[:20],
+                )
                 return Response({"detail": "Webhook não autorizado."}, status=status.HTTP_401_UNAUTHORIZED)
 
         payload = _merge_webhook_payload(request)
         call_id = _webhook_call_id(payload)
+        logger.info(
+            "Webhook auditoria recebido. method=%s provider_guess=%s call_id=%s payload_keys=%s duracao=%s status_chamada=%s status_atendimento=%s recording_url_set=%s",
+            request.method,
+            ligacao.provedor if (False) else "unknown",
+            call_id,
+            list(payload.keys())[:25],
+            (_webhook_duracao(payload) if payload else 0),
+            _webhook_status_raw(payload)[:60] if payload else "",
+            _webhook_status_atendimento(payload)[:60] if payload else "",
+            bool(_webhook_recording_url(payload)),
+        )
         if not call_id:
+            logger.warning(
+                "Webhook auditoria sem call_id/id_chamada. method=%s path=%s payload=%s",
+                request.method,
+                getattr(request, "path", ""),
+                {k: payload.get(k) for k in list(payload.keys())[:20]},
+            )
             return Response({"detail": "call_id / id_chamada não encontrado no webhook."}, status=status.HTTP_400_BAD_REQUEST)
 
         ligacao = AuditoriaLigacao.objects.filter(provider_call_id=str(call_id)).order_by("-id").first()
         if not ligacao:
+            logger.warning(
+                "Webhook auditoria call_id não encontrado no banco. call_id=%s method=%s path=%s",
+                call_id,
+                request.method,
+                getattr(request, "path", ""),
+            )
             return Response({"detail": "Ligação não encontrada."}, status=status.HTTP_404_NOT_FOUND)
 
         status_provedor = _webhook_status_raw(payload)
@@ -500,6 +532,17 @@ class AuditoriaLigacaoWebhookView(APIView):
                 "link_gravacao_provedor",
                 "atualizado_em",
             ])
+
+        logger.info(
+            "Webhook auditoria processado. call_id=%s ligacao_id=%s provedor=%s status_provedor=%s status_atendimento=%s duracao=%s recording_url=%s",
+            call_id,
+            ligacao.id,
+            ligacao.provedor,
+            status_provedor,
+            status_atendimento,
+            duracao,
+            ("set" if ligacao.link_gravacao_provedor else "none"),
+        )
 
         if ligacao.link_gravacao_provedor:
             try:
