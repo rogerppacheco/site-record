@@ -196,6 +196,38 @@ class SonaxVoiceService:
             return body, ".mp3"
         return body, ".wav"
 
+    def fetch_call_status(self, id_chamada: str) -> Dict[str, Any]:
+        """
+        Consulta status da chamada via acao=status_chamada.
+
+        Documentação Sonax indica retorno em formato texto com colunas separadas por "|":
+        status da ligação | id do ramal | id da fila | data inicio | data final | status atendido |
+        duração da chamada | número do ramal | numero discado
+        """
+        if not self.is_recording_download_configured:
+            raise ValueError(
+                "Status de chamada Sonax: defina SONAX_ID_CLIENTE e SONAX_INTEGRATION_TOKEN "
+                "(ou o mesmo valor em SONAX_CLICK2CALL_TOKEN)."
+            )
+
+        params = {
+            **self._dbdial_params(),
+            "acao": "status_chamada",
+            "id_chamada": str(id_chamada).strip(),
+        }
+        response = requests.get(self.dbdial_base, params=params, timeout=self.timeout_seconds)
+        text = (response.text or "").strip()
+        if response.status_code >= 400:
+            raise RuntimeError(f"Sonax status_chamada HTTP {response.status_code}: {text[:500]}")
+        if not text:
+            raise RuntimeError("Sonax status_chamada retornou vazio.")
+        if text.lower().startswith("404") or "404 not found" in text.lower():
+            raise RuntimeError(f"Sonax status_chamada recusou/sem dados: {text[:500]}")
+
+        parsed = _parse_sonax_status_chamada(text)
+        parsed["_raw"] = text[:2000]
+        return parsed
+
 
 def unpack_recording_zip(data: bytes) -> Tuple[bytes, str]:
     with zipfile.ZipFile(io.BytesIO(data)) as zf:
@@ -209,3 +241,44 @@ def unpack_recording_zip(data: bytes) -> Tuple[bytes, str]:
         if names:
             return zf.read(names[0]), ".wav"
     raise RuntimeError("ZIP de gravação Sonax sem arquivos.")
+
+
+def _parse_sonax_status_chamada(text: str) -> Dict[str, Any]:
+    """
+    Parser resiliente para resposta do Sonax status_chamada.
+    Retorna chaves normalizadas; valores podem ser None quando ausentes.
+    """
+    raw = (text or "").strip()
+    parts = [p.strip() for p in raw.split("|")]
+    # Completar até 9 colunas esperadas
+    while len(parts) < 9:
+        parts.append("")
+
+    status_chamada = parts[0] or ""
+    id_ramal = parts[1] or ""
+    id_fila = parts[2] or ""
+    data_inicio = parts[3] or ""
+    data_fim = parts[4] or ""
+    status_atendido = parts[5] or ""
+    duracao = parts[6] or ""
+    numero_ramal = parts[7] or ""
+    numero_discado = parts[8] or ""
+
+    # duração pode vir vazia / "0" / float
+    duracao_int: Optional[int]
+    try:
+        duracao_int = int(float(duracao)) if str(duracao).strip() != "" else None
+    except (TypeError, ValueError):
+        duracao_int = None
+
+    return {
+        "status_chamada": status_chamada,
+        "status_atendimento": status_atendido,
+        "duracao_segundos": duracao_int,
+        "data_inicio": data_inicio,
+        "data_fim": data_fim,
+        "id_ramal": id_ramal,
+        "id_fila": id_fila,
+        "numero_ramal": numero_ramal,
+        "numero_discado": numero_discado,
+    }

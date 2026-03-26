@@ -3,7 +3,7 @@ from datetime import timedelta
 from django.utils import timezone
 from django.db.models import Count, Q
 from django.contrib.auth import get_user_model
-from .models import Venda, AgendamentoDisparo, LogEnvioPerformance
+from .models import Venda, AgendamentoDisparo, LogEnvioPerformance, AuditoriaLigacao
 from .whatsapp_service import WhatsAppService
 
 logger = logging.getLogger(__name__)
@@ -278,3 +278,116 @@ def processar_envio_performance():
                     )
                 except Exception:
                     pass
+
+
+def processar_fallback_auditoria_ligacoes_sonax(*, limite: int = 15, grace_seconds: int = 90) -> None:
+    """
+    Fallback para quando a Sonax não dispara o webhook de desligamento.
+    - Varre ligações Sonax INICIADA/PROCESSANDO com `provider_call_id` numérico.
+    - Consulta acao=status_chamada.
+    - Se finalizada, persiste status/duração/datas e tenta baixar gravação via pega_gravacao + OneDrive.
+    """
+    try:
+        from crm_app.sonax_voice_service import SonaxVoiceService
+        from crm_app.auditoria_ligacoes_api import (
+            _finalizada_por_status,
+            _parse_provider_datetime,
+            _upload_bytes_to_onedrive,
+        )
+    except Exception:
+        logger.exception("Falha ao importar dependências do fallback Sonax (auditoria).")
+        return
+
+    now = timezone.now()
+    cutoff = now - timedelta(seconds=max(10, int(grace_seconds)))
+
+    rows = (
+        AuditoriaLigacao.objects.filter(
+            provedor="SONAX",
+            status__in=["INICIADA", "PROCESSANDO"],
+            criado_em__lte=cutoff,
+        )
+        .exclude(provider_call_id__isnull=True)
+        .order_by("criado_em")[: max(1, int(limite))]
+    )
+    if not rows:
+        return
+
+    svc = SonaxVoiceService()
+    if not svc.is_recording_download_configured:
+        logger.warning("Fallback Sonax auditoria: status/gravacao não configurados (SONAX_ID_CLIENTE/token).")
+        return
+
+    for ligacao in rows:
+        cid = str(ligacao.provider_call_id or "").strip()
+        if not cid.isdigit():
+            continue
+
+        try:
+            st = svc.fetch_call_status(cid)
+        except Exception as exc:
+            logger.warning(
+                "Fallback Sonax auditoria: status_chamada falhou. ligacao_id=%s call_id=%s err=%s",
+                ligacao.id,
+                cid,
+                exc,
+            )
+            continue
+
+        status_chamada = (st.get("status_chamada") or "").strip()
+        status_atendimento = (st.get("status_atendimento") or "").strip()
+        dur = st.get("duracao_segundos")
+        data_ini = _parse_provider_datetime(st.get("data_inicio"))
+        data_fim = _parse_provider_datetime(st.get("data_fim"))
+
+        finalizada = _finalizada_por_status("SONAX", status_chamada)
+        if str(status_atendimento).upper() == "S":
+            finalizada = True
+
+        update_fields = []
+        if status_chamada:
+            ligacao.status_chamada_provedor = status_chamada
+            update_fields.append("status_chamada_provedor")
+        if status_atendimento:
+            ligacao.status_atendimento = str(status_atendimento).upper()
+            update_fields.append("status_atendimento")
+        if dur not in (None, ""):
+            try:
+                ligacao.duracao_segundos = int(dur)
+                update_fields.append("duracao_segundos")
+            except (TypeError, ValueError):
+                pass
+        if data_ini:
+            ligacao.data_inicio_chamada = data_ini
+            update_fields.append("data_inicio_chamada")
+        if data_fim:
+            ligacao.data_fim_chamada = data_fim
+            update_fields.append("data_fim_chamada")
+
+        if finalizada:
+            ligacao.status = "FINALIZADA"
+            ligacao.finalizado_em = timezone.now()
+            update_fields.extend(["status", "finalizado_em"])
+        else:
+            ligacao.status = "PROCESSANDO"
+            update_fields.append("status")
+
+        if update_fields:
+            ligacao.save(update_fields=list(dict.fromkeys(update_fields + ["atualizado_em"])))
+
+        if finalizada and not ligacao.link_gravacao_onedrive:
+            try:
+                content, ext = svc.download_recording(cid)
+                _upload_bytes_to_onedrive(ligacao, content, ext)
+                logger.info(
+                    "Fallback Sonax auditoria: gravação arquivada. ligacao_id=%s call_id=%s",
+                    ligacao.id,
+                    cid,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Fallback Sonax auditoria: falha ao arquivar gravação. ligacao_id=%s call_id=%s err=%s",
+                    ligacao.id,
+                    cid,
+                    exc,
+                )

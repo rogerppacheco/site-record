@@ -1,6 +1,6 @@
 from django.test import SimpleTestCase, override_settings
 
-from crm_app.sonax_voice_service import SonaxVoiceService
+from crm_app.sonax_voice_service import SonaxVoiceService, _parse_sonax_status_chamada
 from crm_app.auditoria_ligacoes_api import (
     _finalizada_por_status,
     _merge_webhook_payload,
@@ -34,6 +34,16 @@ class SonaxVoiceServiceParseTest(SimpleTestCase):
             svc._extract_protocol_from_text('""19101782792""'),
             "19101782792",
         )
+
+    def test_parse_status_chamada_pipe_separated(self):
+        parsed = _parse_sonax_status_chamada(
+            "desligada|123|456|2026-03-26 18:00:00|2026-03-26 18:00:12|S|12|101|5531988804000"
+        )
+        self.assertEqual(parsed["status_chamada"], "desligada")
+        self.assertEqual(parsed["status_atendimento"], "S")
+        self.assertEqual(parsed["duracao_segundos"], 12)
+        self.assertEqual(parsed["numero_ramal"], "101")
+        self.assertEqual(parsed["numero_discado"], "5531988804000")
 
     def test_parse_json_response_body(self):
         svc = SonaxVoiceService()

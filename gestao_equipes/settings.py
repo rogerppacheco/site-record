@@ -283,6 +283,14 @@ SONAX_RAMAIS = config('SONAX_RAMAIS', default='101,102,103')
 SONAX_TIMEOUT_SECONDS = config('SONAX_TIMEOUT_SECONDS', default=30, cast=int)
 SONAX_WEBHOOK_SECRET = config('SONAX_WEBHOOK_SECRET', default='')
 
+# --- Fallback Sonax (quando webhook de desligamento não chegar) ---
+# Intervalo (minutos) para varrer chamadas pendentes e consultar status/baixar gravação.
+SONAX_AUDITORIA_FALLBACK_INTERVAL_MINUTES = config('SONAX_AUDITORIA_FALLBACK_INTERVAL_MINUTES', default=2, cast=int)
+# Quantidade máxima de ligações por execução (ordem antiga → nova).
+SONAX_AUDITORIA_FALLBACK_LIMIT = config('SONAX_AUDITORIA_FALLBACK_LIMIT', default=15, cast=int)
+# "Janela de graça" após iniciar a chamada antes de começar o polling (segundos).
+SONAX_AUDITORIA_FALLBACK_GRACE_SECONDS = config('SONAX_AUDITORIA_FALLBACK_GRACE_SECONDS', default=90, cast=int)
+
 # --- CONFIGURAÇÕES DE CAPTCHA (reCAPTCHA SOLVER) ---
 # Use CapSolver, 2Captcha ou API customizada para resolver reCAPTCHA v2 na página Nio (PDF fatura)
 CAPTCHA_API_KEY = config('CAPTCHA_API_KEY', default='CAP-4A266E1BA9DC47B87D28FBDE12A129014DB5B7EABC69D961115B3E184D497F85')

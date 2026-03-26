@@ -94,6 +94,27 @@ def start_scheduler():
         replace_existing=True,
         max_instances=1,
     )
+
+    # 4. Fallback Sonax (auditoria de ligações) - a cada 2 min
+    # Quando o webhook de desligamento não chega, consulta status_chamada e baixa gravação via pega_gravacao.
+    def _processar_fallback_sonax_auditoria():
+        try:
+            from crm_app.tasks import processar_fallback_auditoria_ligacoes_sonax
+            processar_fallback_auditoria_ligacoes_sonax(
+                limite=int(getattr(settings, "SONAX_AUDITORIA_FALLBACK_LIMIT", 15)),
+                grace_seconds=int(getattr(settings, "SONAX_AUDITORIA_FALLBACK_GRACE_SECONDS", 90)),
+            )
+        except Exception as e:
+            logger.error(f"❌ Erro no fallback Sonax auditoria: {str(e)}")
+
+    scheduler.add_job(
+        _processar_fallback_sonax_auditoria,
+        trigger=IntervalTrigger(minutes=int(getattr(settings, "SONAX_AUDITORIA_FALLBACK_INTERVAL_MINUTES", 2))),
+        id="processar_fallback_sonax_auditoria",
+        name="Fallback Sonax auditoria (status + gravação)",
+        replace_existing=True,
+        max_instances=1,
+    )
     
     scheduler.start()
     logger.info("[OK] Agendador iniciado com sucesso!")
