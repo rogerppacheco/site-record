@@ -2557,9 +2557,15 @@ class AuditoriaLigacao(models.Model):
 
     provider_call_id = models.CharField(max_length=120, db_index=True)
     provider_recording_id = models.CharField(max_length=120, blank=True, null=True, db_index=True)
+    id_contato = models.CharField(max_length=120, blank=True, null=True, db_index=True)
     numero_origem = models.CharField(max_length=20, blank=True, null=True)
     numero_destino = models.CharField(max_length=20, blank=True, null=True)
+    numero_receptivo = models.CharField(max_length=20, blank=True, null=True)
+    status_chamada_provedor = models.CharField(max_length=80, blank=True, null=True, db_index=True)
+    status_atendimento = models.CharField(max_length=5, blank=True, null=True, db_index=True)
     duracao_segundos = models.PositiveIntegerField(default=0)
+    data_inicio_chamada = models.DateTimeField(blank=True, null=True)
+    data_fim_chamada = models.DateTimeField(blank=True, null=True)
 
     consentimento_declarado = models.BooleanField(default=True)
     consentimento_observacao = models.CharField(max_length=255, blank=True, null=True)

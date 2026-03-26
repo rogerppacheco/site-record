@@ -614,23 +614,72 @@
                         </div>
                     </div>
                     <div id="ligacao-feedback" class="small text-muted mb-2"></div>
-                    <div class="table-responsive">
-                        <table class="table table-sm table-hover align-middle">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Status</th>
-                                    <th>Origem</th>
-                                    <th>Destino</th>
-                                    <th>Duração</th>
-                                    <th>Gravação</th>
-                                    <th>Criada em</th>
-                                </tr>
-                            </thead>
-                            <tbody id="tbody-ligacoes-auditoria">
-                                <tr><td colspan="7" class="text-center text-muted">Sem dados.</td></tr>
-                            </tbody>
-                        </table>
+                    <ul class="nav nav-tabs mb-2" id="tabs-ligacao-auditoria" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-ligacao-venda" type="button" role="tab">
+                                Da venda atual
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-ligacao-historico" type="button" role="tab" onclick="carregarHistoricoLigacoesAuditoria()">
+                                Histórico geral
+                            </button>
+                        </li>
+                    </ul>
+                    <div class="tab-content">
+                        <div class="tab-pane fade show active" id="tab-ligacao-venda" role="tabpanel">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover align-middle">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Status</th>
+                                            <th>Status provedor</th>
+                                            <th>Origem</th>
+                                            <th>Destino</th>
+                                            <th>Duração</th>
+                                            <th>Gravação</th>
+                                            <th>Criada em</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbody-ligacoes-auditoria">
+                                        <tr><td colspan="8" class="text-center text-muted">Sem dados.</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="tab-ligacao-historico" role="tabpanel">
+                            <div class="row g-2 mb-2">
+                                <div class="col-md-8">
+                                    <input type="text" id="historico-ligacao-filtro" class="form-control form-control-sm" placeholder="Filtrar por nome, CPF/CNPJ, telefone ou ID da chamada">
+                                </div>
+                                <div class="col-md-4 d-grid">
+                                    <button class="btn btn-sm btn-outline-primary" type="button" onclick="carregarHistoricoLigacoesAuditoria()">
+                                        Atualizar histórico
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover align-middle">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Cliente</th>
+                                            <th>Status</th>
+                                            <th>Status provedor</th>
+                                            <th>Atendimento</th>
+                                            <th>Origem</th>
+                                            <th>Destino</th>
+                                            <th>Duração</th>
+                                            <th>Gravação</th>
+                                            <th>Data</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbody-historico-ligacoes-auditoria">
+                                        <tr><td colspan="9" class="text-center text-muted">Sem dados.</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -1769,6 +1818,7 @@
             modalLigacoesAuditoria.show();
             await carregarOpcoesLigacaoAuditoria();
             carregarLigacoesAuditoria();
+            carregarHistoricoLigacoesAuditoria();
         }
 
         async function carregarOpcoesLigacaoAuditoria() {
@@ -1847,12 +1897,12 @@
         async function carregarLigacoesAuditoria() {
             if (!vendaEmAuditoria || !vendaEmAuditoria.id) return;
             const tbody = $('#tbody-ligacoes-auditoria');
-            tbody.html('<tr><td colspan="7" class="text-center text-muted">Carregando...</td></tr>');
+            tbody.html('<tr><td colspan="8" class="text-center text-muted">Carregando...</td></tr>');
             try {
                 const resp = await apiFetch(`${API_AUX}/auditoria/ligacoes/${vendaEmAuditoria.id}/`);
                 const rows = Array.isArray(resp) ? resp : (resp.results || []);
                 if (!rows.length) {
-                    tbody.html('<tr><td colspan="7" class="text-center text-muted">Nenhuma ligação registrada para esta venda.</td></tr>');
+                    tbody.html('<tr><td colspan="8" class="text-center text-muted">Nenhuma ligação registrada para esta venda.</td></tr>');
                     return;
                 }
                 tbody.empty();
@@ -1865,6 +1915,7 @@
                         <tr>
                             <td>#${r.id || '-'}</td>
                             <td><span class="badge bg-secondary">${r.status || '-'}</span></td>
+                            <td>${r.status_chamada_provedor || '-'}</td>
                             <td>${r.numero_origem || '-'}</td>
                             <td>${r.numero_destino || '-'}</td>
                             <td>${(r.duracao_segundos || 0)}s</td>
@@ -1874,7 +1925,45 @@
                     `);
                 });
             } catch (e) {
-                tbody.html('<tr><td colspan="7" class="text-center text-danger">Erro ao carregar ligações.</td></tr>');
+                tbody.html('<tr><td colspan="8" class="text-center text-danger">Erro ao carregar ligações.</td></tr>');
+            }
+        }
+
+        async function carregarHistoricoLigacoesAuditoria() {
+            const tbody = $('#tbody-historico-ligacoes-auditoria');
+            const filtro = ($('#historico-ligacao-filtro').val() || '').trim();
+            tbody.html('<tr><td colspan="9" class="text-center text-muted">Carregando...</td></tr>');
+            try {
+                const url = `${API_AUX}/auditoria/ligacoes/historico/?limite=200${filtro ? `&q=${encodeURIComponent(filtro)}` : ''}`;
+                const resp = await apiFetch(url);
+                const rows = Array.isArray(resp) ? resp : (resp.results || []);
+                if (!rows.length) {
+                    tbody.html('<tr><td colspan="9" class="text-center text-muted">Nenhuma ligação encontrada.</td></tr>');
+                    return;
+                }
+                tbody.empty();
+                rows.forEach(r => {
+                    const gravacao = r.link_gravacao_onedrive || r.link_gravacao_provedor;
+                    const botaoOuvir = gravacao
+                        ? `<a href="${gravacao}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary"><i class="bi bi-play-fill"></i> Ouvir</a>`
+                        : '<span class="text-muted small">Sem gravação</span>';
+                    const cliente = `${r.cliente_nome || '-'}<br><small class="text-muted">${r.cliente_cpf_cnpj || ''}</small>`;
+                    tbody.append(`
+                        <tr>
+                            <td>${cliente}</td>
+                            <td><span class="badge bg-secondary">${r.status || '-'}</span></td>
+                            <td>${r.status_chamada_provedor || '-'}</td>
+                            <td>${r.status_atendimento || '-'}</td>
+                            <td>${r.numero_origem || '-'}</td>
+                            <td>${r.numero_destino || '-'}</td>
+                            <td>${(r.duracao_segundos || 0)}s</td>
+                            <td>${botaoOuvir}</td>
+                            <td>${formatarDataHoraLigacao(r.criado_em)}</td>
+                        </tr>
+                    `);
+                });
+            } catch (e) {
+                tbody.html('<tr><td colspan="9" class="text-center text-danger">Erro ao carregar histórico.</td></tr>');
             }
         }
 

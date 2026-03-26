@@ -1,12 +1,15 @@
 import io
 import logging
 import re
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import requests
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Q
 from django.http import HttpRequest
+from django.utils.dateparse import parse_datetime
 from django.utils import timezone
 from rest_framework import permissions, status
 from rest_framework.response import Response
@@ -131,6 +134,32 @@ def _webhook_status_raw(payload: Dict[str, Any]) -> str:
         )
         or ""
     ).strip()
+
+
+def _webhook_status_atendimento(payload: Dict[str, Any]) -> str:
+    return str(
+        _extract_first(
+            payload,
+            ["status_atendimento", "STATUS_ATENDIMENTO", "atendido"],
+            default="",
+        )
+        or ""
+    ).strip()
+
+
+def _parse_provider_datetime(raw: Any) -> Optional[datetime]:
+    if raw in (None, ""):
+        return None
+    text = str(raw).strip()
+    dt = parse_datetime(text.replace(" ", "T"))
+    if dt is None:
+        try:
+            dt = datetime.strptime(text, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            return None
+    if timezone.is_naive(dt):
+        dt = timezone.make_aware(dt, timezone.get_current_timezone())
+    return dt
 
 
 def _finalizada_por_status(provedor: str, status_provedor: str) -> bool:
@@ -321,11 +350,72 @@ class AuditoriaLigacaoListView(APIView):
                 "provedor": r.provedor,
                 "provider_call_id": r.provider_call_id,
                 "provider_recording_id": r.provider_recording_id,
+                "id_contato": r.id_contato,
                 "numero_origem": r.numero_origem,
                 "numero_destino": r.numero_destino,
+                "numero_receptivo": r.numero_receptivo,
+                "status_chamada_provedor": r.status_chamada_provedor,
+                "status_atendimento": r.status_atendimento,
                 "duracao_segundos": r.duracao_segundos,
+                "data_inicio_chamada": r.data_inicio_chamada,
+                "data_fim_chamada": r.data_fim_chamada,
                 "link_gravacao_provedor": r.link_gravacao_provedor,
                 "link_gravacao_onedrive": r.link_gravacao_onedrive,
+                "auditor": r.auditor.username if r.auditor else None,
+                "criado_em": r.criado_em,
+            }
+            for r in rows
+        ]
+        return Response({"results": data})
+
+
+class AuditoriaLigacaoHistoricoView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request: HttpRequest):
+        if not _is_member(request.user, _auditoria_grupos()):
+            return Response({"detail": "Permissão negada."}, status=status.HTTP_403_FORBIDDEN)
+
+        rows = AuditoriaLigacao.objects.select_related("auditor", "venda").all().order_by("-criado_em")
+        q = str(request.GET.get("q", "") or "").strip()
+        if q:
+            rows = rows.filter(
+                Q(numero_destino__icontains=q)
+                | Q(numero_origem__icontains=q)
+                | Q(provider_call_id__icontains=q)
+                | Q(venda__cliente_nome_razao_social__icontains=q)
+                | Q(venda__cliente_cpf_cnpj__icontains=q)
+            )
+
+        status_q = str(request.GET.get("status", "") or "").strip()
+        if status_q:
+            rows = rows.filter(status=status_q)
+
+        auditor_q = str(request.GET.get("auditor", "") or "").strip()
+        if auditor_q:
+            rows = rows.filter(auditor__username__icontains=auditor_q)
+
+        limit = int(request.GET.get("limite", 120))
+        rows = rows[: max(10, min(limit, 300))]
+        data = [
+            {
+                "id": r.id,
+                "venda_id": r.venda_id,
+                "cliente_nome": getattr(r.venda, "cliente_nome_razao_social", None),
+                "cliente_cpf_cnpj": getattr(r.venda, "cliente_cpf_cnpj", None),
+                "status": r.status,
+                "provedor": r.provedor,
+                "provider_call_id": r.provider_call_id,
+                "numero_origem": r.numero_origem,
+                "numero_destino": r.numero_destino,
+                "numero_receptivo": r.numero_receptivo,
+                "status_chamada_provedor": r.status_chamada_provedor,
+                "status_atendimento": r.status_atendimento,
+                "duracao_segundos": r.duracao_segundos,
+                "data_inicio_chamada": r.data_inicio_chamada,
+                "data_fim_chamada": r.data_fim_chamada,
+                "link_gravacao_onedrive": r.link_gravacao_onedrive,
+                "link_gravacao_provedor": r.link_gravacao_provedor,
                 "auditor": r.auditor.username if r.auditor else None,
                 "criado_em": r.criado_em,
             }
@@ -362,11 +452,22 @@ class AuditoriaLigacaoWebhookView(APIView):
             return Response({"detail": "Ligação não encontrada."}, status=status.HTTP_404_NOT_FOUND)
 
         status_provedor = _webhook_status_raw(payload)
+        status_atendimento = _webhook_status_atendimento(payload).upper()
         finalizada = _finalizada_por_status(ligacao.provedor, status_provedor)
+        if status_atendimento == "S":
+            finalizada = True
         if not status_provedor and _webhook_recording_url(payload):
             finalizada = True
         duracao = _webhook_duracao(payload)
         recording_url = _webhook_recording_url(payload)
+        data_inicio = _parse_provider_datetime(
+            _extract_first(payload, ["data_inicio", "DATA_INICIO", "start_time"], default=None)
+        )
+        data_fim = _parse_provider_datetime(
+            _extract_first(payload, ["data_fim", "DATA_FIM", "end_time"], default=None)
+        )
+        id_contato = _extract_first(payload, ["id_contato", "ID_CONTATO", "id_contato2", "ID_CONTATO2"], default=None)
+        numero_receptivo = _extract_first(payload, ["numero_rec", "NUMERO_REC"], default=None)
 
         status_interno = "FINALIZADA" if finalizada else "PROCESSANDO"
 
@@ -375,6 +476,14 @@ class AuditoriaLigacaoWebhookView(APIView):
             ligacao.status = status_interno
             ligacao.finalizado_em = timezone.now()
             ligacao.duracao_segundos = duracao
+            ligacao.status_chamada_provedor = status_provedor or None
+            ligacao.status_atendimento = status_atendimento or None
+            ligacao.data_inicio_chamada = data_inicio
+            ligacao.data_fim_chamada = data_fim
+            ligacao.id_contato = str(id_contato).strip() if id_contato not in (None, "") else ligacao.id_contato
+            ligacao.numero_receptivo = (
+                str(numero_receptivo).strip() if numero_receptivo not in (None, "") else ligacao.numero_receptivo
+            )
             if recording_url:
                 ligacao.link_gravacao_provedor = recording_url
             ligacao.save(update_fields=[
@@ -382,6 +491,12 @@ class AuditoriaLigacaoWebhookView(APIView):
                 "status",
                 "finalizado_em",
                 "duracao_segundos",
+                "status_chamada_provedor",
+                "status_atendimento",
+                "data_inicio_chamada",
+                "data_fim_chamada",
+                "id_contato",
+                "numero_receptivo",
                 "link_gravacao_provedor",
                 "atualizado_em",
             ])
@@ -401,8 +516,19 @@ class AuditoriaLigacaoWebhookView(APIView):
 
 
 def _upload_bytes_to_onedrive(ligacao: AuditoriaLigacao, data: bytes, extension: str) -> None:
-    filename = f"venda_{ligacao.venda_id}_ligacao_{ligacao.id}{extension}"
-    folder_name = f"{getattr(settings, 'AUDITORIA_ONEDRIVE_FOLDER', 'Auditoria_Ligacoes')}/{timezone.localdate().isoformat()}"
+    venda = ligacao.venda
+    nome_cliente = str(getattr(venda, "cliente_nome_razao_social", "") or "").strip()
+    cpf_cnpj = re.sub(r"\D", "", str(getattr(venda, "cliente_cpf_cnpj", "") or ""))
+    cliente_token = re.sub(r"[^A-Za-z0-9_-]+", "_", (nome_cliente or "CLIENTE").upper()).strip("_")[:40]
+    if not cliente_token:
+        cliente_token = f"CLIENTE_{ligacao.venda_id}"
+    cliente_folder = f"{cliente_token}_{cpf_cnpj}" if cpf_cnpj else f"{cliente_token}_VENDA_{ligacao.venda_id}"
+    call_stamp = (ligacao.data_inicio_chamada or ligacao.criado_em or timezone.now()).strftime("%Y%m%d_%H%M%S")
+    filename = f"{call_stamp}_tentativa_{ligacao.id}_{ligacao.provider_call_id}{extension}"
+    folder_name = (
+        f"{getattr(settings, 'AUDITORIA_ONEDRIVE_FOLDER', 'Auditoria_Ligacoes')}/"
+        f"{cliente_folder}/{timezone.localdate().isoformat()}"
+    )
     file_obj = io.BytesIO(data)
     file_obj.seek(0)
     uploader = OneDriveUploader()
