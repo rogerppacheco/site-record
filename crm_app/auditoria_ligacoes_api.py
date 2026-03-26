@@ -200,6 +200,12 @@ class AuditoriaLigacaoStartView(APIView):
                 "ligacao_id": ligacao.id,
                 "provider_call_id": ligacao.provider_call_id,
                 "provedor": ligacao.provedor,
+                "warning": (
+                    "Provedor não retornou ID da chamada (sem_id). "
+                    "Verifique token/IP liberado/ramal e logs do backend."
+                    if str(ligacao.provider_call_id).startswith("sem_id_")
+                    else None
+                ),
                 "provider_response": provider_resp,
             },
             status=status.HTTP_201_CREATED,
@@ -226,6 +232,16 @@ class AuditoriaLigacaoStartView(APIView):
         call_id = provider_resp.get("id_chamada")
         if not call_id:
             call_id = f"sem_id_{timezone.now().timestamp()}"
+            logger.warning(
+                "Auditoria Sonax sem id_chamada. venda_id=%s usuario=%s ramal=%s destino=%s debug=%s parsed=%s raw=%s",
+                venda.id,
+                getattr(request.user, "username", None),
+                ramal,
+                destination,
+                provider_resp.get("debug"),
+                provider_resp.get("parsed"),
+                (provider_resp.get("raw_text") or "")[:500],
+            )
 
         ligacao = AuditoriaLigacao.objects.create(
             venda=venda,

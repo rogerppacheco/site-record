@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import re
 import zipfile
 from typing import Any, Dict, Optional, Tuple
@@ -16,6 +17,7 @@ import requests
 from django.conf import settings
 
 PROTOCOLO_RE = re.compile(r"PROTOCOLO\s*(\d+)", re.IGNORECASE)
+logger = logging.getLogger(__name__)
 
 
 class SonaxVoiceService:
@@ -51,6 +53,13 @@ class SonaxVoiceService:
     def _dbdial_params(self) -> Dict[str, str]:
         return {"id_cliente": self.client_id, "token": self.integration_token}
 
+    @staticmethod
+    def _mask_secret(value: str) -> str:
+        value = str(value or "")
+        if len(value) <= 6:
+            return "***"
+        return f"{value[:3]}***{value[-3:]}"
+
     def click_to_call(
         self,
         *,
@@ -82,6 +91,15 @@ class SonaxVoiceService:
 
         response = requests.get(url, params=params, timeout=self.timeout_seconds)
         snippet = response.text[:800] if response.text else ""
+        debug = {
+            "request_url": url,
+            "status_code": response.status_code,
+            "content_type": response.headers.get("content-type", ""),
+            "numero": destination_digits,
+            "ramal": str(ramal).strip(),
+            "token_mask": self._mask_secret(self.token),
+            "response_snippet": snippet,
+        }
         if response.status_code >= 400:
             raise RuntimeError(f"Sonax click2call HTTP {response.status_code}: {snippet}")
         if "404 not found" in (response.text or "").lower():
@@ -91,9 +109,11 @@ class SonaxVoiceService:
         call_id = parsed.get("id_chamada") or parsed.get("protocolo") or parsed.get("id")
         if call_id is None:
             call_id = self._extract_protocol_from_text(response.text or "")
-        out: Dict[str, Any] = {"raw_text": response.text, "parsed": parsed}
+        out: Dict[str, Any] = {"raw_text": response.text, "parsed": parsed, "debug": debug}
         if call_id is not None:
             out["id_chamada"] = str(call_id).strip()
+        else:
+            logger.warning("Sonax click2call sem id_chamada/protocolo. Debug=%s", debug)
         return out
 
     @staticmethod
@@ -154,7 +174,7 @@ class SonaxVoiceService:
 
         if "mpeg" in ct or "mp3" in ct:
             return body, ".mp3"
-            return body, ".wav"
+        return body, ".wav"
 
 
 def unpack_recording_zip(data: bytes) -> Tuple[bytes, str]:
