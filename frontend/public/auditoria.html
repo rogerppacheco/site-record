@@ -114,6 +114,8 @@
                         <label class="btn btn-outline-primary" for="aba-lista"><i class="bi bi-list-ul me-1"></i> Lista</label>
                         <input type="radio" class="btn-check" name="aba-principal" id="aba-resumo" value="resumo">
                         <label class="btn btn-outline-primary" for="aba-resumo"><i class="bi bi-bar-chart me-1"></i> Resumo</label>
+                        <input type="radio" class="btn-check" name="aba-principal" id="aba-historico-ligacoes" value="historico_ligacoes">
+                        <label class="btn btn-outline-primary" for="aba-historico-ligacoes"><i class="bi bi-telephone me-1"></i> Histórico ligações</label>
                     </div>
                     <button class="btn btn-outline-primary fw-bold shadow-sm" id="btn-atualizar-lista" onclick="carregarVendasPendentes()">
                         <i class="bi bi-arrow-clockwise"></i> Atualizar Lista
@@ -256,6 +258,44 @@
                                     </table>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="painel-historico-ligacoes" style="display: none;">
+                <div class="card border shadow-sm mb-3">
+                    <div class="card-body">
+                        <div class="row g-2 mb-2 align-items-end">
+                            <div class="col-md-8">
+                                <label class="form-label small fw-bold text-muted mb-1">Filtrar histórico (cliente, CPF/CNPJ, telefone, ID chamada)</label>
+                                <input type="text" id="painel-historico-ligacao-filtro" class="form-control form-control-sm" placeholder="Ex.: nome, CPF, telefone ou protocolo">
+                            </div>
+                            <div class="col-md-4 d-grid">
+                                <button class="btn btn-sm btn-outline-primary" type="button" onclick="carregarHistoricoLigacoesPainel()">
+                                    <i class="bi bi-arrow-clockwise"></i> Atualizar histórico
+                                </button>
+                            </div>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Cliente</th>
+                                        <th>Status</th>
+                                        <th>Status provedor</th>
+                                        <th>Atendimento</th>
+                                        <th>Origem</th>
+                                        <th>Destino</th>
+                                        <th>Duração</th>
+                                        <th>Gravação</th>
+                                        <th>Data</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbody-historico-ligacoes-painel">
+                                    <tr><td colspan="9" class="text-center text-muted">Sem dados.</td></tr>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
@@ -620,11 +660,6 @@
                                 Da venda atual
                             </button>
                         </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-ligacao-historico" type="button" role="tab" onclick="carregarHistoricoLigacoesAuditoria()">
-                                Histórico geral
-                            </button>
-                        </li>
                     </ul>
                     <div class="tab-content">
                         <div class="tab-pane fade show active" id="tab-ligacao-venda" role="tabpanel">
@@ -644,38 +679,6 @@
                                     </thead>
                                     <tbody id="tbody-ligacoes-auditoria">
                                         <tr><td colspan="8" class="text-center text-muted">Sem dados.</td></tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                        <div class="tab-pane fade" id="tab-ligacao-historico" role="tabpanel">
-                            <div class="row g-2 mb-2">
-                                <div class="col-md-8">
-                                    <input type="text" id="historico-ligacao-filtro" class="form-control form-control-sm" placeholder="Filtrar por nome, CPF/CNPJ, telefone ou ID da chamada">
-                                </div>
-                                <div class="col-md-4 d-grid">
-                                    <button class="btn btn-sm btn-outline-primary" type="button" onclick="carregarHistoricoLigacoesAuditoria()">
-                                        Atualizar histórico
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="table-responsive">
-                                <table class="table table-sm table-hover align-middle">
-                                    <thead class="table-light">
-                                        <tr>
-                                            <th>Cliente</th>
-                                            <th>Status</th>
-                                            <th>Status provedor</th>
-                                            <th>Atendimento</th>
-                                            <th>Origem</th>
-                                            <th>Destino</th>
-                                            <th>Duração</th>
-                                            <th>Gravação</th>
-                                            <th>Data</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="tbody-historico-ligacoes-auditoria">
-                                        <tr><td colspan="9" class="text-center text-muted">Sem dados.</td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -875,17 +878,24 @@
             });
 
             $('#filtro-pesquisa').on('keypress', function(e) { if (e.which === 13) aplicarFiltrosAuditoria(); });
+            $('#painel-historico-ligacao-filtro').on('keypress', function(e) {
+                if (e.which === 13) carregarHistoricoLigacoesPainel();
+            });
             $(document).on('change', 'input[name="aba-data-auditoria"]', function() { carregarVendasPendentes(); });
             $('#filtro-status-tratamento').on('change', function() { carregarVendasPendentes(); });
             $(document).on('change', 'input[name="aba-principal"]', function() {
                 const aba = document.querySelector('input[name="aba-principal"]:checked');
                 const valor = aba ? aba.value : 'lista';
                 const listVisible = (valor === 'lista');
+                const resumoVisible = (valor === 'resumo');
+                const historicoVisible = (valor === 'historico_ligacoes');
                 $('#painel-lista').toggle(listVisible);
                 $('#painel-lista-tabela').toggle(listVisible);
-                $('#painel-resumo').toggle(!listVisible);
+                $('#painel-resumo').toggle(resumoVisible);
+                $('#painel-historico-ligacoes').toggle(historicoVisible);
                 $('#btn-atualizar-lista').toggle(listVisible);
-                if (valor === 'resumo') carregarResumoAuditoria();
+                if (resumoVisible) carregarResumoAuditoria();
+                if (historicoVisible) carregarHistoricoLigacoesPainel();
             });
             carregarAuxiliares().then(() => {
                 carregarVendasPendentes();
@@ -1818,7 +1828,6 @@
             modalLigacoesAuditoria.show();
             await carregarOpcoesLigacaoAuditoria();
             carregarLigacoesAuditoria();
-            carregarHistoricoLigacoesAuditoria();
         }
 
         async function carregarOpcoesLigacaoAuditoria() {
@@ -1929,12 +1938,12 @@
             }
         }
 
-        async function carregarHistoricoLigacoesAuditoria() {
-            const tbody = $('#tbody-historico-ligacoes-auditoria');
-            const filtro = ($('#historico-ligacao-filtro').val() || '').trim();
+        async function carregarHistoricoLigacoesPainel() {
+            const tbody = $('#tbody-historico-ligacoes-painel');
+            const filtro = ($('#painel-historico-ligacao-filtro').val() || '').trim();
             tbody.html('<tr><td colspan="9" class="text-center text-muted">Carregando...</td></tr>');
             try {
-                const url = `${API_AUX}/auditoria/ligacoes/historico/?limite=200${filtro ? `&q=${encodeURIComponent(filtro)}` : ''}`;
+                const url = `${API_AUX}/auditoria/ligacoes/historico/?limite=250${filtro ? `&q=${encodeURIComponent(filtro)}` : ''}`;
                 const resp = await apiFetch(url);
                 const rows = Array.isArray(resp) ? resp : (resp.results || []);
                 if (!rows.length) {
