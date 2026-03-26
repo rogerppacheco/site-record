@@ -21,6 +21,13 @@ class SonaxVoiceServiceParseTest(SimpleTestCase):
             "998877",
         )
 
+    def test_extract_protocol_from_click2call_started_message(self):
+        svc = SonaxVoiceService()
+        self.assertEqual(
+            svc._extract_protocol_from_text("Ligação iniciada. ID: 20 | Provedor: sem_id_1774555202.672607"),
+            "20",
+        )
+
     def test_parse_json_response_body(self):
         svc = SonaxVoiceService()
         import requests

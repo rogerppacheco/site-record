@@ -118,12 +118,22 @@ class SonaxVoiceService:
 
     @staticmethod
     def _extract_protocol_from_text(text: str) -> Optional[str]:
-        m = PROTOCOLO_RE.search(text or "")
+        raw = text or ""
+
+        # Caso comum do click2call manual (ex.: "Ligação iniciada. ID: 20 | Provedor: sem_id_xxx")
+        m_id = re.search(r"\bID\s*:\s*(\d{1,12})\b", raw, flags=re.IGNORECASE)
+        if m_id:
+            return m_id.group(1)
+
+        m = PROTOCOLO_RE.search(raw)
         if m:
             return m.group(1)
-        m2 = re.search(r"\b(\d{5,12})\b", text or "")
-        if m2 and "PROTOCOLO" in (text or "").upper():
+
+        # Fallback antigo: só captura números se a palavra "PROTOCOLO" aparecer no texto.
+        m2 = re.search(r"\b(\d{5,12})\b", raw)
+        if m2 and "PROTOCOLO" in raw.upper():
             return m2.group(1)
+
         return None
 
     def _parse_click2call_response(self, response: requests.Response) -> Dict[str, Any]:
