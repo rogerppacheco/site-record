@@ -174,6 +174,22 @@ def _finalizada_por_status(provedor: str, status_provedor: str) -> bool:
     return sp in {"ATENDIDA", "FINALIZADA", "ENCERRADA"}
 
 
+def _cliente_nome_cpf_da_venda(venda: Optional[Venda]) -> tuple[Optional[str], Optional[str]]:
+    if not venda:
+        return None, None
+    # Fonte principal: relacionamento normalizado Venda -> Cliente
+    cli = getattr(venda, "cliente", None)
+    nome = getattr(cli, "nome_razao_social", None) if cli else None
+    cpf = getattr(cli, "cpf_cnpj", None) if cli else None
+
+    # Fallback para bases legadas (campos denormalizados, quando existirem)
+    if not nome:
+        nome = getattr(venda, "cliente_nome_razao_social", None)
+    if not cpf:
+        cpf = getattr(venda, "cliente_cpf_cnpj", None)
+    return nome, cpf
+
+
 class AuditoriaLigacaoOpcoesView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -477,7 +493,7 @@ class AuditoriaLigacaoHistoricoView(APIView):
         if not _is_member(request.user, _auditoria_grupos()):
             return Response({"detail": "Permissão negada."}, status=status.HTTP_403_FORBIDDEN)
 
-        rows = AuditoriaLigacao.objects.select_related("auditor", "venda").all().order_by("-criado_em")
+        rows = AuditoriaLigacao.objects.select_related("auditor", "venda", "venda__cliente").all().order_by("-criado_em")
         q = str(request.GET.get("q", "") or "").strip()
         if q:
             rows = rows.filter(
@@ -502,8 +518,8 @@ class AuditoriaLigacaoHistoricoView(APIView):
             {
                 "id": r.id,
                 "venda_id": r.venda_id,
-                "cliente_nome": getattr(r.venda, "cliente_nome_razao_social", None),
-                "cliente_cpf_cnpj": getattr(r.venda, "cliente_cpf_cnpj", None),
+                "cliente_nome": _cliente_nome_cpf_da_venda(r.venda)[0],
+                "cliente_cpf_cnpj": _cliente_nome_cpf_da_venda(r.venda)[1],
                 "status": r.status,
                 "provedor": r.provedor,
                 "provider_call_id": r.provider_call_id,
