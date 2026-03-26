@@ -369,6 +369,107 @@ class AuditoriaLigacaoListView(APIView):
         return Response({"results": data})
 
 
+class AuditoriaLigacaoSincronizarView(APIView):
+    """
+    Endpoint manual para "forçar" o mesmo fluxo do fallback:
+    consulta status_chamada e tenta baixar/arquivar gravação via pega_gravacao.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request: HttpRequest, ligacao_id: int):
+        if not _is_member(request.user, _auditoria_grupos()):
+            return Response({"detail": "Permissão negada."}, status=status.HTTP_403_FORBIDDEN)
+
+        ligacao = (
+            AuditoriaLigacao.objects.filter(id=ligacao_id)
+            .select_related("venda", "auditor")
+            .first()
+        )
+        if not ligacao:
+            return Response({"detail": "Ligação não encontrada."}, status=status.HTTP_404_NOT_FOUND)
+        if ligacao.provedor != "SONAX":
+            return Response({"detail": "Sincronização manual disponível apenas para Sonax."}, status=status.HTTP_400_BAD_REQUEST)
+
+        cid = str(ligacao.provider_call_id or "").strip()
+        if not cid.isdigit():
+            return Response({"detail": "provider_call_id inválido para consulta Sonax."}, status=status.HTTP_400_BAD_REQUEST)
+
+        svc = SonaxVoiceService()
+        if not svc.is_recording_download_configured:
+            return Response(
+                {"detail": "Sonax status/gravação não configurados (SONAX_ID_CLIENTE/SONAX_INTEGRATION_TOKEN)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        st = svc.fetch_call_status(cid)
+        status_chamada = (st.get("status_chamada") or "").strip()
+        status_atendimento = (st.get("status_atendimento") or "").strip().upper()
+        dur = st.get("duracao_segundos")
+        data_ini = _parse_provider_datetime(st.get("data_inicio"))
+        data_fim = _parse_provider_datetime(st.get("data_fim"))
+
+        finalizada = _finalizada_por_status("SONAX", status_chamada)
+        if status_atendimento == "S":
+            finalizada = True
+
+        update_fields = []
+        if status_chamada:
+            ligacao.status_chamada_provedor = status_chamada
+            update_fields.append("status_chamada_provedor")
+        if status_atendimento:
+            ligacao.status_atendimento = status_atendimento
+            update_fields.append("status_atendimento")
+        if dur not in (None, ""):
+            try:
+                ligacao.duracao_segundos = int(dur)
+                update_fields.append("duracao_segundos")
+            except (TypeError, ValueError):
+                pass
+        if data_ini:
+            ligacao.data_inicio_chamada = data_ini
+            update_fields.append("data_inicio_chamada")
+        if data_fim:
+            ligacao.data_fim_chamada = data_fim
+            update_fields.append("data_fim_chamada")
+
+        ligacao.status = "FINALIZADA" if finalizada else "PROCESSANDO"
+        update_fields.append("status")
+        if finalizada:
+            ligacao.finalizado_em = timezone.now()
+            update_fields.append("finalizado_em")
+
+        ligacao.save(update_fields=list(dict.fromkeys(update_fields + ["atualizado_em"])))
+
+        # Se finalizou e ainda não arquivou, tenta baixar e mandar pro OneDrive
+        if finalizada and not ligacao.link_gravacao_onedrive:
+            try:
+                content, ext = svc.download_recording(cid)
+                _upload_bytes_to_onedrive(ligacao, content, ext)
+            except Exception as exc:
+                logger.warning("Sincronização manual: falha ao arquivar gravação. ligacao_id=%s call_id=%s err=%s", ligacao.id, cid, exc)
+
+        # Recarrega dados atualizados (pode ter link_onedrive preenchido)
+        ligacao.refresh_from_db()
+        return Response(
+            {
+                "id": ligacao.id,
+                "status": ligacao.status,
+                "provedor": ligacao.provedor,
+                "provider_call_id": ligacao.provider_call_id,
+                "numero_origem": ligacao.numero_origem,
+                "numero_destino": ligacao.numero_destino,
+                "status_chamada_provedor": ligacao.status_chamada_provedor,
+                "status_atendimento": ligacao.status_atendimento,
+                "duracao_segundos": ligacao.duracao_segundos,
+                "data_inicio_chamada": ligacao.data_inicio_chamada,
+                "data_fim_chamada": ligacao.data_fim_chamada,
+                "link_gravacao_provedor": ligacao.link_gravacao_provedor,
+                "link_gravacao_onedrive": ligacao.link_gravacao_onedrive,
+                "criado_em": ligacao.criado_em,
+            }
+        )
+
+
 class AuditoriaLigacaoHistoricoView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 

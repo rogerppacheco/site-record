@@ -1917,9 +1917,12 @@
                 tbody.empty();
                 rows.forEach(r => {
                     const gravacao = r.link_gravacao_onedrive || r.link_gravacao_provedor;
+                    const podeSincronizar = (r.provedor === 'SONAX') && (!gravacao) && (['INICIADA','PROCESSANDO'].includes(String(r.status || '').toUpperCase()));
                     const botaoOuvir = gravacao
                         ? `<a href="${gravacao}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary"><i class="bi bi-play-fill"></i> Ouvir</a>`
-                        : '<span class="text-muted small">Processando...</span>';
+                        : (podeSincronizar
+                            ? `<button class="btn btn-sm btn-outline-secondary" type="button" onclick="sincronizarLigacaoAuditoria(${r.id})"><i class="bi bi-arrow-repeat"></i> Sincronizar</button>`
+                            : '<span class="text-muted small">Processando...</span>');
                     tbody.append(`
                         <tr>
                             <td>#${r.id || '-'}</td>
@@ -1935,6 +1938,17 @@
                 });
             } catch (e) {
                 tbody.html('<tr><td colspan="8" class="text-center text-danger">Erro ao carregar ligações.</td></tr>');
+            }
+        }
+
+        async function sincronizarLigacaoAuditoria(ligacaoId) {
+            if (!ligacaoId) return;
+            try {
+                await apiFetch(`${API_AUX}/auditoria/ligacoes/${ligacaoId}/sincronizar/`, { method: 'POST' });
+                await carregarLigacoesAuditoria();
+                await carregarHistoricoLigacoesPainel();
+            } catch (e) {
+                alert(mensagemErroAmigavel(e, 'Não foi possível sincronizar a ligação agora.'));
             }
         }
 

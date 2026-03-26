@@ -167,6 +167,7 @@ from .auditoria_ligacoes_api import (
     AuditoriaLigacaoHistoricoView,
     AuditoriaLigacaoListView,
     AuditoriaLigacaoOpcoesView,
+    AuditoriaLigacaoSincronizarView,
     AuditoriaLigacaoStartView,
     AuditoriaLigacaoWebhookView,
 )
@@ -389,6 +390,7 @@ urlpatterns = [
     path('auditoria/ligacoes/historico/', AuditoriaLigacaoHistoricoView.as_view(), name='auditoria-ligacao-historico'),
     path('auditoria/ligacoes/<int:venda_id>/iniciar/', AuditoriaLigacaoStartView.as_view(), name='auditoria-ligacao-iniciar'),
     path('auditoria/ligacoes/<int:venda_id>/', AuditoriaLigacaoListView.as_view(), name='auditoria-ligacao-listar'),
+    path('auditoria/ligacoes/<int:ligacao_id>/sincronizar/', AuditoriaLigacaoSincronizarView.as_view(), name='auditoria-ligacao-sincronizar'),
     path('auditoria/ligacoes/webhook/', AuditoriaLigacaoWebhookView.as_view(), name='auditoria-ligacao-webhook'),
     
     # --- Análise de Buscas de Faturas ---
