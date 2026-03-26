@@ -86,6 +86,11 @@ class Usuario(AbstractUser):
         verbose_name="Participa do Controle de Presença?",
         help_text="Marque se este usuário deve aparecer na tela de controle de presença."
     )
+    vendedor_solo = models.BooleanField(
+        default=False,
+        verbose_name="Vendedor solo",
+        help_text="Permite ao vendedor acessar a ferramenta Presença para registrar a própria selfie/confirmar presença sem equipe."
+    )
 
     # --- WHATSAPP ---
     # Envios do sistema (notificações, OSAB, etc.) vão SEMPRE apenas para WhatsApp 1 (tel_whatsapp).

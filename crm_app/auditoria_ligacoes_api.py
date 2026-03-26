@@ -1,8 +1,7 @@
 import io
 import logging
 import re
-from datetime import timedelta
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import requests
 from django.conf import settings
@@ -15,6 +14,7 @@ from rest_framework.views import APIView
 
 from crm_app.models import AuditoriaLigacao, Venda
 from crm_app.onedrive_service import OneDriveUploader
+from crm_app.sonax_voice_service import SonaxVoiceService, unpack_recording_zip
 from crm_app.zenvia_voice_service import ZenviaVoiceService
 
 logger = logging.getLogger(__name__)
@@ -42,12 +42,129 @@ def _extract_first(data: Dict[str, Any], keys, default=None):
     return default
 
 
+def _auditoria_grupos():
+    return ["Diretoria", "Admin", "BackOffice", "Supervisor", "Auditoria", "Qualidade"]
+
+
+def _resolved_voice_provider() -> str:
+    p = getattr(settings, "AUDITORIA_VOICE_PROVIDER", "auto").strip().lower()
+    if p == "sonax":
+        return "sonax"
+    if p == "zenvia":
+        return "zenvia"
+    if getattr(settings, "SONAX_CLICK2CALL_TOKEN", ""):
+        return "sonax"
+    return "zenvia"
+
+
+def _sonax_ramais_permitidos() -> List[str]:
+    raw = getattr(settings, "SONAX_RAMAIS", "101,102,103")
+    return [x.strip() for x in str(raw).split(",") if x.strip()]
+
+
+def _merge_webhook_payload(request: HttpRequest) -> Dict[str, Any]:
+    merged: Dict[str, Any] = {}
+    try:
+        for key in request.query_params:
+            merged[str(key)] = request.query_params.get(key)
+    except Exception:
+        pass
+    try:
+        body = getattr(request, "data", None)
+    except Exception:
+        body = None
+    if isinstance(body, dict):
+        for k, v in body.items():
+            merged[str(k)] = v
+    return merged
+
+
+def _webhook_call_id(payload: Dict[str, Any]) -> Optional[str]:
+    for key in (
+        "id_chamada",
+        "ID_CHAMADA",
+        "id",
+        "chamada_id",
+        "call_id",
+        "protocolo",
+    ):
+        val = payload.get(key)
+        if val not in (None, ""):
+            return str(val).strip()
+    return None
+
+
+def _webhook_recording_url(payload: Dict[str, Any]) -> Optional[str]:
+    for key in (
+        "link_gravacao",
+        "url_gravacao",
+        "gravacao_url",
+        "link_gravação",
+        "recording_url",
+        "LINK_GRAVACAO",
+        "gravacao",
+    ):
+        val = payload.get(key)
+        if val and isinstance(val, str) and val.strip().lower().startswith(("http://", "https://")):
+            return val.strip()
+    return None
+
+
+def _webhook_duracao(payload: Dict[str, Any]) -> int:
+    raw = _extract_first(
+        payload,
+        ["duracao_segundos", "duracao", "DURACAO_CHAMADA", "duration", "Duracao"],
+        default=0,
+    )
+    try:
+        return int(float(raw or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _webhook_status_raw(payload: Dict[str, Any]) -> str:
+    return str(
+        _extract_first(
+            payload,
+            ["status_chamada", "STATUS_CHAMADA", "status", "Status"],
+            default="",
+        )
+        or ""
+    ).strip()
+
+
+def _finalizada_por_status(provedor: str, status_provedor: str) -> bool:
+    sp = status_provedor.upper()
+    if provedor == "SONAX":
+        sl = status_provedor.lower()
+        if sl in ("desligada", "encerrada", "finalizada", "atendida"):
+            return True
+        if "deslig" in sl:
+            return True
+        return False
+    return sp in {"ATENDIDA", "FINALIZADA", "ENCERRADA"}
+
+
+class AuditoriaLigacaoOpcoesView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request: HttpRequest):
+        if not _is_member(request.user, _auditoria_grupos()):
+            return Response({"detail": "Permissão negada."}, status=status.HTTP_403_FORBIDDEN)
+        provider = _resolved_voice_provider()
+        return Response(
+            {
+                "voice_provider": provider,
+                "sonax_ramais": _sonax_ramais_permitidos() if provider == "sonax" else [],
+            }
+        )
+
+
 class AuditoriaLigacaoStartView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request: HttpRequest, venda_id: int):
-        grupos = ["Diretoria", "Admin", "BackOffice", "Supervisor", "Auditoria", "Qualidade"]
-        if not _is_member(request.user, grupos):
+        if not _is_member(request.user, _auditoria_grupos()):
             return Response({"detail": "Permissão negada."}, status=status.HTTP_403_FORBIDDEN)
 
         venda = Venda.objects.filter(id=venda_id, ativo=True).first()
@@ -55,37 +172,95 @@ class AuditoriaLigacaoStartView(APIView):
             return Response({"detail": "Venda não encontrada."}, status=status.HTTP_404_NOT_FOUND)
 
         destination = request.data.get("destination_number") or venda.telefone1 or venda.telefone2
-        source = request.data.get("source_number") or getattr(settings, "ZENVIA_VOICE_DEFAULT_SOURCE_NUMBER", "")
-        if not source:
-            return Response(
-                {"detail": "Defina ZENVIA_VOICE_DEFAULT_SOURCE_NUMBER ou envie source_number no payload."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
         if not destination:
             return Response(
                 {"detail": "Venda sem telefone de destino e destination_number não informado."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
-        source = _normalize_phone(source)
         destination = _normalize_phone(destination)
-        tags = f"auditoria_venda_{venda.id}"
 
-        service = ZenviaVoiceService()
+        provider = _resolved_voice_provider()
         try:
-            provider_resp = service.create_call(
-                source_number=source,
-                destination_number=destination,
-                record_audio=True,
-                tags=tags,
-                bina=request.data.get("bina"),
-            )
+            if provider == "sonax":
+                ligacao, provider_resp = self._iniciar_sonax(request, venda, destination)
+            else:
+                ligacao, provider_resp = self._iniciar_zenvia(request, venda, destination)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as exc:
-            logger.exception("Erro ao iniciar ligação na Zenvia: %s", exc)
+            logger.exception("Erro ao iniciar ligação (%s): %s", provider, exc)
             return Response(
                 {"detail": f"Falha ao iniciar ligação: {exc}"},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
+
+        return Response(
+            {
+                "detail": "Ligação iniciada com sucesso.",
+                "ligacao_id": ligacao.id,
+                "provider_call_id": ligacao.provider_call_id,
+                "provedor": ligacao.provedor,
+                "provider_response": provider_resp,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    def _iniciar_sonax(self, request, venda: Venda, destination: str):
+        ramal = request.data.get("sip_extension") or request.data.get("ramal")
+        if not ramal:
+            raise ValueError("Informe o ramal SIP (campo sip_extension ou ramal).")
+        ramal = str(ramal).strip()
+        permitidos = _sonax_ramais_permitidos()
+        if permitidos and ramal not in permitidos:
+            raise ValueError(f"Ramal não permitido. Use um de: {', '.join(permitidos)}")
+
+        sonax = SonaxVoiceService()
+        var_tags = {
+            "auditoria_venda": str(venda.id),
+        }
+        provider_resp = sonax.click_to_call(
+            destination_digits=destination,
+            ramal=ramal,
+            var_tags=var_tags,
+        )
+        call_id = provider_resp.get("id_chamada")
+        if not call_id:
+            call_id = f"sem_id_{timezone.now().timestamp()}"
+
+        ligacao = AuditoriaLigacao.objects.create(
+            venda=venda,
+            auditor=request.user,
+            provedor="SONAX",
+            provider_call_id=str(call_id),
+            numero_origem=ramal,
+            numero_destino=destination,
+            status="INICIADA",
+            consentimento_declarado=bool(request.data.get("consentimento_declarado", True)),
+            consentimento_observacao=request.data.get(
+                "consentimento_observacao",
+                "Cliente informado pelo auditor no início da chamada.",
+            ),
+            payload_inicio=dict(provider_resp) if isinstance(provider_resp, dict) else {"raw": str(provider_resp)},
+        )
+        return ligacao, provider_resp
+
+    def _iniciar_zenvia(self, request, venda: Venda, destination: str):
+        source = request.data.get("source_number") or getattr(settings, "ZENVIA_VOICE_DEFAULT_SOURCE_NUMBER", "")
+        if not source:
+            raise ValueError(
+                "Defina ZENVIA_VOICE_DEFAULT_SOURCE_NUMBER ou envie source_number no payload."
+            )
+        source = _normalize_phone(source)
+        tags = f"auditoria_venda_{venda.id}"
+
+        service = ZenviaVoiceService()
+        provider_resp = service.create_call(
+            source_number=source,
+            destination_number=destination,
+            record_audio=True,
+            tags=tags,
+            bina=request.data.get("bina"),
+        )
 
         dados = provider_resp.get("dados") if isinstance(provider_resp, dict) else {}
         call_id = _extract_first(
@@ -111,24 +286,14 @@ class AuditoriaLigacaoStartView(APIView):
             ),
             payload_inicio=provider_resp if isinstance(provider_resp, dict) else {"raw": str(provider_resp)},
         )
-
-        return Response(
-            {
-                "detail": "Ligação iniciada com sucesso.",
-                "ligacao_id": ligacao.id,
-                "provider_call_id": ligacao.provider_call_id,
-                "provider_response": provider_resp,
-            },
-            status=status.HTTP_201_CREATED,
-        )
+        return ligacao, provider_resp
 
 
 class AuditoriaLigacaoListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request: HttpRequest, venda_id: int):
-        grupos = ["Diretoria", "Admin", "BackOffice", "Supervisor", "Auditoria", "Qualidade"]
-        if not _is_member(request.user, grupos):
+        if not _is_member(request.user, _auditoria_grupos()):
             return Response({"detail": "Permissão negada."}, status=status.HTTP_403_FORBIDDEN)
 
         limite = int(request.GET.get("limite", 30))
@@ -156,39 +321,44 @@ class AuditoriaLigacaoListView(APIView):
 class AuditoriaLigacaoWebhookView(APIView):
     permission_classes = [permissions.AllowAny]
 
+    def get(self, request: HttpRequest):
+        return self._process(request)
+
     def post(self, request: HttpRequest):
-        expected_secret = getattr(settings, "ZENVIA_VOICE_WEBHOOK_SECRET", "")
-        if expected_secret:
-            received_secret = request.headers.get("X-Webhook-Secret") or request.query_params.get("secret")
-            if received_secret != expected_secret:
+        return self._process(request)
+
+    def _process(self, request: HttpRequest):
+        z_secret = (getattr(settings, "ZENVIA_VOICE_WEBHOOK_SECRET", "") or "").strip()
+        s_secret = (getattr(settings, "SONAX_WEBHOOK_SECRET", "") or "").strip()
+        configured = [s for s in (z_secret, s_secret) if s]
+        received = (request.headers.get("X-Webhook-Secret") or request.query_params.get("secret") or "").strip()
+        if configured:
+            if received not in configured:
                 return Response({"detail": "Webhook não autorizado."}, status=status.HTTP_401_UNAUTHORIZED)
 
-        payload = request.data if isinstance(request.data, dict) else {}
-        call_id = _extract_first(payload, ["id", "chamada_id", "call_id"])
+        payload = _merge_webhook_payload(request)
+        call_id = _webhook_call_id(payload)
         if not call_id:
-            return Response({"detail": "call_id não encontrado no webhook."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "call_id / id_chamada não encontrado no webhook."}, status=status.HTTP_400_BAD_REQUEST)
 
         ligacao = AuditoriaLigacao.objects.filter(provider_call_id=str(call_id)).order_by("-id").first()
         if not ligacao:
             return Response({"detail": "Ligação não encontrada."}, status=status.HTTP_404_NOT_FOUND)
 
-        status_provedor = str(_extract_first(payload, ["status", "status_chamada"], default="")).upper()
-        status_interno = "FINALIZADA" if status_provedor in {"ATENDIDA", "FINALIZADA", "ENCERRADA"} else "PROCESSANDO"
-        duracao = _extract_first(payload, ["duracao_segundos", "duracao_falada_segundos", "duration"], default=0)
-        recording_url = _extract_first(
-            payload,
-            ["url_gravacao", "recording_url", "link_gravacao"],
-            default=None,
-        )
+        status_provedor = _webhook_status_raw(payload)
+        finalizada = _finalizada_por_status(ligacao.provedor, status_provedor)
+        if not status_provedor and _webhook_recording_url(payload):
+            finalizada = True
+        duracao = _webhook_duracao(payload)
+        recording_url = _webhook_recording_url(payload)
+
+        status_interno = "FINALIZADA" if finalizada else "PROCESSANDO"
 
         with transaction.atomic():
             ligacao.payload_webhook = payload
             ligacao.status = status_interno
             ligacao.finalizado_em = timezone.now()
-            try:
-                ligacao.duracao_segundos = int(duracao or 0)
-            except Exception:
-                ligacao.duracao_segundos = 0
+            ligacao.duracao_segundos = duracao
             if recording_url:
                 ligacao.link_gravacao_provedor = recording_url
             ligacao.save(update_fields=[
@@ -205,29 +375,20 @@ class AuditoriaLigacaoWebhookView(APIView):
                 _sync_recording_to_onedrive(ligacao)
             except Exception as exc:
                 logger.exception("Falha ao sincronizar gravação no OneDrive: %s", exc)
+        elif ligacao.provedor == "SONAX" and finalizada:
+            try:
+                _try_sonax_download_and_archive(ligacao)
+            except Exception as exc:
+                logger.exception("Falha ao baixar gravação Sonax (pega_gravacao): %s", exc)
 
         return Response({"detail": "Webhook processado."}, status=status.HTTP_200_OK)
 
 
-def _sync_recording_to_onedrive(ligacao: AuditoriaLigacao) -> None:
-    url = ligacao.link_gravacao_provedor
-    if not url:
-        return
-
-    response = requests.get(url, timeout=30)
-    response.raise_for_status()
-    content_type = response.headers.get("content-type", "").lower()
-    extension = ".mp3"
-    if "wav" in content_type:
-        extension = ".wav"
-    elif "ogg" in content_type:
-        extension = ".ogg"
-
+def _upload_bytes_to_onedrive(ligacao: AuditoriaLigacao, data: bytes, extension: str) -> None:
     filename = f"venda_{ligacao.venda_id}_ligacao_{ligacao.id}{extension}"
     folder_name = f"{getattr(settings, 'AUDITORIA_ONEDRIVE_FOLDER', 'Auditoria_Ligacoes')}/{timezone.localdate().isoformat()}"
-    file_obj = io.BytesIO(response.content)
+    file_obj = io.BytesIO(data)
     file_obj.seek(0)
-
     uploader = OneDriveUploader()
     web_url = uploader.upload_file(file_obj=file_obj, folder_name=folder_name, filename=filename)
 
@@ -235,7 +396,40 @@ def _sync_recording_to_onedrive(ligacao: AuditoriaLigacao) -> None:
     ligacao.status = "ARQUIVADA"
     if not ligacao.finalizado_em:
         ligacao.finalizado_em = timezone.now()
-    if not ligacao.expira_em:
-        ligacao.expira_em = timezone.now() + timedelta(days=180)
-    ligacao.save(update_fields=["link_gravacao_onedrive", "status", "finalizado_em", "expira_em", "atualizado_em"])
+    ligacao.save(update_fields=["link_gravacao_onedrive", "status", "finalizado_em", "atualizado_em"])
 
+
+def _sync_recording_to_onedrive(ligacao: AuditoriaLigacao) -> None:
+    url = ligacao.link_gravacao_provedor
+    if not url or ligacao.link_gravacao_onedrive:
+        return
+
+    response = requests.get(url, timeout=60)
+    response.raise_for_status()
+    content_type = (response.headers.get("content-type") or "").lower()
+    extension = ".mp3"
+    if "wav" in content_type:
+        extension = ".wav"
+    elif "ogg" in content_type:
+        extension = ".ogg"
+
+    if response.content[:2] == b"PK":
+        content, extension = unpack_recording_zip(response.content)
+        _upload_bytes_to_onedrive(ligacao, content, extension)
+        return
+
+    _upload_bytes_to_onedrive(ligacao, response.content, extension)
+
+
+def _try_sonax_download_and_archive(ligacao: AuditoriaLigacao) -> None:
+    if ligacao.link_gravacao_onedrive or ligacao.provedor != "SONAX":
+        return
+    cid = str(ligacao.provider_call_id or "")
+    if not cid or cid.startswith("sem_id_"):
+        return
+    svc = SonaxVoiceService()
+    if not svc.is_recording_download_configured:
+        logger.warning("Sonax pega_gravacao: credenciais id_cliente/token não configuradas.")
+        return
+    content, ext = svc.download_recording(cid)
+    _upload_bytes_to_onedrive(ligacao, content, ext)

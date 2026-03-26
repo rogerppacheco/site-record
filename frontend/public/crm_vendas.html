@@ -1803,8 +1803,11 @@
             } catch (e) { console.error(e); alert("Erro ao carregar dados para edição."); }
         }
 
+        let salvandoVendaEmAndamento = false;
+
         async function salvarVenda(e) {
             e.preventDefault();
+            if (salvandoVendaEmAndamento) return;
             
             // Validar que os telefones não sejam iguais
             if (!validarTelefonesDiferentes()) {
@@ -1864,6 +1867,14 @@
             if (data.vendedor === "") data.vendedor = null;
             if (data.ordem_servico === "") data.ordem_servico = null;
 
+            const btnSalvar = document.getElementById('btn-salvar-venda');
+            const textoOriginalBotao = btnSalvar ? btnSalvar.innerHTML : '';
+            salvandoVendaEmAndamento = true;
+            if (btnSalvar) {
+                btnSalvar.disabled = true;
+                btnSalvar.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Salvando...';
+            }
+
             try {
                 await apiFetch(url, { method: method, body: JSON.stringify(data) });
                 modalNovaVenda.hide(); form.reset(); document.getElementById('id-venda-edicao').value = '';
@@ -1879,6 +1890,12 @@
                     else if (error.detail) msg = error.detail;
                 }
                 alert(msg);
+            } finally {
+                salvandoVendaEmAndamento = false;
+                if (btnSalvar) {
+                    btnSalvar.disabled = false;
+                    btnSalvar.innerHTML = textoOriginalBotao || 'Salvar';
+                }
             }
         }
 

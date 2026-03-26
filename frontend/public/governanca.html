@@ -556,6 +556,11 @@
                                             <label class="form-check-label fw-bold" for="participa_controle_presenca">Participa Controle Presença?</label>
                                             <small class="text-muted d-block ms-4 mt-1">Exibe o usuário na tela de controle de presença.</small>
                                         </div>
+                                        <div class="form-check form-switch mb-3 p-3 rounded bg-light border" id="container-vendedor-solo" style="display: none;">
+                                            <input class="form-check-input" type="checkbox" id="vendedor_solo">
+                                            <label class="form-check-label fw-bold" for="vendedor_solo">Vendedor solo</label>
+                                            <small class="text-muted d-block ms-4 mt-1">Libera o vendedor para usar a ferramenta Presença somente para si (selfie + geolocalização).</small>
+                                        </div>
                                         <div class="form-check form-switch mb-3 p-3 rounded bg-light border">
                                             <input class="form-check-input" type="checkbox" id="autorizar_venda_sem_auditoria">
                                             <label class="form-check-label fw-bold" for="autorizar_venda_sem_auditoria">Autorizar venda sem auditoria?</label>
@@ -1205,6 +1210,20 @@
     const excluirPerfilModal = new bootstrap.Modal(document.getElementById('excluirPerfilModal'));
     const userModal = new bootstrap.Modal(document.getElementById('userModal'));
     const userForm = document.getElementById('user-form');
+    const perfilSelectEl = document.getElementById('perfil_id');
+
+    function atualizarVisibilidadeVendedorSolo() {
+        const container = document.getElementById('container-vendedor-solo');
+        const checkbox = document.getElementById('vendedor_solo');
+        if (!container || !checkbox || !perfilSelectEl) return;
+        const nomePerfil = (perfilSelectEl.options[perfilSelectEl.selectedIndex]?.text || '').trim().toLowerCase();
+        const isVendedor = nomePerfil === 'vendedor';
+        container.style.display = isVendedor ? 'block' : 'none';
+        checkbox.disabled = !isVendedor;
+        if (!isVendedor) checkbox.checked = false;
+    }
+
+    perfilSelectEl?.addEventListener('change', atualizarVisibilidadeVendedorSolo);
 
     // --- FUNÇÕES DE PERFIS ---
     async function carregarPerfis() {
@@ -1977,6 +1996,7 @@
             document.getElementById('user_canal').value = user.canal || 'PAP';
             document.getElementById('user_cluster').value = user.cluster || '';
             document.getElementById('participa_controle_presenca').checked = user.participa_controle_presenca;
+            document.getElementById('vendedor_solo').checked = user.vendedor_solo || false;
             document.getElementById('autorizar_venda_sem_auditoria').checked = user.autorizar_venda_sem_auditoria || false;
             document.getElementById('autorizar_venda_automatica').checked = user.autorizar_venda_automatica || false;
             document.getElementById('autorizar_analise_credito_wpp').checked = user.autorizar_analise_credito_wpp || false;
@@ -2005,7 +2025,9 @@
             document.getElementById('pap_automacao_pedido').checked = true;
             document.getElementById('pap_automacao_status').checked = true;
             document.getElementById('pode_gestao_acessos').checked = false;
+            document.getElementById('vendedor_solo').checked = false;
         }
+        atualizarVisibilidadeVendedorSolo();
         // Senha PAP: nunca preencher valor (segurança); placeholder indica se já está cadastrada
         const senhaPapInput = document.getElementById('senha_pap');
         senhaPapInput.value = '';
@@ -2099,6 +2121,7 @@
             }
 
             console.log('✅ Dropdowns carregados com sucesso');
+            atualizarVisibilidadeVendedorSolo();
         } catch (e) {
             console.error('Erro ao carregar dados do formulário:', e);
             pSelect.innerHTML = '<option value="">Erro ao carregar</option>';
@@ -2151,6 +2174,7 @@
             adiantamento_cnpj: cleanValue(document.getElementById('adiantamento_cnpj').value, true),
             desconto_inss_fixo: cleanValue(document.getElementById('desconto_inss_fixo').value, true),
             participa_controle_presenca: document.getElementById('participa_controle_presenca').checked,
+            vendedor_solo: document.getElementById('vendedor_solo').checked,
             autorizar_venda_sem_auditoria: document.getElementById('autorizar_venda_sem_auditoria').checked,
             autorizar_venda_automatica: document.getElementById('autorizar_venda_automatica').checked,
             autorizar_analise_credito_wpp: document.getElementById('autorizar_analise_credito_wpp').checked,

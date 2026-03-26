@@ -38,6 +38,8 @@ def usuario_pode_confirmar_presenca(user: Any) -> bool:
         return True
     if user.groups.filter(name__in=["Diretoria", "Admin", "BackOffice"]).exists():
         return True
+    if getattr(user, "vendedor_solo", False):
+        return True
     if hasattr(user, "liderados") and user.liderados.exists():
         return True
     return False

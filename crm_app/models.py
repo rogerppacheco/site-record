@@ -2536,6 +2536,7 @@ class AuditoriaLigacao(models.Model):
 
     PROVEDOR_CHOICES = [
         ("ZENVIA", "Zenvia Voice API"),
+        ("SONAX", "Sonax PABX / click2call"),
     ]
 
     venda = models.ForeignKey(

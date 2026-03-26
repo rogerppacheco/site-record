@@ -165,6 +165,7 @@ from . import views_analise_busca
 from . import conhecimento_ia_api
 from .auditoria_ligacoes_api import (
     AuditoriaLigacaoListView,
+    AuditoriaLigacaoOpcoesView,
     AuditoriaLigacaoStartView,
     AuditoriaLigacaoWebhookView,
 )
@@ -382,7 +383,8 @@ urlpatterns = [
     path('antecipar-instalacao/historico/', HistoricoAnteciparInstalacaoView.as_view(), name='antecipar-instalacao-historico'),
     path('antecipar-instalacao/solicitacao/<int:pk>/resposta/', RespostaGCAnteciparInstalacaoView.as_view(), name='antecipar-instalacao-resposta-gc'),
 
-    # --- Auditoria de ligações (Zenvia Voice) ---
+    # --- Auditoria de ligações (Sonax click2call / Zenvia Voice) ---
+    path('auditoria/ligacoes/opcoes/', AuditoriaLigacaoOpcoesView.as_view(), name='auditoria-ligacao-opcoes'),
     path('auditoria/ligacoes/<int:venda_id>/iniciar/', AuditoriaLigacaoStartView.as_view(), name='auditoria-ligacao-iniciar'),
     path('auditoria/ligacoes/<int:venda_id>/', AuditoriaLigacaoListView.as_view(), name='auditoria-ligacao-listar'),
     path('auditoria/ligacoes/webhook/', AuditoriaLigacaoWebhookView.as_view(), name='auditoria-ligacao-webhook'),

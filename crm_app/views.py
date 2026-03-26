@@ -1739,7 +1739,25 @@ class VendaViewSet(viewsets.ModelViewSet):
         if not serializer.is_valid():
             print("[CRM DEBUG] Erros de validação do serializer:", serializer.errors)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        self.perform_create(serializer)
+        try:
+            self.perform_create(serializer)
+        except IntegrityError as e:
+            erro_texto = str(e).lower()
+            if 'cliente_pkey' in erro_texto or ('crm_cliente' in erro_texto and 'duplicate' in erro_texto):
+                return Response(
+                    {"detail": "Conflito técnico ao criar cliente (sequência de ID). Tente novamente."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            if 'cliente_cpf_cnpj_key' in erro_texto or ('cpf_cnpj' in erro_texto and ('duplicate' in erro_texto or 'unique' in erro_texto)):
+                return Response(
+                    {"cliente_cpf_cnpj": ["Este CPF/CNPJ já está cadastrado em outro cliente."]},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            logger.error("Erro de integridade ao criar venda: %s", e, exc_info=True)
+            return Response(
+                {"detail": "Não foi possível salvar por conflito de dados. Revise e tente novamente."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         venda = serializer.instance
         # Notificar o vendedor responsável (cadastro pelo vendedor ou pelo backoffice)
         if venda.vendedor and getattr(venda.vendedor, 'tel_whatsapp', None):
@@ -2128,6 +2146,17 @@ class VendaViewSet(viewsets.ModelViewSet):
             logger.error(f"Erro crítico auditoria: {str(e)}", exc_info=True)
             return Response({"detail": f"Erro ao salvar dados: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
 
+    def _sincronizar_sequencia_cliente(self):
+        from django.db import connection
+        table_name = Cliente._meta.db_table
+        with connection.cursor() as cursor:
+            cursor.execute(f"SELECT COALESCE(MAX(id), 0) FROM {table_name};")
+            max_id = cursor.fetchone()[0]
+            cursor.execute("SELECT pg_get_serial_sequence(%s, 'id');", [table_name])
+            seq_name = cursor.fetchone()[0]
+            if seq_name:
+                cursor.execute("SELECT setval(%s, %s, true);", [seq_name, max_id])
+
     def perform_create(self, serializer):
         raw_cpf = serializer.validated_data.pop('cliente_cpf_cnpj')
         cpf_limpo = re.sub(r'\D', '', raw_cpf)
@@ -2135,10 +2164,21 @@ class VendaViewSet(viewsets.ModelViewSet):
         nome = serializer.validated_data.pop('cliente_nome_razao_social')
         email = serializer.validated_data.pop('cliente_email', None)
         
-        cliente, created = Cliente.objects.get_or_create(
-            cpf_cnpj=cpf_limpo,
-            defaults={'nome_razao_social': nome, 'email': email}
-        )
+        try:
+            cliente, created = Cliente.objects.get_or_create(
+                cpf_cnpj=cpf_limpo,
+                defaults={'nome_razao_social': nome, 'email': email}
+            )
+        except IntegrityError as e:
+            erro_texto = str(e).lower()
+            if 'cliente_pkey' in erro_texto or ('crm_cliente' in erro_texto and 'duplicate' in erro_texto):
+                self._sincronizar_sequencia_cliente()
+                cliente, created = Cliente.objects.get_or_create(
+                    cpf_cnpj=cpf_limpo,
+                    defaults={'nome_razao_social': nome, 'email': email}
+                )
+            else:
+                raise
         if not created:
             cliente.nome_razao_social = nome
             if email: cliente.email = email

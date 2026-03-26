@@ -126,7 +126,11 @@ class MinhaEquipeListView(generics.ListAPIView):
     def get_queryset(self):
         qs = getattr(self.request.user, "liderados", None)
         if qs is not None:
-            return qs.filter(is_active=True).order_by("first_name")
+            liderados = qs.filter(is_active=True).order_by("first_name")
+            if liderados.exists():
+                return liderados
+        if getattr(self.request.user, "vendedor_solo", False):
+            return Usuario.objects.filter(id=self.request.user.id, is_active=True)
         return Usuario.objects.none()
 
 

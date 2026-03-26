@@ -239,6 +239,7 @@
             // --- REGRAS DE VISIBILIDADE (Quem vê o quê) ---
             // Gestão de Acessos: só quem tem pode_gestao_acessos no cadastro (vem no token)
             const podeGestaoAcessos = !!(payload && payload.pode_gestao_acessos === true);
+            const vendedorSolo = !!(payload && payload.vendedor_solo === true);
             const regras = {
                 // Acesso Total
                 'Diretoria': 'all',
@@ -255,6 +256,9 @@
             };
 
             let cardsPermitidos = regras[userProfile] || regras['Vendedor'];
+            if (userProfile === 'Vendedor' && vendedorSolo && cardsPermitidos !== 'all' && !cardsPermitidos.includes('card-presenca')) {
+                cardsPermitidos = [...cardsPermitidos, 'card-presenca'];
+            }
             if (cardsPermitidos !== 'all' && podeGestaoAcessos && !cardsPermitidos.includes('card-gestao-acessos')) {
                 cardsPermitidos = [...(Array.isArray(cardsPermitidos) ? cardsPermitidos : []), 'card-gestao-acessos'];
             }

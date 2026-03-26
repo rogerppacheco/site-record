@@ -264,6 +264,25 @@ ZENVIA_VOICE_TIMEOUT_SECONDS = config('ZENVIA_VOICE_TIMEOUT_SECONDS', default=20
 ZENVIA_VOICE_WEBHOOK_SECRET = config('ZENVIA_VOICE_WEBHOOK_SECRET', default='')
 AUDITORIA_ONEDRIVE_FOLDER = config('AUDITORIA_ONEDRIVE_FOLDER', default='Auditoria_Ligacoes')
 
+# --- Sonax (auditoria: click2call + gravação pega_gravacao / webhook) ---
+# Se AUDITORIA_VOICE_PROVIDER=auto, usa Sonax quando SONAX_CLICK2CALL_TOKEN estiver definido.
+AUDITORIA_VOICE_PROVIDER = config('AUDITORIA_VOICE_PROVIDER', default='auto').strip().lower()
+SONAX_CLICK2CALL_URL = config(
+    'SONAX_CLICK2CALL_URL',
+    default='https://click2call.sonax.net.br/sonax-click2call.php',
+)
+SONAX_CLICK2CALL_TOKEN = config('SONAX_CLICK2CALL_TOKEN', default='')
+SONAX_ID_CLIENTE = config('SONAX_ID_CLIENTE', default='')
+# Token usado em dbdial_webapi.php (pega_gravacao, etc.); se vazio, usa SONAX_CLICK2CALL_TOKEN.
+SONAX_INTEGRATION_TOKEN = config('SONAX_INTEGRATION_TOKEN', default='')
+SONAX_DBDIAL_BASE_URL = config(
+    'SONAX_DBDIAL_BASE_URL',
+    default='https://api.sonax.net.br/a2billing_v2/admin/Public/dbdial_webapi.php',
+)
+SONAX_RAMAIS = config('SONAX_RAMAIS', default='101,102,103')
+SONAX_TIMEOUT_SECONDS = config('SONAX_TIMEOUT_SECONDS', default=30, cast=int)
+SONAX_WEBHOOK_SECRET = config('SONAX_WEBHOOK_SECRET', default='')
+
 # --- CONFIGURAÇÕES DE CAPTCHA (reCAPTCHA SOLVER) ---
 # Use CapSolver, 2Captcha ou API customizada para resolver reCAPTCHA v2 na página Nio (PDF fatura)
 CAPTCHA_API_KEY = config('CAPTCHA_API_KEY', default='CAP-4A266E1BA9DC47B87D28FBDE12A129014DB5B7EABC69D961115B3E184D497F85')

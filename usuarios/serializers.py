@@ -96,6 +96,14 @@ class UsuarioSerializer(serializers.ModelSerializer):
         # Aceita 0 como valor válido (0 é um número válido)
         return value if value is not None else 0
 
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        perfil = attrs.get('perfil', getattr(self.instance, 'perfil', None))
+        perfil_nome = (getattr(perfil, 'nome', '') or '').strip().lower()
+        if perfil_nome != 'vendedor':
+            attrs['vendedor_solo'] = False
+        return attrs
+
     class Meta:
         model = Usuario
         fields = [
@@ -112,6 +120,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
             'canal',
             'cluster',
             'participa_controle_presenca',
+            'vendedor_solo',
             'autorizar_venda_sem_auditoria',
             'autorizar_venda_automatica',
             'autorizar_analise_credito_wpp',
@@ -205,6 +214,9 @@ class UsuarioSerializer(serializers.ModelSerializer):
                 logger.warning(f"Erro ao sincronizar perfil do grupo: {e}")
         
         instance.save()
+        if (getattr(instance.perfil, 'nome', '') or '').strip().lower() != 'vendedor' and instance.vendedor_solo:
+            instance.vendedor_solo = False
+            instance.save(update_fields=['vendedor_solo'])
         if groups:
             instance.groups.set(groups)
         return instance
@@ -251,6 +263,9 @@ class UsuarioSerializer(serializers.ModelSerializer):
             instance.set_password(password)
             
         instance.save()
+        if (getattr(instance.perfil, 'nome', '') or '').strip().lower() != 'vendedor' and instance.vendedor_solo:
+            instance.vendedor_solo = False
+            instance.save(update_fields=['vendedor_solo'])
         return instance
     
     def _sincronizar_grupo_do_perfil(self, usuario):
@@ -329,7 +344,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'tel_whatsapp_2',
             'tel_whatsapp_3',
             'obriga_troca_senha',
-            'pode_gestao_acessos'
+            'pode_gestao_acessos',
+            'vendedor_solo',
         ]
 
 # --- SERIALIZER DE LOGIN (CUSTOMIZADO) ---
@@ -370,6 +386,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         token['obriga_troca_senha'] = user.obriga_troca_senha
         token['autorizar_venda_automatica'] = getattr(user, 'autorizar_venda_automatica', False)
         token['pode_gestao_acessos'] = getattr(user, 'pode_gestao_acessos', False)
+        token['vendedor_solo'] = getattr(user, 'vendedor_solo', False)
         return token
 
     def validate(self, attrs):
@@ -432,7 +449,8 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                 'username': self.user.username,
                 'perfil': user_profile,
                 'groups': [g.name for g in self.user.groups.all()],
-                'obriga_troca_senha': self.user.obriga_troca_senha
+                'obriga_troca_senha': self.user.obriga_troca_senha,
+                'vendedor_solo': getattr(self.user, 'vendedor_solo', False),
             }
         
         return data

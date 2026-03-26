@@ -290,6 +290,7 @@
         // Normaliza o perfil para garantir comparação correta
         const userRole = (decoded.user_role || decoded.perfil || 'Vendedor');
         const isSuperuser = decoded.is_superuser || false;
+        const vendedorSolo = decoded.vendedor_solo === true;
 
         // --- DEBUG NO CONSOLE (F12) PARA VOCÊ CONFERIR ---
         console.log("Perfil Detectado:", userRole);
@@ -298,9 +299,9 @@
         // Lógica de Permissão para Visualizar Botões de Edição
         const isGestorSupremo = isSuperuser || userRole === 'Diretoria' || userRole === 'Admin';
         // Pode confirmar presença do dia com selfie: supervisor (Minha Equipe) ou gestor
-        const podeConfirmarDia = isGestorSupremo || userRole === 'Supervisor';
+        const podeConfirmarDia = isGestorSupremo || userRole === 'Supervisor' || vendedorSolo;
 
-        if (userRole === 'Vendedor' && !isSuperuser) {
+        if (userRole === 'Vendedor' && !isSuperuser && !vendedorSolo) {
             alert('Acesso restrito a gestores.');
             window.location.href = '/area-interna/';
         }
