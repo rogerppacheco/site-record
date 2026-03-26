@@ -120,6 +120,16 @@ class SonaxVoiceService:
     def _extract_protocol_from_text(text: str) -> Optional[str]:
         raw = text or ""
 
+        # Caso a resposta venha apenas como número entre aspas:
+        # ex.: "\"\"19101782792\"\"" (log/Sonax report mostra "Protocolo: 19101782792")
+        cleaned = raw.strip().strip('"').strip("'").strip()
+        if cleaned.isdigit() and 5 <= len(cleaned) <= 20:
+            return cleaned
+
+        m_quote_num = re.search(r'["\']\s*(\d{5,20})\s*["\']', raw)
+        if m_quote_num:
+            return m_quote_num.group(1)
+
         # Caso comum do click2call manual (ex.: "Ligação iniciada. ID: 20 | Provedor: sem_id_xxx")
         m_id = re.search(r"\bID\s*:\s*(\d{1,12})\b", raw, flags=re.IGNORECASE)
         if m_id:

@@ -28,6 +28,13 @@ class SonaxVoiceServiceParseTest(SimpleTestCase):
             "20",
         )
 
+    def test_extract_protocol_from_quoted_digits(self):
+        svc = SonaxVoiceService()
+        self.assertEqual(
+            svc._extract_protocol_from_text('""19101782792""'),
+            "19101782792",
+        )
+
     def test_parse_json_response_body(self):
         svc = SonaxVoiceService()
         import requests
