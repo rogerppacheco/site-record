@@ -5437,9 +5437,23 @@ class ExportarPerformanceExcelView(APIView):
         dados_semana = self._montar_dados(vendas_semana, use_data_efetiva)
         
         # --- ABA 3: MÊS ---
-        # Mensal inclui reemissão
-        vendas_mes = vendas.filter(data_criacao__date__gte=inicio_mes)
-        dados_mes = self._montar_dados(vendas_mes, use_data_efetiva)
+        # Mensal inclui:
+        # 1) vendas criadas no mês; e
+        # 2) vendas instaladas no mês, mesmo criadas em meses anteriores.
+        # Além disso, mensal inclui reemissão.
+        if use_data_efetiva:
+            filtro_instalacao_mes = (
+                (Q(data_instalacao_fisica__isnull=False) & Q(data_instalacao_fisica__gte=inicio_mes))
+                | (Q(data_instalacao_fisica__isnull=True) & Q(data_instalacao__gte=inicio_mes))
+            )
+        else:
+            filtro_instalacao_mes = Q(data_instalacao__gte=inicio_mes)
+
+        vendas_mes = vendas.filter(
+            Q(data_criacao__date__gte=inicio_mes)
+            | (Q(status_esteira__nome__iexact='INSTALADA') & filtro_instalacao_mes)
+        ).distinct()
+        dados_mes = self._montar_dados(vendas_mes, use_data_efetiva, inicio_mes=inicio_mes)
 
         # 4. Gerar o Excel
         planilhas = [
@@ -5464,7 +5478,7 @@ class ExportarPerformanceExcelView(APIView):
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
 
-    def _montar_dados(self, queryset, use_data_efetiva=False):
+    def _montar_dados(self, queryset, use_data_efetiva=False, inicio_mes=None):
         dados = []
         for v in queryset:
             # Converter para horário local para validação visual
@@ -5472,7 +5486,7 @@ class ExportarPerformanceExcelView(APIView):
             # Consultores: data efetiva (física se preenchida); gestão: data OSAB
             dt_inst = (v.data_instalacao_fisica or v.data_instalacao) if use_data_efetiva else v.data_instalacao
             dt_inst_str = dt_inst.strftime('%d/%m/%Y') if dt_inst else '-'
-            dados.append({
+            linha = {
                 'ID Venda': v.id,
                 'Data Criação (Local)': dt_criacao_local,
                 'Vendedor': v.vendedor.username.upper() if v.vendedor else '-',
@@ -5483,8 +5497,24 @@ class ExportarPerformanceExcelView(APIView):
                 'Forma Pagamento': v.forma_pagamento.nome if v.forma_pagamento else '-',
                 'Status Esteira': v.status_esteira.nome if v.status_esteira else '-',
                 'Data Instalação': dt_inst_str,
-                'OS': v.ordem_servico or '-'
-            })
+                'OS': v.ordem_servico or '-',
+                'Reemissão': 'Sim' if getattr(v, 'reemissao', False) else 'Não',
+            }
+            if inicio_mes:
+                data_criacao_local_date = timezone.localtime(v.data_criacao).date() if v.data_criacao else None
+                instalada_no_mes = bool(
+                    dt_inst and dt_inst >= inicio_mes
+                    and v.status_esteira
+                    and str(v.status_esteira.nome or '').strip().upper() == 'INSTALADA'
+                )
+                if data_criacao_local_date and data_criacao_local_date >= inicio_mes:
+                    origem_mes = 'Venda do mês'
+                elif instalada_no_mes:
+                    origem_mes = 'Instalada no mês (venda anterior)'
+                else:
+                    origem_mes = 'Fora do recorte mensal'
+                linha['Origem Mensal'] = origem_mes
+            dados.append(linha)
         if not dados:
             return [{'Status': 'Sem vendas neste período'}]
         return dados
