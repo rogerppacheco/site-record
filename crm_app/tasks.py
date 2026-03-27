@@ -280,7 +280,12 @@ def processar_envio_performance():
                     pass
 
 
-def processar_fallback_auditoria_ligacoes_sonax(*, limite: int = 15, grace_seconds: int = 90) -> None:
+def processar_fallback_auditoria_ligacoes_sonax(
+    *,
+    limite: int = 15,
+    grace_seconds: int = 90,
+    include_finalizadas_sem_gravacao: bool = False,
+) -> None:
     """
     Fallback para quando a Sonax não dispara o webhook de desligamento.
     - Varre ligações Sonax INICIADA/PROCESSANDO com `provider_call_id` numérico.
@@ -301,15 +306,17 @@ def processar_fallback_auditoria_ligacoes_sonax(*, limite: int = 15, grace_secon
     now = timezone.now()
     cutoff = now - timedelta(seconds=max(10, int(grace_seconds)))
 
-    rows = (
-        AuditoriaLigacao.objects.filter(
-            provedor="SONAX",
-            status__in=["INICIADA", "PROCESSANDO"],
-            criado_em__lte=cutoff,
+    base_qs = AuditoriaLigacao.objects.filter(provedor="SONAX").exclude(provider_call_id__isnull=True)
+
+    pending_q = Q(status__in=["INICIADA", "PROCESSANDO"], criado_em__lte=cutoff)
+    if include_finalizadas_sem_gravacao:
+        # Também força nova tentativa para chamadas já finalizadas/arquivadas sem link no OneDrive.
+        pending_q = pending_q | Q(
+            status__in=["FINALIZADA", "ARQUIVADA", "APROVADA"],
+            link_gravacao_onedrive__isnull=True,
         )
-        .exclude(provider_call_id__isnull=True)
-        .order_by("criado_em")[: max(1, int(limite))]
-    )
+
+    rows = base_qs.filter(pending_q).order_by("criado_em")[: max(1, int(limite))]
     if not rows:
         return
 

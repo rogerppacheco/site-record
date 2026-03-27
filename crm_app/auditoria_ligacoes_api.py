@@ -486,6 +486,29 @@ class AuditoriaLigacaoSincronizarView(APIView):
         )
 
 
+class AuditoriaLigacaoSincronizarLoteView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request: HttpRequest):
+        if not _is_member(request.user, _auditoria_grupos()):
+            return Response({"detail": "Permissão negada."}, status=status.HTTP_403_FORBIDDEN)
+
+        from crm_app.tasks import processar_fallback_auditoria_ligacoes_sonax
+
+        limite_raw = request.data.get("limite", 300)
+        try:
+            limite = max(1, min(int(limite_raw), 1000))
+        except (TypeError, ValueError):
+            limite = 300
+
+        processar_fallback_auditoria_ligacoes_sonax(
+            limite=limite,
+            grace_seconds=0,
+            include_finalizadas_sem_gravacao=True,
+        )
+        return Response({"detail": "Sincronização em lote executada.", "limite": limite})
+
+
 class AuditoriaLigacaoHistoricoView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -500,8 +523,8 @@ class AuditoriaLigacaoHistoricoView(APIView):
                 Q(numero_destino__icontains=q)
                 | Q(numero_origem__icontains=q)
                 | Q(provider_call_id__icontains=q)
-                | Q(venda__cliente_nome_razao_social__icontains=q)
-                | Q(venda__cliente_cpf_cnpj__icontains=q)
+                | Q(venda__cliente__nome_razao_social__icontains=q)
+                | Q(venda__cliente__cpf_cnpj__icontains=q)
             )
 
         status_q = str(request.GET.get("status", "") or "").strip()
