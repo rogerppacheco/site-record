@@ -514,12 +514,105 @@ def montar_resumo_plano_para_whatsapp(venda):
     )
 
 
+def formatar_status_pap_para_whatsapp(status_texto):
+    """Quando o PAP retorna Concluído, exibe Instalado para o consultor no WhatsApp."""
+    if not status_texto:
+        return status_texto
+    s = (status_texto or "").strip()
+    sl = s.lower()
+    if "concluí" in sl or "concluido" in sl:
+        return "Instalado"
+    return s
+
+
+def pap_status_indica_concluido(status_tabela, status_agendamento=None):
+    """Indica instalação concluída no PAP (coluna Status ou detalhe Status agendamento)."""
+    st = (status_tabela or "").strip().lower()
+    if "concluí" in st or "concluido" in st:
+        return True
+    sa = (status_agendamento or "").strip().lower()
+    if sa and ("concluí" in sa or "concluido" in sa or "sucesso" in sa):
+        return True
+    return False
+
+
+def extrair_data_instalacao_texto_pap(agendamento_texto, status_agendamento_texto=None):
+    """Extrai a data (date) do texto Agendamento (ex.: 26/03/2026 - Manhã)."""
+    import re
+    from datetime import datetime
+
+    for texto in (agendamento_texto, status_agendamento_texto):
+        if not texto:
+            continue
+        m = re.search(r"(\d{2}/\d{2}/\d{4})", texto)
+        if m:
+            try:
+                return datetime.strptime(m.group(1), "%d/%m/%Y").date()
+            except ValueError:
+                pass
+    return None
+
+
+def sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes_pap):
+    """
+    Se o PAP indica concluído/instalado: atualiza CRM para INSTALADA e data_instalacao
+    somente quando a esteira no CRM está AGENDADO e ainda não está instalada.
+    """
+    import re
+    from crm_app.models import Venda, StatusCRM
+
+    cpf_digits = limpar_texto(cpf_limpo)
+    if len(cpf_digits) not in (11, 14):
+        return
+    status_inst = StatusCRM.objects.filter(tipo="Esteira", nome__iexact="INSTALADA").first()
+    if not status_inst:
+        return
+
+    for d in detalhes_pap or []:
+        if not d or d.get("nao_pertence_pdv"):
+            continue
+        if not pap_status_indica_concluido(d.get("status"), d.get("status_agendamento")):
+            continue
+        os_raw = (d.get("numero_os") or "").strip()
+        if not os_raw:
+            continue
+        os_digits = re.sub(r"\D", "", os_raw)
+        os_sem_zero = os_digits.lstrip("0") or os_digits
+
+        vendas = (
+            Venda.objects.filter(ativo=True, cliente__cpf_cnpj__icontains=cpf_digits)
+            .select_related("status_esteira")
+        )
+        venda = None
+        for v in vendas:
+            vo = re.sub(r"\D", "", str(v.ordem_servico or ""))
+            vo_sz = vo.lstrip("0") or vo
+            if vo and (vo == os_digits or vo_sz == os_sem_zero):
+                venda = v
+                break
+        if not venda:
+            continue
+
+        st_nome = (venda.status_esteira.nome if venda.status_esteira else "") or ""
+        st_u = st_nome.upper()
+        if "INSTALAD" in st_u:
+            continue
+        if "AGENDADO" not in st_u:
+            continue
+
+        dt = extrair_data_instalacao_texto_pap(d.get("agendamento"), d.get("status_agendamento"))
+        venda.status_esteira = status_inst
+        if dt:
+            venda.data_instalacao = dt
+        venda.save()
+
+
 def consultar_status_venda_com_decisao(tipo_busca, valor):
     """
     Igual a consultar_status_venda, mas retorna também se deve fazer consulta online no PAP
     e o CPF a usar. Usado pelo fluxo Status no WhatsApp para decidir se dispara Consulta OS.
     Retorna: (resultado_texto, fazer_consulta_online, cpf_para_consulta)
-    - fazer_consulta_online: True se (pedido não encontrado) ou (encontrado e (status esteira == AGENDADO ou status esteira não preenchido)) e tiver CPF.
+    - fazer_consulta_online: True sempre que houver CPF/CNPJ válido (11 ou 14 dígitos) para a Consulta OS.
     - cpf_para_consulta: CPF/CNPJ (só dígitos) para a Consulta OS, ou None.
     """
     valor_limpo = limpar_texto(valor)
@@ -543,17 +636,8 @@ def consultar_status_venda_com_decisao(tipo_busca, valor):
                 cpf_para_consulta = None
 
     texto = consultar_status_venda(tipo_busca, valor)
-
-    if not venda:
-        # Pedido não encontrado: consulta online só se tivermos CPF (fluxo por CPF)
-        fazer_online = bool(cpf_para_consulta)
-        return (texto, fazer_online, cpf_para_consulta)
-    st_esteira = ((venda.status_esteira.nome if venda.status_esteira else None) or "").strip().upper()
-    # Liberar consulta online quando: AGENDADO ou quando status_esteira não estiver preenchido
-    fazer_online = bool(cpf_para_consulta) and (st_esteira == "AGENDADO" or not st_esteira)
-    if fazer_online:
-        return (texto, True, cpf_para_consulta)
-    return (texto, False, None)
+    # Consulta online no PAP sempre que houver CPF/CNPJ válido (com ou sem venda no CRM)
+    return (texto, bool(cpf_para_consulta), cpf_para_consulta)
 
 
 def consultar_previsao_agendamento(numero_pedido):

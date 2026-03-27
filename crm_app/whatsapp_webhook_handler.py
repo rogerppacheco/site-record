@@ -1104,13 +1104,12 @@ def _executar_consulta_pedido_background(telefone: str, usuario_id: int, cpf: st
 def _executar_consulta_status_online_background(
     telefone: str,
     cpf: str,
-    eh_agendado: bool,
     os_filtro: str = None,
     run_id: str = None,
 ):
     """
-    Thread: após Status no CRM (não encontrado ou encontrado com AGENDADO), consulta online no PAP
-    (mesmo fluxo Consulta OS). Se eh_agendado=True, enriquece com Detalhar (Status agendamento + Agendamento).
+    Thread: após Status no CRM, consulta online no PAP (Consulta OS + Detalhar quando houver link).
+    Opcionalmente sincroniza venda (AGENDADO → INSTALADA + data instal.) quando PAP indica concluído.
     Envia resultado via WhatsApp e reseta sessão.
     """
     import base64
@@ -1125,6 +1124,10 @@ def _executar_consulta_status_online_background(
         atualizar_historico_consulta_pap_resultado,
     )
     from crm_app.whatsapp_service import WhatsAppService
+    from crm_app.utils import (
+        formatar_status_pap_para_whatsapp,
+        sincronizar_venda_crm_apos_status_pap,
+    )
 
     cpf_limpo = re.sub(r'\D', '', cpf)
     if len(cpf_limpo) not in (11, 14):
@@ -1226,19 +1229,24 @@ def _executar_consulta_status_online_background(
                     f"⏱ _{tempo_decorrido}s_"
                 )
             else:
+                try:
+                    sincronizar_venda_crm_apos_status_pap(cpf_limpo, detalhes)
+                except Exception as e_sync:
+                    logger.warning("[STATUS ONLINE] Sync CRM: %s", e_sync)
                 n = len(detalhes)
                 partes = ["📡 *Status online (PAP)*\n\n✅ *Existe(m) pedido(s):*\n\n"]
                 for i, d in enumerate(detalhes):
+                    st_exibir = formatar_status_pap_para_whatsapp(d.get("status", ""))
                     if n > 1:
                         partes.append(f"📌 *Pedido {i + 1}/{n}* (OS {d.get('numero_os', '')})\n")
                     if d.get("nao_pertence_pdv"):
                         partes.append("⚠️ Existe um pedido emitido, porém não pertence ao seu PDV.\n")
-                        partes.append(f"• *Status:* {d.get('status', '')}\n")
+                        partes.append(f"• *Status:* {st_exibir}\n")
                         partes.append(f"• *Data:* {d.get('data_hora', '')}\n")
                         partes.append(f"• *Plano:* {d.get('plano', '')}\n")
                         partes.append(f"• *Nº OS:* {d.get('numero_os', '')}\n")
                     else:
-                        partes.append(f"• *Status:* {d.get('status', '')}\n")
+                        partes.append(f"• *Status:* {st_exibir}\n")
                         partes.append(f"• *Data:* {d.get('data_hora', '')}\n")
                         partes.append(f"• *Plano:* {d.get('plano', '')}\n")
                         partes.append(f"• *Nº OS:* {d.get('numero_os', '')}\n")
@@ -7223,7 +7231,6 @@ def processar_webhook_whatsapp(data, request=None):
                     return _enviar_resposta_e_retornar(resposta)
                 resposta = f"🔎 Buscando pedido por CPF...\n\n{resultado_status}"
                 if fazer_consulta_online and cpf_para_consulta:
-                    eh_agendado = "AGENDADO" in resultado_status.upper() and "PEDIDO NÃO ENCONTRADO" not in resultado_status.upper()
                     run_id = str(int(time.time() * 1000))
                     sessao.etapa = 'status_aguardando_online'
                     sessao.dados_temp = {
@@ -7233,7 +7240,7 @@ def processar_webhook_whatsapp(data, request=None):
                     sessao.save()
                     threading.Thread(
                         target=_executar_consulta_status_online_background,
-                        args=(telefone_formatado, cpf_para_consulta, eh_agendado, None, run_id),
+                        args=(telefone_formatado, cpf_para_consulta, None, run_id),
                         daemon=True
                     ).start()
                     resposta += "\n\n⏳ Consultando também no PAP (status online)... Aguarde."
@@ -7252,7 +7259,6 @@ def processar_webhook_whatsapp(data, request=None):
                 resultado_status, fazer_consulta_online, cpf_para_consulta = consultar_status_venda_com_decisao('OS', os_limpo)
                 resposta = f"🔎 Buscando pedido por O.S...\n\n{resultado_status}"
                 if fazer_consulta_online and cpf_para_consulta:
-                    eh_agendado = True
                     run_id = str(int(time.time() * 1000))
                     sessao.etapa = 'status_aguardando_online'
                     sessao.dados_temp = {
@@ -7263,7 +7269,7 @@ def processar_webhook_whatsapp(data, request=None):
                     sessao.save()
                     threading.Thread(
                         target=_executar_consulta_status_online_background,
-                        args=(telefone_formatado, cpf_para_consulta, eh_agendado, os_limpo, run_id),
+                        args=(telefone_formatado, cpf_para_consulta, os_limpo, run_id),
                         daemon=True
                     ).start()
                     resposta += "\n\n⏳ Consultando também no PAP (status online)... Aguarde."
