@@ -262,7 +262,7 @@ class VendaSerializer(serializers.ModelSerializer):
             'data_criacao', 'forma_entrada', 'cpf_representante_legal', 'nome_representante_legal',
             'nome_mae', 'data_nascimento', 'telefone1', 'telefone2', 'cep', 'logradouro', 'numero_residencia',
             'complemento', 'bairro', 'cidade', 'estado',             'data_abertura', 'ordem_servico', 'data_agendamento',
-            'periodo_agendamento', 'data_instalacao', 'data_instalacao_fisica', 'antecipou_instalacao',
+            'periodo_agendamento', 'data_instalacao', 'data_instalacao_fisica', 'antecipou_instalacao', 'antecipacao_comissao',
             'ponto_referencia', 'observacoes', 'data_pagamento', 'valor_pago',
             'auditor_atual', 'auditor_atual_nome', 'auditor_atual_id',
             'nome_editor', 'data_ultima_alteracao', 'gerada_os_automatica',
@@ -313,7 +313,7 @@ class VendaDetailSerializer(serializers.ModelSerializer):
             'nome_mae', 'data_nascimento', 'telefone1', 'telefone2',
             'cep', 'logradouro', 'numero_residencia', 'complemento', 'bairro', 'cidade', 'estado',
             'ponto_referencia', 'observacoes', 'ordem_servico', 'data_abertura',
-            'data_agendamento', 'periodo_agendamento', 'data_instalacao', 'data_instalacao_fisica', 'antecipou_instalacao',
+            'data_agendamento', 'periodo_agendamento', 'data_instalacao', 'data_instalacao_fisica', 'antecipou_instalacao', 'antecipacao_comissao',
             'data_pagamento', 'valor_pago', 'cpf_representante_legal', 'nome_representante_legal',
             'forma_entrada', 'tem_fixo', 'historico_alteracoes', 'data_criacao', 'data_ultima_alteracao',
             'gerada_os_automatica',
@@ -445,6 +445,9 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if request and 'data_instalacao_fisica' in data and not is_member(request.user, ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']):
             data.pop('data_instalacao_fisica', None)
+        # Antecipação de comissão: somente BackOffice/Diretoria/Admin
+        if request and 'antecipacao_comissao' in data and not is_member(request.user, ['Diretoria', 'Admin', 'BackOffice']):
+            data.pop('antecipacao_comissao', None)
         # Converte para maiúsculo, exceto email e obs
         for key, value in data.items():
             if value is None: continue

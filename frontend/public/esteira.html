@@ -130,6 +130,30 @@
                     <button type="button" class="btn btn-primary" onclick="buscarInstaladas()"><i class="bi bi-search me-1"></i>Buscar</button>
                 </div>
                 <small class="text-muted d-block mt-2">Consulta em qualquer data. Use o resultado para ajustar a data de instalação (no cliente) se necessário.</small>
+                <div id="painel-instaladas-antecipacao" class="mt-3 p-3 border rounded bg-white shadow-sm" style="display: none;">
+                    <div class="fw-bold text-primary mb-2"><i class="bi bi-sliders me-1"></i> Antecipação — venda <span id="instaladas-antecipacao-venda-id-label"></span></div>
+                    <input type="hidden" id="instaladas-antecipacao-venda-id-hidden" value="">
+                    <div class="row g-2 align-items-end flex-wrap">
+                        <div class="col-auto">
+                            <label class="form-label small fw-bold mb-0" for="select-instaladas-houve-antecipacao">Houve antecipação? <span class="text-danger">*</span></label>
+                            <select id="select-instaladas-houve-antecipacao" class="form-select form-select-sm" style="min-width: 140px;">
+                                <option value="false">Não</option>
+                                <option value="true">Sim</option>
+                            </select>
+                        </div>
+                        <div class="col-auto">
+                            <label class="form-label small fw-bold mb-0" for="select-instaladas-antecipacao-comissao">Antecipação de comissão <span class="text-danger">*</span></label>
+                            <select id="select-instaladas-antecipacao-comissao" class="form-select form-select-sm" style="min-width: 140px;">
+                                <option value="false">Não</option>
+                                <option value="true">Sim</option>
+                            </select>
+                        </div>
+                        <div class="col-auto">
+                            <button type="button" class="btn btn-success btn-sm" id="btn-salvar-instaladas-antecipacao" onclick="salvarAntecipacaoInstaladas()"><i class="bi bi-check-lg me-1"></i>Salvar</button>
+                        </div>
+                    </div>
+                    <small class="text-muted d-block mt-2 mb-0">Disponível quando a busca retorna uma única venda instalada. Apenas BackOffice, Diretoria ou Admin.</small>
+                </div>
             </div>
 
             <div class="card border-0 shadow-none" style="background: transparent;">
@@ -392,6 +416,7 @@
         if (!allowedProfiles.includes(userProfile)) { alert('Acesso negado.'); window.location.href = '/area-interna/'; }
 
         const podeConfigurarZap = ['Diretoria', 'Admin'].includes(userProfile);
+        const podeEditarAntecipacaoInstaladas = ['Diretoria', 'BackOffice', 'Admin'].includes(userProfile);
         let envioWhatsappAtivo = true;
 
         let filtroAtual = 'TODOS';
@@ -543,6 +568,8 @@
 
             if (carregarInstaladas && !busca) {
                 tbody.innerHTML = '<tr><td colspan="13" class="text-center py-5 text-muted"><p class="mb-2"><i class="bi bi-search" style="font-size: 1.5rem;"></i></p><p class="mb-0">Digite <strong>CPF</strong> ou <strong>número da O.S.</strong> no campo acima e pressione <kbd>Enter</kbd> para consultar vendas instaladas em qualquer data.</p></td></tr>';
+                var paEmpty = document.getElementById('painel-instaladas-antecipacao');
+                if (paEmpty) paEmpty.style.display = 'none';
                 return;
             }
 
@@ -637,6 +664,8 @@
                 if(vendas.length === 0) {
                     const msg = carregarInstaladas ? 'Nenhuma venda instalada encontrada para este CPF/O.S.' : 'Nenhuma venda encontrada nesta etapa.';
                     tbody.innerHTML = '<tr><td colspan="13" class="text-center py-4 text-muted">' + msg + '</td></tr>';
+                    const pa = document.getElementById('painel-instaladas-antecipacao');
+                    if (pa) pa.style.display = 'none';
                     return;
                 }
 
@@ -738,9 +767,28 @@
                     `;
                 });
                 tbody.innerHTML = htmlContent;
+
+                const painelAnt = document.getElementById('painel-instaladas-antecipacao');
+                if (painelAnt) {
+                    if (carregarInstaladas && vendas.length === 1 && podeEditarAntecipacaoInstaladas) {
+                        const v0 = vendas[0];
+                        painelAnt.style.display = 'block';
+                        var lid = document.getElementById('instaladas-antecipacao-venda-id-label');
+                        var hid = document.getElementById('instaladas-antecipacao-venda-id-hidden');
+                        var s1 = document.getElementById('select-instaladas-houve-antecipacao');
+                        var s2 = document.getElementById('select-instaladas-antecipacao-comissao');
+                        if (lid) lid.textContent = '#' + v0.id;
+                        if (hid) hid.value = String(v0.id);
+                        if (s1) s1.value = v0.antecipou_instalacao ? 'true' : 'false';
+                        if (s2) s2.value = (v0.antecipacao_comissao === true) ? 'true' : 'false';
+                    } else {
+                        painelAnt.style.display = 'none';
+                    }
+                }
             } catch (e) { 
-                if(!silent) tbody.innerHTML = '<tr><td colspan="13" class="text-center text-danger">Erro ao carregar.<br><small>'+(e.message || e)+'</small></td></tr>'; 
-                // ...
+                if(!silent) tbody.innerHTML = '<tr><td colspan="13" class="text-center text-danger">Erro ao carregar.<br><small>'+(e.message || e)+'</small></td></tr>';
+                var paErr = document.getElementById('painel-instaladas-antecipacao');
+                if (paErr) paErr.style.display = 'none';
             }
         }
 
@@ -865,6 +913,35 @@
             carregarVendas();
         }
 
+        async function salvarAntecipacaoInstaladas() {
+            var hid = document.getElementById('instaladas-antecipacao-venda-id-hidden');
+            var s1 = document.getElementById('select-instaladas-houve-antecipacao');
+            var s2 = document.getElementById('select-instaladas-antecipacao-comissao');
+            var btn = document.getElementById('btn-salvar-instaladas-antecipacao');
+            if (!hid || !s1 || !s2 || !podeEditarAntecipacaoInstaladas) return;
+            var vid = (hid.value || '').trim();
+            if (!vid) { alert('Nenhuma venda selecionada.'); return; }
+            var body = {
+                antecipou_instalacao: s1.value === 'true',
+                antecipacao_comissao: s2.value === 'true'
+            };
+            if (btn) { btn.disabled = true; }
+            try {
+                await apiFetch('/crm/vendas/' + vid + '/', { method: 'PATCH', body: JSON.stringify(body) });
+                alert('Alterações salvas.');
+                carregarVendas(true);
+            } catch (e) {
+                var msg = (e && e.message) ? e.message : String(e);
+                try {
+                    var parsed = JSON.parse(msg);
+                    if (parsed && parsed.detail) msg = typeof parsed.detail === 'string' ? parsed.detail : JSON.stringify(parsed.detail);
+                } catch (_) {}
+                alert('Erro ao salvar: ' + msg);
+            } finally {
+                if (btn) { btn.disabled = false; }
+            }
+        }
+
         function filtrarStatus(status, element) {
             filtroAtual = status;
             document.querySelectorAll('#abas-esteira .nav-link').forEach(l => l.classList.remove('active'));
@@ -872,6 +949,8 @@
             if (status === 'INSTALADAS') {
                 document.getElementById('filtro-turno-container').style.display = 'none';
                 document.getElementById('painel-busca-instaladas').style.display = 'block';
+                var pa = document.getElementById('painel-instaladas-antecipacao');
+                if (pa) pa.style.display = 'none';
                 while (document.getElementById('abas-esteira').children.length > 4) document.getElementById('abas-esteira').removeChild(document.getElementById('abas-esteira').lastChild);
                 var tb = document.getElementById('tabela-esteira-body');
                 tb.innerHTML = '<tr><td colspan="13" class="text-center py-5 text-muted"><p class="mb-2"><i class="bi bi-search" style="font-size: 1.5rem;"></i></p><p class="mb-0">Use o campo de busca acima (CPF ou O.S.) e clique em <strong>Buscar</strong> para consultar vendas instaladas em qualquer data.</p><p class="small mt-2 mb-0">Apenas para consulta e ajuste da data de instalação (no cliente).</p></td></tr>';

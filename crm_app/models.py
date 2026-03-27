@@ -161,6 +161,11 @@ class Venda(models.Model):
         help_text="Data em que a instalação ocorreu de fato no cliente. Usada em performance/dashboard para consultores. Editável apenas por BackOffice/Diretoria/Admin.",
     )
     antecipou_instalacao = models.BooleanField(default=False)
+    antecipacao_comissao = models.BooleanField(
+        default=False,
+        verbose_name="Antecipação de comissão",
+        help_text="Indica se a comissão desta venda foi antecipada (informação administrativa).",
+    )
     motivo_pendencia = models.ForeignKey(MotivoPendencia, on_delete=models.SET_NULL, null=True, blank=True, related_name='vendas_pendentes', db_index=True)
 
     inclusao = models.BooleanField(default=False, verbose_name="Inclusão/Viabilidade")
