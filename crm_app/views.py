@@ -2369,7 +2369,7 @@ class VendaViewSet(viewsets.ModelViewSet):
             'Cliente', 'CPF/CNPJ', 'Telefone 1', 'Telefone 2', 'Email',
             'Plano', 'Valor', 'Forma Pagamento',
             'Status Esteira', 'Status Tratamento', 'Status Comissionamento',
-            'OS', 'Data Agendamento', 'Turno', 'Data Instalação',
+            'OS', 'Data Agendamento', 'Turno', 'Data Instalação', 'Data Física (no cliente)',
             'Motivo Pendência', 'Observações',
             'CEP', 'Logradouro', 'Número', 'Complemento', 'Bairro', 'Cidade', 'UF', 'Ponto Ref.'
         ]
@@ -2383,6 +2383,7 @@ class VendaViewSet(viewsets.ModelViewSet):
             dt_abertura = timezone.localtime(v.data_abertura).strftime('%d/%m/%Y %H:%M') if v.data_abertura else '-'
             dt_agendamento = v.data_agendamento.strftime('%d/%m/%Y') if v.data_agendamento else '-'
             dt_instalacao = v.data_instalacao.strftime('%d/%m/%Y') if v.data_instalacao else '-'
+            dt_instalacao_fisica = v.data_instalacao_fisica.strftime('%d/%m/%Y') if v.data_instalacao_fisica else '-'
             data.append([
                 v.id,
                 'Sim' if getattr(v, 'reemissao', False) else 'Não',
@@ -2406,6 +2407,7 @@ class VendaViewSet(viewsets.ModelViewSet):
                 dt_agendamento,
                 v.get_periodo_agendamento_display() or '-',
                 dt_instalacao,
+                dt_instalacao_fisica,
                 v.motivo_pendencia.nome if v.motivo_pendencia else '-',
                 v.observacoes or '-',
                 v.cep or '-',
@@ -5497,6 +5499,7 @@ class ExportarPerformanceExcelView(APIView):
                 'Forma Pagamento': v.forma_pagamento.nome if v.forma_pagamento else '-',
                 'Status Esteira': v.status_esteira.nome if v.status_esteira else '-',
                 'Data Instalação': dt_inst_str,
+                'Data Física (no cliente)': v.data_instalacao_fisica.strftime('%d/%m/%Y') if v.data_instalacao_fisica else '-',
                 'OS': v.ordem_servico or '-',
                 'Reemissão': 'Sim' if getattr(v, 'reemissao', False) else 'Não',
             }
