@@ -65,7 +65,8 @@ def processar_envio_performance():
                 dias_semana = [inicio_semana + timedelta(days=i) for i in range(6)]
                 inicio_mes = hoje.replace(day=1)
 
-                users = User.objects.filter(is_active=True).exclude(username__in=['OSAB_IMPORT', 'admin', 'root'])
+                # Alinhado ao Painel (default gestão): inclui vendedores inativos; bots continuam excluídos
+                users = User.objects.exclude(username__in=['OSAB_IMPORT', 'admin', 'root'])
                 if regra.canal_alvo != 'TODOS':
                     users = users.filter(canal__iexact=regra.canal_alvo)
                 if getattr(regra, 'cluster_alvo', None) and str(regra.cluster_alvo).strip() and str(regra.cluster_alvo).upper() != 'TODOS':

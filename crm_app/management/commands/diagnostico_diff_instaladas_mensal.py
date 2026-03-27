@@ -74,6 +74,12 @@ class Command(BaseCommand):
             default='',
             help='Se informado, grava CSV com colunas categoria,id_venda',
         )
+        parser.add_argument(
+            '--vendedor-ativo',
+            default='todos',
+            choices=('todos', 'ativos', 'inativos'),
+            help='Alinhado ao Painel: todos|ativos|inativos (default: todos)',
+        )
 
     def handle(self, *args, **options):
         hoje = timezone.localtime(timezone.now()).date()
@@ -102,6 +108,13 @@ class Command(BaseCommand):
             users = users.filter(canal__iexact=canal)
         if cluster:
             users = users.filter(cluster__iexact=cluster)
+
+        va = options['vendedor_ativo']
+        if va == 'ativos':
+            users = users.filter(is_active=True)
+        elif va == 'inativos':
+            users = users.filter(is_active=False)
+        # todos: sem filtro is_active
 
         user_ids = list(users.values_list('id', flat=True))
         if not user_ids:
@@ -154,14 +167,10 @@ class Command(BaseCommand):
             .values_list('id', flat=True)
         )
 
-        # --- 2) Export Performance: aba Mês Atual (queryset completo da aba) ---
+        # --- 2) Export Performance: aba Mês Atual (mesmo vendedor_id__in que o Painel; canal/cluster já em user_ids)
         vendas = Venda.objects.filter(ativo=True, vendedor_id__in=user_ids).select_related(
             'status_esteira', 'vendedor'
         )
-        if canal:
-            vendas = vendas.filter(vendedor__canal__iexact=canal)
-        if cluster:
-            vendas = vendas.filter(vendedor__cluster__iexact=cluster)
 
         use_data_efetiva = not eh_gestao
         if use_data_efetiva:
@@ -193,10 +202,6 @@ class Command(BaseCommand):
             data_instalacao__gte=inicio_mes,
             data_instalacao__lt=fim_mes_exclusivo,
         )
-        if canal:
-            qs_dash = qs_dash.filter(vendedor__canal__iexact=canal)
-        if cluster:
-            qs_dash = qs_dash.filter(vendedor__cluster__iexact=cluster)
 
         ids_dashboard = set(qs_dash.values_list('id', flat=True))
 
@@ -207,7 +212,9 @@ class Command(BaseCommand):
         self.stdout.write(
             f'Modo simulado: {"gestão (OSAB no Painel/Export)" if eh_gestao else "não-gestão (física/OSAB efetiva)"}'
         )
-        self.stdout.write(f'Filtros: canal={canal or "(todos)"} cluster={cluster or "(todos)"}')
+        self.stdout.write(
+            f'Filtros: canal={canal or "(todos)"} cluster={cluster or "(todos)"} vendedor_ativo={va}'
+        )
         self.stdout.write('')
         self.stdout.write('--- Contagens ---')
         self.stdout.write(f'Painel Performance (tela) instaladas — regra ATUAL (>= {inicio_mes}, sem teto): {len(ids_tela)}')

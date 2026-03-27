@@ -52,6 +52,23 @@
         .input-loading { background: url('https://i.gifer.com/ZZ5H.gif') no-repeat right 10px center; background-size: 20px; }
 
         @media (max-width: 576px) { .header-controls { flex-direction: column; align-items: flex-start; gap: 10px; } .header-controls button { width: 100%; } }
+        
+        /* Correção para modal não aparecer */
+        #modal-origem-venda {
+            z-index: 1055 !important;
+        }
+        
+        #modal-origem-venda.show {
+            display: block !important;
+        }
+        
+        #modal-origem-venda .modal-dialog {
+            z-index: 1056 !important;
+        }
+        
+        .modal-backdrop {
+            z-index: 1050 !important;
+        }
     </style>
 </head>
 <body>
@@ -80,7 +97,9 @@
                     <button id="btn-exportar-excel" class="btn btn-success shadow-sm fw-bold d-none" onclick="exportarExcelDiretoria()">
                         <i class="bi bi-file-earmark-excel-fill"></i> Baixar Base
                     </button>
-                    
+                    <button class="btn btn-outline-success shadow-sm fw-bold" onclick="abrirModalBoasVindas()" title="Enviar mensagem de boas-vindas para clientes instalados">
+                        <i class="bi bi-chat-heart"></i> Boas Vindas
+                    </button>
                     <button class="btn btn-primary shadow-sm fw-bold" onclick="abrirModalOrigem()">
                         <i class="bi bi-plus-lg"></i> Nova Venda
                     </button>
@@ -118,6 +137,14 @@
                     <div class="filter-item d-none" id="container-filtro-vendedor">
                         <label class="form-label small fw-bold text-muted">Vendedor</label>
                         <select id="filtro-vendedor" class="form-select form-select-sm"><option value="">Todos</option></select>
+                    </div>
+                    <div class="filter-item d-none" id="filtro-dash-vendedor-ativo-wrap">
+                        <label class="form-label small fw-bold text-muted">Conta vendedor</label>
+                        <select id="filtro-vendedor-ativo-dash" class="form-select form-select-sm" title="Ativo = usuário ativo no sistema">
+                            <option value="todos" selected>Todos (ativos e inativos)</option>
+                            <option value="ativos">Só ativos</option>
+                            <option value="inativos">Só inativos</option>
+                        </select>
                     </div>
                     <div class="filter-item" style="flex: 0 0 auto;"><button onclick="aplicarFiltros()" class="btn btn-sm btn-primary w-100"><i class="bi bi-filter"></i> Filtrar</button></div>
                 </div>
@@ -178,7 +205,7 @@
     <div class="modal fade" id="modalDetalheDashboard" tabindex="-1"><div class="modal-dialog modal-dialog-centered modal-dialog-scrollable"><div class="modal-content"><div class="modal-header"><h5 class="modal-title fw-bold" id="tituloDetalheDashboard">Detalhes</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body p-0"><div class="list-group list-group-flush" id="listaDetalheDashboard"></div></div></div></div></div>
     <div class="modal fade" id="modalMix" tabindex="-1"><div class="modal-dialog modal-lg modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title fw-bold"><i class="bi bi-graph-up"></i> Detalhamento de Vendas (Mix)</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="row"><div class="col-md-6 border-end"><h6 class="text-center fw-bold mb-3 text-primary">Mix de Velocidade/Plano</h6><div class="table-responsive"><table class="table table-sm table-striped"><thead class="table-light"><tr><th>Plano</th><th class="text-end">Qtd</th><th class="text-end">%</th></tr></thead><tbody id="tbody-mix-velocidade"></tbody></table></div></div><div class="col-md-6"><h6 class="text-center fw-bold mb-3 text-success">Mix Forma de Pagamento</h6><div class="table-responsive"><table class="table table-sm table-striped"><thead class="table-light"><tr><th>Forma Pagto</th><th class="text-end">Qtd</th><th class="text-end">%</th></tr></thead><tbody id="tbody-mix-pagamento"></tbody></table></div></div></div></div></div></div></div>
 
-    <div class="modal fade" id="modal-origem-venda" tabindex="-1">
+    <div class="modal fade" id="modal-origem-venda" tabindex="-1" style="z-index: 1055;">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content border-0 bg-transparent">
                 <div class="modal-body p-0">
@@ -189,18 +216,54 @@
                             <button type="button" class="btn-close position-absolute top-0 end-0 m-3" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
                         <div class="card-body p-5">
-                            <div class="row g-4">
-                                <div class="col-6">
-                                    <button onclick="selecionarOrigem('APP')" class="btn btn-outline-primary w-100 btn-origem">
-                                        <i class="bi bi-phone"></i>
-                                        <span>Via APP</span>
-                                    </button>
+                            <div id="opcoes-origem">
+                                <div class="row g-4">
+                                    <div class="col-6">
+                                        <button onclick="selecionarOrigem('APP')" class="btn btn-outline-primary w-100 btn-origem">
+                                            <i class="bi bi-phone"></i>
+                                            <span>Via APP</span>
+                                        </button>
+                                    </div>
+                                    <div class="col-6">
+                                        <button onclick="selecionarOrigem('SEM_APP')" class="btn btn-outline-secondary w-100 btn-origem">
+                                            <i class="bi bi-journal-x"></i>
+                                            <span>Sem APP</span>
+                                        </button>
+                                    </div>
                                 </div>
-                                <div class="col-6">
-                                    <button onclick="selecionarOrigem('SEM_APP')" class="btn btn-outline-secondary w-100 btn-origem">
-                                        <i class="bi bi-journal-x"></i>
-                                        <span>Sem APP</span>
-                                    </button>
+                            </div>
+                            <div id="opcoes-fixo" style="display: none;">
+                                <p class="text-muted small mb-3 text-center">A venda terá telefone fixo?</p>
+                                <div class="row g-4">
+                                    <div class="col-6">
+                                        <button onclick="selecionarFixo(true)" class="btn btn-outline-success w-100">
+                                            <i class="bi bi-check-circle"></i>
+                                            <span>Sim, tem fixo</span>
+                                        </button>
+                                    </div>
+                                    <div class="col-6">
+                                        <button onclick="selecionarFixo(false)" class="btn btn-outline-danger w-100">
+                                            <i class="bi bi-x-circle"></i>
+                                            <span>Não tem fixo</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="opcoes-gerada-os" style="display: none;">
+                                <p class="text-muted small mb-3 text-center">Gerada O.S automática?</p>
+                                <div class="row g-4">
+                                    <div class="col-6">
+                                        <button onclick="selecionarGeradaOs(true)" class="btn btn-outline-success w-100">
+                                            <i class="bi bi-check-circle"></i>
+                                            <span>Sim</span>
+                                        </button>
+                                    </div>
+                                    <div class="col-6">
+                                        <button onclick="selecionarGeradaOs(false)" class="btn btn-outline-danger w-100">
+                                            <i class="bi bi-x-circle"></i>
+                                            <span>Não</span>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -216,6 +279,56 @@
                 <div class="modal-header bg-warning text-dark"><h5 class="modal-title fw-bold"><i class="bi bi-exclamation-triangle-fill"></i> Atenção: Cliente Recorrente</h5><button type="button" class="btn-close" onclick="fecharModalAviso()"></button></div>
                 <div class="modal-body"><div class="alert alert-light border text-center mb-3"><h4 class="fw-bold text-warning" id="aviso-qtd-vendas" style="font-size: 2.5rem;">0</h4><span class="text-muted text-uppercase small fw-bold">Vendas Ativas Encontradas</span></div><p class="text-center mb-3">O cliente <strong id="aviso-nome-cliente"></strong> já possui histórico em nossa base.</p><div class="alert alert-danger" role="alert"><div class="d-flex align-items-center mb-2"><i class="bi bi-shield-lock-fill fs-3 me-3"></i><div><strong>Aviso de Segurança:</strong><br>Esta venda passará por uma <u>auditoria mais apurada</u> devido à duplicidade de CPF/CNPJ.</div></div><hr><p class="mb-0 fw-bold text-center small text-uppercase"><i class="bi bi-exclamation-circle"></i> Essa venda poderá gerar uma recompra ou uma venda indevida!</p></div><p class="small text-muted text-center mt-3">Deseja continuar com este CPF ou informar um novo?</p></div>
                 <div class="modal-footer justify-content-center"><button type="button" class="btn btn-outline-secondary px-4" onclick="fecharModalAviso()">Informar Outro CPF</button><button type="button" class="btn btn-warning px-4 fw-bold" onclick="confirmarClienteExistente()">Sim, Continuar Venda</button></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modal-boas-vindas" tabindex="-1" style="z-index: 1055;">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-success">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title"><i class="bi bi-chat-heart"></i> Boas Vindas</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small">A mensagem será enviada para clientes com status <strong>Instalada</strong> na data em que o pedido foi instalado (telefone1).</p>
+                    <p class="alert alert-light border small mb-0"><i class="bi bi-info-circle"></i> O envio é feito em lotes, com intervalo <strong>aleatório</strong> entre cada mensagem (padrão diferente a cada vez) para evitar bloqueio do WhatsApp.</p>
+                    <form id="form-boas-vindas">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Data em que o pedido foi instalado *</label>
+                            <input type="date" class="form-control" id="boas-vindas-data" required>
+                        </div>
+                    </form>
+                    <div id="boas-vindas-resultado" class="alert mt-2" style="display: none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                    <button type="button" class="btn btn-success" id="btn-enviar-boas-vindas" onclick="enviarBoasVindas()">
+                        <i class="bi bi-send"></i> Enviar mensagem
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modal-reemissao" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog">
+            <div class="modal-content border-warning">
+                <div class="modal-header bg-warning text-dark"><h5 class="modal-title"><i class="bi bi-arrow-repeat"></i> Reemissão de Venda</h5><button type="button" class="btn-close btn-close-white" onclick="cancelarReemissao()"></button></div>
+                <div class="modal-body">
+                    <div class="alert alert-warning small">
+                        Ao confirmar, a venda será marcada como <strong>Reemissão</strong>, o status será alterado para <strong>AGENDADO</strong> e aparecerá na esteira.
+                    </div>
+                    <form id="form-reemissao">
+                        <div class="mb-3"><label class="form-label fw-bold">Número da O.S. *</label><input type="text" class="form-control" id="reemissao-os" required><div id="reemissao-os-feedback" class="invalid-feedback">O.S. já existe!</div></div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3"><label class="form-label fw-bold">Data Agendada *</label><input type="date" class="form-control" id="reemissao-data" required></div>
+                            <div class="col-md-6 mb-3"><label class="form-label fw-bold">Turno *</label><select class="form-select" id="reemissao-turno" required><option value="">Selecione...</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select></div>
+                        </div>
+                        <div class="mb-3"><label class="form-label">Observação</label><textarea class="form-control" id="reemissao-observacao" rows="2" oninput="this.value = this.value.toUpperCase()" placeholder="Digite a observação..."></textarea></div>
+                    </form>
+                </div>
+                <div class="modal-footer"><button type="button" class="btn btn-secondary" onclick="cancelarReemissao()">Cancelar</button><button type="button" class="btn btn-warning" onclick="salvarReemissao()">Confirmar Reemissão</button></div>
             </div>
         </div>
     </div>
@@ -245,7 +358,9 @@
                 <div class="modal-header"><h5 class="modal-title fw-bold" id="titulo-modal-venda">Registrar Venda</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
                     <form id="form-nova-venda">
-                        <input type="hidden" name="forma_entrada" id="input-forma-entrada"><input type="hidden" id="id-venda-edicao"> 
+                        <input type="hidden" name="forma_entrada" id="input-forma-entrada"><input type="hidden" id="id-venda-edicao">
+                        <input type="hidden" name="tem_fixo" id="input-tem-fixo" value="false">
+                        <input type="hidden" name="gerada_os_automatica" id="input-gerada-os-automatica" value="false"> 
                         <h6 class="text-primary border-bottom pb-2 mb-3">Dados do Cliente</h6>
                         <div class="row g-3">
                             <div class="col-12 col-md-6 position-relative">
@@ -270,8 +385,8 @@
                             
                             <div class="col-12 col-md-6">
                                 <div class="row g-2">
-                                    <div class="col-6"><label>Telefone 1 (WhatsApp) <span class="text-danger">*</span></label><input type="text" class="form-control" id="input-telefone" name="telefone1" required onblur="verificarWhatsApp(this)" oninput="validarTelefonesDiferentes()"><div id="feedback-whatsapp" class="form-text mt-1" style="font-size: 0.8rem; min-height: 1.2em;"></div></div>
-                                    <div class="col-6"><label>Telefone 2 <span class="text-danger">*</span></label><input type="text" class="form-control" id="input-telefone2" name="telefone2" required oninput="validarTelefonesDiferentes()"><div id="feedback-telefone2" class="form-text mt-1" style="font-size: 0.8rem; min-height: 1.2em;"></div></div>
+                                    <div class="col-6"><label>Telefone 1 (WhatsApp) <span class="text-danger">*</span></label><input type="text" class="form-control" id="input-telefone" name="telefone1" required onblur="validarTelefone(this, 'feedback-whatsapp', true)" oninput="validarTelefonesDiferentes()" placeholder="(00) 00000-0000" maxlength="15"><div id="feedback-whatsapp" class="form-text mt-1" style="font-size: 0.8rem; min-height: 1.2em;"></div></div>
+                                    <div class="col-6"><label>Telefone 2 <span class="text-danger">*</span></label><input type="text" class="form-control" id="input-telefone2" name="telefone2" required onblur="validarTelefone(this, 'feedback-telefone2', false)" oninput="validarTelefonesDiferentes()" placeholder="(00) 00000-0000" maxlength="15"><div id="feedback-telefone2" class="form-text mt-1" style="font-size: 0.8rem; min-height: 1.2em;"></div></div>
                                 </div>
                             </div>
                         </div>
@@ -285,6 +400,23 @@
                             <div class="col-12 col-md-6 d-none" id="container-status-esteira"><label class="fw-bold text-success">Status Esteira</label><select class="form-select border-success" name="status_esteira" id="select-status-esteira"></select></div>
                             <div class="col-12 col-md-6 d-none" id="container-ordem-servico"><label class="fw-bold text-secondary">O.S</label><input type="text" class="form-control" name="ordem_servico" id="input-ordem-servico" placeholder="08907507 ou 4-212051254235"></div>
                             <div class="col-12 col-md-6 d-none" id="container-vendedor-modal"><label class="fw-bold text-secondary">Vendedor (Responsável)</label><select class="form-select" name="vendedor" id="select-vendedor-modal"></select></div>
+                            <div class="col-12 d-none" id="container-gerada-os-auto">
+                                <label class="fw-bold text-secondary">Gerada O.S automática?</label>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="radio" id="gerada-os-sim" value="true" onchange="document.getElementById('input-gerada-os-automatica').value='true'">
+                                    <label class="form-check-label" for="gerada-os-sim">Sim</label>
+                                </div>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="radio" id="gerada-os-nao" value="false" checked onchange="document.getElementById('input-gerada-os-automatica').value='false'">
+                                    <label class="form-check-label" for="gerada-os-nao">Não</label>
+                                </div>
+                            </div>
+                            <div class="col-12 d-none" id="container-reemissao-modal">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="checkbox-reemissao" name="reemissao">
+                                    <label class="form-check-label fw-bold text-warning" for="checkbox-reemissao">Reemissão</label>
+                                </div>
+                            </div>
                             <div class="col-12"><label>Observações</label><textarea class="form-control" name="observacoes" id="input-observacoes" rows="2" oninput="this.value = this.value.toUpperCase()"></textarea></div>
                         </div>
                         
@@ -347,20 +479,52 @@
             return primeiro + '-' + resto;
         }
 
-        let modalOrigem, modalNovaVenda, modalAviso, modalDetalhe, modalMix, modalCep;
+        let modalOrigem, modalNovaVenda, modalAviso, modalDetalhe, modalMix, modalCep, modalReemissao;
+        let vendaReemissaoId = null;
         let clienteTemp = null, debounceTimer, debounceRepTimer, viewAtual = 'minhas_vendas', userProfile = null;
         let dadosMixCache = null;
+        let vendedoresCache = [];
         let dashboardDataCache = {}; 
         let statusEsteiraAtual = ''; 
         let origemCadastroAtual = ''; 
 
         document.addEventListener('DOMContentLoaded', async () => {
-            modalOrigem = new bootstrap.Modal(document.getElementById('modal-origem-venda'));
+            const modalOrigemEl = document.getElementById('modal-origem-venda');
+            if (modalOrigemEl) {
+                modalOrigem = new bootstrap.Modal(modalOrigemEl);
+                
+                // Event listeners para limpar backdrop quando o modal for fechado
+                modalOrigemEl.addEventListener('hidden.bs.modal', function () {
+                    document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+                    document.body.classList.remove('modal-open');
+                    document.body.style.paddingRight = '';
+                    document.body.style.overflow = '';
+                    // Reset do modal de origem
+                    document.getElementById('opcoes-origem').style.display = 'block';
+                    document.getElementById('opcoes-fixo').style.display = 'none';
+                });
+                
+                // Reset ao abrir o modal
+                modalOrigemEl.addEventListener('show.bs.modal', function () {
+                    document.getElementById('opcoes-origem').style.display = 'block';
+                    document.getElementById('opcoes-fixo').style.display = 'none';
+                    document.getElementById('opcoes-gerada-os').style.display = 'none';
+                    origemCadastroAtual = '';
+                    document.getElementById('input-forma-entrada').value = '';
+                    document.getElementById('input-tem-fixo').value = 'false';
+                    document.getElementById('input-gerada-os-automatica').value = 'false';
+                });
+            }
+            
             modalNovaVenda = new bootstrap.Modal(document.getElementById('modal-nova-venda'));
             modalAviso = new bootstrap.Modal(document.getElementById('modal-aviso-cliente'));
             modalDetalhe = new bootstrap.Modal(document.getElementById('modalDetalheDashboard'));
             modalMix = new bootstrap.Modal(document.getElementById('modalMix'));
             modalCep = new bootstrap.Modal(document.getElementById('modal-cep-nao-encontrado'));
+            modalReemissao = new bootstrap.Modal(document.getElementById('modal-reemissao'));
+            
+            document.getElementById('modal-nova-venda')?.addEventListener('show.bs.modal', atualizarVisibilidadeGeradaOs);
+            document.getElementById('select-vendedor-modal')?.addEventListener('change', atualizarVisibilidadeGeradaOs);
             
             const hoje = new Date();
             document.getElementById('filtro-inicio').valueAsDate = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
@@ -382,6 +546,28 @@
                 e.target.classList.remove('is-invalid'); 
             });
             inputCpf.addEventListener('blur', validarCpfCnpjInput);
+            
+            // Máscara para telefones
+            const inputTelefone1 = document.getElementById('input-telefone');
+            const inputTelefone2 = document.getElementById('input-telefone2');
+            
+            function aplicarMascaraTelefone(input) {
+                input.addEventListener('input', function(e) {
+                    let valor = e.target.value.replace(/\D/g, '');
+                    if (valor.length <= 11) {
+                        if (valor.length <= 2) {
+                            e.target.value = valor ? `(${valor}` : '';
+                        } else if (valor.length <= 7) {
+                            e.target.value = `(${valor.substring(0, 2)}) ${valor.substring(2)}`;
+                        } else {
+                            e.target.value = `(${valor.substring(0, 2)}) ${valor.substring(2, 7)}-${valor.substring(7, 11)}`;
+                        }
+                    }
+                });
+            }
+            
+            if (inputTelefone1) aplicarMascaraTelefone(inputTelefone1);
+            if (inputTelefone2) aplicarMascaraTelefone(inputTelefone2);
 
             document.getElementById('input-cpf-rep').addEventListener('input', function(e) { 
                 clearTimeout(debounceRepTimer); 
@@ -523,9 +709,15 @@
 
         function confirmarClienteExistente() { modalAviso.hide(); }
 
+
+        // Bloqueia apenas CPF e Nome, mantendo telefones editáveis
         function alternarBloqueioCampos(bloquear) {
-            const ids = ['input-nome', 'input-email', 'input-telefone', 'input-telefone2', 'input-nome-mae', 'input-data-nascimento'];
-            ids.forEach(id => { const el = document.getElementById(id); if (el) el.readOnly = bloquear; });
+            const idsBloquear = ['input-nome', 'input-cpf'];
+            idsBloquear.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.readOnly = bloquear;
+            });
+            // Telefones continuam editáveis
         }
 
         function limparCamposCliente() {
@@ -596,6 +788,7 @@
         async function carregarVendedores() {
             try {
                 const vendedores = await apiFetch('/crm/lista-vendedores/');
+                vendedoresCache = vendedores || [];
                 const selectFiltro = document.getElementById('filtro-vendedor');
                 const selectModal = document.getElementById('select-vendedor-modal'); 
                 selectFiltro.innerHTML = '<option value="">Todos</option>';
@@ -607,6 +800,34 @@
                     });
                 }
             } catch(e) { console.error('Erro ao carregar vendedores', e); }
+        }
+
+        function atualizarVisibilidadeGeradaOs() {
+            const container = document.getElementById('container-gerada-os-auto');
+            if (!container) return;
+            const idEdicao = document.getElementById('id-venda-edicao')?.value;
+            // No create, o valor vem do modal-origem; no edit, mostramos o container se o vendedor tiver permissão
+            if (!idEdicao) {
+                container.classList.add('d-none');
+                return;
+            }
+            let mostrar = false;
+            try {
+                const selVend = document.getElementById('select-vendedor-modal');
+                const vid = selVend ? selVend.value : '';
+                const v = vendedoresCache.find(x => String(x.id) === String(vid));
+                mostrar = !!(v && v.autorizar_venda_automatica);
+                if (!mostrar && selVend && !vid) {
+                    const payload = jwt_decode(localStorage.getItem('accessToken') || '');
+                    mostrar = !!payload.autorizar_venda_automatica;
+                }
+            } catch(e) {}
+            container.classList.toggle('d-none', !mostrar);
+            if (!mostrar) {
+                const radioNao = document.getElementById('gerada-os-nao');
+                if (radioNao) radioNao.checked = true;
+                document.getElementById('input-gerada-os-automatica').value = 'false';
+            }
         }
 
         // =========================================================================
@@ -811,7 +1032,16 @@
                         agendamentoDisplay = `<span>${parts[2]}/${parts[1]}</span> <span class="badge bg-light text-dark border ms-1">${turno}</span>`;
                     }
 
+                    // Verificar se é cancelada ou pendênciada (para mostrar botão de reemissão)
+                    const isCancelada = stEsteiraUpper.includes('CANCELAD') || stTratUpper.includes('CANCELAD');
+                    const isPendenciada = stEsteiraUpper.includes('PENDEN') || stEsteiraUpper.includes('PENDÊN') || stTratUpper.includes('PENDENTE');
+                    
+                    // Botão de reemissão só aparece para canceladas ou pendênciadas
+                    const btnReemissao = (isCancelada || isPendenciada) ? 
+                        `<button onclick="abrirModalReemissao(${v.id})" class="btn btn-sm btn-outline-warning me-1" title="Reemissão"><i class="bi bi-arrow-repeat"></i></button>` : '';
+                    
                     const botoes = `
+                        ${btnReemissao}
                         <button onclick="reenviarWhatsApp(${v.id})" class="btn btn-sm btn-outline-success me-1" title="Reenviar Aprovação"><i class="bi bi-whatsapp"></i></button>
                         <button onclick="editarVenda(${v.id})" class="btn btn-sm btn-editar me-1" title="Editar"><i class="bi bi-pencil"></i></button>
                         <button onclick="excluirVenda(${v.id})" class="btn btn-sm btn-excluir" title="Excluir"><i class="bi bi-trash"></i></button>
@@ -884,6 +1114,71 @@
             try { const res = await apiFetch(`/crm/vendas/${id}/reenviar-whatsapp-aprovacao/`, { method: 'POST' }); alert(res.detail || "Enviado!"); } catch(e) { alert("Erro ao enviar: " + (e.detail || e)); }
         }
 
+        function abrirModalBoasVindas() {
+            document.getElementById('boas-vindas-data').value = '';
+            document.getElementById('boas-vindas-resultado').style.display = 'none';
+            const modal = new bootstrap.Modal(document.getElementById('modal-boas-vindas'));
+            modal.show();
+        }
+
+        async function enviarBoasVindas() {
+            const dataStr = document.getElementById('boas-vindas-data').value;
+            if (!dataStr) { alert('Selecione a data em que o pedido foi instalado.'); return; }
+            const btn = document.getElementById('btn-enviar-boas-vindas');
+            const resultado = document.getElementById('boas-vindas-resultado');
+            btn.disabled = true;
+            resultado.style.display = 'none';
+            let offset = 0;
+            let totalEnviados = 0;
+            var WHATSAPP_PAUSA_LOTE_MIN = 60, WHATSAPP_PAUSA_LOTE_MAX = 120;
+            function esperaAleatoriaMinSec() {
+                var min = WHATSAPP_PAUSA_LOTE_MIN || 60, max = WHATSAPP_PAUSA_LOTE_MAX || 120;
+                return (Math.floor(Math.random() * (max - min + 1)) + min) * 1000;
+            }
+
+            function exibirMsg(tipo, html) {
+                resultado.style.display = 'block';
+                resultado.className = 'alert mt-2 alert-' + tipo;
+                resultado.innerHTML = html;
+            }
+
+            try {
+                while (true) {
+                    const body = { data: dataStr, offset: offset, limite: 5 };
+                    const res = await apiFetch('/crm/vendas/enviar-boas-vindas/', {
+                        method: 'POST',
+                        body: JSON.stringify(body)
+                    });
+                    totalEnviados += res.enviados || 0;
+                    const totalNaData = res.total_na_data || 0;
+                    const restantes = res.restantes || 0;
+                    const erros = (res.erros || []).length;
+
+                    if (restantes > 0 && res.proximo_offset != null) {
+                        var esperaMs = res.pause_antes_proximo_seg != null
+                            ? (res.pause_antes_proximo_seg * 1000)
+                            : esperaAleatoriaMinSec();
+                        exibirMsg('info', 'Enviados <strong>' + totalEnviados + '</strong> de ' + totalNaData + '. Aguarde ~' + Math.round(esperaMs / 1000) + 's (pausa entre lotes) para o próximo lote...' + (erros ? ' <span class="text-danger">(' + erros + ' erros)</span>' : ''));
+                        offset = res.proximo_offset;
+                        await new Promise(r => setTimeout(r, esperaMs));
+                    } else {
+                        exibirMsg((res.erros && res.erros.length > 0) ? 'warning' : 'success',
+                            'Enviados: <strong>' + totalEnviados + '</strong> de ' + totalNaData + (res.erros && res.erros.length ? '. Erros: ' + res.erros.slice(0, 5).join('; ') : ''));
+                        break;
+                    }
+                }
+            } catch (e) {
+                let msgErro = 'Erro ao enviar.';
+                if (typeof e === 'string') msgErro = e;
+                else if (e && e.message) msgErro = e.message;
+                else if (e && e.detail) msgErro = typeof e.detail === 'string' ? e.detail : JSON.stringify(e.detail);
+                else if (e && typeof e === 'object') msgErro = e.detail || e.erro || JSON.stringify(e);
+                exibirMsg('danger', 'Erro: ' + msgErro);
+                if (totalEnviados > 0) resultado.innerHTML += '<br><small>Enviados até o momento: ' + totalEnviados + '</small>';
+            }
+            btn.disabled = false;
+        }
+
         function verificarRegraCNPJ(valor) {
             if(!valor) return;
             const clean = valor.replace(/\D/g, '');
@@ -903,37 +1198,135 @@
         }
 
         function abrirModalOrigem() {
-            document.getElementById('form-nova-venda').reset();
-            document.getElementById('id-venda-edicao').value = '';
-            document.getElementById('titulo-modal-venda').innerHTML = 'Registrar Venda';
-            document.getElementById('feedback-whatsapp').innerHTML = ''; 
-            document.getElementById('input-telefone').classList.remove('is-valid', 'is-invalid'); 
-            document.getElementById('btn-salvar-venda').disabled = false; 
-            document.getElementById('container-status-esteira').classList.add('d-none'); 
-            document.getElementById('container-vendedor-modal').classList.add('d-none'); 
-            document.getElementById('container-status-gestao').classList.add('d-none'); 
-            document.getElementById('container-ordem-servico').classList.add('d-none');
-            document.getElementById('input-ordem-servico').value = '';
+            console.log('[DEBUG] abrirModalOrigem chamado');
+            
+            // Limpar qualquer backdrop preso
+            document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+            document.body.classList.remove('modal-open');
+            document.body.style.paddingRight = '';
+            document.body.style.overflow = '';
+            
+            // Resetar formulário
+            const formNovaVenda = document.getElementById('form-nova-venda');
+            if (formNovaVenda) formNovaVenda.reset();
+            
+            const idVendaEdicao = document.getElementById('id-venda-edicao');
+            if (idVendaEdicao) idVendaEdicao.value = '';
+            
+            const tituloModal = document.getElementById('titulo-modal-venda');
+            if (tituloModal) tituloModal.innerHTML = 'Registrar Venda';
+            
+            const feedbackWhatsapp = document.getElementById('feedback-whatsapp');
+            if (feedbackWhatsapp) feedbackWhatsapp.innerHTML = '';
+            
+            const inputTelefone = document.getElementById('input-telefone');
+            if (inputTelefone) inputTelefone.classList.remove('is-valid', 'is-invalid');
+            
+            const btnSalvar = document.getElementById('btn-salvar-venda');
+            if (btnSalvar) btnSalvar.disabled = false;
+            
+            const containerEsteira = document.getElementById('container-status-esteira');
+            if (containerEsteira) containerEsteira.classList.add('d-none');
+            
+            const containerVendedor = document.getElementById('container-vendedor-modal');
+            if (containerVendedor) containerVendedor.classList.add('d-none');
+            
+            const containerGestao = document.getElementById('container-status-gestao');
+            if (containerGestao) containerGestao.classList.add('d-none');
+            const containerOs = document.getElementById('container-ordem-servico');
+            if (containerOs) containerOs.classList.add('d-none');
+            const inputOs = document.getElementById('input-ordem-servico');
+            if (inputOs) inputOs.value = '';
+            const containerReemissao = document.getElementById('container-reemissao-modal');
+            if (containerReemissao) containerReemissao.classList.add('d-none');
+            const checkboxReemissao = document.getElementById('checkbox-reemissao');
+            if (checkboxReemissao) checkboxReemissao.checked = false;
             
             ['input-nome', 'input-email', 'input-telefone', 'input-telefone2', 'input-nome-mae', 'input-data-nascimento'].forEach(id => {
                 const el = document.getElementById(id);
                 if(el) { el.readOnly = false; el.value = ''; }
             });
+            
             const areaRep = document.getElementById('area-representante');
             if(areaRep) areaRep.style.display = 'none';
             
-            modalOrigem.show();
+            // Verificar se o modal existe e está inicializado
+            const modalElement = document.getElementById('modal-origem-venda');
+            if (!modalElement) {
+                console.error('[ERRO] Modal modal-origem-venda não encontrado no DOM');
+                alert('Erro: Modal não encontrado. Recarregue a página.');
+                return;
+            }
+            
+            // Verificar se modalOrigem foi inicializado
+            if (!modalOrigem) {
+                console.warn('[AVISO] modalOrigem não inicializado, tentando criar agora...');
+                try {
+                    modalOrigem = new bootstrap.Modal(modalElement);
+                } catch (e) {
+                    console.error('[ERRO] Não foi possível criar instância do modal:', e);
+                    alert('Erro ao abrir modal. Recarregue a página.');
+                    return;
+                }
+            }
+            
+            console.log('[DEBUG] Tentando abrir modal...');
+            try {
+                modalOrigem.show();
+                console.log('[DEBUG] modalOrigem.show() executado');
+            } catch (e) {
+                console.error('[ERRO] Erro ao abrir modal:', e);
+                // Fallback: tentar abrir manualmente
+                modalElement.classList.add('show');
+                modalElement.style.display = 'block';
+                document.body.classList.add('modal-open');
+                const backdrop = document.createElement('div');
+                backdrop.className = 'modal-backdrop fade show';
+                backdrop.style.zIndex = '1050';
+                document.body.appendChild(backdrop);
+            }
         }
 
         function selecionarOrigem(tipo) {
             origemCadastroAtual = tipo; 
             document.getElementById('input-forma-entrada').value = tipo;
+            
+            // Mostra pergunta sobre fixo
+            document.getElementById('opcoes-origem').style.display = 'none';
+            document.getElementById('opcoes-fixo').style.display = 'block';
+        }
+        
+        function selecionarFixo(temFixo) {
+            document.getElementById('input-tem-fixo').value = temFixo ? 'true' : 'false';
+            
             const badge = document.getElementById('badge-origem');
             if(badge) {
+                const tipo = origemCadastroAtual;
                 badge.textContent = (tipo === 'APP') ? 'Via APP' : 'Sem APP';
                 badge.className = (tipo === 'APP') ? 'badge bg-primary ms-2' : 'badge bg-secondary ms-2';
             }
 
+            let mostrarGeradaOs = false;
+            try {
+                const payload = jwt_decode(localStorage.getItem('accessToken') || '');
+                mostrarGeradaOs = !!payload.autorizar_venda_automatica;
+            } catch(e) {}
+
+            if (mostrarGeradaOs) {
+                document.getElementById('opcoes-fixo').style.display = 'none';
+                document.getElementById('opcoes-gerada-os').style.display = 'block';
+            } else {
+                document.getElementById('input-gerada-os-automatica').value = 'false';
+                abrirFormularioVenda();
+            }
+        }
+
+        function selecionarGeradaOs(valor) {
+            document.getElementById('input-gerada-os-automatica').value = valor ? 'true' : 'false';
+            abrirFormularioVenda();
+        }
+
+        function abrirFormularioVenda() {
             const containerDadosVenda = document.querySelector('form h6:nth-of-type(2)').nextElementSibling; 
             const containerEndereco = document.querySelector('form h6:nth-of-type(3)').nextElementSibling; 
             const headerDadosVenda = document.querySelector('form h6:nth-of-type(2)');
@@ -949,12 +1342,19 @@
                 'input-nome-mae', 'input-data-nascimento', 'input-email' 
             ];
 
-            if (tipo === 'APP') {
-                if(containerDadosVenda) containerDadosVenda.style.display = 'none';
+            if (origemCadastroAtual === 'APP') {
+                const ehGestaoVendedor = ['Admin', 'Diretoria', 'BackOffice'].includes(userProfile);
+                // Para gestão (Diretoria/BackOffice/Admin) no fluxo APP: mostrar seção "Dados da Venda" para atribuir Vendedor (Responsável)
+                if (ehGestaoVendedor) {
+                    if(containerDadosVenda) containerDadosVenda.style.display = 'flex';
+                    if(headerDadosVenda) headerDadosVenda.style.display = 'block';
+                } else {
+                    if(containerDadosVenda) containerDadosVenda.style.display = 'none';
+                    if(headerDadosVenda) headerDadosVenda.style.display = 'none';
+                }
                 if(containerEndereco) containerEndereco.style.display = 'none';
-                if(headerDadosVenda) headerDadosVenda.style.display = 'none';
                 if(headerEndereco) headerEndereco.style.display = 'none';
-                
+
                 if(divNomeMae) divNomeMae.style.display = 'none';
                 if(divDataNasc) divDataNasc.style.display = 'none';
                 if(divEmail) divEmail.style.display = 'none';
@@ -980,6 +1380,45 @@
                 });
             }
 
+            // Para Diretoria/BackOffice/Admin: exibir lista de vendedores para atribuir responsável (tanto Via APP quanto Sem APP)
+            const areaStatus = document.getElementById('container-status-esteira');
+            const areaVendedor = document.getElementById('container-vendedor-modal');
+            const areaTrat = document.getElementById('container-status-gestao');
+            const areaOs = document.getElementById('container-ordem-servico');
+            const colPlano = document.getElementById('select-plano')?.closest('.col-12');
+            const colPagamento = document.getElementById('select-pagamento')?.closest('.col-12');
+            const colObs = document.getElementById('input-observacoes')?.closest('.col-12');
+            const containerGeradaOs = document.getElementById('container-gerada-os-auto');
+            if (areaStatus && areaVendedor && areaTrat) {
+                if (['Admin', 'Diretoria', 'BackOffice'].includes(userProfile)) {
+                    areaVendedor.classList.remove('d-none');
+                    const selVendedor = document.getElementById('select-vendedor-modal');
+                    if (selVendedor) selVendedor.value = '';
+                    if (origemCadastroAtual === 'APP') {
+                        // Via APP: em "Dados da Venda" mostrar só Vendedor (Responsável)
+                        areaStatus.classList.add('d-none');
+                        areaTrat.classList.add('d-none');
+                        if (areaOs) areaOs.classList.add('d-none');
+                        if (colPlano) colPlano.style.display = 'none';
+                        if (colPagamento) colPagamento.style.display = 'none';
+                        if (colObs) colObs.style.display = 'none';
+                        if (containerGeradaOs) containerGeradaOs.classList.add('d-none');
+                    } else {
+                        areaStatus.classList.remove('d-none');
+                        areaTrat.classList.remove('d-none');
+                        if (areaOs) areaOs.classList.add('d-none');
+                        if (colPlano) colPlano.style.display = '';
+                        if (colPagamento) colPagamento.style.display = '';
+                        if (colObs) colObs.style.display = '';
+                    }
+                } else {
+                    areaStatus.classList.add('d-none');
+                    areaVendedor.classList.add('d-none');
+                    areaTrat.classList.add('d-none');
+                    if (areaOs) areaOs.classList.add('d-none');
+                }
+            }
+
             modalOrigem.hide();
             modalNovaVenda.show();
         }
@@ -996,6 +1435,8 @@
                 }
                 if (['Diretoria', 'Admin', 'BackOffice'].includes(userProfile)) {
                     document.getElementById('btn-exportar-excel').classList.remove('d-none');
+                    const wAtivo = document.getElementById('filtro-dash-vendedor-ativo-wrap');
+                    if (wAtivo) wAtivo.classList.remove('d-none');
                 }
             } catch(e) {}
         }
@@ -1018,8 +1459,10 @@
             const inicio = document.getElementById('filtro-inicio').value;
             const fim = document.getElementById('filtro-fim').value;
             const consultorId = document.getElementById('filtro-vendedor').value;
+            const vaDash = document.getElementById('filtro-vendedor-ativo-dash');
             let url = `/crm/dashboard-resumo/?data_inicio=${inicio}&data_fim=${fim}`;
             if (consultorId) url += `&consultor_id=${consultorId}`;
+            if (vaDash && vaDash.value) url += `&vendedor_ativo=${encodeURIComponent(vaDash.value)}`;
             try {
                 const d = await apiFetch(url);
                 dashboardDataCache = d.detalhes_listas || {};
@@ -1120,6 +1563,11 @@
                 const el = document.getElementById(id);
                 if (!el) return;
                 el.value = valor || '';
+                // Telefones nunca ficam readOnly
+                if (id === 'input-telefone' || id === 'input-telefone2') {
+                    el.readOnly = false;
+                    return;
+                }
                 if (lock) {
                     if (valor && String(valor).trim() !== '') {
                         el.readOnly = true;
@@ -1234,6 +1682,7 @@
                 document.getElementById('titulo-modal-venda').textContent = `Editar Venda #${id}`;
                 document.getElementById('id-venda-edicao').value = id;
                 document.getElementById('input-forma-entrada').value = venda.forma_entrada || 'SEM_APP';
+                document.getElementById('input-tem-fixo').value = venda.tem_fixo ? 'true' : 'false';
 
 
                 // Exibe todos os campos apenas dentro do modal de edição, sem afetar abas globais
@@ -1267,6 +1716,10 @@
                 document.getElementById('input-cpf-rep').value = venda.cpf_representante_legal || '';
                 document.getElementById('input-nome-rep').value = venda.nome_representante_legal || '';
                 document.getElementById('input-ordem-servico').value = venda.ordem_servico || '';
+                const checkboxReemissao = document.getElementById('checkbox-reemissao');
+                if (checkboxReemissao) {
+                    checkboxReemissao.checked = !!venda.reemissao;
+                }
 
 
                 // Preenche selects somente após as opções estarem disponíveis
@@ -1290,6 +1743,20 @@
                 preencherSelectQuandoPronto('select-status-tratamento', venda.status_tratamento?.id || venda.status_tratamento || '');
                 preencherSelectQuandoPronto('select-vendedor-modal', venda.vendedor?.id || venda.vendedor || '');
 
+                // Gerada O.S automática (edição)
+                const divGeradaOs = document.getElementById('container-gerada-os-auto');
+                const vendedorTemPermissao = venda.vendedor_detalhes?.autorizar_venda_automatica || vendedoresCache.find(x => String(x.id) === String(venda.vendedor?.id || venda.vendedor))?.autorizar_venda_automatica;
+                const inputGeradaOs = document.getElementById('input-gerada-os-automatica');
+                if (divGeradaOs && inputGeradaOs) {
+                    divGeradaOs.classList.toggle('d-none', !vendedorTemPermissao);
+                    const isSim = venda.gerada_os_automatica === true || venda.gerada_os_automatica === 'true';
+                    inputGeradaOs.value = isSim ? 'true' : 'false';
+                    if (vendedorTemPermissao) {
+                        document.getElementById('gerada-os-sim').checked = isSim;
+                        document.getElementById('gerada-os-nao').checked = !isSim;
+                    }
+                }
+
                 let obs = venda.observacoes;
                 if (obs === undefined || obs === null || obs === 'NONE' || obs === 'None') obs = '';
                 document.getElementById('input-observacoes').value = obs;
@@ -1307,14 +1774,20 @@
                 const areaVendedor = document.getElementById('container-vendedor-modal');
                 const areaTrat = document.getElementById('container-status-gestao');
                 const areaOs = document.getElementById('container-ordem-servico');
+                const areaReemissao = document.getElementById('container-reemissao-modal');
+                
                 if(['Admin', 'Diretoria', 'BackOffice'].includes(userProfile)) {
                     areaStatus.classList.remove('d-none');
                     areaVendedor.classList.remove('d-none'); 
                     areaTrat.classList.remove('d-none');
                     areaOs.classList.remove('d-none');
+                    if (areaReemissao) areaReemissao.classList.remove('d-none');
                 } else {
-                    areaStatus.classList.add('d-none'); areaVendedor.classList.add('d-none'); areaTrat.classList.add('d-none');
+                    areaStatus.classList.add('d-none'); 
+                    areaVendedor.classList.add('d-none'); 
+                    areaTrat.classList.add('d-none');
                     areaOs.classList.remove('d-none');
+                    if (areaReemissao) areaReemissao.classList.remove('d-none');
                 }
 
                 // Adiciona debug simples nos selects
@@ -1342,8 +1815,11 @@
             } catch (e) { console.error(e); alert("Erro ao carregar dados para edição."); }
         }
 
+        let salvandoVendaEmAndamento = false;
+
         async function salvarVenda(e) {
             e.preventDefault();
+            if (salvandoVendaEmAndamento) return;
             
             // Validar que os telefones não sejam iguais
             if (!validarTelefonesDiferentes()) {
@@ -1357,6 +1833,7 @@
             const idEdicao = document.getElementById('id-venda-edicao').value;
             const method = idEdicao ? 'PUT' : 'POST';
             const url = idEdicao ? `/crm/vendas/${idEdicao}/` : '/crm/vendas/';
+
             const osValidaFormato = (valor) => /^(\d{8}|\d-\d{12})$/.test((valor || '').trim());
             const textoSelecionado = (idSelect) => {
                 const sel = document.getElementById(idSelect);
@@ -1376,6 +1853,19 @@
                 return;
             }
             
+            // CORREÇÃO: Converter checkbox de reemissão para boolean
+            const checkboxReemissao = document.getElementById('checkbox-reemissao');
+            if (checkboxReemissao) {
+                data.reemissao = checkboxReemissao.checked;
+            } else {
+                data.reemissao = false;
+            }
+            
+            // Converter tem_fixo para boolean
+            data.tem_fixo = data.tem_fixo === 'true' || data.tem_fixo === true;
+            // Converter gerada_os_automatica para boolean
+            data.gerada_os_automatica = data.gerada_os_automatica === 'true' || data.gerada_os_automatica === true;
+            
             if (origemCadastroAtual === 'SEM_APP') {
                 if(!data.plano || !data.forma_pagamento || !data.cep || !data.logradouro) {
                     alert("Por favor, preencha todos os campos obrigatórios.");
@@ -1386,7 +1876,16 @@
             if (data.data_nascimento === "") data.data_nascimento = null;
             if (data.plano === "") data.plano = null;
             if (data.forma_pagamento === "") data.forma_pagamento = null;
+            if (data.vendedor === "") data.vendedor = null;
             if (data.ordem_servico === "") data.ordem_servico = null;
+
+            const btnSalvar = document.getElementById('btn-salvar-venda');
+            const textoOriginalBotao = btnSalvar ? btnSalvar.innerHTML : '';
+            salvandoVendaEmAndamento = true;
+            if (btnSalvar) {
+                btnSalvar.disabled = true;
+                btnSalvar.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Salvando...';
+            }
 
             try {
                 await apiFetch(url, { method: method, body: JSON.stringify(data) });
@@ -1403,10 +1902,77 @@
                     else if (error.detail) msg = error.detail;
                 }
                 alert(msg);
+            } finally {
+                salvandoVendaEmAndamento = false;
+                if (btnSalvar) {
+                    btnSalvar.disabled = false;
+                    btnSalvar.innerHTML = textoOriginalBotao || 'Salvar';
+                }
             }
         }
 
         async function excluirVenda(id) { if(!confirm('Tem certeza?')) return; try { await apiFetch(`/crm/vendas/${id}/`, { method: 'DELETE' }); carregarVendas(); } catch(e) { alert('Erro ao excluir.'); } }
+        
+        // Funções para Reemissão
+        async function abrirModalReemissao(id) {
+            vendaReemissaoId = id;
+            document.getElementById('form-reemissao').reset();
+            document.getElementById('reemissao-os-feedback').textContent = '';
+            document.getElementById('reemissao-os').classList.remove('is-invalid');
+            modalReemissao.show();
+        }
+        
+        function cancelarReemissao() {
+            modalReemissao.hide();
+            vendaReemissaoId = null;
+        }
+        
+        async function salvarReemissao() {
+            const os = document.getElementById('reemissao-os').value.trim();
+            const data = document.getElementById('reemissao-data').value;
+            const turno = document.getElementById('reemissao-turno').value;
+            const observacao = document.getElementById('reemissao-observacao').value || '';
+            
+            if (!os || !data || !turno) {
+                alert("Preencha todos os campos obrigatórios.");
+                return;
+            }
+            
+            // Validar O.S. única
+            try {
+                const res = await apiFetch(`/crm/vendas/?ordem_servico=${os}`);
+                const lista = Array.isArray(res) ? res : (res.results || []);
+                if (lista.some(v => v.id !== vendaReemissaoId)) {
+                    document.getElementById('reemissao-os').classList.add('is-invalid');
+                    document.getElementById('reemissao-os-feedback').textContent = 'O.S. já existe!';
+                    return;
+                }
+            } catch (e) {
+                alert("Erro ao validar O.S.");
+                return;
+            }
+            
+            try {
+                // Duplicar venda (criar nova venda)
+                const resultado = await apiFetch('/crm/duplicar-venda/', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        id_venda: vendaReemissaoId,
+                        nova_os: os,
+                        nova_data_agendamento: data,
+                        novo_turno: turno,
+                        nova_observacao: observacao
+                    })
+                });
+                
+                modalReemissao.hide();
+                aplicarFiltros();
+                alert('Reemissão criada com sucesso! Uma nova venda foi criada com status AGENDADO e aparecerá na esteira.');
+            } catch (error) {
+                alert('Erro ao criar reemissão: ' + (error.detail || error.message || error));
+            }
+        }
+        
         function logout() { localStorage.removeItem('accessToken'); window.location.href = '/'; }
         
         function validarTelefonesDiferentes() {
@@ -1481,6 +2047,56 @@
                     feedbackDiv.innerHTML = '<span class="text-warning small">Não foi possível verificar (offline).</span>';
                 }
             }
+        }
+        
+        function validarTelefone(input, feedbackId, isWhatsApp) {
+            const telefone = input.value.replace(/\D/g, '');
+            const feedbackDiv = document.getElementById(feedbackId);
+            
+            // Validação básica: deve ter 11 dígitos
+            if (telefone.length !== 11) {
+                input.classList.add('is-invalid');
+                input.classList.remove('is-valid');
+                if(feedbackDiv) {
+                    feedbackDiv.innerHTML = '<span class="text-danger fw-bold small"><i class="bi bi-x-circle"></i> O telefone deve ter 11 dígitos (DDD + número).</span>';
+                }
+                return false;
+            }
+            
+            // Extrai DDD (2 primeiros dígitos)
+            const ddd = telefone.substring(0, 2);
+            
+            // DDDs válidos no Brasil (lista oficial)
+            const dddValidos = [11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 24, 27, 28, 31, 32, 33, 34, 35, 37, 38, 41, 42, 43, 44, 45, 46, 47, 48, 49, 51, 52, 53, 54, 61, 62, 63, 64, 65, 66, 67, 68, 69, 71, 73, 74, 75, 79, 81, 82, 83, 84, 85, 86, 87, 88, 89, 91, 92, 93, 94, 95, 96, 97, 98, 99];
+            const dddNum = parseInt(ddd);
+            
+            if (!dddValidos.includes(dddNum)) {
+                input.classList.add('is-invalid');
+                input.classList.remove('is-valid');
+                if(feedbackDiv) {
+                    feedbackDiv.innerHTML = '<span class="text-danger fw-bold small"><i class="bi bi-x-circle"></i> DDD inválido. Informe um DDD válido do Brasil (não aceita código 55).</span>';
+                }
+                return false;
+            }
+            
+            // Formata o telefone se ainda não estiver formatado
+            const telefoneFormatado = `(${ddd}) ${telefone.substring(2, 7)}-${telefone.substring(7)}`;
+            if (input.value !== telefoneFormatado) {
+                input.value = telefoneFormatado;
+            }
+            
+            // Se for WhatsApp, verifica também
+            if (isWhatsApp) {
+                verificarWhatsApp(input);
+            } else {
+                input.classList.add('is-valid');
+                input.classList.remove('is-invalid');
+                if(feedbackDiv) {
+                    feedbackDiv.innerHTML = '<span class="text-success fw-bold small"><i class="bi bi-check-circle"></i> Telefone válido!</span>';
+                }
+            }
+            
+            return true;
         }
         
         async function verificarWhatsApp(input) {

@@ -2525,7 +2525,10 @@ class DashboardResumoView(APIView):
         if consultor_filtro_id:
             usuarios_para_calcular = User.objects.filter(id=consultor_filtro_id)
         elif is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
-            usuarios_para_calcular = User.objects.filter(is_active=True)
+            base_dash = User.objects.exclude(username__in=['OSAB_IMPORT', 'admin', 'root'])
+            usuarios_para_calcular = _aplicar_filtro_vendedor_ativo_perf(
+                base_dash, user, request.query_params.get('vendedor_ativo')
+            )
         elif is_member(user, ['Supervisor']):
             usuarios_para_calcular = [user]
         else:
@@ -5108,11 +5111,26 @@ def enviar_resultado_campanha_whatsapp(request):
         return Response({"error": str(e)}, status=500)
 
 # --- NOVA API DE PAINEL DE PERFORMANCE ---
-# crm_app/views.py (Substitua a classe PainelPerformanceView inteira)
 
-# Em crm_app/views.py
 
-# Em crm_app/views.py
+def _perf_grupos_gestao():
+    return ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
+
+
+def _aplicar_filtro_vendedor_ativo_perf(users_qs, user, vendedor_ativo_raw):
+    """
+    Gestão: query param vendedor_ativo=ativos|inativos|todos (default todos = inclui inativos).
+    Demais perfis: sempre apenas usuários ativos.
+    """
+    if not is_member(user, _perf_grupos_gestao()):
+        return users_qs.filter(is_active=True)
+    raw = (vendedor_ativo_raw or 'todos').strip().lower()
+    if raw == 'ativos':
+        return users_qs.filter(is_active=True)
+    if raw == 'inativos':
+        return users_qs.filter(is_active=False)
+    return users_qs
+
 
 class PainelPerformanceView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -5128,11 +5146,11 @@ class PainelPerformanceView(APIView):
         dias_semana = [inicio_semana + timedelta(days=i) for i in range(6)]
         inicio_mes = hoje.replace(day=1)
 
-        # 2. Base de Usuários (TODOS OS ATIVOS, exceto bots)
-        users = User.objects.filter(is_active=True).exclude(username__in=['OSAB_IMPORT', 'admin', 'root'])
+        # 2. Base de Usuários (exceto bots; ativo/inativo conforme ?vendedor_ativo= para gestão)
+        users = User.objects.exclude(username__in=['OSAB_IMPORT', 'admin', 'root'])
 
         # 3. Filtros de Permissão
-        grupos_gestao = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
+        grupos_gestao = _perf_grupos_gestao()
         if is_member(user, grupos_gestao):
             pass 
         elif is_member(user, ['Supervisor']):
@@ -5149,6 +5167,8 @@ class PainelPerformanceView(APIView):
         filtro_cluster = request.query_params.get('cluster')
         if filtro_cluster:
             users = users.filter(cluster=filtro_cluster)
+
+        users = _aplicar_filtro_vendedor_ativo_perf(users, user, request.query_params.get('vendedor_ativo'))
 
         # 5. Filtros de Venda
         # IMPORTANTE: filtro_os_valida já garante que tem OS, mas agora filtramos pela DATA DE ABERTURA
@@ -5395,26 +5415,29 @@ class ExportarPerformanceExcelView(APIView):
         inicio_semana = hoje - timedelta(days=hoje.weekday())
         inicio_mes = hoje.replace(day=1)
         
-        # 2. Base de Vendas (Filtragem por permissão)
-        vendas = Venda.objects.filter(
-            ativo=True,
-        ).select_related('vendedor', 'cliente', 'plano', 'forma_pagamento', 'status_esteira')
-        
-        grupos_gestao = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
-        if not is_member(user, grupos_gestao):
-            if is_member(user, ['Supervisor']):
-                liderados = list(user.liderados.values_list('id', flat=True)) + [user.id]
-                vendas = vendas.filter(vendedor_id__in=liderados)
-            else:
-                vendas = vendas.filter(vendedor=user)
+        # 2. Mesmo conjunto de vendedores do PainelPerformanceView (evita vendas de usuário inativo/bot fora do painel)
+        grupos_gestao = _perf_grupos_gestao()
+        users_export = User.objects.exclude(username__in=['OSAB_IMPORT', 'admin', 'root'])
+        if is_member(user, grupos_gestao):
+            pass
+        elif is_member(user, ['Supervisor']):
+            users_export = users_export.filter(Q(supervisor=user) | Q(id=user.id))
+        else:
+            users_export = users_export.filter(id=user.id)
 
-        # Filtros da tela
         filtro_canal = request.query_params.get('canal')
         if filtro_canal:
-            vendas = vendas.filter(vendedor__canal__iexact=filtro_canal)
+            users_export = users_export.filter(canal__iexact=filtro_canal)
         filtro_cluster = request.query_params.get('cluster')
         if filtro_cluster:
-            vendas = vendas.filter(vendedor__cluster__iexact=filtro_cluster)
+            users_export = users_export.filter(cluster=filtro_cluster)
+
+        users_export = _aplicar_filtro_vendedor_ativo_perf(users_export, user, request.query_params.get('vendedor_ativo'))
+
+        vendas = (
+            Venda.objects.filter(ativo=True, vendedor_id__in=users_export.values_list('id', flat=True))
+            .select_related('vendedor', 'cliente', 'plano', 'forma_pagamento', 'status_esteira')
+        )
 
         # Período selecionado no botão (define nome do arquivo e prioridade das abas)
         periodo = (request.query_params.get('periodo') or 'HOJE').strip().upper()
@@ -5422,7 +5445,7 @@ class ExportarPerformanceExcelView(APIView):
             periodo = 'HOJE'
 
         # 3. Preparar os 3 DataFrames (consultores veem data efetiva na coluna Data Instalação)
-        grupos_gestao = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
+        grupos_gestao = _perf_grupos_gestao()
         use_data_efetiva = not is_member(user, grupos_gestao)
 
         # Regra de reemissão:
@@ -5604,8 +5627,8 @@ class EnviarImagemPerformanceView(APIView):
         dias_semana = [inicio_semana + timedelta(days=i) for i in range(6)]
         inicio_mes = hoje.replace(day=1)
 
-        users = User.objects.filter(is_active=True).exclude(username__in=['OSAB_IMPORT', 'admin', 'root'])
-        grupos_gestao = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
+        users = User.objects.exclude(username__in=['OSAB_IMPORT', 'admin', 'root'])
+        grupos_gestao = _perf_grupos_gestao()
         if is_member(user, grupos_gestao):
             pass
         elif is_member(user, ['Supervisor']):
@@ -5617,6 +5640,8 @@ class EnviarImagemPerformanceView(APIView):
             users = users.filter(canal__iexact=canal)
         if cluster and str(cluster).strip():
             users = users.filter(cluster__iexact=cluster.strip())
+
+        users = _aplicar_filtro_vendedor_ativo_perf(users, user, request.data.get('vendedor_ativo'))
 
         filtro_os_sem_reemissao = (
             Q(vendas__ativo=True)

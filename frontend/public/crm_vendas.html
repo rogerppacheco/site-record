@@ -138,6 +138,14 @@
                         <label class="form-label small fw-bold text-muted">Vendedor</label>
                         <select id="filtro-vendedor" class="form-select form-select-sm"><option value="">Todos</option></select>
                     </div>
+                    <div class="filter-item d-none" id="filtro-dash-vendedor-ativo-wrap">
+                        <label class="form-label small fw-bold text-muted">Conta vendedor</label>
+                        <select id="filtro-vendedor-ativo-dash" class="form-select form-select-sm" title="Ativo = usuário ativo no sistema">
+                            <option value="todos" selected>Todos (ativos e inativos)</option>
+                            <option value="ativos">Só ativos</option>
+                            <option value="inativos">Só inativos</option>
+                        </select>
+                    </div>
                     <div class="filter-item" style="flex: 0 0 auto;"><button onclick="aplicarFiltros()" class="btn btn-sm btn-primary w-100"><i class="bi bi-filter"></i> Filtrar</button></div>
                 </div>
 
@@ -1427,6 +1435,8 @@
                 }
                 if (['Diretoria', 'Admin', 'BackOffice'].includes(userProfile)) {
                     document.getElementById('btn-exportar-excel').classList.remove('d-none');
+                    const wAtivo = document.getElementById('filtro-dash-vendedor-ativo-wrap');
+                    if (wAtivo) wAtivo.classList.remove('d-none');
                 }
             } catch(e) {}
         }
@@ -1449,8 +1459,10 @@
             const inicio = document.getElementById('filtro-inicio').value;
             const fim = document.getElementById('filtro-fim').value;
             const consultorId = document.getElementById('filtro-vendedor').value;
+            const vaDash = document.getElementById('filtro-vendedor-ativo-dash');
             let url = `/crm/dashboard-resumo/?data_inicio=${inicio}&data_fim=${fim}`;
             if (consultorId) url += `&consultor_id=${consultorId}`;
+            if (vaDash && vaDash.value) url += `&vendedor_ativo=${encodeURIComponent(vaDash.value)}`;
             try {
                 const d = await apiFetch(url);
                 dashboardDataCache = d.detalhes_listas || {};

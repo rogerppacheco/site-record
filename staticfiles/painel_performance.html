@@ -34,6 +34,7 @@
         
         /* Estilo para o checkbox no modal */
         .chk-grupo { width: 1.2em; height: 1.2em; margin-top: 0.2em; }
+        /* Modal Regras: células com quebra de linha para não cortar texto */
         #modalConfigRobo .table td.cell-wrap { white-space: normal; word-break: break-word; vertical-align: middle; }
         #modalConfigRobo .table th { white-space: nowrap; }
     </style>
@@ -96,6 +97,15 @@
                     <option value="CLUSTER_2">CLUSTER 2</option>
                     <option value="CLUSTER_3">CLUSTER 3</option>
                 </select>
+
+                <div id="filtro-vendedor-ativo-wrap" class="d-none align-items-center gap-1 ms-2">
+                    <label class="fw-bold text-muted small mb-0">Vendedor:</label>
+                    <select id="filtro-vendedor-ativo" class="form-select form-select-sm" style="width: 168px;" onchange="carregarDados()" title="Conta de usuário ativo/inativo">
+                        <option value="todos" selected>Todos (ativos e inativos)</option>
+                        <option value="ativos">Só ativos</option>
+                        <option value="inativos">Só inativos</option>
+                    </select>
+                </div>
 
                 <button class="btn btn-sm btn-primary rounded-circle" onclick="carregarDados()" title="Atualizar">
                     <i class="bi bi-arrow-clockwise"></i>
@@ -237,13 +247,30 @@
         const modalSeletor = new bootstrap.Modal(document.getElementById('modalSeletor'));
 
         // --- CARREGAMENTO INICIAL ---
-        document.addEventListener('DOMContentLoaded', () => { carregarDados(); });
+        document.addEventListener('DOMContentLoaded', () => {
+            try {
+                const p = jwt_decode(token);
+                const role = (p.user_role || p.perfil || '').toString();
+                const gestao = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade'];
+                if (gestao.some(g => role.includes(g))) {
+                    const w = document.getElementById('filtro-vendedor-ativo-wrap');
+                    if (w) { w.classList.remove('d-none'); w.classList.add('d-flex'); }
+                }
+            } catch (e) {}
+            carregarDados();
+        });
 
         async function carregarDados() {
             const canal = document.getElementById('filtro-canal').value;
             const cluster = document.getElementById('filtro-cluster').value;
+            const vaEl = document.getElementById('filtro-vendedor-ativo');
+            const vendedorAtivo = vaEl ? vaEl.value : 'todos';
+            const params = new URLSearchParams();
+            if (canal) params.set('canal', canal);
+            if (cluster) params.set('cluster', cluster);
+            params.set('vendedor_ativo', vendedorAtivo || 'todos');
             try {
-                const response = await axios.get(`/api/crm/performance-painel/?canal=${canal}&cluster=${cluster}`, { headers: { 'Authorization': `Bearer ${token}` }});
+                const response = await axios.get(`/api/crm/performance-painel/?${params.toString()}`, { headers: { 'Authorization': `Bearer ${token}` }});
                 renderHoje(response.data.hoje);
                 renderSemana(response.data.semana);
                 renderMes(response.data.mes);
@@ -253,10 +280,12 @@
         async function exportarPerformance(periodo) {
             const canal = document.getElementById('filtro-canal').value || '';
             const cluster = document.getElementById('filtro-cluster').value || '';
+            const vaEl = document.getElementById('filtro-vendedor-ativo');
             const params = new URLSearchParams({
                 periodo: periodo || 'HOJE',
                 canal: canal,
-                cluster: cluster
+                cluster: cluster,
+                vendedor_ativo: (vaEl ? vaEl.value : 'todos') || 'todos'
             });
             const url = `/api/crm/performance-painel/exportar/?${params.toString()}`;
             try {
@@ -551,6 +580,8 @@
             // Usar gerador do servidor (Pillow) - mesmo estilo do robô automático, com dados e clusters
             const canal = document.getElementById('filtro-canal').value || '';
             const cluster = document.getElementById('filtro-cluster').value || '';
+            const vaEl = document.getElementById('filtro-vendedor-ativo');
+            const vendedorAtivo = vaEl ? vaEl.value : 'todos';
             const tabAtiva = document.querySelector('.nav-pills .nav-link.active');
             let tipo = 'HOJE';
             if (tabAtiva) {
@@ -567,7 +598,8 @@
                     canal: canal,
                     cluster: cluster,
                     tipo: tipo,
-                    titulo: titulo
+                    titulo: titulo,
+                    vendedor_ativo: vendedorAtivo || 'todos'
                 }, { headers: { 'Authorization': `Bearer ${token}` }});
                 
                 // Sucesso
