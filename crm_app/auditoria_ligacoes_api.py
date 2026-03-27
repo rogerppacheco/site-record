@@ -763,7 +763,8 @@ def _sync_recording_to_onedrive(ligacao: AuditoriaLigacao) -> None:
         extension = ".ogg"
 
     if response.content[:2] == b"PK":
-        content, extension = unpack_recording_zip(response.content)
+        prefer_mp3 = bool(getattr(settings, "SONAX_RECORDING_PREFER_MP3", True))
+        content, extension = unpack_recording_zip(response.content, prefer_mp3=prefer_mp3)
         _upload_bytes_to_onedrive(ligacao, content, extension)
         return
 

@@ -162,20 +162,25 @@ class SonaxVoiceService:
                 pass
         return {"mensagem": text[:2000]}
 
-    def download_recording(self, id_chamada: str) -> Tuple[bytes, str]:
+    def download_recording(self, id_chamada: str, prefer_mp3: Optional[bool] = None) -> Tuple[bytes, str]:
         """
         Baixa gravação via acao=pega_gravacao. Retorna (bytes, extensão .wav ou .mp3).
+        Por padrão, prioriza MP3 para facilitar compartilhamento em canais como WhatsApp.
         """
         if not self.is_recording_download_configured:
             raise ValueError(
                 "Download de gravação Sonax: defina SONAX_ID_CLIENTE e SONAX_INTEGRATION_TOKEN "
                 "(ou o mesmo valor em SONAX_CLICK2CALL_TOKEN)."
             )
+        if prefer_mp3 is None:
+            prefer_mp3 = bool(getattr(settings, "SONAX_RECORDING_PREFER_MP3", True))
         params = {
             **self._dbdial_params(),
             "acao": "pega_gravacao",
             "id_chamada": str(id_chamada).strip(),
         }
+        if prefer_mp3:
+            params["recordmp3"] = 1
         response = requests.get(self.dbdial_base, params=params, timeout=self.timeout_seconds * 2)
         if response.status_code >= 400:
             raise RuntimeError(
@@ -190,7 +195,7 @@ class SonaxVoiceService:
         ct = (response.headers.get("content-type") or "").lower()
 
         if body[:2] == b"PK" or "zip" in ct:
-            return unpack_recording_zip(body)
+            return unpack_recording_zip(body, prefer_mp3=bool(prefer_mp3))
 
         if "mpeg" in ct or "mp3" in ct:
             return body, ".mp3"
@@ -229,17 +234,19 @@ class SonaxVoiceService:
         return parsed
 
 
-def unpack_recording_zip(data: bytes) -> Tuple[bytes, str]:
+def unpack_recording_zip(data: bytes, prefer_mp3: bool = False) -> Tuple[bytes, str]:
     with zipfile.ZipFile(io.BytesIO(data)) as zf:
         names = sorted(zf.namelist())
-        for name in names:
-            lower = name.lower()
-            if lower.endswith(".wav"):
-                return zf.read(name), ".wav"
-            if lower.endswith(".mp3"):
-                return zf.read(name), ".mp3"
+        first_ext = ".mp3" if prefer_mp3 else ".wav"
+        second_ext = ".wav" if prefer_mp3 else ".mp3"
+        for ext in (first_ext, second_ext):
+            for name in names:
+                lower = name.lower()
+                if lower.endswith(ext):
+                    return zf.read(name), ext
         if names:
-            return zf.read(names[0]), ".wav"
+            fallback_ext = ".mp3" if names[0].lower().endswith(".mp3") else ".wav"
+            return zf.read(names[0]), fallback_ext
     raise RuntimeError("ZIP de gravação Sonax sem arquivos.")
 
 

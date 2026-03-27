@@ -1,6 +1,13 @@
+import io
+import zipfile
+
 from django.test import SimpleTestCase, override_settings
 
-from crm_app.sonax_voice_service import SonaxVoiceService, _parse_sonax_status_chamada
+from crm_app.sonax_voice_service import (
+    SonaxVoiceService,
+    _parse_sonax_status_chamada,
+    unpack_recording_zip,
+)
 from crm_app.auditoria_ligacoes_api import (
     _finalizada_por_status,
     _merge_webhook_payload,
@@ -55,6 +62,15 @@ class SonaxVoiceServiceParseTest(SimpleTestCase):
         r.headers["content-type"] = "application/json"
         parsed = svc._parse_click2call_response(r)
         self.assertEqual(parsed.get("id_chamada"), "42")
+
+    def test_unpack_recording_zip_prefere_mp3(self):
+        mem = io.BytesIO()
+        with zipfile.ZipFile(mem, mode="w") as zf:
+            zf.writestr("a.wav", b"WAV")
+            zf.writestr("b.mp3", b"MP3")
+        content, ext = unpack_recording_zip(mem.getvalue(), prefer_mp3=True)
+        self.assertEqual(ext, ".mp3")
+        self.assertEqual(content, b"MP3")
 
 
 class AuditoriaWebhookHelpersTest(SimpleTestCase):

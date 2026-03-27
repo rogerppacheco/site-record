@@ -66,6 +66,17 @@
                 <button class="btn btn-sm btn-success" onclick="abrirModalEnvioManual()">
                     <i class="bi bi-whatsapp"></i> Enviar Imagem Agora
                 </button>
+
+                <div class="dropdown">
+                    <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-file-earmark-excel"></i> Exportar
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><button class="dropdown-item" type="button" onclick="exportarPerformance('HOJE')">Base de Hoje</button></li>
+                        <li><button class="dropdown-item" type="button" onclick="exportarPerformance('SEMANAL')">Base Semanal</button></li>
+                        <li><button class="dropdown-item" type="button" onclick="exportarPerformance('MENSAL')">Base Mensal</button></li>
+                    </ul>
+                </div>
                 
                 <div class="vr mx-2"></div>
                 
@@ -237,6 +248,39 @@
                 renderSemana(response.data.semana);
                 renderMes(response.data.mes);
             } catch (e) { console.error(e); }
+        }
+
+        async function exportarPerformance(periodo) {
+            const canal = document.getElementById('filtro-canal').value || '';
+            const cluster = document.getElementById('filtro-cluster').value || '';
+            const params = new URLSearchParams({
+                periodo: periodo || 'HOJE',
+                canal: canal,
+                cluster: cluster
+            });
+            const url = `/api/crm/performance-painel/exportar/?${params.toString()}`;
+            try {
+                const response = await axios.get(url, {
+                    responseType: 'blob',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                let filename = `Performance_${(periodo || 'HOJE').toUpperCase()}.xlsx`;
+                const contentDisposition = response.headers['content-disposition'] || '';
+                const match = contentDisposition.match(/filename="(.+)"/);
+                if (match && match[1]) filename = match[1];
+
+                const blobUrl = window.URL.createObjectURL(new Blob([response.data]));
+                const link = document.createElement('a');
+                link.href = blobUrl;
+                link.setAttribute('download', filename);
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                window.URL.revokeObjectURL(blobUrl);
+            } catch (e) {
+                console.error(e);
+                alert("Erro ao exportar arquivo.");
+            }
         }
 
         // Funções de Renderização
