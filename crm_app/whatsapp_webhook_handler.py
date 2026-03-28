@@ -2119,6 +2119,14 @@ def _processar_agendamento_final(telefone: str, sessao, dados: dict, mensagem_li
     msg = result[1] if len(result) > 1 else ""
     numero_os = result[2] if len(result) > 2 else None
     dados_pedido = result[3] if len(result) > 3 else {}
+    try:
+        from crm_app.funil_venda_wpp_service import funil_finalizar_concluido, funil_finalizar_erro
+        if sucesso:
+            funil_finalizar_concluido(sessao)
+        else:
+            funil_finalizar_erro(sessao, str(msg or "")[:2000])
+    except Exception:
+        pass
     sessao.etapa = 'inicial'
     sessao.dados_temp = {}
     sessao.save()
@@ -2372,6 +2380,11 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
     if mensagem_limpa in ['CANCELAR', 'SAIR', 'PARAR']:
         # Encerra automação (se houver) e libera BO
         if etapa and etapa.startswith('venda_'):
+            try:
+                from crm_app.funil_venda_wpp_service import funil_finalizar_abandonado
+                funil_finalizar_abandonado(sessao, 'cancelar_comando')
+            except Exception:
+                pass
             _encerrar_automacao_pap(sessao.id, (dados or {}).get('bo_usuario_id'), telefone)
         encerrar_sessao_venda(telefone)
         sessao.etapa = 'inicial'
@@ -2603,6 +2616,11 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                             msg_viab += "\n\n📋 *ETAPA 2: CLIENTE*\n\nDigite o *CPF* do cliente:"
                             def _ok_viab():
                                 sess = SessaoWhatsapp.objects.get(id=sessao_id)
+                                try:
+                                    from crm_app.funil_venda_wpp_service import funil_registrar_protocolo
+                                    funil_registrar_protocolo(sess, protocolo or '')
+                                except Exception:
+                                    pass
                                 sess.etapa = 'venda_cpf'
                                 sess.save()
                                 WhatsAppService().enviar_mensagem_texto(telefone, msg_viab)
@@ -2630,6 +2648,11 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                                 sess.etapa = 'venda_celular'
                                 sess.dados_temp = dados
                                 sess.save()
+                                try:
+                                    from crm_app.funil_venda_wpp_service import funil_registrar_evento_sessao
+                                    funil_registrar_evento_sessao(sess, 'venda_cpf', {'cpf_cliente': cpf})
+                                except Exception:
+                                    pass
                                 with _automacoes_lock:
                                     if sessao_id in _automacoes_pap_ativas:
                                         _automacoes_pap_ativas[sessao_id]['dados'] = dados
@@ -2664,6 +2687,12 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                             dados['email'] = email
                             if resultado_credito:
                                 dados['resultado_credito'] = resultado_credito
+                            try:
+                                from crm_app.funil_venda_wpp_service import funil_registrar_credito
+                                if resultado_credito:
+                                    funil_registrar_credito(sess, resultado_credito)
+                            except Exception:
+                                pass
                             with _automacoes_lock:
                                 if sessao_id in _automacoes_pap_ativas:
                                     _automacoes_pap_ativas[sessao_id]['dados'] = dados
@@ -3292,6 +3321,12 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
             return "❌ CEP inválido. Digite o CEP completo (8 dígitos):"
         
         dados['cep'] = cep_limpo
+        try:
+            from crm_app.funil_venda_wpp_service import funil_iniciar_com_cep
+            funil_iniciar_com_cep(sessao, dados, cep_limpo)
+            dados = sessao.dados_temp or {}
+        except Exception:
+            pass
         sessao.dados_temp = dados
         sessao.etapa = 'venda_numero'
         sessao.save()
@@ -3309,6 +3344,12 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
             numero = 'S/N'
         
         dados['numero'] = numero
+        try:
+            from crm_app.funil_venda_wpp_service import funil_registrar_evento_sessao
+            funil_registrar_evento_sessao(sessao, 'venda_numero', {'numero': numero})
+            dados = sessao.dados_temp or {}
+        except Exception:
+            pass
         sessao.dados_temp = dados
         sessao.etapa = 'venda_referencia'
         sessao.save()
@@ -3326,6 +3367,12 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
             return "❌ Referência muito curta. Digite uma referência mais detalhada:"
 
         dados['referencia'] = referencia
+        try:
+            from crm_app.funil_venda_wpp_service import funil_registrar_evento_sessao
+            funil_registrar_evento_sessao(sessao, 'venda_referencia', {'referencia': referencia})
+            dados = sessao.dados_temp or {}
+        except Exception:
+            pass
         sessao.dados_temp = dados
         sessao.save()
 
@@ -3525,6 +3572,11 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                             msg_viab += "\n\n📋 *ETAPA 2: CLIENTE*\n\nDigite o *CPF* do cliente:"
                             def _ok_viab():
                                 sess = SessaoWhatsapp.objects.get(id=sessao_id)
+                                try:
+                                    from crm_app.funil_venda_wpp_service import funil_registrar_protocolo
+                                    funil_registrar_protocolo(sess, protocolo or '')
+                                except Exception:
+                                    pass
                                 sess.etapa = 'venda_cpf'
                                 sess.save()
                                 WhatsAppService().enviar_mensagem_texto(telefone, msg_viab)
@@ -3552,6 +3604,11 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                                 sess.etapa = 'venda_celular'
                                 sess.dados_temp = dados
                                 sess.save()
+                                try:
+                                    from crm_app.funil_venda_wpp_service import funil_registrar_evento_sessao
+                                    funil_registrar_evento_sessao(sess, 'venda_cpf', {'cpf_cliente': cpf})
+                                except Exception:
+                                    pass
                                 with _automacoes_lock:
                                     if sessao_id in _automacoes_pap_ativas:
                                         _automacoes_pap_ativas[sessao_id]['dados'] = dados
@@ -3586,6 +3643,12 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                             dados['email'] = email
                             if resultado_credito:
                                 dados['resultado_credito'] = resultado_credito
+                            try:
+                                from crm_app.funil_venda_wpp_service import funil_registrar_credito
+                                if resultado_credito:
+                                    funil_registrar_credito(sess, resultado_credito)
+                            except Exception:
+                                pass
                             with _automacoes_lock:
                                 if sessao_id in _automacoes_pap_ativas:
                                     _automacoes_pap_ativas[sessao_id]['dados'] = dados
@@ -4200,6 +4263,11 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
         sessao.dados_temp = dados
         sessao.etapa = 'venda_celular'
         sessao.save()
+        try:
+            from crm_app.funil_venda_wpp_service import funil_registrar_evento_sessao
+            funil_registrar_evento_sessao(sessao, 'venda_cpf', {'cpf_cliente': cpf_limpo})
+        except Exception:
+            pass
         with _automacoes_lock:
             if sessao.id in _automacoes_pap_ativas:
                 _automacoes_pap_ativas[sessao.id]['dados'] = dados
@@ -4218,6 +4286,11 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
         sessao.dados_temp = dados
         sessao.etapa = 'venda_celular_sec'
         sessao.save()
+        try:
+            from crm_app.funil_venda_wpp_service import funil_registrar_evento_sessao
+            funil_registrar_evento_sessao(sessao, 'venda_celular', {'celular': celular_limpo})
+        except Exception:
+            pass
         return (
             f"✅ Celular: *({celular_limpo[:2]}) {celular_limpo[2:7]}-{celular_limpo[7:]}*\n\n"
             f"📱 Digite o *celular secundário* do cliente (com DDD):"
@@ -4239,6 +4312,11 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
         sessao.dados_temp = dados
         sessao.etapa = 'venda_email'
         sessao.save()
+        try:
+            from crm_app.funil_venda_wpp_service import funil_registrar_evento_sessao
+            funil_registrar_evento_sessao(sessao, 'venda_celular_sec', {'celular_sec': celular_sec})
+        except Exception:
+            pass
         return (
             f"✅ Celular secundário registrado.\n\n"
             f"📧 Digite o *e-mail* do cliente:"
@@ -4253,6 +4331,11 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
         dados['email'] = email
         sessao.dados_temp = dados
         sessao.save()
+        try:
+            from crm_app.funil_venda_wpp_service import funil_registrar_evento_sessao
+            funil_registrar_evento_sessao(sessao, 'venda_email', {'email': email})
+        except Exception:
+            pass
         
         with _automacoes_lock:
             ctx = _automacoes_pap_ativas.get(sessao.id)
@@ -4340,6 +4423,12 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
         dados.pop('celulares_rejeitados', None)
         if resultado_credito:
             dados['resultado_credito'] = resultado_credito
+        try:
+            from crm_app.funil_venda_wpp_service import funil_registrar_credito
+            if resultado_credito:
+                funil_registrar_credito(sessao, resultado_credito)
+        except Exception:
+            pass
         sessao.dados_temp = dados
         sessao.etapa = 'venda_forma_pagamento'
         sessao.save()

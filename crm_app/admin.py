@@ -6,6 +6,7 @@ from .models import (
     RegraComissaoFaixa, ConfigComissaoVendedor,
     ImportacaoEstabelecimentoCNPJ, LogImportacaoEstabelecimentoCNPJ,
     CepLocalidade,
+    FunilVendaWppTentativa, FunilVendaWppEvento,
 )
 
 
@@ -316,3 +317,22 @@ class LogImportacaoEstabelecimentoCNPJAdmin(admin.ModelAdmin):
     list_filter = ('status', 'iniciado_em')
     search_fields = ('nome_arquivo',)
     ordering = ['-iniciado_em']
+
+
+class FunilVendaWppEventoInline(admin.TabularInline):
+    model = FunilVendaWppEvento
+    extra = 0
+    readonly_fields = ('criado_em', 'etapa_codigo', 'funil_estagio', 'tipo_evento', 'payload')
+    can_delete = False
+
+
+@admin.register(FunilVendaWppTentativa)
+class FunilVendaWppTentativaAdmin(admin.ModelAdmin):
+    list_display = (
+        'id', 'telefone', 'usuario', 'status', 'funil_estagio_max', 'protocolo_pap', 'iniciado_em', 'finalizado_em',
+    )
+    list_filter = ('status', 'funil_estagio_max')
+    search_fields = ('telefone', 'protocolo_pap', 'usuario__username')
+    readonly_fields = ('iniciado_em', 'atualizado_em')
+    raw_id_fields = ('usuario', 'sessao_whatsapp')
+    inlines = [FunilVendaWppEventoInline]

@@ -2594,3 +2594,134 @@ class AuditoriaLigacao(models.Model):
 
     def __str__(self):
         return f"Venda {self.venda_id} - {self.provider_call_id} - {self.status}"
+
+
+class FunilVendaWppTentativa(models.Model):
+    """
+    Uma jornada de venda pelo WhatsApp (fluxo VENDER), iniciada ao digitar o CEP.
+    Dados sensíveis: acesso restrito à diretoria/admin (API + política interna).
+    """
+    STATUS_EM_ANDAMENTO = "em_andamento"
+    STATUS_CONCLUIDO = "concluido"
+    STATUS_ERRO = "erro"
+    STATUS_ABANDONADO = "abandonado"
+    STATUS_CHOICES = (
+        (STATUS_EM_ANDAMENTO, "Em andamento"),
+        (STATUS_CONCLUIDO, "Concluído"),
+        (STATUS_ERRO, "Erro"),
+        (STATUS_ABANDONADO, "Abandonado"),
+    )
+
+    FUNIL_VIABILIDADE = "viabilidade"
+    FUNIL_CADASTRO = "cadastro"
+    FUNIL_CONTATO = "contato"
+    FUNIL_CREDITO = "credito"
+    FUNIL_OFERTA = "oferta"
+    FUNIL_PEDIDO = "pedido"
+    FUNIL_ESTAGIO_CHOICES = (
+        (FUNIL_VIABILIDADE, "Viabilidade"),
+        (FUNIL_CADASTRO, "Cadastro"),
+        (FUNIL_CONTATO, "Contato"),
+        (FUNIL_CREDITO, "Crédito"),
+        (FUNIL_OFERTA, "Oferta"),
+        (FUNIL_PEDIDO, "Pedido"),
+    )
+
+    telefone = models.CharField(max_length=100, db_index=True)
+    usuario = models.ForeignKey(
+        Usuario,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="funil_vendas_wpp",
+    )
+    matricula_pap_snapshot = models.CharField(max_length=80, blank=True, default="")
+    bo_usuario_id = models.IntegerField(null=True, blank=True)
+    sessao_whatsapp = models.ForeignKey(
+        SessaoWhatsapp,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="funil_tentativas",
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_EM_ANDAMENTO,
+        db_index=True,
+    )
+    etapa_codigo_atual = models.CharField(max_length=80, blank=True, default="")
+    funil_estagio_max = models.CharField(
+        max_length=20,
+        choices=FUNIL_ESTAGIO_CHOICES,
+        blank=True,
+        default="",
+        db_index=True,
+    )
+
+    protocolo_pap = models.CharField(max_length=160, blank=True, default="")
+    mensagem_erro = models.TextField(blank=True, default="")
+    credito_resultado = models.CharField(max_length=255, blank=True, default="")
+
+    iniciado_em = models.DateTimeField(auto_now_add=True, db_index=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+    finalizado_em = models.DateTimeField(null=True, blank=True)
+
+    dados_agregados = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        db_table = "crm_funil_venda_wpp_tentativa"
+        verbose_name = "Funil Venda WPP (tentativa)"
+        verbose_name_plural = "Funil Vendas WPP (tentativas)"
+        ordering = ["-iniciado_em"]
+        indexes = [
+            models.Index(fields=["-iniciado_em", "status"]),
+            models.Index(fields=["telefone", "-iniciado_em"]),
+        ]
+
+    def __str__(self):
+        return f"{self.telefone} — {self.get_status_display()} ({self.iniciado_em})"
+
+
+class FunilVendaWppEvento(models.Model):
+    """Evento pontual dentro de uma tentativa (entrada do usuário ou marco da automação)."""
+
+    TIPO_INPUT = "input"
+    TIPO_TRANSICAO = "transicao"
+    TIPO_ERRO_PAP = "erro_pap"
+    TIPO_CREDITO = "credito"
+    TIPO_PROTOCOLO = "protocolo"
+    TIPO_STATUS = "status"
+    TIPO_CHOICES = (
+        (TIPO_INPUT, "Input"),
+        (TIPO_TRANSICAO, "Transição"),
+        (TIPO_ERRO_PAP, "Erro PAP"),
+        (TIPO_CREDITO, "Crédito"),
+        (TIPO_PROTOCOLO, "Protocolo"),
+        (TIPO_STATUS, "Status"),
+    )
+
+    tentativa = models.ForeignKey(
+        FunilVendaWppTentativa,
+        on_delete=models.CASCADE,
+        related_name="eventos",
+    )
+    criado_em = models.DateTimeField(auto_now_add=True, db_index=True)
+    etapa_codigo = models.CharField(max_length=80, db_index=True)
+    funil_estagio = models.CharField(
+        max_length=20,
+        choices=FunilVendaWppTentativa.FUNIL_ESTAGIO_CHOICES,
+        default=FunilVendaWppTentativa.FUNIL_VIABILIDADE,
+    )
+    tipo_evento = models.CharField(max_length=30, choices=TIPO_CHOICES, default=TIPO_INPUT)
+    payload = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        db_table = "crm_funil_venda_wpp_evento"
+        verbose_name = "Funil Venda WPP (evento)"
+        verbose_name_plural = "Funil Vendas WPP (eventos)"
+        ordering = ["id"]
+
+    def __str__(self):
+        return f"{self.tentativa_id} {self.etapa_codigo} @ {self.criado_em}"

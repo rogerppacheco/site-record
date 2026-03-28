@@ -352,6 +352,13 @@ CREDITO_EMAIL_MAILINATOR = config('CREDITO_EMAIL_MAILINATOR', default=True, cast
 # Google Street View Static API - foto automática na automação Inclusão/Viabilidade
 GOOGLE_STREETVIEW_API_KEY = config('GOOGLE_STREETVIEW_API_KEY', default='')
 
+# Funil de vendas (WhatsApp VENDER): grava tentativas e eventos no banco. Produção: FUNIL_VENDAS_REGISTRAR=true
+FUNIL_VENDAS_REGISTRAR = config(
+    'FUNIL_VENDAS_REGISTRAR',
+    default=False,
+    cast=lambda v: str(v).lower() in ('true', '1', 'yes'),
+)
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,

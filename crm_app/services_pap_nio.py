@@ -55,6 +55,7 @@ SELETORES = {
     'etapa1': {
         'uf': 'input[placeholder*="UF"]',
         'pdv': 'input[placeholder*="PDV"]',
+        # Campo de busca do vendedor: o PAP já mudou placeholder (ex.: só "Vendedor"); manter lista ampla.
         'matricula_vendedor': 'input[placeholder*="matrícula"]',
         'lista_vendedores': 'li',
         'btn_avancar': 'button:has-text("Avançar")',
@@ -149,6 +150,28 @@ SELETORES = {
         'detalhe_status_agendamento': 'span.sc-jrOYZv.ldMRLh, span.ldMRLh',
     },
 }
+
+# Seletores OR para o campo "vendedor / matrícula" na etapa Novo Pedido (UI do PAP varia)
+SELETORES_MATRICULA_VENDEDOR = [
+    'input[placeholder*="matrícula"]',
+    'input[placeholder*="matricula"]',
+    'input[placeholder*="Matrícula"]',
+    'input[placeholder*="vendedor"]',
+    'input[placeholder*="Vendedor"]',
+    'input[aria-label*="matrícula"]',
+    'input[aria-label*="matricula"]',
+    'input[aria-label*="vendedor"]',
+    'input[aria-label*="Vendedor"]',
+    'input[name*="vendedor"]',
+    'input[name*="matricula"]',
+    'input[id*="vendedor"]',
+    'input[id*="matricula"]',
+    'input[id*="Vendedor"]',
+    'main input[type="search"]',
+    '[role="main"] input[type="search"]',
+]
+
+SELETORES_MATRICULA_VENDEDOR_CSS = ", ".join(SELETORES_MATRICULA_VENDEDOR)
 
 # Código retornado quando o modal "OPS, OCORREU UM ERRO!" aparece no PAP (erro do portal; orientar abrir chamado Nio)
 PAP_ERRO_PORTAL_NIO = "PAP_ERRO_PORTAL_NIO"
@@ -718,6 +741,85 @@ class PAPNioAutomation:
             self.logado = False
             return False, f"Erro ao validar/restaurar sessão: {e}"
 
+    def _dispensar_modais_novo_pedido(self) -> None:
+        """Fecha modais/overlays que impedem ver o formulário (tutorial, avisos)."""
+        if not self.page:
+            return
+        try:
+            self.page.keyboard.press("Escape")
+            self.page.wait_for_timeout(200 if self.optimize_for_credit else 350)
+        except Exception:
+            pass
+        for _ in range(2):
+            fechou = False
+            for sel in (
+                'button[aria-label="Close"]',
+                'button[aria-label="Fechar"]',
+                'button:has-text("Entendi")',
+                'button:has-text("OK")',
+                'button:has-text("Ok")',
+                'button:has-text("Fechar")',
+            ):
+                try:
+                    el = self.page.query_selector(sel)
+                    if el and el.is_visible():
+                        el.click()
+                        self.page.wait_for_timeout(300 if self.optimize_for_credit else 450)
+                        fechou = True
+                except Exception:
+                    continue
+            if not fechou:
+                break
+
+    def _esperar_campo_matricula_vendedor(self, timeout_ms: int, modo_rapido: bool) -> bool:
+        """True se o campo de vendedor/matrícula (etapa 1) estiver visível."""
+        if not self.page:
+            return False
+        try:
+            self.page.wait_for_selector(
+                SELETORES_MATRICULA_VENDEDOR_CSS,
+                state="visible",
+                timeout=timeout_ms,
+            )
+            return True
+        except Exception:
+            pass
+        chunk = max(1200, min(3500, timeout_ms // max(1, len(SELETORES_MATRICULA_VENDEDOR) // 3)))
+        for sel in SELETORES_MATRICULA_VENDEDOR:
+            try:
+                self.page.wait_for_selector(sel, state="visible", timeout=chunk if modo_rapido else min(chunk + 800, 5000))
+                return True
+            except Exception:
+                continue
+        # Último recurso: combobox/autocomplete por rótulo próximo
+        try:
+            loc = self.page.get_by_label(re.compile(r"vendedor|matrícula|matricula", re.I))
+            if loc.count() > 0:
+                loc.first.wait_for(state="visible", timeout=4000)
+                return True
+        except Exception:
+            pass
+        return False
+
+    def _query_matricula_vendedor_input(self):
+        """Retorna o elemento input do vendedor ou None."""
+        if not self.page:
+            return None
+        for sel in SELETORES_MATRICULA_VENDEDOR:
+            try:
+                el = self.page.query_selector(sel)
+                if el and el.is_visible():
+                    return el
+            except Exception:
+                continue
+        try:
+            loc = self.page.get_by_label(re.compile(r"vendedor|matrícula|matricula", re.I))
+            if loc.count() > 0 and loc.first.is_visible():
+                return loc.first.element_handle()
+        except Exception:
+            pass
+        return None
+
     def _clicar_menu_novo_pedido(self) -> bool:
         """
         Clica no item do menu lateral "Novo Pedido" (fallback quando goto não abre o formulário).
@@ -731,9 +833,23 @@ class PAPNioAutomation:
             except Exception:
                 pass
 
+        # Menu hambúrger / drawer fechado em viewports menores
+        try:
+            loc_abrir = self.page.get_by_role("button", name=re.compile(r"menu|abrir|navega", re.I))
+            if loc_abrir.count() > 0:
+                b = loc_abrir.first
+                if b.is_visible():
+                    logger.info("[PAP] Abrindo menu lateral (botão menu)")
+                    b.click(timeout=4000)
+                    self.page.wait_for_timeout(500)
+        except Exception:
+            pass
+
         for nome, loc in (
             ("link role Novo pedido", self.page.get_by_role("link", name=re.compile(r"Novo\s+pedido", re.I))),
+            ("menuitem Novo pedido", self.page.get_by_role("menuitem", name=re.compile(r"Novo\s+pedido", re.I))),
             ("button role Novo pedido", self.page.get_by_role("button", name=re.compile(r"Novo\s+pedido", re.I))),
+            ("aside/nav link", self.page.locator("aside a, nav a, [role='navigation'] a").filter(has_text=re.compile(r"Novo\s+pedido", re.I))),
             ("a[href*=novo-pedido]", self.page.locator("a[href*='novo-pedido']")),
             ("button texto Novo Pedido", self.page.locator("button:has-text('Novo Pedido')")),
         ):
@@ -742,6 +858,10 @@ class PAPNioAutomation:
                     continue
                 alvo = loc.first
                 alvo.wait_for(state="visible", timeout=8000)
+                try:
+                    alvo.scroll_into_view_if_needed(timeout=5000)
+                except Exception:
+                    pass
                 logger.info(f"[PAP] Fallback: clicando menu Novo Pedido ({nome})")
                 if self.capture_screenshots:
                     try:
@@ -1296,6 +1416,8 @@ class PAPNioAutomation:
             if self.capture_screenshots:
                 self._capture_screenshot("01b_apos_goto_novo_pedido", wait_selector=None, wait_timeout_ms=800)
 
+            self._dispensar_modais_novo_pedido()
+
             # No crédito, quando o PAP prende na tela de Auditoria/Pedido, antecipar fallback do menu
             # evita esperar o timeout completo do campo de matrícula.
             if modo_rapido_credito:
@@ -1312,77 +1434,72 @@ class PAPNioAutomation:
                 if preso_em_auditoria:
                     logger.info("[PAP] Modo rápido crédito: tela de auditoria detectada, tentando menu 'Novo Pedido' imediatamente.")
                     self._clicar_menu_novo_pedido()
-            
-            # Aguardar campo matrícula ou página de novo pedido (crédito: dar tempo ao React)
-            matricula_visivel = False
-            try:
-                self.page.wait_for_selector(
-                    SELETORES['etapa1']['matricula_vendedor'],
-                    state="visible",
-                    timeout=12000 if modo_rapido_credito else 10000,
-                )
-                matricula_visivel = True
-            except Exception:
-                for sel in ['input[placeholder*="matrícula"]', 'input[placeholder*="matricula"]', 'input[id*="vendedor"]']:
-                    try:
-                        self.page.wait_for_selector(
-                            sel,
-                            state="visible",
-                            timeout=1500 if modo_rapido_credito else 3000,
-                        )
-                        matricula_visivel = True
-                        break
-                    except Exception:
-                        continue
+                    self._dispensar_modais_novo_pedido()
 
-            # Fallback: se não apareceu o formulário de novo pedido, clicar no menu "Novo Pedido"
+            # Venda (WPP): mesma heurística — SPA às vezes permanece em auditoria mesmo com URL de admin
+            if not modo_rapido_credito:
+                try:
+                    pagina_atual = (self.page.content() or "").lower()
+                except Exception:
+                    pagina_atual = ""
+                url_lower = (url_atual or "").lower()
+                if "auditoria" in url_lower or "auditoria de pedidos" in pagina_atual:
+                    logger.info("[PAP] Tela de auditoria detectada (venda); tentando menu 'Novo Pedido'.")
+                    self._clicar_menu_novo_pedido()
+                    self._dispensar_modais_novo_pedido()
+
+            t_first = 12000 if modo_rapido_credito else 16000
+            matricula_visivel = self._esperar_campo_matricula_vendedor(t_first, modo_rapido_credido)
+
             if not matricula_visivel:
-                logger.warning("[PAP] Campo matrícula não encontrado após goto. Tentando clicar no menu 'Novo Pedido'...")
+                logger.warning("[PAP] Campo matrícula não encontrado após goto. Tentando menu 'Novo Pedido' e nova espera...")
                 if self._clicar_menu_novo_pedido():
                     if self.capture_screenshots:
                         self._capture_screenshot("01c_apos_clique_menu_novo_pedido", wait_selector=None, wait_timeout_ms=800)
-                    try:
-                        self.page.wait_for_selector(
-                            SELETORES['etapa1']['matricula_vendedor'],
-                            state="visible",
-                            timeout=7000 if modo_rapido_credito else 12000,
-                        )
-                    except Exception:
-                        for sel in ['input[placeholder*="matrícula"]', 'input[placeholder*="matricula"]', 'input[id*="vendedor"]']:
-                            try:
-                                self.page.wait_for_selector(
-                                    sel,
-                                    state="visible",
-                                    timeout=2500 if modo_rapido_credito else 5000,
-                                )
-                                break
-                            except Exception:
-                                continue
-                else:
-                    return False, "Não foi possível acessar a página de novo pedido (campo matrícula não encontrado e menu 'Novo Pedido' não clicável)."
-            
-            # Campo de matrícula do vendedor (tentar seletor principal e alternativos)
-            matricula_input = (
-                self.page.query_selector(SELETORES['etapa1']['matricula_vendedor']) or
-                self.page.query_selector('input[placeholder*="matrícula"]') or
-                self.page.query_selector('input[placeholder*="matricula"]') or
-                self.page.query_selector('input[id*="vendedor"]')
-            )
-            if matricula_input:
-                # Focar no campo para abrir lista
-                matricula_input.click()
-                # Aguardar lista de vendedores aparecer
-                self.page.wait_for_selector(SELETORES['etapa1']['lista_vendedores'], state="visible", timeout=5000)
-                # Digitar matrícula
-                matricula_input.fill(matricula_vendedor)
-                # Aguardar lista atualizar e clicar na opção
-                self.page.wait_for_timeout(300)  # debounce do autocomplete
-                lista_items = self.page.query_selector_all(SELETORES['etapa1']['lista_vendedores'])
-                for item in lista_items:
-                    if matricula_vendedor in item.inner_text():
-                        item.click()
-                        break
-            
+                    self._dispensar_modais_novo_pedido()
+                    matricula_visivel = self._esperar_campo_matricula_vendedor(
+                        9000 if modo_rapido_credito else 14000,
+                        modo_rapido_credito,
+                    )
+
+            if not matricula_visivel:
+                logger.warning("[PAP] Ainda sem campo matrícula; recarregando rota novo-pedido uma vez...")
+                try:
+                    self.page.goto(PAP_NOVO_PEDIDO_URL, wait_until="load", timeout=35000)
+                    self.page.wait_for_timeout(800 if modo_rapido_credito else 1500)
+                    self._dispensar_modais_novo_pedido()
+                    matricula_visivel = self._esperar_campo_matricula_vendedor(
+                        10000 if modo_rapido_credito else 15000,
+                        modo_rapido_credito,
+                    )
+                except Exception as e:
+                    logger.warning(f"[PAP] Retry goto novo-pedido: {e}")
+
+            if not matricula_visivel:
+                try:
+                    logger.error("[PAP] Falha etapa1 novo pedido. URL=%s", (self.page.url or "")[:160])
+                except Exception:
+                    pass
+                return False, "Não foi possível acessar a página de novo pedido (campo matrícula não encontrado e menu 'Novo Pedido' não clicável)."
+
+            matricula_input = self._query_matricula_vendedor_input()
+            if not matricula_input:
+                return False, "Não foi possível localizar o campo de vendedor/matrícula no formulário. O portal pode ter alterado a página."
+
+            # Focar no campo para abrir lista
+            matricula_input.click()
+            # Aguardar lista de vendedores aparecer
+            self.page.wait_for_selector(SELETORES['etapa1']['lista_vendedores'], state="visible", timeout=5000)
+            # Digitar matrícula
+            matricula_input.fill(matricula_vendedor)
+            # Aguardar lista atualizar e clicar na opção
+            self.page.wait_for_timeout(300)  # debounce do autocomplete
+            lista_items = self.page.query_selector_all(SELETORES['etapa1']['lista_vendedores'])
+            for item in lista_items:
+                if matricula_vendedor in item.inner_text():
+                    item.click()
+                    break
+
             # Clicar Avançar (cria o pedido e gera o protocolo)
             try:
                 self.page.wait_for_selector('button:has-text("Avançar"):not([disabled])', state="visible", timeout=5000)

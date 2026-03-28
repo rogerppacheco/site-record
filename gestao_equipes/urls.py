@@ -87,6 +87,7 @@ urlpatterns = [
     path('crm-vendas/', TemplateView.as_view(template_name='public/crm_vendas.html'), name='crm_vendas'),
     path('gestao-acessos/', TemplateView.as_view(template_name='public/gestao-acessos.html'), name='gestao-acessos'),
     path('governanca/', TemplateView.as_view(template_name='public/governanca.html'), name='governanca'),
+    path('funil-vendas/', TemplateView.as_view(template_name='public/funil-vendas.html'), name='funil-vendas'),
     path('presenca/', TemplateView.as_view(template_name='public/presenca.html'), name='presenca'),
     path('esteira/', TemplateView.as_view(template_name='public/esteira.html'), name='esteira'),
     path('comissionamento/', TemplateView.as_view(template_name='public/comissionamento.html'), name='comissionamento'),

@@ -172,6 +172,7 @@ from .auditoria_ligacoes_api import (
     AuditoriaLigacaoStartView,
     AuditoriaLigacaoWebhookView,
 )
+from .funil_venda_wpp_api import FunilVendaWppTentativaDetailView, FunilVendaWppTentativaListView
 
 router = DefaultRouter()
 router.register(r'vendas', VendaViewSet, basename='venda')
@@ -199,6 +200,8 @@ urlpatterns = [
     path('duplicar-venda/', duplicar_venda, name='duplicar-venda'),
     path('liberar-pap-bo/', liberar_pap_bo_view, name='liberar-pap-bo'),
     path('historico-consultas-pap-bo/', historico_consultas_pap_bo_view, name='historico-consultas-pap-bo'),
+    path('funil-venda-wpp/tentativas/', FunilVendaWppTentativaListView.as_view(), name='funil-venda-wpp-tentativas'),
+    path('funil-venda-wpp/tentativas/<int:pk>/', FunilVendaWppTentativaDetailView.as_view(), name='funil-venda-wpp-tentativa-detail'),
     path('consultar-biometria-brpronto/', consultar_biometria_brpronto_view, name='consultar-biometria-brpronto'),
     # --- Endpoint para busca automática de fatura NIO (Bonus M-10) ---
     path('bonus-m10/buscar-fatura-nio/', buscar_fatura_nio_bonus_m10, name='buscar-fatura-nio-bonus-m10'),
