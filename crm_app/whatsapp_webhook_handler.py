@@ -1608,6 +1608,29 @@ def _continuar_apos_correcao_credito(telefone: str, sessao_id: int, dados: dict)
         for step_name, step_fn in [
             ('plano', lambda: automacao.etapa5_selecionar_plano(dados.get('plano', '500mega'))),
             ('fixo', lambda: automacao.etapa5_selecionar_fixo(dados.get('tem_fixo', False))),
+        ]:
+            sucesso, msg = step_fn()
+            if not sucesso:
+                automacao._fechar_sessao()
+                with _automacoes_lock:
+                    _automacoes_pap_ativas.pop(sessao_id, None)
+                resetar(False, msg)
+                enviar(f"❌ Erro: {msg}\n\nDigite *VENDER* para tentar novamente.")
+                return
+        if dados.get('tem_fixo'):
+            sucesso, msg = automacao.etapa5_fixo_finalizar_portabilidade(
+                bool(dados.get('fixo_portabilidade')),
+                (dados.get('fixo_portabilidade_numero') or ''),
+                (dados.get('fixo_portabilidade_operadora') or ''),
+            )
+            if not sucesso:
+                automacao._fechar_sessao()
+                with _automacoes_lock:
+                    _automacoes_pap_ativas.pop(sessao_id, None)
+                resetar(False, msg)
+                enviar(f"❌ Erro: {msg}\n\nDigite *VENDER* para tentar novamente.")
+                return
+        for step_name, step_fn in [
             ('streaming', lambda: automacao.etapa5_selecionar_streaming(
                 bool(dados.get('tem_streaming', False)), dados.get('streaming_opcoes') or '', dados.get('plano', '500mega'))),
             ('avançar', lambda: automacao.etapa5_clicar_avancar()),
@@ -2338,7 +2361,12 @@ def _montar_resumo_venda_e_pedir_confirmar(dados: dict) -> str:
         f"💳 *Pagamento:* {forma_nome.get(dados.get('forma_pagamento', ''), '')}\n"
         f"📦 *Plano:* {plano_nome.get(dados.get('plano', ''), '')}\n"
         f"📞 *Fixo:* {'Sim – R$ 30,00/mês' if dados.get('tem_fixo') else 'Não'}\n"
-        f"📺 *Streaming:* {_formatar_streaming_resumo(dados)}\n\n"
+        + (
+            f"📲 *Portabilidade fixo:* Sim — {dados.get('fixo_portabilidade_numero', '')} ({dados.get('fixo_portabilidade_operadora', '')})\n"
+            if dados.get('tem_fixo') and dados.get('fixo_portabilidade')
+            else (f"📲 *Portabilidade fixo:* Não\n" if dados.get('tem_fixo') else "")
+        )
+        + f"📺 *Streaming:* {_formatar_streaming_resumo(dados)}\n\n"
         f"📅 *Fidelidade:* 12 meses\n\n"
         f"💰 *Taxa de habilitação:*\n"
         f"Você ganha isenção da taxa de habilitação se permanecer no mínimo 12 meses conosco.\n\n"
@@ -2830,14 +2858,64 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                             if not sucesso:
                                 WhatsAppService().enviar_mensagem_texto(telefone, f"❌ Fixo: {msg}\n\nDigite 1 ou 2:")
                             else:
+                                if tem_fixo:
+                                    sess.etapa = 'venda_fixo_portabilidade'
+                                else:
+                                    sess.etapa = 'venda_streaming'
+                                sess.dados_temp = dados
+                                sess.save()
+                                if tem_fixo:
+                                    WhatsAppService().enviar_mensagem_texto(
+                                        telefone,
+                                        "✅ Fixo selecionado no PAP!\n\n"
+                                        "📞 *Portabilidade do fixo*\n\n"
+                                        "O cliente deseja *portar* o número fixo de outra operadora?\n\n"
+                                        "1️⃣ Sim\n"
+                                        "2️⃣ Não\n\n"
+                                        "Digite o número:",
+                                    )
+                                else:
+                                    WhatsAppService().enviar_mensagem_texto(
+                                        telefone,
+                                        "✅ Fixo registrado!\n\n📺 Quer *Streaming*?\n\n1️⃣ Sim\n2️⃣ Não\n\nDigite o número:",
+                                    )
+                        _executar_ops_django_sync(_sync_etapa5_fixo)
+                    elif action == 'etapa5_fixo_portabilidade':
+                        quer = cmd.get('quer_portabilidade', False)
+                        numero = cmd.get('numero_port', '') or ''
+                        operadora = cmd.get('operadora_texto', '') or ''
+                        sucesso, msg = automacao.etapa5_fixo_finalizar_portabilidade(quer, numero, operadora)
+
+                        def _sync_etapa5_fixo_port():
+                            sess = SessaoWhatsapp.objects.get(id=sessao_id)
+                            dados = sess.dados_temp or {}
+                            dados['fixo_portabilidade'] = quer
+                            if quer:
+                                dados['fixo_portabilidade_numero'] = numero
+                                dados['fixo_portabilidade_operadora'] = operadora
+                            with _automacoes_lock:
+                                if sessao_id in _automacoes_pap_ativas:
+                                    _automacoes_pap_ativas[sessao_id]['dados'] = dados
+                            if not sucesso:
+                                WhatsAppService().enviar_mensagem_texto(
+                                    telefone,
+                                    f"❌ Portabilidade/Salvar fixo: {msg}\n\n"
+                                    "Verifique os dados ou tente de novo.",
+                                )
+                            else:
                                 sess.etapa = 'venda_streaming'
                                 sess.dados_temp = dados
                                 sess.save()
                                 WhatsAppService().enviar_mensagem_texto(
                                     telefone,
-                                    "✅ Fixo registrado!\n\n📺 Quer *Streaming*?\n\n1️⃣ Sim\n2️⃣ Não\n\nDigite o número:"
+                                    "✅ Fixo e portabilidade registrados!\n\n"
+                                    "📺 Quer *Streaming*?\n\n"
+                                    "1️⃣ Sim\n"
+                                    "2️⃣ Não\n\n"
+                                    "Digite o número:",
                                 )
-                        _executar_ops_django_sync(_sync_etapa5_fixo)
+
+                        _executar_ops_django_sync(_sync_etapa5_fixo_port)
                     elif action == 'etapa5_streaming_avancar':
                         tem_stream = cmd.get('tem_streaming', False)
                         streaming_opcoes = cmd.get('streaming_opcoes', '')
@@ -3786,14 +3864,64 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                             if not sucesso:
                                 WhatsAppService().enviar_mensagem_texto(telefone, f"❌ Fixo: {msg}\n\nDigite 1 ou 2:")
                             else:
+                                if tem_fixo:
+                                    sess.etapa = 'venda_fixo_portabilidade'
+                                else:
+                                    sess.etapa = 'venda_streaming'
+                                sess.dados_temp = dados
+                                sess.save()
+                                if tem_fixo:
+                                    WhatsAppService().enviar_mensagem_texto(
+                                        telefone,
+                                        "✅ Fixo selecionado no PAP!\n\n"
+                                        "📞 *Portabilidade do fixo*\n\n"
+                                        "O cliente deseja *portar* o número fixo de outra operadora?\n\n"
+                                        "1️⃣ Sim\n"
+                                        "2️⃣ Não\n\n"
+                                        "Digite o número:",
+                                    )
+                                else:
+                                    WhatsAppService().enviar_mensagem_texto(
+                                        telefone,
+                                        "✅ Fixo registrado!\n\n📺 Quer *Streaming*?\n\n1️⃣ Sim\n2️⃣ Não\n\nDigite o número:",
+                                    )
+                        _executar_ops_django_sync(_sync_etapa5_fixo)
+                    elif action == 'etapa5_fixo_portabilidade':
+                        quer = cmd.get('quer_portabilidade', False)
+                        numero = cmd.get('numero_port', '') or ''
+                        operadora = cmd.get('operadora_texto', '') or ''
+                        sucesso, msg = automacao.etapa5_fixo_finalizar_portabilidade(quer, numero, operadora)
+
+                        def _sync_etapa5_fixo_port():
+                            sess = SessaoWhatsapp.objects.get(id=sessao_id)
+                            dados = sess.dados_temp or {}
+                            dados['fixo_portabilidade'] = quer
+                            if quer:
+                                dados['fixo_portabilidade_numero'] = numero
+                                dados['fixo_portabilidade_operadora'] = operadora
+                            with _automacoes_lock:
+                                if sessao_id in _automacoes_pap_ativas:
+                                    _automacoes_pap_ativas[sessao_id]['dados'] = dados
+                            if not sucesso:
+                                WhatsAppService().enviar_mensagem_texto(
+                                    telefone,
+                                    f"❌ Portabilidade/Salvar fixo: {msg}\n\n"
+                                    "Verifique os dados ou tente de novo.",
+                                )
+                            else:
                                 sess.etapa = 'venda_streaming'
                                 sess.dados_temp = dados
                                 sess.save()
                                 WhatsAppService().enviar_mensagem_texto(
                                     telefone,
-                                    "✅ Fixo registrado!\n\n📺 Quer *Streaming*?\n\n1️⃣ Sim\n2️⃣ Não\n\nDigite o número:"
+                                    "✅ Fixo e portabilidade registrados!\n\n"
+                                    "📺 Quer *Streaming*?\n\n"
+                                    "1️⃣ Sim\n"
+                                    "2️⃣ Não\n\n"
+                                    "Digite o número:",
                                 )
-                        _executar_ops_django_sync(_sync_etapa5_fixo)
+
+                        _executar_ops_django_sync(_sync_etapa5_fixo_port)
                     elif action == 'etapa5_streaming_avancar':
                         tem_stream = cmd.get('tem_streaming', False)
                         streaming_opcoes = cmd.get('streaming_opcoes', '')
@@ -4628,18 +4756,147 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
         
         dados['tem_fixo'] = tem_fixo
         sessao.dados_temp = dados
-        sessao.etapa = 'venda_streaming'
+        if tem_fixo:
+            sessao.etapa = 'venda_fixo_portabilidade'
+        else:
+            sessao.etapa = 'venda_streaming'
         sessao.save()
         with _automacoes_lock:
             if sessao.id in _automacoes_pap_ativas:
                 _automacoes_pap_ativas[sessao.id]['dados'] = dados
         
+        if tem_fixo:
+            return (
+                "✅ Fixo selecionado no PAP!\n\n"
+                "📞 *Portabilidade do fixo*\n\n"
+                "O cliente deseja *portar* o número fixo de outra operadora?\n\n"
+                "1️⃣ Sim\n"
+                "2️⃣ Não\n\n"
+                "Digite o número:"
+            )
         return (
-            f"✅ Fixo: {'Sim' if tem_fixo else 'Não'}\n\n"
+            f"✅ Fixo: Não\n\n"
             f"📺 Tem *Streaming*?\n\n"
             f"1️⃣ Sim\n"
             f"2️⃣ Não\n\n"
             f"Digite o número da opção:"
+        )
+    
+    # --- ETAPA: Fixo — portabilidade (após escolher Fixo = Sim) ---
+    elif etapa == 'venda_fixo_portabilidade':
+        if mensagem_limpa not in ('1', '2'):
+            return "❌ Opção inválida. Digite 1 (Sim) ou 2 (Não):"
+        quer = mensagem_limpa == '1'
+        with _automacoes_lock:
+            ctx = _automacoes_pap_ativas.get(sessao.id)
+        if not ctx:
+            return _marcar_sessao_erro_retry(
+                sessao,
+                dados,
+                'venda_fixo_portabilidade',
+                {
+                    'action': 'etapa5_fixo_portabilidade',
+                    'quer_portabilidade': quer,
+                    'numero_port': '',
+                    'operadora_texto': '',
+                },
+            )
+        cmd_queue = ctx.get('cmd_queue')
+        if not quer:
+            if cmd_queue:
+                cmd_queue.put({
+                    'action': 'etapa5_fixo_portabilidade',
+                    'quer_portabilidade': False,
+                    'numero_port': '',
+                    'operadora_texto': '',
+                })
+                return "⏳ Salvando fixo no PAP... Aguarde alguns instantes."
+            sucesso, msg = ctx['automacao'].etapa5_fixo_finalizar_portabilidade(False, '', '')
+            if not sucesso:
+                return f"❌ Portabilidade/Salvar fixo: {msg}\n\nDigite 1 (com portabilidade) ou 2 (sem):"
+            dados['fixo_portabilidade'] = False
+            sessao.dados_temp = dados
+            sessao.etapa = 'venda_streaming'
+            sessao.save()
+            with _automacoes_lock:
+                if sessao.id in _automacoes_pap_ativas:
+                    _automacoes_pap_ativas[sessao.id]['dados'] = dados
+            return (
+                "✅ Fixo registrado (sem portabilidade)!\n\n"
+                "📺 Tem *Streaming*?\n\n"
+                "1️⃣ Sim\n"
+                "2️⃣ Não\n\n"
+                "Digite o número da opção:"
+            )
+        sessao.dados_temp = dados
+        sessao.etapa = 'venda_fixo_portabilidade_numero'
+        sessao.save()
+        return (
+            "📞 Digite o *número do fixo com DDD* que será portado "
+            "(somente números, ex.: 3133334444):"
+        )
+    
+    elif etapa == 'venda_fixo_portabilidade_numero':
+        digitos = re.sub(r'\D', '', mensagem.strip())
+        if len(digitos) < 10 or len(digitos) > 13:
+            return "❌ Número inválido. Informe DDD + número (10 a 13 dígitos):"
+        dados['fixo_portabilidade_numero'] = digitos
+        sessao.dados_temp = dados
+        sessao.etapa = 'venda_fixo_portabilidade_operadora'
+        sessao.save()
+        with _automacoes_lock:
+            if sessao.id in _automacoes_pap_ativas:
+                _automacoes_pap_ativas[sessao.id]['dados'] = dados
+        return (
+            "🏢 Digite o nome da *operadora de origem* do fixo "
+            "(ex.: Vivo, Claro, Tim, OI FIXO — como no cadastro do PAP):"
+        )
+    
+    elif etapa == 'venda_fixo_portabilidade_operadora':
+        operadora_txt = (mensagem or '').strip()
+        if len(operadora_txt) < 2:
+            return "❌ Nome muito curto. Digite a operadora (ex.: Vivo, Claro):"
+        numero = dados.get('fixo_portabilidade_numero') or ''
+        with _automacoes_lock:
+            ctx = _automacoes_pap_ativas.get(sessao.id)
+        if not ctx:
+            return _marcar_sessao_erro_retry(
+                sessao,
+                dados,
+                'venda_fixo_portabilidade_operadora',
+                {
+                    'action': 'etapa5_fixo_portabilidade',
+                    'quer_portabilidade': True,
+                    'numero_port': numero,
+                    'operadora_texto': operadora_txt,
+                },
+            )
+        cmd_queue = ctx.get('cmd_queue')
+        if cmd_queue:
+            cmd_queue.put({
+                'action': 'etapa5_fixo_portabilidade',
+                'quer_portabilidade': True,
+                'numero_port': numero,
+                'operadora_texto': operadora_txt,
+            })
+            return "⏳ Enviando portabilidade ao PAP... Aguarde alguns instantes."
+        sucesso, msg = ctx['automacao'].etapa5_fixo_finalizar_portabilidade(True, numero, operadora_txt)
+        if not sucesso:
+            return f"❌ Portabilidade: {msg}\n\nDigite novamente o nome da operadora:"
+        dados['fixo_portabilidade'] = True
+        dados['fixo_portabilidade_operadora'] = operadora_txt
+        sessao.dados_temp = dados
+        sessao.etapa = 'venda_streaming'
+        sessao.save()
+        with _automacoes_lock:
+            if sessao.id in _automacoes_pap_ativas:
+                _automacoes_pap_ativas[sessao.id]['dados'] = dados
+        return (
+            "✅ Fixo e portabilidade registrados!\n\n"
+            "📺 Tem *Streaming*?\n\n"
+            "1️⃣ Sim\n"
+            "2️⃣ Não\n\n"
+            "Digite o número da opção:"
         )
     
     # --- ETAPA: Aguardando confirmação (SIM) do cliente ---

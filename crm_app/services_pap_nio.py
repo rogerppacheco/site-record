@@ -2721,7 +2721,20 @@ class PAPNioAutomation:
     
     def _etapa5_garantir_pagina(self):
         """Garante que a página da etapa 5 (pagamento/ofertas) está carregada."""
-        self.page.wait_for_selector('input[value="BOLETO"], input[value="CREDITO"], input[value="DACC"]', state="visible", timeout=15000)
+        timeout_ms = 20000
+        # Os radios usam name="radio-group" e podem estar ocultos por CSS (só o label é visível).
+        try:
+            self.page.locator(
+                'input[name="radio-group"][value="BOLETO"], '
+                'input[name="radio-group"][value="CREDITO"], '
+                'input[name="radio-group"][value="DACC"]'
+            ).first.wait_for(state="attached", timeout=timeout_ms)
+        except Exception:
+            self.page.wait_for_selector(
+                'label:has-text("Boleto"), label:has-text("Cartão de Crédito"), label:has-text("Débito em Conta")',
+                state="visible",
+                timeout=timeout_ms,
+            )
 
     def etapa5_selecionar_forma_pagamento(self, forma_pagamento: str) -> Tuple[bool, str]:
         """Seleciona a forma de pagamento na etapa 5 (Boleto/Cartão/Débito)."""
@@ -2863,8 +2876,10 @@ class PAPNioAutomation:
         """
         try:
             self.page.wait_for_timeout(400)
-            # 0. Botão exato do painel: <button class="sc-izfUZz eKoZwI">Salvar</button>
+            # 0. Botões do painel (classes mudam entre deploys)
             for sel in [
+                'button.sc-guDjWT.gIsNuI',
+                'button.gIsNuI.sc-guDjWT',
                 'button.sc-izfUZz.eKoZwI',
                 'button.eKoZwI.sc-izfUZz',
                 'button[class*="eKoZwI"][class*="sc-izfUZz"]',
@@ -3030,12 +3045,92 @@ class PAPNioAutomation:
             except Exception:
                 self.page.evaluate("(el) => el.click()", fixo_card)
             self.page.wait_for_timeout(700)
-            # 3. Confirmar com Salvar (não usar X, pois desmarca a opção)
-            self._etapa5_clicar_salvar_painel()
-            self.page.wait_for_timeout(400)
+            # 3. Não clicar em Salvar aqui: o painel pode exibir portabilidade do fixo;
+            #    o WhatsApp pergunta e etapa5_fixo_finalizar_portabilidade() confirma com Salvar.
             return True, "OK"
         except Exception as e:
             logger.error(f"[PAP] Erro ao selecionar fixo: {e}")
+            return False, str(e)
+
+    def etapa5_fixo_finalizar_portabilidade(
+        self,
+        quer_portabilidade: bool,
+        numero_port: str = "",
+        operadora_texto: str = "",
+    ) -> Tuple[bool, str]:
+        """
+        Com o painel Fixo já aberto (após etapa5_selecionar_fixo(True)):
+        opcionalmente marca portabilidade, preenche número e operadora, e clica Salvar.
+        Se não houver bloco de portabilidade no DOM, apenas Salvar (compatível com layout antigo).
+        """
+        try:
+            self._etapa5_garantir_pagina()
+            self.page.wait_for_timeout(400)
+            port_lbl = self.page.locator('label:has-text("Cliente deseja fazer portabilidade")').first
+            has_port = port_lbl.count() > 0
+            if has_port:
+                try:
+                    cb = port_lbl.locator('input[type="checkbox"]')
+                    if cb.count() > 0:
+                        want = bool(quer_portabilidade)
+                        try:
+                            checked = cb.is_checked()
+                        except Exception:
+                            checked = False
+                        if want and not checked:
+                            port_lbl.click()
+                            self.page.wait_for_timeout(250)
+                        elif not want and checked:
+                            port_lbl.click()
+                            self.page.wait_for_timeout(250)
+                    elif quer_portabilidade:
+                        port_lbl.click()
+                        self.page.wait_for_timeout(250)
+                except Exception as ex:
+                    logger.warning("[PAP] etapa5_fixo_finalizar_portabilidade: toggle portabilidade: %s", ex)
+                if quer_portabilidade:
+                    digits = re.sub(r"\D", "", numero_port or "")
+                    if len(digits) < 10:
+                        return False, "Número para portabilidade inválido (informe DDD + número fixo)."
+                    inp = self.page.query_selector("#contatoPortabilidade, input[name='contatoPortabilidade']")
+                    if inp:
+                        inp.fill(digits)
+                        self.page.wait_for_timeout(200)
+                    needle = (operadora_texto or "").strip()
+                    if len(needle) < 2:
+                        return False, "Informe a operadora de origem (ex.: Vivo, Claro, Tim)."
+                    sel_el = self.page.query_selector('select[name="operadora"]')
+                    if not sel_el:
+                        return False, "Campo operadora não encontrado no painel."
+                    matched = False
+                    needle_l = needle.lower()
+                    for opt in self.page.query_selector_all('select[name="operadora"] option'):
+                        val = (opt.get_attribute("value") or "").strip()
+                        if not val:
+                            continue
+                        label = (opt.inner_text() or "").strip()
+                        if needle_l in label.lower() or label.lower() in needle_l:
+                            try:
+                                self.page.select_option('select[name="operadora"]', value=val)
+                                matched = True
+                                break
+                            except Exception:
+                                continue
+                    if not matched:
+                        return (
+                            False,
+                            "Operadora não encontrada na lista. Tente o nome curto (ex.: Vivo, Claro, OI, Tim).",
+                        )
+            if not self._etapa5_clicar_salvar_painel():
+                return False, "Botão Salvar do painel Fixo não encontrado."
+            self.dados_pedido["fixo_portabilidade"] = quer_portabilidade
+            if quer_portabilidade:
+                self.dados_pedido["fixo_portabilidade_numero"] = re.sub(r"\D", "", numero_port or "")
+                self.dados_pedido["fixo_portabilidade_operadora"] = (operadora_texto or "").strip()
+            self.page.wait_for_timeout(400)
+            return True, "OK"
+        except Exception as e:
+            logger.error("[PAP] etapa5_fixo_finalizar_portabilidade: %s", e)
             return False, str(e)
 
     def etapa5_selecionar_streaming(self, tem_streaming: bool, streaming_opcoes: str = None, plano: str = "") -> Tuple[bool, str]:
@@ -3176,6 +3271,12 @@ class PAPNioAutomation:
             sucesso, msg = self.etapa5_selecionar_fixo(tem_fixo)
             if not sucesso:
                 return False, msg
+            if tem_fixo:
+                sucesso, msg = self.etapa5_fixo_finalizar_portabilidade(
+                    quer_portabilidade=False, numero_port="", operadora_texto=""
+                )
+                if not sucesso:
+                    return False, msg
             sucesso, msg = self.etapa5_selecionar_streaming(tem_streaming, streaming_opcoes, plano)
             if not sucesso:
                 return False, msg
