@@ -842,6 +842,38 @@ class PAPNioAutomation:
             pass
         return None
 
+    def _redirecionar_se_rota_bloqueia_novo_pedido(self) -> bool:
+        """
+        Se o navegador cair em rotas laterais (ex.: /administrativo/download) onde não há
+        formulário de vendedor, força goto direto em novo-pedido. Evita falso negativo
+        “matrícula não encontrada” quando o menu ou um clique desvia a SPA.
+        """
+        try:
+            url = (self.page.url or "").lower()
+        except Exception:
+            return False
+        if "pap.niointernet.com.br" not in url:
+            return False
+        bloqueadas = ("/administrativo/download", "/administrativo/download/")
+        if not any(b in url for b in bloqueadas):
+            return False
+        logger.warning(
+            "[PAP] URL fora do fluxo novo pedido (%s); forçando goto novo-pedido.",
+            (self.page.url or "")[:180],
+        )
+        try:
+            self.page.goto(PAP_NOVO_PEDIDO_URL, wait_until="domcontentloaded", timeout=35000)
+            self.page.wait_for_timeout(600)
+            try:
+                self.page.wait_for_load_state("networkidle", timeout=8000)
+            except Exception:
+                pass
+            self._dispensar_modais_novo_pedido()
+            return True
+        except Exception as e:
+            logger.warning("[PAP] Falha ao redirecionar para novo-pedido após rota bloqueada: %s", e)
+            return False
+
     def _clicar_menu_novo_pedido(self) -> bool:
         """
         Clica no item do menu lateral "Novo Pedido" (fallback quando goto não abre o formulário).
@@ -905,7 +937,6 @@ class PAPNioAutomation:
             '[href*="novo-pedido"]',
             'nav a:has-text("Novo Pedido")',
             'a:has-text("Novo pedido")',
-            'div:has-text("Novo Pedido")',
             "//a[contains(@href,'novo-pedido')]",
             "//*[contains(text(),'Novo Pedido') and (self::a or self::button or ancestor::a)]",
         ]
@@ -1472,6 +1503,8 @@ class PAPNioAutomation:
                     self._clicar_menu_novo_pedido()
                     self._dispensar_modais_novo_pedido()
 
+            self._redirecionar_se_rota_bloqueia_novo_pedido()
+
             t_first = 12000 if modo_rapido_credito else 16000
             matricula_visivel = self._esperar_campo_matricula_vendedor(t_first, modo_rapido_credito)
 
@@ -1485,6 +1518,13 @@ class PAPNioAutomation:
                         9000 if modo_rapido_credito else 14000,
                         modo_rapido_credito,
                     )
+
+            if not matricula_visivel:
+                self._redirecionar_se_rota_bloqueia_novo_pedido()
+                matricula_visivel = self._esperar_campo_matricula_vendedor(
+                    8000 if modo_rapido_credito else 12000,
+                    modo_rapido_credito,
+                )
 
             if not matricula_visivel:
                 logger.warning("[PAP] Ainda sem campo matrícula; recarregando rota novo-pedido uma vez...")
@@ -2721,20 +2761,107 @@ class PAPNioAutomation:
     
     def _etapa5_garantir_pagina(self):
         """Garante que a página da etapa 5 (pagamento/ofertas) está carregada."""
-        timeout_ms = 20000
-        # Os radios usam name="radio-group" e podem estar ocultos por CSS (só o label é visível).
+        timeout_ms = 35000
+        self.page.wait_for_timeout(350)
+
+        def _fechar_continuar_modal_credito():
+            try:
+                loc = self.page.locator('button:has-text("Continuar")').first
+                if loc.is_visible(timeout=900):
+                    loc.click(force=True, timeout=5000)
+                    self.page.wait_for_timeout(500)
+            except Exception:
+                pass
+
+        def _expandir_secao_forma_pagamento():
+            for sel in (
+                'span:has-text("Forma de pagamento")',
+                'div:has-text("Forma de pagamento")',
+                'button:has-text("Forma de pagamento")',
+            ):
+                try:
+                    el = self.page.query_selector(sel)
+                    if el and el.is_visible():
+                        el.click()
+                        self.page.wait_for_timeout(400)
+                        return
+                except Exception:
+                    continue
+
+        # Radios da forma de pagamento (value fixo no PAP); não exige name="radio-group" (UI muda).
+        radio_js_fn = """() => {
+            const vals = ['BOLETO','CREDITO','DACC'];
+            for (const inp of document.querySelectorAll('input[type="radio"]')) {
+                if (vals.includes(inp.value)) return true;
+            }
+            return false;
+        }"""
+
+        deadline = time.time() + (timeout_ms / 1000.0)
+        last_err = None
+        for _ in range(6):
+            _fechar_continuar_modal_credito()
+            _expandir_secao_forma_pagamento()
+            remaining_ms = max(1500, int((deadline - time.time()) * 1000))
+            try:
+                self.page.wait_for_function(radio_js_fn, timeout=min(8000, remaining_ms))
+                return
+            except Exception as e:
+                last_err = e
+            try:
+                self.page.keyboard.press("PageDown")
+                self.page.wait_for_timeout(250)
+                self.page.keyboard.press("End")
+                self.page.wait_for_timeout(350)
+            except Exception:
+                pass
+            if time.time() >= deadline:
+                break
+
+        try:
+            self.page.wait_for_selector(
+                'input[type="radio"][value="BOLETO"], input[type="radio"][value="CREDITO"], input[type="radio"][value="DACC"]',
+                state="attached",
+                timeout=max(2000, int((deadline - time.time()) * 1000)),
+            )
+            return
+        except Exception as e:
+            last_err = e
+
+        _fechar_continuar_modal_credito()
+        _expandir_secao_forma_pagamento()
+
         try:
             self.page.locator(
-                'input[name="radio-group"][value="BOLETO"], '
-                'input[name="radio-group"][value="CREDITO"], '
-                'input[name="radio-group"][value="DACC"]'
-            ).first.wait_for(state="attached", timeout=timeout_ms)
-        except Exception:
-            self.page.wait_for_selector(
-                'label:has-text("Boleto"), label:has-text("Cartão de Crédito"), label:has-text("Débito em Conta")',
-                state="visible",
-                timeout=timeout_ms,
-            )
+                'input[name="radio-group"][value="BOLETO"], input[name="radio-group"][value="CREDITO"], input[name="radio-group"][value="DACC"]'
+            ).first.wait_for(state="attached", timeout=12000)
+            return
+        except Exception as e:
+            last_err = e
+
+        try:
+            self.page.locator('input[name="radio-group"]').first.wait_for(state="attached", timeout=8000)
+            return
+        except Exception as e:
+            last_err = e
+
+        # Textos visíveis (acentos / capitalização diferentes no React)
+        for pattern in (
+            re.compile(r"Boleto"),
+            re.compile(r"Cart[aã]o.*[Cc]r[eé]dito"),
+            re.compile(r"D[eé]bito.*[Cc]onta"),
+            re.compile(r"forma\s+de\s+pagamento", re.I),
+        ):
+            try:
+                self.page.get_by_text(pattern).first.wait_for(state="visible", timeout=7000)
+                return
+            except Exception as e:
+                last_err = e
+                continue
+
+        if last_err:
+            raise last_err
+        raise TimeoutError("_etapa5_garantir_pagina: sem indicadores de forma de pagamento")
 
     def etapa5_selecionar_forma_pagamento(self, forma_pagamento: str) -> Tuple[bool, str]:
         """Seleciona a forma de pagamento na etapa 5 (Boleto/Cartão/Débito)."""
@@ -2751,7 +2878,9 @@ class PAPNioAutomation:
                     self.page.wait_for_timeout(400)
             except Exception:
                 pass
-            radio = self.page.query_selector(f'input[name="radio-group"][value="{valor}"]')
+            radio = self.page.query_selector(f'input[type="radio"][value="{valor}"]')
+            if not radio:
+                radio = self.page.query_selector(f'input[name="radio-group"][value="{valor}"]')
             if not radio:
                 radio = self.page.query_selector(f'input[value="{valor}"]')
             if radio:
