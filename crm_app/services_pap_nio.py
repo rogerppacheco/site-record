@@ -1449,7 +1449,7 @@ class PAPNioAutomation:
                     self._dispensar_modais_novo_pedido()
 
             t_first = 12000 if modo_rapido_credito else 16000
-            matricula_visivel = self._esperar_campo_matricula_vendedor(t_first, modo_rapido_credido)
+            matricula_visivel = self._esperar_campo_matricula_vendedor(t_first, modo_rapido_credito)
 
             if not matricula_visivel:
                 logger.warning("[PAP] Campo matrícula não encontrado após goto. Tentando menu 'Novo Pedido' e nova espera...")
