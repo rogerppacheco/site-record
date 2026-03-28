@@ -247,9 +247,22 @@ class PAPNioAutomation:
         """Garante que o diretório de sessões existe"""
         os.makedirs(STORAGE_STATE_DIR, exist_ok=True)
 
-    def _capture_screenshot(self, step_name: str, wait_selector: str = None, wait_timeout_ms: int = 15000) -> None:
-        """Se PAP_CAPTURE_SCREENSHOTS estiver ativo, espera a tela ficar pronta, depois salva screenshot e opcionalmente envia ao OneDrive."""
-        if not self.capture_screenshots or not self.page:
+    def _capture_screenshot(
+        self,
+        step_name: str,
+        wait_selector: str = None,
+        wait_timeout_ms: int = 15000,
+        *,
+        forcar: bool = False,
+    ) -> None:
+        """
+        Salva screenshot em downloads/ e opcionalmente OneDrive.
+        Por padrão só roda com capture_screenshots; use forcar=True em falhas quando
+        PAP_SCREENSHOTS_ONEDRIVE estiver ligado (ver _capture_screenshot_falha_etapa1).
+        """
+        from django.conf import settings
+        pode = self.capture_screenshots or forcar
+        if not pode or not self.page:
             return
         try:
             # Esperar elemento indicar que a tela está pronta (evita print do loading/spinner)
@@ -260,7 +273,6 @@ class PAPNioAutomation:
                     pass
             # Pequena pausa para a UI terminar de pintar (React/animations)
             self.page.wait_for_timeout(800)
-            from django.conf import settings
             base_dir = getattr(settings, 'BASE_DIR', None)
             if not base_dir:
                 return
@@ -287,6 +299,16 @@ class PAPNioAutomation:
         except Exception as e:
             if "Execution context was destroyed" not in str(e) and "context was destroyed" not in str(e):
                 logger.warning(f"[PAP] Erro ao salvar screenshot: {e}")
+
+    def _capture_screenshot_falha_etapa1(self, step_name: str, wait_selector: str = None, wait_timeout_ms: int = 0) -> None:
+        """
+        Screenshot diagnóstico na Etapa 1 (novo pedido / vendedor).
+        Grava se PAP_CAPTURE_SCREENSHOTS OU PAP_SCREENSHOTS_ONEDRIVE estiver ativo
+        (assim dá para só subir falhas ao OneDrive sem printar todas as etapas).
+        """
+        from django.conf import settings
+        forcar = self.capture_screenshots or getattr(settings, "PAP_SCREENSHOTS_ONEDRIVE", False)
+        self._capture_screenshot(step_name, wait_selector=wait_selector, wait_timeout_ms=wait_timeout_ms, forcar=forcar)
 
     def _highlight_element(self, selector_or_element, duration_ms: int = 800) -> None:
         """
@@ -1403,6 +1425,7 @@ class PAPNioAutomation:
             if precisa_login:
                 sucesso, msg = self._fazer_login()
                 if not sucesso:
+                    self._capture_screenshot_falha_etapa1("01_err_login_pap", wait_selector=None, wait_timeout_ms=0)
                     return False, msg
                 self.page.goto(PAP_NOVO_PEDIDO_URL, wait_until="domcontentloaded", timeout=30000)
                 self.page.wait_for_timeout(300 if modo_rapido_credito else 1000)
@@ -1411,6 +1434,7 @@ class PAPNioAutomation:
             # Verificar se chegou na página correta
             if "pap.niointernet.com.br" not in url_atual:
                 logger.warning(f"[PAP] URL atual: {url_atual}")
+                self._capture_screenshot_falha_etapa1("01_err_url_fora_pap", wait_selector=None, wait_timeout_ms=0)
                 return False, f"Não foi possível acessar a página de novo pedido. URL: {url_atual[:80]}..."
 
             if self.capture_screenshots:
@@ -1480,10 +1504,12 @@ class PAPNioAutomation:
                     logger.error("[PAP] Falha etapa1 novo pedido. URL=%s", (self.page.url or "")[:160])
                 except Exception:
                     pass
+                self._capture_screenshot_falha_etapa1("01_err_campo_matricula_invisivel", wait_selector=None, wait_timeout_ms=0)
                 return False, "Não foi possível acessar a página de novo pedido (campo matrícula não encontrado e menu 'Novo Pedido' não clicável)."
 
             matricula_input = self._query_matricula_vendedor_input()
             if not matricula_input:
+                self._capture_screenshot_falha_etapa1("01_err_query_matricula_none", wait_selector=None, wait_timeout_ms=0)
                 return False, "Não foi possível localizar o campo de vendedor/matrícula no formulário. O portal pode ter alterado a página."
 
             # Focar no campo para abrir lista
@@ -1507,6 +1533,18 @@ class PAPNioAutomation:
                 pass
             btn_avancar = self.page.query_selector('button:has-text("Avançar"):not([disabled])')
             if not btn_avancar:
+                try:
+                    n_li = len(lista_items)
+                    amostras = [(i.inner_text() or "")[:80] for i in lista_items[:5]]
+                    logger.warning(
+                        "[PAP] Etapa1 sem botão Avançar. matricula=%s n_li=%s amostras=%s",
+                        matricula_vendedor,
+                        n_li,
+                        amostras,
+                    )
+                except Exception as log_e:
+                    logger.warning("[PAP] Etapa1 sem botão Avançar (log lista falhou): %s", log_e)
+                self._capture_screenshot_falha_etapa1("01_err_sem_bot_avancar_apos_vendedor", wait_selector=None, wait_timeout_ms=0)
                 return False, "Não foi possível selecionar o vendedor. Verifique a matrícula."
             if self.capture_screenshots:
                 self._highlight_element(btn_avancar, duration_ms=400)
@@ -1521,6 +1559,10 @@ class PAPNioAutomation:
                 
         except Exception as e:
             logger.error(f"[PAP] Erro na Etapa 1: {e}")
+            try:
+                self._capture_screenshot_falha_etapa1("01_excecao_etapa1", wait_selector=None, wait_timeout_ms=0)
+            except Exception:
+                pass
             return False, f"Erro na Etapa 1: {str(e)}"
 
     def validar_tela_pronta_para_cep(self, timeout_ms: int = 8000) -> Tuple[bool, str]:

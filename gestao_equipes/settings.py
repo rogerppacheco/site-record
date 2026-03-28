@@ -332,6 +332,8 @@ PAP_CAPTURE_SCREENSHOTS = config('PAP_CAPTURE_SCREENSHOTS', default=False, cast=
 
 # PAP_SCREENSHOTS_ONEDRIVE: Se True, além de salvar em downloads/, envia cada screenshot para o OneDrive
 # (mesma conta configurada em MS_CLIENT_ID / MS_REFRESH_TOKEN, pasta em MS_DRIVE_FOLDER_ROOT).
+# Também habilita captura em FALHAS da Etapa 1 (novo pedido / vendedor) mesmo com PAP_CAPTURE_SCREENSHOTS=false,
+# para ver no OneDrive a tela no momento do erro (prefixo pap_venda_*_01_err_* / 01_excecao_*).
 # Variável de ambiente: PAP_SCREENSHOTS_ONEDRIVE=true
 PAP_SCREENSHOTS_ONEDRIVE = config('PAP_SCREENSHOTS_ONEDRIVE', default=False, cast=lambda v: str(v).lower() in ('true', '1', 'yes'))
 # Pasta no OneDrive (dentro de MS_DRIVE_FOLDER_ROOT). Ex: PAP_Screenshots → CDOI_Record_Vertical/PAP_Screenshots/
