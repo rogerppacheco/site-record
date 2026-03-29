@@ -1459,7 +1459,7 @@ def _iniciar_fluxo_venda(telefone: str, sessao) -> str:
         f"🛒 *NOVA VENDA - PAP NIO*\n\n"
         f"Tempo médio do fluxo (seguindo rápido todas as etapas, com biometria pronta e *SIM* do cliente já respondido): cerca de 3 a 5 minutos.\n\n"
         f"Confirma que deseja iniciar uma nova venda?\n\n"
-        f"Digite *SIM* para continuar ou *CANCELAR* para sair."
+        f"Toque em *SIM* ou *CANCELAR*, ou digite *SIM* / *CANCELAR*."
     )
 
 
@@ -2405,6 +2405,67 @@ def _montar_resumo_venda_e_pedir_confirmar(dados: dict) -> str:
     )
 
 
+def _forcar_sim_confirmacao_cliente_pap(sessao, telefone_vendedor: str) -> str:
+    """
+    Homologação: marca PapConfirmacaoCliente como confirmado e acorda a worker (event + fila CONSULTAR).
+    Só efetivo se settings.PAP_WHATSAPP_PERMITIR_FORCAR_SIM_CLIENTE.
+    """
+    from django.conf import settings as dj_settings
+
+    if not getattr(dj_settings, "PAP_WHATSAPP_PERMITIR_FORCAR_SIM_CLIENTE", False):
+        return (
+            "⚠️ Comando *FORCAR_SIM* não está habilitado. "
+            "Defina a variável de ambiente *PAP_WHATSAPP_PERMITIR_FORCAR_SIM_CLIENTE=true* no servidor (somente homologação)."
+        )
+    from crm_app.models import PapConfirmacaoCliente
+    from crm_app.pap_protocolo_confirmacao_envio import gerar_protocolo_confirmacao_envio
+
+    dados = sessao.dados_temp or {}
+    celular_ref = dados.get("celular") or dados.get("celular_principal") or ""
+    chaves_cel = list(
+        dict.fromkeys([_chave_telefone(celular_ref)] + (_chaves_telefone_variantes(celular_ref) or []))
+    )
+    chaves_cel = [c for c in chaves_cel if c]
+    proto_envio = gerar_protocolo_confirmacao_envio()
+    n = 0
+    if chaves_cel:
+        n = PapConfirmacaoCliente.objects.filter(
+            sessao_id=sessao.id,
+            celular_cliente__in=chaves_cel,
+            confirmado=False,
+        ).update(confirmado=True, protocolo_confirmacao_envio=proto_envio)
+    if n == 0:
+        n = PapConfirmacaoCliente.objects.filter(sessao_id=sessao.id, confirmado=False).update(
+            confirmado=True, protocolo_confirmacao_envio=proto_envio
+        )
+    chave_v = _chave_telefone(telefone_vendedor)
+    with _pending_lock:
+        kc = _pending_by_vendedor.get(chave_v)
+        pend = _pending_client_confirm.get(kc) if kc else None
+    if pend and pend.get("sessao_id") == sessao.id:
+        try:
+            pend["event"].set()
+        except Exception:
+            pass
+        try:
+            q = pend.get("consultar_queue")
+            if q is not None:
+                q.put_nowait(1)
+        except Exception:
+            pass
+    if n == 0 and not pend:
+        return (
+            "⚠️ Não há registro pendente de confirmação para esta sessão "
+            "(o resumo ainda não foi registrado ou já foi confirmado). "
+            "Aguarde o envio do resumo ao cliente ou digite *CONSULTAR*."
+        )
+    logger.info("[VENDA PAP] FORCAR_SIM: sessao_id=%s atualizados=%s", sessao.id, n)
+    return (
+        "✅ *SIM do cliente forçado* (modo homologação).\n\n"
+        "O sistema foi acionado como após um *CONSULTAR*. Aguarde a próxima mensagem do bot ou digite *CONSULTAR* de novo."
+    )
+
+
 def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, webhook_t0=None) -> str:
     """
     Processa as etapas do fluxo de venda.
@@ -3196,7 +3257,7 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                     except Exception:
                         pass
 
-        if mensagem_limpa == 'SIM':
+        if mensagem_limpa in ('SIM', 'S'):
             # Obter login BackOffice do pool (seleção randômica entre disponíveis para automação VENDER)
             from crm_app.pool_bo_pap import obter_login_bo, MSG_TODOS_ACESSOS_EM_USO, obter_mensagem_fila_ocupado
             bo_usuario, erro = obter_login_bo(
@@ -3410,11 +3471,12 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                 "⏳ Conectando ao PAP e abrindo novo pedido...\n\n"
                 "Aguarde alguns segundos. Quando a tela estiver pronta, você receberá a confirmação e poderá digitar o *CEP*."
             )
-        else:
+        if mensagem_limpa in ('CANCELAR', 'NAO', 'NÃO'):
             sessao.etapa = 'inicial'
             sessao.dados_temp = {}
             sessao.save()
             return "❌ Venda cancelada. Digite *VENDER* para iniciar novamente."
+        return "❌ Responda *SIM* (ou toque no botão) para iniciar, ou *CANCELAR* para sair."
     
     # --- ETAPA: Aguardando PAP (login + novo pedido em andamento) ---
     if etapa == 'venda_aguardando_pap':
@@ -4929,6 +4991,8 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
     
     # --- ETAPA: Aguardando confirmação (SIM) do cliente ---
     elif etapa == 'venda_aguardando_confirmacao':
+        if mensagem_limpa in ('FORCAR_SIM', 'SIM_FORCADO', 'FORÇAR_SIM', 'FORCAR SIM'):
+            return _forcar_sim_confirmacao_cliente_pap(sessao, telefone)
         if mensagem_limpa == 'CONSULTAR':
             chave_vendedor = _chave_telefone(telefone)
             with _pending_lock:
@@ -4980,9 +5044,13 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                 f"Biometria: {status_bio}\n\n"
                 "Digite *CONSULTAR* quando quiser validar os dois novamente."
             )
+        _hint_forcar = ""
+        if getattr(settings, "PAP_WHATSAPP_PERMITIR_FORCAR_SIM_CLIENTE", False):
+            _hint_forcar = "\n\n_Homologação: digite *FORCAR_SIM* para simular o SIM do cliente._"
         return (
             "⏳ Aguardando confirmação (*SIM*) do cliente.\n\n"
             "Digite *CONSULTAR* a qualquer momento para ver o status do SIM do cliente e da biometria."
+            + _hint_forcar
         )
     
     # --- ETAPA: Streaming ---
@@ -6225,6 +6293,8 @@ _BTN_ZAPI_ID_PARA_COMANDO = {
     "pap_abrir_os_sim": "SIM",
     "pap_abrir_os_nao": "NAO",
     "pap_venda_confirmar_envio": "CONFIRMAR",
+    "pap_venda_iniciar_sim": "SIM",
+    "pap_venda_iniciar_cancelar": "CANCELAR",
 }
 
 
@@ -6296,6 +6366,11 @@ def _venda_tentar_enviar_resposta_com_botoes(telefone_formatado, sessao, respost
         botoes = [
             {"id": "pap_venda_confirmar_envio", "type": "REPLY", "label": "CONFIRMAR"},
             {"id": "pap_agenda_cancelar", "type": "REPLY", "label": "CANCELAR"},
+        ]
+    elif et == "venda_confirmar_matricula":
+        botoes = [
+            {"id": "pap_venda_iniciar_sim", "type": "REPLY", "label": "SIM"},
+            {"id": "pap_venda_iniciar_cancelar", "type": "REPLY", "label": "CANCELAR"},
         ]
     elif et == "venda_aguardando_abrir_os":
         botoes = [
@@ -7010,7 +7085,22 @@ def processar_webhook_whatsapp(data, request=None):
             _registrar_estatistica(telefone_formatado, 'VENDER')
             if not resposta:
                 resposta = "Não foi possível iniciar o fluxo de venda. Tente novamente."
-            return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
+            try:
+                sessao.refresh_from_db()
+            except Exception:
+                pass
+            _elapsed_v = time.monotonic() - _webhook_t0
+            texto_vender = (
+                _com_prefixo_primeira_mensagem(resposta).strip() + f"\n\n⏱ _{_elapsed_v:.1f}s_"
+            ).strip()
+            alt_v = _venda_tentar_enviar_resposta_com_botoes(telefone_formatado, sessao, texto_vender)
+            if alt_v is None:
+                return {'status': 'ok', 'mensagem': resposta}
+            try:
+                whatsapp_service.enviar_mensagem_texto(telefone_formatado, alt_v.strip())
+            except Exception as e:
+                logger.exception(f"[Webhook] Erro ao enviar VENDER (fallback texto): {e}")
+            return {'status': 'ok', 'mensagem': resposta}
 
         elif mensagem_limpa in ['PEDIDO', 'PEDIDOS']:
             logger.info(f"[Webhook] Comando PEDIDO reconhecido!")

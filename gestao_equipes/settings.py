@@ -338,6 +338,18 @@ PAP_CAPTURE_SCREENSHOTS = config('PAP_CAPTURE_SCREENSHOTS', default=False, cast=
 PAP_SCREENSHOTS_ONEDRIVE = config('PAP_SCREENSHOTS_ONEDRIVE', default=False, cast=lambda v: str(v).lower() in ('true', '1', 'yes'))
 # Pasta no OneDrive (dentro de MS_DRIVE_FOLDER_ROOT). Ex: PAP_Screenshots → CDOI_Record_Vertical/PAP_Screenshots/
 PAP_ONEDRIVE_FOLDER = config('PAP_ONEDRIVE_FOLDER', default='PAP_Screenshots')
+
+# Homologação: vendedor pode digitar FORCAR_SIM na etapa de aguardar SIM do cliente (sem resposta real do cliente).
+# Variável: PAP_WHATSAPP_PERMITIR_FORCAR_SIM_CLIENTE=true (não use em produção com clientes reais).
+PAP_WHATSAPP_PERMITIR_FORCAR_SIM_CLIENTE = config(
+    'PAP_WHATSAPP_PERMITIR_FORCAR_SIM_CLIENTE',
+    default=False,
+    cast=lambda v: str(v).lower() in ('true', '1', 'yes'),
+)
+
+# Após "Abrir OS", tempo máximo (ms) aguardando a UI de agendamento (portal pode demorar nas validações).
+PAP_ETAPA7_AGENDAMENTO_TIMEOUT_MS = config('PAP_ETAPA7_AGENDAMENTO_TIMEOUT_MS', default=120000, cast=int)
+
 # Pasta no OneDrive para selfies de confirmação de presença (por data: Presenca_Selfies/YYYY-MM-DD/)
 PRESENCA_ONEDRIVE_FOLDER = config('PRESENCA_ONEDRIVE_FOLDER', default='Presenca_Selfies')
 # Pasta no OneDrive para solicitações de inclusão/viabilidade (subpasta por solicitação)

@@ -4869,13 +4869,15 @@ class PAPNioAutomation:
             # 9 validações no portal; aguardar até 90s — seletores alternativos (UI muda entre builds)
             sel_ag = (
                 'h3:has-text("Período"), h2:has-text("Período"), '
+                'p:has-text("Período"), span:has-text("Período"), '
                 '[class*="react-datepicker"], .react-datepicker, '
                 'h2:has-text("Agendamento"), h3:has-text("Agendamento"), '
-                '[class*="Agendamento"]'
+                '[class*="Agendamento"], [class*="agendamento"]'
             )
+            _t7_ms = int(getattr(settings, "PAP_ETAPA7_AGENDAMENTO_TIMEOUT_MS", 120000) or 120000)
             ok_wait, err_wait = self.esperar_selector_com_keepalive_sessao(
                 sel_ag,
-                timeout_ms=90000,
+                timeout_ms=max(90000, _t7_ms),
                 poll_ms=5000,
                 target_after_relogin=PAP_NOVO_PEDIDO_URL,
             )
