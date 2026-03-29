@@ -253,6 +253,57 @@ class WhatsAppService:
             logger.error(f"[WhatsAppService] Erro: resposta vazia ou None")
             return False, "Erro ao enviar - resposta vazia"
 
+    def enviar_mensagem_com_botoes_reply(
+        self, telefone, mensagem, button_actions, title=None, footer=None
+    ):
+        """
+        Z-API POST /send-button-actions — botões tipo REPLY (e outros permitidos pela API).
+        button_actions: lista de dicts com id, type (ex.: REPLY), label; opcionalmente url/phone para URL/CALL.
+        Retorna (True, resp) em sucesso; (False, None) para fallback texto.
+        """
+        try:
+            if not button_actions:
+                return False, None
+            url = f"{self.base_url}/send-button-actions"
+            telefone_limpo = self._destino_send_text(telefone)
+            payload = {
+                "phone": telefone_limpo,
+                "message": (mensagem or "").strip(),
+                "buttonActions": button_actions,
+            }
+            if title:
+                payload["title"] = title
+            if footer:
+                payload["footer"] = footer
+            logger.info(
+                "[WhatsAppService] send-button-actions (%s botão/ões)",
+                len(button_actions),
+            )
+            resp = self._send_request(url, payload)
+            if not resp or not isinstance(resp, dict):
+                return False, None
+            if resp.get("error"):
+                logger.warning("[WhatsAppService] send-button-actions erro: %s", resp)
+                return False, None
+            if resp.get("messageId") or resp.get("zaapId") or resp.get("id"):
+                return True, resp
+            return False, None
+        except Exception as e:
+            logger.warning("[WhatsAppService] enviar_mensagem_com_botoes_reply: %s", e)
+            return False, None
+
+    def enviar_resumo_pap_com_botao_confirmar(self, telefone, resumo, texto_extra=""):
+        """
+        Envia o resumo do PAP com um botão de resposta *SIM* (Z-API /send-button-actions, tipo REPLY).
+        Reduz erro de digitação do cliente. Retorna (True, resp) em sucesso; (False, None) para usar fallback texto.
+        """
+        message = f"{resumo}{texto_extra}".strip()
+        return self.enviar_mensagem_com_botoes_reply(
+            telefone,
+            message,
+            [{"id": "pap_confirmar_sim", "type": "REPLY", "label": "SIM"}],
+        )
+
     # ---------------------------------------------------------
     # 3. ENVIAR IMAGEM (BASE64)
     # ---------------------------------------------------------

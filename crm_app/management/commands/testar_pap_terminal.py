@@ -5,12 +5,16 @@ Teste: digite no terminal como no WhatsApp + veja cada etapa no site PAP.
 O navegador fica aberto em pap.niointernet.com.br. Você digita uma
 mensagem por vez no terminal e acompanha a automação executando no site.
 
-Fluxo: VENDER → SIM → CEP → Número → Referência → CPF → Celular → E-mail
+Fluxo: VENDER → SIM → CEP → Número → Referência → CPF → Celular → Cel. sec. → E-mail
        → Pagamento (1/2/3) → [Débito: Banco, Agência, Conta, Dígito]
-       → Plano (1/2/3) → Fixo (1/2) → Streaming (1/2) → [Streaming: opções]
-       → Avançar → Biometria → CONFIRMAR (Turno na etapa 7, quando aparecer o calendário)
+       → Plano (1/2/3) → Fixo (1/2) → [se Fixo=1: Portabilidade 1/2 → número → operadora]
+       → Streaming (1/2) → [Streaming: opções]
+       → Avançar → Biometria → CONFIRMAR (agendamento etapa 7)
 
 Comandos: /sair
+
+Debug: use --slow-mo 800 para cliques mais lentos e --trace para gravar pap_trace_*.zip
+(abrir em https://trace.playwright.dev e ver cada clique/seletor).
 """
 import logging
 import re
@@ -20,20 +24,27 @@ from django.core.management.base import BaseCommand
 logger = logging.getLogger(__name__)
 
 
-def _salvar_pap_confirmacao_thread(celulares_registrar):
+def _salvar_pap_confirmacao_thread(celulares_registrar, protocolo_pedido=None):
     """Salva PapConfirmacaoCliente em thread separada (evita SynchronousOnlyOperation em contexto async)."""
     try:
         from crm_app.models import PapConfirmacaoCliente
         for c in celulares_registrar:
-            PapConfirmacaoCliente.objects.filter(celular_cliente=c, confirmado=False).delete()
-            PapConfirmacaoCliente.objects.create(celular_cliente=c, confirmado=False)
-        logger.info(f"[PAP] PapConfirmacaoCliente registrado para {celulares_registrar}")
+            q = PapConfirmacaoCliente.objects.filter(celular_cliente=c, confirmado=False)
+            if protocolo_pedido:
+                q = q.filter(protocolo_pedido=protocolo_pedido)
+            q.delete()
+            PapConfirmacaoCliente.objects.create(
+                celular_cliente=c,
+                confirmado=False,
+                protocolo_pedido=protocolo_pedido or None,
+            )
+        logger.info(f"[PAP] PapConfirmacaoCliente registrado para {celulares_registrar} proto={protocolo_pedido!r}")
     except Exception as e:
         logger.warning(f"[PAP] Falha ao salvar PapConfirmacaoCliente em thread: {e}", exc_info=True)
 
 
 def _verificar_sim_cliente_no_bd_thread(pap_dados):
-    """Verifica se cliente confirmou no BD, rodando em thread (evita SynchronousOnlyOperation)."""
+    """Verifica se cliente confirmou no BD para *este* protocolo (evita SIM de venda antiga no mesmo celular)."""
     result = [False]
     def _run():
         try:
@@ -43,18 +54,33 @@ def _verificar_sim_cliente_no_bd_thread(pap_dados):
             cel_sec = pap_dados.get('celular_sec', '') or ''
             celulares = [formatar_telefone(c) for c in [cel, cel_sec] if c]
             celulares = [c for c in celulares if c]
+            proto = (pap_dados.get('protocolo') or '').strip()
             if not celulares:
                 logger.debug("[PAP] [DEBUG] _verificar_sim: sem celulares no pedido")
                 result[0] = False
                 return
-            pend = PapConfirmacaoCliente.objects.filter(
-                celular_cliente__in=celulares, confirmado=True
-            ).order_by('-criado_em').first()
+            if not proto:
+                logger.info("[PAP] [DEBUG] _verificar_sim: sem protocolo no pedido — não usando confirmação antiga do BD")
+                result[0] = False
+                return
+            pend = (
+                PapConfirmacaoCliente.objects.filter(
+                    celular_cliente__in=celulares,
+                    confirmado=True,
+                    protocolo_pedido=proto,
+                )
+                .order_by("-criado_em")
+                .first()
+            )
             result[0] = pend is not None
             if result[0]:
-                logger.info(f"[PAP] [DEBUG] Sim do cliente encontrado no BD (celular={pend.celular_cliente})")
+                logger.info(
+                    f"[PAP] [DEBUG] Sim do cliente encontrado no BD (celular={pend.celular_cliente}, protocolo={proto})"
+                )
             else:
-                logger.debug(f"[PAP] [DEBUG] _verificar_sim: celulares={celulares}, nenhum confirmado no BD")
+                logger.debug(
+                    f"[PAP] [DEBUG] _verificar_sim: celulares={celulares}, proto={proto}, nenhum confirmado"
+                )
         except Exception as e:
             logger.warning(f"[PAP] [DEBUG] _verificar_sim exceção: {e}", exc_info=True)
             result[0] = False
@@ -75,6 +101,18 @@ class Command(BaseCommand):
         parser.add_argument("--matricula-bo", type=str, help="Matrícula BackOffice (login PAP)")
         parser.add_argument("--senha-bo", type=str, help="Senha BackOffice")
         parser.add_argument("--matricula-vendedor", type=str, help="Matrícula do vendedor")
+        parser.add_argument(
+            "--slow-mo",
+            type=int,
+            default=None,
+            metavar="MS",
+            help="Pausa em ms entre ações do Playwright (padrão 300 com navegador visível)",
+        )
+        parser.add_argument(
+            "--trace",
+            action="store_true",
+            help="Grava trace Playwright em downloads/pap_trace_*.zip (trace.playwright.dev)",
+        )
 
     def handle(self, *args, **options):
         import django
@@ -115,6 +153,8 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS("\n" + "=" * 60))
         self.stdout.write("  PAP + TERMINAL - Digite como WhatsApp, veja no site")
         self.stdout.write("  Navegador será aberto. Comando: /sair")
+        if options.get("trace"):
+            self.stdout.write(self.style.WARNING("  Trace: ao encerrar, abra pap_trace_*.zip em https://trace.playwright.dev"))
         self.stdout.write("=" * 60 + "\n")
 
         pap = PAPNioAutomation(
@@ -122,6 +162,9 @@ class Command(BaseCommand):
             senha_pap=senha_bo,
             vendedor_nome="Teste",
             headless=False,
+            slow_mo=options.get("slow_mo"),
+            record_trace=bool(options.get("trace")),
+            run_id=f"term_{int(__import__('time').time())}",
         )
 
         etapa_pap = -1
@@ -129,6 +172,7 @@ class Command(BaseCommand):
         forma = "boleto"
         banco = agencia = conta = digito = ""
         tem_fixo = tem_stream = False
+        fixo_port_num = ""
         streaming_opcoes = ""
         plano = "500mega"
         sim_cliente_recebido = False
@@ -152,7 +196,11 @@ class Command(BaseCommand):
                 from crm_app.models import PapConfirmacaoCliente
                 svc = WhatsAppService()
                 resumo = pap.obter_resumo_pedido_para_cliente()
-                ok, _ = svc.enviar_mensagem_texto(cel, f"{resumo}\n\nPara confirmar, responda *SIM*.")
+                proto = (pap.dados_pedido.get("protocolo") or "").strip()
+                texto_extra = "\n\nPara confirmar, toque no botão *SIM* ou responda *SIM*."
+                ok, _ = svc.enviar_resumo_pap_com_botao_confirmar(cel, resumo, texto_extra=texto_extra)
+                if not ok:
+                    ok, _ = svc.enviar_mensagem_texto(cel, f"{resumo}\n\nPara confirmar, responda *SIM*.")
                 if ok:
                     m = re.sub(r'\D', '', cel)
                     mask = f"({m[-11:-9]}) {m[-9:-4]}-{m[-4:]}" if len(m) >= 11 else cel[:6] + "****"
@@ -165,7 +213,10 @@ class Command(BaseCommand):
                         if cel_sec_norm and cel_sec_norm != cel_norm:
                             celulares_registrar.append(cel_sec_norm)
                         if celulares_registrar:
-                            th = threading.Thread(target=_salvar_pap_confirmacao_thread, args=(celulares_registrar,))
+                            th = threading.Thread(
+                                target=_salvar_pap_confirmacao_thread,
+                                args=(celulares_registrar, proto or None),
+                            )
                             th.start()
                             th.join(timeout=5)
                     except Exception as e:
@@ -541,7 +592,7 @@ class Command(BaseCommand):
                 if etapa_pap == 8:
                     pl = entrada.strip()
                     plano = {"1": "1giga", "2": "700mega", "3": "500mega"}.get(pl, "500mega")
-                    sucesso, msg = pap.etapa5_selecionar_plano(plano)
+                    sucesso, msg = pap.etapa5_selecionar_plano_com_validacao(plano)
                     if not sucesso:
                         responder(f"❌ Plano: {msg}")
                         continue
@@ -555,8 +606,57 @@ class Command(BaseCommand):
                     if not sucesso:
                         responder(f"❌ Fixo: {msg}")
                         continue
+                    if tem_fixo:
+                        etapa_pap = 811
+                        responder(
+                            "✅ Fixo selecionado no PAP!\n\n"
+                            "📞 Portabilidade do fixo — deseja portar o número de outra operadora?\n"
+                            "1=Sim 2=Não"
+                        )
+                    else:
+                        etapa_pap = 82
+                        responder("✅ Fixo: Não\n📺 Tem Streaming? 1=Sim 2=Não")
+                    continue
+
+                if etapa_pap == 811:
+                    op = entrada.strip()
+                    if op not in ("1", "2"):
+                        responder("Digite 1 (Sim) ou 2 (Não):")
+                        continue
+                    if op == "2":
+                        sucesso, msg = pap.etapa5_fixo_finalizar_portabilidade(False, "", "")
+                        if not sucesso:
+                            responder(f"❌ Portabilidade/Salvar fixo: {msg}")
+                            continue
+                        etapa_pap = 82
+                        responder("✅ Fixo registrado (sem portabilidade)\n📺 Tem Streaming? 1=Sim 2=Não")
+                    else:
+                        etapa_pap = 812
+                        responder("Digite o número do fixo com DDD (somente números):")
+                    continue
+
+                if etapa_pap == 812:
+                    fixo_port_num = _limpar(entrada)
+                    if len(fixo_port_num) < 10:
+                        responder("❌ Número inválido (mín. 10 dígitos). Digite de novo:")
+                        continue
+                    etapa_pap = 813
+                    responder("Digite o nome da operadora de origem (ex: Vivo, Claro, Vero, OI):")
+                    continue
+
+                if etapa_pap == 813:
+                    op_txt = entrada.strip()
+                    if len(op_txt) < 2:
+                        responder("❌ Nome muito curto. Digite a operadora:")
+                        continue
+                    sucesso, msg = pap.etapa5_fixo_finalizar_portabilidade(
+                        True, fixo_port_num, op_txt
+                    )
+                    if not sucesso:
+                        responder(f"❌ Portabilidade/Salvar fixo: {msg}")
+                        continue
                     etapa_pap = 82
-                    responder(f"✅ Fixo: {'Sim' if tem_fixo else 'Não'}\n📺 Tem Streaming? 1=Sim 2=Não")
+                    responder("✅ Fixo e portabilidade registrados\n📺 Tem Streaming? 1=Sim 2=Não")
                     continue
 
                 if etapa_pap == 82:
@@ -565,7 +665,9 @@ class Command(BaseCommand):
                         etapa_pap = 83
                         responder(
                             "✅ Streaming: Sim\n"
-                            "Streaming:\n1=HBO+Premium 2=HBO+Basico 3=Basico 4=Premium 5=HBO"
+                            "Streaming:\n"
+                            "1=HBO+Globoplay Premium 2=HBO+Globoplay Basico 3=Globoplay Basico "
+                            "4=Globoplay Premium 5=HBO"
                         )
                     else:
                         sucesso, msg = pap.etapa5_selecionar_streaming(False)
@@ -616,12 +718,30 @@ class Command(BaseCommand):
                 if etapa_pap == 11:
                     if not sim_cliente_recebido and _verificar_sim_cliente_no_bd_thread(pap.dados_pedido):
                         sim_cliente_recebido = True
-                    if entrada.strip().upper() in ["SIM", "CONFIRMAR", "S", "CONFIRMO"]:
+                    if entrada.strip().upper() in ["FORCAR_SIM", "SIM_MANUAL"]:
                         sim_cliente_recebido = True
+                        responder(
+                            "⚠️ Confirmação do cliente marcada manualmente (*somente teste*).\n"
+                            "Digite *SIM* ou *CONFIRMAR* de novo para consultar biometria e seguir."
+                        )
+                        continue
+                    if entrada.strip().upper() in ["SIM", "CONFIRMAR", "S", "CONFIRMO"]:
                         responder("⏳ Verificando biometria... (observe)")
                         sucesso, msg, biometria_ok = pap.etapa6_verificar_biometria(consultar_primeiro=True)
                         resumo = pap.obter_resumo_pedido_para_cliente()
-                        if biometria_ok:
+                        if not sim_cliente_recebido:
+                            responder(
+                                _msg_resumo_biometria(
+                                    resumo,
+                                    biometria_ok,
+                                    sim_cliente_recebido,
+                                    enviou_resumo_whatsapp + "\n" if enviou_resumo_whatsapp else "",
+                                )
+                                + "\n\n⚠️ Ainda não há *SIM do cliente* registrado (confirmação via WhatsApp). "
+                                "Aguarde o cliente responder *SIM* ao resumo ou use *FORCAR_SIM* só em teste."
+                            )
+                            continue
+                        if biometria_ok and sim_cliente_recebido:
                             etapa_pap = 12
                             sucesso, msg = pap.etapa7_ir_para_agendamento()
                             if not sucesso:
@@ -642,7 +762,15 @@ class Command(BaseCommand):
                                         "Digite o número do dia ou *CONCLUIR* para sair."
                                     )
                         else:
-                            responder(_msg_resumo_biometria(resumo, biometria_ok, sim_cliente_recebido, enviou_resumo_whatsapp + "\n" if enviou_resumo_whatsapp else "") + "\n\nSim recebido! Aguardando biometria. Digite CONSULTAR para verificar.")
+                            responder(
+                                _msg_resumo_biometria(
+                                    resumo,
+                                    biometria_ok,
+                                    sim_cliente_recebido,
+                                    enviou_resumo_whatsapp + "\n" if enviou_resumo_whatsapp else "",
+                                )
+                                + "\n\nAguardando biometria aprovada. Digite *CONSULTAR* para verificar de novo."
+                            )
                     elif entrada.strip().upper() == "CONSULTAR":
                         responder("⏳ Verificando biometria... (observe)")
                         sucesso, msg, biometria_ok = pap.etapa6_verificar_biometria(consultar_primeiro=True)

@@ -7,10 +7,20 @@ https://pap.niointernet.com.br/
 
 Uso:
   python manage.py testar_pap_visivel
-    -> Modo interativo: pede todos os dados no terminal
+    -> Modo interativo: pede todos os dados no terminal (ENTER entre etapas)
 
   python manage.py testar_pap_visivel --auto
     -> Usa dados de teste automáticos
+
+Para replicar o fluxo do WhatsApp (mensagem a mensagem, igual VENDER):
+  python manage.py testar_pap_terminal --slow-mo 500 --trace
+    -> Digite VENDER, SIM, CEP, etc. e veja cada clique no PAP.
+    -> Com --trace, ao fechar o navegador o arquivo downloads/pap_trace_*.zip
+       pode ser aberto em https://trace.playwright.dev (mostra seletores e ordem dos cliques).
+
+Opções úteis aqui:
+  --slow-mo 800   pausa maior entre ações do Playwright
+  --trace         grava trace (sem precisar ligar PAP_CAPTURE_SCREENSHOTS no settings)
 """
 import re
 from django.core.management.base import BaseCommand
@@ -102,6 +112,18 @@ class Command(BaseCommand):
             "--auto",
             action="store_true",
             help="Usa dados de teste automáticos (sem pedir input)",
+        )
+        parser.add_argument(
+            "--slow-mo",
+            type=int,
+            default=None,
+            metavar="MS",
+            help="Pausa em ms entre ações do Playwright (padrão 300 com navegador visível)",
+        )
+        parser.add_argument(
+            "--trace",
+            action="store_true",
+            help="Grava trace em downloads/pap_trace_*.zip (abra em trace.playwright.dev)",
         )
 
     def handle(self, *args, **options):
@@ -196,15 +218,23 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS("\n" + "=" * 60))
         self.stdout.write("  TESTE PAP - NAVEGADOR VISÍVEL")
         self.stdout.write("  O Chromium será aberto na tela.")
+        if options.get("trace"):
+            self.stdout.write(self.style.WARNING("  Trace ativo: ao fechar, abra pap_trace_*.zip em trace.playwright.dev"))
+        self.stdout.write("  Fluxo tipo WhatsApp: python manage.py testar_pap_terminal --trace")
         self.stdout.write("=" * 60)
         if not auto:
             input("\nPressione ENTER para abrir o navegador e iniciar...")
+
+        import time as _time
 
         automacao = PAPNioAutomation(
             matricula_pap=matricula_bo,
             senha_pap=senha_bo,
             vendedor_nome="Teste",
             headless=False,
+            slow_mo=options.get("slow_mo"),
+            record_trace=bool(options.get("trace")),
+            run_id=f"vis_{int(_time.time())}",
         )
 
         try:

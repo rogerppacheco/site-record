@@ -195,6 +195,8 @@ class PAPNioAutomation:
         capture_screenshots: bool = None,
         run_id: str = None,
         optimize_for_credit: bool = False,
+        slow_mo: Optional[int] = None,
+        record_trace: bool = False,
     ):
         """
         Inicializa a automação PAP.
@@ -207,6 +209,8 @@ class PAPNioAutomation:
             capture_screenshots: Se True, salva screenshot em cada etapa (produção). None = usa settings.PAP_CAPTURE_SCREENSHOTS
             run_id: Identificador da sessão (ex: sessao_id) para nomear os arquivos de screenshot
             optimize_for_credit: Reduz esperas fixas no fluxo de consulta de crédito
+            slow_mo: Milissegundos entre ações do Playwright (None = 300 se headless False, 0 se headless)
+            record_trace: Se True, grava trace Playwright (inspect em trace.playwright.dev) sem exigir todos os screenshots
         """
         self.matricula_pap = matricula_pap
         self.senha_pap = senha_pap
@@ -221,7 +225,9 @@ class PAPNioAutomation:
         self.capture_screenshots = capture_screenshots
         self.run_id = run_id or str(int(time.time()))
         self.optimize_for_credit = optimize_for_credit
-        
+        self.slow_mo = slow_mo
+        self.record_trace = record_trace
+
         self.playwright = None  # sync_playwright instance; precisa .stop() para encerrar event loop
         self.browser: Optional[Browser] = None
         self.context: Optional[BrowserContext] = None
@@ -473,8 +479,11 @@ class PAPNioAutomation:
             self.playwright = sync_playwright().start()
             playwright = self.playwright
             launch_opts = {"headless": self.headless}
-            if not self.headless:
-                launch_opts["slow_mo"] = 300  # 300ms entre ações para visualizar
+            _sm = self.slow_mo
+            if _sm is None and not self.headless:
+                _sm = 300  # pausa entre ações para visualizar cliques
+            if _sm is not None:
+                launch_opts["slow_mo"] = int(_sm)
             self.browser = playwright.chromium.launch(**launch_opts)
             
             # Tentar carregar sessão existente
@@ -482,7 +491,8 @@ class PAPNioAutomation:
             
             self.context = self.browser.new_context(
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                viewport={"width": 1280, "height": 800},
+                # Altura maior: drawer de streaming tem Salvar no rodapé (abaixo da dobra em 800px).
+                viewport={"width": 1280, "height": 960},
                 storage_state=storage_state,
             )
             
@@ -492,7 +502,7 @@ class PAPNioAutomation:
             self.sessao_iniciada = True
 
             # Trace: grava todas as ações para inspecionar no Playwright Trace Viewer (ver onde os cliques foram feitos)
-            if self.capture_screenshots:
+            if self.capture_screenshots or self.record_trace:
                 try:
                     self.context.tracing.start(screenshots=True, snapshots=True, sources=True)
                     self._trace_started = True
@@ -699,13 +709,17 @@ class PAPNioAutomation:
 
     def _sessao_expirada_detectada(self) -> bool:
         """
-        Detecta quando a sessão do PAP foi invalidada por outro login.
-        Ex.: modal "Não Autorizado" + "Sessão expirada. Por gentileza, logar novamente no Portal."
+        Detecta quando a sessão do PAP foi invalidada por outro login ou timeout no IdP Vtal.
+        Inclui a tela de logout: login.vtal.com/.../logout*.html com "Sessão finalizada".
         """
         if not self.page:
             return False
         try:
             url = (self.page.url or "").lower()
+            # Logout explícito do IdP (ex.: /nidp/logout_vtal/logout.html)
+            if "login.vtal.com" in url and "logout" in url:
+                return True
+            # Qualquer tela do IdP Vtal sem PAP aberto costuma indicar sessão perdida no fluxo
             if "login.vtal.com" in url:
                 return True
         except Exception:
@@ -719,6 +733,9 @@ class PAPNioAutomation:
             "nao autorizado",
             "sessão expirada",
             "sessao expirada",
+            "sessão finalizada",
+            "sessao finalizada",
+            "feche seu navegador",
             "logar novamente no portal",
         )
         return any(s in content for s in sinais)
@@ -762,6 +779,60 @@ class PAPNioAutomation:
         except Exception as e:
             self.logado = False
             return False, f"Erro ao validar/restaurar sessão: {e}"
+
+    def _pap_garantir_sessao_antes_resumo(self) -> Tuple[bool, str]:
+        """
+        Antes da etapa 6 (resumo/biometria): se o IdP deslogou, tenta relogin.
+        Retorna (True, '') para continuar; (False, msg) para abortar (pedido perdido ou falha).
+        """
+        if not self.page:
+            return False, "Página não iniciada."
+        if not self._sessao_expirada_detectada():
+            return True, ""
+        logger.warning("[PAP] Sessão inativa na etapa resumo/biometria; relogin automático.")
+        ok, msg = self.garantir_sessao_ativa(PAP_NOVO_PEDIDO_URL)
+        if not ok:
+            return False, f"Sessão expirou e relogin falhou: {msg}"
+        return False, (
+            "Sessão do portal foi renovada; o pedido em tela foi perdido. "
+            "Digite *VENDER* para reenviar ou continue no PAP manualmente."
+        )
+
+    def esperar_selector_com_keepalive_sessao(
+        self,
+        selector: str,
+        timeout_ms: int = 90000,
+        poll_ms: int = 5000,
+        target_after_relogin: Optional[str] = None,
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Espera um seletor visível em fatias de poll_ms. Entre fatias, se a sessão Vtal cair
+        (logout / «Sessão finalizada»), tenta relogin. Se precisar relogar, o pedido atual no
+        browser em geral se perde — retorna (False, mensagem) para o chamador decidir.
+        """
+        if not self.page:
+            return False, "Página não iniciada."
+        target_after_relogin = target_after_relogin or PAP_NOVO_PEDIDO_URL
+        deadline = time.monotonic() + (timeout_ms / 1000.0)
+        while time.monotonic() < deadline:
+            if self._sessao_expirada_detectada():
+                logger.warning("[PAP] Sessão perdida durante espera (selector); relogin automático.")
+                ok, msg = self.garantir_sessao_ativa(target_after_relogin)
+                if not ok:
+                    return False, f"Sessão expirou durante a espera e relogin falhou: {msg}"
+                return (
+                    False,
+                    "Sessão do portal expirou durante a espera; reconexão feita. "
+                    "O pedido em tela pode ter sido perdido — use *CONSULTAR* ou *VENDER* conforme o caso.",
+                )
+            restante_ms = max(1000, int((deadline - time.monotonic()) * 1000))
+            chunk = min(poll_ms, restante_ms)
+            try:
+                self.page.wait_for_selector(selector, state="visible", timeout=chunk)
+                return True, None
+            except Exception:
+                continue
+        return False, f"Timeout ({timeout_ms} ms) aguardando: {selector[:160]}"
 
     def _dispensar_modais_novo_pedido(self) -> None:
         """Fecha modais/overlays que impedem ver o formulário (tutorial, avisos)."""
@@ -2425,30 +2496,32 @@ class PAPNioAutomation:
                 return False, PAP_ERRO_PORTAL_NIO, None
             
             self._capture_screenshot("03_cpf_cliente_ok", wait_selector='button:has-text("Avançar"):not([disabled])', wait_timeout_ms=5000)
-            # Extrair dados do cliente (nome, nome_mae, data_nascimento para CRM)
+            # Extrair dados do cliente (nome, nome_mae mascarado, mês da data **/MM/**** para CRM)
             dados_cliente = {}
             nome_elem = self.page.query_selector(SELETORES['etapa3']['nome_cliente'])
             if nome_elem:
                 dados_cliente['nome'] = (nome_elem.get_attribute('value') or nome_elem.inner_text() or '').strip()
-            # Nome da mãe
-            for sel in ['input[name*="mae"]', 'input[id*="mae"]']:
-                mae_elem = self.page.query_selector(sel)
-                if mae_elem:
-                    val = (mae_elem.get_attribute('value') or '').strip()
-                    if val:
-                        dados_cliente['nome_mae'] = val
-                        break
-            # Data de nascimento: sempre exibida como **/MM/**** (apenas mês visível)
-            for sel in ['input[name*="nascimento"]', 'input[id*="nascimento"]', 'input[placeholder*="nascimento"]']:
-                dt_elem = self.page.query_selector(sel)
-                if dt_elem:
-                    val = (dt_elem.get_attribute('value') or '').strip()
-                    if val:
-                        # Formato comum: DD/MM/YYYY ou **/MM/**** - extrair mês
-                        match = re.search(r'/(\d{1,2})/', val)
-                        if match:
+            # Nome da mãe: campo oficial do portal é nomeMae (disabled, valor com asteriscos)
+            mae_elem = self.page.query_selector('input[name="nomeMae"]') or self.page.query_selector(
+                'input[name*="mae"]'
+            ) or self.page.query_selector('input[id*="mae"]')
+            if mae_elem:
+                val = (mae_elem.get_attribute('value') or '').strip()
+                if val:
+                    dados_cliente['nome_mae'] = val
+            # Data de nascimento: portal usa dataNascimento; máscara **/MM/**** — só o mês é confiável
+            dt_elem = self.page.query_selector('input[name="dataNascimento"]') or self.page.query_selector(
+                'input[name*="nascimento"]'
+            ) or self.page.query_selector('input[id*="nascimento"]')
+            if dt_elem:
+                val = (dt_elem.get_attribute('value') or '').strip()
+                if val:
+                    match = re.search(r'/(\d{1,2})/', val)
+                    if match:
+                        try:
                             dados_cliente['mes_nascimento'] = int(match.group(1))
-                        break
+                        except ValueError:
+                            pass
             
             # Verificar se pode avançar
             btn_avancar = self.page.query_selector('button:has-text("Avançar"):not([disabled])')
@@ -2964,6 +3037,129 @@ class PAPNioAutomation:
             logger.error(f"[PAP] Erro ao selecionar plano: {e}")
             return False, str(e)
 
+    def etapa5_verificar_plano_selecionado_no_dom(self, plano: str) -> Tuple[bool, str]:
+        """
+        Confere no DOM da etapa 5 se o plano desejado está selecionado (sem clicar de novo).
+        O PAP usa <li> com ícone SVG (MuiSvgIcon check em círculo) + texto "Velocidade X", sem radio nativo.
+        Deve ser chamado logo após etapa5_selecionar_plano, antes de Fixo/Streaming.
+        """
+        pl = plano.lower().strip()
+        if pl not in ("1giga", "700mega", "500mega"):
+            return True, ""
+        try:
+            r = self.page.evaluate(
+                """(planoKey) => {
+                    const norm = (t) => (t || '').replace(/\\s+/g, ' ').trim();
+                    const mapNeed = {
+                        '1giga': '1 Giga',
+                        '700mega': '700 Mega',
+                        '500mega': '500 Mega',
+                    };
+                    const needShort = mapNeed[planoKey] || '500 Mega';
+                    const needLine = 'Velocidade ' + needShort;
+
+                    function matchSpeedLine(li) {
+                        const t = norm(li.textContent);
+                        if (!t.includes('Velocidade')) return false;
+                        if (planoKey === '500mega') return /Velocidade\\s+500\\s+Mega/i.test(t);
+                        if (planoKey === '700mega') return /Velocidade\\s+700\\s+Mega/i.test(t);
+                        if (planoKey === '1giga') return /Velocidade\\s+1\\s*Giga/i.test(t);
+                        return false;
+                    }
+
+                    function isCheckmarkSvg(li) {
+                        const svg = li && li.querySelector('svg');
+                        if (!svg) return false;
+                        if (svg.classList && svg.classList.contains('MuiSvgIcon-root')) {
+                            const paths = svg.querySelectorAll('path');
+                            for (const p of paths) {
+                                const d = (p.getAttribute('d') || '');
+                                if (d.includes('M12 2C6.48')) return true;
+                                if (d.includes('M9 16.17')) return true;
+                                if (d.includes('M4.25 4.25')) return true;
+                            }
+                        }
+                        const paths = svg.querySelectorAll('path');
+                        for (const p of paths) {
+                            const d = (p.getAttribute('d') || '');
+                            if (d.length > 40 && (d.includes('M12 2C6') || d.includes('12 2C6.48'))) return true;
+                        }
+                        return false;
+                    }
+
+                    const lis = [...document.querySelectorAll('li')];
+                    for (const li of lis) {
+                        if (!matchSpeedLine(li)) continue;
+                        if (isCheckmarkSvg(li)) return { ok: true, msg: '' };
+                    }
+
+                    for (const li of lis) {
+                        if (!matchSpeedLine(li)) continue;
+                        const svg = li.querySelector('svg');
+                        if (svg && svg.querySelector('path[d*="M12 2C6"]')) return { ok: true, msg: '' };
+                    }
+
+                    for (const li of lis) {
+                        if (!matchSpeedLine(li)) continue;
+                        const inp = li.querySelector('input[type=radio], input[type=checkbox]');
+                        if (inp && inp.checked) return { ok: true, msg: '' };
+                    }
+
+                    let outroComCheck = '';
+                    for (const li of lis) {
+                        const t = norm(li.textContent);
+                        if (!/Velocidade\\s+(1\\s*Giga|700\\s*Mega|500\\s*Mega)/i.test(t)) continue;
+                        if (!isCheckmarkSvg(li)) continue;
+                        const m = t.match(/Velocidade\\s+(1\\s*Giga|700\\s*Mega|500\\s*Mega)/i);
+                        outroComCheck = m ? m[0] : t.slice(0, 80);
+                        break;
+                    }
+                    return {
+                        ok: false,
+                        msg: outroComCheck
+                            ? ('Outra velocidade com ícone de confirmação: ' + outroComCheck
+                                + ' (esperado: ' + needLine + ').')
+                            : ('Não encontramos o <li> com texto "' + needLine + '" e SVG de check (ex.: path M12 2C6.48). '
+                                + 'Confira no navegador se o card certo está selecionado.'),
+                    };
+                }""",
+                pl,
+            )
+            if r and r.get("ok"):
+                return True, ""
+            return False, (r or {}).get("msg") or "Validação do plano falhou."
+        except Exception as e:
+            logger.warning("[PAP] etapa5_verificar_plano_selecionado_no_dom: %s", e)
+            return False, str(e)
+
+    def etapa5_selecionar_plano_com_validacao(self, plano: str) -> Tuple[bool, str]:
+        """
+        Seleciona o plano e valida no DOM antes de seguir para serviços adicionais.
+        Repete a seleção uma vez se a validação falhar (sem resetar Fixo/Streaming — ainda não foram preenchidos).
+        """
+        ultimo_erro = ""
+        for tentativa in range(2):
+            ok, msg = self.etapa5_selecionar_plano(plano)
+            if not ok:
+                return False, msg
+            self.page.wait_for_timeout(500)
+            vok, vmsg = self.etapa5_verificar_plano_selecionado_no_dom(plano)
+            if vok:
+                return True, "OK"
+            ultimo_erro = vmsg
+            logger.warning(
+                "[PAP] Plano não confirmado no DOM após seleção (tentativa %s/2): %s",
+                tentativa + 1,
+                vmsg,
+            )
+            if tentativa == 0:
+                self.page.wait_for_timeout(400)
+        return (
+            False,
+            (ultimo_erro or "Plano não confirmado no portal.")
+            + " Ajuste manualmente a velocidade antes de continuar ou repita a etapa do plano.",
+        )
+
     def verificar_modal_erro_ops_visivel(self) -> bool:
         """Verifica se o modal 'OPS, OCORREU UM ERRO!' está visível na página (h2 ou div com esse texto)."""
         try:
@@ -2997,61 +3193,736 @@ class PAPNioAutomation:
             logger.warning("[PAP] _fechar_modal_erro_ops: %s", e)
             return False
 
+    def _pap_detectar_texto_modal_visivel(self) -> str:
+        """Texto agregado de diálogos/modais visíveis (MUI e genéricos)."""
+        partes = []
+        try:
+            for sel in ('[role="dialog"]', '.MuiDialog-root', '[class*="Dialog"]'):
+                el = self.page.query_selector(sel)
+                if el and el.is_visible():
+                    t = (el.inner_text() or "").strip()
+                    if t and len(t) > 2:
+                        partes.append(t[:1200])
+        except Exception:
+            pass
+        return "\n".join(partes)
+
+    def _pap_modal_erro_aparente(self, texto: str) -> bool:
+        if not texto:
+            return False
+        low = texto.lower()
+        if "nenhum erro" in low or "sem erro" in low or "0 erro" in low:
+            return False
+        markers = (
+            "error",
+            "erro",
+            "falha",
+            "não foi possível",
+            "nao foi possivel",
+            "tente novamente",
+            "ops,",
+            "ocorreu um erro",
+        )
+        return any(m in low for m in markers)
+
+    def _pap_fechar_dialogos_erro_conhecidos(self) -> Tuple[bool, str]:
+        """
+        Fecha modais de erro genéricos (título/corpo com error, erro, falha).
+        Retorna (fechou_algum, trecho_do_texto_visto).
+        """
+        texto_antes = self._pap_detectar_texto_modal_visivel()
+        fechou = False
+        try:
+            for btn_txt in (
+                "OK",
+                "Ok",
+                "Entendi",
+                "Fechar",
+                "Fechar dialog",
+                "Tentar novamente",
+                "Continuar",
+            ):
+                btn = self.page.query_selector(
+                    f'[role="dialog"] button:has-text("{btn_txt}"), '
+                    f'.MuiDialog-root button:has-text("{btn_txt}")'
+                )
+                if btn and btn.is_visible():
+                    btn.click()
+                    self.page.wait_for_timeout(500)
+                    fechou = True
+                    break
+            if not fechou:
+                xbtn = self.page.query_selector(
+                    '[role="dialog"] button[aria-label="Close"], '
+                    '.MuiDialog-root button[aria-label="Close"]'
+                )
+                if xbtn and xbtn.is_visible():
+                    xbtn.click()
+                    self.page.wait_for_timeout(500)
+                    fechou = True
+        except Exception as e:
+            logger.debug("[PAP] _pap_fechar_dialogos_erro_conhecidos: %s", e)
+        return fechou, (texto_antes or "")[:400]
+
+    def _pap_tratar_modais_apos_acao_pap(self) -> Tuple[bool, str]:
+        """
+        Após cliques (Consultar Biometria, Abrir OS): OPS do portal + diálogos com 'error'/erro.
+        Retorna (pode_continuar, mensagem_erro_ou_vazia). Se pode_continuar False, houve erro explícito.
+        """
+        try:
+            self._fechar_modal_erro_ops()
+            self.page.wait_for_timeout(400)
+            txt = self._pap_detectar_texto_modal_visivel()
+            if self._pap_modal_erro_aparente(txt):
+                self._pap_fechar_dialogos_erro_conhecidos()
+                logger.warning("[PAP] Modal de erro detectado após ação: %s", txt[:200])
+                return False, txt.strip()[:500]
+            return True, ""
+        except Exception as e:
+            logger.debug("[PAP] _pap_tratar_modais_apos_acao_pap: %s", e)
+            return True, ""
+
+    def pap_inspecionar_contexto_etapa(self) -> Dict[str, Any]:
+        """
+        Indica onde o fluxo parece estar (para recuperação e logs após timeout/erro).
+        """
+        out: Dict[str, Any] = {
+            "url": "",
+            "provavel": "desconhecido",
+            "tem_abrir_os": False,
+            "tem_consultar_biometria": False,
+            "tem_periodo_agendamento": False,
+            "trecho_modal": "",
+        }
+        try:
+            out["url"] = self.page.url or ""
+            u = out["url"].lower()
+            if "novo-pedido" in u and "administrativo" in u:
+                out["provavel"] = "fluxo_pedido"
+            btn_os = self.page.query_selector(
+                'button:has-text("Abrir OS"):not([disabled]), button:has-text("Abrir O.S"):not([disabled])'
+            )
+            out["tem_abrir_os"] = bool(btn_os and btn_os.is_visible())
+            btn_cb = self.page.query_selector('button:has-text("Consultar Biometria")')
+            out["tem_consultar_biometria"] = bool(btn_cb and btn_cb.is_visible())
+            per = self.page.query_selector(
+                'h3:has-text("Período"), [class*="react-datepicker"], h2:has-text("Agendamento"), h3:has-text("Agendamento")'
+            )
+            out["tem_periodo_agendamento"] = bool(per and per.is_visible())
+            out["trecho_modal"] = self._pap_detectar_texto_modal_visivel()[:300]
+            if out["tem_periodo_agendamento"]:
+                out["provavel"] = "agendamento"
+            elif out["tem_abrir_os"] or out["tem_consultar_biometria"]:
+                out["provavel"] = "resumo_biometria"
+        except Exception as e:
+            logger.debug("[PAP] pap_inspecionar_contexto_etapa: %s", e)
+        return out
+
+    def _etapa5_bloquear_backdrop_drawer_mui(self) -> None:
+        """
+        O PAP usa drawer/modal MUI: clique na área escura (backdrop) fecha o painel e
+        interrompe o fluxo antes do Salvar. Desabilita pointer-events no backdrop.
+        """
+        try:
+            self.page.evaluate(
+                """
+                () => {
+                  document.querySelectorAll(
+                    '.MuiBackdrop-root, .MuiModal-backdrop, [class*="MuiBackdrop-root"]'
+                  ).forEach((el) => {
+                    if (el instanceof HTMLElement) {
+                      if (el.dataset.papBackdropPe === undefined) {
+                        el.dataset.papBackdropPe = el.style.pointerEvents || '';
+                      }
+                      el.style.pointerEvents = 'none';
+                    }
+                  });
+                }
+                """
+            )
+        except Exception as ex:
+            logger.debug("[PAP] _etapa5_bloquear_backdrop_drawer_mui: %s", ex)
+
+    def _etapa5_restaurar_backdrop_drawer_mui(self) -> None:
+        """Restaura o backdrop após concluir o painel (opcional; ao fechar o drawer o nó some)."""
+        try:
+            self.page.evaluate(
+                """
+                () => {
+                  document.querySelectorAll(
+                    '.MuiBackdrop-root, .MuiModal-backdrop, [class*="MuiBackdrop-root"]'
+                  ).forEach((el) => {
+                    if (!(el instanceof HTMLElement)) return;
+                    const prev = el.dataset.papBackdropPe;
+                    if (prev !== undefined) {
+                      el.style.pointerEvents = prev;
+                      delete el.dataset.papBackdropPe;
+                    }
+                  });
+                }
+                """
+            )
+        except Exception:
+            pass
+
+    def _etapa5_drawer_titulo_servicos_visivel(self) -> bool:
+        """True se o painel lateral de serviços adicionais está aberto (título visível)."""
+        try:
+            t = self.page.get_by_text("Escolher serviços adicionais", exact=False).first
+            return t.is_visible()
+        except Exception:
+            return False
+
+    def _etapa5_ui_fixo_portabilidade_visivel(self) -> bool:
+        """True se já dá para preencher portabilidade ou clicar Salvar no fluxo Fixo."""
+        try:
+            if self.page.locator("#contatoPortabilidade").count() > 0:
+                if self.page.locator("#contatoPortabilidade").first.is_visible():
+                    return True
+            if self.page.locator('select[name="operadora"]').count() > 0:
+                if self.page.locator('select[name="operadora"]').first.is_visible():
+                    return True
+            if self.page.locator('label:has-text("Cliente deseja fazer portabilidade")').count() > 0:
+                if self.page.locator('label:has-text("Cliente deseja fazer portabilidade")').first.is_visible():
+                    return True
+            loc = self.page.locator("button.sc-guDjWT.gIsNuI").filter(has_text="Salvar")
+            if loc.count() > 0 and loc.first.is_visible():
+                return True
+            loc2 = self.page.get_by_role("button", name=re.compile(r"^\s*Salvar\s*$", re.I))
+            if loc2.count() > 0:
+                for i in range(loc2.count()):
+                    b = loc2.nth(i)
+                    if b.is_visible() and (b.inner_text() or "").strip() == "Salvar":
+                        return True
+        except Exception:
+            pass
+        return False
+
+    def _etapa5_fixo_servico_marcado_no_drawer(self) -> bool:
+        """True se o add-on Fixo já foi selecionado (checkbox / aria-checked no card)."""
+        try:
+            try:
+                ac = self.page.locator('div:has-text("Fixo") [aria-checked="true"]')
+                if ac.count() > 0 and ac.first.is_visible():
+                    return True
+            except Exception:
+                pass
+            for sel in (
+                'div:has-text("Fixo") input[type="checkbox"]',
+                'div:has-text("Faça ligações") input[type="checkbox"]',
+            ):
+                inp = self.page.locator(sel).first
+                if inp.count() == 0:
+                    continue
+                try:
+                    if inp.is_checked():
+                        return True
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return False
+
+    def _etapa5_drawer_fixo_pronto(self) -> bool:
+        """Portabilidade/Salvar visível OU Fixo já marcado (o site só mostra a próxima etapa depois)."""
+        return self._etapa5_ui_fixo_portabilidade_visivel() or self._etapa5_fixo_servico_marcado_no_drawer()
+
+    def _etapa5_scroll_painel_lateral_ate_rodape(self) -> None:
+        """Garante scroll até o rodapé do drawer (Salvar fica embaixo)."""
+        try:
+            self.page.evaluate(
+                """
+                () => {
+                  const salvarBtn = [...document.querySelectorAll('button.sc-guDjWT.gIsNuI')].find(
+                    b => (b.textContent || '').trim() === 'Salvar'
+                  ) || [...document.querySelectorAll('button')].find(
+                    b => (b.textContent || '').trim() === 'Salvar'
+                  );
+                  const alvo =
+                    salvarBtn ||
+                    document.querySelector('#contatoPortabilidade') ||
+                    document.querySelector('select[name="operadora"]');
+                  if (!alvo) return;
+                  let p = alvo;
+                  for (let i = 0; i < 22 && p; i++) {
+                    const st = window.getComputedStyle(p);
+                    if (p.scrollHeight > p.clientHeight + 2 || /auto|scroll/.test(st.overflowY || '')) {
+                      try { p.scrollTop = p.scrollHeight; } catch (e) {}
+                    }
+                    p = p.parentElement;
+                  }
+                }
+                """
+            )
+            self.page.wait_for_timeout(200)
+        except Exception:
+            pass
+
+    def _etapa5_drawer_streaming_titulo_visivel(self) -> bool:
+        try:
+            t = self.page.get_by_text("Escolher plataformas", exact=False).first
+            return t.is_visible()
+        except Exception:
+            return False
+
+    def _etapa5_locator_drawer_streaming(self):
+        """Container do drawer lateral de streaming (título Escolher plataformas…)."""
+        try:
+            for sel in (
+                'aside:has-text("Escolher plataformas")',
+                'div:has-text("Escolher plataformas de streaming")',
+            ):
+                loc = self.page.locator(sel)
+                if loc.count() > 0:
+                    c = loc.first
+                    if c.is_visible():
+                        return c
+        except Exception:
+            pass
+        return None
+
+    def _etapa5_scroll_drawer_streaming_ate_salvar(self) -> None:
+        """Scroll no drawer de streaming: cards + botão Salvar ficam em áreas roláveis separadas."""
+        try:
+            self.page.evaluate(
+                """
+                () => {
+                  const titulo = [...document.querySelectorAll('div, aside, header, section')].find(
+                    el => (el.textContent || '').includes('Escolher plataformas')
+                  );
+                  let n = titulo;
+                  for (let i = 0; i < 24 && n; i++) {
+                    if (n.scrollHeight > n.clientHeight + 2) {
+                      try { n.scrollTop = n.scrollHeight; } catch (e) {}
+                    }
+                    n = n.parentElement;
+                  }
+                  document.querySelectorAll(
+                    '.MuiDrawer-paper, aside, [class*="Drawer-paper"], [class*="sc-kqEXUp"]'
+                  ).forEach(el => {
+                    try { el.scrollTop = el.scrollHeight; } catch (e) {}
+                  });
+                  const b = [...document.querySelectorAll('button.sc-guDjWT.gIsNuI')].find(
+                    x => (x.textContent || '').trim() === 'Salvar' &&
+                      (x.closest('aside') || x.closest('[class*="Drawer"]') || x.closest('div'))
+                  );
+                  if (b) {
+                    try { b.scrollIntoView({ block: 'end', inline: 'nearest' }); } catch (e) {}
+                  }
+                }
+                """
+            )
+            self.page.wait_for_timeout(280)
+        except Exception:
+            pass
+
+    def _etapa5_streaming_map_opcao_para_preco(self, o: str, skip_padrao: bool) -> Optional[str]:
+        o = (o or "").lower()
+        if "hbomax" in o or o == "hbo":
+            return "44,90"
+        if "globoplay_premium" in o or (
+            "premium" in o and "basico" not in o and "padrao" not in o and "padrão" not in o
+        ):
+            return "39,90"
+        if ("globoplay_basico" in o or "basico" in o or "padrão" in o or "padrao" in o) and not skip_padrao:
+            return "22,90"
+        return None
+
+    def _etapa5_clicar_preco_streaming(self, preco: str) -> bool:
+        """Clica no preço (div.sc-hQfrgq.frojRS) correspondente, ex.: R$ 44,90."""
+        dr = self._etapa5_locator_drawer_streaming()
+        roots = []
+        if dr is not None:
+            roots.append(dr)
+        roots.append(self.page.locator("body"))
+        for root in roots:
+            for sel in (
+                f'div.sc-hQfrgq.frojRS:has-text("{preco}")',
+                f'div.frojRS:has-text("{preco}")',
+                f'div:has-text("R$ {preco}")',
+            ):
+                try:
+                    el = root.locator(sel).first
+                    if el.is_visible():
+                        el.scroll_into_view_if_needed()
+                        el.click(timeout=8000)
+                        self.page.wait_for_timeout(400)
+                        return True
+                except Exception:
+                    continue
+        try:
+            ok = self.page.evaluate(
+                """(preco) => {
+                  const nodes = [...document.querySelectorAll('div.sc-hQfrgq.frojRS, div.frojRS')];
+                  const el = nodes.find(n => (n.innerText || '').includes(preco));
+                  if (!el) return false;
+                  el.click();
+                  return true;
+                }""",
+                preco,
+            )
+            self.page.wait_for_timeout(400)
+            return bool(ok)
+        except Exception:
+            return False
+
+    def _etapa5_streaming_preco_parece_selecionado(self, preco: str) -> bool:
+        """Verifica input/aria-checked/Mui-checked na linha do card que contém o preço."""
+        try:
+            return bool(
+                self.page.evaluate(
+                    """(preco) => {
+                  const nodes = [...document.querySelectorAll('div.sc-hQfrgq.frojRS, div.frojRS')];
+                  const priceEl = nodes.find(n => (n.innerText || '').includes(preco));
+                  if (!priceEl) return false;
+                  let card = priceEl;
+                  for (let i = 0; i < 16 && card; i++) {
+                    const inp = card.querySelector(
+                      'input[type="checkbox"]:checked, input[type="radio"]:checked'
+                    );
+                    if (inp) return true;
+                    const ac = card.querySelector('[aria-checked="true"]');
+                    if (ac) return true;
+                    if (card.querySelector('.Mui-checked, [class*="Mui-checked"], [class*="MuiSwitch"]')) {
+                      return true;
+                    }
+                    card = card.parentElement;
+                  }
+                  return false;
+                }""",
+                    preco,
+                )
+            )
+        except Exception:
+            return False
+
+    def _etapa5_clicar_servicos_disponiveis(self) -> bool:
+        """Abre o drawer clicando apenas no botão 'Serviços disponíveis'."""
+        try:
+            loc_btn = self.page.get_by_role(
+                "button", name=re.compile(r"Serviços\s*disponíveis", re.I)
+            )
+            if loc_btn.count() > 0:
+                b0 = loc_btn.first
+                if b0.is_visible():
+                    b0.scroll_into_view_if_needed()
+                    b0.click(timeout=8000)
+                    return True
+            el = self.page.query_selector(SELETORES["etapa5"]["btn_servicos"])
+            if not el:
+                el = self.page.query_selector('button.sc-izfUZz:has-text("Serviços disponíveis")')
+            if not el:
+                el = self.page.query_selector('button.fVoKDo:has-text("Serviços disponíveis")')
+            if not el or not el.is_visible():
+                return False
+            el.scroll_into_view_if_needed()
+            el.click()
+            return True
+        except Exception:
+            return False
+
+    def _etapa5_clicar_opcao_fixo_no_drawer(self) -> bool:
+        """
+        Marca o serviço Fixo. No PAP atual: preço R$ 30,00 em div.sc-hQfrgq.frojRS ou checkbox/img no card.
+        """
+        drawer = self._etapa5_locator_drawer_paper_visivel()
+        scopes = []
+        if drawer is not None:
+            scopes.append(drawer)
+        scopes.append(self.page.locator("body"))
+
+        for scope in scopes:
+            for sel in [
+                "div.sc-hQfrgq.frojRS",
+                'div.frojRS:has-text("30,00")',
+                'div:has-text("R$ 30,00")',
+                'div:has-text("Fixo") input[type="checkbox"]',
+                'div:has-text("Faça ligações") input[type="checkbox"]',
+                'div:has-text("Fixo") img[src^="data:image/png"]',
+                'div:has-text("Fixo") img[src^="data:image"]',
+                'div:has-text("Fixo"):has-text("30,00") img',
+                'div:has-text("Fixo"):has-text("R$ 30") img',
+                'div:has-text("Fixo") img',
+                'div.sc-kUQWMX.bwZXDo:has-text("Fixo") img',
+                'div.bwZXDo:has-text("Fixo") img',
+                'div:has-text("Fixo"):has-text("Faça ligações") img',
+                'div.sc-kUQWMX.bwZXDo:has-text("Fixo")',
+                'div.bwZXDo:has-text("Fixo")',
+                'div.sc-dcmekm.dBGnOE:has-text("Fixo")',
+                SELETORES["etapa5"]["card_fixo"],
+                'div:has-text("Fixo"):has-text("Faça ligações")',
+                'div:has-text("Fixo"):has-text("R$ 30,00")',
+                'div:has-text("Fixo"):has-text("R$ 30")',
+            ]:
+                try:
+                    el = scope.locator(sel).first
+                    if el.is_visible():
+                        el.scroll_into_view_if_needed()
+                        el.click(timeout=8000)
+                        self.page.wait_for_timeout(550)
+                        if self._etapa5_fixo_servico_marcado_no_drawer() or self._etapa5_drawer_fixo_pronto():
+                            return True
+                except Exception:
+                    continue
+
+        try:
+            clicked = self.page.evaluate(
+                r"""
+                () => {
+                  const precisaFixo30 = (txt) =>
+                    /R\$\s*30\s*[,.]\s*00/i.test(txt || '') ||
+                    /^[\s]*30\s*[,.]\s*00[\s]*$/i.test((txt || '').trim());
+                  const prices = document.querySelectorAll('div.sc-hQfrgq.frojRS, div.frojRS');
+                  for (const price of prices) {
+                    const raw = price.innerText || '';
+                    if (!precisaFixo30(raw)) continue;
+                    let el = price;
+                    for (let i = 0; i < 14 && el; i++) {
+                      const block = el.textContent || '';
+                      if (block.includes('Fixo')) {
+                        price.click();
+                        return 'price';
+                      }
+                      el = el.parentElement;
+                    }
+                  }
+                  const cards = document.querySelectorAll('div');
+                  for (const card of cards) {
+                    const t = card.textContent || '';
+                    if (!t.includes('Fixo')) continue;
+                    if (!/R\$\s*30\s*[,.]\s*00/i.test(t)) continue;
+                    const cb = card.querySelector('input[type="checkbox"]');
+                    if (cb) { cb.click(); return 'checkbox'; }
+                    const im = card.querySelector('img[src^="data:image"]');
+                    if (im) { im.click(); return 'img'; }
+                    const pr = card.querySelector('div.frojRS, div.sc-hQfrgq');
+                    if (pr) {
+                      const pt = pr.innerText || '';
+                      if (precisaFixo30(pt)) { pr.click(); return 'frojRS'; }
+                    }
+                  }
+                  return '';
+                }
+                """
+            )
+            self.page.wait_for_timeout(700)
+            if clicked and (
+                self._etapa5_fixo_servico_marcado_no_drawer() or self._etapa5_drawer_fixo_pronto()
+            ):
+                logger.info("[PAP] Clique Fixo via JS (%s)", clicked)
+                return True
+        except Exception as ex:
+            logger.debug("[PAP] clique Fixo evaluate: %s", ex)
+        return False
+
+    def _etapa5_garantir_drawer_fixo_para_portabilidade(self, max_ciclos: int = 3) -> Tuple[bool, str]:
+        """
+        Garante que o drawer 'Escolher serviços adicionais' está aberto e o painel Fixo
+        (portabilidade / Salvar) está acessível — reabre e remarca Fixo se necessário.
+        """
+        for ciclo in range(max_ciclos):
+            self._etapa5_bloquear_backdrop_drawer_mui()
+            if self._etapa5_drawer_titulo_servicos_visivel() and self._etapa5_drawer_fixo_pronto():
+                logger.info("[PAP] Drawer Fixo/Portabilidade OK (ciclo %s)", ciclo + 1)
+                return True, ""
+            logger.warning(
+                "[PAP] Drawer Fixo incompleto; reabrindo (ciclo %s/%s)",
+                ciclo + 1,
+                max_ciclos,
+            )
+            if not self._etapa5_drawer_titulo_servicos_visivel():
+                if not self._etapa5_clicar_servicos_disponiveis():
+                    self._etapa5_restaurar_backdrop_drawer_mui()
+                    return False, "Não foi possível clicar em 'Serviços disponíveis' para reabrir o painel."
+                try:
+                    self.page.wait_for_selector(
+                        'text=Escolher serviços adicionais', timeout=15000
+                    )
+                except Exception:
+                    pass
+                self.page.wait_for_timeout(400)
+                self._etapa5_bloquear_backdrop_drawer_mui()
+            if not self._etapa5_clicar_opcao_fixo_no_drawer():
+                self._etapa5_restaurar_backdrop_drawer_mui()
+                return False, "Não foi possível marcar a opção Fixo no painel."
+            self.page.wait_for_timeout(700)
+            self._etapa5_bloquear_backdrop_drawer_mui()
+            if self._etapa5_drawer_fixo_pronto():
+                logger.info("[PAP] Fixo marcado ou portabilidade visível (ciclo %s)", ciclo + 1)
+                return True, ""
+
+        if self._etapa5_drawer_fixo_pronto():
+            return True, ""
+        return False, "Painel Fixo/portabilidade não ficou disponível após várias tentativas."
+
+    def _etapa5_locator_drawer_paper_visivel(self):
+        """
+        Locator do painel branco lateral (serviços adicionais / streaming), não o backdrop.
+        Prefere painéis que expõem o botão Salvar.
+        """
+        try:
+            salvar_rx = re.compile(r"^\s*Salvar\s*$", re.I)
+            selectors = (
+                "div.MuiDrawer-paperAnchorRight",
+                "div.MuiDrawer-paper.MuiDrawer-paperAnchorRight",
+                '[class*="Drawer-paperAnchorRight"]',
+                "aside.MuiDrawer-paper",
+            )
+            found_any = None
+            for sel in selectors:
+                loc = self.page.locator(sel)
+                try:
+                    n = loc.count()
+                except Exception:
+                    continue
+                for i in range(n):
+                    p = loc.nth(i)
+                    try:
+                        if not p.is_visible():
+                            continue
+                    except Exception:
+                        continue
+                    try:
+                        if p.get_by_role("button", name=salvar_rx).count() > 0:
+                            return p
+                    except Exception:
+                        pass
+                    if found_any is None:
+                        found_any = p
+            try:
+                dialogs = self.page.get_by_role("dialog")
+                nd = dialogs.count()
+                for i in range(nd):
+                    d = dialogs.nth(i)
+                    if not d.is_visible():
+                        continue
+                    if d.get_by_role("button", name=salvar_rx).count() > 0:
+                        return d
+            except Exception:
+                pass
+            for sel in (
+                'aside:has-text("Escolher serviços adicionais")',
+                'aside:has-text("Escolher plataformas")',
+                'div:has-text("Escolher serviços adicionais"):has(button:has-text("Salvar"))',
+            ):
+                try:
+                    loc = self.page.locator(sel)
+                    if loc.count() == 0:
+                        continue
+                    cand = loc.first
+                    if not cand.is_visible():
+                        continue
+                    if cand.get_by_role("button", name=salvar_rx).count() > 0:
+                        return cand
+                    if cand.locator("button.sc-guDjWT.gIsNuI").count() > 0:
+                        return cand
+                except Exception:
+                    continue
+            return found_any
+        except Exception:
+            return None
+
     def _etapa5_clicar_salvar_painel(self) -> bool:
         """
-        Clica no botão "Salvar" do painel de serviços (Fixo/Streaming).
-        Preferir o botão com classe sc-izfUZz eKoZwI. NÃO "Salvar Interesse".
-        Para streaming o painel pode ter estrutura diferente; tenta vários seletores.
+        Clica no botão "Salvar" do painel lateral (Fixo/Streaming).
+        Prioriza o drawer MUI visível para não acionar o backdrop nem outro Salvar da página.
+        NÃO usar "Salvar Interesse". Classes atuais incluem sc-guDjWT gIsNuI.
         """
         try:
             self.page.wait_for_timeout(400)
-            # 0. Botões do painel (classes mudam entre deploys)
-            for sel in [
-                'button.sc-guDjWT.gIsNuI',
-                'button.gIsNuI.sc-guDjWT',
-                'button.sc-izfUZz.eKoZwI',
-                'button.eKoZwI.sc-izfUZz',
-                'button[class*="eKoZwI"][class*="sc-izfUZz"]',
-            ]:
-                try:
-                    btn = self.page.query_selector(sel)
-                    if btn:
-                        txt = (btn.inner_text() or "").strip()
-                        if txt == "Salvar" and btn.is_visible():
-                            cls = btn.get_attribute("class") or ""
-                            if "dCaJBF" not in cls and "hBqtbW" not in cls:
-                                btn.scroll_into_view_if_needed()
-                                btn.click()
-                                self.page.wait_for_timeout(500)
-                                return True
-                except Exception:
-                    continue
-            # 1. Playwright role (qualquer botão com nome "Salvar")
+            self._etapa5_scroll_painel_lateral_ate_rodape()
+            salvar_rx = re.compile(r"^\s*Salvar\s*$", re.I)
             try:
-                btn = self.page.get_by_role("button", name="Salvar")
-                if btn.count() > 0:
-                    for i in range(btn.count()):
-                        b = btn.nth(i)
-                        if b.is_visible():
-                            txt = (b.inner_text() or "").strip()
-                            cls = (b.get_attribute("class") or "")
-                            if txt == "Salvar" and "Interesse" not in cls and ("eKoZwI" in cls or "sc-izfUZz" in cls):
-                                b.click()
-                                self.page.wait_for_timeout(500)
-                                return True
-                    for i in range(btn.count()):
-                        b = btn.nth(i)
-                        if b.is_visible():
-                            txt = (b.inner_text() or "").strip()
-                            cls2 = (b.get_attribute("class") or "")
-                            if txt == "Salvar" and "Interesse" not in cls2:
-                                b.click()
-                                self.page.wait_for_timeout(500)
-                                return True
+                btns_sc = self.page.locator("button.sc-guDjWT.gIsNuI")
+                for j in range(btns_sc.count() - 1, -1, -1):
+                    bx = btns_sc.nth(j)
+                    try:
+                        if not bx.is_visible():
+                            continue
+                        tx = (bx.inner_text() or "").strip()
+                        if tx != "Salvar" or "Interesse" in tx:
+                            continue
+                        bx.scroll_into_view_if_needed()
+                        bx.click(force=True, timeout=8000)
+                        self.page.wait_for_timeout(500)
+                        return True
+                    except Exception:
+                        continue
             except Exception:
                 pass
-            # 2. Classe eKoZwI / sc-izfUZz (painel Fixo/Streaming)
-            for sel in ['button.sc-izfUZz.eKoZwI', 'button.eKoZwI', 'button.sc-izfUZz:has-text("Salvar")', '[class*="eKoZwI"]:has-text("Salvar")', 'button:has-text("Salvar")']:
+            roots = []
+            paper = self._etapa5_locator_drawer_paper_visivel()
+            if paper is not None:
+                roots.append(paper)
+            roots.append(self.page)
+
+            def _try_salvar_em_root(root, use_force: bool) -> bool:
+                try:
+                    loc = root.get_by_role("button", name=salvar_rx)
+                    for i in range(loc.count()):
+                        b = loc.nth(i)
+                        try:
+                            if not b.is_visible():
+                                continue
+                            t = (b.inner_text() or "").strip()
+                            if "Interesse" in t or t != "Salvar":
+                                continue
+                            b.scroll_into_view_if_needed()
+                            b.click(force=use_force, timeout=8000)
+                            self.page.wait_for_timeout(500)
+                            return True
+                        except Exception:
+                            continue
+                except Exception:
+                    pass
+                for sel in [
+                    "button.sc-guDjWT.gIsNuI",
+                    "button.gIsNuI.sc-guDjWT",
+                    'button.sc-guDjWT:has-text("Salvar")',
+                    "button.sc-izfUZz.eKoZwI",
+                    "button.eKoZwI.sc-izfUZz",
+                    'button[class*="gIsNuI"][class*="sc-guDjWT"]',
+                ]:
+                    try:
+                        bl = root.locator(sel).first
+                        if not bl.is_visible():
+                            continue
+                        tx = (bl.inner_text() or "").strip()
+                        if tx != "Salvar" or "Interesse" in tx:
+                            continue
+                        cls = bl.get_attribute("class") or ""
+                        if "dCaJBF" in cls or "hBqtbW" in cls:
+                            continue
+                        bl.scroll_into_view_if_needed()
+                        bl.click(force=use_force, timeout=8000)
+                        self.page.wait_for_timeout(500)
+                        return True
+                    except Exception:
+                        continue
+                return False
+
+            for root in roots:
+                if _try_salvar_em_root(root, use_force=False):
+                    return True
+            for root in roots:
+                if _try_salvar_em_root(root, use_force=True):
+                    return True
+
+            for sel in ['[role="button"]:has-text("Salvar")', 'div[role="button"]:has-text("Salvar")']:
+                try:
+                    for el in self.page.query_selector_all(sel):
+                        if not el or not el.is_visible():
+                            continue
+                        tx = (el.inner_text() or "").strip()
+                        if tx != "Salvar" or "Interesse" in tx:
+                            continue
+                        el.scroll_into_view_if_needed()
+                        el.click(force=True)
+                        self.page.wait_for_timeout(500)
+                        return True
+                except Exception:
+                    continue
+            for sel in ['button.sc-izfUZz:has-text("Salvar")', '[class*="eKoZwI"]:has-text("Salvar")', 'button:has-text("Salvar")']:
                 try:
                     btn = self.page.query_selector(sel)
                     if btn:
@@ -3066,8 +3937,7 @@ class PAPNioAutomation:
                             return True
                 except Exception:
                     continue
-            # 3. Último botão visível com texto exato "Salvar" (streaming costuma ser o da direita)
-            btns = self.page.query_selector_all('button')
+            btns = self.page.query_selector_all("button")
             for b in reversed(btns):
                 txt = (b.inner_text() or "").strip()
                 if txt == "Salvar":
@@ -3129,53 +3999,32 @@ class PAPNioAutomation:
     def etapa5_selecionar_fixo(self, tem_fixo: bool) -> Tuple[bool, str]:
         """
         Seleciona Fixo (R$ 30/mês).
-        Passo 1: Clicar no botão "Serviços disponíveis".
-        Passo 2: Clicar no quadro/card que abre com "Fixo" (div.sc-kUQWMX.bwZXDo ou div.sc-dcmekm.dBGnOE).
-        Passo 3: Clicar no X para fechar o modal que abre à direita.
+        Abre "Serviços disponíveis", bloqueia backdrop, marca Fixo (preferindo o ícone img)
+        e confirma que o painel lateral está pronto para portabilidade/Salvar.
         """
         try:
             self._etapa5_garantir_pagina()
             self.dados_pedido['tem_fixo'] = tem_fixo
             if not tem_fixo:
                 return True, "OK"
-            # 1. Clicar no BOTÃO "Serviços disponíveis" (class sc-wRHdD zRDVL)
-            btn_servicos = self.page.query_selector(SELETORES['etapa5']['btn_servicos'])
-            if not btn_servicos:
-                btn_servicos = self.page.query_selector('button.sc-wRHdD:has-text("Serviços disponíveis")')
-            if not btn_servicos:
-                btn_servicos = self.page.query_selector('div:has-text("Serviços disponíveis")')
-            if not btn_servicos or not btn_servicos.is_visible():
+            if not self._etapa5_clicar_servicos_disponiveis():
                 return False, "Botão 'Serviços disponíveis' não encontrado."
+            self.page.wait_for_timeout(400)
             try:
-                btn_servicos.scroll_into_view_if_needed()
-                btn_servicos.click()
+                self.page.wait_for_selector(
+                    'text=Escolher serviços adicionais', timeout=15000
+                )
             except Exception:
-                self.page.evaluate("(el) => el.click()", btn_servicos)
-            self.page.wait_for_timeout(800)
-            # 2. Clicar no quadro/card que contém "Fixo" (abre o modal à direita)
-            fixo_card = None
-            for sel in [
-                'div.sc-kUQWMX.bwZXDo:has-text("Fixo")',
-                'div.bwZXDo:has-text("Fixo")',
-                'div.sc-dcmekm.dBGnOE:has-text("Fixo")',
-                SELETORES['etapa5']['card_fixo'],
-                'div:has-text("Fixo"):has-text("Faça ligações")',
-                'div:has-text("Fixo"):has-text("R$ 30")',
-            ]:
-                fixo_card = self.page.query_selector(sel)
-                if fixo_card and fixo_card.is_visible():
-                    break
-                fixo_card = None
-            if not fixo_card or not fixo_card.is_visible():
-                return False, "Opção Fixo não encontrada. Verifique se a seção 'Serviços disponíveis' está expandida."
-            try:
-                fixo_card.scroll_into_view_if_needed()
-                fixo_card.click()
-            except Exception:
-                self.page.evaluate("(el) => el.click()", fixo_card)
-            self.page.wait_for_timeout(700)
-            # 3. Não clicar em Salvar aqui: o painel pode exibir portabilidade do fixo;
-            #    o WhatsApp pergunta e etapa5_fixo_finalizar_portabilidade() confirma com Salvar.
+                logger.warning("[PAP] Título do drawer de serviços não apareceu a tempo.")
+            self._etapa5_bloquear_backdrop_drawer_mui()
+            self.page.wait_for_timeout(300)
+            if not self._etapa5_clicar_opcao_fixo_no_drawer():
+                self._etapa5_restaurar_backdrop_drawer_mui()
+                return False, "Opção Fixo não encontrada no painel de serviços adicionais."
+
+            ok, msg = self._etapa5_garantir_drawer_fixo_para_portabilidade(max_ciclos=2)
+            if not ok:
+                return False, msg or "Painel Fixo não ficou pronto."
             return True, "OK"
         except Exception as e:
             logger.error(f"[PAP] Erro ao selecionar fixo: {e}")
@@ -3195,8 +4044,18 @@ class PAPNioAutomation:
         try:
             self._etapa5_garantir_pagina()
             self.page.wait_for_timeout(400)
-            port_lbl = self.page.locator('label:has-text("Cliente deseja fazer portabilidade")').first
-            has_port = port_lbl.count() > 0
+            ok_g, msg_g = self._etapa5_garantir_drawer_fixo_para_portabilidade(max_ciclos=3)
+            if not ok_g:
+                return False, msg_g or "Painel Fixo não está aberto; não foi possível reabrir."
+            self._etapa5_bloquear_backdrop_drawer_mui()
+            self._etapa5_scroll_painel_lateral_ate_rodape()
+            drawer = self._etapa5_locator_drawer_paper_visivel()
+            ctx = drawer if drawer is not None else self.page
+            port_lbl = ctx.locator('label:has-text("Cliente deseja fazer portabilidade")').first
+            try:
+                has_port = port_lbl.is_visible()
+            except Exception:
+                has_port = False
             if has_port:
                 try:
                     cb = port_lbl.locator('input[type="checkbox"]')
@@ -3220,6 +4079,7 @@ class PAPNioAutomation:
                 if quer_portabilidade:
                     digits = re.sub(r"\D", "", numero_port or "")
                     if len(digits) < 10:
+                        self._etapa5_restaurar_backdrop_drawer_mui()
                         return False, "Número para portabilidade inválido (informe DDD + número fixo)."
                     inp = self.page.query_selector("#contatoPortabilidade, input[name='contatoPortabilidade']")
                     if inp:
@@ -3227,9 +4087,11 @@ class PAPNioAutomation:
                         self.page.wait_for_timeout(200)
                     needle = (operadora_texto or "").strip()
                     if len(needle) < 2:
+                        self._etapa5_restaurar_backdrop_drawer_mui()
                         return False, "Informe a operadora de origem (ex.: Vivo, Claro, Tim)."
                     sel_el = self.page.query_selector('select[name="operadora"]')
                     if not sel_el:
+                        self._etapa5_restaurar_backdrop_drawer_mui()
                         return False, "Campo operadora não encontrado no painel."
                     matched = False
                     needle_l = needle.lower()
@@ -3246,12 +4108,37 @@ class PAPNioAutomation:
                             except Exception:
                                 continue
                     if not matched:
+                        self._etapa5_restaurar_backdrop_drawer_mui()
                         return (
                             False,
                             "Operadora não encontrada na lista. Tente o nome curto (ex.: Vivo, Claro, OI, Tim).",
                         )
+            # Salvar fica no rodapé do painel lateral; sem scroll o Playwright não acha "visível"
+            try:
+                for scroll_sel in (
+                    'select[name="operadora"]',
+                    "#contatoPortabilidade",
+                    'label:has-text("portabilidade")',
+                    'button:has-text("Salvar")',
+                ):
+                    eloc = ctx.locator(scroll_sel).first
+                    try:
+                        if eloc.is_visible():
+                            eloc.scroll_into_view_if_needed()
+                            self.page.wait_for_timeout(150)
+                    except Exception:
+                        pass
+                self.page.evaluate("""() => {
+                    const roots = document.querySelectorAll('aside, [class*="Drawer"], [class*="drawer"], [role="dialog"]');
+                    roots.forEach(r => { try { r.scrollTop = r.scrollHeight; } catch (e) {} });
+                }""")
+                self.page.wait_for_timeout(200)
+            except Exception:
+                pass
             if not self._etapa5_clicar_salvar_painel():
+                self._etapa5_restaurar_backdrop_drawer_mui()
                 return False, "Botão Salvar do painel Fixo não encontrado."
+            self._etapa5_restaurar_backdrop_drawer_mui()
             self.dados_pedido["fixo_portabilidade"] = quer_portabilidade
             if quer_portabilidade:
                 self.dados_pedido["fixo_portabilidade_numero"] = re.sub(r"\D", "", numero_port or "")
@@ -3260,15 +4147,14 @@ class PAPNioAutomation:
             return True, "OK"
         except Exception as e:
             logger.error("[PAP] etapa5_fixo_finalizar_portabilidade: %s", e)
+            self._etapa5_restaurar_backdrop_drawer_mui()
             return False, str(e)
 
     def etapa5_selecionar_streaming(self, tem_streaming: bool, streaming_opcoes: str = None, plano: str = "") -> Tuple[bool, str]:
         """
-        Seleciona streaming.
-        Passo 1: Clicar no botão "Streaming e canais on-line".
-        Passo 2: Marcar cada opção clicando no ícone (div.sc-jIyBzM.bSKio ou img) da linha HBO Max / Globoplay Premium / Plano Padrão.
-        Passo 3: Confirmar com Salvar (não usar X, pois desmarca as opções).
-        Globoplay Premium e Plano Padrão são mutuamente exclusivos; Padrão não disponível para 700Mb/1Gb.
+        Seleciona streaming no drawer "Escolher plataformas de streaming…".
+        Clica nos preços em div.sc-hQfrgq.frojRS (44,90 / 39,90 / 22,90), valida seleção e Salvar.
+        Premium e Padrão Globoplay são excludentes; 700Mb/1Gb não oferece Padrão.
         """
         try:
             self._etapa5_garantir_pagina()
@@ -3276,74 +4162,119 @@ class PAPNioAutomation:
             self.dados_pedido['streaming_opcoes'] = (streaming_opcoes or '').strip()
             if not tem_streaming:
                 return True, "OK"
-            # 1. Clicar no BOTÃO "Streaming e canais on-line"
-            btn_stream = self.page.query_selector(SELETORES['etapa5']['btn_streaming'])
-            if not btn_stream:
-                btn_stream = self.page.query_selector('button.sc-wRHdD:has-text("Streaming e canais on-line")')
-            if not btn_stream:
-                btn_stream = self.page.query_selector('div:has-text("Streaming e canais on-line")')
-            if not btn_stream or not btn_stream.is_visible():
-                return False, "Botão 'Streaming e canais on-line' não encontrado."
-            try:
-                btn_stream.scroll_into_view_if_needed()
-                btn_stream.click()
-            except Exception:
-                self.page.evaluate("(el) => el.click()", btn_stream)
-            self.page.wait_for_timeout(800)
-            plano_lower = (plano or self.dados_pedido.get('plano', '')).lower()
-            skip_padrao = '700mega' in plano_lower or '1giga' in plano_lower
-            opts = [x.strip() for x in (streaming_opcoes or '').lower().replace(' ', '').split(',') if x.strip()]
-            # 2. Para cada opção: clicar no ícone (img ou div.sc-jIyBzM.bSKio) da linha correspondente
+
+            plano_lower = (plano or self.dados_pedido.get("plano", "")).lower()
+            skip_padrao = "700mega" in plano_lower or "1giga" in plano_lower
+            opts = [x.strip() for x in (streaming_opcoes or "").lower().replace(" ", "").split(",") if x.strip()]
+            if not opts:
+                return False, "Nenhuma opção de streaming informada (streaming_opcoes vazio)."
+
+            precos: List[str] = []
             for o in opts:
-                el = None
-                if 'hbomax' in o or o == 'hbo':
-                    for sel in [
-                        'div:has-text("HBO Max") div.sc-jIyBzM.bSKio',
-                        'div:has-text("HBO Max") img',
-                        'div:has-text("HBO Max") [class*="jIyBzM"]',
-                    ]:
-                        el = self.page.query_selector(sel)
-                        if el and el.is_visible():
-                            break
-                elif 'globoplay_premium' in o or ('premium' in o and 'basico' not in o):
-                    # Globoplay – Plano Premium (não confundir com Plano Padrão)
-                    for sel in [
-                        'div:has-text("Globoplay"):has-text("Plano Premium") div.sc-jIyBzM.bSKio',
-                        'div:has-text("Plano Premium") div.sc-jIyBzM.bSKio',
-                        'div:has-text("Plano Premium") img',
-                        'div:has-text("Plano Premium") [class*="jIyBzM"]',
-                    ]:
-                        el = self.page.query_selector(sel)
-                        if el and el.is_visible():
-                            break
-                elif ('globoplay_basico' in o or 'basico' in o or 'padrão' in o or 'padrao' in o) and not skip_padrao:
-                    for sel in [
-                        'div:has-text("Plano Padrão com Anúncios") div.sc-jIyBzM.bSKio',
-                        'div:has-text("Plano Padrão com Anúncios") img',
-                        'div:has-text("Plano Padrão") div.sc-jIyBzM.bSKio',
-                    ]:
-                        el = self.page.query_selector(sel)
-                        if el and el.is_visible():
-                            break
-                if not el or not el.is_visible():
-                    continue
+                p = self._etapa5_streaming_map_opcao_para_preco(o, skip_padrao)
+                if p:
+                    precos.append(p)
+            if not precos:
+                return False, "Opções de streaming não reconhecidas (use hbomax, globoplay_premium, globoplay_basico, etc.)."
+
+            if "39,90" in precos and "22,90" in precos:
+                precos = [x for x in precos if x != "22,90"]
+                logger.info("[PAP] Globoplay Premium e Padrão juntos: mantendo só Premium (39,90).")
+
+            btn_ok = False
+            try:
+                lb = self.page.get_by_role(
+                    "button",
+                    name=re.compile(r"Streaming\s+e\s+canais\s+on[-\s]?line", re.I),
+                )
+                if lb.count() > 0:
+                    b0 = lb.first
+                    if b0.is_visible():
+                        b0.scroll_into_view_if_needed()
+                        b0.click(timeout=8000)
+                        btn_ok = True
+            except Exception:
+                pass
+            if not btn_ok:
+                btn_stream = self.page.query_selector(SELETORES["etapa5"]["btn_streaming"])
+                if not btn_stream:
+                    btn_stream = self.page.query_selector(
+                        'button.sc-wRHdD:has-text("Streaming e canais on-line")'
+                    )
+                if not btn_stream:
+                    btn_stream = self.page.query_selector(
+                        'button.sc-izfUZz:has-text("Streaming e canais on-line")'
+                    )
+                if not btn_stream:
+                    btn_stream = self.page.query_selector('div:has-text("Streaming e canais on-line")')
+                if not btn_stream or not btn_stream.is_visible():
+                    return False, "Botão 'Streaming e canais on-line' não encontrado."
                 try:
-                    el.scroll_into_view_if_needed()
-                    el.click()
+                    btn_stream.scroll_into_view_if_needed()
+                    btn_stream.click()
                 except Exception:
-                    self.page.evaluate("(el) => el.click()", el)
-                self.page.wait_for_timeout(500)
-            # 3. Confirmar com Salvar (não usar X, pois desmarca as opções de streaming)
-            self.page.wait_for_timeout(800)
-            if not self._etapa5_clicar_salvar_painel():
-                self.page.wait_for_timeout(700)
-                self._etapa5_clicar_salvar_painel()
+                    self.page.evaluate("(el) => el.click()", btn_stream)
+
             self.page.wait_for_timeout(500)
-            self._fechar_modal_servicos_adicionais()
+            try:
+                self.page.wait_for_selector('text=Escolher plataformas', timeout=15000)
+            except Exception:
+                pass
+            if not self._etapa5_drawer_streaming_titulo_visivel():
+                return (
+                    False,
+                    "Drawer de streaming não abriu (texto 'Escolher plataformas' não visível).",
+                )
+            self._etapa5_bloquear_backdrop_drawer_mui()
             self.page.wait_for_timeout(300)
+            self._etapa5_scroll_drawer_streaming_ate_salvar()
+
+            for preco in precos:
+                self._etapa5_scroll_drawer_streaming_ate_salvar()
+                if not self._etapa5_clicar_preco_streaming(preco):
+                    self._etapa5_restaurar_backdrop_drawer_mui()
+                    return False, f"Não foi possível clicar na linha do streaming (preço R$ {preco})."
+                if not self._etapa5_streaming_preco_parece_selecionado(preco):
+                    logger.warning("[PAP] Streaming R$ %s: seleção não confirmada; repetindo clique.", preco)
+                    self._etapa5_clicar_preco_streaming(preco)
+                    self.page.wait_for_timeout(450)
+                if not self._etapa5_streaming_preco_parece_selecionado(preco):
+                    self._etapa5_restaurar_backdrop_drawer_mui()
+                    return (
+                        False,
+                        f"Streaming R$ {preco} não ficou selecionado (checkbox/estado não detectado).",
+                    )
+
+            self.page.wait_for_timeout(500)
+            self._etapa5_scroll_drawer_streaming_ate_salvar()
+            self._etapa5_scroll_painel_lateral_ate_rodape()
+
+            salvar_ok = self._etapa5_clicar_salvar_painel()
+            if not salvar_ok:
+                self.page.wait_for_timeout(600)
+                self._etapa5_scroll_drawer_streaming_ate_salvar()
+                self._etapa5_scroll_painel_lateral_ate_rodape()
+                salvar_ok = self._etapa5_clicar_salvar_painel()
+            if not salvar_ok:
+                self._etapa5_restaurar_backdrop_drawer_mui()
+                return False, "Botão Salvar do painel de streaming não encontrado ou não clicável."
+
+            self._etapa5_restaurar_backdrop_drawer_mui()
+            self.page.wait_for_timeout(400)
+            try:
+                if "Escolher plataformas" in (self.page.content() or ""):
+                    self.page.keyboard.press("Escape")
+                    self.page.wait_for_timeout(200)
+            except Exception:
+                pass
+            self.page.wait_for_timeout(200)
             return True, "OK"
         except Exception as e:
             logger.error(f"[PAP] Erro ao selecionar streaming: {e}")
+            try:
+                self._etapa5_restaurar_backdrop_drawer_mui()
+            except Exception:
+                pass
             return False, str(e)
 
     def etapa5_clicar_avancar(self) -> Tuple[bool, str]:
@@ -3352,7 +4283,10 @@ class PAPNioAutomation:
             self._etapa5_garantir_pagina()
             # Fechar modal "Escolher serviços adicionais" se estiver aberto (bloqueia o Avançar)
             self._fechar_modal_servicos_adicionais()
-            self.page.wait_for_timeout(500)
+            self.page.wait_for_timeout(400)
+            plano_dp = (self.dados_pedido.get("plano") or "").strip().lower()
+            # Não reaplicar o plano aqui: isso resetaria Fixo/Streaming já configurados.
+            self.page.wait_for_timeout(400)
             # Aguardar spinner sumir (se houver)
             try:
                 self.page.wait_for_selector('div.spinner', state="hidden", timeout=3000)
@@ -3363,6 +4297,15 @@ class PAPNioAutomation:
                 return False, "Botão Avançar não disponível ou desabilitado."
             btn_avancar.click()
             self.page.wait_for_load_state("networkidle", timeout=10000)
+            if plano_dp in ("1giga", "700mega", "500mega"):
+                try:
+                    self.page.wait_for_selector('h2:has-text("Resumo")', state="visible", timeout=25000)
+                except Exception:
+                    logger.warning("[PAP] Título Resumo não apareceu no tempo esperado após Avançar.")
+                ok_v, msg_v, lido = self.etapa6_validar_plano_resumo(plano_dp)
+                if not ok_v:
+                    logger.error("[PAP] Validação plano Resumo falhou: %s (lido=%r)", msg_v, lido)
+                    return False, msg_v
             self.etapa_atual = 5
             return True, "OK"
         except Exception as e:
@@ -3394,7 +4337,7 @@ class PAPNioAutomation:
                 sucesso, msg = self.etapa5_preencher_debito(banco or '', agencia or '', conta or '', digito or '')
                 if not sucesso:
                     return False, msg
-            sucesso, msg = self.etapa5_selecionar_plano(plano)
+            sucesso, msg = self.etapa5_selecionar_plano_com_validacao(plano)
             if not sucesso:
                 return False, msg
             sucesso, msg = self.etapa5_selecionar_fixo(tem_fixo)
@@ -3465,6 +4408,22 @@ class PAPNioAutomation:
             if key in opts_set:
                 linhas_adic.append(f"• {label}: {preco}")
         bloco_adic = "\n".join(linhas_adic) if linhas_adic else "Nenhum"
+        bloco_port = ""
+        if d.get("tem_fixo") and d.get("fixo_portabilidade"):
+            raw_num = re.sub(r"\D", "", str(d.get("fixo_portabilidade_numero") or ""))
+            op_p = (d.get("fixo_portabilidade_operadora") or "").strip() or "—"
+            if len(raw_num) >= 10:
+                if len(raw_num) == 11:
+                    num_fmt = f"({raw_num[:2]}) {raw_num[2:7]}-{raw_num[7:]}"
+                else:
+                    num_fmt = f"({raw_num[:2]}) {raw_num[2:6]}-{raw_num[6:]}"
+            else:
+                num_fmt = d.get("fixo_portabilidade_numero") or raw_num or "—"
+            bloco_port = f"\n📲 *Portabilidade do fixo:* {num_fmt} — operadora *{op_p}*\n"
+        texto_fatura = (
+            "Sua primeira fatura irá vencer *25 dias* após a instalação da internet; nos demais meses, "
+            "o vencimento segue o ciclo de *30 em 30 dias*.\n\n"
+        )
         return (
             "📋 *RESUMO DO PEDIDO*\n"
             "━━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -3472,10 +4431,12 @@ class PAPNioAutomation:
             f"📍 *Endereço:*\n{endereco}\n\n"
             f"📦 *Plano:* {plano_label} – {valor}\n\n"
             f"💳 *Forma de pagamento:* {forma}\n\n"
-            f"✨ *Serviços adicionais:*\n{bloco_adic}\n\n"
+            f"✨ *Serviços adicionais:*\n{bloco_adic}"
+            f"{bloco_port}\n"
             f"📅 *Fidelidade:* 12 meses\n\n"
             "💰 *Taxa de habilitação:*\n"
             "Você ganha isenção da taxa de habilitação se permanecer no mínimo 12 meses conosco.\n\n"
+            f"{texto_fatura}"
             "━━━━━━━━━━━━━━━━━━━━━\n"
             "✅ Para confirmar, responda *SIM*."
         )
@@ -3589,15 +4550,164 @@ class PAPNioAutomation:
             logger.warning(f"[PAP] _formatar_endereco_completo: {e}")
             return ""
 
+    def _plano_normalizar_de_texto_resumo(self, texto: str) -> Optional[str]:
+        """Converte texto exibido no PAP (ex.: '1 Giga', '500 Mega') para chave interna."""
+        if not texto:
+            return None
+        t = texto.replace("\u00a0", " ").lower().strip()
+        if re.search(r"\b1\s*giga\b", t):
+            return "1giga"
+        if re.search(r"\b700\s*mega\b", t):
+            return "700mega"
+        if re.search(r"\b500\s*mega\b", t):
+            return "500mega"
+        return None
+
+    def etapa6_ler_plano_detalhes_oferta_resumo(self) -> Tuple[bool, str]:
+        """
+        Na tela Resumo, lê o plano exibido em Detalhes da oferta (ex.: div com 1 Giga / 500 Mega).
+        """
+        try:
+            self.page.wait_for_selector('h2:has-text("Resumo")', state="visible", timeout=20000)
+        except Exception:
+            return False, ""
+        try:
+            raw = self.page.evaluate(
+                r"""() => {
+                  const pick = (t) => (t || '').trim();
+                  const el1 = document.querySelector('div.sc-kOnlKp.bVXyze');
+                  if (el1) {
+                    const t = pick(el1.textContent);
+                    if (/Mega|Giga/i.test(t) && t.length < 80) return t;
+                  }
+                  for (const el2 of document.querySelectorAll('[class*="bVXyze"]')) {
+                    const t = pick(el2.textContent);
+                    if (/Mega|Giga/i.test(t) && t.length < 80) return t;
+                  }
+                  const h2 = [...document.querySelectorAll('h2')].find(
+                    (e) => pick(e.textContent) === 'Resumo'
+                  );
+                  const root = h2
+                    ? h2.closest('main') || h2.closest('[class*="sc-"]') || document.body
+                    : document.body;
+                  const cand = root.querySelectorAll('div, span');
+                  for (const k of cand) {
+                    const t = pick(k.textContent);
+                    if (/^1\s*Giga$/i.test(t) || /^700\s*Mega$/i.test(t) || /^500\s*Mega$/i.test(t)) {
+                      return t;
+                    }
+                  }
+                  const blob = (root.innerText || '').replace(/\s+/g, ' ');
+                  const m = blob.match(/\b(1\s*Giga|700\s*Mega|500\s*Mega)\b/i);
+                  if (m) return m[1].replace(/\s+/g, ' ').trim();
+                  return '';
+                }"""
+            )
+            return True, (raw or "").strip()
+        except Exception as e:
+            logger.warning("[PAP] etapa6_ler_plano_detalhes_oferta_resumo: %s", e)
+            return False, ""
+
+    def etapa6_validar_plano_resumo(self, plano_interno: str) -> Tuple[bool, str, str]:
+        """
+        Garante que o plano em Detalhes da oferta confere com o escolhido no fluxo.
+        Retorna (ok, mensagem_erro_vazia_se_ok, texto_lido).
+        """
+        esp = (plano_interno or self.dados_pedido.get("plano") or "").strip().lower()
+        if esp not in ("1giga", "700mega", "500mega"):
+            return True, "", ""
+        ok_r, lido = self.etapa6_ler_plano_detalhes_oferta_resumo()
+        if not ok_r or not lido:
+            return (
+                False,
+                "Não foi possível ler o plano na tela Resumo (Detalhes da oferta). "
+                "Confira no navegador se a oferta está correta antes de seguir.",
+                lido or "",
+            )
+        achado = self._plano_normalizar_de_texto_resumo(lido)
+        if achado is None:
+            return (
+                False,
+                f"Plano na tela Resumo não reconhecido ({lido!r}). Esperado: {esp}. Ajuste manualmente no PAP.",
+                lido,
+            )
+        if achado != esp:
+            mapa = {"1giga": "1 Giga", "700mega": "700 Mega", "500mega": "500 Mega"}
+            return (
+                False,
+                f"Plano no PAP ({lido!r}) não confere com o escolhido no fluxo ({mapa.get(esp, esp)}). "
+                "O portal pode ter resetado a oferta ao abrir serviços; corrija no site ou reinicie a venda.",
+                lido,
+            )
+        return True, "", lido
+
+    def _etapa6_avancar_ate_tela_biometria(self, max_cliques: int = 3) -> None:
+        """
+        Se o usuário voltou no navegador, o portal pode exibir só a etapa anterior (ex.: Resumo/ofertas)
+        com *Avançar* em vez da etapa 6 com biometria. Clica Avançar até aparecer Abrir OS ou
+        Consultar Biometria, ou até não haver mais Avançar habilitado.
+        """
+        sel_abrir = (
+            'button:has-text("Abrir OS"):not([disabled]), '
+            'button:has-text("Abrir O.S"):not([disabled]), '
+            'button:has-text("Abrir O.S."):not([disabled])'
+        )
+        sel_consultar = 'button:has-text("Consultar Biometria"), button.btn-consult-new'
+
+        def _vis(el):
+            try:
+                return el and el.is_visible()
+            except Exception:
+                return False
+
+        for i in range(max_cliques):
+            btn_os = self.page.query_selector(sel_abrir)
+            if _vis(btn_os):
+                return
+            btn_c = self.page.query_selector(sel_consultar)
+            if _vis(btn_c):
+                return
+            btn_av = self.page.query_selector('button:has-text("Avançar"):not([disabled])')
+            if not _vis(btn_av):
+                return
+            logger.info(
+                "[PAP] Etapa 6 - Clicando Avançar para atingir a tela de biometria "
+                "(ex.: voltou no navegador; passo %s/%s)",
+                i + 1,
+                max_cliques,
+            )
+            try:
+                btn_av.click()
+            except Exception as e:
+                logger.warning("[PAP] Etapa 6 - Falha ao clicar Avançar: %s", e)
+                return
+            self.page.wait_for_timeout(1000)
+            try:
+                self.page.wait_for_selector("div.spinner", state="hidden", timeout=12000)
+            except Exception:
+                self.page.wait_for_timeout(1500)
+            try:
+                self.page.wait_for_load_state("networkidle", timeout=10000)
+            except Exception:
+                pass
+
     def etapa6_consultar_biometria(self) -> Tuple[bool, str]:
         """Clica no botão Consultar Biometria na etapa 6."""
         try:
+            pode, err = self._pap_garantir_sessao_antes_resumo()
+            if not pode:
+                return False, err
+            self._etapa6_avancar_ate_tela_biometria()
             logger.info("[PAP] Etapa 6 - Clicando Consultar Biometria")
             btn = self.page.query_selector('button:has-text("Consultar Biometria"), button.btn-consult-new')
             if not btn:
                 return False, "Botão Consultar Biometria não encontrado."
             btn.click()
             self.page.wait_for_load_state("networkidle", timeout=10000)
+            self.page.wait_for_timeout(800)
+            ok_modal, err_modal = self._pap_tratar_modais_apos_acao_pap()
+            if not ok_modal and err_modal:
+                return False, f"Portal exibiu erro após consultar biometria: {err_modal}"
             return True, "OK"
         except Exception as e:
             logger.error(f"[PAP] Erro ao consultar biometria: {e}")
@@ -3608,7 +4718,8 @@ class PAPNioAutomation:
         Etapa 6: Verificar status da biometria.
 
         Fonte da verdade: (1) botão "Abrir OS" habilitado = biometria aprovada;
-        (2) estar na tela Etapa 6 (Resumo) sem indicação de biometria pendente no contexto da biometria.
+        (2) texto explícito de aprovação no contexto do rótulo Biometria (aprovada/apto/liberado);
+        Não inferir aprovação só por estar na tela Resumo sem "pendente" (evita falso positivo).
 
         Args:
             consultar_primeiro: Se True, clica em "Consultar Biometria" antes de verificar (para atualizar status)
@@ -3619,6 +4730,10 @@ class PAPNioAutomation:
         try:
             logger.info("[PAP] Etapa 6 - Verificando biometria")
 
+            pode, err = self._pap_garantir_sessao_antes_resumo()
+            if not pode:
+                return False, err, False
+
             # Aguardar spinner desaparecer (bloqueia cliques)
             try:
                 self.page.wait_for_selector('div.spinner', state="hidden", timeout=10000)
@@ -3627,36 +4742,46 @@ class PAPNioAutomation:
 
             self.page.wait_for_load_state("networkidle", timeout=8000)
 
-            # Se solicitado, clicar em Consultar Biometria para atualizar status
+            # Voltar no navegador pode deixar a tela na etapa anterior (só Avançar). Ir à etapa 6 antes de consultar.
+            self._etapa6_avancar_ate_tela_biometria()
+
+            def _btn_abrir_os_visivel():
+                return self.page.query_selector(
+                    'button:has-text("Abrir OS"):not([disabled]), '
+                    'button:has-text("Abrir O.S"):not([disabled]), '
+                    'button:has-text("Abrir O.S."):not([disabled])'
+                )
+
+            # 1) Sempre checar Abrir OS *antes* de "Consultar Biometria": após aprovação o portal
+            #    pode ocultar a linha Biometria; clicar em Consultar sem necessidade gera falso "pendente".
+            btn_abrir_os = _btn_abrir_os_visivel()
+            if btn_abrir_os:
+                self.dados_pedido["_pap_biometria_aprovada"] = True
+                self.etapa_atual = 6
+                return True, "Biometria APROVADA! Pronto para abrir O.S.", True
+
+            # 2) Consultar só se pedido e ainda não há Abrir OS (atualiza status quando pendente)
             if consultar_primeiro:
-                self.etapa6_consultar_biometria()
+                ok_c, msg_c = self.etapa6_consultar_biometria()
+                if not ok_c:
+                    return False, msg_c, False
                 self.page.wait_for_timeout(2500)
                 try:
                     self.page.wait_for_selector('div.spinner', state="hidden", timeout=10000)
                 except Exception:
                     self.page.wait_for_timeout(2000)
+                btn_abrir_os = _btn_abrir_os_visivel()
+                if btn_abrir_os:
+                    self.dados_pedido["_pap_biometria_aprovada"] = True
+                    self.etapa_atual = 6
+                    return True, "Biometria APROVADA! Pronto para abrir O.S.", True
 
-            # Avançar se ainda houver botão Avançar (transição etapa 5 -> 6)
-            btn_avancar = self.page.query_selector('button:has-text("Avançar"):not([disabled])')
-            if btn_avancar:
-                try:
-                    btn_avancar.click()
-                    self.page.wait_for_timeout(1500)
-                    try:
-                        self.page.wait_for_selector('div.spinner', state="hidden", timeout=10000)
-                    except Exception:
-                        self.page.wait_for_timeout(2000)
-                    self.page.wait_for_load_state("networkidle", timeout=8000)
-                except Exception:
-                    pass
+            # Última tentativa: às vezes após consulta o portal volta a mostrar só Avançar
+            self._etapa6_avancar_ate_tela_biometria(max_cliques=2)
 
-            # 1) Botão "Abrir OS" habilitado = biometria aprovada (não validar como se ainda estivesse na Etapa 5)
-            btn_abrir_os = self.page.query_selector(
-                'button:has-text("Abrir OS"):not([disabled]), '
-                'button:has-text("Abrir O.S"):not([disabled]), '
-                'button:has-text("Abrir O.S."):not([disabled])'
-            )
+            btn_abrir_os = _btn_abrir_os_visivel()
             if btn_abrir_os:
+                self.dados_pedido["_pap_biometria_aprovada"] = True
                 self.etapa_atual = 6
                 return True, "Biometria APROVADA! Pronto para abrir O.S.", True
 
@@ -3678,16 +4803,28 @@ class PAPNioAutomation:
                 or 'aguardando' in contexto_biometria
                 or 'em análise' in contexto_biometria
             )
+            biometria_aprovada_texto = False
+            if contexto_biometria:
+                biometria_aprovada_texto = any(
+                    x in contexto_biometria
+                    for x in (
+                        'aprovad',
+                        'apto',
+                        'liberad',
+                        'concluíd',
+                        'concluid',
+                        'validad',
+                        'documento apto',
+                    )
+                )
 
-            # 3) Fallback: estar na Etapa 6 (Resumo) sem pendente no contexto da biometria = aprovada
-            pagina_texto = (self.page.content() or "").lower()
-            na_etapa_resumo = bool(
-                'resumo' in pagina_texto
-                or self.page.query_selector('h2:has-text("Resumo"), h3:has-text("Resumo"), [class*="resumo"]')
-            )
-            if na_etapa_resumo and not biometria_pendente:
+            if span_biometria and biometria_aprovada_texto and not biometria_pendente:
+                self.dados_pedido["_pap_biometria_aprovada"] = True
                 self.etapa_atual = 6
-                return True, "Biometria APROVADA (Etapa Resumo). Pronto para abrir O.S.", True
+                return True, "Biometria APROVADA (status na linha Biometria). Pronto para abrir O.S.", True
+
+            if self.dados_pedido.get("_pap_biometria_aprovada"):
+                return True, "Biometria já aprovada neste pedido.", True
 
             if biometria_pendente:
                 return True, "Biometria PENDENTE. Peça ao cliente para realizar a biometria e digite CONSULTAR para verificar novamente.", False
@@ -3702,18 +4839,71 @@ class PAPNioAutomation:
         O portal executa 9 validações ('Consultando os slots para agendamento' 1 de 9 ... 9 de 9)
         antes de exibir a tela; timeout alto para não falhar durante as validações."""
         try:
-            btn = self.page.query_selector('button:has-text("Abrir OS"):not([disabled]), button:has-text("Abrir O.S"):not([disabled])')
+            btn = self.page.query_selector(
+                'button:has-text("Abrir OS"):not([disabled]), '
+                'button:has-text("Abrir O.S"):not([disabled]), '
+                'button:has-text("Abrir O.S."):not([disabled])'
+            )
             if not btn:
-                return False, "Botão Abrir OS não disponível."
+                ctx = self.pap_inspecionar_contexto_etapa()
+                return (
+                    False,
+                    f"Botão Abrir OS não disponível. Onde parece estar: {ctx.get('provavel')} — "
+                    f"consulte biometria no PAP e use CONSULTAR de novo.",
+                )
             btn.click()
             self.page.wait_for_timeout(2000)
-            # 9 validações no portal; aguardar até 90s pela tela de Período/Agendamento
-            self.page.wait_for_selector('h3:has-text("Período"), [class*="react-datepicker"], [class*="Agendamento"]', state="visible", timeout=90000)
-            self.page.wait_for_load_state("networkidle", timeout=10000)
+            try:
+                self.page.wait_for_load_state("networkidle", timeout=20000)
+            except Exception:
+                pass
+            ok_modal, err_modal = self._pap_tratar_modais_apos_acao_pap()
+            if not ok_modal and err_modal:
+                ctx = self.pap_inspecionar_contexto_etapa()
+                return (
+                    False,
+                    f"Modal de erro no portal após Abrir OS: {err_modal} "
+                    f"(tela provável: {ctx.get('provavel')}). Feche o aviso no navegador se ainda estiver aberto "
+                    f"e tente CONSULTAR novamente.",
+                )
+            # 9 validações no portal; aguardar até 90s — seletores alternativos (UI muda entre builds)
+            sel_ag = (
+                'h3:has-text("Período"), h2:has-text("Período"), '
+                '[class*="react-datepicker"], .react-datepicker, '
+                'h2:has-text("Agendamento"), h3:has-text("Agendamento"), '
+                '[class*="Agendamento"]'
+            )
+            ok_wait, err_wait = self.esperar_selector_com_keepalive_sessao(
+                sel_ag,
+                timeout_ms=90000,
+                poll_ms=5000,
+                target_after_relogin=PAP_NOVO_PEDIDO_URL,
+            )
+            if not ok_wait:
+                if err_wait and "Sessão do portal expirou durante a espera" in err_wait:
+                    return False, err_wait
+                ctx = self.pap_inspecionar_contexto_etapa()
+                logger.error(
+                    "[PAP] etapa7 timeout aguardando UI. url=%s ctx=%s err=%s",
+                    ctx.get("url"),
+                    ctx,
+                    err_wait,
+                )
+                return (
+                    False,
+                    f"{err_wait or 'timeout'} Onde parece estar: {ctx.get('provavel')}. "
+                    f"Se voltou ao início do pedido ou há aviso de erro, corrija no PAP e repita CONSULTAR. "
+                    f"Modal visível: {ctx.get('trecho_modal')[:180] if ctx.get('trecho_modal') else '(nenhum)'}",
+                )
+            try:
+                self.page.wait_for_load_state("networkidle", timeout=10000)
+            except Exception:
+                pass
             return True, "Tela de Agendamento exibida."
         except Exception as e:
             logger.error(f"[PAP] etapa7_ir_para_agendamento: {e}")
-            return False, str(e)
+            ctx = self.pap_inspecionar_contexto_etapa()
+            return False, f"{e} (contexto: {ctx.get('provavel')})"
 
     def etapa7_obter_datas_disponiveis(self) -> Tuple[bool, str, list]:
         """Extrai as datas disponíveis no calendário (dias clicáveis). Retorna lista de números de dia."""

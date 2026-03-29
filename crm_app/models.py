@@ -1,6 +1,7 @@
 # crm_app/models.py
 
 from django.db import models
+from django.core.validators import MinValueValidator, MaxValueValidator
 from usuarios.models import Usuario
 from django.conf import settings
 from datetime import datetime, timedelta
@@ -130,6 +131,13 @@ class Venda(models.Model):
     
     nome_mae = models.CharField(max_length=255, blank=True, null=True)
     data_nascimento = models.DateField(blank=True, null=True)
+    mes_nascimento_pap = models.PositiveSmallIntegerField(
+        blank=True,
+        null=True,
+        verbose_name="Mês nascimento (PAP)",
+        help_text="Mês (1–12) quando o portal PAP só revela **/MM/**** na data de nascimento.",
+        validators=[MinValueValidator(1), MaxValueValidator(12)],
+    )
     cpf_representante_legal = models.CharField(max_length=14, blank=True, null=True)
     nome_representante_legal = models.CharField(max_length=255, blank=True, null=True)
     
@@ -970,6 +978,20 @@ class PapConfirmacaoCliente(models.Model):
     sessao_id vincula a confirmação à sessão atual (PAP). venda_id vincula à auditoria.
     """
     celular_cliente = models.CharField(max_length=20, db_index=True)
+    protocolo_pedido = models.CharField(
+        max_length=64,
+        blank=True,
+        null=True,
+        db_index=True,
+        help_text="Protocolo PAP do pedido ao enviar o resumo (evita SIM de outra venda no mesmo celular).",
+    )
+    protocolo_confirmacao_envio = models.CharField(
+        max_length=24,
+        blank=True,
+        null=True,
+        db_index=True,
+        help_text="Protocolo enviado ao cliente ao confirmar (YYYYMMDDHHMM + seq 4 dígitos).",
+    )
     confirmado = models.BooleanField(default=False)
     sessao = models.ForeignKey(
         'SessaoWhatsapp',
@@ -1007,6 +1029,21 @@ class PapConfirmacaoCliente(models.Model):
 
     def __str__(self):
         return f"{self.celular_cliente} - {'OK' if self.confirmado else 'pendente'}"
+
+
+class PapProtocoloConfirmacaoSequencia(models.Model):
+    """Contador por minuto (YYYYMMDDHHMM) para protocolo de confirmação no WhatsApp."""
+
+    janela = models.CharField(max_length=12, unique=True, db_index=True)
+    ultimo = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = "crm_pap_protocolo_confirmacao_sequencia"
+        verbose_name = "PAP protocolo confirmação (sequência/min)"
+        verbose_name_plural = "PAP protocolos confirmação (sequência/min)"
+
+    def __str__(self):
+        return f"{self.janela} → {self.ultimo}"
 
 
 class AnaliseCreditoHistorico(models.Model):

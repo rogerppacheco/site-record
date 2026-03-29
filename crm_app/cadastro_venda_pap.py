@@ -107,8 +107,9 @@ def cadastrar_venda_pap_no_crm(dados: dict, numero_os: str, matricula_vendedor: 
 
         from datetime import date, datetime
 
-        # Data de nascimento: aceita data completa (dd/mm/yyyy ou date) ou só mês
+        # Data completa (dd/mm/yyyy ou date) ou só mês revelado no PAP (**/MM/****) → mes_nascimento_pap
         data_nasc = None
+        mes_pap = None
         dt_nasc_str = dados.get("data_nascimento") or dados.get("data_nasc")
         if dt_nasc_str:
             if hasattr(dt_nasc_str, "year"):
@@ -125,7 +126,7 @@ def cadastrar_venda_pap_no_crm(dados: dict, numero_os: str, matricula_vendedor: 
             except (TypeError, ValueError):
                 mn = None
             if mn is not None and 1 <= mn <= 12:
-                data_nasc = date(1900, mn, 1)
+                mes_pap = mn
 
         # Data de agendamento: usar data já vinda da automação ou montar a partir do dia
         data_agend = None
@@ -181,9 +182,10 @@ def cadastrar_venda_pap_no_crm(dados: dict, numero_os: str, matricula_vendedor: 
             cidade=dados.get("cidade") or None,
             estado=dados.get("estado") or None,
             ponto_referencia=dados.get("referencia") or None,
-            # Identidade
-            nome_mae=dados.get("nome_mae") or None,
+            # Identidade (nome_mae pode vir mascarado do PAP, ex.: MARIA *********)
+            nome_mae=(dados.get("nome_mae") or "").strip() or None,
             data_nascimento=data_nasc,
+            mes_nascimento_pap=mes_pap,
             # Agendamento
             data_agendamento=data_agend,
             periodo_agendamento=periodo_agend,

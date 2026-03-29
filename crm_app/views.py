@@ -2071,10 +2071,22 @@ class VendaViewSet(viewsets.ModelViewSet):
                         if 'cliente_email' in dados_edicao: venda.cliente.email = dados_edicao['cliente_email']
                         venda.cliente.save()
 
-                    if 'nome_mae' in dados_edicao: venda.nome_mae = (dados_edicao['nome_mae'] or '').upper()
+                    if 'nome_mae' in dados_edicao:
+                        nm = dados_edicao['nome_mae']
+                        venda.nome_mae = (nm or '').strip() or None
                     if 'data_nascimento' in dados_edicao: 
                         dt = dados_edicao['data_nascimento']
                         venda.data_nascimento = None if dt == "" else dt
+                    if 'mes_nascimento_pap' in dados_edicao:
+                        mnp = dados_edicao['mes_nascimento_pap']
+                        if mnp is None or mnp == '':
+                            venda.mes_nascimento_pap = None
+                        else:
+                            try:
+                                mi = int(mnp)
+                                venda.mes_nascimento_pap = mi if 1 <= mi <= 12 else None
+                            except (TypeError, ValueError):
+                                venda.mes_nascimento_pap = None
                     if 'telefone1' in dados_edicao: venda.telefone1 = dados_edicao['telefone1']
                     if 'telefone2' in dados_edicao: venda.telefone2 = dados_edicao['telefone2']
                     if 'cep' in dados_edicao: venda.cep = str(dados_edicao['cep'])[:9]
@@ -3968,13 +3980,10 @@ class ImportacaoOsabDetailView(generics.RetrieveUpdateAPIView):
 
 
 # --- Controle de TT's (vendedores sem venda há X dias) ---
-SITUACOES_VENDA_VALIDA_OSAB = [
-    'Concluído',
-    'Pendência Cliente',
-    'Cancelado',
-    'Pendência Técnica',
-    'Em Aprovisionamento',
-]
+from crm_app.controle_tts_service import controle_tts_listar_ordenado
+
+# Compatibilidade com código que importava _controle_tts_listar_ordenado de views
+_controle_tts_listar_ordenado = controle_tts_listar_ordenado
 
 
 class ControleTTsAPIView(APIView):
@@ -3985,56 +3994,11 @@ class ControleTTsAPIView(APIView):
         if not is_member(request.user, ['BackOffice', 'Diretoria', 'Admin']):
             return Response({'error': 'Acesso negado. Apenas BackOffice, Diretoria ou Admin.'}, status=403)
         ontem = timezone.localdate() - timedelta(days=1)
-        resultado = _controle_tts_listar_ordenado()
+        resultado = controle_tts_listar_ordenado()
         return Response({
             'data_referencia': ontem.isoformat(),
             'itens': resultado,
         })
-
-
-def _controle_tts_listar_ordenado():
-    """Retorna lista de TTs ordenada por dias sem vender (decrescente). Reutilizado por ControleTTsAPIView e ControleTTsProximoAPIView."""
-    from django.db.models import Max, Q
-    hoje = timezone.localdate()
-    ontem = hoje - timedelta(days=1)
-    dois_meses_atras = hoje - timedelta(days=60)
-    matriculas_qs = (
-        ImportacaoOsab.objects
-        .filter(data_abertura__gte=dois_meses_atras, matricula_vendedor__isnull=False)
-        .exclude(matricula_vendedor='')
-        .values_list('matricula_vendedor', flat=True)
-        .distinct()
-    )
-    matriculas = list(matriculas_qs)
-    filtro_situacao_valida = Q(situacao__in=SITUACOES_VENDA_VALIDA_OSAB)
-    resultado = []
-    for mat in matriculas:
-        ultima = (
-            ImportacaoOsab.objects
-            .filter(matricula_vendedor=mat)
-            .filter(filtro_situacao_valida)
-            .filter(data_abertura__isnull=False)
-            .aggregate(Max('data_abertura'))
-        )
-        ultima_venda = ultima.get('data_abertura__max')
-        if ultima_venda is not None:
-            if hasattr(ultima_venda, 'date'):
-                ultima_venda = ultima_venda.date()
-            dias_sem_vender = (ontem - ultima_venda).days
-        else:
-            dias_sem_vender = None
-        resultado.append({
-            'matricula_vendedor': mat,
-            'ultima_venda': ultima_venda.isoformat() if ultima_venda else None,
-            'dias_sem_vender': dias_sem_vender,
-        })
-    def sort_key(item):
-        d = item['dias_sem_vender']
-        if d is None:
-            return -1
-        return -d
-    resultado.sort(key=sort_key)
-    return resultado
 
 
 class ControleTTsProximoAPIView(APIView):
@@ -4044,7 +4008,7 @@ class ControleTTsProximoAPIView(APIView):
     def get(self, request):
         if not is_member(request.user, ['BackOffice', 'Diretoria', 'Admin']):
             return Response({'error': 'Acesso negado.'}, status=403)
-        lista = _controle_tts_listar_ordenado()
+        lista = controle_tts_listar_ordenado()
         hoje = timezone.localdate()
         matriculas_marcadas_hoje = set(
             ControleTTDiaTratado.objects.filter(data=hoje).values_list('matricula_vendedor', flat=True)

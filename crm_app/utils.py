@@ -507,6 +507,8 @@ def montar_resumo_plano_para_whatsapp(venda):
         f"📅 *Fidelidade:* 12 meses\n\n"
         f"💰 *Taxa de habilitação:*\n"
         f"Você ganha isenção da taxa de habilitação se permanecer no mínimo 12 meses conosco.\n\n"
+        f"Sua primeira fatura irá vencer *25 dias* após a instalação da internet; nos demais meses, "
+        f"o vencimento segue o ciclo de *30 em 30 dias*.\n\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"✅ Confirma a venda?\n\n"
         f"Digite *CONFIRMAR* para enviar ao PAP\n"

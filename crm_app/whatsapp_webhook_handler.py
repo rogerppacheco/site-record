@@ -112,6 +112,25 @@ def formatar_telefone(telefone):
     return telefone_limpo
 
 
+def _strip_whatsapp_jid(val):
+    """Remove sufixo @s.whatsapp.net / @c.us do identificador (Z-API / Baileys)."""
+    if val is None:
+        return val
+    s = str(val).strip()
+    if "@" in s:
+        s = s.split("@", 1)[0]
+    return s
+
+
+def _texto_confirmacao_cliente_pap(protocolo_exibicao: str = "") -> str:
+    """Mensagem ao cliente após SIM; protocolo_exibicao = YYYYMMDDHHMM + seq (4 dígitos)."""
+    proto = (protocolo_exibicao or "").strip()
+    msg = "✅ *Confirmado!* O vendedor receberá a confirmação."
+    if proto:
+        msg += f"\n\n📋 *Protocolo:* {proto}"
+    return msg
+
+
 def _chave_telefone(telefone):
     """Chave única para dicionários de pendência (dígitos normalizados)."""
     return formatar_telefone(telefone) or ""
@@ -1438,7 +1457,6 @@ def _iniciar_fluxo_venda(telefone: str, sessao) -> str:
     
     return (
         f"🛒 *NOVA VENDA - PAP NIO*\n\n"
-        f"⚠️ *Portabilidade não pode ser feita pelo processo automático.*\n\n"
         f"Tempo médio do fluxo (seguindo rápido todas as etapas, com biometria pronta e *SIM* do cliente já respondido): cerca de 3 a 5 minutos.\n\n"
         f"Confirma que deseja iniciar uma nova venda?\n\n"
         f"Digite *SIM* para continuar ou *CANCELAR* para sair."
@@ -1606,7 +1624,7 @@ def _continuar_apos_correcao_credito(telefone: str, sessao_id: int, dados: dict)
                 enviar(f"❌ Erro no débito: {msg}\n\nDigite *VENDER* para tentar novamente.")
                 return
         for step_name, step_fn in [
-            ('plano', lambda: automacao.etapa5_selecionar_plano(dados.get('plano', '500mega'))),
+            ('plano', lambda: automacao.etapa5_selecionar_plano_com_validacao(dados.get('plano', '500mega'))),
             ('fixo', lambda: automacao.etapa5_selecionar_fixo(dados.get('tem_fixo', False))),
         ]:
             sucesso, msg = step_fn()
@@ -2156,6 +2174,14 @@ def _processar_agendamento_final(telefone: str, sessao, dados: dict, mensagem_li
     if not sucesso:
         return f"❌ {msg}\n\nDigite *VENDER* para iniciar novamente."
     try:
+        from crm_app.controle_tts_service import marcar_tt_tratado_apos_geracao_os
+
+        mat_tt = (dados.get("matricula_tt_pap_pedido") or "").strip()
+        if mat_tt and numero_os:
+            marcar_tt_tratado_apos_geracao_os(mat_tt)
+    except Exception as e:
+        logger.warning("[VENDA PAP] Controle TT após O.S.: %s", e)
+    try:
         vendedor = Usuario.objects.get(id=vendedor_id)
         dados_crm = {**dados, **dados_pedido}
         cadastrar_venda_pap_no_crm(dados_crm, numero_os or "", vendedor=vendedor)
@@ -2370,6 +2396,8 @@ def _montar_resumo_venda_e_pedir_confirmar(dados: dict) -> str:
         f"📅 *Fidelidade:* 12 meses\n\n"
         f"💰 *Taxa de habilitação:*\n"
         f"Você ganha isenção da taxa de habilitação se permanecer no mínimo 12 meses conosco.\n\n"
+        f"Sua primeira fatura irá vencer *25 dias* após a instalação da internet; nos demais meses, "
+        f"o vencimento segue o ciclo de *30 em 30 dias*.\n\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"✅ Confirma a venda?\n\n"
         f"Digite *CONFIRMAR* para enviar ao PAP\n"
@@ -2829,7 +2857,7 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                         _executar_ops_django_sync(_sync_etapa5_debito)
                     elif action == 'etapa5_plano':
                         plano = cmd.get('plano', '500mega')
-                        sucesso, msg = automacao.etapa5_selecionar_plano(plano)
+                        sucesso, msg = automacao.etapa5_selecionar_plano_com_validacao(plano)
                         def _sync_etapa5_plano():
                             sess = SessaoWhatsapp.objects.get(id=sessao_id)
                             dados = sess.dados_temp or {}
@@ -3835,7 +3863,7 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                         _executar_ops_django_sync(_sync_etapa5_debito)
                     elif action == 'etapa5_plano':
                         plano = cmd.get('plano', '500mega')
-                        sucesso, msg = automacao.etapa5_selecionar_plano(plano)
+                        sucesso, msg = automacao.etapa5_selecionar_plano_com_validacao(plano)
                         def _sync_etapa5_plano():
                             sess = SessaoWhatsapp.objects.get(id=sessao_id)
                             dados = sess.dados_temp or {}
@@ -4702,7 +4730,7 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
             cmd_queue.put({'action': 'etapa5_plano', 'plano': plano})
             return "⏳ Processando plano... Aguarde alguns instantes."
         
-        sucesso, msg = ctx['automacao'].etapa5_selecionar_plano(plano)
+        sucesso, msg = ctx['automacao'].etapa5_selecionar_plano_com_validacao(plano)
         if not sucesso:
             return f"❌ Plano: {msg}\n\nDigite 1, 2 ou 3:"
         
@@ -4972,11 +5000,11 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
             return (
                 "✅ Streaming: Sim\n\n"
                 "Escolha a opção de Streaming:\n\n"
-                "1️⃣ HBO Max – R$ 44,90/mês\n"
-                "2️⃣ Globoplay – Plano Premium – R$ 39,90/mês\n"
-                "3️⃣ Globoplay – Plano Padrão com Anúncios – R$ 22,90/mês\n"
-                "4️⃣ HBO Max + Globoplay Premium\n"
-                "5️⃣ HBO Max + Globoplay Padrão\n\n"
+                "1️⃣ HBO + Globoplay Premium\n"
+                "2️⃣ HBO + Globoplay Básico\n"
+                "3️⃣ Globoplay Básico\n"
+                "4️⃣ Globoplay Premium\n"
+                "5️⃣ HBO Max\n\n"
                 "Digite o número da opção:"
             )
         
@@ -5231,7 +5259,12 @@ def _executar_venda_pap(telefone: str, sessao, dados: dict) -> str:
         return "❌ *ERRO*\n\nSessão inválida. Digite *VENDER* para iniciar novamente."
     try:
         vendedor = Usuario.objects.get(id=vendedor_id)
-        vendedor_matricula = vendedor.matricula_pap
+        from crm_app.controle_tts_service import obter_matricula_tt_para_novo_pedido_pap
+
+        vendedor_matricula = obter_matricula_tt_para_novo_pedido_pap((vendedor.matricula_pap or "").strip())
+        dados["matricula_tt_pap_pedido"] = vendedor_matricula
+        sessao.dados_temp = dados
+        sessao.save(update_fields=["dados_temp"])
         vendedor_nome = vendedor.get_full_name() or vendedor.username
         bo_usuario = Usuario.objects.get(id=bo_usuario_id)
         bo_matricula = bo_usuario.matricula_pap
@@ -5280,7 +5313,11 @@ def _executar_venda_pap_etapa6_em_diante(
         celular_cliente = dados.get('celular', '') or automacao.dados_pedido.get('celular', '')
         msg_cliente = resumo_txt
         try:
-            WhatsAppService().enviar_mensagem_texto(celular_cliente, msg_cliente)
+            ws = WhatsAppService()
+            extra = "\n\nPara confirmar, toque no botão *SIM* ou responda *SIM*."
+            ok_btn, _ = ws.enviar_resumo_pap_com_botao_confirmar(celular_cliente, resumo_txt, texto_extra=extra)
+            if not ok_btn:
+                ws.enviar_mensagem_texto(celular_cliente, f"{msg_cliente}\n\nPara confirmar, responda *SIM*.")
         except Exception as e:
             logger.error(f"[VENDA PAP] Erro ao enviar resumo ao cliente: {e}")
             automacao._fechar_sessao()
@@ -5293,9 +5330,15 @@ def _executar_venda_pap_etapa6_em_diante(
                 cel_norm = _chave_telefone(celular_cliente)
                 # Apenas o número principal pode confirmar com SIM (secundário não é aceito)
                 celulares_reg = [cel_norm] if cel_norm else []
+                proto = (dados.get("protocolo") or automacao.dados_pedido.get("protocolo") or "").strip()
                 for c in celulares_reg:
                     PapConfirmacaoCliente.objects.filter(celular_cliente=c, confirmado=False, sessao_id=sessao_id).delete()
-                    PapConfirmacaoCliente.objects.create(celular_cliente=c, confirmado=False, sessao_id=sessao_id)
+                    PapConfirmacaoCliente.objects.create(
+                        celular_cliente=c,
+                        confirmado=False,
+                        sessao_id=sessao_id,
+                        protocolo_pedido=proto or None,
+                    )
                 SessaoWhatsapp.objects.filter(id=sessao_id).update(etapa='venda_aguardando_confirmacao')
             except Exception as e:
                 logger.warning("[VENDA PAP] Falha ao registrar PapConfirmacaoCliente/etapa: %s", e)
@@ -5331,10 +5374,27 @@ def _executar_venda_pap_etapa6_em_diante(
         logger.info("[VENDA PAP] Pending SIM registrado: celular_cliente=%s, chaves=%s", celular_cliente, todas_chaves_cliente)
         deadline = time.monotonic() + 600
         abrir_os_solicitado = False
+        from crm_app.services_pap_nio import PAP_NOVO_PEDIDO_URL
+        iter_keepalive = 0
         while time.monotonic() < deadline and not evt_cliente.is_set():
             try:
                 consultar_queue.get(timeout=30)
             except queue.Empty:
+                iter_keepalive += 1
+                # A cada ~5 min (10 × 30 s): valida sessão Vtal/PAP (evita travar em «Sessão finalizada»)
+                if iter_keepalive % 10 == 0:
+                    try:
+                        exp_antes = automacao._sessao_expirada_detectada()
+                        ok_s, msg_s = automacao.garantir_sessao_ativa(PAP_NOVO_PEDIDO_URL)
+                        if exp_antes and ok_s:
+                            enviar_resultado(
+                                "⚠️ *Sessão do portal PAP expirou* (timeout). Reconectamos automaticamente.\n\n"
+                                "Se o *pedido sumiu* da tela, digite *VENDER* para reenviar os dados ou continue no PAP."
+                            )
+                        elif not ok_s:
+                            logger.warning("[VENDA PAP] keepalive sessão: %s", msg_s)
+                    except Exception as e_ka:
+                        logger.warning("[VENDA PAP] keepalive sessão: %s", e_ka)
                 continue
             # CONSULTAR solicitado: clicar Consultar Biometria no PAP e enviar status (SIM + biometria)
             try:
@@ -5818,7 +5878,7 @@ def _executar_venda_pap_background(
                 resetar_sessao_e_liberar_bo(False, msg)
                 enviar_resultado(f"❌ *ERRO NO DÉBITO*\n\n{msg}\n\nDigite *VENDER* para tentar novamente.")
                 return
-        sucesso, msg = automacao.etapa5_selecionar_plano(dados.get('plano', '500mega'))
+        sucesso, msg = automacao.etapa5_selecionar_plano_com_validacao(dados.get('plano', '500mega'))
         if not sucesso:
             automacao._fechar_sessao()
             resetar_sessao_e_liberar_bo(False, msg)
@@ -5904,6 +5964,14 @@ def _verificar_biometria_venda(telefone: str, sessao, dados: dict) -> str:
         from crm_app.cadastro_venda_pap import cadastrar_venda_pap_no_crm
         vendedor = Usuario.objects.get(id=dados.get('vendedor_id'))
         dados_crm = {**dados, **automacao.dados_pedido}
+        try:
+            from crm_app.controle_tts_service import marcar_tt_tratado_apos_geracao_os
+
+            mat_tt = (dados.get("matricula_tt_pap_pedido") or "").strip()
+            if mat_tt and numero_os:
+                marcar_tt_tratado_apos_geracao_os(mat_tt)
+        except Exception as e:
+            logger.warning("[VENDA PAP] Controle TT após O.S. (VERIFICAR): %s", e)
         cadastrar_venda_pap_no_crm(dados_crm, numero_os or "", vendedor=vendedor)
         
         sessao.etapa = 'inicial'
@@ -6125,6 +6193,142 @@ def processar_resposta_gc_antecipar(telefone_remetente, mensagem_texto):
     return True
 
 
+def _buscar_buttons_response_zapi(d, _depth=0):
+    """Localiza o dict buttonsResponseMessage no payload Z-API (busca recursiva)."""
+    if _depth > 14 or not isinstance(d, dict):
+        return None
+    for key in ("buttonsResponseMessage", "buttonResponseMessage"):
+        br = d.get(key)
+        if isinstance(br, dict):
+            return br
+    for v in d.values():
+        if isinstance(v, dict):
+            br = _buscar_buttons_response_zapi(v, _depth + 1)
+            if br is not None:
+                return br
+        elif isinstance(v, list):
+            for item in v:
+                if isinstance(item, dict):
+                    br = _buscar_buttons_response_zapi(item, _depth + 1)
+                    if br is not None:
+                        return br
+    return None
+
+
+# IDs de botões Z-API (send-button-actions) → texto equivalente ao que o usuário digitaria
+_BTN_ZAPI_ID_PARA_COMANDO = {
+    "pap_confirmar_sim": "SIM",
+    "pap_agenda_confirmar": "CONFIRMAR",
+    "pap_agenda_alterar": "ALTERAR",
+    "pap_agenda_cancelar": "CANCELAR",
+    "pap_agenda_sim": "SIM",
+    "pap_abrir_os_sim": "SIM",
+    "pap_abrir_os_nao": "NAO",
+    "pap_venda_confirmar_envio": "CONFIRMAR",
+}
+
+
+def _texto_efetivo_botao_zapi(data):
+    """Se o payload só trouxe botão sem texto, devolve o comando mapeado pelo buttonId."""
+    br = _buscar_buttons_response_zapi(data)
+    if not br:
+        return ""
+    bid = (br.get("buttonId") or br.get("selectedButtonId") or "").strip()
+    if bid in _BTN_ZAPI_ID_PARA_COMANDO:
+        return _BTN_ZAPI_ID_PARA_COMANDO[bid]
+    msg = (br.get("message") or br.get("selectedButtonText") or "").strip()
+    return msg or ""
+
+
+def _aplicar_resposta_botao_zapi(data, mensagem_texto):
+    """
+    Clique em botão (ex.: send-button-actions) vem como buttonsResponseMessage;
+    mapeia ids conhecidos para o comando textual esperado pelo fluxo.
+    """
+    br = _buscar_buttons_response_zapi(data)
+    if not br:
+        return mensagem_texto
+    bid = (br.get("buttonId") or br.get("selectedButtonId") or "").strip()
+    msg = (br.get("message") or br.get("selectedButtonText") or "").strip()
+    if bid in _BTN_ZAPI_ID_PARA_COMANDO:
+        padrao = _BTN_ZAPI_ID_PARA_COMANDO[bid]
+        return (msg or padrao).strip()
+    if bid == "pap_confirmar_sim":
+        return (msg or "SIM").strip()
+    if not (mensagem_texto or "").strip() and msg:
+        return msg.strip()
+    return mensagem_texto
+
+
+def _venda_tentar_enviar_resposta_com_botoes(telefone_formatado, sessao, resposta_texto):
+    """
+    Etapas PAP que pedem SIM/CONFIRMAR/ALTERAR: envia botões REPLY e retorna None para não duplicar o texto.
+    Se a API falhar, devolve o texto original para envio normal.
+    """
+    if not resposta_texto or not str(resposta_texto).strip():
+        return resposta_texto
+    et = (getattr(sessao, "etapa", None) or "").strip()
+    from crm_app.whatsapp_service import WhatsAppService
+
+    botoes = None
+    if et == "venda_agendamento_confirmar_data":
+        botoes = [
+            {"id": "pap_agenda_confirmar", "type": "REPLY", "label": "CONFIRMAR"},
+            {"id": "pap_agenda_alterar", "type": "REPLY", "label": "ALTERAR"},
+        ]
+    elif et == "venda_agendamento_confirmar_turno":
+        botoes = [
+            {"id": "pap_agenda_confirmar", "type": "REPLY", "label": "CONFIRMAR"},
+            {"id": "pap_agenda_alterar", "type": "REPLY", "label": "ALTERAR"},
+        ]
+    elif et == "venda_agendamento_sim_agendar":
+        botoes = [
+            {"id": "pap_agenda_sim", "type": "REPLY", "label": "SIM"},
+            {"id": "pap_agenda_cancelar", "type": "REPLY", "label": "CANCELAR"},
+        ]
+    elif et == "venda_agendamento_final":
+        botoes = [
+            {"id": "pap_agenda_confirmar", "type": "REPLY", "label": "CONFIRMAR"},
+            {"id": "pap_agenda_alterar", "type": "REPLY", "label": "ALTERAR"},
+            {"id": "pap_agenda_cancelar", "type": "REPLY", "label": "CANCELAR"},
+        ]
+    elif et == "venda_confirmar":
+        botoes = [
+            {"id": "pap_venda_confirmar_envio", "type": "REPLY", "label": "CONFIRMAR"},
+            {"id": "pap_agenda_cancelar", "type": "REPLY", "label": "CANCELAR"},
+        ]
+    elif et == "venda_aguardando_abrir_os":
+        botoes = [
+            {"id": "pap_abrir_os_sim", "type": "REPLY", "label": "SIM"},
+            {"id": "pap_abrir_os_nao", "type": "REPLY", "label": "NÃO"},
+        ]
+    if not botoes:
+        return resposta_texto
+    ws = WhatsAppService()
+    ok, _ = ws.enviar_mensagem_com_botoes_reply(
+        telefone_formatado, resposta_texto.strip(), botoes
+    )
+    if ok:
+        logger.info(
+            "[Webhook] Etapa %s: resposta enviada com botões REPLY (Z-API)", et
+        )
+        return None
+    return resposta_texto
+
+
+def _pap_confirmacao_queryset_prioriza_protocolo(qs):
+    """Pendências com protocolo_pedido preenchido vêm antes (evita cruzar com registro legado sem protocolo)."""
+    from django.db.models import Case, When, Value, IntegerField
+
+    return qs.annotate(
+        _prio_proto=Case(
+            When(protocolo_pedido__isnull=False, then=Value(1)),
+            default=Value(0),
+            output_field=IntegerField(),
+        )
+    ).order_by("-_prio_proto", "-criado_em")
+
+
 def processar_webhook_whatsapp(data, request=None):
     """
     Processa mensagens recebidas do WhatsApp via webhook.
@@ -6185,6 +6389,10 @@ def processar_webhook_whatsapp(data, request=None):
     else:
         telefone_usuario = telefone
 
+    telefone = _strip_whatsapp_jid(telefone)
+    telefone_usuario = _strip_whatsapp_jid(telefone_usuario)
+    participant_phone = _strip_whatsapp_jid(participant_phone)
+
     # Extrair mensagem antes do return de grupo (para permitir resposta do GC em grupo)
     mensagem_texto = ""
     if 'text' in data and isinstance(data['text'], dict):
@@ -6207,6 +6415,11 @@ def processar_webhook_whatsapp(data, request=None):
     elif not isinstance(mensagem_texto, str):
         mensagem_texto = str(mensagem_texto) if mensagem_texto else ""
     mensagem_texto = (mensagem_texto or "").strip()
+    mensagem_texto = _aplicar_resposta_botao_zapi(data, mensagem_texto).strip()
+    if not mensagem_texto:
+        mensagem_texto = (_texto_efetivo_botao_zapi(data) or "").strip()
+    if _buscar_buttons_response_zapi(data):
+        logger.info("[Webhook] buttonsResponseMessage presente; texto efetivo: %r", mensagem_texto)
 
     # Ignorar mensagens de grupo — exceto se for resposta do GC (formato [O.S], antecipada|não antecipada|solicitado)
     if is_group:
@@ -6275,13 +6488,17 @@ def processar_webhook_whatsapp(data, request=None):
         with _pending_lock:
             pend_cliente = next((_pending_client_confirm.get(k) for k in chaves_tentar if _pending_client_confirm.get(k)), None)
         if pend_cliente:
+            from crm_app.pap_protocolo_confirmacao_envio import gerar_protocolo_confirmacao_envio
+
+            proto_envio = gerar_protocolo_confirmacao_envio()
             try:
                 from crm_app.models import PapConfirmacaoCliente
+
                 sessao_id_pend = pend_cliente.get('sessao_id')
                 for k in (chaves_tentar or [chave]):
                     updated = PapConfirmacaoCliente.objects.filter(
                         celular_cliente=k, confirmado=False, sessao_id=sessao_id_pend
-                    ).update(confirmado=True)
+                    ).update(confirmado=True, protocolo_confirmacao_envio=proto_envio)
                     if updated:
                         logger.info(f"[Webhook] [Cliente] PapConfirmacaoCliente confirmado (sessao_id={sessao_id_pend}, celular={k})")
                         break
@@ -6289,13 +6506,7 @@ def processar_webhook_whatsapp(data, request=None):
                 logger.warning(f"[Webhook] Erro ao marcar PapConfirmacaoCliente (cliente): {e}", exc_info=True)
             pend_cliente['event'].set()
             try:
-                protocolo = ''
-                automacao = pend_cliente.get('automacao')
-                if automacao and hasattr(automacao, 'dados_pedido'):
-                    protocolo = automacao.dados_pedido.get('protocolo', '') or ''
-                msg_cliente = "✅ *Confirmado!* O vendedor receberá a confirmação."
-                if protocolo:
-                    msg_cliente += f"\n\n📋 *Protocolo:* {protocolo}"
+                msg_cliente = _texto_confirmacao_cliente_pap(proto_envio)
                 WhatsAppService().enviar_mensagem_texto(telefone_formatado, msg_cliente)
             except Exception:
                 pass
@@ -6303,12 +6514,18 @@ def processar_webhook_whatsapp(data, request=None):
         # Fallback: confirmação só no BD (ex.: outro replica não tem o in-memory pend)
         try:
             from crm_app.models import PapConfirmacaoCliente, Venda
-            pend_bd = PapConfirmacaoCliente.objects.filter(
-                celular_cliente__in=chaves_tentar, confirmado=False
-            ).order_by('-criado_em').first()
+            pend_bd = _pap_confirmacao_queryset_prioriza_protocolo(
+                PapConfirmacaoCliente.objects.filter(
+                    celular_cliente__in=chaves_tentar, confirmado=False
+                )
+            ).first()
             if pend_bd:
+                from crm_app.pap_protocolo_confirmacao_envio import gerar_protocolo_confirmacao_envio
+
+                proto_envio = gerar_protocolo_confirmacao_envio()
                 pend_bd.confirmado = True
-                pend_bd.save()
+                pend_bd.protocolo_confirmacao_envio = proto_envio
+                pend_bd.save(update_fields=["confirmado", "protocolo_confirmacao_envio"])
                 logger.info(f"[Webhook] [Cliente] PapConfirmacaoCliente confirmado via BD (celular={pend_bd.celular_cliente})")
                 with _pending_lock:
                     for _k, _v in _pending_client_confirm.items():
@@ -6316,28 +6533,25 @@ def processar_webhook_whatsapp(data, request=None):
                             _v['event'].set()
                             break
                 try:
-                    protocolo = ''
-                    # Resumo enviado da auditoria: gerar protocolo e salvar na venda (uma confirmação por venda)
-                    if getattr(pend_bd, 'venda_id', None) and pend_bd.venda_id:
+                    # Resumo da auditoria: mesmo protocolo de envio (YYYYMMDDHHMM + seq) na venda
+                    if getattr(pend_bd, "venda_id", None) and pend_bd.venda_id:
                         venda = Venda.objects.filter(id=pend_bd.venda_id).first()
                         if venda and not venda.protocolo_confirmacao_auditoria:
                             now = timezone.now()
-                            protocolo = now.strftime("%Y%m%d%H%M") + str(venda.id)
                             venda.cliente_confirmou_auditoria = True
-                            venda.protocolo_confirmacao_auditoria = protocolo
+                            venda.protocolo_confirmacao_auditoria = proto_envio
                             venda.data_confirmacao_auditoria = now
-                            venda.save(update_fields=['cliente_confirmou_auditoria', 'protocolo_confirmacao_auditoria', 'data_confirmacao_auditoria'])
-                            logger.info(f"[Webhook] [Auditoria] Protocolo gerado para venda {venda.id}: {protocolo}")
-                        elif venda and venda.protocolo_confirmacao_auditoria:
-                            protocolo = venda.protocolo_confirmacao_auditoria
-                    elif pend_bd.sessao_id:
-                        with _automacoes_lock:
-                            ctx_pend = _automacoes_pap_ativas.get(pend_bd.sessao_id)
-                        if ctx_pend and ctx_pend.get('automacao'):
-                            protocolo = ctx_pend['automacao'].dados_pedido.get('protocolo', '') or ''
-                    msg_cliente = "✅ *Confirmado!* O vendedor receberá a confirmação."
-                    if protocolo:
-                        msg_cliente += f"\n\n📋 *Protocolo:* {protocolo}"
+                            venda.save(
+                                update_fields=[
+                                    "cliente_confirmou_auditoria",
+                                    "protocolo_confirmacao_auditoria",
+                                    "data_confirmacao_auditoria",
+                                ]
+                            )
+                            logger.info(
+                                f"[Webhook] [Auditoria] Protocolo confirmação venda {venda.id}: {proto_envio}"
+                            )
+                    msg_cliente = _texto_confirmacao_cliente_pap(proto_envio)
                     WhatsAppService().enviar_mensagem_texto(telefone_formatado, msg_cliente)
                 except Exception:
                     pass
@@ -6471,6 +6685,96 @@ def processar_webhook_whatsapp(data, request=None):
     except Exception as e:
         logger.warning(f"[Webhook] Erro ao processar resposta boas-vindas: {e}", exc_info=True)
     
+    # PAP: confirmação do cliente (SIM) / BIO OK antes de tratar "contato externo" (cliente não é usuário interno).
+    etapa_sessao = None
+    try:
+        etapa_sessao = SessaoWhatsapp.objects.filter(telefone=telefone_formatado).values_list('etapa', flat=True).first()
+    except Exception:
+        pass
+    sim_no_fluxo_vender = (mensagem_limpa in ['SIM', 'S'] and etapa_sessao == 'venda_confirmar_matricula')
+
+    chave = _chave_telefone(telefone_formatado_usuario)
+    chaves_tentar = _chaves_telefone_variantes(telefone_formatado_usuario) or [chave]
+    with _pending_lock:
+        pend_cliente = next((_pending_client_confirm.get(k) for k in chaves_tentar if _pending_client_confirm.get(k)), None)
+        pend_bio = next((_pending_bio_ok.get(k) for k in chaves_tentar if _pending_bio_ok.get(k)), None)
+
+    if not sim_no_fluxo_vender and pend_cliente and mensagem_limpa in ['SIM', 'S', 'CONFIRMAR']:
+        from crm_app.pap_protocolo_confirmacao_envio import gerar_protocolo_confirmacao_envio
+
+        proto_envio = gerar_protocolo_confirmacao_envio()
+        try:
+            from crm_app.models import PapConfirmacaoCliente
+
+            sessao_id_pend = pend_cliente.get('sessao_id')
+            for k in (chaves_tentar or [chave]):
+                updated = PapConfirmacaoCliente.objects.filter(
+                    celular_cliente=k, confirmado=False, sessao_id=sessao_id_pend
+                ).update(confirmado=True, protocolo_confirmacao_envio=proto_envio)
+                if updated:
+                    logger.info(f"[Webhook] PapConfirmacaoCliente marcado confirmado=True (sessao_id={sessao_id_pend}, celular={k})")
+                    break
+        except Exception as e:
+            logger.warning(f"[Webhook] Erro ao marcar PapConfirmacaoCliente (pend_cliente): {e}", exc_info=True)
+        pend_cliente['event'].set()
+        try:
+            msg_cliente = _texto_confirmacao_cliente_pap(proto_envio)
+            WhatsAppService().enviar_mensagem_texto(telefone_formatado, msg_cliente)
+        except Exception:
+            pass
+        return {'status': 'ok', 'mensagem': 'Confirmado pelo cliente'}
+
+    if not sim_no_fluxo_vender and mensagem_limpa in ['SIM', 'S', 'CONFIRMAR']:
+        try:
+            from crm_app.models import PapConfirmacaoCliente
+            from crm_app.pap_protocolo_confirmacao_envio import gerar_protocolo_confirmacao_envio
+
+            chaves = chaves_tentar or [chave]
+            with _pending_lock:
+                keys_pending = list(_pending_client_confirm.keys())
+            logger.info(
+                "[Webhook] [DEBUG] Cliente respondeu SIM. Telefone=%s, chaves_tentar=%s, keys_no_pending=%s",
+                telefone_formatado, chaves, keys_pending[:20] if len(keys_pending) > 20 else keys_pending,
+            )
+            for k in chaves:
+                pend = _pap_confirmacao_queryset_prioriza_protocolo(
+                    PapConfirmacaoCliente.objects.filter(celular_cliente=k, confirmado=False)
+                ).first()
+                logger.info(f"[Webhook] [DEBUG] Chave '{k}': pendente encontrado={pend is not None}")
+                if pend:
+                    if pend.sessao_id:
+                        sessao_pend_etapa = SessaoWhatsapp.objects.filter(
+                            id=pend.sessao_id
+                        ).values_list('etapa', flat=True).first()
+                        if sessao_pend_etapa != 'venda_aguardando_confirmacao':
+                            logger.info(
+                                "[Webhook] [DEBUG] Ignorando SIM: pendente da sessão %s (etapa=%s) não está em venda_aguardando_confirmacao",
+                                pend.sessao_id, sessao_pend_etapa,
+                            )
+                            continue
+                    proto_envio = gerar_protocolo_confirmacao_envio()
+                    pend.confirmado = True
+                    pend.protocolo_confirmacao_envio = proto_envio
+                    pend.save(update_fields=["confirmado", "protocolo_confirmacao_envio"])
+                    logger.info(f"[Webhook] PapConfirmacaoCliente marcado confirmado=True (celular={k}, sessao_id={pend.sessao_id})")
+                    try:
+                        msg_cliente = _texto_confirmacao_cliente_pap(proto_envio)
+                        WhatsAppService().enviar_mensagem_texto(telefone_formatado, msg_cliente)
+                    except Exception:
+                        pass
+                    return {'status': 'ok', 'mensagem': 'Confirmado pelo cliente (BD)'}
+            logger.info(f"[Webhook] [DEBUG] Nenhum PapConfirmacaoCliente pendente encontrado para chaves {chaves}")
+        except Exception as e:
+            logger.warning(f"[Webhook] Erro ao marcar PapConfirmacaoCliente: {e}", exc_info=True)
+
+    if pend_bio and mensagem_limpa in ['BIO OK', 'BIOOK', 'CONSULTAR']:
+        pend_bio['event'].set()
+        try:
+            WhatsAppService().enviar_mensagem_texto(telefone_formatado, "⏳ Consultando biometria...")
+        except Exception:
+            pass
+        return {'status': 'ok', 'mensagem': 'BIO OK recebido'}
+
     # Verificar se o número está associado a um usuário ativo (em grupo, usar participant_phone)
     usuario_whatsapp = _usuario_ativo_por_telefone(telefone_formatado_usuario)
     if not usuario_whatsapp:
@@ -6495,109 +6799,6 @@ def processar_webhook_whatsapp(data, request=None):
         except Exception as e:
             logger.exception("[Webhook] Erro ao enviar resposta para contato externo: %s", e)
         return {'status': 'ok', 'mensagem': 'Contato externo: resposta enviada'}
-    
-    # Se for SIM no fluxo VENDER (confirmar matrícula), não tratar como confirmação de cliente
-    etapa_sessao = None
-    try:
-        etapa_sessao = SessaoWhatsapp.objects.filter(telefone=telefone_formatado).values_list('etapa', flat=True).first()
-    except Exception:
-        pass
-    sim_no_fluxo_vender = (mensagem_limpa in ['SIM', 'S'] and etapa_sessao == 'venda_confirmar_matricula')
-    
-    # === ETAPA 6: Confirmação do cliente (SIM) ou BIO OK do vendedor ===
-    # (não aplicar quando SIM é do fluxo VENDER: "Digite SIM para continuar" → abrir PAP/navegador)
-    chave = _chave_telefone(telefone_formatado_usuario)
-    chaves_tentar = _chaves_telefone_variantes(telefone_formatado_usuario) or [chave]
-    with _pending_lock:
-        pend_cliente = next((_pending_client_confirm.get(k) for k in chaves_tentar if _pending_client_confirm.get(k)), None)
-        pend_bio = next((_pending_bio_ok.get(k) for k in chaves_tentar if _pending_bio_ok.get(k)), None)
-    
-    if not sim_no_fluxo_vender and pend_cliente and mensagem_limpa in ['SIM', 'S']:
-        try:
-            from crm_app.models import PapConfirmacaoCliente
-            sessao_id_pend = pend_cliente.get('sessao_id')
-            for k in (chaves_tentar or [chave]):
-                updated = PapConfirmacaoCliente.objects.filter(
-                    celular_cliente=k, confirmado=False, sessao_id=sessao_id_pend
-                ).update(confirmado=True)
-                if updated:
-                    logger.info(f"[Webhook] PapConfirmacaoCliente marcado confirmado=True (sessao_id={sessao_id_pend}, celular={k})")
-                    break
-        except Exception as e:
-            logger.warning(f"[Webhook] Erro ao marcar PapConfirmacaoCliente (pend_cliente): {e}", exc_info=True)
-        pend_cliente['event'].set()
-        try:
-            protocolo = ''
-            automacao = pend_cliente.get('automacao')
-            if automacao and hasattr(automacao, 'dados_pedido'):
-                protocolo = automacao.dados_pedido.get('protocolo', '') or ''
-            msg_cliente = "✅ *Confirmado!* O vendedor receberá a confirmação."
-            if protocolo:
-                msg_cliente += f"\n\n📋 *Protocolo:* {protocolo}"
-            WhatsAppService().enviar_mensagem_texto(telefone_formatado, msg_cliente)
-        except Exception:
-            pass
-        return {'status': 'ok', 'mensagem': 'Confirmado pelo cliente'}
-
-    # Terminal (testar_pap_terminal): confirmação via BD - cliente respondeu Sim (não no fluxo VENDER)
-    # Só aceitar se o pendente for de uma sessão que está aguardando confirmação (evita marcar sessão errada)
-    if not sim_no_fluxo_vender and mensagem_limpa in ['SIM', 'S']:
-        try:
-            from crm_app.models import PapConfirmacaoCliente
-            chaves = chaves_tentar or [chave]
-            with _pending_lock:
-                keys_pending = list(_pending_client_confirm.keys())
-            logger.info(
-                "[Webhook] [DEBUG] Cliente respondeu SIM. Telefone=%s, chaves_tentar=%s, keys_no_pending=%s",
-                telefone_formatado, chaves, keys_pending[:20] if len(keys_pending) > 20 else keys_pending,
-            )
-            for k in chaves:
-                pend = PapConfirmacaoCliente.objects.filter(
-                    celular_cliente=k, confirmado=False
-                ).order_by('-criado_em').first()
-                logger.info(f"[Webhook] [DEBUG] Chave '{k}': pendente encontrado={pend is not None}")
-                if pend:
-                    # Só marcar confirmado se a sessão do pendente ainda estiver aguardando SIM (evita cross-session / sessão antiga)
-                    sessao_pend_etapa = None
-                    if pend.sessao_id:
-                        sessao_pend_etapa = SessaoWhatsapp.objects.filter(
-                            id=pend.sessao_id
-                        ).values_list('etapa', flat=True).first()
-                    if sessao_pend_etapa != 'venda_aguardando_confirmacao':
-                        logger.info(
-                            "[Webhook] [DEBUG] Ignorando SIM: pendente da sessão %s (etapa=%s) não está em venda_aguardando_confirmacao",
-                            pend.sessao_id, sessao_pend_etapa,
-                        )
-                        continue
-                    pend.confirmado = True
-                    pend.save()
-                    logger.info(f"[Webhook] PapConfirmacaoCliente marcado confirmado=True (celular={k}, sessao_id={pend.sessao_id})")
-                    try:
-                        protocolo = ''
-                        sessao_id_pend = pend.sessao_id if pend.sessao_id else (pend.sessao.pk if pend.sessao else None)
-                        if sessao_id_pend:
-                            with _automacoes_lock:
-                                ctx_pend = _automacoes_pap_ativas.get(sessao_id_pend)
-                            if ctx_pend and ctx_pend.get('automacao'):
-                                protocolo = ctx_pend['automacao'].dados_pedido.get('protocolo', '') or ''
-                        msg_cliente = "✅ *Confirmado!* O vendedor receberá a confirmação."
-                        if protocolo:
-                            msg_cliente += f"\n\n📋 *Protocolo:* {protocolo}"
-                        WhatsAppService().enviar_mensagem_texto(telefone_formatado, msg_cliente)
-                    except Exception:
-                        pass
-                    return {'status': 'ok', 'mensagem': 'Confirmado pelo cliente (BD)'}
-            logger.info(f"[Webhook] [DEBUG] Nenhum PapConfirmacaoCliente pendente encontrado para chaves {chaves}")
-        except Exception as e:
-            logger.warning(f"[Webhook] Erro ao marcar PapConfirmacaoCliente: {e}", exc_info=True)
-    
-    if pend_bio and mensagem_limpa in ['BIO OK', 'BIOOK', 'CONSULTAR']:
-        pend_bio['event'].set()
-        try:
-            WhatsAppService().enviar_mensagem_texto(telefone_formatado, "⏳ Consultando biometria...")
-        except Exception:
-            pass
-        return {'status': 'ok', 'mensagem': 'BIO OK recebido'}
     
     # Inicializar serviço WhatsApp
     whatsapp_service = WhatsAppService()
@@ -8487,6 +8688,7 @@ def processar_webhook_whatsapp(data, request=None):
         elif etapa_atual.startswith('venda_'):
             logger.info(f"[Webhook] Processando etapa de venda: {etapa_atual}")
             resposta = _processar_etapa_venda(telefone_formatado, mensagem_texto, sessao, etapa_atual, webhook_t0=_webhook_t0)
+            resposta = _venda_tentar_enviar_resposta_com_botoes(telefone_formatado, sessao, resposta)
         
         else:
             # Menu só aparece quando o usuário pede (MENU/AJUDA). Mensagem não reconhecida não gera resposta.

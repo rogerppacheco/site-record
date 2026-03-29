@@ -260,7 +260,7 @@ class VendaSerializer(serializers.ModelSerializer):
             'status_comissionamento', 'status_comissionamento_nome',
             'motivo_pendencia', 'motivo_pendencia_nome',
             'data_criacao', 'forma_entrada', 'cpf_representante_legal', 'nome_representante_legal',
-            'nome_mae', 'data_nascimento', 'telefone1', 'telefone2', 'cep', 'logradouro', 'numero_residencia',
+            'nome_mae', 'data_nascimento', 'mes_nascimento_pap', 'telefone1', 'telefone2', 'cep', 'logradouro', 'numero_residencia',
             'complemento', 'bairro', 'cidade', 'estado',             'data_abertura', 'ordem_servico', 'data_agendamento',
             'periodo_agendamento', 'data_instalacao', 'data_instalacao_fisica', 'antecipou_instalacao', 'antecipacao_comissao',
             'ponto_referencia', 'observacoes', 'data_pagamento', 'valor_pago',
@@ -310,7 +310,7 @@ class VendaDetailSerializer(serializers.ModelSerializer):
             'cliente_cpf_cnpj', 'cliente_nome_razao_social', 'cliente_email',
             'plano', 'forma_pagamento', 'status_tratamento', 'status_esteira',
             'status_comissionamento', 'motivo_pendencia',
-            'nome_mae', 'data_nascimento', 'telefone1', 'telefone2',
+            'nome_mae', 'data_nascimento', 'mes_nascimento_pap', 'telefone1', 'telefone2',
             'cep', 'logradouro', 'numero_residencia', 'complemento', 'bairro', 'cidade', 'estado',
             'ponto_referencia', 'observacoes', 'ordem_servico', 'data_abertura',
             'data_agendamento', 'periodo_agendamento', 'data_instalacao', 'data_instalacao_fisica', 'antecipou_instalacao', 'antecipacao_comissao',
@@ -397,7 +397,7 @@ class VendaCreateSerializer(serializers.ModelSerializer):
         model = Venda
         fields = [
             'cliente_cpf_cnpj', 'cliente_nome_razao_social', 'cliente_email',
-            'nome_mae', 'data_nascimento', 'forma_pagamento', 'plano', 'cep',
+            'nome_mae', 'data_nascimento', 'mes_nascimento_pap', 'forma_pagamento', 'plano', 'cep',
             'logradouro', 'numero_residencia', 'complemento', 'bairro', 'cidade', 'estado',
             'forma_entrada', 'tem_fixo', 'telefone1', 'telefone2', 'cpf_representante_legal',
             'nome_representante_legal', 'ponto_referencia', 'observacoes',
@@ -406,7 +406,7 @@ class VendaCreateSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
         for key, value in data.items():
-            if isinstance(value, str) and key not in ['cliente_email', 'observacoes']:
+            if isinstance(value, str) and key not in ['cliente_email', 'observacoes', 'nome_mae']:
                 data[key] = value.upper()
         return data
 
@@ -451,7 +451,7 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
         # Converte para maiúsculo, exceto email e obs
         for key, value in data.items():
             if value is None: continue
-            if isinstance(value, str) and key not in ['cliente_email', 'observacoes']:
+            if isinstance(value, str) and key not in ['cliente_email', 'observacoes', 'nome_mae']:
                 data[key] = value.upper()
 
         ordem_servico = (data.get('ordem_servico', getattr(self.instance, 'ordem_servico', None)) or '').strip()

@@ -162,8 +162,9 @@
                                         </div>
 
                                         <div class="grid-auto-3 mb-3">
-                                            <div><label class="form-label small text-muted fw-bold">Nome da Mãe</label><div class="input-group"><input type="text" class="form-control form-control-script uppercase-input" id="audit-nome-mae"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-nome-mae')"><i class="bi bi-clipboard" id="btn-icon-audit-nome-mae"></i></button></div></div>
+                                            <div><label class="form-label small text-muted fw-bold">Nome da Mãe</label><div class="input-group"><input type="text" class="form-control form-control-script" id="audit-nome-mae" placeholder="Como no PAP (pode incluir *)"><button class="btn btn-copy" type="button" onclick="copiarCampo('audit-nome-mae')"><i class="bi bi-clipboard" id="btn-icon-audit-nome-mae"></i></button></div></div>
                                             <div><label class="form-label small text-muted fw-bold">Data Nasc.</label><input type="date" class="form-control form-control-script" id="audit-data-nasc" onchange="calcularIdadeAuto()"></div>
+                                            <div><label class="form-label small text-muted fw-bold" title="Mês visível quando o portal mostra **/MM/****">Mês nasc. (PAP)</label><input type="number" min="1" max="12" class="form-control form-control-script" id="audit-mes-nasc-pap" placeholder="1–12" onchange="calcularIdadeAuto()" title="Somente o mês revelado no portal PAP"></div>
                                             <div><label class="form-label small text-muted fw-bold">Idade</label><input type="text" class="form-control bg-white" id="audit-idade-calc" readonly></div>
                                         </div>
 
@@ -684,6 +685,8 @@
                 const emailCli = (v.cliente && v.cliente.email) ? v.cliente.email : (v.cliente_email || '');
                 $('#audit-cliente-nome').val(nomeCli); $('#audit-cliente-cpf').val(cpfCli); $('#audit-email').val(emailCli);
                 $('#audit-nome-mae').val(v.nome_mae || ''); $('#audit-data-nasc').val(v.data_nascimento || '');
+                const mnp = v.mes_nascimento_pap;
+                $('#audit-mes-nasc-pap').val(mnp != null && mnp !== '' ? mnp : '');
                 $('#audit-tel1').val(v.telefone1 || ''); $('#audit-tel2').val(v.telefone2 || '');
                 $('#audit-cep').val(v.cep || ''); $('#audit-logradouro').val(v.logradouro || ''); $('#audit-numero').val(v.numero_residencia || '');
                 $('#audit-complemento').val(v.complemento || ''); $('#audit-bairro').val(v.bairro || ''); $('#audit-cidade').val(v.cidade || '');
@@ -744,16 +747,35 @@
         }
 
         function calcularIdadeAuto() {
-            const dn = $('#audit-data-nasc').val(); if(!dn) { $('#audit-idade-calc').val(''); return; }
-            const nasc = new Date(dn); const hoje = new Date(); let idade = hoje.getFullYear() - nasc.getFullYear();
-            if (hoje.getMonth() < nasc.getMonth() || (hoje.getMonth() === nasc.getMonth() && hoje.getDate() < nasc.getDate())) idade--;
-            $('#audit-idade-calc').val(idade + ' anos');
+            const dn = $('#audit-data-nasc').val();
+            const mesPapRaw = $('#audit-mes-nasc-pap').val();
+            const mesPap = mesPapRaw !== '' && mesPapRaw != null ? parseInt(mesPapRaw, 10) : NaN;
+            const mesesNome = ['','janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+            if (dn) {
+                const nasc = new Date(dn); const hoje = new Date(); let idade = hoje.getFullYear() - nasc.getFullYear();
+                if (hoje.getMonth() < nasc.getMonth() || (hoje.getMonth() === nasc.getMonth() && hoje.getDate() < nasc.getDate())) idade--;
+                $('#audit-idade-calc').val(idade + ' anos');
+                return;
+            }
+            if (!isNaN(mesPap) && mesPap >= 1 && mesPap <= 12) {
+                $('#audit-idade-calc').val('Só mês (PAP): ' + mesesNome[mesPap]);
+                return;
+            }
+            $('#audit-idade-calc').val('');
+        }
+
+        function mesNascPapColetar() {
+            const x = $('#audit-mes-nasc-pap').val();
+            if (x === '' || x == null) return null;
+            const n = parseInt(x, 10);
+            return (isNaN(n) || n < 1 || n > 12) ? null : n;
         }
 
         function coletarDadosAuditoria() {
             return {
                 cliente_nome: $('#audit-cliente-nome').val(), cliente_cpf: $('#audit-cliente-cpf').val(), cliente_email: $('#audit-email').val(),
-                nome_mae: $('#audit-nome-mae').val(), data_nascimento: $('#audit-data-nasc').val(), telefone1: $('#audit-tel1').val(), telefone2: $('#audit-tel2').val(),
+                nome_mae: $('#audit-nome-mae').val(), data_nascimento: $('#audit-data-nasc').val(), mes_nascimento_pap: mesNascPapColetar(),
+                telefone1: $('#audit-tel1').val(), telefone2: $('#audit-tel2').val(),
                 cep: $('#audit-cep').val(), logradouro: $('#audit-logradouro').val(), numero: $('#audit-numero').val(), complemento: $('#audit-complemento').val(),
                 bairro: $('#audit-bairro').val(), cidade: $('#audit-cidade').val(), estado: $('#audit-uf').val(), referencia: $('#audit-ref').val(),
                 plano: $('#audit-plano').val(), forma_pagamento: $('#audit-pagamento').val(), data_agendamento: $('#audit-data-agendamento').val(), periodo_agendamento: $('#audit-turno-agendamento').val(),
@@ -965,6 +987,7 @@
                     observacoes: d.observacoes || null,
                     nome_mae: d.nome_mae || null,
                     data_nascimento: d.data_nascimento || null,
+                    mes_nascimento_pap: d.mes_nascimento_pap != null ? d.mes_nascimento_pap : null,
                     telefone1: d.telefone1 || null,
                     telefone2: d.telefone2 || null,
                     cep: d.cep || null,
