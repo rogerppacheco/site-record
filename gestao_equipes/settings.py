@@ -347,6 +347,14 @@ PAP_WHATSAPP_PERMITIR_FORCAR_SIM_CLIENTE = config(
     cast=lambda v: str(v).lower() in ('true', '1', 'yes'),
 )
 
+# Desenvolvimento local: com DEBUG=True, após enviar o resumo ao cliente marca o SIM automaticamente
+# (não precisa do webhook nem de FORCAR_SIM). Nunca use em produção (DEBUG=False ignora mesmo com true).
+PAP_WHATSAPP_AUTO_SIM_CLIENTE_LOCAL = config(
+    'PAP_WHATSAPP_AUTO_SIM_CLIENTE_LOCAL',
+    default=False,
+    cast=lambda v: str(v).lower() in ('true', '1', 'yes'),
+)
+
 # Após "Abrir OS", tempo máximo (ms) aguardando a UI de agendamento (portal pode demorar nas validações).
 PAP_ETAPA7_AGENDAMENTO_TIMEOUT_MS = config('PAP_ETAPA7_AGENDAMENTO_TIMEOUT_MS', default=120000, cast=int)
 

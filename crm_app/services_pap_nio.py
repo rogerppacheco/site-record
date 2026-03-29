@@ -176,6 +176,49 @@ SELETORES_MATRICULA_VENDEDOR_CSS = ", ".join(SELETORES_MATRICULA_VENDEDOR)
 # Código retornado quando o modal "OPS, OCORREU UM ERRO!" aparece no PAP (erro do portal; orientar abrir chamado Nio)
 PAP_ERRO_PORTAL_NIO = "PAP_ERRO_PORTAL_NIO"
 
+# Após reset do portal (ex.: modal "Ocorreu um erro" + Ok → Etapa 1), até qual subpasso reaplicar
+# para alinhar o browser com a etapa atual do WhatsApp. Ver PAPNioAutomation.tentar_recuperar_portal_reset_etapa1.
+# 0=só novo pedido (tela CEP); 1=viabilidade ok; 2=+CPF; 3=+contato; 4=+forma; 5=+débito se houver ou já em planos;
+# 6=+plano; 7=+fixo; 8=+portabilidade fixo; 9=+streaming e Avançar até resumo.
+WPP_ETAPA_REPLAY_TARGET_SN = {
+    "venda_cep": 0,
+    "venda_numero": 0,
+    "venda_referencia": 0,
+    "venda_selecionar_endereco": 1,
+    "venda_selecionar_complemento": 1,
+    "venda_posse_consultar_outro": 1,
+    "venda_indisponivel_voltar": 1,
+    "venda_corrigir_celular": 3,
+    "venda_corrigir_email": 3,
+    "venda_corrigir_cpf": 2,
+    "venda_cpf": 1,
+    "venda_celular": 2,
+    "venda_celular_sec": 2,
+    "venda_email": 3,
+    "venda_forma_pagamento": 3,
+    "venda_debito_banco": 4,
+    "venda_debito_agencia": 4,
+    "venda_debito_conta": 4,
+    "venda_debito_digito": 4,
+    "venda_plano": 5,
+    "venda_fixo": 6,
+    "venda_fixo_portabilidade": 7,
+    "venda_fixo_portabilidade_numero": 7,
+    "venda_fixo_portabilidade_operadora": 7,
+    "venda_streaming": 8,
+    "venda_streaming_opcoes": 8,
+    "venda_confirmar": 9,
+    "venda_aguardando_confirmacao": 9,
+    "venda_aguardando_biometria": 9,
+    "venda_aguardando_abrir_os": 9,
+    "venda_agendamento_dia": 9,
+    "venda_agendamento_confirmar_data": 9,
+    "venda_agendamento_periodo": 9,
+    "venda_agendamento_confirmar_turno": 9,
+    "venda_agendamento_sim_agendar": 9,
+    "venda_agendamento_final": 9,
+}
+
 # =============================================================================
 # CLASSE PRINCIPAL DE AUTOMAÇÃO
 # =============================================================================
@@ -824,6 +867,26 @@ class PAPNioAutomation:
                     False,
                     "Sessão do portal expirou durante a espera; reconexão feita. "
                     "O pedido em tela pode ter sido perdido — use *CONSULTAR* ou *VENDER* conforme o caso.",
+                )
+            # Modal "Ocorreu um erro" (ex.: falha ao abrir OS) bloqueia a UI — não esperar o timeout inteiro
+            if self._pap_modal_titulo_ocorreu_erro_visivel():
+                trecho_m = self._pap_extrair_texto_modal_proximo_a_titulo_erro()
+                self._pap_fechar_modal_ocorreu_erro_h3_ok()
+                self.page.wait_for_timeout(400)
+                low_m = (trecho_m or "").lower()
+                if (
+                    "não foi possível abrir o pedido" in low_m
+                    or "nao foi possivel abrir o pedido" in low_m
+                    or "abrir o pedido" in low_m
+                ):
+                    return (
+                        False,
+                        "O portal exibiu erro ao abrir o pedido/OS durante a espera pelo agendamento. "
+                        "Tente mais tarde ou abra chamado na Nio; o fluxo pode ter voltado à Etapa 1.",
+                    )
+                return (
+                    False,
+                    (trecho_m or "Ocorreu um erro no portal").strip()[:400],
                 )
             restante_ms = max(1000, int((deadline - time.monotonic()) * 1000))
             chunk = min(poll_ms, restante_ms)
@@ -1784,8 +1847,26 @@ class PAPNioAutomation:
             except Exception:
                 pass
             self.page.wait_for_timeout(250 if self.optimize_for_credit else 500)
+            # Modal OPS na consulta: clicar "Tentar novamente" e reenviar Buscar (até 2 tentativas)
+            for _ops_tentativa in range(2):
+                if not self.verificar_modal_erro_ops_visivel():
+                    break
+                if not self._fechar_modal_erro_ops():
+                    return False, PAP_ERRO_PORTAL_NIO, None
+                self.page.wait_for_timeout(800 if self.optimize_for_credit else 1200)
+                btn_buscar_retry = self.page.query_selector('button:has-text("Buscar"):not([disabled])')
+                if btn_buscar_retry and btn_buscar_retry.is_visible():
+                    btn_buscar_retry.click()
+                try:
+                    self.page.wait_for_selector(
+                        f'{end_inst_sel}, {ref_selector}, h2:has-text("OPS, OCORREU UM ERRO")',
+                        state="visible",
+                        timeout=15000,
+                    )
+                except Exception:
+                    pass
+                self.page.wait_for_timeout(250 if self.optimize_for_credit else 500)
             if self.verificar_modal_erro_ops_visivel():
-                self._fechar_modal_erro_ops()
                 return False, PAP_ERRO_PORTAL_NIO, None
             
             # 4b. Verificar múltiplos endereços (dropdown "Endereço de instalação")
@@ -2491,8 +2572,9 @@ class PAPNioAutomation:
             except Exception:
                 self.page.wait_for_timeout(1200 if self.optimize_for_credit else 3000)
             
-            # Fechar modal "OPS, OCORREU UM ERRO!" se aparecer (erro do portal PAP → abrir chamado Nio)
-            if self._fechar_modal_erro_ops():
+            # Modal "OPS, OCORREU UM ERRO!" após consultar documento (portal instável → orientar chamado Nio)
+            if self.verificar_modal_erro_ops_visivel():
+                self._fechar_modal_erro_ops()
                 return False, PAP_ERRO_PORTAL_NIO, None
             
             self._capture_screenshot("03_cpf_cliente_ok", wait_selector='button:has-text("Avançar"):not([disabled])', wait_timeout_ms=5000)
@@ -3177,18 +3259,81 @@ class PAPNioAutomation:
     def _fechar_modal_erro_ops(self) -> bool:
         """
         Fecha o modal 'OPS, OCORREU UM ERRO!' clicando em 'Tentar novamente'.
-        Retorna True se o modal estava presente e foi fechado (indica erro do portal PAP → abrir chamado Nio).
+        Usa vários seletores (texto, role, classes styled-components) e fallback via JS.
+        Retorna True somente se o clique foi disparado; False se o modal não estava visível ou o botão não foi encontrado.
         """
         try:
+            if not self.page:
+                return False
             if not self.verificar_modal_erro_ops_visivel():
                 return False
-            btn = self.page.query_selector('button:has-text("Tentar novamente")')
-            if btn and btn.is_visible():
-                btn.click()
-                self.page.wait_for_timeout(800)
-                logger.warning("[PAP] Modal 'OPS, OCORREU UM ERRO!' fechado (Tentar novamente). Orientar abrir chamado na Nio.")
+            clicked = False
+            # 1) get_by_role (melhor para acessibilidade / texto variando)
+            try:
+                first = self.page.get_by_role("button", name=re.compile(r"tentar\s+novamente", re.I)).first
+                if first.is_visible():
+                    first.click(timeout=8000)
+                    clicked = True
+            except Exception as e_try:
+                logger.debug("[PAP] _fechar_modal_erro_ops get_by_role: %s", e_try)
+            # 2) Botão no mesmo bloco do h2 OPS (estrutura sc-gKLXLV / sc-* do PAP)
+            if not clicked:
+                try:
+                    b = (
+                        self.page.locator("div:has(h2:has-text('OPS'))")
+                        .locator("button")
+                        .filter(has_text=re.compile(r"tentar\s+novamente", re.I))
+                        .first
+                    )
+                    if b.is_visible():
+                        b.click(timeout=8000)
+                        clicked = True
+                except Exception as e_try:
+                    logger.debug("[PAP] _fechar_modal_erro_ops escopo OPS: %s", e_try)
+            # 3) :has-text clássico
+            if not clicked:
+                btn = self.page.query_selector('button:has-text("Tentar novamente")')
+                if btn and btn.is_visible():
+                    btn.click()
+                    clicked = True
+            # 4) Classe do botão (ex.: sc-hXhGGG eOQbpS no portal Nio)
+            if not clicked:
+                for sel in (
+                    'button.sc-hXhGGG',
+                    'button[class*="sc-hXhGGG"]',
+                    'div.sc-gKLXLV button',
+                    'div[class*="sc-gKLXLV"] button',
+                ):
+                    try:
+                        cand = self.page.query_selector(sel)
+                        if cand and cand.is_visible():
+                            txt = (cand.inner_text() or "").strip().lower()
+                            if "tentar" in txt and "novamente" in txt:
+                                cand.click()
+                                clicked = True
+                                break
+                    except Exception:
+                        continue
+            # 5) Fallback: qualquer button com o texto
+            if not clicked:
+                clicked = bool(
+                    self.page.evaluate(
+                        """
+                        () => {
+                          const btns = [...document.querySelectorAll('button')];
+                          const b = btns.find(x => /tentar\\s*novamente/i.test((x.textContent || '').trim()));
+                          if (b) { b.click(); return true; }
+                          return false;
+                        }
+                        """
+                    )
+                )
+            if clicked:
+                self.page.wait_for_timeout(800 if not self.optimize_for_credit else 400)
+                logger.warning("[PAP] Modal 'OPS, OCORREU UM ERRO!': clicado em 'Tentar novamente'.")
                 return True
-            return True
+            logger.warning("[PAP] Modal OPS visível mas botão 'Tentar novamente' não encontrado.")
+            return False
         except Exception as e:
             logger.warning("[PAP] _fechar_modal_erro_ops: %s", e)
             return False
@@ -3264,14 +3409,412 @@ class PAPNioAutomation:
             logger.debug("[PAP] _pap_fechar_dialogos_erro_conhecidos: %s", e)
         return fechou, (texto_antes or "")[:400]
 
+    def _pap_modal_titulo_ocorreu_erro_visivel(self) -> bool:
+        """True se h2/h3 'Ocorreu um erro' estiver visível (portal Nio usa h2 em vários builds)."""
+        try:
+            if not self.page:
+                return False
+            for sel in (
+                'h2:has-text("Ocorreu um erro")',
+                'h3:has-text("Ocorreu um erro")',
+            ):
+                el = self.page.query_selector(sel)
+                if el and el.is_visible():
+                    return True
+            return "Ocorreu um erro" in (self.page.content() or "")
+        except Exception:
+            return False
+
+    def _pap_extrair_texto_modal_proximo_a_titulo_erro(self) -> str:
+        """Texto do bloco do modal (para decidir se é erro ao abrir pedido/OS)."""
+        try:
+            for sel in ('h2:has-text("Ocorreu um erro")', 'h3:has-text("Ocorreu um erro")'):
+                el = self.page.query_selector(sel)
+                if not el or not el.is_visible():
+                    continue
+                try:
+                    root = el.evaluate(
+                        """e => {
+                          let n = e;
+                          for (let i = 0; i < 12 && n; i++) {
+                            if (n.getAttribute && n.getAttribute('role') === 'dialog') return n.innerText || '';
+                            const cls = (n.className && String(n.className)) || '';
+                            if (cls.includes('modal') || cls.includes('Modal') || cls.includes('sc-')) {
+                              const t = (n.innerText || '').trim();
+                              if (t.length > 20 && t.length < 4000) return t;
+                            }
+                            n = n.parentElement;
+                          }
+                          return (e.closest('div') || e).innerText || '';
+                        }"""
+                    )
+                    if root and len(str(root).strip()) > 5:
+                        return str(root).strip()[:2000]
+                except Exception:
+                    pass
+                try:
+                    return (el.evaluate("e => (e.closest('div') || e).innerText || ''") or "")[:2000]
+                except Exception:
+                    return (el.inner_text() or "")[:800]
+        except Exception:
+            pass
+        return ""
+
+    def _pap_fechar_modal_ocorreu_erro_h3_ok(self) -> bool:
+        """
+        Fecha modal 'Ocorreu um erro' (h2 ou h3) clicando em Ok.
+        O PAP costuma usar styled-components (ex.: div.sc-*) sem role=\"dialog\" — por isso vários fallbacks.
+        """
+        try:
+            if not self.page:
+                return False
+            if not self._pap_modal_titulo_ocorreu_erro_visivel():
+                return False
+            clicked = False
+            try:
+                box = self.page.locator(
+                    "div:has(h2:has-text('Ocorreu um erro')), div:has(h3:has-text('Ocorreu um erro'))"
+                ).first
+                if box.is_visible():
+                    for label in ("Ok", "OK"):
+                        try:
+                            b = box.locator(f"button:has-text('{label}')").first
+                            if b.is_visible():
+                                b.click(timeout=5000)
+                                clicked = True
+                                break
+                        except Exception:
+                            continue
+            except Exception as e_try:
+                logger.debug("[PAP] fechar modal ocorreu erro (box): %s", e_try)
+            if not clicked:
+                for sel in (
+                    '[role="dialog"] button:has-text("Ok")',
+                    '[role="dialog"] button:has-text("OK")',
+                    '.MuiDialog-root button:has-text("Ok")',
+                    'button:has-text("Ok")',
+                    'button:has-text("OK")',
+                ):
+                    try:
+                        btn = self.page.query_selector(sel)
+                        if btn and btn.is_visible():
+                            btn.click()
+                            clicked = True
+                            break
+                    except Exception:
+                        continue
+            if not clicked:
+                clicked = bool(
+                    self.page.evaluate(
+                        """
+                        () => {
+                          const heads = [...document.querySelectorAll('h2, h3')];
+                          const h = heads.find(el => /ocorreu\\s+um\\s+erro/i.test((el.textContent || '').trim()));
+                          if (!h) return false;
+                          let root = h.closest('[role="dialog"]') || h.parentElement;
+                          for (let depth = 0; depth < 14 && root; depth++) {
+                            const btns = [...root.querySelectorAll('button')];
+                            const okb = btns.find(b => /^ok$/i.test((b.textContent || '').trim()));
+                            if (okb && okb.offsetParent !== null) { okb.click(); return true; }
+                            root = root.parentElement;
+                          }
+                          const vis = [...document.querySelectorAll('button')].filter(b => b.offsetParent !== null);
+                          const greenOk = vis.find(b => /^ok$/i.test((b.textContent || '').trim()));
+                          if (greenOk) { greenOk.click(); return true; }
+                          return false;
+                        }
+                        """
+                    )
+                )
+            if clicked:
+                self.page.wait_for_timeout(600)
+                logger.warning("[PAP] Modal 'Ocorreu um erro' fechado (Ok).")
+                return True
+            self._pap_fechar_dialogos_erro_conhecidos()
+            return False
+        except Exception as e:
+            logger.debug("[PAP] _pap_fechar_modal_ocorreu_erro_h3_ok: %s", e)
+            return False
+
+    def detectar_tela_etapa1_identificacao_pdv(self) -> bool:
+        """True se o fluxo voltou à identificação PDV (Etapa 1 / matrícula vendedor)."""
+        try:
+            if not self.page:
+                return False
+            span = self.page.locator('span:has-text("Etapa 1")').first
+            if not span.is_visible():
+                return False
+            mi = self._query_matricula_vendedor_input()
+            return bool(mi and mi.is_visible())
+        except Exception:
+            return False
+
+    def _pap_merge_dados_sessao_para_replay(self, dados_sessao: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """Une dados da sessão WhatsApp com dados_pedido já preenchidos na automação (replay após reset)."""
+        out: Dict[str, Any] = {}
+        try:
+            out.update(self.dados_pedido or {})
+        except Exception:
+            pass
+        if dados_sessao:
+            out.update(dados_sessao)
+        return out
+
+    def _pap_replay_viabilidade_com_dados(self, d: Dict[str, Any]) -> Tuple[bool, str, Any]:
+        """
+        Refaz consulta de viabilidade e ramificações (múltiplos endereços / complementos) usando dados salvos.
+        Retorno extra: None=disponível e Continuar aplicado; dict MULTIPLOS/COMPLEMENTOS=parado na escolha;
+        POSSE_ENCONTRADA / INDISPONIVEL_TECNICO = erro.
+        """
+        cep = (d.get("cep") or "").strip()
+        numero = d.get("numero", "")
+        ref = (d.get("referencia") or "").strip()
+        if not cep or numero is None or numero == "" or not ref:
+            return False, "Dados de endereço incompletos para recuperação automática.", None
+        numero_s = str(numero).strip()
+        sucesso, msg, extra = self.etapa2_viabilidade(cep, numero_s, ref)
+        if isinstance(extra, dict) and extra.get("_codigo") == "MULTIPLOS_ENDERECOS":
+            idx = d.get("pap_replay_endereco_idx")
+            if idx is None or str(idx).strip() == "":
+                return True, "", extra
+            try:
+                idx_i = int(idx)
+            except (TypeError, ValueError):
+                return False, "Índice de endereço salvo inválido para replay.", None
+            ok_sel, msg_sel = self.etapa2_selecionar_endereco_instalacao(idx_i)
+            if not ok_sel:
+                return False, msg_sel or "Replay endereço", None
+            sucesso2, msg2, extra2 = self.etapa2_preencher_referencia_e_continuar(cep, numero_s, ref)
+            return self._pap_replay_resolve_pos_referencia(cep, numero_s, ref, sucesso2, msg2, extra2, d)
+        if isinstance(extra, dict) and extra.get("_codigo") == "COMPLEMENTOS":
+            return self._pap_replay_complemento_ou_avancar(cep, numero_s, ref, d, extra)
+        if extra in ("POSSE_ENCONTRADA", "INDISPONIVEL_TECNICO"):
+            return False, msg, extra
+        if sucesso:
+            return True, msg or "", None
+        if msg == PAP_ERRO_PORTAL_NIO:
+            return False, msg, None
+        return False, msg or "Viabilidade", None
+
+    def _pap_replay_resolve_pos_referencia(
+        self,
+        cep: str,
+        numero_s: str,
+        ref: str,
+        sucesso2: bool,
+        msg2: str,
+        extra2: Any,
+        d: Dict[str, Any],
+    ) -> Tuple[bool, str, Any]:
+        if isinstance(extra2, dict) and extra2.get("_codigo") == "COMPLEMENTOS":
+            return self._pap_replay_complemento_ou_avancar(cep, numero_s, ref, d, extra2)
+        if extra2 in ("POSSE_ENCONTRADA", "INDISPONIVEL_TECNICO"):
+            return False, msg2, extra2
+        if sucesso2:
+            return True, msg2 or "", None
+        if msg2 == PAP_ERRO_PORTAL_NIO:
+            return False, msg2, None
+        return False, msg2 or "Referência/viabilidade", None
+
+    def _pap_replay_complemento_ou_avancar(
+        self, cep: str, numero_s: str, ref: str, d: Dict[str, Any], extra_comp: dict
+    ) -> Tuple[bool, str, Any]:
+        esc = (d.get("pap_replay_complemento_escolha") or "").strip()
+        if not esc:
+            return True, "", extra_comp
+        esc_up = esc.upper()
+        if esc_up in ("0", "SEM", "SEM COMPLEMENTO", "NAO", "NÃO", "N"):
+            ok_c, msg_c = self.etapa2_selecionar_sem_complemento()
+        elif esc.isdigit():
+            ok_c, msg_c = self.etapa2_selecionar_complemento(int(esc))
+        else:
+            return False, "Complemento salvo inválido para replay.", None
+        if not ok_c:
+            return False, msg_c or "Replay complemento", None
+        sucesso3, msg3, extra3 = self.etapa2_clicar_avancar_apos_complemento(cep, numero_s)
+        if extra3 in ("POSSE_ENCONTRADA", "INDISPONIVEL_TECNICO"):
+            return False, msg3, extra3
+        if sucesso3:
+            return True, msg3 or "", None
+        if msg3 == PAP_ERRO_PORTAL_NIO:
+            return False, msg3, None
+        return False, msg3 or "Avançar pós-complemento", None
+
+    def _pap_replay_target_sn_para_etapa(self, etapa_whatsapp: str) -> int:
+        if not etapa_whatsapp:
+            return 0
+        if etapa_whatsapp in WPP_ETAPA_REPLAY_TARGET_SN:
+            return WPP_ETAPA_REPLAY_TARGET_SN[etapa_whatsapp]
+        if etapa_whatsapp.startswith("venda_") and etapa_whatsapp not in (
+            "venda_erro_retry",
+            "venda_aguardando_pap",
+            "venda_confirmar_matricula",
+        ):
+            return 9
+        return 0
+
+    def _pap_executar_replay_ate_target_sn(
+        self, d: Dict[str, Any], matricula_vendedor: str, target_sn: int
+    ) -> Tuple[bool, str]:
+        """Executa subpassos 0..target_sn para alinhar o PAP com a sessão WhatsApp."""
+        if target_sn < 0:
+            return True, ""
+        ok, msg = self.iniciar_novo_pedido(matricula_vendedor)
+        if not ok:
+            return False, msg
+        if target_sn < 1:
+            return True, ""
+        v_ok, v_msg, v_extra = self._pap_replay_viabilidade_com_dados(d)
+        if not v_ok:
+            return False, v_msg or "Replay viabilidade"
+        if isinstance(v_extra, dict) and v_extra.get("_codigo") in ("MULTIPLOS_ENDERECOS", "COMPLEMENTOS"):
+            if target_sn <= 1:
+                return True, ""
+            return False, "Faltam pap_replay_endereco_idx ou pap_replay_complemento_escolha para concluir o replay."
+        if target_sn < 2:
+            return True, ""
+        cpf = re.sub(r"\D", "", (d.get("cpf_cliente") or ""))
+        if len(cpf) < 11:
+            return False, "CPF do cliente ausente nos dados salvos."
+        ok3, msg3, _ = self.etapa3_cadastro_cliente(cpf)
+        if not ok3:
+            return False, msg3 or "Replay etapa 3"
+        if target_sn < 3:
+            return True, ""
+        cel = re.sub(r"\D", "", (d.get("celular") or ""))
+        email = (d.get("email") or "").strip()
+        if not cel or not email:
+            return False, "Celular ou e-mail ausente nos dados salvos."
+        cel_sec = d.get("celular_sec") or None
+        if cel_sec:
+            cel_sec = re.sub(r"\D", "", str(cel_sec)) or None
+        ok4, msg4, _, _ = self.etapa4_contato(cel, email, celular_secundario=cel_sec, parar_no_modal_credito=False)
+        if not ok4:
+            if msg4 == PAP_ERRO_PORTAL_NIO:
+                return False, msg4
+            return False, msg4 or "Replay contato"
+        if target_sn < 4:
+            return True, ""
+        forma = (d.get("forma_pagamento") or "").strip().lower()
+        if forma not in ("boleto", "cartao", "debito"):
+            return False, "Forma de pagamento ausente ou inválida nos dados salvos."
+        okf, msgf = self.etapa5_selecionar_forma_pagamento(forma)
+        if not okf:
+            return False, msgf or "Replay forma pagamento"
+        if target_sn < 5:
+            return True, ""
+        if forma == "debito":
+            banco = (d.get("banco") or d.get("banco_dacc") or "").strip()
+            agencia = (d.get("agencia") or d.get("agencia_dacc") or "").strip()
+            conta = (d.get("conta") or d.get("conta_dacc") or "").strip()
+            digito = (d.get("digito") or d.get("digito_dacc") or "").strip()
+            if not (banco and agencia and conta and digito):
+                return False, "Dados de débito em conta incompletos nos dados salvos."
+            okd, msgd = self.etapa5_preencher_debito(banco, agencia, conta, digito)
+            if not okd:
+                return False, msgd or "Replay débito"
+        if target_sn < 6:
+            return True, ""
+        plano = (d.get("plano") or "").strip().lower()
+        if plano not in ("1giga", "700mega", "500mega"):
+            return False, "Plano ausente nos dados salvos."
+        okp, msgp = self.etapa5_selecionar_plano_com_validacao(plano)
+        if not okp:
+            return False, msgp or "Replay plano"
+        if target_sn < 7:
+            return True, ""
+        tem_fixo = bool(d.get("tem_fixo"))
+        okfx, msgfx = self.etapa5_selecionar_fixo(tem_fixo)
+        if not okfx:
+            return False, msgfx or "Replay fixo"
+        if target_sn < 8:
+            return True, ""
+        if tem_fixo:
+            quer = bool(d.get("fixo_portabilidade"))
+            num_p = (d.get("fixo_portabilidade_numero") or "").strip()
+            op_p = (d.get("fixo_portabilidade_operadora") or "").strip()
+            okpb, msgpb = self.etapa5_fixo_finalizar_portabilidade(quer, num_p, op_p)
+            if not okpb:
+                return False, msgpb or "Replay portabilidade fixo"
+        if target_sn < 9:
+            return True, ""
+        tem_st = bool(d.get("tem_streaming"))
+        sop = (d.get("streaming_opcoes") or "").strip()
+        oks, msgs = self.etapa5_selecionar_streaming(tem_st, sop, plano)
+        if not oks:
+            return False, msgs or "Replay streaming"
+        oka, msga = self.etapa5_clicar_avancar()
+        if not oka:
+            return False, msga or "Replay avançar pós-ofertas"
+        return True, ""
+
+    def tentar_recuperar_portal_reset_etapa1(
+        self,
+        dados_sessao: Optional[Dict[str, Any]],
+        matricula_vendedor: str,
+        etapa_whatsapp: str,
+    ) -> Tuple[bool, str]:
+        """
+        Detecta modal 'Ocorreu um erro' e/ou retorno à Etapa 1 e reaplica o fluxo com dados salvos.
+        Retorna (True, "") se não havia reset ou a recuperação foi ok; (False, msg) em falha.
+        """
+        if not self.page or not matricula_vendedor:
+            return True, ""
+        try:
+            self._pap_fechar_modal_ocorreu_erro_h3_ok()
+            self._fechar_modal_erro_ops()
+            if self._pap_modal_erro_aparente(self._pap_detectar_texto_modal_visivel()):
+                self._pap_fechar_dialogos_erro_conhecidos()
+                self.page.wait_for_timeout(400)
+        except Exception as e:
+            logger.debug("[PAP] tentar_recuperar: fechar modais: %s", e)
+        if not self.detectar_tela_etapa1_identificacao_pdv():
+            return True, ""
+        if not etapa_whatsapp or etapa_whatsapp in (
+            "inicial",
+            "venda_aguardando_pap",
+            "venda_confirmar_matricula",
+            "venda_erro_retry",
+        ):
+            return True, ""
+        d = self._pap_merge_dados_sessao_para_replay(dados_sessao)
+        target = self._pap_replay_target_sn_para_etapa(etapa_whatsapp)
+        logger.warning(
+            "[PAP] Reset para Etapa 1 detectado — reaplicando fluxo até sn=%s (etapa_wpp=%s).",
+            target,
+            etapa_whatsapp,
+        )
+        ok, msg = self._pap_executar_replay_ate_target_sn(d, matricula_vendedor, target)
+        if ok:
+            return True, ""
+        return False, msg or "Falha ao reaplicar dados após reset do portal."
+
     def _pap_tratar_modais_apos_acao_pap(self) -> Tuple[bool, str]:
         """
         Após cliques (Consultar Biometria, Abrir OS): OPS do portal + diálogos com 'error'/erro.
+        Trata também o modal h2/h3 'Ocorreu um erro' (sem role=dialog), comum após Abrir OS falhar.
         Retorna (pode_continuar, mensagem_erro_ou_vazia). Se pode_continuar False, houve erro explícito.
         """
         try:
             self._fechar_modal_erro_ops()
             self.page.wait_for_timeout(400)
+            if self._pap_modal_titulo_ocorreu_erro_visivel():
+                trecho_modal = self._pap_extrair_texto_modal_proximo_a_titulo_erro()
+                self._pap_fechar_modal_ocorreu_erro_h3_ok()
+                self.page.wait_for_timeout(400)
+                low = (trecho_modal or "").lower()
+                if (
+                    "não foi possível abrir o pedido" in low
+                    or "nao foi possivel abrir o pedido" in low
+                    or "abrir o pedido" in low
+                ):
+                    return (
+                        False,
+                        "O portal não conseguiu abrir o pedido/OS. "
+                        "A mensagem pede para tentar mais tarde; em geral o fluxo volta à Etapa 1. "
+                        "Abra chamado na Nio se necessário ou inicie nova venda.",
+                    )
+                return False, (trecho_modal.strip()[:500] if trecho_modal else "O portal exibiu 'Ocorreu um erro'.")
             txt = self._pap_detectar_texto_modal_visivel()
             if self._pap_modal_erro_aparente(txt):
                 self._pap_fechar_dialogos_erro_conhecidos()
@@ -4703,7 +5246,10 @@ class PAPNioAutomation:
             if not btn:
                 return False, "Botão Consultar Biometria não encontrado."
             btn.click()
-            self.page.wait_for_load_state("networkidle", timeout=10000)
+            try:
+                self.page.wait_for_load_state("networkidle", timeout=10000)
+            except Exception:
+                pass
             self.page.wait_for_timeout(800)
             ok_modal, err_modal = self._pap_tratar_modais_apos_acao_pap()
             if not ok_modal and err_modal:
@@ -4740,7 +5286,10 @@ class PAPNioAutomation:
             except Exception:
                 self.page.wait_for_timeout(2000)
 
-            self.page.wait_for_load_state("networkidle", timeout=8000)
+            try:
+                self.page.wait_for_load_state("networkidle", timeout=8000)
+            except Exception:
+                pass
 
             # Voltar no navegador pode deixar a tela na etapa anterior (só Avançar). Ir à etapa 6 antes de consultar.
             self._etapa6_avancar_ate_tela_biometria()

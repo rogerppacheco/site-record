@@ -2405,6 +2405,39 @@ def _montar_resumo_venda_e_pedir_confirmar(dados: dict) -> str:
     )
 
 
+def _pap_marcar_confirmacao_sim_cliente_no_bd(sessao_id: int, dados: dict, celular_cliente_fallback: str = "") -> int:
+    """
+    Marca PapConfirmacaoCliente como confirmado para a sessão (protocolo de envio gerado).
+    Retorna quantas linhas foram atualizadas (0 se já estava confirmado ou sem registro).
+    """
+    from crm_app.models import PapConfirmacaoCliente
+    from crm_app.pap_protocolo_confirmacao_envio import gerar_protocolo_confirmacao_envio
+
+    dados = dados or {}
+    celular_ref = (
+        dados.get("celular")
+        or dados.get("celular_principal")
+        or (celular_cliente_fallback or "")
+    )
+    chaves_cel = list(
+        dict.fromkeys([_chave_telefone(celular_ref)] + (_chaves_telefone_variantes(celular_ref) or []))
+    )
+    chaves_cel = [c for c in chaves_cel if c]
+    proto_envio = gerar_protocolo_confirmacao_envio()
+    n = 0
+    if chaves_cel:
+        n = PapConfirmacaoCliente.objects.filter(
+            sessao_id=sessao_id,
+            celular_cliente__in=chaves_cel,
+            confirmado=False,
+        ).update(confirmado=True, protocolo_confirmacao_envio=proto_envio)
+    if n == 0:
+        n = PapConfirmacaoCliente.objects.filter(sessao_id=sessao_id, confirmado=False).update(
+            confirmado=True, protocolo_confirmacao_envio=proto_envio
+        )
+    return n
+
+
 def _forcar_sim_confirmacao_cliente_pap(sessao, telefone_vendedor: str) -> str:
     """
     Homologação: marca PapConfirmacaoCliente como confirmado e acorda a worker (event + fila CONSULTAR).
@@ -2417,27 +2450,9 @@ def _forcar_sim_confirmacao_cliente_pap(sessao, telefone_vendedor: str) -> str:
             "⚠️ Comando *FORCAR_SIM* não está habilitado. "
             "Defina a variável de ambiente *PAP_WHATSAPP_PERMITIR_FORCAR_SIM_CLIENTE=true* no servidor (somente homologação)."
         )
-    from crm_app.models import PapConfirmacaoCliente
-    from crm_app.pap_protocolo_confirmacao_envio import gerar_protocolo_confirmacao_envio
 
     dados = sessao.dados_temp or {}
-    celular_ref = dados.get("celular") or dados.get("celular_principal") or ""
-    chaves_cel = list(
-        dict.fromkeys([_chave_telefone(celular_ref)] + (_chaves_telefone_variantes(celular_ref) or []))
-    )
-    chaves_cel = [c for c in chaves_cel if c]
-    proto_envio = gerar_protocolo_confirmacao_envio()
-    n = 0
-    if chaves_cel:
-        n = PapConfirmacaoCliente.objects.filter(
-            sessao_id=sessao.id,
-            celular_cliente__in=chaves_cel,
-            confirmado=False,
-        ).update(confirmado=True, protocolo_confirmacao_envio=proto_envio)
-    if n == 0:
-        n = PapConfirmacaoCliente.objects.filter(sessao_id=sessao.id, confirmado=False).update(
-            confirmado=True, protocolo_confirmacao_envio=proto_envio
-        )
+    n = _pap_marcar_confirmacao_sim_cliente_no_bd(sessao.id, dados, "")
     chave_v = _chave_telefone(telefone_vendedor)
     with _pending_lock:
         kc = _pending_by_vendedor.get(chave_v)
@@ -2656,6 +2671,46 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                     dados = ctx.get('dados', {})
                     action = cmd.get('action')
 
+                    matricula_replay = (
+                        ctx.get('vendedor_matricula')
+                        or (dados or {}).get('matricula_pap')
+                        or ''
+                    )
+                    if matricula_replay:
+                        etapa_wpp_cur = _run_sync_returning(
+                            lambda: (SessaoWhatsapp.objects.get(id=sessao_id).etapa or '')
+                        )
+                        dados_merge = {**(ctx.get('dados') or {}), **(dados or {})}
+                        ok_rec, msg_rec = automacao.tentar_recuperar_portal_reset_etapa1(
+                            dados_merge, str(matricula_replay), etapa_wpp_cur or ''
+                        )
+                        if not ok_rec:
+                            def _sync_recuperacao_falhou():
+                                sess = SessaoWhatsapp.objects.get(id=sessao_id)
+                                d_fail = dict(sess.dados_temp or {})
+                                d_fail['_ultimo_cmd_erro'] = cmd
+                                sess.dados_temp = d_fail
+                                sess.etapa = 'venda_erro_retry'
+                                sess.save()
+                                with _automacoes_lock:
+                                    if sessao_id in _automacoes_pap_ativas:
+                                        _automacoes_pap_ativas[sessao_id]['dados'] = d_fail
+                                WhatsAppService().enviar_mensagem_texto(
+                                    telefone,
+                                    "⚠️ O portal voltou para a *Etapa 1* após um erro e *não foi possível reaplicar* todos os dados automaticamente.\n\n"
+                                    f"Detalhe: {msg_rec}\n\n"
+                                    "Digite *REPETIR* para tentar de novo ou *VENDER* para recomeçar.",
+                                )
+                            _executar_ops_django_sync(_sync_recuperacao_falhou)
+                            continue
+                        merged_ctx = automacao._pap_merge_dados_sessao_para_replay(
+                            _run_sync_returning(lambda: (SessaoWhatsapp.objects.get(id=sessao_id).dados_temp or {}))
+                        )
+                        with _automacoes_lock:
+                            if sessao_id in _automacoes_pap_ativas:
+                                _automacoes_pap_ativas[sessao_id]['dados'] = merged_ctx
+                        dados = merged_ctx
+
                     if action == 'etapa2_viabilidade':
                         cep_v = cmd.get('cep', '')
                         numero_v = cmd.get('numero', '')
@@ -2738,6 +2793,10 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                                     funil_registrar_protocolo(sess, protocolo or '')
                                 except Exception:
                                     pass
+                                d_v = dict(sess.dados_temp or {})
+                                d_v.pop('pap_replay_endereco_idx', None)
+                                d_v.pop('pap_replay_complemento_escolha', None)
+                                sess.dados_temp = d_v
                                 sess.etapa = 'venda_cpf'
                                 sess.save()
                                 WhatsAppService().enviar_mensagem_texto(telefone, msg_viab)
@@ -3100,20 +3159,25 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                                         _automacoes_pap_ativas[sessao_id] = ctx_up
                                     lista = extra2.get('lista', [])
                                     sess.etapa = 'venda_selecionar_complemento'
-                                    sess.dados_temp = {**dados, 'viabilidade_lista_complementos': lista}
+                                    sess.dados_temp = {
+                                        **dados,
+                                        'viabilidade_lista_complementos': lista,
+                                        'pap_replay_endereco_idx': cmd.get('idx', dados.get('pap_replay_endereco_idx')),
+                                    }
                                     sess.save()
                                     linha = "\n".join(f"  {p['indice']} - {p['texto']}" for p in lista)
                                     WhatsAppService().enviar_mensagem_texto(telefone, f"📋 *Complementos encontrados:*\n\n{linha}\n\nDigite *0* ou *SEM COMPLEMENTO* se não tiver, ou o *número* do complemento (ex: 1, 2, 3):")
                                 else:
+                                    dados_sel = {**dados, 'pap_replay_endereco_idx': cmd.get('idx', 1)}
                                     with _automacoes_lock:
                                         _automacoes_pap_ativas[sessao_id] = {
                                             'automacao': automacao, 'phase': 'venda',
-                                            'dados': dados, 'bo_usuario_id': dados.get('bo_usuario_id'), 'telefone': telefone,
-                                            'vendedor_id': dados.get('vendedor_id'), 'vendedor_matricula': dados.get('matricula_pap'),
-                                            'vendedor_nome': dados.get('vendedor_nome', ''), 'cmd_queue': cmd_queue,
+                                            'dados': dados_sel, 'bo_usuario_id': dados_sel.get('bo_usuario_id'), 'telefone': telefone,
+                                            'vendedor_id': dados_sel.get('vendedor_id'), 'vendedor_matricula': dados_sel.get('matricula_pap'),
+                                            'vendedor_nome': dados_sel.get('vendedor_nome', ''), 'cmd_queue': cmd_queue,
                                         }
                                     sess.etapa = 'venda_cpf'
-                                    sess.dados_temp = dados
+                                    sess.dados_temp = dados_sel
                                     sess.save()
                                     protocolo = automacao.dados_pedido.get('protocolo', '')
                                     msg_ok = "✅ Endereço disponível!" + (f"\n📋 Protocolo: {protocolo}" if protocolo else "")
@@ -3188,15 +3252,16 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                                         sess.save()
                                         WhatsAppService().enviar_mensagem_texto(telefone, f"❌ {msg2}\n\nDigite *VENDER* para tentar novamente.")
                                 else:
+                                    dados_comp = {**dados, 'pap_replay_complemento_escolha': (escolha or '').strip()}
                                     with _automacoes_lock:
                                         _automacoes_pap_ativas[sessao_id] = {
                                             'automacao': automacao, 'phase': 'venda',
-                                            'dados': dados, 'bo_usuario_id': dados.get('bo_usuario_id'), 'telefone': telefone,
-                                            'vendedor_id': dados.get('vendedor_id'), 'vendedor_matricula': dados.get('matricula_pap'),
-                                            'vendedor_nome': dados.get('vendedor_nome', ''), 'cmd_queue': cmd_queue,
+                                            'dados': dados_comp, 'bo_usuario_id': dados_comp.get('bo_usuario_id'), 'telefone': telefone,
+                                            'vendedor_id': dados_comp.get('vendedor_id'), 'vendedor_matricula': dados_comp.get('matricula_pap'),
+                                            'vendedor_nome': dados_comp.get('vendedor_nome', ''), 'cmd_queue': cmd_queue,
                                         }
                                     sess.etapa = 'venda_cpf'
-                                    sess.dados_temp = dados
+                                    sess.dados_temp = dados_comp
                                     sess.save()
                                     protocolo = automacao.dados_pedido.get('protocolo', '')
                                     msg_ok = "✅ Endereço disponível!" + (f"\n📋 Protocolo: {protocolo}" if protocolo else "")
@@ -3663,6 +3728,46 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                     dados = ctx.get('dados', {})
                     action = cmd.get('action')
 
+                    matricula_replay = (
+                        ctx.get('vendedor_matricula')
+                        or (dados or {}).get('matricula_pap')
+                        or ''
+                    )
+                    if matricula_replay:
+                        etapa_wpp_cur = _run_sync_returning(
+                            lambda: (SessaoWhatsapp.objects.get(id=sessao_id).etapa or '')
+                        )
+                        dados_merge = {**(ctx.get('dados') or {}), **(dados or {})}
+                        ok_rec, msg_rec = automacao.tentar_recuperar_portal_reset_etapa1(
+                            dados_merge, str(matricula_replay), etapa_wpp_cur or ''
+                        )
+                        if not ok_rec:
+                            def _sync_recuperacao_falhou():
+                                sess = SessaoWhatsapp.objects.get(id=sessao_id)
+                                d_fail = dict(sess.dados_temp or {})
+                                d_fail['_ultimo_cmd_erro'] = cmd
+                                sess.dados_temp = d_fail
+                                sess.etapa = 'venda_erro_retry'
+                                sess.save()
+                                with _automacoes_lock:
+                                    if sessao_id in _automacoes_pap_ativas:
+                                        _automacoes_pap_ativas[sessao_id]['dados'] = d_fail
+                                WhatsAppService().enviar_mensagem_texto(
+                                    telefone,
+                                    "⚠️ O portal voltou para a *Etapa 1* após um erro e *não foi possível reaplicar* todos os dados automaticamente.\n\n"
+                                    f"Detalhe: {msg_rec}\n\n"
+                                    "Digite *REPETIR* para tentar de novo ou *VENDER* para recomeçar.",
+                                )
+                            _executar_ops_django_sync(_sync_recuperacao_falhou)
+                            continue
+                        merged_ctx = automacao._pap_merge_dados_sessao_para_replay(
+                            _run_sync_returning(lambda: (SessaoWhatsapp.objects.get(id=sessao_id).dados_temp or {}))
+                        )
+                        with _automacoes_lock:
+                            if sessao_id in _automacoes_pap_ativas:
+                                _automacoes_pap_ativas[sessao_id]['dados'] = merged_ctx
+                        dados = merged_ctx
+
                     if action == 'etapa2_viabilidade':
                         cep_v = cmd.get('cep', '')
                         numero_v = cmd.get('numero', '')
@@ -3745,6 +3850,10 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                                     funil_registrar_protocolo(sess, protocolo or '')
                                 except Exception:
                                     pass
+                                d_v = dict(sess.dados_temp or {})
+                                d_v.pop('pap_replay_endereco_idx', None)
+                                d_v.pop('pap_replay_complemento_escolha', None)
+                                sess.dados_temp = d_v
                                 sess.etapa = 'venda_cpf'
                                 sess.save()
                                 WhatsAppService().enviar_mensagem_texto(telefone, msg_viab)
@@ -4107,20 +4216,25 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                                         _automacoes_pap_ativas[sessao_id] = ctx_up
                                     lista = extra2.get('lista', [])
                                     sess.etapa = 'venda_selecionar_complemento'
-                                    sess.dados_temp = {**dados, 'viabilidade_lista_complementos': lista}
+                                    sess.dados_temp = {
+                                        **dados,
+                                        'viabilidade_lista_complementos': lista,
+                                        'pap_replay_endereco_idx': cmd.get('idx', dados.get('pap_replay_endereco_idx')),
+                                    }
                                     sess.save()
                                     linha = "\n".join(f"  {p['indice']} - {p['texto']}" for p in lista)
                                     WhatsAppService().enviar_mensagem_texto(telefone, f"📋 *Complementos encontrados:*\n\n{linha}\n\nDigite *0* ou *SEM COMPLEMENTO* se não tiver, ou o *número* do complemento (ex: 1, 2, 3):")
                                 else:
+                                    dados_sel = {**dados, 'pap_replay_endereco_idx': cmd.get('idx', 1)}
                                     with _automacoes_lock:
                                         _automacoes_pap_ativas[sessao_id] = {
                                             'automacao': automacao, 'phase': 'venda',
-                                            'dados': dados, 'bo_usuario_id': dados.get('bo_usuario_id'), 'telefone': telefone,
-                                            'vendedor_id': dados.get('vendedor_id'), 'vendedor_matricula': dados.get('matricula_pap'),
-                                            'vendedor_nome': dados.get('vendedor_nome', ''), 'cmd_queue': cmd_queue,
+                                            'dados': dados_sel, 'bo_usuario_id': dados_sel.get('bo_usuario_id'), 'telefone': telefone,
+                                            'vendedor_id': dados_sel.get('vendedor_id'), 'vendedor_matricula': dados_sel.get('matricula_pap'),
+                                            'vendedor_nome': dados_sel.get('vendedor_nome', ''), 'cmd_queue': cmd_queue,
                                         }
                                     sess.etapa = 'venda_cpf'
-                                    sess.dados_temp = dados
+                                    sess.dados_temp = dados_sel
                                     sess.save()
                                     protocolo = automacao.dados_pedido.get('protocolo', '')
                                     msg_ok = "✅ Endereço disponível!" + (f"\n📋 Protocolo: {protocolo}" if protocolo else "")
@@ -4195,15 +4309,16 @@ def _processar_etapa_venda(telefone: str, mensagem: str, sessao, etapa: str, web
                                         sess.save()
                                         WhatsAppService().enviar_mensagem_texto(telefone, f"❌ {msg2}\n\nDigite *VENDER* para tentar novamente.")
                                 else:
+                                    dados_comp = {**dados, 'pap_replay_complemento_escolha': (escolha or '').strip()}
                                     with _automacoes_lock:
                                         _automacoes_pap_ativas[sessao_id] = {
                                             'automacao': automacao, 'phase': 'venda',
-                                            'dados': dados, 'bo_usuario_id': dados.get('bo_usuario_id'), 'telefone': telefone,
-                                            'vendedor_id': dados.get('vendedor_id'), 'vendedor_matricula': dados.get('matricula_pap'),
-                                            'vendedor_nome': dados.get('vendedor_nome', ''), 'cmd_queue': cmd_queue,
+                                            'dados': dados_comp, 'bo_usuario_id': dados_comp.get('bo_usuario_id'), 'telefone': telefone,
+                                            'vendedor_id': dados_comp.get('vendedor_id'), 'vendedor_matricula': dados_comp.get('matricula_pap'),
+                                            'vendedor_nome': dados_comp.get('vendedor_nome', ''), 'cmd_queue': cmd_queue,
                                         }
                                     sess.etapa = 'venda_cpf'
-                                    sess.dados_temp = dados
+                                    sess.dados_temp = dados_comp
                                     sess.save()
                                     protocolo = automacao.dados_pedido.get('protocolo', '')
                                     msg_ok = "✅ Endereço disponível!" + (f"\n📋 Protocolo: {protocolo}" if protocolo else "")
@@ -5440,6 +5555,28 @@ def _executar_venda_pap_etapa6_em_diante(
                 _pending_client_confirm[k] = pend_dict
             _pending_by_vendedor[chave_vendedor] = chave_cliente
         logger.info("[VENDA PAP] Pending SIM registrado: celular_cliente=%s, chaves=%s", celular_cliente, todas_chaves_cliente)
+        if getattr(settings, "DEBUG", False) and getattr(
+            settings, "PAP_WHATSAPP_AUTO_SIM_CLIENTE_LOCAL", False
+        ):
+            try:
+                _pap_marcar_confirmacao_sim_cliente_no_bd(sessao_id, dados, celular_cliente)
+                try:
+                    evt_cliente.set()
+                except Exception:
+                    pass
+                try:
+                    consultar_queue.put_nowait(1)
+                except Exception:
+                    pass
+                logger.info(
+                    "[VENDA PAP] Auto-confirmação SIM do cliente (DEBUG + PAP_WHATSAPP_AUTO_SIM_CLIENTE_LOCAL)"
+                )
+                enviar_resultado(
+                    "🔧 *Modo desenvolvimento:* o *SIM* do cliente foi confirmado automaticamente no banco.\n\n"
+                    "O fluxo segue como após *CONSULTAR*. Aguarde a próxima mensagem ou digite *CONSULTAR*."
+                )
+            except Exception as e_auto:
+                logger.warning("[VENDA PAP] Auto SIM local falhou: %s", e_auto)
         deadline = time.monotonic() + 600
         abrir_os_solicitado = False
         from crm_app.services_pap_nio import PAP_NOVO_PEDIDO_URL
