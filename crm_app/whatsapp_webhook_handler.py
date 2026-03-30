@@ -5644,7 +5644,11 @@ def _executar_venda_pap_etapa6_em_diante(
                     f"Cliente (SIM): {status_sim}\n"
                     f"Biometria: {status_bio}\n\n"
                     "✅ *Ambos aprovados no sistema.*\n\n"
-                    "Deseja *abrir O.S.* (ir para agendamento)? Responda *SIM* ou *NÃO*."
+                    "Deseja *abrir O.S.* (ir para agendamento)? Responda *SIM* ou *NÃO*.",
+                    botoes=[
+                        {"id": "pap_abrir_os_sim", "type": "REPLY", "label": "SIM"},
+                        {"id": "pap_abrir_os_nao", "type": "REPLY", "label": "NÃO"},
+                    ],
                 )
                 abrir_os_queue = queue.Queue()
                 with _automacoes_lock:
@@ -5731,7 +5735,11 @@ def _executar_venda_pap_etapa6_em_diante(
             # Biometria OK: perguntar se deseja abrir O.S. (não ir direto para agendamento)
             enviar_resultado(
                 "✅ *SIM do cliente e Biometria aprovados no sistema.*\n\n"
-                "Deseja *abrir O.S.* (ir para agendamento)? Responda *SIM* ou *NÃO*."
+                "Deseja *abrir O.S.* (ir para agendamento)? Responda *SIM* ou *NÃO*.",
+                botoes=[
+                    {"id": "pap_abrir_os_sim", "type": "REPLY", "label": "SIM"},
+                    {"id": "pap_abrir_os_nao", "type": "REPLY", "label": "NÃO"},
+                ],
             )
             abrir_os_queue = queue.Queue()
             with _automacoes_lock:
@@ -5912,9 +5920,20 @@ def _executar_venda_pap_background(
 
     whatsapp = WhatsAppService()
 
-    def enviar_resultado(mensagem: str):
+    def enviar_resultado(mensagem: str, botoes: list = None):
+        """
+        Envia mensagem para o cliente durante a automação em background.
+        Se `botoes` vier preenchido, envia como REPLY (send-button-actions).
+        """
         try:
-            whatsapp.enviar_mensagem_texto(telefone, mensagem)
+            if botoes:
+                whatsapp.enviar_mensagem_com_botoes_reply(
+                    telefone,
+                    mensagem,
+                    botoes,
+                )
+            else:
+                whatsapp.enviar_mensagem_texto(telefone, mensagem)
         except Exception as e:
             logger.error(f"[VENDA PAP] Erro ao enviar resultado: {e}")
 
