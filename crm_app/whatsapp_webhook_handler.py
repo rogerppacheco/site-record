@@ -6399,10 +6399,10 @@ def processar_resposta_gc_antecipar(telefone_remetente, mensagem_texto):
 
 
 def _buscar_buttons_response_zapi(d, _depth=0):
-    """Localiza o dict buttonsResponseMessage no payload Z-API (busca recursiva)."""
+    """Localiza resposta de botão no payload Z-API (busca recursiva)."""
     if _depth > 14 or not isinstance(d, dict):
         return None
-    for key in ("buttonsResponseMessage", "buttonResponseMessage"):
+    for key in ("buttonsResponseMessage", "buttonResponseMessage", "buttonReply", "replyButton"):
         br = d.get(key)
         if isinstance(br, dict):
             return br
@@ -6440,10 +6440,20 @@ def _texto_efetivo_botao_zapi(data):
     br = _buscar_buttons_response_zapi(data)
     if not br:
         return ""
-    bid = (br.get("buttonId") or br.get("selectedButtonId") or "").strip()
+    bid = (
+        br.get("buttonId")
+        or br.get("selectedButtonId")
+        or br.get("id")
+        or ""
+    ).strip()
     if bid in _BTN_ZAPI_ID_PARA_COMANDO:
         return _BTN_ZAPI_ID_PARA_COMANDO[bid]
-    msg = (br.get("message") or br.get("selectedButtonText") or "").strip()
+    msg = (
+        br.get("message")
+        or br.get("selectedButtonText")
+        or br.get("text")
+        or ""
+    ).strip()
     return msg or ""
 
 
@@ -6455,8 +6465,18 @@ def _aplicar_resposta_botao_zapi(data, mensagem_texto):
     br = _buscar_buttons_response_zapi(data)
     if not br:
         return mensagem_texto
-    bid = (br.get("buttonId") or br.get("selectedButtonId") or "").strip()
-    msg = (br.get("message") or br.get("selectedButtonText") or "").strip()
+    bid = (
+        br.get("buttonId")
+        or br.get("selectedButtonId")
+        or br.get("id")
+        or ""
+    ).strip()
+    msg = (
+        br.get("message")
+        or br.get("selectedButtonText")
+        or br.get("text")
+        or ""
+    ).strip()
     if bid in _BTN_ZAPI_ID_PARA_COMANDO:
         padrao = _BTN_ZAPI_ID_PARA_COMANDO[bid]
         return (msg or padrao).strip()
