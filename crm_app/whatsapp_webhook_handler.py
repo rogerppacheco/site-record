@@ -2274,9 +2274,9 @@ def _mensagem_sessao_expirada(sessao, dados: dict, etapa_atual: str, ultimo_cmd_
 
 
 def _formatar_streaming_resumo(dados: dict) -> str:
-    """Retorna texto do streaming para o resumo: Não ou lista de opções com preços."""
+    """Texto do streaming para o resumo (só usado quando tem_streaming é verdadeiro): opções com preços ou Sim."""
     if not dados.get('tem_streaming'):
-        return "Não"
+        return ""
     opts_raw = (dados.get('streaming_opcoes') or '').lower().replace(' ', '')
     opts_set = set(x.strip() for x in opts_raw.split(',') if x.strip())
     precos = [
@@ -2376,6 +2376,19 @@ def _montar_resumo_venda_e_pedir_confirmar(dados: dict) -> str:
     if referencia:
         linhas_endereco.append(f"Referência: {referencia}")
     bloco_endereco = "\n".join(linhas_endereco)
+    linhas_pos_plano = []
+    if dados.get("tem_fixo"):
+        linhas_pos_plano.append("📞 *Fixo:* Sim – R$ 30,00/mês")
+    if dados.get("tem_fixo") and dados.get("fixo_portabilidade"):
+        linhas_pos_plano.append(
+            f"📲 *Portabilidade fixo:* Sim — {dados.get('fixo_portabilidade_numero', '')} "
+            f"({dados.get('fixo_portabilidade_operadora', '')})"
+        )
+    elif dados.get("tem_fixo"):
+        linhas_pos_plano.append("📲 *Portabilidade fixo:* Não")
+    if dados.get("tem_streaming"):
+        linhas_pos_plano.append(f"📺 *Streaming:* {_formatar_streaming_resumo(dados)}")
+    bloco_pos_plano = ("\n".join(linhas_pos_plano) + "\n\n") if linhas_pos_plano else ""
     return (
         f"📋 *RESUMO DO PEDIDO NIO FIBRA*\n\n"
         f"👤 *Cliente:* {nome_cliente}\n"
@@ -2386,13 +2399,7 @@ def _montar_resumo_venda_e_pedir_confirmar(dados: dict) -> str:
         f"{bloco_endereco}\n\n"
         f"💳 *Pagamento:* {forma_nome.get(dados.get('forma_pagamento', ''), '')}\n"
         f"📦 *Plano:* {plano_nome.get(dados.get('plano', ''), '')}\n"
-        f"📞 *Fixo:* {'Sim – R$ 30,00/mês' if dados.get('tem_fixo') else 'Não'}\n"
-        + (
-            f"📲 *Portabilidade fixo:* Sim — {dados.get('fixo_portabilidade_numero', '')} ({dados.get('fixo_portabilidade_operadora', '')})\n"
-            if dados.get('tem_fixo') and dados.get('fixo_portabilidade')
-            else (f"📲 *Portabilidade fixo:* Não\n" if dados.get('tem_fixo') else "")
-        )
-        + f"📺 *Streaming:* {_formatar_streaming_resumo(dados)}\n\n"
+        f"{bloco_pos_plano}"
         f"📅 *Fidelidade:* 12 meses\n\n"
         f"💰 *Taxa de habilitação:*\n"
         f"Você ganha isenção da taxa de habilitação se permanecer no mínimo 12 meses conosco.\n\n"

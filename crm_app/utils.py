@@ -485,12 +485,18 @@ def montar_resumo_plano_para_whatsapp(venda):
     else:
         plano_linha = "Não informado"
 
-    fixo_linha = "Sim – R$ 30,00/mês" if venda.tem_fixo else "Não"
-    streaming_linha = "Não"  # auditoria não possui campo streaming
+    linhas_servicos_adicionais = []
+    if venda.tem_fixo:
+        linhas_servicos_adicionais.append("📞 *Fixo:* Sim – R$ 30,00/mês")
+    # Modelo Venda não tem streaming; não exibir linha genérica "Não".
 
     nome_cliente = (venda.cliente.nome_razao_social or "").strip() if venda.cliente else ""
     if not nome_cliente:
         nome_cliente = "Não informado"
+
+    bloco_servicos = ""
+    if linhas_servicos_adicionais:
+        bloco_servicos = "\n".join(linhas_servicos_adicionais) + "\n\n"
 
     return (
         f"📋 *RESUMO DO PEDIDO NIO FIBRA*\n\n"
@@ -502,8 +508,7 @@ def montar_resumo_plano_para_whatsapp(venda):
         f"{bloco_endereco}\n\n"
         f"💳 *Pagamento:* {forma_nome}\n"
         f"📦 *Plano:* {plano_linha}\n"
-        f"📞 *Fixo:* {fixo_linha}\n"
-        f"📺 *Streaming:* {streaming_linha}\n\n"
+        f"{bloco_servicos}"
         f"📅 *Fidelidade:* 12 meses\n\n"
         f"💰 *Taxa de habilitação:*\n"
         f"Você ganha isenção da taxa de habilitação se permanecer no mínimo 12 meses conosco.\n\n"

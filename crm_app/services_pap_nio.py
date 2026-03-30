@@ -4906,7 +4906,7 @@ class PAPNioAutomation:
     def obter_resumo_pedido_para_cliente(self) -> str:
         """
         Monta o resumo do pedido a partir dos dados coletados no fluxo.
-        Inclui plano, Fixo (R$ 30/mês), streaming (HBO Max R$ 44,90; Globoplay Premium R$ 39,90; Padrão R$ 22,90).
+        Inclui Fixo e streaming na seção de serviços adicionais apenas quando contratados (com preços).
         Endereço no padrão: Logradouro, Nº - Complemento - Bairro, Cidade - UF, CEP.
         """
         d = self.dados_pedido
@@ -4950,8 +4950,9 @@ class PAPNioAutomation:
         for key, label, preco in precos_streaming:
             if key in opts_set:
                 linhas_adic.append(f"• {label}: {preco}")
-        bloco_adic = "\n".join(linhas_adic) if linhas_adic else "Nenhum"
-        bloco_port = ""
+        partes_apos_forma = []
+        if linhas_adic:
+            partes_apos_forma.append("✨ *Serviços adicionais:*\n" + "\n".join(linhas_adic))
         if d.get("tem_fixo") and d.get("fixo_portabilidade"):
             raw_num = re.sub(r"\D", "", str(d.get("fixo_portabilidade_numero") or ""))
             op_p = (d.get("fixo_portabilidade_operadora") or "").strip() or "—"
@@ -4962,7 +4963,12 @@ class PAPNioAutomation:
                     num_fmt = f"({raw_num[:2]}) {raw_num[2:6]}-{raw_num[6:]}"
             else:
                 num_fmt = d.get("fixo_portabilidade_numero") or raw_num or "—"
-            bloco_port = f"\n📲 *Portabilidade do fixo:* {num_fmt} — operadora *{op_p}*\n"
+            partes_apos_forma.append(
+                f"📲 *Portabilidade do fixo:* {num_fmt} — operadora *{op_p}*"
+            )
+        bloco_apos_forma = (
+            "\n\n".join(partes_apos_forma) + "\n\n" if partes_apos_forma else ""
+        )
         texto_fatura = (
             "Sua primeira fatura irá vencer *25 dias* após a instalação da internet; nos demais meses, "
             "o vencimento segue o ciclo de *30 em 30 dias*.\n\n"
@@ -4974,8 +4980,7 @@ class PAPNioAutomation:
             f"📍 *Endereço:*\n{endereco}\n\n"
             f"📦 *Plano:* {plano_label} – {valor}\n\n"
             f"💳 *Forma de pagamento:* {forma}\n\n"
-            f"✨ *Serviços adicionais:*\n{bloco_adic}"
-            f"{bloco_port}\n"
+            f"{bloco_apos_forma}"
             f"📅 *Fidelidade:* 12 meses\n\n"
             "💰 *Taxa de habilitação:*\n"
             "Você ganha isenção da taxa de habilitação se permanecer no mínimo 12 meses conosco.\n\n"
