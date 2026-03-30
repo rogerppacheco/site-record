@@ -1252,6 +1252,10 @@ class LancamentoFinanceiro(models.Model):
         ordering = ['-data']
         
 class AgendamentoDisparo(models.Model):
+    MODO_ENVIO_CHOICES = [
+        ('INTERVALO', 'Intervalo'),
+        ('ESPECIFICO', 'Horários específicos'),
+    ]
     TIPOS = [
         ('HORARIO', 'Diário (Hora em Hora 9h-19h)'),
         ('SEMANAL', 'Semanal (Ter/Qui/Sáb 17h)'),
@@ -1276,13 +1280,38 @@ class AgendamentoDisparo(models.Model):
     destinatarios = models.TextField(help_text="IDs de grupos ou números separados por vírgula")
     ativo = models.BooleanField(default=True)
     ultimo_disparo = models.DateTimeField(null=True, blank=True)
+    modo_envio = models.CharField(
+        max_length=20,
+        choices=MODO_ENVIO_CHOICES,
+        default='INTERVALO',
+        help_text="INTERVALO usa intervalo/hora_fim. ESPECIFICO usa horários exatos."
+    )
     intervalo_minutos = models.PositiveIntegerField(
         default=60,
+        null=True,
+        blank=True,
         help_text="Intervalo mínimo em minutos entre envios (ex: 60 = 1x por hora, 30 = a cada 30 min)"
     )
     hora_fim = models.PositiveSmallIntegerField(
         default=19,
+        null=True,
+        blank=True,
         help_text="Horário máximo (0-23) para envio na frequência diária. Ex: 19 = até 19h59."
+    )
+    horarios_especificos = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Lista de horários HH:MM para envio (08:00-22:00)."
+    )
+    dias_semana = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Dias da semana permitidos (0=Seg ... 6=Dom), usado no modo específico semanal."
+    )
+    controle_disparos = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Controle interno para evitar reenvio no mesmo slot diário."
     )
     TIPO_RELATORIO_CHOICES = [
         ('HOJE', 'Hoje'),

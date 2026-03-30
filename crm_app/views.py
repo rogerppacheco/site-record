@@ -6705,15 +6705,78 @@ class ConfigurarAutomacaoView(APIView):
             
         elif acao == 'salvar':
             d = request.data.get('dados')
+            modo_envio = (d.get('modo_envio') or 'INTERVALO').strip().upper()
+            if modo_envio not in ['INTERVALO', 'ESPECIFICO']:
+                return Response({'error': 'Modo de envio inválido.'}, status=400)
+
+            tipo = (d.get('tipo') or '').strip().upper()
+            if tipo not in ['HORARIO', 'SEMANAL']:
+                return Response({'error': 'Frequência inválida.'}, status=400)
+
+            tipo_relatorio = (d.get('tipo_relatorio') or 'HOJE').strip().upper() or 'HOJE'
+            if tipo_relatorio not in ['HOJE', 'SEMANAL', 'MENSAL']:
+                return Response({'error': 'Tipo de relatório inválido.'}, status=400)
+
+            horarios_especificos = d.get('horarios_especificos') or []
+            dias_semana = d.get('dias_semana') or []
+
+            if modo_envio == 'ESPECIFICO':
+                if not isinstance(horarios_especificos, list) or not horarios_especificos:
+                    return Response({'error': 'Selecione ao menos um horário específico.'}, status=400)
+
+                horarios_validos = []
+                vistos = set()
+                for h in horarios_especificos:
+                    hs = str(h or '').strip()
+                    try:
+                        hh_str, mm_str = hs.split(':')
+                        hh = int(hh_str)
+                        mm = int(mm_str)
+                    except Exception:
+                        return Response({'error': f'Horário inválido: {hs}'}, status=400)
+                    if hh < 8 or hh > 22 or mm < 0 or mm > 59:
+                        return Response({'error': f'Horário fora da faixa permitida (08:00-22:59): {hs}'}, status=400)
+                    normalizado = f"{hh:02d}:{mm:02d}"
+                    if normalizado not in vistos:
+                        vistos.add(normalizado)
+                        horarios_validos.append(normalizado)
+                horarios_especificos = sorted(horarios_validos)
+
+                if tipo == 'SEMANAL':
+                    if not isinstance(dias_semana, list) or not dias_semana:
+                        return Response({'error': 'Selecione ao menos um dia da semana para frequência semanal.'}, status=400)
+                    dias_validos = []
+                    vistos_dias = set()
+                    for dia in dias_semana:
+                        try:
+                            di = int(dia)
+                        except Exception:
+                            return Response({'error': f'Dia da semana inválido: {dia}'}, status=400)
+                        if di < 0 or di > 6:
+                            return Response({'error': f'Dia da semana fora da faixa 0-6: {dia}'}, status=400)
+                        if di not in vistos_dias:
+                            vistos_dias.add(di)
+                            dias_validos.append(di)
+                    dias_semana = sorted(dias_validos)
+                else:
+                    dias_semana = []
+            else:
+                horarios_especificos = []
+                dias_semana = []
+
             defaults = {
-                'nome': d['nome'], 'tipo': d['tipo'],
+                'nome': d['nome'], 'tipo': tipo,
                 'canal_alvo': d['canal_alvo'],
                 'cluster_alvo': (d.get('cluster_alvo') or '').strip() or '',
                 'destinatarios': d['destinatarios'],
                 'ativo': d['ativo'],
-                'intervalo_minutos': int(d.get('intervalo_minutos', 60) or 60),
-                'hora_fim': int(d.get('hora_fim', 19) or 19),
-                'tipo_relatorio': (d.get('tipo_relatorio') or 'HOJE').strip() or 'HOJE',
+                'modo_envio': modo_envio,
+                'intervalo_minutos': int(d.get('intervalo_minutos', 60) or 60) if modo_envio == 'INTERVALO' else None,
+                'hora_fim': int(d.get('hora_fim', 19) or 19) if modo_envio == 'INTERVALO' else None,
+                'horarios_especificos': horarios_especificos,
+                'dias_semana': dias_semana,
+                'controle_disparos': {},
+                'tipo_relatorio': tipo_relatorio,
             }
             if d.get('id'):
                 AgendamentoDisparo.objects.filter(id=d['id']).update(**defaults)

@@ -32,31 +32,86 @@ def processar_envio_performance():
 
     for regra in regras:
         enviar = False
-        intervalo_min = getattr(regra, 'intervalo_minutos', 60) or 60
+        modo_envio = (getattr(regra, 'modo_envio', 'INTERVALO') or 'INTERVALO').upper()
+        slot_para_disparo = None
 
-        # --- Respeitar intervalo mínimo desde o último disparo ---
-        if regra.ultimo_disparo:
-            try:
-                diff_minutos = (agora - regra.ultimo_disparo).total_seconds() / 60.0
-                if diff_minutos < intervalo_min:
-                    logger.info(f"⏳ Regra '{regra.nome}': aguardando intervalo ({diff_minutos:.0f} min < {intervalo_min} min)")
-                    continue  # Ainda não passou o intervalo, pula esta regra
-            except (TypeError, AttributeError):
-                pass
+        if modo_envio == 'ESPECIFICO':
+            horarios_especificos = getattr(regra, 'horarios_especificos', None) or []
+            if not horarios_especificos:
+                logger.info(f"⏭ Regra '{regra.nome}': sem horários específicos configurados")
+                continue
 
-        # --- VERIFICAÇÃO DE HORÁRIO (janela permitida) ---
-        hora_fim = getattr(regra, 'hora_fim', 19) or 19
-        if regra.tipo == 'HORARIO':
-            if dia_sem in [0, 1, 2, 3, 4]:  # Seg-Sex: 8h30 até hora_fim
-                if (hora == 8 and minuto >= 30) or (9 <= hora <= hora_fim):
-                    enviar = True
-            elif dia_sem == 5:  # Sábado: 9h até 12h59 (ou hora_fim se menor)
-                fim_sab = min(12, hora_fim)
-                if 9 <= hora <= fim_sab:
-                    enviar = True
-        elif regra.tipo == 'SEMANAL':
-            if dia_sem in [1, 3, 5] and hora == 17 and minuto == 0:
+            dias_config = getattr(regra, 'dias_semana', None) or []
+            if regra.tipo == 'SEMANAL':
+                if not dias_config:
+                    logger.info(f"⏭ Regra '{regra.nome}': semanal sem dias da semana configurados")
+                    continue
+                if dia_sem not in [int(d) for d in dias_config]:
+                    continue
+            else:
+                # Diário no modo específico mantém comportamento atual de seg a sáb
+                if dia_sem not in [0, 1, 2, 3, 4, 5]:
+                    continue
+
+            hoje_str = agora.strftime('%Y-%m-%d')
+            controle = getattr(regra, 'controle_disparos', None) or {}
+            if controle.get('date') != hoje_str:
+                slots_enviados = []
+            else:
+                slots_enviados = list(controle.get('slots', []))
+            slots_enviados_set = set(str(s) for s in slots_enviados)
+
+            agora_min = hora * 60 + minuto
+            slot_encontrado = None
+            for horario_cfg in sorted(str(h).strip() for h in horarios_especificos if str(h).strip()):
+                try:
+                    hh_str, mm_str = horario_cfg.split(':')
+                    hh = int(hh_str)
+                    mm = int(mm_str)
+                except Exception:
+                    continue
+                if hh < 8 or hh > 22 or mm < 0 or mm > 59:
+                    continue
+
+                alvo_min = (hh * 60) + mm
+                atraso = agora_min - alvo_min
+                if 0 <= atraso <= 10:
+                    slot_ref = f"{hh:02d}:{mm:02d}"
+                    if slot_ref not in slots_enviados_set:
+                        slot_encontrado = slot_ref
+                        break
+
+            if slot_encontrado:
                 enviar = True
+                slot_para_disparo = slot_encontrado
+            else:
+                continue
+        else:
+            intervalo_min = getattr(regra, 'intervalo_minutos', 60) or 60
+
+            # --- Respeitar intervalo mínimo desde o último disparo ---
+            if regra.ultimo_disparo:
+                try:
+                    diff_minutos = (agora - regra.ultimo_disparo).total_seconds() / 60.0
+                    if diff_minutos < intervalo_min:
+                        logger.info(f"⏳ Regra '{regra.nome}': aguardando intervalo ({diff_minutos:.0f} min < {intervalo_min} min)")
+                        continue  # Ainda não passou o intervalo, pula esta regra
+                except (TypeError, AttributeError):
+                    pass
+
+            # --- VERIFICAÇÃO DE HORÁRIO (janela permitida) ---
+            hora_fim = getattr(regra, 'hora_fim', 19) or 19
+            if regra.tipo == 'HORARIO':
+                if dia_sem in [0, 1, 2, 3, 4]:  # Seg-Sex: 8h30 até hora_fim
+                    if (hora == 8 and minuto >= 30) or (9 <= hora <= hora_fim):
+                        enviar = True
+                elif dia_sem == 5:  # Sábado: 9h até 12h59 (ou hora_fim se menor)
+                    fim_sab = min(12, hora_fim)
+                    if 9 <= hora <= fim_sab:
+                        enviar = True
+            elif regra.tipo == 'SEMANAL':
+                if dia_sem in [1, 3, 5] and hora == 17 and minuto == 0:
+                    enviar = True
 
         if enviar:
             try:
@@ -231,6 +286,16 @@ def processar_envio_performance():
                     if sucessos > 0:
                         logger.info(f"✅ Enviado regra '{regra.nome}' com imagem para {sucessos}/{len(destinos)} destinatário(s) (falhas: {falhas})")
                         regra.ultimo_disparo = agora
+                        if modo_envio == 'ESPECIFICO' and slot_para_disparo:
+                            hoje_str = agora.strftime('%Y-%m-%d')
+                            controle = getattr(regra, 'controle_disparos', None) or {}
+                            if controle.get('date') != hoje_str:
+                                slots = []
+                            else:
+                                slots = list(controle.get('slots', []))
+                            if slot_para_disparo not in slots:
+                                slots.append(slot_para_disparo)
+                            regra.controle_disparos = {'date': hoje_str, 'slots': slots}
                         regra.save()
                         detalhe = f"{sucessos}/{len(destinos)} enviados"
                     else:
