@@ -2476,7 +2476,8 @@ class DashboardResumoView(APIView):
         data_fim_str = request.query_params.get('data_fim')
         
         hoje = now()
-        hoje_date = hoje.date()
+        agora_local = timezone.localtime(hoje)
+        hoje_date = agora_local.date()
         
         if data_inicio_str and data_fim_str:
             try:
@@ -2523,8 +2524,17 @@ class DashboardResumoView(APIView):
             peso_total_mes_inst += p_inst
             
             if data_iter <= limite_realizado:
-                peso_realizado_venda += p_venda
-                peso_realizado_inst += p_inst
+                # Hoje ainda em andamento: não contar o peso fiscal do dia inteiro como "realizado",
+                # senão peso_realizado == peso_total e a projeção fica igual ao acumulado.
+                if data_iter == hoje_date:
+                    meia_noite = agora_local.replace(hour=0, minute=0, second=0, microsecond=0)
+                    decorrido_s = (agora_local - meia_noite).total_seconds()
+                    fracao_dia = min(max(decorrido_s / 86400.0, 1.0 / 24.0), 1.0)
+                    peso_realizado_venda += p_venda * fracao_dia
+                    peso_realizado_inst += p_inst * fracao_dia
+                else:
+                    peso_realizado_venda += p_venda
+                    peso_realizado_inst += p_inst
             
             data_iter += timedelta(days=1)
 
