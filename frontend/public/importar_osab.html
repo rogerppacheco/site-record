@@ -475,7 +475,7 @@
                 resultado.innerHTML = `
                     <div class="alert alert-danger alert-dismissible fade show" role="alert">
                         <h5><i class="bi bi-x-circle"></i> Erro na Importação</h5>
-                        <p class="mb-0">${data.error || 'Erro desconhecido'}</p>
+                        <p class="mb-0">${data.error || data.detail || 'Erro desconhecido'}</p>
                         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     </div>
                 `;

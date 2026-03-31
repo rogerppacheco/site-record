@@ -3173,7 +3173,8 @@ import threading
 
 class ImportacaoOsabView(APIView):
     permission_classes = [CheckAPIPermission]
-    resource_name = 'importacao_osab'
+    # Deve coincidir com ImportacaoOsab._meta.model_name → permissão crm_app.add_importacaoosab
+    resource_name = 'importacaoosab'
     parser_classes = [MultiPartParser, FormParser]
 
     def _clean_key(self, key):
@@ -9713,7 +9714,7 @@ class DownloadRelatorioOSABView(APIView):
 class AnaliseComparacaoOSABView(APIView):
     """Análise comparativa entre planilha OSAB e banco de dados (sem importar)"""
     permission_classes = [CheckAPIPermission]
-    resource_name = 'importacao_osab'
+    resource_name = 'importacaoosab'
     parser_classes = [MultiPartParser, FormParser]
 
     def _clean_key(self, key):
