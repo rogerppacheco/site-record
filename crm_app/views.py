@@ -559,6 +559,9 @@ from .utils import (
     verificar_viabilidade_exata,
     montar_resumo_plano_para_whatsapp,
     validar_venda_para_resumo_auditoria,
+    vendedor_ou_supervisor_restrito_mes,
+    mes_completo_vendedor_supervisor_valido,
+    q_venda_acesso_retrieve_vendedor_supervisor,
 )
 
 # Modelos do App
@@ -1522,17 +1525,30 @@ class VendaViewSet(viewsets.ModelViewSet):
         view_type = self.request.query_params.get('view')
         flow = self.request.query_params.get('flow')
         search = self.request.query_params.get('search')
+        data_inicio_str = self.request.query_params.get('data_inicio')
+        data_fim_str = self.request.query_params.get('data_fim')
         
         # --- REGRA DE DATA OBRIGATÓRIA (MÊS ATUAL) ---
         grupos_livres = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
         eh_gestao_total = is_member(user, grupos_livres)
+        eh_vs_mes = vendedor_ou_supervisor_restrito_mes(user)
+        hoje_local = timezone.localtime(timezone.now())
+        hoje_d = hoje_local.date()
 
         if not eh_gestao_total and not search:
-            # Se não for gestão e não estiver buscando por CPF/OS específico:
-            hoje = timezone.now()
+            hoje = hoje_local
             inicio_mes = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-            # Filtra vendas criadas ou instaladas neste mês
-            queryset = queryset.filter(Q(data_criacao__gte=inicio_mes) | Q(data_instalacao__gte=inicio_mes))
+            aplica_padrao_mes_atual = True
+            if eh_vs_mes and data_inicio_str and data_fim_str:
+                try:
+                    di = datetime.strptime(data_inicio_str, '%Y-%m-%d').date()
+                    df = datetime.strptime(data_fim_str, '%Y-%m-%d').date()
+                    if mes_completo_vendedor_supervisor_valido(di, df, hoje_d):
+                        aplica_padrao_mes_atual = False
+                except ValueError:
+                    pass
+            if aplica_padrao_mes_atual:
+                queryset = queryset.filter(Q(data_criacao__gte=inicio_mes) | Q(data_instalacao__gte=inicio_mes))
 
         # --- FILTRO DE STATUS ---
         status_filter = self.request.query_params.get('status')
@@ -1569,11 +1585,18 @@ class VendaViewSet(viewsets.ModelViewSet):
             grupos_gestao_acao = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
             if user.is_superuser or is_member(user, grupos_gestao_acao):
                 return queryset
+            q_vs_retrieve = q_venda_acesso_retrieve_vendedor_supervisor()
             if is_member(user, ['Supervisor']):
                 liderados_ids = list(user.liderados.values_list('id', flat=True))
                 liderados_ids.append(user.id)
-                return queryset.filter(vendedor_id__in=liderados_ids)
-            return queryset.filter(vendedor=user)
+                qs_sup = queryset.filter(vendedor_id__in=liderados_ids)
+                if self.action == 'retrieve':
+                    qs_sup = qs_sup.filter(q_vs_retrieve)
+                return qs_sup
+            qs_v = queryset.filter(vendedor=user)
+            if self.action == 'retrieve':
+                qs_v = qs_v.filter(q_vs_retrieve)
+            return qs_v
 
         if not view_type:
             if flow and is_member(user, ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']):
@@ -1598,8 +1621,6 @@ class VendaViewSet(viewsets.ModelViewSet):
 
         # Filtros Avançados (Data, OS, Consultor)
         ordem_servico = self.request.query_params.get('ordem_servico')
-        data_inicio_str = self.request.query_params.get('data_inicio')
-        data_fim_str = self.request.query_params.get('data_fim')
         consultor_id = self.request.query_params.get('consultor_id')
         
         if consultor_id:
@@ -1629,13 +1650,23 @@ class VendaViewSet(viewsets.ModelViewSet):
         if ordem_servico:
             queryset = queryset.filter(ordem_servico__icontains=ordem_servico)
 
-        # Se houver datas especificas vindas do front (e o usuário tiver permissão de filtrar), aplica
-        if data_inicio_str and data_fim_str and eh_gestao_total:
+        # Se houver datas especificas vindas do front (gestão livre ou vendedor/supervisor em mês permitido)
+        pode_filtrar_datas = False
+        dt_ini = dt_fim = None
+        if data_inicio_str and data_fim_str:
             try:
                 dt_ini = datetime.strptime(data_inicio_str, '%Y-%m-%d').date()
                 dt_fim = datetime.strptime(data_fim_str, '%Y-%m-%d').date()
+            except ValueError:
+                dt_ini = dt_fim = None
+        if dt_ini and dt_fim:
+            if eh_gestao_total:
+                pode_filtrar_datas = True
+            elif eh_vs_mes and mes_completo_vendedor_supervisor_valido(dt_ini, dt_fim, hoje_d):
+                pode_filtrar_datas = True
+        if pode_filtrar_datas and dt_ini and dt_fim:
+            try:
                 if flow == 'auditoria':
-                    # Auditoria: filtrar por data de criação (dia civil), evita problema de fuso
                     queryset = queryset.filter(
                         data_criacao__date__gte=dt_ini,
                         data_criacao__date__lte=dt_fim
@@ -2485,6 +2516,10 @@ class DashboardResumoView(APIView):
                 data_fim = datetime.strptime(data_fim_str, '%Y-%m-%d')
                 data_fim_ajustada = data_fim + timedelta(days=1)
                 data_fim_date = data_fim.date()
+                if vendedor_ou_supervisor_restrito_mes(user) and not mes_completo_vendedor_supervisor_valido(
+                    data_inicio.date(), data_fim.date(), hoje_date
+                ):
+                    raise ValueError('periodo nao permitido')
             except ValueError:
                 data_inicio = hoje.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
                 data_fim_ajustada = (data_inicio + timedelta(days=32)).replace(day=1)
@@ -5107,46 +5142,163 @@ def _aplicar_filtro_vendedor_ativo_perf(users_qs, user, vendedor_ativo_raw):
     return users_qs
 
 
+def _perf_grupos_export_excel():
+    return ['Diretoria', 'Admin', 'BackOffice']
+
+
+def _perf_grupos_filtro_data_livre():
+    return ['Diretoria', 'Admin', 'BackOffice']
+
+
+def _perf_ultimo_dia_mes(year, month):
+    return date(year, month, calendar.monthrange(year, month)[1])
+
+
+def _perf_parse_cluster_atual(val):
+    if not val:
+        return None
+    s = str(val).strip().upper()
+    if s == 'CLUSTER_1':
+        return 1
+    if s == 'CLUSTER_2':
+        return 2
+    if s == 'CLUSTER_3':
+        return 3
+    return None
+
+
+def _perf_cluster_sugerido_por_media(avg):
+    if avg >= 50:
+        return 1
+    if avg >= 30:
+        return 2
+    return 3
+
+
+def _perf_movimento_cluster(atual_num, sug_num):
+    if atual_num is None or sug_num is None:
+        return '—', '—'
+    ca, cs = 'C%d' % atual_num, 'C%d' % sug_num
+    if sug_num < atual_num:
+        return 'Sobe', '%s→%s' % (ca, cs)
+    if sug_num > atual_num:
+        return 'Desce', '%s→%s' % (ca, cs)
+    return 'Mantém', '%s=%s' % (ca, cs)
+
+
+def _perf_filtro_data_efetiva_instalacao_intervalo(d_ini, d_fim):
+    return (
+        (Q(vendas__data_instalacao_fisica__isnull=False)
+         & Q(vendas__data_instalacao_fisica__gte=d_ini)
+         & Q(vendas__data_instalacao_fisica__lte=d_fim))
+        | (
+            Q(vendas__data_instalacao_fisica__isnull=True)
+            & Q(vendas__data_instalacao__gte=d_ini)
+            & Q(vendas__data_instalacao__lte=d_fim)
+        )
+    )
+
+
+def _perf_resolver_periodos_performance(request, user, hoje_d):
+    livre = is_member(user, _perf_grupos_filtro_data_livre())
+    aviso = None
+    hoje_ref = hoje_d
+    inicio_semana_def = hoje_d - timedelta(days=hoje_d.weekday())
+    if livre:
+        ss = (request.query_params.get('semana_segunda') or '').strip()
+        if ss:
+            try:
+                seg = datetime.strptime(ss, '%Y-%m-%d').date()
+                if seg.weekday() != 0:
+                    seg = seg - timedelta(days=seg.weekday())
+                inicio_semana = seg
+            except ValueError:
+                aviso = 'semana_segunda inválida; usando semana atual.'
+                inicio_semana = inicio_semana_def
+        else:
+            inicio_semana = inicio_semana_def
+    else:
+        inicio_semana = inicio_semana_def
+    fim_semana = inicio_semana + timedelta(days=5)
+    dias_semana = [inicio_semana + timedelta(days=i) for i in range(6)]
+    mr = (request.query_params.get('mes_referencia') or '').strip()
+    y_m, m_m = hoje_d.year, hoje_d.month
+    if livre:
+        if mr:
+            try:
+                parts = mr.split('-')
+                if len(parts) != 2:
+                    raise ValueError
+                y_m, m_m = int(parts[0]), int(parts[1])
+                if m_m < 1 or m_m > 12:
+                    raise ValueError
+            except ValueError:
+                aviso = aviso or 'mes_referencia inválida; usando mês atual.'
+                y_m, m_m = hoje_d.year, hoje_d.month
+    else:
+        if mr:
+            try:
+                parts = mr.split('-')
+                y_m, m_m = int(parts[0]), int(parts[1])
+                cy, cm = hoje_d.year, hoje_d.month
+                if cm == 1:
+                    allowed = {(cy, cm), (cy - 1, 12)}
+                else:
+                    allowed = {(cy, cm), (cy, cm - 1)}
+                if (y_m, m_m) not in allowed:
+                    aviso = aviso or 'Somente mês atual ou anterior; usando mês atual.'
+                    y_m, m_m = cy, cm
+            except (ValueError, IndexError):
+                y_m, m_m = hoje_d.year, hoje_d.month
+    inicio_mes = date(y_m, m_m, 1)
+    fim_mes = _perf_ultimo_dia_mes(y_m, m_m)
+    return {
+        'hoje_ref': hoje_ref,
+        'inicio_semana': inicio_semana,
+        'fim_semana': fim_semana,
+        'dias_semana': dias_semana,
+        'inicio_mes': inicio_mes,
+        'fim_mes': fim_mes,
+        'aviso': aviso,
+        'mes_referencia': '%04d-%02d' % (y_m, m_m),
+        'semana_segunda': inicio_semana.isoformat(),
+    }
+
+
 class PainelPerformanceView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         User = get_user_model()
         user = request.user
-        
-        # 1. Datas
         agora_local = timezone.localtime(timezone.now())
         hoje = agora_local.date()
-        inicio_semana = hoje - timedelta(days=hoje.weekday())
-        dias_semana = [inicio_semana + timedelta(days=i) for i in range(6)]
-        inicio_mes = hoje.replace(day=1)
+        periodo = _perf_resolver_periodos_performance(request, user, hoje)
+        hoje_ref = periodo['hoje_ref']
+        inicio_semana = periodo['inicio_semana']
+        fim_semana = periodo['fim_semana']
+        dias_semana = periodo['dias_semana']
+        inicio_mes = periodo['inicio_mes']
+        fim_mes = periodo['fim_mes']
 
-        # 2. Base de Usuários (exceto bots; ativo/inativo conforme ?vendedor_ativo= para gestão)
         users = User.objects.exclude(username__in=['OSAB_IMPORT', 'admin', 'root'])
-
-        # 3. Filtros de Permissão
         grupos_gestao = _perf_grupos_gestao()
         if is_member(user, grupos_gestao):
-            pass 
+            pass
         elif is_member(user, ['Supervisor']):
             users = users.filter(Q(supervisor=user) | Q(id=user.id))
         else:
             users = users.filter(id=user.id)
 
-        # 4. Filtro de Canal (Query Param)
         filtro_canal = request.query_params.get('canal')
         if filtro_canal:
             users = users.filter(canal__iexact=filtro_canal)
-
-        # 4b. Filtro de Cluster (Query Param)
         filtro_cluster = request.query_params.get('cluster')
         if filtro_cluster:
             users = users.filter(cluster=filtro_cluster)
 
         users = _aplicar_filtro_vendedor_ativo_perf(users, user, request.query_params.get('vendedor_ativo'))
 
-        # 5. Filtros de Venda
-        # IMPORTANTE: filtro_os_valida já garante que tem OS, mas agora filtramos pela DATA DE ABERTURA
         filtro_os_sem_reemissao = (
             Q(vendas__ativo=True)
             & ~Q(vendas__ordem_servico='')
@@ -5158,40 +5310,36 @@ class PainelPerformanceView(APIView):
             & ~Q(vendas__ordem_servico='')
             & Q(vendas__ordem_servico__isnull=False)
         )
-        
-        # Filtro CC (Cartão)
         filtro_cc = (
-            Q(vendas__forma_pagamento__nome__icontains='CREDIT') | 
-            Q(vendas__forma_pagamento__nome__icontains='CRÉDIT') |
-            (Q(vendas__forma_pagamento__nome__icontains='CARTA') & ~Q(vendas__forma_pagamento__nome__icontains='DEBIT'))
+            Q(vendas__forma_pagamento__nome__icontains='CREDIT')
+            | Q(vendas__forma_pagamento__nome__icontains='CRÉDIT')
+            | (Q(vendas__forma_pagamento__nome__icontains='CARTA') & ~Q(vendas__forma_pagamento__nome__icontains='DEBIT'))
         )
-        
-        # Filtro Instalada
         filtro_inst = Q(vendas__status_esteira__nome__iexact='INSTALADA')
-        # Data efetiva (para consultores): data_instalacao_fisica se preenchida, senão data_instalacao (OSAB)
-        filtro_data_efetiva_mes = (
-            (Q(vendas__data_instalacao_fisica__isnull=False) & Q(vendas__data_instalacao_fisica__gte=inicio_mes))
-            | (Q(vendas__data_instalacao_fisica__isnull=True) & Q(vendas__data_instalacao__gte=inicio_mes))
+        filtro_abertura_no_mes = (
+            Q(vendas__data_abertura__date__gte=inicio_mes)
+            & Q(vendas__data_abertura__date__lte=fim_mes)
         )
-        eh_gestao_performance = is_member(user, grupos_gestao)
-        filtro_data_inst_mes = Q(vendas__data_instalacao__gte=inicio_mes) if eh_gestao_performance else filtro_data_efetiva_mes
+        # Instaladas no mês: data física se preenchida, senão data instalação OSAB
+        filtro_data_inst_mes = _perf_filtro_data_efetiva_instalacao_intervalo(inicio_mes, fim_mes)
 
-        # --- A. DADOS DE HOJE ---
+        filtro_semana_abertura = (
+            Q(vendas__data_abertura__date__gte=inicio_semana)
+            & Q(vendas__data_abertura__date__lte=fim_semana)
+        )
+
         qs_hoje = users.annotate(
-            vendas_total=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date=hoje)),
-            vendas_cc=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date=hoje) & filtro_cc)
-        ).values('username', 'canal', 'cluster', 'vendas_total', 'vendas_cc').order_by('username')  # Ordem alfabética
+            vendas_total=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date=hoje_ref)),
+            vendas_cc=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date=hoje_ref) & filtro_cc)
+        ).values('username', 'canal', 'cluster', 'vendas_total', 'vendas_cc').order_by('username')
 
         lista_hoje = []
         for u in qs_hoje:
             total = u['vendas_total']
             cc = u['vendas_cc']
             pct = (cc / total * 100) if total > 0 else 0
-            
-            nome_display = u['username']
-            
             lista_hoje.append({
-                'vendedor': nome_display.upper(),
+                'vendedor': u['username'].upper(),
                 'canal': u['canal'],
                 'cluster': u.get('cluster', '-'),
                 'total': total,
@@ -5199,7 +5347,6 @@ class PainelPerformanceView(APIView):
                 'pct_cc': round(pct, 2)
             })
 
-        # --- B. DADOS DA SEMANA ---
         qs_semana = users.annotate(
             seg=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date=dias_semana[0])),
             ter=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date=dias_semana[1])),
@@ -5207,18 +5354,16 @@ class PainelPerformanceView(APIView):
             qui=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date=dias_semana[3])),
             sex=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date=dias_semana[4])),
             sab=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date=dias_semana[5])),
-            total_semana=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date__gte=inicio_semana)),
-            total_cc=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date__gte=inicio_semana) & filtro_cc)
-        ).values('username', 'cluster', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'total_semana', 'total_cc').order_by('username')  # Ordem alfabética
+            total_semana=Count('vendas', filter=filtro_os_sem_reemissao & filtro_semana_abertura),
+            total_cc=Count('vendas', filter=filtro_os_sem_reemissao & filtro_semana_abertura & filtro_cc)
+        ).values('username', 'cluster', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'total_semana', 'total_cc').order_by('username')
 
         lista_semana = []
         for u in qs_semana:
             total = u['total_semana']
             pct = (u['total_cc'] / total * 100) if total > 0 else 0
-            nome_display = u['username']
-
             lista_semana.append({
-                'vendedor': nome_display.upper(),
+                'vendedor': u['username'].upper(),
                 'cluster': u.get('cluster', '-'),
                 'dias': [u['seg'], u['ter'], u['qua'], u['qui'], u['sex'], u['sab']],
                 'total': total,
@@ -5226,36 +5371,52 @@ class PainelPerformanceView(APIView):
                 'pct_cc': round(pct, 2)
             })
 
-        # --- C. DADOS DO MÊS (CORRIGIDO) ---
-        # "total_vendas": Mantém data_abertura (Vendas Novas no mês)
-        # "instaladas": Gestão usa data_instalacao (OSAB); consultores usam data efetiva (física se preenchida)
         qs_mes = users.annotate(
-            total_vendas=Count('vendas', filter=filtro_os_com_reemissao & Q(vendas__data_abertura__date__gte=inicio_mes)),
+            total_vendas=Count('vendas', filter=filtro_os_com_reemissao & filtro_abertura_no_mes),
             instaladas=Count('vendas', filter=filtro_os_com_reemissao & filtro_data_inst_mes & filtro_inst),
-            total_cc=Count('vendas', filter=filtro_os_com_reemissao & Q(vendas__data_abertura__date__gte=inicio_mes) & filtro_cc),
+            total_cc=Count('vendas', filter=filtro_os_com_reemissao & filtro_abertura_no_mes & filtro_cc),
             instaladas_cc=Count('vendas', filter=filtro_os_com_reemissao & filtro_data_inst_mes & filtro_inst & filtro_cc),
-            pendenciadas=Count('vendas', filter=filtro_os_com_reemissao & Q(vendas__data_abertura__date__gte=inicio_mes, vendas__status_esteira__nome__icontains='PENDEN')),
-            agendadas=Count('vendas', filter=filtro_os_com_reemissao & Q(vendas__data_abertura__date__gte=inicio_mes, vendas__status_esteira__nome__iexact='AGENDADO')),
-            canceladas=Count('vendas', filter=filtro_os_com_reemissao & Q(vendas__data_abertura__date__gte=inicio_mes, vendas__status_esteira__nome__icontains='CANCELAD'))
+            pendenciadas=Count('vendas', filter=filtro_os_com_reemissao & filtro_abertura_no_mes & Q(vendas__status_esteira__nome__icontains='PENDEN')),
+            agendadas=Count('vendas', filter=filtro_os_com_reemissao & filtro_abertura_no_mes & Q(vendas__status_esteira__nome__iexact='AGENDADO')),
+            canceladas=Count('vendas', filter=filtro_os_com_reemissao & filtro_abertura_no_mes & Q(vendas__status_esteira__nome__icontains='CANCELAD'))
         ).values(
             'username', 'cluster', 'total_vendas', 'instaladas', 'total_cc', 'instaladas_cc', 'pendenciadas', 'agendadas', 'canceladas'
-        ).order_by('username')  # Ordem alfabética
+        ).order_by('username')
+
+        m1_end = hoje_ref.replace(day=1) - timedelta(days=1)
+        m1_start = m1_end.replace(day=1)
+        m2_end = m1_start - timedelta(days=1)
+        m2_start = m2_end.replace(day=1)
+        base_inst_m = filtro_os_com_reemissao & filtro_inst
+        f_m1 = base_inst_m & _perf_filtro_data_efetiva_instalacao_intervalo(m1_start, m1_end)
+        f_m2 = base_inst_m & _perf_filtro_data_efetiva_instalacao_intervalo(m2_start, m2_end)
+        qs_cluster = users.annotate(
+            inst_m1=Count('vendas', filter=f_m1),
+            inst_m2=Count('vendas', filter=f_m2),
+        ).values('username', 'cluster', 'inst_m1', 'inst_m2')
+        map_cluster = {r['username']: r for r in qs_cluster}
 
         lista_mes = []
         for u in qs_mes:
             tot = u['total_vendas']
             inst = u['instaladas']
-            
             pct_cc_total = (u['total_cc'] / tot * 100) if tot > 0 else 0
-            
-            # Porcentagem sobre instaladas reais
             pct_cc_inst = (u['instaladas_cc'] / inst * 100) if inst > 0 else 0
-            
-            # Aproveitamento: (Instaladas no Mês / Vendidas no Mês) 
-            # Nota: Isso pode passar de 100% se instalar vendas do mês passado, mas é o cálculo de "Conversão Operacional".
             aproveitamento = (inst / tot * 100) if tot > 0 else 0
-            
             nome_display = u['username']
+            ev = map_cluster.get(nome_display) or {}
+            i1 = int(ev.get('inst_m1') or 0)
+            i2 = int(ev.get('inst_m2') or 0)
+            media_inst = (i1 + i2) / 2.0
+            sug = _perf_cluster_sugerido_por_media(media_inst)
+            atual = _perf_parse_cluster_atual(u.get('cluster'))
+            mov, trans = _perf_movimento_cluster(atual, sug)
+            if trans == '—' and atual is not None:
+                aval_txt = '%s (média %.1f)' % (mov, media_inst)
+            elif trans == '—':
+                aval_txt = 'média %.1f → sugerido C%d' % (media_inst, sug)
+            else:
+                aval_txt = '%s (%s) média %.1f' % (mov, trans, media_inst)
 
             lista_mes.append({
                 'vendedor': nome_display.upper(),
@@ -5269,110 +5430,32 @@ class PainelPerformanceView(APIView):
                 'aproveitamento': round(aproveitamento, 2),
                 'pend': u['pendenciadas'],
                 'agend': u['agendadas'],
-                'canc': u['canceladas']
+                'canc': u['canceladas'],
+                'avaliacao_cluster': aval_txt,
+                'media_instaladas_m1_m2': round(media_inst, 2),
+                'cluster_sugerido': sug,
             })
 
-        # Totais Gerais
         total_hoje = sum(i['total'] for i in lista_hoje)
         total_semana = sum(i['total'] for i in lista_semana)
         total_mes = sum(i['total'] for i in lista_mes)
 
-        return Response({
-            "hoje": lista_hoje,
-            "semana": lista_semana,
-            "mes": lista_mes,
-            "totais": {
-                "hoje": total_hoje,
-                "semana": total_semana,
-                "mes": total_mes
-            }
-        })
+        payload = {
+            'hoje': lista_hoje,
+            'semana': lista_semana,
+            'mes': lista_mes,
+            'totais': {'hoje': total_hoje, 'semana': total_semana, 'mes': total_mes},
+            'periodo': {
+                'mes_referencia': periodo['mes_referencia'],
+                'semana_segunda': periodo['semana_segunda'],
+                'semana_fim': fim_semana.isoformat(),
+            },
+            'pode_exportar_excel': is_member(user, _perf_grupos_export_excel()),
+        }
+        if periodo.get('aviso'):
+            payload['aviso'] = periodo['aviso']
+        return Response(payload)
 
-        # --- B. DADOS DA SEMANA ---
-        qs_semana = users.annotate(
-            seg=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date=dias_semana[0])),
-            ter=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date=dias_semana[1])),
-            qua=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date=dias_semana[2])),
-            qui=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date=dias_semana[3])),
-            sex=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date=dias_semana[4])),
-            sab=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date=dias_semana[5])),
-            total_semana=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_semana)),
-            total_cc=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_semana) & filtro_cc)
-        ).values('username', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'total_semana', 'total_cc').order_by('username')  # Ordem alfab�tica
-
-        lista_semana = []
-        for u in qs_semana:
-            total = u['total_semana']
-            pct = (u['total_cc'] / total * 100) if total > 0 else 0
-            
-            # ALTERAÇÃO 2: Username
-            nome_display = u['username']
-
-            lista_semana.append({
-                'vendedor': nome_display.upper(),
-                'dias': [u['seg'], u['ter'], u['qua'], u['qui'], u['sex'], u['sab']],
-                'total': total,
-                'cc': u['total_cc'],
-                'pct_cc': round(pct, 2)
-            })
-
-        # --- C. DADOS DO MÊS ---
-        qs_mes = users.annotate(
-            total_vendas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_mes)),
-            
-            # A regra de instaladas continua a mesma (Safra): Vendas que tiveram OS aberta neste mês e já instalaram
-            instaladas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_mes) & filtro_inst),
-            
-            total_cc=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_mes) & filtro_cc),
-            instaladas_cc=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_mes) & filtro_inst & filtro_cc),
-            
-            pendenciadas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_mes, vendas__status_esteira__nome__icontains='PENDEN')),
-            agendadas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_mes, vendas__status_esteira__nome__iexact='AGENDADO')),
-            canceladas=Count('vendas', filter=filtro_os_valida & Q(vendas__data_abertura__date__gte=inicio_mes, vendas__status_esteira__nome__icontains='CANCELAD'))
-        ).values(
-            'username', 'total_vendas', 'instaladas', 'total_cc', 'instaladas_cc', 'pendenciadas', 'agendadas', 'canceladas'
-        ).order_by('username')  # Ordem alfab�tica
-
-        lista_mes = []
-        for u in qs_mes:
-            tot = u['total_vendas']
-            inst = u['instaladas']
-            pct_cc_total = (u['total_cc'] / tot * 100) if tot > 0 else 0
-            pct_cc_inst = (u['instaladas_cc'] / inst * 100) if inst > 0 else 0
-            aproveitamento = (inst / tot * 100) if tot > 0 else 0
-            
-            # ALTERAÇÃO 2: Username
-            nome_display = u['username']
-
-            lista_mes.append({
-                'vendedor': nome_display.upper(),
-                'total': tot,
-                'instaladas': inst,
-                'cc_total': u['total_cc'],
-                'cc_inst': u['instaladas_cc'],
-                'pct_cc_total': round(pct_cc_total, 2),
-                'pct_cc_inst': round(pct_cc_inst, 2),
-                'aproveitamento': round(aproveitamento, 2),
-                'pend': u['pendenciadas'],
-                'agend': u['agendadas'],
-                'canc': u['canceladas']
-            })
-
-        # Totais Gerais
-        total_hoje = sum(i['total'] for i in lista_hoje)
-        total_semana = sum(i['total'] for i in lista_semana)
-        total_mes = sum(i['total'] for i in lista_mes)
-
-        return Response({
-            "hoje": lista_hoje,
-            "semana": lista_semana,
-            "mes": lista_mes,
-            "totais": {
-                "hoje": total_hoje,
-                "semana": total_semana,
-                "mes": total_mes
-            }
-        })
 
 # --- CORREÇÃO APLICADA: VIEW DE PÁGINA NORMAL (SEM API_VIEW) ---
 def page_painel_performance(request):
@@ -5383,13 +5466,21 @@ class ExportarPerformanceExcelView(APIView):
     def get(self, request):
         User = get_user_model()
         user = request.user
-        
-        # 1. Definição de Datas (Mesma lógica da View principal)
+        if not is_member(user, _perf_grupos_export_excel()):
+            return Response(
+                {'detail': 'Exportação permitida apenas para BackOffice, Diretoria e Admin.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         agora_local = timezone.localtime(timezone.now())
         hoje = agora_local.date()
-        inicio_semana = hoje - timedelta(days=hoje.weekday())
-        inicio_mes = hoje.replace(day=1)
-        
+        p = _perf_resolver_periodos_performance(request, user, hoje)
+        hoje_ref = p['hoje_ref']
+        inicio_semana = p['inicio_semana']
+        fim_semana = p['fim_semana']
+        inicio_mes = p['inicio_mes']
+        fim_mes = p['fim_mes']
+
         # 2. Mesmo conjunto de vendedores do PainelPerformanceView (evita vendas de usuário inativo/bot fora do painel)
         grupos_gestao = _perf_grupos_gestao()
         users_export = User.objects.exclude(username__in=['OSAB_IMPORT', 'admin', 'root'])
@@ -5429,31 +5520,27 @@ class ExportarPerformanceExcelView(APIView):
         vendas_sem_reemissao = vendas.filter(reemissao=False)
 
         # --- ABA 1: HOJE ---
-        vendas_hoje = vendas_sem_reemissao.filter(data_criacao__date=hoje)
+        vendas_hoje = vendas_sem_reemissao.filter(data_criacao__date=hoje_ref)
         dados_hoje = self._montar_dados(vendas_hoje, use_data_efetiva)
         
-        # --- ABA 2: SEMANA ---
-        vendas_semana = vendas_sem_reemissao.filter(data_criacao__date__gte=inicio_semana)
+        # --- ABA 2: SEMANA (segunda a sábado) ---
+        vendas_semana = vendas_sem_reemissao.filter(
+            data_criacao__date__gte=inicio_semana,
+            data_criacao__date__lte=fim_semana,
+        )
         dados_semana = self._montar_dados(vendas_semana, use_data_efetiva)
         
         # --- ABA 3: MÊS ---
-        # Mensal inclui:
-        # 1) vendas criadas no mês; e
-        # 2) vendas instaladas no mês, mesmo criadas em meses anteriores.
-        # Além disso, mensal inclui reemissão.
-        if use_data_efetiva:
-            filtro_instalacao_mes = (
-                (Q(data_instalacao_fisica__isnull=False) & Q(data_instalacao_fisica__gte=inicio_mes))
-                | (Q(data_instalacao_fisica__isnull=True) & Q(data_instalacao__gte=inicio_mes))
-            )
-        else:
-            filtro_instalacao_mes = Q(data_instalacao__gte=inicio_mes)
+        filtro_instalacao_mes = (
+            (Q(data_instalacao_fisica__isnull=False) & Q(data_instalacao_fisica__gte=inicio_mes) & Q(data_instalacao_fisica__lte=fim_mes))
+            | (Q(data_instalacao_fisica__isnull=True) & Q(data_instalacao__gte=inicio_mes) & Q(data_instalacao__lte=fim_mes))
+        )
 
         vendas_mes = vendas.filter(
-            Q(data_criacao__date__gte=inicio_mes)
+            Q(data_criacao__date__gte=inicio_mes, data_criacao__date__lte=fim_mes)
             | (Q(status_esteira__nome__iexact='INSTALADA') & filtro_instalacao_mes)
         ).distinct()
-        dados_mes = self._montar_dados(vendas_mes, use_data_efetiva, inicio_mes=inicio_mes)
+        dados_mes = self._montar_dados(vendas_mes, use_data_efetiva, inicio_mes=inicio_mes, fim_mes=fim_mes)
 
         # 4. Gerar o Excel
         planilhas = [
@@ -5474,11 +5561,11 @@ class ExportarPerformanceExcelView(APIView):
         
         # 5. Retornar Arquivo
         response = HttpResponse(output, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        filename = f"Performance_{periodo.title()}_{hoje}.xlsx"
+        filename = f"Performance_{periodo.title()}_{hoje_ref}.xlsx"
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
 
-    def _montar_dados(self, queryset, use_data_efetiva=False, inicio_mes=None):
+    def _montar_dados(self, queryset, use_data_efetiva=False, inicio_mes=None, fim_mes=None):
         dados = []
         for v in queryset:
             # Converter para horário local para validação visual
@@ -5502,13 +5589,14 @@ class ExportarPerformanceExcelView(APIView):
                 'Reemissão': 'Sim' if getattr(v, 'reemissao', False) else 'Não',
             }
             if inicio_mes:
+                fim_recorte = fim_mes or inicio_mes
                 data_criacao_local_date = timezone.localtime(v.data_criacao).date() if v.data_criacao else None
                 instalada_no_mes = bool(
-                    dt_inst and dt_inst >= inicio_mes
+                    dt_inst and inicio_mes <= dt_inst <= fim_recorte
                     and v.status_esteira
                     and str(v.status_esteira.nome or '').strip().upper() == 'INSTALADA'
                 )
-                if data_criacao_local_date and data_criacao_local_date >= inicio_mes:
+                if data_criacao_local_date and inicio_mes <= data_criacao_local_date <= fim_recorte:
                     origem_mes = 'Venda do mês'
                 elif instalada_no_mes:
                     origem_mes = 'Instalada no mês (venda anterior)'
@@ -5587,6 +5675,7 @@ class EnviarImagemPerformanceView(APIView):
 
     def _gerar_imagem_servidor(self, request):
         """Gera imagem com Pillow usando os mesmos dados e layout do robô automático."""
+        from types import SimpleNamespace
         from crm_app.tasks import _filtro_cc
         User = get_user_model()
         user = request.user
@@ -5596,11 +5685,28 @@ class EnviarImagemPerformanceView(APIView):
         if tipo not in ('HOJE', 'SEMANAL', 'MENSAL'):
             tipo = 'HOJE'
 
+        qpd = {}
+        for k in ('semana_segunda', 'mes_referencia'):
+            v = request.data.get(k)
+            if v is not None and str(v).strip() != '':
+                qpd[k] = v
+
+        class _PerfQP:
+            def __init__(self, d):
+                self._d = d
+
+            def get(self, key, default=None):
+                return self._d.get(key, default)
+
+        fake_req = SimpleNamespace(query_params=_PerfQP(qpd))
         agora_local = timezone.localtime(timezone.now())
         hoje = agora_local.date()
-        inicio_semana = hoje - timedelta(days=hoje.weekday())
-        dias_semana = [inicio_semana + timedelta(days=i) for i in range(6)]
-        inicio_mes = hoje.replace(day=1)
+        p = _perf_resolver_periodos_performance(fake_req, user, hoje)
+        hoje_ref = p['hoje_ref']
+        inicio_semana = p['inicio_semana']
+        fim_semana = p['fim_semana']
+        inicio_mes = p['inicio_mes']
+        fim_mes = p['fim_mes']
 
         users = User.objects.exclude(username__in=['OSAB_IMPORT', 'admin', 'root'])
         grupos_gestao = _perf_grupos_gestao()
@@ -5639,7 +5745,7 @@ class EnviarImagemPerformanceView(APIView):
         titulo_extra = " Hoje" if tipo == "HOJE" else (" Semanal" if tipo == "SEMANAL" else " Mensal")
 
         if tipo == 'HOJE':
-            filtro = filtro_os_sem_reemissao & Q(vendas__data_abertura__date=hoje)
+            filtro = filtro_os_sem_reemissao & Q(vendas__data_abertura__date=hoje_ref)
             qs = users.annotate(
                 total=Count('vendas', filter=filtro),
                 cc=Count('vendas', filter=filtro & filtro_cc)
@@ -5657,9 +5763,13 @@ class EnviarImagemPerformanceView(APIView):
                 t_total += u.total
                 t_cc += u.cc
         elif tipo == 'SEMANAL':
+            filtro_sem = (
+                Q(vendas__data_abertura__date__gte=inicio_semana)
+                & Q(vendas__data_abertura__date__lte=fim_semana)
+            )
             qs = users.annotate(
-                total_semana=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date__gte=inicio_semana)),
-                total_cc=Count('vendas', filter=filtro_os_sem_reemissao & Q(vendas__data_abertura__date__gte=inicio_semana) & filtro_cc)
+                total_semana=Count('vendas', filter=filtro_os_sem_reemissao & filtro_sem),
+                total_cc=Count('vendas', filter=filtro_os_sem_reemissao & filtro_sem & filtro_cc)
             ).order_by('username').values('username', 'cluster', 'canal', 'total_semana', 'total_cc')
             for u in qs:
                 tot = u['total_semana']
@@ -5676,10 +5786,15 @@ class EnviarImagemPerformanceView(APIView):
                 t_total += tot
                 t_cc += cc
         else:  # MENSAL
+            filtro_ab_m = (
+                Q(vendas__data_abertura__date__gte=inicio_mes)
+                & Q(vendas__data_abertura__date__lte=fim_mes)
+            )
+            filtro_inst_m = _perf_filtro_data_efetiva_instalacao_intervalo(inicio_mes, fim_mes)
             qs = users.annotate(
-                total_vendas=Count('vendas', filter=filtro_os_com_reemissao & Q(vendas__data_abertura__date__gte=inicio_mes)),
-                instaladas=Count('vendas', filter=filtro_os_com_reemissao & Q(vendas__data_instalacao__gte=inicio_mes) & filtro_inst),
-                total_cc=Count('vendas', filter=filtro_os_com_reemissao & Q(vendas__data_abertura__date__gte=inicio_mes) & filtro_cc)
+                total_vendas=Count('vendas', filter=filtro_os_com_reemissao & filtro_ab_m),
+                instaladas=Count('vendas', filter=filtro_os_com_reemissao & filtro_inst_m & filtro_inst),
+                total_cc=Count('vendas', filter=filtro_os_com_reemissao & filtro_ab_m & filtro_cc)
             ).order_by('username').values('username', 'cluster', 'canal', 'total_vendas', 'instaladas', 'total_cc')
             for u in qs:
                 tot = u['total_vendas']
@@ -5705,7 +5820,7 @@ class EnviarImagemPerformanceView(APIView):
         aprov_geral = int((t_instaladas / t_total * 100)) if t_total > 0 and tipo == 'MENSAL' else 0
         payload = {
             'titulo': f"Performance -{titulo_extra.strip()}",
-            'data': hoje.strftime('%d/%m/%Y'),
+            'data': hoje_ref.strftime('%d/%m/%Y'),
             'lista': lista_dados,
             'totais': {
                 'total': t_total,

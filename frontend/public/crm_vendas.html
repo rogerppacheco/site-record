@@ -833,7 +833,37 @@
         // =========================================================================
         // FUNÇÃO CARREGAR VENDAS (CORRIGIDA: Lógica de Status Fechado)
         // =========================================================================
+        function consultorMesFiltroValido(iniStr, fimStr) {
+            if (!['Vendedor', 'Supervisor'].includes(userProfile)) return true;
+            if (!iniStr || !fimStr) return true;
+            const a = new Date(iniStr + 'T12:00:00');
+            const b = new Date(fimStr + 'T12:00:00');
+            if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return false;
+            if (a.getDate() !== 1) return false;
+            const ultimo = new Date(a.getFullYear(), a.getMonth() + 1, 0);
+            if (b.getFullYear() !== ultimo.getFullYear() || b.getMonth() !== ultimo.getMonth() || b.getDate() !== ultimo.getDate()) return false;
+            const hoje = new Date();
+            const ym = (d) => d.getFullYear() * 12 + d.getMonth();
+            const yma = ym(a);
+            if (yma === ym(hoje)) return true;
+            const ant = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
+            return yma === ym(ant);
+        }
+
+        function garantirFiltroMesConsultor() {
+            if (!['Vendedor', 'Supervisor'].includes(userProfile)) return;
+            const inicio = document.getElementById('filtro-inicio').value;
+            const fim = document.getElementById('filtro-fim').value;
+            if (!inicio || !fim) return;
+            if (consultorMesFiltroValido(inicio, fim)) return;
+            alert('Para seu perfil, use apenas o mês atual ou o mês anterior completo (do dia 1 ao último dia do mês).');
+            const h = new Date();
+            document.getElementById('filtro-inicio').valueAsDate = new Date(h.getFullYear(), h.getMonth(), 1);
+            document.getElementById('filtro-fim').valueAsDate = new Date(h.getFullYear(), h.getMonth() + 1, 0);
+        }
+
         async function carregarVendas(silent = false) {
+            garantirFiltroMesConsultor();
             // Destruição segura do DataTable
             if ($.fn.DataTable.isDataTable('#tabela-vendas')) {
                 $('#tabela-vendas').DataTable().destroy();
@@ -1429,9 +1459,20 @@
                 userProfile = payload.user_role || payload.perfil || 'Vendedor'; 
                 const perfisGestao = ['Supervisor', 'Diretoria', 'BackOffice', 'Admin'];
                 if (perfisGestao.includes(userProfile)) { document.getElementById('aba-equipe').classList.remove('d-none'); }
-                if (!['Diretoria', 'Admin', 'BackOffice'].includes(userProfile)) { 
-                    document.getElementById('barra-filtros').style.display = 'none'; 
-                    document.getElementById('aviso-filtro-bloqueado').classList.remove('d-none'); 
+                const mostraBarraFiltros = ['Diretoria', 'Admin', 'BackOffice', 'Vendedor', 'Supervisor'].includes(userProfile);
+                const barra = document.getElementById('barra-filtros');
+                const aviso = document.getElementById('aviso-filtro-bloqueado');
+                if (barra) barra.style.display = mostraBarraFiltros ? '' : 'none';
+                if (aviso) {
+                    if (mostraBarraFiltros) {
+                        aviso.classList.add('d-none');
+                    } else {
+                        aviso.classList.remove('d-none');
+                    }
+                }
+                if (['Vendedor', 'Supervisor'].includes(userProfile) && aviso) {
+                    aviso.classList.remove('d-none');
+                    aviso.innerHTML = '<i class="bi bi-calendar-check"></i> Filtro de datas: apenas <strong>mês civil completo</strong> (dia 1 ao último dia), <strong>mês atual</strong> ou <strong>mês anterior</strong>.';
                 }
                 if (['Diretoria', 'Admin', 'BackOffice'].includes(userProfile)) {
                     document.getElementById('btn-exportar-excel').classList.remove('d-none');
@@ -1456,6 +1497,7 @@
         }
 
         async function carregarDashboard() {
+            garantirFiltroMesConsultor();
             const inicio = document.getElementById('filtro-inicio').value;
             const fim = document.getElementById('filtro-fim').value;
             const consultorId = document.getElementById('filtro-vendedor').value;

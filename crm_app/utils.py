@@ -1,3 +1,10 @@
+import calendar
+from datetime import date, datetime, timedelta
+
+from django.db.models import Q
+from django.utils import timezone
+
+
 def is_member(user, groups):
     """Verifica se o usuário pertence a algum dos grupos (por Group ou Perfil). Usado para regras de permissão."""
     if not user:
@@ -14,6 +21,45 @@ def is_member(user, groups):
     except Exception:
         pass
     return False
+
+
+def vendedor_ou_supervisor_restrito_mes(user):
+    return is_member(user, ['Vendedor', 'Supervisor'])
+
+
+def mes_completo_vendedor_supervisor_valido(dt_ini: date, dt_fim: date, hoje_d: date) -> bool:
+    """Mês civil completo (dia 1 ao último dia) e apenas mês atual ou mês anterior ao atual."""
+    if dt_ini.day != 1:
+        return False
+    ultimo = calendar.monthrange(dt_ini.year, dt_ini.month)[1]
+    if dt_fim != date(dt_ini.year, dt_ini.month, ultimo):
+        return False
+    cy, cm = hoje_d.year, hoje_d.month
+    permitidos = {(cy, cm)}
+    if cm == 1:
+        permitidos.add((cy - 1, 12))
+    else:
+        permitidos.add((cy, cm - 1))
+    return (dt_ini.year, dt_ini.month) in permitidos
+
+
+def q_venda_acesso_retrieve_vendedor_supervisor():
+    """
+    Recorte permitido para detalhe: mês atual (criação a partir do dia 1 OU instalação no mês)
+    OU qualquer venda com criação/instalação no mês civil anterior.
+    """
+    agora = timezone.localtime(timezone.now())
+    hoje_d = agora.date()
+    curr_start = hoje_d.replace(day=1)
+    curr_start_dt = timezone.make_aware(datetime.combine(curr_start, datetime.min.time()))
+    prev_end = curr_start - timedelta(days=1)
+    prev_start = prev_end.replace(day=1)
+    atual_q = Q(data_criacao__gte=curr_start_dt) | Q(data_instalacao__gte=curr_start)
+    anterior_q = (
+        Q(data_criacao__date__gte=prev_start, data_criacao__date__lte=prev_end)
+        | Q(data_instalacao__gte=prev_start, data_instalacao__lte=prev_end)
+    )
+    return atual_q | anterior_q
 
 
 def listar_fachadas_dfv_por_endereco(endereco):
@@ -72,7 +118,6 @@ def listar_fachadas_dfv_por_endereco(endereco):
 import logging
 import requests
 import re
-from django.db.models import Q
 from .models import DFV, AreaVenda
 from .models import Venda # Certifique-se que Venda está importado
 

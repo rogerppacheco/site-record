@@ -68,7 +68,7 @@
                     <i class="bi bi-whatsapp"></i> Enviar Imagem Agora
                 </button>
 
-                <div class="dropdown">
+                <div class="dropdown" id="dropdown-export-performance">
                     <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                         <i class="bi bi-file-earmark-excel"></i> Exportar
                     </button>
@@ -80,6 +80,22 @@
                 </div>
                 
                 <div class="vr mx-2"></div>
+
+                <div id="wrap-filtro-mes-performance" class="d-flex align-items-center gap-1 ms-2">
+                    <label class="fw-bold text-muted small mb-0">Mês ref.:</label>
+                    <select id="filtro-mes-performance" class="form-select form-select-sm" style="width: 150px;" onchange="carregarDados()">
+                        <option value="atual">Mês atual</option>
+                        <option value="anterior">Mês anterior</option>
+                    </select>
+                </div>
+                <div id="wrap-filtro-mes-livre" class="d-none align-items-center gap-1 ms-2">
+                    <label class="fw-bold text-muted small mb-0">Mês:</label>
+                    <input type="month" id="filtro-mes-livre" class="form-control form-control-sm" style="width: 140px;" onchange="carregarDados()">
+                </div>
+                <div id="wrap-filtro-segunda-livre" class="d-none align-items-center gap-1 ms-2">
+                    <label class="fw-bold text-muted small mb-0">Segunda feira:</label>
+                    <input type="date" id="filtro-segunda-livre" class="form-control form-control-sm" style="width: 148px;" onchange="carregarDados()" title="Início da semana (segunda a sábado)">
+                </div>
                 
                 <label class="fw-bold text-muted small mb-0">Canal:</label>
                 <select id="filtro-canal" class="form-select form-select-sm" style="width: 150px;" onchange="carregarDados()">
@@ -127,7 +143,7 @@
                 <div class="card border-0 shadow"><div class="card-body p-0 table-responsive"><table class="table-excel"><thead><tr><th class="text-start ps-3">Vendedor</th><th>Cluster</th><th>Seg</th><th>Ter</th><th>Qua</th><th>Qui</th><th>Sex</th><th>Sáb</th><th class="bg-header-group">Total Semana</th><th>Total CC</th><th>% CC</th></tr></thead><tbody id="tbody-semana"></tbody><tfoot id="tfoot-semana"></tfoot></table></div></div>
             </div>
             <div class="tab-pane fade" id="content-mes">
-                <div class="card border-0 shadow"><div class="card-body p-0 table-responsive"><table class="table-excel"><thead><tr><th class="text-start ps-3">Vendedor</th><th>Cluster</th><th class="bg-header-group">Total Vendas</th><th class="bg-success text-white">Instaladas</th><th>Total CC</th><th>Instaladas CC</th><th>% CC Total</th><th>% CC Inst</th><th class="bg-info text-white">Aprov.</th><th>Pende</th><th>Agend</th><th>Canc</th></tr></thead><tbody id="tbody-mes"></tbody><tfoot id="tfoot-mes"></tfoot></table></div></div>
+                <div class="card border-0 shadow"><div class="card-body p-0 table-responsive"><table class="table-excel"><thead><tr><th class="text-start ps-3">Vendedor</th><th>Cluster</th><th class="bg-header-group">Total Vendas</th><th class="bg-success text-white">Instaladas</th><th>Total CC</th><th>Instaladas CC</th><th>% CC Total</th><th>% CC Inst</th><th class="bg-info text-white">Aprov.</th><th class="text-start" style="min-width: 160px;">Aval. Cluster</th><th>Pende</th><th>Agend</th><th>Canc</th></tr></thead><tbody id="tbody-mes"></tbody><tfoot id="tfoot-mes"></tfoot></table></div></div>
             </div>
         </div>
     </main>
@@ -246,9 +262,29 @@
         if (!token) window.location.href = '/';
 
         let campoDestinoAlvo = ''; 
+        let perfilExportExcel = false;
+        let perfilFiltroPeriodoLivre = false;
         const modalRobo = new bootstrap.Modal(document.getElementById('modalConfigRobo'));
         const modalManual = new bootstrap.Modal(document.getElementById('modalEnvioManual'));
         const modalSeletor = new bootstrap.Modal(document.getElementById('modalSeletor'));
+
+        function paramsPeriodoPerformance() {
+            const params = new URLSearchParams();
+            if (perfilFiltroPeriodoLivre) {
+                const ml = document.getElementById('filtro-mes-livre')?.value;
+                if (ml) params.set('mes_referencia', ml);
+                const seg = document.getElementById('filtro-segunda-livre')?.value;
+                if (seg) params.set('semana_segunda', seg);
+            } else {
+                const mp = document.getElementById('filtro-mes-performance')?.value;
+                if (mp === 'anterior') {
+                    const d = new Date();
+                    d.setMonth(d.getMonth() - 1);
+                    params.set('mes_referencia', `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+                }
+            }
+            return params;
+        }
 
         // --- CARREGAMENTO INICIAL ---
         document.addEventListener('DOMContentLoaded', () => {
@@ -256,9 +292,24 @@
                 const p = jwt_decode(token);
                 const role = (p.user_role || p.perfil || '').toString();
                 const gestao = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade'];
+                perfilExportExcel = ['Diretoria', 'Admin', 'BackOffice'].some(g => role.includes(g));
+                perfilFiltroPeriodoLivre = perfilExportExcel;
                 if (gestao.some(g => role.includes(g))) {
                     const w = document.getElementById('filtro-vendedor-ativo-wrap');
                     if (w) { w.classList.remove('d-none'); w.classList.add('d-flex'); }
+                }
+                if (perfilFiltroPeriodoLivre) {
+                    document.getElementById('wrap-filtro-mes-performance')?.classList.add('d-none');
+                    const wml = document.getElementById('wrap-filtro-mes-livre');
+                    const wsg = document.getElementById('wrap-filtro-segunda-livre');
+                    if (wml) { wml.classList.remove('d-none'); wml.classList.add('d-flex'); }
+                    if (wsg) { wsg.classList.remove('d-none'); wsg.classList.add('d-flex'); }
+                    const now = new Date();
+                    const elMes = document.getElementById('filtro-mes-livre');
+                    if (elMes) elMes.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+                }
+                if (!perfilExportExcel) {
+                    document.getElementById('dropdown-export-performance')?.classList.add('d-none');
                 }
             } catch (e) {}
             atualizarModoEnvioRobo();
@@ -294,12 +345,15 @@
             const cluster = document.getElementById('filtro-cluster').value;
             const vaEl = document.getElementById('filtro-vendedor-ativo');
             const vendedorAtivo = vaEl ? vaEl.value : 'todos';
-            const params = new URLSearchParams();
+            const params = paramsPeriodoPerformance();
             if (canal) params.set('canal', canal);
             if (cluster) params.set('cluster', cluster);
             params.set('vendedor_ativo', vendedorAtivo || 'todos');
             try {
                 const response = await axios.get(`/api/crm/performance-painel/?${params.toString()}`, { headers: { 'Authorization': `Bearer ${token}` }});
+                if (response.data.aviso) {
+                    console.warn(response.data.aviso);
+                }
                 renderHoje(response.data.hoje);
                 renderSemana(response.data.semana);
                 renderMes(response.data.mes);
@@ -310,12 +364,11 @@
             const canal = document.getElementById('filtro-canal').value || '';
             const cluster = document.getElementById('filtro-cluster').value || '';
             const vaEl = document.getElementById('filtro-vendedor-ativo');
-            const params = new URLSearchParams({
-                periodo: periodo || 'HOJE',
-                canal: canal,
-                cluster: cluster,
-                vendedor_ativo: (vaEl ? vaEl.value : 'todos') || 'todos'
-            });
+            const params = paramsPeriodoPerformance();
+            params.set('periodo', periodo || 'HOJE');
+            params.set('canal', canal);
+            params.set('cluster', cluster);
+            params.set('vendedor_ativo', (vaEl ? vaEl.value : 'todos') || 'todos');
             const url = `/api/crm/performance-painel/exportar/?${params.toString()}`;
             try {
                 const response = await axios.get(url, {
@@ -389,14 +442,15 @@
                 tPend += i.pend;
                 tAgend += i.agend;
                 tCanc += i.canc;
-                h+=`<tr><td class="text-start ps-3 fw-bold">${i.vendedor}</td><td>${i.cluster||'-'}</td><td class="bg-total-column">${i.total}</td><td class="${cellClass(i.instaladas)}">${i.instaladas}</td><td>${i.cc_total}</td><td>${i.cc_inst}</td><td>${i.pct_cc_total}%</td><td>${i.pct_cc_inst}%</td><td class="bg-info text-white fw-bold">${i.aproveitamento}%</td><td>${i.pend}</td><td>${i.agend}</td><td>${i.canc}</td></tr>`;
+                const aval = (i.avaliacao_cluster || '—').replace(/</g, '&lt;');
+                h+=`<tr><td class="text-start ps-3 fw-bold">${i.vendedor}</td><td>${i.cluster||'-'}</td><td class="bg-total-column">${i.total}</td><td class="${cellClass(i.instaladas)}">${i.instaladas}</td><td>${i.cc_total}</td><td>${i.cc_inst}</td><td>${i.pct_cc_total}%</td><td>${i.pct_cc_inst}%</td><td class="bg-info text-white fw-bold">${i.aproveitamento}%</td><td class="small text-start">${aval}</td><td>${i.pend}</td><td>${i.agend}</td><td>${i.canc}</td></tr>`;
             });
             // Calcular totais
             const pct_cc_total = tT > 0 ? ((tCC / tT) * 100).toFixed(1) : 0;
             const pct_cc_inst = tI > 0 ? ((tCI / tI) * 100).toFixed(1) : 0;
             const aprov = tT > 0 ? ((tI / tT) * 100).toFixed(1) : 0;
             // Linha de TOTAL logo após o cabeçalho
-            const linhaTotal = `<tr style="background-color: #2c3e50; color: white; font-weight: bold;"><td class="text-start ps-3">TOTAL</td><td>-</td><td>${tT}</td><td>${tI}</td><td>${tCC}</td><td>${tCI}</td><td>${pct_cc_total}%</td><td>${pct_cc_inst}%</td><td>${aprov}%</td><td>${tPend}</td><td>${tAgend}</td><td>${tCanc}</td></tr>`;
+            const linhaTotal = `<tr style="background-color: #2c3e50; color: white; font-weight: bold;"><td class="text-start ps-3">TOTAL</td><td>-</td><td>${tT}</td><td>${tI}</td><td>${tCC}</td><td>${tCI}</td><td>${pct_cc_total}%</td><td>${pct_cc_inst}%</td><td>${aprov}%</td><td>-</td><td>${tPend}</td><td>${tAgend}</td><td>${tCanc}</td></tr>`;
             // TOTAL aparece primeiro, depois os dados
             document.getElementById('tbody-mes').innerHTML = linhaTotal + h;
             // Remover tfoot
@@ -653,8 +707,7 @@
             const tabLabel = tabAtiva ? tabAtiva.textContent.trim() : 'Hoje';
             const titulo = `Performance - ${tabLabel}`;
 
-            try {
-                await axios.post('/api/crm/enviar-imagem-performance/', { 
+            const body = { 
                     chat_id: destino, 
                     gerar_server: true,
                     canal: canal,
@@ -662,7 +715,12 @@
                     tipo: tipo,
                     titulo: titulo,
                     vendedor_ativo: vendedorAtivo || 'todos'
-                }, { headers: { 'Authorization': `Bearer ${token}` }});
+            };
+            const pp = paramsPeriodoPerformance();
+            if (pp.get('mes_referencia')) body.mes_referencia = pp.get('mes_referencia');
+            if (pp.get('semana_segunda')) body.semana_segunda = pp.get('semana_segunda');
+            try {
+                await axios.post('/api/crm/enviar-imagem-performance/', body, { headers: { 'Authorization': `Bearer ${token}` }});
                 
                 // Sucesso
                 btnEnviar.disabled = false;
