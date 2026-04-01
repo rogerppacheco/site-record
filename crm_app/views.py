@@ -5167,10 +5167,11 @@ def _perf_parse_cluster_atual(val):
     return None
 
 
-def _perf_cluster_sugerido_por_media(avg):
-    if avg >= 50:
+def _perf_cluster_sugerido_por_soma(total):
+    """Soma instaladas em M-1 + M-2 (mês ref.). C1 >= 50, C2 entre 30 e 49, C3 < 30."""
+    if total >= 50:
         return 1
-    if avg >= 30:
+    if total >= 30:
         return 2
     return 3
 
@@ -5383,7 +5384,9 @@ class PainelPerformanceView(APIView):
             'username', 'cluster', 'total_vendas', 'instaladas', 'total_cc', 'instaladas_cc', 'pendenciadas', 'agendadas', 'canceladas'
         ).order_by('username')
 
-        m1_end = hoje_ref.replace(day=1) - timedelta(days=1)
+        # M-1 e M-2: dois meses civis anteriores ao mês de referência do filtro (inicio_mes)
+        m0_start = inicio_mes
+        m1_end = m0_start - timedelta(days=1)
         m1_start = m1_end.replace(day=1)
         m2_end = m1_start - timedelta(days=1)
         m2_start = m2_end.replace(day=1)
@@ -5407,16 +5410,16 @@ class PainelPerformanceView(APIView):
             ev = map_cluster.get(nome_display) or {}
             i1 = int(ev.get('inst_m1') or 0)
             i2 = int(ev.get('inst_m2') or 0)
-            media_inst = (i1 + i2) / 2.0
-            sug = _perf_cluster_sugerido_por_media(media_inst)
+            soma_inst = i1 + i2
+            sug = _perf_cluster_sugerido_por_soma(soma_inst)
             atual = _perf_parse_cluster_atual(u.get('cluster'))
             mov, trans = _perf_movimento_cluster(atual, sug)
             if trans == '—' and atual is not None:
-                aval_txt = '%s (média %.1f)' % (mov, media_inst)
+                aval_txt = '%s (soma %d)' % (mov, soma_inst)
             elif trans == '—':
-                aval_txt = 'média %.1f → sugerido C%d' % (media_inst, sug)
+                aval_txt = 'soma %d → sugerido C%d' % (soma_inst, sug)
             else:
-                aval_txt = '%s (%s) média %.1f' % (mov, trans, media_inst)
+                aval_txt = '%s (%s) soma %d' % (mov, trans, soma_inst)
 
             lista_mes.append({
                 'vendedor': nome_display.upper(),
@@ -5432,7 +5435,7 @@ class PainelPerformanceView(APIView):
                 'agend': u['agendadas'],
                 'canc': u['canceladas'],
                 'avaliacao_cluster': aval_txt,
-                'media_instaladas_m1_m2': round(media_inst, 2),
+                'soma_instaladas_m1_m2': soma_inst,
                 'cluster_sugerido': sug,
             })
 
