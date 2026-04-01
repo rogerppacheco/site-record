@@ -5168,7 +5168,7 @@ def _perf_parse_cluster_atual(val):
 
 
 def _perf_cluster_sugerido_por_soma(total):
-    """Soma instaladas em M-1 + M-2 (mês ref.). C1 >= 50, C2 entre 30 e 49, C3 < 30."""
+    """Soma instaladas: mês do filtro + mês civil anterior. C1 >= 50, C2 entre 30 e 49, C3 < 30."""
     if total >= 50:
         return 1
     if total >= 30:
@@ -5384,19 +5384,19 @@ class PainelPerformanceView(APIView):
             'username', 'cluster', 'total_vendas', 'instaladas', 'total_cc', 'instaladas_cc', 'pendenciadas', 'agendadas', 'canceladas'
         ).order_by('username')
 
-        # M-1 e M-2: dois meses civis anteriores ao mês de referência do filtro (inicio_mes)
-        m0_start = inicio_mes
-        m1_end = m0_start - timedelta(days=1)
-        m1_start = m1_end.replace(day=1)
-        m2_end = m1_start - timedelta(days=1)
-        m2_start = m2_end.replace(day=1)
+        # Aval. Cluster: soma instaladas no MÊS DO FILTRO + no MÊS CIVIL IMEDIATAMENTE ANTERIOR
+        # (ex.: filtro mar/2026 → fev/2026 + mar/2026; não jan+fev)
+        m_ref_start = inicio_mes
+        m_ref_end = fim_mes
+        m_ant_end = m_ref_start - timedelta(days=1)
+        m_ant_start = m_ant_end.replace(day=1)
         base_inst_m = filtro_os_com_reemissao & filtro_inst
-        f_m1 = base_inst_m & _perf_filtro_data_efetiva_instalacao_intervalo(m1_start, m1_end)
-        f_m2 = base_inst_m & _perf_filtro_data_efetiva_instalacao_intervalo(m2_start, m2_end)
+        f_mes_ref = base_inst_m & _perf_filtro_data_efetiva_instalacao_intervalo(m_ref_start, m_ref_end)
+        f_mes_ant = base_inst_m & _perf_filtro_data_efetiva_instalacao_intervalo(m_ant_start, m_ant_end)
         qs_cluster = users.annotate(
-            inst_m1=Count('vendas', filter=f_m1),
-            inst_m2=Count('vendas', filter=f_m2),
-        ).values('username', 'cluster', 'inst_m1', 'inst_m2')
+            inst_aval_mes_ref=Count('vendas', filter=f_mes_ref),
+            inst_aval_mes_ant=Count('vendas', filter=f_mes_ant),
+        ).values('username', 'cluster', 'inst_aval_mes_ref', 'inst_aval_mes_ant')
         map_cluster = {r['username']: r for r in qs_cluster}
 
         lista_mes = []
@@ -5408,9 +5408,9 @@ class PainelPerformanceView(APIView):
             aproveitamento = (inst / tot * 100) if tot > 0 else 0
             nome_display = u['username']
             ev = map_cluster.get(nome_display) or {}
-            i1 = int(ev.get('inst_m1') or 0)
-            i2 = int(ev.get('inst_m2') or 0)
-            soma_inst = i1 + i2
+            i_ref = int(ev.get('inst_aval_mes_ref') or 0)
+            i_ant = int(ev.get('inst_aval_mes_ant') or 0)
+            soma_inst = i_ant + i_ref
             sug = _perf_cluster_sugerido_por_soma(soma_inst)
             atual = _perf_parse_cluster_atual(u.get('cluster'))
             mov, trans = _perf_movimento_cluster(atual, sug)
@@ -5436,6 +5436,8 @@ class PainelPerformanceView(APIView):
                 'canc': u['canceladas'],
                 'avaliacao_cluster': aval_txt,
                 'soma_instaladas_m1_m2': soma_inst,
+                'aval_inst_mes_anterior': i_ant,
+                'aval_inst_mes_referencia': i_ref,
                 'cluster_sugerido': sug,
             })
 
