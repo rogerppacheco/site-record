@@ -701,6 +701,19 @@
             const tbody = document.getElementById('tabela-esteira-body');
             const busca = (document.getElementById('filtro-busca').value || '').trim();
             const carregarInstaladas = (filtroAtual === 'INSTALADAS');
+            const temFiltroInstaladas = !!(
+                (filtroInstaladasAplicado.vendedor_id || '').trim() ||
+                (filtroInstaladasAplicado.data_inicio || '').trim() ||
+                (filtroInstaladasAplicado.data_fim || '').trim() ||
+                busca
+            );
+
+            if (carregarInstaladas && !temFiltroInstaladas) {
+                tbody.innerHTML = '<tr><td colspan="14" class="text-center py-4 text-muted">Selecione ao menos um filtro (Vendedor ou período) para carregar a aba Instaladas.</td></tr>';
+                const paEmpty = document.getElementById('painel-instaladas-antecipacao');
+                if (paEmpty) paEmpty.style.display = 'none';
+                return;
+            }
 
             if (!carregarInstaladas) {
                 var inp = document.getElementById('filtro-busca');
