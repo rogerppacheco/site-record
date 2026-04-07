@@ -1581,7 +1581,13 @@ class VendaViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(filters)
 
         # --- PERMISSÕES DE VISUALIZAÇÃO ---
-        acoes_gestao = ['retrieve', 'update', 'partial_update', 'destroy', 'alocar_auditoria', 'liberar_auditoria', 'finalizar_auditoria', 'pendentes_auditoria', 'resumo_auditoria', 'reenviar_whatsapp_aprovacao', 'enviar_resumo_plano_whatsapp']
+        acoes_gestao = [
+            'retrieve', 'update', 'partial_update', 'destroy',
+            'alocar_auditoria', 'liberar_auditoria', 'finalizar_auditoria',
+            'pendentes_auditoria', 'resumo_auditoria',
+            'reenviar_whatsapp_aprovacao', 'enviar_resumo_plano_whatsapp',
+            'toggle_adiantamento_comissao',
+        ]
 
         if self.action in acoes_gestao:
             grupos_gestao_acao = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
