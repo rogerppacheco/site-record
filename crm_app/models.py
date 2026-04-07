@@ -261,6 +261,19 @@ class Venda(models.Model):
 
     # --- CAMPOS PARA CONTROLE DE DESCONTOS ---
     flag_adiant_cnpj = models.BooleanField(default=False, verbose_name="Adiant. CNPJ Processado")
+    adiantamento_cnpj_realizado_em = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Adiantamento CNPJ realizado em"
+    )
+    adiantamento_cnpj_realizado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='vendas_adiantamento_cnpj_realizado',
+        verbose_name="Adiantamento CNPJ realizado por"
+    )
     flag_desc_boleto = models.BooleanField(default=False, verbose_name="Desc. Boleto Processado")
     flag_desc_viabilidade = models.BooleanField(default=False, verbose_name="Desc. Viab. Processado")
     flag_desc_antecipacao = models.BooleanField(default=False, verbose_name="Desc. Antecip. Processado")

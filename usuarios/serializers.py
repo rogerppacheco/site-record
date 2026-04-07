@@ -115,7 +115,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
             'valor_almoco', 'valor_passagem', 'valor_ajuda_custo_mensal', 'chave_pix', 'nome_da_conta',
             'meta_comissao', 'desconto_boleto', 'desconto_inclusao_viabilidade',
             'desconto_instalacao_antecipada', 
-            'adiantamento_cnpj', 'desconto_inss_fixo',
+            'adiantamento_cnpj', 'recebe_adiantamento_cnpj', 'desconto_inss_fixo',
             'is_active', 'is_staff',
             'canal',
             'cluster',

@@ -124,12 +124,30 @@
             </div>
 
             <div id="painel-busca-instaladas" class="mb-3 p-3 bg-light rounded border" style="display: none;">
-                <label class="form-label fw-bold mb-2">Consultar venda instalada por CPF ou O.S.</label>
-                <div class="d-flex gap-2 flex-wrap align-items-center">
-                    <input type="text" id="busca-instaladas" class="form-control" placeholder="Digite CPF ou número da O.S." style="max-width: 320px;" onkeyup="if(event.key === 'Enter') buscarInstaladas()">
-                    <button type="button" class="btn btn-primary" onclick="buscarInstaladas()"><i class="bi bi-search me-1"></i>Buscar</button>
+                <label class="form-label fw-bold mb-2">Filtros da aba Instaladas</label>
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold" for="filtro-vendedor-instaladas">Vendedor</label>
+                        <select id="filtro-vendedor-instaladas" class="form-select form-select-sm"></select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold" for="filtro-data-inicio-instaladas">Data início</label>
+                        <input type="date" id="filtro-data-inicio-instaladas" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold" for="filtro-data-fim-instaladas">Data fim</label>
+                        <input type="date" id="filtro-data-fim-instaladas" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-md-2 d-grid">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="aplicarFiltrosInstaladas()"><i class="bi bi-search me-1"></i>Filtrar</button>
+                    </div>
                 </div>
-                <small class="text-muted d-block mt-2">Consulta em qualquer data. Use o resultado para ajustar a data de instalação (no cliente) se necessário.</small>
+                <div class="d-flex gap-2 mt-2">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="limparFiltrosInstaladas()"><i class="bi bi-x-circle me-1"></i>Limpar filtros</button>
+                    <button type="button" class="btn btn-outline-success btn-sm" onclick="exportarInstaladasExcel()"><i class="bi bi-file-earmark-excel me-1"></i>Exportar Excel</button>
+                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="marcarAdiantamentoCnpjSemana()"><i class="bi bi-check2-square me-1"></i>Marcar adiantamento CNPJ (semana)</button>
+                </div>
+                <small class="text-muted d-block mt-2">O período filtra pela data de instalação (início e fim obrigatórios quando informado).</small>
                 <div id="painel-instaladas-antecipacao" class="mt-3 p-3 border rounded bg-white shadow-sm" style="display: none;">
                     <div class="fw-bold text-primary mb-2"><i class="bi bi-sliders me-1"></i> Antecipação — venda <span id="instaladas-antecipacao-venda-id-label"></span></div>
                     <input type="hidden" id="instaladas-antecipacao-venda-id-hidden" value="">
@@ -168,6 +186,7 @@
                                 <th>Turno</th>
                                 <th>Cliente</th>
                                 <th>Vendedor</th>
+                                <th>Adiant. CNPJ</th>
                                 <th>Plano</th>
                                 <th>Status Atual</th>
                                 <th>Motivo Pendência</th>
@@ -421,6 +440,7 @@
 
         let filtroAtual = 'TODOS';
         let filtroTurnoAtual = '';
+        let filtroInstaladasAplicado = { vendedor_id: '', data_inicio: '', data_fim: '' };
         let tempVendaId = null;
         let tempStatusId = null;
         const modalEditar = new bootstrap.Modal(document.getElementById('modal-editar-venda'));
@@ -432,6 +452,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             carregarVendas();
             carregarMotivosPendencia();
+            popularFiltroVendedorInstaladas();
             document.querySelectorAll('input[type="text"], textarea').forEach(input => { input.addEventListener('input', function() { this.value = this.value.toUpperCase(); }); });
 
             if (podeConfigurarZap) {
@@ -474,6 +495,121 @@
             if (!dataIso) return '-';
             const [ano, mes, dia] = dataIso.split('-');
             return `${dia}/${mes}/${ano}`;
+        }
+
+        function validarPeriodoInstaladas() {
+            const ini = (document.getElementById('filtro-data-inicio-instaladas')?.value || '').trim();
+            const fim = (document.getElementById('filtro-data-fim-instaladas')?.value || '').trim();
+            if ((ini && !fim) || (!ini && fim)) {
+                alert('Informe Data início e Data fim.');
+                return null;
+            }
+            if (ini && fim && ini > fim) {
+                alert('Data início não pode ser maior que data fim.');
+                return null;
+            }
+            return { ini, fim };
+        }
+
+        function aplicarFiltrosInstaladas() {
+            const periodo = validarPeriodoInstaladas();
+            if (!periodo) return;
+            filtroInstaladasAplicado = {
+                vendedor_id: (document.getElementById('filtro-vendedor-instaladas')?.value || '').trim(),
+                data_inicio: periodo.ini,
+                data_fim: periodo.fim
+            };
+            carregarVendas();
+        }
+
+        function limparFiltrosInstaladas() {
+            const v = document.getElementById('filtro-vendedor-instaladas');
+            const i = document.getElementById('filtro-data-inicio-instaladas');
+            const f = document.getElementById('filtro-data-fim-instaladas');
+            if (v) v.value = '';
+            if (i) i.value = '';
+            if (f) f.value = '';
+            filtroInstaladasAplicado = { vendedor_id: '', data_inicio: '', data_fim: '' };
+            carregarVendas();
+        }
+
+        function popularFiltroVendedorInstaladas(vendas = []) {
+            const select = document.getElementById('filtro-vendedor-instaladas');
+            if (!select) return;
+            const mapa = new Map();
+            (vendas || []).forEach(v => {
+                const vid = v && v.vendedor ? String(v.vendedor) : '';
+                const nome = (v && v.vendedor_nome) ? String(v.vendedor_nome) : '';
+                if (vid && nome && !mapa.has(vid)) mapa.set(vid, nome);
+            });
+            const atual = filtroInstaladasAplicado.vendedor_id || '';
+            select.innerHTML = '<option value="">Todos</option>';
+            Array.from(mapa.entries()).sort((a, b) => a[1].localeCompare(b[1], 'pt-BR')).forEach(([id, nome]) => {
+                const opt = document.createElement('option');
+                opt.value = id;
+                opt.textContent = nome;
+                select.appendChild(opt);
+            });
+            select.value = atual;
+        }
+
+        async function exportarInstaladasExcel() {
+            if (filtroAtual !== 'INSTALADAS') return;
+            const periodo = validarPeriodoInstaladas();
+            if (!periodo) return;
+            const token = localStorage.getItem('accessToken');
+            let url = `/api/crm/vendas/exportar-excel/?flow=esteira_instaladas`;
+            if (filtroInstaladasAplicado.vendedor_id) url += `&vendedor_id=${encodeURIComponent(filtroInstaladasAplicado.vendedor_id)}`;
+            if (filtroInstaladasAplicado.data_inicio) url += `&data_inicio_inst=${encodeURIComponent(filtroInstaladasAplicado.data_inicio)}`;
+            if (filtroInstaladasAplicado.data_fim) url += `&data_fim_inst=${encodeURIComponent(filtroInstaladasAplicado.data_fim)}`;
+            const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+            if (!response.ok) { alert('Erro ao exportar Excel.'); return; }
+            const blob = await response.blob();
+            const link = document.createElement('a');
+            link.href = window.URL.createObjectURL(blob);
+            link.download = 'instaladas_filtradas.xlsx';
+            document.body.appendChild(link);
+            link.click();
+            window.URL.revokeObjectURL(link.href);
+            document.body.removeChild(link);
+        }
+
+        async function marcarAdiantamentoCnpjSemana() {
+            if (filtroAtual !== 'INSTALADAS') return;
+            const periodo = validarPeriodoInstaladas();
+            if (!periodo) return;
+            try {
+                const nowTs = new Date().getTime();
+                let previewUrl = `/crm/vendas/?flow=esteira_instaladas&page_size=1000&_t=${nowTs}`;
+                if (filtroInstaladasAplicado.vendedor_id) previewUrl += `&vendedor_id=${encodeURIComponent(filtroInstaladasAplicado.vendedor_id)}`;
+                if (filtroInstaladasAplicado.data_inicio) previewUrl += `&data_inicio_inst=${encodeURIComponent(filtroInstaladasAplicado.data_inicio)}`;
+                if (filtroInstaladasAplicado.data_fim) previewUrl += `&data_fim_inst=${encodeURIComponent(filtroInstaladasAplicado.data_fim)}`;
+                const preview = await apiFetch(previewUrl);
+                const vendas = Array.isArray(preview) ? preview : (preview?.results || []);
+                let elegiveis = 0;
+                let ignoradas = 0;
+                vendas.forEach(v => {
+                    const doc = String(v.cliente_cpf_cnpj || '').replace(/\D/g, '');
+                    const ehCnpj = doc.length === 14;
+                    if (ehCnpj && !v.flag_adiant_cnpj) elegiveis += 1;
+                    else ignoradas += 1;
+                });
+                const ok = confirm(`${elegiveis} elegíveis serão marcadas; ${ignoradas} não elegíveis serão ignoradas. Deseja continuar?`);
+                if (!ok) return;
+                const payload = {
+                    vendedor_id: filtroInstaladasAplicado.vendedor_id || null,
+                    data_inicio_inst: filtroInstaladasAplicado.data_inicio || null,
+                    data_fim_inst: filtroInstaladasAplicado.data_fim || null,
+                };
+                const resp = await apiFetch('/crm/vendas/marcar-adiantamento-cnpj-semana/', {
+                    method: 'POST',
+                    body: JSON.stringify(payload),
+                });
+                alert(`${resp.elegiveis_marcadas || 0} elegíveis marcadas; ${resp.ignoradas || 0} não elegíveis ignoradas.`);
+                carregarVendas(true);
+            } catch (e) {
+                alert('Erro ao marcar adiantamento CNPJ: ' + (e.message || e));
+            }
         }
 
         async function exportarAgendamentosDia() {
@@ -566,26 +702,25 @@
             const busca = (document.getElementById('filtro-busca').value || '').trim();
             const carregarInstaladas = (filtroAtual === 'INSTALADAS');
 
-            if (carregarInstaladas && !busca) {
-                tbody.innerHTML = '<tr><td colspan="13" class="text-center py-5 text-muted"><p class="mb-2"><i class="bi bi-search" style="font-size: 1.5rem;"></i></p><p class="mb-0">Digite <strong>CPF</strong> ou <strong>número da O.S.</strong> no campo acima e pressione <kbd>Enter</kbd> para consultar vendas instaladas em qualquer data.</p></td></tr>';
-                var paEmpty = document.getElementById('painel-instaladas-antecipacao');
-                if (paEmpty) paEmpty.style.display = 'none';
-                return;
-            }
-
             if (!carregarInstaladas) {
                 var inp = document.getElementById('filtro-busca');
                 if (inp) inp.placeholder = 'Buscar CPF ou OS...';
             }
-            if (!silent) { tbody.innerHTML = '<tr><td colspan="13" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>'; }
+            if (!silent) { tbody.innerHTML = '<tr><td colspan="14" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>'; }
 
             try {
                 const timestamp = new Date().getTime();
                 // flow=esteira_instaladas: só retorna resultados com search (CPF ou O.S.) – qualquer data
                 let url = carregarInstaladas
-                    ? `/crm/vendas/?flow=esteira_instaladas&page_size=1000&_t=${timestamp}&search=${encodeURIComponent(busca)}`
+                    ? `/crm/vendas/?flow=esteira_instaladas&page_size=1000&_t=${timestamp}`
                     : `/crm/vendas/?flow=esteira&page_size=1000&_t=${timestamp}`;
                 if (!carregarInstaladas && busca) url += `&search=${encodeURIComponent(busca)}`;
+                if (carregarInstaladas) {
+                    if (busca) url += `&search=${encodeURIComponent(busca)}`;
+                    if (filtroInstaladasAplicado.vendedor_id) url += `&vendedor_id=${encodeURIComponent(filtroInstaladasAplicado.vendedor_id)}`;
+                    if (filtroInstaladasAplicado.data_inicio) url += `&data_inicio_inst=${encodeURIComponent(filtroInstaladasAplicado.data_inicio)}`;
+                    if (filtroInstaladasAplicado.data_fim) url += `&data_fim_inst=${encodeURIComponent(filtroInstaladasAplicado.data_fim)}`;
+                }
 
                 // --- Carregamos Listas Auxiliares e vendas (todas as páginas da esteira) ---
                 const [vendasRes, statusRes, motivosRes, usuariosRes] = await Promise.all([
@@ -599,6 +734,9 @@
                 const statusLista = Array.isArray(statusRes) ? statusRes : (statusRes && statusRes.results ? statusRes.results : []);
                 const motivosLista = Array.isArray(motivosRes) ? motivosRes : (motivosRes && motivosRes.results ? motivosRes.results : []);
                 const usuariosLista = Array.isArray(usuariosRes) ? usuariosRes : (usuariosRes && usuariosRes.results ? usuariosRes.results : []);
+                if (carregarInstaladas) {
+                    popularFiltroVendedorInstaladas(vendas);
+                }
 
                 // DEBUG:
                 // ...
@@ -663,7 +801,7 @@
 
                 if(vendas.length === 0) {
                     const msg = carregarInstaladas ? 'Nenhuma venda instalada encontrada para este CPF/O.S.' : 'Nenhuma venda encontrada nesta etapa.';
-                    tbody.innerHTML = '<tr><td colspan="13" class="text-center py-4 text-muted">' + msg + '</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="14" class="text-center py-4 text-muted">' + msg + '</td></tr>';
                     const pa = document.getElementById('painel-instaladas-antecipacao');
                     if (pa) pa.style.display = 'none';
                     return;
@@ -715,6 +853,16 @@
                     // Plano
                     let nomePlano = v.plano_nome || '-';
                     if (nomePlano === '-' && v.plano && v.plano.nome) nomePlano = v.plano.nome;
+                    let statusAdiantCnpj = '-';
+                    if (carregarInstaladas) {
+                        if (v.flag_adiant_cnpj) {
+                            statusAdiantCnpj = '<span class="badge bg-success">Realizado</span>';
+                        } else {
+                            const doc = String(v.cliente_cpf_cnpj || '').replace(/\D/g, '');
+                            const cnpj = doc.length === 14;
+                            statusAdiantCnpj = cnpj ? '<span class="badge bg-secondary">Pendente</span>' : '<span class="badge bg-light text-dark border">Não elegível</span>';
+                        }
+                    }
 
                     const nomeCliente = v.cliente_nome_razao_social || (v.cliente ? v.cliente.nome_razao_social : '-') || '-';
                     const docCliente = v.cliente_cpf_cnpj || (v.cliente ? v.cliente.cpf_cnpj : '') || '';
@@ -754,6 +902,7 @@
                             <td>${turno}</td>
                             <td><div class="fw-bold text-dark">${nomeCliente}</div><div class="small text-muted">${docCliente}</div></td>
                             <td>${nomeVendedor}</td> 
+                            <td>${statusAdiantCnpj}</td>
                             <td>${nomePlano}</td>
                             <td><div class="d-flex align-items-center">${selectStatus}${btnEditar}</div></td>
                             <td class="text-danger small fw-bold">${motivoPendencia}</td>
@@ -786,7 +935,7 @@
                     }
                 }
             } catch (e) { 
-                if(!silent) tbody.innerHTML = '<tr><td colspan="13" class="text-center text-danger">Erro ao carregar.<br><small>'+(e.message || e)+'</small></td></tr>';
+                if(!silent) tbody.innerHTML = '<tr><td colspan="14" class="text-center text-danger">Erro ao carregar.<br><small>'+(e.message || e)+'</small></td></tr>';
                 var paErr = document.getElementById('painel-instaladas-antecipacao');
                 if (paErr) paErr.style.display = 'none';
             }
@@ -953,8 +1102,8 @@
                 if (pa) pa.style.display = 'none';
                 while (document.getElementById('abas-esteira').children.length > 4) document.getElementById('abas-esteira').removeChild(document.getElementById('abas-esteira').lastChild);
                 var tb = document.getElementById('tabela-esteira-body');
-                tb.innerHTML = '<tr><td colspan="13" class="text-center py-5 text-muted"><p class="mb-2"><i class="bi bi-search" style="font-size: 1.5rem;"></i></p><p class="mb-0">Use o campo de busca acima (CPF ou O.S.) e clique em <strong>Buscar</strong> para consultar vendas instaladas em qualquer data.</p><p class="small mt-2 mb-0">Apenas para consulta e ajuste da data de instalação (no cliente).</p></td></tr>';
-                setTimeout(function() { var bi = document.getElementById('busca-instaladas'); if (bi) bi.focus(); }, 100);
+                tb.innerHTML = '<tr><td colspan="14" class="text-center py-4 text-muted">Carregando instaladas...</td></tr>';
+                carregarVendas();
                 return;
             }
             document.getElementById('painel-busca-instaladas').style.display = 'none';

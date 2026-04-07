@@ -78,6 +78,11 @@ class Usuario(AbstractUser):
     desconto_instalacao_antecipada = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     is_active = models.BooleanField(default=True, db_index=True)
     adiantamento_cnpj = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    recebe_adiantamento_cnpj = models.BooleanField(
+        default=True,
+        verbose_name="Recebe adiantamento de CNPJ?",
+        help_text="Se desmarcado, o usuário não pode receber lançamento do tipo Adiantamento CNPJ."
+    )
     desconto_inss_fixo = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
 
     # --- CONTROLE DE PRESENÇA ---

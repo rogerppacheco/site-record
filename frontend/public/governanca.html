@@ -293,7 +293,7 @@
                                     <div class="col-md-6"><div class="card h-100 shadow-sm"><div class="card-header bg-white d-flex justify-content-between align-items-center"><h6 class="mb-0 fw-bold">Histórico de Lançamentos</h6><div class="input-group input-group-sm" style="width: 200px;"><input type="month" id="filtro-mes-lancamentos" class="form-control" onchange="carregarLancamentosFinanceiros()"></div></div><div class="card-body p-0 table-responsive"><table class="table table-hover table-striped mb-0 small align-middle"><thead class="table-light"><tr><th>Data</th><th>Colaborador</th><th>Tipo / Descrição</th><th class="text-end">Valor</th><th class="text-end">Ações</th></tr></thead><tbody id="lista-lancamentos-fin"></tbody></table></div></div></div>
                                 </div>
                                 <div id="box-lista-vendas-adiantamento" class="mt-3" style="display:none;">
-                                    <div class="card border-primary shadow-sm"><div class="card-header py-2 d-flex flex-wrap align-items-center gap-2" style="background-color:#0a58ca; color:#fff !important;"><h6 class="mb-0 fw-bold" id="box-ad-titulo" style="color:#fff !important;"><i class="bi bi-list-check"></i> Vendas instaladas — marque as antecipadas</h6><div class="d-flex align-items-center gap-2 ms-auto"><label class="form-label small mb-0 text-white">Mês/ano</label><input type="month" id="ad_mes_vendas" class="form-control form-control-sm" style="width:140px"><button type="button" class="btn btn-sm btn-light" id="btn-ad-listar-vendas">Listar vendas</button></div></div><div class="card-body"><div class="table-responsive border rounded mb-2" style="max-height:240px;overflow-y:auto;"><table class="table table-sm table-striped mb-0 small"><thead class="table-light sticky-top"><tr><th style="width:40px;"><input type="checkbox" id="ad_sel_todas" title="Marcar todas"></th><th>Cliente</th><th>Plano</th><th>Dt. Inst.</th><th class="text-end">Comissão est.</th></tr></thead><tbody id="tbody-ad-vendas"></tbody></table></div><p class="small mb-0 fw-bold text-primary" id="ad-total-selecionado">Total selecionado: R$ 0,00</p></div></div>
+                                    <div class="card border-primary shadow-sm"><div class="card-header py-2 d-flex flex-wrap align-items-center gap-2" style="background-color:#0a58ca; color:#fff !important;"><h6 class="mb-0 fw-bold" id="box-ad-titulo" style="color:#fff !important;"><i class="bi bi-list-check"></i> Vendas instaladas — marque as antecipadas</h6><div class="d-flex align-items-center gap-2 ms-auto"><label class="form-label small mb-0 text-white">Mês/ano</label><input type="month" id="ad_mes_vendas" class="form-control form-control-sm" style="width:140px"><button type="button" class="btn btn-sm btn-light" id="btn-ad-listar-vendas">Listar vendas</button></div></div><div class="card-body"><div class="table-responsive border rounded mb-2" style="max-height:240px;overflow-y:auto;"><table class="table table-sm table-striped mb-0 small"><thead class="table-light sticky-top"><tr><th style="width:40px;"><input type="checkbox" id="ad_sel_todas" title="Marcar todas"></th><th>Cliente</th><th>Plano</th><th>Dt. Inst.</th><th class="text-end">Comissão est.</th><th>Status</th></tr></thead><tbody id="tbody-ad-vendas"></tbody></table></div><p class="small mb-0 fw-bold text-primary" id="ad-total-selecionado">Total selecionado: R$ 0,00</p></div></div>
                                 </div>
                             </div>
                         </div>
@@ -656,6 +656,12 @@
                                     <div class="col-lg-2 col-md-4">
                                         <label class="form-label small">Adiant. CNPJ</label>
                                         <input type="number" class="form-control" id="adiantamento_cnpj" step="0.01">
+                                    </div>
+                                    <div class="col-lg-4 col-md-8">
+                                        <div class="form-check form-switch mt-4">
+                                            <input class="form-check-input" type="checkbox" id="recebe_adiantamento_cnpj" checked>
+                                            <label class="form-check-label fw-bold" for="recebe_adiantamento_cnpj">Recebe adiantamento de CNPJ</label>
+                                        </div>
                                     </div>
                                     <div class="col-lg-2 col-md-4">
                                         <label class="form-label small">Desc. INSS</label>
@@ -1115,6 +1121,7 @@
                 var tit = document.getElementById('box-ad-titulo');
                 if (tit) tit.textContent = isCnpj ? 'Clientes CNPJ do vendedor — marque os adiantados' : 'Vendas instaladas — marque as antecipadas';
                 window.toggleBoxVendasAdiantamento();
+                atualizarBloqueioUsuarioAdiantamentoCnpj();
             } else {
                 box.style.display = 'none';
                 var t = document.getElementById('tbody-ad-vendas'); if (t) t.innerHTML = '';
@@ -1128,6 +1135,31 @@
         if (!box || !tipo) return;
         var tipoVal = tipo.value;
         if ((tipoVal === 'ADIANTAMENTO_COMISSAO' || tipoVal === 'ADIANTAMENTO_CNPJ') && usuario && usuario.value) box.style.display = 'block'; else box.style.display = 'none';
+    };
+    window.atualizarBloqueioUsuarioAdiantamentoCnpj = function() {
+        var tipo = document.getElementById('ad_tipo');
+        var usuarioSel = document.getElementById('ad_usuario');
+        var btnListar = document.getElementById('btn-ad-listar-vendas');
+        var btnRegistrar = document.getElementById('btn-registrar-adiantamento');
+        if (!tipo || !usuarioSel) return;
+        var isCnpj = tipo.value === 'ADIANTAMENTO_CNPJ';
+        var opt = usuarioSel.options[usuarioSel.selectedIndex];
+        var bloqueado = isCnpj && opt && opt.value && opt.dataset.recebeAdiantamentoCnpj === '0';
+        if (btnListar) btnListar.disabled = !!bloqueado;
+        if (btnRegistrar) btnRegistrar.disabled = !!bloqueado;
+        var avisoId = 'aviso-usuario-sem-adiant-cnpj';
+        var aviso = document.getElementById(avisoId);
+        if (bloqueado) {
+            if (!aviso) {
+                aviso = document.createElement('div');
+                aviso.id = avisoId;
+                aviso.className = 'alert alert-warning py-2 px-3 mt-2 mb-0 small';
+                aviso.textContent = 'Este usuário não está habilitado para receber Adiantamento de CNPJ.';
+                usuarioSel.parentElement.appendChild(aviso);
+            }
+        } else if (aviso) {
+            aviso.remove();
+        }
     };
     var isRegistrandoAdiantamento = false, isRegistrandoDesconto = false;
     window.registrarAdiantamento = async function(ev) {
@@ -2008,6 +2040,7 @@
             document.getElementById('pap_automacao_pedido').checked = user.pap_automacao_pedido !== false;
             document.getElementById('pap_automacao_status').checked = user.pap_automacao_status !== false;
             document.getElementById('pode_gestao_acessos').checked = user.pode_gestao_acessos || false;
+            document.getElementById('recebe_adiantamento_cnpj').checked = user.recebe_adiantamento_cnpj !== false;
             document.getElementById('matricula_pap').value = user.matricula_pap || '';
             document.getElementById('brpronto_login').value = user.brpronto_login || '';
             document.getElementById('brpronto_dominio').value = user.brpronto_dominio || '';
@@ -2026,6 +2059,7 @@
             document.getElementById('pap_automacao_status').checked = true;
             document.getElementById('pode_gestao_acessos').checked = false;
             document.getElementById('vendedor_solo').checked = false;
+            document.getElementById('recebe_adiantamento_cnpj').checked = true;
         }
         atualizarVisibilidadeVendedorSolo();
         // Senha PAP: nunca preencher valor (segurança); placeholder indica se já está cadastrada
@@ -2186,6 +2220,7 @@
             pap_automacao_pedido: document.getElementById('pap_automacao_pedido').checked,
             pap_automacao_status: document.getElementById('pap_automacao_status').checked,
             pode_gestao_acessos: document.getElementById('pode_gestao_acessos').checked,
+            recebe_adiantamento_cnpj: document.getElementById('recebe_adiantamento_cnpj').checked,
             brpronto_login: cleanValue(document.getElementById('brpronto_login').value),
             brpronto_dominio: cleanValue(document.getElementById('brpronto_dominio').value)
         };
@@ -2862,9 +2897,17 @@
         const users = Array.isArray(res) ? res : (res?.results || []);
         if (!users) return;
         const selAd = document.getElementById('ad_usuario'), selDesc = document.getElementById('desc_usuario'), selAnt = document.getElementById('ant_vendedor');
-        if (selAd) { selAd.innerHTML = '<option value="">Selecione...</option>'; users.forEach(u => selAd.add(new Option(u.username, u.id))); }
+        if (selAd) {
+            selAd.innerHTML = '<option value="">Selecione...</option>';
+            users.forEach(u => {
+                const opt = new Option(u.username, u.id);
+                opt.dataset.recebeAdiantamentoCnpj = (u.recebe_adiantamento_cnpj !== false) ? '1' : '0';
+                selAd.add(opt);
+            });
+        }
         if (selDesc) { selDesc.innerHTML = '<option value="">Selecione...</option>'; users.forEach(u => selDesc.add(new Option(u.username, u.id))); }
         if (selAnt) { selAnt.innerHTML = '<option value="">Selecione...</option>'; users.forEach(u => selAnt.add(new Option(u.username, u.id))); }
+        if (typeof atualizarBloqueioUsuarioAdiantamentoCnpj === 'function') atualizarBloqueioUsuarioAdiantamentoCnpj();
     }
     function preencherSelectAntVendedor() { carregarUsuariosSelectsFinanceiro(); }
     let adVendasLista = [];
@@ -2902,25 +2945,39 @@
             if (tipoAd === 'ADIANTAMENTO_CNPJ') url += '&tipo_cliente=CNPJ';
             var tbody = document.getElementById('tbody-ad-vendas');
             if (!tbody) return;
-            tbody.innerHTML = '<tr><td colspan="5" class="text-center py-2 text-muted">Carregando...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-2 text-muted">Carregando...</td></tr>';
             try {
                 var res = await apiFetch(url);
                 adVendasLista = Array.isArray(res) ? res : [];
                 tbody.innerHTML = '';
-                if (adVendasLista.length === 0) { tbody.innerHTML = '<tr><td colspan="5" class="text-center py-2 text-muted">Nenhuma venda ' + (tipoAd === 'ADIANTAMENTO_CNPJ' ? 'CNPJ' : 'instalada') + ' neste mês.</td></tr>'; updateTotalAdVendas(); return; }
+                if (adVendasLista.length === 0) { tbody.innerHTML = '<tr><td colspan="6" class="text-center py-2 text-muted">Nenhuma venda ' + (tipoAd === 'ADIANTAMENTO_CNPJ' ? 'CNPJ' : 'instalada') + ' neste mês.</td></tr>'; updateTotalAdVendas(); return; }
                 adVendasLista.forEach(function(v) {
                     var val = (v.valor_comissao_estimado != null) ? parseFloat(v.valor_comissao_estimado) : 0;
-                    tbody.innerHTML += '<tr><td><input type="checkbox" class="ad-venda-cb" data-id="' + v.id + '" data-valor="' + val + '"></td><td>' + (v.cliente_nome || '') + '</td><td>' + (v.plano_nome || '') + '</td><td>' + (v.data_instalacao || '') + '</td><td class="text-end">R$ ' + val.toFixed(2).replace('.', ',') + '</td></tr>';
+                    var naoElegivel = (v.status_adiantamento === 'NAO_ELEGIVEL' || v.status_adiantamento === 'ADIANTAMENTO_CNPJ_REALIZADO');
+                    var badge = '';
+                    if (v.status_adiantamento === 'ADIANTAMENTO_CNPJ_REALIZADO') {
+                        badge = '<span class="badge bg-success">Adiantamento CNPJ realizado</span>';
+                    } else if (v.status_adiantamento === 'NAO_ELEGIVEL') {
+                        badge = '<span class="badge bg-secondary" title="' + (v.motivo_nao_elegivel || '').replace(/"/g, '&quot;') + '">Não elegível</span>';
+                    } else {
+                        badge = '<span class="badge bg-primary">Elegível</span>';
+                    }
+                    tbody.innerHTML += '<tr><td><input type="checkbox" class="ad-venda-cb" data-id="' + v.id + '" data-valor="' + val + '"' + (naoElegivel ? ' disabled' : '') + '></td><td>' + (v.cliente_nome || '') + '</td><td>' + (v.plano_nome || '') + '</td><td>' + (v.data_instalacao || '') + '</td><td class="text-end">R$ ' + val.toFixed(2).replace('.', ',') + '</td><td>' + badge + '</td></tr>';
                 });
                 var cb = document.getElementById('ad_sel_todas'); if (cb) cb.checked = false;
                 updateTotalAdVendas();
-            } catch (err) { tbody.innerHTML = '<tr><td colspan="5" class="text-center py-2 text-danger">Erro: ' + (err.message || 'Não foi possível carregar.') + '</td></tr>'; }
+            } catch (err) { tbody.innerHTML = '<tr><td colspan="6" class="text-center py-2 text-danger">Erro: ' + (err.message || 'Não foi possível carregar.') + '</td></tr>'; }
             return;
         }
     });
     document.addEventListener('change', function(e) {
+        if (e.target.id === 'ad_tipo' || e.target.id === 'ad_usuario') {
+            atualizarBloqueioUsuarioAdiantamentoCnpj();
+        }
         if (e.target.id === 'ad_sel_todas') {
-            document.querySelectorAll('.ad-venda-cb').forEach(function(cb) { cb.checked = e.target.checked; });
+            document.querySelectorAll('.ad-venda-cb').forEach(function(cb) {
+                if (!cb.disabled) cb.checked = e.target.checked;
+            });
             updateTotalAdVendas();
         }
         if (e.target.classList && e.target.classList.contains('ad-venda-cb')) updateTotalAdVendas();

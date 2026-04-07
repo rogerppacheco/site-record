@@ -338,7 +338,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
         Retorna todos os usuários ativos (id, username) ordenados por username, sem paginação.
         Uso: dropdowns de Novo Adiantamento e Novo Desconto.
         """
-        qs = Usuario.objects.filter(is_active=True).order_by('username').values('id', 'username')
+        qs = Usuario.objects.filter(is_active=True).order_by('username').values('id', 'username', 'recebe_adiantamento_cnpj')
         return Response(list(qs))
 
     @action(detail=False, methods=['post'])

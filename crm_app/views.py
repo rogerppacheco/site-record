@@ -511,6 +511,7 @@ from django.core.mail import EmailMultiAlternatives
 from django.utils.html import strip_tags
 from django.contrib.staticfiles import finders
 from django.core.exceptions import ValidationError
+from usuarios.models import Usuario
 from .models import CdoiSolicitacao, CdoiBloco, PreVenda, LinkPublicoPreVenda
 from .onedrive_service import OneDriveUploader
 
@@ -1636,14 +1637,30 @@ class VendaViewSet(viewsets.ModelViewSet):
         elif flow == 'esteira':
             queryset = queryset.filter(status_esteira__isnull=False, status_esteira__estado__iexact='ABERTO')
         elif flow == 'esteira_instaladas':
-            # Vendas instaladas: apenas consulta por CPF ou O.S. (qualquer data). Sem search = sem resultado.
+            # Vendas instaladas com filtros dedicados (vendedor e período de instalação).
             queryset = queryset.filter(
                 status_esteira__isnull=False,
                 status_esteira__nome__iexact='Instalada'
             ).order_by('-data_instalacao', '-id')
-            search_inst = (self.request.query_params.get('search') or '').strip()
-            if not search_inst:
-                queryset = queryset.none()
+            vendedor_id = self.request.query_params.get('vendedor_id')
+            if vendedor_id and str(vendedor_id).isdigit():
+                queryset = queryset.filter(vendedor_id=int(vendedor_id))
+            data_inicio_inst = (self.request.query_params.get('data_inicio_inst') or '').strip()
+            data_fim_inst = (self.request.query_params.get('data_fim_inst') or '').strip()
+            if data_inicio_inst or data_fim_inst:
+                if not (data_inicio_inst and data_fim_inst):
+                    return queryset.none()
+                try:
+                    dt_ini_inst = datetime.strptime(data_inicio_inst, '%Y-%m-%d').date()
+                    dt_fim_inst = datetime.strptime(data_fim_inst, '%Y-%m-%d').date()
+                    if dt_ini_inst > dt_fim_inst:
+                        return queryset.none()
+                    queryset = queryset.filter(
+                        data_instalacao__gte=dt_ini_inst,
+                        data_instalacao__lte=dt_fim_inst
+                    )
+                except ValueError:
+                    return queryset.none()
         elif flow == 'comissionamento':
             queryset = queryset.filter(status_esteira__nome__iexact='Instalada').exclude(status_comissionamento__nome__iexact='Pago')
 
@@ -2475,6 +2492,67 @@ class VendaViewSet(viewsets.ModelViewSet):
         end_time = time.time()
         print(f"[EXPORTAR_EXCEL] Fim: {end_time} | Duração: {end_time - start_time:.2f} segundos")
         return response
+
+    @action(detail=False, methods=['post'], url_path='marcar-adiantamento-cnpj-semana')
+    def marcar_adiantamento_cnpj_semana(self, request):
+        vendedor_id = request.data.get('vendedor_id')
+        data_inicio_inst = (request.data.get('data_inicio_inst') or '').strip()
+        data_fim_inst = (request.data.get('data_fim_inst') or '').strip()
+        if (data_inicio_inst or data_fim_inst) and not (data_inicio_inst and data_fim_inst):
+            return Response({'detail': 'Informe Data início e Data fim.'}, status=status.HTTP_400_BAD_REQUEST)
+        if data_inicio_inst and data_fim_inst:
+            try:
+                dt_ini_inst = datetime.strptime(data_inicio_inst, '%Y-%m-%d').date()
+                dt_fim_inst = datetime.strptime(data_fim_inst, '%Y-%m-%d').date()
+                if dt_ini_inst > dt_fim_inst:
+                    return Response({'detail': 'Data início não pode ser maior que data fim.'}, status=status.HTTP_400_BAD_REQUEST)
+            except ValueError:
+                return Response({'detail': 'Período inválido.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        agora_sp = timezone.localtime(timezone.now())
+        semana_ini = (agora_sp - timedelta(days=agora_sp.weekday())).date()
+        semana_fim = semana_ini + timedelta(days=6)
+
+        vendas = Venda.objects.filter(
+            ativo=True,
+            status_esteira__nome__iexact='INSTALADA',
+            data_criacao__date__gte=semana_ini,
+            data_criacao__date__lte=semana_fim,
+            data_instalacao__gte=semana_ini,
+            data_instalacao__lte=semana_fim,
+        ).select_related('cliente', 'vendedor')
+        if vendedor_id and str(vendedor_id).isdigit():
+            vendas = vendas.filter(vendedor_id=int(vendedor_id))
+        if data_inicio_inst and data_fim_inst:
+            vendas = vendas.filter(data_instalacao__gte=dt_ini_inst, data_instalacao__lte=dt_fim_inst)
+
+        elegiveis_ids = []
+        ignoradas = 0
+        for v in vendas:
+            doc = re.sub(r'\D', '', (v.cliente.cpf_cnpj if v.cliente else '') or '')
+            if len(doc) != 14:
+                ignoradas += 1
+                continue
+            if not v.vendedor or getattr(v.vendedor, 'recebe_adiantamento_cnpj', True) is False:
+                ignoradas += 1
+                continue
+            if v.flag_adiant_cnpj:
+                ignoradas += 1
+                continue
+            elegiveis_ids.append(v.id)
+
+        if elegiveis_ids:
+            Venda.objects.filter(id__in=elegiveis_ids).update(
+                flag_adiant_cnpj=True,
+                adiantamento_cnpj_realizado_em=timezone.now(),
+                adiantamento_cnpj_realizado_por=request.user,
+            )
+        return Response({
+            'elegiveis_marcadas': len(elegiveis_ids),
+            'ignoradas': ignoradas,
+            'semana_inicio': semana_ini.isoformat(),
+            'semana_fim': semana_fim.isoformat(),
+        })
 
 class VendasStatusCountView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -6066,6 +6144,15 @@ class LancamentoFinanceiroViewSet(viewsets.ModelViewSet):
         import logging
         logger = logging.getLogger(__name__)
         logger.info('[LancamentoFinanceiro] POST create: usuario=%s tipo=%s data=%s valor=%s', request.data.get('usuario'), request.data.get('tipo'), request.data.get('data'), request.data.get('valor'))
+        tipo = (request.data.get('tipo') or '').strip().upper()
+        usuario_id = request.data.get('usuario')
+        if tipo == 'ADIANTAMENTO_CNPJ' and usuario_id:
+            try:
+                usuario = Usuario.objects.get(id=usuario_id)
+            except Usuario.DoesNotExist:
+                return Response({'detail': 'Colaborador inválido.'}, status=status.HTTP_400_BAD_REQUEST)
+            if getattr(usuario, 'recebe_adiantamento_cnpj', True) is False:
+                return Response({'detail': 'Este usuário não está habilitado para receber Adiantamento de CNPJ.'}, status=status.HTTP_400_BAD_REQUEST)
         return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer):
@@ -6111,6 +6198,9 @@ class LancamentoFinanceiroViewSet(viewsets.ModelViewSet):
                 faixa_nome__iexact='Adiantamento'
             ).first()
         only_cnpj = (tipo_cliente == 'CNPJ')
+        hoje_sp = timezone.localtime(timezone.now())
+        semana_ini = (hoje_sp - timedelta(days=hoje_sp.weekday())).date()
+        semana_fim = semana_ini + timedelta(days=6)
         lista = []
         for v in vendas:
             if only_cnpj and v.cliente:
@@ -6119,6 +6209,23 @@ class LancamentoFinanceiroViewSet(viewsets.ModelViewSet):
                     continue
             is_cnpj_venda = v.cliente and len(re.sub(r'\D', '', v.cliente.cpf_cnpj or '')) == 14
             valor_est = self._valor_comissao_estimado_venda(v, faixa_adiantamento, is_cnpj_venda)
+            status_adiantamento = 'ELEGIVEL'
+            motivo_nao_elegivel = ''
+            if v.flag_adiant_cnpj:
+                status_adiantamento = 'ADIANTAMENTO_CNPJ_REALIZADO'
+                motivo_nao_elegivel = 'Já adiantado'
+            elif not getattr(v.vendedor, 'recebe_adiantamento_cnpj', True):
+                status_adiantamento = 'NAO_ELEGIVEL'
+                motivo_nao_elegivel = 'Vendedor não habilitado para adiantamento de CNPJ'
+            elif not is_cnpj_venda:
+                status_adiantamento = 'NAO_ELEGIVEL'
+                motivo_nao_elegivel = 'Cliente não é CNPJ'
+            elif not (v.data_criacao and semana_ini <= v.data_criacao.date() <= semana_fim):
+                status_adiantamento = 'NAO_ELEGIVEL'
+                motivo_nao_elegivel = 'Venda fora da semana atual'
+            elif not (v.data_instalacao and semana_ini <= v.data_instalacao <= semana_fim):
+                status_adiantamento = 'NAO_ELEGIVEL'
+                motivo_nao_elegivel = 'Instalação fora da semana atual'
             lista.append({
                 'id': v.id,
                 'cliente_nome': v.cliente.nome_razao_social if v.cliente else '',
@@ -6126,6 +6233,9 @@ class LancamentoFinanceiroViewSet(viewsets.ModelViewSet):
                 'data_instalacao': v.data_instalacao.isoformat()[:10] if v.data_instalacao else '',
                 'ordem_servico': v.ordem_servico or '',
                 'valor_comissao_estimado': round(valor_est, 2),
+                'status_adiantamento': status_adiantamento,
+                'motivo_nao_elegivel': motivo_nao_elegivel,
+                'adiantamento_cnpj_realizado_em': v.adiantamento_cnpj_realizado_em.isoformat() if v.adiantamento_cnpj_realizado_em else None,
             })
         return Response(lista)
 
