@@ -2521,17 +2521,16 @@ class VendaViewSet(viewsets.ModelViewSet):
 
         dry_run = str(request.data.get('dry_run', '')).lower() in ('1', 'true', 'sim', 's')
         agora_sp = timezone.localtime(timezone.now())
-        semana_ini = (agora_sp - timedelta(days=agora_sp.weekday())).date()
+        semana_ini_atual = (agora_sp - timedelta(days=agora_sp.weekday())).date()
         # Regra acordada: segunda 00:00 até segunda 23:59:59 (8 dias corridos)
-        semana_fim = semana_ini + timedelta(days=7)
+        semana_fim_atual = semana_ini_atual + timedelta(days=7)
+        # Quando o usuário filtrar período na tela, a referência de "semana" passa a ser o próprio período filtrado.
+        ref_ini = dt_ini_inst if (data_inicio_inst and data_fim_inst) else semana_ini_atual
+        ref_fim = dt_fim_inst if (data_inicio_inst and data_fim_inst) else semana_fim_atual
 
         vendas = Venda.objects.filter(
             ativo=True,
             status_esteira__nome__iexact='INSTALADA',
-            data_criacao__date__gte=semana_ini,
-            data_criacao__date__lte=semana_fim,
-            data_instalacao__gte=semana_ini,
-            data_instalacao__lte=semana_fim,
         ).select_related('cliente', 'vendedor')
         if vendedor_id and str(vendedor_id).isdigit():
             vendas = vendas.filter(vendedor_id=int(vendedor_id))
@@ -2540,9 +2539,17 @@ class VendaViewSet(viewsets.ModelViewSet):
 
         elegiveis_ids = []
         ignoradas = 0
+        total_avaliadas = 0
         for v in vendas:
+            total_avaliadas += 1
             doc = re.sub(r'\D', '', (v.cliente.cpf_cnpj if v.cliente else '') or '')
             if len(doc) != 14:
+                ignoradas += 1
+                continue
+            if not (v.data_criacao and ref_ini <= v.data_criacao.date() <= ref_fim):
+                ignoradas += 1
+                continue
+            if not (v.data_instalacao and ref_ini <= v.data_instalacao <= ref_fim):
                 ignoradas += 1
                 continue
             if not v.vendedor or getattr(v.vendedor, 'recebe_adiantamento_cnpj', True) is False:
@@ -2562,8 +2569,9 @@ class VendaViewSet(viewsets.ModelViewSet):
         return Response({
             'elegiveis_marcadas': len(elegiveis_ids),
             'ignoradas': ignoradas,
-            'semana_inicio': semana_ini.isoformat(),
-            'semana_fim': semana_fim.isoformat(),
+            'total_avaliadas': total_avaliadas,
+            'semana_inicio': ref_ini.isoformat(),
+            'semana_fim': ref_fim.isoformat(),
             'dry_run': dry_run,
         })
 
