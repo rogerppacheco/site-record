@@ -196,6 +196,37 @@
                                 <th title="Selecionar visíveis"><input type="checkbox" id="selecionar-comissao-visiveis" onchange="marcarComissaoVisiveis(this)"></th>
                                 <th class="pe-3">Ações</th>
                             </tr>
+                            <tr id="linha-filtros-colunas" style="display:none;">
+                                <th><input id="fc-id" class="form-control form-control-sm" placeholder="ID"></th>
+                                <th><input id="fc-data-venda" class="form-control form-control-sm" placeholder="dd/mm/aaaa"></th>
+                                <th><input id="fc-os" class="form-control form-control-sm" placeholder="O.S."></th>
+                                <th><input id="fc-data-agendada" class="form-control form-control-sm" placeholder="dd/mm/aaaa"></th>
+                                <th><input id="fc-turno" class="form-control form-control-sm" placeholder="Turno"></th>
+                                <th><input id="fc-cliente" class="form-control form-control-sm" placeholder="Cliente/CPF"></th>
+                                <th><input id="fc-vendedor" class="form-control form-control-sm" placeholder="Vendedor"></th>
+                                <th>
+                                    <select id="fc-adiant-cnpj" class="form-select form-select-sm">
+                                        <option value="">Todos</option>
+                                        <option value="realizado">Realizado</option>
+                                        <option value="pendente">Pendente</option>
+                                        <option value="nao elegivel">Não elegível</option>
+                                    </select>
+                                </th>
+                                <th>
+                                    <select id="fc-adiant-comissao" class="form-select form-select-sm">
+                                        <option value="">Todos</option>
+                                        <option value="sim">Sim</option>
+                                        <option value="nao">Não</option>
+                                    </select>
+                                </th>
+                                <th><input id="fc-plano" class="form-control form-control-sm" placeholder="Plano"></th>
+                                <th><input id="fc-status" class="form-control form-control-sm" placeholder="Status"></th>
+                                <th><input id="fc-motivo" class="form-control form-control-sm" placeholder="Motivo"></th>
+                                <th><input id="fc-conf" class="form-control form-control-sm" placeholder="Conf. cliente"></th>
+                                <th><input id="fc-resp" class="form-control form-control-sm" placeholder="Resp. alteração"></th>
+                                <th></th>
+                                <th></th>
+                            </tr>
                         </thead>
                         <tbody id="tabela-esteira-body"></tbody>
                     </table>
@@ -456,6 +487,7 @@
             carregarVendas();
             carregarMotivosPendencia();
             popularFiltroVendedorInstaladas();
+            inicializarFiltrosColunas();
             document.querySelectorAll('input[type="text"], textarea').forEach(input => { input.addEventListener('input', function() { this.value = this.value.toUpperCase(); }); });
 
             if (podeConfigurarZap) {
@@ -500,6 +532,29 @@
             return `${dia}/${mes}/${ano}`;
         }
 
+        function inicializarFiltrosColunas() {
+            const ids = [
+                'fc-id', 'fc-data-venda', 'fc-os', 'fc-data-agendada', 'fc-turno', 'fc-cliente', 'fc-vendedor',
+                'fc-adiant-cnpj', 'fc-adiant-comissao', 'fc-plano', 'fc-status', 'fc-motivo', 'fc-conf', 'fc-resp'
+            ];
+            ids.forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.addEventListener('input', () => { if (filtroAtual === 'INSTALADAS') carregarVendas(true); });
+                el.addEventListener('change', () => { if (filtroAtual === 'INSTALADAS') carregarVendas(true); });
+            });
+        }
+
+        function getFiltroColuna(id) {
+            const el = document.getElementById(id);
+            return ((el && el.value) ? String(el.value) : '').trim().toLowerCase();
+        }
+
+        function incluiTexto(valor, filtro) {
+            if (!filtro) return true;
+            return String(valor || '').toLowerCase().includes(filtro);
+        }
+
         function validarPeriodoInstaladas() {
             const ini = (document.getElementById('filtro-data-inicio-instaladas')?.value || '').trim();
             const fim = (document.getElementById('filtro-data-fim-instaladas')?.value || '').trim();
@@ -532,6 +587,10 @@
             if (v) v.value = '';
             if (i) i.value = '';
             if (f) f.value = '';
+            [
+                'fc-id', 'fc-data-venda', 'fc-os', 'fc-data-agendada', 'fc-turno', 'fc-cliente', 'fc-vendedor',
+                'fc-adiant-cnpj', 'fc-adiant-comissao', 'fc-plano', 'fc-status', 'fc-motivo', 'fc-conf', 'fc-resp'
+            ].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
             filtroInstaladasAplicado = { vendedor_id: '', data_inicio: '', data_fim: '' };
             carregarVendas();
         }
@@ -962,6 +1021,30 @@
                         confCliente = '<span class="badge bg-secondary" title="' + respTitle + '">Não' + (respShort ? ': ' + respShort + (v.cliente_resposta_lembrete_instalacao && v.cliente_resposta_lembrete_instalacao.length > 30 ? '…' : '') : '') + '</span>';
                     }
 
+                    if (carregarInstaladas) {
+                        const adCnpjTexto = v.flag_adiant_cnpj
+                            ? 'realizado'
+                            : (String(docCliente || '').replace(/\D/g, '').length === 14 ? 'pendente' : 'nao elegivel');
+                        const adComissaoTexto = v.antecipacao_comissao ? 'sim' : 'nao';
+                        const confTexto = (v.cliente_confirmou_lembrete_instalacao === true) ? 'sim' : (v.cliente_confirmou_lembrete_instalacao === false ? 'nao' : '-');
+                        const passa =
+                            incluiTexto(v.id, getFiltroColuna('fc-id')) &&
+                            incluiTexto(dataFmt, getFiltroColuna('fc-data-venda')) &&
+                            incluiTexto(osAtual, getFiltroColuna('fc-os')) &&
+                            incluiTexto(dataAgendada, getFiltroColuna('fc-data-agendada')) &&
+                            incluiTexto(turno, getFiltroColuna('fc-turno')) &&
+                            incluiTexto(`${nomeCliente} ${docCliente}`, getFiltroColuna('fc-cliente')) &&
+                            incluiTexto(nomeVendedor, getFiltroColuna('fc-vendedor')) &&
+                            incluiTexto(adCnpjTexto, getFiltroColuna('fc-adiant-cnpj')) &&
+                            incluiTexto(adComissaoTexto, getFiltroColuna('fc-adiant-comissao')) &&
+                            incluiTexto(nomePlano, getFiltroColuna('fc-plano')) &&
+                            incluiTexto(nomeStatus, getFiltroColuna('fc-status')) &&
+                            incluiTexto(motivoPendencia, getFiltroColuna('fc-motivo')) &&
+                            incluiTexto(confTexto, getFiltroColuna('fc-conf')) &&
+                            incluiTexto(alteradoPor, getFiltroColuna('fc-resp'));
+                        if (!passa) return;
+                    }
+
                     htmlContent += `
                         <tr style="${rowStyle}" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='translateY(0)'">
                             <td class="fw-bold text-primary ps-4">#${v.id}</td>
@@ -1167,6 +1250,8 @@
             document.querySelectorAll('#abas-esteira .nav-link').forEach(l => l.classList.remove('active'));
             if(element) element.classList.add('active');
             if (status === 'INSTALADAS') {
+                var lf = document.getElementById('linha-filtros-colunas');
+                if (lf) lf.style.display = '';
                 document.getElementById('filtro-turno-container').style.display = 'none';
                 document.getElementById('painel-busca-instaladas').style.display = 'block';
                 var pa = document.getElementById('painel-instaladas-antecipacao');
@@ -1177,6 +1262,8 @@
                 carregarVendas();
                 return;
             }
+            var lf2 = document.getElementById('linha-filtros-colunas');
+            if (lf2) lf2.style.display = 'none';
             document.getElementById('painel-busca-instaladas').style.display = 'none';
             carregarVendas();
         }
