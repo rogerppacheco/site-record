@@ -2506,15 +2506,15 @@ class VendaViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], url_path='marcar-adiantamento-cnpj-semana')
     def marcar_adiantamento_cnpj_semana(self, request):
         vendedor_id = request.data.get('vendedor_id')
-        data_inicio_inst = (request.data.get('data_inicio_inst') or '').strip()
-        data_fim_inst = (request.data.get('data_fim_inst') or '').strip()
-        if (data_inicio_inst or data_fim_inst) and not (data_inicio_inst and data_fim_inst):
+        data_inicio_venda = (request.data.get('data_inicio_inst') or '').strip()
+        data_fim_venda = (request.data.get('data_fim_inst') or '').strip()
+        if (data_inicio_venda or data_fim_venda) and not (data_inicio_venda and data_fim_venda):
             return Response({'detail': 'Informe Data início e Data fim.'}, status=status.HTTP_400_BAD_REQUEST)
-        if data_inicio_inst and data_fim_inst:
+        if data_inicio_venda and data_fim_venda:
             try:
-                dt_ini_inst = datetime.strptime(data_inicio_inst, '%Y-%m-%d').date()
-                dt_fim_inst = datetime.strptime(data_fim_inst, '%Y-%m-%d').date()
-                if dt_ini_inst > dt_fim_inst:
+                dt_ini_venda = datetime.strptime(data_inicio_venda, '%Y-%m-%d').date()
+                dt_fim_venda = datetime.strptime(data_fim_venda, '%Y-%m-%d').date()
+                if dt_ini_venda > dt_fim_venda:
                     return Response({'detail': 'Data início não pode ser maior que data fim.'}, status=status.HTTP_400_BAD_REQUEST)
             except ValueError:
                 return Response({'detail': 'Período inválido.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -2524,9 +2524,9 @@ class VendaViewSet(viewsets.ModelViewSet):
         semana_ini_atual = (agora_sp - timedelta(days=agora_sp.weekday())).date()
         # Regra acordada: segunda 00:00 até segunda 23:59:59 (8 dias corridos)
         semana_fim_atual = semana_ini_atual + timedelta(days=7)
-        # Quando o usuário filtrar período na tela, a referência de "semana" passa a ser o próprio período filtrado.
-        ref_ini = dt_ini_inst if (data_inicio_inst and data_fim_inst) else semana_ini_atual
-        ref_fim = dt_fim_inst if (data_inicio_inst and data_fim_inst) else semana_fim_atual
+        # Período filtrado representa a janela de VENDA. Sem filtro, usa semana atual (seg->segunda seguinte).
+        ref_ini = dt_ini_venda if (data_inicio_venda and data_fim_venda) else semana_ini_atual
+        ref_fim = dt_fim_venda if (data_inicio_venda and data_fim_venda) else semana_fim_atual
 
         vendas = Venda.objects.filter(
             ativo=True,
@@ -2534,8 +2534,8 @@ class VendaViewSet(viewsets.ModelViewSet):
         ).select_related('cliente', 'vendedor')
         if vendedor_id and str(vendedor_id).isdigit():
             vendas = vendas.filter(vendedor_id=int(vendedor_id))
-        if data_inicio_inst and data_fim_inst:
-            vendas = vendas.filter(data_instalacao__gte=dt_ini_inst, data_instalacao__lte=dt_fim_inst)
+        if data_inicio_venda and data_fim_venda:
+            vendas = vendas.filter(data_criacao__date__gte=dt_ini_venda, data_criacao__date__lte=dt_fim_venda)
 
         elegiveis_ids = []
         ignoradas = 0
@@ -2546,10 +2546,20 @@ class VendaViewSet(viewsets.ModelViewSet):
             if len(doc) != 14:
                 ignoradas += 1
                 continue
-            if not (v.data_criacao and ref_ini <= v.data_criacao.date() <= ref_fim):
+            if not v.data_criacao:
                 ignoradas += 1
                 continue
-            if not (v.data_instalacao and ref_ini <= v.data_instalacao <= ref_fim):
+            sale_date = v.data_criacao.date()
+            if not (ref_ini <= sale_date <= ref_fim):
+                ignoradas += 1
+                continue
+            week_start = sale_date - timedelta(days=sale_date.weekday())
+            week_end_sale = week_start + timedelta(days=6)
+            install_deadline = week_start + timedelta(days=7)
+            if not (week_start <= sale_date <= week_end_sale):
+                ignoradas += 1
+                continue
+            if not (v.data_instalacao and week_start <= v.data_instalacao <= install_deadline):
                 ignoradas += 1
                 continue
             if not v.vendedor or getattr(v.vendedor, 'recebe_adiantamento_cnpj', True) is False:
