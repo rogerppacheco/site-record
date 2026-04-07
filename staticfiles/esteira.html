@@ -93,6 +93,14 @@
                         <i class="bi bi-whatsapp"></i> WPP ON
                     </button>
 
+                    <button onclick="exportarAgendamentosDia()" class="btn btn-outline-success fw-bold shadow-sm" title="Baixar planilha de agendamentos do dia para envio à operadora">
+                        <i class="bi bi-file-earmark-excel"></i> Exportar Agendados Hoje
+                    </button>
+
+                    <button onclick="abrirModalEnviarLembrete()" class="btn btn-outline-success fw-bold shadow-sm" title="Enviar mensagem de lembrete para clientes agendados">
+                        <i class="bi bi-whatsapp"></i> Enviar Lembrete
+                    </button>
+
                     <button onclick="carregarVendas()" class="btn btn-outline-primary fw-bold shadow-sm">
                         <i class="bi bi-arrow-clockwise"></i> Atualizar Lista
                     </button>
@@ -103,7 +111,68 @@
                 <li class="nav-item"><a class="nav-link active" href="#" data-tab="TODOS" onclick="filtrarStatus('TODOS', this)">Todos</a></li>
                 <li class="nav-item"><a class="nav-link" href="#" data-tab="AGENDADO" onclick="filtrarStatus('AGENDADO', this)">Agendados</a></li>
                 <li class="nav-item"><a class="nav-link" href="#" data-tab="PENDEN" onclick="filtrarStatus('PENDEN', this)">Pendentes</a></li>
+                <li class="nav-item"><a class="nav-link" href="#" data-tab="INSTALADAS" onclick="filtrarStatus('INSTALADAS', this)" title="Vendas já instaladas – ajustar Data instalação (no cliente)">Instaladas</a></li>
             </ul>
+
+            <div id="filtro-turno-container" class="mb-3" style="display: none;">
+                <span class="me-2 text-muted fw-bold">Turno:</span>
+                <div class="btn-group btn-group-sm" role="group">
+                    <button type="button" class="btn btn-outline-secondary active" id="btn-turno-todos" onclick="filtrarTurno('', this)">Todos os turnos</button>
+                    <button type="button" class="btn btn-outline-secondary" id="btn-turno-manha" onclick="filtrarTurno('MANHA', this)">Manhã</button>
+                    <button type="button" class="btn btn-outline-secondary" id="btn-turno-tarde" onclick="filtrarTurno('TARDE', this)">Tarde</button>
+                </div>
+            </div>
+
+            <div id="painel-busca-instaladas" class="mb-3 p-3 bg-light rounded border" style="display: none;">
+                <label class="form-label fw-bold mb-2">Filtros da aba Instaladas</label>
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold" for="filtro-vendedor-instaladas">Vendedor</label>
+                        <select id="filtro-vendedor-instaladas" class="form-select form-select-sm"></select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold" for="filtro-data-inicio-instaladas">Data início</label>
+                        <input type="date" id="filtro-data-inicio-instaladas" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold" for="filtro-data-fim-instaladas">Data fim</label>
+                        <input type="date" id="filtro-data-fim-instaladas" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-md-2 d-grid">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="aplicarFiltrosInstaladas()"><i class="bi bi-search me-1"></i>Filtrar</button>
+                    </div>
+                </div>
+                <div class="d-flex gap-2 mt-2">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="limparFiltrosInstaladas()"><i class="bi bi-x-circle me-1"></i>Limpar filtros</button>
+                    <button type="button" class="btn btn-outline-success btn-sm" onclick="exportarInstaladasExcel()"><i class="bi bi-file-earmark-excel me-1"></i>Exportar Excel</button>
+                    <button type="button" id="btn-marcar-adiant-cnpj-semana" class="btn btn-outline-primary btn-sm" onclick="marcarAdiantamentoCnpjSemana()"><i class="bi bi-check2-square me-1"></i>Marcar adiantamento CNPJ (semana)</button>
+                </div>
+                <small class="text-muted d-block mt-2">O período filtra pela data de venda. Elegibilidade CNPJ: vendido de segunda a domingo e instalado até a segunda seguinte.</small>
+                <div id="painel-instaladas-antecipacao" class="mt-3 p-3 border rounded bg-white shadow-sm" style="display: none;">
+                    <div class="fw-bold text-primary mb-2"><i class="bi bi-sliders me-1"></i> Antecipação — venda <span id="instaladas-antecipacao-venda-id-label"></span></div>
+                    <input type="hidden" id="instaladas-antecipacao-venda-id-hidden" value="">
+                    <div class="row g-2 align-items-end flex-wrap">
+                        <div class="col-auto">
+                            <label class="form-label small fw-bold mb-0" for="select-instaladas-houve-antecipacao">Houve antecipação? <span class="text-danger">*</span></label>
+                            <select id="select-instaladas-houve-antecipacao" class="form-select form-select-sm" style="min-width: 140px;">
+                                <option value="false">Não</option>
+                                <option value="true">Sim</option>
+                            </select>
+                        </div>
+                        <div class="col-auto">
+                            <label class="form-label small fw-bold mb-0" for="select-instaladas-antecipacao-comissao">Antecipação de comissão <span class="text-danger">*</span></label>
+                            <select id="select-instaladas-antecipacao-comissao" class="form-select form-select-sm" style="min-width: 140px;">
+                                <option value="false">Não</option>
+                                <option value="true">Sim</option>
+                            </select>
+                        </div>
+                        <div class="col-auto">
+                            <button type="button" class="btn btn-success btn-sm" id="btn-salvar-instaladas-antecipacao" onclick="salvarAntecipacaoInstaladas()"><i class="bi bi-check-lg me-1"></i>Salvar</button>
+                        </div>
+                    </div>
+                    <small class="text-muted d-block mt-2 mb-0">Disponível quando a busca retorna uma única venda instalada. Apenas BackOffice, Diretoria ou Admin.</small>
+                </div>
+            </div>
 
             <div class="card border-0 shadow-none" style="background: transparent;">
                 <div class="table-responsive" style="overflow-y: visible; overflow-x: auto; padding: 4px;">
@@ -117,10 +186,46 @@
                                 <th>Turno</th>
                                 <th>Cliente</th>
                                 <th>Vendedor</th>
+                                <th>Adiant. CNPJ</th>
+                                <th>Adiant. Comissão</th>
                                 <th>Plano</th>
                                 <th>Status Atual</th>
                                 <th>Motivo Pendência</th>
-                                <th>Resp. Alteração</th> <th class="pe-3">Ações</th>
+                                <th title="Resposta do cliente ao lembrete de instalação">Conf. cliente</th>
+                                <th>Resp. Alteração</th>
+                                <th title="Selecionar visíveis"><input type="checkbox" id="selecionar-comissao-visiveis" onchange="marcarComissaoVisiveis(this)"></th>
+                                <th class="pe-3">Ações</th>
+                            </tr>
+                            <tr id="linha-filtros-colunas" style="display:none;">
+                                <th><input id="fc-id" class="form-control form-control-sm" placeholder="ID"></th>
+                                <th><input id="fc-data-venda" class="form-control form-control-sm" placeholder="dd/mm/aaaa"></th>
+                                <th><input id="fc-os" class="form-control form-control-sm" placeholder="O.S."></th>
+                                <th><input id="fc-data-agendada" class="form-control form-control-sm" placeholder="dd/mm/aaaa"></th>
+                                <th><input id="fc-turno" class="form-control form-control-sm" placeholder="Turno"></th>
+                                <th><input id="fc-cliente" class="form-control form-control-sm" placeholder="Cliente/CPF"></th>
+                                <th><input id="fc-vendedor" class="form-control form-control-sm" placeholder="Vendedor"></th>
+                                <th>
+                                    <select id="fc-adiant-cnpj" class="form-select form-select-sm">
+                                        <option value="">Todos</option>
+                                        <option value="realizado">Realizado</option>
+                                        <option value="pendente">Pendente</option>
+                                        <option value="nao elegivel">Não elegível</option>
+                                    </select>
+                                </th>
+                                <th>
+                                    <select id="fc-adiant-comissao" class="form-select form-select-sm">
+                                        <option value="">Todos</option>
+                                        <option value="sim">Sim</option>
+                                        <option value="nao">Não</option>
+                                    </select>
+                                </th>
+                                <th><input id="fc-plano" class="form-control form-control-sm" placeholder="Plano"></th>
+                                <th><input id="fc-status" class="form-control form-control-sm" placeholder="Status"></th>
+                                <th><input id="fc-motivo" class="form-control form-control-sm" placeholder="Motivo"></th>
+                                <th><input id="fc-conf" class="form-control form-control-sm" placeholder="Conf. cliente"></th>
+                                <th><input id="fc-resp" class="form-control form-control-sm" placeholder="Resp. alteração"></th>
+                                <th></th>
+                                <th></th>
                             </tr>
                         </thead>
                         <tbody id="tabela-esteira-body"></tbody>
@@ -154,6 +259,32 @@
                         <div class="col-md-6"><label class="form-label">Forma de Pagamento</label><select class="form-select" id="edit-pagamento"></select></div>
                     </div>
 
+                    <div id="campos-datas-agendamento" class="row g-3 mb-4 p-3 rounded border" style="display: none; background: #cce5ff; border-color: #b8daff !important;">
+                        <div class="col-12"><h6 class="text-primary border-bottom pb-2"><i class="bi bi-calendar-event"></i> Datas do agendamento</h6></div>
+                        <div class="col-md-6"><label class="form-label fw-bold">Data agendada</label><input type="date" class="form-control" id="edit-data-agendamento-modal"></div>
+                        <div class="col-md-6"><label class="form-label fw-bold">Turno</label><select class="form-select" id="edit-periodo-agendamento-modal"><option value="">—</option><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option></select></div>
+                    </div>
+
+                    <div id="campos-instalacao-modal" style="display: none; background: #d1e7dd; padding: 15px; border-radius: 8px; border: 1px solid #badbcc;">
+                        <h6 class="text-success mb-3 border-bottom pb-2"><i class="bi bi-check-circle-fill"></i> Datas da instalação</h6>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Data da Instalação (OSAB)</label>
+                                <input type="date" class="form-control" id="edit-data-instalacao-modal" title="Data oficial registrada na OSAB">
+                                <small class="text-muted">Data que consta na OSAB (oficial).</small>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Houve Antecipação?</label>
+                                <select class="form-select" id="edit-antecipou-modal"><option value="false">Não</option><option value="true">Sim</option></select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Data física (no cliente)</label>
+                                <input type="date" class="form-control" id="edit-data-instalacao-fisica-modal" title="Data em que a instalação ocorreu de fato no cliente">
+                                <small class="text-muted">Opcional. Só BackOffice/Diretoria/Admin alteram.</small>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="row g-3 mb-4">
                          <div class="col-12"><h6 class="text-secondary border-bottom pb-2">Dados do Cliente</h6></div>
                         <div class="col-md-6"><label class="form-label fw-bold">Nome do Cliente</label><input type="text" class="form-control uppercase-input" id="edit-cliente-nome"></div>
@@ -181,17 +312,6 @@
                     <div class="mb-3">
                         <label class="form-label">Observações</label>
                         <textarea class="form-control uppercase-input" id="edit-observacoes" rows="3"></textarea>
-                    </div>
-
-                    <div id="campos-instalacao-modal" style="display: none; background: #d1e7dd; padding: 15px; border-radius: 8px; border: 1px solid #badbcc;">
-                        <h6 class="text-success mb-3 border-bottom pb-2"><i class="bi bi-check-circle-fill"></i> Confirmação de Instalação</h6>
-                        <div class="row g-3">
-                            <div class="col-md-6"><label class="form-label fw-bold">Data da Instalação</label><input type="date" class="form-control" id="edit-data-instalacao-modal"></div>
-                            <div class="col-md-6">
-                                <label class="form-label fw-bold">Houve Antecipação?</label>
-                                <select class="form-select" id="edit-antecipou-modal"><option value="false">Não</option><option value="true">Sim</option></select>
-                            </div>
-                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -260,6 +380,42 @@
         </div>
     </div>
 
+    <div class="modal fade" id="modal-enviar-lembrete" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content border-success">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title"><i class="bi bi-whatsapp"></i> Enviar Lembrete de Instalação</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small">A mensagem será enviada para clientes agendados na <strong>data</strong> e <strong>turno</strong> selecionados (telefone1).</p>
+                    <p class="alert alert-light border small mb-0"><i class="bi bi-info-circle"></i> Envio em lotes com intervalo aleatório entre mensagens (boas práticas para evitar bloqueio).</p>
+                    <form id="form-enviar-lembrete">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Data do agendamento *</label>
+                            <input type="date" class="form-control" id="lembrete-data" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Turno *</label>
+                            <select class="form-select" id="lembrete-turno" required>
+                                <option value="">Selecione...</option>
+                                <option value="MANHA">Manhã</option>
+                                <option value="TARDE">Tarde</option>
+                            </select>
+                        </div>
+                    </form>
+                    <div id="lembrete-resultado" class="alert mt-2" style="display: none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                    <button type="button" class="btn btn-success" id="btn-enviar-lembrete" onclick="enviarLembreteInstalacao()">
+                        <i class="bi bi-send"></i> Enviar mensagem
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     <script src="{% static 'js/auth.js' %}?v=7.0"></script>
     <script src="{% static 'js/menu.js' %}?v=7.0"></script>
@@ -299,6 +455,7 @@
                 const data = await response.json();
                 const list = Array.isArray(data) ? data : (data.results || []);
                 all.push(...list);
+                // next pode ser URL absoluta (ex: http://...) ou null
                 url = data.next || null;
             }
             return all;
@@ -310,21 +467,32 @@
         const userProfile = decodedToken ? (decodedToken.user_role || decodedToken.perfil) : null;
         const allowedProfiles = ['Diretoria', 'BackOffice', 'Supervisor', 'Admin'];
         if (!allowedProfiles.includes(userProfile)) { alert('Acesso negado.'); window.location.href = '/area-interna/'; }
+        const podeEditarAdiantamentosFinanceiros = ['Diretoria', 'Admin'].includes(userProfile);
 
         const podeConfigurarZap = ['Diretoria', 'Admin'].includes(userProfile);
+        const podeEditarAntecipacaoInstaladas = ['Diretoria', 'BackOffice', 'Admin'].includes(userProfile);
         let envioWhatsappAtivo = true;
 
         let filtroAtual = 'TODOS';
+        let filtroTurnoAtual = '';
+        let filtroInstaladasAplicado = { vendedor_id: '', data_inicio: '', data_fim: '' };
         let tempVendaId = null;
         let tempStatusId = null;
         const modalEditar = new bootstrap.Modal(document.getElementById('modal-editar-venda'));
         const modalAgendamento = new bootstrap.Modal(document.getElementById('modal-agendamento'));
         const modalInstalacao = new bootstrap.Modal(document.getElementById('modal-instalacao'));
         const modalPendencia = new bootstrap.Modal(document.getElementById('modal-pendencia'));
+        const modalEnviarLembrete = document.getElementById('modal-enviar-lembrete') ? new bootstrap.Modal(document.getElementById('modal-enviar-lembrete')) : null;
         
         document.addEventListener('DOMContentLoaded', () => {
             carregarVendas();
             carregarMotivosPendencia();
+            popularFiltroVendedorInstaladas();
+            inicializarFiltrosColunas();
+            const btnAdiantCnpjSemana = document.getElementById('btn-marcar-adiant-cnpj-semana');
+            if (btnAdiantCnpjSemana && !podeEditarAdiantamentosFinanceiros) btnAdiantCnpjSemana.style.display = 'none';
+            const cbSelComissaoVisiveis = document.getElementById('selecionar-comissao-visiveis');
+            if (cbSelComissaoVisiveis && !podeEditarAdiantamentosFinanceiros) cbSelComissaoVisiveis.style.display = 'none';
             document.querySelectorAll('input[type="text"], textarea').forEach(input => { input.addEventListener('input', function() { this.value = this.value.toUpperCase(); }); });
 
             if (podeConfigurarZap) {
@@ -369,6 +537,267 @@
             return `${dia}/${mes}/${ano}`;
         }
 
+        function inicializarFiltrosColunas() {
+            const ids = [
+                'fc-id', 'fc-data-venda', 'fc-os', 'fc-data-agendada', 'fc-turno', 'fc-cliente', 'fc-vendedor',
+                'fc-adiant-cnpj', 'fc-adiant-comissao', 'fc-plano', 'fc-status', 'fc-motivo', 'fc-conf', 'fc-resp'
+            ];
+            ids.forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.addEventListener('input', () => { if (filtroAtual === 'INSTALADAS') carregarVendas(true); });
+                el.addEventListener('change', () => { if (filtroAtual === 'INSTALADAS') carregarVendas(true); });
+            });
+        }
+
+        function getFiltroColuna(id) {
+            const el = document.getElementById(id);
+            return ((el && el.value) ? String(el.value) : '').trim().toLowerCase();
+        }
+
+        function incluiTexto(valor, filtro) {
+            if (!filtro) return true;
+            return String(valor || '').toLowerCase().includes(filtro);
+        }
+
+        function validarPeriodoInstaladas() {
+            const ini = (document.getElementById('filtro-data-inicio-instaladas')?.value || '').trim();
+            const fim = (document.getElementById('filtro-data-fim-instaladas')?.value || '').trim();
+            if ((ini && !fim) || (!ini && fim)) {
+                alert('Informe Data início e Data fim.');
+                return null;
+            }
+            if (ini && fim && ini > fim) {
+                alert('Data início não pode ser maior que data fim.');
+                return null;
+            }
+            return { ini, fim };
+        }
+
+        function aplicarFiltrosInstaladas() {
+            const periodo = validarPeriodoInstaladas();
+            if (!periodo) return;
+            filtroInstaladasAplicado = {
+                vendedor_id: (document.getElementById('filtro-vendedor-instaladas')?.value || '').trim(),
+                data_inicio: periodo.ini,
+                data_fim: periodo.fim
+            };
+            carregarVendas();
+        }
+
+        function limparFiltrosInstaladas() {
+            const v = document.getElementById('filtro-vendedor-instaladas');
+            const i = document.getElementById('filtro-data-inicio-instaladas');
+            const f = document.getElementById('filtro-data-fim-instaladas');
+            if (v) v.value = '';
+            if (i) i.value = '';
+            if (f) f.value = '';
+            [
+                'fc-id', 'fc-data-venda', 'fc-os', 'fc-data-agendada', 'fc-turno', 'fc-cliente', 'fc-vendedor',
+                'fc-adiant-cnpj', 'fc-adiant-comissao', 'fc-plano', 'fc-status', 'fc-motivo', 'fc-conf', 'fc-resp'
+            ].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+            filtroInstaladasAplicado = { vendedor_id: '', data_inicio: '', data_fim: '' };
+            carregarVendas();
+        }
+
+        function popularFiltroVendedorInstaladas(vendas = []) {
+            const select = document.getElementById('filtro-vendedor-instaladas');
+            if (!select) return;
+            const mapa = new Map();
+            (vendas || []).forEach(v => {
+                const vid = v && v.vendedor ? String(v.vendedor) : '';
+                const nome = (v && v.vendedor_nome) ? String(v.vendedor_nome) : '';
+                if (vid && nome && !mapa.has(vid)) mapa.set(vid, nome);
+            });
+            const atual = filtroInstaladasAplicado.vendedor_id || '';
+            select.innerHTML = '<option value="">Todos</option>';
+            Array.from(mapa.entries()).sort((a, b) => a[1].localeCompare(b[1], 'pt-BR')).forEach(([id, nome]) => {
+                const opt = document.createElement('option');
+                opt.value = id;
+                opt.textContent = nome;
+                select.appendChild(opt);
+            });
+            select.value = atual;
+        }
+
+        async function exportarInstaladasExcel() {
+            if (filtroAtual !== 'INSTALADAS') return;
+            const periodo = validarPeriodoInstaladas();
+            if (!periodo) return;
+            const token = localStorage.getItem('accessToken');
+            let url = `/api/crm/vendas/exportar-excel/?flow=esteira_instaladas`;
+            if (filtroInstaladasAplicado.vendedor_id) url += `&vendedor_id=${encodeURIComponent(filtroInstaladasAplicado.vendedor_id)}`;
+            if (filtroInstaladasAplicado.data_inicio) url += `&data_inicio_inst=${encodeURIComponent(filtroInstaladasAplicado.data_inicio)}`;
+            if (filtroInstaladasAplicado.data_fim) url += `&data_fim_inst=${encodeURIComponent(filtroInstaladasAplicado.data_fim)}`;
+            const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+            if (!response.ok) { alert('Erro ao exportar Excel.'); return; }
+            const blob = await response.blob();
+            const link = document.createElement('a');
+            link.href = window.URL.createObjectURL(blob);
+            link.download = 'instaladas_filtradas.xlsx';
+            document.body.appendChild(link);
+            link.click();
+            window.URL.revokeObjectURL(link.href);
+            document.body.removeChild(link);
+        }
+
+        async function marcarAdiantamentoCnpjSemana() {
+            if (filtroAtual !== 'INSTALADAS') return;
+            const periodo = validarPeriodoInstaladas();
+            if (!periodo) return;
+            try {
+                const previewPayload = {
+                    vendedor_id: filtroInstaladasAplicado.vendedor_id || null,
+                    data_inicio_inst: filtroInstaladasAplicado.data_inicio || null,
+                    data_fim_inst: filtroInstaladasAplicado.data_fim || null,
+                    dry_run: true,
+                };
+                const preview = await apiFetch('/crm/vendas/marcar-adiantamento-cnpj-semana/', {
+                    method: 'POST',
+                    body: JSON.stringify(previewPayload),
+                });
+                const ok = confirm(`${preview.elegiveis_marcadas || 0} elegíveis serão marcadas; ${preview.ignoradas || 0} não elegíveis serão ignoradas. Deseja continuar?`);
+                if (!ok) return;
+                const payload = {
+                    vendedor_id: filtroInstaladasAplicado.vendedor_id || null,
+                    data_inicio_inst: filtroInstaladasAplicado.data_inicio || null,
+                    data_fim_inst: filtroInstaladasAplicado.data_fim || null,
+                };
+                const resp = await apiFetch('/crm/vendas/marcar-adiantamento-cnpj-semana/', {
+                    method: 'POST',
+                    body: JSON.stringify(payload),
+                });
+                alert(`${resp.elegiveis_marcadas || 0} elegíveis marcadas; ${resp.ignoradas || 0} não elegíveis ignoradas.`);
+                carregarVendas(true);
+            } catch (e) {
+                alert('Erro ao marcar adiantamento CNPJ: ' + (e.message || e));
+            }
+        }
+
+        async function alterarAdiantamentoComissao(vendaId, selectEl, suppressReload = false) {
+            const marcar = selectEl && selectEl.value === 'true';
+            selectEl.disabled = true;
+            try {
+                await apiFetch(`/crm/vendas/${vendaId}/toggle-adiantamento-comissao/`, {
+                    method: 'POST',
+                    body: JSON.stringify({ marcar }),
+                });
+                if (!suppressReload) carregarVendas(true);
+            } catch (e) {
+                alert('Erro ao atualizar adiantamento de comissão: ' + (e.message || e));
+                selectEl.value = marcar ? 'false' : 'true';
+            } finally {
+                selectEl.disabled = false;
+            }
+        }
+
+        async function alterarAdiantamentoCnpj(vendaId, selectEl) {
+            const marcar = selectEl && selectEl.value === 'true';
+            selectEl.disabled = true;
+            try {
+                await apiFetch(`/crm/vendas/${vendaId}/toggle-adiantamento-cnpj/`, {
+                    method: 'POST',
+                    body: JSON.stringify({ marcar }),
+                });
+                carregarVendas(true);
+            } catch (e) {
+                alert('Erro ao atualizar adiantamento CNPJ: ' + (e.message || e));
+                selectEl.value = marcar ? 'false' : 'true';
+            } finally {
+                selectEl.disabled = false;
+            }
+        }
+
+        async function alternarComissaoPorCheckbox(cb, suppressReload = false) {
+            const vendaId = cb?.dataset?.vendaId;
+            if (!vendaId) return;
+            const marcar = !!cb.checked;
+            cb.disabled = true;
+            try {
+                await apiFetch(`/crm/vendas/${vendaId}/toggle-adiantamento-comissao/`, {
+                    method: 'POST',
+                    body: JSON.stringify({ marcar }),
+                });
+                if (!suppressReload) carregarVendas(true);
+            } catch (e) {
+                cb.checked = !marcar;
+                alert('Erro ao atualizar adiantamento de comissão: ' + (e.message || e));
+            } finally {
+                cb.disabled = false;
+            }
+        }
+
+        async function marcarComissaoVisiveis(headerCb) {
+            const cbs = Array.from(document.querySelectorAll('.comissao-select-cb'));
+            if (!cbs.length) return;
+            for (const cb of cbs) {
+                if (cb.checked === headerCb.checked) continue;
+                cb.checked = headerCb.checked;
+                await alternarComissaoPorCheckbox(cb, true);
+            }
+            carregarVendas(true);
+        }
+
+        async function exportarAgendamentosDia() {
+            // Exporta planilha de agendamentos do dia para envio à operadora
+            try {
+                const token = localStorage.getItem('accessToken');
+                if (!token) {
+                    alert('Você precisa estar logado para exportar.');
+                    return;
+                }
+
+                // Data de hoje no formato YYYY-MM-DD
+                const hoje = new Date();
+                const dataStr = hoje.toISOString().split('T')[0];
+
+                // Feedback visual
+                const btn = event.target.closest('button');
+                const textoOriginal = btn.innerHTML;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Gerando...';
+                btn.disabled = true;
+
+                // Faz a requisição para baixar o arquivo
+                const response = await fetch(`/api/crm/esteira/exportar-agendamentos/?data=${dataStr}`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (!response.ok) {
+                    const erro = await response.text();
+                    throw new Error(erro || 'Erro ao exportar');
+                }
+
+                // Converte a resposta em blob e faz download
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `agendamentos_operadora_${dataStr.replace(/-/g, '')}.xlsx`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+
+                // Restaura botão
+                btn.innerHTML = textoOriginal;
+                btn.disabled = false;
+
+            } catch (error) {
+                console.error('Erro ao exportar agendamentos:', error);
+                alert('Erro ao exportar: ' + error.message);
+                
+                // Restaura botão em caso de erro
+                const btn = event.target.closest('button');
+                if (btn) {
+                    btn.innerHTML = '<i class="bi bi-file-earmark-excel"></i> Exportar Agendados Hoje';
+                    btn.disabled = false;
+                }
+            }
+        }
+
         function calcularContadores(vendasLista) {
             const contagem = { todos: vendasLista.length, pendentes: 0, datas: {} };
             vendasLista.forEach(v => {
@@ -396,14 +825,41 @@
 
         async function carregarVendas(silent = false) {
             const tbody = document.getElementById('tabela-esteira-body');
-            const busca = document.getElementById('filtro-busca').value;
-            
-            if (!silent) { tbody.innerHTML = '<tr><td colspan="11" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>'; }
-            
+            const busca = (document.getElementById('filtro-busca').value || '').trim();
+            const carregarInstaladas = (filtroAtual === 'INSTALADAS');
+            const temFiltroInstaladas = !!(
+                (filtroInstaladasAplicado.vendedor_id || '').trim() ||
+                (filtroInstaladasAplicado.data_inicio || '').trim() ||
+                (filtroInstaladasAplicado.data_fim || '').trim() ||
+                busca
+            );
+
+            if (carregarInstaladas && !temFiltroInstaladas) {
+                tbody.innerHTML = '<tr><td colspan="16" class="text-center py-4 text-muted">Selecione ao menos um filtro (Vendedor ou período) para carregar a aba Instaladas.</td></tr>';
+                const paEmpty = document.getElementById('painel-instaladas-antecipacao');
+                if (paEmpty) paEmpty.style.display = 'none';
+                return;
+            }
+
+            if (!carregarInstaladas) {
+                var inp = document.getElementById('filtro-busca');
+                if (inp) inp.placeholder = 'Buscar CPF ou OS...';
+            }
+            if (!silent) { tbody.innerHTML = '<tr><td colspan="16" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>'; }
+
             try {
                 const timestamp = new Date().getTime();
-                let url = `/crm/vendas/?flow=esteira&page_size=1000&_t=${timestamp}`;
-                if(busca) url += `&search=${busca}`;
+                // flow=esteira_instaladas: só retorna resultados com search (CPF ou O.S.) – qualquer data
+                let url = carregarInstaladas
+                    ? `/crm/vendas/?flow=esteira_instaladas&page_size=1000&_t=${timestamp}`
+                    : `/crm/vendas/?flow=esteira&page_size=1000&_t=${timestamp}`;
+                if (!carregarInstaladas && busca) url += `&search=${encodeURIComponent(busca)}`;
+                if (carregarInstaladas) {
+                    if (busca) url += `&search=${encodeURIComponent(busca)}`;
+                    if (filtroInstaladasAplicado.vendedor_id) url += `&vendedor_id=${encodeURIComponent(filtroInstaladasAplicado.vendedor_id)}`;
+                    if (filtroInstaladasAplicado.data_inicio) url += `&data_inicio_inst=${encodeURIComponent(filtroInstaladasAplicado.data_inicio)}`;
+                    if (filtroInstaladasAplicado.data_fim) url += `&data_fim_inst=${encodeURIComponent(filtroInstaladasAplicado.data_fim)}`;
+                }
 
                 // --- Carregamos Listas Auxiliares e vendas (todas as páginas da esteira) ---
                 const [vendasRes, statusRes, motivosRes, usuariosRes] = await Promise.all([
@@ -417,6 +873,9 @@
                 const statusLista = Array.isArray(statusRes) ? statusRes : (statusRes && statusRes.results ? statusRes.results : []);
                 const motivosLista = Array.isArray(motivosRes) ? motivosRes : (motivosRes && motivosRes.results ? motivosRes.results : []);
                 const usuariosLista = Array.isArray(usuariosRes) ? usuariosRes : (usuariosRes && usuariosRes.results ? usuariosRes.results : []);
+                if (carregarInstaladas) {
+                    popularFiltroVendedorInstaladas(vendas);
+                }
 
                 // DEBUG:
                 // ...
@@ -443,21 +902,29 @@
                     return v;
                 });
 
-                // Filtros de Segurança
-                vendas = vendas.filter(v => {
-                    const status = v.status_esteira_obj;
-                    if (!status || !status.id) return true; 
-                    if (status.estado && String(status.estado).toUpperCase() === 'FECHADO') return false;
-                    if (status.nome && String(status.nome).toUpperCase().includes('CANCEL')) return false;
-                    return true;
-                });
+                // Filtros de Segurança (aba Instaladas: não excluir FECHADO, pois são vendas já instaladas)
+                if (!carregarInstaladas) {
+                    vendas = vendas.filter(v => {
+                        const status = v.status_esteira_obj;
+                        if (!status || !status.id) return true; 
+                        if (status.estado && String(status.estado).toUpperCase() === 'FECHADO') return false;
+                        if (status.nome && String(status.nome).toUpperCase().includes('CANCEL')) return false;
+                        return true;
+                    });
+                }
 
                 const contadores = calcularContadores(vendas);
-                gerarAbasDeData(vendas, contadores.datas);
-                atualizarContadoresAbas(contadores);
+                if (!carregarInstaladas) {
+                    gerarAbasDeData(vendas, contadores.datas);
+                    atualizarContadoresAbas(contadores);
+                } else {
+                    document.getElementById('filtro-turno-container').style.display = 'none';
+                }
 
-                // Filtragem por Aba
-                if(filtroAtual === 'TODOS') {} 
+                // Filtragem por Aba (aba Instaladas: lista já vem só instaladas, sem subfiltro)
+                if (carregarInstaladas) {
+                    // Mantém todas; opcionalmente filtrar por busca (CPF/OS) já aplicado na URL
+                } else if(filtroAtual === 'TODOS') {} 
                 else if (filtroAtual === 'AGENDADO') {
                     vendas = vendas.filter(v => v.status_esteira_obj.nome && String(v.status_esteira_obj.nome).toUpperCase().includes('AGENDADO'));
                 }
@@ -466,9 +933,18 @@
                 }
                 else {
                     vendas = vendas.filter(v => v.data_agendamento === filtroAtual);
+                    if (filtroTurnoAtual === 'MANHA' || filtroTurnoAtual === 'TARDE') {
+                        vendas = vendas.filter(v => (v.periodo_agendamento || '').toUpperCase() === filtroTurnoAtual);
+                    }
                 }
 
-                if(vendas.length === 0) { tbody.innerHTML = '<tr><td colspan="11" class="text-center py-4 text-muted">Nenhuma venda encontrada nesta etapa.</td></tr>'; return; }
+                if(vendas.length === 0) {
+                    const msg = carregarInstaladas ? 'Nenhuma venda instalada encontrada para este CPF/O.S.' : 'Nenhuma venda encontrada nesta etapa.';
+                    tbody.innerHTML = '<tr><td colspan="16" class="text-center py-4 text-muted">' + msg + '</td></tr>';
+                    const pa = document.getElementById('painel-instaladas-antecipacao');
+                    if (pa) pa.style.display = 'none';
+                    return;
+                }
 
                 // Função auxiliar para achar nome de usuário pelo ID
                 const getNomeUsuario = (userId) => {
@@ -516,6 +992,41 @@
                     // Plano
                     let nomePlano = v.plano_nome || '-';
                     if (nomePlano === '-' && v.plano && v.plano.nome) nomePlano = v.plano.nome;
+                    let statusAdiantCnpj = '-';
+                    let statusAdiantComissao = '-';
+                    let seletorComissao = '';
+                    let checkboxComissao = '';
+                    let celulaAdiantCnpj = '-';
+                    if (carregarInstaladas) {
+                        if (v.flag_adiant_cnpj) {
+                            statusAdiantCnpj = '<span class="badge bg-success">Realizado</span>';
+                        } else {
+                            const doc = String(v.cliente_cpf_cnpj || '').replace(/\D/g, '');
+                            const cnpj = doc.length === 14;
+                            statusAdiantCnpj = cnpj ? '<span class="badge bg-secondary">Pendente</span>' : '<span class="badge bg-light text-dark border">Não elegível</span>';
+                        }
+                        celulaAdiantCnpj = statusAdiantCnpj;
+                        statusAdiantComissao = v.antecipacao_comissao ? '<span class="badge bg-success">Sim</span>' : '<span class="badge bg-light text-dark border">Não</span>';
+                        if (podeEditarAdiantamentosFinanceiros) {
+                            seletorComissao = `
+                                <select class="form-select form-select-sm" style="min-width:90px;" onchange="alterarAdiantamentoComissao(${v.id}, this)">
+                                    <option value="false" ${v.antecipacao_comissao ? '' : 'selected'}>Não</option>
+                                    <option value="true" ${v.antecipacao_comissao ? 'selected' : ''}>Sim</option>
+                                </select>
+                            `;
+                            checkboxComissao = `<input type="checkbox" class="comissao-select-cb" data-venda-id="${v.id}" ${v.antecipacao_comissao ? 'checked' : ''} onchange="alternarComissaoPorCheckbox(this)">`;
+                            const docCnpjCol = String(v.cliente_cpf_cnpj || '').replace(/\D/g, '');
+                            if (docCnpjCol.length === 14) {
+                                celulaAdiantCnpj = `<select class="form-select form-select-sm" style="min-width:90px;" onchange="alterarAdiantamentoCnpj(${v.id}, this)" title="Sim/Não fora da regra automática da semana">
+                                    <option value="false" ${v.flag_adiant_cnpj ? '' : 'selected'}>Não</option>
+                                    <option value="true" ${v.flag_adiant_cnpj ? 'selected' : ''}>Sim</option>
+                                </select>`;
+                            }
+                        } else {
+                            seletorComissao = statusAdiantComissao;
+                            checkboxComissao = '-';
+                        }
+                    }
 
                     const nomeCliente = v.cliente_nome_razao_social || (v.cliente ? v.cliente.nome_razao_social : '-') || '-';
                     const docCliente = v.cliente_cpf_cnpj || (v.cliente ? v.cliente.cpf_cnpj : '') || '';
@@ -537,6 +1048,39 @@
                     }
                     const btnEditar = temDadosEditaveis ? `<button class="btn btn-sm btn-link text-primary p-0 ms-1" onclick="editarStatusExistente(${v.id}, '${nomeStatus}', '${statusId}')" title="Editar dados" aria-label="Editar dados da venda #${v.id}"><i class="bi bi-pencil-square"></i></button>` : '';
 
+                    let confCliente = '-';
+                    if (v.cliente_confirmou_lembrete_instalacao === true) {
+                        confCliente = '<span class="badge bg-success" title="' + (v.cliente_resposta_lembrete_instalacao || '').replace(/"/g, '&quot;').substring(0, 200) + '">Sim</span>';
+                    } else if (v.cliente_confirmou_lembrete_instalacao === false && (v.cliente_resposta_lembrete_instalacao || v.data_resposta_lembrete_instalacao)) {
+                        const respShort = (v.cliente_resposta_lembrete_instalacao || '').substring(0, 30);
+                        const respTitle = (v.cliente_resposta_lembrete_instalacao || '').replace(/"/g, '&quot;');
+                        confCliente = '<span class="badge bg-secondary" title="' + respTitle + '">Não' + (respShort ? ': ' + respShort + (v.cliente_resposta_lembrete_instalacao && v.cliente_resposta_lembrete_instalacao.length > 30 ? '…' : '') : '') + '</span>';
+                    }
+
+                    if (carregarInstaladas) {
+                        const adCnpjTexto = v.flag_adiant_cnpj
+                            ? 'realizado'
+                            : (String(docCliente || '').replace(/\D/g, '').length === 14 ? 'pendente' : 'nao elegivel');
+                        const adComissaoTexto = v.antecipacao_comissao ? 'sim' : 'nao';
+                        const confTexto = (v.cliente_confirmou_lembrete_instalacao === true) ? 'sim' : (v.cliente_confirmou_lembrete_instalacao === false ? 'nao' : '-');
+                        const passa =
+                            incluiTexto(v.id, getFiltroColuna('fc-id')) &&
+                            incluiTexto(dataFmt, getFiltroColuna('fc-data-venda')) &&
+                            incluiTexto(osAtual, getFiltroColuna('fc-os')) &&
+                            incluiTexto(dataAgendada, getFiltroColuna('fc-data-agendada')) &&
+                            incluiTexto(turno, getFiltroColuna('fc-turno')) &&
+                            incluiTexto(`${nomeCliente} ${docCliente}`, getFiltroColuna('fc-cliente')) &&
+                            incluiTexto(nomeVendedor, getFiltroColuna('fc-vendedor')) &&
+                            incluiTexto(adCnpjTexto, getFiltroColuna('fc-adiant-cnpj')) &&
+                            incluiTexto(adComissaoTexto, getFiltroColuna('fc-adiant-comissao')) &&
+                            incluiTexto(nomePlano, getFiltroColuna('fc-plano')) &&
+                            incluiTexto(nomeStatus, getFiltroColuna('fc-status')) &&
+                            incluiTexto(motivoPendencia, getFiltroColuna('fc-motivo')) &&
+                            incluiTexto(confTexto, getFiltroColuna('fc-conf')) &&
+                            incluiTexto(alteradoPor, getFiltroColuna('fc-resp'));
+                        if (!passa) return;
+                    }
+
                     htmlContent += `
                         <tr style="${rowStyle}" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='translateY(0)'">
                             <td class="fw-bold text-primary ps-4">#${v.id}</td>
@@ -546,24 +1090,51 @@
                             <td>${turno}</td>
                             <td><div class="fw-bold text-dark">${nomeCliente}</div><div class="small text-muted">${docCliente}</div></td>
                             <td>${nomeVendedor}</td> 
+                            <td>${celulaAdiantCnpj}</td>
+                            <td>${carregarInstaladas ? seletorComissao : statusAdiantComissao}</td>
                             <td>${nomePlano}</td>
                             <td><div class="d-flex align-items-center">${selectStatus}${btnEditar}</div></td>
                             <td class="text-danger small fw-bold">${motivoPendencia}</td>
+                            <td class="small">${confCliente}</td>
                             <td><small class="text-muted fw-bold">${alteradoPor}</small></td>
-                            <td class="pe-4 text-end"><button class="btn btn-sm btn-outline-primary rounded-circle p-2" onclick="abrirEdicao(${v.id})" aria-label="Editar venda #${v.id}"><i class="bi bi-pencil-fill"></i></button></td>
+                            <td class="text-center">${carregarInstaladas ? checkboxComissao : '-'}</td>
+                            <td class="pe-4 text-end">
+                                ${(v.telefone1 && v.telefone1.trim()) ? `<button class="btn btn-sm btn-outline-secondary rounded-circle p-2 me-1" onclick="copiarTelefone(this)" data-telefone="${String(v.telefone1).replace(/"/g, '&quot;')}" title="Copiar telefone"><i class="bi bi-telephone"></i></button>` : ''}
+                                <button class="btn btn-sm btn-outline-primary rounded-circle p-2" onclick="abrirEdicao(${v.id})" aria-label="Editar venda #${v.id}"><i class="bi bi-pencil-fill"></i></button>
+                            </td>
                         </tr>
                     `;
                 });
                 tbody.innerHTML = htmlContent;
+
+                const painelAnt = document.getElementById('painel-instaladas-antecipacao');
+                if (painelAnt) {
+                    if (carregarInstaladas && vendas.length === 1 && podeEditarAntecipacaoInstaladas) {
+                        const v0 = vendas[0];
+                        painelAnt.style.display = 'block';
+                        var lid = document.getElementById('instaladas-antecipacao-venda-id-label');
+                        var hid = document.getElementById('instaladas-antecipacao-venda-id-hidden');
+                        var s1 = document.getElementById('select-instaladas-houve-antecipacao');
+                        var s2 = document.getElementById('select-instaladas-antecipacao-comissao');
+                        if (lid) lid.textContent = '#' + v0.id;
+                        if (hid) hid.value = String(v0.id);
+                        if (s1) s1.value = v0.antecipou_instalacao ? 'true' : 'false';
+                        if (s2) s2.value = (v0.antecipacao_comissao === true) ? 'true' : 'false';
+                    } else {
+                        painelAnt.style.display = 'none';
+                    }
+                }
             } catch (e) { 
-                if(!silent) tbody.innerHTML = '<tr><td colspan="11" class="text-center text-danger">Erro ao carregar.<br><small>'+(e.message || e)+'</small></td></tr>'; 
-                // ...
+                if(!silent) tbody.innerHTML = '<tr><td colspan="16" class="text-center text-danger">Erro ao carregar.<br><small>'+(e.message || e)+'</small></td></tr>';
+                var paErr = document.getElementById('painel-instaladas-antecipacao');
+                if (paErr) paErr.style.display = 'none';
             }
         }
 
         function gerarAbasDeData(todasVendas, contagemDatas = {}) {
             const ul = document.getElementById('abas-esteira');
-            while (ul.children.length > 3) { ul.removeChild(ul.lastChild); }
+            // Manter as 4 abas fixas (Todos, Agendados, Pendentes, Instaladas) e remover só as abas de data
+            while (ul.children.length > 4) { ul.removeChild(ul.lastChild); }
             const datasUnicas = new Set();
             todasVendas.forEach(v => {
                 if (v.data_agendamento && v.status_esteira_obj && v.status_esteira_obj.nome && String(v.status_esteira_obj.nome).toUpperCase().includes('AGENDADO')) {
@@ -576,16 +1147,160 @@
                 const contadorDia = contagemDatas[dataIso] || 0;
                 const li = document.createElement('li'); li.className = 'nav-item';
                 const a = document.createElement('a'); a.className = `nav-link data-tab ${filtroAtual === dataIso ? 'active' : ''}`;
-                a.href = '#'; a.textContent = `${dataExibicao} (${contadorDia})`; 
+                a.href = '#'; a.setAttribute('data-tab', dataIso); a.textContent = `${dataExibicao} (${contadorDia})`; 
                 a.onclick = (e) => { e.preventDefault(); filtrarStatus(dataIso, a); };
                 li.appendChild(a); ul.appendChild(li);
             });
+            var ehAbaData = /^\d{4}-\d{2}-\d{2}$/.test(filtroAtual);
+            var containerTurno = document.getElementById('filtro-turno-container');
+            if (containerTurno) containerTurno.style.display = ehAbaData ? 'block' : 'none';
+            if (!ehAbaData) filtroTurnoAtual = '';
+            document.querySelectorAll('#filtro-turno-container .btn').forEach(btn => {
+                btn.classList.remove('active', 'btn-primary'); btn.classList.add('btn-outline-secondary');
+            });
+            if (filtroTurnoAtual === 'MANHA') { var b = document.getElementById('btn-turno-manha'); if (b) { b.classList.add('active', 'btn-primary'); b.classList.remove('btn-outline-secondary'); } }
+            else if (filtroTurnoAtual === 'TARDE') { var b = document.getElementById('btn-turno-tarde'); if (b) { b.classList.add('active', 'btn-primary'); b.classList.remove('btn-outline-secondary'); } }
+            else { var b = document.getElementById('btn-turno-todos'); if (b) { b.classList.add('active', 'btn-primary'); b.classList.remove('btn-outline-secondary'); } }
+        }
+
+        function filtrarTurno(turno, element) {
+            filtroTurnoAtual = turno || '';
+            document.querySelectorAll('#filtro-turno-container .btn').forEach(btn => {
+                btn.classList.remove('active', 'btn-primary'); btn.classList.add('btn-outline-secondary');
+            });
+            if (element) { element.classList.add('active', 'btn-primary'); element.classList.remove('btn-outline-secondary'); }
+            carregarVendas();
+        }
+
+        function copiarTelefone(btn) {
+            var tel = btn && btn.getAttribute('data-telefone');
+            if (!tel) return;
+            try {
+                navigator.clipboard.writeText(tel).then(function() {
+                    var oldTitle = btn.title; btn.title = 'Copiado!'; setTimeout(function() { btn.title = oldTitle || 'Copiar telefone'; }, 1500);
+                });
+            } catch (e) {
+                prompt('Copie o número:', tel);
+            }
+        }
+
+        function abrirModalEnviarLembrete() {
+            var hoje = new Date().toISOString().split('T')[0];
+            document.getElementById('lembrete-data').value = hoje;
+            document.getElementById('lembrete-turno').value = '';
+            document.getElementById('lembrete-resultado').style.display = 'none';
+            if (modalEnviarLembrete) modalEnviarLembrete.show();
+        }
+
+        async function enviarLembreteInstalacao() {
+            var dataStr = document.getElementById('lembrete-data').value;
+            var turno = document.getElementById('lembrete-turno').value;
+            if (!dataStr || !turno) { alert('Selecione a data e o turno.'); return; }
+            var btn = document.getElementById('btn-enviar-lembrete');
+            var resultado = document.getElementById('lembrete-resultado');
+            btn.disabled = true;
+            resultado.style.display = 'none';
+            var offset = 0;
+            var totalEnviados = 0;
+            function exibirLembrete(tipo, html) {
+                resultado.style.display = 'block';
+                resultado.className = 'alert mt-2 alert-' + tipo;
+                resultado.innerHTML = html;
+            }
+            try {
+                while (true) {
+                    var res = await apiFetch('/crm/esteira/enviar-lembrete-instalacao/', {
+                        method: 'POST',
+                        body: JSON.stringify({ data: dataStr, turno: turno, offset: offset, limite: 5 })
+                    });
+                    totalEnviados += res.enviados || 0;
+                    var totalNaData = res.total_na_data || 0;
+                    var restantes = res.restantes || 0;
+                    var erros = (res.erros || []).length;
+                    if (restantes > 0 && res.proximo_offset != null) {
+                        var esperaMs = (res.pause_antes_proximo_seg != null ? res.pause_antes_proximo_seg : 90) * 1000;
+                        exibirLembrete('info', 'Enviados <strong>' + totalEnviados + '</strong> de ' + totalNaData + '. Aguarde ~' + Math.round(esperaMs/1000) + 's para o próximo lote...' + (erros ? ' <span class="text-danger">(' + erros + ' erros)</span>' : ''));
+                        offset = res.proximo_offset;
+                        await new Promise(r => setTimeout(r, esperaMs));
+                    } else {
+                        exibirLembrete((res.erros && res.erros.length > 0) ? 'warning' : 'success',
+                            'Enviados: <strong>' + totalEnviados + '</strong> de ' + totalNaData + (res.erros && res.erros.length ? '. Erros: ' + res.erros.slice(0, 5).join('; ') : ''));
+                        break;
+                    }
+                }
+            } catch (e) {
+                var msgErro = 'Erro ao enviar.';
+                try {
+                    if (typeof e === 'string') msgErro = e;
+                    else if (e && e.message) {
+                        var parsed = null;
+                        try { parsed = JSON.parse(e.message); } catch (_) {}
+                        msgErro = (parsed && parsed.detail) ? parsed.detail : e.message;
+                    } else if (e && e.detail) msgErro = typeof e.detail === 'string' ? e.detail : JSON.stringify(e.detail);
+                } catch (_) {}
+                exibirLembrete('danger', 'Erro: ' + msgErro);
+                if (totalEnviados > 0) resultado.innerHTML += '<br><small>Enviados até o momento: ' + totalEnviados + '</small>';
+            }
+            btn.disabled = false;
+        }
+
+        function buscarInstaladas() {
+            var buscaInst = document.getElementById('busca-instaladas');
+            var termo = buscaInst ? buscaInst.value.trim() : '';
+            if (!termo) { alert('Digite o CPF ou o número da O.S. para buscar.'); if (buscaInst) buscaInst.focus(); return; }
+            document.getElementById('filtro-busca').value = termo;
+            carregarVendas();
+        }
+
+        async function salvarAntecipacaoInstaladas() {
+            var hid = document.getElementById('instaladas-antecipacao-venda-id-hidden');
+            var s1 = document.getElementById('select-instaladas-houve-antecipacao');
+            var s2 = document.getElementById('select-instaladas-antecipacao-comissao');
+            var btn = document.getElementById('btn-salvar-instaladas-antecipacao');
+            if (!hid || !s1 || !s2 || !podeEditarAntecipacaoInstaladas) return;
+            var vid = (hid.value || '').trim();
+            if (!vid) { alert('Nenhuma venda selecionada.'); return; }
+            var body = {
+                antecipou_instalacao: s1.value === 'true',
+                antecipacao_comissao: s2.value === 'true'
+            };
+            if (btn) { btn.disabled = true; }
+            try {
+                await apiFetch('/crm/vendas/' + vid + '/', { method: 'PATCH', body: JSON.stringify(body) });
+                alert('Alterações salvas.');
+                carregarVendas(true);
+            } catch (e) {
+                var msg = (e && e.message) ? e.message : String(e);
+                try {
+                    var parsed = JSON.parse(msg);
+                    if (parsed && parsed.detail) msg = typeof parsed.detail === 'string' ? parsed.detail : JSON.stringify(parsed.detail);
+                } catch (_) {}
+                alert('Erro ao salvar: ' + msg);
+            } finally {
+                if (btn) { btn.disabled = false; }
+            }
         }
 
         function filtrarStatus(status, element) {
             filtroAtual = status;
-            document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+            document.querySelectorAll('#abas-esteira .nav-link').forEach(l => l.classList.remove('active'));
             if(element) element.classList.add('active');
+            if (status === 'INSTALADAS') {
+                var lf = document.getElementById('linha-filtros-colunas');
+                if (lf) lf.style.display = '';
+                document.getElementById('filtro-turno-container').style.display = 'none';
+                document.getElementById('painel-busca-instaladas').style.display = 'block';
+                var pa = document.getElementById('painel-instaladas-antecipacao');
+                if (pa) pa.style.display = 'none';
+                while (document.getElementById('abas-esteira').children.length > 4) document.getElementById('abas-esteira').removeChild(document.getElementById('abas-esteira').lastChild);
+                var tb = document.getElementById('tabela-esteira-body');
+                tb.innerHTML = '<tr><td colspan="16" class="text-center py-4 text-muted">Carregando instaladas...</td></tr>';
+                carregarVendas();
+                return;
+            }
+            var lf2 = document.getElementById('linha-filtros-colunas');
+            if (lf2) lf2.style.display = 'none';
+            document.getElementById('painel-busca-instaladas').style.display = 'none';
             carregarVendas();
         }
 
@@ -758,14 +1473,16 @@
         async function abrirEdicao(id) {
             setVal('edit-venda-id-hidden', id);
             document.getElementById('campos-instalacao-modal').style.display = 'none';
+            document.getElementById('campos-datas-agendamento').style.display = 'none';
             try {
                 const [v, pRes, sRes, fRes] = await Promise.all([ apiFetch(`/crm/vendas/${id}/`), apiFetch('/crm/planos/'), apiFetch('/crm/status/?tipo=Esteira'), apiFetch('/crm/formas-pagamento/') ]);
                 const planos = Array.isArray(pRes) ? pRes : (pRes.results || []);
                 const statusLista = Array.isArray(sRes) ? sRes : (sRes.results || []);
                 const formas = Array.isArray(fRes) ? fRes : (fRes.results || []);
 
+                const statusId = v.status_esteira && (typeof v.status_esteira === 'object' ? v.status_esteira.id : v.status_esteira);
                 const pSel = document.getElementById('edit-plano'); pSel.innerHTML = ''; planos.forEach(p => pSel.innerHTML += `<option value="${p.id}" ${v.plano==p.id?'selected':''}>${p.nome}</option>`);
-                const sSel = document.getElementById('edit-status-esteira'); sSel.innerHTML = ''; statusLista.forEach(s => sSel.innerHTML += `<option value="${s.id}" ${v.status_esteira==s.id?'selected':''}>${s.nome}</option>`);
+                const sSel = document.getElementById('edit-status-esteira'); sSel.innerHTML = ''; statusLista.forEach(s => sSel.innerHTML += `<option value="${s.id}" ${(statusId && (s.id==statusId || s.id==v.status_esteira))?'selected':''}>${s.nome}</option>`);
                 const pgSel = document.getElementById('edit-pagamento'); pgSel.innerHTML = ''; formas.forEach(f => pgSel.innerHTML += `<option value="${f.id}" ${v.forma_pagamento==f.id?'selected':''}>${f.nome}</option>`);
                 
                 setVal('edit-cliente-nome', v.cliente_nome_razao_social); setVal('edit-cliente-cpf', v.cliente_cpf_cnpj);
@@ -774,23 +1491,41 @@
                 setVal('edit-nome-mae', v.nome_mae); setVal('edit-data-nascimento', v.data_nascimento);
                 setVal('edit-cep', v.cep); setVal('edit-logradouro', v.logradouro); setVal('edit-numero', v.numero_residencia);
                 setVal('edit-complemento', v.complemento); setVal('edit-bairro', v.bairro); setVal('edit-cidade', v.cidade);
-                setVal('edit-estado', v.estado); setVal('edit-referencia', v.ponto_referencia); setVal('edit-observacoes', v.observacoes);
+                setVal('edit-estado', v.estado);                 setVal('edit-referencia', v.ponto_referencia); setVal('edit-observacoes', v.observacoes);
 
-                if (v.status_esteira) {
-                    const statusObj = statusLista.find(s => s.id == v.status_esteira);
-                    if (statusObj && statusObj.nome.toUpperCase() === 'INSTALADA') {
-                        document.getElementById('campos-instalacao-modal').style.display = 'block';
-                        setVal('edit-data-instalacao-modal', v.data_instalacao);
-                        setVal('edit-antecipou-modal', v.antecipou_instalacao ? 'true' : 'false');
-                    }
+                setVal('edit-data-agendamento-modal', v.data_agendamento || '');
+                setVal('edit-periodo-agendamento-modal', v.periodo_agendamento || '');
+
+                const statusObj = statusLista.find(s => s.id == statusId || s.id == v.status_esteira);
+                const nomeStatus = (statusObj && statusObj.nome) ? String(statusObj.nome).toUpperCase() : '';
+                if (nomeStatus === 'INSTALADA') {
+                    document.getElementById('campos-instalacao-modal').style.display = 'block';
+                    document.getElementById('campos-datas-agendamento').style.display = 'none';
+                    setVal('edit-data-instalacao-modal', v.data_instalacao);
+                    setVal('edit-antecipou-modal', v.antecipou_instalacao ? 'true' : 'false');
+                    setVal('edit-data-instalacao-fisica-modal', v.data_instalacao_fisica || '');
+                } else if (nomeStatus.includes('AGENDADO')) {
+                    document.getElementById('campos-instalacao-modal').style.display = 'none';
+                    document.getElementById('campos-datas-agendamento').style.display = 'block';
                 }
                 modalEditar.show();
             } catch(e) { alert('Erro ao abrir edição.'); }
         }
 
         function verificarStatusInstaladaModal(select) {
-            const texto = select.options[select.selectedIndex].text.toUpperCase();
-            document.getElementById('campos-instalacao-modal').style.display = (texto === 'INSTALADA') ? 'block' : 'none';
+            const texto = (select.options[select.selectedIndex].text || '').toUpperCase();
+            const divInst = document.getElementById('campos-instalacao-modal');
+            const divAgend = document.getElementById('campos-datas-agendamento');
+            if (texto === 'INSTALADA') {
+                if (divInst) divInst.style.display = 'block';
+                if (divAgend) divAgend.style.display = 'none';
+            } else if (texto.includes('AGENDADO')) {
+                if (divInst) divInst.style.display = 'none';
+                if (divAgend) divAgend.style.display = 'block';
+            } else {
+                if (divInst) divInst.style.display = 'none';
+                if (divAgend) divAgend.style.display = 'none';
+            }
         }
 
         async function salvarEdicaoVenda() {
@@ -806,10 +1541,17 @@
                 estado: getVal('edit-estado'), ponto_referencia: getVal('edit-referencia'), observacoes: getVal('edit-observacoes'),
                 enviar_whatsapp: envioWhatsappAtivo
             };
+            const divAgend = document.getElementById('campos-datas-agendamento');
+            if (divAgend && divAgend.style.display !== 'none') {
+                body.data_agendamento = getVal('edit-data-agendamento-modal') || null;
+                body.periodo_agendamento = getVal('edit-periodo-agendamento-modal') || null;
+            }
             const divInst = document.getElementById('campos-instalacao-modal');
             if (divInst && divInst.style.display !== 'none') {
-                body.data_instalacao = getVal('edit-data-instalacao-modal');
+                body.data_instalacao = getVal('edit-data-instalacao-modal') || null;
                 body.antecipou_instalacao = getVal('edit-antecipou-modal') === 'true';
+                const dtFisica = getVal('edit-data-instalacao-fisica-modal');
+                body.data_instalacao_fisica = dtFisica && dtFisica.trim() ? dtFisica.trim() : null;
             }
             try { await apiFetch(`/crm/vendas/${id}/`, { method: 'PATCH', body: JSON.stringify(body) }); modalEditar.hide(); carregarVendas(true); alert('Salvo!'); } catch(e){ alert('Erro ao salvar.'); }
         }

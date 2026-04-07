@@ -1587,6 +1587,7 @@ class VendaViewSet(viewsets.ModelViewSet):
             'pendentes_auditoria', 'resumo_auditoria',
             'reenviar_whatsapp_aprovacao', 'enviar_resumo_plano_whatsapp',
             'toggle_adiantamento_comissao',
+            'toggle_adiantamento_cnpj',
         ]
 
         if self.action in acoes_gestao:
@@ -2594,9 +2595,11 @@ class VendaViewSet(viewsets.ModelViewSet):
                         data=hoje,
                         descricao='Adiantamento CNPJ (Instaladas)',
                     ).first()
-                    meta_old = (
-                        (lanc.metadados if isinstance(lanc.metadados, dict) else {}) or {}
-                    )
+                    meta_old = {}
+                    if lanc is not None and isinstance(
+                        getattr(lanc, 'metadados', None), dict
+                    ):
+                        meta_old = lanc.metadados
                     venda_ids = list(meta_old.get('venda_ids') or [])
                     valor_acum = Decimal(str(lanc.valor or 0)) if lanc else Decimal('0')
                     for v in lista_v:
@@ -2725,6 +2728,133 @@ class VendaViewSet(viewsets.ModelViewSet):
                         lanc.save(update_fields=['valor', 'quantidade_vendas', 'metadados'])
                     break
         return Response({'ok': True, 'antecipacao_comissao': venda.antecipacao_comissao})
+
+    @action(detail=True, methods=['post'], url_path='toggle-adiantamento-cnpj')
+    def toggle_adiantamento_cnpj(self, request, pk=None):
+        if not request.user.is_superuser and not is_member(
+            request.user, ['Diretoria', 'Admin']
+        ):
+            return Response(
+                {
+                    'detail': 'Acesso negado. Apenas Diretoria/Admin podem editar Adiantamento CNPJ.'
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        venda = self.get_object()
+        marcar = str(request.data.get('marcar', '')).lower() in ('1', 'true', 'sim', 's')
+        if not venda.vendedor_id:
+            return Response({'detail': 'Venda sem vendedor.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not venda.status_esteira or (venda.status_esteira.nome or '').strip().upper() != 'INSTALADA':
+            return Response(
+                {'detail': 'Apenas vendas instaladas.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        doc = re.sub(r'\D', '', (venda.cliente.cpf_cnpj if venda.cliente else '') or '')
+        if len(doc) != 14:
+            return Response(
+                {'detail': 'Adiantamento CNPJ só se aplica a cliente CNPJ (14 dígitos).'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if getattr(venda.vendedor, 'recebe_adiantamento_cnpj', True) is False:
+            return Response(
+                {
+                    'detail': 'Este vendedor não está habilitado para adiantamento CNPJ (cadastro).'
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        unit = Decimal(
+            str(getattr(venda.vendedor, 'adiantamento_cnpj', None) or 0)
+        )
+        if unit <= 0:
+            return Response(
+                {
+                    'detail': 'Valor de adiantamento CNPJ do vendedor é zero. Ajuste na configuração do consultor.'
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        hoje = timezone.localdate()
+        with transaction.atomic():
+            if marcar:
+                if venda.flag_adiant_cnpj:
+                    return Response({'ok': True, 'flag_adiant_cnpj': True})
+                venda.flag_adiant_cnpj = True
+                venda.adiantamento_cnpj_realizado_em = timezone.now()
+                venda.adiantamento_cnpj_realizado_por = request.user
+                venda.save(
+                    update_fields=[
+                        'flag_adiant_cnpj',
+                        'adiantamento_cnpj_realizado_em',
+                        'adiantamento_cnpj_realizado_por',
+                    ]
+                )
+                lanc = LancamentoFinanceiro.objects.filter(
+                    usuario_id=venda.vendedor_id,
+                    tipo='ADIANTAMENTO_CNPJ',
+                    data=hoje,
+                    descricao='Adiantamento CNPJ (Instaladas)',
+                ).first()
+                venda_ids = []
+                if lanc is not None and isinstance(
+                    getattr(lanc, 'metadados', None), dict
+                ):
+                    venda_ids = list(lanc.metadados.get('venda_ids') or [])
+                if venda.id not in venda_ids:
+                    venda_ids.append(venda.id)
+                if lanc:
+                    lanc.valor = Decimal(str(lanc.valor or 0)) + unit
+                    lanc.quantidade_vendas = len(venda_ids)
+                    lanc.metadados = {'origem': 'instaladas_cnpj', 'venda_ids': venda_ids}
+                    lanc.save(update_fields=['valor', 'quantidade_vendas', 'metadados'])
+                else:
+                    LancamentoFinanceiro.objects.create(
+                        usuario_id=venda.vendedor_id,
+                        tipo='ADIANTAMENTO_CNPJ',
+                        data=hoje,
+                        valor=unit,
+                        quantidade_vendas=1,
+                        descricao='Adiantamento CNPJ (Instaladas)',
+                        metadados={'origem': 'instaladas_cnpj', 'venda_ids': [venda.id]},
+                        criado_por=request.user,
+                    )
+            else:
+                if not venda.flag_adiant_cnpj:
+                    return Response({'ok': True, 'flag_adiant_cnpj': False})
+                venda.flag_adiant_cnpj = False
+                venda.adiantamento_cnpj_realizado_em = None
+                venda.adiantamento_cnpj_realizado_por = None
+                venda.save(
+                    update_fields=[
+                        'flag_adiant_cnpj',
+                        'adiantamento_cnpj_realizado_em',
+                        'adiantamento_cnpj_realizado_por',
+                    ]
+                )
+                lancs = LancamentoFinanceiro.objects.filter(
+                    usuario_id=venda.vendedor_id,
+                    tipo='ADIANTAMENTO_CNPJ',
+                    descricao='Adiantamento CNPJ (Instaladas)',
+                    data=hoje,
+                )
+                for lanc in lancs:
+                    meta = (
+                        lanc.metadados if isinstance(lanc.metadados, dict) else {}
+                    )
+                    venda_ids = list(meta.get('venda_ids') or [])
+                    if venda.id not in venda_ids:
+                        continue
+                    venda_ids = [vid for vid in venda_ids if int(vid) != int(venda.id)]
+                    novo_valor = Decimal(str(lanc.valor or 0)) - unit
+                    nova_qtd = max(int(lanc.quantidade_vendas or 0) - 1, 0)
+                    if nova_qtd <= 0 or novo_valor <= 0:
+                        lanc.delete()
+                    else:
+                        lanc.valor = novo_valor
+                        lanc.quantidade_vendas = nova_qtd
+                        lanc.metadados = {'origem': 'instaladas_cnpj', 'venda_ids': venda_ids}
+                        lanc.save(update_fields=['valor', 'quantidade_vendas', 'metadados'])
+                    break
+        return Response({'ok': True, 'flag_adiant_cnpj': venda.flag_adiant_cnpj})
 
 class VendasStatusCountView(APIView):
     permission_classes = [permissions.IsAuthenticated]

@@ -691,6 +691,23 @@
             }
         }
 
+        async function alterarAdiantamentoCnpj(vendaId, selectEl) {
+            const marcar = selectEl && selectEl.value === 'true';
+            selectEl.disabled = true;
+            try {
+                await apiFetch(`/crm/vendas/${vendaId}/toggle-adiantamento-cnpj/`, {
+                    method: 'POST',
+                    body: JSON.stringify({ marcar }),
+                });
+                carregarVendas(true);
+            } catch (e) {
+                alert('Erro ao atualizar adiantamento CNPJ: ' + (e.message || e));
+                selectEl.value = marcar ? 'false' : 'true';
+            } finally {
+                selectEl.disabled = false;
+            }
+        }
+
         async function alternarComissaoPorCheckbox(cb, suppressReload = false) {
             const vendaId = cb?.dataset?.vendaId;
             if (!vendaId) return;
@@ -979,6 +996,7 @@
                     let statusAdiantComissao = '-';
                     let seletorComissao = '';
                     let checkboxComissao = '';
+                    let celulaAdiantCnpj = '-';
                     if (carregarInstaladas) {
                         if (v.flag_adiant_cnpj) {
                             statusAdiantCnpj = '<span class="badge bg-success">Realizado</span>';
@@ -987,6 +1005,7 @@
                             const cnpj = doc.length === 14;
                             statusAdiantCnpj = cnpj ? '<span class="badge bg-secondary">Pendente</span>' : '<span class="badge bg-light text-dark border">Não elegível</span>';
                         }
+                        celulaAdiantCnpj = statusAdiantCnpj;
                         statusAdiantComissao = v.antecipacao_comissao ? '<span class="badge bg-success">Sim</span>' : '<span class="badge bg-light text-dark border">Não</span>';
                         if (podeEditarAdiantamentosFinanceiros) {
                             seletorComissao = `
@@ -996,6 +1015,13 @@
                                 </select>
                             `;
                             checkboxComissao = `<input type="checkbox" class="comissao-select-cb" data-venda-id="${v.id}" ${v.antecipacao_comissao ? 'checked' : ''} onchange="alternarComissaoPorCheckbox(this)">`;
+                            const docCnpjCol = String(v.cliente_cpf_cnpj || '').replace(/\D/g, '');
+                            if (docCnpjCol.length === 14) {
+                                celulaAdiantCnpj = `<select class="form-select form-select-sm" style="min-width:90px;" onchange="alterarAdiantamentoCnpj(${v.id}, this)" title="Sim/Não fora da regra automática da semana">
+                                    <option value="false" ${v.flag_adiant_cnpj ? '' : 'selected'}>Não</option>
+                                    <option value="true" ${v.flag_adiant_cnpj ? 'selected' : ''}>Sim</option>
+                                </select>`;
+                            }
                         } else {
                             seletorComissao = statusAdiantComissao;
                             checkboxComissao = '-';
@@ -1064,7 +1090,7 @@
                             <td>${turno}</td>
                             <td><div class="fw-bold text-dark">${nomeCliente}</div><div class="small text-muted">${docCliente}</div></td>
                             <td>${nomeVendedor}</td> 
-                            <td>${statusAdiantCnpj}</td>
+                            <td>${celulaAdiantCnpj}</td>
                             <td>${carregarInstaladas ? seletorComissao : statusAdiantComissao}</td>
                             <td>${nomePlano}</td>
                             <td><div class="d-flex align-items-center">${selectStatus}${btnEditar}</div></td>
