@@ -276,14 +276,23 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
 
         # Ajustes: descontos vêm dos lançamentos confirmados (Adiantamentos e Descontos / Confirmar Descontos) + config (INSS, etc.)
         # Não somar por venda da config: boleto/inclusão/instalação/adiant.CNPJ só entram após confirmação (LancamentoFinanceiro).
-        lancamentos = LancamentoFinanceiro.objects.filter(
-            usuario=consultor,
-            data__gte=data_inicio.date(),
-            data__lt=data_fim.date(),
-        ).order_by('data', 'id')
+        lancamentos = list(
+            LancamentoFinanceiro.objects.filter(
+                usuario=consultor,
+                data__gte=data_inicio.date(),
+                data__lt=data_fim.date(),
+            ).order_by('data', 'id')
+        )
         total_descontos = Decimal('0')
         detalhes_descontos = []
+        detalhes_bonus_lancamentos = []
         for l in lancamentos:
+            if getattr(l, 'tipo', None) == 'BONUS_PREMIACAO':
+                motivo_bp = (l.descricao or '').strip() or 'Bônus/Premiação'
+                detalhes_bonus_lancamentos.append(
+                    {'motivo': motivo_bp, 'valor': float(l.valor)}
+                )
+                continue
             qtd = getattr(l, 'quantidade_vendas', None) or 1
             if getattr(l, 'tipo', None) == 'ADIANTAMENTO_COMISSAO':
                 venda_ids = (l.metadados or {}).get('venda_ids') or []
@@ -398,8 +407,31 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             detalhes_descontos.append({'motivo': 'Desconto Churn M-1', 'valor': float(valor_churn_m1), 'tipo_exibicao': 'churn_m1', 'quantidade': qtd_churn_m1})
 
         total_bonus = Decimal('0')
+        detalhes_bonus = []
         if config:
-            total_bonus += (getattr(config, 'premiação', None) or 0) + (config.bonus_cartao_credito or 0)
+            prem = getattr(config, 'premiação', None) or 0
+            prem_dec = Decimal(str(prem)) if prem else Decimal('0')
+            if prem_dec > 0:
+                detalhes_bonus.append(
+                    {
+                        'motivo': 'Premiação (Regras por vendedor)',
+                        'valor': float(prem_dec),
+                    }
+                )
+                total_bonus += prem_dec
+            bcc = config.bonus_cartao_credito or 0
+            bcc_dec = Decimal(str(bcc)) if bcc else Decimal('0')
+            if bcc_dec > 0:
+                detalhes_bonus.append(
+                    {
+                        'motivo': 'Bônus cartão crédito (Regras por vendedor)',
+                        'valor': float(bcc_dec),
+                    }
+                )
+                total_bonus += bcc_dec
+        for item in detalhes_bonus_lancamentos:
+            total_bonus += Decimal(str(item['valor']))
+            detalhes_bonus.append(item)
 
         liquido = comissao_total_geral + total_bonus - total_descontos
         faixa_aplicada = (faixa_regra.faixa_nome if faixa_regra else None) or ('MANUAL' if usar_manual else '')
@@ -493,6 +525,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 'total_descontos': float(total_descontos),
                 'total_bonus': float(total_bonus),
                 'liquido': float(liquido),
+                'detalhes_bonus': detalhes_bonus,
                 'detalhes_descontos': detalhes_descontos,
                 'qtd_a_descontar': qtd_a_descontar,
                 'qtd_a_descontar_boleto': qtd_a_descontar_boleto,

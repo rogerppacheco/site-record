@@ -203,7 +203,7 @@
             <section id="comissionamento-section" class="content-section">
                 <h3 class="mb-4">Gestão de Comissionamento</h3>
                 <div class="card">
-                    <div class="card-header"><ul class="nav nav-tabs card-header-tabs"><li class="nav-item"><button class="nav-link active" onclick="openTab(event, 'regras_faixa_tab'); carregarRegrasFaixa();">Regras por Faixa</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'regras_vendedores_tab'); if (!document.getElementById('regras_vendedor_mes').value) { const d = new Date(); document.getElementById('regras_vendedor_mes').value = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); } atualizarDropdownVendedores(); preencherFormConfigVendedor();">Regras por Vendedor</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'recebimento_operadora_tab')">Recebimento Operadora</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'campanhas_tab')">Campanhas</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'adiantamentos_descontos_tab'); carregarUsuariosSelectsFinanceiro(); carregarLancamentosFinanceiros(); openSubTabAdiant(null, 'subtab-registrar'); var adMes = document.getElementById('ad_mes_vendas'); if (adMes && !adMes.value) { var d = new Date(); adMes.value = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); }">Adiantamentos e Descontos</button></li></ul></div>
+                    <div class="card-header"><ul class="nav nav-tabs card-header-tabs"><li class="nav-item"><button class="nav-link active" onclick="openTab(event, 'regras_faixa_tab'); carregarRegrasFaixa();">Regras por Faixa</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'regras_vendedores_tab'); if (!document.getElementById('regras_vendedor_mes').value) { const d = new Date(); document.getElementById('regras_vendedor_mes').value = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); } atualizarDropdownVendedores(); preencherFormConfigVendedor();">Regras por Vendedor</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'recebimento_operadora_tab')">Recebimento Operadora</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'campanhas_tab')">Campanhas</button></li><li class="nav-item"><button class="nav-link" onclick="openTab(event, 'adiantamentos_descontos_tab'); carregarUsuariosSelectsFinanceiro(); carregarLancamentosFinanceiros(); openSubTabAdiant(null, 'subtab-registrar');">Bônus e Descontos</button></li></ul></div>
                     <div class="card-body">
                         <div id="regras_faixa_tab" class="tab-content active">
                             <div class="d-flex justify-content-between align-items-center mb-3">
@@ -215,7 +215,7 @@
                                     <a href="#" id="link-export-faixa" class="btn btn-sm btn-outline-primary" onclick="exportarRegrasFaixa(); return false;"><i class="bi bi-download"></i> Exportar Excel</a>
                                 </div>
                             </div>
-                            <p class="small text-muted mb-2">Use <strong>Finalidade</strong> = &quot;Adiantamento&quot; para a faixa que define a &quot;Comissão est.&quot; na tela de Novo Adiantamento (valores 500MB/700/1GB CNPJ). Faixas com Finalidade &quot;Pagamento de comissão&quot; entram no cálculo da folha (MIN/MAX); &quot;Adiantamento&quot; não entra na folha.</p>
+                            <p class="small text-muted mb-2">Use <strong>Finalidade</strong> = &quot;Adiantamento&quot; para a faixa que define a &quot;Comissão est.&quot; na esteira (valores 500MB/700/1GB CNPJ). Faixas com Finalidade &quot;Pagamento de comissão&quot; entram no cálculo da folha (MIN/MAX); &quot;Adiantamento&quot; não entra na folha.</p>
                             <div class="table-responsive"><table class="table table-hover align-middle mb-0 table-sm"><thead class="table-light"><tr><th>PERFIL</th><th>Finalidade</th><th>FAIXA_NOME</th><th>MIN</th><th>MAX</th><th>500MB PAP</th><th>700MB PAP</th><th>1GB PAP</th><th>500MB CNPJ</th><th>700MB CNPJ</th><th>1GB CNPJ</th><th>Ações</th></tr></thead><tbody id="lista-regras-faixa"></tbody></table></div>
                         </div>
                         <div id="regras_vendedores_tab" class="tab-content" style="display:none;">
@@ -288,12 +288,9 @@
                         <div id="adiantamentos_descontos_tab" class="tab-content" style="display:none;">
                             <div id="subtab-registrar" class="subtab-adiant-content">
                                 <div class="row g-3">
-                                    <div class="col-md-3"><div class="card border-primary shadow-sm h-100"><div class="card-header py-2" style="background-color:#0a58ca; color:#fff !important;"><h6 class="mb-0 fw-bold" style="color:#fff !important;"><i class="bi bi-cash-stack"></i> Novo Adiantamento</h6></div><div class="card-body"><form id="form-adiantamento" onsubmit="return false;"><div class="mb-2"><label class="form-label small fw-bold">Colaborador</label><select id="ad_usuario" class="form-select form-select-sm" required onchange="toggleBoxVendasAdiantamento();"></select></div><div class="mb-2"><label class="form-label small fw-bold">Tipo</label><select id="ad_tipo" class="form-select form-select-sm" onchange="toggleCamposAdiantamento()"><option value="ADIANTAMENTO_CNPJ">Adiantamento CNPJ</option><option value="ADIANTAMENTO_COMISSAO">Adiantamento de Comissão</option></select><p class="small text-muted mb-0 mt-1">Em <strong>Comissão</strong>, liste as vendas e marque as antecipadas; o valor será a soma. Em <strong>CNPJ</strong>, liste os clientes CNPJ do vendedor e marque os adiantados; informe o valor manualmente.</p></div><div class="row g-2 mb-2"><div class="col-6"><label class="form-label small fw-bold">Data</label><input type="date" id="ad_data" class="form-control form-control-sm" required></div><div class="col-6"><label class="form-label small fw-bold">Valor (R$)</label><input type="number" class="form-control form-control-sm" id="ad_valor" step="0.01" required placeholder="0,00"></div></div><div class="mb-3"><label class="form-label small fw-bold">Observação</label><textarea id="ad_obs" class="form-control form-control-sm" rows="2"></textarea></div><button type="button" id="btn-registrar-adiantamento" class="btn btn-primary btn-sm w-100">Registrar</button></form></div></div></div>
+                                    <div class="col-md-3"><div class="card border-success shadow-sm h-100"><div class="card-header py-2 bg-success text-white"><h6 class="mb-0 fw-bold"><i class="bi bi-trophy"></i> Novo Bônus/Premiação</h6></div><div class="card-body"><form id="form-bonus-premiacao" onsubmit="return false;"><div class="mb-2"><label class="form-label small fw-bold">Colaborador</label><select id="bp_usuario" class="form-select form-select-sm" required></select></div><div class="mb-2"><label class="form-label small fw-bold">Tipo</label><select id="bp_tipo" class="form-select form-select-sm" disabled><option value="BONUS_PREMIACAO" selected>Bônus/Premiação</option></select></div><div class="row g-2 mb-2"><div class="col-6"><label class="form-label small fw-bold">Data</label><input type="date" id="bp_data" class="form-control form-control-sm" required></div><div class="col-6"><label class="form-label small fw-bold">Valor (R$)</label><input type="number" class="form-control form-control-sm" id="bp_valor" step="0.01" min="0.01" required placeholder="0,00"></div></div><div class="mb-3"><label class="form-label small fw-bold">Observação</label><textarea id="bp_obs" class="form-control form-control-sm" rows="2" placeholder="Ex.: Meta batida, campanha avulsa"></textarea></div><button type="button" id="btn-registrar-bonus" class="btn btn-success btn-sm w-100">Registrar</button></form><p class="small text-muted mt-2 mb-0">Adiantamento CNPJ e de comissão são feitos apenas pela <strong>esteira</strong> (Instaladas).</p></div></div></div>
                                     <div class="col-md-3"><div class="card border-danger shadow-sm h-100"><div class="card-header py-2" style="background-color:#b02a37; color:#fff !important;"><h6 class="mb-0 fw-bold" style="color:#fff !important;"><i class="bi bi-dash-circle"></i> Novo Desconto</h6></div><div class="card-body"><form id="form-desconto" onsubmit="return false;"><div class="mb-2"><label class="form-label small fw-bold">Colaborador</label><select id="desc_usuario" class="form-select form-select-sm" required></select></div><div class="mb-2"><label class="form-label small fw-bold">Motivo</label><input type="text" id="desc_motivo" class="form-control form-control-sm" placeholder="Ex: Equipamento perdido" required></div><div class="row g-2 mb-3"><div class="col-6"><label class="form-label small fw-bold">Data</label><input type="date" id="desc_data" class="form-control form-control-sm" required></div><div class="col-6"><label class="form-label small fw-bold">Valor (R$)</label><input type="number" class="form-control form-control-sm" id="desc_valor" step="0.01" required></div></div><button type="button" id="btn-registrar-desconto" class="btn btn-danger btn-sm w-100">Registrar</button></form></div></div></div>
                                     <div class="col-md-6"><div class="card h-100 shadow-sm"><div class="card-header bg-white d-flex justify-content-between align-items-center"><h6 class="mb-0 fw-bold">Histórico de Lançamentos</h6><div class="input-group input-group-sm" style="width: 200px;"><input type="month" id="filtro-mes-lancamentos" class="form-control" onchange="carregarLancamentosFinanceiros()"></div></div><div class="card-body p-0 table-responsive"><table class="table table-hover table-striped mb-0 small align-middle"><thead class="table-light"><tr><th>Data</th><th>Colaborador</th><th>Tipo / Descrição</th><th class="text-end">Valor</th><th class="text-end">Ações</th></tr></thead><tbody id="lista-lancamentos-fin"></tbody></table></div></div></div>
-                                </div>
-                                <div id="box-lista-vendas-adiantamento" class="mt-3" style="display:none;">
-                                    <div class="card border-primary shadow-sm"><div class="card-header py-2 d-flex flex-wrap align-items-center gap-2" style="background-color:#0a58ca; color:#fff !important;"><h6 class="mb-0 fw-bold" id="box-ad-titulo" style="color:#fff !important;"><i class="bi bi-list-check"></i> Vendas instaladas — marque as antecipadas</h6><div class="d-flex align-items-center gap-2 ms-auto"><label class="form-label small mb-0 text-white">Mês/ano</label><input type="month" id="ad_mes_vendas" class="form-control form-control-sm" style="width:140px"><button type="button" class="btn btn-sm btn-light" id="btn-ad-listar-vendas">Listar vendas</button></div></div><div class="card-body"><div class="table-responsive border rounded mb-2" style="max-height:240px;overflow-y:auto;"><table class="table table-sm table-striped mb-0 small"><thead class="table-light sticky-top"><tr><th style="width:40px;"><input type="checkbox" id="ad_sel_todas" title="Marcar todas"></th><th>Cliente</th><th>Plano</th><th>Dt. Inst.</th><th class="text-end">Comissão est.</th><th>Status</th></tr></thead><tbody id="tbody-ad-vendas"></tbody></table></div><p class="small mb-0 fw-bold text-primary" id="ad-total-selecionado">Total selecionado: R$ 0,00</p></div></div>
                                 </div>
                             </div>
                         </div>
@@ -1111,90 +1108,27 @@
     let todasPermissoes = [];
     let debounceTimerBuscaUsuario = null;
 
-    window.toggleCamposAdiantamento = function() {
-        var el = document.getElementById('ad_tipo'), box = document.getElementById('box-lista-vendas-adiantamento');
-        if (el && box) {
-            var isComissao = (el.value === 'ADIANTAMENTO_COMISSAO');
-            var isCnpj = (el.value === 'ADIANTAMENTO_CNPJ');
-            if (isComissao || isCnpj) {
-                box.style.display = 'block';
-                var tit = document.getElementById('box-ad-titulo');
-                if (tit) tit.textContent = isCnpj ? 'Clientes CNPJ do vendedor — marque os adiantados' : 'Vendas instaladas — marque as antecipadas';
-                window.toggleBoxVendasAdiantamento();
-                atualizarBloqueioUsuarioAdiantamentoCnpj();
-            } else {
-                box.style.display = 'none';
-                var t = document.getElementById('tbody-ad-vendas'); if (t) t.innerHTML = '';
-                var tot = document.getElementById('ad-total-selecionado'); if (tot) tot.textContent = 'Total selecionado: R$ 0,00';
-                var v = document.getElementById('ad_valor'); if (v) v.value = '';
-            }
-        }
-    };
-    window.toggleBoxVendasAdiantamento = function() {
-        var box = document.getElementById('box-lista-vendas-adiantamento'), tipo = document.getElementById('ad_tipo'), usuario = document.getElementById('ad_usuario');
-        if (!box || !tipo) return;
-        var tipoVal = tipo.value;
-        if ((tipoVal === 'ADIANTAMENTO_COMISSAO' || tipoVal === 'ADIANTAMENTO_CNPJ') && usuario && usuario.value) box.style.display = 'block'; else box.style.display = 'none';
-    };
-    window.atualizarBloqueioUsuarioAdiantamentoCnpj = function() {
-        var tipo = document.getElementById('ad_tipo');
-        var usuarioSel = document.getElementById('ad_usuario');
-        var btnListar = document.getElementById('btn-ad-listar-vendas');
-        var btnRegistrar = document.getElementById('btn-registrar-adiantamento');
-        if (!tipo || !usuarioSel) return;
-        var isCnpj = tipo.value === 'ADIANTAMENTO_CNPJ';
-        var opt = usuarioSel.options[usuarioSel.selectedIndex];
-        var bloqueado = isCnpj && opt && opt.value && opt.dataset.recebeAdiantamentoCnpj === '0';
-        if (btnListar) btnListar.disabled = !!bloqueado;
-        if (btnRegistrar) btnRegistrar.disabled = !!bloqueado;
-        var avisoId = 'aviso-usuario-sem-adiant-cnpj';
-        var aviso = document.getElementById(avisoId);
-        if (bloqueado) {
-            if (!aviso) {
-                aviso = document.createElement('div');
-                aviso.id = avisoId;
-                aviso.className = 'alert alert-warning py-2 px-3 mt-2 mb-0 small';
-                aviso.textContent = 'Este usuário não está habilitado para receber Adiantamento de CNPJ.';
-                usuarioSel.parentElement.appendChild(aviso);
-            }
-        } else if (aviso) {
-            aviso.remove();
-        }
-    };
-    var isRegistrandoAdiantamento = false, isRegistrandoDesconto = false;
-    window.registrarAdiantamento = async function(ev) {
+    var isRegistrandoBonusPremiacao = false, isRegistrandoDesconto = false;
+    window.registrarBonusPremiacao = async function(ev) {
         if (ev) ev.preventDefault();
-        if (isRegistrandoAdiantamento) return;
-        var usuario = document.getElementById('ad_usuario') && document.getElementById('ad_usuario').value;
-        var tipo = document.getElementById('ad_tipo') && document.getElementById('ad_tipo').value;
-        var data = document.getElementById('ad_data') && document.getElementById('ad_data').value;
-        var valorEl = document.getElementById('ad_valor');
+        if (isRegistrandoBonusPremiacao) return;
+        var usuario = document.getElementById('bp_usuario') && document.getElementById('bp_usuario').value;
+        var data = document.getElementById('bp_data') && document.getElementById('bp_data').value;
+        var valorEl = document.getElementById('bp_valor');
         var valor = valorEl && valorEl.value;
-        var descricao = (document.getElementById('ad_obs') && document.getElementById('ad_obs').value || '').trim();
-        var qtd = 0;
-        var cbs = document.querySelectorAll('.ad-venda-cb:checked');
-        if (cbs) qtd = cbs.length;
+        var obs = (document.getElementById('bp_obs') && document.getElementById('bp_obs').value || '').trim();
         if (!usuario || !data || !valor) { alert('Preencha Colaborador, Data e Valor.'); return; }
-        isRegistrandoAdiantamento = true;
-        var payload = { usuario: parseInt(usuario, 10), tipo: tipo || 'ADIANTAMENTO_CNPJ', data: data, valor: parseFloat(valor) || 0, descricao: descricao || 'Adiantamento', quantidade_vendas: qtd };
-        if (tipo === 'ADIANTAMENTO_COMISSAO' && cbs && cbs.length > 0) {
-            var vendaIds = [];
-            cbs.forEach(function(cb) { var id = cb.getAttribute('data-id'); if (id) vendaIds.push(parseInt(id, 10)); });
-            payload.metadados = { venda_ids: vendaIds };
-        }
+        var v = parseFloat(valor);
+        if (!(v > 0)) { alert('Informe um valor maior que zero.'); return; }
+        isRegistrandoBonusPremiacao = true;
+        var payload = { usuario: parseInt(usuario, 10), tipo: 'BONUS_PREMIACAO', data: data, valor: v, descricao: obs || 'Bônus/Premiação' };
         try {
             await apiFetch('/crm/lancamentos-financeiros/', { method: 'POST', body: JSON.stringify(payload) });
-            alert('Adiantamento registrado com sucesso!');
-            if (document.getElementById('form-adiantamento')) document.getElementById('form-adiantamento').reset();
-            var tbodyAd = document.getElementById('tbody-ad-vendas');
-            if (tbodyAd) tbodyAd.innerHTML = '';
-            var totAd = document.getElementById('ad-total-selecionado');
-            if (totAd) totAd.textContent = 'Total selecionado: R$ 0,00';
-            adVendasLista = [];
-            window.toggleCamposAdiantamento();
+            alert('Bônus/Premiação registrado com sucesso!');
+            if (document.getElementById('form-bonus-premiacao')) document.getElementById('form-bonus-premiacao').reset();
             if (typeof carregarLancamentosFinanceiros === 'function') carregarLancamentosFinanceiros();
         } catch (err) { alert('Erro ao registrar: ' + (err.message || 'Tente novamente.')); }
-        finally { isRegistrandoAdiantamento = false; }
+        finally { isRegistrandoBonusPremiacao = false; }
     };
     window.registrarDesconto = async function(ev) {
         if (ev) ev.preventDefault();
@@ -2891,96 +2825,25 @@
     };
     window.editarComissaoOp = (co) => { document.getElementById('co_id').value = co.id; document.getElementById('co_plano_id').value = co.plano; document.getElementById('co_valor_base').value = co.valor_base; document.getElementById('co_bonus').value = co.bonus_transicao; document.getElementById('co_data_fim').value = co.data_fim_bonus || ''; };
 
-    // --- ADIANTAMENTOS E DESCONTOS ---
+    // --- BÔNUS E DESCONTOS (governança) ---
     async function carregarUsuariosSelectsFinanceiro() {
         const res = await apiFetch('/usuarios/ativos-para-select/');
         const users = Array.isArray(res) ? res : (res?.results || []);
         if (!users) return;
-        const selAd = document.getElementById('ad_usuario'), selDesc = document.getElementById('desc_usuario'), selAnt = document.getElementById('ant_vendedor');
-        if (selAd) {
-            selAd.innerHTML = '<option value="">Selecione...</option>';
-            users.forEach(u => {
-                const opt = new Option(u.username, u.id);
-                opt.dataset.recebeAdiantamentoCnpj = (u.recebe_adiantamento_cnpj !== false) ? '1' : '0';
-                selAd.add(opt);
-            });
+        const selBp = document.getElementById('bp_usuario'), selDesc = document.getElementById('desc_usuario'), selAnt = document.getElementById('ant_vendedor');
+        if (selBp) {
+            selBp.innerHTML = '<option value="">Selecione...</option>';
+            users.forEach(u => selBp.add(new Option(u.username, u.id)));
         }
         if (selDesc) { selDesc.innerHTML = '<option value="">Selecione...</option>'; users.forEach(u => selDesc.add(new Option(u.username, u.id))); }
         if (selAnt) { selAnt.innerHTML = '<option value="">Selecione...</option>'; users.forEach(u => selAnt.add(new Option(u.username, u.id))); }
-        if (typeof atualizarBloqueioUsuarioAdiantamentoCnpj === 'function') atualizarBloqueioUsuarioAdiantamentoCnpj();
     }
     function preencherSelectAntVendedor() { carregarUsuariosSelectsFinanceiro(); }
-    let adVendasLista = [];
-    function updateTotalAdVendas() {
-        var tipoAd = document.getElementById('ad_tipo') && document.getElementById('ad_tipo').value;
-        var checked = document.querySelectorAll('.ad-venda-cb:checked');
-        var qtd = checked ? checked.length : 0;
-        var totEl = document.getElementById('ad-total-selecionado');
-        if (tipoAd === 'ADIANTAMENTO_CNPJ') {
-            if (totEl) totEl.textContent = 'Qtd. selecionada: ' + qtd;
-            return;
-        }
-        var total = 0;
-        if (checked) checked.forEach(function(cb) { total += parseFloat(cb.dataset.valor || 0) || 0; });
-        if (totEl) totEl.textContent = 'Total selecionado: R$ ' + total.toFixed(2).replace('.', ',');
-        var valEl = document.getElementById('ad_valor');
-        if (valEl) valEl.value = total > 0 ? total.toFixed(2) : '';
-    }
     document.addEventListener('click', async function(e) {
         const btn = e.target.closest && e.target.closest('button');
         const id = (btn && btn.id) || e.target.id;
-        if (id === 'btn-registrar-adiantamento') { e.preventDefault(); registrarAdiantamento(e); return; }
+        if (id === 'btn-registrar-bonus') { e.preventDefault(); registrarBonusPremiacao(e); return; }
         if (id === 'btn-registrar-desconto') { e.preventDefault(); registrarDesconto(e); return; }
-        if (id === 'btn-ad-listar-vendas') {
-            e.preventDefault();
-            var vendedorId = document.getElementById('ad_usuario') && document.getElementById('ad_usuario').value;
-            var tipoAd = document.getElementById('ad_tipo') && document.getElementById('ad_tipo').value;
-            var mesAnoEl = document.getElementById('ad_mes_vendas');
-            var mesAno = mesAnoEl ? mesAnoEl.value : '';
-            if (!vendedorId) { alert('Selecione o colaborador no formulário de Novo Adiantamento.'); return; }
-            if (!mesAno) { alert('Informe o mês/ano das vendas.'); return; }
-            var parts = mesAno.split('-');
-            var ano = parts[0], mes = parts[1];
-            var url = '/crm/lancamentos-financeiros/vendas-instaladas-mes/?vendedor_id=' + vendedorId + '&ano=' + ano + '&mes=' + mes;
-            if (tipoAd === 'ADIANTAMENTO_CNPJ') url += '&tipo_cliente=CNPJ';
-            var tbody = document.getElementById('tbody-ad-vendas');
-            if (!tbody) return;
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-2 text-muted">Carregando...</td></tr>';
-            try {
-                var res = await apiFetch(url);
-                adVendasLista = Array.isArray(res) ? res : [];
-                tbody.innerHTML = '';
-                if (adVendasLista.length === 0) { tbody.innerHTML = '<tr><td colspan="6" class="text-center py-2 text-muted">Nenhuma venda ' + (tipoAd === 'ADIANTAMENTO_CNPJ' ? 'CNPJ' : 'instalada') + ' neste mês.</td></tr>'; updateTotalAdVendas(); return; }
-                adVendasLista.forEach(function(v) {
-                    var val = (v.valor_comissao_estimado != null) ? parseFloat(v.valor_comissao_estimado) : 0;
-                    var naoElegivel = (v.status_adiantamento === 'NAO_ELEGIVEL' || v.status_adiantamento === 'ADIANTAMENTO_CNPJ_REALIZADO');
-                    var badge = '';
-                    if (v.status_adiantamento === 'ADIANTAMENTO_CNPJ_REALIZADO') {
-                        badge = '<span class="badge bg-success">Adiantamento CNPJ realizado</span>';
-                    } else if (v.status_adiantamento === 'NAO_ELEGIVEL') {
-                        badge = '<span class="badge bg-secondary" title="' + (v.motivo_nao_elegivel || '').replace(/"/g, '&quot;') + '">Não elegível</span>';
-                    } else {
-                        badge = '<span class="badge bg-primary">Elegível</span>';
-                    }
-                    tbody.innerHTML += '<tr><td><input type="checkbox" class="ad-venda-cb" data-id="' + v.id + '" data-valor="' + val + '"' + (naoElegivel ? ' disabled' : '') + '></td><td>' + (v.cliente_nome || '') + '</td><td>' + (v.plano_nome || '') + '</td><td>' + (v.data_instalacao || '') + '</td><td class="text-end">R$ ' + val.toFixed(2).replace('.', ',') + '</td><td>' + badge + '</td></tr>';
-                });
-                var cb = document.getElementById('ad_sel_todas'); if (cb) cb.checked = false;
-                updateTotalAdVendas();
-            } catch (err) { tbody.innerHTML = '<tr><td colspan="6" class="text-center py-2 text-danger">Erro: ' + (err.message || 'Não foi possível carregar.') + '</td></tr>'; }
-            return;
-        }
-    });
-    document.addEventListener('change', function(e) {
-        if (e.target.id === 'ad_tipo' || e.target.id === 'ad_usuario') {
-            atualizarBloqueioUsuarioAdiantamentoCnpj();
-        }
-        if (e.target.id === 'ad_sel_todas') {
-            document.querySelectorAll('.ad-venda-cb').forEach(function(cb) {
-                if (!cb.disabled) cb.checked = e.target.checked;
-            });
-            updateTotalAdVendas();
-        }
-        if (e.target.classList && e.target.classList.contains('ad-venda-cb')) updateTotalAdVendas();
     });
     async function carregarLancamentosFinanceiros() {
         const filtroEl = document.getElementById('filtro-mes-lancamentos');
@@ -2995,14 +2858,20 @@
         if (!tbody) return;
         tbody.innerHTML = '';
         if (lista.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">Nenhum lançamento neste mês. Registre adiantamentos ou descontos nos formulários ao lado.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">Nenhum lançamento neste mês. Registre bônus/premiação ou descontos nos formulários ao lado.</td></tr>';
             return;
         }
         lista.forEach(l => {
             const dataStr = l.data ? (typeof l.data === 'string' ? l.data : l.data.substring(0, 10)) : '';
             const dataFmt = dataStr ? new Date(dataStr + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
-            const tipoLabel = l.tipo === 'DESCONTO' ? 'Desconto' : (l.tipo === 'ADIANTAMENTO_CNPJ' ? 'Adiant. CNPJ' : (l.tipo === 'ADIANTAMENTO_COMISSAO' ? 'Adiant. Comissão' : l.tipo));
-            tbody.innerHTML += `<tr><td>${dataFmt}</td><td>${l.usuario_nome || 'N/A'}</td><td>${tipoLabel}${l.descricao ? ' — ' + l.descricao : ''}</td><td class="text-end fw-bold ${l.tipo==='DESCONTO'?'text-danger':'text-primary'}">${fmtMoeda(l.valor)}</td><td class="text-end"><button class="btn btn-xs btn-outline-danger" onclick="excluirLancamento(${l.id})" title="Excluir">🗑️</button></td></tr>`;
+            let tipoLabel;
+            if (l.tipo === 'DESCONTO') tipoLabel = 'Desconto';
+            else if (l.tipo === 'BONUS_PREMIACAO') tipoLabel = 'Bônus/Premiação';
+            else if (l.tipo === 'ADIANTAMENTO_CNPJ') tipoLabel = 'Adiant. CNPJ';
+            else if (l.tipo === 'ADIANTAMENTO_COMISSAO') tipoLabel = 'Adiant. Comissão';
+            else tipoLabel = l.tipo;
+            const valorCls = l.tipo === 'DESCONTO' ? 'text-danger' : (l.tipo === 'BONUS_PREMIACAO' ? 'text-success' : 'text-primary');
+            tbody.innerHTML += `<tr><td>${dataFmt}</td><td>${l.usuario_nome || 'N/A'}</td><td>${tipoLabel}${l.descricao ? ' — ' + l.descricao : ''}</td><td class="text-end fw-bold ${valorCls}">${fmtMoeda(l.valor)}</td><td class="text-end"><button class="btn btn-xs btn-outline-danger" onclick="excluirLancamento(${l.id})" title="Excluir">🗑️</button></td></tr>`;
         });
     }
     window.excluirLancamento = async (id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/lancamentos-financeiros/${id}/`, {method:'DELETE'}); carregarLancamentosFinanceiros(); } };
@@ -3215,8 +3084,6 @@
         carregarComissoesOperadora(); 
         carregarUsuariosSelectsFinanceiro();
         carregarLancamentosFinanceiros();
-        
-        if (typeof toggleCamposAdiantamento === 'function') toggleCamposAdiantamento();
         
         // --- NOVAS FUNÇÕES DA ABA AUTOMAÇÃO (SUBSTITUÍRAM AS ANTIGAS) ---
         carregarRegrasAutomacao();

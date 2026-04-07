@@ -245,6 +245,15 @@
                         bloco += '</div></div>';
                         return bloco;
                     })() : ''}
+                    ${(r.detalhes_bonus && r.detalhes_bonus.length) ? (function(){
+                        const list = r.detalhes_bonus;
+                        let bloco = '<div class="small border-top pt-2 mt-2"><strong class="text-muted">Bônus / premiação</strong><div class="mt-1">';
+                        list.forEach(b => {
+                            bloco += `<div class="d-flex justify-content-between text-success fw-bold"><span><i class="bi bi-trophy-fill"></i> ${b.motivo || 'Bônus/Premiação'}</span><span>+ ${fmtMoney(b.valor)}</span></div>`;
+                        });
+                        bloco += '</div></div>';
+                        return bloco;
+                    })() : ''}
                 </div>
                 <div class="p-2 border-top small text-muted fw-bold">Extrato (${(v.extrato || []).length} vendas)</div>
                 <div class="table-responsive"><table class="table table-sm table-striped mb-0 small"><thead class="table-light"><tr><th>NOME</th><th>DACC</th><th>CNPJ</th><th>PLANO</th><th>DT PEDIDO</th><th>DT INST</th><th>OS</th><th>SITUAÇÃO</th><th>CHURN</th><th class="text-center">ADIANT.</th></tr></thead><tbody>`;
@@ -296,7 +305,8 @@
                     const r = v.resumo || {};
                     const qtd = r.total_qtd_instalada_a_pagar || 0;
                     const comissao = r.comissao_total_geral || 0;
-                    return qtd > 0 || comissao > 0;
+                    const bonus = r.total_bonus || 0;
+                    return qtd > 0 || comissao > 0 || bonus > 0;
                 });
                 if (selVendedor) {
                     comVendas.forEach(v => {

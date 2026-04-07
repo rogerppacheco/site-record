@@ -1238,6 +1238,7 @@ class LancamentoFinanceiro(models.Model):
     TIPOS_CHOICES = [
         ('ADIANTAMENTO_CNPJ', 'Adiantamento CNPJ'),
         ('ADIANTAMENTO_COMISSAO', 'Adiantamento de Comissão'),
+        ('BONUS_PREMIACAO', 'Bônus/Premiação'),
         ('DESCONTO', 'Desconto Avulso'),
     ]
 

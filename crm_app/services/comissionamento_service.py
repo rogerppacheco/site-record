@@ -87,6 +87,8 @@ def _tipo_lancamento_display(tipo: str) -> str:
         return "Adiant. CNPJ"
     if tipo == "ADIANTAMENTO_COMISSAO":
         return "Adiantamento"
+    if tipo == "BONUS_PREMIACAO":
+        return "Bônus/Premiação"
     if tipo == "DESCONTO":
         return "Desconto"
     return "Outro"
@@ -217,6 +219,16 @@ def gerar_relatorio_comissionamento(ano: int, mes: int) -> dict[str, Any]:
             )
 
         for l in mapa_lancamentos.get(consultor.id, []):
+            if l.tipo == "BONUS_PREMIACAO":
+                tipo_display = _tipo_lancamento_display(l.tipo)
+                descricao_item = l.descricao or ""
+                chave_exibicao = (
+                    f"{tipo_display}: {descricao_item}"
+                    if descricao_item
+                    else tipo_display
+                )
+                stats_bonus[chave_exibicao] += float(l.valor)
+                continue
             tipo_display = _tipo_lancamento_display(l.tipo)
             descricao_item = l.descricao or ""
             chave_exibicao = (
