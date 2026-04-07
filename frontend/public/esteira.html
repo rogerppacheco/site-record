@@ -145,7 +145,7 @@
                 <div class="d-flex gap-2 mt-2">
                     <button type="button" class="btn btn-outline-secondary btn-sm" onclick="limparFiltrosInstaladas()"><i class="bi bi-x-circle me-1"></i>Limpar filtros</button>
                     <button type="button" class="btn btn-outline-success btn-sm" onclick="exportarInstaladasExcel()"><i class="bi bi-file-earmark-excel me-1"></i>Exportar Excel</button>
-                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="marcarAdiantamentoCnpjSemana()"><i class="bi bi-check2-square me-1"></i>Marcar adiantamento CNPJ (semana)</button>
+                    <button type="button" id="btn-marcar-adiant-cnpj-semana" class="btn btn-outline-primary btn-sm" onclick="marcarAdiantamentoCnpjSemana()"><i class="bi bi-check2-square me-1"></i>Marcar adiantamento CNPJ (semana)</button>
                 </div>
                 <small class="text-muted d-block mt-2">O período filtra pela data de venda. Elegibilidade CNPJ: vendido de segunda a domingo e instalado até a segunda seguinte.</small>
                 <div id="painel-instaladas-antecipacao" class="mt-3 p-3 border rounded bg-white shadow-sm" style="display: none;">
@@ -467,6 +467,7 @@
         const userProfile = decodedToken ? (decodedToken.user_role || decodedToken.perfil) : null;
         const allowedProfiles = ['Diretoria', 'BackOffice', 'Supervisor', 'Admin'];
         if (!allowedProfiles.includes(userProfile)) { alert('Acesso negado.'); window.location.href = '/area-interna/'; }
+        const podeEditarAdiantamentosFinanceiros = ['Diretoria', 'Admin'].includes(userProfile);
 
         const podeConfigurarZap = ['Diretoria', 'Admin'].includes(userProfile);
         const podeEditarAntecipacaoInstaladas = ['Diretoria', 'BackOffice', 'Admin'].includes(userProfile);
@@ -488,6 +489,10 @@
             carregarMotivosPendencia();
             popularFiltroVendedorInstaladas();
             inicializarFiltrosColunas();
+            const btnAdiantCnpjSemana = document.getElementById('btn-marcar-adiant-cnpj-semana');
+            if (btnAdiantCnpjSemana && !podeEditarAdiantamentosFinanceiros) btnAdiantCnpjSemana.style.display = 'none';
+            const cbSelComissaoVisiveis = document.getElementById('selecionar-comissao-visiveis');
+            if (cbSelComissaoVisiveis && !podeEditarAdiantamentosFinanceiros) cbSelComissaoVisiveis.style.display = 'none';
             document.querySelectorAll('input[type="text"], textarea').forEach(input => { input.addEventListener('input', function() { this.value = this.value.toUpperCase(); }); });
 
             if (podeConfigurarZap) {
@@ -983,13 +988,18 @@
                             statusAdiantCnpj = cnpj ? '<span class="badge bg-secondary">Pendente</span>' : '<span class="badge bg-light text-dark border">Não elegível</span>';
                         }
                         statusAdiantComissao = v.antecipacao_comissao ? '<span class="badge bg-success">Sim</span>' : '<span class="badge bg-light text-dark border">Não</span>';
-                        seletorComissao = `
-                            <select class="form-select form-select-sm" style="min-width:90px;" onchange="alterarAdiantamentoComissao(${v.id}, this)">
-                                <option value="false" ${v.antecipacao_comissao ? '' : 'selected'}>Não</option>
-                                <option value="true" ${v.antecipacao_comissao ? 'selected' : ''}>Sim</option>
-                            </select>
-                        `;
-                        checkboxComissao = `<input type="checkbox" class="comissao-select-cb" data-venda-id="${v.id}" ${v.antecipacao_comissao ? 'checked' : ''} onchange="alternarComissaoPorCheckbox(this)">`;
+                        if (podeEditarAdiantamentosFinanceiros) {
+                            seletorComissao = `
+                                <select class="form-select form-select-sm" style="min-width:90px;" onchange="alterarAdiantamentoComissao(${v.id}, this)">
+                                    <option value="false" ${v.antecipacao_comissao ? '' : 'selected'}>Não</option>
+                                    <option value="true" ${v.antecipacao_comissao ? 'selected' : ''}>Sim</option>
+                                </select>
+                            `;
+                            checkboxComissao = `<input type="checkbox" class="comissao-select-cb" data-venda-id="${v.id}" ${v.antecipacao_comissao ? 'checked' : ''} onchange="alternarComissaoPorCheckbox(this)">`;
+                        } else {
+                            seletorComissao = statusAdiantComissao;
+                            checkboxComissao = '-';
+                        }
                     }
 
                     const nomeCliente = v.cliente_nome_razao_social || (v.cliente ? v.cliente.nome_razao_social : '-') || '-';

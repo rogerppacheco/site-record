@@ -2505,6 +2505,8 @@ class VendaViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'], url_path='marcar-adiantamento-cnpj-semana')
     def marcar_adiantamento_cnpj_semana(self, request):
+        if not request.user.is_superuser and not is_member(request.user, ['Diretoria', 'Admin']):
+            return Response({'detail': 'Acesso negado. Apenas Diretoria/Admin podem executar esta ação.'}, status=status.HTTP_403_FORBIDDEN)
         vendedor_id = request.data.get('vendedor_id')
         data_inicio_venda = (request.data.get('data_inicio_inst') or '').strip()
         data_fim_venda = (request.data.get('data_fim_inst') or '').strip()
@@ -2587,6 +2589,8 @@ class VendaViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='toggle-adiantamento-comissao')
     def toggle_adiantamento_comissao(self, request, pk=None):
+        if not request.user.is_superuser and not is_member(request.user, ['Diretoria', 'Admin']):
+            return Response({'detail': 'Acesso negado. Apenas Diretoria/Admin podem editar Adiantamento de Comissão.'}, status=status.HTTP_403_FORBIDDEN)
         venda = self.get_object()
         marcar = str(request.data.get('marcar', '')).lower() in ('1', 'true', 'sim', 's')
         if not venda.vendedor_id:
