@@ -289,10 +289,16 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 venda_ids = (l.metadados or {}).get('venda_ids') or []
                 if venda_ids:
                     qtd = len(venda_ids)
+            elif getattr(l, 'tipo', None) == 'ADIANTAMENTO_CNPJ':
+                venda_ids_cnpj = (l.metadados or {}).get('venda_ids') or []
+                if venda_ids_cnpj:
+                    qtd = len(venda_ids_cnpj)
             desc = (l.descricao or l.get_tipo_display() or 'Desconto')
             # Exibir desconto direto (sem "Processamento Auto:") e classificar para separar boleto / adiant. CNPJ / adiant. comissão
             if getattr(l, 'tipo', None) == 'ADIANTAMENTO_COMISSAO':
                 motivo_limpo = 'Adiant. Comissão'
+            elif getattr(l, 'tipo', None) == 'ADIANTAMENTO_CNPJ':
+                motivo_limpo = 'Adiant. CNPJ'
             elif desc.startswith('Processamento Auto:'):
                 resto = desc.replace('Processamento Auto:', '').strip()
                 mapa = {'BOLETO': 'Desconto Boleto', 'CNPJ': 'Adiant. CNPJ', 'VIABILIDADE': 'Desconto Inclusão', 'ANTECIPACAO': 'Desconto Antecipação'}
@@ -301,8 +307,14 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             else:
                 motivo_limpo = desc
             # tipo_exibicao: boleto | adiant_cnpj | adiant_comissao | outros (para agrupar na UI)
-            tipo_exibicao = 'adiant_comissao' if getattr(l, 'tipo', None) == 'ADIANTAMENTO_COMISSAO' else 'outros'
-            if tipo_exibicao != 'adiant_comissao' and desc.startswith('Processamento Auto:'):
+            lt = getattr(l, 'tipo', None)
+            if lt == 'ADIANTAMENTO_COMISSAO':
+                tipo_exibicao = 'adiant_comissao'
+            elif lt == 'ADIANTAMENTO_CNPJ':
+                tipo_exibicao = 'adiant_cnpj'
+            else:
+                tipo_exibicao = 'outros'
+            if tipo_exibicao == 'outros' and desc.startswith('Processamento Auto:'):
                 resto_upper = desc.upper()
                 if 'BOLETO' in resto_upper and 'CNPJ' not in resto_upper:
                     tipo_exibicao = 'boleto'

@@ -110,6 +110,7 @@ from .views import (
     ConfirmarDescontosEmMassaView,
     HistoricoDescontosAutoView,
     ReverterDescontoMassaView,
+    AdiantamentosEsteiraView,
 
     # --- CDOI (Record Vertical) ---
     CdoiCreateView,  # Criação
@@ -267,6 +268,7 @@ urlpatterns = [
     path('comissionamento/confirmar-descontos/', ConfirmarDescontosEmMassaView.as_view(), name='confirmar-descontos'),
     path('comissionamento/historico-auto/', HistoricoDescontosAutoView.as_view(), name='historico-auto'),
     path('comissionamento/reverter-auto/', ReverterDescontoMassaView.as_view(), name='reverter-auto'),
+    path('comissionamento/adiantamentos-esteira/', AdiantamentosEsteiraView.as_view(), name='adiantamentos-esteira'),
 
     # --- Importações ---
     path('import/osab/', ImportacaoOsabView.as_view(), name='importacao-osab'),

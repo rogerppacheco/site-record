@@ -82,7 +82,7 @@
 
             <ul class="nav nav-tabs mb-4" id="comissaoTabs">
                 <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tab-folha-excel" onclick="carregarFolhaExcel()">Folha (formato Excel)</a></li>
-                <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-pendencias" onclick="carregarPendencias()">Confirmar Descontos</a></li>
+                <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-adiantamentos-esteira" onclick="carregarAdiantamentosEsteira()">Adiantamentos (esteira)</a></li>
                 <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-historico" onclick="carregarHistoricoPagamentos()">Histórico de Pagamentos</a></li>
             </ul>
 
@@ -103,49 +103,23 @@
                     <div id="folha-excel-container"></div>
                 </div>
 
-                <div class="tab-pane fade" id="tab-pendencias">
+                <div class="tab-pane fade" id="tab-adiantamentos-esteira">
                     <div class="card border-0 shadow-sm">
                         <div class="card-header bg-white py-3">
-                            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
-                                <h6 class="mb-0 text-primary fw-bold"><i class="bi bi-list-check"></i> Pendências de Desconto/Adiantamento</h6>
-                                <div class="d-flex flex-wrap gap-2 align-items-center">
-                                    <label class="small text-muted me-1">Mês/Ano (instalações):</label>
-                                    <input type="month" id="filtro-pend-mes-ano" class="form-control form-control-sm" style="width: 140px;" onchange="carregarPendencias()">
-                                    <label class="small text-muted ms-2 me-1">Mês/Ano do lançamento:</label>
-                                    <input type="month" id="mes-ano-confirmacao-desc" class="form-control form-control-sm" style="width: 140px;">
-                                    <button class="btn btn-success btn-sm" onclick="confirmarDescontosSelecionados()">
-                                        <i class="bi bi-check-lg"></i> Confirmar Selecionados
-                                    </button>
-                                </div>
+                            <h6 class="mb-0 text-primary fw-bold"><i class="bi bi-box-arrow-in-down"></i> O que foi lançado na esteira (Instaladas)</h6>
+                            <p class="small text-muted mb-0 mt-1">Período: mesmo mês/ano selecionado no topo da página. Inclui adiantamento de comissão (lançamento financeiro) e marcações de adiantamento CNPJ feitas pelo botão da esteira.</p>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-4">
+                                <h6 class="small fw-bold text-secondary mb-2">Adiantamento de comissão</h6>
+                                <p class="small text-muted mb-2">Lançamentos financeiros gerados ao marcar adiantamento de comissão na esteira.</p>
+                                <div id="esteira-comissao-container" class="table-responsive border rounded"></div>
                             </div>
-                        </div>
-                        <div class="card-body p-0">
-                            <div id="pendencias-por-vendedor" style="max-height: 500px; overflow-y: auto;"></div>
-                            <div class="p-2 text-center small text-muted border-top">
-                                <span id="count-total">0</span> pendência(s) no mês. Marque/desmarque itens e clique em Confirmar.
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="card border-0 shadow-sm mt-4">
-                        <div class="card-header bg-light py-2">
-                            <h6 class="mb-0 text-secondary small fw-bold"><i class="bi bi-clock-history"></i> Histórico de Processamentos (Últimos 50)</h6>
-                        </div>
-                        <div class="card-body p-0">
-                            <div class="table-responsive px-3 py-2" style="max-height: 300px; overflow-y: auto;">
-                                <table class="table table-sm table-bordered table-hover small mb-0">
-                                    <thead class="table-light">
-                                        <tr>
-                                            <th>Data Lançamento</th>
-                                            <th>Vendedor</th>
-                                            <th>Descrição / Tipos</th>
-                                            <th class="text-end">Valor</th>
-                                            <th>Processado Por</th>
-                                            <th class="text-center">Ação</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="tbody-historico-auto"></tbody>
-                                </table>
+                            <div>
+                                <h6 class="small fw-bold text-secondary mb-2">Adiantamento CNPJ</h6>
+                                <p class="small text-muted mb-2">Lançamentos financeiros gerados ao marcar adiantamento CNPJ na esteira (mesmo critério do adiantamento de comissão: agregado por vendedor e data).</p>
+                                <div id="esteira-cnpj-container" class="table-responsive border rounded"></div>
+                                <div id="esteira-cnpj-legado-container" class="mt-3 small"></div>
                             </div>
                         </div>
                     </div>
@@ -217,9 +191,6 @@
 
         axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
         
-        // Cache Global para Filtros
-        let pendenciasCache = [];
-
         document.addEventListener('DOMContentLoaded', () => {
             const hoje = new Date();
             document.getElementById('filtro-mes').value = hoje.getMonth() + 1;
@@ -391,178 +362,62 @@
             }
         }
 
-        // --- ABA 2: PENDÊNCIAS POR MÊS, AGRUPADAS POR VENDEDOR ---
-        async function carregarPendencias() {
-            const container = document.getElementById('pendencias-por-vendedor');
-            if (!container) return;
-            container.innerHTML = '<div class="text-center py-4 text-muted">Carregando...</div>';
-
-            const mesAnoEl = document.getElementById('filtro-pend-mes-ano');
-            let ano = '', mes = '';
-            if (mesAnoEl && mesAnoEl.value) {
-                const parts = mesAnoEl.value.split('-');
-                ano = parts[0]; mes = parts[1];
-            }
-            if (!ano || !mes) {
-                const h = new Date();
-                const m = String(h.getMonth() + 1).padStart(2, '0');
-                ano = h.getFullYear(); mes = m;
-                if (mesAnoEl) { mesAnoEl.value = `${ano}-${mes}`; }
-            }
-
+        async function carregarAdiantamentosEsteira() {
+            const c1 = document.getElementById('esteira-comissao-container');
+            const c2 = document.getElementById('esteira-cnpj-container');
+            const c2leg = document.getElementById('esteira-cnpj-legado-container');
+            if (!c1 || !c2) return;
+            const mes = document.getElementById('filtro-mes').value;
+            const ano = document.getElementById('filtro-ano').value;
+            const loading = '<div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm text-primary"></div> Carregando...</div>';
+            c1.innerHTML = loading;
+            c2.innerHTML = loading;
+            if (c2leg) c2leg.innerHTML = '';
             try {
-                const res = await axios.get(`${apiUrl}pendencias-desconto/?ano=${ano}&mes=${mes}`);
-                pendenciasCache = res.data || [];
-                renderizarPendenciasPorVendedor(pendenciasCache);
-                const mesAnoConf = document.getElementById('mes-ano-confirmacao-desc');
-                if (mesAnoConf && !mesAnoConf.value) mesAnoConf.value = `${ano}-${mes}`;
-                carregarHistoricoAuto();
-            } catch (e) {
-                container.innerHTML = '<div class="text-center py-3 text-danger">Erro ao carregar pendências.</div>';
-                console.error(e);
-            }
-        }
+                const res = await axios.get(`${apiUrl}adiantamentos-esteira/?ano=${ano}&mes=${mes}`);
+                const d = res.data || {};
+                const com = d.adiantamento_comissao || [];
+                const cnpjLanc = d.adiantamento_cnpj || [];
+                const cnpjLegado = d.marcacoes_cnpj_esteira || [];
 
-        function renderizarPendenciasPorVendedor(lista) {
-            const container = document.getElementById('pendencias-por-vendedor');
-            const countEl = document.getElementById('count-total');
-            if (!container) return;
-            if (countEl) countEl.textContent = lista.length;
-
-            if (lista.length === 0) {
-                container.innerHTML = '<div class="text-center py-4 text-muted">Nenhuma pendência para o mês selecionado.</div>';
-                return;
-            }
-
-            const porVendedor = {};
-            lista.forEach(item => {
-                const k = item.vendedor_id + '|' + (item.vendedor_nome || '');
-                if (!porVendedor[k]) porVendedor[k] = { vendedor_nome: item.vendedor_nome, vendedor_id: item.vendedor_id, itens: [] };
-                porVendedor[k].itens.push(item);
-            });
-
-            let html = '';
-            Object.keys(porVendedor).forEach((key, idx) => {
-                const g = porVendedor[key];
-                const total = g.itens.reduce((s, i) => s + parseFloat(i.valor), 0);
-                const idCollapse = 'collapse-pend-' + idx;
-                html += `<div class="border-bottom">
-                    <div class="d-flex align-items-center py-2 px-3 bg-light" style="cursor:pointer;" onclick="var el=document.getElementById('${idCollapse}');var icon=document.getElementById('btn-pend-${idx}').querySelector('i');el.classList.toggle('d-none');if(icon){icon.classList.toggle('bi-plus');icon.classList.toggle('bi-dash');}">
-                        <button type="button" class="btn btn-sm btn-outline-secondary me-2 btn-toggle-detalhe" id="btn-pend-${idx}" aria-label="Expandir"><i class="bi bi-plus"></i></button>
-                        <span class="fw-bold">${g.vendedor_nome || 'N/A'}</span>
-                        <span class="ms-2 text-danger fw-bold">Total: R$ ${total.toFixed(2)}</span>
-                        <span class="ms-2 small text-muted">(${g.itens.length} item(ns))</span>
-                    </div>
-                    <div class="d-none" id="${idCollapse}">
-                        <div class="px-3 py-2 small">
-                            <table class="table table-sm table-hover mb-0">
-                                <thead><tr><th width="36"></th><th>Cliente / OS</th><th>Tipo</th><th>Data Inst.</th><th class="text-end">Valor</th></tr></thead>
-                                <tbody>`;
-                g.itens.forEach(item => {
-                    const dataInst = item.data_instalacao ? new Date(item.data_instalacao).toLocaleDateString('pt-BR') : '';
-                    const os = item.os || 'S/ OS';
-                    html += `<tr>
-                        <td><input type="checkbox" class="check-pendencia form-check-input" data-venda-id="${item.venda_id}" data-vendedor-id="${item.vendedor_id}" data-tipo-codigo="${item.tipo_codigo}" data-valor="${item.valor}" checked></td>
-                        <td><div>${(item.cliente || '').substring(0, 40)}</div><small class="text-muted">OS: ${os}</small></td>
-                        <td><span class="badge bg-warning text-dark">${item.titulo || item.tipo_codigo}</span></td>
-                        <td>${dataInst}</td>
-                        <td class="text-end text-danger fw-bold">R$ ${parseFloat(item.valor).toFixed(2)}</td>
-                    </tr>`;
-                });
-                html += `</tbody></table></div></div></div>`;
-            });
-            container.innerHTML = html;
-        }
-
-        function togglePendencias(source) {
-            document.querySelectorAll('.check-pendencia').forEach(c => { c.checked = source.checked; });
-        }
-
-        async function confirmarDescontosSelecionados() {
-            const checks = document.querySelectorAll('.check-pendencia:checked');
-            if (checks.length === 0) return alert('Selecione pelo menos um item.');
-
-            const mesAnoEl = document.getElementById('mes-ano-confirmacao-desc');
-            let dataLanc = '';
-            if (mesAnoEl && mesAnoEl.value) {
-                const [y, m] = mesAnoEl.value.split('-');
-                dataLanc = `${y}-${m}-01`;
-            }
-            if (!dataLanc) return alert('Selecione o Mês/Ano do lançamento.');
-
-            if (!confirm(`Confirmar lançamento de ${checks.length} desconto(s) no mês ${mesAnoEl.value.replace('-', '/')}?`)) return;
-
-            const itensParaEnviar = Array.from(checks).map(c => ({
-                venda_id: parseInt(c.getAttribute('data-venda-id'), 10),
-                vendedor_id: parseInt(c.getAttribute('data-vendedor-id'), 10),
-                tipo_codigo: c.getAttribute('data-tipo-codigo'),
-                valor: parseFloat(c.getAttribute('data-valor'))
-            }));
-
-            try {
-                const res = await axios.post(`${apiUrl}confirmar-descontos/`, { data: dataLanc, itens: itensParaEnviar });
-                alert(res.data.mensagem);
-                carregarPendencias();
-            } catch (e) {
-                alert('Erro: ' + (e.response?.data?.error || e.message));
-            }
-        }
-
-        // --- FUNÇÕES DE HISTÓRICO E REVERSÃO ---
-        async function carregarHistoricoAuto() {
-            const tbody = document.getElementById('tbody-historico-auto');
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Carregando histórico...</td></tr>';
-
-            try {
-                const res = await axios.get(`${apiUrl}historico-auto/`);
-                const lista = res.data;
-
-                tbody.innerHTML = '';
-                if (lista.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Nenhum processamento recente.</td></tr>';
-                    return;
+                if (com.length === 0) {
+                    c1.innerHTML = '<div class="text-center py-3 text-muted small">Nenhum lançamento de adiantamento de comissão da esteira neste mês.</div>';
+                } else {
+                    let h = '<table class="table table-sm table-hover mb-0"><thead class="table-light"><tr><th>Data</th><th>Vendedor</th><th class="text-end">Valor</th><th class="text-center">Qtd vendas</th><th>IDs vendas</th><th>Criado por</th></tr></thead><tbody>';
+                    com.forEach(row => {
+                        const ids = (row.venda_ids && row.venda_ids.length) ? row.venda_ids.join(', ') : '—';
+                        h += `<tr><td>${row.data ? row.data.split('T')[0].split('-').reverse().join('/') : ''}</td><td>${row.vendedor_nome || ''}</td><td class="text-end money-col">${fmtMoney(row.valor)}</td><td class="text-center">${row.quantidade_vendas != null ? row.quantidade_vendas : '—'}</td><td class="small text-break" style="max-width:180px;">${ids}</td><td class="small">${row.criado_por || '—'}</td></tr>`;
+                    });
+                    h += '</tbody></table>';
+                    c1.innerHTML = h;
                 }
 
-                lista.forEach(l => {
-                    // Tratar datas corretamente
-                    let dataFmt = l.data_lancamento;
-                    // Se vier no formato YYYY-MM-DD
-                    if (dataFmt.includes('-')) {
-                        const parts = dataFmt.split('-');
-                        dataFmt = `${parts[2]}/${parts[1]}/${parts[0]}`;
-                    }
-                    
-                    const criadoEm = new Date(l.criado_em).toLocaleString('pt-BR');
-                    
-                    tbody.innerHTML += `
-                        <tr>
-                            <td>${dataFmt}</td>
-                            <td class="fw-bold">${l.vendedor}</td>
-                            <td>${l.descricao}</td>
-                            <td class="text-end text-danger fw-bold">R$ ${parseFloat(l.valor).toFixed(2)}</td>
-                            <td class="text-center"><small class="text-muted" title="Em ${criadoEm}">${l.criado_por}</small></td>
-                            <td class="text-center">
-                                <button class="btn btn-xs btn-outline-danger py-0" onclick="reverterProcessamento(${l.id})" title="Desfazer lançamento e voltar vendas para pendência">
-                                    <i class="bi bi-arrow-counterclockwise"></i>
-                                </button>
-                            </td>
-                        </tr>
-                    `;
-                });
-            } catch(e) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-danger text-center">Erro ao carregar histórico.</td></tr>';
-            }
-        }
+                if (cnpjLanc.length === 0) {
+                    c2.innerHTML = '<div class="text-center py-3 text-muted small">Nenhum lançamento financeiro de adiantamento CNPJ da esteira neste mês.</div>';
+                } else {
+                    let h = '<table class="table table-sm table-hover mb-0"><thead class="table-light"><tr><th>Data</th><th>Vendedor</th><th class="text-end">Valor</th><th class="text-center">Qtd vendas</th><th>IDs vendas</th><th>Criado por</th></tr></thead><tbody>';
+                    cnpjLanc.forEach(row => {
+                        const ids = (row.venda_ids && row.venda_ids.length) ? row.venda_ids.join(', ') : '—';
+                        h += `<tr><td>${row.data ? row.data.split('T')[0].split('-').reverse().join('/') : ''}</td><td>${row.vendedor_nome || ''}</td><td class="text-end money-col">${fmtMoney(row.valor)}</td><td class="text-center">${row.quantidade_vendas != null ? row.quantidade_vendas : '—'}</td><td class="small text-break" style="max-width:180px;">${ids}</td><td class="small">${row.criado_por || '—'}</td></tr>`;
+                    });
+                    h += '</tbody></table>';
+                    c2.innerHTML = h;
+                }
 
-        async function reverterProcessamento(id) {
-            if(!confirm("ATENÇÃO: Isso irá EXCLUIR este lançamento financeiro e as vendas voltarão a aparecer como PENDÊNCIA DE DESCONTO. Deseja continuar?")) return;
-
-            try {
-                const res = await axios.post(`${apiUrl}reverter-auto/`, { id: id });
-                alert(res.data.mensagem);
-                carregarPendencias(); // Recarrega tudo
-            } catch(e) {
-                alert("Erro ao reverter: " + (e.response?.data?.error || e.message));
+                if (c2leg && cnpjLegado.length > 0) {
+                    let h = '<p class="text-muted mb-1 fw-bold">Marcações antigas (sem lançamento no mês)</p><table class="table table-sm table-hover mb-0 border"><thead class="table-light"><tr><th>Data marcação</th><th>Vendedor</th><th>Cliente</th><th>OS</th><th class="text-end">Valor parâm.</th></tr></thead><tbody>';
+                    cnpjLegado.forEach(row => {
+                        const dm = row.data_marcacao ? new Date(row.data_marcacao).toLocaleString('pt-BR') : '—';
+                        h += `<tr><td>${dm}</td><td>${row.vendedor_nome || ''}</td><td>${(row.cliente || '').substring(0, 48)}</td><td>${row.os || '—'}</td><td class="text-end money-col">${fmtMoney(row.valor_parametro_cnpj)}</td></tr>`;
+                    });
+                    h += '</tbody></table>';
+                    c2leg.innerHTML = h;
+                }
+            } catch (e) {
+                const msg = e.response?.data?.error || e.message || 'Erro de rede';
+                c1.innerHTML = `<div class="alert alert-danger mb-0">${msg}</div>`;
+                c2.innerHTML = '';
+                if (c2leg) c2leg.innerHTML = '';
             }
         }
 

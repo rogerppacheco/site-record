@@ -2573,11 +2573,67 @@ class VendaViewSet(viewsets.ModelViewSet):
             elegiveis_ids.append(v.id)
 
         if elegiveis_ids and not dry_run:
-            Venda.objects.filter(id__in=elegiveis_ids).update(
-                flag_adiant_cnpj=True,
-                adiantamento_cnpj_realizado_em=timezone.now(),
-                adiantamento_cnpj_realizado_por=request.user,
+            vendas_para_lancar = list(
+                Venda.objects.filter(id__in=elegiveis_ids).select_related('vendedor', 'cliente')
             )
+            hoje = timezone.localdate()
+            por_vendedor = defaultdict(list)
+            for v in vendas_para_lancar:
+                if v.vendedor_id:
+                    por_vendedor[v.vendedor_id].append(v)
+            with transaction.atomic():
+                Venda.objects.filter(id__in=elegiveis_ids).update(
+                    flag_adiant_cnpj=True,
+                    adiantamento_cnpj_realizado_em=timezone.now(),
+                    adiantamento_cnpj_realizado_por=request.user,
+                )
+                for vid, lista_v in por_vendedor.items():
+                    lanc = LancamentoFinanceiro.objects.filter(
+                        usuario_id=vid,
+                        tipo='ADIANTAMENTO_CNPJ',
+                        data=hoje,
+                        descricao='Adiantamento CNPJ (Instaladas)',
+                    ).first()
+                    meta_old = (
+                        (lanc.metadados if isinstance(lanc.metadados, dict) else {}) or {}
+                    )
+                    venda_ids = list(meta_old.get('venda_ids') or [])
+                    valor_acum = Decimal(str(lanc.valor or 0)) if lanc else Decimal('0')
+                    for v in lista_v:
+                        cons = v.vendedor
+                        if not cons:
+                            continue
+                        unit = Decimal(
+                            str(getattr(cons, 'adiantamento_cnpj', None) or 0)
+                        )
+                        if unit <= 0:
+                            continue
+                        if v.id in venda_ids:
+                            continue
+                        venda_ids.append(v.id)
+                        valor_acum += unit
+                    if not venda_ids:
+                        continue
+                    qtd = len(venda_ids)
+                    meta_new = {'origem': 'instaladas_cnpj', 'venda_ids': venda_ids}
+                    if lanc:
+                        lanc.valor = valor_acum
+                        lanc.quantidade_vendas = qtd
+                        lanc.metadados = meta_new
+                        lanc.save(
+                            update_fields=['valor', 'quantidade_vendas', 'metadados']
+                        )
+                    else:
+                        LancamentoFinanceiro.objects.create(
+                            usuario_id=vid,
+                            tipo='ADIANTAMENTO_CNPJ',
+                            data=hoje,
+                            valor=valor_acum,
+                            quantidade_vendas=qtd,
+                            descricao='Adiantamento CNPJ (Instaladas)',
+                            metadados=meta_new,
+                            criado_por=request.user,
+                        )
         return Response({
             'elegiveis_marcadas': len(elegiveis_ids),
             'ignoradas': ignoradas,
@@ -6638,6 +6694,170 @@ class ReverterDescontoMassaView(APIView):
             return Response({'error': 'Lançamento não encontrado.'}, status=404)
         except Exception as e:
             return Response({'error': str(e)}, status=500)
+
+
+class AdiantamentosEsteiraView(APIView):
+    """
+    GET ?ano=&mes=
+    Lista lançamentos de adiantamento de comissão e de CNPJ criados na esteira (Instaladas),
+    e opcionalmente marcações CNPJ sem lançamento (legado antes do fluxo financeiro).
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from datetime import datetime, time
+
+        ano = request.query_params.get('ano')
+        mes = request.query_params.get('mes')
+        if not ano or not mes:
+            return Response({'error': 'Informe ano e mes.'}, status=400)
+        try:
+            ano, mes = int(ano), int(mes)
+            if not (1 <= mes <= 12):
+                raise ValueError
+        except (TypeError, ValueError):
+            return Response({'error': 'ano/mes inválidos.'}, status=400)
+
+        data_inicio = datetime(ano, mes, 1).date()
+        if mes == 12:
+            data_fim = datetime(ano + 1, 1, 1).date()
+        else:
+            data_fim = datetime(ano, mes + 1, 1).date()
+
+        tz = timezone.get_current_timezone()
+        start_dt = timezone.make_aware(datetime.combine(data_inicio, time.min), tz)
+        end_dt = timezone.make_aware(datetime.combine(data_fim, time.min), tz)
+
+        lancs = (
+            LancamentoFinanceiro.objects.filter(
+                tipo='ADIANTAMENTO_COMISSAO',
+                data__gte=data_inicio,
+                data__lt=data_fim,
+            )
+            .select_related('usuario', 'criado_por')
+            .order_by('-data', '-data_criacao')
+        )
+
+        adiantamento_comissao = []
+        for l in lancs:
+            meta = l.metadados if isinstance(l.metadados, dict) else {}
+            if meta.get('origem') != 'instaladas_comissao':
+                continue
+            uname = l.usuario.username if l.usuario else ''
+            nome = (
+                (l.usuario.get_full_name() or '').strip() or uname
+                if l.usuario
+                else ''
+            )
+            criador = ''
+            if l.criado_por:
+                criador = (l.criado_por.get_full_name() or '').strip() or (
+                    l.criado_por.username or ''
+                )
+            adiantamento_comissao.append(
+                {
+                    'id': l.id,
+                    'data': l.data.isoformat(),
+                    'vendedor_id': l.usuario_id,
+                    'vendedor_nome': nome,
+                    'valor': float(l.valor or 0),
+                    'quantidade_vendas': l.quantidade_vendas or 0,
+                    'descricao': l.descricao,
+                    'venda_ids': list(meta.get('venda_ids') or []),
+                    'criado_por': criador,
+                    'criado_em': l.data_criacao.isoformat() if l.data_criacao else None,
+                }
+            )
+
+        lancs_cnpj = (
+            LancamentoFinanceiro.objects.filter(
+                tipo='ADIANTAMENTO_CNPJ',
+                data__gte=data_inicio,
+                data__lt=data_fim,
+            )
+            .select_related('usuario', 'criado_por')
+            .order_by('-data', '-data_criacao')
+        )
+        adiantamento_cnpj = []
+        venda_ids_com_lancamento = set()
+        for l in lancs_cnpj:
+            meta = l.metadados if isinstance(l.metadados, dict) else {}
+            if meta.get('origem') != 'instaladas_cnpj':
+                continue
+            ids = [int(x) for x in (meta.get('venda_ids') or []) if x is not None]
+            venda_ids_com_lancamento.update(ids)
+            uname = l.usuario.username if l.usuario else ''
+            nome = (
+                (l.usuario.get_full_name() or '').strip() or uname
+                if l.usuario
+                else ''
+            )
+            criador = ''
+            if l.criado_por:
+                criador = (l.criado_por.get_full_name() or '').strip() or (
+                    l.criado_por.username or ''
+                )
+            adiantamento_cnpj.append(
+                {
+                    'id': l.id,
+                    'data': l.data.isoformat(),
+                    'vendedor_id': l.usuario_id,
+                    'vendedor_nome': nome,
+                    'valor': float(l.valor or 0),
+                    'quantidade_vendas': l.quantidade_vendas or 0,
+                    'descricao': l.descricao,
+                    'venda_ids': ids,
+                    'criado_por': criador,
+                    'criado_em': l.data_criacao.isoformat() if l.data_criacao else None,
+                }
+            )
+
+        vendas_cnpj = (
+            Venda.objects.filter(
+                ativo=True,
+                flag_adiant_cnpj=True,
+                adiantamento_cnpj_realizado_em__gte=start_dt,
+                adiantamento_cnpj_realizado_em__lt=end_dt,
+            )
+            .select_related('vendedor', 'cliente')
+            .order_by('-adiantamento_cnpj_realizado_em')
+        )
+
+        marcacoes_cnpj_esteira = []
+        for v in vendas_cnpj:
+            if v.id in venda_ids_com_lancamento:
+                continue
+            val = 0.0
+            if v.vendedor:
+                val = float(getattr(v.vendedor, 'adiantamento_cnpj', None) or 0)
+            vn = ''
+            if v.vendedor:
+                vn = (v.vendedor.get_full_name() or '').strip() or (
+                    v.vendedor.username or ''
+                )
+            marcacoes_cnpj_esteira.append(
+                {
+                    'venda_id': v.id,
+                    'vendedor_nome': vn,
+                    'cliente': v.cliente.nome_razao_social if v.cliente else '',
+                    'os': v.ordem_servico or '',
+                    'data_marcacao': v.adiantamento_cnpj_realizado_em.isoformat()
+                    if v.adiantamento_cnpj_realizado_em
+                    else None,
+                    'valor_parametro_cnpj': val,
+                }
+            )
+
+        return Response(
+            {
+                'periodo': f'{mes:02d}/{ano}',
+                'adiantamento_comissao': adiantamento_comissao,
+                'adiantamento_cnpj': adiantamento_cnpj,
+                'marcacoes_cnpj_esteira': marcacoes_cnpj_esteira,
+            }
+        )
+
+
 class VerificarPermissaoGestaoView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
