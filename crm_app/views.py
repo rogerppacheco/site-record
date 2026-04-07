@@ -478,6 +478,7 @@ def buscar_fatura_nio_bonus_m10(request):
 import logging
 import pandas as pd
 import numpy as np
+from decimal import Decimal
 from datetime import datetime, timedelta, date
 from dateutil.relativedelta import relativedelta
 from collections import defaultdict
@@ -1580,7 +1581,7 @@ class VendaViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(filters)
 
         # --- PERMISSÕES DE VISUALIZAÇÃO ---
-        acoes_gestao = ['retrieve', 'update', 'partial_update', 'destroy', 'alocar_auditoria', 'liberar_auditoria', 'finalizar_auditoria', 'pendentes_auditoria', 'resumo_auditoria', 'reenviar_whatsapp_aprovacao', 'enviar_resumo_plano_whatsapp', 'exportar_excel']
+        acoes_gestao = ['retrieve', 'update', 'partial_update', 'destroy', 'alocar_auditoria', 'liberar_auditoria', 'finalizar_auditoria', 'pendentes_auditoria', 'resumo_auditoria', 'reenviar_whatsapp_aprovacao', 'enviar_resumo_plano_whatsapp']
 
         if self.action in acoes_gestao:
             grupos_gestao_acao = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
@@ -2430,6 +2431,7 @@ class VendaViewSet(viewsets.ModelViewSet):
             'Plano', 'Valor', 'Forma Pagamento',
             'Status Esteira', 'Status Tratamento', 'Status Comissionamento',
             'OS', 'Data Agendamento', 'Turno', 'Data Instalação', 'Data Física (no cliente)',
+            'Adiant. CNPJ', 'Adiantamento de Comissão',
             'Motivo Pendência', 'Observações',
             'CEP', 'Logradouro', 'Número', 'Complemento', 'Bairro', 'Cidade', 'UF', 'Ponto Ref.'
         ]
@@ -2468,6 +2470,8 @@ class VendaViewSet(viewsets.ModelViewSet):
                 v.get_periodo_agendamento_display() or '-',
                 dt_instalacao,
                 dt_instalacao_fisica,
+                'Sim' if v.flag_adiant_cnpj else 'Não',
+                'Sim' if v.antecipacao_comissao else 'Não',
                 v.motivo_pendencia.nome if v.motivo_pendencia else '-',
                 v.observacoes or '-',
                 v.cep or '-',
@@ -2509,9 +2513,11 @@ class VendaViewSet(viewsets.ModelViewSet):
             except ValueError:
                 return Response({'detail': 'Período inválido.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        dry_run = str(request.data.get('dry_run', '')).lower() in ('1', 'true', 'sim', 's')
         agora_sp = timezone.localtime(timezone.now())
         semana_ini = (agora_sp - timedelta(days=agora_sp.weekday())).date()
-        semana_fim = semana_ini + timedelta(days=6)
+        # Regra acordada: segunda 00:00 até segunda 23:59:59 (8 dias corridos)
+        semana_fim = semana_ini + timedelta(days=7)
 
         vendas = Venda.objects.filter(
             ativo=True,
@@ -2541,7 +2547,7 @@ class VendaViewSet(viewsets.ModelViewSet):
                 continue
             elegiveis_ids.append(v.id)
 
-        if elegiveis_ids:
+        if elegiveis_ids and not dry_run:
             Venda.objects.filter(id__in=elegiveis_ids).update(
                 flag_adiant_cnpj=True,
                 adiantamento_cnpj_realizado_em=timezone.now(),
@@ -2552,7 +2558,89 @@ class VendaViewSet(viewsets.ModelViewSet):
             'ignoradas': ignoradas,
             'semana_inicio': semana_ini.isoformat(),
             'semana_fim': semana_fim.isoformat(),
+            'dry_run': dry_run,
         })
+
+    @action(detail=True, methods=['post'], url_path='toggle-adiantamento-comissao')
+    def toggle_adiantamento_comissao(self, request, pk=None):
+        venda = self.get_object()
+        marcar = str(request.data.get('marcar', '')).lower() in ('1', 'true', 'sim', 's')
+        if not venda.vendedor_id:
+            return Response({'detail': 'Venda sem vendedor.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not venda.status_esteira or (venda.status_esteira.nome or '').strip().upper() != 'INSTALADA':
+            return Response({'detail': 'Apenas vendas instaladas podem receber adiantamento de comissão.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        faixa_adiantamento = RegraComissaoFaixa.objects.filter(finalidade='ADIANTAMENTO').first()
+        if not faixa_adiantamento:
+            faixa_adiantamento = RegraComissaoFaixa.objects.filter(faixa_nome__iexact='Adiantamento').first()
+        doc = re.sub(r'\D', '', (venda.cliente.cpf_cnpj if venda.cliente else '') or '')
+        is_cnpj_venda = len(doc) == 14
+        valor_unit = Decimal(str(LancamentoFinanceiroViewSet._valor_comissao_estimado_venda(venda, faixa_adiantamento, is_cnpj_venda)))
+        if valor_unit <= 0:
+            return Response({'detail': 'Valor de adiantamento da venda é zero. Revise Regras por Faixa (Finalidade = Adiantamento).'}, status=status.HTTP_400_BAD_REQUEST)
+
+        hoje = timezone.localdate()
+        with transaction.atomic():
+            if marcar:
+                if venda.antecipacao_comissao:
+                    return Response({'ok': True, 'antecipacao_comissao': True})
+                venda.antecipacao_comissao = True
+                venda.save(update_fields=['antecipacao_comissao'])
+                lanc = LancamentoFinanceiro.objects.filter(
+                    usuario_id=venda.vendedor_id,
+                    tipo='ADIANTAMENTO_COMISSAO',
+                    data=hoje,
+                    descricao='Adiantamento comissão (Instaladas)',
+                ).first()
+                venda_ids = []
+                if lanc and isinstance(lanc.metadados, dict):
+                    venda_ids = list(lanc.metadados.get('venda_ids') or [])
+                if venda.id not in venda_ids:
+                    venda_ids.append(venda.id)
+                if lanc:
+                    lanc.valor = Decimal(str(lanc.valor or 0)) + valor_unit
+                    lanc.quantidade_vendas = max(int(lanc.quantidade_vendas or 0), 0) + 1
+                    lanc.metadados = {'origem': 'instaladas_comissao', 'venda_ids': venda_ids}
+                    lanc.save(update_fields=['valor', 'quantidade_vendas', 'metadados'])
+                else:
+                    LancamentoFinanceiro.objects.create(
+                        usuario_id=venda.vendedor_id,
+                        tipo='ADIANTAMENTO_COMISSAO',
+                        data=hoje,
+                        valor=valor_unit,
+                        quantidade_vendas=1,
+                        descricao='Adiantamento comissão (Instaladas)',
+                        metadados={'origem': 'instaladas_comissao', 'venda_ids': [venda.id]},
+                        criado_por=request.user,
+                    )
+            else:
+                if not venda.antecipacao_comissao:
+                    return Response({'ok': True, 'antecipacao_comissao': False})
+                venda.antecipacao_comissao = False
+                venda.save(update_fields=['antecipacao_comissao'])
+                lancs = LancamentoFinanceiro.objects.filter(
+                    usuario_id=venda.vendedor_id,
+                    tipo='ADIANTAMENTO_COMISSAO',
+                    descricao='Adiantamento comissão (Instaladas)',
+                    data=hoje,
+                )
+                for lanc in lancs:
+                    meta = lanc.metadados if isinstance(lanc.metadados, dict) else {}
+                    venda_ids = list(meta.get('venda_ids') or [])
+                    if venda.id not in venda_ids:
+                        continue
+                    venda_ids = [vid for vid in venda_ids if int(vid) != int(venda.id)]
+                    novo_valor = Decimal(str(lanc.valor or 0)) - valor_unit
+                    nova_qtd = max(int(lanc.quantidade_vendas or 0) - 1, 0)
+                    if nova_qtd <= 0 or novo_valor <= 0:
+                        lanc.delete()
+                    else:
+                        lanc.valor = novo_valor
+                        lanc.quantidade_vendas = nova_qtd
+                        lanc.metadados = {'origem': 'instaladas_comissao', 'venda_ids': venda_ids}
+                        lanc.save(update_fields=['valor', 'quantidade_vendas', 'metadados'])
+                    break
+        return Response({'ok': True, 'antecipacao_comissao': venda.antecipacao_comissao})
 
 class VendasStatusCountView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -6200,7 +6288,7 @@ class LancamentoFinanceiroViewSet(viewsets.ModelViewSet):
         only_cnpj = (tipo_cliente == 'CNPJ')
         hoje_sp = timezone.localtime(timezone.now())
         semana_ini = (hoje_sp - timedelta(days=hoje_sp.weekday())).date()
-        semana_fim = semana_ini + timedelta(days=6)
+        semana_fim = semana_ini + timedelta(days=7)
         lista = []
         for v in vendas:
             if only_cnpj and v.cliente:

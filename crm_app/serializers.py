@@ -447,8 +447,8 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if request and 'data_instalacao_fisica' in data and not is_member(request.user, ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']):
             data.pop('data_instalacao_fisica', None)
-        # Antecipação de comissão: somente BackOffice/Diretoria/Admin
-        if request and 'antecipacao_comissao' in data and not is_member(request.user, ['Diretoria', 'Admin', 'BackOffice']):
+        # Antecipação de comissão: somente perfis de gestão da esteira
+        if request and 'antecipacao_comissao' in data and not is_member(request.user, ['Diretoria', 'Admin', 'BackOffice', 'Supervisor']):
             data.pop('antecipacao_comissao', None)
         # Converte para maiúsculo, exceto email e obs
         for key, value in data.items():

@@ -187,11 +187,14 @@
                                 <th>Cliente</th>
                                 <th>Vendedor</th>
                                 <th>Adiant. CNPJ</th>
+                                <th>Adiant. Comissão</th>
                                 <th>Plano</th>
                                 <th>Status Atual</th>
                                 <th>Motivo Pendência</th>
                                 <th title="Resposta do cliente ao lembrete de instalação">Conf. cliente</th>
-                                <th>Resp. Alteração</th> <th class="pe-3">Ações</th>
+                                <th>Resp. Alteração</th>
+                                <th title="Selecionar visíveis"><input type="checkbox" id="selecionar-comissao-visiveis" onchange="marcarComissaoVisiveis(this)"></th>
+                                <th class="pe-3">Ações</th>
                             </tr>
                         </thead>
                         <tbody id="tabela-esteira-body"></tbody>
@@ -579,22 +582,17 @@
             const periodo = validarPeriodoInstaladas();
             if (!periodo) return;
             try {
-                const nowTs = new Date().getTime();
-                let previewUrl = `/crm/vendas/?flow=esteira_instaladas&page_size=1000&_t=${nowTs}`;
-                if (filtroInstaladasAplicado.vendedor_id) previewUrl += `&vendedor_id=${encodeURIComponent(filtroInstaladasAplicado.vendedor_id)}`;
-                if (filtroInstaladasAplicado.data_inicio) previewUrl += `&data_inicio_inst=${encodeURIComponent(filtroInstaladasAplicado.data_inicio)}`;
-                if (filtroInstaladasAplicado.data_fim) previewUrl += `&data_fim_inst=${encodeURIComponent(filtroInstaladasAplicado.data_fim)}`;
-                const preview = await apiFetch(previewUrl);
-                const vendas = Array.isArray(preview) ? preview : (preview?.results || []);
-                let elegiveis = 0;
-                let ignoradas = 0;
-                vendas.forEach(v => {
-                    const doc = String(v.cliente_cpf_cnpj || '').replace(/\D/g, '');
-                    const ehCnpj = doc.length === 14;
-                    if (ehCnpj && !v.flag_adiant_cnpj) elegiveis += 1;
-                    else ignoradas += 1;
+                const previewPayload = {
+                    vendedor_id: filtroInstaladasAplicado.vendedor_id || null,
+                    data_inicio_inst: filtroInstaladasAplicado.data_inicio || null,
+                    data_fim_inst: filtroInstaladasAplicado.data_fim || null,
+                    dry_run: true,
+                };
+                const preview = await apiFetch('/crm/vendas/marcar-adiantamento-cnpj-semana/', {
+                    method: 'POST',
+                    body: JSON.stringify(previewPayload),
                 });
-                const ok = confirm(`${elegiveis} elegíveis serão marcadas; ${ignoradas} não elegíveis serão ignoradas. Deseja continuar?`);
+                const ok = confirm(`${preview.elegiveis_marcadas || 0} elegíveis serão marcadas; ${preview.ignoradas || 0} não elegíveis serão ignoradas. Deseja continuar?`);
                 if (!ok) return;
                 const payload = {
                     vendedor_id: filtroInstaladasAplicado.vendedor_id || null,
@@ -610,6 +608,53 @@
             } catch (e) {
                 alert('Erro ao marcar adiantamento CNPJ: ' + (e.message || e));
             }
+        }
+
+        async function alterarAdiantamentoComissao(vendaId, selectEl, suppressReload = false) {
+            const marcar = selectEl && selectEl.value === 'true';
+            selectEl.disabled = true;
+            try {
+                await apiFetch(`/crm/vendas/${vendaId}/toggle-adiantamento-comissao/`, {
+                    method: 'POST',
+                    body: JSON.stringify({ marcar }),
+                });
+                if (!suppressReload) carregarVendas(true);
+            } catch (e) {
+                alert('Erro ao atualizar adiantamento de comissão: ' + (e.message || e));
+                selectEl.value = marcar ? 'false' : 'true';
+            } finally {
+                selectEl.disabled = false;
+            }
+        }
+
+        async function alternarComissaoPorCheckbox(cb, suppressReload = false) {
+            const vendaId = cb?.dataset?.vendaId;
+            if (!vendaId) return;
+            const marcar = !!cb.checked;
+            cb.disabled = true;
+            try {
+                await apiFetch(`/crm/vendas/${vendaId}/toggle-adiantamento-comissao/`, {
+                    method: 'POST',
+                    body: JSON.stringify({ marcar }),
+                });
+                if (!suppressReload) carregarVendas(true);
+            } catch (e) {
+                cb.checked = !marcar;
+                alert('Erro ao atualizar adiantamento de comissão: ' + (e.message || e));
+            } finally {
+                cb.disabled = false;
+            }
+        }
+
+        async function marcarComissaoVisiveis(headerCb) {
+            const cbs = Array.from(document.querySelectorAll('.comissao-select-cb'));
+            if (!cbs.length) return;
+            for (const cb of cbs) {
+                if (cb.checked === headerCb.checked) continue;
+                cb.checked = headerCb.checked;
+                await alternarComissaoPorCheckbox(cb, true);
+            }
+            carregarVendas(true);
         }
 
         async function exportarAgendamentosDia() {
@@ -709,7 +754,7 @@
             );
 
             if (carregarInstaladas && !temFiltroInstaladas) {
-                tbody.innerHTML = '<tr><td colspan="14" class="text-center py-4 text-muted">Selecione ao menos um filtro (Vendedor ou período) para carregar a aba Instaladas.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="16" class="text-center py-4 text-muted">Selecione ao menos um filtro (Vendedor ou período) para carregar a aba Instaladas.</td></tr>';
                 const paEmpty = document.getElementById('painel-instaladas-antecipacao');
                 if (paEmpty) paEmpty.style.display = 'none';
                 return;
@@ -719,7 +764,7 @@
                 var inp = document.getElementById('filtro-busca');
                 if (inp) inp.placeholder = 'Buscar CPF ou OS...';
             }
-            if (!silent) { tbody.innerHTML = '<tr><td colspan="14" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>'; }
+            if (!silent) { tbody.innerHTML = '<tr><td colspan="16" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>'; }
 
             try {
                 const timestamp = new Date().getTime();
@@ -814,7 +859,7 @@
 
                 if(vendas.length === 0) {
                     const msg = carregarInstaladas ? 'Nenhuma venda instalada encontrada para este CPF/O.S.' : 'Nenhuma venda encontrada nesta etapa.';
-                    tbody.innerHTML = '<tr><td colspan="14" class="text-center py-4 text-muted">' + msg + '</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="16" class="text-center py-4 text-muted">' + msg + '</td></tr>';
                     const pa = document.getElementById('painel-instaladas-antecipacao');
                     if (pa) pa.style.display = 'none';
                     return;
@@ -867,6 +912,9 @@
                     let nomePlano = v.plano_nome || '-';
                     if (nomePlano === '-' && v.plano && v.plano.nome) nomePlano = v.plano.nome;
                     let statusAdiantCnpj = '-';
+                    let statusAdiantComissao = '-';
+                    let seletorComissao = '';
+                    let checkboxComissao = '';
                     if (carregarInstaladas) {
                         if (v.flag_adiant_cnpj) {
                             statusAdiantCnpj = '<span class="badge bg-success">Realizado</span>';
@@ -875,6 +923,14 @@
                             const cnpj = doc.length === 14;
                             statusAdiantCnpj = cnpj ? '<span class="badge bg-secondary">Pendente</span>' : '<span class="badge bg-light text-dark border">Não elegível</span>';
                         }
+                        statusAdiantComissao = v.antecipacao_comissao ? '<span class="badge bg-success">Sim</span>' : '<span class="badge bg-light text-dark border">Não</span>';
+                        seletorComissao = `
+                            <select class="form-select form-select-sm" style="min-width:90px;" onchange="alterarAdiantamentoComissao(${v.id}, this)">
+                                <option value="false" ${v.antecipacao_comissao ? '' : 'selected'}>Não</option>
+                                <option value="true" ${v.antecipacao_comissao ? 'selected' : ''}>Sim</option>
+                            </select>
+                        `;
+                        checkboxComissao = `<input type="checkbox" class="comissao-select-cb" data-venda-id="${v.id}" ${v.antecipacao_comissao ? 'checked' : ''} onchange="alternarComissaoPorCheckbox(this)">`;
                     }
 
                     const nomeCliente = v.cliente_nome_razao_social || (v.cliente ? v.cliente.nome_razao_social : '-') || '-';
@@ -916,11 +972,13 @@
                             <td><div class="fw-bold text-dark">${nomeCliente}</div><div class="small text-muted">${docCliente}</div></td>
                             <td>${nomeVendedor}</td> 
                             <td>${statusAdiantCnpj}</td>
+                            <td>${carregarInstaladas ? seletorComissao : statusAdiantComissao}</td>
                             <td>${nomePlano}</td>
                             <td><div class="d-flex align-items-center">${selectStatus}${btnEditar}</div></td>
                             <td class="text-danger small fw-bold">${motivoPendencia}</td>
                             <td class="small">${confCliente}</td>
                             <td><small class="text-muted fw-bold">${alteradoPor}</small></td>
+                            <td class="text-center">${carregarInstaladas ? checkboxComissao : '-'}</td>
                             <td class="pe-4 text-end">
                                 ${(v.telefone1 && v.telefone1.trim()) ? `<button class="btn btn-sm btn-outline-secondary rounded-circle p-2 me-1" onclick="copiarTelefone(this)" data-telefone="${String(v.telefone1).replace(/"/g, '&quot;')}" title="Copiar telefone"><i class="bi bi-telephone"></i></button>` : ''}
                                 <button class="btn btn-sm btn-outline-primary rounded-circle p-2" onclick="abrirEdicao(${v.id})" aria-label="Editar venda #${v.id}"><i class="bi bi-pencil-fill"></i></button>
@@ -948,7 +1006,7 @@
                     }
                 }
             } catch (e) { 
-                if(!silent) tbody.innerHTML = '<tr><td colspan="14" class="text-center text-danger">Erro ao carregar.<br><small>'+(e.message || e)+'</small></td></tr>';
+                if(!silent) tbody.innerHTML = '<tr><td colspan="16" class="text-center text-danger">Erro ao carregar.<br><small>'+(e.message || e)+'</small></td></tr>';
                 var paErr = document.getElementById('painel-instaladas-antecipacao');
                 if (paErr) paErr.style.display = 'none';
             }
@@ -1115,7 +1173,7 @@
                 if (pa) pa.style.display = 'none';
                 while (document.getElementById('abas-esteira').children.length > 4) document.getElementById('abas-esteira').removeChild(document.getElementById('abas-esteira').lastChild);
                 var tb = document.getElementById('tabela-esteira-body');
-                tb.innerHTML = '<tr><td colspan="14" class="text-center py-4 text-muted">Carregando instaladas...</td></tr>';
+                tb.innerHTML = '<tr><td colspan="16" class="text-center py-4 text-muted">Carregando instaladas...</td></tr>';
                 carregarVendas();
                 return;
             }

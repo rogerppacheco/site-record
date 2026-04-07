@@ -20,7 +20,6 @@ from usuarios.models import Usuario
 
 # Constantes de valores (podem vir de config no futuro)
 VALOR_PREMIACAO_CARTAO = Decimal("30.00")
-VALOR_ADIANTAMENTO_CNPJ = Decimal("50.00")
 
 
 def get_semana_seg_sab(semana_inicio: date) -> tuple[date, date]:
@@ -115,15 +114,12 @@ def gerar_painel_semana(semana_inicio: date) -> list[dict[str, Any]]:
     )
 
     # Por vendedor: CNPJ, cartão e total de vendas (receita operadora na semana)
-    cnpj_por_usuario: dict[int, int] = {}
     cartao_por_usuario: dict[int, int] = {}
     total_vendas_por_usuario: dict[int, Decimal] = {}
     for v in vendas_semana:
         if not v.vendedor_id:
             continue
         uid = v.vendedor_id
-        if _is_cnpj(v.cliente):
-            cnpj_por_usuario[uid] = cnpj_por_usuario.get(uid, 0) + 1
         if _is_cartao_credito(v.forma_pagamento):
             cartao_por_usuario[uid] = cartao_por_usuario.get(uid, 0) + 1
         # Valor que a empresa recebe da operadora por essa venda (Recebimento Operador)
@@ -141,14 +137,29 @@ def gerar_painel_semana(semana_inicio: date) -> list[dict[str, Any]]:
     ).values("usuario_id", "tipo").annotate(soma=Sum("valor"))
 
     adiant_comissao: dict[int, Decimal] = {}
+    adiant_cnpj: dict[int, Decimal] = {}
     desconto_avulso: dict[int, Decimal] = {}
     for row in lancamentos:
         uid = row["usuario_id"]
         val = Decimal(str(row["soma"] or 0))
         if row["tipo"] == "ADIANTAMENTO_COMISSAO":
             adiant_comissao[uid] = adiant_comissao.get(uid, Decimal("0")) + val
+        elif row["tipo"] == "ADIANTAMENTO_CNPJ":
+            adiant_cnpj[uid] = adiant_cnpj.get(uid, Decimal("0")) + val
         elif row["tipo"] == "DESCONTO":
             desconto_avulso[uid] = desconto_avulso.get(uid, Decimal("0")) + val
+    qtd_cnpj_por_usuario: dict[int, int] = {}
+    lancamentos_cnpj_qtd = (
+        LancamentoFinanceiro.objects.filter(
+            data__range=(seg, sab),
+            usuario__in=usuarios,
+            tipo='ADIANTAMENTO_CNPJ',
+        )
+        .values('usuario_id')
+        .annotate(qtd=Sum('quantidade_vendas'))
+    )
+    for row in lancamentos_cnpj_qtd:
+        qtd_cnpj_por_usuario[row['usuario_id']] = int(row['qtd'] or 0)
 
     # Campanhas que terminam na semana (prêmio pago naquela semana) – simplificado: 0 por enquanto
     # TODO: regra de negócio para valor_campanha por vendedor na semana
@@ -175,7 +186,7 @@ def gerar_painel_semana(semana_inicio: date) -> list[dict[str, Any]]:
                     qtd_faltas += 1
         retirada = Decimal(qtd_faltas) * valor_diario
 
-        total_cnpj = (cnpj_por_usuario.get(user.id, 0)) * VALOR_ADIANTAMENTO_CNPJ
+        total_cnpj = adiant_cnpj.get(user.id, Decimal("0"))
         premiacao_cartao = (cartao_por_usuario.get(user.id, 0)) * VALOR_PREMIACAO_CARTAO
         adiantamento_solicitado = adiant_comissao.get(user.id, Decimal("0"))
         valor_avulso = desconto_avulso.get(user.id, Decimal("0"))  # descontos (valor positivo a subtrair)
@@ -203,7 +214,7 @@ def gerar_painel_semana(semana_inicio: date) -> list[dict[str, Any]]:
             "qtd_dias_semana": qtd_dias_semana,
             "qtd_faltas": qtd_faltas,
             "retirada_faltas": float(retirada),
-            "qtd_cnpj": cnpj_por_usuario.get(user.id, 0),
+            "qtd_cnpj": qtd_cnpj_por_usuario.get(user.id, 0),
             "total_cnpj": float(total_cnpj),
             "qtd_cartao": cartao_por_usuario.get(user.id, 0),
             "premiacao_cartao": float(premiacao_cartao),
