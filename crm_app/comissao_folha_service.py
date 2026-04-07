@@ -324,21 +324,32 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             else:
                 tipo_exibicao = 'outros'
             if tipo_exibicao == 'outros' and desc.startswith('Processamento Auto:'):
-                resto_upper = desc.upper()
-                if 'BOLETO' in resto_upper and 'CNPJ' not in resto_upper:
-                    tipo_exibicao = 'boleto'
-                elif 'CNPJ' in resto_upper:
+                ru = desc.upper()
+                has_boleto = 'BOLETO' in ru
+                has_cnpj = 'CNPJ' in ru
+                has_ant = 'ANTECIPACAO' in ru
+                if has_cnpj:
                     tipo_exibicao = 'adiant_cnpj'
-                elif 'BOLETO' in resto_upper:
+                elif has_boleto and has_ant:
+                    tipo_exibicao = 'processamento_auto_misto'
+                elif has_boleto:
                     tipo_exibicao = 'boleto'
-            valor_item = float(l.valor)
-            # Se config diz "não descontar boleto PAP", valor exibido/efetivo é 0 (quantidade continua para informação)
+                elif has_ant:
+                    tipo_exibicao = 'antecipacao_instalacao'
+            valor_lanc = float(l.valor)
+            # Não descontar boleto no líquido (config Regras vendedor), mas na folha/WhatsApp mostrar valor cheio do lançamento
             if tipo_exibicao == 'boleto' and config and not getattr(config, 'desconta_boleto_pap', True):
-                total_descontos += 0  # não soma no total
-                valor_item = 0
+                total_descontos += Decimal('0')
             else:
                 total_descontos += l.valor
-            detalhes_descontos.append({'motivo': motivo_limpo, 'valor': valor_item, 'tipo_exibicao': tipo_exibicao, 'quantidade': qtd})
+            detalhes_descontos.append(
+                {
+                    'motivo': motivo_limpo,
+                    'valor': valor_lanc,
+                    'tipo_exibicao': tipo_exibicao,
+                    'quantidade': qtd,
+                }
+            )
         if config:
             if config.inss_valor and float(config.inss_valor) > 0:
                 total_descontos += config.inss_valor
@@ -511,6 +522,29 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
         qtd_a_descontar_cnpj = sum(d.get('quantidade', 1) for d in detalhes_descontos if (d.get('tipo_exibicao') or '').lower() == 'adiant_cnpj')
         qtd_a_descontar = qtd_a_descontar_boleto + qtd_a_descontar_cnpj + qtd_churn_m0 + qtd_churn_m1
 
+        # Referência no mês: vendas instaladas no período × valores do cadastro financeiro do colaborador (Gestão de Usuários)
+        qtd_vendas_boleto_mes = sum(
+            1
+            for v in vendas
+            if v.forma_pagamento and 'BOLETO' in (v.forma_pagamento.nome or '').upper()
+        )
+        qtd_vendas_antecip_mes = sum(1 for v in vendas if getattr(v, 'antecipou_instalacao', False))
+        unit_bo = float(getattr(consultor, 'desconto_boleto', None) or 0)
+        unit_ant = float(getattr(consultor, 'desconto_instalacao_antecipada', None) or 0)
+        folha_ref_descontos = {
+            'boleto': {
+                'qtd': qtd_vendas_boleto_mes,
+                'valor_unitario': unit_bo,
+                'valor_total': round(qtd_vendas_boleto_mes * unit_bo, 2),
+            },
+            'antecipacao_instalacao': {
+                'qtd': qtd_vendas_antecip_mes,
+                'valor_unitario': unit_ant,
+                'valor_total': round(qtd_vendas_antecip_mes * unit_ant, 2),
+            },
+            'desconta_boleto_pap': True if not config else bool(getattr(config, 'desconta_boleto_pap', True)),
+        }
+
         resultado.append({
             'vendedor_id': consultor.id,
             'vendedor_nome': consultor.username,
@@ -527,6 +561,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 'liquido': float(liquido),
                 'detalhes_bonus': detalhes_bonus,
                 'detalhes_descontos': detalhes_descontos,
+                'folha_ref_descontos': folha_ref_descontos,
                 'qtd_a_descontar': qtd_a_descontar,
                 'qtd_a_descontar_boleto': qtd_a_descontar_boleto,
                 'qtd_a_descontar_cnpj': qtd_a_descontar_cnpj,

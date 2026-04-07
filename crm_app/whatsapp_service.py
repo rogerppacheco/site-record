@@ -802,21 +802,97 @@ class WhatsAppService:
             d.text((500, y), f"LÍQUIDO A PAGAR: {self._fmt_br(r.get('liquido') or 0)}", fill=cor_verde, font=font_bold)
             y += 36
 
-            # Detalhes descontos (sem a frase "QTD A DESCONTAR")
+            ref = r.get('folha_ref_descontos') or {}
+            bo = ref.get('boleto') or {}
+            ant = ref.get('antecipacao_instalacao') or {}
+            show_bo = (bo.get('qtd') or 0) > 0 or float(bo.get('valor_unitario') or 0) > 0
+            show_ant = (ant.get('qtd') or 0) > 0 or float(ant.get('valor_unitario') or 0) > 0
+            if show_bo or show_ant or ref.get('desconta_boleto_pap') is False:
+                d.line([(20, y), (W - 20, y)], fill=cor_borda)
+                y += 10
+                d.text((20, y), 'Referência no mês (cadastro × vendas instaladas)', fill=cor_texto_sec, font=font_bold)
+                y += 20
+                if show_bo:
+                    qb = bo.get('qtd') or 0
+                    d.text(
+                        (20, y),
+                        f"Boleto: {qb} venda(s) x {self._fmt_br(bo.get('valor_unitario') or 0)} (Desc. Boleto) = {self._fmt_br(bo.get('valor_total') or 0)}",
+                        fill=cor_texto,
+                        font=font_sm,
+                    )
+                    y += 18
+                if show_ant:
+                    qa = ant.get('qtd') or 0
+                    d.text(
+                        (20, y),
+                        f"Antecip. instalação: {qa} venda(s) x {self._fmt_br(ant.get('valor_unitario') or 0)} (Desc. Antecip.) = {self._fmt_br(ant.get('valor_total') or 0)}",
+                        fill=cor_texto,
+                        font=font_sm,
+                    )
+                    y += 18
+                if ref.get('desconta_boleto_pap') is False:
+                    d.text(
+                        (20, y),
+                        'Atenção: boleto não entra no líquido (config.); lançamentos mostram valor cheio.',
+                        fill=(200, 120, 0),
+                        font=font_sm,
+                    )
+                    y += 18
+                y += 6
+
+            # Detalhes descontos por grupo (alinhado à folha web)
             detalhes = r.get('detalhes_descontos') or []
+
+            def _titulo_grupo(txt):
+                nonlocal y
+                d.text((20, y), txt, fill=cor_texto_sec, font=font_bold)
+                y += 18
+
+            def _linha_det(det):
+                nonlocal y
+                motivo = det.get('motivo') or 'Desconto'
+                q = det.get('quantidade')
+                if q is not None and q != '':
+                    motivo = f"{motivo} ({int(q)} un.)"
+                val = det.get('valor') or 0
+                d.text((24, y), f"{motivo}: - {self._fmt_br(val)}", fill=cor_vermelho, font=font_sm)
+                y += 18
+
             if detalhes:
                 d.line([(20, y), (W - 20, y)], fill=cor_borda)
                 y += 10
-                d.text((20, y), 'Descontos', fill=cor_texto_sec, font=font_bold)
+                d.text((20, y), 'Lançamentos descontados', fill=cor_texto_sec, font=font_bold)
                 y += 22
-                for det in detalhes:
-                    motivo = det.get('motivo') or 'Desconto'
-                    q = det.get('quantidade')
-                    if q is not None and q != '':
-                        motivo = f"{motivo} ({int(q)} un.)"
-                    val = det.get('valor') or 0
-                    d.text((20, y), f"{motivo}: - {self._fmt_br(val)}", fill=cor_vermelho, font=font_sm)
-                    y += 20
+                qadc = r.get('qtd_a_descontar')
+                if qadc is not None and qadc > 0:
+                    d.text((20, y), f"QTD A DESCONTAR: {qadc}", fill=cor_texto_sec, font=font_sm)
+                    y += 18
+
+                def _por_tipo(codigo, titulo):
+                    nonlocal y
+                    sub = [x for x in detalhes if (x.get('tipo_exibicao') or '').lower() == codigo]
+                    if not sub:
+                        return
+                    _titulo_grupo(titulo)
+                    for det in sub:
+                        _linha_det(det)
+
+                _por_tipo('boleto', 'Desconto Boleto')
+                _por_tipo('antecipacao_instalacao', 'Desconto Antecip. instalação')
+                _por_tipo('processamento_auto_misto', 'Desconto automático (boleto + antecip.)')
+                _por_tipo('adiant_cnpj', 'Adiant. CNPJ')
+                _por_tipo('adiant_comissao', 'Adiant. Comissão')
+                _por_tipo('churn_m0', 'Desconto Churn M0')
+                _por_tipo('churn_m1', 'Desconto Churn M-1')
+                codigos = {
+                    'boleto', 'antecipacao_instalacao', 'processamento_auto_misto',
+                    'adiant_cnpj', 'adiant_comissao', 'churn_m0', 'churn_m1',
+                }
+                outros = [x for x in detalhes if (x.get('tipo_exibicao') or '').lower() not in codigos]
+                if outros:
+                    _titulo_grupo('Outros')
+                    for det in outros:
+                        _linha_det(det)
                 y += 8
 
             # Rodapé período

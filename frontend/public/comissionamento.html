@@ -224,19 +224,37 @@
                         <div class="col">Bônus: <span class="text-success fw-bold">+ ${fmtMoney(r.total_bonus || 0)}</span></div>
                         <div class="col"><strong>LÍQUIDO A PAGAR: <span class="text-success fs-6">${fmtMoney(r.liquido || 0)}</span></strong></div>
                     </div>
+                    ${(function(){
+                        const ref = r.folha_ref_descontos;
+                        if (!ref) return '';
+                        const bo = ref.boleto || {}, ant = ref.antecipacao_instalacao || {};
+                        const showBo = (bo.qtd > 0 || bo.valor_unitario > 0);
+                        const showAnt = (ant.qtd > 0 || ant.valor_unitario > 0);
+                        if (!showBo && !showAnt && ref.desconta_boleto_pap !== false) return '';
+                        let h = '<div class="small border-top pt-2 mt-2"><strong class="text-muted">Referência no mês (cadastro financeiro × vendas instaladas)</strong>';
+                        if (showBo) h += `<div class="mt-1">${bo.qtd} venda(s) com pagamento <strong>Boleto</strong> × ${fmtMoney(bo.valor_unitario)} <span class="text-muted">(Desc. Boleto)</span> = <span class="fw-bold">${fmtMoney(bo.valor_total)}</span></div>`;
+                        if (showAnt) h += `<div class="mt-1">${ant.qtd} venda(s) com <strong>Houve antecipação</strong> × ${fmtMoney(ant.valor_unitario)} <span class="text-muted">(Desc. Antecip.)</span> = <span class="fw-bold">${fmtMoney(ant.valor_total)}</span></div>`;
+                        if (ref.desconta_boleto_pap === false) h += '<div class="alert alert-warning py-1 px-2 small mt-2 mb-0">Regras por vendedor: desconto de <strong>boleto não entra no líquido</strong>. Abaixo, lançamentos de boleto exibem o valor cheio para transparência.</div>';
+                        h += '</div>';
+                        return h;
+                    })()}
                     ${(r.detalhes_descontos && r.detalhes_descontos.length) ? (function(){
                         const list = r.detalhes_descontos;
                         const boleto = list.filter(d => (d.tipo_exibicao || '').toLowerCase() === 'boleto');
                         const adiant = list.filter(d => (d.tipo_exibicao || '').toLowerCase() === 'adiant_cnpj');
                         const adiantComissao = list.filter(d => (d.tipo_exibicao || '').toLowerCase() === 'adiant_comissao');
+                        const antecipInst = list.filter(d => (d.tipo_exibicao || '').toLowerCase() === 'antecipacao_instalacao');
+                        const autoMisto = list.filter(d => (d.tipo_exibicao || '').toLowerCase() === 'processamento_auto_misto');
                         const churnM0 = list.filter(d => (d.tipo_exibicao || '').toLowerCase() === 'churn_m0');
                         const churnM1 = list.filter(d => (d.tipo_exibicao || '').toLowerCase() === 'churn_m1');
-                        const outros = list.filter(d => { const t = (d.tipo_exibicao || '').toLowerCase(); return t !== 'boleto' && t !== 'adiant_cnpj' && t !== 'adiant_comissao' && t !== 'churn_m0' && t !== 'churn_m1'; });
+                        const outros = list.filter(d => { const t = (d.tipo_exibicao || '').toLowerCase(); return t !== 'boleto' && t !== 'adiant_cnpj' && t !== 'adiant_comissao' && t !== 'antecipacao_instalacao' && t !== 'processamento_auto_misto' && t !== 'churn_m0' && t !== 'churn_m1'; });
                         const linha = (d) => { const q = (d.quantidade != null && d.quantidade !== '') ? d.quantidade : 1; return `<div class="d-flex justify-content-between text-danger"><span>${d.motivo || 'Desconto'}${q > 0 ? ' (' + q + ' un.)' : ''}</span><span>- ${fmtMoney(d.valor)}</span></div>`; };
-                        let bloco = '<div class="small border-top pt-2 mt-2"><strong class="text-muted">Descontos</strong>';
+                        let bloco = '<div class="small border-top pt-2 mt-2"><strong class="text-muted">Lançamentos descontados</strong>';
                         if (r.qtd_a_descontar != null && r.qtd_a_descontar > 0) bloco += '<div class="mt-1 text-muted fw-bold">QTD A DESCONTAR: ' + r.qtd_a_descontar + '</div>';
                         bloco += '<div class="mt-1">';
                         if (boleto.length) { bloco += '<div class="mb-1"><span class="text-muted fw-bold small">Desconto Boleto</span>'; boleto.forEach(d => { bloco += linha(d); }); bloco += '</div>'; }
+                        if (antecipInst.length) { bloco += '<div class="mb-1"><span class="text-muted fw-bold small">Desconto Antecip. instalação</span>'; antecipInst.forEach(d => { bloco += linha(d); }); bloco += '</div>'; }
+                        if (autoMisto.length) { bloco += '<div class="mb-1"><span class="text-muted fw-bold small">Desconto automático (boleto + antecip.)</span>'; autoMisto.forEach(d => { bloco += linha(d); }); bloco += '</div>'; }
                         if (adiant.length) { bloco += '<div class="mb-1"><span class="text-muted fw-bold small">Adiant. CNPJ</span>'; adiant.forEach(d => { bloco += linha(d); }); bloco += '</div>'; }
                         if (adiantComissao.length) { bloco += '<div class="mb-1"><span class="text-muted fw-bold small">Adiant. Comissão</span>'; adiantComissao.forEach(d => { bloco += linha(d); }); bloco += '</div>'; }
                         if (churnM0.length) { bloco += '<div class="mb-1"><span class="text-muted fw-bold small">Desconto Churn M0</span>'; churnM0.forEach(d => { bloco += linha(d); }); bloco += '</div>'; }
