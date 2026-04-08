@@ -60,6 +60,7 @@ from .views import (
     FolhaComissionamentoView,
     FecharPagamentoView,
     ReabrirPagamentoView,
+    HistoricoPagamentoDetalheView,
     GerarRelatorioPDFView,
     EnviarExtratoEmailView,
     ImportacaoOsabView, ImportacaoOsabDetailView, DownloadRelatorioOSABView, CancelarImportacaoOSABView, AnaliseComparacaoOSABView, LimparImportacaoOSABView,
@@ -256,6 +257,7 @@ urlpatterns = [
     # --- Comissionamento ---
     path('comissionamento/', ComissionamentoView.as_view(), name='comissionamento'),
     path('comissionamento/folha/', FolhaComissionamentoView.as_view(), name='comissionamento-folha'),
+    path('comissionamento/historico-detalhe/', HistoricoPagamentoDetalheView.as_view(), name='comissionamento-historico-detalhe'),
     path('fechar-pagamento/', FecharPagamentoView.as_view(), name='fechar-pagamento'),
     path('reabrir-pagamento/', ReabrirPagamentoView.as_view(), name='reabrir-pagamento'),
     path('gerar-relatorio-pdf/', GerarRelatorioPDFView.as_view(), name='gerar-relatorio-pdf'),

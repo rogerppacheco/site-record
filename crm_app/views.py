@@ -570,7 +570,7 @@ from .utils import (
 from .models import (
     Operadora, Plano, FormaPagamento, StatusCRM, MotivoPendencia,
     RegraComissao, Cliente, Venda, ImportacaoOsab, ImportacaoChurn,
-    CicloPagamento, HistoricoAlteracaoVenda, PagamentoComissao,
+    CicloPagamento, HistoricoAlteracaoVenda, PagamentoComissao, PagamentoComissaoItem,
     Campanha, ComissaoOperadora, Comunicado, AreaVenda,
     SessaoWhatsapp, DFV, GrupoDisparo, LancamentoFinanceiro,
     AgendamentoDisparo, LogEnvioPerformance, ImportacaoAgendamento, ImportacaoRecompra,
@@ -3234,6 +3234,80 @@ class ComissionamentoView(APIView):
         dados = gerar_relatorio_comissionamento(ano, mes)
         return Response(dados)
 
+
+def _fechar_pagamento_mes(ano, mes, total_pago=None):
+    from .comissao_folha_service import (
+        annotate_data_folha_comissao,
+        calcular_folha_mes,
+        get_vendas_ids_desconto_churn_mes,
+    )
+
+    status_pago = StatusCRM.objects.filter(tipo='Comissionamento', nome__iexact='PAGO').first()
+    if not status_pago:
+        status_pago = StatusCRM.objects.create(tipo='Comissionamento', nome='PAGO', cor='#198754')
+
+    data_inicio = datetime(ano, mes, 1).date()
+    if mes == 12:
+        data_fim = datetime(ano + 1, 1, 1).date()
+    else:
+        data_fim = datetime(ano, mes + 1, 1).date()
+
+    vendas_para_atualizar = annotate_data_folha_comissao(Venda.objects.filter(
+        ativo=True,
+        status_esteira__nome__iexact='INSTALADA',
+    )).filter(
+        data_folha_comissao__isnull=False,
+        data_folha_comissao__gte=data_inicio,
+        data_folha_comissao__lt=data_fim,
+    ).exclude(status_comissionamento=status_pago)
+
+    count = vendas_para_atualizar.count()
+    vendas_para_atualizar.update(
+        status_comissionamento=status_pago,
+        data_pagamento_comissao=timezone.now().date()
+    )
+
+    ids_churn = get_vendas_ids_desconto_churn_mes(ano, mes)
+    if ids_churn:
+        Venda.objects.filter(id__in=ids_churn).update(desconto_churn_aplicado_em=ano * 100 + mes)
+
+    folha = calcular_folha_mes(ano, mes)
+    recebido_total = sum(float(v.get('resumo', {}).get('liquido', 0) or 0) for v in folha.get('vendedores', []))
+    valor_pago_efetivo = float(total_pago) if total_pago not in (None, "") else recebido_total
+    if valor_pago_efetivo <= 0:
+        valor_pago_efetivo = recebido_total
+
+    pagamento, _ = PagamentoComissao.objects.update_or_create(
+        referencia_ano=ano,
+        referencia_mes=mes,
+        defaults={
+            'total_pago_consultores': valor_pago_efetivo,
+            'total_recebido_ciclo': recebido_total,
+            'data_fechamento': timezone.now()
+        }
+    )
+
+    itens = []
+    for vd in folha.get('vendedores', []):
+        vendedor_id = vd.get('vendedor_id')
+        if not vendedor_id:
+            continue
+        liquido = float(vd.get('resumo', {}).get('liquido', 0) or 0)
+        itens.append(
+            PagamentoComissaoItem(
+                pagamento=pagamento,
+                vendedor_id=vendedor_id,
+                valor_pago=liquido,
+                valor_recebido_ciclo=liquido,
+                enviado_whatsapp_em=timezone.now(),
+            )
+        )
+    PagamentoComissaoItem.objects.filter(pagamento=pagamento).delete()
+    if itens:
+        PagamentoComissaoItem.objects.bulk_create(itens, ignore_conflicts=True)
+
+    return {"mensagem": f"Fechamento realizado! {count} vendas atualizadas.", "vendas_atualizadas": count}
+
 class FecharPagamentoView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -3242,43 +3316,7 @@ class FecharPagamentoView(APIView):
             ano = int(request.data.get('ano'))
             mes = int(request.data.get('mes'))
             total_pago = request.data.get('total_pago', 0)
-            
-            status_pago = StatusCRM.objects.filter(tipo='Comissionamento', nome__iexact='PAGO').first()
-            if not status_pago:
-                status_pago = StatusCRM.objects.create(tipo='Comissionamento', nome='PAGO', cor='#198754')
-
-            data_inicio = datetime(ano, mes, 1)
-            if mes == 12: data_fim = datetime(ano + 1, 1, 1)
-            else: data_fim = datetime(ano, mes + 1, 1)
-
-            vendas_para_atualizar = Venda.objects.filter(
-                ativo=True,
-                status_esteira__nome__iexact='INSTALADA',
-                data_instalacao__gte=data_inicio,
-                data_instalacao__lt=data_fim
-            ).exclude(status_comissionamento=status_pago)
-
-            count = vendas_para_atualizar.count()
-            vendas_para_atualizar.update(
-                status_comissionamento=status_pago,
-                data_pagamento_comissao=timezone.now().date()
-            )
-
-            from .comissao_folha_service import get_vendas_ids_desconto_churn_mes
-            ids_churn = get_vendas_ids_desconto_churn_mes(ano, mes)
-            if ids_churn:
-                Venda.objects.filter(id__in=ids_churn).update(desconto_churn_aplicado_em=ano * 100 + mes)
-
-            PagamentoComissao.objects.update_or_create(
-                referencia_ano=ano,
-                referencia_mes=mes,
-                defaults={
-                    'total_pago_consultores': total_pago,
-                    'data_fechamento': timezone.now()
-                }
-            )
-
-            return Response({"mensagem": f"Fechamento realizado! {count} vendas atualizadas.", "vendas_atualizadas": count})
+            return Response(_fechar_pagamento_mes(ano, mes, total_pago=total_pago))
         
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -3315,6 +3353,40 @@ class ReabrirPagamentoView(APIView):
 
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class HistoricoPagamentoDetalheView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        try:
+            ano = int(request.query_params.get('ano'))
+            mes = int(request.query_params.get('mes'))
+        except (TypeError, ValueError):
+            return Response({"error": "Parâmetros ano/mes inválidos."}, status=400)
+
+        pagamento = PagamentoComissao.objects.filter(referencia_ano=ano, referencia_mes=mes).first()
+        if not pagamento:
+            return Response({"itens": [], "periodo": f"{mes:02d}/{ano}"})
+
+        itens = (
+            PagamentoComissaoItem.objects.filter(pagamento=pagamento)
+            .select_related('vendedor')
+            .order_by('vendedor__username')
+        )
+        data = []
+        for it in itens:
+            pago = float(it.valor_pago or 0)
+            recebido = float(it.valor_recebido_ciclo or 0)
+            data.append({
+                "vendedor_id": it.vendedor_id,
+                "vendedor_nome": it.vendedor.username if it.vendedor else f"ID {it.vendedor_id}",
+                "total_pago": pago,
+                "total_recebido": recebido,
+                "diferenca": recebido - pago,
+                "enviado_whatsapp_em": it.enviado_whatsapp_em.isoformat() if it.enviado_whatsapp_em else None,
+            })
+        return Response({"itens": data, "periodo": f"{mes:02d}/{ano}"})
 
 class GerarRelatorioPDFView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -5295,78 +5367,117 @@ def enviar_comissao_whatsapp(request):
 @permission_classes([permissions.IsAuthenticated])
 def enviar_folha_extrato_whatsapp(request):
     """
-    Envia para o WhatsApp do vendedor um único PDF: folha (mesmo layout da tela) + extrato abaixo.
-    Body: { "vendedor_id": int, "ano": int, "mes": int }.
+    Envia para WhatsApp um único PDF (folha + extrato), para um ou vários vendedores.
+    Body:
+      { "ano": int, "mes": int, "vendedor_id": int? , "vendedores_ids": [int]? , "fechar_mes": bool? }.
     Destino: tel_whatsapp (WhatsApp 1 principal) do usuário.
     """
     try:
-        vendedor_id = request.data.get('vendedor_id')
         ano = request.data.get('ano')
         mes = request.data.get('mes')
-        if vendedor_id is None or ano is None or mes is None:
+        vendedor_id = request.data.get('vendedor_id')
+        vendedores_ids = request.data.get('vendedores_ids') or []
+        fechar_mes = bool(request.data.get('fechar_mes', True))
+        if ano is None or mes is None:
             return Response(
-                {"error": "Envie vendedor_id, ano e mes."},
+                {"error": "Envie ano e mes."},
                 status=status.HTTP_400_BAD_REQUEST
             )
         ano, mes = int(ano), int(mes)
+
+        ids_envio = []
+        if isinstance(vendedores_ids, list):
+            for x in vendedores_ids:
+                try:
+                    ids_envio.append(int(x))
+                except (TypeError, ValueError):
+                    continue
+        if vendedor_id is not None:
+            try:
+                ids_envio.append(int(vendedor_id))
+            except (TypeError, ValueError):
+                pass
+        ids_envio = sorted(set(ids_envio))
+        if not ids_envio:
+            return Response({"error": "Selecione ao menos um vendedor."}, status=status.HTTP_400_BAD_REQUEST)
+
         User = get_user_model()
-        try:
-            consultor = User.objects.get(id=vendedor_id)
-        except User.DoesNotExist:
-            return Response({"error": "Vendedor não encontrado."}, status=status.HTTP_404_NOT_FOUND)
-        telefone = getattr(consultor, 'tel_whatsapp', None) or (consultor.telefone if hasattr(consultor, 'telefone') else None)
-        if not telefone or not str(telefone).strip():
-            return Response(
-                {"error": f"Vendedor {consultor.username} não possui WhatsApp 1 (principal) cadastrado."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        consultores = {u.id: u for u in User.objects.filter(id__in=ids_envio)}
 
         from .comissao_folha_service import calcular_folha_mes
-        # Extrato enviado ao consultor usa data efetiva (instalação no cliente)
-        folha = calcular_folha_mes(ano, mes, vendedor_id=vendedor_id, use_effective_date_for_display=True)
-        vendedor_data = next(
-            (x for x in folha.get('vendedores', []) if str(x.get('vendedor_id')) == str(vendedor_id)),
-            None
-        )
-        if not vendedor_data:
-            return Response(
-                {"error": "Nenhum dado de folha para este vendedor neste mês."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        folha = calcular_folha_mes(ano, mes, use_effective_date_for_display=True)
+        map_folha = {int(x.get('vendedor_id')): x for x in folha.get('vendedores', []) if x.get('vendedor_id') is not None}
         periodo = folha.get('periodo', f"{mes:02d}/{ano}")
         svc = WhatsAppService()
-
         from crm_app.comissao_folha_whatsapp_pdf import montar_html_folha_e_extrato_pdf
 
-        html_string = montar_html_folha_e_extrato_pdf(vendedor_data, periodo)
-        pdf_buffer = BytesIO()
-        pisa_status = pisa.pisaDocument(BytesIO(html_string.encode("UTF-8")), pdf_buffer, encoding="utf-8")
-        if pisa_status.err:
-            return Response(
-                {"error": "Erro ao gerar PDF da folha e extrato."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        enviados = []
+        erros = []
+        for vid in ids_envio:
+            consultor = consultores.get(vid)
+            if not consultor:
+                erros.append(f"ID {vid}: vendedor não encontrado")
+                continue
+            telefone = getattr(consultor, 'tel_whatsapp', None) or (consultor.telefone if hasattr(consultor, 'telefone') else None)
+            if not telefone or not str(telefone).strip():
+                erros.append(f"{consultor.username}: sem WhatsApp cadastrado")
+                continue
+            vendedor_data = map_folha.get(vid)
+            if not vendedor_data:
+                erros.append(f"{consultor.username}: sem dados de folha no período")
+                continue
+
+            html_string = montar_html_folha_e_extrato_pdf(vendedor_data, periodo)
+            pdf_buffer = BytesIO()
+            pisa_status = pisa.pisaDocument(BytesIO(html_string.encode("UTF-8")), pdf_buffer, encoding="utf-8")
+            if pisa_status.err:
+                erros.append(f"{consultor.username}: erro ao gerar PDF")
+                continue
+            pdf_bytes = pdf_buffer.getvalue()
+            pdf_b64 = base64.b64encode(pdf_bytes).decode("utf-8")
+            nome_seguro = "".join(
+                c if c.isalnum() or c in ("-", "_") else "_"
+                for c in str(vendedor_data.get("vendedor_nome") or "vendedor")
+            ).strip("_") or "vendedor"
+            nome_pdf = f"Folha_Comissao_{nome_seguro}_{mes}_{ano}.pdf"
+            resp_pdf = svc.enviar_pdf_b64(
+                telefone,
+                pdf_b64,
+                nome_arquivo=nome_pdf,
+                caption=f"Folha de comissão {periodo} (resumo + extrato)",
             )
-        pdf_bytes = pdf_buffer.getvalue()
-        pdf_b64 = base64.b64encode(pdf_bytes).decode("utf-8")
-        nome_seguro = "".join(
-            c if c.isalnum() or c in ("-", "_") else "_"
-            for c in str(vendedor_data.get("vendedor_nome") or "vendedor")
-        ).strip("_") or "vendedor"
-        nome_pdf = f"Folha_Comissao_{nome_seguro}_{mes}_{ano}.pdf"
-        resp_pdf = svc.enviar_pdf_b64(
-            telefone,
-            pdf_b64,
-            nome_arquivo=nome_pdf,
-            caption=f"Folha de comissão {periodo} (resumo + extrato)",
-        )
-        if resp_pdf is None or (isinstance(resp_pdf, dict) and resp_pdf.get('error')):
+            if resp_pdf is None or (isinstance(resp_pdf, dict) and resp_pdf.get('error')):
+                erros.append(f"{consultor.username}: falha no envio WhatsApp")
+                continue
+            enviados.append(vid)
+
+        if not enviados:
             return Response(
-                {"error": "Falha ao enviar PDF da folha no WhatsApp."},
+                {"error": "Nenhum envio foi concluído.", "erros": erros},
                 status=status.HTTP_502_BAD_GATEWAY
             )
+
+        if fechar_mes:
+            total_pago_mes = sum(float(v.get('resumo', {}).get('liquido', 0) or 0) for v in folha.get('vendedores', []))
+            try:
+                _fechar_pagamento_mes(ano, mes, total_pago=total_pago_mes)
+            except Exception as e:
+                return Response(
+                    {
+                        "ok": False,
+                        "mensagem": f"Envios concluídos para {len(enviados)} vendedor(es), mas falhou ao fechar o mês.",
+                        "enviados": enviados,
+                        "erros": erros,
+                        "erro_fechamento": str(e),
+                    },
+                    status=status.HTTP_207_MULTI_STATUS,
+                )
+
         return Response({
             "ok": True,
-            "mensagem": "PDF da folha (resumo + extrato) enviado no WhatsApp com sucesso.",
+            "mensagem": f"PDF enviado para {len(enviados)} vendedor(es)." + (" Mês conferido/pago/fechado." if fechar_mes else ""),
+            "enviados": enviados,
+            "erros": erros,
         })
     except Exception as e:
         logger.exception("enviar_folha_extrato_whatsapp: %s", e)

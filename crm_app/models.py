@@ -404,6 +404,26 @@ class PagamentoComissao(models.Model):
         unique_together = ('referencia_ano', 'referencia_mes')
         ordering = ['-referencia_ano', '-referencia_mes']
 
+
+class PagamentoComissaoItem(models.Model):
+    pagamento = models.ForeignKey(
+        PagamentoComissao,
+        on_delete=models.CASCADE,
+        related_name='itens',
+    )
+    vendedor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='pagamentos_comissao_itens',
+    )
+    valor_pago = models.DecimalField(max_digits=15, decimal_places=2, default=0.0)
+    valor_recebido_ciclo = models.DecimalField(max_digits=15, decimal_places=2, default=0.0)
+    enviado_whatsapp_em = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'crm_pagamento_comissao_item'
+        unique_together = ('pagamento', 'vendedor')
+
 class ImportacaoOsab(models.Model):
     produto = models.CharField(max_length=255, null=True, blank=True)
     filial = models.CharField(max_length=255, null=True, blank=True)

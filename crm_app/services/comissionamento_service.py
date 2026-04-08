@@ -326,6 +326,7 @@ def gerar_relatorio_comissionamento(ano: int, mes: int) -> dict[str, Any]:
                 "ano_mes": f"{mes_iter}/{ano_iter}",
                 "total_pago_equipe": total_pago,
                 "total_recebido_ciclo": total_ciclo,
+                "diferenca_pago_recebido": float(total_ciclo) - float(total_pago),
                 "status": "Fechado" if fechamento else "Aberto",
             }
         )

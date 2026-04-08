@@ -134,6 +134,7 @@
                                         <th>Mês/Ano</th>
                                         <th>Total Pago (Equipe)</th>
                                         <th>Total Recebido (Ciclo)</th>
+                                        <th>Diferença (Recebido - Pago)</th>
                                         <th>Status</th>
                                         <th>Ações</th>
                                     </tr>
@@ -354,10 +355,15 @@
 
         async function enviarFolhaExtratoWhatsApp() {
             const vendedorId = document.getElementById('folha-excel-vendedor')?.value;
+            const checks = document.querySelectorAll('.check-consultor:checked');
+            const idsMarcados = Array.from(checks).map(c => parseInt(c.value, 10)).filter(Boolean);
+            const idsEnvio = idsMarcados.length > 0
+                ? idsMarcados
+                : (vendedorId ? [parseInt(vendedorId, 10)] : []);
             const ano = document.getElementById('filtro-ano')?.value;
             const mes = document.getElementById('filtro-mes')?.value;
-            if (!vendedorId) {
-                alert('Selecione um vendedor no dropdown.');
+            if (!idsEnvio.length) {
+                alert('Selecione um vendedor no dropdown ou marque um/mais consultores na tabela.');
                 return;
             }
             const btn = document.getElementById('btn-enviar-whatsapp-folha');
@@ -367,12 +373,18 @@
             btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Enviando...';
             try {
                 const res = await axios.post(`${apiUrl}enviar-folha-extrato-whatsapp/`, {
-                    vendedor_id: parseInt(vendedorId, 10),
+                    vendedor_id: vendedorId ? parseInt(vendedorId, 10) : null,
+                    vendedores_ids: idsEnvio,
                     ano: parseInt(ano, 10),
-                    mes: parseInt(mes, 10)
+                    mes: parseInt(mes, 10),
+                    fechar_mes: true
                 });
                 if (res.data && res.data.ok) {
-                    alert(res.data.mensagem || 'Folha e extrato enviados no WhatsApp.');
+                    const erros = (res.data.erros || []);
+                    const msgErros = erros.length ? `\nFalhas: ${erros.join(' | ')}` : '';
+                    alert((res.data.mensagem || 'Envio concluído.') + msgErros);
+                    await carregarDados();
+                    await carregarHistoricoPagamentos();
                 } else {
                     alert(res.data?.error || 'Resposta inesperada.');
                 }
@@ -391,13 +403,13 @@
             const ano = document.getElementById('filtro-ano').value;
             const tbody = document.getElementById('tbody-historico');
             if (!tbody) return;
-            tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary"></div> Carregando...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary"></div> Carregando...</td></tr>';
             try {
                 const res = await axios.get(`${apiUrl}?ano=${ano}&mes=${mes}`);
                 const dados = res.data;
                 renderizarHistorico(dados.historico_pagamentos || []);
             } catch (error) {
-                tbody.innerHTML = `<tr><td colspan="5" class="text-center text-danger p-4">Erro ao carregar histórico: ${error.message}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger p-4">Erro ao carregar histórico: ${error.message}</td></tr>`;
             }
         }
 
@@ -540,8 +552,30 @@
             const tbody = document.getElementById('tbody-historico');
             tbody.innerHTML = '';
             lista.forEach(h => {
-                tbody.innerHTML += `<tr><td class="fw-bold">${h.ano_mes}</td><td class="text-success fw-bold">${fmtMoney(h.total_pago_equipe)}</td><td class="text-primary">${fmtMoney(h.total_recebido_ciclo)}</td><td><span class="badge ${h.status === 'Fechado' ? 'bg-success' : 'bg-warning'}">${h.status}</span></td><td><button class="btn btn-sm btn-light border">Ver</button></td></tr>`;
+                const diff = Number(h.diferenca_pago_recebido || 0);
+                const anoMes = (h.ano_mes || '').split('/');
+                const mesRef = parseInt(anoMes[0], 10);
+                const anoRef = parseInt(anoMes[1], 10);
+                tbody.innerHTML += `<tr><td class="fw-bold">${h.ano_mes}</td><td class="text-success fw-bold">${fmtMoney(h.total_pago_equipe)}</td><td class="text-primary">${fmtMoney(h.total_recebido_ciclo)}</td><td class="${diff >= 0 ? 'text-primary' : 'text-danger'} fw-bold">${fmtMoney(diff)}</td><td><span class="badge ${h.status === 'Fechado' ? 'bg-success' : 'bg-warning'}">${h.status}</span></td><td><button class="btn btn-sm btn-light border" onclick="verHistoricoDetalhe(${anoRef}, ${mesRef})">Ver</button></td></tr>`;
             });
+        }
+
+        async function verHistoricoDetalhe(ano, mes) {
+            try {
+                const res = await axios.get(`${apiUrl}historico-detalhe/?ano=${ano}&mes=${mes}`);
+                const itens = res.data?.itens || [];
+                if (!itens.length) {
+                    alert('Não há itens de pagamento fechados para este período.');
+                    return;
+                }
+                let html = `Pagamentos por vendedor (${res.data?.periodo || (mes + '/' + ano)})\n\n`;
+                itens.forEach(it => {
+                    html += `${it.vendedor_nome} | Pago: ${fmtMoney(it.total_pago)} | Recebido: ${fmtMoney(it.total_recebido)} | Dif: ${fmtMoney(it.diferenca)}\n`;
+                });
+                alert(html);
+            } catch (e) {
+                alert('Erro ao carregar detalhe do histórico: ' + (e.response?.data?.error || e.message));
+            }
         }
 
         function atualizarBotoesAcao(status, dados) {
