@@ -11,12 +11,11 @@ Centraliza as regras de negócio de:
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 from django.contrib.auth import get_user_model
 from django.db.models import Q, Sum
-from django.utils import timezone
 
 from crm_app.models import (
     Campanha,
@@ -124,7 +123,6 @@ def gerar_relatorio_comissionamento(ano: int, mes: int) -> dict[str, Any]:
     """
     User = get_user_model()
     data_inicio, data_fim = _obter_intervalo_mes(ano, mes)
-    hoje = timezone.now()
 
     consultores = User.objects.filter(is_active=True).order_by("username")
     todas_regras = list(
@@ -298,38 +296,30 @@ def gerar_relatorio_comissionamento(ano: int, mes: int) -> dict[str, Any]:
             }
         )
 
-    historico: list[dict[str, Any]] = []
-    for i in range(6):
-        d = hoje - timedelta(days=10 * i)
-        mes_iter = d.month
-        ano_iter = d.year
+    total_ciclo = (
+        CicloPagamento.objects.filter(
+            ano=ano,
+            mes=str(mes),
+        ).aggregate(Sum("valor_comissao_final"))["valor_comissao_final__sum"]
+        or 0
+    )
 
-        total_ciclo = (
-            CicloPagamento.objects.filter(
-                ano=ano_iter,
-                mes=str(mes_iter),
-            ).aggregate(Sum("valor_comissao_final"))["valor_comissao_final__sum"]
-            or 0
-        )
+    fechamento = PagamentoComissao.objects.filter(
+        referencia_ano=ano,
+        referencia_mes=mes,
+    ).first()
 
-        fechamento = PagamentoComissao.objects.filter(
-            referencia_ano=ano_iter,
-            referencia_mes=mes_iter,
-        ).first()
+    total_pago = fechamento.total_pago_consultores if fechamento else 0.0
 
-        total_pago = (
-            fechamento.total_pago_consultores if fechamento else 0.0
-        )
-
-        historico.append(
-            {
-                "ano_mes": f"{mes_iter}/{ano_iter}",
-                "total_pago_equipe": total_pago,
-                "total_recebido_ciclo": total_ciclo,
-                "diferenca_pago_recebido": float(total_ciclo) - float(total_pago),
-                "status": "Fechado" if fechamento else "Aberto",
-            }
-        )
+    historico: list[dict[str, Any]] = [
+        {
+            "ano_mes": f"{mes}/{ano}",
+            "total_pago_equipe": total_pago,
+            "total_recebido_ciclo": total_ciclo,
+            "diferenca_pago_recebido": float(total_ciclo) - float(total_pago),
+            "status": "Fechado" if fechamento else "Aberto",
+        }
+    ]
 
     return {
         "periodo": f"{mes}/{ano}",

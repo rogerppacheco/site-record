@@ -95,6 +95,10 @@
                                 <option value="">— Selecione —</option>
                             </select>
                         </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <label class="text-muted mb-0 small fw-bold">Envio em lote:</label>
+                            <select id="folha-excel-vendedores-multi" class="form-select form-select-sm" style="min-width: 260px;" multiple size="3" title="Selecione um ou mais vendedores"></select>
+                        </div>
                         <button class="btn btn-sm btn-outline-primary" onclick="carregarFolhaExcel()"><i class="bi bi-arrow-clockwise"></i> Atualizar</button>
                         <button class="btn btn-sm btn-success" id="btn-enviar-whatsapp-folha" onclick="enviarFolhaExtratoWhatsApp()" title="Envia um único PDF (folha como na tela + extrato) para o WhatsApp do vendedor">
                             <i class="bi bi-whatsapp"></i> Enviar folha e extrato no WhatsApp
@@ -309,11 +313,13 @@
         async function carregarFolhaExcel() {
             const container = document.getElementById('folha-excel-container');
             const selVendedor = document.getElementById('folha-excel-vendedor');
+            const selMulti = document.getElementById('folha-excel-vendedores-multi');
             if (!container) return;
             const mes = document.getElementById('filtro-mes').value;
             const ano = document.getElementById('filtro-ano').value;
             container.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div><p class="mt-2 text-muted">Carregando folha...</p></div>';
             if (selVendedor) selVendedor.innerHTML = '<option value="">— Selecione —</option>';
+            if (selMulti) selMulti.innerHTML = '';
             try {
                 const res = await axios.get(`/api/crm/comissionamento/folha/?ano=${ano}&mes=${mes}`);
                 const dados = res.data;
@@ -344,6 +350,12 @@
                         opt.value = v.vendedor_id;
                         opt.textContent = v.vendedor_nome || ('ID ' + v.vendedor_id);
                         selVendedor.appendChild(opt);
+                        if (selMulti) {
+                            const opt2 = document.createElement('option');
+                            opt2.value = v.vendedor_id;
+                            opt2.textContent = v.vendedor_nome || ('ID ' + v.vendedor_id);
+                            selMulti.appendChild(opt2);
+                        }
                     });
                     if (comVendas.length > 0) selVendedor.value = comVendas[0].vendedor_id;
                 }
@@ -355,15 +367,13 @@
 
         async function enviarFolhaExtratoWhatsApp() {
             const vendedorId = document.getElementById('folha-excel-vendedor')?.value;
-            const checks = document.querySelectorAll('.check-consultor:checked');
-            const idsMarcados = Array.from(checks).map(c => parseInt(c.value, 10)).filter(Boolean);
-            const idsEnvio = idsMarcados.length > 0
-                ? idsMarcados
-                : (vendedorId ? [parseInt(vendedorId, 10)] : []);
+            const selMulti = document.getElementById('folha-excel-vendedores-multi');
+            const idsMulti = selMulti ? Array.from(selMulti.selectedOptions).map(o => parseInt(o.value, 10)).filter(Boolean) : [];
+            const idsEnvio = idsMulti.length > 0 ? idsMulti : (vendedorId ? [parseInt(vendedorId, 10)] : []);
             const ano = document.getElementById('filtro-ano')?.value;
             const mes = document.getElementById('filtro-mes')?.value;
             if (!idsEnvio.length) {
-                alert('Selecione um vendedor no dropdown ou marque um/mais consultores na tabela.');
+                alert('Selecione um vendedor no dropdown ou marque um/mais vendedores no campo de envio em lote.');
                 return;
             }
             const btn = document.getElementById('btn-enviar-whatsapp-folha');
@@ -386,10 +396,10 @@
                     await carregarDados();
                     await carregarHistoricoPagamentos();
                 } else {
-                    alert(res.data?.error || 'Resposta inesperada.');
+                    alert(res.data?.mensagem || res.data?.error || 'Resposta inesperada.');
                 }
             } catch (err) {
-                const msg = err.response?.data?.error || err.message || 'Erro ao enviar.';
+                const msg = err.response?.data?.mensagem || err.response?.data?.error || err.message || 'Erro ao enviar.';
                 alert('Erro: ' + msg);
             } finally {
                 btn.disabled = false;
@@ -403,7 +413,7 @@
             const ano = document.getElementById('filtro-ano').value;
             const tbody = document.getElementById('tbody-historico');
             if (!tbody) return;
-            tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary"></div> Carregando...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary"></div> Carregando...</td></tr>';
             try {
                 const res = await axios.get(`${apiUrl}?ano=${ano}&mes=${mes}`);
                 const dados = res.data;
