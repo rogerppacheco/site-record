@@ -53,6 +53,8 @@
         /* Esconde barra de rolagem horizontal padrão se não for necessária */
         .table-responsive::-webkit-scrollbar { height: 6px; }
         .table-responsive::-webkit-scrollbar-thumb { background-color: #ccc; border-radius: 4px; }
+        .contador-instaladas { background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 10px; padding: 10px 12px; font-size: 0.85rem; color: #495057; }
+        .contador-instaladas strong { color: #0d6efd; }
 
         @media (max-width: 576px) {
             .header-controls { flex-direction: column; align-items: flex-start; gap: 10px; }
@@ -146,6 +148,10 @@
                     <button type="button" class="btn btn-outline-secondary btn-sm" onclick="limparFiltrosInstaladas()"><i class="bi bi-x-circle me-1"></i>Limpar filtros</button>
                     <button type="button" class="btn btn-outline-success btn-sm" onclick="exportarInstaladasExcel()"><i class="bi bi-file-earmark-excel me-1"></i>Exportar Excel</button>
                     <button type="button" id="btn-marcar-adiant-cnpj-semana" class="btn btn-outline-primary btn-sm" onclick="marcarAdiantamentoCnpjSemana()"><i class="bi bi-check2-square me-1"></i>Marcar adiantamento CNPJ (semana)</button>
+                </div>
+                <div class="contador-instaladas mt-2">
+                    <span class="me-3">Total pelos filtros da aba Instaladas: <strong id="contador-instaladas-filtros-principais">0</strong></span>
+                    <span>Total apos filtros do cabecalho: <strong id="contador-instaladas-filtros-cabecalho">0</strong></span>
                 </div>
                 <small class="text-muted d-block mt-2">O período filtra pela data de venda. Elegibilidade CNPJ: vendido de segunda a domingo e instalado até a segunda seguinte.</small>
                 <div id="painel-instaladas-antecipacao" class="mt-3 p-3 border rounded bg-white shadow-sm" style="display: none;">
@@ -827,6 +833,10 @@
             const tbody = document.getElementById('tabela-esteira-body');
             const busca = (document.getElementById('filtro-busca').value || '').trim();
             const carregarInstaladas = (filtroAtual === 'INSTALADAS');
+            const contadorPrincipaisEl = document.getElementById('contador-instaladas-filtros-principais');
+            const contadorCabecalhoEl = document.getElementById('contador-instaladas-filtros-cabecalho');
+            if (contadorPrincipaisEl) contadorPrincipaisEl.textContent = '0';
+            if (contadorCabecalhoEl) contadorCabecalhoEl.textContent = '0';
             const temFiltroInstaladas = !!(
                 (filtroInstaladasAplicado.vendedor_id || '').trim() ||
                 (filtroInstaladasAplicado.data_inicio || '').trim() ||
@@ -937,6 +947,7 @@
                         vendas = vendas.filter(v => (v.periodo_agendamento || '').toUpperCase() === filtroTurnoAtual);
                     }
                 }
+                if (carregarInstaladas && contadorPrincipaisEl) contadorPrincipaisEl.textContent = `${vendas.length}`;
 
                 if(vendas.length === 0) {
                     const msg = carregarInstaladas ? 'Nenhuma venda instalada encontrada para este CPF/O.S.' : 'Nenhuma venda encontrada nesta etapa.';
@@ -955,6 +966,7 @@
                 };
 
                 let htmlContent = '';
+                let totalVisivelPosCabecalho = 0;
                 vendas.forEach((v) => {
                     const dataFmt = v.data_criacao ? new Date(v.data_criacao).toLocaleDateString('pt-BR') : '-';
                     const osAtual = v.ordem_servico || '-';
@@ -1080,6 +1092,7 @@
                             incluiTexto(alteradoPor, getFiltroColuna('fc-resp'));
                         if (!passa) return;
                     }
+                    if (carregarInstaladas) totalVisivelPosCabecalho += 1;
 
                     htmlContent += `
                         <tr style="${rowStyle}" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='translateY(0)'">
@@ -1106,6 +1119,7 @@
                     `;
                 });
                 tbody.innerHTML = htmlContent;
+                if (carregarInstaladas && contadorCabecalhoEl) contadorCabecalhoEl.textContent = `${totalVisivelPosCabecalho}`;
 
                 const painelAnt = document.getElementById('painel-instaladas-antecipacao');
                 if (painelAnt) {
