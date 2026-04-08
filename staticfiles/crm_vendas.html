@@ -23,6 +23,8 @@
         #input-email { text-transform: none; }
         .filter-bar { background: #fff; padding: 15px; border-radius: 12px; border: 1px solid var(--cor-borda); display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
         .filter-item { flex: 1; min-width: 140px; }
+        .contador-instaladas { background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 10px; padding: 10px 12px; font-size: 0.85rem; color: #495057; }
+        .contador-instaladas strong { color: #0d6efd; }
         .status-badge { font-size: 0.75rem; padding: 4px 8px; border-radius: 12px; font-weight: 600; letter-spacing: 0.5px; display: inline-block; min-width: 80px; text-align: center; }
         
         .btn-origem { height: 140px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 1.3rem; font-weight: bold; transition: all 0.3s ease; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-width: 2px; }
@@ -151,6 +153,10 @@
 
                 <div id="aviso-filtro-bloqueado" class="alert alert-light border mb-3 d-none text-center text-muted">
                     <i class="bi bi-calendar-check"></i> Exibindo vendas do mês atual.
+                </div>
+                <div class="contador-instaladas mb-3">
+                    <span class="me-3">Total pelos filtros principais: <strong id="contador-filtros-principais">0</strong></span>
+                    <span>Total apos filtros do cabecalho: <strong id="contador-filtros-cabecalho">0</strong></span>
                 </div>
 
                 <div class="card border-0 shadow-none">
@@ -824,6 +830,8 @@
         // FUNÇÃO CARREGAR VENDAS (CORRIGIDA: Lógica de Status Fechado)
         // =========================================================================
         async function carregarVendas(silent = false) {
+            document.getElementById('contador-filtros-principais').textContent = '0';
+            document.getElementById('contador-filtros-cabecalho').textContent = '0';
             // Destruição segura do DataTable
             if ($.fn.DataTable.isDataTable('#tabela-vendas')) {
                 $('#tabela-vendas').DataTable().destroy();
@@ -907,6 +915,7 @@
                 document.getElementById('count-agendados').textContent = `${counts.agendado}`;
                 document.getElementById('count-instalados').textContent = `${counts.instalada}`;
                 document.getElementById('count-cancelados').textContent = `${counts.cancelado}`;
+                document.getElementById('contador-filtros-principais').textContent = `${counts.total}`;
 
                 if (vendas.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted">Nenhuma venda encontrada.</td></tr>';
@@ -1098,6 +1107,12 @@
                     });
                 }
             });
+            const atualizarContadorCabecalho = () => {
+                const totalAplicado = table.rows({ filter: 'applied' }).count();
+                document.getElementById('contador-filtros-cabecalho').textContent = `${totalAplicado}`;
+            };
+            table.on('draw.dt', atualizarContadorCabecalho);
+            atualizarContadorCabecalho();
         }
 
         async function reenviarWhatsApp(id) {
