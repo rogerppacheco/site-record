@@ -315,36 +315,24 @@
             blocos.forEach(b => {
                 if (!b.itens.length) return;
                 html += `<tr class="table-secondary"><td colspan="10" class="fw-bold">${b.titulo} — ${b.itens.length} venda(s)</td></tr>`;
-                const grupos = new Map();
-                b.itens.forEach(e => {
-                    const dt = (e.dt_pedido || '').toString().trim() || '-';
-                    const dtSort = parseBrDateToSort(dt);
-                    const st = e._statusGrupo || '-';
-                    const key = `${dt}||${st}`;
-                    if (!grupos.has(key)) grupos.set(key, { dt, dtSort, st, itens: [] });
-                    grupos.get(key).itens.push(e);
+                const itensOrdenados = [...b.itens].sort((a, b2) => {
+                    const d1 = parseBrDateToSort(a.dt_pedido) || '9999-99-99';
+                    const d2 = parseBrDateToSort(b2.dt_pedido) || '9999-99-99';
+                    if (d1 !== d2) return d1.localeCompare(d2); // mais antiga primeiro
+                    return (a.nome || '').localeCompare(b2.nome || '');
                 });
-                const gruposOrdenados = Array.from(grupos.values()).sort((a, b2) => {
-                    const d1 = a.dtSort || '0000-00-00';
-                    const d2 = b2.dtSort || '0000-00-00';
-                    if (d1 !== d2) return d2.localeCompare(d1); // mais recente primeiro
-                    return a.st.localeCompare(b2.st);
-                });
-                gruposOrdenados.forEach(g => {
-                    html += `<tr class="table-light"><td colspan="10" class="text-muted fw-semibold">${g.dt} • ${g.st} — ${g.itens.length} venda(s)</td></tr>`;
-                    g.itens.forEach(e => {
-                        const isChurn = normaliza(e.churn) === 'SIM';
-                        const isAdiant = normaliza(e.adiantada) === 'SIM';
-                        const situacao = normaliza(e.situacao);
-                        const isCancelada = situacao.includes('CANCELADA');
-                        const isInstalada = situacao === 'INSTALADA';
-                        const isVerde = isInstalada && !isChurn;
-                        const rowClass = (isChurn || isCancelada)
-                            ? 'table-danger'
-                            : (isVerde ? 'table-success' : 'table-warning');
-                        const rowStyle = (isVerde && isAdiant) ? ' style="background-color:#cfe8d6 !important;"' : '';
-                        html += `<tr class="${rowClass}"${rowStyle}><td>${e.nome || ''}</td><td>${e.dacc || ''}</td><td>${e.cnpj || ''}</td><td>${e.plano || ''}</td><td>${e.dt_pedido || ''}</td><td>${e.dt_inst || ''}</td><td>${e.os || ''}</td><td>${e.situacao || ''}</td><td>${e.churn || ''}</td><td class="text-center">${e.adiantada || '-'}</td></tr>`;
-                    });
+                itensOrdenados.forEach(e => {
+                    const isChurn = normaliza(e.churn) === 'SIM';
+                    const isAdiant = normaliza(e.adiantada) === 'SIM';
+                    const situacao = normaliza(e.situacao);
+                    const isCancelada = situacao.includes('CANCELADA');
+                    const isInstalada = situacao === 'INSTALADA';
+                    const isVerde = isInstalada && !isChurn;
+                    const rowClass = (isChurn || isCancelada)
+                        ? 'table-danger'
+                        : (isVerde ? 'table-success' : 'table-warning');
+                    const rowStyle = (isVerde && isAdiant) ? ' style="background-color:#cfe8d6 !important;"' : '';
+                    html += `<tr class="${rowClass}"${rowStyle}><td>${e.nome || ''}</td><td>${e.dacc || ''}</td><td>${e.cnpj || ''}</td><td>${e.plano || ''}</td><td>${e.dt_pedido || ''}</td><td>${e.dt_inst || ''}</td><td>${e.os || ''}</td><td>${e.situacao || ''}</td><td>${e.churn || ''}</td><td class="text-center">${e.adiantada || '-'}</td></tr>`;
                 });
             });
             html += `</tbody></table></div></div></div>`;
