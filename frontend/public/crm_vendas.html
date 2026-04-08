@@ -770,19 +770,9 @@
             document.querySelectorAll('#abas-status .nav-link').forEach(l => l.classList.remove('active'));
             element.classList.add('active'); 
             statusEsteiraAtual = status; 
-            
-            // FILTRAGEM VIA CLIENTE (SEM RECARREGAR API)
-            if ($.fn.DataTable.isDataTable('#tabela-vendas')) {
-                const table = $('#tabela-vendas').DataTable();
-                if(status === '') {
-                    table.column(8).search('').draw(); // Limpa filtro
-                } else {
-                    // Regex para buscar o status na coluna 8 (Status Esteira)
-                    table.column(8).search(status, true, false).draw();
-                }
-            } else {
-                carregarVendas();
-            }
+            // Sempre refaz consulta na API para aplicar regra correta no backend
+            // (especialmente INSTALADA com data efetiva e status exato).
+            carregarVendas(true);
         }
 
         async function carregarVendedores() {
@@ -885,6 +875,7 @@
             if(fim) url += `&data_fim=${fim}`;
             if(busca) url += `&search=${busca}`; 
             if(viewAtual === 'geral' && vendedor) url += `&consultor_id=${vendedor}`;
+            if(statusEsteiraAtual) url += `&status=${encodeURIComponent(statusEsteiraAtual)}`;
 
             try {
                 // Busca todas as páginas de vendas automaticamente

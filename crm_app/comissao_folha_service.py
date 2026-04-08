@@ -493,7 +493,11 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
         qtd_vendas_boleto_mes = sum(
             1
             for v in vendas
-            if v.forma_pagamento and 'BOLETO' in (v.forma_pagamento.nome or '').upper()
+            if (
+                v.forma_pagamento
+                and 'BOLETO' in (v.forma_pagamento.nome or '').upper()
+                and not getattr(v, 'antecipou_instalacao', False)
+            )
         )
         qtd_vendas_antecip_mes = sum(1 for v in vendas if getattr(v, 'antecipou_instalacao', False))
         unit_bo = float(getattr(consultor, 'desconto_boleto', None) or 0)
@@ -620,6 +624,42 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 'situacao': 'INSTALADA (Churn M-1)',
                 'vendedor': consultor.username,
                 'churn': 'SIM',
+                'adiantada': 'NÃO',
+            })
+        # Após a listagem de instaladas (como já existe hoje), incluir também as vendas
+        # criadas no mês com status diferente de INSTALADA.
+        vendas_criadas_mes_outros_status = (
+            Venda.objects.filter(
+                vendedor=consultor,
+                ativo=True,
+                data_criacao__gte=data_inicio,
+                data_criacao__lt=data_fim,
+            )
+            .exclude(status_esteira__nome__iexact='INSTALADA')
+            .select_related('plano', 'cliente', 'forma_pagamento', 'status_esteira')
+            .order_by('data_criacao', 'id')
+        )
+        for v in vendas_criadas_mes_outros_status:
+            doc = (v.cliente.cpf_cnpj or '') if v.cliente else ''
+            doc_limpo = ''.join(filter(str.isdigit, doc))
+            eh_cnpj = len(doc_limpo) > 11
+            plano_nome = v.plano.nome if v.plano else ''
+            chave = plano_tipo_to_chave(plano_nome, 'CNPJ' if eh_cnpj else 'CPF')
+            plano_label = labels.get(chave, plano_nome or '-')
+            dacc = 'SIM' if (v.forma_pagamento and 'DÉBITO' in (v.forma_pagamento.nome or '').upper()) else 'NÃO'
+            status_nome = v.status_esteira.nome if v.status_esteira else '-'
+            extrato.append({
+                'venda_id': v.id,
+                'nome': (v.cliente.nome_razao_social or '')[:80] if v.cliente else '',
+                'dacc': dacc,
+                'cnpj': 'SIM' if eh_cnpj else 'NÃO',
+                'plano': plano_label,
+                'dt_pedido': v.data_criacao.strftime('%d/%m/%Y') if v.data_criacao else '',
+                'dt_inst': '',
+                'os': v.ordem_servico or '',
+                'situacao': status_nome,
+                'vendedor': consultor.username,
+                'churn': 'NÃO',
                 'adiantada': 'NÃO',
             })
 
