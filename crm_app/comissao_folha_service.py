@@ -336,16 +336,14 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                     tipo_exibicao = 'boleto'
                 elif has_ant:
                     tipo_exibicao = 'antecipacao_instalacao'
-            valor_lanc = float(l.valor)
-            # Não descontar boleto no líquido (config Regras vendedor), mas na folha/WhatsApp mostrar valor cheio do lançamento
-            if tipo_exibicao == 'boleto' and config and not getattr(config, 'desconta_boleto_pap', True):
-                total_descontos += Decimal('0')
-            else:
-                total_descontos += l.valor
+            # Boleto/antecipação/misto entram só pelo cálculo do mês (abaixo), não pelo lançamento automático
+            if tipo_exibicao in ('boleto', 'antecipacao_instalacao', 'processamento_auto_misto'):
+                continue
+            total_descontos += l.valor
             detalhes_descontos.append(
                 {
                     'motivo': motivo_limpo,
-                    'valor': valor_lanc,
+                    'valor': float(l.valor),
                     'tipo_exibicao': tipo_exibicao,
                     'quantidade': qtd,
                 }
@@ -416,6 +414,41 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
         if qtd_churn_m1 > 0 or valor_churn_m1 > 0:
             total_descontos += valor_churn_m1
             detalhes_descontos.append({'motivo': 'Desconto Churn M-1', 'valor': float(valor_churn_m1), 'tipo_exibicao': 'churn_m1', 'quantidade': qtd_churn_m1})
+
+        # Boleto e antecipação de instalação: vendas instaladas no mês × Desc. Boleto / Desc. Antecip. (cadastro do colaborador).
+        # "Desconta Boleto PAP?" vem da Config. Comissão do mês em Regras por vendedor (vale também com comissão manual).
+        desconta_boleto_pap = bool(getattr(config, 'desconta_boleto_pap', True)) if config else True
+        qtd_vendas_boleto_mes = sum(
+            1
+            for v in vendas
+            if v.forma_pagamento and 'BOLETO' in (v.forma_pagamento.nome or '').upper()
+        )
+        qtd_vendas_antecip_mes = sum(1 for v in vendas if getattr(v, 'antecipou_instalacao', False))
+        unit_bo = float(getattr(consultor, 'desconto_boleto', None) or 0)
+        unit_ant = float(getattr(consultor, 'desconto_instalacao_antecipada', None) or 0)
+        valor_boleto_cheio = (Decimal(str(unit_bo)) * qtd_vendas_boleto_mes).quantize(Decimal('0.01'))
+        valor_ant_cheio = (Decimal(str(unit_ant)) * qtd_vendas_antecip_mes).quantize(Decimal('0.01'))
+        valor_boleto_efetivo = valor_boleto_cheio if desconta_boleto_pap else Decimal('0')
+        if qtd_vendas_boleto_mes > 0:
+            total_descontos += valor_boleto_efetivo
+            detalhes_descontos.append(
+                {
+                    'motivo': 'Descontos vendas no boleto',
+                    'valor': float(valor_boleto_cheio),
+                    'tipo_exibicao': 'folha_boleto_vendas',
+                    'quantidade': qtd_vendas_boleto_mes,
+                }
+            )
+        if qtd_vendas_antecip_mes > 0:
+            total_descontos += valor_ant_cheio
+            detalhes_descontos.append(
+                {
+                    'motivo': 'Desconto antecipação de instalação',
+                    'valor': float(valor_ant_cheio),
+                    'tipo_exibicao': 'folha_antecipacao_instalacao',
+                    'quantidade': qtd_vendas_antecip_mes,
+                }
+            )
 
         total_bonus = Decimal('0')
         detalhes_bonus = []
@@ -518,32 +551,24 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 'adiantada': 'NÃO',
             })
 
-        qtd_a_descontar_boleto = sum(d.get('quantidade', 1) for d in detalhes_descontos if (d.get('tipo_exibicao') or '').lower() == 'boleto')
-        qtd_a_descontar_cnpj = sum(d.get('quantidade', 1) for d in detalhes_descontos if (d.get('tipo_exibicao') or '').lower() == 'adiant_cnpj')
-        qtd_a_descontar = qtd_a_descontar_boleto + qtd_a_descontar_cnpj + qtd_churn_m0 + qtd_churn_m1
-
-        # Referência no mês: vendas instaladas no período × valores do cadastro financeiro do colaborador (Gestão de Usuários)
-        qtd_vendas_boleto_mes = sum(
-            1
-            for v in vendas
-            if v.forma_pagamento and 'BOLETO' in (v.forma_pagamento.nome or '').upper()
+        qtd_a_descontar_boleto = sum(
+            d.get('quantidade', 1)
+            for d in detalhes_descontos
+            if (d.get('tipo_exibicao') or '').lower() == 'folha_boleto_vendas'
         )
-        qtd_vendas_antecip_mes = sum(1 for v in vendas if getattr(v, 'antecipou_instalacao', False))
-        unit_bo = float(getattr(consultor, 'desconto_boleto', None) or 0)
-        unit_ant = float(getattr(consultor, 'desconto_instalacao_antecipada', None) or 0)
-        folha_ref_descontos = {
-            'boleto': {
-                'qtd': qtd_vendas_boleto_mes,
-                'valor_unitario': unit_bo,
-                'valor_total': round(qtd_vendas_boleto_mes * unit_bo, 2),
-            },
-            'antecipacao_instalacao': {
-                'qtd': qtd_vendas_antecip_mes,
-                'valor_unitario': unit_ant,
-                'valor_total': round(qtd_vendas_antecip_mes * unit_ant, 2),
-            },
-            'desconta_boleto_pap': True if not config else bool(getattr(config, 'desconta_boleto_pap', True)),
-        }
+        qtd_a_descontar_antecip = sum(
+            d.get('quantidade', 1)
+            for d in detalhes_descontos
+            if (d.get('tipo_exibicao') or '').lower() == 'folha_antecipacao_instalacao'
+        )
+        qtd_a_descontar_cnpj = sum(d.get('quantidade', 1) for d in detalhes_descontos if (d.get('tipo_exibicao') or '').lower() == 'adiant_cnpj')
+        qtd_a_descontar = (
+            qtd_a_descontar_boleto
+            + qtd_a_descontar_antecip
+            + qtd_a_descontar_cnpj
+            + qtd_churn_m0
+            + qtd_churn_m1
+        )
 
         resultado.append({
             'vendedor_id': consultor.id,
@@ -561,9 +586,10 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 'liquido': float(liquido),
                 'detalhes_bonus': detalhes_bonus,
                 'detalhes_descontos': detalhes_descontos,
-                'folha_ref_descontos': folha_ref_descontos,
+                'desconta_boleto_pap': desconta_boleto_pap,
                 'qtd_a_descontar': qtd_a_descontar,
                 'qtd_a_descontar_boleto': qtd_a_descontar_boleto,
+                'qtd_a_descontar_antecip': qtd_a_descontar_antecip,
                 'qtd_a_descontar_cnpj': qtd_a_descontar_cnpj,
             },
             'extrato': extrato,
