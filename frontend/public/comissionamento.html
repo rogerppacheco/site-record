@@ -292,8 +292,9 @@
                 const isVerde = isInstalada && !isChurn;
                 const rowClass = (isChurn || isCancelada)
                     ? 'table-danger'
-                    : (isVerde ? (isAdiant ? 'table-success-subtle' : 'table-success') : 'table-warning');
-                html += `<tr class="${rowClass}"><td>${e.nome || ''}</td><td>${e.dacc || ''}</td><td>${e.cnpj || ''}</td><td>${e.plano || ''}</td><td>${e.dt_pedido || ''}</td><td>${e.dt_inst || ''}</td><td>${e.os || ''}</td><td>${e.situacao || ''}</td><td>${e.churn || ''}</td><td class="text-center">${e.adiantada || '-'}</td></tr>`;
+                    : (isVerde ? 'table-success' : 'table-warning');
+                const rowStyle = (isVerde && isAdiant) ? ' style="background-color:#cfe8d6 !important;"' : '';
+                html += `<tr class="${rowClass}"${rowStyle}><td>${e.nome || ''}</td><td>${e.dacc || ''}</td><td>${e.cnpj || ''}</td><td>${e.plano || ''}</td><td>${e.dt_pedido || ''}</td><td>${e.dt_inst || ''}</td><td>${e.os || ''}</td><td>${e.situacao || ''}</td><td>${e.churn || ''}</td><td class="text-center">${e.adiantada || '-'}</td></tr>`;
             });
             html += `</tbody></table></div></div></div>`;
             return html;
