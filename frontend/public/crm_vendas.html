@@ -933,7 +933,7 @@
                         }
                         const stUpper = String(stNome).toUpperCase();
 
-                        if (stUpper.includes('INSTALADA')) counts.instalada++;
+                        if (stUpper === 'INSTALADA') counts.instalada++;
                         else if (stUpper.includes('CANCELAD')) counts.cancelado++;
                         else if (stUpper.includes('AGENDADO')) counts.agendado++;
                         else if (stUpper.includes('PENDEN') || stUpper.includes('PENDÊN')) counts.pendente++;
@@ -1560,7 +1560,7 @@
             else {
                 itens.forEach(item => {
                     let badgeClass = 'bg-secondary';
-                    if (item.status.includes('INSTALADA')) badgeClass = 'bg-success';
+                    if (String(item.status || '').toUpperCase() === 'INSTALADA') badgeClass = 'bg-success';
                     else if (item.status.includes('CANCELADA')) badgeClass = 'bg-danger';
                     else if (item.status.includes('AGENDADO')) badgeClass = 'bg-info text-dark';
                     const dataFormatada = item.data_iso ? new Date(item.data_iso).toLocaleDateString('pt-BR') : '-';

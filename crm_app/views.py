@@ -1529,6 +1529,7 @@ class VendaViewSet(viewsets.ModelViewSet):
         search = self.request.query_params.get('search')
         data_inicio_str = self.request.query_params.get('data_inicio')
         data_fim_str = self.request.query_params.get('data_fim')
+        status_filter_raw = (self.request.query_params.get('status') or '').strip().upper()
         
         # --- REGRA DE DATA OBRIGATÓRIA (MÊS ATUAL) ---
         grupos_livres = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']
@@ -1550,10 +1551,16 @@ class VendaViewSet(viewsets.ModelViewSet):
                 except ValueError:
                     pass
             if aplica_padrao_mes_atual:
-                queryset = queryset.filter(Q(data_criacao__gte=inicio_mes) | Q(data_instalacao__gte=inicio_mes))
+                if status_filter_raw == 'INSTALADA' or flow == 'esteira_instaladas':
+                    queryset = queryset.filter(
+                        _filtro_data_efetiva_instalacao_intervalo_venda(inicio_mes.date(), hoje_d)
+                    )
+                else:
+                    queryset = queryset.filter(Q(data_criacao__gte=inicio_mes) | Q(data_instalacao__gte=inicio_mes))
 
         # --- FILTRO DE STATUS ---
         status_filter = self.request.query_params.get('status')
+        status_instalada_exata = False
         if status_filter:
             status_upper = status_filter.upper()
             if status_upper == 'CANCELADO':
@@ -1562,6 +1569,7 @@ class VendaViewSet(viewsets.ModelViewSet):
                 queryset = queryset.filter(status_esteira__nome__icontains='PENDEN')
             else:
                 queryset = queryset.filter(status_esteira__nome__iexact=status_filter)
+            status_instalada_exata = status_upper == 'INSTALADA'
 
         # --- FILTRO DE BUSCA GLOBAL ---
         if search:
@@ -1664,8 +1672,7 @@ class VendaViewSet(viewsets.ModelViewSet):
                     if dt_ini_inst > dt_fim_inst:
                         return queryset.none()
                     queryset = queryset.filter(
-                        data_instalacao__gte=dt_ini_inst,
-                        data_instalacao__lte=dt_fim_inst
+                        _filtro_data_efetiva_instalacao_intervalo_venda(dt_ini_inst, dt_fim_inst)
                     )
                 except ValueError:
                     return queryset.none()
@@ -1698,7 +1705,17 @@ class VendaViewSet(viewsets.ModelViewSet):
                     )
                 else:
                     dt_fim_plus = dt_fim + timedelta(days=1)
-                    queryset = queryset.filter(Q(data_criacao__range=(dt_ini, dt_fim_plus)) | Q(data_instalacao__range=(dt_ini, dt_fim_plus)))
+                    if status_instalada_exata or flow == 'esteira_instaladas':
+                        # Para aba/filtro de instaladas, usar data efetiva de instalação
+                        # (física quando existir; senão OSAB), alinhando com Performance.
+                        queryset = queryset.filter(
+                            _filtro_data_efetiva_instalacao_intervalo_venda(dt_ini, dt_fim)
+                        )
+                    else:
+                        queryset = queryset.filter(
+                            Q(data_criacao__range=(dt_ini, dt_fim_plus))
+                            | Q(data_instalacao__range=(dt_ini, dt_fim_plus))
+                        )
             except Exception:
                 pass
 
@@ -3061,7 +3078,13 @@ class DashboardResumoView(APIView):
             vendas_instaladas = Venda.objects.filter(
                 vendedor=vendedor, ativo=True,
                 status_esteira__nome__iexact='INSTALADA',
-                data_instalacao__gte=data_inicio, data_instalacao__lt=data_fim_ajustada
+                ordem_servico__isnull=False,
+            ).filter(
+                ~Q(ordem_servico=''),
+                _filtro_data_efetiva_instalacao_intervalo_venda(
+                    data_inicio.date(),
+                    data_fim_date
+                )
             ).select_related('plano', 'cliente', 'forma_pagamento')
 
             qtd_instaladas = vendas_instaladas.count()
@@ -3070,7 +3093,11 @@ class DashboardResumoView(APIView):
             for vi in vendas_instaladas:
                 obj_inst = {
                     'id': vi.id, 'cliente': vi.cliente.nome_razao_social if vi.cliente else 'S/C',
-                    'status': 'INSTALADA', 'data_iso': vi.data_instalacao.isoformat() if vi.data_instalacao else None,
+                    'status': 'INSTALADA',
+                    'data_iso': (
+                        (vi.data_instalacao_fisica or vi.data_instalacao).isoformat()
+                        if (vi.data_instalacao_fisica or vi.data_instalacao) else None
+                    ),
                     'vendedor': vendedor.username
                 }
                 detalhes_listas['TOTAL_INSTALADAS'].append(obj_inst)
@@ -5696,6 +5723,19 @@ def _perf_filtro_data_efetiva_instalacao_intervalo(d_ini, d_fim):
             Q(vendas__data_instalacao_fisica__isnull=True)
             & Q(vendas__data_instalacao__gte=d_ini)
             & Q(vendas__data_instalacao__lte=d_fim)
+        )
+    )
+
+
+def _filtro_data_efetiva_instalacao_intervalo_venda(d_ini, d_fim):
+    return (
+        (Q(data_instalacao_fisica__isnull=False)
+         & Q(data_instalacao_fisica__gte=d_ini)
+         & Q(data_instalacao_fisica__lte=d_fim))
+        | (
+            Q(data_instalacao_fisica__isnull=True)
+            & Q(data_instalacao__gte=d_ini)
+            & Q(data_instalacao__lte=d_fim)
         )
     )
 
