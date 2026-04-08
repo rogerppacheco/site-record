@@ -84,6 +84,7 @@ from .views import (
     api_verificar_email,
     enviar_comissao_whatsapp,
     enviar_folha_extrato_whatsapp,
+    exportar_folha_extrato_pdf,
     enviar_resultado_campanha_whatsapp,
     ImportarKMLView,        
     ImportarDFVView,
@@ -264,6 +265,7 @@ urlpatterns = [
     path('enviar-extrato-email/', EnviarExtratoEmailView.as_view(), name='enviar-extrato-email'),
     path('comissionamento/whatsapp/', enviar_comissao_whatsapp, name='enviar-whatsapp-comissao'),
     path('comissionamento/enviar-folha-extrato-whatsapp/', enviar_folha_extrato_whatsapp, name='enviar-folha-extrato-whatsapp'),
+    path('comissionamento/exportar-folha-extrato-pdf/', exportar_folha_extrato_pdf, name='exportar-folha-extrato-pdf'),
     
     # --- NOVAS ROTAS DE CONFIRMAÇÃO E REVERSÃO ---
     path('comissionamento/pendencias-desconto/', PendenciasDescontoView.as_view(), name='pendencias-desconto'),

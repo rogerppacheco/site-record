@@ -5513,6 +5513,129 @@ def enviar_folha_extrato_whatsapp(request):
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
+def exportar_folha_extrato_pdf(request):
+    """
+    Gera download de PDF (folha + extrato no mesmo arquivo), no mesmo layout do WhatsApp.
+    Body: { "ano": int, "mes": int, "vendedor_id": int?, "vendedores_ids": [int]? }.
+    Um vendedor: retorna application/pdf. Vários: retorna application/zip com um PDF por vendedor.
+    Não envia WhatsApp e não fecha o mês.
+    """
+    import zipfile
+    from urllib.parse import quote
+
+    try:
+        ano = request.data.get('ano')
+        mes = request.data.get('mes')
+        vendedor_id = request.data.get('vendedor_id')
+        vendedores_ids = request.data.get('vendedores_ids') or []
+        if ano is None or mes is None:
+            return Response(
+                {"error": "Envie ano e mes."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        ano, mes = int(ano), int(mes)
+
+        ids_envio = []
+        if isinstance(vendedores_ids, list):
+            for x in vendedores_ids:
+                try:
+                    ids_envio.append(int(x))
+                except (TypeError, ValueError):
+                    continue
+        if vendedor_id is not None:
+            try:
+                ids_envio.append(int(vendedor_id))
+            except (TypeError, ValueError):
+                pass
+        ids_envio = sorted(set(ids_envio))
+        if not ids_envio:
+            return Response(
+                {"error": "Selecione ao menos um vendedor."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        User = get_user_model()
+        consultores = {u.id: u for u in User.objects.filter(id__in=ids_envio)}
+
+        from .comissao_folha_service import calcular_folha_mes
+        from crm_app.comissao_folha_whatsapp_pdf import montar_html_folha_e_extrato_pdf
+
+        folha = calcular_folha_mes(ano, mes, use_effective_date_for_display=True)
+        map_folha = {
+            int(x.get('vendedor_id')): x
+            for x in folha.get('vendedores', [])
+            if x.get('vendedor_id') is not None
+        }
+        periodo = folha.get('periodo', f"{mes:02d}/{ano}")
+
+        def _nome_arquivo_seguro(nome_base: str) -> str:
+            s = "".join(
+                c if c.isalnum() or c in ("-", "_") else "_"
+                for c in str(nome_base or "vendedor")
+            ).strip("_") or "vendedor"
+            return s
+
+        pdfs_ok = []
+        erros = []
+        for vid in ids_envio:
+            consultor = consultores.get(vid)
+            if not consultor:
+                erros.append(f"ID {vid}: vendedor não encontrado")
+                continue
+            vendedor_data = map_folha.get(vid)
+            if not vendedor_data:
+                erros.append(f"{consultor.username}: sem dados de folha no período")
+                continue
+            html_string = montar_html_folha_e_extrato_pdf(vendedor_data, periodo)
+            pdf_buffer = BytesIO()
+            pisa_status = pisa.pisaDocument(
+                BytesIO(html_string.encode("UTF-8")), pdf_buffer, encoding="utf-8"
+            )
+            if pisa_status.err:
+                erros.append(f"{consultor.username}: erro ao gerar PDF")
+                continue
+            nome_pdf = (
+                f"Folha_Comissao_{_nome_arquivo_seguro(vendedor_data.get('vendedor_nome'))}_{mes}_{ano}.pdf"
+            )
+            pdfs_ok.append((nome_pdf, pdf_buffer.getvalue()))
+
+        if not pdfs_ok:
+            return Response(
+                {
+                    "error": "Nenhum PDF foi gerado.",
+                    "detalhes": erros,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if len(pdfs_ok) == 1:
+            nome, conteudo = pdfs_ok[0]
+            resp = HttpResponse(conteudo, content_type="application/pdf")
+            resp["Content-Disposition"] = (
+                f'attachment; filename="{nome}"; filename*=UTF-8\'\'{quote(nome)}'
+            )
+            return resp
+
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+            for nome, conteudo in pdfs_ok:
+                zf.writestr(nome, conteudo)
+        zip_bytes = zip_buffer.getvalue()
+        zip_nome = f"Folha_Comissao_{mes:02d}_{ano}_varios_vendedores.zip"
+        resp = HttpResponse(zip_bytes, content_type="application/zip")
+        resp["Content-Disposition"] = (
+            f'attachment; filename="{zip_nome}"; filename*=UTF-8\'\'{quote(zip_nome)}'
+        )
+        if erros:
+            resp["X-Export-Warnings"] = "; ".join(erros[:5])
+        return resp
+    except Exception as e:
+        logger.exception("exportar_folha_extrato_pdf: %s", e)
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
 def enviar_resultado_campanha_whatsapp(request):
     try:
         campanha_id = request.data.get('campanha_id')
