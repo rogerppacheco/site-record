@@ -47,6 +47,7 @@
                         <small id="contador-usuarios" class="text-muted">Carregando...</small>
                     </div>
                     <div class="d-flex flex-wrap gap-2 align-items-center">
+                        <button type="button" class="btn btn-sm btn-outline-success" onclick="exportarUsuariosExcel()"><i class="bi bi-file-earmark-excel"></i> Exportar Excel</button>
                         <div class="input-group input-group-sm" style="width: 320px;">
                             <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
                             <input type="text" id="busca-usuario" class="form-control" placeholder="Buscar (nome, e-mail, login)..." autocomplete="off">
@@ -340,6 +341,42 @@
             const status = document.getElementById('lista-status-titulo').textContent.includes('Ativos') ? 'ativos' : 'inativos';
             const search = (document.getElementById('busca-usuario') || {}).value.trim();
             carregarUsuarios(status, page, search || undefined);
+        };
+
+        window.exportarUsuariosExcel = async function() {
+            const isAtivo = document.getElementById('lista-status-titulo').textContent.includes('Ativos');
+            const search = (document.getElementById('busca-usuario') || {}).value.trim();
+            const params = new URLSearchParams();
+            params.set('is_active', isAtivo ? 'true' : 'false');
+            if (search) params.set('search', search);
+            const token = localStorage.getItem('accessToken');
+            try {
+                const res = await fetch('/api' + API_USUARIOS + '/exportar-excel/?' + params.toString(), {
+                    method: 'GET',
+                    headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+                });
+                if (!res.ok) {
+                    let msg = 'Falha ao exportar.';
+                    try {
+                        const err = await res.json();
+                        msg = err.detail || err.error || msg;
+                    } catch (_) {}
+                    throw new Error(msg);
+                }
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                const dispo = res.headers.get('Content-Disposition') || '';
+                const match = dispo.match(/filename="?([^"]+)"?/i);
+                a.href = url;
+                a.download = match ? match[1] : 'usuarios.xlsx';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+            } catch (e) {
+                alert('Erro ao exportar: ' + (e.message || e));
+            }
         };
 
         function renderizarControlesPaginacao(status) {
