@@ -131,7 +131,7 @@ def vendas_instaladas_folha_periodo(consultor, data_inicio, data_fim):
             data_folha_comissao__gte=di,
             data_folha_comissao__lt=df,
         )
-        .select_related('plano', 'cliente', 'forma_pagamento')
+        .select_related('plano', 'cliente', 'forma_pagamento', 'status_tratamento', 'status_esteira')
         .order_by('data_folha_comissao', 'id')
     )
 
@@ -496,7 +496,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             if (
                 v.forma_pagamento
                 and 'BOLETO' in (v.forma_pagamento.nome or '').upper()
-                and not getattr(v, 'antecipou_instalacao', False)
+                and not getattr(v, 'antecipacao_comissao', False)
             )
         )
         qtd_vendas_antecip_mes = sum(1 for v in vendas if getattr(v, 'antecipou_instalacao', False))
@@ -592,7 +592,11 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 'dt_pedido': v.data_criacao.strftime('%d/%m/%Y') if v.data_criacao else '',
                 'dt_inst': dt_inst.strftime('%d/%m/%Y') if dt_inst else '',
                 'os': v.ordem_servico or '',
-                'situacao': v.status_esteira.nome if v.status_esteira else 'INSTALADA',
+                'situacao': (
+                    v.status_esteira.nome
+                    if v.status_esteira
+                    else (v.status_tratamento.nome if getattr(v, 'status_tratamento', None) else 'INSTALADA')
+                ),
                 'vendedor': consultor.username,
                 'churn': churn_status,
                 'adiantada': 'SIM' if getattr(v, 'antecipacao_comissao', False) else 'NÃO',
@@ -636,7 +640,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 data_criacao__lt=data_fim,
             )
             .exclude(status_esteira__nome__iexact='INSTALADA')
-            .select_related('plano', 'cliente', 'forma_pagamento', 'status_esteira')
+            .select_related('plano', 'cliente', 'forma_pagamento', 'status_esteira', 'status_tratamento')
             .order_by('data_criacao', 'id')
         )
         for v in vendas_criadas_mes_outros_status:
@@ -647,7 +651,11 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             chave = plano_tipo_to_chave(plano_nome, 'CNPJ' if eh_cnpj else 'CPF')
             plano_label = labels.get(chave, plano_nome or '-')
             dacc = 'SIM' if (v.forma_pagamento and 'DÉBITO' in (v.forma_pagamento.nome or '').upper()) else 'NÃO'
-            status_nome = v.status_esteira.nome if v.status_esteira else '-'
+            status_nome = (
+                v.status_esteira.nome
+                if v.status_esteira
+                else (v.status_tratamento.nome if getattr(v, 'status_tratamento', None) else '-')
+            )
             extrato.append({
                 'venda_id': v.id,
                 'nome': (v.cliente.nome_razao_social or '')[:80] if v.cliente else '',
