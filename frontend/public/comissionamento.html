@@ -96,7 +96,7 @@
                             </select>
                         </div>
                         <button class="btn btn-sm btn-outline-primary" onclick="carregarFolhaExcel()"><i class="bi bi-arrow-clockwise"></i> Atualizar</button>
-                        <button class="btn btn-sm btn-success" id="btn-enviar-whatsapp-folha" onclick="enviarFolhaExtratoWhatsApp()" title="Envia folha (imagem) e extrato (PDF) para o WhatsApp do vendedor">
+                        <button class="btn btn-sm btn-success" id="btn-enviar-whatsapp-folha" onclick="enviarFolhaExtratoWhatsApp()" title="Envia um único PDF (folha como na tela + extrato) para o WhatsApp do vendedor">
                             <i class="bi bi-whatsapp"></i> Enviar folha e extrato no WhatsApp
                         </button>
                     </div>
@@ -212,16 +212,19 @@
                     <table class="table table-sm table-bordered mb-0">
                         <thead class="table-light"><tr><th>PLANO</th><th class="text-center">QTD A PAGAR</th><th class="text-center">QTD ANTECIPADA</th><th class="text-end">VALOR JÁ ADIANT.</th><th class="text-end">VALOR UNIT.</th><th class="text-end">VALOR TOTAL</th><th class="text-end">COMISSÃO</th></tr></thead>
                         <tbody>`;
-            let sumQtdAnt = 0, sumValAdiant = 0;
+            let sumQtdAnt = 0, sumValAdiant = 0, sumValorTotalInst = 0;
             porPlano.forEach(p => {
                 const qtdAnt = p.qtd_antecipada || 0;
                 const valAdiant = p.valor_total_antecipado != null ? p.valor_total_antecipado : 0;
                 sumQtdAnt += qtdAnt;
                 sumValAdiant += valAdiant;
-                if (p.qtd_instalada_a_pagar > 0 || qtdAnt > 0 || p.valor_total_instalados > 0 || valAdiant > 0)
+                if (p.qtd_instalada_a_pagar > 0 || qtdAnt > 0 || p.valor_total_instalados > 0 || valAdiant > 0) {
+                    sumValorTotalInst += Number(p.valor_total_instalados || 0);
                     html += `<tr><td>${p.plano}</td><td class="text-center">${p.qtd_instalada_a_pagar}</td><td class="text-center">${qtdAnt}</td><td class="text-end text-info">${qtdAnt > 0 ? fmtMoney(valAdiant) : '—'}</td><td class="text-end">${p.valor_unitario_instalados != null ? fmtMoney(p.valor_unitario_instalados) : '-'}</td><td class="text-end">${fmtMoney(p.valor_total_instalados)}</td><td class="text-end fw-bold">${fmtMoney(p.comissao_total)}</td></tr>`;
+                }
             });
-            html += `<tr class="table-light"><td colspan="2" class="fw-bold">TOTAL</td><td class="text-center">${sumQtdAnt}</td><td class="text-end fw-bold text-info">${sumQtdAnt > 0 ? fmtMoney(sumValAdiant) : '—'}</td><td></td><td></td><td class="text-end fw-bold">${fmtMoney(r.comissao_total_geral || 0)}</td></tr></tbody></table>
+            const totalQtdPagar = r.total_qtd_instalada_a_pagar != null ? r.total_qtd_instalada_a_pagar : 0;
+            html += `<tr class="table-light fw-bold"><td>TOTAL</td><td class="text-center">${totalQtdPagar}</td><td class="text-center">${sumQtdAnt}</td><td class="text-end text-info">${sumQtdAnt > 0 ? fmtMoney(sumValAdiant) : '—'}</td><td class="text-end">—</td><td class="text-end">${fmtMoney(sumValorTotalInst)}</td><td class="text-end">${fmtMoney(r.comissao_total_geral || 0)}</td></tr></tbody></table>
                 <div class="p-3 border-top bg-white">
                     <div class="row small mb-2">
                         <div class="col">Descontos: <span class="text-danger fw-bold">- ${fmtMoney(r.total_descontos || 0)}</span></div>

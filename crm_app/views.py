@@ -5295,7 +5295,7 @@ def enviar_comissao_whatsapp(request):
 @permission_classes([permissions.IsAuthenticated])
 def enviar_folha_extrato_whatsapp(request):
     """
-    Envia para o WhatsApp do vendedor: 1) imagem da folha de comissão (card); 2) PDF do extrato.
+    Envia para o WhatsApp do vendedor um único PDF: folha (mesmo layout da tela) + extrato abaixo.
     Body: { "vendedor_id": int, "ano": int, "mes": int }.
     Destino: tel_whatsapp (WhatsApp 1 principal) do usuário.
     """
@@ -5336,65 +5336,37 @@ def enviar_folha_extrato_whatsapp(request):
         periodo = folha.get('periodo', f"{mes:02d}/{ano}")
         svc = WhatsAppService()
 
-        # 1) Gerar e enviar imagem da folha (card)
-        img_b64 = svc.gerar_folha_comissao_card_b64(vendedor_data, periodo)
-        if img_b64:
-            resp_img = svc.enviar_imagem_b64(telefone, img_b64, caption=f"Folha de comissão {periodo}")
-            if resp_img is None:
-                return Response(
-                    {"error": "Falha ao enviar imagem da folha no WhatsApp."},
-                    status=status.HTTP_502_BAD_GATEWAY
-                )
-        else:
-            return Response(
-                {"error": "Não foi possível gerar a imagem da folha (Pillow indisponível ou erro)."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+        from crm_app.comissao_folha_whatsapp_pdf import montar_html_folha_e_extrato_pdf
 
-        # 2) Gerar PDF do extrato e enviar
-        extrato = vendedor_data.get('extrato') or []
-        html_parts = [
-            """<html><head><meta charset="utf-8"/><style>
-            body { font-family: Helvetica, sans-serif; font-size: 9px; }
-            table { width: 100%; border-collapse: collapse; }
-            th { background: #f8f9fa; border: 1px solid #dee2e6; padding: 4px; text-align: left; }
-            td { border: 1px solid #dee2e6; padding: 3px; }
-            .churn-sim { background-color: #f8d7da; }
-            .churn-nao { background-color: #d4edda; }
-            h2 { text-align: center; font-size: 12px; }
-            </style></head><body>""",
-            f"<h2>Extrato Comissão {periodo} - {vendedor_data.get('vendedor_nome', '')}</h2>",
-            "<table><thead><tr><th>NOME</th><th>DACC</th><th>CNPJ</th><th>PLANO</th><th>DT PEDIDO</th><th>DT INST</th><th>OS</th><th>SITUAÇÃO</th><th>CHURN</th></tr></thead><tbody>"
-        ]
-        for e in extrato:
-            is_churn = (str(e.get('churn') or '').strip().upper() == 'SIM')
-            cls = 'churn-sim' if is_churn else 'churn-nao'
-            html_parts.append(
-                f"<tr class=\"{cls}\"><td>{e.get('nome') or ''}</td><td>{e.get('dacc') or ''}</td><td>{e.get('cnpj') or ''}</td>"
-                f"<td>{e.get('plano') or ''}</td><td>{e.get('dt_pedido') or ''}</td><td>{e.get('dt_inst') or ''}</td>"
-                f"<td>{e.get('os') or ''}</td><td>{e.get('situacao') or ''}</td><td>{e.get('churn') or ''}</td></tr>"
-            )
-        html_parts.append("</tbody></table></body></html>")
-        html_string = "".join(html_parts)
+        html_string = montar_html_folha_e_extrato_pdf(vendedor_data, periodo)
         pdf_buffer = BytesIO()
         pisa_status = pisa.pisaDocument(BytesIO(html_string.encode("UTF-8")), pdf_buffer, encoding="utf-8")
         if pisa_status.err:
             return Response(
-                {"error": "Erro ao gerar PDF do extrato."},
+                {"error": "Erro ao gerar PDF da folha e extrato."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
         pdf_bytes = pdf_buffer.getvalue()
         pdf_b64 = base64.b64encode(pdf_bytes).decode("utf-8")
-        nome_pdf = f"Extrato_Comissao_{vendedor_data.get('vendedor_nome', 'vendedor')}_{mes}_{ano}.pdf"
-        resp_pdf = svc.enviar_pdf_b64(telefone, pdf_b64, nome_arquivo=nome_pdf, caption=f"Extrato de comissão {periodo}")
+        nome_seguro = "".join(
+            c if c.isalnum() or c in ("-", "_") else "_"
+            for c in str(vendedor_data.get("vendedor_nome") or "vendedor")
+        ).strip("_") or "vendedor"
+        nome_pdf = f"Folha_Comissao_{nome_seguro}_{mes}_{ano}.pdf"
+        resp_pdf = svc.enviar_pdf_b64(
+            telefone,
+            pdf_b64,
+            nome_arquivo=nome_pdf,
+            caption=f"Folha de comissão {periodo} (resumo + extrato)",
+        )
         if resp_pdf is None or (isinstance(resp_pdf, dict) and resp_pdf.get('error')):
             return Response(
-                {"error": "Folha enviada. Falha ao enviar PDF do extrato no WhatsApp."},
+                {"error": "Falha ao enviar PDF da folha no WhatsApp."},
                 status=status.HTTP_502_BAD_GATEWAY
             )
         return Response({
             "ok": True,
-            "mensagem": "Folha (imagem) e extrato (PDF) enviados no WhatsApp com sucesso.",
+            "mensagem": "PDF da folha (resumo + extrato) enviado no WhatsApp com sucesso.",
         })
     except Exception as e:
         logger.exception("enviar_folha_extrato_whatsapp: %s", e)
