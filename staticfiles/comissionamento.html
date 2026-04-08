@@ -210,14 +210,18 @@
                 </div>
                 <div class="card-body p-0">
                     <table class="table table-sm table-bordered mb-0">
-                        <thead class="table-light"><tr><th>PLANO</th><th class="text-center">QTD A PAGAR</th><th class="text-center">QTD ANTECIPADA</th><th class="text-end">VALOR UNIT.</th><th class="text-end">VALOR TOTAL</th><th class="text-end">COMISSÃO</th></tr></thead>
+                        <thead class="table-light"><tr><th>PLANO</th><th class="text-center">QTD A PAGAR</th><th class="text-center">QTD ANTECIPADA</th><th class="text-end">VALOR JÁ ADIANT.</th><th class="text-end">VALOR UNIT.</th><th class="text-end">VALOR TOTAL</th><th class="text-end">COMISSÃO</th></tr></thead>
                         <tbody>`;
+            let sumQtdAnt = 0, sumValAdiant = 0;
             porPlano.forEach(p => {
                 const qtdAnt = p.qtd_antecipada || 0;
-                if (p.qtd_instalada_a_pagar > 0 || qtdAnt > 0 || p.valor_total_instalados > 0)
-                    html += `<tr><td>${p.plano}</td><td class="text-center">${p.qtd_instalada_a_pagar}</td><td class="text-center">${qtdAnt}</td><td class="text-end">${p.valor_unitario_instalados != null ? fmtMoney(p.valor_unitario_instalados) : '-'}</td><td class="text-end">${fmtMoney(p.valor_total_instalados)}</td><td class="text-end fw-bold">${fmtMoney(p.comissao_total)}</td></tr>`;
+                const valAdiant = p.valor_total_antecipado != null ? p.valor_total_antecipado : 0;
+                sumQtdAnt += qtdAnt;
+                sumValAdiant += valAdiant;
+                if (p.qtd_instalada_a_pagar > 0 || qtdAnt > 0 || p.valor_total_instalados > 0 || valAdiant > 0)
+                    html += `<tr><td>${p.plano}</td><td class="text-center">${p.qtd_instalada_a_pagar}</td><td class="text-center">${qtdAnt}</td><td class="text-end text-info">${qtdAnt > 0 ? fmtMoney(valAdiant) : '—'}</td><td class="text-end">${p.valor_unitario_instalados != null ? fmtMoney(p.valor_unitario_instalados) : '-'}</td><td class="text-end">${fmtMoney(p.valor_total_instalados)}</td><td class="text-end fw-bold">${fmtMoney(p.comissao_total)}</td></tr>`;
             });
-            html += `<tr class="table-light"><td colspan="2" class="fw-bold">TOTAL</td><td></td><td></td><td></td><td class="text-end fw-bold">${fmtMoney(r.comissao_total_geral || 0)}</td></tr></tbody></table>
+            html += `<tr class="table-light"><td colspan="2" class="fw-bold">TOTAL</td><td class="text-center">${sumQtdAnt}</td><td class="text-end fw-bold text-info">${sumQtdAnt > 0 ? fmtMoney(sumValAdiant) : '—'}</td><td></td><td></td><td class="text-end fw-bold">${fmtMoney(r.comissao_total_geral || 0)}</td></tr></tbody></table>
                 <div class="p-3 border-top bg-white">
                     <div class="row small mb-2">
                         <div class="col">Descontos: <span class="text-danger fw-bold">- ${fmtMoney(r.total_descontos || 0)}</span></div>
@@ -230,7 +234,6 @@
                         const folhaBoleto = list.filter(d => (d.tipo_exibicao || '').toLowerCase() === 'folha_boleto_vendas');
                         const folhaAntecip = list.filter(d => (d.tipo_exibicao || '').toLowerCase() === 'folha_antecipacao_instalacao');
                         const adiant = list.filter(d => (d.tipo_exibicao || '').toLowerCase() === 'adiant_cnpj');
-                        const adiantComissao = list.filter(d => (d.tipo_exibicao || '').toLowerCase() === 'adiant_comissao');
                         const churnM0 = list.filter(d => (d.tipo_exibicao || '').toLowerCase() === 'churn_m0');
                         const churnM1 = list.filter(d => (d.tipo_exibicao || '').toLowerCase() === 'churn_m1');
                         const tiposAgrupados = new Set(['folha_boleto_vendas', 'folha_antecipacao_instalacao', 'adiant_cnpj', 'adiant_comissao', 'churn_m0', 'churn_m1', 'boleto', 'antecipacao_instalacao', 'processamento_auto_misto']);
@@ -242,12 +245,23 @@
                         if (folhaBoleto.length) folhaBoleto.forEach(d => { bloco += linha(d); });
                         if (folhaAntecip.length) folhaAntecip.forEach(d => { bloco += linha(d); });
                         if (adiant.length) { bloco += '<div class="mb-1 mt-2"><span class="text-muted fw-bold small">Adiant. CNPJ</span>'; adiant.forEach(d => { bloco += linha(d); }); bloco += '</div>'; }
-                        if (adiantComissao.length) { bloco += '<div class="mb-1"><span class="text-muted fw-bold small">Adiant. Comissão</span>'; adiantComissao.forEach(d => { bloco += linha(d); }); bloco += '</div>'; }
                         if (churnM0.length) { bloco += '<div class="mb-1"><span class="text-muted fw-bold small">Desconto Churn M0</span>'; churnM0.forEach(d => { bloco += linha(d); }); bloco += '</div>'; }
                         if (churnM1.length) { bloco += '<div class="mb-1"><span class="text-muted fw-bold small">Desconto Churn M-1</span>'; churnM1.forEach(d => { bloco += linha(d); }); bloco += '</div>'; }
                         if (outros.length) { bloco += '<div class="mb-1"><span class="text-muted fw-bold small">Outros</span>'; outros.forEach(d => { bloco += linha(d); }); bloco += '</div>'; }
                         bloco += '</div></div>';
                         return bloco;
+                    })() : ''}
+                    ${(r.info_comissao_adiantada && r.info_comissao_adiantada.quantidade_total > 0) ? (function(){
+                        const i = r.info_comissao_adiantada;
+                        let b = '<div class="small border-top pt-2 mt-2"><strong class="text-muted">Referência — não entra em descontos</strong>';
+                        b += `<div class="d-flex justify-content-between text-info mt-1"><span><i class="bi bi-info-circle"></i> Comissão já adiantada (esteira + tabela Adiantamento — Regras por faixa) <strong>(${i.quantidade_total} un.)</strong></span><span class="fw-bold">${fmtMoney(i.valor_total)}</span></div>`;
+                        if (i.por_plano && i.por_plano.length) {
+                            i.por_plano.forEach(row => {
+                                if (row.qtd > 0) b += `<div class="small text-muted ms-2">${row.plano}: ${row.qtd} un. → ${fmtMoney(row.valor_total)}</div>`;
+                            });
+                        }
+                        b += '</div>';
+                        return b;
                     })() : ''}
                     ${(r.detalhes_bonus && r.detalhes_bonus.length) ? (function(){
                         const list = r.detalhes_bonus;

@@ -55,6 +55,30 @@ def get_valor_from_faixa(regra_faixa, chave):
     return float(v) if v is not None else None
 
 
+def carregar_faixa_adiantamento_regras_faixa():
+    """
+    Faixa de finalidade Adiantamento (REGRAS_FAIXAS), usada para valor por plano
+    das vendas com 'Adiant. Comissão' = Sim na esteira (mesma lógica da esteira).
+    """
+    from .models import RegraComissaoFaixa
+
+    faixa = RegraComissaoFaixa.objects.filter(finalidade='ADIANTAMENTO').first()
+    if not faixa:
+        faixa = RegraComissaoFaixa.objects.filter(faixa_nome__iexact='Adiantamento').first()
+    return faixa
+
+
+def valor_comissao_tabela_adiantamento(venda, faixa_adiantamento, chave):
+    """Valor por venda conforme tabela Adiantamento (faixa) ou fallback plano.comissao_base."""
+    if faixa_adiantamento and chave:
+        v = get_valor_from_faixa(faixa_adiantamento, chave)
+        if v is not None:
+            return float(v)
+    if venda.plano and venda.plano.comissao_base is not None:
+        return float(venda.plano.comissao_base)
+    return 0.0
+
+
 def get_valor_manual(config, chave):
     """Retorna o valor manual da config do vendedor para a chave."""
     if not config or not chave:
@@ -162,6 +186,8 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
     for r in RegraComissaoFaixa.objects.filter(q_comissao, vendedor__isnull=False).select_related('vendedor'):
         regras_faixa_vendedor[r.vendedor_id].append(r)
 
+    faixa_adiantamento = carregar_faixa_adiantamento_regras_faixa()
+
     # Config do mês (ano, mes) com fallback para modelo padrão (ano/mes nulos)
     configs = {}
     for c in ConfigComissaoVendedor.objects.filter(ano=ano, mes=mes).select_related('usuario'):
@@ -213,35 +239,36 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
         ).select_related('plano', 'cliente', 'forma_pagamento')
 
         config = configs.get(consultor.id)
-        # Vendas adiantadas (comissão antecipada): não entram no volume a pagar
-        lancamentos_adiant = LancamentoFinanceiro.objects.filter(
-            usuario=consultor,
-            tipo='ADIANTAMENTO_COMISSAO',
-            data__gte=data_inicio.date(),
-            data__lt=data_fim.date(),
-        )
-        set_adiantadas = set()
-        for la in lancamentos_adiant:
-            ids = (la.metadados or {}).get('venda_ids') or []
-            set_adiantadas.update(int(x) for x in ids if x is not None)
-        vendas_para_pagar = [v for v in vendas if v.id not in set_adiantadas]
+        # Adiant. Comissão = Sim na esteira: não entra em QTD A PAGAR nem na comissão do mês (já adiantada).
+        set_adiant_comissao_esteira = {v.id for v in vendas if getattr(v, 'antecipacao_comissao', False)}
+        vendas_para_pagar = [v for v in vendas if v.id not in set_adiant_comissao_esteira]
         qtd_instalada_a_pagar = len(vendas_para_pagar)
         faixa_regra = encontrar_faixa(consultor, qtd_instalada_a_pagar)
         usar_manual = config and config.usar_valor_manual
 
-        # Por plano (chave): qtd a pagar, qtd antecipada, valor unit, total
-        por_plano = defaultdict(lambda: {'qtd': 0, 'qtd_antecipada': 0, 'valor_unit': None, 'total': 0.0})
+        # Por plano (chave): qtd a pagar, qtd antecipada (esteira), total já adiantado (tabela Adiantamento)
+        por_plano = defaultdict(
+            lambda: {'qtd': 0, 'qtd_antecipada': 0, 'valor_unit': None, 'total': 0.0, 'total_antecipado': 0.0}
+        )
         comissao_total_geral = Decimal('0')
+        qtd_adiant_sem_chave_excel = 0
+        valor_adiant_sem_chave_excel = 0.0
         for v in vendas:
             doc = (v.cliente.cpf_cnpj or '') if v.cliente else ''
             doc_limpo = ''.join(filter(str.isdigit, doc))
             tipo_cliente = 'CNPJ' if len(doc_limpo) > 11 else 'CPF'
             plano_nome = v.plano.nome if v.plano else ''
             chave = plano_tipo_to_chave(plano_nome, tipo_cliente)
-            if not chave:
+            if getattr(v, 'antecipacao_comissao', False):
+                if chave:
+                    por_plano[chave]['qtd_antecipada'] += 1
+                    va = valor_comissao_tabela_adiantamento(v, faixa_adiantamento, chave)
+                    por_plano[chave]['total_antecipado'] += va
+                else:
+                    qtd_adiant_sem_chave_excel += 1
+                    valor_adiant_sem_chave_excel += valor_comissao_tabela_adiantamento(v, faixa_adiantamento, None)
                 continue
-            if v.id in set_adiantadas:
-                por_plano[chave]['qtd_antecipada'] += 1
+            if not chave:
                 continue
             if usar_manual:
                 valor_unit = get_valor_manual(config, chave)
@@ -260,11 +287,15 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
         }
         por_plano_lista = []
         for chave in CHAVES_PLANO:
-            d = por_plano.get(chave, {'qtd': 0, 'qtd_antecipada': 0, 'valor_unit': None, 'total': 0})
+            d = por_plano.get(
+                chave,
+                {'qtd': 0, 'qtd_antecipada': 0, 'valor_unit': None, 'total': 0, 'total_antecipado': 0.0},
+            )
             por_plano_lista.append({
                 'plano': labels.get(chave, chave),
                 'qtd_instalada_a_pagar': d['qtd'],
                 'qtd_antecipada': d.get('qtd_antecipada', 0),
+                'valor_total_antecipado': round(float(d.get('total_antecipado', 0) or 0), 2),
                 'qtd_ja_pago': 0,
                 'qtd_churn_30': 0,
                 'valor_unitario_instalados': d['valor_unit'],
@@ -293,20 +324,17 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                     {'motivo': motivo_bp, 'valor': float(l.valor)}
                 )
                 continue
-            qtd = getattr(l, 'quantidade_vendas', None) or 1
             if getattr(l, 'tipo', None) == 'ADIANTAMENTO_COMISSAO':
-                venda_ids = (l.metadados or {}).get('venda_ids') or []
-                if venda_ids:
-                    qtd = len(venda_ids)
-            elif getattr(l, 'tipo', None) == 'ADIANTAMENTO_CNPJ':
+                # Folha usa apenas a marcação na esteira + tabela Adiantamento; não é desconto.
+                continue
+            qtd = getattr(l, 'quantidade_vendas', None) or 1
+            if getattr(l, 'tipo', None) == 'ADIANTAMENTO_CNPJ':
                 venda_ids_cnpj = (l.metadados or {}).get('venda_ids') or []
                 if venda_ids_cnpj:
                     qtd = len(venda_ids_cnpj)
             desc = (l.descricao or l.get_tipo_display() or 'Desconto')
             # Exibir desconto direto (sem "Processamento Auto:") e classificar para separar boleto / adiant. CNPJ / adiant. comissão
-            if getattr(l, 'tipo', None) == 'ADIANTAMENTO_COMISSAO':
-                motivo_limpo = 'Adiant. Comissão'
-            elif getattr(l, 'tipo', None) == 'ADIANTAMENTO_CNPJ':
+            if getattr(l, 'tipo', None) == 'ADIANTAMENTO_CNPJ':
                 motivo_limpo = 'Adiant. CNPJ'
             elif desc.startswith('Processamento Auto:'):
                 resto = desc.replace('Processamento Auto:', '').strip()
@@ -317,9 +345,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 motivo_limpo = desc
             # tipo_exibicao: boleto | adiant_cnpj | adiant_comissao | outros (para agrupar na UI)
             lt = getattr(l, 'tipo', None)
-            if lt == 'ADIANTAMENTO_COMISSAO':
-                tipo_exibicao = 'adiant_comissao'
-            elif lt == 'ADIANTAMENTO_CNPJ':
+            if lt == 'ADIANTAMENTO_CNPJ':
                 tipo_exibicao = 'adiant_cnpj'
             else:
                 tipo_exibicao = 'outros'
@@ -519,7 +545,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 'situacao': v.status_esteira.nome if v.status_esteira else 'INSTALADA',
                 'vendedor': consultor.username,
                 'churn': churn_status,
-                'adiantada': 'SIM' if v.id in set_adiantadas else 'NÃO',
+                'adiantada': 'SIM' if getattr(v, 'antecipacao_comissao', False) else 'NÃO',
             })
         # Incluir no extrato as vendas churn M-1 (mês anterior), para aparecerem na lista com CHURN=SIM
         for v in vendas_m1:
@@ -570,6 +596,33 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             + qtd_churn_m1
         )
 
+        tot_q_adiant = sum(int(x.get('qtd_antecipada', 0) or 0) for x in por_plano_lista) + qtd_adiant_sem_chave_excel
+        tot_v_adiant = sum(float(x.get('valor_total_antecipado', 0) or 0) for x in por_plano_lista) + float(
+            valor_adiant_sem_chave_excel
+        )
+        info_por_plano_adiant = [
+            {
+                'plano': x['plano'],
+                'qtd': int(x.get('qtd_antecipada', 0) or 0),
+                'valor_total': float(x.get('valor_total_antecipado', 0) or 0),
+            }
+            for x in por_plano_lista
+            if (x.get('qtd_antecipada', 0) or 0) > 0
+        ]
+        if qtd_adiant_sem_chave_excel > 0:
+            info_por_plano_adiant.append(
+                {
+                    'plano': 'Plano fora da grade (fallback)',
+                    'qtd': qtd_adiant_sem_chave_excel,
+                    'valor_total': round(valor_adiant_sem_chave_excel, 2),
+                }
+            )
+        info_comissao_adiantada = {
+            'quantidade_total': int(tot_q_adiant),
+            'valor_total': round(tot_v_adiant, 2),
+            'por_plano': info_por_plano_adiant,
+        }
+
         resultado.append({
             'vendedor_id': consultor.id,
             'vendedor_nome': consultor.username,
@@ -591,6 +644,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 'qtd_a_descontar_boleto': qtd_a_descontar_boleto,
                 'qtd_a_descontar_antecip': qtd_a_descontar_antecip,
                 'qtd_a_descontar_cnpj': qtd_a_descontar_cnpj,
+                'info_comissao_adiantada': info_comissao_adiantada,
             },
             'extrato': extrato,
         })

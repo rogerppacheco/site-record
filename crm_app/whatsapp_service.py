@@ -762,7 +762,11 @@ class WhatsAppService:
             # Linhas de dados + total de quantidade para a linha TOTAL
             total_qtd = 0
             for p in por_plano:
-                if (p.get('qtd_instalada_a_pagar') or 0) == 0 and (p.get('valor_total_instalados') or 0) == 0:
+                if (
+                    (p.get('qtd_instalada_a_pagar') or 0) == 0
+                    and (p.get('valor_total_instalados') or 0) == 0
+                    and (p.get('qtd_antecipada') or 0) == 0
+                ):
                     continue
                 plano = (p.get('plano') or '-')[:22]
                 qtd = p.get('qtd_instalada_a_pagar') or 0
@@ -794,7 +798,17 @@ class WhatsAppService:
             # Borda esquerda e direita da tabela (reforço)
             d.line([(xs[0], y_tabela_inicio), (xs[0], y_tabela_fim)], fill=cor_borda, width=1)
             d.line([(xs[-1], y_tabela_inicio), (xs[-1], y_tabela_fim)], fill=cor_borda, width=1)
-            y += 20
+            y += 14
+
+            info_ad = r.get('info_comissao_adiantada') or {}
+            if (info_ad.get('quantidade_total') or 0) > 0:
+                d.text(
+                    (20, y),
+                    f"Já adiantado (esteira, tabela Adiantamento): {info_ad['quantidade_total']} un. = {self._fmt_br(info_ad.get('valor_total') or 0)} (não é desconto)",
+                    fill=cor_texto_sec,
+                    font=font_sm,
+                )
+                y += 22
 
             # Resumo financeiro
             d.text((20, y), f"Descontos: - {self._fmt_br(r.get('total_descontos') or 0)}", fill=cor_vermelho, font=font_bold)
@@ -859,7 +873,6 @@ class WhatsAppService:
                 _so_linhas('folha_boleto_vendas')
                 _so_linhas('folha_antecipacao_instalacao')
                 _por_tipo('adiant_cnpj', 'Adiant. CNPJ')
-                _por_tipo('adiant_comissao', 'Adiant. Comissão')
                 _por_tipo('churn_m0', 'Desconto Churn M0')
                 _por_tipo('churn_m1', 'Desconto Churn M-1')
                 codigos = {
