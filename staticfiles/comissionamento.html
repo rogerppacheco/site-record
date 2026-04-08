@@ -321,10 +321,18 @@
                 }
                 const comVendas = dados.vendedores.filter(v => {
                     const r = v.resumo || {};
-                    const qtd = r.total_qtd_instalada_a_pagar || 0;
+                    const pp = r.por_plano || [];
+                    const adiant = r.info_comissao_adiantada || {};
+                    const temVendaNoMes =
+                        pp.some(
+                            p =>
+                                (p.qtd_instalada_a_pagar || 0) > 0 ||
+                                (p.qtd_antecipada || 0) > 0
+                        ) || (adiant.quantidade_total || 0) > 0;
                     const comissao = r.comissao_total_geral || 0;
                     const bonus = r.total_bonus || 0;
-                    return qtd > 0 || comissao > 0 || bonus > 0;
+                    const desc = r.total_descontos || 0;
+                    return temVendaNoMes || comissao > 0 || bonus > 0 || desc > 0;
                 });
                 if (selVendedor) {
                     comVendas.forEach(v => {

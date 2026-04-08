@@ -79,6 +79,63 @@ def valor_comissao_tabela_adiantamento(venda, faixa_adiantamento, chave):
     return 0.0
 
 
+def data_instalacao_efetiva_folha(venda):
+    """
+    Data de instalação usada na folha (OSAB + física no cliente):
+    - OSAB e física preenchidas → data física (no cliente)
+    - Só OSAB → OSAB
+    - Só física → física
+    """
+    osab = getattr(venda, 'data_instalacao', None)
+    fis = getattr(venda, 'data_instalacao_fisica', None)
+    if osab and fis:
+        return fis
+    if osab:
+        return osab
+    return fis
+
+
+def annotate_data_folha_comissao(queryset):
+    """
+    Anota data_folha_comissao com a mesma regra de data_instalacao_efetiva_folha (SQL).
+    """
+    from django.db.models import Case, When, F, Q, DateField
+
+    data_folha = Case(
+        When(
+            Q(data_instalacao__isnull=False) & Q(data_instalacao_fisica__isnull=False),
+            then=F('data_instalacao_fisica'),
+        ),
+        When(data_instalacao__isnull=False, then=F('data_instalacao')),
+        default=F('data_instalacao_fisica'),
+        output_field=DateField(),
+    )
+    return queryset.annotate(data_folha_comissao=data_folha)
+
+
+def vendas_instaladas_folha_periodo(consultor, data_inicio, data_fim):
+    """Vendas INSTALADAS cujo mês de referência na folha cai em [data_inicio, data_fim)."""
+    from .models import Venda
+
+    di = data_inicio.date() if hasattr(data_inicio, 'date') else data_inicio
+    df = data_fim.date() if hasattr(data_fim, 'date') else data_fim
+    base = Venda.objects.filter(
+        vendedor=consultor,
+        ativo=True,
+        status_esteira__nome__iexact='INSTALADA',
+    )
+    return (
+        annotate_data_folha_comissao(base)
+        .filter(
+            data_folha_comissao__isnull=False,
+            data_folha_comissao__gte=di,
+            data_folha_comissao__lt=df,
+        )
+        .select_related('plano', 'cliente', 'forma_pagamento')
+        .order_by('data_folha_comissao', 'id')
+    )
+
+
 def get_valor_manual(config, chave):
     """Retorna o valor manual da config do vendedor para a chave."""
     if not config or not chave:
@@ -98,7 +155,8 @@ def get_valor_manual(config, chave):
 def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_display=False):
     """
     Calcula a folha de comissão do mês no formato Excel.
-    use_effective_date_for_display: se True, no extrato dt_inst usa data_instalacao_fisica (quando preenchida) para consultores.
+    Mês de referência: data_instalacao_efetiva_folha (OSAB + física → usa física).
+    use_effective_date_for_display: legado; o extrato usa sempre a data efetiva da folha em dt_inst.
     Retorna: {
       "periodo": "01/2026",
       "ano_mes": 202601,
@@ -222,21 +280,9 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
 
     resultado = []
     for consultor in consultores:
-        vendas = Venda.objects.filter(
-            vendedor=consultor,
-            ativo=True,
-            status_esteira__nome__iexact='INSTALADA',
-            data_instalacao__gte=data_inicio,
-            data_instalacao__lt=data_fim,
-        ).select_related('plano', 'cliente', 'forma_pagamento')
+        vendas = vendas_instaladas_folha_periodo(consultor, data_inicio, data_fim)
         # Vendas instaladas no mês anterior (para desconto M-1: churn dez descontado na comissão jan)
-        vendas_m1 = Venda.objects.filter(
-            vendedor=consultor,
-            ativo=True,
-            status_esteira__nome__iexact='INSTALADA',
-            data_instalacao__gte=data_inicio_ant,
-            data_instalacao__lt=data_fim_ant,
-        ).select_related('plano', 'cliente', 'forma_pagamento')
+        vendas_m1 = vendas_instaladas_folha_periodo(consultor, data_inicio_ant, data_fim_ant)
 
         config = configs.get(consultor.id)
         # Adiant. Comissão = Sim na esteira: não entra em QTD A PAGAR nem na comissão do mês (já adiantada).
@@ -532,7 +578,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             plano_label = labels.get(chave, plano_nome or '-')
             dacc = 'SIM' if (v.forma_pagamento and 'DÉBITO' in (v.forma_pagamento.nome or '').upper()) else 'NÃO'
             churn_status = 'SIM' if _norm_os_variantes(v.ordem_servico) & set_os_churn_mes_extrato else 'NÃO'
-            dt_inst = (v.data_instalacao_fisica or v.data_instalacao) if use_effective_date_for_display else v.data_instalacao
+            dt_inst = getattr(v, 'data_folha_comissao', None) or data_instalacao_efetiva_folha(v)
             extrato.append({
                 'venda_id': v.id,
                 'nome': (v.cliente.nome_razao_social or '')[:80] if v.cliente else '',
@@ -561,7 +607,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
             chave = plano_tipo_to_chave(plano_nome, 'CNPJ' if eh_cnpj else 'CPF')
             plano_label = labels.get(chave, plano_nome or '-')
             dacc = 'SIM' if (v.forma_pagamento and 'DÉBITO' in (v.forma_pagamento.nome or '').upper()) else 'NÃO'
-            dt_inst_m1 = (v.data_instalacao_fisica or v.data_instalacao) if use_effective_date_for_display else v.data_instalacao
+            dt_inst_m1 = getattr(v, 'data_folha_comissao', None) or data_instalacao_efetiva_folha(v)
             extrato.append({
                 'venda_id': v.id,
                 'nome': (v.cliente.nome_razao_social or '')[:80] if v.cliente else '',
@@ -700,27 +746,37 @@ def get_vendas_ids_desconto_churn_mes(ano, mes):
     consultores = list(User.objects.filter(is_active=True).values_list('id', flat=True))
 
     ids_marcar = []
+    di = data_inicio.date() if hasattr(data_inicio, 'date') else data_inicio
+    df = data_fim.date() if hasattr(data_fim, 'date') else data_fim
+    dia = data_inicio_ant.date() if hasattr(data_inicio_ant, 'date') else data_inicio_ant
+    dfa = data_fim_ant.date() if hasattr(data_fim_ant, 'date') else data_fim_ant
     # M0: vendas instaladas no mês da comissão que batem com churn do mês
-    vendas_m0 = Venda.objects.filter(
+    base_m0 = Venda.objects.filter(
         vendedor_id__in=consultores,
         ativo=True,
         status_esteira__nome__iexact='INSTALADA',
-        data_instalacao__gte=data_inicio,
-        data_instalacao__lt=data_fim,
         desconto_churn_aplicado_em__isnull=True,
-    ).exclude(ordem_servico__isnull=True).exclude(ordem_servico='').only('id', 'ordem_servico')
+    ).exclude(ordem_servico__isnull=True).exclude(ordem_servico='')
+    vendas_m0 = annotate_data_folha_comissao(base_m0).filter(
+        data_folha_comissao__isnull=False,
+        data_folha_comissao__gte=di,
+        data_folha_comissao__lt=df,
+    ).only('id', 'ordem_servico', 'data_instalacao', 'data_instalacao_fisica')
     for v in vendas_m0:
         if _norm_os_variantes(v.ordem_servico) & set_os_m0:
             ids_marcar.append(v.id)
     # M-1: vendas instaladas no mês anterior que batem com churn M-1 (ex.: dez/25 descontado em jan/26)
-    vendas_m1 = Venda.objects.filter(
+    base_m1 = Venda.objects.filter(
         vendedor_id__in=consultores,
         ativo=True,
         status_esteira__nome__iexact='INSTALADA',
-        data_instalacao__gte=data_inicio_ant,
-        data_instalacao__lt=data_fim_ant,
         desconto_churn_aplicado_em__isnull=True,
-    ).exclude(ordem_servico__isnull=True).exclude(ordem_servico='').only('id', 'ordem_servico')
+    ).exclude(ordem_servico__isnull=True).exclude(ordem_servico='')
+    vendas_m1 = annotate_data_folha_comissao(base_m1).filter(
+        data_folha_comissao__isnull=False,
+        data_folha_comissao__gte=dia,
+        data_folha_comissao__lt=dfa,
+    ).only('id', 'ordem_servico', 'data_instalacao', 'data_instalacao_fisica')
     for v in vendas_m1:
         if _norm_os_variantes(v.ordem_servico) & set_os_m1:
             ids_marcar.append(v.id)
