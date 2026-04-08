@@ -495,6 +495,134 @@ class UsuarioViewSet(viewsets.ModelViewSet):
         """Retorna dados do usuário atual"""
         serializer = UserProfileSerializer(request.user)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='exportar-excel')
+    def exportar_excel(self, request):
+        """
+        Exporta usuários para Excel respeitando os filtros da listagem:
+        is_active, search, canal, perfil e cluster.
+        """
+        queryset = self.filter_queryset(self.get_queryset()).order_by('first_name', 'username')
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Usuarios"
+
+        headers = [
+            "ID",
+            "Ativo",
+            "Nome completo",
+            "Primeiro nome",
+            "Sobrenome",
+            "Username",
+            "Email",
+            "CPF",
+            "Matricula PAP",
+            "Senha PAP",
+            "Perfil",
+            "Lider",
+            "Canal",
+            "Cluster",
+            "WhatsApp 1",
+            "WhatsApp 2",
+            "WhatsApp 3",
+            "Br Pronto Login",
+            "Br Pronto Senha",
+            "Br Pronto Dominio",
+            "Meta comissao",
+            "Chave PIX",
+            "Nome da conta",
+            "Valor almoco",
+            "Valor passagem",
+            "Desconto boleto",
+            "Desconto inclusao viabilidade",
+            "Desconto instalacao antecipada",
+            "Adiantamento CNPJ",
+            "Desconto INSS fixo",
+            "Participa controle presenca",
+            "Vendedor solo",
+            "Autorizar venda sem auditoria",
+            "Autorizar venda automatica",
+            "Autorizar analise credito WPP",
+            "Autorizar inclusao WPP",
+            "Login PAP disponivel automacao",
+            "PAP automacao vender",
+            "PAP automacao credito",
+            "PAP automacao pedido",
+            "PAP automacao status",
+        ]
+        ws.append(headers)
+
+        def b(value):
+            return "Sim" if bool(value) else "Nao"
+
+        for u in queryset:
+            nome_completo = f"{u.first_name or ''} {u.last_name or ''}".strip() or u.username
+            perfil_nome = getattr(u.perfil, 'nome', '') or '-'
+            lider_nome = '-'
+            if u.supervisor:
+                lider_nome = (f"{u.supervisor.first_name or ''} {u.supervisor.last_name or ''}".strip() or u.supervisor.username or '-')
+
+            ws.append([
+                u.id,
+                b(u.is_active),
+                nome_completo,
+                u.first_name or '',
+                u.last_name or '',
+                u.username or '',
+                u.email or '',
+                u.cpf or '',
+                u.matricula_pap or '',
+                u.senha_pap or '',
+                perfil_nome,
+                lider_nome,
+                u.canal or '',
+                u.cluster or '',
+                u.tel_whatsapp or '',
+                u.tel_whatsapp_2 or '',
+                u.tel_whatsapp_3 or '',
+                u.brpronto_login or '',
+                u.brpronto_senha or '',
+                u.brpronto_dominio or '',
+                u.meta_comissao if u.meta_comissao is not None else '',
+                u.chave_pix or '',
+                u.nome_da_conta or '',
+                float(u.valor_almoco or 0),
+                float(u.valor_passagem or 0),
+                float(u.desconto_boleto or 0),
+                float(u.desconto_inclusao_viabilidade or 0),
+                float(u.desconto_instalacao_antecipada or 0),
+                float(u.adiantamento_cnpj or 0),
+                float(u.desconto_inss_fixo or 0),
+                b(u.participa_controle_presenca),
+                b(u.vendedor_solo),
+                b(u.autorizar_venda_sem_auditoria),
+                b(u.autorizar_venda_automatica),
+                b(u.autorizar_analise_credito_wpp),
+                b(u.autorizar_inclusao_wpp),
+                b(u.login_pap_disponivel_para_automacao),
+                b(u.pap_automacao_vender),
+                b(u.pap_automacao_credito),
+                b(u.pap_automacao_pedido),
+                b(u.pap_automacao_status),
+            ])
+
+        for col in ws.columns:
+            max_len = max(len(str(cell.value or "")) for cell in col)
+            ws.column_dimensions[col[0].column_letter].width = min(max(max_len + 2, 12), 45)
+
+        status_label = "todos"
+        is_active_param = request.query_params.get('is_active')
+        if is_active_param is not None:
+            status_label = "ativos" if is_active_param.lower() in ('true', '1') else "inativos"
+
+        filename = f"usuarios_governanca_{status_label}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        wb.save(response)
+        return response
     
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated], url_path='definir-senha')
     def definir_nova_senha(self, request):

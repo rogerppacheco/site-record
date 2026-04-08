@@ -260,6 +260,27 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
         max_v = r.max_vendas if r.max_vendas is not None else (10 ** 9)
         return min_v, max_v
 
+    def _normalizar_perfil_comissao(valor):
+        v = (valor or '').strip().upper()
+        if not v:
+            return None
+        if v == 'SUPERVISOR':
+            return 'Supervisor'
+        if v == 'VENDEDOR':
+            return 'Vendedor'
+        return None
+
+    def _perfil_comissao_do_consultor(consultor, config):
+        # Prioridade: perfil real do usuário -> regra do mês -> padrão Vendedor
+        perfil_usuario = getattr(getattr(consultor, 'perfil', None), 'nome', None)
+        perfil_resolvido = _normalizar_perfil_comissao(perfil_usuario)
+        if perfil_resolvido:
+            return perfil_resolvido
+        perfil_config = _normalizar_perfil_comissao(getattr(config, 'perfil_comissao', None))
+        if perfil_config:
+            return perfil_config
+        return 'Vendedor'
+
     def encontrar_faixa(consultor, qtd_vendas):
         # 1) Regra individual do vendedor
         listas = regras_faixa_vendedor.get(consultor.id, [])
@@ -269,7 +290,7 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 return r
         # 2) Regra por perfil
         config = configs.get(consultor.id)
-        perfil = (config.perfil_comissao if config else 'Vendedor') or 'Vendedor'
+        perfil = _perfil_comissao_do_consultor(consultor, config)
         for r in regras_faixa_perfil:
             if r.perfil != perfil:
                 continue

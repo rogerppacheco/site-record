@@ -134,6 +134,7 @@
                                 <small id="contador-usuarios" class="text-muted">Carregando...</small>
                             </div>
                             <div class="d-flex flex-wrap gap-2 align-items-center">
+                                <button type="button" class="btn btn-sm btn-outline-success" onclick="exportarUsuariosExcelGovernanca()"><i class="bi bi-file-earmark-excel"></i> Exportar Excel</button>
                                 <div class="input-group input-group-sm" style="width: 320px;">
                                     <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
                                     <input type="text" id="busca-usuario" class="form-control" placeholder="Digite para buscar em todos os usuários (nome, e-mail, login)..." autocomplete="off" aria-label="Buscar usuário">
@@ -1482,6 +1483,48 @@
         if (btnLimpar) btnLimpar.style.display = 'none';
         paginacaoAtual.page = 1;
         carregarUsuarios(status, 1);
+    }
+
+    async function exportarUsuariosExcelGovernanca() {
+        const isAtivo = document.getElementById('lista-status-titulo').textContent.includes('Ativos');
+        const busca = (document.getElementById('busca-usuario')?.value || '').trim();
+        const canal = (document.getElementById('filtro-canal-usuario')?.value || '').trim();
+        const perfil = (document.getElementById('filtro-perfil-usuario')?.value || '').trim();
+        const cluster = (document.getElementById('filtro-cluster-usuario')?.value || '').trim();
+        const params = new URLSearchParams();
+        params.set('is_active', isAtivo ? 'true' : 'false');
+        if (busca) params.set('search', busca);
+        if (canal) params.set('canal', canal);
+        if (perfil) params.set('perfil', perfil);
+        if (cluster) params.set('cluster', cluster);
+        const token = localStorage.getItem('accessToken');
+        try {
+            const res = await fetch('/api/usuarios/exportar-excel/?' + params.toString(), {
+                method: 'GET',
+                headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+            });
+            if (!res.ok) {
+                let msg = 'Falha ao exportar.';
+                try {
+                    const err = await res.json();
+                    msg = err.detail || err.error || msg;
+                } catch (_) {}
+                throw new Error(msg);
+            }
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const dispo = res.headers.get('Content-Disposition') || '';
+            const match = dispo.match(/filename="?([^"]+)"?/i);
+            a.href = url;
+            a.download = match ? match[1] : 'usuarios_governanca.xlsx';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url);
+        } catch (e) {
+            alert('Erro ao exportar: ' + (e.message || e));
+        }
     }
 
     async function carregarUsuarios(status = 'ativos', page = 1, searchTerm = '') {
