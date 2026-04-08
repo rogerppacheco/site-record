@@ -283,18 +283,69 @@
                 </div>
                 <div class="p-2 border-top small text-muted fw-bold">Extrato (${(v.extrato || []).length} vendas)</div>
                 <div class="table-responsive"><table class="table table-sm table-striped mb-0 small"><thead class="table-light"><tr><th>NOME</th><th>DACC</th><th>CNPJ</th><th>PLANO</th><th>DT PEDIDO</th><th>DT INST</th><th>OS</th><th>SITUAÇÃO</th><th>CHURN</th><th class="text-center">ADIANT.</th></tr></thead><tbody>`;
-            (v.extrato || []).forEach(e => {
-                const isChurn = (e.churn || '').toString().toUpperCase() === 'SIM';
-                const isAdiant = (e.adiantada || '').toString().toUpperCase() === 'SIM';
-                const situacao = (e.situacao || '').toString().toUpperCase();
+            const extratoLista = (v.extrato || []);
+            const normaliza = (txt) => (txt || '').toString().trim().toUpperCase();
+            const parseBrDateToSort = (dt) => {
+                const s = (dt || '').toString().trim();
+                const p = s.split('/');
+                if (p.length !== 3) return '';
+                const [dd, mm, yyyy] = p;
+                if (!dd || !mm || !yyyy) return '';
+                return `${yyyy.padStart(4, '0')}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
+            };
+            const blocoInfo = (e) => {
+                const situacao = normaliza(e.situacao);
+                const isChurn = normaliza(e.churn) === 'SIM';
                 const isCancelada = situacao.includes('CANCELADA');
-                const isInstalada = situacao === 'INSTALADA';
-                const isVerde = isInstalada && !isChurn;
-                const rowClass = (isChurn || isCancelada)
-                    ? 'table-danger'
-                    : (isVerde ? 'table-success' : 'table-warning');
-                const rowStyle = (isVerde && isAdiant) ? ' style="background-color:#cfe8d6 !important;"' : '';
-                html += `<tr class="${rowClass}"${rowStyle}><td>${e.nome || ''}</td><td>${e.dacc || ''}</td><td>${e.cnpj || ''}</td><td>${e.plano || ''}</td><td>${e.dt_pedido || ''}</td><td>${e.dt_inst || ''}</td><td>${e.os || ''}</td><td>${e.situacao || ''}</td><td>${e.churn || ''}</td><td class="text-center">${e.adiantada || '-'}</td></tr>`;
+                if (situacao === 'INSTALADA' && !isChurn) return { ordem: 0, titulo: 'INSTALADAS', statusGrupo: 'INSTALADA' };
+                if (situacao === 'INSTALADA' && isChurn) return { ordem: 1, titulo: 'INSTALADAS COM CHURN', statusGrupo: 'INSTALADA (CHURN)' };
+                if (isCancelada) return { ordem: 2, titulo: 'CANCELADAS', statusGrupo: situacao || 'CANCELADA' };
+                return { ordem: 3, titulo: 'DEMAIS STATUS', statusGrupo: situacao || '-' };
+            };
+            const blocos = [
+                { ordem: 0, titulo: 'INSTALADAS', itens: [] },
+                { ordem: 1, titulo: 'INSTALADAS COM CHURN', itens: [] },
+                { ordem: 2, titulo: 'CANCELADAS', itens: [] },
+                { ordem: 3, titulo: 'DEMAIS STATUS', itens: [] }
+            ];
+            extratoLista.forEach(e => {
+                const b = blocoInfo(e);
+                blocos[b.ordem].itens.push({ ...e, _statusGrupo: b.statusGrupo });
+            });
+            blocos.forEach(b => {
+                if (!b.itens.length) return;
+                html += `<tr class="table-secondary"><td colspan="10" class="fw-bold">${b.titulo} — ${b.itens.length} venda(s)</td></tr>`;
+                const grupos = new Map();
+                b.itens.forEach(e => {
+                    const dt = (e.dt_pedido || '').toString().trim() || '-';
+                    const dtSort = parseBrDateToSort(dt);
+                    const st = e._statusGrupo || '-';
+                    const key = `${dt}||${st}`;
+                    if (!grupos.has(key)) grupos.set(key, { dt, dtSort, st, itens: [] });
+                    grupos.get(key).itens.push(e);
+                });
+                const gruposOrdenados = Array.from(grupos.values()).sort((a, b2) => {
+                    const d1 = a.dtSort || '0000-00-00';
+                    const d2 = b2.dtSort || '0000-00-00';
+                    if (d1 !== d2) return d2.localeCompare(d1); // mais recente primeiro
+                    return a.st.localeCompare(b2.st);
+                });
+                gruposOrdenados.forEach(g => {
+                    html += `<tr class="table-light"><td colspan="10" class="text-muted fw-semibold">${g.dt} • ${g.st} — ${g.itens.length} venda(s)</td></tr>`;
+                    g.itens.forEach(e => {
+                        const isChurn = normaliza(e.churn) === 'SIM';
+                        const isAdiant = normaliza(e.adiantada) === 'SIM';
+                        const situacao = normaliza(e.situacao);
+                        const isCancelada = situacao.includes('CANCELADA');
+                        const isInstalada = situacao === 'INSTALADA';
+                        const isVerde = isInstalada && !isChurn;
+                        const rowClass = (isChurn || isCancelada)
+                            ? 'table-danger'
+                            : (isVerde ? 'table-success' : 'table-warning');
+                        const rowStyle = (isVerde && isAdiant) ? ' style="background-color:#cfe8d6 !important;"' : '';
+                        html += `<tr class="${rowClass}"${rowStyle}><td>${e.nome || ''}</td><td>${e.dacc || ''}</td><td>${e.cnpj || ''}</td><td>${e.plano || ''}</td><td>${e.dt_pedido || ''}</td><td>${e.dt_inst || ''}</td><td>${e.os || ''}</td><td>${e.situacao || ''}</td><td>${e.churn || ''}</td><td class="text-center">${e.adiantada || '-'}</td></tr>`;
+                    });
+                });
             });
             html += `</tbody></table></div></div></div>`;
             return html;
