@@ -34,9 +34,34 @@
         
         /* Estilo para o checkbox no modal */
         .chk-grupo { width: 1.2em; height: 1.2em; margin-top: 0.2em; }
-        /* Modal Regras: células com quebra de linha para não cortar texto */
-        #modalConfigRobo .table td.cell-wrap { white-space: normal; word-break: break-word; vertical-align: middle; }
-        #modalConfigRobo .table th { white-space: nowrap; }
+        /* Modal Regras: mais espaço útil e melhor leitura das colunas */
+        #modalConfigRobo .modal-dialog {
+            max-width: min(96vw, 1800px);
+            width: 96vw;
+            height: 95vh;
+            margin-top: 2vh;
+            margin-bottom: 2vh;
+        }
+        #modalConfigRobo .modal-content { height: 100%; }
+        #modalConfigRobo .modal-body {
+            max-height: none !important;
+            height: calc(95vh - 58px);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        #tabs-robo-config-content { flex: 1; min-height: 0; }
+        #pane-robo-regras-ativas { height: 100%; }
+        #modalConfigRobo .table th { white-space: nowrap; font-size: 0.75rem; }
+        #modalConfigRobo .table td { white-space: nowrap; vertical-align: middle; font-size: 0.8rem; }
+        #modalConfigRobo .table td.cell-ellipsis {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 180px;
+        }
+        #modalConfigRobo .table td.nome-regra { max-width: 260px; }
+        #modalConfigRobo .table td.destinos-regra { max-width: 220px; }
+        #modalConfigRobo .table td.horarios-regra { max-width: 190px; }
     </style>
 </head>
 <body>
@@ -68,7 +93,7 @@
                     <i class="bi bi-whatsapp"></i> Enviar Imagem Agora
                 </button>
 
-                <div class="dropdown">
+                <div class="dropdown" id="dropdown-export-performance">
                     <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                         <i class="bi bi-file-earmark-excel"></i> Exportar
                     </button>
@@ -80,6 +105,22 @@
                 </div>
                 
                 <div class="vr mx-2"></div>
+
+                <div id="wrap-filtro-mes-performance" class="d-flex align-items-center gap-1 ms-2">
+                    <label class="fw-bold text-muted small mb-0">Mês ref.:</label>
+                    <select id="filtro-mes-performance" class="form-select form-select-sm" style="width: 150px;" onchange="carregarDados()">
+                        <option value="atual">Mês atual</option>
+                        <option value="anterior">Mês anterior</option>
+                    </select>
+                </div>
+                <div id="wrap-filtro-mes-livre" class="d-none align-items-center gap-1 ms-2">
+                    <label class="fw-bold text-muted small mb-0">Mês:</label>
+                    <input type="month" id="filtro-mes-livre" class="form-control form-control-sm" style="width: 140px;" onchange="carregarDados()">
+                </div>
+                <div id="wrap-filtro-segunda-livre" class="d-none align-items-center gap-1 ms-2">
+                    <label class="fw-bold text-muted small mb-0">Segunda feira:</label>
+                    <input type="date" id="filtro-segunda-livre" class="form-control form-control-sm" style="width: 148px;" onchange="carregarDados()" title="Início da semana (segunda a sábado)">
+                </div>
                 
                 <label class="fw-bold text-muted small mb-0">Canal:</label>
                 <select id="filtro-canal" class="form-select form-select-sm" style="width: 150px;" onchange="carregarDados()">
@@ -127,7 +168,7 @@
                 <div class="card border-0 shadow"><div class="card-body p-0 table-responsive"><table class="table-excel"><thead><tr><th class="text-start ps-3">Vendedor</th><th>Cluster</th><th>Seg</th><th>Ter</th><th>Qua</th><th>Qui</th><th>Sex</th><th>Sáb</th><th class="bg-header-group">Total Semana</th><th>Total CC</th><th>% CC</th></tr></thead><tbody id="tbody-semana"></tbody><tfoot id="tfoot-semana"></tfoot></table></div></div>
             </div>
             <div class="tab-pane fade" id="content-mes">
-                <div class="card border-0 shadow"><div class="card-body p-0 table-responsive"><table class="table-excel"><thead><tr><th class="text-start ps-3">Vendedor</th><th>Cluster</th><th class="bg-header-group">Total Vendas</th><th class="bg-success text-white">Instaladas</th><th>Total CC</th><th>Instaladas CC</th><th>% CC Total</th><th>% CC Inst</th><th class="bg-info text-white">Aprov.</th><th>Pende</th><th>Agend</th><th>Canc</th></tr></thead><tbody id="tbody-mes"></tbody><tfoot id="tfoot-mes"></tfoot></table></div></div>
+                <div class="card border-0 shadow"><div class="card-body p-0 table-responsive"><table class="table-excel"><thead><tr><th class="text-start ps-3">Vendedor</th><th>Cluster</th><th class="bg-header-group">Total Vendas</th><th class="bg-success text-white">Instaladas</th><th>Total CC</th><th>Instaladas CC</th><th>% CC Total</th><th>% CC Inst</th><th class="bg-info text-white">Aprov.</th><th class="text-start" style="min-width: 160px;">Aval. Cluster</th><th>Pende</th><th>Agend</th><th>Canc</th></tr></thead><tbody id="tbody-mes"></tbody><tfoot id="tfoot-mes"></tfoot></table></div></div>
             </div>
         </div>
     </main>
@@ -135,44 +176,68 @@
     <div class="modal fade" id="modalEnvioManual" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Enviar Imagem Agora</h5><button class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="mb-3"><label class="fw-bold">Para quem?</label><div class="input-group"><input type="text" id="manual-destino" class="form-control" placeholder="ID Grupo ou Telefone..."><button class="btn btn-outline-secondary" onclick="abrirSeletorGrupos('manual-destino')"><i class="bi bi-search"></i></button></div></div><div class="alert alert-info small">Isso vai gerar um "print" da tabela atual e enviar imediatamente.</div></div><div class="modal-footer"><button class="btn btn-success w-100" id="btn-enviar-manual" onclick="dispararEnvioManual()">🚀 Enviar Imagem</button></div></div></div></div>
 
     <div class="modal fade" id="modalConfigRobo" tabindex="-1">
-        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-dialog modal-xl">
             <div class="modal-content">
                 <div class="modal-header bg-dark text-white py-2">
                     <h5 class="modal-title">🤖 Configuração de Automação</h5>
                     <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="modal-body py-3" style="max-height: 85vh;">
-                    <div class="row g-2 mb-3 p-3 bg-light rounded border">
-                        <div class="col-12"><h6 class="fw-bold text-primary mb-2">Nova Regra de Envio</h6></div>
-                        <input type="hidden" id="robo-id">
-                        <div class="col-md-3 col-6"><label class="small fw-bold">Nome</label><input type="text" id="robo-nome" class="form-control form-control-sm" placeholder="Ex: Hora a Hora PAP"></div>
-                        <div class="col-md-2 col-6"><label class="small fw-bold">Frequência</label><select id="robo-tipo" class="form-select form-select-sm"><option value="HORARIO">Diário</option><option value="SEMANAL">Semanal</option></select></div>
-                        <div class="col-md-1 col-4"><label class="small fw-bold">Até</label><select id="robo-hora-fim" class="form-select form-select-sm"><option value="17">17h</option><option value="18">18h</option><option value="19" selected>19h</option><option value="20">20h</option><option value="21">21h</option><option value="22">22h</option></select></div>
-                        <div class="col-md-2 col-4"><label class="small fw-bold">Intervalo</label><select id="robo-intervalo" class="form-select form-select-sm"><option value="15">15 min</option><option value="30">30 min</option><option value="60" selected>1 h</option><option value="120">2 h</option></select></div>
-                        <div class="col-md-2 col-4"><label class="small fw-bold">Relatório</label><select id="robo-tipo-relatorio" class="form-select form-select-sm"><option value="HOJE" selected>Hoje</option><option value="SEMANAL">Semanal</option><option value="MENSAL">Mensal</option></select></div>
-                        <div class="col-md-2 col-4"><label class="small fw-bold">Canal</label><select id="robo-canal" class="form-select form-select-sm"><option value="TODOS">Todos</option><option value="PAP">PAP</option><option value="DIGITAL">Digital</option><option value="RECEPTIVO">Receptivo</option><option value="PARCEIRO">Parceiro</option></select></div>
-                        <div class="col-md-2 col-4"><label class="small fw-bold">Cluster</label><select id="robo-cluster" class="form-select form-select-sm"><option value="">Todos</option><option value="CLUSTER_1">CLUSTER 1</option><option value="CLUSTER_2">CLUSTER 2</option><option value="CLUSTER_3">CLUSTER 3</option></select></div>
-                        <div class="col-md-1 col-4 d-flex align-items-end"><div class="form-check form-switch mb-0"><input class="form-check-input" type="checkbox" id="robo-ativo" checked><label class="form-check-label small">Ativo</label></div></div>
-                        <div class="col-12 mt-1"><label class="small fw-bold">Destinatários</label><div class="input-group input-group-sm"><input type="text" id="robo-destinos" class="form-control" placeholder="IDs ou números separados por vírgula"><button class="btn btn-outline-secondary" onclick="abrirSeletorGrupos('robo-destinos')">🔍 Grupos</button></div><small class="text-muted">Vírgula ou ponto e vírgula.</small></div>
-                        <div class="col-12 text-end"><button class="btn btn-primary btn-sm" onclick="salvarRegraRobo()"><i class="bi bi-save"></i> Salvar Regra</button></div>
+                <div class="modal-body py-3" style="max-height: 90vh;">
+                    <ul class="nav nav-tabs mb-3" id="tabs-robo-config" role="tablist">
+                        <li class="nav-item" role="presentation"><button class="nav-link active" id="tab-robo-nova-regra" data-bs-toggle="tab" data-bs-target="#pane-robo-nova-regra" type="button" role="tab">Nova Regra de Envio</button></li>
+                        <li class="nav-item" role="presentation"><button class="nav-link" id="tab-robo-regras-ativas" data-bs-toggle="tab" data-bs-target="#pane-robo-regras-ativas" type="button" role="tab">Regras Ativas</button></li>
+                        <li class="nav-item" role="presentation"><button class="nav-link" id="tab-robo-historico" data-bs-toggle="tab" data-bs-target="#pane-robo-historico" type="button" role="tab">Histórico de envio (hoje)</button></li>
+                    </ul>
+                    <div class="tab-content" id="tabs-robo-config-content">
+                        <div class="tab-pane fade show active" id="pane-robo-nova-regra" role="tabpanel">
+                            <div class="row g-2 mb-3 p-3 bg-light rounded border">
+                                <input type="hidden" id="robo-id">
+                                <div class="col-md-3 col-12"><label class="small fw-bold">Nome</label><input type="text" id="robo-nome" class="form-control form-control-sm" placeholder="Ex: Hora a Hora PAP"></div>
+                                <div class="col-md-2 col-6"><label class="small fw-bold">Frequência</label><select id="robo-tipo" class="form-select form-select-sm" onchange="atualizarModoEnvioRobo()"><option value="HORARIO">Diário</option><option value="SEMANAL">Semanal</option></select></div>
+                                <div class="col-md-2 col-6"><label class="small fw-bold">Modo</label><select id="robo-modo-envio" class="form-select form-select-sm" onchange="atualizarModoEnvioRobo()"><option value="INTERVALO" selected>Intervalo</option><option value="ESPECIFICO">Horário específico</option></select></div>
+                                <div class="col-md-2 col-6"><label class="small fw-bold">Prioridade</label><input type="number" min="1" step="1" id="robo-prioridade" class="form-control form-control-sm" placeholder="Ex: 1"></div>
+                                <div class="col-md-3 col-6"><label class="small fw-bold">Status dos destinatários</label><select id="robo-status-destinatarios" class="form-select form-select-sm"><option value="somente_ativos" selected>Somente ativos</option><option value="somente_inativos">Somente inativos</option><option value="todos">Todos</option></select></div>
+                                <div class="col-md-1 col-4 bloco-intervalo"><label class="small fw-bold">Até</label><select id="robo-hora-fim" class="form-select form-select-sm"><option value="17">17h</option><option value="18">18h</option><option value="19" selected>19h</option><option value="20">20h</option><option value="21">21h</option><option value="22">22h</option></select></div>
+                                <div class="col-md-2 col-4 bloco-intervalo"><label class="small fw-bold">Intervalo</label><select id="robo-intervalo" class="form-select form-select-sm"><option value="15">15 min</option><option value="30">30 min</option><option value="60" selected>1 h</option><option value="120">2 h</option></select></div>
+                                <div class="col-md-3 col-8 d-none" id="bloco-horarios-especificos"><label class="small fw-bold">Horários (HH:mm)</label><input type="text" id="robo-horarios-especificos" class="form-control form-control-sm" placeholder="Ex: 08:00, 09:15, 10:40"></div>
+                                <div class="col-12 d-none" id="bloco-dias-semana"><label class="small fw-bold">Dias da semana (semanal)</label><div class="d-flex flex-wrap gap-2 small"><label><input type="checkbox" class="robo-dia-semana" value="0"> Seg</label><label><input type="checkbox" class="robo-dia-semana" value="1"> Ter</label><label><input type="checkbox" class="robo-dia-semana" value="2"> Qua</label><label><input type="checkbox" class="robo-dia-semana" value="3"> Qui</label><label><input type="checkbox" class="robo-dia-semana" value="4"> Sex</label><label><input type="checkbox" class="robo-dia-semana" value="5"> Sáb</label><label><input type="checkbox" class="robo-dia-semana" value="6"> Dom</label></div></div>
+                                <div class="col-12 d-none" id="ajuda-modo-especifico"><small class="text-muted">No modo horário específico, o intervalo e hora final são ignorados. Pode selecionar múltiplos horários para envios parciais.</small></div>
+                                <div class="col-md-2 col-4"><label class="small fw-bold">Relatório</label><select id="robo-tipo-relatorio" class="form-select form-select-sm"><option value="HOJE" selected>Hoje</option><option value="SEMANAL">Semanal</option><option value="MENSAL">Mensal</option></select></div>
+                                <div class="col-md-2 col-4"><label class="small fw-bold">Canal</label><select id="robo-canal" class="form-select form-select-sm"><option value="TODOS">Todos</option><option value="PAP">PAP</option><option value="DIGITAL">Digital</option><option value="RECEPTIVO">Receptivo</option><option value="PARCEIRO">Parceiro</option></select></div>
+                                <div class="col-md-2 col-4"><label class="small fw-bold">Cluster</label><select id="robo-cluster" class="form-select form-select-sm"><option value="">Todos</option><option value="CLUSTER_1">CLUSTER 1</option><option value="CLUSTER_2">CLUSTER 2</option><option value="CLUSTER_3">CLUSTER 3</option></select></div>
+                                <div class="col-md-1 col-4 d-flex align-items-end"><div class="form-check form-switch mb-0"><input class="form-check-input" type="checkbox" id="robo-ativo" checked><label class="form-check-label small">Ativo</label></div></div>
+                                <div class="col-12 mt-1"><label class="small fw-bold">Destinatários</label><div class="input-group input-group-sm"><input type="text" id="robo-destinos" class="form-control" placeholder="IDs ou números separados por vírgula"><button class="btn btn-outline-secondary" onclick="abrirSeletorGrupos('robo-destinos')">🔍 Grupos</button></div><small class="text-muted">Vírgula ou ponto e vírgula.</small></div>
+                                <div class="col-12 text-end"><button class="btn btn-primary btn-sm" onclick="salvarRegraRobo()"><i class="bi bi-save"></i> Salvar Regra</button></div>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="pane-robo-regras-ativas" role="tabpanel">
+                            <div class="row g-2 mb-2">
+                                <div class="col-md-4 col-12">
+                                    <label class="small fw-bold">Filtrar por status dos destinatários</label>
+                                    <select id="filtro-status-destinatarios-regras" class="form-select form-select-sm" onchange="carregarRegrasRobo()">
+                                        <option value="todos" selected>Todos</option>
+                                        <option value="somente_ativos">Somente ativos</option>
+                                        <option value="somente_inativos">Somente inativos</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="table-responsive" style="height: calc(95vh - 250px); min-height: 420px; overflow-y: auto;">
+                                <table class="table table-sm table-hover border mb-0">
+                                    <thead class="table-light sticky-top bg-white"><tr><th>Prior.</th><th>Nome</th><th>Tipo</th><th>Modo</th><th>Status dest.</th><th>Horários/Dias</th><th>Até</th><th>Int.</th><th>Relat.</th><th>Canal</th><th>Cluster</th><th>Destinos</th><th>Status</th><th>Ações</th></tr></thead>
+                                    <tbody id="lista-regras-robo"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="pane-robo-historico" role="tabpanel">
+                            <div class="table-responsive" style="max-height: 62vh; overflow-y: auto;">
+                                <table class="table table-sm table-hover border mb-0">
+                                    <thead class="table-light sticky-top bg-white"><tr><th>Horário</th><th>Regra</th><th>Resultado</th><th>Destinos</th><th>Detalhe</th></tr></thead>
+                                    <tbody id="lista-historico-envios"></tbody>
+                                </table>
+                            </div>
+                            <p class="small text-muted mb-0 mt-2">Envios automáticos do dia.</p>
+                        </div>
                     </div>
-
-                    <h6 class="fw-bold mb-2">Regras Ativas</h6>
-                    <div class="table-responsive" style="max-height: 220px; overflow-y: auto;">
-                        <table class="table table-sm table-hover border mb-0">
-                            <thead class="table-light sticky-top bg-white"><tr><th>Nome</th><th>Tipo</th><th>Até</th><th>Int.</th><th>Relat.</th><th>Canal</th><th>Cluster</th><th>Destinos</th><th>Status</th><th>Ações</th></tr></thead>
-                            <tbody id="lista-regras-robo"></tbody>
-                        </table>
-                    </div>
-
-                    <h6 class="fw-bold mb-2 mt-3">Histórico de envio (hoje)</h6>
-                    <div class="table-responsive" style="max-height: 160px; overflow-y: auto;">
-                        <table class="table table-sm table-hover border mb-0">
-                            <thead class="table-light sticky-top bg-white"><tr><th>Horário</th><th>Regra</th><th>Resultado</th><th>Destinos</th><th>Detalhe</th></tr></thead>
-                            <tbody id="lista-historico-envios"></tbody>
-                        </table>
-                    </div>
-                    <p class="small text-muted mb-0">Envios automáticos do dia.</p>
                 </div>
             </div>
         </div>
@@ -242,9 +307,29 @@
         if (!token) window.location.href = '/';
 
         let campoDestinoAlvo = ''; 
+        let perfilExportExcel = false;
+        let perfilFiltroPeriodoLivre = false;
         const modalRobo = new bootstrap.Modal(document.getElementById('modalConfigRobo'));
         const modalManual = new bootstrap.Modal(document.getElementById('modalEnvioManual'));
         const modalSeletor = new bootstrap.Modal(document.getElementById('modalSeletor'));
+
+        function paramsPeriodoPerformance() {
+            const params = new URLSearchParams();
+            if (perfilFiltroPeriodoLivre) {
+                const ml = document.getElementById('filtro-mes-livre')?.value;
+                if (ml) params.set('mes_referencia', ml);
+                const seg = document.getElementById('filtro-segunda-livre')?.value;
+                if (seg) params.set('semana_segunda', seg);
+            } else {
+                const mp = document.getElementById('filtro-mes-performance')?.value;
+                if (mp === 'anterior') {
+                    const d = new Date();
+                    d.setMonth(d.getMonth() - 1);
+                    params.set('mes_referencia', `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+                }
+            }
+            return params;
+        }
 
         // --- CARREGAMENTO INICIAL ---
         document.addEventListener('DOMContentLoaded', () => {
@@ -252,25 +337,68 @@
                 const p = jwt_decode(token);
                 const role = (p.user_role || p.perfil || '').toString();
                 const gestao = ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade'];
+                perfilExportExcel = ['Diretoria', 'Admin', 'BackOffice'].some(g => role.includes(g));
+                perfilFiltroPeriodoLivre = perfilExportExcel;
                 if (gestao.some(g => role.includes(g))) {
                     const w = document.getElementById('filtro-vendedor-ativo-wrap');
                     if (w) { w.classList.remove('d-none'); w.classList.add('d-flex'); }
                 }
+                if (perfilFiltroPeriodoLivre) {
+                    document.getElementById('wrap-filtro-mes-performance')?.classList.add('d-none');
+                    const wml = document.getElementById('wrap-filtro-mes-livre');
+                    const wsg = document.getElementById('wrap-filtro-segunda-livre');
+                    if (wml) { wml.classList.remove('d-none'); wml.classList.add('d-flex'); }
+                    if (wsg) { wsg.classList.remove('d-none'); wsg.classList.add('d-flex'); }
+                    const now = new Date();
+                    const elMes = document.getElementById('filtro-mes-livre');
+                    if (elMes) elMes.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+                }
+                if (!perfilExportExcel) {
+                    document.getElementById('dropdown-export-performance')?.classList.add('d-none');
+                }
             } catch (e) {}
+            atualizarModoEnvioRobo();
             carregarDados();
         });
+
+        function parseHorariosEspecificos(valor) {
+            return (valor || '')
+                .split(',')
+                .map(s => s.trim())
+                .filter(s => s);
+        }
+
+        function obterDiasSemanaSelecionados() {
+            return Array.from(document.querySelectorAll('.robo-dia-semana:checked')).map(el => Number(el.value));
+        }
+
+        function atualizarModoEnvioRobo() {
+            const modo = (document.getElementById('robo-modo-envio')?.value || 'INTERVALO');
+            const tipo = (document.getElementById('robo-tipo')?.value || 'HORARIO');
+            const blocosIntervalo = document.querySelectorAll('.bloco-intervalo');
+            blocosIntervalo.forEach(el => {
+                if (modo === 'ESPECIFICO') el.classList.add('d-none');
+                else el.classList.remove('d-none');
+            });
+            document.getElementById('bloco-horarios-especificos').classList.toggle('d-none', modo !== 'ESPECIFICO');
+            document.getElementById('ajuda-modo-especifico').classList.toggle('d-none', modo !== 'ESPECIFICO');
+            document.getElementById('bloco-dias-semana').classList.toggle('d-none', !(modo === 'ESPECIFICO' && tipo === 'SEMANAL'));
+        }
 
         async function carregarDados() {
             const canal = document.getElementById('filtro-canal').value;
             const cluster = document.getElementById('filtro-cluster').value;
             const vaEl = document.getElementById('filtro-vendedor-ativo');
             const vendedorAtivo = vaEl ? vaEl.value : 'todos';
-            const params = new URLSearchParams();
+            const params = paramsPeriodoPerformance();
             if (canal) params.set('canal', canal);
             if (cluster) params.set('cluster', cluster);
             params.set('vendedor_ativo', vendedorAtivo || 'todos');
             try {
                 const response = await axios.get(`/api/crm/performance-painel/?${params.toString()}`, { headers: { 'Authorization': `Bearer ${token}` }});
+                if (response.data.aviso) {
+                    console.warn(response.data.aviso);
+                }
                 renderHoje(response.data.hoje);
                 renderSemana(response.data.semana);
                 renderMes(response.data.mes);
@@ -281,12 +409,11 @@
             const canal = document.getElementById('filtro-canal').value || '';
             const cluster = document.getElementById('filtro-cluster').value || '';
             const vaEl = document.getElementById('filtro-vendedor-ativo');
-            const params = new URLSearchParams({
-                periodo: periodo || 'HOJE',
-                canal: canal,
-                cluster: cluster,
-                vendedor_ativo: (vaEl ? vaEl.value : 'todos') || 'todos'
-            });
+            const params = paramsPeriodoPerformance();
+            params.set('periodo', periodo || 'HOJE');
+            params.set('canal', canal);
+            params.set('cluster', cluster);
+            params.set('vendedor_ativo', (vaEl ? vaEl.value : 'todos') || 'todos');
             const url = `/api/crm/performance-painel/exportar/?${params.toString()}`;
             try {
                 const response = await axios.get(url, {
@@ -360,14 +487,15 @@
                 tPend += i.pend;
                 tAgend += i.agend;
                 tCanc += i.canc;
-                h+=`<tr><td class="text-start ps-3 fw-bold">${i.vendedor}</td><td>${i.cluster||'-'}</td><td class="bg-total-column">${i.total}</td><td class="${cellClass(i.instaladas)}">${i.instaladas}</td><td>${i.cc_total}</td><td>${i.cc_inst}</td><td>${i.pct_cc_total}%</td><td>${i.pct_cc_inst}%</td><td class="bg-info text-white fw-bold">${i.aproveitamento}%</td><td>${i.pend}</td><td>${i.agend}</td><td>${i.canc}</td></tr>`;
+                const aval = (i.avaliacao_cluster || '—').replace(/</g, '&lt;');
+                h+=`<tr><td class="text-start ps-3 fw-bold">${i.vendedor}</td><td>${i.cluster||'-'}</td><td class="bg-total-column">${i.total}</td><td class="${cellClass(i.instaladas)}">${i.instaladas}</td><td>${i.cc_total}</td><td>${i.cc_inst}</td><td>${i.pct_cc_total}%</td><td>${i.pct_cc_inst}%</td><td class="bg-info text-white fw-bold">${i.aproveitamento}%</td><td class="small text-start">${aval}</td><td>${i.pend}</td><td>${i.agend}</td><td>${i.canc}</td></tr>`;
             });
             // Calcular totais
             const pct_cc_total = tT > 0 ? ((tCC / tT) * 100).toFixed(1) : 0;
             const pct_cc_inst = tI > 0 ? ((tCI / tI) * 100).toFixed(1) : 0;
             const aprov = tT > 0 ? ((tI / tT) * 100).toFixed(1) : 0;
             // Linha de TOTAL logo após o cabeçalho
-            const linhaTotal = `<tr style="background-color: #2c3e50; color: white; font-weight: bold;"><td class="text-start ps-3">TOTAL</td><td>-</td><td>${tT}</td><td>${tI}</td><td>${tCC}</td><td>${tCI}</td><td>${pct_cc_total}%</td><td>${pct_cc_inst}%</td><td>${aprov}%</td><td>${tPend}</td><td>${tAgend}</td><td>${tCanc}</td></tr>`;
+            const linhaTotal = `<tr style="background-color: #2c3e50; color: white; font-weight: bold;"><td class="text-start ps-3">TOTAL</td><td>-</td><td>${tT}</td><td>${tI}</td><td>${tCC}</td><td>${tCI}</td><td>${pct_cc_total}%</td><td>${pct_cc_inst}%</td><td>${aprov}%</td><td>-</td><td>${tPend}</td><td>${tAgend}</td><td>${tCanc}</td></tr>`;
             // TOTAL aparece primeiro, depois os dados
             document.getElementById('tbody-mes').innerHTML = linhaTotal + h;
             // Remover tfoot
@@ -378,6 +506,8 @@
         function abrirConfiguracaoRobo() {
             carregarRegrasRobo();
             carregarHistoricoEnvios();
+            const abaNovaRegra = document.getElementById('tab-robo-nova-regra');
+            if (abaNovaRegra) bootstrap.Tab.getOrCreateInstance(abaNovaRegra).show();
             modalRobo.show();
         }
 
@@ -406,27 +536,44 @@
 
         async function carregarRegrasRobo() {
             const tb = document.getElementById('lista-regras-robo');
-            tb.innerHTML = '<tr><td colspan="10" class="text-center">Carregando...</td></tr>';
+            tb.innerHTML = '<tr><td colspan="14" class="text-center">Carregando...</td></tr>';
             try {
                 const res = await axios.post('/api/crm/automacao-performance/', { acao: 'listar' }, { headers: { 'Authorization': `Bearer ${token}` }});
                 tb.innerHTML = '';
-                if (!res.data.length) tb.innerHTML = '<tr><td colspan="10" class="text-center text-muted">Nenhuma regra cadastrada.</td></tr>';
-                res.data.forEach(r => {
+                const filtroStatusDest = (document.getElementById('filtro-status-destinatarios-regras')?.value || 'todos');
+                const regrasFiltradas = (res.data || []).filter(r => {
+                    const valor = (r.status_destinatarios || 'somente_ativos');
+                    return filtroStatusDest === 'todos' ? true : valor === filtroStatusDest;
+                });
+                if (!regrasFiltradas.length) tb.innerHTML = '<tr><td colspan="14" class="text-center text-muted">Nenhuma regra cadastrada.</td></tr>';
+                regrasFiltradas.forEach(r => {
                     const intervalo = r.intervalo_minutos != null ? (r.intervalo_minutos >= 60 ? (r.intervalo_minutos/60) + 'h' : r.intervalo_minutos + ' min') : '1h';
                     const cluster = (r.cluster_alvo || '') ? r.cluster_alvo : 'Todos';
                     const horaFim = (r.hora_fim != null) ? r.hora_fim + 'h' : '19h';
                     const relatorio = (r.tipo_relatorio === 'SEMANAL') ? 'Semanal' : (r.tipo_relatorio === 'MENSAL') ? 'Mensal' : 'Hoje';
+                    const modo = (r.modo_envio === 'ESPECIFICO') ? 'Específico' : 'Intervalo';
+                    const statusDest = (r.status_destinatarios === 'somente_inativos') ? 'Inativos' : (r.status_destinatarios === 'todos') ? 'Todos' : 'Ativos';
+                    const horarios = Array.isArray(r.horarios_especificos) ? r.horarios_especificos.join(', ') : '';
+                    const dias = Array.isArray(r.dias_semana) ? r.dias_semana : [];
+                    const diasLabel = dias.length ? dias.map(d => ['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'][d] || '').filter(Boolean).join('/') : '-';
+                    const horariosDias = (r.modo_envio === 'ESPECIFICO')
+                        ? `${horarios || '-'} | ${r.tipo === 'SEMANAL' ? diasLabel : 'Diário'}`
+                        : '-';
                     const destEsc = (r.destinatarios || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
                     const nomeEsc = (r.nome || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
                     tb.innerHTML += `<tr>
-                        <td class="cell-wrap" title="${nomeEsc}">${nomeEsc}</td>
+                        <td>${r.prioridade ?? '-'}</td>
+                        <td class="cell-ellipsis nome-regra" title="${nomeEsc}">${nomeEsc}</td>
                         <td>${r.tipo}</td>
-                        <td>${horaFim}</td>
-                        <td>${intervalo}</td>
+                        <td>${modo}</td>
+                        <td>${statusDest}</td>
+                        <td class="cell-ellipsis horarios-regra" title="${horariosDias}">${horariosDias}</td>
+                        <td>${r.modo_envio === 'ESPECIFICO' ? '-' : horaFim}</td>
+                        <td>${r.modo_envio === 'ESPECIFICO' ? '-' : intervalo}</td>
                         <td>${relatorio}</td>
                         <td>${r.canal_alvo}</td>
                         <td>${cluster}</td>
-                        <td class="cell-wrap small" title="${destEsc}">${destEsc}</td>
+                        <td class="cell-ellipsis destinos-regra small" title="${destEsc}">${destEsc}</td>
                         <td>${r.ativo ? '<span class="badge bg-success">ON</span>' : '<span class="badge bg-secondary">OFF</span>'}</td>
                         <td>
                             <button class="btn btn-sm btn-editar me-1" onclick='editarRegra(${JSON.stringify(r)})'><i class="bi bi-pencil"></i></button>
@@ -434,38 +581,65 @@
                         </td>
                     </tr>`;
                 });
-            } catch(e) { tb.innerHTML = '<tr><td colspan="10" class="text-danger">Erro ao carregar regras.</td></tr>'; }
+            } catch(e) { tb.innerHTML = '<tr><td colspan="14" class="text-danger">Erro ao carregar regras.</td></tr>'; }
         }
 
         async function salvarRegraRobo() {
+            const modoEnvio = document.getElementById('robo-modo-envio').value || 'INTERVALO';
+            const tipo = document.getElementById('robo-tipo').value || 'HORARIO';
+            const horariosEspecificos = parseHorariosEspecificos(document.getElementById('robo-horarios-especificos').value);
+            const diasSemana = obterDiasSemanaSelecionados();
             const dados = {
                 id: document.getElementById('robo-id').value || null,
                 nome: document.getElementById('robo-nome').value,
-                tipo: document.getElementById('robo-tipo').value,
+                tipo: tipo,
+                modo_envio: modoEnvio,
                 canal_alvo: document.getElementById('robo-canal').value,
                 cluster_alvo: document.getElementById('robo-cluster').value || '',
                 destinatarios: document.getElementById('robo-destinos').value,
                 ativo: document.getElementById('robo-ativo').checked,
-                intervalo_minutos: parseInt(document.getElementById('robo-intervalo').value, 10) || 60,
-                hora_fim: parseInt(document.getElementById('robo-hora-fim').value, 10) || 19,
+                intervalo_minutos: modoEnvio === 'INTERVALO' ? (parseInt(document.getElementById('robo-intervalo').value, 10) || 60) : null,
+                hora_fim: modoEnvio === 'INTERVALO' ? (parseInt(document.getElementById('robo-hora-fim').value, 10) || 19) : null,
+                horarios_especificos: modoEnvio === 'ESPECIFICO' ? horariosEspecificos : [],
+                dias_semana: (modoEnvio === 'ESPECIFICO' && tipo === 'SEMANAL') ? diasSemana : [],
                 tipo_relatorio: document.getElementById('robo-tipo-relatorio').value || 'HOJE'
             };
+            const prioridade = parseInt(document.getElementById('robo-prioridade').value, 10);
+            dados.prioridade = prioridade;
+            dados.status_destinatarios = document.getElementById('robo-status-destinatarios').value || 'somente_ativos';
             if(!dados.nome || !dados.destinatarios) return alert("Preencha Nome e Destinatários.");
+            if (!Number.isInteger(prioridade) || prioridade <= 0) return alert("Prioridade é obrigatória e deve ser um número inteiro maior que zero.");
+            if (modoEnvio === 'ESPECIFICO' && !dados.horarios_especificos.length) {
+                return alert("No modo horário específico, informe ao menos um horário (HH:mm).");
+            }
+            if (modoEnvio === 'ESPECIFICO' && tipo === 'SEMANAL' && !dados.dias_semana.length) {
+                return alert("Selecione ao menos um dia da semana para o semanal.");
+            }
             await axios.post('/api/crm/automacao-performance/', { acao: 'salvar', dados }, { headers: { 'Authorization': `Bearer ${token}` }});
             
             document.getElementById('robo-id').value = '';
             document.getElementById('robo-nome').value = '';
             document.getElementById('robo-destinos').value = '';
+            document.getElementById('robo-prioridade').value = '';
+            document.getElementById('robo-status-destinatarios').value = 'somente_ativos';
+            document.getElementById('robo-modo-envio').value = 'INTERVALO';
+            document.getElementById('robo-horarios-especificos').value = '';
+            document.querySelectorAll('.robo-dia-semana').forEach(el => { el.checked = false; });
+            atualizarModoEnvioRobo();
             carregarRegrasRobo();
+            bootstrap.Tab.getOrCreateInstance(document.getElementById('tab-robo-regras-ativas')).show();
         }
 
         function editarRegra(r) {
             document.getElementById('robo-id').value = r.id;
             document.getElementById('robo-nome').value = r.nome;
             document.getElementById('robo-tipo').value = r.tipo;
+            document.getElementById('robo-modo-envio').value = (r.modo_envio === 'ESPECIFICO') ? 'ESPECIFICO' : 'INTERVALO';
             document.getElementById('robo-canal').value = r.canal_alvo;
             document.getElementById('robo-cluster').value = r.cluster_alvo || '';
             document.getElementById('robo-destinos').value = r.destinatarios;
+            document.getElementById('robo-prioridade').value = r.prioridade ?? '';
+            document.getElementById('robo-status-destinatarios').value = r.status_destinatarios || 'somente_ativos';
             document.getElementById('robo-ativo').checked = r.ativo;
             const sel = document.getElementById('robo-intervalo');
             const val = (r.intervalo_minutos != null && [15, 30, 60, 120].includes(Number(r.intervalo_minutos))) ? String(r.intervalo_minutos) : '60';
@@ -473,7 +647,14 @@
             const hf = document.getElementById('robo-hora-fim');
             const hfVal = (r.hora_fim != null && [17,18,19,20,21,22].includes(Number(r.hora_fim))) ? String(r.hora_fim) : '19';
             hf.value = hfVal;
+            document.getElementById('robo-horarios-especificos').value = Array.isArray(r.horarios_especificos) ? r.horarios_especificos.join(', ') : '';
+            const dias = Array.isArray(r.dias_semana) ? r.dias_semana.map(Number) : [];
+            document.querySelectorAll('.robo-dia-semana').forEach(el => {
+                el.checked = dias.includes(Number(el.value));
+            });
             document.getElementById('robo-tipo-relatorio').value = (r.tipo_relatorio === 'SEMANAL' || r.tipo_relatorio === 'MENSAL') ? r.tipo_relatorio : 'HOJE';
+            atualizarModoEnvioRobo();
+            bootstrap.Tab.getOrCreateInstance(document.getElementById('tab-robo-nova-regra')).show();
         }
 
         async function excluirRegra(id) {
@@ -591,8 +772,7 @@
             const tabLabel = tabAtiva ? tabAtiva.textContent.trim() : 'Hoje';
             const titulo = `Performance - ${tabLabel}`;
 
-            try {
-                await axios.post('/api/crm/enviar-imagem-performance/', { 
+            const body = { 
                     chat_id: destino, 
                     gerar_server: true,
                     canal: canal,
@@ -600,7 +780,12 @@
                     tipo: tipo,
                     titulo: titulo,
                     vendedor_ativo: vendedorAtivo || 'todos'
-                }, { headers: { 'Authorization': `Bearer ${token}` }});
+            };
+            const pp = paramsPeriodoPerformance();
+            if (pp.get('mes_referencia')) body.mes_referencia = pp.get('mes_referencia');
+            if (pp.get('semana_segunda')) body.semana_segunda = pp.get('semana_segunda');
+            try {
+                await axios.post('/api/crm/enviar-imagem-performance/', body, { headers: { 'Authorization': `Bearer ${token}` }});
                 
                 // Sucesso
                 btnEnviar.disabled = false;

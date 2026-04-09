@@ -7690,7 +7690,7 @@ class ConfigurarAutomacaoView(APIView):
         acao = request.data.get('acao')
         
         if acao == 'listar':
-            regras = AgendamentoDisparo.objects.all().values()
+            regras = AgendamentoDisparo.objects.all().order_by('prioridade', 'id').values()
             return Response(list(regras))
             
         elif acao == 'salvar':
@@ -7754,6 +7754,20 @@ class ConfigurarAutomacaoView(APIView):
                 horarios_especificos = []
                 dias_semana = []
 
+            status_destinatarios = (d.get('status_destinatarios') or 'somente_ativos').strip().lower()
+            if status_destinatarios not in ['somente_ativos', 'somente_inativos', 'todos']:
+                return Response({'error': 'Status dos destinatários inválido.'}, status=400)
+
+            prioridade_raw = d.get('prioridade')
+            if prioridade_raw in [None, '']:
+                return Response({'error': 'Prioridade é obrigatória.'}, status=400)
+            try:
+                prioridade = int(prioridade_raw)
+            except (TypeError, ValueError):
+                return Response({'error': 'Prioridade deve ser um número inteiro.'}, status=400)
+            if prioridade <= 0:
+                return Response({'error': 'Prioridade deve ser maior que zero.'}, status=400)
+
             defaults = {
                 'nome': d['nome'], 'tipo': tipo,
                 'canal_alvo': d['canal_alvo'],
@@ -7767,6 +7781,8 @@ class ConfigurarAutomacaoView(APIView):
                 'dias_semana': dias_semana,
                 'controle_disparos': {},
                 'tipo_relatorio': tipo_relatorio,
+                'status_destinatarios': status_destinatarios,
+                'prioridade': prioridade,
             }
             if d.get('id'):
                 AgendamentoDisparo.objects.filter(id=d['id']).update(**defaults)

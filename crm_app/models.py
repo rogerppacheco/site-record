@@ -1286,6 +1286,11 @@ class LancamentoFinanceiro(models.Model):
         ordering = ['-data']
         
 class AgendamentoDisparo(models.Model):
+    STATUS_DESTINATARIOS_CHOICES = [
+        ('somente_ativos', 'Somente ativos'),
+        ('somente_inativos', 'Somente inativos'),
+        ('todos', 'Todos'),
+    ]
     MODO_ENVIO_CHOICES = [
         ('INTERVALO', 'Intervalo'),
         ('ESPECIFICO', 'Horários específicos'),
@@ -1357,6 +1362,17 @@ class AgendamentoDisparo(models.Model):
         choices=TIPO_RELATORIO_CHOICES,
         default='HOJE',
         help_text="Qual relatório enviar: Hoje, Semanal ou Mensal."
+    )
+    status_destinatarios = models.CharField(
+        max_length=20,
+        choices=STATUS_DESTINATARIOS_CHOICES,
+        default='somente_ativos',
+        help_text="Define se a regra envia para usuários ativos, inativos ou todos."
+    )
+    prioridade = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Ordem de envio: menor número envia primeiro."
     )
 
     def __str__(self):

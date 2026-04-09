@@ -24,7 +24,7 @@ def processar_envio_performance():
     
     logger.info(f"📊 Verificando envios de Performance - {agora.strftime('%d/%m/%Y %H:%M:%S')} (Dia: {dia_sem}, Hora: {hora:02d}:{minuto:02d})")
     
-    regras = AgendamentoDisparo.objects.filter(ativo=True)
+    regras = AgendamentoDisparo.objects.filter(ativo=True, prioridade__isnull=False).order_by('prioridade', 'id')
     logger.info(f"📋 Encontradas {regras.count()} regra(s) de agendamento ativa(s)")
     
     svc = WhatsAppService()
@@ -122,6 +122,11 @@ def processar_envio_performance():
 
                 # Alinhado ao Painel (default gestão): inclui vendedores inativos; bots continuam excluídos
                 users = User.objects.exclude(username__in=['OSAB_IMPORT', 'admin', 'root'])
+                status_destinatarios = (getattr(regra, 'status_destinatarios', 'somente_ativos') or 'somente_ativos').lower()
+                if status_destinatarios == 'somente_ativos':
+                    users = users.filter(is_active=True)
+                elif status_destinatarios == 'somente_inativos':
+                    users = users.filter(is_active=False)
                 if regra.canal_alvo != 'TODOS':
                     users = users.filter(canal__iexact=regra.canal_alvo)
                 if getattr(regra, 'cluster_alvo', None) and str(regra.cluster_alvo).strip() and str(regra.cluster_alvo).upper() != 'TODOS':

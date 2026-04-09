@@ -33,6 +33,8 @@ class ConfigurarAutomacaoPerformanceTests(APITestCase):
                 "horarios_especificos": ["08:00", "10:30"],
                 "dias_semana": [],
                 "tipo_relatorio": "HOJE",
+                "status_destinatarios": "somente_ativos",
+                "prioridade": 1,
             },
         }
         response = self.client.post(self.url, payload, format="json")
@@ -55,6 +57,8 @@ class ConfigurarAutomacaoPerformanceTests(APITestCase):
                 "horarios_especificos": ["10:40", "08:00", "10:40"],
                 "dias_semana": [4, 1, 4],
                 "tipo_relatorio": "SEMANAL",
+                "status_destinatarios": "todos",
+                "prioridade": 2,
             },
         }
         response = self.client.post(self.url, payload, format="json")
@@ -66,3 +70,26 @@ class ConfigurarAutomacaoPerformanceTests(APITestCase):
         self.assertIsNone(regra.hora_fim)
         self.assertEqual(regra.horarios_especificos, ["08:00", "10:40"])
         self.assertEqual(regra.dias_semana, [1, 4])
+        self.assertEqual(regra.status_destinatarios, "todos")
+        self.assertEqual(regra.prioridade, 2)
+
+    def test_prioridade_obrigatoria(self):
+        payload = {
+            "acao": "salvar",
+            "dados": {
+                "nome": "Regra sem prioridade",
+                "tipo": "HORARIO",
+                "modo_envio": "INTERVALO",
+                "canal_alvo": "TODOS",
+                "cluster_alvo": "",
+                "destinatarios": "5511999999999",
+                "ativo": True,
+                "intervalo_minutos": 60,
+                "hora_fim": 19,
+                "tipo_relatorio": "HOJE",
+                "status_destinatarios": "somente_ativos",
+            },
+        }
+        response = self.client.post(self.url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("prioridade", str(response.data).lower())
