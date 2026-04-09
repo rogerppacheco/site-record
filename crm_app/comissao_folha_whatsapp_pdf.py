@@ -128,14 +128,17 @@ def montar_html_folha_e_extrato_pdf(vendedor_data: Dict[str, Any], periodo: str)
         "<style>",
         "@page { size: A4 landscape; margin: 8mm; }",
         "body { font-family: Helvetica, Arial, sans-serif; font-size: 9px; color: #212529; }",
-        "h1 { font-size: 13px; margin: 0; font-weight: bold; }",
-        "h2 { font-size: 11px; margin: 16px 0 8px 0; border-bottom: 1px solid #dee2e6; padding-bottom: 4px; }",
-        ".hdr { background: #0d6efd; color: #fff; padding: 8px 10px; margin: -8px -8px 12px -8px; }",
-        "table.hdr-bar { width: 100%; border-collapse: collapse; table-layout: fixed; }",
-        "table.hdr-bar td { border: none; vertical-align: middle; padding: 4px 6px; }",
-        ".hdr-faixa { width: 24%; font-size: 9px; text-align: left; }",
-        ".hdr-nome { width: 52%; text-align: center; }",
-        ".hdr-periodo { width: 24%; font-size: 9px; text-align: right; }",
+        "h1 { font-size: 13px; margin: 0; font-weight: bold; color: inherit; }",
+        "h2 { font-size: 11px; margin: 16px 0 8px 0; border-bottom: 1px solid #dee2e6; padding-bottom: 4px; clear: both; }",
+        ".hdr { background-color: #0d6efd; color: #ffffff; padding: 10px 12px; margin-bottom: 12px; }",
+        ".hdr, .hdr table, .hdr td, .hdr th, .hdr h1, .hdr div { color: #ffffff !important; }",
+        "table.hdr-bar { width: 100%; border-collapse: collapse; table-layout: fixed; background-color: #0d6efd; }",
+        "table.hdr-bar td { border: none; vertical-align: middle; padding: 6px 8px; background-color: #0d6efd; }",
+        ".hdr-faixa { width: 26%; font-size: 9px; text-align: left; font-weight: bold; }",
+        ".hdr-nome { width: 48%; text-align: center; }",
+        ".hdr-nome h1 { font-size: 14px; color: #ffffff !important; }",
+        ".hdr-periodo { width: 26%; font-size: 9px; text-align: right; font-weight: bold; }",
+        ".hdr-meta { font-size: 9px; color: #212529; margin: 0 0 12px 0; padding: 8px 10px; background: #f8f9fa; border: 1px solid #dee2e6; clear: both; }",
         "table.folha { width: 100%; border-collapse: collapse; margin-bottom: 8px; table-layout: fixed; }",
         "table.folha th, table.folha td { border: 1px solid #dee2e6; padding: 4px 5px; }",
         "table.folha th { background: #f8f9fa; font-weight: bold; text-align: left; }",
@@ -144,40 +147,48 @@ def montar_html_folha_e_extrato_pdf(vendedor_data: Dict[str, Any], periodo: str)
         "table.folha tr.total td { background: #f8f9fa; }",
         "td.b { font-weight: bold; }",
         "td.info { color: #0dcaf0; }",
-        ".resumo { margin: 10px 0; font-size: 9px; }",
-        ".resumo span { margin-right: 18px; }",
+        ".resumo { margin: 10px 0; font-size: 9px; width: 100%; }",
+        ".resumo-linha { display: block; width: 100%; margin: 0 0 8px 0; padding: 0; clear: both; }",
+        ".resumo-linha:last-child { margin-bottom: 0; }",
         ".neg { color: #dc3545; font-weight: bold; }",
         ".pos { color: #198754; font-weight: bold; }",
         ".liquido { font-size: 10px; }",
         ".aviso { background: #fff3cd; border: 1px solid #ffc107; padding: 6px; margin: 8px 0; font-size: 8px; }",
-        ".bloco { margin-top: 8px; font-size: 8px; }",
-        ".bloco-tit { color: #6c757d; font-weight: bold; margin-bottom: 4px; }",
-        "table.extrato { width: 100%; border-collapse: collapse; table-layout: fixed; }",
-        "table.extrato th, table.extrato td { border: 1px solid #dee2e6; padding: 2px 3px; font-size: 6.5px; vertical-align: top; word-wrap: break-word; overflow-wrap: break-word; }",
-        "table.extrato th { background: #f8f9fa; font-size: 6px; }",
+        ".bloco { margin-top: 10px; margin-bottom: 10px; font-size: 8px; width: 100%; clear: both; }",
+        ".bloco-tit { color: #6c757d; font-weight: bold; margin: 8px 0 6px 0; display: block; }",
+        ".bloco .neg, .bloco .pos, .bloco div { display: block; margin: 4px 0; line-height: 1.35; }",
+        ".ref-linha { color: #0dcaf0; display: block; margin: 6px 0; }",
+        ".ref-plano { color: #6c757d; margin: 3px 0 3px 10px; display: block; }",
+        "table.extrato { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 0; }",
+        "table.extrato th, table.extrato td { border: 1px solid #dee2e6; padding: 3px 4px; font-size: 7px; vertical-align: top; word-wrap: break-word; }",
+        "table.extrato th { background: #f8f9fa; font-size: 6.5px; }",
         "table.extrato th.c, table.extrato td.c { text-align: center; }",
-        "table.extrato col.col-nome { width: 18%; }",
-        "table.extrato col.col-dacc { width: 5%; }",
-        "table.extrato col.col-cnpj { width: 5%; }",
-        "table.extrato col.col-plano { width: 9%; }",
-        "table.extrato col.col-dtped { width: 7%; }",
-        "table.extrato col.col-dtinst { width: 7%; }",
-        "table.extrato col.col-os { width: 9%; }",
-        "table.extrato col.col-sit { width: 16%; }",
-        "table.extrato col.col-churn { width: 6%; }",
-        "table.extrato col.col-adiant { width: 8%; }",
-        "table.extrato td.c-dt, table.extrato td.c-os { white-space: nowrap; font-size: 6px; }",
+        "table.extrato th.ex-nome, table.extrato td.ex-nome { width: 17%; text-align: left; }",
+        "table.extrato th.ex-dacc, table.extrato td.ex-dacc, table.extrato th.ex-cnpj, table.extrato td.ex-cnpj { width: 4%; }",
+        "table.extrato th.ex-plano, table.extrato td.ex-plano { width: 9%; }",
+        "table.extrato th.ex-dtped, table.extrato td.ex-dtped, table.extrato th.ex-dtinst, table.extrato td.ex-dtinst { width: 7%; }",
+        "table.extrato th.ex-os, table.extrato td.ex-os { width: 9%; }",
+        "table.extrato th.ex-sit, table.extrato td.ex-sit { width: 33%; text-align: left; }",
+        "table.extrato th.ex-churn, table.extrato td.ex-churn, table.extrato th.ex-adiant, table.extrato td.ex-adiant { width: 5%; }",
         ".churn-sim { background-color: #f8d7da; }",
         ".churn-nao { background-color: #d4edda; }",
         ".adiant-linha { background-color: #cff4fc; }",
         "</style>",
         "</head><body>",
         '<div class="hdr">'
-        '<table class="hdr-bar"><tr>'
+        '<table class="hdr-bar" border="0" cellpadding="0" cellspacing="0"><tr>'
         '<td class="hdr-faixa">Faixa: ' + faixa + "</td>"
         '<td class="hdr-nome"><h1>' + nome_v + "</h1></td>"
         '<td class="hdr-periodo">Período: ' + periodo_e + "</td>"
-        "</tr></table></div>",
+        "</tr></table></div>"
+        '<div class="hdr-meta">'
+        "<strong>Vendedor:</strong> "
+        + nome_v
+        + " | <strong>Período:</strong> "
+        + periodo_e
+        + " | <strong>Faixa:</strong> "
+        + faixa
+        + "</div>",
         '<table class="folha">',
         "<thead><tr>",
         "<th>PLANO</th>",
@@ -192,9 +203,9 @@ def montar_html_folha_e_extrato_pdf(vendedor_data: Dict[str, Any], periodo: str)
         total_row,
         "</tbody></table>",
         '<div class="resumo">',
-        '<span class="neg">Descontos: - ' + _fmt_br(r.get("total_descontos") or 0) + "</span>",
-        '<span class="pos">Bônus: + ' + _fmt_br(r.get("total_bonus") or 0) + "</span>",
-        '<span class="pos liquido">LÍQUIDO A PAGAR: ' + _fmt_br(r.get("liquido") or 0) + "</span>",
+        '<div class="resumo-linha neg">Descontos: - ' + _fmt_br(r.get("total_descontos") or 0) + "</div>",
+        '<div class="resumo-linha pos">Bônus: + ' + _fmt_br(r.get("total_bonus") or 0) + "</div>",
+        '<div class="resumo-linha pos liquido">LÍQUIDO A PAGAR: ' + _fmt_br(r.get("liquido") or 0) + "</div>",
         "</div>",
     ]
 
@@ -245,7 +256,7 @@ def montar_html_folha_e_extrato_pdf(vendedor_data: Dict[str, Any], periodo: str)
     if int(info_ad.get("quantidade_total") or 0) > 0:
         parts.append('<div class="bloco"><div class="bloco-tit">Referência — não entra em descontos</div>')
         parts.append(
-            '<div style="color:#0dcaf0;">Comissão já adiantada (esteira + tabela Adiantamento) <b>('
+            '<div class="ref-linha">Comissão já adiantada (esteira + tabela Adiantamento) <b>('
             + _e(info_ad.get("quantidade_total"))
             + " un.)</b> → "
             + _fmt_br(info_ad.get("valor_total") or 0)
@@ -254,7 +265,7 @@ def montar_html_folha_e_extrato_pdf(vendedor_data: Dict[str, Any], periodo: str)
         for row in info_ad.get("por_plano") or []:
             if int(row.get("qtd") or 0) > 0:
                 parts.append(
-                    '<div style="color:#6c757d;margin-left:8px;">'
+                    '<div class="ref-plano">'
                     + _e(row.get("plano"))
                     + ": "
                     + _e(row.get("qtd"))
@@ -281,16 +292,17 @@ def montar_html_folha_e_extrato_pdf(vendedor_data: Dict[str, Any], periodo: str)
     parts.append(
         "<h2>Extrato (" + str(len(extrato)) + " vendas)</h2>"
         '<table class="extrato">'
-        "<colgroup>"
-        '<col class="col-nome"/><col class="col-dacc"/><col class="col-cnpj"/><col class="col-plano"/>'
-        '<col class="col-dtped"/><col class="col-dtinst"/><col class="col-os"/><col class="col-sit"/>'
-        '<col class="col-churn"/><col class="col-adiant"/>'
-        "</colgroup>"
         "<thead><tr>"
-        '<th style="width:18%">NOME</th><th style="width:5%" class="c">DACC</th><th style="width:5%" class="c">CNPJ</th>'
-        '<th style="width:9%">PLANO</th>'
-        '<th style="width:7%" class="c">DT PEDIDO</th><th style="width:7%" class="c">DT INST</th><th style="width:9%" class="c">OS</th>'
-        '<th style="width:16%">SITUAÇÃO</th><th style="width:6%" class="c">CHURN</th><th style="width:8%" class="c">ADIANT.</th>'
+        '<th class="ex-nome" style="width:17%">NOME</th>'
+        '<th class="ex-dacc c" style="width:4%">DACC</th>'
+        '<th class="ex-cnpj c" style="width:4%">CNPJ</th>'
+        '<th class="ex-plano" style="width:9%">PLANO</th>'
+        '<th class="ex-dtped c" style="width:7%">DT PEDIDO</th>'
+        '<th class="ex-dtinst c" style="width:7%">DT INST</th>'
+        '<th class="ex-os c" style="width:9%">OS</th>'
+        '<th class="ex-sit" style="width:33%">SITUAÇÃO</th>'
+        '<th class="ex-churn c" style="width:5%">CHURN</th>'
+        '<th class="ex-adiant c" style="width:5%">ADIANT.</th>'
         "</tr></thead><tbody>"
     )
 
@@ -305,16 +317,16 @@ def montar_html_folha_e_extrato_pdf(vendedor_data: Dict[str, Any], periodo: str)
             cls = "churn-nao"
         parts.append(
             f'<tr class="{cls}">'
-            f"<td>{_e(e.get('nome'))}</td>"
-            f"<td class=\"c\">{_e(e.get('dacc'))}</td>"
-            f"<td class=\"c\">{_e(e.get('cnpj'))}</td>"
-            f"<td>{_e(e.get('plano'))}</td>"
-            f'<td class="c c-dt">{_e(e.get("dt_pedido"))}</td>'
-            f'<td class="c c-dt">{_e(e.get("dt_inst"))}</td>'
-            f'<td class="c c-os">{_e(e.get("os"))}</td>'
-            f"<td>{_e(e.get('situacao'))}</td>"
-            f"<td class=\"c\">{_e(e.get('churn'))}</td>"
-            f'<td class="c">{_e(e.get("adiantada") or "—")}</td>'
+            f'<td class="ex-nome">{_e(e.get("nome"))}</td>'
+            f'<td class="ex-dacc c">{_e(e.get("dacc"))}</td>'
+            f'<td class="ex-cnpj c">{_e(e.get("cnpj"))}</td>'
+            f'<td class="ex-plano">{_e(e.get("plano"))}</td>'
+            f'<td class="ex-dtped c">{_e(e.get("dt_pedido"))}</td>'
+            f'<td class="ex-dtinst c">{_e(e.get("dt_inst"))}</td>'
+            f'<td class="ex-os c">{_e(e.get("os"))}</td>'
+            f'<td class="ex-sit">{_e(e.get("situacao"))}</td>'
+            f'<td class="ex-churn c">{_e(e.get("churn"))}</td>'
+            f'<td class="ex-adiant c">{_e(e.get("adiantada") or "—")}</td>'
             "</tr>"
         )
 
