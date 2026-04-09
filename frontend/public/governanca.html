@@ -2914,9 +2914,28 @@
             else if (l.tipo === 'ADIANTAMENTO_COMISSAO') tipoLabel = 'Adiant. Comissão';
             else tipoLabel = l.tipo;
             const valorCls = l.tipo === 'DESCONTO' ? 'text-danger' : (l.tipo === 'BONUS_PREMIACAO' ? 'text-success' : 'text-primary');
-            tbody.innerHTML += `<tr><td>${dataFmt}</td><td>${l.usuario_nome || 'N/A'}</td><td>${tipoLabel}${l.descricao ? ' — ' + l.descricao : ''}</td><td class="text-end fw-bold ${valorCls}">${fmtMoeda(l.valor)}</td><td class="text-end"><button class="btn btn-xs btn-outline-danger" onclick="excluirLancamento(${l.id})" title="Excluir">🗑️</button></td></tr>`;
+            tbody.innerHTML += `<tr><td>${dataFmt}</td><td>${l.usuario_nome || 'N/A'}</td><td>${tipoLabel}${l.descricao ? ' — ' + l.descricao : ''}</td><td class="text-end fw-bold ${valorCls}">${fmtMoeda(l.valor)}</td><td class="text-end"><button class="btn btn-xs btn-outline-primary me-1" onclick="editarDataLancamento(${l.id}, '${dataStr || ''}')" title="Editar data"><i class="bi bi-pencil"></i></button><button class="btn btn-xs btn-outline-danger" onclick="excluirLancamento(${l.id})" title="Excluir">🗑️</button></td></tr>`;
         });
     }
+    window.editarDataLancamento = async (id, dataAtual) => {
+        const sugestao = (dataAtual || '').trim();
+        const novaData = prompt('Informe a nova data do lançamento no formato AAAA-MM-DD:', sugestao);
+        if (novaData === null) return;
+        const dataLimpa = novaData.trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dataLimpa)) {
+            alert('Data inválida. Use o formato AAAA-MM-DD.');
+            return;
+        }
+        try {
+            await apiFetch(`/crm/lancamentos-financeiros/${id}/`, {
+                method: 'PATCH',
+                body: JSON.stringify({ data: dataLimpa }),
+            });
+            await carregarLancamentosFinanceiros();
+        } catch (e) {
+            alert(e.message || 'Erro ao editar data do lançamento.');
+        }
+    };
     window.excluirLancamento = async (id) => { if(confirm('Excluir?')) { await apiFetch(`/crm/lancamentos-financeiros/${id}/`, {method:'DELETE'}); carregarLancamentosFinanceiros(); } };
 
     // ====================================================================
