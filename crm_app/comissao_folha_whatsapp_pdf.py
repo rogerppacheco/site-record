@@ -126,12 +126,17 @@ def montar_html_folha_e_extrato_pdf(vendedor_data: Dict[str, Any], periodo: str)
         "<head>",
         '<meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>',
         "<style>",
+        "@page { size: A4 landscape; margin: 8mm; }",
         "body { font-family: Helvetica, Arial, sans-serif; font-size: 9px; color: #212529; }",
-        "h1 { font-size: 14px; margin: 0 0 8px 0; }",
+        "h1 { font-size: 13px; margin: 0; font-weight: bold; }",
         "h2 { font-size: 11px; margin: 16px 0 8px 0; border-bottom: 1px solid #dee2e6; padding-bottom: 4px; }",
-        ".hdr { background: #0d6efd; color: #fff; padding: 10px 12px; margin: -8px -8px 12px -8px; }",
-        ".hdr .faixa { float: right; font-size: 10px; margin-top: 2px; }",
-        "table.folha { width: 100%; border-collapse: collapse; margin-bottom: 8px; }",
+        ".hdr { background: #0d6efd; color: #fff; padding: 8px 10px; margin: -8px -8px 12px -8px; }",
+        "table.hdr-bar { width: 100%; border-collapse: collapse; table-layout: fixed; }",
+        "table.hdr-bar td { border: none; vertical-align: middle; padding: 4px 6px; }",
+        ".hdr-faixa { width: 24%; font-size: 9px; text-align: left; }",
+        ".hdr-nome { width: 52%; text-align: center; }",
+        ".hdr-periodo { width: 24%; font-size: 9px; text-align: right; }",
+        "table.folha { width: 100%; border-collapse: collapse; margin-bottom: 8px; table-layout: fixed; }",
         "table.folha th, table.folha td { border: 1px solid #dee2e6; padding: 4px 5px; }",
         "table.folha th { background: #f8f9fa; font-weight: bold; text-align: left; }",
         "table.folha th.c, td.c { text-align: center; }",
@@ -147,18 +152,32 @@ def montar_html_folha_e_extrato_pdf(vendedor_data: Dict[str, Any], periodo: str)
         ".aviso { background: #fff3cd; border: 1px solid #ffc107; padding: 6px; margin: 8px 0; font-size: 8px; }",
         ".bloco { margin-top: 8px; font-size: 8px; }",
         ".bloco-tit { color: #6c757d; font-weight: bold; margin-bottom: 4px; }",
-        "table.extrato { width: 100%; border-collapse: collapse; }",
-        "table.extrato th, table.extrato td { border: 1px solid #dee2e6; padding: 3px 4px; font-size: 7px; }",
-        "table.extrato th { background: #f8f9fa; }",
+        "table.extrato { width: 100%; border-collapse: collapse; table-layout: fixed; }",
+        "table.extrato th, table.extrato td { border: 1px solid #dee2e6; padding: 2px 3px; font-size: 6.5px; vertical-align: top; word-wrap: break-word; overflow-wrap: break-word; }",
+        "table.extrato th { background: #f8f9fa; font-size: 6px; }",
+        "table.extrato th.c, table.extrato td.c { text-align: center; }",
+        "table.extrato col.col-nome { width: 18%; }",
+        "table.extrato col.col-dacc { width: 5%; }",
+        "table.extrato col.col-cnpj { width: 5%; }",
+        "table.extrato col.col-plano { width: 9%; }",
+        "table.extrato col.col-dtped { width: 7%; }",
+        "table.extrato col.col-dtinst { width: 7%; }",
+        "table.extrato col.col-os { width: 9%; }",
+        "table.extrato col.col-sit { width: 16%; }",
+        "table.extrato col.col-churn { width: 6%; }",
+        "table.extrato col.col-adiant { width: 8%; }",
+        "table.extrato td.c-dt, table.extrato td.c-os { white-space: nowrap; font-size: 6px; }",
         ".churn-sim { background-color: #f8d7da; }",
         ".churn-nao { background-color: #d4edda; }",
         ".adiant-linha { background-color: #cff4fc; }",
         "</style>",
         "</head><body>",
-        '<div class="hdr"><span class="faixa">Faixa: ' + faixa + "</span>",
-        "<h1>" + nome_v + "</h1>",
-        "<div>Período: " + periodo_e + "</div>",
-        "</div>",
+        '<div class="hdr">'
+        '<table class="hdr-bar"><tr>'
+        '<td class="hdr-faixa">Faixa: ' + faixa + "</td>"
+        '<td class="hdr-nome"><h1>' + nome_v + "</h1></td>"
+        '<td class="hdr-periodo">Período: ' + periodo_e + "</td>"
+        "</tr></table></div>",
         '<table class="folha">',
         "<thead><tr>",
         "<th>PLANO</th>",
@@ -261,9 +280,17 @@ def montar_html_folha_e_extrato_pdf(vendedor_data: Dict[str, Any], periodo: str)
     extrato = list(vendedor_data.get("extrato") or [])
     parts.append(
         "<h2>Extrato (" + str(len(extrato)) + " vendas)</h2>"
-        '<table class="extrato"><thead><tr>'
-        "<th>NOME</th><th>DACC</th><th>CNPJ</th><th>PLANO</th>"
-        "<th>DT PEDIDO</th><th>DT INST</th><th>OS</th><th>SITUAÇÃO</th><th>CHURN</th><th class=\"c\">ADIANT.</th>"
+        '<table class="extrato">'
+        "<colgroup>"
+        '<col class="col-nome"/><col class="col-dacc"/><col class="col-cnpj"/><col class="col-plano"/>'
+        '<col class="col-dtped"/><col class="col-dtinst"/><col class="col-os"/><col class="col-sit"/>'
+        '<col class="col-churn"/><col class="col-adiant"/>'
+        "</colgroup>"
+        "<thead><tr>"
+        '<th style="width:18%">NOME</th><th style="width:5%" class="c">DACC</th><th style="width:5%" class="c">CNPJ</th>'
+        '<th style="width:9%">PLANO</th>'
+        '<th style="width:7%" class="c">DT PEDIDO</th><th style="width:7%" class="c">DT INST</th><th style="width:9%" class="c">OS</th>'
+        '<th style="width:16%">SITUAÇÃO</th><th style="width:6%" class="c">CHURN</th><th style="width:8%" class="c">ADIANT.</th>'
         "</tr></thead><tbody>"
     )
 
@@ -279,14 +306,14 @@ def montar_html_folha_e_extrato_pdf(vendedor_data: Dict[str, Any], periodo: str)
         parts.append(
             f'<tr class="{cls}">'
             f"<td>{_e(e.get('nome'))}</td>"
-            f"<td>{_e(e.get('dacc'))}</td>"
-            f"<td>{_e(e.get('cnpj'))}</td>"
+            f"<td class=\"c\">{_e(e.get('dacc'))}</td>"
+            f"<td class=\"c\">{_e(e.get('cnpj'))}</td>"
             f"<td>{_e(e.get('plano'))}</td>"
-            f"<td>{_e(e.get('dt_pedido'))}</td>"
-            f"<td>{_e(e.get('dt_inst'))}</td>"
-            f"<td>{_e(e.get('os'))}</td>"
+            f'<td class="c c-dt">{_e(e.get("dt_pedido"))}</td>'
+            f'<td class="c c-dt">{_e(e.get("dt_inst"))}</td>'
+            f'<td class="c c-os">{_e(e.get("os"))}</td>'
             f"<td>{_e(e.get('situacao'))}</td>"
-            f"<td>{_e(e.get('churn'))}</td>"
+            f"<td class=\"c\">{_e(e.get('churn'))}</td>"
             f'<td class="c">{_e(e.get("adiantada") or "—")}</td>'
             "</tr>"
         )

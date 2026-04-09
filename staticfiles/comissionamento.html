@@ -100,11 +100,11 @@
                             <select id="folha-excel-vendedores-multi" class="form-select form-select-sm" style="min-width: 260px;" multiple size="3" title="Selecione um ou mais vendedores"></select>
                         </div>
                         <button class="btn btn-sm btn-outline-primary" onclick="carregarFolhaExcel()"><i class="bi bi-arrow-clockwise"></i> Atualizar</button>
-                        <div class="d-flex flex-wrap align-items-center gap-1">
-                            <button type="button" class="btn btn-sm btn-success px-2" id="btn-enviar-whatsapp-folha" onclick="enviarFolhaExtratoWhatsApp()" title="Envia um único PDF (folha + extrato) para o WhatsApp do vendedor">
+                        <div class="d-flex flex-wrap align-items-stretch gap-1" style="min-height: 2.25rem;">
+                            <button type="button" class="btn btn-sm btn-success px-2 d-flex align-items-center justify-content-center" style="min-height: 2.25rem;" id="btn-enviar-whatsapp-folha" onclick="enviarFolhaExtratoWhatsApp()" title="Envia um único PDF (folha + extrato) para o WhatsApp do vendedor">
                                 <i class="bi bi-whatsapp"></i> WhatsApp
                             </button>
-                            <button type="button" class="btn btn-sm btn-outline-danger px-2" id="btn-exportar-pdf-folha" onclick="exportarFolhaExtratoPdf()" title="Baixar PDF (folha + extrato); vários vendedores = ZIP">
+                            <button type="button" class="btn btn-sm btn-outline-danger px-2 d-flex align-items-center justify-content-center" style="min-height: 2.25rem;" id="btn-exportar-pdf-folha" onclick="exportarFolhaExtratoPdf()" title="Baixar PDF (folha + extrato); vários vendedores = ZIP">
                                 <i class="bi bi-file-earmark-pdf"></i> Exportar PDF
                             </button>
                         </div>
