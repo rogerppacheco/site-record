@@ -170,9 +170,10 @@ def montar_html_folha_e_extrato_pdf(vendedor_data: Dict[str, Any], periodo: str)
         "table.extrato th.ex-os, table.extrato td.ex-os { width: 9%; }",
         "table.extrato th.ex-sit, table.extrato td.ex-sit { width: 33%; text-align: left; }",
         "table.extrato th.ex-churn, table.extrato td.ex-churn, table.extrato th.ex-adiant, table.extrato td.ex-adiant { width: 5%; }",
-        ".churn-sim { background-color: #f8d7da; }",
-        ".churn-nao { background-color: #d4edda; }",
-        ".adiant-linha { background-color: #cff4fc; }",
+        ".row-danger { background-color: #f8d7da; }",
+        ".row-success { background-color: #d4edda; }",
+        ".row-warning { background-color: #fff3cd; }",
+        ".bloco-row { background: #e9ecef; color: #212529; font-weight: bold; }",
         "</style>",
         "</head><body>",
         '<div class="hdr">'
@@ -289,6 +290,43 @@ def montar_html_folha_e_extrato_pdf(vendedor_data: Dict[str, Any], periodo: str)
         parts.append("</div>")
 
     extrato = list(vendedor_data.get("extrato") or [])
+
+    def _norm(v: Any) -> str:
+        return str(v or "").strip().upper()
+
+    def _date_key_br(v: Any):
+        s = str(v or "").strip()
+        p = s.split("/")
+        if len(p) != 3:
+            return (9999, 99, 99)
+        try:
+            dd, mm, yyyy = int(p[0]), int(p[1]), int(p[2])
+            return (yyyy, mm, dd)
+        except (TypeError, ValueError):
+            return (9999, 99, 99)
+
+    def _bloco_info(e: Dict[str, Any]):
+        situacao = _norm(e.get("situacao"))
+        is_churn = _norm(e.get("churn")) == "SIM"
+        is_cancelada = "CANCELADA" in situacao
+        if situacao == "INSTALADA" and not is_churn:
+            return (0, "INSTALADAS")
+        if situacao == "INSTALADA" and is_churn:
+            return (1, "INSTALADAS COM CHURN")
+        if is_cancelada:
+            return (2, "CANCELADAS")
+        return (3, "DEMAIS STATUS")
+
+    blocos = [
+        {"ordem": 0, "titulo": "INSTALADAS", "itens": []},
+        {"ordem": 1, "titulo": "INSTALADAS COM CHURN", "itens": []},
+        {"ordem": 2, "titulo": "CANCELADAS", "itens": []},
+        {"ordem": 3, "titulo": "DEMAIS STATUS", "itens": []},
+    ]
+    for e in extrato:
+        ordem, _titulo = _bloco_info(e)
+        blocos[ordem]["itens"].append(e)
+
     parts.append(
         "<h2>Extrato (" + str(len(extrato)) + " vendas)</h2>"
         '<table class="extrato">'
@@ -306,29 +344,39 @@ def montar_html_folha_e_extrato_pdf(vendedor_data: Dict[str, Any], periodo: str)
         "</tr></thead><tbody>"
     )
 
-    for e in extrato:
-        churn_sim = (str(e.get("churn") or "").strip().upper() == "SIM")
-        adiant_sim = (str(e.get("adiantada") or "").strip().upper() == "SIM")
-        if churn_sim:
-            cls = "churn-sim"
-        elif adiant_sim:
-            cls = "adiant-linha"
-        else:
-            cls = "churn-nao"
+    for b in blocos:
+        if not b["itens"]:
+            continue
         parts.append(
-            f'<tr class="{cls}">'
-            f'<td class="ex-nome">{_e(e.get("nome"))}</td>'
-            f'<td class="ex-dacc c">{_e(e.get("dacc"))}</td>'
-            f'<td class="ex-cnpj c">{_e(e.get("cnpj"))}</td>'
-            f'<td class="ex-plano">{_e(e.get("plano"))}</td>'
-            f'<td class="ex-dtped c">{_e(e.get("dt_pedido"))}</td>'
-            f'<td class="ex-dtinst c">{_e(e.get("dt_inst"))}</td>'
-            f'<td class="ex-os c">{_e(e.get("os"))}</td>'
-            f'<td class="ex-sit">{_e(e.get("situacao"))}</td>'
-            f'<td class="ex-churn c">{_e(e.get("churn"))}</td>'
-            f'<td class="ex-adiant c">{_e(e.get("adiantada") or "—")}</td>'
-            "</tr>"
+            f'<tr class="bloco-row"><td colspan="10">{_e(b["titulo"])} — {len(b["itens"])} venda(s)</td></tr>'
         )
+        itens = sorted(
+            b["itens"],
+            key=lambda x: (_date_key_br(x.get("dt_pedido")), str(x.get("nome") or "").upper()),
+        )
+        for e in itens:
+            churn_sim = _norm(e.get("churn")) == "SIM"
+            adiant_sim = _norm(e.get("adiantada")) == "SIM"
+            situacao = _norm(e.get("situacao"))
+            is_cancelada = "CANCELADA" in situacao
+            is_instalada = situacao == "INSTALADA"
+            is_verde = is_instalada and not churn_sim
+            cls = "row-danger" if (churn_sim or is_cancelada) else ("row-success" if is_verde else "row-warning")
+            style = ' style="background-color:#cfe8d6;"' if (is_verde and adiant_sim) else ""
+            parts.append(
+                f'<tr class="{cls}"{style}>'
+                f'<td class="ex-nome">{_e(e.get("nome"))}</td>'
+                f'<td class="ex-dacc c">{_e(e.get("dacc"))}</td>'
+                f'<td class="ex-cnpj c">{_e(e.get("cnpj"))}</td>'
+                f'<td class="ex-plano">{_e(e.get("plano"))}</td>'
+                f'<td class="ex-dtped c">{_e(e.get("dt_pedido"))}</td>'
+                f'<td class="ex-dtinst c">{_e(e.get("dt_inst"))}</td>'
+                f'<td class="ex-os c">{_e(e.get("os"))}</td>'
+                f'<td class="ex-sit">{_e(e.get("situacao"))}</td>'
+                f'<td class="ex-churn c">{_e(e.get("churn"))}</td>'
+                f'<td class="ex-adiant c">{_e(e.get("adiantada") or "—")}</td>'
+                "</tr>"
+            )
 
     parts.append("</tbody></table></body></html>")
     return "".join(parts)

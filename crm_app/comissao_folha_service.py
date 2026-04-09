@@ -546,7 +546,6 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                     'quantidade': qtd_vendas_antecip_mes,
                 }
             )
-
         total_bonus = Decimal('0')
         detalhes_bonus = []
         if config:
