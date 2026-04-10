@@ -107,6 +107,9 @@
                             <button type="button" class="btn btn-sm btn-outline-danger px-2 d-flex align-items-center justify-content-center" style="min-height: 2.25rem;" id="btn-exportar-pdf-folha" onclick="exportarFolhaExtratoPdf()" title="Baixar PDF (folha + extrato); vários vendedores = ZIP">
                                 <i class="bi bi-file-earmark-pdf"></i> Exportar PDF
                             </button>
+                            <button type="button" class="btn btn-sm btn-outline-success px-2 d-flex align-items-center justify-content-center" style="min-height: 2.25rem;" id="btn-exportar-excel-resumo" onclick="exportarResumoComissionamentoXlsx()" title="Baixar resumo em Excel com todos os vendedores do mês">
+                                <i class="bi bi-file-earmark-excel"></i> Exportar Excel
+                            </button>
                         </div>
                     </div>
                     <div id="folha-excel-container"></div>
@@ -509,6 +512,53 @@
                 }
             } catch (err) {
                 let msg = err.message || 'Erro ao exportar.';
+                if (err.response && err.response.data instanceof Blob) {
+                    try {
+                        const t = await err.response.data.text();
+                        const j = JSON.parse(t);
+                        msg = j.error || j.detail || msg;
+                    } catch (_) {
+                        msg = 'Falha ao gerar o arquivo.';
+                    }
+                } else if (err.response?.data?.error) {
+                    msg = err.response.data.error;
+                }
+                alert('Erro: ' + msg);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = origText;
+            }
+        }
+
+        async function exportarResumoComissionamentoXlsx() {
+            const ano = document.getElementById('filtro-ano')?.value;
+            const mes = document.getElementById('filtro-mes')?.value;
+            const btn = document.getElementById('btn-exportar-excel-resumo');
+            if (!btn) return;
+            const origText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+            try {
+                const res = await axios.post(
+                    `${apiUrl}exportar-resumo-excel/`,
+                    { ano: parseInt(ano, 10), mes: parseInt(mes, 10) },
+                    { responseType: 'blob' }
+                );
+                const cd = res.headers['content-disposition'] || '';
+                let filename = `comissionamento_resumo_${String(mes).padStart(2, '0')}_${ano}.xlsx`;
+                const mQuoted = /filename="([^"]+)"/i.exec(cd);
+                if (mQuoted && mQuoted[1]) filename = mQuoted[1].trim();
+                const blob = new Blob([res.data], { type: res.headers['content-type'] || 'application/octet-stream' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+            } catch (err) {
+                let msg = err.message || 'Erro ao exportar Excel.';
                 if (err.response && err.response.data instanceof Blob) {
                     try {
                         const t = await err.response.data.text();

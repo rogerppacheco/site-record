@@ -5636,6 +5636,141 @@ def exportar_folha_extrato_pdf(request):
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
+def exportar_comissionamento_resumo_excel(request):
+    """
+    Exporta resumo de comissionamento em XLSX para o mês/ano informado.
+    Colunas: vendedor, comissão bruta, comissão líquida e descontos por tipo.
+    """
+    from decimal import Decimal
+
+    try:
+        ano = request.data.get('ano')
+        mes = request.data.get('mes')
+        if ano is None or mes is None:
+            return Response(
+                {"error": "Envie ano e mes."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        ano, mes = int(ano), int(mes)
+
+        from .comissao_folha_service import calcular_folha_mes
+
+        folha = calcular_folha_mes(ano, mes, use_effective_date_for_display=True)
+        vendedores = sorted(
+            folha.get('vendedores', []),
+            key=lambda x: (x.get('vendedor_nome') or '').upper()
+        )
+
+        colunas_desconto = [
+            "DESCONTO_BOLETO",
+            "DESCONTO_ANTECIPACAO_INSTALACAO",
+            "DESCONTO_ADIANT_CNPJ",
+            "DESCONTO_ADIANT_COMISSAO",
+            "DESCONTO_CHURN_M0",
+            "DESCONTO_CHURN_M1",
+            "DESCONTO_OUTROS",
+        ]
+
+        tipo_para_coluna = {
+            "folha_boleto_vendas": "DESCONTO_BOLETO",
+            "boleto": "DESCONTO_BOLETO",
+            "folha_antecipacao_instalacao": "DESCONTO_ANTECIPACAO_INSTALACAO",
+            "antecipacao_instalacao": "DESCONTO_ANTECIPACAO_INSTALACAO",
+            "adiant_cnpj": "DESCONTO_ADIANT_CNPJ",
+            "adiant_comissao": "DESCONTO_ADIANT_COMISSAO",
+            "churn_m0": "DESCONTO_CHURN_M0",
+            "churn_m1": "DESCONTO_CHURN_M1",
+        }
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Comissionamento"
+
+        headers = [
+            "VENDEDOR",
+            "COMISSAO_BRUTA",
+            "COMISSAO_LIQUIDA",
+            *colunas_desconto,
+            "TOTAL_DESCONTOS",
+        ]
+        ws.append(headers)
+
+        for cell in ws[1]:
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        dinheiro_fmt = "R$ #,##0.00"
+
+        for vendedor in vendedores:
+            resumo = vendedor.get('resumo', {}) or {}
+            bruto = Decimal(str(resumo.get('comissao_total_geral') or 0))
+            liquido = Decimal(str(resumo.get('liquido') or 0))
+            descontos_total = Decimal(str(resumo.get('total_descontos') or 0))
+
+            descontos_por_coluna = {c: Decimal("0") for c in colunas_desconto}
+            for d in (resumo.get('detalhes_descontos') or []):
+                tipo = str((d.get('tipo_exibicao') or '')).strip().lower()
+                coluna = tipo_para_coluna.get(tipo, "DESCONTO_OUTROS")
+                valor = Decimal(str(d.get('valor') or 0))
+                descontos_por_coluna[coluna] += valor
+
+            ws.append([
+                vendedor.get('vendedor_nome') or f"ID {vendedor.get('vendedor_id')}",
+                float(bruto),
+                float(liquido),
+                float(descontos_por_coluna["DESCONTO_BOLETO"]),
+                float(descontos_por_coluna["DESCONTO_ANTECIPACAO_INSTALACAO"]),
+                float(descontos_por_coluna["DESCONTO_ADIANT_CNPJ"]),
+                float(descontos_por_coluna["DESCONTO_ADIANT_COMISSAO"]),
+                float(descontos_por_coluna["DESCONTO_CHURN_M0"]),
+                float(descontos_por_coluna["DESCONTO_CHURN_M1"]),
+                float(descontos_por_coluna["DESCONTO_OUTROS"]),
+                float(descontos_total),
+            ])
+
+        primeira_linha_dados = 2
+        ultima_linha_dados = ws.max_row
+        linha_total = ultima_linha_dados + 1
+        ws.cell(row=linha_total, column=1, value="TOTAL GERAL")
+        ws.cell(row=linha_total, column=1).font = Font(bold=True)
+        ws.cell(row=linha_total, column=1).fill = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
+
+        if ultima_linha_dados >= primeira_linha_dados:
+            for col in range(2, len(headers) + 1):
+                letra = get_column_letter(col)
+                ws.cell(row=linha_total, column=col, value=f"=SUM({letra}{primeira_linha_dados}:{letra}{ultima_linha_dados})")
+                ws.cell(row=linha_total, column=col).font = Font(bold=True)
+                ws.cell(row=linha_total, column=col).fill = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
+
+        for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=2, max_col=len(headers)):
+            for cell in row:
+                cell.number_format = dinheiro_fmt
+                cell.alignment = Alignment(horizontal="right", vertical="center")
+
+        ws.column_dimensions["A"].width = 34
+        for col in range(2, len(headers) + 1):
+            ws.column_dimensions[get_column_letter(col)].width = 20
+        ws.freeze_panes = "A2"
+
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        nome_arquivo = f"comissionamento_resumo_{mes:02d}_{ano}.xlsx"
+        resp = HttpResponse(
+            output.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        resp["Content-Disposition"] = f'attachment; filename="{nome_arquivo}"'
+        return resp
+    except Exception as e:
+        logger.exception("exportar_comissionamento_resumo_excel: %s", e)
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
 def enviar_resultado_campanha_whatsapp(request):
     try:
         campanha_id = request.data.get('campanha_id')
