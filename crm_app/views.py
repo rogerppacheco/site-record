@@ -4704,8 +4704,23 @@ class ImportacaoOsabView(APIView):
                         elif 'PENDEN' in nome_est_upper:
                             novo_motivo = target_motivo_pendencia
                             if not novo_motivo:
-                                cod_full = str(row.get('COD_PENDENCIA', '')).replace('.0', '').strip()
-                                novo_motivo = motivo_pendencia_map.get(cod_full) or motivo_pendencia_map.get(cod_full[:2]) or motivo_padrao_osab
+                                # COD_PENDENCIA: match apenas pelo código numérico completo (ex.: 4 dígitos).
+                                # Não usar prefixo de 2 dígitos — evita colidir 1234 vs 1256 (ambos "12").
+                                cod_raw = row.get('COD_PENDENCIA', '')
+                                cod_str = str(cod_raw).replace('.0', '').strip()
+                                digits_only = re.sub(r'\D', '', cod_str)
+                                novo_motivo = None
+                                if digits_only:
+                                    novo_motivo = motivo_pendencia_map.get(digits_only)
+                                    # Lista oficial (ex.: pendencias_completas.csv) usa 4 dígitos com zeros à esquerda (0009-…).
+                                    if not novo_motivo and len(digits_only) <= 4:
+                                        novo_motivo = motivo_pendencia_map.get(
+                                            digits_only.zfill(4)
+                                        )
+                                    if not novo_motivo and len(digits_only) >= 4:
+                                        novo_motivo = motivo_pendencia_map.get(digits_only[:4])
+                                if not novo_motivo:
+                                    novo_motivo = motivo_padrao_osab
                             
                             if venda.motivo_pendencia_id != novo_motivo.id:
                                 detalhes_hist['motivo_pendencia'] = f"Novo: {novo_motivo.nome}"
