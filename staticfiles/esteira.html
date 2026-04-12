@@ -95,6 +95,10 @@
                         <i class="bi bi-whatsapp"></i> WPP ON
                     </button>
 
+                    <button type="button" id="btn-adiant-sabado-lote" onclick="abrirModalAdiantSabadoLote()" class="btn btn-outline-primary fw-bold shadow-sm" style="display: none;" title="Marcar em lote as vendas de um sábado (abertura O.S.) para vendedores habilitados">
+                        <i class="bi bi-calendar-check"></i> Adiant. sábado (dia…)
+                    </button>
+
                     <button onclick="exportarAgendamentosDia()" class="btn btn-outline-success fw-bold shadow-sm" title="Baixar planilha de agendamentos do dia para envio à operadora">
                         <i class="bi bi-file-earmark-excel"></i> Exportar Agendados Hoje
                     </button>
@@ -194,6 +198,7 @@
                                 <th>Vendedor</th>
                                 <th>Adiant. CNPJ</th>
                                 <th>Adiant. Comissão</th>
+                                <th title="Adiantamento comissão (O.S. aberta em sábado, Regras por Faixa)">Adiant. sábado</th>
                                 <th>Plano</th>
                                 <th>Status Atual</th>
                                 <th>Motivo Pendência</th>
@@ -223,6 +228,14 @@
                                         <option value="">Todos</option>
                                         <option value="sim">Sim</option>
                                         <option value="nao">Não</option>
+                                    </select>
+                                </th>
+                                <th>
+                                    <select id="fc-adiant-sabado" class="form-select form-select-sm">
+                                        <option value="">Todos</option>
+                                        <option value="marcado">Marcado</option>
+                                        <option value="nao">Não</option>
+                                        <option value="quitado">Quitado inst.</option>
                                     </select>
                                 </th>
                                 <th><input id="fc-plano" class="form-control form-control-sm" placeholder="Plano"></th>
@@ -386,6 +399,55 @@
         </div>
     </div>
 
+    <div class="modal fade" id="modal-adiant-sabado-lote" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Marcar adiantamentos sábado do dia</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-2">Informe o <strong>sábado</strong> em que a O.S. foi aberta (data de abertura). Serão marcadas todas as vendas <strong>AGENDADAS</strong> desse dia, com vendedor que tenha <strong>recebe adiantamento sábado</strong> no cadastro, ainda não marcadas.</p>
+                    <label class="form-label small fw-bold" for="input-adiant-sabado-lote-data">Data (sábado)</label>
+                    <input type="date" class="form-control form-control-sm" id="input-adiant-sabado-lote-data">
+                    <div id="adiant-sabado-lote-preview" class="alert alert-light border small mt-3 mb-0" style="display: none;"></div>
+                </div>
+                <div class="modal-footer flex-wrap gap-2">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Fechar</button>
+                    <button type="button" class="btn btn-outline-primary" onclick="previewAdiantSabadoLote()">Prévia</button>
+                    <button type="button" class="btn btn-primary" onclick="executarAdiantSabadoLote()">Marcar todas elegíveis</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modal-marcar-adiant-sabado" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Marcar adiantamento (sábado)</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted">Valor conforme <strong>Regras por Faixa</strong> (Finalidade Adiantamento). O lançamento usa a <strong>data de abertura da O.S.</strong></p>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="chk-adiant-sabado-manual">
+                        <label class="form-check-label" for="chk-adiant-sabado-manual">Marcação manual (exceção)</label>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small">Observação (obrigatória se manual)</label>
+                        <textarea class="form-control form-control-sm" id="txt-adiant-sabado-obs" rows="2" placeholder="Motivo da intervenção manual"></textarea>
+                    </div>
+                    <input type="hidden" id="hid-adiant-sabado-venda-id" value="">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" onclick="confirmarMarcarAdiantSabado()">Confirmar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade" id="modal-enviar-lembrete" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content border-success">
@@ -477,6 +539,7 @@
 
         const podeConfigurarZap = ['Diretoria', 'Admin'].includes(userProfile);
         const podeEditarAntecipacaoInstaladas = ['Diretoria', 'BackOffice', 'Admin'].includes(userProfile);
+        const podeMarcarAdiantSabado = ['Diretoria', 'Admin', 'BackOffice'].includes(userProfile);
         let envioWhatsappAtivo = true;
 
         let filtroAtual = 'TODOS';
@@ -489,8 +552,12 @@
         const modalInstalacao = new bootstrap.Modal(document.getElementById('modal-instalacao'));
         const modalPendencia = new bootstrap.Modal(document.getElementById('modal-pendencia'));
         const modalEnviarLembrete = document.getElementById('modal-enviar-lembrete') ? new bootstrap.Modal(document.getElementById('modal-enviar-lembrete')) : null;
+        const modalMarcarAdiantSabado = document.getElementById('modal-marcar-adiant-sabado') ? new bootstrap.Modal(document.getElementById('modal-marcar-adiant-sabado')) : null;
+        const modalAdiantSabadoLote = document.getElementById('modal-adiant-sabado-lote') ? new bootstrap.Modal(document.getElementById('modal-adiant-sabado-lote')) : null;
         
         document.addEventListener('DOMContentLoaded', () => {
+            const btnLoteSab = document.getElementById('btn-adiant-sabado-lote');
+            if (btnLoteSab && podeMarcarAdiantSabado) btnLoteSab.style.display = 'inline-flex';
             carregarVendas();
             carregarMotivosPendencia();
             popularFiltroVendedorInstaladas();
@@ -546,7 +613,7 @@
         function inicializarFiltrosColunas() {
             const ids = [
                 'fc-id', 'fc-data-venda', 'fc-os', 'fc-data-agendada', 'fc-turno', 'fc-cliente', 'fc-vendedor',
-                'fc-adiant-cnpj', 'fc-adiant-comissao', 'fc-plano', 'fc-status', 'fc-motivo', 'fc-conf', 'fc-resp'
+                'fc-adiant-cnpj', 'fc-adiant-comissao', 'fc-adiant-sabado', 'fc-plano', 'fc-status', 'fc-motivo', 'fc-conf', 'fc-resp'
             ];
             ids.forEach(id => {
                 const el = document.getElementById(id);
@@ -600,7 +667,7 @@
             if (f) f.value = '';
             [
                 'fc-id', 'fc-data-venda', 'fc-os', 'fc-data-agendada', 'fc-turno', 'fc-cliente', 'fc-vendedor',
-                'fc-adiant-cnpj', 'fc-adiant-comissao', 'fc-plano', 'fc-status', 'fc-motivo', 'fc-conf', 'fc-resp'
+                'fc-adiant-cnpj', 'fc-adiant-comissao', 'fc-adiant-sabado', 'fc-plano', 'fc-status', 'fc-motivo', 'fc-conf', 'fc-resp'
             ].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
             filtroInstaladasAplicado = { vendedor_id: '', data_inicio: '', data_fim: '' };
             carregarVendas();
@@ -677,6 +744,131 @@
                 carregarVendas(true);
             } catch (e) {
                 alert('Erro ao marcar adiantamento CNPJ: ' + (e.message || e));
+            }
+        }
+
+        function dataISOUltimoSabado() {
+            const d = new Date();
+            const day = d.getDay();
+            const diff = day === 6 ? 0 : (day === 0 ? 1 : day + 1);
+            const s = new Date(d);
+            s.setDate(d.getDate() - diff);
+            const pad = (n) => (n < 10 ? '0' : '') + n;
+            return s.getFullYear() + '-' + pad(s.getMonth() + 1) + '-' + pad(s.getDate());
+        }
+
+        function abrirModalAdiantSabadoLote() {
+            if (!podeMarcarAdiantSabado) return;
+            const inp = document.getElementById('input-adiant-sabado-lote-data');
+            const pv = document.getElementById('adiant-sabado-lote-preview');
+            if (inp) inp.value = dataISOUltimoSabado();
+            if (pv) { pv.style.display = 'none'; pv.innerHTML = ''; }
+            if (modalAdiantSabadoLote) modalAdiantSabadoLote.show();
+        }
+
+        async function previewAdiantSabadoLote() {
+            const inp = document.getElementById('input-adiant-sabado-lote-data');
+            const pv = document.getElementById('adiant-sabado-lote-preview');
+            const dataStr = (inp && inp.value) ? inp.value.trim() : '';
+            if (!dataStr) { alert('Selecione o sábado.'); return; }
+            try {
+                const r = await apiFetch('/crm/vendas/marcar-adiantamento-sabado-lote/', {
+                    method: 'POST',
+                    body: JSON.stringify({ data: dataStr, dry_run: true }),
+                });
+                const n = r.quantidade_elegiveis != null ? r.quantidade_elegiveis : 0;
+                const ids = (r.venda_ids || []).slice(0, 20).join(', ');
+                const mais = (r.venda_ids || []).length > 20 ? '…' : '';
+                if (pv) {
+                    pv.style.display = 'block';
+                    pv.className = 'alert alert-info border small mt-3 mb-0';
+                    pv.innerHTML = '<strong>' + n + '</strong> venda(s) elegível(is) para este sábado.' + (ids ? '<br><span class="text-muted">IDs: ' + ids + mais + '</span>' : '');
+                }
+            } catch (e) {
+                let msg = e && e.message ? e.message : String(e);
+                try {
+                    const p = JSON.parse(msg);
+                    if (p && p.detail) msg = typeof p.detail === 'string' ? p.detail : JSON.stringify(p.detail);
+                } catch (_) {}
+                alert('Prévia: ' + msg);
+            }
+        }
+
+        async function executarAdiantSabadoLote() {
+            const inp = document.getElementById('input-adiant-sabado-lote-data');
+            const dataStr = (inp && inp.value) ? inp.value.trim() : '';
+            if (!dataStr) { alert('Selecione o sábado.'); return; }
+            try {
+                const prev = await apiFetch('/crm/vendas/marcar-adiantamento-sabado-lote/', {
+                    method: 'POST',
+                    body: JSON.stringify({ data: dataStr, dry_run: true }),
+                });
+                const n = prev.quantidade_elegiveis != null ? prev.quantidade_elegiveis : 0;
+                if (!confirm('Serão marcadas até ' + n + ' venda(s) elegível(is) para ' + dataStr + '. Confirma?')) return;
+                const r = await apiFetch('/crm/vendas/marcar-adiantamento-sabado-lote/', {
+                    method: 'POST',
+                    body: JSON.stringify({ data: dataStr, dry_run: false }),
+                });
+                alert('Marcadas: ' + (r.marcadas != null ? r.marcadas : 0) + '. Ignoradas: ' + ((r.ignoradas || []).length) + '.');
+                if (modalAdiantSabadoLote) modalAdiantSabadoLote.hide();
+                carregarVendas(true);
+            } catch (e) {
+                let msg = e && e.message ? e.message : String(e);
+                try {
+                    const p = JSON.parse(msg);
+                    if (p && p.detail) msg = typeof p.detail === 'string' ? p.detail : JSON.stringify(p.detail);
+                } catch (_) {}
+                alert('Erro: ' + msg);
+            }
+        }
+
+        function abrirMarcarAdiantSabado(vendaId) {
+            if (!podeMarcarAdiantSabado) return;
+            document.getElementById('hid-adiant-sabado-venda-id').value = String(vendaId);
+            document.getElementById('chk-adiant-sabado-manual').checked = false;
+            document.getElementById('txt-adiant-sabado-obs').value = '';
+            if (modalMarcarAdiantSabado) modalMarcarAdiantSabado.show();
+        }
+
+        async function confirmarMarcarAdiantSabado() {
+            const vid = (document.getElementById('hid-adiant-sabado-venda-id').value || '').trim();
+            const manual = document.getElementById('chk-adiant-sabado-manual').checked;
+            const obs = (document.getElementById('txt-adiant-sabado-obs').value || '').trim();
+            if (!vid) return;
+            if (manual && obs.length < 3) {
+                alert('Informe a observação (mín. 3 caracteres) para marcação manual.');
+                return;
+            }
+            try {
+                await apiFetch(`/crm/vendas/${vid}/marcar-adiantamento-sabado/`, {
+                    method: 'POST',
+                    body: JSON.stringify({ manual, observacao: obs }),
+                });
+                if (modalMarcarAdiantSabado) modalMarcarAdiantSabado.hide();
+                carregarVendas(true);
+            } catch (e) {
+                let msg = e && e.message ? e.message : String(e);
+                try {
+                    const p = JSON.parse(msg);
+                    if (p && p.detail) msg = typeof p.detail === 'string' ? p.detail : JSON.stringify(p.detail);
+                } catch (_) {}
+                alert('Erro: ' + msg);
+            }
+        }
+
+        async function desmarcarAdiantSabado(vendaId) {
+            if (!podeMarcarAdiantSabado) return;
+            if (!confirm('Remover marcação de adiantamento sábado e estornar o lançamento desta venda?')) return;
+            try {
+                await apiFetch(`/crm/vendas/${vendaId}/desmarcar-adiantamento-sabado/`, { method: 'POST', body: '{}' });
+                carregarVendas(true);
+            } catch (e) {
+                let msg = e && e.message ? e.message : String(e);
+                try {
+                    const p = JSON.parse(msg);
+                    if (p && p.detail) msg = typeof p.detail === 'string' ? p.detail : JSON.stringify(p.detail);
+                } catch (_) {}
+                alert('Erro: ' + msg);
             }
         }
 
@@ -845,7 +1037,7 @@
             );
 
             if (carregarInstaladas && !temFiltroInstaladas) {
-                tbody.innerHTML = '<tr><td colspan="16" class="text-center py-4 text-muted">Selecione ao menos um filtro (Vendedor ou período) para carregar a aba Instaladas.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="17" class="text-center py-4 text-muted">Selecione ao menos um filtro (Vendedor ou período) para carregar a aba Instaladas.</td></tr>';
                 const paEmpty = document.getElementById('painel-instaladas-antecipacao');
                 if (paEmpty) paEmpty.style.display = 'none';
                 return;
@@ -855,7 +1047,7 @@
                 var inp = document.getElementById('filtro-busca');
                 if (inp) inp.placeholder = 'Buscar CPF ou OS...';
             }
-            if (!silent) { tbody.innerHTML = '<tr><td colspan="16" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>'; }
+            if (!silent) { tbody.innerHTML = '<tr><td colspan="17" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>'; }
 
             try {
                 const timestamp = new Date().getTime();
@@ -951,7 +1143,7 @@
 
                 if(vendas.length === 0) {
                     const msg = carregarInstaladas ? 'Nenhuma venda instalada encontrada para este CPF/O.S.' : 'Nenhuma venda encontrada nesta etapa.';
-                    tbody.innerHTML = '<tr><td colspan="16" class="text-center py-4 text-muted">' + msg + '</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="17" class="text-center py-4 text-muted">' + msg + '</td></tr>';
                     const pa = document.getElementById('painel-instaladas-antecipacao');
                     if (pa) pa.style.display = 'none';
                     return;
@@ -1040,6 +1232,29 @@
                         }
                     }
 
+                    let celulaAdiantSabado = '-';
+                    if (carregarInstaladas) {
+                        if (v.adiantamento_sabado_marcado) {
+                            celulaAdiantSabado = v.adiantamento_sabado_quitado_em
+                                ? '<span class="badge bg-success">Quitado na inst.</span>'
+                                : '<span class="badge bg-primary">Antecip. sábado</span>';
+                        }
+                    } else {
+                        const agSt = nomeStatus && String(nomeStatus).toUpperCase().includes('AGENDADO');
+                        if (v.adiantamento_sabado_marcado) {
+                            const vlr = v.adiantamento_sabado_valor != null ? Number(v.adiantamento_sabado_valor).toFixed(2) : '?';
+                            celulaAdiantSabado = '<span class="badge bg-primary" title="Adiantamento sábado">R$ ' + vlr + '</span>';
+                            if (v.adiantamento_sabado_manual) {
+                                celulaAdiantSabado += ' <span class="badge bg-secondary" title="' + String(v.adiantamento_sabado_obs_manual || '').replace(/"/g, '&quot;') + '">manual</span>';
+                            }
+                            if (podeMarcarAdiantSabado) {
+                                celulaAdiantSabado += ' <button type="button" class="btn btn-sm btn-outline-danger py-0" onclick="desmarcarAdiantSabado(' + v.id + ')">Desmarcar</button>';
+                            }
+                        } else if (agSt && podeMarcarAdiantSabado) {
+                            celulaAdiantSabado = '<button type="button" class="btn btn-sm btn-outline-primary py-0" onclick="abrirMarcarAdiantSabado(' + v.id + ')">Marcar</button>';
+                        }
+                    }
+
                     const nomeCliente = v.cliente_nome_razao_social || (v.cliente ? v.cliente.nome_razao_social : '-') || '-';
                     const docCliente = v.cliente_cpf_cnpj || (v.cliente ? v.cliente.cpf_cnpj : '') || '';
 
@@ -1085,12 +1300,26 @@
                             incluiTexto(nomeVendedor, getFiltroColuna('fc-vendedor')) &&
                             incluiTexto(adCnpjTexto, getFiltroColuna('fc-adiant-cnpj')) &&
                             incluiTexto(adComissaoTexto, getFiltroColuna('fc-adiant-comissao')) &&
+                            (function() {
+                                const fs = (document.getElementById('fc-adiant-sabado') && document.getElementById('fc-adiant-sabado').value) || '';
+                                if (!fs) return true;
+                                if (fs === 'marcado') return !!v.adiantamento_sabado_marcado;
+                                if (fs === 'nao') return !v.adiantamento_sabado_marcado;
+                                if (fs === 'quitado') return !!(v.adiantamento_sabado_marcado && v.adiantamento_sabado_quitado_em);
+                                return true;
+                            })() &&
                             incluiTexto(nomePlano, getFiltroColuna('fc-plano')) &&
                             incluiTexto(nomeStatus, getFiltroColuna('fc-status')) &&
                             incluiTexto(motivoPendencia, getFiltroColuna('fc-motivo')) &&
                             incluiTexto(confTexto, getFiltroColuna('fc-conf')) &&
                             incluiTexto(alteradoPor, getFiltroColuna('fc-resp'));
                         if (!passa) return;
+                    }
+                    if (!carregarInstaladas) {
+                        const fsSab = (document.getElementById('fc-adiant-sabado') && document.getElementById('fc-adiant-sabado').value) || '';
+                        if (fsSab === 'marcado' && !v.adiantamento_sabado_marcado) return;
+                        if (fsSab === 'nao' && v.adiantamento_sabado_marcado) return;
+                        if (fsSab === 'quitado' && !(v.adiantamento_sabado_marcado && v.adiantamento_sabado_quitado_em)) return;
                     }
                     if (carregarInstaladas) totalVisivelPosCabecalho += 1;
 
@@ -1105,6 +1334,7 @@
                             <td>${nomeVendedor}</td> 
                             <td>${celulaAdiantCnpj}</td>
                             <td>${carregarInstaladas ? seletorComissao : statusAdiantComissao}</td>
+                            <td>${celulaAdiantSabado}</td>
                             <td>${nomePlano}</td>
                             <td><div class="d-flex align-items-center">${selectStatus}${btnEditar}</div></td>
                             <td class="text-danger small fw-bold">${motivoPendencia}</td>
@@ -1139,7 +1369,7 @@
                     }
                 }
             } catch (e) { 
-                if(!silent) tbody.innerHTML = '<tr><td colspan="16" class="text-center text-danger">Erro ao carregar.<br><small>'+(e.message || e)+'</small></td></tr>';
+                if(!silent) tbody.innerHTML = '<tr><td colspan="17" class="text-center text-danger">Erro ao carregar.<br><small>'+(e.message || e)+'</small></td></tr>';
                 var paErr = document.getElementById('painel-instaladas-antecipacao');
                 if (paErr) paErr.style.display = 'none';
             }
@@ -1308,7 +1538,7 @@
                 if (pa) pa.style.display = 'none';
                 while (document.getElementById('abas-esteira').children.length > 4) document.getElementById('abas-esteira').removeChild(document.getElementById('abas-esteira').lastChild);
                 var tb = document.getElementById('tabela-esteira-body');
-                tb.innerHTML = '<tr><td colspan="16" class="text-center py-4 text-muted">Carregando instaladas...</td></tr>';
+                tb.innerHTML = '<tr><td colspan="17" class="text-center py-4 text-muted">Carregando instaladas...</td></tr>';
                 carregarVendas();
                 return;
             }

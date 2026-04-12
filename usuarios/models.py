@@ -83,6 +83,11 @@ class Usuario(AbstractUser):
         verbose_name="Recebe adiantamento de CNPJ?",
         help_text="Se desmarcado, o usuário não pode receber lançamento do tipo Adiantamento CNPJ."
     )
+    recebe_adiantamento_sabado = models.BooleanField(
+        default=False,
+        verbose_name="Recebe adiantamento de comissão (vendas O.S. aberta em sábado)?",
+        help_text="Se marcado, a venda pode ser lançada como adiantada na esteira (aba Agendados) conforme Regras por Faixa (Finalidade Adiantamento).",
+    )
     desconto_inss_fixo = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
 
     # --- CONTROLE DE PRESENÇA ---

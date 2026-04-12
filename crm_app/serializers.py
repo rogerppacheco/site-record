@@ -249,10 +249,12 @@ class VendaSerializer(serializers.ModelSerializer):
     # Campos de Escrita
     cliente_id = serializers.PrimaryKeyRelatedField(queryset=Cliente.objects.all(), source='cliente', write_only=False)
 
+    vendedor_recebe_adiantamento_sabado = serializers.SerializerMethodField()
+
     class Meta:
         model = Venda
         fields = [
-            'id', 'vendedor', 'vendedor_nome', 'cliente_id',
+            'id', 'vendedor', 'vendedor_nome', 'vendedor_recebe_adiantamento_sabado', 'cliente_id',
             'cliente_nome_razao_social', 'cliente_cpf_cnpj', 'cliente_email',
             'plano_nome', 'forma_pagamento_nome',
             'status_tratamento', 'status_tratamento_nome',
@@ -270,6 +272,9 @@ class VendaSerializer(serializers.ModelSerializer):
             'cliente_confirmou_auditoria', 'protocolo_confirmacao_auditoria', 'data_confirmacao_auditoria',
             'cliente_confirmou_lembrete_instalacao', 'cliente_resposta_lembrete_instalacao', 'data_resposta_lembrete_instalacao',
             'boas_vindas_enviado_em', 'cliente_resposta_boas_vindas', 'data_resposta_boas_vindas',
+            'adiantamento_sabado_marcado', 'adiantamento_sabado_valor', 'adiantamento_sabado_marcado_em',
+            'adiantamento_sabado_manual', 'adiantamento_sabado_obs_manual', 'adiantamento_sabado_quitado_em',
+            'flag_desc_adiantamento_sabado',
         ]
 
     def get_auditor_atual_nome(self, obj):
@@ -280,6 +285,11 @@ class VendaSerializer(serializers.ModelSerializer):
     
     def get_nome_editor(self, obj):
         return obj.editado_por.username if obj.editado_por else None
+
+    def get_vendedor_recebe_adiantamento_sabado(self, obj):
+        if not obj.vendedor_id:
+            return False
+        return bool(getattr(obj.vendedor, 'recebe_adiantamento_sabado', False))
 
 class VendaDetailSerializer(serializers.ModelSerializer):
     """
@@ -322,6 +332,9 @@ class VendaDetailSerializer(serializers.ModelSerializer):
             'cliente_confirmou_auditoria', 'protocolo_confirmacao_auditoria', 'data_confirmacao_auditoria',
             'cliente_confirmou_lembrete_instalacao', 'cliente_resposta_lembrete_instalacao', 'data_resposta_lembrete_instalacao',
             'boas_vindas_enviado_em', 'cliente_resposta_boas_vindas', 'data_resposta_boas_vindas',
+            'adiantamento_sabado_marcado', 'adiantamento_sabado_valor', 'adiantamento_sabado_marcado_em',
+            'adiantamento_sabado_marcado_por', 'adiantamento_sabado_manual', 'adiantamento_sabado_obs_manual',
+            'adiantamento_sabado_quitado_em', 'flag_desc_adiantamento_sabado',
         ]
 
 class VendaCreateSerializer(serializers.ModelSerializer):
@@ -433,7 +446,12 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Venda
         fields = '__all__'
-        read_only_fields = ('data_criacao', 'forma_entrada', 'cliente')
+        read_only_fields = (
+            'data_criacao', 'forma_entrada', 'cliente',
+            'adiantamento_sabado_marcado', 'adiantamento_sabado_valor', 'adiantamento_sabado_marcado_em',
+            'adiantamento_sabado_marcado_por', 'adiantamento_sabado_manual', 'adiantamento_sabado_obs_manual',
+            'adiantamento_sabado_quitado_em', 'flag_desc_adiantamento_sabado',
+        )
 
     @staticmethod
     def _os_valida(valor):

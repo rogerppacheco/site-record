@@ -405,7 +405,13 @@ def calcular_folha_mes(ano, mes, vendedor_id=None, use_effective_date_for_displa
                 motivo_limpo = 'Adiant. CNPJ'
             elif desc.startswith('Processamento Auto:'):
                 resto = desc.replace('Processamento Auto:', '').strip()
-                mapa = {'BOLETO': 'Desconto Boleto', 'CNPJ': 'Adiant. CNPJ', 'VIABILIDADE': 'Desconto Inclusão', 'ANTECIPACAO': 'Desconto Antecipação'}
+                mapa = {
+                    'BOLETO': 'Desconto Boleto',
+                    'CNPJ': 'Adiant. CNPJ',
+                    'VIABILIDADE': 'Desconto Inclusão',
+                    'ANTECIPACAO': 'Desconto Antecipação',
+                    'ADIANT_SABADO': 'Desconto adiantamento sábado',
+                }
                 partes = [mapa.get(p.strip(), p.strip()) for p in resto.split(',') if p.strip()]
                 motivo_limpo = ', '.join(partes) if partes else resto
             else:

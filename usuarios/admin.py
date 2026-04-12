@@ -30,7 +30,8 @@ class CustomUserAdmin(UserAdmin):
         )}),
         ('Comissionamento', {'fields': (
             'meta_comissao', 'desconto_boleto', 'desconto_inclusao_viabilidade',
-            'desconto_instalacao_antecipada', 'adiantamento_cnpj', 'desconto_inss_fixo'
+            'desconto_instalacao_antecipada', 'adiantamento_cnpj', 'recebe_adiantamento_cnpj',
+            'recebe_adiantamento_sabado', 'desconto_inss_fixo'
         )}),
         ('Automação PAP / WhatsApp', {
             'fields': (

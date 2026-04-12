@@ -1493,6 +1493,129 @@ class EstatisticasBotWhatsAppView(APIView):
                 'por_vendedor': []
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+def _pode_gerir_adiantamento_sabado(user):
+    return bool(user and user.is_superuser) or is_member(user, ['Diretoria', 'Admin', 'BackOffice'])
+
+
+def _quitar_adiantamento_sabado_na_instalacao(venda, status_esteira_antes):
+    """Ao instalar venda que tinha adiantamento sábado: marca antecipação e quitação sem novo lançamento."""
+    nome_new = (venda.status_esteira.nome if venda.status_esteira else '') or ''
+    nome_old = (status_esteira_antes.nome if status_esteira_antes else '') or ''
+    if 'INSTALADA' not in nome_new.upper():
+        return
+    if 'INSTALADA' in nome_old.upper():
+        return
+    if not getattr(venda, 'adiantamento_sabado_marcado', False):
+        return
+    if venda.adiantamento_sabado_quitado_em:
+        return
+    venda.antecipacao_comissao = True
+    venda.adiantamento_sabado_quitado_em = timezone.now()
+    venda.save(update_fields=['antecipacao_comissao', 'adiantamento_sabado_quitado_em'])
+
+
+def _marcar_adiantamento_sabado_exec(venda, user, manual=False, obs=''):
+    """
+    Marca adiantamento sábado para uma venda (mesmas regras do endpoint unitário).
+    Levanta ValueError com mensagem amigável em caso de falha.
+    Retorna dict com adiantamento_sabado_valor (float) e data_lancamento (iso str).
+    """
+    if venda.adiantamento_sabado_marcado:
+        raise ValueError('Venda já marcada como adiantamento sábado.')
+    st = (venda.status_esteira.nome if venda.status_esteira else '') or ''
+    if 'AGENDADO' not in st.upper():
+        raise ValueError('Somente vendas com status AGENDADO na esteira.')
+    if not venda.vendedor_id:
+        raise ValueError('Venda sem vendedor.')
+    recebe = getattr(venda.vendedor, 'recebe_adiantamento_sabado', False)
+
+    if not venda.data_abertura:
+        raise ValueError('Informe a data/hora de abertura da O.S.')
+    dt_ab_local = timezone.localtime(venda.data_abertura).date()
+    eh_sabado = dt_ab_local.weekday() == 5
+
+    if not manual:
+        if not recebe:
+            raise ValueError(
+                'Vendedor sem permissão no cadastro (recebe adiantamento sábado). '
+                'Use marcação manual com observação.'
+            )
+        if not eh_sabado:
+            raise ValueError('A data de abertura da O.S. deve ser um sábado.')
+
+    faixa_adiantamento = RegraComissaoFaixa.objects.filter(finalidade='ADIANTAMENTO').first()
+    if not faixa_adiantamento:
+        faixa_adiantamento = RegraComissaoFaixa.objects.filter(faixa_nome__iexact='Adiantamento').first()
+    doc = re.sub(r'\D', '', (venda.cliente.cpf_cnpj if venda.cliente else '') or '')
+    is_cnpj_venda = len(doc) == 14
+    valor_unit = Decimal(
+        str(LancamentoFinanceiroViewSet._valor_comissao_estimado_venda(venda, faixa_adiantamento, is_cnpj_venda))
+    )
+    if valor_unit <= 0:
+        raise ValueError('Valor zero nas Regras por Faixa (Finalidade = Adiantamento).')
+
+    data_lanc = dt_ab_local
+    descricao = 'Adiantamento sábado (Agendados)'
+    with transaction.atomic():
+        venda.adiantamento_sabado_marcado = True
+        venda.adiantamento_sabado_valor = valor_unit
+        venda.adiantamento_sabado_marcado_em = timezone.now()
+        venda.adiantamento_sabado_marcado_por = user
+        venda.adiantamento_sabado_manual = manual
+        venda.adiantamento_sabado_obs_manual = obs if manual else ''
+        venda.save(
+            update_fields=[
+                'adiantamento_sabado_marcado',
+                'adiantamento_sabado_valor',
+                'adiantamento_sabado_marcado_em',
+                'adiantamento_sabado_marcado_por',
+                'adiantamento_sabado_manual',
+                'adiantamento_sabado_obs_manual',
+            ]
+        )
+        lanc = LancamentoFinanceiro.objects.filter(
+            usuario_id=venda.vendedor_id,
+            tipo='ADIANTAMENTO_COMISSAO',
+            data=data_lanc,
+            descricao=descricao,
+        ).first()
+        venda_ids = []
+        if lanc and isinstance(lanc.metadados, dict):
+            venda_ids = list(lanc.metadados.get('venda_ids') or [])
+        if venda.id not in venda_ids:
+            venda_ids.append(venda.id)
+        meta_old = lanc.metadados if lanc and isinstance(lanc.metadados, dict) else {}
+        valores = dict(meta_old.get('valores_por_venda_id') or {})
+        valores[str(venda.id)] = str(valor_unit)
+        meta = {
+            'origem': 'esteira_sabado_agendados',
+            'venda_ids': venda_ids,
+            'valores_por_venda_id': valores,
+        }
+        if lanc:
+            lanc.valor = Decimal(str(lanc.valor or 0)) + valor_unit
+            lanc.quantidade_vendas = max(int(lanc.quantidade_vendas or 0), 0) + 1
+            lanc.metadados = meta
+            lanc.save(update_fields=['valor', 'quantidade_vendas', 'metadados'])
+        else:
+            LancamentoFinanceiro.objects.create(
+                usuario_id=venda.vendedor_id,
+                tipo='ADIANTAMENTO_COMISSAO',
+                data=data_lanc,
+                valor=valor_unit,
+                quantidade_vendas=1,
+                descricao=descricao,
+                metadados=meta,
+                criado_por=user,
+            )
+
+    return {
+        'adiantamento_sabado_valor': float(valor_unit),
+        'data_lancamento': data_lanc.isoformat(),
+    }
+
+
 class VendaViewSet(viewsets.ModelViewSet):
     permission_classes = [VendaPermission]
     resource_name = 'venda'
@@ -1596,6 +1719,9 @@ class VendaViewSet(viewsets.ModelViewSet):
             'reenviar_whatsapp_aprovacao', 'enviar_resumo_plano_whatsapp',
             'toggle_adiantamento_comissao',
             'toggle_adiantamento_cnpj',
+            'marcar_adiantamento_sabado',
+            'desmarcar_adiantamento_sabado',
+            'marcar_adiantamento_sabado_lote',
         ]
 
         if self.action in acoes_gestao:
@@ -2308,7 +2434,13 @@ class VendaViewSet(viewsets.ModelViewSet):
              cliente_data['cpf_cnpj'] = re.sub(r'\D', '', cliente_data['cpf_cnpj'])
 
         venda_atualizada = serializer.save(**extra_updates)
-        
+
+        # Quitação do adiantamento sábado ao passar para INSTALADA (evita segundo pagamento na aba Instaladas)
+        try:
+            _quitar_adiantamento_sabado_na_instalacao(venda_atualizada, status_esteira_antes)
+        except Exception:
+            logger.exception('Erro ao quitar adiantamento sábado na instalação')
+
         alteracoes = {}
         if venda_antes.status_esteira != venda_atualizada.status_esteira:
             alteracoes['status_esteira'] = {
@@ -2686,6 +2818,23 @@ class VendaViewSet(viewsets.ModelViewSet):
         hoje = timezone.localdate()
         with transaction.atomic():
             if marcar:
+                # Já pago na esteira (Agendados) — não duplica lançamento do dia em Instaladas
+                if getattr(venda, 'adiantamento_sabado_marcado', False):
+                    if venda.antecipacao_comissao:
+                        return Response({
+                            'ok': True,
+                            'antecipacao_comissao': True,
+                            'adiantamento_sabado_sem_novo_lancamento': True,
+                        })
+                    venda.antecipacao_comissao = True
+                    if not venda.adiantamento_sabado_quitado_em:
+                        venda.adiantamento_sabado_quitado_em = timezone.now()
+                    venda.save(update_fields=['antecipacao_comissao', 'adiantamento_sabado_quitado_em'])
+                    return Response({
+                        'ok': True,
+                        'antecipacao_comissao': True,
+                        'adiantamento_sabado_sem_novo_lancamento': True,
+                    })
                 if venda.antecipacao_comissao:
                     return Response({'ok': True, 'antecipacao_comissao': True})
                 venda.antecipacao_comissao = True
@@ -2909,6 +3058,187 @@ class VendaViewSet(viewsets.ModelViewSet):
                         )
                     break
         return Response({'ok': True, 'flag_adiant_cnpj': venda.flag_adiant_cnpj})
+
+    @action(detail=True, methods=['post'], url_path='marcar-adiantamento-sabado')
+    def marcar_adiantamento_sabado(self, request, pk=None):
+        if not _pode_gerir_adiantamento_sabado(request.user):
+            return Response(
+                {'detail': 'Acesso negado. Apenas Diretoria, Admin ou BackOffice.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        venda = self.get_object()
+        manual = str(request.data.get('manual', '')).lower() in ('1', 'true', 'sim', 's')
+        obs = (request.data.get('observacao') or '').strip()
+        if manual and len(obs) < 3:
+            return Response(
+                {'detail': 'Informe a observação para marcação manual (mín. 3 caracteres).'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            out = _marcar_adiantamento_sabado_exec(venda, request.user, manual=manual, obs=obs)
+        except ValueError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'ok': True, **out})
+
+    @action(detail=False, methods=['post'], url_path='marcar-adiantamento-sabado-lote')
+    def marcar_adiantamento_sabado_lote(self, request):
+        """
+        Marca todas as vendas elegíveis cuja data de abertura da O.S. (timezone local)
+        cai no sábado informado. Body: { "data": "YYYY-MM-DD", "dry_run": false }.
+        Só vendedores com recebe_adiantamento_sabado=True; status AGENDADO; não marcadas.
+        """
+        if not _pode_gerir_adiantamento_sabado(request.user):
+            return Response(
+                {'detail': 'Acesso negado. Apenas Diretoria, Admin ou BackOffice.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        data_str = (request.data.get('data') or '').strip()
+        dry_run = str(request.data.get('dry_run', '')).lower() in ('1', 'true', 'sim', 's')
+        if not data_str:
+            return Response(
+                {'detail': 'Informe data (YYYY-MM-DD): sábado correspondente ao dia de abertura da O.S.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            ref_date = datetime.strptime(data_str, '%Y-%m-%d').date()
+        except ValueError:
+            return Response({'detail': 'Data inválida. Use YYYY-MM-DD.'}, status=status.HTTP_400_BAD_REQUEST)
+        if ref_date.weekday() != 5:
+            return Response(
+                {'detail': 'A data deve ser um sábado (dia da abertura da O.S. no calendário).'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from datetime import time as dt_time
+
+        tz = timezone.get_current_timezone()
+        start_dt = timezone.make_aware(datetime.combine(ref_date, dt_time.min), tz)
+        end_dt = start_dt + timedelta(days=1)
+
+        qs = (
+            Venda.objects.filter(
+                ativo=True,
+                adiantamento_sabado_marcado=False,
+                data_abertura__gte=start_dt,
+                data_abertura__lt=end_dt,
+                vendedor__recebe_adiantamento_sabado=True,
+                status_esteira__nome__icontains='AGENDADO',
+            )
+            .select_related('vendedor', 'status_esteira', 'cliente', 'plano')
+            .order_by('id')
+        )
+
+        candidatas = list(qs)
+        if dry_run:
+            return Response(
+                {
+                    'ok': True,
+                    'dry_run': True,
+                    'data': data_str,
+                    'quantidade_elegiveis': len(candidatas),
+                    'venda_ids': [v.id for v in candidatas],
+                }
+            )
+
+        marcadas = []
+        ignoradas = []
+        for v in candidatas:
+            try:
+                out = _marcar_adiantamento_sabado_exec(v, request.user, manual=False, obs='')
+                marcadas.append({'venda_id': v.id, **out})
+            except ValueError as e:
+                ignoradas.append({'venda_id': v.id, 'motivo': str(e)})
+
+        return Response(
+            {
+                'ok': True,
+                'data': data_str,
+                'total_candidatas': len(candidatas),
+                'marcadas': len(marcadas),
+                'marcadas_detalhe': marcadas,
+                'ignoradas': ignoradas,
+            }
+        )
+
+    @action(detail=True, methods=['post'], url_path='desmarcar-adiantamento-sabado')
+    def desmarcar_adiantamento_sabado(self, request, pk=None):
+        if not _pode_gerir_adiantamento_sabado(request.user):
+            return Response(
+                {'detail': 'Acesso negado. Apenas Diretoria, Admin ou BackOffice.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        venda = self.get_object()
+        st = (venda.status_esteira.nome if venda.status_esteira else '') or ''
+        if 'AGENDADO' not in st.upper():
+            return Response(
+                {'detail': 'Só é possível desmarcar enquanto a venda estiver AGENDADA.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not venda.adiantamento_sabado_marcado:
+            return Response(
+                {'detail': 'Venda não está marcada como adiantamento sábado.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        data_lanc = (
+            timezone.localtime(venda.data_abertura).date()
+            if venda.data_abertura
+            else timezone.localdate()
+        )
+        descricao = 'Adiantamento sábado (Agendados)'
+        valor_unit = Decimal(str(venda.adiantamento_sabado_valor or 0))
+
+        with transaction.atomic():
+            for lanc in LancamentoFinanceiro.objects.filter(
+                usuario_id=venda.vendedor_id,
+                tipo='ADIANTAMENTO_COMISSAO',
+                data=data_lanc,
+                descricao=descricao,
+            ):
+                meta = lanc.metadados if isinstance(lanc.metadados, dict) else {}
+                if meta.get('origem') != 'esteira_sabado_agendados':
+                    continue
+                vids = [int(x) for x in (meta.get('venda_ids') or []) if x is not None]
+                if venda.id not in vids:
+                    continue
+                vids_new = [x for x in vids if int(x) != int(venda.id)]
+                valores = dict(meta.get('valores_por_venda_id') or {})
+                sub = valor_unit
+                if sub <= 0:
+                    sub = Decimal(str(valores.get(str(venda.id)) or 0))
+                valores.pop(str(venda.id), None)
+                novo_valor = Decimal(str(lanc.valor or 0)) - sub
+                if novo_valor <= 0 or len(vids_new) == 0:
+                    lanc.delete()
+                else:
+                    lanc.valor = novo_valor
+                    lanc.quantidade_vendas = len(vids_new)
+                    lanc.metadados = {
+                        'origem': 'esteira_sabado_agendados',
+                        'venda_ids': vids_new,
+                        'valores_por_venda_id': valores,
+                    }
+                    lanc.save(update_fields=['valor', 'quantidade_vendas', 'metadados'])
+                break
+
+            venda.adiantamento_sabado_marcado = False
+            venda.adiantamento_sabado_valor = None
+            venda.adiantamento_sabado_marcado_em = None
+            venda.adiantamento_sabado_marcado_por = None
+            venda.adiantamento_sabado_manual = False
+            venda.adiantamento_sabado_obs_manual = ''
+            venda.save(
+                update_fields=[
+                    'adiantamento_sabado_marcado',
+                    'adiantamento_sabado_valor',
+                    'adiantamento_sabado_marcado_em',
+                    'adiantamento_sabado_marcado_por',
+                    'adiantamento_sabado_manual',
+                    'adiantamento_sabado_obs_manual',
+                ]
+            )
+
+        return Response({'ok': True})
 
 class VendasStatusCountView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -7084,12 +7414,54 @@ class PendenciasDescontoView(APIView):
                 val = float(consultor.desconto_instalacao_antecipada or 0)
                 if val > 0: pendencias.append(self._montar_obj(v, 'ANTECIPACAO', val, 'Desconto Antecipação'))
 
+        vendas_sab_cancel = Venda.objects.filter(
+            ativo=True,
+            status_esteira__nome__icontains='CANCEL',
+            adiantamento_sabado_marcado=True,
+            flag_desc_adiantamento_sabado=False,
+        ).select_related('vendedor', 'forma_pagamento', 'cliente')
+
+        ano_q = request.query_params.get('ano')
+        mes_q = request.query_params.get('mes')
+        if ano_q and mes_q:
+            try:
+                ay, my = int(ano_q), int(mes_q)
+                if 1 <= my <= 12:
+                    data_inicio_c = datetime(ay, my, 1).date()
+                    if my == 12:
+                        data_fim_c = datetime(ay + 1, 1, 1).date()
+                    else:
+                        data_fim_c = datetime(ay, my + 1, 1).date()
+                    vendas_sab_cancel = vendas_sab_cancel.filter(
+                        data_ultima_alteracao__date__gte=data_inicio_c,
+                        data_ultima_alteracao__date__lt=data_fim_c,
+                    )
+            except (TypeError, ValueError):
+                pass
+
+        for v in vendas_sab_cancel:
+            val = float(v.adiantamento_sabado_valor or 0)
+            if val <= 0:
+                continue
+            consultor = v.vendedor
+            if not consultor:
+                continue
+            pendencias.append(
+                self._montar_obj(
+                    v, 'ADIANT_SABADO', val, 'Desconto adiantamento sábado (não instalado / cancelado)'
+                )
+            )
+
         return Response(pendencias)
 
     def _montar_obj(self, venda, tipo_codigo, valor, titulo):
+        ref = None
+        if getattr(venda, 'data_ultima_alteracao', None):
+            ref = venda.data_ultima_alteracao.date()
         return {
             'venda_id': venda.id,
             'data_instalacao': venda.data_instalacao,
+            'data_referencia': ref,
             'cliente': venda.cliente.nome_razao_social,
             'cliente_cpf': venda.cliente.cpf_cnpj,
             'os': venda.ordem_servico or "",
@@ -7112,7 +7484,7 @@ class ConfirmarDescontosEmMassaView(APIView):
             return Response({'error': 'Dados inválidos.'}, status=400)
 
         agrupado = defaultdict(lambda: {'total': 0.0, 'ids_vendas': [], 'tipos': set()})
-        updates_flags = {'CNPJ': [], 'BOLETO': [], 'VIABILIDADE': [], 'ANTECIPACAO': []}
+        updates_flags = {'CNPJ': [], 'BOLETO': [], 'VIABILIDADE': [], 'ANTECIPACAO': [], 'ADIANT_SABADO': []}
 
         for item in itens:
             v_id = item['venda_id']
@@ -7161,6 +7533,7 @@ class ConfirmarDescontosEmMassaView(APIView):
                 if updates_flags['BOLETO']: Venda.objects.filter(id__in=updates_flags['BOLETO']).update(flag_desc_boleto=True)
                 if updates_flags['VIABILIDADE']: Venda.objects.filter(id__in=updates_flags['VIABILIDADE']).update(flag_desc_viabilidade=True)
                 if updates_flags['ANTECIPACAO']: Venda.objects.filter(id__in=updates_flags['ANTECIPACAO']).update(flag_desc_antecipacao=True)
+                if updates_flags['ADIANT_SABADO']: Venda.objects.filter(id__in=updates_flags['ADIANT_SABADO']).update(flag_desc_adiantamento_sabado=True)
 
             return Response({'mensagem': f'{len(itens)} descontos processados com sucesso!'})
 
@@ -7229,6 +7602,7 @@ class ReverterDescontoMassaView(APIView):
                     if 'BOLETO' in tipos: updates['flag_desc_boleto'] = False
                     if 'VIABILIDADE' in tipos: updates['flag_desc_viabilidade'] = False
                     if 'ANTECIPACAO' in tipos: updates['flag_desc_antecipacao'] = False
+                    if 'ADIANT_SABADO' in tipos: updates['flag_desc_adiantamento_sabado'] = False
                     
                     if updates:
                         vendas_afetadas.update(**updates)
@@ -7317,6 +7691,38 @@ class AdiantamentosEsteiraView(APIView):
                 }
             )
 
+        adiantamento_sabado_agendados = []
+        for l in lancs:
+            meta = l.metadados if isinstance(l.metadados, dict) else {}
+            if meta.get('origem') != 'esteira_sabado_agendados':
+                continue
+            uname = l.usuario.username if l.usuario else ''
+            nome = (
+                (l.usuario.get_full_name() or '').strip() or uname
+                if l.usuario
+                else ''
+            )
+            criador = ''
+            if l.criado_por:
+                criador = (l.criado_por.get_full_name() or '').strip() or (
+                    l.criado_por.username or ''
+                )
+            adiantamento_sabado_agendados.append(
+                {
+                    'id': l.id,
+                    'data': l.data.isoformat(),
+                    'vendedor_id': l.usuario_id,
+                    'vendedor_nome': nome,
+                    'valor': float(l.valor or 0),
+                    'quantidade_vendas': l.quantidade_vendas or 0,
+                    'descricao': l.descricao,
+                    'venda_ids': list(meta.get('venda_ids') or []),
+                    'valores_por_venda_id': meta.get('valores_por_venda_id') or {},
+                    'criado_por': criador,
+                    'criado_em': l.data_criacao.isoformat() if l.data_criacao else None,
+                }
+            )
+
         lancs_cnpj = (
             LancamentoFinanceiro.objects.filter(
                 tipo='ADIANTAMENTO_CNPJ',
@@ -7400,6 +7806,7 @@ class AdiantamentosEsteiraView(APIView):
             {
                 'periodo': f'{mes:02d}/{ano}',
                 'adiantamento_comissao': adiantamento_comissao,
+                'adiantamento_sabado_agendados': adiantamento_sabado_agendados,
                 'adiantamento_cnpj': adiantamento_cnpj,
                 'marcacoes_cnpj_esteira': marcacoes_cnpj_esteira,
             }

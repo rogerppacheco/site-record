@@ -277,6 +277,43 @@ class Venda(models.Model):
     flag_desc_boleto = models.BooleanField(default=False, verbose_name="Desc. Boleto Processado")
     flag_desc_viabilidade = models.BooleanField(default=False, verbose_name="Desc. Viab. Processado")
     flag_desc_antecipacao = models.BooleanField(default=False, verbose_name="Desc. Antecip. Processado")
+    # --- Adiantamento sábado (esteira Agendados): valor pela Finalidade Adiantamento em REGRAS_FAIXAS ---
+    adiantamento_sabado_marcado = models.BooleanField(
+        default=False,
+        verbose_name="Adiantamento sábado marcado",
+        help_text="Comissão antecipada na aba Agendados (O.S. aberta em sábado, conforme regra).",
+    )
+    adiantamento_sabado_valor = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name="Valor adiantamento sábado (snapshot)",
+    )
+    adiantamento_sabado_marcado_em = models.DateTimeField(null=True, blank=True, verbose_name="Adiant. sábado marcado em")
+    adiantamento_sabado_marcado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="vendas_adiantamento_sabado_marcado",
+        verbose_name="Adiant. sábado marcado por",
+    )
+    adiantamento_sabado_manual = models.BooleanField(
+        default=False,
+        verbose_name="Adiant. sábado (marcação manual)",
+    )
+    adiantamento_sabado_obs_manual = models.CharField(
+        max_length=500, blank=True, default="",
+        verbose_name="Observação (marcação manual)",
+    )
+    adiantamento_sabado_quitado_em = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name="Adiant. sábado quitado na instalação em",
+        help_text="Preenchido ao instalar para não gerar segundo pagamento de adiantamento.",
+    )
+    flag_desc_adiantamento_sabado = models.BooleanField(
+        default=False,
+        verbose_name="Desc. adiant. sábado processado",
+        help_text="Desconto na folha (cancelamento ou estorno) já aplicado.",
+    )
     # Ano/mês em que o desconto por churn foi aplicado (ex: 202601 = comissão jan/26). Evita descontar duas vezes.
     desconto_churn_aplicado_em = models.PositiveIntegerField(null=True, blank=True, verbose_name="Desconto Churn aplicado em (AAAAMM)")
     # ------------------------------------------

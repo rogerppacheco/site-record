@@ -152,6 +152,17 @@
                                     <div class="col-lg-2"><label class="form-label small">Desc. Antecip.</label><input type="number" class="form-control" id="desconto_instalacao_antecipada" step="0.01"></div>
                                     <div class="col-lg-2"><label class="form-label small">Adiant. CNPJ</label><input type="number" class="form-control" id="adiantamento_cnpj" step="0.01"></div>
                                     <div class="col-lg-2"><label class="form-label small">Desc. INSS</label><input type="number" class="form-control" id="desconto_inss_fixo" step="0.01"></div>
+                                    <div class="col-12">
+                                        <div class="form-check form-switch mb-2">
+                                            <input class="form-check-input" type="checkbox" id="recebe_adiantamento_cnpj" checked>
+                                            <label class="form-check-label fw-bold" for="recebe_adiantamento_cnpj">Recebe adiantamento de CNPJ</label>
+                                        </div>
+                                        <div class="form-check form-switch p-3 rounded bg-light border">
+                                            <input class="form-check-input" type="checkbox" id="recebe_adiantamento_sabado">
+                                            <label class="form-check-label fw-bold" for="recebe_adiantamento_sabado">Recebe adiantamento de comissão (O.S. aberta em sábado)</label>
+                                            <small class="text-muted d-block ms-4 mt-1">Desmarcado = não entra no automático nem no lote da Esteira.</small>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -472,6 +483,8 @@
                 document.getElementById('brpronto_login').value = user.brpronto_login || '';
                 document.getElementById('brpronto_dominio').value = user.brpronto_dominio || '';
                 ['valor_almoco','valor_passagem','chave_pix','nome_da_conta','meta_comissao','desconto_boleto','desconto_inclusao_viabilidade','desconto_instalacao_antecipada','adiantamento_cnpj','desconto_inss_fixo'].forEach(id => { document.getElementById(id).value = user[id] || ''; });
+                document.getElementById('recebe_adiantamento_cnpj').checked = user.recebe_adiantamento_cnpj !== false;
+                document.getElementById('recebe_adiantamento_sabado').checked = user.recebe_adiantamento_sabado === true;
             } else {
                 document.getElementById('login_pap_disponivel_para_automacao').checked = true;
                 document.getElementById('pap_automacao_vender').checked = true;
@@ -479,6 +492,8 @@
                 document.getElementById('pap_automacao_pedido').checked = true;
                 document.getElementById('pap_automacao_status').checked = true;
                 document.getElementById('vendedor_solo').checked = false;
+                document.getElementById('recebe_adiantamento_cnpj').checked = true;
+                document.getElementById('recebe_adiantamento_sabado').checked = false;
             }
             atualizarVisibilidadeVendedorSolo();
             document.getElementById('senha_pap').value = '';
@@ -525,6 +540,8 @@
                 meta_comissao: clean(document.getElementById('meta_comissao').value, true), desconto_boleto: clean(document.getElementById('desconto_boleto').value, true),
                 desconto_inclusao_viabilidade: clean(document.getElementById('desconto_inclusao_viabilidade').value, true), desconto_instalacao_antecipada: clean(document.getElementById('desconto_instalacao_antecipada').value, true),
                 adiantamento_cnpj: clean(document.getElementById('adiantamento_cnpj').value, true), desconto_inss_fixo: clean(document.getElementById('desconto_inss_fixo').value, true),
+                recebe_adiantamento_cnpj: document.getElementById('recebe_adiantamento_cnpj').checked,
+                recebe_adiantamento_sabado: document.getElementById('recebe_adiantamento_sabado').checked,
                 participa_controle_presenca: document.getElementById('participa_controle_presenca').checked,
                 vendedor_solo: document.getElementById('vendedor_solo').checked,
                 autorizar_venda_sem_auditoria: document.getElementById('autorizar_venda_sem_auditoria').checked,
