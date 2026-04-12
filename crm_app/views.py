@@ -4125,6 +4125,138 @@ class ImportacaoOsabView(APIView):
         except Exception as e:
             print(f"Aviso: não foi possível sincronizar sequence da OSAB: {e}")
 
+    def _marcar_vendas_ausentes_na_osab(self, log_id, total_registros_import, osab_bot):
+        """
+        Após gravar a importação: vendas ativas com O.S. que não existem em ImportacaoOsab.
+        - Só considera pedidos com data de abertura (ou criação, se sem abertura) **antes do dia atual**
+          (base OSAB costuma refletir até o dia anterior).
+        - Esteira contendo INSTALADA e não sendo já 'INSTALADA OUTRO PDV' -> INSTALADA OUTRO PDV.
+        - Demais -> NÃO CONSTA NA OSAB.
+        Não envia WhatsApp. Não executa se a planilha tiver 0 linhas (evita marcar o CRM inteiro).
+        """
+        from django.db import connection, transaction
+        from django.db.models import Q
+        from django.utils import timezone
+        from crm_app.models import LogImportacaoOSAB, ImportacaoOsab, Venda, StatusCRM, HistoricoAlteracaoVenda
+
+        out = {
+            'crm_sem_osab_nao_consta': 0,
+            'crm_sem_osab_outro_pdv': 0,
+            'crm_sem_osab_ignoradas_mesmo_dia': 0,
+        }
+        if not total_registros_import:
+            return out
+
+        LogImportacaoOSAB.objects.filter(id=log_id).update(
+            mensagem='Verificando vendas no CRM ausentes da base OSAB...'
+        )
+
+        osab_set = set()
+        for doc in ImportacaoOsab.objects.values_list('documento', flat=True).iterator(chunk_size=8000):
+            if doc is None:
+                continue
+            s = str(doc).strip()
+            if not s:
+                continue
+            osab_set.add(s)
+            n = self._normalize_pedido(doc)
+            if n:
+                osab_set.add(n)
+
+        if not osab_set:
+            return out
+
+        st_nao = StatusCRM.objects.filter(tipo='Esteira', nome__iexact='NÃO CONSTA NA OSAB').first()
+        if not st_nao:
+            st_nao = StatusCRM.objects.filter(tipo='Esteira', nome__iexact='NAO CONSTA NA OSAB').first()
+        st_outro = StatusCRM.objects.filter(tipo='Esteira', nome__iexact='INSTALADA OUTRO PDV').first()
+        if not st_nao or not st_outro:
+            print(
+                "Aviso OSAB: cadastre os status Esteira 'NÃO CONSTA NA OSAB' e 'INSTALADA OUTRO PDV' no CRM."
+            )
+            return out
+
+        hoje = timezone.localdate()
+        vendas_atualizar = []
+        historicos_criar = []
+
+        qs = Venda.objects.filter(ativo=True).exclude(
+            Q(ordem_servico__isnull=True) | Q(ordem_servico='')
+        ).select_related('status_esteira')
+
+        for venda in qs.iterator(chunk_size=2000):
+            os_str = (venda.ordem_servico or '').strip()
+            if not os_str:
+                continue
+            norm = self._normalize_pedido(os_str)
+            if os_str in osab_set or (norm and norm in osab_set):
+                continue
+
+            if venda.data_abertura:
+                da = venda.data_abertura
+                ref_d = timezone.localtime(da).date() if timezone.is_aware(da) else da.date()
+            else:
+                dc = venda.data_criacao
+                ref_d = timezone.localtime(dc).date() if timezone.is_aware(dc) else dc.date()
+            if ref_d >= hoje:
+                out['crm_sem_osab_ignoradas_mesmo_dia'] += 1
+                continue
+
+            se = venda.status_esteira
+            if se:
+                if se.id == st_nao.id or se.id == st_outro.id:
+                    continue
+
+            nome_se = (se.nome if se else '') or ''
+            nome_u = nome_se.upper()
+            if 'INSTALADA' in nome_u and 'OUTRO PDV' not in nome_u:
+                target = st_outro
+            else:
+                target = st_nao
+
+            if se and se.id == target.id:
+                continue
+
+            old_nome = se.nome if se else '(vazio)'
+            venda.status_esteira = target
+            vendas_atualizar.append(venda)
+            historicos_criar.append(
+                HistoricoAlteracaoVenda(
+                    venda=venda,
+                    usuario=osab_bot,
+                    alteracoes={
+                        'status_esteira': (
+                            f"De '{old_nome}' para '{target.nome}' "
+                            f"(O.S. não consta na base OSAB após importação)"
+                        )
+                    },
+                )
+            )
+            if target.id == st_outro.id:
+                out['crm_sem_osab_outro_pdv'] += 1
+            else:
+                out['crm_sem_osab_nao_consta'] += 1
+
+        if not vendas_atualizar:
+            return out
+
+        try:
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute("SET LOCAL statement_timeout = '120000ms'")
+                Venda.objects.bulk_update(vendas_atualizar, ['status_esteira'], batch_size=2000)
+            if historicos_criar:
+                with transaction.atomic():
+                    with connection.cursor() as cursor:
+                        cursor.execute("SET LOCAL statement_timeout = '120000ms'")
+                    self._sincronizar_seq_historico()
+                    HistoricoAlteracaoVenda.objects.bulk_create(historicos_criar, batch_size=2000)
+        except Exception as e:
+            print(f"Erro ao marcar vendas sem OSAB: {e}")
+            raise
+
+        return out
+
     def post(self, request, *args, **kwargs):
         file_obj = request.FILES.get('file')
         if not file_obj: return Response({'error': 'Nenhum arquivo enviado.'}, status=400)
@@ -4819,6 +4951,13 @@ class ImportacaoOsabView(APIView):
                             cursor.execute("SET LOCAL statement_timeout = '120000ms'")
                         self._sincronizar_seq_historico()
                         HistoricoAlteracaoVenda.objects.bulk_create(historicos_criar, batch_size=2000)
+
+                try:
+                    snap = self._marcar_vendas_ausentes_na_osab(log_id, total_registros, osab_bot)
+                    report.update(snap)
+                except Exception as e_snap:
+                    print(f"Aviso: etapa CRM sem OSAB não concluída (importação OSAB segue válida): {e_snap}")
+
             except Exception as e:
                 log.status = 'ERRO'
                 log.mensagem_erro = f'Erro ao salvar no banco: {str(e)}'
@@ -4827,7 +4966,11 @@ class ImportacaoOsabView(APIView):
                 log.save()
                 return
 
-            report["atualizados"] = len(vendas_atualizar)
+            atual_osab = len(vendas_atualizar)
+            extra_nao = report.get('crm_sem_osab_nao_consta', 0)
+            extra_outro = report.get('crm_sem_osab_outro_pdv', 0)
+            report["atualizados"] = atual_osab + extra_nao + extra_outro
+            report["atualizados_planilha_osab"] = atual_osab
             report["criados"] = len(osab_criar)
 
             # --- 4. ENVIO WHATSAPP ---
@@ -4856,7 +4999,13 @@ class ImportacaoOsabView(APIView):
                 vendas_encontradas=report['vendas_encontradas'],
                 ja_corretos=report['ja_corretos'],
                 erros_count=len(report['erros']),
-                mensagem=f"Processados {report['total_registros']} registros. {report['atualizados']} atualizados.",
+                mensagem=(
+                    f"Processados {report['total_registros']} registros. "
+                    f"{report['atualizados']} vendas atualizadas no CRM "
+                    f"({report.get('atualizados_planilha_osab', report['atualizados'])} pela planilha; "
+                    f"{report.get('crm_sem_osab_nao_consta', 0)} NÃO CONSTA OSAB; "
+                    f"{report.get('crm_sem_osab_outro_pdv', 0)} INSTALADA OUTRO PDV)."
+                ),
                 detalhes_json=report,
                 finalizado_em=finalizado_agora,
                 duracao_segundos=duracao
