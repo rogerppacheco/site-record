@@ -1836,7 +1836,12 @@ class VendaViewSet(viewsets.ModelViewSet):
                     )
                 else:
                     dt_fim_plus = dt_fim + timedelta(days=1)
-                    if data_tipo == 'agendamento':
+                    if data_tipo == 'criacao':
+                        queryset = queryset.filter(
+                            data_criacao__date__gte=dt_ini,
+                            data_criacao__date__lte=dt_fim
+                        )
+                    elif data_tipo == 'agendamento':
                         queryset = queryset.filter(
                             data_agendamento__gte=dt_ini,
                             data_agendamento__lte=dt_fim
