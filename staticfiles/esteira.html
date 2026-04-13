@@ -1430,6 +1430,8 @@
                 // Filtragem por Aba (aba Instaladas: lista já vem só instaladas, sem subfiltro)
                 if (carregarInstaladas) {
                     // Mantém todas; opcionalmente filtrar por busca (CPF/OS) já aplicado na URL
+                } else if (carregarVendasTotais) {
+                    // Mantém todas; filtros já aplicados na URL para Vendas Totais
                 } else if(filtroAtual === 'TODOS') {} 
                 else if (filtroAtual === 'AGENDADO') {
                     vendas = vendas.filter(v => v.status_esteira_obj.nome && String(v.status_esteira_obj.nome).toUpperCase().includes('AGENDADO'));
