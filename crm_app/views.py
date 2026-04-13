@@ -1652,6 +1652,7 @@ class VendaViewSet(viewsets.ModelViewSet):
         search = self.request.query_params.get('search')
         data_inicio_str = self.request.query_params.get('data_inicio')
         data_fim_str = self.request.query_params.get('data_fim')
+        data_tipo = (self.request.query_params.get('data_tipo') or 'criacao').strip().lower()
         status_filter_raw = (self.request.query_params.get('status') or '').strip().upper()
         
         # --- REGRA DE DATA OBRIGATÓRIA (MÊS ATUAL) ---
@@ -1778,6 +1779,10 @@ class VendaViewSet(viewsets.ModelViewSet):
                 queryset = queryset.filter(status_tratamento_id=int(status_tratamento_id))
         elif flow == 'esteira':
             queryset = queryset.filter(status_esteira__isnull=False, status_esteira__estado__iexact='ABERTO')
+        elif flow == 'esteira_todas':
+            if not is_member(user, ['Diretoria', 'Admin', 'BackOffice']):
+                return queryset.none()
+            queryset = queryset.filter(status_esteira__isnull=False)
         elif flow == 'esteira_instaladas':
             # Vendas instaladas com filtros dedicados (vendedor e período de instalação).
             queryset = queryset.filter(
@@ -1831,7 +1836,16 @@ class VendaViewSet(viewsets.ModelViewSet):
                     )
                 else:
                     dt_fim_plus = dt_fim + timedelta(days=1)
-                    if status_instalada_exata or flow == 'esteira_instaladas':
+                    if data_tipo == 'agendamento':
+                        queryset = queryset.filter(
+                            data_agendamento__gte=dt_ini,
+                            data_agendamento__lte=dt_fim
+                        )
+                    elif data_tipo == 'instalacao':
+                        queryset = queryset.filter(
+                            _filtro_data_efetiva_instalacao_intervalo_venda(dt_ini, dt_fim)
+                        )
+                    elif status_instalada_exata or flow == 'esteira_instaladas':
                         # Para aba/filtro de instaladas, usar data efetiva de instalação
                         # (física quando existir; senão OSAB), alinhando com Performance.
                         queryset = queryset.filter(

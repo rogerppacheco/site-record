@@ -118,6 +118,7 @@
                 <li class="nav-item"><a class="nav-link" href="#" data-tab="AGENDADO" onclick="filtrarStatus('AGENDADO', this)">Agendados</a></li>
                 <li class="nav-item"><a class="nav-link" href="#" data-tab="PENDEN" onclick="filtrarStatus('PENDEN', this)">Pendentes</a></li>
                 <li class="nav-item"><a class="nav-link" href="#" data-tab="INSTALADAS" onclick="filtrarStatus('INSTALADAS', this)" title="Vendas já instaladas – ajustar Data instalação (no cliente)">Instaladas</a></li>
+                <li class="nav-item" id="tab-vendas-totais-item"><a class="nav-link" href="#" data-tab="VENDAS_TOTAIS" onclick="filtrarStatus('VENDAS_TOTAIS', this)">Vendas Totais</a></li>
             </ul>
 
             <div id="filtro-turno-container" class="mb-3" style="display: none;">
@@ -209,6 +210,42 @@
                 <div class="contador-agendados mt-2">
                     <span class="me-3">Total pelos filtros da aba Agendados: <strong id="contador-agendados-filtros-principais">0</strong></span>
                     <span>Total apos filtros do cabecalho: <strong id="contador-agendados-filtros-cabecalho">0</strong></span>
+                </div>
+            </div>
+            <div id="painel-busca-vendas-totais" class="mb-3 p-3 bg-light rounded border" style="display: none;">
+                <label class="form-label fw-bold mb-2">Filtros da aba Vendas Totais</label>
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold" for="filtro-tipo-data-vendas-totais">Tipo de data</label>
+                        <select id="filtro-tipo-data-vendas-totais" class="form-select form-select-sm">
+                            <option value="criacao">Data criacao Pedido/O.S.</option>
+                            <option value="agendamento">Data agendamento</option>
+                            <option value="instalacao">Data instalacao</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold" for="filtro-vendedor-vendas-totais">Consultor</label>
+                        <select id="filtro-vendedor-vendas-totais" class="form-select form-select-sm"></select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small fw-bold" for="filtro-data-inicio-vendas-totais">Data inicio</label>
+                        <input type="date" id="filtro-data-inicio-vendas-totais" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small fw-bold" for="filtro-data-fim-vendas-totais">Data fim</label>
+                        <input type="date" id="filtro-data-fim-vendas-totais" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-md-2 d-grid">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="aplicarFiltrosVendasTotais()"><i class="bi bi-search me-1"></i>Filtrar</button>
+                    </div>
+                </div>
+                <div class="d-flex gap-2 mt-2">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="limparFiltrosVendasTotais()"><i class="bi bi-x-circle me-1"></i>Limpar filtros</button>
+                    <button type="button" class="btn btn-outline-success btn-sm" onclick="exportarVendasTotaisExcel()"><i class="bi bi-file-earmark-excel me-1"></i>Exportar Excel</button>
+                </div>
+                <div class="contador-vendas-totais mt-2">
+                    <span class="me-3">Total pelos filtros da aba Vendas Totais: <strong id="contador-vendas-totais-filtros-principais">0</strong></span>
+                    <span>Total apos filtros do cabecalho: <strong id="contador-vendas-totais-filtros-cabecalho">0</strong></span>
                 </div>
             </div>
 
@@ -563,6 +600,8 @@
         const userProfile = decodedToken ? (decodedToken.user_role || decodedToken.perfil) : null;
         const allowedProfiles = ['Diretoria', 'BackOffice', 'Supervisor', 'Admin'];
         if (!allowedProfiles.includes(userProfile)) { alert('Acesso negado.'); window.location.href = '/area-interna/'; }
+        const podeAcessarVendasTotais = ['Diretoria', 'BackOffice', 'Admin'].includes(userProfile);
+        const totalAbasFixas = podeAcessarVendasTotais ? 5 : 4;
         const podeEditarAdiantamentosFinanceiros = ['Diretoria', 'Admin'].includes(userProfile);
 
         const podeConfigurarZap = ['Diretoria', 'Admin'].includes(userProfile);
@@ -574,6 +613,7 @@
         let filtroTurnoAtual = '';
         let filtroInstaladasAplicado = { vendedor_id: '', data_inicio: '', data_fim: '' };
         let filtroAgendadosAplicado = { vendedor_id: '', data_inicio: '', data_fim: '' };
+        let filtroVendasTotaisAplicado = { tipo_data: 'criacao', vendedor_id: '', data_inicio: '', data_fim: '' };
         let tempVendaId = null;
         let tempStatusId = null;
         const modalEditar = new bootstrap.Modal(document.getElementById('modal-editar-venda'));
@@ -591,7 +631,10 @@
             carregarMotivosPendencia();
             popularFiltroVendedorInstaladas();
             popularFiltroVendedorAgendados();
+            popularFiltroVendedorVendasTotais();
             inicializarFiltrosColunas();
+            const tabVendasTotais = document.getElementById('tab-vendas-totais-item');
+            if (tabVendasTotais && !podeAcessarVendasTotais) tabVendasTotais.remove();
             const btnAdiantCnpjSemana = document.getElementById('btn-marcar-adiant-cnpj-semana');
             if (btnAdiantCnpjSemana && !podeEditarAdiantamentosFinanceiros) btnAdiantCnpjSemana.style.display = 'none';
             const cbSelComissaoVisiveis = document.getElementById('selecionar-comissao-visiveis');
@@ -649,10 +692,10 @@
                 const el = document.getElementById(id);
                 if (!el) return;
                 el.addEventListener('input', () => {
-                    if (filtroAtual === 'INSTALADAS' || filtroAtual === 'AGENDADO') carregarVendas(true);
+                    if (filtroAtual === 'INSTALADAS' || filtroAtual === 'AGENDADO' || filtroAtual === 'VENDAS_TOTAIS') carregarVendas(true);
                 });
                 el.addEventListener('change', () => {
-                    if (filtroAtual === 'INSTALADAS' || filtroAtual === 'AGENDADO') carregarVendas(true);
+                    if (filtroAtual === 'INSTALADAS' || filtroAtual === 'AGENDADO' || filtroAtual === 'VENDAS_TOTAIS') carregarVendas(true);
                 });
             });
         }
@@ -732,6 +775,50 @@
             if (!resetApenas) carregarVendas();
         }
 
+        function validarPeriodoVendasTotais() {
+            const ini = (document.getElementById('filtro-data-inicio-vendas-totais')?.value || '').trim();
+            const fim = (document.getElementById('filtro-data-fim-vendas-totais')?.value || '').trim();
+            if ((ini && !fim) || (!ini && fim)) {
+                alert('Informe Data inicio e Data fim.');
+                return null;
+            }
+            if (ini && fim && ini > fim) {
+                alert('Data inicio nao pode ser maior que data fim.');
+                return null;
+            }
+            return { ini, fim };
+        }
+
+        function aplicarFiltrosVendasTotais() {
+            if (!podeAcessarVendasTotais) return;
+            const periodo = validarPeriodoVendasTotais();
+            if (!periodo) return;
+            filtroVendasTotaisAplicado = {
+                tipo_data: (document.getElementById('filtro-tipo-data-vendas-totais')?.value || 'criacao').trim(),
+                vendedor_id: (document.getElementById('filtro-vendedor-vendas-totais')?.value || '').trim(),
+                data_inicio: periodo.ini,
+                data_fim: periodo.fim
+            };
+            carregarVendas();
+        }
+
+        function limparFiltrosVendasTotais(resetApenas = false) {
+            const t = document.getElementById('filtro-tipo-data-vendas-totais');
+            const v = document.getElementById('filtro-vendedor-vendas-totais');
+            const i = document.getElementById('filtro-data-inicio-vendas-totais');
+            const f = document.getElementById('filtro-data-fim-vendas-totais');
+            if (t) t.value = 'criacao';
+            if (v) v.value = '';
+            if (i) i.value = '';
+            if (f) f.value = '';
+            [
+                'fc-id', 'fc-data-venda', 'fc-os', 'fc-data-agendada', 'fc-turno', 'fc-cliente', 'fc-vendedor',
+                'fc-adiant-cnpj', 'fc-adiant-comissao', 'fc-adiant-sabado', 'fc-plano', 'fc-status', 'fc-motivo', 'fc-conf', 'fc-resp'
+            ].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+            filtroVendasTotaisAplicado = { tipo_data: 'criacao', vendedor_id: '', data_inicio: '', data_fim: '' };
+            if (!resetApenas) carregarVendas();
+        }
+
         function limparFiltrosInstaladas() {
             const v = document.getElementById('filtro-vendedor-instaladas');
             const i = document.getElementById('filtro-data-inicio-instaladas');
@@ -779,6 +866,26 @@
                 if (vid && nome && !mapa.has(vid)) mapa.set(vid, nome);
             });
             const atual = filtroAgendadosAplicado.vendedor_id || '';
+            select.innerHTML = '<option value="">Todos</option>';
+            Array.from(mapa.entries()).sort((a, b) => a[1].localeCompare(b[1], 'pt-BR')).forEach(([id, nome]) => {
+                const opt = document.createElement('option');
+                opt.value = id;
+                opt.textContent = nome;
+                select.appendChild(opt);
+            });
+            select.value = atual;
+        }
+
+        function popularFiltroVendedorVendasTotais(vendas = []) {
+            const select = document.getElementById('filtro-vendedor-vendas-totais');
+            if (!select) return;
+            const mapa = new Map();
+            (vendas || []).forEach(v => {
+                const vid = v && v.vendedor ? String(v.vendedor) : '';
+                const nome = (v && v.vendedor_nome) ? String(v.vendedor_nome) : '';
+                if (vid && nome && !mapa.has(vid)) mapa.set(vid, nome);
+            });
+            const atual = filtroVendasTotaisAplicado.vendedor_id || '';
             select.innerHTML = '<option value="">Todos</option>';
             Array.from(mapa.entries()).sort((a, b) => a[1].localeCompare(b[1], 'pt-BR')).forEach(([id, nome]) => {
                 const opt = document.createElement('option');
@@ -840,6 +947,30 @@
             const link = document.createElement('a');
             link.href = window.URL.createObjectURL(blob);
             link.download = 'agendados_filtrados.xlsx';
+            document.body.appendChild(link);
+            link.click();
+            window.URL.revokeObjectURL(link.href);
+            document.body.removeChild(link);
+        }
+
+        async function exportarVendasTotaisExcel() {
+            if (filtroAtual !== 'VENDAS_TOTAIS' || !podeAcessarVendasTotais) return;
+            const periodo = validarPeriodoVendasTotais();
+            if (!periodo) return;
+            const token = localStorage.getItem('accessToken');
+            let url = `/api/crm/vendas/exportar-excel/?flow=esteira_todas&view=geral`;
+            if (filtroVendasTotaisAplicado.vendedor_id) url += `&consultor_id=${encodeURIComponent(filtroVendasTotaisAplicado.vendedor_id)}`;
+            if (filtroVendasTotaisAplicado.data_inicio) url += `&data_inicio=${encodeURIComponent(filtroVendasTotaisAplicado.data_inicio)}`;
+            if (filtroVendasTotaisAplicado.data_fim) url += `&data_fim=${encodeURIComponent(filtroVendasTotaisAplicado.data_fim)}`;
+            if (filtroVendasTotaisAplicado.tipo_data) url += `&data_tipo=${encodeURIComponent(filtroVendasTotaisAplicado.tipo_data)}`;
+            const busca = (document.getElementById('filtro-busca')?.value || '').trim();
+            if (busca) url += `&search=${encodeURIComponent(busca)}`;
+            const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+            if (!response.ok) { alert('Erro ao exportar Excel.'); return; }
+            const blob = await response.blob();
+            const link = document.createElement('a');
+            link.href = window.URL.createObjectURL(blob);
+            link.download = 'vendas_totais_filtradas.xlsx';
             document.body.appendChild(link);
             link.click();
             window.URL.revokeObjectURL(link.href);
@@ -1146,11 +1277,13 @@
             const todosTab = document.querySelector('#abas-esteira a[data-tab="TODOS"]');
             const agendadosTab = document.querySelector('#abas-esteira a[data-tab="AGENDADO"]');
             const pendentesTab = document.querySelector('#abas-esteira a[data-tab="PENDEN"]');
+            const vendasTotaisTab = document.querySelector('#abas-esteira a[data-tab="VENDAS_TOTAIS"]');
 
             if (todosTab) todosTab.textContent = `Todos (${contagem.todos || 0})`;
             const totalAgendados = Object.values(contagem.datas || {}).reduce((acc, val) => acc + val, 0);
             if (agendadosTab) agendadosTab.textContent = `Agendados (${totalAgendados})`;
             if (pendentesTab) pendentesTab.textContent = `Pendentes (${contagem.pendentes || 0})`;
+            if (vendasTotaisTab) vendasTotaisTab.textContent = 'Vendas Totais';
         }
 
         async function carregarVendas(silent = false) {
@@ -1158,18 +1291,29 @@
             const busca = (document.getElementById('filtro-busca').value || '').trim();
             const carregarInstaladas = (filtroAtual === 'INSTALADAS');
             const carregarAgendados = (filtroAtual === 'AGENDADO');
+            const carregarVendasTotais = (filtroAtual === 'VENDAS_TOTAIS');
             const contadorPrincipaisEl = document.getElementById('contador-instaladas-filtros-principais');
             const contadorCabecalhoEl = document.getElementById('contador-instaladas-filtros-cabecalho');
             const contadorAgendadosPrincipaisEl = document.getElementById('contador-agendados-filtros-principais');
             const contadorAgendadosCabecalhoEl = document.getElementById('contador-agendados-filtros-cabecalho');
+            const contadorVendasTotaisPrincipaisEl = document.getElementById('contador-vendas-totais-filtros-principais');
+            const contadorVendasTotaisCabecalhoEl = document.getElementById('contador-vendas-totais-filtros-cabecalho');
             if (contadorPrincipaisEl) contadorPrincipaisEl.textContent = '0';
             if (contadorCabecalhoEl) contadorCabecalhoEl.textContent = '0';
             if (contadorAgendadosPrincipaisEl) contadorAgendadosPrincipaisEl.textContent = '0';
             if (contadorAgendadosCabecalhoEl) contadorAgendadosCabecalhoEl.textContent = '0';
+            if (contadorVendasTotaisPrincipaisEl) contadorVendasTotaisPrincipaisEl.textContent = '0';
+            if (contadorVendasTotaisCabecalhoEl) contadorVendasTotaisCabecalhoEl.textContent = '0';
             const temFiltroInstaladas = !!(
                 (filtroInstaladasAplicado.vendedor_id || '').trim() ||
                 (filtroInstaladasAplicado.data_inicio || '').trim() ||
                 (filtroInstaladasAplicado.data_fim || '').trim() ||
+                busca
+            );
+            const temFiltroVendasTotais = !!(
+                (filtroVendasTotaisAplicado.vendedor_id || '').trim() ||
+                (filtroVendasTotaisAplicado.data_inicio || '').trim() ||
+                (filtroVendasTotaisAplicado.data_fim || '').trim() ||
                 busca
             );
 
@@ -1177,6 +1321,10 @@
                 tbody.innerHTML = '<tr><td colspan="17" class="text-center py-4 text-muted">Selecione ao menos um filtro (Vendedor ou período) para carregar a aba Instaladas.</td></tr>';
                 const paEmpty = document.getElementById('painel-instaladas-antecipacao');
                 if (paEmpty) paEmpty.style.display = 'none';
+                return;
+            }
+            if (carregarVendasTotais && !temFiltroVendasTotais) {
+                tbody.innerHTML = '<tr><td colspan="17" class="text-center py-4 text-muted">Selecione ao menos um filtro para carregar a aba Vendas Totais.</td></tr>';
                 return;
             }
 
@@ -1204,6 +1352,13 @@
                     if (filtroAgendadosAplicado.vendedor_id) url += `&consultor_id=${encodeURIComponent(filtroAgendadosAplicado.vendedor_id)}`;
                     if (filtroAgendadosAplicado.data_inicio) url += `&data_inicio=${encodeURIComponent(filtroAgendadosAplicado.data_inicio)}`;
                     if (filtroAgendadosAplicado.data_fim) url += `&data_fim=${encodeURIComponent(filtroAgendadosAplicado.data_fim)}`;
+                } else if (carregarVendasTotais) {
+                    url = `/crm/vendas/?flow=esteira_todas&view=geral&page_size=1000&_t=${timestamp}`;
+                    if (busca) url += `&search=${encodeURIComponent(busca)}`;
+                    if (filtroVendasTotaisAplicado.vendedor_id) url += `&consultor_id=${encodeURIComponent(filtroVendasTotaisAplicado.vendedor_id)}`;
+                    if (filtroVendasTotaisAplicado.data_inicio) url += `&data_inicio=${encodeURIComponent(filtroVendasTotaisAplicado.data_inicio)}`;
+                    if (filtroVendasTotaisAplicado.data_fim) url += `&data_fim=${encodeURIComponent(filtroVendasTotaisAplicado.data_fim)}`;
+                    if (filtroVendasTotaisAplicado.tipo_data) url += `&data_tipo=${encodeURIComponent(filtroVendasTotaisAplicado.tipo_data)}`;
                 }
 
                 // --- Carregamos Listas Auxiliares e vendas (todas as páginas da esteira) ---
@@ -1223,6 +1378,9 @@
                 }
                 if (carregarAgendados) {
                     popularFiltroVendedorAgendados(vendas);
+                }
+                if (carregarVendasTotais) {
+                    popularFiltroVendedorVendasTotais(vendas);
                 }
 
                 // DEBUG:
@@ -1251,7 +1409,7 @@
                 });
 
                 // Filtros de Segurança (aba Instaladas: não excluir FECHADO, pois são vendas já instaladas)
-                if (!carregarInstaladas) {
+                if (!carregarInstaladas && !carregarVendasTotais) {
                     vendas = vendas.filter(v => {
                         const status = v.status_esteira_obj;
                         if (!status || !status.id) return true; 
@@ -1287,6 +1445,7 @@
                 }
                 if (carregarInstaladas && contadorPrincipaisEl) contadorPrincipaisEl.textContent = `${vendas.length}`;
                 if (carregarAgendados && contadorAgendadosPrincipaisEl) contadorAgendadosPrincipaisEl.textContent = `${vendas.length}`;
+                if (carregarVendasTotais && contadorVendasTotaisPrincipaisEl) contadorVendasTotaisPrincipaisEl.textContent = `${vendas.length}`;
 
                 if(vendas.length === 0) {
                     const msg = carregarInstaladas ? 'Nenhuma venda instalada encontrada para este CPF/O.S.' : 'Nenhuma venda encontrada nesta etapa.';
@@ -1431,7 +1590,7 @@
                         confCliente = '<span class="badge bg-secondary" title="' + respTitle + '">Não' + (respShort ? ': ' + respShort + (v.cliente_resposta_lembrete_instalacao && v.cliente_resposta_lembrete_instalacao.length > 30 ? '…' : '') : '') + '</span>';
                     }
 
-                    if (carregarInstaladas || carregarAgendados) {
+                    if (carregarInstaladas || carregarAgendados || carregarVendasTotais) {
                         const adCnpjTexto = v.flag_adiant_cnpj
                             ? 'realizado'
                             : (String(docCliente || '').replace(/\D/g, '').length === 14 ? 'pendente' : 'nao elegivel');
@@ -1475,7 +1634,7 @@
                         if (fsSab === 'nao' && v.adiantamento_sabado_marcado) return;
                         if (fsSab === 'quitado' && !(v.adiantamento_sabado_marcado && v.adiantamento_sabado_quitado_em)) return;
                     }
-                    if (carregarInstaladas || carregarAgendados) totalVisivelPosCabecalho += 1;
+                    if (carregarInstaladas || carregarAgendados || carregarVendasTotais) totalVisivelPosCabecalho += 1;
 
                     htmlContent += `
                         <tr style="${rowStyle}" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='translateY(0)'">
@@ -1509,6 +1668,11 @@
                     const agendadosTab = document.querySelector('#abas-esteira a[data-tab="AGENDADO"]');
                     if (agendadosTab) agendadosTab.textContent = `Agendados (${totalVisivelPosCabecalho})`;
                 }
+                if (carregarVendasTotais && contadorVendasTotaisCabecalhoEl) contadorVendasTotaisCabecalhoEl.textContent = `${totalVisivelPosCabecalho}`;
+                if (carregarVendasTotais) {
+                    const vendasTotaisTab = document.querySelector('#abas-esteira a[data-tab="VENDAS_TOTAIS"]');
+                    if (vendasTotaisTab) vendasTotaisTab.textContent = `Vendas Totais (${totalVisivelPosCabecalho})`;
+                }
 
                 const painelAnt = document.getElementById('painel-instaladas-antecipacao');
                 if (painelAnt) {
@@ -1536,8 +1700,8 @@
 
         function gerarAbasDeData(todasVendas, contagemDatas = {}) {
             const ul = document.getElementById('abas-esteira');
-            // Manter as 4 abas fixas (Todos, Agendados, Pendentes, Instaladas) e remover só as abas de data
-            while (ul.children.length > 4) { ul.removeChild(ul.lastChild); }
+            // Manter abas fixas e remover só as abas de data
+            while (ul.children.length > totalAbasFixas) { ul.removeChild(ul.lastChild); }
             const datasUnicas = new Set();
             todasVendas.forEach(v => {
                 if (v.data_agendamento && v.status_esteira_obj && v.status_esteira_obj.nome && String(v.status_esteira_obj.nome).toUpperCase().includes('AGENDADO')) {
@@ -1686,41 +1850,66 @@
 
         function filtrarStatus(status, element) {
             const statusAnterior = filtroAtual;
+            if (status === 'VENDAS_TOTAIS' && !podeAcessarVendasTotais) {
+                alert('Acesso negado para a aba Vendas Totais.');
+                return;
+            }
             filtroAtual = status;
             document.querySelectorAll('#abas-esteira .nav-link').forEach(l => l.classList.remove('active'));
             if(element) element.classList.add('active');
             if (status === 'INSTALADAS') {
                 if (statusAnterior === 'AGENDADO') limparFiltrosAgendados(true);
+                if (statusAnterior === 'VENDAS_TOTAIS') limparFiltrosVendasTotais(true);
                 var lf = document.getElementById('linha-filtros-colunas');
                 if (lf) lf.style.display = '';
                 document.getElementById('filtro-turno-container').style.display = 'none';
                 document.getElementById('painel-busca-instaladas').style.display = 'block';
                 document.getElementById('painel-busca-agendados').style.display = 'none';
+                document.getElementById('painel-busca-vendas-totais').style.display = 'none';
                 var pa = document.getElementById('painel-instaladas-antecipacao');
                 if (pa) pa.style.display = 'none';
-                while (document.getElementById('abas-esteira').children.length > 4) document.getElementById('abas-esteira').removeChild(document.getElementById('abas-esteira').lastChild);
+                while (document.getElementById('abas-esteira').children.length > totalAbasFixas) document.getElementById('abas-esteira').removeChild(document.getElementById('abas-esteira').lastChild);
                 var tb = document.getElementById('tabela-esteira-body');
                 tb.innerHTML = '<tr><td colspan="17" class="text-center py-4 text-muted">Carregando instaladas...</td></tr>';
                 carregarVendas();
                 return;
             }
             if (status === 'AGENDADO') {
+                if (statusAnterior === 'VENDAS_TOTAIS') limparFiltrosVendasTotais(true);
                 var lfAg = document.getElementById('linha-filtros-colunas');
                 if (lfAg) lfAg.style.display = '';
                 document.getElementById('filtro-turno-container').style.display = 'none';
                 document.getElementById('painel-busca-instaladas').style.display = 'none';
                 document.getElementById('painel-busca-agendados').style.display = 'block';
+                document.getElementById('painel-busca-vendas-totais').style.display = 'none';
                 var paAg = document.getElementById('painel-instaladas-antecipacao');
                 if (paAg) paAg.style.display = 'none';
-                while (document.getElementById('abas-esteira').children.length > 4) document.getElementById('abas-esteira').removeChild(document.getElementById('abas-esteira').lastChild);
+                while (document.getElementById('abas-esteira').children.length > totalAbasFixas) document.getElementById('abas-esteira').removeChild(document.getElementById('abas-esteira').lastChild);
                 carregarVendas();
+                return;
+            }
+            if (status === 'VENDAS_TOTAIS') {
+                if (statusAnterior === 'AGENDADO') limparFiltrosAgendados(true);
+                var lfTot = document.getElementById('linha-filtros-colunas');
+                if (lfTot) lfTot.style.display = '';
+                document.getElementById('filtro-turno-container').style.display = 'none';
+                document.getElementById('painel-busca-instaladas').style.display = 'none';
+                document.getElementById('painel-busca-agendados').style.display = 'none';
+                document.getElementById('painel-busca-vendas-totais').style.display = 'block';
+                var paTot = document.getElementById('painel-instaladas-antecipacao');
+                if (paTot) paTot.style.display = 'none';
+                while (document.getElementById('abas-esteira').children.length > totalAbasFixas) document.getElementById('abas-esteira').removeChild(document.getElementById('abas-esteira').lastChild);
+                const tbTot = document.getElementById('tabela-esteira-body');
+                tbTot.innerHTML = '<tr><td colspan="17" class="text-center py-4 text-muted">Selecione ao menos um filtro para carregar a aba Vendas Totais.</td></tr>';
                 return;
             }
             var lf2 = document.getElementById('linha-filtros-colunas');
             if (lf2) lf2.style.display = 'none';
             document.getElementById('painel-busca-instaladas').style.display = 'none';
             document.getElementById('painel-busca-agendados').style.display = 'none';
+            document.getElementById('painel-busca-vendas-totais').style.display = 'none';
             if (statusAnterior === 'AGENDADO') limparFiltrosAgendados(true);
+            if (statusAnterior === 'VENDAS_TOTAIS') limparFiltrosVendasTotais(true);
             carregarVendas();
         }
 
