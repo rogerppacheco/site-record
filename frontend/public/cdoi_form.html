@@ -553,7 +553,7 @@
                             </div>
                         </div>
                         <div class="row g-3 mb-4">
-                            <div class="col-md-6">
+                            <div class="col-md-4">
                                 <label>Nome do Condomínio *</label>
                                 <div class="input-group">
                                     <input type="text" name="nome_condominio" id="inp_nome" class="form-control" required>
@@ -562,6 +562,28 @@
                                     </button>
                                 </div>
                             </div>
+                            <div class="col-md-4">
+                                <label>Nome do Síndico *</label>
+                                <div class="input-group">
+                                    <input type="text" name="nome_sindico" id="inp_sindico" class="form-control" required>
+                                    <button type="button" class="btn btn-outline-secondary" onclick="copiarCampo('inp_sindico')" title="Copiar nome do síndico">
+                                        <i class="bi bi-clipboard"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <label>Contato (WhatsApp) *</label>
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="bi bi-whatsapp"></i></span>
+                                    <input type="text" name="contato" id="inp_contato" class="form-control" required onblur="validarWhatsapp(this)">
+                                    <button type="button" class="btn btn-outline-secondary" onclick="copiarCampo('inp_contato')" title="Copiar contato">
+                                        <i class="bi bi-clipboard"></i>
+                                    </button>
+                                </div>
+                                <div id="zap-feedback" class="form-text"></div>
+                            </div>
+                        </div>
+                        <div class="row g-3 mb-4">
                             <div class="col-md-3">
                                 <label>CEP *</label>
                                 <div class="input-group">
@@ -645,29 +667,9 @@
                         </div>
 
                         <h6 class="text-primary fw-bold mb-3 border-bottom pb-2 d-flex justify-content-between align-items-center">
-                            <span>Contato e Síndico</span>
+                            <span>Documentação</span>
                         </h6>
                         <div class="row g-3 mb-4">
-                            <div class="col-md-6">
-                                <label>Nome do Síndico *</label>
-                                <div class="input-group">
-                                    <input type="text" name="nome_sindico" id="inp_sindico" class="form-control" required>
-                                    <button type="button" class="btn btn-outline-secondary" onclick="copiarCampo('inp_sindico')" title="Copiar nome do síndico">
-                                        <i class="bi bi-clipboard"></i>
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <label>Contato (WhatsApp) *</label>
-                                <div class="input-group">
-                                    <span class="input-group-text"><i class="bi bi-whatsapp"></i></span>
-                                    <input type="text" name="contato" id="inp_contato" class="form-control" required onblur="validarWhatsapp(this)">
-                                    <button type="button" class="btn btn-outline-secondary" onclick="copiarCampo('inp_contato')" title="Copiar contato">
-                                        <i class="bi bi-clipboard"></i>
-                                    </button>
-                                </div>
-                                <div id="zap-feedback" class="form-text"></div>
-                            </div>
                             <div class="col-md-6 file-input-group">
                                 <label>Carta Síndico (Autorização) *</label>
                                 <div id="preview-carta-container" class="mb-2" style="display: none;">
@@ -1558,12 +1560,22 @@
     }
     async function salvarStatus() {
         const id = document.getElementById('st-id').value;
-        await fetch(`/api/crm/cdoi/editar/${id}/`, {
-            method: 'PATCH',
-            headers: {'Authorization': `Bearer ${localStorage.getItem('accessToken')}`, 'Content-Type': 'application/json'},
-            body: JSON.stringify({ status: document.getElementById('st-val').value, observacao: document.getElementById('st-obs').value })
-        });
-        mStatus.hide(); carregarMeusAcionamentos();
+        try {
+            const res = await fetch(`/api/crm/cdoi/editar/${id}/`, {
+                method: 'PATCH',
+                headers: {'Authorization': `Bearer ${localStorage.getItem('accessToken')}`, 'Content-Type': 'application/json'},
+                body: JSON.stringify({ status: document.getElementById('st-val').value, observacao: document.getElementById('st-obs').value })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                alert(data.error || data.detail || 'Não foi possível atualizar o status.');
+                return;
+            }
+            mStatus.hide();
+            carregarMeusAcionamentos();
+        } catch (e) {
+            alert('Erro de conexão ao atualizar o status.');
+        }
     }
     async function buscarCep(cep) { 
         try { 

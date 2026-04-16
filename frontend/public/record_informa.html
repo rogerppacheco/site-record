@@ -123,10 +123,10 @@
                     </div>
                 </div>
 
-                <!-- Cards por Comando -->
-                <div class="row g-4 mb-4">
-                    <div class="col-md-3">
-                        <div class="card border-0 shadow-sm bg-primary text-white">
+                <!-- Cards por Comando (Outros = Vender, Pedido, Andamento, Crédito, etc.) -->
+                <div class="row row-cols-2 row-cols-md-3 row-cols-xl-5 g-3 mb-4">
+                    <div class="col">
+                        <div class="card border-0 shadow-sm bg-primary text-white h-100">
                             <div class="card-body">
                                 <div class="d-flex justify-content-between align-items-center">
                                     <div>
@@ -138,8 +138,8 @@
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-3">
-                        <div class="card border-0 shadow-sm bg-info text-white">
+                    <div class="col">
+                        <div class="card border-0 shadow-sm bg-info text-white h-100">
                             <div class="card-body">
                                 <div class="d-flex justify-content-between align-items-center">
                                     <div>
@@ -151,8 +151,8 @@
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-3">
-                        <div class="card border-0 shadow-sm bg-success text-white">
+                    <div class="col">
+                        <div class="card border-0 shadow-sm bg-success text-white h-100">
                             <div class="card-body">
                                 <div class="d-flex justify-content-between align-items-center">
                                     <div>
@@ -164,8 +164,8 @@
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-3">
-                        <div class="card border-0 shadow-sm bg-warning text-dark">
+                    <div class="col">
+                        <div class="card border-0 shadow-sm bg-warning text-dark h-100">
                             <div class="card-body">
                                 <div class="d-flex justify-content-between align-items-center">
                                     <div>
@@ -173,6 +173,20 @@
                                         <h3 class="mb-0 fw-bold" id="stat-status">0</h3>
                                     </div>
                                     <i class="bi bi-clipboard-check fs-1 opacity-50"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="card border-0 shadow-sm bg-secondary text-white h-100">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <h6 class="text-white-50 mb-1 small">Outras automações</h6>
+                                        <p class="text-white-50 mb-1 small lh-sm d-none d-md-block">Vender, Pedido, Andamento, Crédito…</p>
+                                        <h3 class="mb-0 fw-bold" id="stat-outros">0</h3>
+                                    </div>
+                                    <i class="bi bi-grid-3x3-gap fs-1 opacity-50"></i>
                                 </div>
                             </div>
                         </div>
@@ -190,6 +204,7 @@
                                 <th class="text-center">Viabilidade</th>
                                 <th class="text-center">Fatura</th>
                                 <th class="text-center">Status</th>
+                                <th class="text-center">Outras</th>
                                 <th class="text-center fw-bold">Total</th>
                             </tr>
                         </thead>
@@ -344,6 +359,7 @@
                     document.getElementById('stat-viabilidade').textContent = data.por_comando.VIABILIDADE || 0;
                     document.getElementById('stat-fatura').textContent = data.por_comando.FATURA || 0;
                     document.getElementById('stat-status').textContent = data.por_comando.STATUS || 0;
+                    document.getElementById('stat-outros').textContent = data.por_comando.OUTROS ?? 0;
                 }
                 
                 // Atualizar tabela por vendedor (com verificação segura)
@@ -353,16 +369,18 @@
                 const vendedores = data.por_vendedor || [];
                 
                 if (vendedores.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">Nenhum dado encontrado para o período selecionado.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">Nenhum dado encontrado para o período selecionado.</td></tr>';
                 } else {
                     vendedores.forEach(v => {
+                        const rowClass = v.sem_cadastro ? 'table-warning' : '';
                         tbody.innerHTML += `
-                            <tr>
+                            <tr class="${rowClass}">
                                 <td class="fw-bold">${v.vendedor_nome || v.vendedor_username || 'N/A'}</td>
                                 <td class="text-center">${v.fachada || 0}</td>
                                 <td class="text-center">${v.viabilidade || 0}</td>
                                 <td class="text-center">${v.fatura || 0}</td>
                                 <td class="text-center">${v.status || 0}</td>
+                                <td class="text-center">${v.outros ?? 0}</td>
                                 <td class="text-center fw-bold">${v.total || 0}</td>
                             </tr>
                         `;
@@ -373,14 +391,18 @@
                 if (data.data_inicio) {
                     const dataInicio = new Date(data.data_inicio);
                     const totalGeral = data.totais?.geral || 0;
-                    document.getElementById('info-periodo').textContent = 
-                        `Período: ${dataInicio.toLocaleDateString('pt-BR')} até hoje | Total geral: ${totalGeral} mensagens`;
+                    const semV = data.totais?.sem_vendedor ?? 0;
+                    const comV = data.totais?.com_vendedor ?? 0;
+                    document.getElementById('info-periodo').innerHTML =
+                        `Período: ${dataInicio.toLocaleDateString('pt-BR')} até hoje | Total geral: <strong>${totalGeral}</strong> registros ` +
+                        `(com cadastro CRM: ${comV} · só telefone: ${semV}). ` +
+                        `A linha <em>Sem vínculo no cadastro</em> agrupa números que não bateram com WhatsApp 1–3 no sistema.`;
                 }
                     
             } catch(e) { 
                 console.error('Erro ao carregar estatísticas:', e);
                 document.getElementById('lista-vendedores').innerHTML = 
-                    '<tr><td colspan="6" class="text-center text-danger py-4">Erro ao carregar dados.</td></tr>';
+                    '<tr><td colspan="7" class="text-center text-danger py-4">Erro ao carregar dados.</td></tr>';
                 document.getElementById('info-periodo').textContent = 'Erro ao carregar informações.';
             }
         }

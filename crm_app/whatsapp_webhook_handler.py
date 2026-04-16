@@ -58,33 +58,11 @@ def _registrar_estatistica(telefone, comando):
     Tenta identificar o vendedor pelo telefone
     """
     try:
-        from django.db.models import Q
         from crm_app.models import EstatisticaBotWhatsApp
-        from usuarios.models import Usuario
-        
-        # Tentar encontrar vendedor pelo telefone (qualquer um dos 3 números)
-        vendedor = None
-        telefone_limpo = formatar_telefone(telefone)
-        
-        # Buscar vendedor pelo tel_whatsapp / tel_whatsapp_2 / tel_whatsapp_3 (formato pode variar)
-        telefones_variantes = [telefone_limpo]
-        if not telefone_limpo.startswith('55') and len(telefone_limpo) >= 10:
-            telefones_variantes.append('55' + telefone_limpo)
-        if telefone_limpo.startswith('55'):
-            telefones_variantes.append(telefone_limpo[2:])
-        
-        for tel_var in telefones_variantes:
-            try:
-                vendedor = Usuario.objects.filter(
-                    Q(tel_whatsapp__icontains=tel_var) |
-                    Q(tel_whatsapp_2__icontains=tel_var) |
-                    Q(tel_whatsapp_3__icontains=tel_var)
-                ).first()
-                if vendedor:
-                    break
-            except Exception:
-                pass
-        
+
+        # Mesma busca usada no fluxo do bot (DDD, 8/9 dígitos, máscaras no cadastro)
+        vendedor = _buscar_usuario_por_telefone(telefone)
+
         # Criar registro de estatística
         EstatisticaBotWhatsApp.objects.create(
             telefone=telefone,
@@ -6335,28 +6313,21 @@ def _buscar_record_apoia_por_texto(busca_texto, sessao):
     return "\n".join(resposta_parts)
 
 
-def _mensagem_resposta_gc_para_vendedor(os_num, resposta_gc, tipo_solicitacao=None):
-    """Mensagem padronizada enviada ao vendedor quando o GC responde (igual à usada na API)."""
-    os_txt = (os_num or 'O.S').strip()
-    if resposta_gc == 'solicitado':
-        tipo_txt = 'de reparo' if tipo_solicitacao == 'reparo' else 'de antecipação'
-        return f"Olá! Sobre a *{os_txt}*: Sua solicitação {tipo_txt} foi tratada pelo GC e encaminhada para Vtal."
-    if resposta_gc == 'antecipada':
-        return f"Olá! Sobre a *{os_txt}*: Vtal conseguiu antecipar essa instalação para o período solicitado."
-    if resposta_gc == 'nao_antecipada':
-        return f"Olá! Sobre a *{os_txt}*: Vtal não tem espaço na agenda para antecipar este pedido."
-    return None
-
-
 def processar_resposta_gc_antecipar(telefone_remetente, mensagem_texto):
     """
     Se a mensagem for do número do GC e no formato [O.S], antecipada|não antecipada|solicitado,
     registra a resposta no sistema e envia a mensagem padronizada ao vendedor.
+    Aceita texto adicional após ':' ou em linhas seguintes (complemento ao vendedor).
     Retorna True se processou (e deve encerrar o webhook); False caso contrário.
     """
     if not mensagem_texto or not (mensagem_texto or "").strip():
         return False
-    from crm_app.models import AnteciparInstalacaoConfig, AnteciparInstalacaoSolicitacao
+    from crm_app.antecipar_instalacao_utils import (
+        buscar_solicitacao_gc_pendente_por_os,
+        mensagem_resposta_gc_para_vendedor,
+        parse_mensagem_resposta_gc_antecipar,
+    )
+    from crm_app.models import AnteciparInstalacaoConfig
     from crm_app.whatsapp_service import WhatsAppService
     config = AnteciparInstalacaoConfig.objects.first()
     if not config or not (getattr(config, 'telefone_gc', None) or "").strip():
@@ -6366,44 +6337,19 @@ def processar_resposta_gc_antecipar(telefone_remetente, mensagem_texto):
     if not gc_norm or not rem_norm or gc_norm != rem_norm:
         return False
     msg = (mensagem_texto or "").strip()
-    # Aceita: "12345, antecipada" | "12345, não antecipada" | "12345, solicitado" | "OS 12345, antecipada" etc.
-    m = re.match(
-        r'^(?:O\.?S\.?)?\s*(\d+)\s*[,]\s*(antecipada|(?:nao|não)\s*antecipada|solicitado)\s*$',
-        msg,
-        re.IGNORECASE,
-    )
-    if not m:
-        m = re.match(
-            r'^(\d+)\s+(antecipada|(?:nao|não)\s*antecipada|solicitado)\s*$',
-            msg,
-            re.IGNORECASE,
-        )
-    if not m:
+    parsed = parse_mensagem_resposta_gc_antecipar(msg)
+    if not parsed:
         return False
-    os_num = m.group(1).strip()
-    kw = (m.group(2) or "").strip().lower()
-    if 'solicitado' in kw:
-        resposta_gc = 'solicitado'
-    elif 'não' in kw or 'nao' in kw:
-        resposta_gc = 'nao_antecipada'
-    elif 'antecipada' in kw:
-        resposta_gc = 'antecipada'
-    else:
-        return False
-    sol = (
-        AnteciparInstalacaoSolicitacao.objects.filter(
-            ordem_servico__icontains=os_num,
-            resposta_gc__isnull=True,
-        )
-        .select_related('venda', 'venda__vendedor')
-        .order_by('-data_solicitacao')
-        .first()
-    )
+    os_digits, resposta_gc, complemento = parsed
+    sol = buscar_solicitacao_gc_pendente_por_os(os_digits)
     if not sol:
-        logger.info(f"[Webhook] Resposta GC: O.S {os_num} não encontrada ou já respondida.")
+        logger.info(f"[Webhook] Resposta GC: O.S {os_digits} não encontrada ou já respondida.")
         return False
     tipo_sol = getattr(sol, 'tipo_solicitacao', None) or 'antecipacao'
-    msg_vendedor = _mensagem_resposta_gc_para_vendedor(sol.ordem_servico or os_num, resposta_gc, tipo_sol)
+    comp = (complemento or '').strip()[:2000]
+    msg_vendedor = mensagem_resposta_gc_para_vendedor(
+        sol.ordem_servico or os_digits, resposta_gc, tipo_sol, comp
+    )
     if not msg_vendedor:
         return False
     vendedor = sol.venda.vendedor if sol.venda else None
@@ -6419,8 +6365,9 @@ def processar_resposta_gc_antecipar(telefone_remetente, mensagem_texto):
     sol.resposta_gc = resposta_gc
     sol.resposta_gc_em = timezone.now()
     sol.resposta_gc_por = None  # automático via WhatsApp
-    sol.save(update_fields=['resposta_gc', 'resposta_gc_em', 'resposta_gc_por'])
-    logger.info(f"[Webhook] Resposta GC registrada: O.S {os_num} -> {resposta_gc}; mensagem ao vendedor: {'enviada' if enviado else 'não enviada'}")
+    sol.resposta_gc_complemento_vendedor = comp
+    sol.save(update_fields=['resposta_gc', 'resposta_gc_em', 'resposta_gc_por', 'resposta_gc_complemento_vendedor'])
+    logger.info(f"[Webhook] Resposta GC registrada: O.S {os_digits} -> {resposta_gc}; mensagem ao vendedor: {'enviada' if enviado else 'não enviada'}")
     return True
 
 
@@ -7126,6 +7073,7 @@ def processar_webhook_whatsapp(data, request=None):
             sessao.etapa = 'fatura_cpf'
             sessao.dados_temp = {}
             sessao.save()
+            _registrar_estatistica(telefone_formatado, 'FATURA')
             resposta = "Por favor, digite o CPF do titular da fatura (apenas números):"
             return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
 
@@ -7144,6 +7092,7 @@ def processar_webhook_whatsapp(data, request=None):
             sessao.etapa = 'viabilidade_cep'
             sessao.dados_temp = {}
             sessao.save()
+            _registrar_estatistica(telefone_formatado, 'VIABILIDADE')
             resposta = "Por favor, digite o CEP do endereço para consulta de viabilidade (apenas números):"
             return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
 
@@ -7210,6 +7159,7 @@ def processar_webhook_whatsapp(data, request=None):
             sessao.etapa = 'status_tipo'
             sessao.dados_temp = {}
             sessao.save()
+            _registrar_estatistica(telefone_formatado, 'STATUS')
             resposta = ("Para consultar o status do pedido, escolha uma opção:\n"
                         "1️⃣ CPF\n2️⃣ OS (Ordem de Serviço)\n\nDigite 1 para CPF ou 2 para O.S:")
             return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
@@ -7219,6 +7169,7 @@ def processar_webhook_whatsapp(data, request=None):
             sessao.etapa = 'fachada_cep'
             sessao.dados_temp = {}
             sessao.save()
+            _registrar_estatistica(telefone_formatado, 'FACHADA')
             resposta = "Por favor, digite o CEP para consultar fachadas (apenas números):"
             return _enviar_resposta_e_retornar(_com_prefixo_primeira_mensagem(resposta))
 

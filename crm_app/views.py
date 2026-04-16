@@ -581,6 +581,7 @@ from .models import (
     ControleTTDiaTratado,
     BoasVindasEnviado, MensagemClienteBoasVindas, StatusBoasVindas, FilaEnvioBoasVindas,
 )
+from .antecipar_instalacao_utils import mensagem_resposta_gc_para_vendedor
 
 # Serializers do App
 from .serializers import (
@@ -1424,22 +1425,32 @@ class EstatisticasBotWhatsAppView(APIView):
             ).order_by('comando')
             
             comando_dict = {item['comando']: item['total'] for item in por_comando}
+
+            # Comandos exibidos nos 4 primeiros cartões da UI
+            principais = {'FACHADA', 'VIABILIDADE', 'FATURA', 'STATUS'}
+            outros_tipos = sum(
+                v for k, v in comando_dict.items()
+                if k not in principais
+            )
             
-            # 2. Contagem por vendedor
-            por_vendedor = estatisticas.filter(
-                vendedor__isnull=False
-            ).values(
-                'vendedor__id', 
-                'vendedor__username',
-                'vendedor__first_name',
-                'vendedor__last_name'
-            ).annotate(
-                total=Count('id'),
-                fachada=Count('id', filter=Q(comando='FACHADA')),
-                viabilidade=Count('id', filter=Q(comando='VIABILIDADE')),
-                fatura=Count('id', filter=Q(comando='FATURA')),
-                status=Count('id', filter=Q(comando='STATUS'))
-            ).order_by('-total')
+            # 2. Contagem por vendedor (com coluna "outros": VENDER, PEDIDO, ANDAMENTO, CREDITO, etc.)
+            def _annotate_por_grupo(qs):
+                return qs.values(
+                    'vendedor__id',
+                    'vendedor__username',
+                    'vendedor__first_name',
+                    'vendedor__last_name',
+                ).annotate(
+                    total=Count('id'),
+                    fachada=Count('id', filter=Q(comando='FACHADA')),
+                    viabilidade=Count('id', filter=Q(comando='VIABILIDADE')),
+                    fatura=Count('id', filter=Q(comando='FATURA')),
+                    status=Count('id', filter=Q(comando='STATUS')),
+                    outros=Count('id', filter=~Q(comando__in=list(principais))),
+                ).order_by('-total')
+
+            por_vendedor = _annotate_por_grupo(estatisticas.filter(vendedor__isnull=False))
+            por_sem_vendedor = _annotate_por_grupo(estatisticas.filter(vendedor__isnull=True))
             
             vendedores_data = []
             for item in por_vendedor:
@@ -1458,8 +1469,27 @@ class EstatisticasBotWhatsAppView(APIView):
                     'fachada': item['fachada'],
                     'viabilidade': item['viabilidade'],
                     'fatura': item['fatura'],
-                    'status': item['status']
+                    'status': item['status'],
+                    'outros': item['outros'],
+                    'sem_cadastro': False,
                 })
+
+            # Quem usa o bot mas o número não bate com tel_whatsapp 1–3 no CRM
+            for item in por_sem_vendedor:
+                vendedores_data.append({
+                    'vendedor_id': None,
+                    'vendedor_nome': 'Sem vínculo no cadastro (só telefone)',
+                    'vendedor_username': '—',
+                    'total': item['total'],
+                    'fachada': item['fachada'],
+                    'viabilidade': item['viabilidade'],
+                    'fatura': item['fatura'],
+                    'status': item['status'],
+                    'outros': item['outros'],
+                    'sem_cadastro': True,
+                })
+
+            vendedores_data.sort(key=lambda x: x['total'], reverse=True)
             
             # 3. Totais gerais
             total_geral = estatisticas.count()
@@ -1478,7 +1508,9 @@ class EstatisticasBotWhatsAppView(APIView):
                     'VIABILIDADE': comando_dict.get('VIABILIDADE', 0),
                     'FATURA': comando_dict.get('FATURA', 0),
                     'STATUS': comando_dict.get('STATUS', 0),
+                    'OUTROS': outros_tipos,
                 },
+                'por_comando_detalhe': comando_dict,
                 'por_vendedor': vendedores_data
             })
         except Exception as e:
@@ -1489,7 +1521,8 @@ class EstatisticasBotWhatsAppView(APIView):
                 'periodo_dias': 30,
                 'data_inicio': None,
                 'totais': {'geral': 0, 'sem_vendedor': 0, 'com_vendedor': 0},
-                'por_comando': {'FACHADA': 0, 'VIABILIDADE': 0, 'FATURA': 0, 'STATUS': 0},
+                'por_comando': {'FACHADA': 0, 'VIABILIDADE': 0, 'FATURA': 0, 'STATUS': 0, 'OUTROS': 0},
+                'por_comando_detalhe': {},
                 'por_vendedor': []
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -9118,7 +9151,7 @@ class CdoiDashboardView(APIView):
 # --- 3. EDIÇÃO DE STATUS (Apenas Gestão) ---
 class CdoiUpdateView(APIView):
     permission_classes = [permissions.IsAuthenticated]
-    parser_classes = [MultiPartParser, FormParser]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get(self, request, pk):
         user = request.user
@@ -9202,7 +9235,8 @@ class CdoiUpdateView(APIView):
                     return default
 
             cdoi = CdoiSolicitacao.objects.get(pk=pk)
-            data = request.POST
+            # JSON (modal de status) e multipart/form usam request.data; POST puro não inclui JSON.
+            data = request.data
             files = request.FILES
             import logging
             logger = logging.getLogger(__name__)
@@ -13052,6 +13086,22 @@ def _antecipar_instalacao_queryset_vendas_reparo(request):
     return base.filter(vendedor_id=request.user.id)
 
 
+def _antecipar_instalacao_queryset_vendas_instalacao_fisica(request):
+    """Pendência na esteira com data de instalação física no cliente (sinalizar situação ao GC)."""
+    base = Venda.objects.filter(
+        ativo=True,
+        data_instalacao_fisica__isnull=False,
+    ).filter(
+        Q(status_esteira__nome__icontains='penden') | Q(status_esteira__nome__icontains='pendência')
+    ).select_related('cliente', 'status_esteira')
+    if is_member(request.user, ['Diretoria', 'Admin', 'BackOffice']):
+        return base
+    if is_member(request.user, ['Supervisor']):
+        liderados_ids = list(request.user.liderados.values_list('id', flat=True))
+        return base.filter(Q(vendedor_id=request.user.id) | Q(vendedor_id__in=liderados_ids))
+    return base.filter(vendedor_id=request.user.id)
+
+
 def _antecipar_instalacao_endereco_completo(v):
     """Formato: Rua X, 123, Sala 1, Centro, São Paulo - SP - CEP 12345-678"""
     partes = []
@@ -13103,6 +13153,7 @@ class BuscarAnteciparInstalacaoView(APIView):
                 'cliente_nome': v.cliente.nome_razao_social if v.cliente else '',
                 'tipo_disponivel': 'antecipacao',
                 'data_instalacao': None,
+                'data_instalacao_fisica': None,
             })
 
         # Pedidos instalados até 5 dias (reparo)
@@ -13122,10 +13173,35 @@ class BuscarAnteciparInstalacaoView(APIView):
                 'cliente_nome': v.cliente.nome_razao_social if v.cliente else '',
                 'tipo_disponivel': 'reparo',
                 'data_instalacao': data_inst_fmt,
+                'data_instalacao_fisica': None,
             })
 
-        # Ordenar: antecipação primeiro (por data_agendamento), depois reparo (por data_instalacao)
-        results.sort(key=lambda x: (0 if x['tipo_disponivel'] == 'antecipacao' else 1, x['data_agendamento'] or x['data_instalacao'] or ''), reverse=True)
+        queryset_if = _antecipar_instalacao_queryset_vendas_instalacao_fisica(request)
+        vendas_if = list(queryset_if.filter(filters).order_by('-data_instalacao_fisica')[:50])
+        for v in vendas_if:
+            if v.id in ids_incluidos:
+                continue
+            ids_incluidos.add(v.id)
+            data_fis = v.data_instalacao_fisica.strftime('%d/%m/%Y') if v.data_instalacao_fisica else ''
+            results.append({
+                'id': v.id,
+                'ordem_servico': v.ordem_servico or '',
+                'endereco_completo': _antecipar_instalacao_endereco_completo(v),
+                'data_agendamento': '',
+                'periodo_agendamento': '',
+                'cliente_nome': v.cliente.nome_razao_social if v.cliente else '',
+                'tipo_disponivel': 'instalacao_fisica',
+                'data_instalacao': v.data_instalacao.strftime('%d/%m/%Y') if v.data_instalacao else '',
+                'data_instalacao_fisica': data_fis,
+            })
+
+        def _sort_key_antecipar(r):
+            tipo = r['tipo_disponivel']
+            grupo = 0 if tipo == 'antecipacao' else (1 if tipo == 'reparo' else 2)
+            ref = r['data_agendamento'] or r.get('data_instalacao_fisica') or r['data_instalacao'] or ''
+            return (grupo, ref)
+
+        results.sort(key=_sort_key_antecipar, reverse=True)
         return Response({'results': results})
 
 
@@ -13224,6 +13300,7 @@ class HistoricoAnteciparInstalacaoView(APIView):
                 'resposta_gc': getattr(s, 'resposta_gc', None) or '',
                 'resposta_gc_em': s.resposta_gc_em.strftime('%d/%m/%Y %H:%M') if getattr(s, 'resposta_gc_em', None) else '',
                 'resposta_gc_por_nome': (s.resposta_gc_por.get_full_name() or s.resposta_gc_por.username) if getattr(s, 'resposta_gc_por', None) else '',
+                'resposta_gc_complemento_vendedor': (getattr(s, 'resposta_gc_complemento_vendedor', None) or '')[:500],
             })
         return Response({
             'results': results,
@@ -13243,19 +13320,6 @@ def _historico_antecipar_queryset(request):
     return base.filter(usuario_id=request.user.id)
 
 
-def _mensagem_resposta_gc_para_vendedor(os_num, resposta_gc, tipo_solicitacao=None):
-    """Mensagem padronizada enviada ao vendedor quando o GC registra a resposta."""
-    os_txt = (os_num or 'O.S').strip()
-    if resposta_gc == 'solicitado':
-        tipo_txt = 'de reparo' if tipo_solicitacao == 'reparo' else 'de antecipação'
-        return f"Olá! Sobre a *{os_txt}*: Sua solicitação {tipo_txt} foi tratada pelo GC e encaminhada para Vtal."
-    if resposta_gc == 'antecipada':
-        return f"Olá! Sobre a *{os_txt}*: Vtal conseguiu antecipar essa instalação para o período solicitado."
-    if resposta_gc == 'nao_antecipada':
-        return f"Olá! Sobre a *{os_txt}*: Vtal não tem espaço na agenda para antecipar este pedido."
-    return None
-
-
 class RespostaGCAnteciparInstalacaoView(APIView):
     """PATCH: registra resposta do GC e envia mensagem padronizada ao vendedor (só Diretoria/Admin/BackOffice)."""
     permission_classes = [permissions.IsAuthenticated]
@@ -13266,6 +13330,7 @@ class RespostaGCAnteciparInstalacaoView(APIView):
         resposta_gc = (request.data.get('resposta_gc') or '').strip().lower()
         if resposta_gc not in ('solicitado', 'antecipada', 'nao_antecipada'):
             return Response({'detail': 'resposta_gc deve ser: solicitado, antecipada ou nao_antecipada.'}, status=status.HTTP_400_BAD_REQUEST)
+        complemento = (request.data.get('complemento_mensagem_vendedor') or '').strip()[:2000]
         qs = _historico_antecipar_queryset(request)
         try:
             sol = qs.get(id=pk)
@@ -13273,7 +13338,9 @@ class RespostaGCAnteciparInstalacaoView(APIView):
             return Response({'detail': 'Solicitação não encontrada.'}, status=status.HTTP_404_NOT_FOUND)
         if sol.resposta_gc:
             return Response({'detail': 'Esta solicitação já possui resposta do GC registrada.'}, status=status.HTTP_400_BAD_REQUEST)
-        msg = _mensagem_resposta_gc_para_vendedor(sol.ordem_servico or '', resposta_gc, getattr(sol, 'tipo_solicitacao', None))
+        msg = mensagem_resposta_gc_para_vendedor(
+            sol.ordem_servico or '', resposta_gc, getattr(sol, 'tipo_solicitacao', None), complemento
+        )
         if not msg:
             return Response({'detail': 'Mensagem não definida para esta resposta.'}, status=status.HTTP_400_BAD_REQUEST)
         vendedor = sol.venda.vendedor if sol.venda else None
@@ -13291,7 +13358,8 @@ class RespostaGCAnteciparInstalacaoView(APIView):
         sol.resposta_gc = resposta_gc
         sol.resposta_gc_em = timezone.now()
         sol.resposta_gc_por = request.user
-        sol.save(update_fields=['resposta_gc', 'resposta_gc_em', 'resposta_gc_por'])
+        sol.resposta_gc_complemento_vendedor = complemento
+        sol.save(update_fields=['resposta_gc', 'resposta_gc_em', 'resposta_gc_por', 'resposta_gc_complemento_vendedor'])
         return Response({
             'success': True,
             'message': 'Resposta registrada.' + (' Mensagem enviada ao vendedor por WhatsApp.' if enviado_zap else ' (Vendedor sem telefone ou falha no envio.)' if telefone else ' (Vendedor sem telefone cadastrado.)'),
@@ -13314,18 +13382,69 @@ def _mensagem_padrao_reparo(os_num, endereco, data_inst_fmt, observacao_reparo):
     return base.upper()
 
 
+def _mensagem_padrao_instalacao_fisica(os_num, endereco, data_fisica_fmt, descricao):
+    """Sinalização de instalação física no cliente com pendência ainda registrada na esteira."""
+    base = (
+        "*SINALIZAÇÃO - INSTALAÇÃO FÍSICA / PENDÊNCIA NO SISTEMA:*\n\n"
+        f"- *OS:* {os_num}\n"
+        f"- *ENDEREÇO COMPLETO:* {endereco}\n"
+        "- *NOME DO PDV:* 1067100 - RECORD\n"
+        f"- *DATA INSTALAÇÃO FÍSICA (NO CLIENTE):* {data_fisica_fmt}\n"
+        "- *CONTEXTO:* Houve instalação física; o pedido segue com pendência na esteira.\n"
+        f"- *DESCRIÇÃO DETALHADA:* {descricao}"
+    )
+    return base.upper()
+
+
+def _antecipar_imagem_para_data_url_e_bytes(uploaded):
+    """Retorna (data_url_para_zapi, bytes, nome_arquivo) ou (None, None, None, mensagem_erro)."""
+    if not uploaded:
+        return None, None, None, None
+    raw = uploaded.read()
+    if len(raw) > 6 * 1024 * 1024:
+        return None, None, None, 'Imagem muito grande (máx. 6 MB).'
+    ct = (uploaded.content_type or '').lower().split(';')[0].strip()
+    if ct not in ('image/jpeg', 'image/jpg', 'image/png', 'image/webp'):
+        return None, None, None, 'Use imagem JPG, PNG ou WEBP.'
+    if 'png' in ct:
+        mime = 'image/png'
+    elif 'webp' in ct:
+        mime = 'image/webp'
+    else:
+        mime = 'image/jpeg'
+    b64 = base64.b64encode(raw).decode('ascii')
+    data_url = f"data:{mime};base64,{b64}"
+    nome = getattr(uploaded, 'name', 'anexo.jpg') or 'anexo.jpg'
+    return data_url, raw, nome, None
+
+
 class SolicitarAnteciparInstalacaoView(APIView):
-    """POST { venda_id, descricao_solicitacao? } ou { venda_id, tipo: 'reparo', observacao_reparo? }."""
+    """POST JSON ou multipart: antecipação, reparo ou instalacao_fisica (com imagem opcional)."""
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
+        from django.core.files.base import ContentFile
+
         venda_id = request.data.get('venda_id')
         tipo = (request.data.get('tipo') or 'antecipacao').strip().lower()
-        if tipo not in ('antecipacao', 'reparo'):
+        if tipo not in ('antecipacao', 'reparo', 'instalacao_fisica'):
             tipo = 'antecipacao'
 
         if not venda_id:
             return Response({'detail': 'venda_id é obrigatório.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        imagem_upload = request.FILES.get('imagem')
+        if imagem_upload and tipo != 'instalacao_fisica':
+            return Response(
+                {'detail': 'Anexo de imagem só é permitido para o tipo Instalação física / pendência.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        img_data_url, img_bytes, img_nome, img_err = _antecipar_imagem_para_data_url_e_bytes(
+            imagem_upload if tipo == 'instalacao_fisica' else None
+        )
+        if img_err:
+            return Response({'detail': img_err}, status=status.HTTP_400_BAD_REQUEST)
 
         if tipo == 'reparo':
             queryset = _antecipar_instalacao_queryset_vendas_reparo(request)
@@ -13341,6 +13460,27 @@ class SolicitarAnteciparInstalacaoView(APIView):
             if observacao_reparo:
                 descricao += " Observação: " + observacao_reparo
             mensagem = _mensagem_padrao_reparo(os_num, endereco, data_inst_fmt, observacao_reparo)
+        elif tipo == 'instalacao_fisica':
+            descricao = (request.data.get('descricao_solicitacao') or '').strip()
+            if not descricao:
+                return Response(
+                    {'detail': 'Descreva a situação (instalação física e pendência no sistema).'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            queryset = _antecipar_instalacao_queryset_vendas_instalacao_fisica(request)
+            try:
+                venda = queryset.get(id=venda_id)
+            except Venda.DoesNotExist:
+                return Response(
+                    {
+                        'detail': 'Pedido não encontrado ou não está elegível (pendente na esteira com data de instalação física informada).'
+                    },
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            data_fis_fmt = venda.data_instalacao_fisica.strftime('%d/%m/%Y') if venda.data_instalacao_fisica else ''
+            endereco = _antecipar_instalacao_endereco_completo(venda)
+            os_num = venda.ordem_servico or ''
+            mensagem = _mensagem_padrao_instalacao_fisica(os_num, endereco, data_fis_fmt, descricao)
         else:
             descricao = (request.data.get('descricao_solicitacao') or '').strip()
             if not descricao:
@@ -13387,27 +13527,53 @@ class SolicitarAnteciparInstalacaoView(APIView):
                     erros.append(f'Grupo: {resp2}')
             elif not grupo:
                 erros.append('Grupo não configurado.')
+
+            caption_img = f"Anexo O.S {os_num} — instalação física / pendência"
+            if img_data_url:
+                if telefone_gc:
+                    r = svc.enviar_imagem_b64(telefone_gc, img_data_url, caption=caption_img)
+                    if not r:
+                        erros.append('GC: falha no envio da imagem.')
+                if grupo and grupo.chat_id:
+                    r2 = svc.enviar_imagem_b64(grupo.chat_id, img_data_url, caption=caption_img)
+                    if not r2:
+                        erros.append('Grupo: falha no envio da imagem.')
         except Exception as e:
             logger.exception("Erro ao enviar WhatsApp antecipar instalação/reparo: %s", e)
             obs_rep = (request.data.get('observacao_reparo') or '').strip()[:500] if tipo == 'reparo' else ''
-            AnteciparInstalacaoSolicitacao.objects.create(
-                usuario=request.user, venda=venda, ordem_servico=os_num,
-                tipo_solicitacao=tipo, descricao_solicitacao=descricao,
+            create_kw = dict(
+                usuario=request.user,
+                venda=venda,
+                ordem_servico=os_num,
+                tipo_solicitacao=tipo,
+                descricao_solicitacao=descricao,
                 observacao_reparo=obs_rep,
-                enviado_gc=False, enviado_grupo=False,
-                erros=[str(e)], mensagem_enviada=mensagem[:2000]
+                enviado_gc=False,
+                enviado_grupo=False,
+                erros=[str(e)],
+                mensagem_enviada=mensagem[:2000],
             )
+            if img_bytes is not None:
+                create_kw['imagem_anexo'] = ContentFile(img_bytes, name=img_nome or 'anexo.jpg')
+            AnteciparInstalacaoSolicitacao.objects.create(**create_kw)
             return Response({'detail': f'Erro ao enviar: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         obs_rep_final = (request.data.get('observacao_reparo') or '').strip()[:500] if tipo == 'reparo' else ''
-        AnteciparInstalacaoSolicitacao.objects.create(
-            usuario=request.user, venda=venda, ordem_servico=os_num,
-            tipo_solicitacao=tipo, descricao_solicitacao=descricao,
+        create_kw = dict(
+            usuario=request.user,
+            venda=venda,
+            ordem_servico=os_num,
+            tipo_solicitacao=tipo,
+            descricao_solicitacao=descricao,
             observacao_reparo=obs_rep_final,
             enviado_gc=('número do GC' in enviados),
             enviado_grupo=('grupo' in enviados),
-            erros=erros, mensagem_enviada=mensagem[:2000]
+            erros=erros,
+            mensagem_enviada=mensagem[:2000],
         )
+        if img_bytes is not None:
+            create_kw['imagem_anexo'] = ContentFile(img_bytes, name=img_nome or 'anexo.jpg')
+        AnteciparInstalacaoSolicitacao.objects.create(**create_kw)
         if not enviados:
             return Response({'detail': 'Nenhuma mensagem foi enviada.', 'erros': erros}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         return Response({

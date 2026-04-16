@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Antecipar Instalação - Record PAP</title>
+    <title>Antecipar Instalação / Reparo / Instalação Física - Record PAP</title>
     <link rel="shortcut icon" href="{% static 'logo.png' %}" type="image/x-icon">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
@@ -40,7 +40,7 @@
     </header>
 
     <div class="tool-container">
-        <h2 class="mb-3"><i class="bi bi-lightning-charge-fill text-primary"></i> Antecipar Instalação</h2>
+        <h2 class="mb-3"><i class="bi bi-lightning-charge-fill text-primary"></i> Antecipar Instalação / Reparo / Instalação Física</h2>
 
         <ul class="nav nav-tabs mb-4" id="tab-main" role="tablist">
             <li class="nav-item" role="presentation">
@@ -57,7 +57,7 @@
         <div class="tab-content" id="tab-main-content">
             <!-- Aba Solicitar -->
             <div class="tab-pane fade show active" id="tab-solicitar" role="tabpanel">
-                <p class="text-muted mb-4">Solicite prioridade ao gerente de contas (GC) da Nio. Informe CPF ou número do pedido (O.S). Pedidos <strong>agendados</strong> podem solicitar antecipação; pedidos <strong>instalados há até 5 dias</strong> podem solicitar <strong>reparo</strong> (internet não funciona após instalação).</p>
+                <p class="text-muted mb-4">Solicite prioridade ao gerente de contas (GC) da Nio. Informe CPF ou número do pedido (O.S). Pedidos <strong>agendados</strong> podem solicitar antecipação; pedidos <strong>instalados há até 5 dias</strong> podem solicitar <strong>reparo</strong> (internet não funciona após instalação). Pedidos <strong>pendentes na esteira</strong> com <strong>data de instalação física</strong> informada podem usar <strong>Instalação física / pendência</strong> (descrição e imagem opcional).</p>
                 <div class="card-panel">
                     <label class="form-label fw-bold">Buscar por CPF ou número do pedido (O.S)</label>
                     <div class="input-group">
@@ -107,10 +107,30 @@
                     <div id="erro-solicitar-reparo" class="text-danger mt-2 small" style="display:none;"></div>
                     <div id="sucesso-solicitar-reparo" class="text-success mt-2 small" style="display:none;"></div>
                 </div>
+                <!-- Painel Instalação física / pendência -->
+                <div id="painel-instalacao-fisica" class="card-panel" style="display:none;">
+                    <h6 class="fw-bold mb-3"><i class="bi bi-building-check text-info"></i> Instalação física / pendência no sistema</h6>
+                    <p class="text-muted small mb-3">Para pedidos <strong>pendentes na esteira</strong> com <strong>data de instalação física (no cliente)</strong> preenchida. Descreva a situação; você pode anexar uma imagem (JPG, PNG ou WEBP, até 6 MB).</p>
+                    <div class="mb-3">
+                        <label class="form-label">Descrição da situação <span class="text-danger">*</span></label>
+                        <textarea id="descricao-instalacao-fisica" class="form-control" rows="3" placeholder="Ex.: instalação realizada no cliente, mas o sistema ainda mostra pendência de X..." maxlength="500"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Imagem (opcional)</label>
+                        <input type="file" class="form-control" id="imagem-instalacao-fisica" accept="image/jpeg,image/png,image/webp">
+                    </div>
+                    <div id="msg-preview-instalacao-fisica" class="msg-preview mb-3" style="display:none;"></div>
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                        <button type="button" class="btn btn-info text-dark btn-solicitar" id="btn-solicitar-instalacao-fisica"><i class="bi bi-send"></i> Enviar sinalização</button>
+                        <button type="button" class="btn btn-outline-secondary" id="btn-outro-pedido-if">Escolher outro pedido</button>
+                    </div>
+                    <div id="erro-solicitar-if" class="text-danger mt-2 small" style="display:none;"></div>
+                    <div id="sucesso-solicitar-if" class="text-success mt-2 small" style="display:none;"></div>
+                </div>
                 <div id="nenhum-resultado" class="card-panel text-center text-muted" style="display:none;">
                     <i class="bi bi-inbox display-6"></i>
                     <p class="mb-0 mt-2">Nenhum pedido encontrado para esta busca.</p>
-                    <p class="small">Podem ser solicitados: pedidos <strong>Agendados</strong> (antecipação) ou <strong>Instalados há até 5 dias</strong> (reparo).</p>
+                    <p class="small">Podem ser solicitados: pedidos <strong>Agendados</strong> (antecipação), <strong>Instalados há até 5 dias</strong> (reparo) ou <strong>Pendentes com instalação física</strong> informada.</p>
                 </div>
             </div>
 
@@ -186,8 +206,31 @@
             let configData = null;
             let historicoPage = 1;
 
-            function getAuthHeader() {
-                return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+            function getAuthHeader(useJson) {
+                const h = { 'Authorization': 'Bearer ' + token };
+                if (useJson !== false) {
+                    h['Content-Type'] = 'application/json';
+                }
+                return h;
+            }
+
+            function setBtnEnviando(btn, enviando, labelPronto) {
+                if (!btn) return;
+                if (enviando) {
+                    btn.dataset._oldHtml = btn.innerHTML;
+                    btn.disabled = true;
+                    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> Enviando...';
+                } else {
+                    btn.disabled = false;
+                    if (labelPronto) {
+                        btn.innerHTML = labelPronto;
+                        setTimeout(function() {
+                            if (btn.dataset._oldHtml) btn.innerHTML = btn.dataset._oldHtml;
+                        }, 2500);
+                    } else if (btn.dataset._oldHtml) {
+                        btn.innerHTML = btn.dataset._oldHtml;
+                    }
+                }
             }
 
             function show(el, show) {
@@ -217,7 +260,7 @@
                     return;
                 }
                 try {
-                    const res = await fetch(apiBase + '/antecipar-instalacao/buscar/?q=' + encodeURIComponent(q), { headers: getAuthHeader() });
+                    const res = await fetch(apiBase + '/antecipar-instalacao/buscar/?q=' + encodeURIComponent(q), { headers: getAuthHeader(true) });
                     const data = await res.json();
                     if (!res.ok) {
                         showErro('erro-busca', data.detail || 'Erro ao buscar.');
@@ -236,9 +279,14 @@
                     }
                     const inner = document.getElementById('lista-pedidos-inner');
                     inner.innerHTML = resultadosAtuais.map(function(p) {
-                        const badge = p.tipo_disponivel === 'reparo'
-                            ? '<span class="badge bg-warning text-dark me-1">Reparo</span> Instalado em ' + (p.data_instalacao || '')
-                            : '<span class="badge bg-primary me-1">Agendado</span> ' + (p.data_agendamento || '') + ' ' + (p.periodo_agendamento || '');
+                        let badge;
+                        if (p.tipo_disponivel === 'reparo') {
+                            badge = '<span class="badge bg-warning text-dark me-1">Reparo</span> Instalado em ' + (p.data_instalacao || '');
+                        } else if (p.tipo_disponivel === 'instalacao_fisica') {
+                            badge = '<span class="badge bg-info text-dark me-1">Inst. física</span> Pendência · física ' + (p.data_instalacao_fisica || '');
+                        } else {
+                            badge = '<span class="badge bg-primary me-1">Agendado</span> ' + (p.data_agendamento || '') + ' ' + (p.periodo_agendamento || '');
+                        }
                         return '<div class="pedido-item" data-id="' + p.id + '">' +
                             '<strong>O.S ' + (p.ordem_servico || '-') + '</strong> · ' + badge + '<br>' +
                             '<small class="text-muted">' + (p.cliente_nome || '') + '</small>' +
@@ -260,10 +308,11 @@
             }
 
             function showPainelPorTipo(tipo) {
-                const isReparo = tipo === 'reparo';
-                show('painel-reparo', isReparo);
-                show('painel-antecipacao', !isReparo);
-                if (isReparo) setTimeout(function() { atualizarPreviewReparo(); }, 0);
+                show('painel-reparo', tipo === 'reparo');
+                show('painel-antecipacao', tipo === 'antecipacao');
+                show('painel-instalacao-fisica', tipo === 'instalacao_fisica');
+                if (tipo === 'reparo') setTimeout(function() { atualizarPreviewReparo(); }, 0);
+                if (tipo === 'instalacao_fisica') setTimeout(function() { atualizarPreviewInstalacaoFisica(); }, 0);
             }
 
             function selecionarPedido(p) {
@@ -278,6 +327,11 @@
                 show('msg-preview-reparo', false);
                 showErro('erro-solicitar-reparo', '');
                 show('sucesso-solicitar-reparo', false);
+                document.getElementById('descricao-instalacao-fisica').value = '';
+                document.getElementById('imagem-instalacao-fisica').value = '';
+                show('msg-preview-instalacao-fisica', false);
+                showErro('erro-solicitar-if', '');
+                show('sucesso-solicitar-if', false);
             }
 
             function atualizarPreview() {
@@ -333,11 +387,12 @@
                     showErro('erro-solicitar', 'Descreva o motivo da solicitação de antecipação.');
                     return;
                 }
-                this.disabled = true;
+                const btn = this;
+                setBtnEnviando(btn, true);
                 try {
                     const res = await fetch(apiBase + '/antecipar-instalacao/solicitar/', {
                         method: 'POST',
-                        headers: getAuthHeader(),
+                        headers: getAuthHeader(true),
                         body: JSON.stringify({ venda_id: pedidoSelecionado.id, descricao_solicitacao: desc })
                     });
                     const data = await res.json();
@@ -346,19 +401,22 @@
                         show('sucesso-solicitar', true);
                         document.getElementById('descricao').value = '';
                         show('msg-preview', false);
+                        setBtnEnviando(btn, false, '<i class="bi bi-check-lg"></i> Enviado');
                     } else {
                         showErro('erro-solicitar', data.detail || 'Erro ao enviar.');
+                        setBtnEnviando(btn, false);
                     }
                 } catch (e) {
                     showErro('erro-solicitar', 'Erro de conexão. Tente novamente.');
+                    setBtnEnviando(btn, false);
                 }
-                this.disabled = false;
             });
 
             document.getElementById('btn-outro-pedido').addEventListener('click', function() {
                 pedidoSelecionado = null;
                 show('painel-antecipacao', false);
                 show('painel-reparo', false);
+                show('painel-instalacao-fisica', false);
                 show('lista-pedidos', resultadosAtuais.length > 1);
                 show('nenhum-resultado', false);
             });
@@ -373,11 +431,12 @@
                 const observacao_reparo = opcao === 'outro' ? txt : (opcao || '');
                 showErro('erro-solicitar-reparo', '');
                 show('sucesso-solicitar-reparo', false);
-                this.disabled = true;
+                const btn = this;
+                setBtnEnviando(btn, true);
                 try {
                     const res = await fetch(apiBase + '/antecipar-instalacao/solicitar/', {
                         method: 'POST',
-                        headers: getAuthHeader(),
+                        headers: getAuthHeader(true),
                         body: JSON.stringify({ venda_id: pedidoSelecionado.id, tipo: 'reparo', observacao_reparo: observacao_reparo })
                     });
                     const data = await res.json();
@@ -388,13 +447,79 @@
                         document.getElementById('observacao-reparo').value = '';
                         document.getElementById('observacao-reparo').style.display = 'none';
                         show('msg-preview-reparo', false);
+                        setBtnEnviando(btn, false, '<i class="bi bi-check-lg"></i> Enviado');
                     } else {
                         showErro('erro-solicitar-reparo', data.detail || 'Erro ao enviar.');
+                        setBtnEnviando(btn, false);
                     }
                 } catch (e) {
                     showErro('erro-solicitar-reparo', 'Erro de conexão. Tente novamente.');
+                    setBtnEnviando(btn, false);
                 }
-                this.disabled = false;
+            });
+
+            function atualizarPreviewInstalacaoFisica() {
+                if (!pedidoSelecionado || pedidoSelecionado.tipo_disponivel !== 'instalacao_fisica') return;
+                const desc = document.getElementById('descricao-instalacao-fisica').value.trim();
+                if (!desc) { show('msg-preview-instalacao-fisica', false); return; }
+                const df = pedidoSelecionado.data_instalacao_fisica || '';
+                const msg = (
+                    '*SINALIZAÇÃO - INSTALAÇÃO FÍSICA / PENDÊNCIA NO SISTEMA:*\n\n' +
+                    '- *OS:* ' + (pedidoSelecionado.ordem_servico || '') + '\n' +
+                    '- *ENDEREÇO COMPLETO:* ' + (pedidoSelecionado.endereco_completo || '') + '\n' +
+                    '- *NOME DO PDV:* 1067100 - RECORD\n' +
+                    '- *DATA INSTALAÇÃO FÍSICA (NO CLIENTE):* ' + df + '\n' +
+                    '- *CONTEXTO:* Houve instalação física; o pedido segue com pendência na esteira.\n' +
+                    '- *DESCRIÇÃO DETALHADA:* ' + desc
+                );
+                document.getElementById('msg-preview-instalacao-fisica').textContent = msg.toUpperCase();
+                show('msg-preview-instalacao-fisica', true);
+            }
+            document.getElementById('descricao-instalacao-fisica').addEventListener('input', atualizarPreviewInstalacaoFisica);
+            document.getElementById('imagem-instalacao-fisica').addEventListener('change', atualizarPreviewInstalacaoFisica);
+
+            document.getElementById('btn-solicitar-instalacao-fisica').addEventListener('click', async function() {
+                if (!pedidoSelecionado || pedidoSelecionado.tipo_disponivel !== 'instalacao_fisica') return;
+                const desc = document.getElementById('descricao-instalacao-fisica').value.trim();
+                showErro('erro-solicitar-if', '');
+                show('sucesso-solicitar-if', false);
+                if (!desc) {
+                    showErro('erro-solicitar-if', 'Descreva a situação.');
+                    return;
+                }
+                const btn = this;
+                setBtnEnviando(btn, true);
+                try {
+                    const fd = new FormData();
+                    fd.append('venda_id', pedidoSelecionado.id);
+                    fd.append('tipo', 'instalacao_fisica');
+                    fd.append('descricao_solicitacao', desc);
+                    const f = document.getElementById('imagem-instalacao-fisica').files[0];
+                    if (f) fd.append('imagem', f);
+                    const res = await fetch(apiBase + '/antecipar-instalacao/solicitar/', {
+                        method: 'POST',
+                        headers: getAuthHeader(false),
+                        body: fd
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.success) {
+                        document.getElementById('sucesso-solicitar-if').textContent = data.message || 'Sinalização enviada.';
+                        show('sucesso-solicitar-if', true);
+                        document.getElementById('descricao-instalacao-fisica').value = '';
+                        document.getElementById('imagem-instalacao-fisica').value = '';
+                        show('msg-preview-instalacao-fisica', false);
+                        setBtnEnviando(btn, false, '<i class="bi bi-check-lg"></i> Enviado');
+                    } else {
+                        showErro('erro-solicitar-if', data.detail || 'Erro ao enviar.');
+                        setBtnEnviando(btn, false);
+                    }
+                } catch (e) {
+                    showErro('erro-solicitar-if', 'Erro de conexão. Tente novamente.');
+                    setBtnEnviando(btn, false);
+                }
+            });
+            document.getElementById('btn-outro-pedido-if').addEventListener('click', function() {
+                document.getElementById('btn-outro-pedido').click();
             });
 
             // --- Aba Configuração ---
@@ -402,7 +527,7 @@
 
             async function carregarConfig() {
                 try {
-                    const res = await fetch(apiBase + '/antecipar-instalacao/config/', { headers: getAuthHeader() });
+                    const res = await fetch(apiBase + '/antecipar-instalacao/config/', { headers: getAuthHeader(true) });
                     const data = await res.json();
                     if (!res.ok) throw new Error(data.detail || 'Erro');
                     configData = data;
@@ -441,7 +566,7 @@
                     const body = { telefone_gc: telefone || null, grupo_id: grupoId === '' ? null : parseInt(grupoId, 10) };
                     const res = await fetch(apiBase + '/antecipar-instalacao/config/', {
                         method: 'PATCH',
-                        headers: getAuthHeader(),
+                        headers: getAuthHeader(true),
                         body: JSON.stringify(body)
                     });
                     const data = await res.json();
@@ -468,7 +593,7 @@
                 show('historico-table-wrap', false);
                 show('historico-vazio', false);
                 try {
-                    const res = await fetch(apiBase + '/antecipar-instalacao/historico/?page=' + historicoPage + '&page_size=20', { headers: getAuthHeader() });
+                    const res = await fetch(apiBase + '/antecipar-instalacao/historico/?page=' + historicoPage + '&page_size=20', { headers: getAuthHeader(true) });
                     const data = await res.json();
                     if (!res.ok) throw new Error(data.detail || 'Erro');
                     show('historico-loading', false);
@@ -483,13 +608,28 @@
                     const tbody = document.getElementById('historico-tbody');
                     tbody.innerHTML = results.map(function(r) {
                         const status = r.sucesso ? '<span class="badge bg-success">Enviado</span>' : '<span class="badge bg-danger">Erro</span>';
-                        const tipoLabel = (r.tipo_solicitacao || 'antecipacao') === 'reparo' ? '<span class="badge bg-warning text-dark">Reparo</span>' : '<span class="badge bg-primary">Antecipação</span>';
+                        const tipoSol = r.tipo_solicitacao || 'antecipacao';
+                        let tipoLabel;
+                        if (tipoSol === 'reparo') {
+                            tipoLabel = '<span class="badge bg-warning text-dark">Reparo</span>';
+                        } else if (tipoSol === 'instalacao_fisica') {
+                            tipoLabel = '<span class="badge bg-info text-dark">Inst. física</span>';
+                        } else {
+                            tipoLabel = '<span class="badge bg-primary">Antecipação</span>';
+                        }
                         const desc = (r.descricao_solicitacao || '') + (r.observacao_reparo ? ' | ' + r.observacao_reparo : '');
                         let respGcCell;
                         if (r.resposta_gc) {
-                            respGcCell = '<span class="badge bg-secondary">' + (respostasLabels[r.resposta_gc] || r.resposta_gc) + '</span><br><small class="text-muted">' + (r.resposta_gc_em || '') + '</small>';
+                            const comp = (r.resposta_gc_complemento_vendedor || '').trim();
+                            respGcCell = '<span class="badge bg-secondary">' + (respostasLabels[r.resposta_gc] || r.resposta_gc) + '</span><br><small class="text-muted">' + (r.resposta_gc_em || '') + '</small>'
+                                + (comp ? '<br><small class="text-body">' + comp.replace(/</g, '&lt;').substring(0, 120) + (comp.length > 120 ? '…' : '') + '</small>' : '');
                         } else if (podeRegistrarRespostaGc) {
-                            respGcCell = '<div class="d-flex flex-wrap gap-1 align-items-center"><select class="form-select form-select-sm resp-gc-select" data-id="' + r.id + '" style="width:auto;min-width:120px"><option value="">—</option><option value="solicitado">Solicitado</option><option value="antecipada">Antecipada</option><option value="nao_antecipada">Não antecipada</option></select><button type="button" class="btn btn-sm btn-outline-primary btn-registrar-resp-gc" data-id="' + r.id + '">Registrar</button></div>';
+                            respGcCell = '<div class="d-flex flex-column gap-1" style="min-width:220px">'
+                                + '<div class="d-flex flex-wrap gap-1 align-items-center">'
+                                + '<select class="form-select form-select-sm resp-gc-select" data-id="' + r.id + '" style="width:auto;min-width:120px"><option value="">—</option><option value="solicitado">Solicitado</option><option value="antecipada">Antecipada</option><option value="nao_antecipada">Não antecipada</option></select>'
+                                + '<button type="button" class="btn btn-sm btn-outline-primary btn-registrar-resp-gc" data-id="' + r.id + '">Registrar</button></div>'
+                                + '<textarea class="form-control form-control-sm resp-gc-complemento" data-id="' + r.id + '" rows="2" placeholder="Texto extra ao vendedor (opcional)"></textarea>'
+                                + '</div>';
                         } else {
                             respGcCell = '<span class="text-muted">—</span>';
                         }
@@ -500,13 +640,18 @@
                             const id = parseInt(this.getAttribute('data-id'), 10);
                             const row = this.closest('tr');
                             const sel = row.querySelector('.resp-gc-select');
+                            const compEl = row.querySelector('.resp-gc-complemento');
                             const valor = (sel && sel.value) || '';
                             if (!valor) { alert('Escolha uma opção de resposta do GC.'); return; }
                             btn.disabled = true;
+                            btn.textContent = 'Enviando...';
                             fetch(apiBase + '/antecipar-instalacao/solicitacao/' + id + '/resposta/', {
                                 method: 'PATCH',
-                                headers: getAuthHeader(),
-                                body: JSON.stringify({ resposta_gc: valor })
+                                headers: getAuthHeader(true),
+                                body: JSON.stringify({
+                                    resposta_gc: valor,
+                                    complemento_mensagem_vendedor: (compEl && compEl.value) ? compEl.value.trim() : ''
+                                })
                             }).then(function(res) { return res.json(); }).then(function(data) {
                                 if (data.success) {
                                     alert(data.message || 'Resposta registrada.');
@@ -514,10 +659,12 @@
                                 } else {
                                     alert(data.detail || 'Erro ao registrar.');
                                     btn.disabled = false;
+                                    btn.textContent = 'Registrar';
                                 }
                             }).catch(function() {
                                 alert('Erro de conexão.');
                                 btn.disabled = false;
+                                btn.textContent = 'Registrar';
                             });
                         });
                     });
@@ -548,7 +695,7 @@
             // --- Ao carregar a página: esconder aba Configuração para quem não é BackOffice/Diretoria/Admin ---
             (async function() {
                 try {
-                    const res = await fetch(apiBase + '/antecipar-instalacao/config/', { headers: getAuthHeader() });
+                    const res = await fetch(apiBase + '/antecipar-instalacao/config/', { headers: getAuthHeader(true) });
                     const data = await res.json();
                     if (res.ok && data.pode_editar === false) {
                         const el = document.getElementById('nav-item-config');

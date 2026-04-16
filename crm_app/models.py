@@ -1245,6 +1245,7 @@ class AnteciparInstalacaoSolicitacao(models.Model):
     TIPO_SOLICITACAO_CHOICES = [
         ('antecipacao', 'Antecipação'),
         ('reparo', 'Reparo'),
+        ('instalacao_fisica', 'Instalação física / pendência'),
     ]
     """Histórico de solicitações de antecipação de instalação e de reparo (internet pós-instalação)."""
     usuario = models.ForeignKey(
@@ -1253,8 +1254,8 @@ class AnteciparInstalacaoSolicitacao(models.Model):
     venda = models.ForeignKey(Venda, on_delete=models.SET_NULL, null=True, related_name='solicitacoes_antecipar')
     ordem_servico = models.CharField(max_length=50, blank=True)
     tipo_solicitacao = models.CharField(
-        max_length=20, choices=TIPO_SOLICITACAO_CHOICES, default='antecipacao',
-        verbose_name="Tipo (Antecipação ou Reparo)"
+        max_length=24, choices=TIPO_SOLICITACAO_CHOICES, default='antecipacao',
+        verbose_name="Tipo (Antecipação, Reparo ou Instalação física)"
     )
     descricao_solicitacao = models.TextField()
     observacao_reparo = models.TextField(
@@ -1280,6 +1281,17 @@ class AnteciparInstalacaoSolicitacao(models.Model):
     resposta_gc_por = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='respostas_gc_antecipar'
+    )
+    resposta_gc_complemento_vendedor = models.TextField(
+        blank=True,
+        default='',
+        verbose_name="Complemento ao vendedor (texto após a resposta padrão do GC)",
+    )
+    imagem_anexo = models.ImageField(
+        upload_to='antecipar_instalacao/%Y/%m/',
+        blank=True,
+        null=True,
+        verbose_name="Imagem anexo (opcional)",
     )
 
     class Meta:
