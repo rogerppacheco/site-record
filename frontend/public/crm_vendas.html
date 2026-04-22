@@ -715,6 +715,17 @@
 
         function confirmarClienteExistente() { modalAviso.hide(); }
 
+        function isEmailFormatoValido(email) {
+            if (!email || !String(email).trim()) return false;
+            const emailLimpo = String(email).trim();
+            const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[A-Za-z]{2,}$/;
+            return emailRegex.test(emailLimpo);
+        }
+
+        function podeEditarDadosClienteSemApp() {
+            return origemCadastroAtual === 'SEM_APP' && ['Admin', 'Diretoria', 'BackOffice'].includes(userProfile);
+        }
+
 
         // Bloqueia apenas CPF e Nome, mantendo telefones editáveis
         function alternarBloqueioCampos(bloquear) {
@@ -1607,6 +1618,7 @@
 
         function preencherFormularioCliente(cliente, lock = false) { 
             document.getElementById('input-cpf').value = cliente.cpf_cnpj; 
+            const permitirEdicaoDadosPreenchidos = podeEditarDadosClienteSemApp();
             
             const preencherCampoInteligente = (id, valor) => {
                 const el = document.getElementById(id);
@@ -1617,7 +1629,7 @@
                     el.readOnly = false;
                     return;
                 }
-                if (lock) {
+                if (lock && !permitirEdicaoDadosPreenchidos) {
                     if (valor && String(valor).trim() !== '') {
                         el.readOnly = true;
                     } else {
@@ -1922,6 +1934,23 @@
                 }
             }
 
+            const emailDigitado = (data.cliente_email || '').trim();
+            if (!isEmailFormatoValido(emailDigitado)) {
+                const inputEmail = document.getElementById('input-email');
+                const feedbackEmail = document.getElementById('feedback-email');
+                if (inputEmail) {
+                    inputEmail.classList.add('is-invalid');
+                    inputEmail.classList.remove('is-valid');
+                    inputEmail.focus();
+                }
+                if (feedbackEmail) {
+                    feedbackEmail.innerHTML = '<span class="text-danger fw-bold small"><i class="bi bi-x-circle"></i> Informe um e-mail válido no formato nome@dominio.com.</span>';
+                }
+                alert("E-mail inválido. Informe um endereço no formato nome@dominio.com.");
+                return;
+            }
+            data.cliente_email = emailDigitado;
+
             if (data.data_nascimento === "") data.data_nascimento = null;
             if (data.plano === "") data.plano = null;
             if (data.forma_pagamento === "") data.forma_pagamento = null;
@@ -2060,9 +2089,17 @@
             const feedbackDiv = document.getElementById('feedback-email');
             
             // Validação básica de formato
-            if (!email || email.length < 5 || !email.includes('@')) {
+            if (!email) {
                 if (feedbackDiv) feedbackDiv.innerHTML = '';
                 input.classList.remove('is-valid', 'is-invalid');
+                return;
+            }
+            if (!isEmailFormatoValido(email)) {
+                input.classList.add('is-invalid');
+                input.classList.remove('is-valid');
+                if (feedbackDiv) {
+                    feedbackDiv.innerHTML = '<span class="text-danger fw-bold small"><i class="bi bi-x-circle"></i> Informe um e-mail válido no formato nome@dominio.com.</span>';
+                }
                 return;
             }
             
