@@ -1988,7 +1988,8 @@ class VendaViewSet(viewsets.ModelViewSet):
                 return Response({"cpf_representante_legal": [str(e)]}, status=status.HTTP_400_BAD_REQUEST)
         # Validar e-mail explicitamente para evitar qualquer entrada fora do padrão
         email_raw = request.data.get('cliente_email')
-        if email_raw is not None:
+        forma_entrada = str(request.data.get('forma_entrada') or '').strip().upper()
+        if forma_entrada != 'SEM_APP' and email_raw is not None:
             email = str(email_raw).strip()
             if email:
                 try:

@@ -1395,6 +1395,8 @@
                     const el = document.getElementById(id);
                     if(el) el.setAttribute('required', 'required');
                 });
+                const inputEmail = document.getElementById('input-email');
+                if (inputEmail) inputEmail.removeAttribute('required');
             }
 
             // Para Diretoria/BackOffice/Admin: exibir lista de vendedores para atribuir responsável (tanto Via APP quanto Sem APP)
@@ -1892,21 +1894,25 @@
             }
 
             const emailDigitado = (data.cliente_email || '').trim();
-            if (!isEmailFormatoValido(emailDigitado)) {
-                const inputEmail = document.getElementById('input-email');
-                const feedbackEmail = document.getElementById('feedback-email');
-                if (inputEmail) {
-                    inputEmail.classList.add('is-invalid');
-                    inputEmail.classList.remove('is-valid');
-                    inputEmail.focus();
+            if (origemCadastroAtual === 'SEM_APP') {
+                data.cliente_email = '';
+            } else {
+                if (!isEmailFormatoValido(emailDigitado)) {
+                    const inputEmail = document.getElementById('input-email');
+                    const feedbackEmail = document.getElementById('feedback-email');
+                    if (inputEmail) {
+                        inputEmail.classList.add('is-invalid');
+                        inputEmail.classList.remove('is-valid');
+                        inputEmail.focus();
+                    }
+                    if (feedbackEmail) {
+                        feedbackEmail.innerHTML = '<span class="text-danger fw-bold small"><i class="bi bi-x-circle"></i> Informe um e-mail válido no formato nome@dominio.com.</span>';
+                    }
+                    alert("E-mail inválido. Informe um endereço no formato nome@dominio.com.");
+                    return;
                 }
-                if (feedbackEmail) {
-                    feedbackEmail.innerHTML = '<span class="text-danger fw-bold small"><i class="bi bi-x-circle"></i> Informe um e-mail válido no formato nome@dominio.com.</span>';
-                }
-                alert("E-mail inválido. Informe um endereço no formato nome@dominio.com.");
-                return;
+                data.cliente_email = emailDigitado;
             }
-            data.cliente_email = emailDigitado;
 
             if (data.data_nascimento === "") data.data_nascimento = null;
             if (data.plano === "") data.plano = null;
