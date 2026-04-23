@@ -1894,7 +1894,8 @@
             }
 
             const emailDigitado = (data.cliente_email || '').trim();
-            if (origemCadastroAtual === 'SEM_APP') {
+            if (origemCadastroAtual === 'APP') {
+                // No fluxo VIA APP o e-mail não é obrigatório nesta etapa.
                 data.cliente_email = '';
             } else {
                 if (!isEmailFormatoValido(emailDigitado)) {
@@ -1908,7 +1909,7 @@
                     if (feedbackEmail) {
                         feedbackEmail.innerHTML = '<span class="text-danger fw-bold small"><i class="bi bi-x-circle"></i> Informe um e-mail válido no formato nome@dominio.com.</span>';
                     }
-                    alert("E-mail inválido. Informe um endereço no formato nome@dominio.com.");
+                    alert("No fluxo Sem App, o e-mail é obrigatório e deve estar no formato nome@dominio.com.");
                     return;
                 }
                 data.cliente_email = emailDigitado;

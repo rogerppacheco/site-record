@@ -1986,16 +1986,19 @@ class VendaViewSet(viewsets.ModelViewSet):
             except ValidationError as e:
                 print("[CRM DEBUG] Erro de validação CPF Rep. Legal:", e)
                 return Response({"cpf_representante_legal": [str(e)]}, status=status.HTTP_400_BAD_REQUEST)
-        # Validar e-mail explicitamente para evitar qualquer entrada fora do padrão
+        # Validar e-mail por fluxo:
+        # - VIA APP: e-mail opcional nesta etapa
+        # - SEM APP: e-mail obrigatório e válido
         email_raw = request.data.get('cliente_email')
         forma_entrada = str(request.data.get('forma_entrada') or '').strip().upper()
-        if forma_entrada != 'SEM_APP' and email_raw is not None:
-            email = str(email_raw).strip()
-            if email:
-                try:
-                    validate_email(email, check_deliverability=False)
-                except EmailNotValidError as e:
-                    return Response({"cliente_email": [f"E-mail inválido: {str(e)}"]}, status=status.HTTP_400_BAD_REQUEST)
+        email = str(email_raw or '').strip()
+        if forma_entrada == 'SEM_APP':
+            if not email:
+                return Response({"cliente_email": ["No fluxo Sem App, o e-mail é obrigatório."]}, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                validate_email(email, check_deliverability=False)
+            except EmailNotValidError as e:
+                return Response({"cliente_email": [f"E-mail inválido: {str(e)}"]}, status=status.HTTP_400_BAD_REQUEST)
         serializer = self.get_serializer(data=request.data)
         if not serializer.is_valid():
             print("[CRM DEBUG] Erros de validação do serializer:", serializer.errors)
