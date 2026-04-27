@@ -57,7 +57,7 @@
         <div class="tab-content" id="tab-main-content">
             <!-- Aba Solicitar -->
             <div class="tab-pane fade show active" id="tab-solicitar" role="tabpanel">
-                <p class="text-muted mb-4">Solicite prioridade ao gerente de contas (GC) da Nio. Informe CPF ou número do pedido (O.S). Pedidos <strong>agendados</strong> podem solicitar antecipação; pedidos <strong>instalados há até 5 dias</strong> podem solicitar <strong>reparo</strong> (internet não funciona após instalação). Pedidos <strong>pendentes na esteira</strong> com <strong>data de instalação física</strong> informada podem usar <strong>Instalação física / pendência</strong> (descrição e imagem opcional).</p>
+                <p class="text-muted mb-4">Solicite prioridade ao gerente de contas (GC) da Nio. Informe CPF ou número do pedido (O.S). Pedidos <strong>agendados</strong> podem solicitar antecipação; pedidos <strong>instalados há até 14 dias</strong> podem solicitar <strong>reparo</strong> (internet não funciona após instalação). Pedidos com <strong>instalação física já realizada</strong> e que seguem <strong>em pendência no CRM</strong> podem usar <strong>Instalação física / pendência</strong> (descrição e imagem opcional).</p>
                 <div class="card-panel">
                     <label class="form-label fw-bold">Buscar por CPF ou número do pedido (O.S)</label>
                     <div class="input-group">
@@ -85,14 +85,40 @@
                     <div id="erro-solicitar" class="text-danger mt-2 small" style="display:none;"></div>
                     <div id="sucesso-solicitar" class="text-success mt-2 small" style="display:none;"></div>
                 </div>
-                <!-- Painel Reparo (pedido instalado até 5 dias) -->
+                <!-- Painel Reparo (pedido instalado até 14 dias) -->
                 <div id="painel-reparo" class="card-panel" style="display:none;">
                     <h6 class="fw-bold mb-3"><i class="bi bi-wrench text-warning"></i> Solicitar reparo - Internet pós-instalação</h6>
-                    <p class="text-muted small mb-3">Mensagem padrão de reparo será enviada ao GC e ao grupo. Opcionalmente informe como está a internet.</p>
+                    <p class="text-muted small mb-3">Mensagem padrão de reparo será enviada ao GC e ao grupo. Informe duas opções de data/turno para retorno do técnico e detalhe a solicitação.</p>
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Opção 1 - Data <span class="text-danger">*</span></label>
+                            <input type="date" id="reparo-data-1" class="form-control">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Opção 1 - Turno <span class="text-danger">*</span></label>
+                            <select id="reparo-turno-1" class="form-select">
+                                <option value="">Selecione</option>
+                                <option value="MANHA">Manhã</option>
+                                <option value="TARDE">Tarde</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Opção 2 - Data <span class="text-danger">*</span></label>
+                            <input type="date" id="reparo-data-2" class="form-control">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Opção 2 - Turno <span class="text-danger">*</span></label>
+                            <select id="reparo-turno-2" class="form-select">
+                                <option value="">Selecione</option>
+                                <option value="MANHA">Manhã</option>
+                                <option value="TARDE">Tarde</option>
+                            </select>
+                        </div>
+                    </div>
                     <div class="mb-3">
-                        <label class="form-label">Observação (opcional)</label>
+                        <label class="form-label">Solicitação (texto livre) <span class="text-danger">*</span></label>
                         <select id="observacao-reparo-opcao" class="form-select mb-2">
-                            <option value="">— Nenhuma —</option>
+                            <option value="">Selecione</option>
                             <option value="Internet não funciona (total)">Internet não funciona (total)</option>
                             <option value="Internet com lentidão">Internet com lentidão</option>
                             <option value="outro">Outra (descreva abaixo)</option>
@@ -130,7 +156,7 @@
                 <div id="nenhum-resultado" class="card-panel text-center text-muted" style="display:none;">
                     <i class="bi bi-inbox display-6"></i>
                     <p class="mb-0 mt-2">Nenhum pedido encontrado para esta busca.</p>
-                    <p class="small">Podem ser solicitados: pedidos <strong>Agendados</strong> (antecipação), <strong>Instalados há até 5 dias</strong> (reparo) ou <strong>Pendentes com instalação física</strong> informada.</p>
+                    <p class="small">Podem ser solicitados: pedidos <strong>Agendados</strong> (antecipação), <strong>Instalados há até 14 dias</strong> (reparo) ou <strong>Pendentes com instalação física</strong> informada.</p>
                 </div>
             </div>
 
@@ -140,10 +166,15 @@
                     <h6 class="fw-bold mb-3">Destino das mensagens (GC e grupo WhatsApp)</h6>
                     <p class="text-muted small mb-3">Apenas Admin, Diretoria e BackOffice podem alterar. Os demais perfis apenas visualizam.</p>
                     <div id="config-visualizar" class="mb-3">
+                        <p class="mb-1"><strong>Nome do GC:</strong> <span id="config-nome-display">—</span></p>
                         <p class="mb-1"><strong>Telefone do GC:</strong> <span id="config-telefone-display">—</span></p>
                         <p class="mb-0"><strong>Grupo WhatsApp:</strong> <span id="config-grupo-display">—</span></p>
                     </div>
                     <div id="config-form" style="display:none;">
+                        <div class="mb-3">
+                            <label class="form-label">Nome do GC</label>
+                            <input type="text" id="config-nome-gc" class="form-control" placeholder="Ex: João Silva" maxlength="100">
+                        </div>
                         <div class="mb-3">
                             <label class="form-label">Telefone do GC (WhatsApp)</label>
                             <input type="text" id="config-telefone" class="form-control" placeholder="Ex: 21979630377" maxlength="20">
@@ -238,6 +269,19 @@
                 if (el) el.style.display = show ? '' : 'none';
             }
 
+            function formatDateToBr(isoDate) {
+                if (!isoDate || !isoDate.includes('-')) return isoDate || '';
+                const p = isoDate.split('-');
+                if (p.length !== 3) return isoDate;
+                return p[2] + '/' + p[1] + '/' + p[0];
+            }
+
+            function turnoLabel(turno) {
+                if (turno === 'MANHA') return 'MANHÃ';
+                if (turno === 'TARDE') return 'TARDE';
+                return '';
+            }
+
             function showErro(id, msg) {
                 const el = document.getElementById(id);
                 if (!el) return;
@@ -324,6 +368,10 @@
                 document.getElementById('observacao-reparo-opcao').value = '';
                 document.getElementById('observacao-reparo').value = '';
                 document.getElementById('observacao-reparo').style.display = 'none';
+                document.getElementById('reparo-data-1').value = '';
+                document.getElementById('reparo-turno-1').value = '';
+                document.getElementById('reparo-data-2').value = '';
+                document.getElementById('reparo-turno-2').value = '';
                 show('msg-preview-reparo', false);
                 showErro('erro-solicitar-reparo', '');
                 show('sucesso-solicitar-reparo', false);
@@ -359,20 +407,35 @@
                 atualizarPreviewReparo();
             });
             document.getElementById('observacao-reparo').addEventListener('input', atualizarPreviewReparo);
+            document.getElementById('reparo-data-1').addEventListener('change', atualizarPreviewReparo);
+            document.getElementById('reparo-turno-1').addEventListener('change', atualizarPreviewReparo);
+            document.getElementById('reparo-data-2').addEventListener('change', atualizarPreviewReparo);
+            document.getElementById('reparo-turno-2').addEventListener('change', atualizarPreviewReparo);
 
             function atualizarPreviewReparo() {
                 if (!pedidoSelecionado || pedidoSelecionado.tipo_disponivel !== 'reparo') return;
                 const opcao = document.getElementById('observacao-reparo-opcao').value;
                 const txt = document.getElementById('observacao-reparo').value.trim();
                 const obs = opcao === 'outro' ? txt : (opcao || '');
+                const d1 = formatDateToBr(document.getElementById('reparo-data-1').value);
+                const t1 = turnoLabel(document.getElementById('reparo-turno-1').value);
+                const d2 = formatDateToBr(document.getElementById('reparo-data-2').value);
+                const t2 = turnoLabel(document.getElementById('reparo-turno-2').value);
+                const nomeGc = (configData && configData.nome_gc) ? configData.nome_gc : 'NÃO INFORMADO';
+                const contatoCliente = pedidoSelecionado.telefone_contato || 'NÃO INFORMADO';
                 const msg = (
-                    '*SOLICITAÇÃO DE REPARO - INTERNET PÓS-INSTALAÇÃO:*\n\n' +
+                    '*MÁSCARA PADRÃO DE ACIONAMENTO PARA REPAROS DE OSS RECÉM INSTALADAS:*\n\n' +
                     '- *OS:* ' + (pedidoSelecionado.ordem_servico || '') + '\n' +
+                    '- *NOME DO CLIENTE:* ' + (pedidoSelecionado.cliente_nome || '') + '\n' +
                     '- *ENDEREÇO COMPLETO:* ' + (pedidoSelecionado.endereco_completo || '') + '\n' +
-                    '- *NOME DO PDV:* 1067100 - RECORD\n' +
+                    '- *CONTATO DO CLIENTE:* ' + contatoCliente + '\n' +
+                    '- *PDV:* 1068561\n' +
+                    '- *GC:* ' + nomeGc + '\n' +
                     '- *DATA INSTALAÇÃO:* ' + (pedidoSelecionado.data_instalacao || '') + '\n' +
-                    '- *MOTIVO:* Reparo - internet não funciona após instalação recente (até 5 dias).' +
-                    (obs ? '\n- *OBSERVAÇÃO DO SOLICITANTE:* ' + obs : '')
+                    '- *DATA E HORÁRIO AGENDADO COM O CLIENTE:*\n' +
+                    '  1) ' + (d1 && t1 ? (d1 + ' - ' + t1) : '') + '\n' +
+                    '  2) ' + (d2 && t2 ? (d2 + ' - ' + t2) : '') + '\n' +
+                    '- *SOLICITAÇÃO:* ' + (obs || '')
                 );
                 document.getElementById('msg-preview-reparo').textContent = msg.toUpperCase();
                 show('msg-preview-reparo', true);
@@ -429,15 +492,35 @@
                 const opcao = document.getElementById('observacao-reparo-opcao').value;
                 const txt = document.getElementById('observacao-reparo').value.trim();
                 const observacao_reparo = opcao === 'outro' ? txt : (opcao || '');
+                const data_opcao_1 = document.getElementById('reparo-data-1').value;
+                const turno_opcao_1 = document.getElementById('reparo-turno-1').value;
+                const data_opcao_2 = document.getElementById('reparo-data-2').value;
+                const turno_opcao_2 = document.getElementById('reparo-turno-2').value;
                 showErro('erro-solicitar-reparo', '');
                 show('sucesso-solicitar-reparo', false);
+                if (!data_opcao_1 || !turno_opcao_1 || !data_opcao_2 || !turno_opcao_2) {
+                    showErro('erro-solicitar-reparo', 'Informe duas opções de data e turno para retorno do técnico.');
+                    return;
+                }
+                if (!observacao_reparo) {
+                    showErro('erro-solicitar-reparo', 'Informe a solicitação no campo de texto livre.');
+                    return;
+                }
                 const btn = this;
                 setBtnEnviando(btn, true);
                 try {
                     const res = await fetch(apiBase + '/antecipar-instalacao/solicitar/', {
                         method: 'POST',
                         headers: getAuthHeader(true),
-                        body: JSON.stringify({ venda_id: pedidoSelecionado.id, tipo: 'reparo', observacao_reparo: observacao_reparo })
+                        body: JSON.stringify({
+                            venda_id: pedidoSelecionado.id,
+                            tipo: 'reparo',
+                            observacao_reparo: observacao_reparo,
+                            data_opcao_1: data_opcao_1,
+                            turno_opcao_1: turno_opcao_1,
+                            data_opcao_2: data_opcao_2,
+                            turno_opcao_2: turno_opcao_2
+                        })
                     });
                     const data = await res.json();
                     if (res.ok && data.success) {
@@ -446,6 +529,10 @@
                         document.getElementById('observacao-reparo-opcao').value = '';
                         document.getElementById('observacao-reparo').value = '';
                         document.getElementById('observacao-reparo').style.display = 'none';
+                        document.getElementById('reparo-data-1').value = '';
+                        document.getElementById('reparo-turno-1').value = '';
+                        document.getElementById('reparo-data-2').value = '';
+                        document.getElementById('reparo-turno-2').value = '';
                         show('msg-preview-reparo', false);
                         setBtnEnviando(btn, false, '<i class="bi bi-check-lg"></i> Enviado');
                     } else {
@@ -531,6 +618,7 @@
                     const data = await res.json();
                     if (!res.ok) throw new Error(data.detail || 'Erro');
                     configData = data;
+                    document.getElementById('config-nome-display').textContent = data.nome_gc || 'Não configurado';
                     document.getElementById('config-telefone-display').textContent = data.telefone_gc || 'Não configurado';
                     document.getElementById('config-grupo-display').textContent = data.grupo_nome || 'Não configurado';
                     const sel = document.getElementById('config-grupo');
@@ -543,6 +631,7 @@
                         sel.appendChild(opt);
                     });
                     document.getElementById('config-grupos-aviso').style.display = (data.grupos && data.grupos.length) ? 'none' : 'block';
+                    document.getElementById('config-nome-gc').value = data.nome_gc || '';
                     document.getElementById('config-telefone').value = data.telefone_gc || '';
                     if (data.pode_editar) {
                         show('config-form', true);
@@ -553,6 +642,7 @@
                     }
                 } catch (e) {
                     document.getElementById('config-telefone-display').textContent = 'Erro ao carregar';
+                    document.getElementById('config-nome-display').textContent = 'Erro ao carregar';
                     document.getElementById('config-grupo-display').textContent = '—';
                 }
             }
@@ -560,10 +650,15 @@
             document.getElementById('btn-salvar-config').addEventListener('click', async function() {
                 const msgEl = document.getElementById('config-msg');
                 msgEl.textContent = '';
+                const nomeGc = document.getElementById('config-nome-gc').value.trim();
                 const telefone = document.getElementById('config-telefone').value.trim();
                 const grupoId = document.getElementById('config-grupo').value;
                 try {
-                    const body = { telefone_gc: telefone || null, grupo_id: grupoId === '' ? null : parseInt(grupoId, 10) };
+                    const body = {
+                        nome_gc: nomeGc || null,
+                        telefone_gc: telefone || null,
+                        grupo_id: grupoId === '' ? null : parseInt(grupoId, 10)
+                    };
                     const res = await fetch(apiBase + '/antecipar-instalacao/config/', {
                         method: 'PATCH',
                         headers: getAuthHeader(true),
@@ -574,6 +669,7 @@
                     msgEl.textContent = 'Configuração salva. O próximo envio usará este número e grupo.';
                     msgEl.className = 'ms-2 small text-success';
                     configData = data;
+                    document.getElementById('config-nome-display').textContent = data.nome_gc || 'Não configurado';
                     document.getElementById('config-telefone-display').textContent = data.telefone_gc || 'Não configurado';
                     document.getElementById('config-grupo-display').textContent = data.grupo_nome || 'Não configurado';
                 } catch (e) {

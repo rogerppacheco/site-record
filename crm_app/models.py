@@ -1223,6 +1223,7 @@ class GrupoDisparo(models.Model):
 
 class AnteciparInstalacaoConfig(models.Model):
     """Configuração única para a ferramenta Antecipar Instalação (número GC e grupo WhatsApp)."""
+    nome_gc = models.CharField(max_length=100, blank=True, default='', verbose_name="Nome do GC")
     telefone_gc = models.CharField(max_length=20, blank=True, default='21979630377', verbose_name="Telefone do GC")
     grupo = models.ForeignKey(
         GrupoDisparo, on_delete=models.SET_NULL, null=True, blank=True,
@@ -1238,7 +1239,8 @@ class AnteciparInstalacaoConfig(models.Model):
         verbose_name_plural = "Config. Antecipar Instalação"
 
     def __str__(self):
-        return f"GC: {self.telefone_gc or 'não definido'} | Grupo: {self.grupo.nome if self.grupo else 'não definido'}"
+        nome_gc = self.nome_gc or 'não definido'
+        return f"GC: {nome_gc} ({self.telefone_gc or 'não definido'}) | Grupo: {self.grupo.nome if self.grupo else 'não definido'}"
 
 
 class AnteciparInstalacaoSolicitacao(models.Model):

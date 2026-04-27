@@ -13094,9 +13094,9 @@ def _antecipar_instalacao_queryset_vendas(request):
 
 
 def _antecipar_instalacao_queryset_vendas_reparo(request):
-    """Retorna queryset de Venda INSTALADAS com data_instalacao até 5 dias atrás (para solicitar reparo)."""
+    """Retorna queryset de Venda INSTALADAS com data_instalacao até 14 dias atrás (para solicitar reparo)."""
     hoje = date.today()
-    data_limite = hoje - timedelta(days=5)
+    data_limite = hoje - timedelta(days=14)
     base = Venda.objects.filter(
         ativo=True,
         status_esteira__nome__iexact='INSTALADA',
@@ -13119,6 +13119,8 @@ def _antecipar_instalacao_queryset_vendas_instalacao_fisica(request):
         data_instalacao_fisica__isnull=False,
     ).filter(
         Q(status_esteira__nome__icontains='penden') | Q(status_esteira__nome__icontains='pendência')
+    ).exclude(
+        status_esteira__nome__iexact='INSTALADA'
     ).select_related('cliente', 'status_esteira')
     if is_member(request.user, ['Diretoria', 'Admin', 'BackOffice']):
         return base
@@ -13147,8 +13149,17 @@ def _antecipar_instalacao_endereco_completo(v):
     return end or "Endereço não informado"
 
 
+def _antecipar_instalacao_contato_cliente(v):
+    """Retorna o melhor contato disponível do cliente no CRM."""
+    telefones = [getattr(v, 'telefone1', None), getattr(v, 'telefone2', None)]
+    for telefone in telefones:
+        if (telefone or '').strip():
+            return telefone.strip()
+    return "Não informado"
+
+
 class BuscarAnteciparInstalacaoView(APIView):
-    """GET ?q=CPF ou número da O.S — retorna pedidos agendados (antecipação) e instalados até 5 dias (reparo)."""
+    """GET ?q=CPF ou número da O.S — retorna pedidos agendados, reparo até 14 dias e instalação física em pendência."""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
@@ -13174,6 +13185,7 @@ class BuscarAnteciparInstalacaoView(APIView):
                 'id': v.id,
                 'ordem_servico': v.ordem_servico or '',
                 'endereco_completo': _antecipar_instalacao_endereco_completo(v),
+                'telefone_contato': _antecipar_instalacao_contato_cliente(v),
                 'data_agendamento': data_ag_fmt,
                 'periodo_agendamento': turno,
                 'cliente_nome': v.cliente.nome_razao_social if v.cliente else '',
@@ -13182,7 +13194,7 @@ class BuscarAnteciparInstalacaoView(APIView):
                 'data_instalacao_fisica': None,
             })
 
-        # Pedidos instalados até 5 dias (reparo)
+        # Pedidos instalados até 14 dias (reparo)
         queryset_rep = _antecipar_instalacao_queryset_vendas_reparo(request)
         vendas_rep = list(queryset_rep.filter(filters).order_by('-data_instalacao')[:50])
         for v in vendas_rep:
@@ -13194,6 +13206,7 @@ class BuscarAnteciparInstalacaoView(APIView):
                 'id': v.id,
                 'ordem_servico': v.ordem_servico or '',
                 'endereco_completo': _antecipar_instalacao_endereco_completo(v),
+                'telefone_contato': _antecipar_instalacao_contato_cliente(v),
                 'data_agendamento': '',
                 'periodo_agendamento': '',
                 'cliente_nome': v.cliente.nome_razao_social if v.cliente else '',
@@ -13213,6 +13226,7 @@ class BuscarAnteciparInstalacaoView(APIView):
                 'id': v.id,
                 'ordem_servico': v.ordem_servico or '',
                 'endereco_completo': _antecipar_instalacao_endereco_completo(v),
+                'telefone_contato': _antecipar_instalacao_contato_cliente(v),
                 'data_agendamento': '',
                 'periodo_agendamento': '',
                 'cliente_nome': v.cliente.nome_razao_social if v.cliente else '',
@@ -13235,7 +13249,7 @@ def _antecipar_instalacao_get_config():
     """Retorna a configuração única (singleton). Cria com valores padrão se não existir."""
     config = AnteciparInstalacaoConfig.objects.first()
     if not config:
-        config = AnteciparInstalacaoConfig.objects.create(telefone_gc='')
+        config = AnteciparInstalacaoConfig.objects.create(telefone_gc='', nome_gc='')
     return config
 
 
@@ -13249,6 +13263,7 @@ class ConfigAnteciparInstalacaoView(APIView):
             GrupoDisparo.objects.filter(ativo=True).order_by('nome').values('id', 'nome', 'chat_id')
         )
         return Response({
+            'nome_gc': config.nome_gc or '',
             'telefone_gc': config.telefone_gc or '',
             'grupo_id': config.grupo_id,
             'grupo_nome': config.grupo.nome if config.grupo else None,
@@ -13263,6 +13278,9 @@ class ConfigAnteciparInstalacaoView(APIView):
         if 'telefone_gc' in request.data:
             val = request.data.get('telefone_gc')
             config.telefone_gc = (val if val is not None else '').strip()
+        if 'nome_gc' in request.data:
+            val = request.data.get('nome_gc')
+            config.nome_gc = (val if val is not None else '').strip()[:100]
         if 'grupo_id' in request.data:
             gid = request.data.get('grupo_id')
             if gid is None or gid == '':
@@ -13277,6 +13295,7 @@ class ConfigAnteciparInstalacaoView(APIView):
         config.atualizado_por = request.user
         config.save()
         return Response({
+            'nome_gc': config.nome_gc or '',
             'telefone_gc': config.telefone_gc or '',
             'grupo_id': config.grupo_id,
             'grupo_nome': config.grupo.nome if config.grupo else None,
@@ -13394,17 +13413,27 @@ class RespostaGCAnteciparInstalacaoView(APIView):
 
 
 def _mensagem_padrao_reparo(os_num, endereco, data_inst_fmt, observacao_reparo):
-    """Mensagem padrão para solicitação de reparo (internet não funciona após instalação recente)."""
+    """Mensagem padrão para acionamento de reparo em O.S recém instalada."""
+    contato_cliente = (observacao_reparo.get('contato_cliente') or '').strip() or 'NÃO INFORMADO'
+    nome_cliente = (observacao_reparo.get('nome_cliente') or '').strip() or 'NÃO INFORMADO'
+    gc_nome = (observacao_reparo.get('gc_nome') or '').strip() or 'NÃO INFORMADO'
+    data_horario_1 = (observacao_reparo.get('data_horario_1') or '').strip() or 'NÃO INFORMADO'
+    data_horario_2 = (observacao_reparo.get('data_horario_2') or '').strip() or 'NÃO INFORMADO'
+    texto_livre = (observacao_reparo.get('texto_livre') or '').strip() or 'NÃO INFORMADO'
     base = (
-        "*SOLICITAÇÃO DE REPARO - INTERNET PÓS-INSTALAÇÃO:*\n\n"
+        "*MÁSCARA PADRÃO DE ACIONAMENTO PARA REPAROS DE OSS RECÉM INSTALADAS:*\n\n"
         f"- *OS:* {os_num}\n"
+        f"- *NOME DO CLIENTE:* {nome_cliente}\n"
         f"- *ENDEREÇO COMPLETO:* {endereco}\n"
-        "- *NOME DO PDV:* 1067100 - RECORD\n"
+        f"- *CONTATO DO CLIENTE:* {contato_cliente}\n"
+        "- *PDV:* 1068561\n"
+        f"- *GC:* {gc_nome}\n"
         f"- *DATA INSTALAÇÃO:* {data_inst_fmt}\n"
-        "- *MOTIVO:* Reparo - internet não funciona após instalação recente (até 5 dias)."
+        "- *DATA E HORÁRIO AGENDADO COM O CLIENTE:*\n"
+        f"  1) {data_horario_1}\n"
+        f"  2) {data_horario_2}\n"
+        f"- *SOLICITAÇÃO:* {texto_livre}"
     )
-    if observacao_reparo:
-        base += f"\n- *OBSERVAÇÃO DO SOLICITANTE:* {observacao_reparo}"
     return base.upper()
 
 
@@ -13477,15 +13506,45 @@ class SolicitarAnteciparInstalacaoView(APIView):
             try:
                 venda = queryset.get(id=venda_id)
             except Venda.DoesNotExist:
-                return Response({'detail': 'Pedido não encontrado ou não está elegível para reparo (instalado há até 5 dias).'}, status=status.HTTP_404_NOT_FOUND)
-            observacao_reparo = (request.data.get('observacao_reparo') or '').strip()[:500]
+                return Response({'detail': 'Pedido não encontrado ou não está elegível para reparo (instalado há até 14 dias).'}, status=status.HTTP_404_NOT_FOUND)
+            turno_map = {'MANHA': 'MANHÃ', 'TARDE': 'TARDE'}
+            data_opcao_1 = (request.data.get('data_opcao_1') or '').strip()
+            turno_opcao_1 = (request.data.get('turno_opcao_1') or '').strip().upper()
+            data_opcao_2 = (request.data.get('data_opcao_2') or '').strip()
+            turno_opcao_2 = (request.data.get('turno_opcao_2') or '').strip().upper()
+            if not data_opcao_1 or turno_opcao_1 not in turno_map or not data_opcao_2 or turno_opcao_2 not in turno_map:
+                return Response(
+                    {'detail': 'Informe duas opções de data e turno para retorno do técnico.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            texto_livre = (request.data.get('observacao_reparo') or '').strip()[:500]
             data_inst_fmt = venda.data_instalacao.strftime('%d/%m/%Y') if venda.data_instalacao else ''
             endereco = _antecipar_instalacao_endereco_completo(venda)
             os_num = venda.ordem_servico or ''
-            descricao = "Reparo - internet não funciona após instalação recente."
-            if observacao_reparo:
-                descricao += " Observação: " + observacao_reparo
-            mensagem = _mensagem_padrao_reparo(os_num, endereco, data_inst_fmt, observacao_reparo)
+            contato_cliente = _antecipar_instalacao_contato_cliente(venda)
+            nome_cliente = venda.cliente.nome_razao_social if venda.cliente else ''
+            data_horario_1 = f"{data_opcao_1} - {turno_map[turno_opcao_1]}"
+            data_horario_2 = f"{data_opcao_2} - {turno_map[turno_opcao_2]}"
+            gc_nome = (_antecipar_instalacao_get_config().nome_gc or '').strip()
+            descricao = (
+                "Reparo solicitado para O.S recém instalada (até 14 dias). "
+                f"Opções de retorno técnico: {data_horario_1} e {data_horario_2}."
+            )
+            if texto_livre:
+                descricao += f" Solicitação: {texto_livre}"
+            mensagem = _mensagem_padrao_reparo(
+                os_num,
+                endereco,
+                data_inst_fmt,
+                {
+                    'contato_cliente': contato_cliente,
+                    'nome_cliente': nome_cliente,
+                    'gc_nome': gc_nome,
+                    'data_horario_1': data_horario_1,
+                    'data_horario_2': data_horario_2,
+                    'texto_livre': texto_livre,
+                },
+            )
         elif tipo == 'instalacao_fisica':
             descricao = (request.data.get('descricao_solicitacao') or '').strip()
             if not descricao:
