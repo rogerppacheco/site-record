@@ -92,7 +92,7 @@
                     <div class="row g-2 mb-3">
                         <div class="col-md-6">
                             <label class="form-label">Opção 1 - Data <span class="text-danger">*</span></label>
-                            <input type="date" id="reparo-data-1" class="form-control">
+                            <input type="text" id="reparo-data-1" class="form-control" placeholder="dd/mm/aaaa" maxlength="10">
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Opção 1 - Turno <span class="text-danger">*</span></label>
@@ -104,7 +104,7 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Opção 2 - Data <span class="text-danger">*</span></label>
-                            <input type="date" id="reparo-data-2" class="form-control">
+                            <input type="text" id="reparo-data-2" class="form-control" placeholder="dd/mm/aaaa" maxlength="10">
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Opção 2 - Turno <span class="text-danger">*</span></label>
@@ -269,11 +269,21 @@
                 if (el) el.style.display = show ? '' : 'none';
             }
 
-            function formatDateToBr(isoDate) {
-                if (!isoDate || !isoDate.includes('-')) return isoDate || '';
-                const p = isoDate.split('-');
-                if (p.length !== 3) return isoDate;
-                return p[2] + '/' + p[1] + '/' + p[0];
+            function normalizeDateBrInput(value) {
+                const digits = (value || '').replace(/\D/g, '').slice(0, 8);
+                if (digits.length <= 2) return digits;
+                if (digits.length <= 4) return digits.slice(0, 2) + '/' + digits.slice(2);
+                return digits.slice(0, 2) + '/' + digits.slice(2, 4) + '/' + digits.slice(4);
+            }
+
+            function isDateBr(value) {
+                if (!/^\d{2}\/\d{2}\/\d{4}$/.test(value || '')) return false;
+                const parts = value.split('/');
+                const d = parseInt(parts[0], 10);
+                const m = parseInt(parts[1], 10);
+                const y = parseInt(parts[2], 10);
+                const dt = new Date(y, m - 1, d);
+                return dt.getFullYear() === y && (dt.getMonth() + 1) === m && dt.getDate() === d;
             }
 
             function turnoLabel(turno) {
@@ -407,9 +417,15 @@
                 atualizarPreviewReparo();
             });
             document.getElementById('observacao-reparo').addEventListener('input', atualizarPreviewReparo);
-            document.getElementById('reparo-data-1').addEventListener('change', atualizarPreviewReparo);
+            document.getElementById('reparo-data-1').addEventListener('input', function() {
+                this.value = normalizeDateBrInput(this.value);
+                atualizarPreviewReparo();
+            });
             document.getElementById('reparo-turno-1').addEventListener('change', atualizarPreviewReparo);
-            document.getElementById('reparo-data-2').addEventListener('change', atualizarPreviewReparo);
+            document.getElementById('reparo-data-2').addEventListener('input', function() {
+                this.value = normalizeDateBrInput(this.value);
+                atualizarPreviewReparo();
+            });
             document.getElementById('reparo-turno-2').addEventListener('change', atualizarPreviewReparo);
 
             function atualizarPreviewReparo() {
@@ -417,9 +433,9 @@
                 const opcao = document.getElementById('observacao-reparo-opcao').value;
                 const txt = document.getElementById('observacao-reparo').value.trim();
                 const obs = opcao === 'outro' ? txt : (opcao || '');
-                const d1 = formatDateToBr(document.getElementById('reparo-data-1').value);
+                const d1 = document.getElementById('reparo-data-1').value.trim();
                 const t1 = turnoLabel(document.getElementById('reparo-turno-1').value);
-                const d2 = formatDateToBr(document.getElementById('reparo-data-2').value);
+                const d2 = document.getElementById('reparo-data-2').value.trim();
                 const t2 = turnoLabel(document.getElementById('reparo-turno-2').value);
                 const nomeGc = (configData && configData.nome_gc) ? configData.nome_gc : 'NÃO INFORMADO';
                 const contatoCliente = pedidoSelecionado.telefone_contato || 'NÃO INFORMADO';
@@ -429,7 +445,7 @@
                     '- *NOME DO CLIENTE:* ' + (pedidoSelecionado.cliente_nome || '') + '\n' +
                     '- *ENDEREÇO COMPLETO:* ' + (pedidoSelecionado.endereco_completo || '') + '\n' +
                     '- *CONTATO DO CLIENTE:* ' + contatoCliente + '\n' +
-                    '- *PDV:* 1068561\n' +
+                    '- *PDV:* 1068561 - RECORD PAP\n' +
                     '- *GC:* ' + nomeGc + '\n' +
                     '- *DATA INSTALAÇÃO:* ' + (pedidoSelecionado.data_instalacao || '') + '\n' +
                     '- *DATA E HORÁRIO AGENDADO COM O CLIENTE:*\n' +
@@ -492,14 +508,18 @@
                 const opcao = document.getElementById('observacao-reparo-opcao').value;
                 const txt = document.getElementById('observacao-reparo').value.trim();
                 const observacao_reparo = opcao === 'outro' ? txt : (opcao || '');
-                const data_opcao_1 = document.getElementById('reparo-data-1').value;
+                const data_opcao_1 = document.getElementById('reparo-data-1').value.trim();
                 const turno_opcao_1 = document.getElementById('reparo-turno-1').value;
-                const data_opcao_2 = document.getElementById('reparo-data-2').value;
+                const data_opcao_2 = document.getElementById('reparo-data-2').value.trim();
                 const turno_opcao_2 = document.getElementById('reparo-turno-2').value;
                 showErro('erro-solicitar-reparo', '');
                 show('sucesso-solicitar-reparo', false);
                 if (!data_opcao_1 || !turno_opcao_1 || !data_opcao_2 || !turno_opcao_2) {
                     showErro('erro-solicitar-reparo', 'Informe duas opções de data e turno para retorno do técnico.');
+                    return;
+                }
+                if (!isDateBr(data_opcao_1) || !isDateBr(data_opcao_2)) {
+                    showErro('erro-solicitar-reparo', 'As datas devem estar no formato dd/mm/aaaa.');
                     return;
                 }
                 if (!observacao_reparo) {

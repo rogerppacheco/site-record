@@ -13253,12 +13253,47 @@ def _antecipar_instalacao_get_config():
     return config
 
 
+def _antecipar_instalacao_sync_grupos_zapi():
+    """
+    Sincroniza grupos da Z-API com GrupoDisparo para garantir que o select da configuração
+    mostre todos os grupos do número conectado.
+    """
+    try:
+        svc = WhatsAppService()
+        grupos_zapi = svc.listar_grupos() or []
+    except Exception:
+        return
+    if not isinstance(grupos_zapi, list):
+        return
+    for g in grupos_zapi:
+        if not isinstance(g, dict):
+            continue
+        chat_id = str(g.get('id') or '').strip()
+        nome = str(g.get('name') or 'Sem Nome').strip()[:100] or 'Sem Nome'
+        if not chat_id:
+            continue
+        obj = GrupoDisparo.objects.filter(chat_id=chat_id).first()
+        if obj:
+            changed = False
+            if obj.nome != nome:
+                obj.nome = nome
+                changed = True
+            if not obj.ativo:
+                obj.ativo = True
+                changed = True
+            if changed:
+                obj.save(update_fields=['nome', 'ativo'])
+            continue
+        GrupoDisparo.objects.create(nome=nome, chat_id=chat_id, ativo=True)
+
+
 class ConfigAnteciparInstalacaoView(APIView):
     """GET: retorna config (telefone_gc, grupo) + lista de grupos para o select. PATCH: atualiza config (só Admin/Diretoria/BackOffice)."""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         config = _antecipar_instalacao_get_config()
+        _antecipar_instalacao_sync_grupos_zapi()
         grupos = list(
             GrupoDisparo.objects.filter(ativo=True).order_by('nome').values('id', 'nome', 'chat_id')
         )
@@ -13426,7 +13461,7 @@ def _mensagem_padrao_reparo(os_num, endereco, data_inst_fmt, observacao_reparo):
         f"- *NOME DO CLIENTE:* {nome_cliente}\n"
         f"- *ENDEREÇO COMPLETO:* {endereco}\n"
         f"- *CONTATO DO CLIENTE:* {contato_cliente}\n"
-        "- *PDV:* 1068561\n"
+        "- *PDV:* 1068561 - RECORD PAP\n"
         f"- *GC:* {gc_nome}\n"
         f"- *DATA INSTALAÇÃO:* {data_inst_fmt}\n"
         "- *DATA E HORÁRIO AGENDADO COM O CLIENTE:*\n"
@@ -13512,9 +13547,20 @@ class SolicitarAnteciparInstalacaoView(APIView):
             turno_opcao_1 = (request.data.get('turno_opcao_1') or '').strip().upper()
             data_opcao_2 = (request.data.get('data_opcao_2') or '').strip()
             turno_opcao_2 = (request.data.get('turno_opcao_2') or '').strip().upper()
+            def _is_date_br(txt):
+                try:
+                    datetime.strptime(txt, '%d/%m/%Y')
+                    return True
+                except (TypeError, ValueError):
+                    return False
             if not data_opcao_1 or turno_opcao_1 not in turno_map or not data_opcao_2 or turno_opcao_2 not in turno_map:
                 return Response(
                     {'detail': 'Informe duas opções de data e turno para retorno do técnico.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if not _is_date_br(data_opcao_1) or not _is_date_br(data_opcao_2):
+                return Response(
+                    {'detail': 'As datas devem estar no formato dd/mm/aaaa.'},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             texto_livre = (request.data.get('observacao_reparo') or '').strip()[:500]
