@@ -341,6 +341,17 @@
                         </div>
                         <div class="col-md-6"><label class="form-label">Plano</label><select class="form-select" id="edit-plano"></select></div>
                         <div class="col-md-6"><label class="form-label">Forma de Pagamento</label><select class="form-select" id="edit-pagamento"></select></div>
+                        <div class="col-12">
+                            <div class="form-check form-switch mt-2">
+                                <input class="form-check-input" type="checkbox" id="edit-bloquear-osab">
+                                <label class="form-check-label fw-bold" for="edit-bloquear-osab">
+                                    Bloquear atualização de status pela OSAB
+                                </label>
+                                <div class="form-text">
+                                    Quando marcado, a OSAB não atualiza este pedido (exceto INSTALADA, CANCELADA, INSTALADA OUTRO PDV e NAO CONSTA NA OSAB).
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <div id="campos-datas-agendamento" class="row g-3 mb-4 p-3 rounded border" style="display: none; background: #cce5ff; border-color: #b8daff !important;">
@@ -2098,6 +2109,7 @@
                 
                 setVal('edit-cliente-nome', v.cliente_nome_razao_social); setVal('edit-cliente-cpf', v.cliente_cpf_cnpj);
                 setVal('edit-ordem-servico', v.ordem_servico);
+                document.getElementById('edit-bloquear-osab').checked = !!v.bloquear_atualizacao_status_osab;
                 setVal('edit-telefone1', v.telefone1); setVal('edit-telefone2', v.telefone2);
                 setVal('edit-nome-mae', v.nome_mae); setVal('edit-data-nascimento', v.data_nascimento);
                 setVal('edit-cep', v.cep); setVal('edit-logradouro', v.logradouro); setVal('edit-numero', v.numero_residencia);
@@ -2150,6 +2162,7 @@
                 cep: getVal('edit-cep'), logradouro: getVal('edit-logradouro'), numero_residencia: getVal('edit-numero'),
                 complemento: getVal('edit-complemento'), bairro: getVal('edit-bairro'), cidade: getVal('edit-cidade'),
                 estado: getVal('edit-estado'), ponto_referencia: getVal('edit-referencia'), observacoes: getVal('edit-observacoes'),
+                bloquear_atualizacao_status_osab: !!document.getElementById('edit-bloquear-osab')?.checked,
                 enviar_whatsapp: envioWhatsappAtivo
             };
             const divAgend = document.getElementById('campos-datas-agendamento');

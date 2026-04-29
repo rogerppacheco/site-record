@@ -197,6 +197,14 @@ class Venda(models.Model):
         verbose_name="Gerada O.S. automática",
         help_text="Se a venda foi gerada com O.S. automática (vendedor já abriu o pedido)."
     )
+    bloquear_atualizacao_status_osab = models.BooleanField(
+        default=False,
+        verbose_name="Bloquear atualização de status pela OSAB",
+        help_text=(
+            "Quando marcado, a importação OSAB não atualiza este pedido "
+            "(exceto para INSTALADA, CANCELADA, INSTALADA OUTRO PDV e NÃO CONSTA NA OSAB)."
+        ),
+    )
 
     # --- Retorno auditoria: confirmação do cliente (resumo enviado ao celular) ---
     cliente_confirmou_auditoria = models.BooleanField(

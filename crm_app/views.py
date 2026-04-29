@@ -4165,6 +4165,21 @@ class ImportacaoOsabView(APIView):
         import unicodedata
         return ''.join(c for c in unicodedata.normalize('NFD', text) if unicodedata.category(c) != 'Mn')
 
+    def _status_osab_permitido_com_bloqueio(self, status_osab_raw, target_status_esteira):
+        """Retorna True quando status pode atualizar mesmo com bloqueio OSAB marcado."""
+        status_norm = self._normalize_text(status_osab_raw)
+        target_norm = self._normalize_text(target_status_esteira.nome) if target_status_esteira else ""
+
+        permitidos = {
+            "INSTALADA",
+            "INSTALADO",
+            "CANCELADA",
+            "CANCELADO",
+            "INSTALADA OUTRO PDV",
+            "NAO CONSTA NA OSAB",
+        }
+        return status_norm in permitidos or target_norm in permitidos
+
     def _enviar_mensagens_background(self, lista_mensagens):
         svc = WhatsAppService()
         for telefone, texto in lista_mensagens:
@@ -4732,7 +4747,7 @@ class ImportacaoOsabView(APIView):
             report = {
                 "status": "sucesso", "total_registros": len(df), "criados": 0, "atualizados": 0, 
                 "vendas_encontradas": 0, "ja_corretos": 0, "erros": [], "logs_detalhados": [],
-                "ignorados_dt_ref": 0, "arquivo_excel_b64": None
+                "ignorados_dt_ref": 0, "bloqueados_flag_osab": 0, "arquivo_excel_b64": None
             }
 
             def _normalize_dt_ref(val):
@@ -4831,17 +4846,6 @@ class ImportacaoOsabView(APIView):
                     detalhes_hist = {}
                     msg_whatsapp_desta_venda = None
 
-                    # --- 1. DATA DE ABERTURA ---
-                    # Como usamos o parser inteligente, aqui já é date ou None
-                    nova_data_abertura = row.get('DATA_ABERTURA')
-                    if nova_data_abertura:
-                        data_sistema = venda.data_abertura.date() if venda.data_abertura else None
-                        if data_sistema != nova_data_abertura:
-                            detalhes_hist['data_abertura'] = f"De '{data_sistema}' para '{nova_data_abertura}'"
-                            venda.data_abertura = nova_data_abertura
-                            houve_alteracao = True
-
-                    # --- 2. STATUS ---
                     is_fraude = "PAYMENT_NOT_AUTHORIZED" in sit_osab_raw
                     if not sit_osab_raw or is_fraude:
                         pgto_raw = self._normalize_text(row.get('MEIO_PAGAMENTO'))
@@ -4868,6 +4872,48 @@ class ImportacaoOsabView(APIView):
                             elif "AGUARDANDO PAGAMENTO" in sit_osab_raw: nome_est = "AGUARDANDO PAGAMENTO"
                             elif "REPROVADO" in sit_osab_raw: nome_est = "REPROVADO CARTÃO DE CRÉDITO"
                         if nome_est: target_status_esteira = status_esteira_map.get(nome_est)
+
+                    if venda.bloquear_atualizacao_status_osab and not self._status_osab_permitido_com_bloqueio(
+                        sit_osab_raw,
+                        target_status_esteira,
+                    ):
+                        log_item["resultado_crm"] = "BLOQUEADO_FLAG_OSAB"
+                        log_item["detalhe"] = (
+                            "Atualizacao OSAB bloqueada por configuracao do pedido "
+                            "(bloquear_atualizacao_status_osab=true)."
+                        )
+                        report["bloqueados_flag_osab"] = report.get("bloqueados_flag_osab", 0) + 1
+                        historicos_criar.append(
+                            HistoricoAlteracaoVenda(
+                                venda=venda,
+                                usuario=osab_bot,
+                                alteracoes={
+                                    "osab_bloqueado": (
+                                        f"Tentativa bloqueada para status OSAB '{sit_osab_raw or '(vazio)'}'. "
+                                        "Somente INSTALADA, CANCELADA, INSTALADA OUTRO PDV e NAO CONSTA NA OSAB "
+                                        "podem atualizar quando o bloqueio estiver marcado."
+                                    )
+                                },
+                            )
+                        )
+                        logger.info(
+                            "[OSAB] Atualizacao bloqueada para venda=%s os=%s status_osab='%s'",
+                            venda.id,
+                            venda.ordem_servico,
+                            sit_osab_raw or "",
+                        )
+                        report["logs_detalhados"].append(log_item)
+                        continue
+
+                    # --- 1. DATA DE ABERTURA ---
+                    # Como usamos o parser inteligente, aqui já é date ou None
+                    nova_data_abertura = row.get('DATA_ABERTURA')
+                    if nova_data_abertura:
+                        data_sistema = venda.data_abertura.date() if venda.data_abertura else None
+                        if data_sistema != nova_data_abertura:
+                            detalhes_hist['data_abertura'] = f"De '{data_sistema}' para '{nova_data_abertura}'"
+                            venda.data_abertura = nova_data_abertura
+                            houve_alteracao = True
 
                     # Aplica Alterações Status Tratamento
                     if target_status_tratamento and venda.status_tratamento != target_status_tratamento:
@@ -5082,7 +5128,8 @@ class ImportacaoOsabView(APIView):
                     f"{report['atualizados']} vendas atualizadas no CRM "
                     f"({report.get('atualizados_planilha_osab', report['atualizados'])} pela planilha; "
                     f"{report.get('crm_sem_osab_nao_consta', 0)} NÃO CONSTA OSAB; "
-                    f"{report.get('crm_sem_osab_outro_pdv', 0)} INSTALADA OUTRO PDV)."
+                    f"{report.get('crm_sem_osab_outro_pdv', 0)} INSTALADA OUTRO PDV; "
+                    f"{report.get('bloqueados_flag_osab', 0)} bloqueadas pela flag OSAB)."
                 ),
                 detalhes_json=report,
                 finalizado_em=finalizado_agora,
