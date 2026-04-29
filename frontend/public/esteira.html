@@ -468,6 +468,15 @@
                     <form id="form-pendencia">
                         <div class="mb-3"><label class="form-label fw-bold">Motivo *</label><select class="form-select" id="pendencia-motivo" required><option value="">Carregando motivos...</option></select></div>
                         <div class="mb-3"><label class="form-label">Observação Adicional</label><textarea class="form-control uppercase-input" id="pendencia-obs" rows="3" placeholder="Detalhes..."></textarea></div>
+                        <div class="form-check form-switch mt-2">
+                            <input class="form-check-input" type="checkbox" id="pendencia-bloquear-osab">
+                            <label class="form-check-label fw-bold" for="pendencia-bloquear-osab">
+                                Bloquear atualização de status pela OSAB
+                            </label>
+                            <div class="form-text">
+                                Se marcado, a OSAB não atualizará este pedido (exceto INSTALADA, CANCELADA, INSTALADA OUTRO PDV e NAO CONSTA NA OSAB).
+                            </div>
+                        </div>
                     </form>
                 </div>
                 <div class="modal-footer"><button type="button" class="btn btn-secondary" onclick="cancelarAcaoStatus()">Cancelar</button><button type="button" class="btn btn-primary" onclick="salvarPendencia()">Confirmar</button></div>
@@ -1962,6 +1971,8 @@
                 } else if (statusTexto.includes('PENDEN') || statusTexto.includes('CANCEL')) {
                     setVal('pendencia-motivo', vendaData.motivo_pendencia);
                     setVal('pendencia-obs', vendaData.observacoes);
+                    const chkBloqOsabExistente = document.getElementById('pendencia-bloquear-osab');
+                    if (chkBloqOsabExistente) chkBloqOsabExistente.checked = !!vendaData.bloquear_atualizacao_status_osab;
                     
                     const titulo = document.getElementById('titulo-modal-pendencia');
                     if(titulo) titulo.innerHTML = statusTexto.includes('CANCEL') ? '<i class="bi bi-x-circle-fill"></i> Motivo do Cancelamento' : '<i class="bi bi-exclamation-triangle-fill"></i> Registrar Pendência';
@@ -2040,6 +2051,8 @@
                 if(titulo) titulo.innerHTML = statusTexto.includes('CANCEL') ? '<i class="bi bi-x-circle-fill"></i> Motivo do Cancelamento' : '<i class="bi bi-exclamation-triangle-fill"></i> Registrar Pendência';
                 document.getElementById('pendencia-motivo').value = '';
                 document.getElementById('pendencia-obs').value = '';
+                const chkBloqOsab = document.getElementById('pendencia-bloquear-osab');
+                if (chkBloqOsab) chkBloqOsab.checked = false;
                 
                 if (statusAtual && String(statusAtual).toUpperCase() === statusTexto) {
                     try {
@@ -2047,6 +2060,7 @@
                         if (vendaData) {
                             document.getElementById('pendencia-motivo').value = vendaData.motivo_pendencia || '';
                             document.getElementById('pendencia-obs').value = vendaData.observacao_pendencia || '';
+                            if (chkBloqOsab) chkBloqOsab.checked = !!vendaData.bloquear_atualizacao_status_osab;
                         }
                     } catch (e) { /* dados existentes não encontrados */ }
                 }
@@ -2080,7 +2094,13 @@
 
         async function salvarPendencia() {
             if (!getVal('pendencia-motivo')) { alert("Selecione o motivo."); return; }
-            await salvarStatusNoBanco(tempVendaId, { status_esteira: tempStatusId, motivo_pendencia: getVal('pendencia-motivo'), observacoes: getVal('pendencia-obs') });
+            const bloquearOsab = !!document.getElementById('pendencia-bloquear-osab')?.checked;
+            await salvarStatusNoBanco(tempVendaId, {
+                status_esteira: tempStatusId,
+                motivo_pendencia: getVal('pendencia-motivo'),
+                observacoes: getVal('pendencia-obs'),
+                bloquear_atualizacao_status_osab: bloquearOsab,
+            });
             modalPendencia.hide();
         }
 
