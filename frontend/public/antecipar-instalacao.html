@@ -136,7 +136,10 @@
                 <!-- Painel Instalação física / pendência -->
                 <div id="painel-instalacao-fisica" class="card-panel" style="display:none;">
                     <h6 class="fw-bold mb-3"><i class="bi bi-building-check text-info"></i> Instalação física / pendência no sistema</h6>
-                    <p class="text-muted small mb-3">Para pedidos <strong>pendentes na esteira</strong> com <strong>data de instalação física (no cliente)</strong> preenchida. Descreva a situação; você pode anexar uma imagem (JPG, PNG ou WEBP, até 6 MB).</p>
+                    <p class="text-muted small mb-3">Para pedidos <strong>pendentes na esteira</strong>. Se a <strong>data de instalação física (no cliente)</strong> não estiver preenchida, o pedido ainda pode ser sinalizado com aviso. Descreva a situação; você pode anexar uma imagem (JPG, PNG ou WEBP, até 6 MB).</p>
+                    <div id="aviso-sem-data-if" class="alert alert-warning py-2 small" style="display:none;">
+                        Este pedido está pendente, mas sem data de instalação física preenchida no CRM.
+                    </div>
                     <div class="mb-3">
                         <label class="form-label">Descrição da situação <span class="text-danger">*</span></label>
                         <textarea id="descricao-instalacao-fisica" class="form-control" rows="3" placeholder="Ex.: instalação realizada no cliente, mas o sistema ainda mostra pendência de X..." maxlength="500"></textarea>
@@ -156,7 +159,7 @@
                 <div id="nenhum-resultado" class="card-panel text-center text-muted" style="display:none;">
                     <i class="bi bi-inbox display-6"></i>
                     <p class="mb-0 mt-2">Nenhum pedido encontrado para esta busca.</p>
-                    <p class="small">Podem ser solicitados: pedidos <strong>Agendados</strong> (antecipação), <strong>Instalados há até 14 dias</strong> (reparo) ou <strong>Pendentes com instalação física</strong> informada.</p>
+                    <p class="small">Podem ser solicitados: pedidos <strong>Agendados</strong> (antecipação), <strong>Instalados há até 14 dias</strong> (reparo) ou <strong>Pendentes</strong> (instalação física, com ou sem data física informada).</p>
                 </div>
             </div>
 
@@ -337,7 +340,11 @@
                         if (p.tipo_disponivel === 'reparo') {
                             badge = '<span class="badge bg-warning text-dark me-1">Reparo</span> Instalado em ' + (p.data_instalacao || '');
                         } else if (p.tipo_disponivel === 'instalacao_fisica') {
-                            badge = '<span class="badge bg-info text-dark me-1">Inst. física</span> Pendência · física ' + (p.data_instalacao_fisica || '');
+                            const avisoData = p.aviso_sem_data_instalacao_fisica
+                                ? ' <span class="badge bg-warning text-dark ms-1">Sem data física</span>'
+                                : '';
+                            badge = '<span class="badge bg-info text-dark me-1">Inst. física</span> Pendência · física '
+                                + (p.data_instalacao_fisica || 'não informada') + avisoData;
                         } else {
                             badge = '<span class="badge bg-primary me-1">Agendado</span> ' + (p.data_agendamento || '') + ' ' + (p.periodo_agendamento || '');
                         }
@@ -390,6 +397,11 @@
                 show('msg-preview-instalacao-fisica', false);
                 showErro('erro-solicitar-if', '');
                 show('sucesso-solicitar-if', false);
+                const avisoSemDataIf = document.getElementById('aviso-sem-data-if');
+                if (avisoSemDataIf) {
+                    const exibirAviso = p.tipo_disponivel === 'instalacao_fisica' && !!p.aviso_sem_data_instalacao_fisica;
+                    avisoSemDataIf.style.display = exibirAviso ? '' : 'none';
+                }
             }
 
             function atualizarPreview() {
@@ -569,7 +581,7 @@
                 if (!pedidoSelecionado || pedidoSelecionado.tipo_disponivel !== 'instalacao_fisica') return;
                 const desc = document.getElementById('descricao-instalacao-fisica').value.trim();
                 if (!desc) { show('msg-preview-instalacao-fisica', false); return; }
-                const df = pedidoSelecionado.data_instalacao_fisica || '';
+                const df = pedidoSelecionado.data_instalacao_fisica || 'NÃO INFORMADA';
                 const msg = (
                     '*SINALIZAÇÃO - INSTALAÇÃO FÍSICA / PENDÊNCIA NO SISTEMA:*\n\n' +
                     '- *OS:* ' + (pedidoSelecionado.ordem_servico || '') + '\n' +

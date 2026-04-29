@@ -13113,10 +13113,9 @@ def _antecipar_instalacao_queryset_vendas_reparo(request):
 
 
 def _antecipar_instalacao_queryset_vendas_instalacao_fisica(request):
-    """Pendência na esteira com data de instalação física no cliente (sinalizar situação ao GC)."""
+    """Pendência na esteira para sinalização ao GC (com ou sem data física preenchida)."""
     base = Venda.objects.filter(
         ativo=True,
-        data_instalacao_fisica__isnull=False,
     ).filter(
         Q(status_esteira__nome__icontains='penden') | Q(status_esteira__nome__icontains='pendência')
     ).exclude(
@@ -13233,6 +13232,7 @@ class BuscarAnteciparInstalacaoView(APIView):
                 'tipo_disponivel': 'instalacao_fisica',
                 'data_instalacao': v.data_instalacao.strftime('%d/%m/%Y') if v.data_instalacao else '',
                 'data_instalacao_fisica': data_fis,
+                'aviso_sem_data_instalacao_fisica': not bool(v.data_instalacao_fisica),
             })
 
         def _sort_key_antecipar(r):
@@ -13604,11 +13604,11 @@ class SolicitarAnteciparInstalacaoView(APIView):
             except Venda.DoesNotExist:
                 return Response(
                     {
-                        'detail': 'Pedido não encontrado ou não está elegível (pendente na esteira com data de instalação física informada).'
+                        'detail': 'Pedido não encontrado ou não está elegível (é necessário estar pendente na esteira).'
                     },
                     status=status.HTTP_404_NOT_FOUND,
                 )
-            data_fis_fmt = venda.data_instalacao_fisica.strftime('%d/%m/%Y') if venda.data_instalacao_fisica else ''
+            data_fis_fmt = venda.data_instalacao_fisica.strftime('%d/%m/%Y') if venda.data_instalacao_fisica else 'NÃO INFORMADA'
             endereco = _antecipar_instalacao_endereco_completo(venda)
             os_num = venda.ordem_servico or ''
             mensagem = _mensagem_padrao_instalacao_fisica(os_num, endereco, data_fis_fmt, descricao)
