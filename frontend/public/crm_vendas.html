@@ -1073,12 +1073,13 @@
                         agendamentoDisplay = `<span>${parts[2]}/${parts[1]}</span> <span class="badge bg-light text-dark border ms-1">${turno}</span>`;
                     }
 
-                    // Verificar se é cancelada ou pendênciada (para mostrar botão de reemissão)
+                    // Verificar status para mostrar botão de reemissão
                     const isCancelada = stEsteiraUpper.includes('CANCELAD') || stTratUpper.includes('CANCELAD');
                     const isPendenciada = stEsteiraUpper.includes('PENDEN') || stEsteiraUpper.includes('PENDÊN') || stTratUpper.includes('PENDENTE');
+                    const isInstalada = stEsteiraUpper.includes('INSTALAD');
                     
-                    // Botão de reemissão só aparece para canceladas ou pendênciadas
-                    const btnReemissao = (isCancelada || isPendenciada) ? 
+                    // Botão de reemissão aparece para canceladas, pendenciadas e instaladas
+                    const btnReemissao = (isCancelada || isPendenciada || isInstalada) ? 
                         `<button onclick="abrirModalReemissao(${v.id})" class="btn btn-sm btn-outline-warning me-1" title="Reemissão"><i class="bi bi-arrow-repeat"></i></button>` : '';
                     
                     const botoes = `
