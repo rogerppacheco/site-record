@@ -429,6 +429,7 @@ class VendaCreateSerializer(serializers.ModelSerializer):
 
 class VendaUpdateSerializer(serializers.ModelSerializer):
     # data_instalacao_fisica: editável apenas por BackOffice/Diretoria/Admin (validado em validate)
+    data_criacao = serializers.DateTimeField(required=False)
     # Campos "Manuais" para evitar conflito de nesting e validação
     cliente_nome_razao_social = serializers.CharField(required=False, allow_null=True, allow_blank=True, write_only=True)
     cliente_cpf_cnpj = serializers.CharField(required=False, allow_null=True, allow_blank=True, write_only=True)
