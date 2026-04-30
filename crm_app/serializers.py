@@ -449,7 +449,7 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
         model = Venda
         fields = '__all__'
         read_only_fields = (
-            'data_criacao', 'forma_entrada', 'cliente',
+            'forma_entrada', 'cliente',
             'adiantamento_sabado_marcado', 'adiantamento_sabado_valor', 'adiantamento_sabado_marcado_em',
             'adiantamento_sabado_marcado_por', 'adiantamento_sabado_manual', 'adiantamento_sabado_obs_manual',
             'adiantamento_sabado_quitado_em', 'flag_desc_adiantamento_sabado',
@@ -465,6 +465,19 @@ class VendaUpdateSerializer(serializers.ModelSerializer):
         # data_instalacao_fisica: somente BackOffice/Diretoria/Admin podem alterar
         from crm_app.utils import is_member
         request = self.context.get('request')
+        if request and 'data_criacao' in data:
+            if not is_member(request.user, ['Diretoria', 'Admin']):
+                data.pop('data_criacao', None)
+            else:
+                from datetime import datetime
+                from django.utils import timezone
+
+                data_criacao = data.get('data_criacao')
+                if isinstance(data_criacao, datetime) and timezone.is_naive(data_criacao):
+                    data['data_criacao'] = timezone.make_aware(
+                        data_criacao,
+                        timezone.get_current_timezone(),
+                    )
         if request and 'data_instalacao_fisica' in data and not is_member(request.user, ['Diretoria', 'Admin', 'BackOffice', 'Auditoria', 'Qualidade']):
             data.pop('data_instalacao_fisica', None)
         # Antecipação de comissão: somente perfis de gestão da esteira

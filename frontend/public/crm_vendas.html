@@ -406,6 +406,10 @@
                             <div class="col-12 col-md-6 d-none" id="container-status-esteira"><label class="fw-bold text-success">Status Esteira</label><select class="form-select border-success" name="status_esteira" id="select-status-esteira"></select></div>
                             <div class="col-12 col-md-6 d-none" id="container-ordem-servico"><label class="fw-bold text-secondary">O.S</label><input type="text" class="form-control" name="ordem_servico" id="input-ordem-servico" placeholder="08907507 ou 4-212051254235"></div>
                             <div class="col-12 col-md-6 d-none" id="container-vendedor-modal"><label class="fw-bold text-secondary">Vendedor (Responsável)</label><select class="form-select" name="vendedor" id="select-vendedor-modal"></select></div>
+                            <div class="col-12 col-md-6 d-none" id="container-data-criacao-local">
+                                <label class="fw-bold text-secondary">Data Criação (Local)</label>
+                                <input type="date" class="form-control" name="data_criacao" id="input-data-criacao-local">
+                            </div>
                             <div class="col-12 d-none" id="container-gerada-os-auto">
                                 <label class="fw-bold text-secondary">Gerada O.S automática?</label>
                                 <div class="form-check form-check-inline">
@@ -1776,6 +1780,10 @@
                 document.getElementById('input-data-nascimento').value = venda.data_nascimento || '';
                 document.getElementById('input-telefone').value = venda.telefone1 || '';
                 document.getElementById('input-telefone2').value = venda.telefone2 || '';
+                const inputDataCriacaoLocal = document.getElementById('input-data-criacao-local');
+                if (inputDataCriacaoLocal) {
+                    inputDataCriacaoLocal.value = venda.data_criacao ? String(venda.data_criacao).slice(0, 10) : '';
+                }
                 verificarRegraCNPJ(venda.cliente_cpf_cnpj);
                 document.getElementById('input-cpf-rep').value = venda.cpf_representante_legal || '';
                 document.getElementById('input-nome-rep').value = venda.nome_representante_legal || '';
@@ -1839,6 +1847,8 @@
                 const areaTrat = document.getElementById('container-status-gestao');
                 const areaOs = document.getElementById('container-ordem-servico');
                 const areaReemissao = document.getElementById('container-reemissao-modal');
+                const areaDataCriacao = document.getElementById('container-data-criacao-local');
+                const podeEditarDataCriacao = ['Admin', 'Diretoria'].includes(userProfile);
                 
                 if(['Admin', 'Diretoria', 'BackOffice'].includes(userProfile)) {
                     areaStatus.classList.remove('d-none');
@@ -1846,12 +1856,14 @@
                     areaTrat.classList.remove('d-none');
                     areaOs.classList.remove('d-none');
                     if (areaReemissao) areaReemissao.classList.remove('d-none');
+                    if (areaDataCriacao) areaDataCriacao.classList.toggle('d-none', !podeEditarDataCriacao);
                 } else {
                     areaStatus.classList.add('d-none'); 
                     areaVendedor.classList.add('d-none'); 
                     areaTrat.classList.add('d-none');
                     areaOs.classList.remove('d-none');
                     if (areaReemissao) areaReemissao.classList.remove('d-none');
+                    if (areaDataCriacao) areaDataCriacao.classList.add('d-none');
                 }
 
                 // Adiciona debug simples nos selects
@@ -1905,6 +1917,8 @@
                 return (sel.options[sel.selectedIndex].text || '').toUpperCase();
             };
             data.ordem_servico = (data.ordem_servico || '').trim();
+            if (!data.data_criacao) delete data.data_criacao;
+            else data.data_criacao = `${data.data_criacao}T00:00:00`;
             if (data.ordem_servico && !osValidaFormato(data.ordem_servico)) {
                 alert('Formato de O.S inválido. Use 8 dígitos (08907507) ou X-12DÍGITOS (4-212051254235).');
                 return;
