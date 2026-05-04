@@ -525,6 +525,7 @@ class AuditoriaLigacaoHistoricoView(APIView):
                 | Q(provider_call_id__icontains=q)
                 | Q(venda__cliente__nome_razao_social__icontains=q)
                 | Q(venda__cliente__cpf_cnpj__icontains=q)
+                | Q(venda__ordem_servico__icontains=q)
             )
 
         status_q = str(request.GET.get("status", "") or "").strip()
